@@ -34,7 +34,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
         players = new Config(new File(getDataFolder(), "players.yml"), Config.YAML);
         getServer().getPluginManager().registerEvents(this, this);
-        getLogger().info("LocalFastCore 0.4.0 включён. Прогрессия, опыт за мобов и система заданий готовы.");
+        getLogger().info("LocalFastCore 0.5.0 включён. Прогрессия и охотничьи задания готовы.");
     }
 
     private String playerKey(Player player) {
@@ -70,6 +70,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 changed = true;
             }
         }
+        if (!players.exists(key + ".quest_type")) { players.set(key + ".quest_type", "any"); changed = true; }
         if (!players.exists(key + ".quest_active")) {
             players.set(key + ".quest_active", false);
             changed = true;
@@ -119,67 +120,98 @@ public final class LocalFastCore extends PluginBase implements Listener {
         killer.sendMessage("§a[LocalFast] +" + MOB_KILL_XP + " опыта за победу над существом!");
 
         if (getBoolean(killer, "quest_active", false) && !getBoolean(killer, "quest_complete", false)) {
-            int kills = Math.min(QUEST_KILLS_REQUIRED, get(killer, "quest_kills", 0) + 1);
-            set(killer, "quest_kills", kills);
-            if (kills >= QUEST_KILLS_REQUIRED) {
-                setBoolean(killer, "quest_complete", true);
-                killer.sendMessage("§6[LocalFast] Задание выполнено! Используй §e/quest claim §6, чтобы получить награду.");
-            } else {
-                killer.sendMessage("§e[Квест] Побеждено существ: " + kills + "/" + QUEST_KILLS_REQUIRED);
+            String questType = players.getString(playerKey(killer) + ".quest_type", "any");
+            String mobName = mob.getClass().getSimpleName().toLowerCase(Locale.ROOT);
+            boolean matches = questType.equals("any")
+                    || (questType.equals("zombie") && mobName.contains("zombie"))
+                    || (questType.equals("skeleton") && mobName.contains("skeleton"))
+                    || (questType.equals("spider") && mobName.contains("spider"));
+            if (matches) {
+                int kills = Math.min(QUEST_KILLS_REQUIRED, get(killer, "quest_kills", 0) + 1);
+                set(killer, "quest_kills", kills);
+                if (kills >= QUEST_KILLS_REQUIRED) {
+                    setBoolean(killer, "quest_complete", true);
+                    killer.sendMessage("§6[LocalFast] Задание выполнено! Используй §e/quest claim §6, чтобы получить награду.");
+                } else {
+                    killer.sendMessage("§e[Квест] " + kills + "/" + QUEST_KILLS_REQUIRED);
+                }
+                players.save();
             }
-            players.save();
         }
+    }
+
+    private int questReward(String type) {
+        if (type.equals("zombie")) return 50;
+        if (type.equals("skeleton")) return 60;
+        if (type.equals("spider")) return 70;
+        return QUEST_XP_REWARD;
+    }
+
+    private String questTitle(String type) {
+        if (type.equals("zombie")) return "Охотник на зомби";
+        if (type.equals("skeleton")) return "Охотник на скелетов";
+        if (type.equals("spider")) return "Охотник на пауков";
+        return "Охотник на любых существ";
     }
 
     private void showQuest(Player player) {
         initialize(player);
         if (!getBoolean(player, "quest_active", false)) {
-            player.sendMessage("§6[Квест] §fЗадание: Победи 5 любых обычных существ.");
-            player.sendMessage("§fНаграда: §a" + QUEST_XP_REWARD + " опыта");
-            player.sendMessage("§eНачать: /quest start");
-        } else if (getBoolean(player, "quest_complete", false)) {
-            player.sendMessage("§a[Квест] Задание выполнено! Награда: " + QUEST_XP_REWARD + " опыта.");
-            player.sendMessage("§eЗабрать награду: /quest claim");
+            player.sendMessage("§6[Квесты] Доступные задания:");
+            player.sendMessage("§e/quest zombie §f— 5 зомби, награда 50 XP");
+            player.sendMessage("§e/quest skeleton §f— 5 скелетов, награда 60 XP");
+            player.sendMessage("§e/quest spider §f— 5 пауков, награда 70 XP");
+            player.sendMessage("§7Старое задание: /quest start");
+            return;
+        }
+        String type = players.getString(playerKey(player) + ".quest_type", "any");
+        if (getBoolean(player, "quest_complete", false)) {
+            player.sendMessage("§a[Квест] " + questTitle(type) + " выполнено!");
+            player.sendMessage("§eЗабрать " + questReward(type) + " XP: /quest claim");
         } else {
-            player.sendMessage("§6[Квест] §fПобеди 5 любых обычных существ.");
+            player.sendMessage("§6[Квест] §f" + questTitle(type));
             player.sendMessage("§eПрогресс: " + get(player, "quest_kills", 0) + "/" + QUEST_KILLS_REQUIRED);
         }
     }
 
     private void handleQuest(Player player, String[] args) {
         initialize(player);
-        if (args.length == 0) {
-            showQuest(player);
-            return;
-        }
-        if (args[0].equalsIgnoreCase("start")) {
+        if (args.length == 0) { showQuest(player); return; }
+
+        String choice = args[0].toLowerCase(Locale.ROOT);
+        if (choice.equals("zombie") || choice.equals("skeleton") || choice.equals("spider") || choice.equals("start")) {
             if (getBoolean(player, "quest_active", false)) {
-                player.sendMessage("§c[Квест] У тебя уже есть активное задание.");
+                player.sendMessage("§c[Квест] Сначала заверши или забери награду за текущее задание.");
                 showQuest(player);
                 return;
             }
+            String type = choice.equals("start") ? "any" : choice;
+            players.set(playerKey(player) + ".quest_type", type);
             set(player, "quest_kills", 0);
             setBoolean(player, "quest_active", true);
             setBoolean(player, "quest_complete", false);
             players.save();
-            player.sendMessage("§a[Квест] Задание начато! Победи 5 любых обычных существ.");
+            player.sendMessage("§a[Квест] Начато: " + questTitle(type) + ". Убей 5 нужных мобов!");
             showQuest(player);
             return;
         }
-        if (args[0].equalsIgnoreCase("claim")) {
+        if (choice.equals("claim")) {
             if (!getBoolean(player, "quest_active", false) || !getBoolean(player, "quest_complete", false)) {
                 player.sendMessage("§c[Квест] Сначала выполни задание.");
                 return;
             }
+            String type = players.getString(playerKey(player) + ".quest_type", "any");
+            int reward = questReward(type);
             setBoolean(player, "quest_active", false);
             setBoolean(player, "quest_complete", false);
             set(player, "quest_kills", 0);
+            players.set(playerKey(player) + ".quest_type", "any");
             players.save();
-            giveXp(player, QUEST_XP_REWARD);
-            player.sendMessage("§a[Квест] Награда получена: +" + QUEST_XP_REWARD + " опыта!");
+            giveXp(player, reward);
+            player.sendMessage("§a[Квест] Награда получена: +" + reward + " опыта!");
             return;
         }
-        player.sendMessage("§eИспользуй: /quest, /quest start или /quest claim");
+        player.sendMessage("§eИспользуй: /quest, /quest zombie, /quest skeleton, /quest spider или /quest claim");
     }
 
     @Override

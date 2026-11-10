@@ -1,1 +1,24 @@
-# LocalFastCore
+name: LocalFastCore
+main: ru.localfast.core.LocalFastCore
+version: "0.3.0"
+api: ["1.0.0"]
+author: LocalFast
+description: RPG progression and mob kill experience for LocalFast Survival
+commands:
+  level:
+    description: Показать уровень и опыт
+    usage: "/level"
+  stats:
+    description: Показать характеристики
+    usage: "/stats"
+  addstat:
+    description: Потратить очко характеристики
+    usage: "/addstat <strength|health|agility|intelligence>"
+  lfadmin:
+    description: Команды администратора LocalFast
+    usage: "/lfadmin xp <player> <amount>"
+    permission: localfast.admin
+permissions:
+  localfast.admin:
+    description: Управление RPG-прогрессом LocalFast
+    default: op

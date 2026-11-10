@@ -19,6 +19,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private static final int POINTS_PER_LEVEL = 3;
     private static final int MAX_XP_GRANT = 1_000_000;
     private static final int MOB_KILL_XP = 10;
+    private static final int QUEST_KILLS_REQUIRED = 5;
+    private static final int QUEST_XP_REWARD = 50;
     private static final String[] STATS = {"strength", "health", "agility", "intelligence"};
 
     private Config players;
@@ -32,7 +34,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
         players = new Config(new File(getDataFolder(), "players.yml"), Config.YAML);
         getServer().getPluginManager().registerEvents(this, this);
-        getLogger().info("LocalFastCore 0.3.0 включён. Уровни, характеристики и опыт за убийство существ готовы.");
+        getLogger().info("LocalFastCore 0.4.0 включён. Прогрессия, опыт за мобов и система заданий готовы.");
     }
 
     private String playerKey(Player player) {
@@ -47,10 +49,19 @@ public final class LocalFastCore extends PluginBase implements Listener {
         players.set(playerKey(player) + "." + field, value);
     }
 
+    private boolean getBoolean(Player player, String field, boolean fallback) {
+        return players.getBoolean(playerKey(player) + "." + field, fallback);
+    }
+
+    private void setBoolean(Player player, String field, boolean value) {
+        players.set(playerKey(player) + "." + field, value);
+    }
+
     private void initialize(Player player) {
         String key = playerKey(player);
-        String[] fields = {"level", "xp", "points", "strength", "health", "agility", "intelligence"};
-        int[] defaults = {1, 0, 0, 0, 0, 0, 0};
+        String[] fields = {"level", "xp", "points", "strength", "health", "agility", "intelligence",
+                "quest_kills"};
+        int[] defaults = {1, 0, 0, 0, 0, 0, 0, 0};
         boolean changed = false;
         for (int i = 0; i < fields.length; i++) {
             String path = key + "." + fields[i];
@@ -58,6 +69,14 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 players.set(path, defaults[i]);
                 changed = true;
             }
+        }
+        if (!players.exists(key + ".quest_active")) {
+            players.set(key + ".quest_active", false);
+            changed = true;
+        }
+        if (!players.exists(key + ".quest_complete")) {
+            players.set(key + ".quest_complete", false);
+            changed = true;
         }
         if (changed) players.save();
     }
@@ -95,13 +114,86 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (event.getFinalDamage() < mob.getHealth()) return;
 
         Player killer = (Player) event.getDamager();
+        initialize(killer);
         giveXp(killer, MOB_KILL_XP);
         killer.sendMessage("§a[LocalFast] +" + MOB_KILL_XP + " опыта за победу над существом!");
+
+        if (getBoolean(killer, "quest_active", false) && !getBoolean(killer, "quest_complete", false)) {
+            int kills = Math.min(QUEST_KILLS_REQUIRED, get(killer, "quest_kills", 0) + 1);
+            set(killer, "quest_kills", kills);
+            if (kills >= QUEST_KILLS_REQUIRED) {
+                setBoolean(killer, "quest_complete", true);
+                killer.sendMessage("§6[LocalFast] Задание выполнено! Используй §e/quest claim §6, чтобы получить награду.");
+            } else {
+                killer.sendMessage("§e[Квест] Побеждено существ: " + kills + "/" + QUEST_KILLS_REQUIRED);
+            }
+            players.save();
+        }
+    }
+
+    private void showQuest(Player player) {
+        initialize(player);
+        if (!getBoolean(player, "quest_active", false)) {
+            player.sendMessage("§6[Квест] §fЗадание: Победи 5 любых обычных существ.");
+            player.sendMessage("§fНаграда: §a" + QUEST_XP_REWARD + " опыта");
+            player.sendMessage("§eНачать: /quest start");
+        } else if (getBoolean(player, "quest_complete", false)) {
+            player.sendMessage("§a[Квест] Задание выполнено! Награда: " + QUEST_XP_REWARD + " опыта.");
+            player.sendMessage("§eЗабрать награду: /quest claim");
+        } else {
+            player.sendMessage("§6[Квест] §fПобеди 5 любых обычных существ.");
+            player.sendMessage("§eПрогресс: " + get(player, "quest_kills", 0) + "/" + QUEST_KILLS_REQUIRED);
+        }
+    }
+
+    private void handleQuest(Player player, String[] args) {
+        initialize(player);
+        if (args.length == 0) {
+            showQuest(player);
+            return;
+        }
+        if (args[0].equalsIgnoreCase("start")) {
+            if (getBoolean(player, "quest_active", false)) {
+                player.sendMessage("§c[Квест] У тебя уже есть активное задание.");
+                showQuest(player);
+                return;
+            }
+            set(player, "quest_kills", 0);
+            setBoolean(player, "quest_active", true);
+            setBoolean(player, "quest_complete", false);
+            players.save();
+            player.sendMessage("§a[Квест] Задание начато! Победи 5 любых обычных существ.");
+            showQuest(player);
+            return;
+        }
+        if (args[0].equalsIgnoreCase("claim")) {
+            if (!getBoolean(player, "quest_active", false) || !getBoolean(player, "quest_complete", false)) {
+                player.sendMessage("§c[Квест] Сначала выполни задание.");
+                return;
+            }
+            setBoolean(player, "quest_active", false);
+            setBoolean(player, "quest_complete", false);
+            set(player, "quest_kills", 0);
+            players.save();
+            giveXp(player, QUEST_XP_REWARD);
+            player.sendMessage("§a[Квест] Награда получена: +" + QUEST_XP_REWARD + " опыта!");
+            return;
+        }
+        player.sendMessage("§eИспользуй: /quest, /quest start или /quest claim");
     }
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         String name = command.getName().toLowerCase(Locale.ROOT);
+
+        if (name.equals("quest")) {
+            if (!(sender instanceof Player)) {
+                sender.sendMessage("Эта команда доступна только игроку.");
+                return true;
+            }
+            handleQuest((Player) sender, args);
+            return true;
+        }
 
         if (name.equals("level") || name.equals("stats") || name.equals("addstat")) {
             if (!(sender instanceof Player)) {

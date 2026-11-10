@@ -4,7 +4,8 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'LocalFastCore_source_0.2.0.zip'
+      - '*.zip'
+      - '.github/workflows/build.yml'
 
 jobs:
   build:
@@ -17,17 +18,35 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Extract source
+      - name: Find and extract source
+        shell: bash
         run: |
-          mkdir extracted
-          unzip LocalFastCore_source_0.2.0.zip -d extracted
-          POM=$(find extracted -name pom.xml | head -n 1)
-          echo "PROJECT_DIR=$(dirname "$POM")" >> "$GITHUB_ENV"
+          ZIP_FILE=$(find . -maxdepth 1 -type f -name '*.zip' -print -quit)
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: ZIP archive not found in repository root"
+            ls -la
+            exit 1
+          fi
+          echo "Using archive: $ZIP_FILE"
+          mkdir -p extracted
+          unzip -q "$ZIP_FILE" -d extracted
+          echo "Archive contents:"
+          find extracted -maxdepth 4 -type f | head -n 80
+          POM=$(find extracted -name pom.xml -print -quit)
+          if [ -z "$POM" ]; then
+            echo "ERROR: pom.xml not found inside archive"
+            exit 1
+          fi
+          PROJECT_DIR=$(dirname "$POM")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Maven project: $PROJECT_DIR"
 
       - name: Build JAR
-        run: cd "$PROJECT_DIR" && mvn -B clean package -DskipTests
+        run: mvn -B -f "$PROJECT_DIR/pom.xml" clean package -DskipTests
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload JAR
+        uses: actions/upload-artifact@v4
         with:
           name: LocalFastCore-JAR
-          path: '**/target/*.jar'
+          path: '${{ env.PROJECT_DIR }}/target/*.jar'
+          if-no-files-found: error

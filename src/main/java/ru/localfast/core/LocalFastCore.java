@@ -8,11 +8,13 @@ import cn.nukkit.event.EventHandler;
 import cn.nukkit.event.EventPriority;
 import cn.nukkit.event.Listener;
 import cn.nukkit.event.entity.EntityDamageByEntityEvent;
+import cn.nukkit.event.player.PlayerJoinEvent;
 import cn.nukkit.plugin.PluginBase;
 import cn.nukkit.utils.Config;
 
 import java.io.File;
 import java.util.Locale;
+import java.time.LocalDate;
 
 public final class LocalFastCore extends PluginBase implements Listener {
     private static final int MAX_LEVEL = 100;
@@ -21,6 +23,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private static final int MOB_KILL_XP = 10;
     private static final int QUEST_KILLS_REQUIRED = 5;
     private static final int QUEST_XP_REWARD = 50;
+    private static final int DAILY_KILLS_REQUIRED = 10;
+    private static final int DAILY_XP_REWARD = 100;
+    private static final int LOGIN_XP_REWARD = 25;
     private static final String[] STATS = {"strength", "health", "agility", "intelligence"};
 
     private Config players;
@@ -34,7 +39,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
         players = new Config(new File(getDataFolder(), "players.yml"), Config.YAML);
         getServer().getPluginManager().registerEvents(this, this);
-        getLogger().info("LocalFastCore 0.5.0 включён. Прогрессия и охотничьи задания готовы.");
+        getLogger().info("LocalFastCore 0.6.0 включён. RPG, охотничьи и ежедневные задания готовы.");
     }
 
     private String playerKey(Player player) {
@@ -82,6 +87,47 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (changed) players.save();
     }
 
+
+    private String today() { return LocalDate.now().toString(); }
+    private void refreshDaily(Player p) {
+        initialize(p); String k=playerKey(p); String d=today();
+        if (!players.getString(k+".daily_date","").equals(d)) {
+            players.set(k+".daily_date",d); players.set(k+".daily_kills",0);
+            players.set(k+".daily_active",false); players.set(k+".daily_complete",false); players.save();
+        }
+    }
+    @EventHandler
+    public void onJoin(PlayerJoinEvent e) {
+        Player p=e.getPlayer(); initialize(p); refreshDaily(p); String k=playerKey(p); String d=today();
+        if (!players.getString(k+".login_reward_date","").equals(d)) {
+            players.set(k+".login_reward_date",d); players.save(); giveXp(p,LOGIN_XP_REWARD);
+            p.sendMessage("§a[LocalFast] Награда за первый вход сегодня: +25 XP!");
+        }
+    }
+    private void showDaily(Player p) {
+        refreshDaily(p); String k=playerKey(p);
+        p.sendMessage("§6[Ежедневное задание] §fУбей 10 любых существ.");
+        if(players.getBoolean(k+".daily_complete",false)) p.sendMessage("§aВыполнено! Награда 100 XP: /daily claim");
+        else if(players.getBoolean(k+".daily_active",false)) p.sendMessage("§eПрогресс: "+players.getInt(k+".daily_kills",0)+"/10");
+        else p.sendMessage("§eНаграда 100 XP. Начать: /daily start");
+    }
+    private void handleDaily(Player p,String[] args) {
+        refreshDaily(p); String k=playerKey(p);
+        if(args.length==0){showDaily(p);return;}
+        String a=args[0].toLowerCase(Locale.ROOT);
+        if(a.equals("start")){
+            if(players.getBoolean(k+".daily_active",false)||players.getBoolean(k+".daily_complete",false)){showDaily(p);return;}
+            players.set(k+".daily_active",true);players.set(k+".daily_kills",0);players.save();
+            p.sendMessage("§aНачато! Убей 10 любых существ.");return;
+        }
+        if(a.equals("claim")){
+            if(!players.getBoolean(k+".daily_complete",false)){p.sendMessage("§cСначала выполни задание.");return;}
+            players.set(k+".daily_complete",false);players.set(k+".daily_active",false);players.set(k+".daily_kills",0);players.save();
+            giveXp(p,DAILY_XP_REWARD);p.sendMessage("§aПолучено +100 XP!");return;
+        }
+        p.sendMessage("§e/daily, /daily start или /daily claim");
+    }
+
     private int xpForNextLevel(int level) {
         return 100 + (level - 1) * 50;
     }
@@ -119,6 +165,14 @@ public final class LocalFastCore extends PluginBase implements Listener {
         giveXp(killer, MOB_KILL_XP);
         killer.sendMessage("§a[LocalFast] +" + MOB_KILL_XP + " опыта за победу над существом!");
 
+
+        refreshDaily(killer); String dk=playerKey(killer);
+        if(players.getBoolean(dk+".daily_active",false)&&!players.getBoolean(dk+".daily_complete",false)){
+            int n=Math.min(DAILY_KILLS_REQUIRED,players.getInt(dk+".daily_kills",0)+1);players.set(dk+".daily_kills",n);
+            if(n>=DAILY_KILLS_REQUIRED){players.set(dk+".daily_complete",true);killer.sendMessage("§6Ежедневное задание выполнено! /daily claim");}
+            else killer.sendMessage("§eЕжедневное задание: "+n+"/10");
+            players.save();
+        }
         if (getBoolean(killer, "quest_active", false) && !getBoolean(killer, "quest_complete", false)) {
             String questType = players.getString(playerKey(killer) + ".quest_type", "any");
             String mobName = mob.getClass().getSimpleName().toLowerCase(Locale.ROOT);
@@ -218,6 +272,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         String name = command.getName().toLowerCase(Locale.ROOT);
 
+        if(name.equals("daily")){if(!(sender instanceof Player)){sender.sendMessage("Только для игроков.");return true;}handleDaily((Player)sender,args);return true;}
         if (name.equals("quest")) {
             if (!(sender instanceof Player)) {
                 sender.sendMessage("Эта команда доступна только игроку.");

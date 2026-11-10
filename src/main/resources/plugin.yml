@@ -1,6 +1,6 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.5.0"
+version: "0.6.0"
 api: ["1.0.0"]
 author: LocalFast
 description: RPG progression, mob kill experience and hunting quests for LocalFast Survival
@@ -17,6 +17,9 @@ commands:
   quest:
     description: Просмотр и выполнение заданий
     usage: "/quest [zombie|skeleton|spider|start|claim]"
+  daily:
+    description: Ежедневное задание
+    usage: "/daily [start|claim]"
   lfadmin:
     description: Команды администратора LocalFast
     usage: "/lfadmin xp <player> <amount>"

@@ -5,6 +5,16 @@ api: ["1.0.0"]
 author: LocalFast
 description: LOCALFAST RPG progression, stats effects, level-based quest GUI and multi-quest progress
 commands:
+  spawn:
+    description: Телепорт на отдельный спавн
+    usage: "/spawn"
+  setspawn:
+    description: Установить точку отдельного спавна
+    usage: "/setspawn"
+    permission: localfast.admin
+  rtp:
+    description: Случайная безопасная телепортация в основной мир
+    usage: "/rtp"
   level:
     description: Показать уровень и опыт
     usage: "/level"

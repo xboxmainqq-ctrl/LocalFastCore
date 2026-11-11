@@ -60,7 +60,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.9.0 включён. RPG, GUI, эффекты, скорборд и задания готовы.");
+        getLogger().info("LocalFastCore 0.9.1 включён. RPG, GUI, эффекты, скорборд и задания готовы.");
     }
 
     private String playerKey(Player player) {
@@ -164,6 +164,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 changed = true;
             }
         }
+        if (!players.exists(key + ".daily_claimed")) { players.set(key + ".daily_claimed", false); changed = true; }
         if (!players.exists(key + ".quest_type")) { players.set(key + ".quest_type", "any"); changed = true; }
         if (!players.exists(key + ".quest_active")) {
             players.set(key + ".quest_active", false);
@@ -182,7 +183,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
         initialize(p); String k=playerKey(p); String d=today();
         if (!players.getString(k+".daily_date","").equals(d)) {
             players.set(k+".daily_date",d); players.set(k+".daily_kills",0);
-            players.set(k+".daily_active",false); players.set(k+".daily_complete",false); players.save();
+            players.set(k+".daily_active",false); players.set(k+".daily_complete",false);
+            players.set(k+".daily_claimed",false); players.save();
         }
     }
     @EventHandler
@@ -190,31 +192,35 @@ public final class LocalFastCore extends PluginBase implements Listener {
         Player p=e.getPlayer(); initialize(p); refreshDaily(p); String k=playerKey(p); String d=today();
         if (!players.getString(k+".login_reward_date","").equals(d)) {
             players.set(k+".login_reward_date",d); players.save(); giveXp(p, Math.max(0, getConfig().getInt("progression.login-reward-xp", LOGIN_XP_REWARD)));
-            p.sendMessage("§a[LocalFast] Награда за первый вход сегодня: +25 XP!");
+            p.sendMessage("§a[LocalFast] Награда за первый вход сегодня: +" + Math.max(0, getConfig().getInt("progression.login-reward-xp", LOGIN_XP_REWARD)) + " XP!");
         }
         recalculateStats(p);
         updateSidebar(p);
     }
     private void showDaily(Player p) {
         refreshDaily(p); String k=playerKey(p);
-        p.sendMessage("§6[Ежедневное задание] §fУбей 10 любых существ.");
-        if(players.getBoolean(k+".daily_complete",false)) p.sendMessage("§aВыполнено! Награда 100 XP: /daily claim");
-        else if(players.getBoolean(k+".daily_active",false)) p.sendMessage("§eПрогресс: "+players.getInt(k+".daily_kills",0)+"/10");
-        else p.sendMessage("§eНаграда 100 XP. Начать: /daily start");
+        int required = Math.max(1, getConfig().getInt("daily.kills-required", DAILY_KILLS_REQUIRED));
+        int reward = Math.max(0, getConfig().getInt("daily.xp-reward", DAILY_XP_REWARD));
+        p.sendMessage("§6[Ежедневное задание] §fУбей " + required + " любых существ.");
+        if(players.getBoolean(k+".daily_complete",false)) p.sendMessage("§aВыполнено! Награда " + reward + " XP: /daily claim");
+        else if(players.getBoolean(k+".daily_claimed",false)) p.sendMessage("§7Сегодняшняя награда уже получена. Возвращайся завтра.");
+        else if(players.getBoolean(k+".daily_active",false)) p.sendMessage("§eПрогресс: "+players.getInt(k+".daily_kills",0)+"/"+required);
+        else p.sendMessage("§eНаграда " + reward + " XP. Начать: /daily start");
     }
     private void handleDaily(Player p,String[] args) {
         refreshDaily(p); String k=playerKey(p);
         if(args.length==0){showDaily(p);return;}
         String a=args[0].toLowerCase(Locale.ROOT);
         if(a.equals("start")){
-            if(players.getBoolean(k+".daily_active",false)||players.getBoolean(k+".daily_complete",false)){showDaily(p);return;}
+            if(players.getBoolean(k+".daily_active",false)||players.getBoolean(k+".daily_complete",false)||players.getBoolean(k+".daily_claimed",false)){showDaily(p);return;}
             players.set(k+".daily_active",true);players.set(k+".daily_kills",0);players.save();
             p.sendMessage("§aНачато! Убей 10 любых существ.");return;
         }
         if(a.equals("claim")){
             if(!players.getBoolean(k+".daily_complete",false)){p.sendMessage("§cСначала выполни задание.");return;}
-            players.set(k+".daily_complete",false);players.set(k+".daily_active",false);players.set(k+".daily_kills",0);players.save();
-            giveXp(p,DAILY_XP_REWARD);p.sendMessage("§aПолучено +100 XP!");return;
+            players.set(k+".daily_complete",false);players.set(k+".daily_active",false);players.set(k+".daily_claimed",true);players.save();
+            int reward = Math.max(0, getConfig().getInt("daily.xp-reward", DAILY_XP_REWARD));
+            giveXp(p,reward);p.sendMessage("§aПолучено +" + reward + " XP!");return;
         }
         p.sendMessage("§e/daily, /daily start или /daily claim");
     }
@@ -225,20 +231,21 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void giveXp(Player player, int amount) {
         initialize(player);
+        if (amount <= 0) return;
         int level = Math.max(1, Math.min(MAX_LEVEL, get(player, "level", 1)));
         int intelligenceStep = Math.max(1, getConfig().getInt("intelligence.xp-bonus-per", 5));
-        int intelligenceBonus = Math.max(0, get(player, "intelligence", 0) / intelligenceStep)
+        long intelligenceBonusValue = (long) Math.max(0, get(player, "intelligence", 0) / intelligenceStep)
                 * Math.max(0, getConfig().getInt("intelligence.xp-bonus-percent", 1));
-        intelligenceBonus = Math.min(100, intelligenceBonus);
+        int intelligenceBonus = (int) Math.min(100L, intelligenceBonusValue);
         long boostedAmount = (long) amount + ((long) amount * intelligenceBonus / 100L);
-        long totalXp = (long) get(player, "xp", 0) + boostedAmount;
+        long totalXp = (long) Math.max(0, get(player, "xp", 0)) + boostedAmount;
         int points = Math.max(0, get(player, "points", 0));
 
         while (level < MAX_LEVEL && totalXp >= xpForNextLevel(level)) {
             totalXp -= xpForNextLevel(level);
             level++;
             int pointsPerLevel = Math.max(0, getConfig().getInt("progression.points-per-level", POINTS_PER_LEVEL));
-            points += pointsPerLevel;
+            points = (int) Math.min(Integer.MAX_VALUE, (long) points + pointsPerLevel);
             if (getConfig().getBoolean("effects.level-up-title", true)) {
                 player.sendTitle(getConfig().getString("effects.level-up-title-text", "§6УРОВЕНЬ ПОВЫШЕН!"),
                         getConfig().getString("effects.level-up-subtitle", "§eУровень " + level), 10, 50, 15);
@@ -266,14 +273,15 @@ public final class LocalFastCore extends PluginBase implements Listener {
         initialize(killer);
         int mobXp = Math.max(0, getConfig().getInt("progression.mob-kill-xp", MOB_KILL_XP));
         giveXp(killer, mobXp);
-        killer.sendMessage("§a[LocalFast] +" + mobXp + " опыта за победу над существом!");
+        killer.sendMessage("§a[LocalFast] +" + mobXp + " базового опыта за победу над существом!");
 
 
         refreshDaily(killer); String dk=playerKey(killer);
         if(players.getBoolean(dk+".daily_active",false)&&!players.getBoolean(dk+".daily_complete",false)){
-            int n=Math.min(DAILY_KILLS_REQUIRED,players.getInt(dk+".daily_kills",0)+1);players.set(dk+".daily_kills",n);
-            if(n>=DAILY_KILLS_REQUIRED){players.set(dk+".daily_complete",true);killer.sendMessage("§6Ежедневное задание выполнено! /daily claim");}
-            else killer.sendMessage("§eЕжедневное задание: "+n+"/10");
+            int required = Math.max(1, getConfig().getInt("daily.kills-required", DAILY_KILLS_REQUIRED));
+            int n=Math.min(required,Math.max(0,players.getInt(dk+".daily_kills",0))+1);players.set(dk+".daily_kills",n);
+            if(n>=required){players.set(dk+".daily_complete",true);killer.sendMessage("§6Ежедневное задание выполнено! /daily claim");}
+            else killer.sendMessage("§eЕжедневное задание: "+n+"/"+required);
             players.save();
         }
         if (getBoolean(killer, "quest_active", false) && !getBoolean(killer, "quest_complete", false)) {
@@ -420,8 +428,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void spendStatPoints(Player player, String stat, int requested) {
         if (requested < 1 || !Arrays.asList(STATS).contains(stat)) return;
-        int points = get(player, "points", 0);
-        int current = get(player, stat, 0);
+        int points = Math.max(0, get(player, "points", 0));
+        int current = Math.max(0, get(player, stat, 0));
         int maxStat = Math.max(1, getConfig().getInt("progression.max-stat", 1000));
         int amount = Math.min(requested, Math.min(points, maxStat - current));
         if (amount <= 0) {
@@ -497,9 +505,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     return true;
                 }
             }
-            int points = get(player, "points", 0);
+            int points = Math.max(0, get(player, "points", 0));
+            int currentStat = Math.max(0, get(player, stat, 0));
             int maxStat = Math.max(1, getConfig().getInt("progression.max-stat", 1000));
-            if ((long) get(player, stat, 0) + amount > maxStat) {
+            if ((long) currentStat + amount > maxStat) {
                 sender.sendMessage("§cМаксимум характеристики: " + maxStat + ".");
                 return true;
             }
@@ -507,7 +516,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 sender.sendMessage("§cНедостаточно очков. У тебя есть: " + points + ".");
                 return true;
             }
-            set(player, stat, get(player, stat, 0) + amount);
+            set(player, stat, currentStat + amount);
             set(player, "points", points - amount);
             players.save();
             recalculateStats(player);

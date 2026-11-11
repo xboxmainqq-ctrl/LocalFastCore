@@ -11,6 +11,7 @@ import cn.nukkit.event.entity.EntityDamageByEntityEvent;
 import cn.nukkit.event.entity.EntityDamageEvent;
 import cn.nukkit.event.player.PlayerInteractEvent;
 import cn.nukkit.event.player.PlayerJoinEvent;
+import cn.nukkit.event.player.PlayerQuitEvent;
 import cn.nukkit.form.element.ElementButton;
 import cn.nukkit.form.handler.FormResponseHandler;
 import cn.nukkit.form.window.FormWindowSimple;
@@ -23,6 +24,8 @@ import java.io.File;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 public final class ClassAbilities extends PluginBase implements Listener {
@@ -32,6 +35,7 @@ public final class ClassAbilities extends PluginBase implements Listener {
 
     private final Map<UUID, Long> cooldowns = new HashMap<>();
     private final Map<UUID, Long> tankUntil = new HashMap<>();
+    private final Set<UUID> autoIssued = new HashSet<>();
     private File playerDataFile;
 
     @Override
@@ -44,6 +48,18 @@ public final class ClassAbilities extends PluginBase implements Listener {
         playerDataFile = new File(getServer().getPluginManager()
                 .getPlugin("LocalFastCore").getDataFolder(), "players.yml");
         getServer().getPluginManager().registerEvents(this, this);
+        // Detect a class chosen after login and issue the item once automatically.
+        getServer().getScheduler().scheduleRepeatingTask(this, () -> {
+            for (Player player : getServer().getOnlinePlayers().values()) {
+                UUID id = player.getUniqueId();
+                if (playerClass(player).equals("none")) continue;
+                if (hasAbilityItem(player)) {
+                    autoIssued.add(id);
+                } else if (autoIssued.add(id)) {
+                    giveAbilityItem(player);
+                }
+            }
+        }, 20);
         getLogger().info("ClassAbilities 0.13.0 включён. Команда: /abilities");
     }
 
@@ -116,13 +132,15 @@ public final class ClassAbilities extends PluginBase implements Listener {
 
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
-        Player player = event.getPlayer();
-        if (!playerClass(player).equals("none")) {
-            // Delay until the player inventory has completed its join initialization.
-            getServer().getScheduler().scheduleDelayedTask(this, () -> {
-                if (player.isOnline()) giveAbilityItem(player);
-            }, 20);
-        }
+        autoIssued.remove(event.getPlayer().getUniqueId());
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        UUID id = event.getPlayer().getUniqueId();
+        autoIssued.remove(id);
+        cooldowns.remove(id);
+        tankUntil.remove(id);
     }
 
     @Override

@@ -752,6 +752,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
         return 100 + (level - 1) * 50;
     }
 
+    private String xpProgressBar(int currentXp, int requiredXp) {
+        int safeRequired = Math.max(1, requiredXp);
+        int percent = (int) Math.min(100L, Math.max(0L, currentXp) * 100L / safeRequired);
+        int filled = percent / 10;
+        return "§a" + "■".repeat(filled) + "§8" + "■".repeat(10 - filled) + " §e" + percent + "%";
+    }
+
     private int intelligenceXpBonusPercent(Player player) {
         int legacyStep = Math.max(1, getConfig().getInt("intelligence.xp-bonus-per", 5));
         int legacyPercent = Math.max(0, getConfig().getInt("intelligence.xp-bonus-percent", 1));
@@ -1102,8 +1109,15 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void openStatsMenu(Player player) {
         initialize(player);
+        int level = Math.max(1, Math.min(MAX_LEVEL, get(player, "level", 1)));
+        int xp = Math.max(0, get(player, "xp", 0));
+        int requiredXp = xpForNextLevel(level);
+        String progressText = level >= MAX_LEVEL
+                ? "\n§6Максимальный уровень достигнут!"
+                : "\n§fОпыт: §a" + xp + "§7/§a" + requiredXp
+                    + "\n§fПрогресс: " + xpProgressBar(xp, requiredXp);
         FormWindowSimple form = new FormWindowSimple("§6LocalFastCore §8| §lХарактеристики",
-                "§fУровень: §e" + get(player, "level", 1)
+                "§fУровень: §e" + level + "§7/§e" + MAX_LEVEL + progressText
                         + "\n§fСвободные очки: §b" + get(player, "points", 0)
                         + "\n\n§7Выбери характеристику для распределения очков.");
         form.addButton(new ElementButton("§cСила §8| §f" + get(player, "strength", 0)));
@@ -2002,15 +2016,32 @@ public final class LocalFastCore extends PluginBase implements Listener {
             initialize(player);
 
             if (name.equals("level")) {
-                int level = get(player, "level", 1);
-                sender.sendMessage("§6[LocalFast] §fУровень: §e" + level + "/" + MAX_LEVEL);
-                sender.sendMessage("§fОпыт: §a" + get(player, "xp", 0) + "§7/§a" + xpForNextLevel(level)
-                        + " §f| Очки: §b" + get(player, "points", 0));
+                int level = Math.max(1, Math.min(MAX_LEVEL, get(player, "level", 1)));
+                int xp = Math.max(0, get(player, "xp", 0));
+                int requiredXp = xpForNextLevel(level);
+                sender.sendMessage("§6§l[LocalFast] §fПрогресс персонажа");
+                sender.sendMessage("§fУровень: §e" + level + "§7/§e" + MAX_LEVEL);
+                if (level >= MAX_LEVEL) {
+                    sender.sendMessage("§6Ты достиг максимального уровня!");
+                } else {
+                    sender.sendMessage("§fОпыт: §a" + xp + "§7/§a" + requiredXp
+                            + " §8(осталось " + Math.max(0, requiredXp - xp) + ")");
+                    sender.sendMessage("§fПрогресс: " + xpProgressBar(xp, requiredXp));
+                }
+                sender.sendMessage("§fСвободные очки: §b" + get(player, "points", 0));
+                sender.sendMessage("§7За каждый новый уровень начисляется "
+                        + Math.max(0, getConfig().getInt("progression.points-per-level", POINTS_PER_LEVEL))
+                        + " очка характеристик.");
                 return true;
             }
 
             if (name.equals("stats")) {
+                int level = Math.max(1, Math.min(MAX_LEVEL, get(player, "level", 1)));
+                int xp = Math.max(0, get(player, "xp", 0));
                 sender.sendMessage("§6[LocalFast] §eХарактеристики");
+                sender.sendMessage("§fУровень: §e" + level + "§7/§e" + MAX_LEVEL
+                        + " §8| §fXP: §a" + xp + "§7/§a" + xpForNextLevel(level));
+                if (level < MAX_LEVEL) sender.sendMessage("§fПрогресс: " + xpProgressBar(xp, xpForNextLevel(level)));
                 sender.sendMessage("§fСила: §c" + get(player, "strength", 0)
                         + " §fЗдоровье: §c" + get(player, "health", 0));
                 sender.sendMessage("§fЛовкость: §a" + get(player, "agility", 0)

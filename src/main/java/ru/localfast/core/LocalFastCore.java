@@ -324,22 +324,14 @@ public final class LocalFastCore extends PluginBase implements Listener {
         FormWindowSimple form = new FormWindowSimple("§6Выбор класса",
                 current.equals("none")
                         ? "§fВыбери свой класс. §cПосле выбора сменить его можно только через оператора."
-                        : "§fТвой класс: " + rpgClassLabel(current) + "
-" + rpgClassDescription(current)
-                          + "
-
-§7Класс уже выбран. Для смены обратись к оператору.");
+                        : "§fТвой класс: " + rpgClassLabel(current) + "\n" + rpgClassDescription(current)
+                          + "\n\n§7Класс уже выбран. Для смены обратись к оператору.");
         if (current.equals("none")) {
-            form.addButton(new ElementButton("§cВоин
-§7Здоровье и урон"));
-            form.addButton(new ElementButton("§bМаг
-§7Больше опыта"));
-            form.addButton(new ElementButton("§aЛучник
-§7Быстрое передвижение"));
-            form.addButton(new ElementButton("§dАссасин
-§7Критические удары"));
-            form.addButton(new ElementButton("§6Танк
-§7Повышенное здоровье"));
+            form.addButton(new ElementButton("§cВоин\n§7Здоровье и урон"));
+            form.addButton(new ElementButton("§bМаг\n§7Больше опыта"));
+            form.addButton(new ElementButton("§aЛучник\n§7Быстрое передвижение"));
+            form.addButton(new ElementButton("§dАссасин\n§7Критические удары"));
+            form.addButton(new ElementButton("§6Танк\n§7Повышенное здоровье"));
         } else {
             form.addButton(new ElementButton("§7Закрыть"));
         }
@@ -908,8 +900,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         initialize(player);
         int level = Math.max(1, get(player, "level", 1));
         FormWindowSimple form = new FormWindowSimple("§6LocalFastCore §8| §lКвесты",
-                "§fТвой уровень: §e" + level + "
-§7Выбери диапазон уровней или посмотри свои задания.");
+                "§fТвой уровень: §e" + level + "\n§7Выбери диапазон уровней или посмотри свои задания.");
         String[] ranges = {"1–10", "11–30", "31–50", "51–75", "76–100"};
         for (String range : ranges) form.addButton(new ElementButton("§eУровни " + range));
         form.addButton(new ElementButton("§aМои задания"));
@@ -931,8 +922,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
         int min = ranges[tier][0], max = ranges[tier][1];
         FormWindowSimple form = new FormWindowSimple("§6Квесты §8| §e" + min + "–" + max,
-                "§fТвой уровень: §e" + get(player, "level", 1) + "
-§7Выбери задание для просмотра.");
+                "§fТвой уровень: §e" + get(player, "level", 1) + "\n§7Выбери задание для просмотра.");
         List<QuestDefinition> quests = new ArrayList<>();
         for (QuestDefinition quest : questCatalog()) {
             if (quest.minLevel == min) {
@@ -965,15 +955,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
         int reward = questXp(quest);
         long moneyReward = questMoney(quest);
         FormWindowSimple form = new FormWindowSimple("§6Квест §8| §e" + quest.title,
-                "§f" + quest.description + "
-§fПрогресс: §a" + progress + "/" + questKills(quest)
-                        + "
-§fНаграда: §6" + reward + " XP §8+ §a" + moneyReward + " " + currencyName()
-                        + "
-§fТребуемый уровень: §e" + quest.minLevel + "–" + quest.maxLevel
-                        + (claimed ? "
-§8Награда уже получена." : complete ? "
-§aЗадание выполнено!" : ""));
+                "§f" + quest.description + "\n§fПрогресс: §a" + progress + "/" + questKills(quest)
+                        + "\n§fНаграда: §6" + reward + " XP §8+ §a" + moneyReward + " " + currencyName()
+                        + "\n§fТребуемый уровень: §e" + quest.minLevel + "–" + quest.maxLevel
+                        + (claimed ? "\n§8Награда уже получена." : complete ? "\n§aЗадание выполнено!" : ""));
         if (!claimed) {
             if (complete) form.addButton(new ElementButton("§aПолучить награду"));
             else if (!active) form.addButton(new ElementButton("§aПринять задание"));
@@ -1160,19 +1145,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
         int xp = Math.max(0, get(player, "xp", 0));
         int requiredXp = xpForNextLevel(level);
         String progressText = level >= MAX_LEVEL
-                ? "
-§6Максимальный уровень достигнут!"
-                : "
-§fОпыт: §a" + xp + "§7/§a" + requiredXp
-                    + "
-§fПрогресс: " + xpProgressBar(xp, requiredXp);
+                ? "\n§6Максимальный уровень достигнут!"
+                : "\n§fОпыт: §a" + xp + "§7/§a" + requiredXp
+                    + "\n§fПрогресс: " + xpProgressBar(xp, requiredXp);
         FormWindowSimple form = new FormWindowSimple("§6LocalFastCore §8| §lХарактеристики",
                 "§fУровень: §e" + level + "§7/§e" + MAX_LEVEL + progressText
-                        + "
-§fСвободные очки: §b" + get(player, "points", 0)
-                        + "
-
-§7Выбери характеристику для распределения очков.");
+                        + "\n§fСвободные очки: §b" + get(player, "points", 0)
+                        + "\n\n§7Выбери характеристику для распределения очков.");
         form.addButton(new ElementButton("§cСила §8| §f" + get(player, "strength", 0)));
         form.addButton(new ElementButton("§cЗдоровье §8| §f" + get(player, "health", 0)));
         form.addButton(new ElementButton("§aЛовкость §8| §f" + get(player, "agility", 0)));
@@ -1196,13 +1175,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
         int points = get(player, "points", 0);
         FormWindowSimple form = new FormWindowSimple("§6Распределение очков",
                 "§fХарактеристика: §e" + stat
-                        + "
-§fТекущее значение: §a" + current
-                        + "
-§fСвободные очки: §b" + points
-                        + "
-
-§7Выбери количество очков.");
+                        + "\n§fТекущее значение: §a" + current
+                        + "\n§fСвободные очки: §b" + points
+                        + "\n\n§7Выбери количество очков.");
         form.addButton(new ElementButton("§a+1"));
         form.addButton(new ElementButton("§a+5"));
         form.addButton(new ElementButton("§aВсе доступные"));
@@ -1443,8 +1418,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void staffLog(String actor, String action, String target, String details) {
         try {
-            String line = java.time.Instant.now() + " | " + actor + " | " + action + " | " + target + " | " + details.replace("
-", " ") + System.lineSeparator();
+            String line = java.time.Instant.now() + " | " + actor + " | " + action + " | " + target + " | " + details.replace("\n", " ") + System.lineSeparator();
             java.nio.file.Files.write(staffLogFile.toPath(), line.getBytes(java.nio.charset.StandardCharsets.UTF_8), java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
         } catch (java.io.IOException exception) { getLogger().error("Не удалось записать staff.log.", exception); }
     }
@@ -1528,8 +1502,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             String path = root + "." + uuid;
             String name = staffData.getString(path + ".name", uuid);
             long expires = staffData.getLong(path + ".expires", 0L);
-            form.addButton(new ElementButton("§f" + name + "
-" + remainingPunishmentTime(expires)));
+            form.addButton(new ElementButton("§f" + name + "\n" + remainingPunishmentTime(expires)));
         }
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
@@ -1559,15 +1532,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
         String reason = staffData.getString(path + ".reason", "Не указана");
         String by = staffData.getString(path + ".by", "Неизвестно");
         FormWindowSimple form = new FormWindowSimple("§6Наказание: " + name,
-                "§fИгрок: §e" + name + "
-§fТип: " + (type.equals("bans") ? "§cБан" : "§eМут")
-                        + "
-§fСрок: " + remainingPunishmentTime(expires)
-                        + "
-§fПричина: §7" + reason + "
-§fВыдал: §b" + by + "
-
-§7Снять это наказание?");
+                "§fИгрок: §e" + name + "\n§fТип: " + (type.equals("bans") ? "§cБан" : "§eМут")
+                        + "\n§fСрок: " + remainingPunishmentTime(expires)
+                        + "\n§fПричина: §7" + reason + "\n§fВыдал: §b" + by + "\n\n§7Снять это наказание?");
         form.addButton(new ElementButton("§aСнять наказание"));
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
@@ -1593,8 +1560,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         String role = staffRole(staff);
         if (staffRank(role) == 0) { staff.sendMessage("§cНет доступа к /staff."); return; }
         FormWindowSimple form = new FormWindowSimple("§6LocalFast §8| §lПанель персонала",
-                "§fДолжность: §e" + staffRoleLabel(role) + "
-§7Доступ зависит от ранга.");
+                "§fДолжность: §e" + staffRoleLabel(role) + "\n§7Доступ зависит от ранга.");
         List<String> actions = new ArrayList<>();
         form.addButton(new ElementButton("§eПредупредить игрока")); actions.add("warn");
         if (maxMuteMinutes(role) != 0L) { form.addButton(new ElementButton("§6Выдать мут")); actions.add("mute"); }
@@ -1866,8 +1832,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         FormWindowSimple form = new FormWindowSimple("§6Назначение персонала", "§7Выбери игрока. Затем выбери его должность.");
         for (Player target : online) {
             String current = staffRole(target);
-            form.addButton(new ElementButton("§f" + target.getName() + "
-" + staffRoleColor(current) + staffRoleLabel(current)));
+            form.addButton(new ElementButton("§f" + target.getName() + "\n" + staffRoleColor(current) + staffRoleLabel(current)));
         }
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
@@ -1880,8 +1845,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void openOperatorRoleSelectMenu(Player operator, Player target, boolean self) {
         FormWindowSimple form = new FormWindowSimple("§6Должность: " + target.getName(),
-                "§fИгрок: §e" + target.getName() + "
-§7Выбери должность ниже:");
+                "§fИгрок: §e" + target.getName() + "\n§7Выбери должность ниже:");
         for (String role : STAFF_ROLES) form.addButton(new ElementButton(staffRoleColor(role) + staffRoleLabel(role)));
         form.addButton(new ElementButton("§7Снять должность"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
@@ -1908,8 +1872,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void openOperatorSelfRankMenu(Player operator) {
         FormWindowSimple form = new FormWindowSimple("§dТест должностей", "§fТекущий тестовый ранг: §e" +
-                staffRoleLabel(staffRole(operator)) + "
-§7Выбери ранг для проверки прав /staff. Операторский доступ /lfadmin сохранится.");
+                staffRoleLabel(staffRole(operator)) + "\n§7Выбери ранг для проверки прав /staff. Операторский доступ /lfadmin сохранится.");
         for (String role : STAFF_ROLES) form.addButton(new ElementButton(staffRoleColor(role) + staffRoleLabel(role)));
         form.addButton(new ElementButton("§eВернуть ранг оператора"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
@@ -1931,8 +1894,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private void openOperatorMenu(Player operator) {
         if (!isOperator(operator)) { operator.sendMessage("§cТолько оператор может открыть эту панель."); return; }
         FormWindowSimple form = new FormWindowSimple("§6LocalFast §8| §lОператорская панель",
-                "§fОператор: §e" + operator.getName() + "
-§7Управление сервером и персоналом.");
+                "§fОператор: §e" + operator.getName() + "\n§7Управление сервером и персоналом.");
         form.addButton(new ElementButton("§bСписок администрации"));
         form.addButton(new ElementButton("§aНазначить сотрудника"));
         form.addButton(new ElementButton("§eДолжности и команды"));
@@ -1988,8 +1950,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 "§7Выбери игрока. Администратор может назначать должности до модера включительно.");
         for (Player target : candidates) {
             String current = staffRole(target);
-            form.addButton(new ElementButton("§f" + target.getName() + "
-" + staffRoleColor(current) + staffRoleLabel(current)));
+            form.addButton(new ElementButton("§f" + target.getName() + "\n" + staffRoleColor(current) + staffRoleLabel(current)));
         }
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !admin.isOnline()) return;
@@ -2009,8 +1970,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         boolean operator = staffRole(admin).equals("operator");
         int maxRank = operator ? STAFF_ROLES.length : 5;
         FormWindowSimple form = new FormWindowSimple("§6Должность: " + target.getName(),
-                "§fИгрок: §e" + target.getName() + "
-§7Выбери должность. Администратору доступны ранги до модера.");
+                "§fИгрок: §e" + target.getName() + "\n§7Выбери должность. Администратору доступны ранги до модера.");
         for (int i = 0; i < maxRank; i++) {
             String rank = STAFF_ROLES[i];
             form.addButton(new ElementButton(staffRoleColor(rank) + staffRoleLabel(rank)));
@@ -2085,8 +2045,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             return;
         }
         FormWindowSimple form = new FormWindowSimple("§6Срок наказания",
-                "§fИгрок: §e" + target.getName() + "
-§7Выбери продолжительность.");
+                "§fИгрок: §e" + target.getName() + "\n§7Выбери продолжительность.");
         List<Long> durations = new ArrayList<>();
         long[] presets = new long[]{5L, 15L, 30L, 60L, 180L, 1440L, 10080L, 43200L};
         for (long minutes : presets) {
@@ -2118,8 +2077,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void openStaffReasonMenu(Player staff, Player target, String action, long minutes) {
         FormWindowSimple form = new FormWindowSimple("§6Причина наказания",
-                "§fИгрок: §e" + target.getName() + "
-§7Выбери причину.");
+                "§fИгрок: §e" + target.getName() + "\n§7Выбери причину.");
         String[] reasons = new String[]{"Нарушение правил", "Оскорбления", "Флуд / спам", "Читы / использование багов", "Реклама", "Другое нарушение"};
         for (String reason : reasons) form.addButton(new ElementButton("§f" + reason));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {

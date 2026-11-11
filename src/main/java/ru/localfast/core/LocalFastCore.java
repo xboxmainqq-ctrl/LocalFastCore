@@ -1803,14 +1803,69 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void openStaffActionMenu(Player staff, Player target, String action) {
         String role = staffRole(staff);
-        if (staffRank(staffRole(target)) >= staffRank(role)) { staff.sendMessage("§cНельзя воздействовать на сотрудника равного или более высокого ранга."); return; }
-        if (action.equals("ban")) applyBan(staff, target, Math.max(1L, maxBanMinutes(role) == -1L ? 1440L : maxBanMinutes(role)), "Нарушение правил");
-        else if (action.equals("mute")) applyMute(staff, target, Math.max(1L, maxMuteMinutes(role) == -1L ? 30L : maxMuteMinutes(role)), "Нарушение правил");
-        else if (action.equals("kick")) {
-            target.kick("§cКик: нарушение правил", false);
-            staffLog(staff.getName(), "kick", target.getName(), "Нарушение правил");
-            staff.sendMessage("§aИгрок кикнут.");
+        if (staffRank(staffRole(target)) >= staffRank(role)) {
+            staff.sendMessage("§cНельзя воздействовать на сотрудника равного или более высокого ранга.");
+            return;
         }
+        if (action.equals("kick")) {
+            openStaffReasonMenu(staff, target, action, 0L);
+            return;
+        }
+        long maximum = action.equals("ban") ? maxBanMinutes(role) : maxMuteMinutes(role);
+        if (maximum == 0L) {
+            staff.sendMessage("§cТвой ранг не может выдавать это наказание.");
+            return;
+        }
+        FormWindowSimple form = new FormWindowSimple("§6Срок наказания",
+                "§fИгрок: §e" + target.getName() + "\n§7Выбери продолжительность.");
+        List<Long> durations = new ArrayList<>();
+        long[] presets = new long[]{5L, 15L, 30L, 60L, 180L, 1440L, 10080L, 43200L};
+        for (long minutes : presets) {
+            if (maximum == -1L || minutes <= maximum) {
+                durations.add(minutes);
+                form.addButton(new ElementButton("§e" + formatPunishmentDuration(minutes)));
+            }
+        }
+        if (action.equals("ban") && maximum == -1L) {
+            durations.add(-1L);
+            form.addButton(new ElementButton("§cНавсегда"));
+        }
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !staff.isOnline() || !target.isOnline()) return;
+            int index = form.getResponse().getClickedButtonId();
+            if (index < 0 || index >= durations.size()) return;
+            openStaffReasonMenu(staff, target, action, durations.get(index));
+        }));
+        staff.showFormWindow(form);
+    }
+
+    private String formatPunishmentDuration(long minutes) {
+        if (minutes == -1L) return "Навсегда";
+        if (minutes < 60L) return minutes + " мин.";
+        if (minutes < 1440L) return (minutes / 60L) + " ч.";
+        if (minutes < 10080L) return (minutes / 1440L) + " дн.";
+        return (minutes / 10080L) + " нед.";
+    }
+
+    private void openStaffReasonMenu(Player staff, Player target, String action, long minutes) {
+        FormWindowSimple form = new FormWindowSimple("§6Причина наказания",
+                "§fИгрок: §e" + target.getName() + "\n§7Выбери причину.");
+        String[] reasons = new String[]{"Нарушение правил", "Оскорбления", "Флуд / спам", "Читы / использование багов", "Реклама", "Другое нарушение"};
+        for (String reason : reasons) form.addButton(new ElementButton("§f" + reason));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !staff.isOnline() || !target.isOnline()) return;
+            int index = form.getResponse().getClickedButtonId();
+            if (index < 0 || index >= reasons.length) return;
+            String reason = reasons[index];
+            if (action.equals("ban")) applyBan(staff, target, minutes, reason);
+            else if (action.equals("mute")) applyMute(staff, target, minutes, reason);
+            else if (action.equals("kick")) {
+                target.kick("§cКик: " + reason, false);
+                staffLog(staff.getName(), "kick", target.getName(), reason);
+                staff.sendMessage("§aИгрок " + target.getName() + " кикнут. Причина: " + reason);
+            }
+        }));
+        staff.showFormWindow(form);
     }
 
     private boolean handleStaffCommand(CommandSender sender, String[] args) {

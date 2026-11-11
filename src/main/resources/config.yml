@@ -22,18 +22,7 @@ quests:
     zombie: 50
     skeleton: 60
     spider: 70
-
-intelligence:
-  # Each N intelligence points grants the configured XP percentage bonus.
-  xp-bonus-per: 5
-  xp-bonus-percent: 1
-
-effects:
-  level-up-title: true
-  level-up-title-text: "§6УРОВЕНЬ ПОВЫШЕН!"
-  level-up-subtitle: "§eНовый уровень!"
-
-  # Each quest can be tuned independently. Existing player data remains compatible.
+  # Configure each level-based quest independently.
   catalog:
     rookie_zombies: {kills: 10, reward: 100}
     rookie_skeletons: {kills: 5, reward: 120}
@@ -50,3 +39,13 @@ effects:
     legend_spiders: {kills: 150, reward: 2500}
     legend_skeletons: {kills: 150, reward: 2800}
     legend_hunt: {kills: 250, reward: 3500}
+
+intelligence:
+  # Each N intelligence points grants the configured XP percentage bonus.
+  xp-bonus-per: 5
+  xp-bonus-percent: 1
+
+effects:
+  level-up-title: true
+  level-up-title-text: "§6УРОВЕНЬ ПОВЫШЕН!"
+  level-up-subtitle: "§eНовый уровень!"

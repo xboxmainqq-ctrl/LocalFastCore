@@ -779,6 +779,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 setBoolean(player, "quest_active", true);
                 setBoolean(player, "quest_complete", true);
                 set(player, "quest_kills", completedKills);
+                players.set(playerKey(player) + ".quest_type", type);
                 markPlayersDirty();
                 player.sendMessage("§cНе удалось сохранить получение награды. XP не начислен; попробуй позже.");
                 return;

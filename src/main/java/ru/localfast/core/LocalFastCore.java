@@ -2084,7 +2084,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private void openOperatorWorldMenu(Player operator) {
         if (!isOperator(operator)) return;
         FormWindowSimple form = new FormWindowSimple("§6LocalFast §8| §lМиры",
-                "§7Управление игровыми мирами 0.13.0\n§fВыбери действие:");
+                "§7Управление игровыми мирами 0.14.0\n§fВыбери действие:");
         form.addButton(new ElementButton("§bСписок миров"));
         form.addButton(new ElementButton("§aСоздать spawn (плоский)"));
         form.addButton(new ElementButton("§aСоздать dungeons"));
@@ -2093,6 +2093,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§dИнформация о мире"));
         form.addButton(new ElementButton("§bТелепортироваться в мир"));
         form.addButton(new ElementButton("§aУстановить точку /spawn здесь"));
+        form.addButton(new ElementButton("§6Строительство замка"));
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
@@ -2105,7 +2106,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
             else if (id == 5) openWorldPicker(operator, "info");
             else if (id == 6) openWorldPicker(operator, "tp");
             else if (id == 7) { setSpawn(operator); openOperatorWorldMenu(operator); }
-            else if (id == 8) openCastleBuilderMenu(operator);\n            else if (id == 9) openOperatorMenu(operator);
+            else if (id == 8) openCastleBuilderMenu(operator);
+            else if (id == 9) openOperatorMenu(operator);
         }));
         operator.showFormWindow(form);
     }

@@ -569,6 +569,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
     @EventHandler
     public void onJoin(PlayerJoinEvent e) {
         Player p=e.getPlayer();
+        String knownPath = "knownPlayers." + p.getName().toLowerCase(Locale.ROOT);
+        staffData.set(knownPath + ".uuid", p.getUniqueId().toString());
+        staffData.set(knownPath + ".name", p.getName());
+        staffData.save();
         refreshStaffNameTag(p);
         if (flyingPlayers.contains(p.getUniqueId()) && staffRank(staffRole(p)) >= 7) p.setAllowFlight(true);
         else if (staffRank(staffRole(p)) < 7) flyingPlayers.remove(p.getUniqueId());
@@ -1406,7 +1410,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private void applyBan(Player actor, Player target, long minutes, String reason) {
         String path = "punishments.bans." + target.getUniqueId();
         staffData.set(path + ".expires", minutes < 0 ? -1L : System.currentTimeMillis() + minutes * 60000L);
-        staffData.set(path + ".reason", reason); staffData.save();
+        staffData.set(path + ".reason", reason);
+        staffData.set(path + ".name", target.getName());
+        staffData.set(path + ".by", actor.getName());
+        staffData.save();
         staffLog(actor.getName(), "ban", target.getName(), minutes + " мин.; " + reason);
         target.kick("§cБан: " + reason, false); actor.sendMessage("§aБан выдан игроку " + target.getName() + ".");
     }
@@ -1414,7 +1421,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private void applyMute(Player actor, Player target, long minutes, String reason) {
         String path = "punishments.mutes." + target.getUniqueId();
         staffData.set(path + ".expires", System.currentTimeMillis() + minutes * 60000L);
-        staffData.set(path + ".reason", reason); staffData.save();
+        staffData.set(path + ".reason", reason);
+        staffData.set(path + ".name", target.getName());
+        staffData.set(path + ".by", actor.getName());
+        staffData.save();
         staffLog(actor.getName(), "mute", target.getName(), minutes + " мин.; " + reason);
         target.sendMessage("§cТебе выдан мут на " + minutes + " мин. Причина: " + reason);
         actor.sendMessage("§aМут выдан игроку " + target.getName() + ".");
@@ -1868,6 +1878,47 @@ public final class LocalFastCore extends PluginBase implements Listener {
         staff.showFormWindow(form);
     }
 
+    private String knownPlayerUuid(String name) {
+        if (name == null || name.trim().isEmpty()) return null;
+        Player online = getServer().getPlayer(name);
+        if (online != null) return online.getUniqueId().toString();
+        String uuid = staffData.getString("knownPlayers." + name.toLowerCase(Locale.ROOT) + ".uuid", "");
+        if (uuid == null || uuid.isEmpty()) return null;
+        try { return UUID.fromString(uuid).toString(); }
+        catch (IllegalArgumentException ignored) { return null; }
+    }
+
+    private String knownPlayerName(String name, String uuid) {
+        Player online = getServer().getPlayer(name);
+        if (online != null) return online.getName();
+        String stored = staffData.getString("knownPlayers." + name.toLowerCase(Locale.ROOT) + ".name", "");
+        if (!stored.isEmpty()) return stored;
+        String banName = staffData.getString("punishments.bans." + uuid + ".name", "");
+        if (!banName.isEmpty()) return banName;
+        String muteName = staffData.getString("punishments.mutes." + uuid + ".name", "");
+        return muteName.isEmpty() ? name : muteName;
+    }
+
+    private void showStaffHistory(CommandSender sender, String filter) {
+        try {
+            if (!staffLogFile.exists()) { sender.sendMessage("§7История действий персонала пока пуста."); return; }
+            List<String> lines = java.nio.file.Files.readAllLines(staffLogFile.toPath(), java.nio.charset.StandardCharsets.UTF_8);
+            int shown = 0;
+            String needle = filter == null ? "" : filter.toLowerCase(Locale.ROOT);
+            sender.sendMessage("§6§lИстория действий персонала §7(последние записи)");
+            for (int i = lines.size() - 1; i >= 0 && shown < 10; i--) {
+                String line = lines.get(i);
+                if (!needle.isEmpty() && !line.toLowerCase(Locale.ROOT).contains(needle)) continue;
+                sender.sendMessage("§7" + line);
+                shown++;
+            }
+            if (shown == 0) sender.sendMessage("§7Подходящих записей нет.");
+        } catch (java.io.IOException exception) {
+            sender.sendMessage("§cНе удалось прочитать историю.");
+            getLogger().error("Не удалось прочитать staff.log.", exception);
+        }
+    }
+
     private boolean handleStaffCommand(CommandSender sender, String[] args) {
         if (!(sender instanceof Player)) { sender.sendMessage("Команда доступна игроку."); return true; }
         Player actor = (Player) sender;
@@ -1892,6 +1943,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
             return true;
         }
         if (args.length == 0) { openStaffMenu(actor); return true; }
+        if (args[0].equalsIgnoreCase("history")) {
+            if (args.length > 2) { sender.sendMessage("§e/staff history [ник]"); return true; }
+            showStaffHistory(sender, args.length == 2 ? args[1] : "");
+            return true;
+        }
         if (args[0].equalsIgnoreCase("fly")) { toggleFly(actor); return true; }
         if (args[0].equalsIgnoreCase("vanish")) { toggleVanish(actor); return true; }
         if (args[0].equalsIgnoreCase("warp")) { if (staffRank(role) < 5) sender.sendMessage("§cWarp доступен с ранга модератора."); else openWarpMenu(actor); return true; }
@@ -1950,8 +2006,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (action.equals("kick") && !canKick(role)) { sender.sendMessage("§cТвой ранг не может кикать игроков."); return true; }
             int min = action.equals("kick") ? 3 : 4;
             if (args.length < min) { sender.sendMessage(action.equals("kick") ? "§e/staff kick <игрок> <причина>" : "§e/staff " + action + " <игрок> <минуты> <причина>"); return true; }
-            Player target = getServer().getPlayer(args[1]); if (target == null) { sender.sendMessage("§cИгрок должен быть онлайн."); return true; }
-            if (staffRank(staffRole(target)) >= staffRank(role)) { sender.sendMessage("§cНельзя наказать сотрудника равного или более высокого ранга."); return true; }
+            Player target = getServer().getPlayer(args[1]);
+            String targetUuid = target == null ? knownPlayerUuid(args[1]) : target.getUniqueId().toString();
+            if (targetUuid == null) { sender.sendMessage("§cИгрок не найден. Он должен хотя бы один раз зайти на сервер."); return true; }
+            String targetRole = target == null ? staffData.getString("staff." + targetUuid, "") : staffRole(target);
+            if (staffRank(targetRole) >= staffRank(role)) { sender.sendMessage("§cНельзя наказать сотрудника равного или более высокого ранга."); return true; }
+            if (action.equals("kick") && target == null) { sender.sendMessage("§cКик доступен только игроку онлайн."); return true; }
             long minutes = 0L; int ri = 2;
             if (!action.equals("kick")) {
                 try { minutes = Long.parseLong(args[2]); } catch (NumberFormatException ex) { sender.sendMessage("§cСрок указывается в минутах."); return true; }
@@ -1964,18 +2024,46 @@ public final class LocalFastCore extends PluginBase implements Listener {
             }
             StringBuilder reason = new StringBuilder(); for (int i=ri;i<args.length;i++){if(reason.length()>0)reason.append(' ');reason.append(args[i]);}
             if (reason.length()==0) { sender.sendMessage("§cУкажи причину."); return true; }
-            if (action.equals("ban")) applyBan(actor,target,minutes,reason.toString());
-            else if (action.equals("mute")) applyMute(actor,target,minutes,reason.toString());
-            else { target.kick("§cКик: "+reason,false); staffLog(actor.getName(),"kick",target.getName(),reason.toString()); sender.sendMessage("§aИгрок кикнут."); }
+            String targetName = target == null ? knownPlayerName(args[1], targetUuid) : target.getName();
+            if (action.equals("ban")) {
+                String path = "punishments.bans." + targetUuid;
+                staffData.set(path + ".expires", minutes < 0 ? -1L : System.currentTimeMillis() + minutes * 60000L);
+                staffData.set(path + ".reason", reason.toString());
+                staffData.set(path + ".name", targetName);
+                staffData.set(path + ".by", actor.getName());
+                staffData.save();
+                staffLog(actor.getName(), "ban", targetName, minutes + " мин.; " + reason);
+                if (target != null) target.kick("§cБан: " + reason, false);
+                sender.sendMessage("§aБан выдан игроку " + targetName + ".");
+            } else if (action.equals("mute")) {
+                String path = "punishments.mutes." + targetUuid;
+                staffData.set(path + ".expires", System.currentTimeMillis() + minutes * 60000L);
+                staffData.set(path + ".reason", reason.toString());
+                staffData.set(path + ".name", targetName);
+                staffData.set(path + ".by", actor.getName());
+                staffData.save();
+                staffLog(actor.getName(), "mute", targetName, minutes + " мин.; " + reason);
+                if (target != null) target.sendMessage("§cТебе выдан мут на " + minutes + " мин. Причина: " + reason);
+                sender.sendMessage("§aМут выдан игроку " + targetName + ".");
+            } else { target.kick("§cКик: "+reason,false); staffLog(actor.getName(),"kick",targetName,reason.toString()); sender.sendMessage("§aИгрок кикнут."); }
             return true;
         }
         if (action.equals("unban") || action.equals("unmute")) {
             if (action.equals("unban") && !canUnban(role)) { sender.sendMessage("§cТвой ранг не может снимать баны."); return true; }
             if (action.equals("unmute") && !canUnmute(role)) { sender.sendMessage("§cТвой ранг не может снимать муты."); return true; }
             if (args.length != 2) { sender.sendMessage("§e/staff " + action + " <игрок>"); return true; }
-            Player target = getServer().getPlayer(args[1]); if (target == null) { sender.sendMessage("§cИгрок должен быть онлайн."); return true; }
-            staffData.remove("punishments." + (action.equals("unban") ? "bans." : "mutes.") + target.getUniqueId());
-            staffData.save(); staffLog(actor.getName(),action,target.getName(),"command"); sender.sendMessage("§aНаказание снято."); return true;
+            Player target = getServer().getPlayer(args[1]);
+            String targetUuid = target == null ? knownPlayerUuid(args[1]) : target.getUniqueId().toString();
+            if (targetUuid == null) { sender.sendMessage("§cИгрок не найден в истории сервера."); return true; }
+            String targetName = target == null ? knownPlayerName(args[1], targetUuid) : target.getName();
+            String punishmentPath = "punishments." + (action.equals("unban") ? "bans." : "mutes.") + targetUuid;
+            if (!staffData.exists(punishmentPath)) { sender.sendMessage("§cУ игрока нет такого активного наказания."); return true; }
+            staffData.remove(punishmentPath);
+            staffData.save();
+            staffLog(actor.getName(),action,targetName,"command");
+            sender.sendMessage("§aНаказание снято: " + targetName + ".");
+            if (target != null) target.sendMessage("§aТвоё наказание снято персоналом.");
+            return true;
         }
         sender.sendMessage("§e/staff — меню; /staff warn|ban|mute|kick|unban|unmute ..."); return true;
     }
@@ -2002,7 +2090,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             }
             return handleStaffCommand(sender, Arrays.copyOfRange(args, 1, args.length));
         }
-        if (args.length > 0 && Arrays.asList("warn", "ban", "mute", "kick", "unban", "unmute", "fly", "vanish", "warp", "online", "help", "ranks").contains(args[0].toLowerCase(Locale.ROOT))) {
+        if (args.length > 0 && Arrays.asList("warn", "ban", "mute", "kick", "unban", "unmute", "history", "fly", "vanish", "warp", "online", "help", "ranks").contains(args[0].toLowerCase(Locale.ROOT))) {
             return handleStaffCommand(sender, args);
         }
         if (args.length == 0) {

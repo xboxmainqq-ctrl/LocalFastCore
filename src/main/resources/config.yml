@@ -1,4 +1,4 @@
-# LocalFastCore 0.9.3
+# LocalFastCore 0.10.0
 
 # Player data is saved on the main thread at this interval (seconds).
 autosave:
@@ -45,7 +45,7 @@ quests:
     legend_hunt: {kills: 250, reward: 3500}
 
 intelligence:
-  # Each N intelligence points grants the configured XP percentage bonus.
+  # Legacy fallback values retained for existing config files.
   xp-bonus-per: 5
   xp-bonus-percent: 1
 

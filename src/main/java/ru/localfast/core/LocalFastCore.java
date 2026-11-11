@@ -44,10 +44,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
             return;
         }
         players = new Config(new File(getDataFolder(), "players.yml"), Config.YAML);
-        getConfig().set("spawn-world", SPAWN_WORLD_DEFAULT);
-        getConfig().set("main-world", "");
-        getConfig().set("rtp-min-radius", 500);
-        getConfig().set("rtp-max-radius", 5000);
+        if (!getConfig().exists("spawn-world")) getConfig().set("spawn-world", SPAWN_WORLD_DEFAULT);
+        if (!getConfig().exists("main-world")) getConfig().set("main-world", "");
+        if (!getConfig().exists("rtp-min-radius")) getConfig().set("rtp-min-radius", 500);
+        if (!getConfig().exists("rtp-max-radius")) getConfig().set("rtp-max-radius", 5000);
         saveConfig();
         getServer().getPluginManager().registerEvents(this, this);
         getLogger().info("LocalFastCore 0.10.0 включён. RPG, задания, отдельный spawn и RTP готовы.");

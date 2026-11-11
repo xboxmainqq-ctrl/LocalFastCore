@@ -94,3 +94,14 @@ Attribute effects are recalculated from saved values; they do not stack when the
 - **Intelligence:** +1% XP per 5 points, capped at +50% by default (hard ceiling +100%). Legacy intelligence.xp-bonus-per and intelligence.xp-bonus-percent values remain fallback defaults for older config files.
 
 New settings live under attributes.* in config.yml. Existing config files are not overwritten automatically; merge the attributes section from the shipped config to customize these formulas. The hard ceilings remain active even if a config value is set too high. progression.max-stat continues to limit saved attribute points independently.
+
+
+## Spawn and RTP (0.10.0)
+
+The plugin registers `/spawn`, `/setspawn` and `/rtp`. `/setspawn` requires the `localfast.admin` permission. Configure `spawn-world` with the exact world folder name (default: `spawn`). The world must already exist under the server's `worlds/` directory and be loadable by Nukkit-MOT; this plugin does not bundle or generate a medieval map. Stand at the desired safe location in that world and run `/setspawn` to persist its coordinates.
+
+`main-world` selects the RTP destination world; an empty value uses the server default world. RTP searches up to 40 random locations in the configured annulus around X=0, Z=0, using `rtp-min-radius` and `rtp-max-radius`, and only teleports when the ground is solid and the two blocks above it are passable. Configure a sensible radius for the actual size and border of your world. Test on a staging server before production.
+
+## Release checks
+
+The automated Maven build checks compilation and packaging only. Before production, test spawn-world loading, `/setspawn` persistence after restart, RTP at the world border and in different biomes, quest GUI navigation/claim retry, and profile migration on a staging copy. Back up `plugins/LocalFastCore/` and player data before upgrading. No command in this release automatically wipes player profiles; do not run `/lfadmin reset` unless an intentional administrative reset is required.

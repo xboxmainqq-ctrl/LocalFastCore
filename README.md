@@ -98,9 +98,9 @@ New settings live under attributes.* in config.yml. Existing config files are no
 
 ## Spawn and RTP (0.10.0)
 
-The plugin registers `/spawn`, `/setspawn` and `/rtp`. `/setspawn` requires the `localfast.admin` permission. Configure `spawn-world` with the exact world folder name (default: `spawn`). The world must already exist under the server's `worlds/` directory and be loadable by Nukkit-MOT; this plugin does not bundle or generate a medieval map. Stand at the desired safe location in that world and run `/setspawn` to persist its coordinates.
+The plugin registers `/spawn`, `/setspawn` and `/rtp`. `/setspawn` requires the `localfast.admin` permission. Configure `spawn-world` with the exact world folder name (default: `spawn`). If that world is missing, `/spawn` now falls back to the server's default world instead of failing; stand at the desired location and run `/setspawn` (requires `localfast.admin`) to save the actual spawn world and coordinates. A separate lobby world must already exist under `worlds/`; this plugin does not bundle or generate a medieval map.
 
-`main-world` selects the RTP destination world; an empty value uses the server default world. RTP searches up to 40 random locations in the configured annulus around X=0, Z=0, using `rtp-min-radius` and `rtp-max-radius`, and only teleports when the ground is solid and the two blocks above it are passable. Configure a sensible radius for the actual size and border of your world. Test on a staging server before production.
+`main-world` selects the RTP destination world; an empty value uses the server default world. RTP searches up to 120 random locations in the configured annulus around the destination world's safe-spawn coordinates, using `rtp-min-radius` and `rtp-max-radius`. It only teleports when the ground is solid and the two blocks above it are non-solid. This makes the search work on maps whose playable area is not centered at X=0, Z=0. Configure a sensible radius for the actual size and border of your world. Test on a staging server before production.
 
 ## Release checks
 

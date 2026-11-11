@@ -1811,7 +1811,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         String name = command.getName().toLowerCase(Locale.ROOT);
 
-убрать обход команды приветствия        if (name.equals("balance") || name.equals("pay")) {
+        if (name.equals("balance") || name.equals("pay")) {
             if (!(sender instanceof Player)) {
                 sender.sendMessage("Эта команда доступна только игроку.");
                 return true;

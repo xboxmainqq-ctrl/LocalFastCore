@@ -1629,6 +1629,33 @@ public final class LocalFastCore extends PluginBase implements Listener {
             else { sender.sendMessage("§eУкажи add|remove и роль: ml_helper|helper|senior_helper|junior_moderator|moderator|senior_moderator|admin."); return true; }
             staffData.save(); refreshStaffNameTag(target); refreshStaffModes(target); staffLog(((Player)sender).getName(), "staff-" + args[1], target.getName(), args.length == 4 ? args[3] : ""); sender.sendMessage("§aРоль обновлена."); return true;
         }
+        if (args[0].equalsIgnoreCase("warp")) {
+            if (args.length == 2 && args[1].equalsIgnoreCase("list")) {
+                sender.sendMessage("§6Сохранённые варпы:");
+                if (!getConfig().exists("warps") || getConfig().getSection("warps").getKeys(false).isEmpty()) sender.sendMessage("§7Варпов пока нет.");
+                else for (String warp : getConfig().getSection("warps").getKeys(false)) sender.sendMessage("§e" + warp);
+                return true;
+            }
+            if (args.length != 3 || !(args[1].equalsIgnoreCase("set") || args[1].equalsIgnoreCase("delete"))) {
+                sender.sendMessage("§e/lfadmin warp <set|delete|list> <название>");
+                return true;
+            }
+            String warpName = args[2].toLowerCase(Locale.ROOT);
+            if (!warpName.matches("[a-z0-9_-]{1,24}")) { sender.sendMessage("§cНазвание: 1–24 символа, латиница, цифры, _ или -."); return true; }
+            if (args[1].equalsIgnoreCase("delete")) {
+                if (!getConfig().exists("warps." + warpName)) { sender.sendMessage("§cТакого варпа нет."); return true; }
+                getConfig().remove("warps." + warpName); saveConfig();
+                staffLog(sender.getName(), "warp-delete", warpName, "operator");
+                sender.sendMessage("§aВарп удалён: " + warpName); return true;
+            }
+            if (!(sender instanceof Player)) { sender.sendMessage("§cСоздать варп можно только находясь в игре."); return true; }
+            Player operator = (Player) sender;
+            String path = "warps." + warpName;
+            getConfig().set(path + ".world", operator.getLevel().getFolderName());
+            getConfig().set(path + ".x", operator.getX()); getConfig().set(path + ".y", operator.getY()); getConfig().set(path + ".z", operator.getZ());
+            saveConfig(); staffLog(operator.getName(), "warp-set", warpName, operator.getLevel().getFolderName());
+            sender.sendMessage("§aВарп сохранён: " + warpName); return true;
+        }
         if (args[0].equalsIgnoreCase("money")) {
             if (args.length < 3) { sender.sendMessage("§e/lfadmin money <give|take|set|reset> <игрок> [сумма]"); return true; }
             Player target = getServer().getPlayer(args[2]); if (target == null) { sender.sendMessage("§cИгрок должен быть онлайн."); return true; } initialize(target);

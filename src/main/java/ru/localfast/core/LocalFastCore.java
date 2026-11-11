@@ -1115,6 +1115,147 @@ public final class LocalFastCore extends PluginBase implements Listener {
         target.sendMessage("§a" + player.getName() + " перевёл тебе " + amountText + ".");
     }
 
+    private boolean isOperator(CommandSender sender) {
+        if (!(sender instanceof Player)) return false;
+        String uuid = getConfig().getString("operator.uuid", "");
+        return uuid != null && !uuid.isEmpty() && uuid.equalsIgnoreCase(((Player) sender).getUniqueId().toString());
+    }
+
+    private String staffRole(Player player) {
+        if (isOperator(player)) return "operator";
+        return staffData.getString("staff." + player.getUniqueId().toString(), "");
+    }
+
+    private void staffLog(String actor, String action, String target, String details) {
+        try {
+            String line = java.time.Instant.now() + " | " + actor + " | " + action + " | " + target + " | " + details.replace("\n", " ") + System.lineSeparator();
+            java.nio.file.Files.write(staffLogFile.toPath(), line.getBytes(java.nio.charset.StandardCharsets.UTF_8), java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+        } catch (java.io.IOException exception) { getLogger().error("Не удалось записать staff.log.", exception); }
+    }
+
+    private void applyBan(Player actor, Player target, long minutes, String reason) {
+        String path = "punishments.bans." + target.getUniqueId();
+        staffData.set(path + ".expires", minutes < 0 ? -1L : System.currentTimeMillis() + minutes * 60000L);
+        staffData.set(path + ".reason", reason); staffData.save();
+        staffLog(actor.getName(), "ban", target.getName(), minutes + " мин.; " + reason);
+        target.kick("§cБан: " + reason, false); actor.sendMessage("§aБан выдан игроку " + target.getName() + ".");
+    }
+
+    private void applyMute(Player actor, Player target, long minutes, String reason) {
+        String path = "punishments.mutes." + target.getUniqueId();
+        staffData.set(path + ".expires", System.currentTimeMillis() + minutes * 60000L);
+        staffData.set(path + ".reason", reason); staffData.save();
+        staffLog(actor.getName(), "mute", target.getName(), minutes + " мин.; " + reason);
+        target.sendMessage("§cТебе выдан мут на " + minutes + " мин. Причина: " + reason);
+        actor.sendMessage("§aМут выдан игроку " + target.getName() + ".");
+    }
+
+    private void openStaffMenu(Player staff) {
+        String role = staffRole(staff);
+        if (!Arrays.asList("operator", "admin", "moderator").contains(role)) { staff.sendMessage("§cНет доступа к /staff."); return; }
+        FormWindowSimple form = new FormWindowSimple("§6LocalFast §8| §lПерсонал", "§fТвоя роль: §e" + role + "\n§7Выбери действие.");
+        form.addButton(new ElementButton("§cНаказать игрока"));
+        form.addButton(new ElementButton("§aСнять бан"));
+        form.addButton(new ElementButton("§aСнять мут"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !staff.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id == 0) openStaffTargetMenu(staff, "punish");
+            else if (id == 1) openStaffTargetMenu(staff, "unban");
+            else if (id == 2) openStaffTargetMenu(staff, "unmute");
+        }));
+        staff.showFormWindow(form);
+    }
+
+    private void openStaffTargetMenu(Player staff, String action) {
+        List<Player> online = new ArrayList<>(getServer().getOnlinePlayers().values());
+        if (online.isEmpty()) { staff.sendMessage("§cНет игроков онлайн."); return; }
+        FormWindowSimple form = new FormWindowSimple("§6Персонал §8| §lИгрок", "§7Выбери игрока.");
+        for (Player target : online) form.addButton(new ElementButton(target.getName()));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !staff.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId(); if (id < 0 || id >= online.size()) return;
+            Player target = online.get(id);
+            if (action.equals("punish")) openStaffActionMenu(staff, target);
+            else { staffData.remove("punishments." + (action.equals("unban") ? "bans." : "mutes.") + target.getUniqueId()); staffData.save(); staffLog(staff.getName(), action, target.getName(), "menu"); staff.sendMessage("§aНаказание снято."); target.sendMessage("§aТвоё наказание снято."); }
+        }));
+        staff.showFormWindow(form);
+    }
+
+    private void openStaffActionMenu(Player staff, Player target) {
+        FormWindowSimple form = new FormWindowSimple("§6Наказание §8| §e" + target.getName(), "§7Выбери действие.");
+        form.addButton(new ElementButton("§cБан на 24 часа")); form.addButton(new ElementButton("§eМут на 30 минут")); form.addButton(new ElementButton("§6Кик"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !staff.isOnline() || !target.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId(); String role = staffRole(staff);
+            if (id == 0 && !role.equals("moderator")) applyBan(staff, target, 1440L, "Нарушение правил");
+            else if (id == 1) applyMute(staff, target, 30L, "Нарушение правил");
+            else if (id == 2) { target.kick("§cКик: нарушение правил", false); staffLog(staff.getName(), "kick", target.getName(), "Нарушение правил"); staff.sendMessage("§aИгрок кикнут."); }
+            else staff.sendMessage("§cНедостаточно прав.");
+        })); staff.showFormWindow(form);
+    }
+
+    private boolean handleStaffCommand(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player)) { sender.sendMessage("Команда доступна игроку."); return true; }
+        Player actor = (Player) sender; String role = staffRole(actor);
+        if (args.length == 0) { openStaffMenu(actor); return true; }
+        if (!Arrays.asList("operator", "admin", "moderator").contains(role)) { sender.sendMessage("§cНет доступа."); return true; }
+        String action = args[0].toLowerCase(Locale.ROOT);
+        if (action.equals("ban") || action.equals("mute") || action.equals("kick")) {
+            if (action.equals("ban") && role.equals("moderator")) { sender.sendMessage("§cМодератор не может банить."); return true; }
+            int min = action.equals("kick") ? 3 : 4;
+            if (args.length < min) { sender.sendMessage(action.equals("kick") ? "§e/staff kick <игрок> <причина>" : "§e/staff " + action + " <игрок> <минуты" + (action.equals("ban") ? "|-1" : "") + "> <причина>"); return true; }
+            Player target = getServer().getPlayer(args[1]); if (target == null) { sender.sendMessage("§cИгрок должен быть онлайн."); return true; }
+            String tr = staffRole(target); if (tr.equals("operator") || (tr.equals("admin") && !role.equals("operator"))) { sender.sendMessage("§cНельзя наказать сотрудника с более высоким рангом."); return true; }
+            long minutes = 0L; int ri = 2;
+            if (!action.equals("kick")) { try { minutes = Long.parseLong(args[2]); } catch (NumberFormatException ex) { sender.sendMessage("§cСрок указывается в минутах."); return true; } if (minutes == 0 || minutes < -1 || (action.equals("mute") && minutes < 1) || minutes > 525600) { sender.sendMessage("§cНедопустимый срок."); return true; } ri = 3; }
+            StringBuilder reason = new StringBuilder(); for (int i = ri; i < args.length; i++) { if (reason.length() > 0) reason.append(' '); reason.append(args[i]); }
+            if (action.equals("ban")) applyBan(actor, target, minutes, reason.toString()); else if (action.equals("mute")) applyMute(actor, target, minutes, reason.toString()); else { target.kick("§cКик: " + reason, false); staffLog(actor.getName(), "kick", target.getName(), reason.toString()); sender.sendMessage("§aИгрок кикнут."); }
+            return true;
+        }
+        if (action.equals("unban") || action.equals("unmute")) {
+            if (action.equals("unban") && role.equals("moderator")) { sender.sendMessage("§cМодератор не может снимать баны."); return true; }
+            if (args.length != 2) { sender.sendMessage("§e/staff " + action + " <игрок>"); return true; }
+            Player target = getServer().getPlayer(args[1]); if (target == null) { sender.sendMessage("§cИгрок должен быть онлайн."); return true; }
+            staffData.remove("punishments." + (action.equals("unban") ? "bans." : "mutes.") + target.getUniqueId()); staffData.save(); staffLog(actor.getName(), action, target.getName(), "command"); sender.sendMessage("§aНаказание снято."); return true;
+        }
+        sender.sendMessage("§e/staff — меню; /staff ban|mute|kick|unban|unmute ..."); return true;
+    }
+
+    private boolean handleOperatorCommand(CommandSender sender, String[] args) {
+        if (args.length > 0 && args[0].equalsIgnoreCase("setoperator")) {
+            if (sender instanceof Player) { sender.sendMessage("§cПервое назначение оператора выполняется только из консоли."); return true; }
+            if (args.length != 2) { sender.sendMessage("§e/lfadmin setoperator <игрок>"); return true; }
+            Player target = getServer().getPlayer(args[1]); if (target == null) { sender.sendMessage("§cИгрок должен быть онлайн."); return true; }
+            getConfig().set("operator.uuid", target.getUniqueId().toString()); saveConfig(); staffLog("CONSOLE", "setoperator", target.getName(), target.getUniqueId().toString());
+            sender.sendMessage("Оператор назначен: " + target.getName()); target.sendMessage("§6Ты назначен оператором LocalFastCore."); return true;
+        }
+        if (!isOperator(sender)) { sender.sendMessage("§cТолько оператор может использовать /lfadmin."); return true; }
+        if (args.length == 0) { sender.sendMessage("§6/lfadmin staff add|remove|list; money give|take|set|reset; xp; reset"); return true; }
+        if (args[0].equalsIgnoreCase("staff")) {
+            if (args.length >= 2 && args[1].equalsIgnoreCase("list")) { sender.sendMessage("§6Персонал:"); for (String id : staffData.getKeys("staff")) sender.sendMessage("§e" + id + " §7— §f" + staffData.getString("staff." + id)); return true; }
+            if (args.length < 3) { sender.sendMessage("§e/lfadmin staff add <игрок> <admin|moderator> или remove <игрок>"); return true; }
+            Player target = getServer().getPlayer(args[2]); if (target == null) { sender.sendMessage("§cИгрок должен быть онлайн."); return true; }
+            String path = "staff." + target.getUniqueId();
+            if (args[1].equalsIgnoreCase("remove")) staffData.remove(path);
+            else if (args[1].equalsIgnoreCase("add") && args.length == 4 && (args[3].equalsIgnoreCase("admin") || args[3].equalsIgnoreCase("moderator"))) staffData.set(path, args[3].toLowerCase(Locale.ROOT));
+            else { sender.sendMessage("§eУкажи add|remove и роль admin|moderator."); return true; }
+            staffData.save(); staffLog(((Player)sender).getName(), "staff-" + args[1], target.getName(), args.length == 4 ? args[3] : ""); sender.sendMessage("§aРоль обновлена."); return true;
+        }
+        if (args[0].equalsIgnoreCase("money")) {
+            if (args.length < 3) { sender.sendMessage("§e/lfadmin money <give|take|set|reset> <игрок> [сумма]"); return true; }
+            Player target = getServer().getPlayer(args[2]); if (target == null) { sender.sendMessage("§cИгрок должен быть онлайн."); return true; } initialize(target);
+            String mode = args[1].toLowerCase(Locale.ROOT); long old = getBalance(target), amount = 0L;
+            if (!mode.equals("reset")) { if (args.length != 4) { sender.sendMessage("§eУкажи сумму."); return true; } try { amount = Long.parseLong(args[3]); } catch (NumberFormatException ex) { sender.sendMessage("§cНекорректная сумма."); return true; } if (amount < 0) { sender.sendMessage("§cСумма не может быть отрицательной."); return true; } }
+            long next; if (mode.equals("give")) { if (amount > Long.MAX_VALUE - old) { sender.sendMessage("§cПереполнение баланса."); return true; } next = old + amount; } else if (mode.equals("take")) next = Math.max(0L, old - amount); else if (mode.equals("set")) next = amount; else if (mode.equals("reset")) next = 0L; else { sender.sendMessage("§cРежим: give, take, set, reset."); return true; }
+            setBalance(target, next); if (!flushPlayers()) { setBalance(target, old); sender.sendMessage("§cНе удалось сохранить баланс; изменение отменено в памяти."); return true; }
+            staffLog(((Player)sender).getName(), "money-" + mode, target.getName(), old + " -> " + next); sender.sendMessage("§aБаланс обновлён: " + next); target.sendMessage("§eБаланс изменён оператором: §a" + next); return true;
+        }
+        if (args[0].equalsIgnoreCase("xp") && args.length == 3) { Player target = getServer().getPlayer(args[1]); if (target == null) { sender.sendMessage("§cИгрок должен быть онлайн."); return true; } try { int amount = Integer.parseInt(args[2]); if (amount < 1 || amount > MAX_XP_GRANT) throw new NumberFormatException(); giveXp(target, amount); staffLog(((Player)sender).getName(), "give-xp", target.getName(), String.valueOf(amount)); sender.sendMessage("§aXP начислен."); } catch (NumberFormatException ex) { sender.sendMessage("§cНекорректное количество XP."); } return true; }
+        if (args[0].equalsIgnoreCase("reset") && args.length == 3) { Player target = getServer().getPlayer(args[1]); if (target == null) { sender.sendMessage("§cИгрок должен быть онлайн."); return true; } String mode = args[2].toLowerCase(Locale.ROOT); if (!Arrays.asList("level", "stats", "quests", "all").contains(mode)) { sender.sendMessage("§clevel|stats|quests|all"); return true; } String key = playerKey(target); if (mode.equals("level") || mode.equals("all")) { set(target,"level",1); set(target,"xp",0); set(target,"points",0); } if (mode.equals("stats") || mode.equals("all")) for (String stat : STATS) set(target,stat,0); if (mode.equals("quests") || mode.equals("all")) { set(target,"quest_kills",0); setBoolean(target,"quest_active",false); setBoolean(target,"quest_complete",false); players.set(key+".quest_type","any"); set(target,"daily_kills",0); setBoolean(target,"daily_active",false); setBoolean(target,"daily_complete",false); setBoolean(target,"daily_claimed",false); for (QuestDefinition q : questCatalog()) { String p=key+".quests."+q.id; players.set(p+".kills",0); players.set(p+".active",false); players.set(p+".complete",false); players.set(p+".claimed",false); } } markPlayersDirty(); flushPlayers(); recalculateStats(target); updateSidebar(target); staffLog(((Player)sender).getName(),"reset-"+mode,target.getName(),"RPG"); sender.sendMessage("§aПрогресс сброшен."); return true; }
+        sender.sendMessage("§eНеизвестная команда /lfadmin."); return true;
+    }
+
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         String name = command.getName().toLowerCase(Locale.ROOT);

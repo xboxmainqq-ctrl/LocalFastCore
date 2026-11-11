@@ -1336,7 +1336,16 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private void showStaffHelp(Player viewer) {
         String role = staffRole(viewer);
         viewer.sendMessage("§6§lДолжности LocalFast:");
-        for (String rank : STAFF_ROLES) viewer.sendMessage("§7" + staffRank(rank) + ". §f" + staffRoleLabel(rank));
+        for (String rank : STAFF_ROLES) {
+            String access = staffRank(rank) >= 7 ? "Бан, мут, кик, снятие наказаний, fly, vanish, warp, статистика"
+                    : staffRank(rank) >= 6 ? "Бан, мут, кик, снятие наказаний, статистика, warp"
+                    : staffRank(rank) >= 5 ? "Бан, мут, кик, снятие мута, статистика, warp"
+                    : staffRank(rank) >= 4 ? "Бан до 60 мин., мут, кик, статистика"
+                    : staffRank(rank) >= 3 ? "Мут, кик, статистика"
+                    : staffRank(rank) >= 2 ? "Мут, статистика"
+                    : "Предупреждения, статистика";
+            viewer.sendMessage("§7" + staffRank(rank) + ". §f" + staffRoleLabel(rank) + " §8— §7" + access);
+        }
         viewer.sendMessage("§6§lТвои команды:");
         viewer.sendMessage("§e/staff §7— открыть панель");
         viewer.sendMessage("§e/staff warn <игрок> <причина>");
@@ -1551,8 +1560,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!action.equals("kick")) {
                 try { minutes = Long.parseLong(args[2]); } catch (NumberFormatException ex) { sender.sendMessage("§cСрок указывается в минутах."); return true; }
                 long max = action.equals("ban") ? maxBanMinutes(role) : maxMuteMinutes(role);
-                if (minutes < 1L || minutes > 525600L || (max != -1L && minutes > max)) {
-                    sender.sendMessage("§cМаксимальный срок для твоего ранга: " + (max == -1L ? "без ограничения" : max + " мин.") + "."); return true;
+                boolean permanentBan = action.equals("ban") && minutes == -1L && max == -1L;
+                if ((!permanentBan && minutes < 1L) || minutes > 525600L || (max != -1L && minutes > max)) {
+                    sender.sendMessage("§cМаксимальный срок для твоего ранга: " + (max == -1L ? "без ограничения (бан навсегда: -1)" : max + " мин.") + "."); return true;
                 }
                 ri = 3;
             }

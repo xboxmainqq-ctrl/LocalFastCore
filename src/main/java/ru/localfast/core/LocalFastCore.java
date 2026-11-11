@@ -1430,6 +1430,116 @@ public final class LocalFastCore extends PluginBase implements Listener {
         actor.sendMessage("§aМут выдан игроку " + target.getName() + ".");
     }
 
+
+    private String remainingPunishmentTime(long expires) {
+        if (expires < 0L) return "§cНавсегда";
+        long millis = expires - System.currentTimeMillis();
+        if (millis <= 0L) return "§7Истёк";
+        long minutes = Math.max(1L, (millis + 59999L) / 60000L);
+        if (minutes < 60L) return "§e" + minutes + " мин.";
+        if (minutes < 1440L) return "§e" + (minutes / 60L) + " ч. " + (minutes % 60L) + " мин.";
+        long hours = minutes / 60L;
+        if (hours < 48L) return "§e" + (hours / 24L) + " д. " + (hours % 24L) + " ч.";
+        return "§e" + (minutes / 1440L) + " дн.";
+    }
+
+    private void openActivePunishmentsMenu(Player viewer) {
+        String role = staffRole(viewer);
+        boolean canBans = canUnban(role);
+        boolean canMutes = canUnmute(role);
+        if (!canBans && !canMutes) { viewer.sendMessage("§cТвой ранг не может просматривать и снимать наказания."); return; }
+        FormWindowSimple form = new FormWindowSimple("§6Активные наказания", "§7Выбери категорию для просмотра.");
+        List<String> types = new ArrayList<>();
+        if (canBans) { form.addButton(new ElementButton("§cАктивные баны")); types.add("bans"); }
+        if (canMutes) { form.addButton(new ElementButton("§eАктивные муты")); types.add("mutes"); }
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !viewer.isOnline()) return;
+            int index = form.getResponse().getClickedButtonId();
+            if (index >= 0 && index < types.size()) openPunishmentListMenu(viewer, types.get(index));
+            else if (index == types.size()) openStaffMenu(viewer);
+        }));
+        viewer.showFormWindow(form);
+    }
+
+    private void openPunishmentListMenu(Player viewer, String type) {
+        String role = staffRole(viewer);
+        if ((type.equals("bans") && !canUnban(role)) || (type.equals("mutes") && !canUnmute(role))) {
+            viewer.sendMessage("§cНедостаточно прав для этой категории."); return;
+        }
+        String root = "punishments." + type;
+        List<String> activeIds = new ArrayList<>();
+        List<String> expiredIds = new ArrayList<>();
+        long now = System.currentTimeMillis();
+        if (staffData.exists(root)) {
+            for (String uuid : staffData.getSection(root).getKeys(false)) {
+                long expires = staffData.getLong(root + "." + uuid + ".expires", 0L);
+                if (expires != -1L && expires <= now) expiredIds.add(uuid);
+                else activeIds.add(uuid);
+            }
+        }
+        for (String uuid : expiredIds) staffData.remove(root + "." + uuid);
+        if (!expiredIds.isEmpty()) staffData.save();
+        FormWindowSimple form = new FormWindowSimple(type.equals("bans") ? "§cАктивные баны" : "§eАктивные муты",
+                "§7Выбери игрока для просмотра подробностей. §8Истёкшие записи очищены.");
+        for (String uuid : activeIds) {
+            String path = root + "." + uuid;
+            String name = staffData.getString(path + ".name", uuid);
+            long expires = staffData.getLong(path + ".expires", 0L);
+            form.addButton(new ElementButton("§f" + name + "\n" + remainingPunishmentTime(expires)));
+        }
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !viewer.isOnline()) return;
+            int index = form.getResponse().getClickedButtonId();
+            if (index >= 0 && index < activeIds.size()) openPunishmentDetailsMenu(viewer, type, activeIds.get(index));
+            else if (index == activeIds.size()) openActivePunishmentsMenu(viewer);
+        }));
+        viewer.showFormWindow(form);
+        if (activeIds.isEmpty()) viewer.sendMessage("§7Активных наказаний в этой категории нет.");
+    }
+
+    private void openPunishmentDetailsMenu(Player viewer, String type, String uuid) {
+        String role = staffRole(viewer);
+        if ((type.equals("bans") && !canUnban(role)) || (type.equals("mutes") && !canUnmute(role))) {
+            viewer.sendMessage("§cНедостаточно прав."); return;
+        }
+        String path = "punishments." + type + "." + uuid;
+        if (!staffData.exists(path)) { viewer.sendMessage("§7Это наказание уже снято или истекло."); openPunishmentListMenu(viewer, type); return; }
+        long expires = staffData.getLong(path + ".expires", 0L);
+        if (expires != -1L && expires <= System.currentTimeMillis()) {
+            staffData.remove(path); staffData.save();
+            viewer.sendMessage("§7Срок наказания истёк; запись очищена.");
+            openPunishmentListMenu(viewer, type); return;
+        }
+        String name = staffData.getString(path + ".name", uuid);
+        String reason = staffData.getString(path + ".reason", "Не указана");
+        String by = staffData.getString(path + ".by", "Неизвестно");
+        FormWindowSimple form = new FormWindowSimple("§6Наказание: " + name,
+                "§fИгрок: §e" + name + "\n§fТип: " + (type.equals("bans") ? "§cБан" : "§eМут")
+                        + "\n§fСрок: " + remainingPunishmentTime(expires)
+                        + "\n§fПричина: §7" + reason + "\n§fВыдал: §b" + by + "\n\n§7Снять это наказание?");
+        form.addButton(new ElementButton("§aСнять наказание"));
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !viewer.isOnline()) return;
+            int index = form.getResponse().getClickedButtonId();
+            if (index == 0) {
+                if (!staffData.exists(path)) viewer.sendMessage("§7Наказание уже отсутствует.");
+                else {
+                    staffData.remove(path); staffData.save();
+                    String action = type.equals("bans") ? "unban" : "unmute";
+                    staffLog(viewer.getName(), action, name, "снято через меню активных наказаний");
+                    Player online = getServer().getPlayer(name);
+                    if (online != null) online.sendMessage("§aТвоё наказание снято персоналом.");
+                    viewer.sendMessage("§aНаказание игрока " + name + " снято.");
+                }
+                openPunishmentListMenu(viewer, type);
+            } else if (index == 1) openPunishmentListMenu(viewer, type);
+        }));
+        viewer.showFormWindow(form);
+    }
+
     private void openStaffMenu(Player staff) {
         String role = staffRole(staff);
         if (staffRank(role) == 0) { staff.sendMessage("§cНет доступа к /staff."); return; }
@@ -1448,6 +1558,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§bСтатистика игрока"));
         form.addButton(new ElementButton("§dСписок администрации"));
         form.addButton(new ElementButton("§eДолжности и мои команды"));
+        if (canUnban(role) || canUnmute(role)) form.addButton(new ElementButton("§cАктивные баны и муты"));
         if (staffRank(role) >= 5) form.addButton(new ElementButton("§6Warp"));
         if (staffRank(role) >= 7) {
             form.addButton(new ElementButton("§aFly"));
@@ -1472,6 +1583,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
             else if (utility == 3) showStaffHelp(staff);
             else {
                 int cursor = 4;
+                if (canUnban(role) || canUnmute(role)) {
+                    if (utility == cursor) { openActivePunishmentsMenu(staff); return; }
+                    cursor++;
+                }
                 if (staffRank(role) >= 5) {
                     if (utility == cursor) { openWarpMenu(staff); return; }
                     cursor++;
@@ -1688,6 +1803,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§cFly"));
         form.addButton(new ElementButton("§cVanish"));
         form.addButton(new ElementButton("§cМодерация: Ban / Mute / Kick"));
+        form.addButton(new ElementButton("§cАктивные баны и муты"));
         form.addButton(new ElementButton("§dТестировать должность на себе"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
@@ -1710,7 +1826,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
             } else if (id == 6) toggleFly(operator);
             else if (id == 7) toggleVanish(operator);
             else if (id == 8) openStaffMenu(operator);
-            else if (id == 9) openOperatorSelfRankMenu(operator);
+            else if (id == 9) openActivePunishmentsMenu(operator);
+            else if (id == 10) openOperatorSelfRankMenu(operator);
         }));
         operator.showFormWindow(form);
     }
@@ -1948,6 +2065,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
             showStaffHistory(sender, args.length == 2 ? args[1] : "");
             return true;
         }
+        if (args[0].equalsIgnoreCase("punishments") || args[0].equalsIgnoreCase("active")) {
+            if (args.length > 1) { sender.sendMessage("§e/staff punishments"); return true; }
+            openActivePunishmentsMenu(actor);
+            return true;
+        }
         if (args[0].equalsIgnoreCase("fly")) { toggleFly(actor); return true; }
         if (args[0].equalsIgnoreCase("vanish")) { toggleVanish(actor); return true; }
         if (args[0].equalsIgnoreCase("warp")) { if (staffRank(role) < 5) sender.sendMessage("§cWarp доступен с ранга модератора."); else openWarpMenu(actor); return true; }
@@ -2090,7 +2212,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             }
             return handleStaffCommand(sender, Arrays.copyOfRange(args, 1, args.length));
         }
-        if (args.length > 0 && Arrays.asList("warn", "ban", "mute", "kick", "unban", "unmute", "history", "fly", "vanish", "warp", "online", "help", "ranks").contains(args[0].toLowerCase(Locale.ROOT))) {
+        if (args.length > 0 && Arrays.asList("warn", "ban", "mute", "kick", "unban", "unmute", "history", "punishments", "active", "fly", "vanish", "warp", "online", "help", "ranks").contains(args[0].toLowerCase(Locale.ROOT))) {
             return handleStaffCommand(sender, args);
         }
         if (args.length == 0) {

@@ -1677,7 +1677,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§dМоё приветствие: вкл/выкл"));
         form.addButton(new ElementButton("§cFly"));
         form.addButton(new ElementButton("§cVanish"));
-        form.addButton(new ElementButton("§6Открыть панель /staff"));
+        form.addButton(new ElementButton("§cМодерация: Ban / Mute / Kick"));
         form.addButton(new ElementButton("§dТестировать должность на себе"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
@@ -1939,9 +1939,20 @@ public final class LocalFastCore extends PluginBase implements Listener {
             sender.sendMessage("Оператор назначен: " + target.getName()); target.sendMessage("§6Ты назначен оператором LocalFastCore."); return true;
         }
         if (!isOperator(sender)) { sender.sendMessage("§cТолько оператор может использовать /lfadmin."); return true; }
+        if (args.length > 0 && args[0].equalsIgnoreCase("moderation")) {
+            if (args.length == 1) {
+                if (sender instanceof Player) openStaffMenu((Player) sender);
+                else sender.sendMessage("§eИспользуй /lfadmin ban|mute|kick ... из игры.");
+                return true;
+            }
+            return handleStaffCommand(sender, Arrays.copyOfRange(args, 1, args.length));
+        }
+        if (args.length > 0 && Arrays.asList("warn", "ban", "mute", "kick", "unban", "unmute", "fly", "vanish", "warp", "online", "help", "ranks").contains(args[0].toLowerCase(Locale.ROOT))) {
+            return handleStaffCommand(sender, args);
+        }
         if (args.length == 0) {
             if (sender instanceof Player) openOperatorMenu((Player) sender);
-            else sender.sendMessage("§6/lfadmin staff add|remove|list; money give|take|set|reset; xp; reset");
+            else sender.sendMessage("§6/lfadmin moderation; ban|mute|kick; staff add|remove|list; money; xp; reset");
             return true;
         }
         if (args[0].equalsIgnoreCase("class")) {

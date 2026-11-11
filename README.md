@@ -1,4 +1,4 @@
-# LocalFastCore 0.11.0
+# LocalFastCore 0.12.0
 
 RPG progression plugin for Nukkit-MOT 1.26.60-R1 (Java 17).
 
@@ -34,7 +34,8 @@ RPG progression plugin for Nukkit-MOT 1.26.60-R1 (Java 17).
 | `/tpa <player>` | Request to teleport to a player |
 | `/tpaccept` | Accept the pending teleport request |
 | `/tpdeny` | Deny the pending teleport request |
-| `/lfadmin xp <player> <amount>` | Give XP (requires `localfast.admin`) |
+| `/lfadmin` | Operator-only control panel and commands |
+| `/staff` | Staff moderation menu (admin/moderator) |
 
 Valid stat names: `strength`, `health`, `agility`, `intelligence`.
 
@@ -139,3 +140,12 @@ Each player can save one home with `/sethome`, return using `/home`, and remove 
 Use `/tpa <player>` to request teleportation to an online player. The target can use `/tpaccept` or `/tpdeny`; requests expire after 60 seconds. A player has one pending request slot at a time. Pending requests are in-memory only and are cleared when either player leaves or the server restarts. These commands are player-only and do not require admin permission.
 
 Back up `plugins/LocalFastCore/` before testing on a live server. Test home persistence across restart and TPA accept/deny/timeout with two accounts before production use.
+
+
+## Operator and staff system (0.12.0)
+
+The operator identity is bound to a UUID in `operator.uuid`, not to a nickname. On first startup, the owner must join and the server console must run `lfadmin setoperator <online-player>`. This one-time bootstrap command is console-only. The operator can then assign staff by UUID using `/lfadmin staff add <player> admin|moderator`, remove them using `/lfadmin staff remove <player>`, and list staff using `/lfadmin staff list`.
+
+`/lfadmin` is reserved for the configured operator. It includes staff assignment, online-player economy administration (`money give|take|set|reset`), and RPG XP/progress administration. `/staff` opens a GUI for staff members. Admins can ban, mute, kick, and remove bans/mutes; moderators can mute, kick, and remove mutes. Command forms support custom reasons and durations: `/staff ban <player> <minutes|-1> <reason>`, `/staff mute <player> <minutes> <reason>`, `/staff kick <player> <reason>`, `/staff unban <player>`, and `/staff unmute <player>`. GUI defaults are a 24-hour ban, 30-minute mute, and a kick with a generic reason.
+
+Staff roles and active punishments are stored separately in `staff.yml`; staff actions are appended to `staff.log`. Ban enforcement is checked on join and mute enforcement cancels chat. Staff target selection and punishment removal currently require the target to be online. The automated build validates compilation and packaging; moderation behavior must still be tested in-game on a staging server.

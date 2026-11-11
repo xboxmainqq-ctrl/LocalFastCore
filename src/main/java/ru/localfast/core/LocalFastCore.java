@@ -1891,6 +1891,82 @@ public final class LocalFastCore extends PluginBase implements Listener {
         operator.showFormWindow(form);
     }
 
+    private void openOperatorWorldMenu(Player operator) {
+        if (!isOperator(operator)) return;
+        FormWindowSimple form = new FormWindowSimple("§6LocalFast §8| §lМиры",
+                "§7Управление игровыми мирами 0.13.0\n§fВыбери действие:");
+        form.addButton(new ElementButton("§bСписок миров"));
+        form.addButton(new ElementButton("§aСоздать spawn"));
+        form.addButton(new ElementButton("§aСоздать dungeons"));
+        form.addButton(new ElementButton("§aСоздать bosses"));
+        form.addButton(new ElementButton("§eЗагрузить мир"));
+        form.addButton(new ElementButton("§dИнформация о мире"));
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id == 0) showWorldList(operator);
+            else if (id == 1) createWorldFromMenu(operator, "spawn");
+            else if (id == 2) createWorldFromMenu(operator, "dungeons");
+            else if (id == 3) createWorldFromMenu(operator, "bosses");
+            else if (id == 4) openWorldPicker(operator, "load");
+            else if (id == 5) openWorldPicker(operator, "info");
+            else if (id == 6) openOperatorMenu(operator);
+        }));
+        operator.showFormWindow(form);
+    }
+
+    private void createWorldFromMenu(Player operator, String name) {
+        if (getServer().isLevelGenerated(name)) {
+            operator.sendMessage("§eМир " + name + " уже существует. Открой «Загрузить мир».");
+            openWorldPicker(operator, "load");
+            return;
+        }
+        handleWorldCommand(operator, new String[]{"create", name, "normal"});
+        openOperatorWorldMenu(operator);
+    }
+
+    private void openWorldPicker(Player operator, String action) {
+        List<String> names = new ArrayList<>();
+        for (String name : new String[]{"spawn", "world", "dungeons", "bosses"}) {
+            if (getServer().isLevelGenerated(name) || getServer().isLevelLoaded(name)) names.add(name);
+        }
+        if (getConfig().exists("managed-worlds")) {
+            for (String name : getConfig().getSection("managed-worlds").getKeys(false)) {
+                if (!names.contains(name)) names.add(name);
+            }
+        }
+        if (names.isEmpty()) {
+            operator.sendMessage("§7Пока нет созданных миров.");
+            openOperatorWorldMenu(operator);
+            return;
+        }
+        FormWindowSimple form = new FormWindowSimple(
+                action.equals("load") ? "§6Загрузить мир" : "§6Информация о мире",
+                "§7Выбери мир:");
+        for (String name : names) {
+            boolean loaded = getServer().isLevelLoaded(name);
+            form.addButton(new ElementButton((loaded ? "§a● " : "§e○ ") + name
+                    + "\n§7" + worldRole(name) + (loaded ? " · загружен" : " · не загружен")));
+        }
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id == names.size()) { openOperatorWorldMenu(operator); return; }
+            if (id < 0 || id >= names.size()) return;
+            String selected = names.get(id);
+            if (action.equals("load")) {
+                handleWorldCommand(operator, new String[]{"load", selected});
+                openOperatorWorldMenu(operator);
+            } else {
+                handleWorldCommand(operator, new String[]{"info", selected});
+                openWorldPicker(operator, "info");
+            }
+        }));
+        operator.showFormWindow(form);
+    }
+
     private void openOperatorMenu(Player operator) {
         if (!isOperator(operator)) { operator.sendMessage("§cТолько оператор может открыть эту панель."); return; }
         FormWindowSimple form = new FormWindowSimple("§6LocalFast §8| §lОператорская панель",
@@ -1906,6 +1982,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§cМодерация: Ban / Mute / Kick"));
         form.addButton(new ElementButton("§cАктивные баны и муты"));
         form.addButton(new ElementButton("§dТестировать должность на себе"));
+        form.addButton(new ElementButton("§bУправление мирами"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
             int id = form.getResponse().getClickedButtonId();
@@ -1929,6 +2006,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             else if (id == 8) openStaffMenu(operator);
             else if (id == 9) openActivePunishmentsMenu(operator);
             else if (id == 10) openOperatorSelfRankMenu(operator);
+            else if (id == 11) openOperatorWorldMenu(operator);
         }));
         operator.showFormWindow(form);
     }

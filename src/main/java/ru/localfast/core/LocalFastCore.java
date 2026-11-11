@@ -45,6 +45,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private static final String[] STATS = {"strength", "health", "agility", "intelligence"};
 
     private Config players;
+    private boolean playersDirty = false;
     private final Map<String, IScoreboard> sidebars = new HashMap<>();
 
     private static final class QuestDefinition {
@@ -96,12 +97,34 @@ public final class LocalFastCore extends PluginBase implements Listener {
         players = new Config(new File(getDataFolder(), "players.yml"), Config.YAML);
         getServer().getPluginManager().registerEvents(this, this);
         saveDefaultConfig();
+        int autosaveSeconds = Math.max(5, Math.min(3600,
+                getConfig().getInt("autosave.interval-seconds", 60)));
+        getServer().getScheduler().scheduleRepeatingTask(this, this::flushPlayers,
+                autosaveSeconds * 20);
         int refreshTicks = Math.max(20, Math.min(1200, getConfig().getInt("scoreboard.refresh-ticks", 40)));
         getServer().getScheduler().scheduleRepeatingTask(this, () -> {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
         getLogger().info("LocalFastCore 0.9.3 включён. RPG, GUI и уровневые квесты готовы.");
+    }
+
+    private void markPlayersDirty() {
+        playersDirty = true;
+    }
+
+    /**
+     * Config is deliberately saved on the server thread: Nukkit Config is not
+     * assumed to be thread-safe. Failed writes keep the dirty flag for retry.
+     */
+    private void flushPlayers() {
+        if (players == null || !playersDirty) return;
+        try {
+            players.save();
+            playersDirty = false;
+        } catch (RuntimeException exception) {
+            getLogger().error("Не удалось сохранить players.yml; повторим при следующем autosave.", exception);
+        }
     }
 
     private String playerKey(Player player) {
@@ -160,6 +183,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         String key = playerKey(event.getPlayer());
         IScoreboard scoreboard = sidebars.remove(key);
         if (scoreboard != null) scoreboard.removeViewer(event.getPlayer(), DisplaySlot.SIDEBAR);
+        flushPlayers();
     }
 
     /**
@@ -215,7 +239,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             players.set(key + ".quest_complete", false);
             changed = true;
         }
-        if (changed) players.save();
+        if (changed) markPlayersDirty();
     }
 
 
@@ -225,14 +249,14 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (!players.getString(k+".daily_date","").equals(d)) {
             players.set(k+".daily_date",d); players.set(k+".daily_kills",0);
             players.set(k+".daily_active",false); players.set(k+".daily_complete",false);
-            players.set(k+".daily_claimed",false); players.save();
+            players.set(k+".daily_claimed",false); markPlayersDirty();
         }
     }
     @EventHandler
     public void onJoin(PlayerJoinEvent e) {
         Player p=e.getPlayer(); initialize(p); refreshDaily(p); String k=playerKey(p); String d=today();
         if (!players.getString(k+".login_reward_date","").equals(d)) {
-            players.set(k+".login_reward_date",d); players.save(); giveXp(p, Math.max(0, getConfig().getInt("progression.login-reward-xp", LOGIN_XP_REWARD)));
+            players.set(k+".login_reward_date",d); markPlayersDirty(); giveXp(p, Math.max(0, getConfig().getInt("progression.login-reward-xp", LOGIN_XP_REWARD)));
             p.sendMessage("§a[LocalFast] Награда за первый вход сегодня: +" + Math.max(0, getConfig().getInt("progression.login-reward-xp", LOGIN_XP_REWARD)) + " XP!");
         }
         recalculateStats(p);
@@ -254,13 +278,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
         String a=args[0].toLowerCase(Locale.ROOT);
         if(a.equals("start")){
             if(players.getBoolean(k+".daily_active",false)||players.getBoolean(k+".daily_complete",false)||players.getBoolean(k+".daily_claimed",false)){showDaily(p);return;}
-            players.set(k+".daily_active",true);players.set(k+".daily_kills",0);players.save();
+            players.set(k+".daily_active",true);players.set(k+".daily_kills",0);markPlayersDirty();
             int required = Math.max(1, getConfig().getInt("daily.kills-required", DAILY_KILLS_REQUIRED));
             p.sendMessage("§aНачато! Убей " + required + " любых существ.");return;
         }
         if(a.equals("claim")){
             if(!players.getBoolean(k+".daily_complete",false)){p.sendMessage("§cСначала выполни задание.");return;}
-            players.set(k+".daily_complete",false);players.set(k+".daily_active",false);players.set(k+".daily_claimed",true);players.save();
+            players.set(k+".daily_complete",false);players.set(k+".daily_active",false);players.set(k+".daily_claimed",true);markPlayersDirty();
             int reward = Math.max(0, getConfig().getInt("daily.xp-reward", DAILY_XP_REWARD));
             giveXp(p,reward);p.sendMessage("§aПолучено +" + reward + " XP!");return;
         }
@@ -303,7 +327,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         set(player, "level", level);
         set(player, "xp", (int) totalXp);
         set(player, "points", points);
-        players.save();
+        markPlayersDirty();
         updateSidebar(player);
     }
 
@@ -330,7 +354,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             int n=Math.min(required,Math.max(0,players.getInt(dk+".daily_kills",0))+1);players.set(dk+".daily_kills",n);
             if(n>=required){players.set(dk+".daily_complete",true);killer.sendMessage("§6Ежедневное задание выполнено! /daily claim");}
             else killer.sendMessage("§eЕжедневное задание: "+n+"/"+required);
-            players.save();
+            markPlayersDirty();
         }
         String mobName = mob.getClass().getSimpleName().toLowerCase(Locale.ROOT);
         updateLevelQuests(killer, mobName);
@@ -350,7 +374,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 } else {
                     killer.sendMessage("§e[Квест] " + kills + "/" + requiredKills);
                 }
-                players.save();
+                markPlayersDirty();
             }
         }
     }
@@ -374,7 +398,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             }
             changed = true;
         }
-        if (changed) players.save();
+        if (changed) markPlayersDirty();
     }
 
     private void openQuestsMenu(Player player) {
@@ -449,7 +473,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 players.set(path + ".active", false);
                 players.set(path + ".complete", false);
                 players.set(path + ".claimed", true);
-                players.save();
+                markPlayersDirty();
                 giveXp(player, questXp(quest));
                 player.sendMessage("§a[Квесты] Получено +" + questXp(quest) + " XP за " + quest.title + "!");
             } else if (selected == 0 && !active && !claimed) {
@@ -459,7 +483,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     players.set(path + ".active", true);
                     players.set(path + ".kills", 0);
                     players.set(path + ".complete", false);
-                    players.save();
+                    markPlayersDirty();
                     player.sendMessage("§a[Квесты] Принято задание: " + quest.title);
                 }
             }
@@ -552,7 +576,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             set(player, "quest_kills", 0);
             setBoolean(player, "quest_active", true);
             setBoolean(player, "quest_complete", false);
-            players.save();
+            markPlayersDirty();
             player.sendMessage("§a[Квест] Начато: " + questTitle(type) + ". Убей " + questKillsRequired() + " нужных мобов!");
             showQuest(player);
             return;
@@ -568,7 +592,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             setBoolean(player, "quest_complete", false);
             set(player, "quest_kills", 0);
             players.set(playerKey(player) + ".quest_type", "any");
-            players.save();
+            markPlayersDirty();
             giveXp(player, reward);
             player.sendMessage("§a[Квест] Награда получена: +" + reward + " опыта!");
             return;
@@ -635,7 +659,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
         set(player, stat, current + amount);
         set(player, "points", points - amount);
-        players.save();
+        markPlayersDirty();
         recalculateStats(player);
         updateSidebar(player);
         player.sendMessage("§a[LocalFast] " + stat + " увеличена на " + amount + ".");
@@ -719,7 +743,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             }
             set(player, stat, currentStat + amount);
             set(player, "points", points - amount);
-            players.save();
+            markPlayersDirty();
             recalculateStats(player);
             updateSidebar(player);
             sender.sendMessage("§a[LocalFast] Характеристика " + stat + " увеличена на " + amount + ".");
@@ -765,6 +789,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     @Override
     public void onDisable() {
-        if (players != null) players.save();
+        if (players != null) {
+            // Force a final flush even if no mutation was observed by the dirty tracker.
+            playersDirty = true;
+            flushPlayers();
+        }
     }
 }

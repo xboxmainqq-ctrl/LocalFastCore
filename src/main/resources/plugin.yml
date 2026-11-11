@@ -12,6 +12,24 @@ commands:
     description: Установить точку отдельного спавна
     usage: "/setspawn"
     permission: localfast.admin
+  sethome:
+    description: Сохранить точку дома
+    usage: "/sethome"
+  home:
+    description: Телепортироваться домой
+    usage: "/home"
+  delhome:
+    description: Удалить сохранённую точку дома
+    usage: "/delhome"
+  tpa:
+    description: Запросить телепортацию к игроку
+    usage: "/tpa <игрок>"
+  tpaccept:
+    description: Принять запрос телепортации
+    usage: "/tpaccept"
+  tpdeny:
+    description: Отклонить запрос телепортации
+    usage: "/tpdeny"
   rtp:
     description: Случайная безопасная телепортация в основной мир
     usage: "/rtp"

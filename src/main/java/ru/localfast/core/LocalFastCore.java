@@ -326,7 +326,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     public void onPlayerChat(PlayerChatEvent event) {
         Player player = event.getPlayer();
         String roleTag = staffChatTag(staffRole(player));
-        event.setFormat("%s" + roleTag + " §8 » §f%s");
+        event.setFormat("%1$s" + roleTag + " §8 » §f%2$s");
         String path = "punishments.mutes." + player.getUniqueId();
         long expires = staffData.getLong(path + ".expires", 0L);
         if (expires == -1L || expires > System.currentTimeMillis()) { event.setCancelled(true); player.sendMessage("§cЧат закрыт: у тебя активен мут."); }

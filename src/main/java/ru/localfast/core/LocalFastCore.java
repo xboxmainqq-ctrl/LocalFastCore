@@ -376,7 +376,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         int nextXp = xpForNextLevel(level);
         int xpPercent = level >= MAX_LEVEL ? 100
                 : (int) Math.min(100L, (long) xp * 100L / Math.max(1, nextXp));
-        String health = String.format(Locale.ROOT, "%.0f/%.0f", player.getHealth(), player.getMaxHealth());
+        String health = player.getHealth() + "/" + player.getMaxHealth();
         int online = getServer().getOnlinePlayers().size();
         String serverTime = java.time.LocalTime.now().format(
                 java.time.format.DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT));

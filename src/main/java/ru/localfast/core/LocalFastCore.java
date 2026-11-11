@@ -121,6 +121,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         getServer().getPluginManager().registerEvents(this, this);
         saveDefaultConfig();
         if (!getConfig().exists("operator.uuid")) getConfig().set("operator.uuid", "");
+        if (!getConfig().exists("welcome.message")) getConfig().set("welcome.message", "");
         if (!getConfig().exists("spawn-world")) getConfig().set("spawn-world", "spawn");
         if (!getConfig().exists("main-world")) getConfig().set("main-world", "");
         if (!getConfig().exists("rtp-min-radius")) getConfig().set("rtp-min-radius", 500);
@@ -1578,6 +1579,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private boolean handleOperatorCommand(CommandSender sender, String[] args) {
         if (args.length > 0 && args[0].equalsIgnoreCase("setoperator")) {
             if (sender instanceof Player) { sender.sendMessage("§cПервое назначение оператора выполняется только из консоли."); return true; }
+            String configuredOperator = getConfig().getString("operator.uuid", "");
+            if (configuredOperator != null && !configuredOperator.trim().isEmpty()) {
+                sender.sendMessage("§cОператор уже назначен. Для смены измени operator.uuid в config.yml вручную.");
+                return true;
+            }
             if (args.length != 2) { sender.sendMessage("§e/lfadmin setoperator <игрок>"); return true; }
             Player target = getServer().getPlayer(args[1]); if (target == null) { sender.sendMessage("§cИгрок должен быть онлайн."); return true; }
             getConfig().set("operator.uuid", target.getUniqueId().toString()); saveConfig(); refreshStaffNameTag(target); staffLog("CONSOLE", "setoperator", target.getName(), target.getUniqueId().toString());
@@ -1595,9 +1601,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
             Player target = getServer().getPlayer(args[2]); if (target == null) { sender.sendMessage("§cИгрок должен быть онлайн."); return true; }
             String path = "staff." + target.getUniqueId();
             if (args[1].equalsIgnoreCase("remove")) staffData.remove(path);
-            else if (args[1].equalsIgnoreCase("add") && args.length == 4 && (args[3].equalsIgnoreCase("admin") || args[3].equalsIgnoreCase("moderator"))) staffData.set(path, args[3].toLowerCase(Locale.ROOT));
-            else { sender.sendMessage("§eУкажи add|remove и роль admin|moderator."); return true; }
-            staffData.save(); staffLog(((Player)sender).getName(), "staff-" + args[1], target.getName(), args.length == 4 ? args[3] : ""); sender.sendMessage("§aРоль обновлена."); return true;
+            else if (args[1].equalsIgnoreCase("add") && args.length == 4 && Arrays.asList(STAFF_ROLES).contains(args[3].toLowerCase(Locale.ROOT))) staffData.set(path, args[3].toLowerCase(Locale.ROOT));
+            else { sender.sendMessage("§eУкажи add|remove и роль: ml_helper|helper|senior_helper|junior_moderator|moderator|senior_moderator|admin."); return true; }
+            staffData.save(); refreshStaffNameTag(target); staffLog(((Player)sender).getName(), "staff-" + args[1], target.getName(), args.length == 4 ? args[3] : ""); sender.sendMessage("§aРоль обновлена."); return true;
         }
         if (args[0].equalsIgnoreCase("money")) {
             if (args.length < 3) { sender.sendMessage("§e/lfadmin money <give|take|set|reset> <игрок> [сумма]"); return true; }

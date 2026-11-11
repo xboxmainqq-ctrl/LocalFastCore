@@ -11,6 +11,15 @@ import cn.nukkit.event.entity.EntityDamageByEntityEvent;
 import cn.nukkit.event.entity.EntityDamageEvent;
 import cn.nukkit.event.player.PlayerRespawnEvent;
 import cn.nukkit.event.player.PlayerJoinEvent;
+import cn.nukkit.event.player.PlayerQuitEvent;
+import cn.nukkit.network.protocol.types.DisplaySlot;
+import cn.nukkit.network.protocol.types.SortOrder;
+import cn.nukkit.scoreboard.scoreboard.IScoreboard;
+import cn.nukkit.scoreboard.scoreboard.Scoreboard;
+
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import cn.nukkit.plugin.PluginBase;
 import cn.nukkit.utils.Config;
 
@@ -31,6 +40,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private static final String[] STATS = {"strength", "health", "agility", "intelligence"};
 
     private Config players;
+    private final Map<String, IScoreboard> sidebars = new HashMap<>();
 
     @Override
     public void onEnable() {
@@ -41,7 +51,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
         players = new Config(new File(getDataFolder(), "players.yml"), Config.YAML);
         getServer().getPluginManager().registerEvents(this, this);
-        getLogger().info("LocalFastCore 0.7.0 включён. RPG, характеристики, охотничьи и ежедневные задания готовы.");
+        getLogger().info("LocalFastCore 0.8.0 включён. RPG, характеристики, скорборд и задания готовы.");
     }
 
     private String playerKey(Player player) {
@@ -64,6 +74,42 @@ public final class LocalFastCore extends PluginBase implements Listener {
         players.set(playerKey(player) + "." + field, value);
     }
 
+
+    private void updateSidebar(Player player) {
+        String key = playerKey(player);
+        IScoreboard scoreboard = sidebars.get(key);
+        if (scoreboard == null) {
+            String objective = "localfast_" + key.replaceAll("[^a-z0-9_]", "_");
+            scoreboard = new Scoreboard(objective, "§6§lLOCALFAST", "dummy", SortOrder.DESCENDING);
+            sidebars.put(key, scoreboard);
+        }
+
+        int level = get(player, "level", 1);
+        int xp = get(player, "xp", 0);
+        int nextXp = xpForNextLevel(level);
+        scoreboard.setLines(Arrays.asList(
+                "§7" + player.getName(),
+                "§fУровень: §e" + level + "§7/§e" + MAX_LEVEL,
+                "§fОпыт: §a" + xp + "§7/§a" + nextXp,
+                "§fОчки: §b" + get(player, "points", 0),
+                "§8§m----------------",
+                "§cСила: §f" + get(player, "strength", 0),
+                "§cЗдоровье: §f" + get(player, "health", 0),
+                "§aЛовкость: §f" + get(player, "agility", 0),
+                "§bИнтеллект: §f" + get(player, "intelligence", 0),
+                "§8play.localfast"
+        ));
+        if (!scoreboard.containViewer(player, DisplaySlot.SIDEBAR)) {
+            scoreboard.addViewer(player, DisplaySlot.SIDEBAR);
+        }
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        String key = playerKey(event.getPlayer());
+        IScoreboard scoreboard = sidebars.remove(key);
+        if (scoreboard != null) scoreboard.removeViewer(event.getPlayer(), DisplaySlot.SIDEBAR);
+    }
 
     /**
      * Recalculate bonuses from saved stats using absolute values.
@@ -137,6 +183,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             p.sendMessage("§a[LocalFast] Награда за первый вход сегодня: +25 XP!");
         }
         recalculateStats(p);
+        updateSidebar(p);
     }
     private void showDaily(Player p) {
         refreshDaily(p); String k=playerKey(p);
@@ -184,6 +231,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         set(player, "xp", (int) totalXp);
         set(player, "points", points);
         players.save();
+        updateSidebar(player);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -372,6 +420,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             set(player, "points", points - amount);
             players.save();
             recalculateStats(player);
+            updateSidebar(player);
             sender.sendMessage("§a[LocalFast] Характеристика " + stat + " увеличена на " + amount + ".");
             return true;
         }

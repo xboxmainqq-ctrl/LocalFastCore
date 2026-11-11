@@ -1442,6 +1442,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (staffRank(role) >= 7) {
             form.addButton(new ElementButton("§aFly"));
             form.addButton(new ElementButton("§cVanish"));
+            form.addButton(new ElementButton("§6Управление должностями"));
         }
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !staff.isOnline()) return;
@@ -1468,6 +1469,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 if (staffRank(role) >= 7) {
                     if (utility == cursor) { toggleFly(staff); return; }
                     if (utility == cursor + 1) { toggleVanish(staff); return; }
+                    if (utility == cursor + 2) { openAdminStaffAssignMenu(staff); return; }
                 }
             }
         }));
@@ -1701,6 +1703,74 @@ public final class LocalFastCore extends PluginBase implements Listener {
             else if (id == 9) openOperatorSelfRankMenu(operator);
         }));
         operator.showFormWindow(form);
+    }
+
+    private void openAdminStaffAssignMenu(Player admin) {
+        String adminRole = staffRole(admin);
+        if (staffRank(adminRole) < 7) {
+            admin.sendMessage("§cУправление должностями доступно только администратору и оператору.");
+            return;
+        }
+        List<Player> candidates = new ArrayList<>(getServer().getOnlinePlayers().values());
+        candidates.removeIf(target -> target.getUniqueId().equals(admin.getUniqueId())
+                || staffRank(staffRole(target)) >= staffRank(adminRole));
+        if (candidates.isEmpty()) {
+            admin.sendMessage("§7Нет сотрудников или игроков, которым можно изменить должность.");
+            return;
+        }
+        FormWindowSimple form = new FormWindowSimple("§6Управление должностями",
+                "§7Выбери игрока. Администратор может назначать должности до модера включительно.");
+        for (Player target : candidates) {
+            String current = staffRole(target);
+            form.addButton(new ElementButton("§f" + target.getName() + "\n" + staffRoleColor(current) + staffRoleLabel(current)));
+        }
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !admin.isOnline()) return;
+            int index = form.getResponse().getClickedButtonId();
+            if (index < 0 || index >= candidates.size()) return;
+            Player target = candidates.get(index);
+            if (!target.isOnline() || staffRank(staffRole(target)) >= staffRank(staffRole(admin))) {
+                admin.sendMessage("§cИгрок уже имеет равную или более высокую должность.");
+                return;
+            }
+            openAdminRoleSelectMenu(admin, target);
+        }));
+        admin.showFormWindow(form);
+    }
+
+    private void openAdminRoleSelectMenu(Player admin, Player target) {
+        boolean operator = staffRole(admin).equals("operator");
+        int maxRank = operator ? STAFF_ROLES.length : 5;
+        FormWindowSimple form = new FormWindowSimple("§6Должность: " + target.getName(),
+                "§fИгрок: §e" + target.getName() + "\n§7Выбери должность. Администратору доступны ранги до модера.");
+        for (int i = 0; i < maxRank; i++) {
+            String rank = STAFF_ROLES[i];
+            form.addButton(new ElementButton(staffRoleColor(rank) + staffRoleLabel(rank)));
+        }
+        form.addButton(new ElementButton("§7Снять должность"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !admin.isOnline() || !target.isOnline()) return;
+            if (staffRank(staffRole(target)) >= staffRank(staffRole(admin))) {
+                admin.sendMessage("§cНельзя менять должность равного или более высокого сотрудника.");
+                return;
+            }
+            int index = form.getResponse().getClickedButtonId();
+            if (index < 0 || index > maxRank) return;
+            String path = "staff." + target.getUniqueId();
+            String newRole = index < maxRank ? STAFF_ROLES[index] : "";
+            if (newRole.isEmpty()) staffData.remove(path);
+            else staffData.set(path, newRole);
+            staffData.save();
+            refreshStaffNameTag(target);
+            refreshStaffModes(target);
+            staffLog(admin.getName(), "staff-rank-menu", target.getName(),
+                    staffRoleLabel(staffRole(target)) + " -> " + (newRole.isEmpty() ? "Игрок" : staffRoleLabel(newRole)));
+            admin.sendMessage("§aДолжность обновлена: §f" + target.getName() + " §7— "
+                    + (newRole.isEmpty() ? "§7Игрок" : staffRoleColor(newRole) + staffRoleLabel(newRole)));
+            target.sendMessage("§eТвоя должность изменена: §a" + (newRole.isEmpty() ? "Игрок" : staffRoleLabel(newRole)) + "§e.");
+            openStaffMenu(admin);
+        }));
+        admin.showFormWindow(form);
     }
 
     private void openStaffTargetMenu(Player staff, String action) {

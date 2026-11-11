@@ -1,4 +1,4 @@
-# LocalFastCore 0.12.0
+# LocalFastCore 0.13.0
 # Set operator.uuid after first startup using the server console: lfadmin setoperator <online-player>
 operator:
   uuid: ""
@@ -27,6 +27,7 @@ progression:
 daily:
   kills-required: 10
   xp-reward: 100
+  money-reward: 50
 
 quests:
   kills-required: 5
@@ -37,7 +38,7 @@ quests:
     spider: 70
   # Configure each level-based quest independently.
   catalog:
-    rookie_zombies: {kills: 10, reward: 100}
+    rookie_zombies: {kills: 10, reward: 100, money: 25}
     rookie_skeletons: {kills: 5, reward: 120}
     rookie_hunt: {kills: 20, reward: 150}
     adventurer_zombies: {kills: 30, reward: 300}

@@ -1,4 +1,4 @@
-# LocalFastCore 0.9.0
+# LocalFastCore 0.9.1
 scoreboard:
   enabled: true
   title: "§6§lLOCALFAST"
@@ -10,6 +10,10 @@ progression:
   max-stat: 1000
   mob-kill-xp: 10
   login-reward-xp: 25
+
+daily:
+  kills-required: 10
+  xp-reward: 100
 
 intelligence:
   # Each N intelligence points grants the configured XP percentage bonus.

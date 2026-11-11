@@ -1914,7 +1914,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 : "§7Строитель остановлен";
         FormWindowSimple form = new FormWindowSimple("§6Строитель замка",
                 "§fМир: §b" + worldName + "\n" + centerText + "\n" + progress
-                        + "\n§7Полноценный RPG-спавн: замок, площадь, фонтан, рынок, сады и башни (около 140×140).");
+                        + "\n§7Полный RPG-спавн 1000×1000: замок, районы, дороги, рынок, парки, стены и ворота.");
         form.addButton(new ElementButton("§aВыбрать центр здесь"));
         form.addButton(new ElementButton("§bПроверить площадку"));
         form.addButton(new ElementButton("§6Начать строительство"));
@@ -1955,8 +1955,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     }
 
     /**
-     * Full fantasy RPG lobby: paved arrival square, fountain, keep, curtain walls,
-     * gatehouse, corner towers, market houses, gardens, trees and lanterns.
+     * Full fantasy RPG spawn core; extended below into a 1000 x 1000 playable hub.
      * Coordinates are relative to the operator-selected center in the flat spawn.
      */
     private List<CastleBlock> createCastlePlan(int cx, int baseY, int cz) {
@@ -2107,7 +2106,196 @@ public final class LocalFastCore extends PluginBase implements Listener {
             addCastleBlock(blocks,cx+x,baseY+6,cz+z,89);
         }
 
+
+        // Expand the lobby into a complete 1000 x 1000 playable spawn.
+        addSpawnRoadNetwork(blocks, cx, baseY, cz);
+        addSpawnPerimeter(blocks, cx, baseY, cz);
+        addSpawnDistricts(blocks, cx, baseY, cz);
+        addSpawnLandscaping(blocks, cx, baseY, cz);
+
         return new ArrayList<>(blocks.values());
+    }
+
+    private void addSpawnRoadNetwork(Map<String, CastleBlock> blocks, int cx, int y, int cz) {
+        // Main cardinal avenues, exactly within the 1000 x 1000 footprint.
+        for (int p=-500; p<500; p++) {
+            for (int w=-8; w<=8; w++) {
+                int path = (Math.abs(w)==8) ? 24 : (((p/6 + w/3)&1)==0 ? 98 : 4);
+                addCastleBlock(blocks,cx+w,y,cz+p,path);
+                addCastleBlock(blocks,cx+p,y,cz+w,path);
+            }
+            if (p%24==0) {
+                addSpawnLamp(blocks,cx-12,y,cz+p);
+                addSpawnLamp(blocks,cx+12,y,cz+p);
+                addSpawnLamp(blocks,cx+p,y,cz-12);
+                addSpawnLamp(blocks,cx+p,y,cz+12);
+            }
+        }
+        // Two rectangular ring boulevards connect all four districts.
+        for (int r : new int[]{220, 430}) {
+            for (int p=-r; p<=r; p++) {
+                for (int w=-6; w<=6; w++) {
+                    int id = Math.abs(w)==6 ? 24 : (((p/5+w/3)&1)==0 ? 98 : 4);
+                    addCastleBlock(blocks,cx+r+w,y,cz+p,id);
+                    addCastleBlock(blocks,cx-r+w,y,cz+p,id);
+                    addCastleBlock(blocks,cx+p,y,cz+r+w,id);
+                    addCastleBlock(blocks,cx+p,y,cz-r+w,id);
+                }
+            }
+        }
+        // Radial connectors from ring road to the outer gate districts.
+        for (int sign : new int[]{-1,1}) {
+            for (int p=230; p<=430; p++) for (int w=-5; w<=5; w++) {
+                int id=Math.abs(w)==5?24:98;
+                addCastleBlock(blocks,cx+sign*p,y,cz+w,id);
+                addCastleBlock(blocks,cx+w,y,cz+sign*p,id);
+            }
+        }
+    }
+
+    private void addSpawnPerimeter(Map<String, CastleBlock> blocks, int cx, int y, int cz) {
+        // Continuous outer boundary with four wide player entrances.
+        for (int p=-500; p<500; p++) {
+            boolean gate = Math.abs(p)<18;
+            if (!gate) {
+                for (int h=1;h<=8;h++) {
+                    addCastleBlock(blocks,cx-500,y+h,cz+p,98);
+                    addCastleBlock(blocks,cx+499,y+h,cz+p,98);
+                    addCastleBlock(blocks,cx+p,y+h,cz-500,98);
+                    addCastleBlock(blocks,cx+p,y+h,cz+499,98);
+                }
+                if ((p&1)==0) {
+                    addCastleBlock(blocks,cx-500,y+9,cz+p,45);
+                    addCastleBlock(blocks,cx+499,y+9,cz+p,45);
+                    addCastleBlock(blocks,cx+p,y+9,cz-500,45);
+                    addCastleBlock(blocks,cx+p,y+9,cz+499,45);
+                }
+            }
+        }
+        // Four corner watchtowers.
+        for (int sx : new int[]{-1,1}) for (int sz : new int[]{-1,1}) {
+            int tx=sx*478, tz=sz*478;
+            for (int h=1;h<=22;h++) for (int dx=-7;dx<=7;dx++) for (int dz=-7;dz<=7;dz++) {
+                int d=dx*dx+dz*dz;
+                if (d>=36 && d<=49) addCastleBlock(blocks,cx+tx+dx,y+h,cz+tz+dz,98);
+            }
+            for (int dx=-8;dx<=8;dx++) for (int dz=-8;dz<=8;dz++)
+                if (dx*dx+dz*dz>=49 && dx*dx+dz*dz<=64)
+                    addCastleBlock(blocks,cx+tx+dx,y+23,cz+tz+dz,45);
+            for (int layer=0;layer<6;layer++) {
+                int radius=6-layer;
+                for (int dx=-radius;dx<=radius;dx++) for (int dz=-radius;dz<=radius;dz++)
+                    if (Math.abs(dx)==radius || Math.abs(dz)==radius)
+                        addCastleBlock(blocks,cx+tx+dx,y+24+layer,cz+tz+dz,45);
+            }
+            addCastleBlock(blocks,cx+tx,y+30,cz+tz,89);
+        }
+        // Monumental gate arches at the four cardinal entrances.
+        for (int sign : new int[]{-1,1}) {
+            for (int h=1;h<=14;h++) {
+                addCastleBlock(blocks,cx+sign*500,y+h,cz-19,45);
+                addCastleBlock(blocks,cx+sign*500,y+h,cz+19,45);
+                addCastleBlock(blocks,cx-19,y+h,cz+sign*500,45);
+                addCastleBlock(blocks,cx+19,y+h,cz+sign*500,45);
+            }
+            for (int p=-19;p<=19;p++) {
+                addCastleBlock(blocks,cx+sign*500,y+15,cz+p,98);
+                addCastleBlock(blocks,cx+p,y+15,cz+sign*500,98);
+            }
+        }
+    }
+
+    private void addSpawnDistricts(Map<String, CastleBlock> blocks, int cx, int y, int cz) {
+        // Four playable themed quarters. Buildings are separated by paths and plazas.
+        int[][] districts = {
+            {-315,-315,0}, {315,-315,1}, {-315,315,2}, {315,315,3}
+        };
+        for (int[] d : districts) {
+            int dx=d[0], dz=d[1], theme=d[2];
+            // District plaza with a garden island and a small monument.
+            for (int x=-48;x<=48;x++) for (int z=-48;z<=48;z++) {
+                if (Math.abs(x)==48 || Math.abs(z)==48)
+                    addCastleBlock(blocks,cx+dx+x,y,cz+dz+z,24);
+                if ((Math.abs(x)<=2 || Math.abs(z)<=2) && Math.abs(x)<47 && Math.abs(z)<47)
+                    addCastleBlock(blocks,cx+dx+x,y,cz+dz+z,98);
+            }
+            for (int x=-12;x<=12;x++) for (int z=-12;z<=12;z++) {
+                if (x*x+z*z<=144) addCastleBlock(blocks,cx+dx+x,y+1,cz+dz+z,2);
+                if (x*x+z*z<=64) addCastleBlock(blocks,cx+dx+x,y+2,cz+dz+z,38);
+            }
+            addCastleBlock(blocks,cx+dx,y+3,cz+dz,89);
+
+            // Eight distinct service buildings around each district square.
+            addSpawnBuilding(blocks,cx+dx-29,y,cz+dz-29,theme,19,17);
+            addSpawnBuilding(blocks,cx+dx+29,y,cz+dz-29,theme,19,17);
+            addSpawnBuilding(blocks,cx+dx-29,y,cz+dz+29,theme,19,17);
+            addSpawnBuilding(blocks,cx+dx+29,y,cz+dz+29,theme,19,17);
+            addSpawnBuilding(blocks,cx+dx,y,cz+dz-67,theme,23,19);
+            addSpawnBuilding(blocks,cx+dx,y,cz+dz+67,theme,23,19);
+            addSpawnBuilding(blocks,cx+dx-67,y,cz+dz,theme,19,23);
+            addSpawnBuilding(blocks,cx+dx+67,y,cz+dz,theme,19,23);
+
+            // Trees and flower beds on the outer corners of each district.
+            for (int sx : new int[]{-1,1}) for (int sz : new int[]{-1,1}) {
+                for (int n=0;n<7;n++) {
+                    int tx=dx+sx*(82+n*13), tz=dz+sz*(82+((n*17)%7)*13);
+                    addSpawnTree(blocks,cx+tx,y,cz+tz,(n+theme)%3);
+                }
+            }
+        }
+    }
+
+    private void addSpawnBuilding(Map<String, CastleBlock> blocks, int x, int y, int z,
+                                  int theme, int halfW, int halfD) {
+        int wall = theme==1 ? 45 : (theme==2 ? 24 : 98);
+        int roof = theme==1 ? 5 : (theme==2 ? 45 : 98);
+        // Foundation, walkable interior floor and perimeter walls with open doorway.
+        for (int dx=-halfW;dx<=halfW;dx++) for (int dz=-halfD;dz<=halfD;dz++) {
+            addCastleBlock(blocks,x+dx,y, z+dz,5);
+            boolean edge=Math.abs(dx)==halfW || Math.abs(dz)==halfD;
+            if (edge) for (int h=1;h<=8;h++) {
+                boolean door = dz==halfD && Math.abs(dx)<=2 && h<=4;
+                boolean window = h>=4 && h<=6 && ((dx%6==0 && Math.abs(dz)==halfD)
+                        || (dz%6==0 && Math.abs(dx)==halfW));
+                if (!door) addCastleBlock(blocks,x+dx,y+h,z+dz,window?20:wall);
+            }
+        }
+        // Layered pitched roof silhouette.
+        for (int layer=0;layer<5;layer++) {
+            int rx=halfW-layer*2, rz=halfD-layer*2;
+            if (rx<1 || rz<1) break;
+            for (int dx=-rx;dx<=rx;dx++) for (int dz=-rz;dz<=rz;dz++)
+                if (Math.abs(dx)==rx || Math.abs(dz)==rz)
+                    addCastleBlock(blocks,x+dx,y+9+layer,z+dz,roof);
+        }
+        for (int dx=-2;dx<=2;dx++) addCastleBlock(blocks,x+dx,y+14,z,roof);
+        // Lit entrance and signpost.
+        addCastleBlock(blocks,x,y+5,z+halfD,89);
+        addCastleBlock(blocks,x,y+1,z+halfD+2,85);
+        addCastleBlock(blocks,x,y+2,z+halfD+2,85);
+    }
+
+    private void addSpawnTree(Map<String, CastleBlock> blocks, int x, int y, int z, int type) {
+        int wood = type==1 ? 162 : 17;
+        int leaves = type==1 ? 161 : 18;
+        int height = type==2 ? 7 : 5;
+        for (int h=1;h<=height;h++) addCastleBlock(blocks,x,y+h,z,wood);
+        for (int dy=-2;dy<=2;dy++) {
+            int radius=dy==2?1: (dy==-2?1:2);
+            for (int dx=-radius;dx<=radius;dx++) for (int dz=-radius;dz<=radius;dz++)
+                if (Math.abs(dx)+Math.abs(dz)<=radius+1)
+                    addCastleBlock(blocks,x+dx,y+height-1+dy,z+dz,leaves);
+        }
+    }
+
+    private void addSpawnLamp(Map<String, CastleBlock> blocks, int x, int y, int z) {
+        addCastleBlock(blocks,x,y+1,z,98);
+        for (int h=2;h<=5;h++) addCastleBlock(blocks,x,y+h,z,85);
+        addCastleBlock(blocks,x,y+6,z,89);
+        addCastleBlock(blocks,x+1,y+6,z,89);
+        addCastleBlock(blocks,x-1,y+6,z,89);
+        addCastleBlock(blocks,x,y+6,z+1,89);
+        addCastleBlock(blocks,x,y+6,z-1,89);
     }
 
     private void addCastleBlock(Map<String, CastleBlock> blocks, int x, int y, int z, int id) {

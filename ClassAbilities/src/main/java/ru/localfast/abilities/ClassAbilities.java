@@ -154,10 +154,31 @@ public final class ClassAbilities extends PluginBase implements Listener {
         return true;
     }
 
+    private String levelProgress(Player player) {
+        if (playerDataFile == null || !playerDataFile.isFile()) return "§7Уровень: данные пока недоступны";
+        try {
+            Config profiles = new Config(playerDataFile, Config.YAML);
+            String key = "uuid_" + player.getUniqueId().toString().toLowerCase(Locale.ROOT);
+            int level = Math.max(1, Math.min(100, profiles.getInt(key + ".level", 1)));
+            int xp = Math.max(0, profiles.getInt(key + ".xp", 0));
+            if (level >= 100) return "§fУровень: §e100§7/§e100 §6МАКСИМУМ";
+            int required = 100 + (level - 1) * 50;
+            int percent = (int) Math.min(100L, (long) xp * 100L / Math.max(1, required));
+            int filled = percent / 10;
+            return "§fУровень: §e" + level + "§7/§e100"
+                    + "\n§fОпыт: §a" + xp + "§7/§a" + required
+                    + "\n§fПрогресс: §a" + "■".repeat(filled) + "§8" + "■".repeat(10 - filled)
+                    + " §e" + percent + "%";
+        } catch (RuntimeException exception) {
+            return "§7Уровень: не удалось прочитать данные";
+        }
+    }
+
     private void openMenu(Player player) {
         String current = playerClass(player);
         FormWindowSimple form = new FormWindowSimple("§6§lКлассы и способности",
                 "§fТвой класс: " + className(current) + "\n"
+                        + levelProgress(player) + "\n\n"
                         + stats(current) + "\n\n§fСуперспособность:\n" + ability(current)
                         + "\n\n§8Перезарядка: 35 секунд");
         form.addButton(new ElementButton("§cВоин\n§7Удар титана"));

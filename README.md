@@ -1,4 +1,4 @@
-# LocalFastCore 0.10.0
+# LocalFastCore 0.11.0
 
 RPG progression plugin for Nukkit-MOT 1.26.60-R1 (Java 17).
 
@@ -10,6 +10,7 @@ RPG progression plugin for Nukkit-MOT 1.26.60-R1 (Java 17).
 - Level-based quest GUI with 15 combat quests across five level brackets.
 - Multiple accepted quests progress simultaneously.
 - Quest progress, completion and claimed rewards persist in `players.yml`.
+- UUID-based player profiles with additive profile schema versioning.
 
 ## Commands
 
@@ -44,7 +45,7 @@ Players can browse any bracket, but can only accept quests while their level is 
 
 ## Player data saving
 
-Player changes are marked dirty and batched into a single `players.yml` write by the main-thread autosave task. The default interval is 60 seconds and can be changed with `autosave.interval-seconds` (5–3600 seconds). Pending changes are also flushed when a player quits and when the plugin disables. Nukkit `Config` access is kept on the server thread; failed saves are logged and remain pending for the next retry.
+Player changes are marked dirty by the profile setters and batched into a single `players.yml` write by the main-thread autosave task. Each profile carries a `data_version` field so future upgrades can migrate data incrementally without resetting existing progress. The default interval is 60 seconds and can be changed with `autosave.interval-seconds` (5–3600 seconds). Pending changes are also flushed when a player quits and when the plugin disables. Nukkit `Config` access is kept on the server thread; failed saves are logged and remain pending for the next retry.
 
 ## Configuration
 
@@ -105,3 +106,10 @@ The plugin registers `/spawn`, `/setspawn` and `/rtp`. `/setspawn` requires the 
 ## Release checks
 
 The automated Maven build checks compilation and packaging only. Before production, test spawn-world loading, `/setspawn` persistence after restart, RTP at the world border and in different biomes, quest GUI navigation/claim retry, and profile migration on a staging copy. Back up `plugins/LocalFastCore/` and player data before upgrading. No command in this release automatically wipes player profiles; do not run `/lfadmin reset` unless an intentional administrative reset is required.
+
+
+## 0.11.0 development notes
+
+This development version keeps the existing UUID profile layout and adds an additive `data_version: 1` marker when a player profile is initialized. Existing level, XP, stats, daily tasks, and quest fields are not reset or rewritten. Integer and boolean profile setters now mark the data store dirty themselves, reducing the chance that a future feature forgets to schedule persistence. The existing main-thread autosave and quit/disable flush behavior remains in place.
+
+No `players.yml` reset or destructive migration is part of this update. Back up `plugins/LocalFastCore/` before testing any development build. Automated CI validates compilation and packaging; in-game persistence still needs a server test.

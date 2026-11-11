@@ -1,6 +1,6 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.9.3"
+version: "0.10.0"
 api: ["1.0.0"]
 author: LocalFast
 description: LOCALFAST RPG progression, stats effects, level-based quest GUI and multi-quest progress

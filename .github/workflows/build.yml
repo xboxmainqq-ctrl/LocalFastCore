@@ -28,6 +28,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: localfast-core-${{ github.sha }}
-          path: target/localfast-core-0.9.1.jar
+          path: target/localfast-core-*.jar
           if-no-files-found: error
           retention-days: 14

@@ -1391,7 +1391,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void openWarpMenu(Player staff) {
         FormWindowSimple form = new FormWindowSimple("§6LocalFast §8| §lWarp", "§7Выбери точку для телепортации:");
-        List<String> names = new ArrayList<>(getConfig().getSection("warps").getKeys(false));
+        List<String> names = new ArrayList<>();
+        if (getConfig().exists("warps")) names.addAll(getConfig().getSection("warps").getKeys(false));
         if (names.isEmpty()) {
             form.addButton(new ElementButton("§eСпавн"));
             form.addHandler(FormResponseHandler.withoutPlayer(ignored -> { if (!form.wasClosed() && form.getResponse() != null && form.getResponse().getClickedButtonId() == 0) teleportToSpawn(staff); }));

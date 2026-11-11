@@ -152,8 +152,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
         String worldName = getConfig().getString("spawn-world", DEFAULT_SPAWN_WORLD);
         Level world = loadConfiguredWorld("spawn-world", DEFAULT_SPAWN_WORLD);
         if (world == null) {
-            player.sendMessage("§cМир спавна '" + worldName + "' не найден. Создай/загрузи его в папке worlds.");
-            return;
+            // Keep /spawn usable on servers that have not installed a separate lobby world yet.
+            world = getServer().getDefaultLevel();
+            if (world == null) {
+                player.sendMessage("§cМир спавна '" + worldName + "' не найден, основной мир тоже недоступен.");
+                return;
+            }
+            player.sendMessage("§eМир '" + worldName + "' не найден. Использую основной мир; задай точку через /setspawn.");
         }
         if (getConfig().exists("spawn-x") && getConfig().exists("spawn-y") && getConfig().exists("spawn-z")) {
             Position target = new Position(getConfig().getDouble("spawn-x"), getConfig().getDouble("spawn-y"),

@@ -211,8 +211,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     /**
      * Recalculate all derived effects from absolute saved attributes.
-     * Health upgrades increase current HP by the same amount as max HP,
-     * preserving the player's missing-health amount.
+     * Increasing maximum HP does not heal the player: current HP is kept
+     * at its existing absolute value and only clamped if it exceeds the new maximum.
      */
     private void recalculateStats(Player player) {
         int healthBonus = attributeBonus(player, "health",

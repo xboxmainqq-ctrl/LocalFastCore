@@ -318,6 +318,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
     }
 
     @EventHandler
+    public void onPlayerChat(PlayerChatEvent event) {
+        Player player = event.getPlayer(); String path = "punishments.mutes." + player.getUniqueId();
+        long expires = staffData.getLong(path + ".expires", 0L);
+        if (expires == -1L || expires > System.currentTimeMillis()) { event.setCancelled(true); player.sendMessage("§cЧат закрыт: у тебя активен мут."); }
+        else if (expires != 0L) { staffData.remove(path); staffData.save(); }
+    }
+    @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         Player quittingPlayer = event.getPlayer();
         UUID quittingId = quittingPlayer.getUniqueId();
@@ -443,7 +450,15 @@ public final class LocalFastCore extends PluginBase implements Listener {
     }
     @EventHandler
     public void onJoin(PlayerJoinEvent e) {
-        Player p=e.getPlayer(); initialize(p); refreshDaily(p); String k=playerKey(p); String d=today();
+        Player p=e.getPlayer();
+        String banPath = "punishments.bans." + p.getUniqueId();
+        long banExpires = staffData.getLong(banPath + ".expires", 0L);
+        if (banExpires == -1L || banExpires > System.currentTimeMillis()) {
+            String reason = staffData.getString(banPath + ".reason", "Нарушение правил");
+            getServer().getScheduler().scheduleDelayedTask(this, () -> { if (p.isOnline()) p.kick("§cБан: " + reason, false); }, 1);
+            return;
+        } else if (banExpires != 0L) { staffData.remove(banPath); staffData.save(); }
+        initialize(p); refreshDaily(p); String k=playerKey(p); String d=today();
         if (!players.getString(k+".login_reward_date","").equals(d)) {
             players.set(k+".login_reward_date",d); markPlayersDirty(); giveXp(p, Math.max(0, getConfig().getInt("progression.login-reward-xp", LOGIN_XP_REWARD)));
             p.sendMessage("§a[LocalFast] Награда за первый вход сегодня: +" + Math.max(0, getConfig().getInt("progression.login-reward-xp", LOGIN_XP_REWARD)) + " XP!");
@@ -1394,95 +1409,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
             return true;
         }
 
-        if (name.equals("lfadmin")) {
-            if (!sender.hasPermission("localfast.admin")) {
-                sender.sendMessage("§cНедостаточно прав.");
-                return true;
-            }
-            if (args.length == 0) {
-                sender.sendMessage("§e/lfadmin xp <player> <amount>");
-                sender.sendMessage("§e/lfadmin reset <player> <level|stats|quests|all>");
-                return true;
-            }
-
-            if (args[0].equalsIgnoreCase("reset")) {
-                if (args.length != 3) {
-                    sender.sendMessage("§e/lfadmin reset <player> <level|stats|quests|all>");
-                    return true;
-                }
-                Player target = getServer().getPlayer(args[1]);
-                if (target == null) {
-                    sender.sendMessage("§cИгрок не найден или не в сети.");
-                    return true;
-                }
-                String mode = args[2].toLowerCase(Locale.ROOT);
-                if (!Arrays.asList("level", "stats", "quests", "all").contains(mode)) {
-                    sender.sendMessage("§cВыбери: level, stats, quests или all.");
-                    return true;
-                }
-
-                String key = playerKey(target);
-                if (mode.equals("level") || mode.equals("all")) {
-                    set(target, "level", 1);
-                    set(target, "xp", 0);
-                    set(target, "points", 0);
-                }
-                if (mode.equals("stats") || mode.equals("all")) {
-                    for (String stat : STATS) set(target, stat, 0);
-                }
-                if (mode.equals("quests") || mode.equals("all")) {
-                    set(target, "quest_kills", 0);
-                    setBoolean(target, "quest_active", false);
-                    setBoolean(target, "quest_complete", false);
-                    players.set(key + ".quest_type", "any");
-                    set(target, "daily_kills", 0);
-                    setBoolean(target, "daily_active", false);
-                    setBoolean(target, "daily_complete", false);
-                    setBoolean(target, "daily_claimed", false);
-                    for (QuestDefinition quest : questCatalog()) {
-                        String questPath = key + ".quests." + quest.id;
-                        players.set(questPath + ".kills", 0);
-                        players.set(questPath + ".active", false);
-                        players.set(questPath + ".complete", false);
-                        players.set(questPath + ".claimed", false);
-                    }
-                }
-                markPlayersDirty();
-                if (!flushPlayers()) {
-                    sender.sendMessage("§cСброс применён в памяти, но players.yml не удалось сохранить; повторная попытка будет выполнена автоматически.");
-                }
-                recalculateStats(target);
-                updateSidebar(target);
-                String description = mode.equals("level") ? "уровень, XP и свободные очки"
-                        : mode.equals("stats") ? "характеристики"
-                        : mode.equals("quests") ? "прогресс квестов и ежедневное задание"
-                        : "весь прогресс";
-                target.sendMessage("§e[LocalFast] Администратор сбросил: " + description + ".");
-                sender.sendMessage("§aДля игрока " + target.getName() + " сброшено: " + description + ".");
-                return true;
-            }
-
-            if (args.length != 3 || !args[0].equalsIgnoreCase("xp")) {
-                sender.sendMessage("§e/lfadmin xp <player> <amount>");
-                sender.sendMessage("§e/lfadmin reset <player> <level|stats|quests|all>");
-                return true;
-            }
-            Player target = getServer().getPlayer(args[1]);
-            if (target == null) {
-                sender.sendMessage("§cИгрок не найден или не в сети.");
-                return true;
-            }
-            try {
-                int amount = Integer.parseInt(args[2]);
-                if (amount < 1 || amount > MAX_XP_GRANT) throw new NumberFormatException();
-                giveXp(target, amount);
-                target.sendMessage("§a[LocalFast] Начислено опыта: " + amount);
-                sender.sendMessage("§aИгроку " + target.getName() + " начислено " + amount + " опыта.");
-            } catch (NumberFormatException exception) {
-                sender.sendMessage("§cУкажи целое число от 1 до " + MAX_XP_GRANT + ".");
-            }
-            return true;
-        }
+        if (name.equals("lfadmin")) return handleOperatorCommand(sender, args);
+        if (name.equals("staff")) return handleStaffCommand(sender, args);
         return false;
     }
 

@@ -1,4 +1,4 @@
-# LocalFastCore 0.9.2
+# LocalFastCore 0.9.3
 
 RPG progression plugin for Nukkit-MOT 1.26.60-R1 (Java 17).
 
@@ -7,7 +7,7 @@ RPG progression plugin for Nukkit-MOT 1.26.60-R1 (Java 17).
 - Four stats: strength (bonus melee damage), health (maximum health), agility (movement speed), intelligence (bonus XP).
 - Sidebar scoreboard with configurable refresh interval.
 - GUI stat allocation via `/lfmenu`.
-- Daily login XP, mob-kill XP, daily tasks and mob-type quests.
+- Daily login XP, mob-kill XP, daily tasks and level-based quest GUI with 15 quests across five level brackets.
 - Player progress stored in `plugins/LocalFastCore/players.yml`.
 
 ## Commands
@@ -17,7 +17,7 @@ RPG progression plugin for Nukkit-MOT 1.26.60-R1 (Java 17).
 | `/stats` | Show current attributes |
 | `/lfmenu` | Open the attribute allocation menu |
 | `/addstat <stat> [amount]` | Allocate points by command |
-| `/quest` | View available or active quests |
+| `/quest` or `/quests` | Open the level-based quest GUI |
 | `/quest <mob>` (zombie, skeleton or spider) | Start a mob-specific quest |
 | `/quest claim` | Claim a completed quest |
 | `/daily` | View daily task |
@@ -47,4 +47,4 @@ The `quests` section controls the shared kill requirement and each quest reward:
 Daily task start messages now use the configured kill requirement. Quest menus, progress, completion checks and reward messages all read the same configuration values. Mob-kill XP messages also show the intelligence bonus percentage when it applies.
 
 ## Upgrade notes
-Version 0.9.2 preserves the existing `players.yml` format; no player-data reset or migration is required. Existing installations receive the new quest defaults when the plugin creates a fresh config, but an existing `config.yml` is not overwritten. To use the new `quests` settings on an existing server, merge the section above into the existing config. Back up the plugin folder before upgrading and test the build on a staging server before replacing a production JAR.
+Version 0.9.3 preserves the existing `players.yml` format; no player-data reset or migration is required. Existing installations receive the new quest defaults when the plugin creates a fresh config, but an existing `config.yml` is not overwritten. To use the new `quests` settings on an existing server, merge the section above into the existing config. Back up the plugin folder before upgrading and test the build on a staging server before replacing a production JAR.

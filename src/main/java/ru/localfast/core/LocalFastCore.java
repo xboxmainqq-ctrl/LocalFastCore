@@ -151,6 +151,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private void teleportToSpawn(Player player) {
         String worldName = getConfig().getString("spawn-world", DEFAULT_SPAWN_WORLD);
         Level world = loadConfiguredWorld("spawn-world", DEFAULT_SPAWN_WORLD);
+        boolean fallbackToDefault = false;
         if (world == null) {
             // Keep /spawn usable on servers that have not installed a separate lobby world yet.
             world = getServer().getDefaultLevel();
@@ -158,15 +159,20 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 player.sendMessage("§cМир спавна '" + worldName + "' не найден, основной мир тоже недоступен.");
                 return;
             }
+            fallbackToDefault = true;
             player.sendMessage("§eМир '" + worldName + "' не найден. Использую основной мир; задай точку через /setspawn.");
         }
-        if (getConfig().exists("spawn-x") && getConfig().exists("spawn-y") && getConfig().exists("spawn-z")) {
+        // Saved coordinates belong to the configured spawn world. Never reuse them
+        // after falling back to a different world.
+        if (!fallbackToDefault && getConfig().exists("spawn-x") && getConfig().exists("spawn-y") && getConfig().exists("spawn-z")) {
             Position target = new Position(getConfig().getDouble("spawn-x"), getConfig().getDouble("spawn-y"),
                     getConfig().getDouble("spawn-z"), world);
             player.teleport(target);
         } else {
             player.teleport(world.getSafeSpawn());
-            player.sendMessage("§eТочка спавна ещё не задана. Встань в нужное место и введи /setspawn.");
+            if (!fallbackToDefault) {
+                player.sendMessage("§eТочка спавна ещё не задана. Встань в нужное место и введи /setspawn.");
+            }
         }
     }
 

@@ -215,20 +215,14 @@ public final class LocalFastCore extends PluginBase implements Listener {
      * preserving the player's missing-health amount.
      */
     private void recalculateStats(Player player) {
-        float oldMaximumHealth = player.getMaxHealth();
-        float oldHealth = player.getHealth();
         int healthBonus = attributeBonus(player, "health",
                 "attributes.health.points-per-bonus", 5,
                 "attributes.health.hp-per-bonus", 1,
                 "attributes.health.max-bonus", 20, 40);
         int maximumHealth = 20 + healthBonus;
         player.setMaxHealth(maximumHealth);
-        if (maximumHealth > oldMaximumHealth && oldHealth > 0) {
-            float gainedHealth = maximumHealth - oldMaximumHealth;
-            player.setHealth(Math.min((float) maximumHealth, oldHealth + gainedHealth));
-        } else if (oldHealth > maximumHealth) {
-            player.setHealth(maximumHealth);
-        }
+        // Increasing max HP does not heal; current HP is preserved in absolute points.
+        if (player.getHealth() > maximumHealth) player.setHealth(maximumHealth);
 
         int agilityPercent = attributeBonus(player, "agility",
                 "attributes.agility.points-per-bonus", 5,

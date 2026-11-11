@@ -38,6 +38,7 @@ import java.util.concurrent.ThreadLocalRandom;
 
 public final class LocalFastCore extends PluginBase implements Listener {
     private static final int MAX_LEVEL = 100;
+    private static final int CURRENT_PLAYER_DATA_VERSION = 1;
     private static final int POINTS_PER_LEVEL = 3;
     private static final int MAX_XP_GRANT = 1_000_000;
     private static final int MOB_KILL_XP = 10;
@@ -255,6 +256,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void set(Player player, String field, int value) {
         players.set(playerKey(player) + "." + field, value);
+        markPlayersDirty();
     }
 
     private boolean getBoolean(Player player, String field, boolean fallback) {
@@ -263,6 +265,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void setBoolean(Player player, String field, boolean value) {
         players.set(playerKey(player) + "." + field, value);
+        markPlayersDirty();
     }
 
 
@@ -391,6 +394,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
         if (!players.exists(key + ".quest_complete")) {
             players.set(key + ".quest_complete", false);
+            changed = true;
+        }
+        int storedDataVersion = players.getInt(key + ".data_version", 0);
+        if (storedDataVersion < CURRENT_PLAYER_DATA_VERSION) {
+            // Additive migration only: existing RPG progress and quest fields are preserved.
+            players.set(key + ".data_version", CURRENT_PLAYER_DATA_VERSION);
             changed = true;
         }
         if (changed) markPlayersDirty();

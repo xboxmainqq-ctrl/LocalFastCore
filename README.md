@@ -94,3 +94,20 @@ Attribute effects are recalculated from saved values; they do not stack when the
 - **Intelligence:** +1% XP per 5 points, capped at +50% by default (hard ceiling +100%). Legacy intelligence.xp-bonus-per and intelligence.xp-bonus-percent values remain fallback defaults for older config files.
 
 New settings live under attributes.* in config.yml. Existing config files are not overwritten automatically; merge the attributes section from the shipped config to customize these formulas. The hard ceilings remain active even if a config value is set too high. progression.max-stat continues to limit saved attribute points independently.
+
+
+## Nukkit-MOT 1.26.60-R1 manual regression checklist
+
+Before releasing 0.10.0, test on a staging server with a backup of the plugin folder and player data:
+
+1. Open `/quests`; verify all five level brackets and the “Мои задания” button.
+2. Open every bracket, inspect a quest, and use Back from each screen. Check that no button index opens the wrong screen.
+3. Verify form descriptions show real line breaks, not the literal characters `\\n`.
+4. Close each form with Escape/close; verify no quest is accepted, claimed, or reset.
+5. Accept a quest, reopen the GUI, kill the required mobs, reopen the detail screen, and claim once. Reopen multiple stale detail windows and verify the reward is not granted again.
+6. Accept a quest at the minimum level, level up beyond that bracket, and verify the accepted quest continues progressing.
+7. Disconnect while each quest form is open; reconnect and verify progress and GUI state remain intact.
+8. Repeat daily quest start/complete/claim, including a second claim attempt and a server restart between sessions.
+9. Repeat the checks for players with migrated UUID profiles and for two players online simultaneously.
+
+Record the server version, Java version, console output, and each pass/fail result. Automated compilation does not replace this live-server checklist.

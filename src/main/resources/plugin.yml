@@ -12,6 +12,12 @@ commands:
     description: Установить точку отдельного спавна
     usage: "/setspawn"
     permission: localfast.admin
+  balance:
+    description: Показать баланс монет
+    usage: "/balance"
+  pay:
+    description: Перевести монеты игроку
+    usage: "/pay <игрок> <сумма>"
   sethome:
     description: Сохранить точку дома
     usage: "/sethome"

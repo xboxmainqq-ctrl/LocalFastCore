@@ -1293,6 +1293,42 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (args.length == 0) { openStaffMenu(actor); return true; }
         if (staffRank(role) == 0) { sender.sendMessage("§cНет доступа к /staff."); return true; }
         String action = args[0].toLowerCase(Locale.ROOT);
+        if (action.equals("promote") || action.equals("demote") || action.equals("setrank")) {
+            boolean operator = role.equals("operator");
+            if (!operator && !role.equals("admin")) { sender.sendMessage("§cПовышать и понижать персонал могут администратор и оператор."); return true; }
+            if ((action.equals("promote") || action.equals("demote")) && args.length != 2) {
+                sender.sendMessage("§e/staff " + action + " <игрок>"); return true;
+            }
+            if (action.equals("setrank") && args.length != 3) {
+                sender.sendMessage("§e/staff setrank <игрок> <ml_helper|helper|senior_helper|junior_moderator|moderator|senior_moderator|admin>"); return true;
+            }
+            Player target = getServer().getPlayer(args[1]);
+            if (target == null) { sender.sendMessage("§cИгрок должен быть онлайн."); return true; }
+            String oldRole = staffRole(target);
+            int oldRank = staffRank(oldRole);
+            if (oldRank == 8 || oldRank >= staffRank(role)) {
+                sender.sendMessage("§cНельзя менять должность сотрудника равного или более высокого ранга."); return true;
+            }
+            int newRank;
+            if (action.equals("promote")) newRank = oldRank + 1;
+            else if (action.equals("demote")) newRank = oldRank - 1;
+            else {
+                String wanted = args[2].toLowerCase(Locale.ROOT);
+                newRank = staffRank(wanted);
+                if (newRank == 0 || newRank == 8) { sender.sendMessage("§cУкажи существующую должность персонала."); return true; }
+            }
+            if (newRank < 0 || newRank > 7 || (!operator && newRank > 5)) {
+                sender.sendMessage("§cАдминистратор может назначать должности только до модера включительно. Старшие должности доступны оператору."); return true;
+            }
+            if (newRank == 0) staffData.remove("staff." + target.getUniqueId());
+            else staffData.set("staff." + target.getUniqueId(), STAFF_ROLES[newRank - 1]);
+            staffData.save();
+            String newRole = newRank == 0 ? "" : STAFF_ROLES[newRank - 1];
+            staffLog(actor.getName(), action, target.getName(), staffRoleLabel(oldRole) + " -> " + staffRoleLabel(newRole));
+            sender.sendMessage("§aДолжность " + target.getName() + ": " + staffRoleLabel(oldRole) + " -> " + staffRoleLabel(newRole) + ".");
+            target.sendMessage("§eТвоя должность изменена: §a" + staffRoleLabel(newRole) + "§e.");
+            return true;
+        }
         if (action.equals("warn")) {
             if (args.length < 3) { sender.sendMessage("§e/staff warn <игрок> <причина>"); return true; }
             Player target = getServer().getPlayer(args[1]); if (target == null) { sender.sendMessage("§cИгрок должен быть онлайн."); return true; }

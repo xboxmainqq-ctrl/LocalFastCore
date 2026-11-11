@@ -1,9 +1,9 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.13.0"
+version: "0.14.0"
 api: ["1.0.0"]
 author: LocalFast
-description: LocalFastCore 0.13.0 RPG quests, economy, operator and staff moderation systems
+description: LocalFastCore 0.14.0 RPG quests, economy, operator and staff moderation systems
 commands:
   spawn:
     description: Телепорт на отдельный спавн

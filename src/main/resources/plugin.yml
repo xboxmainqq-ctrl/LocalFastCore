@@ -15,8 +15,8 @@ commands:
     description: Потратить одно или несколько очков характеристики
     usage: "/addstat <strength|health|agility|intelligence> [количество]"
   quest:
-    description: Просмотр и выполнение заданий
-    usage: "/quest [zombie|skeleton|spider|start|claim]"
+    description: Открыть уровневое меню заданий
+    usage: "/quest"
   daily:
     description: Ежедневное задание
     usage: "/daily [start|claim]"

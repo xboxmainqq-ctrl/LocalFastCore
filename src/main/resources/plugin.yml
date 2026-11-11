@@ -1,9 +1,9 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.6.0"
+version: "0.7.0"
 api: ["1.0.0"]
 author: LocalFast
-description: RPG progression, mob kill experience and hunting quests for LocalFast Survival
+description: LOCALFAST RPG progression, stats effects, mob kill experience and quests
 commands:
   level:
     description: Показать уровень и опыт

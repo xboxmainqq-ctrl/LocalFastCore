@@ -8,6 +8,8 @@ import cn.nukkit.event.EventHandler;
 import cn.nukkit.event.EventPriority;
 import cn.nukkit.event.Listener;
 import cn.nukkit.event.entity.EntityDamageByEntityEvent;
+import cn.nukkit.event.entity.EntityDamageEvent;
+import cn.nukkit.event.player.PlayerRespawnEvent;
 import cn.nukkit.event.player.PlayerJoinEvent;
 import cn.nukkit.plugin.PluginBase;
 import cn.nukkit.utils.Config;
@@ -39,7 +41,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
         players = new Config(new File(getDataFolder(), "players.yml"), Config.YAML);
         getServer().getPluginManager().registerEvents(this, this);
-        getLogger().info("LocalFastCore 0.6.0 включён. RPG, охотничьи и ежедневные задания готовы.");
+        getLogger().info("LocalFastCore 0.7.0 включён. RPG, характеристики, охотничьи и ежедневные задания готовы.");
     }
 
     private String playerKey(Player player) {
@@ -60,6 +62,37 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void setBoolean(Player player, String field, boolean value) {
         players.set(playerKey(player) + "." + field, value);
+    }
+
+
+    /**
+     * Recalculate bonuses from saved stats using absolute values.
+     * Vanilla Nukkit-MOT player base values: 20 HP and 0.1 movement speed.
+     */
+    private void recalculateStats(Player player) {
+        int healthBonus = get(player, "health", 0) / 5;
+        int maximumHealth = 20 + healthBonus;
+        player.setMaxHealth(maximumHealth);
+        if (player.getHealth() > maximumHealth) player.setHealth(maximumHealth);
+        int agilityPercent = get(player, "agility", 0) / 5;
+        float movementSpeed = Player.DEFAULT_SPEED * (1.0f + agilityPercent / 100.0f);
+        player.setMovementSpeed(Math.min(Player.MAXIMUM_SPEED, movementSpeed));
+    }
+
+    @EventHandler
+    public void onRespawn(PlayerRespawnEvent event) {
+        Player player = event.getPlayer();
+        getServer().getScheduler().scheduleDelayedTask(this, () -> recalculateStats(player), 1);
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPlayerAttack(EntityDamageByEntityEvent event) {
+        if (!(event.getDamager() instanceof Player)) return;
+        Player attacker = (Player) event.getDamager();
+        int bonusDamage = get(attacker, "strength", 0) / 5;
+        if (bonusDamage <= 0) return;
+        event.setDamage(event.getDamage(EntityDamageEvent.DamageModifier.BASE) + bonusDamage,
+                EntityDamageEvent.DamageModifier.BASE);
     }
 
     private void initialize(Player player) {
@@ -103,6 +136,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             players.set(k+".login_reward_date",d); players.save(); giveXp(p,LOGIN_XP_REWARD);
             p.sendMessage("§a[LocalFast] Награда за первый вход сегодня: +25 XP!");
         }
+        recalculateStats(p);
     }
     private void showDaily(Player p) {
         refreshDaily(p); String k=playerKey(p);
@@ -327,6 +361,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             set(player, stat, get(player, stat, 0) + 1);
             set(player, "points", points - 1);
             players.save();
+            recalculateStats(player);
             sender.sendMessage("§a[LocalFast] Характеристика " + stat + " увеличена на 1.");
             return true;
         }

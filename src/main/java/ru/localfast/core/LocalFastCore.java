@@ -1160,14 +1160,14 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private String staffChatPrefix(String role) {
         switch (role) {
-            case "ml_helper": return "§8[§b§lМЛ. ХЕЛПЕР§r§8]";
-            case "helper": return "§8[§a§lХЕЛПЕР§r§8]";
-            case "senior_helper": return "§8[§6§lСТ. ХЕЛПЕР§r§8]";
-            case "junior_moderator": return "§8[§d§lМЛ. МОДЕР§r§8]";
-            case "moderator": return "§8[§5§lМОДЕР§r§8]";
-            case "senior_moderator": return "§8[§9§lСТ. МОДЕР§r§8]";
-            case "admin": return "§8[§c§lАДМИН§r§8]";
-            case "operator": return "§8[§6§lОПЕРАТОР§r§8]";
+            case "ml_helper": return "§8[§b▌ §f§lМЛ. ХЕЛПЕР §b▐§8]";
+            case "helper": return "§8[§a▌ §f§lХЕЛПЕР §a▐§8]";
+            case "senior_helper": return "§8[§6▌ §f§lСТ. ХЕЛПЕР §6▐§8]";
+            case "junior_moderator": return "§8[§d▌ §f§lМЛ. МОДЕР §d▐§8]";
+            case "moderator": return "§8[§5▌ §f§lМОДЕР §5▐§8]";
+            case "senior_moderator": return "§8[§9▌ §f§lСТ. МОДЕР §9▐§8]";
+            case "admin": return "§8[§c▌ §f§lАДМИН §c▐§8]";
+            case "operator": return "§8[§6▌ §f§lОПЕРАТОР §6▐§8]";
             default: return "";
         }
     }

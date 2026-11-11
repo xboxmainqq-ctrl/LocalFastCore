@@ -85,6 +85,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
 
     private void updateSidebar(Player player) {
+        if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
         String key = playerKey(player);
         IScoreboard scoreboard = sidebars.get(key);
         if (scoreboard == null) {

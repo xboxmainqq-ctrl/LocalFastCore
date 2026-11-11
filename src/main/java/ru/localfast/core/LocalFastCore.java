@@ -1976,7 +1976,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 boolean gate = z==29 && Math.abs(x)<=6;
                 if (!gate) {
                     for (int y=1; y<=13; y++) addCastleBlock(blocks,cx+x,baseY+y,cz+z,98);
-                    for (int y=14; y<=15; y++) if ((x+z)&1)==0 addCastleBlock(blocks,cx+x,baseY+y,cz+z,98);
+                    for (int y=14; y<=15; y++) if (((x+z)&1)==0) addCastleBlock(blocks,cx+x,baseY+y,cz+z,98);
                 }
             }
         }

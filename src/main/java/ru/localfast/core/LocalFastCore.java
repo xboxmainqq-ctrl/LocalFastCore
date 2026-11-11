@@ -1914,7 +1914,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 : "§7Строитель остановлен";
         FormWindowSimple form = new FormWindowSimple("§6Строитель замка",
                 "§fМир: §b" + worldName + "\n" + centerText + "\n" + progress
-                        + "\n§7Размер проекта: около 110×110 блоков. Существующие блоки не заменяются.");
+                        + "\n§7Полноценный RPG-спавн: замок, площадь, фонтан, рынок, сады и башни (около 140×140).");
         form.addButton(new ElementButton("§aВыбрать центр здесь"));
         form.addButton(new ElementButton("§bПроверить площадку"));
         form.addButton(new ElementButton("§6Начать строительство"));
@@ -1954,44 +1954,159 @@ public final class LocalFastCore extends PluginBase implements Listener {
         operator.showFormWindow(form);
     }
 
+    /**
+     * Full fantasy RPG lobby: paved arrival square, fountain, keep, curtain walls,
+     * gatehouse, corner towers, market houses, gardens, trees and lanterns.
+     * Coordinates are relative to the operator-selected center in the flat spawn.
+     */
     private List<CastleBlock> createCastlePlan(int cx, int baseY, int cz) {
         Map<String, CastleBlock> blocks = new java.util.LinkedHashMap<>();
-        for (int x=-50; x<=50; x++) for (int z=-50; z<=50; z++) {
-            if (Math.abs(x)==50 || Math.abs(z)==50) {
-                for (int y=0; y<9; y++) addCastleBlock(blocks,cx+x,baseY+y,cz+z,98);
-                if ((x+z)%4==0) addCastleBlock(blocks,cx+x,baseY+9,cz+z,98);
+
+        // Main paved lobby square (81 x 81) with a contrasting border and cross paths.
+        for (int x=-40; x<=40; x++) for (int z=-40; z<=40; z++) {
+            int id = ((x + z) & 1) == 0 ? 98 : 4;
+            if (Math.abs(x)==40 || Math.abs(z)==40) id=24;
+            if ((Math.abs(x)<=2 || Math.abs(z)<=2) && Math.abs(x)<39 && Math.abs(z)<39) id=24;
+            addCastleBlock(blocks,cx+x,baseY,cz+z,id);
+        }
+
+        // Castle outer curtain wall with a proper open entrance and merlons.
+        for (int x=-32; x<=32; x++) for (int z=-29; z<=29; z++) {
+            if (Math.abs(x)==32 || Math.abs(z)==29) {
+                boolean gate = z==29 && Math.abs(x)<=6;
+                if (!gate) {
+                    for (int y=1; y<=13; y++) addCastleBlock(blocks,cx+x,baseY+y,cz+z,98);
+                    for (int y=14; y<=15; y++) if ((x+z)&1)==0 addCastleBlock(blocks,cx+x,baseY+y,cz+z,98);
+                }
             }
         }
-        for (int tx : new int[]{-50,50}) for (int tz : new int[]{-50,50}) {
-            for (int y=0; y<22; y++) for (int dx=-7; dx<=7; dx++) for (int dz=-7; dz<=7; dz++) {
+
+        // Four round corner towers, with wider stone bases, upper floors and roofs.
+        for (int tx : new int[]{-32,32}) for (int tz : new int[]{-29,29}) {
+            for (int y=1; y<=30; y++) for (int dx=-7; dx<=7; dx++) for (int dz=-7; dz<=7; dz++) {
                 int d=dx*dx+dz*dz;
-                if (d<=49 && d>=36) addCastleBlock(blocks,cx+tx+dx,baseY+y,cz+tz+dz,98);
+                if (d<=49 && d>=36) addCastleBlock(blocks,cx+tx+dx,baseY+y,cz+tz+dz, y<24?98:45);
             }
-            for (int dx=-7; dx<=7; dx++) for (int dz=-7; dz<=7; dz++)
-                if (dx*dx+dz*dz<=49) addCastleBlock(blocks,cx+tx+dx,baseY+22,cz+tz+dz,98);
+            for (int dx=-7; dx<=7; dx++) for (int dz=-7; dz<=7; dz++) {
+                int d=dx*dx+dz*dz;
+                if (d<=49 && d>=36) addCastleBlock(blocks,cx+tx+dx,baseY+31,cz+tz+dz,24);
+                if (d<=25 && d>=16) addCastleBlock(blocks,cx+tx+dx,baseY+32,cz+tz+dz,45);
+            }
+            for (int y=8; y<=23; y+=7) for (int dx=-7; dx<=7; dx++) for (int dz=-7; dz<=7; dz++)
+                if (dx*dx+dz*dz<=49 && dx*dx+dz*dz>=36)
+                    addCastleBlock(blocks,cx+tx+dx,baseY+y,cz+tz+dz,20);
+            for (int k=0;k<6;k++) {
+                int radius=5-k;
+                for (int dx=-radius;dx<=radius;dx++) for(int dz=-radius;dz<=radius;dz++)
+                    if(Math.abs(dx)+Math.abs(dz)<=radius)
+                        addCastleBlock(blocks,cx+tx+dx,baseY+33+k,cz+tz+dz,45);
+            }
+            addCastleBlock(blocks,cx+tx,baseY+39,cz+tz,89);
         }
-        for (int x=-15; x<=15; x++) for (int z=-15; z<=15; z++) {
-            if (Math.abs(x)==15 || Math.abs(z)==15) {
-                for (int y=0; y<18; y++) addCastleBlock(blocks,cx+x,baseY+y,cz+z,98);
+
+        // Main keep: broad two-storey stone hall, tall central roof and lit windows.
+        for (int x=-19;x<=19;x++) for(int z=-17;z<=17;z++) {
+            if(Math.abs(x)==19 || Math.abs(z)==17) {
+                for(int y=1;y<=23;y++) addCastleBlock(blocks,cx+x,baseY+y,cz-13+z,98);
             }
         }
-        for (int tx : new int[]{-15,15}) for (int tz : new int[]{-15,15}) {
-            for (int y=0; y<26; y++) for (int dx=-4; dx<=4; dx++) for (int dz=-4; dz<=4; dz++)
-                if (dx*dx+dz*dz<=16 && dx*dx+dz*dz>=9)
-                    addCastleBlock(blocks,cx+tx+dx,baseY+y,cz+tz+dz,98);
+        for(int y=5;y<=19;y+=7) for(int x=-19;x<=19;x++) {
+            addCastleBlock(blocks,cx+x,baseY+y,cz-30,24);
+            addCastleBlock(blocks,cx+x,baseY+y,cz+4,24);
         }
-        // Main gatehouse and a raised central keep roof.
-        for (int x=-6; x<=6; x++) for (int z=-5; z<=5; z++) {
-            if (Math.abs(x)==6 || Math.abs(z)==5)
-                for (int y=0; y<13; y++) addCastleBlock(blocks,cx+x,baseY+y,cz+z,98);
+        for(int x=-19;x<=19;x++) for(int z=-17;z<=17;z++) {
+            if(Math.abs(x)==19 || Math.abs(z)==17) {
+                addCastleBlock(blocks,cx+x,baseY+24,cz-13+z,45);
+                addCastleBlock(blocks,cx+x,baseY+25,cz-13+z,98);
+            }
         }
-        for (int x=-9; x<=9; x++) for (int z=-9; z<=9; z++)
-            if (Math.abs(x)==9 || Math.abs(z)==9)
-                addCastleBlock(blocks,cx+x,baseY+28,cz+z,98);
-        for (int y=0; y<8; y++) for (int x=-2; x<=2; x++) {
-            addCastleBlock(blocks,cx+x,baseY+y,cz-50,20);
-            addCastleBlock(blocks,cx+x,baseY+y,cz+50,20);
+        // Stepped roof silhouette and ridge.
+        for(int layer=0;layer<7;layer++) {
+            int rx=18-layer*2, rz=16-layer*2;
+            for(int x=-rx;x<=rx;x++) for(int z=-rz;z<=rz;z++)
+                if(Math.abs(x)==rx || Math.abs(z)==rz)
+                    addCastleBlock(blocks,cx+x,baseY+26+layer,cz-13+z,layer<3?45:98);
         }
+        for(int y=1;y<=12;y++) for(int x=-2;x<=2;x++) {
+            addCastleBlock(blocks,cx+x,baseY+y,cz+4,45);
+        }
+        // Grand entrance arch, gold-toned trim and banners.
+        for(int y=1;y<=13;y++) {
+            addCastleBlock(blocks,cx-7,baseY+y,cz+16,24);
+            addCastleBlock(blocks,cx+7,baseY+y,cz+16,24);
+        }
+        for(int x=-7;x<=7;x++) addCastleBlock(blocks,cx+x,baseY+14,cz+16,45);
+        for(int y=4;y<=12;y++) {
+            addCastleBlock(blocks,cx-8,baseY+y,cz+17,35);
+            addCastleBlock(blocks,cx+8,baseY+y,cz+17,35);
+        }
+        addCastleBlock(blocks,cx,baseY+16,cz+16,89);
+
+        // Gatehouse towers flank the entrance.
+        for(int tx : new int[]{-10,10}) {
+            for(int y=1;y<=19;y++) for(int dx=-3;dx<=3;dx++) for(int dz=-3;dz<=3;dz++)
+                if(Math.abs(dx)==3 || Math.abs(dz)==3) addCastleBlock(blocks,cx+tx+dx,baseY+y,cz+27+dz,98);
+            for(int dx=-4;dx<=4;dx++) for(int dz=-4;dz<=4;dz++)
+                if(Math.abs(dx)==4 || Math.abs(dz)==4) addCastleBlock(blocks,cx+tx+dx,baseY+20,cz+27+dz,45);
+            addCastleBlock(blocks,cx+tx,baseY+21,cz+27,89);
+        }
+
+        // Arrival fountain in the center of the square.
+        for(int x=-7;x<=7;x++) for(int z=-7;z<=7;z++) {
+            int d=x*x+z*z;
+            if(d<=49) addCastleBlock(blocks,cx+x,baseY+1,cz+22+z, d>=36?24:98);
+            if(d<=16) addCastleBlock(blocks,cx+x,baseY+2,cz+22+z,9);
+        }
+        for(int y=2;y<=6;y++) addCastleBlock(blocks,cx,baseY+y,cz+22,98);
+        addCastleBlock(blocks,cx,baseY+7,cz+22,89);
+
+        // Four landscaped garden beds, paths, flower accents and ornamental trees.
+        for(int gx : new int[]{-25,25}) for(int gz : new int[]{-20,20}) {
+            for(int x=-8;x<=8;x++) for(int z=-8;z<=8;z++) {
+                if(Math.abs(x)==8 || Math.abs(z)==8) addCastleBlock(blocks,cx+gx+x,baseY+1,cz+gz+z,24);
+                else if(Math.abs(x)>2 || Math.abs(z)>2) addCastleBlock(blocks,cx+gx+x,baseY+1,cz+gz+z,2);
+            }
+            for(int y=1;y<=5;y++) addCastleBlock(blocks,cx+gx,baseY+y,cz+gz,17);
+            for(int dx=-3;dx<=3;dx++) for(int dz=-3;dz<=3;dz++)
+                if(Math.abs(dx)+Math.abs(dz)<=5) addCastleBlock(blocks,cx+gx+dx,baseY+6,cz+gz+dz,18);
+            addCastleBlock(blocks,cx+gx,baseY+7,cz+gz,18);
+        }
+
+        // Small market / guild buildings on both sides of the arrival avenue.
+        for(int side : new int[]{-1,1}) for(int n=0;n<2;n++) {
+            int hx=side*53, hz=-18+n*34;
+            for(int x=-7;x<=7;x++) for(int z=-6;z<=6;z++) {
+                if(Math.abs(x)==7 || Math.abs(z)==6)
+                    for(int y=1;y<=8;y++) addCastleBlock(blocks,cx+hx+x,baseY+y,cz+hz+z,45);
+                addCastleBlock(blocks,cx+hx+x,baseY,cz+hz+z,5);
+            }
+            for(int y=3;y<=6;y++) {
+                addCastleBlock(blocks,cx+hx-7,baseY+y,cz+hz,20);
+                addCastleBlock(blocks,cx+hx+7,baseY+y,cz+hz,20);
+            }
+            for(int layer=0;layer<5;layer++) {
+                int rx=7-layer, rz=6-layer;
+                for(int x=-rx;x<=rx;x++) for(int z=-rz;z<=rz;z++)
+                    if(Math.abs(x)==rx || Math.abs(z)==rz)
+                        addCastleBlock(blocks,cx+hx+x,baseY+9+layer,cz+hz+z,5);
+            }
+            addCastleBlock(blocks,cx+hx,baseY+14,cz+hz,89);
+            for(int x=-2;x<=2;x++) addCastleBlock(blocks,cx+hx+x,baseY+1,cz+hz+6,24);
+        }
+
+        // Decorative avenue lanterns and perimeter lights.
+        for(int z=-35;z<=35;z+=10) for(int side : new int[]{-1,1}) {
+            int x=side*7;
+            addCastleBlock(blocks,cx+x,baseY+1,cz+z,98);
+            for(int y=2;y<=6;y++) addCastleBlock(blocks,cx+x,baseY+y,cz+z,85);
+            addCastleBlock(blocks,cx+x,baseY+7,cz+z,89);
+        }
+        for(int x=-38;x<=38;x+=19) for(int z : new int[]{-38,38}) {
+            addCastleBlock(blocks,cx+x,baseY+1,cz+z,98);
+            for(int y=2;y<=5;y++) addCastleBlock(blocks,cx+x,baseY+y,cz+z,85);
+            addCastleBlock(blocks,cx+x,baseY+6,cz+z,89);
+        }
+
         return new ArrayList<>(blocks.values());
     }
 
@@ -2016,7 +2131,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
         Level world = getServer().getLevelByName("spawn");
         int cx=getConfig().getInt("castle.center-x"), y=getConfig().getInt("castle.center-y"), cz=getConfig().getInt("castle.center-z");
-        if (y<world.getMinBlockY() || y+30>=world.getMaxBlockY()) {
+        if (y<world.getMinBlockY() || y+45>=world.getMaxBlockY()) {
             if (!quiet) operator.sendMessage("§cВысота центра вне допустимых границ мира.");
             return false;
         }

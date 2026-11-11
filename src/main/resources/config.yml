@@ -1,4 +1,4 @@
-# LocalFastCore 0.13.0
+# LocalFastCore 0.14.0
 # Set operator.uuid after first startup using the server console: lfadmin setoperator <online-player>
 operator:
   uuid: ""

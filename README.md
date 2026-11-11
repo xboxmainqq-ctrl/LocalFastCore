@@ -26,6 +26,12 @@ RPG progression plugin for Nukkit-MOT 1.26.60-R1 (Java 17).
 | `/daily` | View daily task |
 | `/daily start` | Start the daily task |
 | `/daily claim` | Claim the daily reward |
+| `/sethome` | Save your current home location |
+| `/home` | Teleport to your saved home |
+| `/delhome` | Delete your saved home |
+| `/tpa <player>` | Request to teleport to a player |
+| `/tpaccept` | Accept the pending teleport request |
+| `/tpdeny` | Deny the pending teleport request |
 | `/lfadmin xp <player> <amount>` | Give XP (requires `localfast.admin`) |
 
 Valid stat names: `strength`, `health`, `agility`, `intelligence`.
@@ -113,3 +119,12 @@ The automated Maven build checks compilation and packaging only. Before producti
 This development version keeps the existing UUID profile layout and adds an additive `data_version: 1` marker when a player profile is initialized. Existing level, XP, stats, daily tasks, and quest fields are not reset or rewritten. Integer and boolean profile setters now mark the data store dirty themselves, reducing the chance that a future feature forgets to schedule persistence. The existing main-thread autosave and quit/disable flush behavior remains in place.
 
 No `players.yml` reset or destructive migration is part of this update. Back up `plugins/LocalFastCore/` before testing any development build. Automated CI validates compilation and packaging; in-game persistence still needs a server test.
+
+
+## Homes and player teleport requests (0.11.0)
+
+Each player can save one home with `/sethome`, return using `/home`, and remove it with `/delhome`. The home stores world folder name, coordinates and rotation inside the player's existing UUID profile in `players.yml`. If the saved world is unavailable, the home is retained and the player receives an error; it is not silently redirected to another world.
+
+Use `/tpa <player>` to request teleportation to an online player. The target can use `/tpaccept` or `/tpdeny`; requests expire after 60 seconds. A player has one pending request slot at a time. Pending requests are in-memory only and are cleared when either player leaves or the server restarts. These commands are player-only and do not require admin permission.
+
+Back up `plugins/LocalFastCore/` before testing on a live server. Test home persistence across restart and TPA accept/deny/timeout with two accounts before production use.

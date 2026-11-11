@@ -1639,6 +1639,21 @@ public final class LocalFastCore extends PluginBase implements Listener {
     }
 
 
+    private String staffNameByUuid(String uuid) {
+        try {
+            Player online = getServer().getPlayer(UUID.fromString(uuid)).orElse(null);
+            if (online != null) return online.getName();
+        } catch (IllegalArgumentException ignored) { }
+        if (staffData.exists("knownPlayers")) {
+            for (String known : staffData.getSection("knownPlayers").getKeys(false)) {
+                if (uuid.equalsIgnoreCase(staffData.getString("knownPlayers." + known + ".uuid", ""))) {
+                    return staffData.getString("knownPlayers." + known + ".name", known);
+                }
+            }
+        }
+        return uuid;
+    }
+
     private void showStaffRoster(Player viewer) {
         Map<String, String> roster = new HashMap<>();
         if (staffData.exists("staff")) {
@@ -1653,20 +1668,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (roster.isEmpty()) { viewer.sendMessage("§7Список администрации пуст."); return; }
         for (Map.Entry<String, String> entry : roster.entrySet()) {
             String uuid = entry.getKey();
-            String nickname = uuid;
+            String nickname = staffNameByUuid(uuid);
             boolean online = false;
             try {
                 Player found = getServer().getPlayer(UUID.fromString(uuid)).orElse(null);
-                if (found != null) { nickname = found.getName(); online = found.isOnline(); }
+                online = found != null && found.isOnline();
             } catch (IllegalArgumentException ignored) { }
-            if (!online && staffData.exists("knownPlayers")) {
-                for (String known : staffData.getSection("knownPlayers").getKeys(false)) {
-                    if (uuid.equalsIgnoreCase(staffData.getString("knownPlayers." + known + ".uuid", ""))) {
-                        nickname = staffData.getString("knownPlayers." + known + ".name", known);
-                        break;
-                    }
-                }
-            }
             viewer.sendMessage(staffRoleColor(entry.getValue()) + nickname + " §8— "
                     + staffRoleLabel(entry.getValue()) + (online ? " §a● онлайн" : " §7○ не в сети"));
         }
@@ -2245,6 +2252,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             String targetUuid = target == null ? knownPlayerUuid(args[1]) : target.getUniqueId().toString();
             if (targetUuid == null) { sender.sendMessage("§cИгрок не найден. Он должен хотя бы один раз зайти на сервер."); return true; }
             String targetRole = target == null ? staffData.getString("staff." + targetUuid, "") : staffRole(target);
+            if (targetUuid.equalsIgnoreCase(getConfig().getString("operator.uuid", ""))) targetRole = "operator";
             if (staffRank(targetRole) >= staffRank(role)) { sender.sendMessage("§cНельзя наказать сотрудника равного или более высокого ранга."); return true; }
             if (action.equals("kick") && target == null) { sender.sendMessage("§cКик доступен только игроку онлайн."); return true; }
             long minutes = 0L; int ri = 2;
@@ -2325,7 +2333,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             }
             return handleStaffCommand(sender, Arrays.copyOfRange(args, 1, args.length));
         }
-        if (args.length > 0 && Arrays.asList("warn", "ban", "mute", "kick", "unban", "unmute", "history", "punishments", "active", "fly", "vanish", "warp", "online", "roster", "list", "check", "warnings", "clearwarns", "help", "ranks").contains(args[0].toLowerCase(Locale.ROOT))) {
+        if (args.length > 0 && Arrays.asList("warn", "ban", "mute", "kick", "unban", "unmute", "history", "punishments", "active", "fly", "vanish", "warp", "online", "roster", "list", "check", "warnings", "clearwarns", "promote", "demote", "setrank", "help", "ranks").contains(args[0].toLowerCase(Locale.ROOT))) {
             return handleStaffCommand(sender, args);
         }
         if (args.length == 0) {
@@ -2358,12 +2366,15 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
         if (args[0].equalsIgnoreCase("staff")) {
             if (args.length >= 2 && args[1].equalsIgnoreCase("list")) {
-                sender.sendMessage("§6§lПерсонал LocalFast:");
-                for (String id : staffData.getSection("staff").getKeys(false)) {
-                    String role = staffData.getString("staff." + id, "");
-                    Player online = getServer().getPlayer(UUID.fromString(id)).orElse(null);
-                    String nickname = online == null ? id : online.getName();
-                    sender.sendMessage("§f" + nickname + " §8— " + staffRoleColor(role) + staffRoleLabel(role));
+                if (sender instanceof Player) showStaffRoster((Player) sender);
+                else {
+                    sender.sendMessage("§6§lПолный состав администрации:");
+                    Map<String, String> roster = new HashMap<>();
+                    if (staffData.exists("staff")) for (String id : staffData.getSection("staff").getKeys(false)) roster.put(id, staffData.getString("staff." + id, ""));
+                    String opUuid = getConfig().getString("operator.uuid", "");
+                    if (opUuid != null && !opUuid.trim().isEmpty()) roster.put(opUuid, "operator");
+                    for (Map.Entry<String, String> entry : roster.entrySet()) sender.sendMessage("§f" + staffNameByUuid(entry.getKey())
+                            + " §8— " + staffRoleColor(entry.getValue()) + staffRoleLabel(entry.getValue()));
                 }
                 return true;
             }

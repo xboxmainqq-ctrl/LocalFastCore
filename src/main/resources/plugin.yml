@@ -69,14 +69,13 @@ commands:
   staff:
     description: Панель администрации и модерации
     usage: "/staff"
-permissions:
-  localfast.admin:
-    description: Управление RPG-прогрессом LocalFast
-    default: op
-
   world:
     description: Управление отдельными мирами LocalFast
     usage: "/world <list|create|load|tp|info>"
   worlds:
     description: Список миров сервера
     usage: "/worlds"
+permissions:
+  localfast.admin:
+    description: Управление RPG-прогрессом LocalFast
+    default: op

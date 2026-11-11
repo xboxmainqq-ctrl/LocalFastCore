@@ -1,4 +1,4 @@
-# LocalFastCore 0.9.3
+# LocalFastCore 0.10.0
 
 RPG progression plugin for Nukkit-MOT 1.26.60-R1 (Java 17).
 
@@ -64,7 +64,7 @@ The same `kills` and `reward` keys are available for all 15 quest IDs in the def
 
 ## Upgrade notes
 
-Version 0.9.3 keeps the existing player-data keys and adds quest state under each player's `quests` section in `players.yml`. No player-data reset is required. Existing `config.yml` files are not overwritten automatically; merge the new `quests.catalog` section into an existing config to customize the new quests. Back up the plugin folder before upgrading and test on a staging server before production.
+Version 0.10.0 keeps the existing player-data keys and adds quest state under each player's `quests` section in `players.yml`. No player-data reset is required. Existing `config.yml` files are not overwritten automatically; merge the new `quests.catalog` section into an existing config to customize the new quests. Back up the plugin folder before upgrading and test on a staging server before production.
 
 
 ## Player data identity and migration

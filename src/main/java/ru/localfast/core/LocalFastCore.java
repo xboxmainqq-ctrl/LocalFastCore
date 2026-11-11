@@ -1360,6 +1360,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     : "Предупреждения, статистика";
             viewer.sendMessage("§7" + staffRank(rank) + ". §f" + staffRoleLabel(rank) + " §8— §7" + access);
         }
+        viewer.sendMessage("§78. §6Оператор §8— §7полный доступ к панели и управлению персоналом");
         viewer.sendMessage("§6§lТвои команды:");
         viewer.sendMessage("§e/staff §7— открыть панель");
         viewer.sendMessage("§e/staff warn <игрок> <причина>");
@@ -1371,6 +1372,15 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (staffRank(role) >= 5) viewer.sendMessage("§e/staff warp §7— меню варпов");
         if (staffRank(role) >= 7) viewer.sendMessage("§e/staff fly|vanish");
         if (role.equals("admin") || role.equals("operator")) viewer.sendMessage("§e/staff promote|demote|setrank ...");
+        if (role.equals("operator")) {
+            viewer.sendMessage("§6§lКоманды оператора:");
+            viewer.sendMessage("§e/lfadmin staff add|remove|list ...");
+            viewer.sendMessage("§e/lfadmin money give|take|set|reset ...");
+            viewer.sendMessage("§e/lfadmin xp <игрок> <количество>");
+            viewer.sendMessage("§e/lfadmin reset <игрок> <level|stats|quests|all>");
+            viewer.sendMessage("§e/lfadmin warp set|delete|list ...");
+            viewer.sendMessage("§e/lfadmin welcome <текст|off>");
+        }
     }
 
     private void toggleFly(Player player) {
@@ -1514,6 +1524,19 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (args.length == 0) { openStaffMenu(actor); return true; }
         if (args[0].equalsIgnoreCase("fly")) { toggleFly(actor); return true; }
         if (args[0].equalsIgnoreCase("vanish")) { toggleVanish(actor); return true; }
+        if (args[0].equalsIgnoreCase("welcome")) {
+            if (args.length < 2) { sender.sendMessage("§e/lfadmin welcome <текст|off>"); return true; }
+            if (args[1].equalsIgnoreCase("off")) {
+                getConfig().set("welcome.message", ""); saveConfig();
+                sender.sendMessage("§eСообщение при входе отключено."); return true;
+            }
+            StringBuilder message = new StringBuilder();
+            for (int i = 1; i < args.length; i++) { if (message.length() > 0) message.append(' '); message.append(args[i]); }
+            getConfig().set("welcome.message", message.toString()); saveConfig();
+            staffLog(sender.getName(), "welcome-change", "server", message.toString());
+            sender.sendMessage("§aСообщение при входе обновлено. Используй {player} для ника.");
+            return true;
+        }
         if (args[0].equalsIgnoreCase("warp")) { if (staffRank(role) < 5) sender.sendMessage("§cWarp доступен с ранга модератора."); else openWarpMenu(actor); return true; }
         if (args[0].equalsIgnoreCase("online")) { showOnlineStaff(actor); return true; }
         if (args[0].equalsIgnoreCase("help") || args[0].equalsIgnoreCase("ranks")) { showStaffHelp(actor); return true; }

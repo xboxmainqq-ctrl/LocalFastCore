@@ -493,8 +493,6 @@ public final class LocalFastCore extends PluginBase implements Listener {
             players.set(homePath + ".x", player.getX());
             players.set(homePath + ".y", player.getY());
             players.set(homePath + ".z", player.getZ());
-            players.set(homePath + ".yaw", player.getYaw());
-            players.set(homePath + ".pitch", player.getPitch());
             markPlayersDirty();
             player.sendMessage("§a[LocalFast] Дом сохранён. Вернуться: /home");
             return;
@@ -522,11 +520,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         double x = players.getDouble(homePath + ".x");
         double y = players.getDouble(homePath + ".y");
         double z = players.getDouble(homePath + ".z");
-        float yaw = (float) players.getDouble(homePath + ".yaw", 0);
-        float pitch = (float) players.getDouble(homePath + ".pitch", 0);
         Position destination = new Position(x, y, z, world);
-        destination.setYaw(yaw);
-        destination.setPitch(pitch);
         if (player.teleport(destination)) {
             player.sendMessage("§a[LocalFast] Ты телепортирован домой.");
         } else {
@@ -594,8 +588,6 @@ public final class LocalFastCore extends PluginBase implements Listener {
             return;
         }
         Position destination = new Position(player.getX(), player.getY(), player.getZ(), player.getLevel());
-        destination.setYaw(player.getYaw());
-        destination.setPitch(player.getPitch());
         if (pending.requester.teleport(destination)) {
             player.sendMessage("§a[LocalFast] Запрос принят.");
             pending.requester.sendMessage("§a[LocalFast] " + player.getName() + " принял запрос. Телепортация выполнена.");

@@ -475,12 +475,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
         initialize(player);
         int level = Math.max(1, get(player, "level", 1));
         FormWindowSimple form = new FormWindowSimple("§6LocalFastCore §8| §lКвесты",
-                "§fТвой уровень: §e" + level + "\\n§7Выбери диапазон уровней или посмотри свои задания.");
+                "§fТвой уровень: §e" + level + "\n§7Выбери диапазон уровней или посмотри свои задания.");
         String[] ranges = {"1–10", "11–30", "31–50", "51–75", "76–100"};
         for (String range : ranges) form.addButton(new ElementButton("§eУровни " + range));
         form.addButton(new ElementButton("§aМои задания"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null) return;
+            if (!player.isOnline()) return;
             int selected = form.getResponse().getClickedButtonId();
             if (selected >= 0 && selected < 5) openQuestTierMenu(player, selected);
             else if (selected == 5) openMyQuestsMenu(player);
@@ -490,9 +491,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void openQuestTierMenu(Player player, int tier) {
         int[][] ranges = {{1,10},{11,30},{31,50},{51,75},{76,100}};
+        if (tier < 0 || tier >= ranges.length) {
+            openQuestsMenu(player);
+            return;
+        }
         int min = ranges[tier][0], max = ranges[tier][1];
         FormWindowSimple form = new FormWindowSimple("§6Квесты §8| §e" + min + "–" + max,
-                "§fТвой уровень: §e" + get(player, "level", 1) + "\\n§7Выбери задание для просмотра.");
+                "§fТвой уровень: §e" + get(player, "level", 1) + "\n§7Выбери задание для просмотра.");
         List<QuestDefinition> quests = new ArrayList<>();
         for (QuestDefinition quest : questCatalog()) {
             if (quest.minLevel == min) {
@@ -508,6 +513,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null) return;
+            if (!player.isOnline()) return;
             int selected = form.getResponse().getClickedButtonId();
             if (selected >= 0 && selected < quests.size()) openQuestDetails(player, quests.get(selected), tier);
             else openQuestsMenu(player);
@@ -523,10 +529,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
         int progress = Math.max(0, players.getInt(path + ".kills", 0));
         int reward = questXp(quest);
         FormWindowSimple form = new FormWindowSimple("§6Квест §8| §e" + quest.title,
-                "§f" + quest.description + "\\n§fПрогресс: §a" + progress + "/" + questKills(quest)
-                        + "\\n§fНаграда: §6" + reward + " XP"
-                        + "\\n§fТребуемый уровень: §e" + quest.minLevel + "–" + quest.maxLevel
-                        + (claimed ? "\\n§8Награда уже получена." : complete ? "\\n§aЗадание выполнено!" : ""));
+                "§f" + quest.description + "\n§fПрогресс: §a" + progress + "/" + questKills(quest)
+                        + "\n§fНаграда: §6" + reward + " XP"
+                        + "\n§fТребуемый уровень: §e" + quest.minLevel + "–" + quest.maxLevel
+                        + (claimed ? "\n§8Награда уже получена." : complete ? "\n§aЗадание выполнено!" : ""));
         if (!claimed) {
             if (complete) form.addButton(new ElementButton("§aПолучить награду"));
             else if (!active) form.addButton(new ElementButton("§aПринять задание"));
@@ -535,6 +541,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null) return;
+            if (!player.isOnline()) return;
             int selected = form.getResponse().getClickedButtonId();
 
             // Form state may be stale when the player has multiple quest windows open.
@@ -597,6 +604,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null) return;
+            if (!player.isOnline()) return;
             int selected = form.getResponse().getClickedButtonId();
             if (!entries.isEmpty() && selected >= 0 && selected < entries.size()) {
                 QuestDefinition quest = entries.get(selected);

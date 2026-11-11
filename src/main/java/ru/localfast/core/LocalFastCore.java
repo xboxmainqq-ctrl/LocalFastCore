@@ -121,7 +121,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
         getServer().getPluginManager().registerEvents(this, this);
         saveDefaultConfig();
         if (!getConfig().exists("operator.uuid")) getConfig().set("operator.uuid", "");
-        if (!getConfig().exists("welcome.message")) getConfig().set("welcome.message", "");
+        if (!getConfig().exists("welcome.message") || getConfig().getString("welcome.message", "").trim().isEmpty()) {
+            getConfig().set("welcome.message", "§6Добро пожаловать на сервер, §e{player}§6!");
+        }
         if (!getConfig().exists("spawn-world")) getConfig().set("spawn-world", "spawn");
         if (!getConfig().exists("main-world")) getConfig().set("main-world", "");
         if (!getConfig().exists("rtp-min-radius")) getConfig().set("rtp-min-radius", 500);
@@ -1532,7 +1534,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§eДолжности и команды"));
         form.addButton(new ElementButton("§aСтатистика игрока"));
         form.addButton(new ElementButton("§6Сохранить варп здесь (operator)"));
-        form.addButton(new ElementButton("§dСообщение при входе: показать/выключить"));
+        form.addButton(new ElementButton("§dМоё приветствие: вкл/выкл"));
         form.addButton(new ElementButton("§cFly"));
         form.addButton(new ElementButton("§cVanish"));
         form.addButton(new ElementButton("§6Открыть панель /staff"));
@@ -1550,15 +1552,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 getConfig().set(path + ".x", operator.getX()); getConfig().set(path + ".y", operator.getY()); getConfig().set(path + ".z", operator.getZ());
                 saveConfig(); operator.sendMessage("§aВарп operator сохранён в твоей текущей точке.");
             } else if (id == 5) {
-                String current = getConfig().getString("welcome.message", "");
-                if (current == null || current.trim().isEmpty()) {
-                    getConfig().set("welcome.message", "§6Добро пожаловать на сервер, §e{player}§6!");
-                    operator.sendMessage("§aПриветствие включено. Текст можно изменить в config.yml (welcome.message).");
-                } else {
-                    getConfig().set("welcome.message", "");
-                    operator.sendMessage("§eПриветствие отключено.");
-                }
-                saveConfig();
+                String path = "welcome.enabled." + operator.getUniqueId();
+                boolean enabled = !staffData.getBoolean(path, true);
+                staffData.set(path, enabled);
+                staffData.save();
+                operator.sendMessage(enabled ? "§aТвоё приветствие при входе включено." : "§eТвоё приветствие при входе выключено.");
             } else if (id == 6) toggleFly(operator);
             else if (id == 7) toggleVanish(operator);
             else if (id == 8) openStaffMenu(operator);

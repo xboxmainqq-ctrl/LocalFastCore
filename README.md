@@ -149,3 +149,20 @@ The operator identity is bound to a UUID in `operator.uuid`, not to a nickname. 
 `/lfadmin` is reserved for the configured operator. It includes staff assignment, online-player economy administration (`money give|take|set|reset`), and RPG XP/progress administration. `/staff` opens a GUI for staff members. Staff ranks are ordered as ml_helper, helper, senior_helper, junior_moderator, moderator, senior_moderator, admin, with operator above them. Admins can promote, demote, or set staff ranks up to moderator; they cannot assign senior_moderator or admin. Operators retain full rank management. Admins can ban, mute, kick, and remove bans/mutes; moderators can mute, kick, and remove mutes. Rank management commands (target must be online): `/staff promote <player>`, `/staff demote <player>`, `/staff setrank <player> <rank>`. Admins may use these only within the range through `moderator`; the operator can manage all staff ranks. Command forms support custom reasons and durations: `/staff ban <player> <minutes|-1> <reason>`, `/staff mute <player> <minutes> <reason>`, `/staff kick <player> <reason>`, `/staff unban <player>`, and `/staff unmute <player>`. GUI defaults are a 24-hour ban, 30-minute mute, and a kick with a generic reason.
 
 Staff roles and active punishments are stored separately in `staff.yml`; staff actions are appended to `staff.log`. Ban enforcement is checked on join and mute enforcement cancels chat. Staff target selection and punishment removal currently require the target to be online. The automated build validates compilation and packaging; moderation behavior must still be tested in-game on a staging server.
+
+## 0.12.0 Staff and operator tools
+
+The operator is bound to the UUID stored in `operator.uuid`; nickname changes do not transfer operator access. On first setup, run `lfadmin setoperator <online-player>` from the server console while `operator.uuid` is empty. The bootstrap command refuses to replace an already configured operator.
+
+- `/lfadmin` — operator GUI. Includes online staff, role/command reference, player statistics, warp save, welcome-message toggle, fly/vanish and a shortcut to `/staff`.
+- `/lfadmin staff add <online-player> <rank>` and `/lfadmin staff remove <online-player>` — assign/remove staff. Ranks: `ml_helper`, `helper`, `senior_helper`, `junior_moderator`, `moderator`, `senior_moderator`, `admin`.
+- `/lfadmin staff list` — list staff UUIDs and ranks.
+- `/lfadmin warp set <name>`, `/lfadmin warp delete <name>`, `/lfadmin warp list` — manage named warp points. Warp names accept 1–24 lowercase Latin letters, digits, underscores or hyphens.
+- `/staff` — staff GUI with rank-limited moderation, player statistics, online staff, rank/command guide and warp access for moderator ranks and above.
+- `/staff warn <player> <reason>`, `/staff mute <player> <minutes> <reason>`, `/staff kick <player> <reason>`, `/staff ban <player> <minutes> <reason>`, `/staff unmute <player>`, `/staff unban <player>`.
+- `/staff warp` — open saved warps; `/staff fly` and `/staff vanish` — administrator/operator utilities.
+- `/staff promote <online-player>`, `/staff demote <online-player>`, `/staff setrank <online-player> <rank>` — admin can manage ranks up to moderator; senior moderator/admin assignments are operator-only.
+
+Moderation limits follow the rank ladder. Administrators and the operator can issue a permanent ban with `/staff ban <player> -1 <reason>`. Punishments and action history are stored in `staff.yml` and `staff.log`. Fly/vanish are runtime modes and are re-applied for eligible staff on reconnect; demoting a staff member below admin removes those modes. The welcome message is configured at `welcome.message` in `config.yml`; the operator panel toggles the default welcome text on/off. The message supports `{player}` and Minecraft color codes.
+
+**Important:** CI confirms Java compilation and packaging, not in-game behavior. Test moderation, flight, vanish visibility, warp teleportation and join messages on a staging Nukkit server before production. Existing `players.yml` profiles are not reset by these staff features.

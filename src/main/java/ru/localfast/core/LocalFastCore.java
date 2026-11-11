@@ -319,7 +319,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     @EventHandler
     public void onPlayerChat(PlayerChatEvent event) {
-        Player player = event.getPlayer(); String path = "punishments.mutes." + player.getUniqueId();
+        Player player = event.getPlayer();
+        String prefix = staffChatPrefix(staffRole(player));
+        if (!prefix.isEmpty()) event.setFormat(prefix + " §f%1$s§7: §f%2$s");
+        String path = "punishments.mutes." + player.getUniqueId();
         long expires = staffData.getLong(path + ".expires", 0L);
         if (expires == -1L || expires > System.currentTimeMillis()) { event.setCancelled(true); player.sendMessage("§cЧат закрыт: у тебя активен мут."); }
         else if (expires != 0L) { staffData.remove(path); staffData.save(); }
@@ -451,6 +454,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     @EventHandler
     public void onJoin(PlayerJoinEvent e) {
         Player p=e.getPlayer();
+        refreshStaffNameTag(p);
         String banPath = "punishments.bans." + p.getUniqueId();
         long banExpires = staffData.getLong(banPath + ".expires", 0L);
         if (banExpires == -1L || banExpires > System.currentTimeMillis()) {
@@ -1154,6 +1158,25 @@ public final class LocalFastCore extends PluginBase implements Listener {
         return 0;
     }
 
+    private String staffChatPrefix(String role) {
+        switch (role) {
+            case "ml_helper": return "§8[§b§lМЛ. ХЕЛПЕР§r§8]";
+            case "helper": return "§8[§a§lХЕЛПЕР§r§8]";
+            case "senior_helper": return "§8[§6§lСТ. ХЕЛПЕР§r§8]";
+            case "junior_moderator": return "§8[§d§lМЛ. МОДЕР§r§8]";
+            case "moderator": return "§8[§5§lМОДЕР§r§8]";
+            case "senior_moderator": return "§8[§9§lСТ. МОДЕР§r§8]";
+            case "admin": return "§8[§c§lАДМИН§r§8]";
+            case "operator": return "§8[§6§lОПЕРАТОР§r§8]";
+            default: return "";
+        }
+    }
+
+    private void refreshStaffNameTag(Player player) {
+        String prefix = staffChatPrefix(staffRole(player));
+        player.setNameTag((prefix.isEmpty() ? "" : prefix + " §f") + player.getName());
+    }
+
     private String staffRoleLabel(String role) {
         switch (role) {
             case "ml_helper": return "Мл. хелпер";
@@ -1323,6 +1346,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (newRank == 0) staffData.remove("staff." + target.getUniqueId());
             else staffData.set("staff." + target.getUniqueId(), STAFF_ROLES[newRank - 1]);
             staffData.save();
+            refreshStaffNameTag(target);
             String newRole = newRank == 0 ? "" : STAFF_ROLES[newRank - 1];
             staffLog(actor.getName(), action, target.getName(), staffRoleLabel(oldRole) + " -> " + staffRoleLabel(newRole));
             sender.sendMessage("§aДолжность " + target.getName() + ": " + staffRoleLabel(oldRole) + " -> " + staffRoleLabel(newRole) + ".");

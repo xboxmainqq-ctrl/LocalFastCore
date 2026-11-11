@@ -365,23 +365,35 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (scoreboard == null) {
             String uuidSuffix = player.getUniqueId().toString().replace("-", "").substring(0, 12);
             String objective = "lf_" + uuidSuffix;
-            scoreboard = new Scoreboard(objective, getConfig().getString("scoreboard.title", "§6§lLOCALFAST"), "dummy", SortOrder.DESCENDING);
+            scoreboard = new Scoreboard(objective,
+                    getConfig().getString("scoreboard.title", "§6§lLOCALFAST"),
+                    "dummy", SortOrder.DESCENDING);
             sidebars.put(key, scoreboard);
         }
 
-        int level = get(player, "level", 1);
-        int xp = get(player, "xp", 0);
+        int level = Math.max(1, Math.min(MAX_LEVEL, get(player, "level", 1)));
+        int xp = Math.max(0, get(player, "xp", 0));
         int nextXp = xpForNextLevel(level);
+        int xpPercent = level >= MAX_LEVEL ? 100
+                : (int) Math.min(100L, (long) xp * 100L / Math.max(1, nextXp));
+        String health = String.format(Locale.ROOT, "%.0f/%.0f", player.getHealth(), player.getMaxHealth());
+        int online = getServer().getOnlinePlayers().size();
+        String serverTime = java.time.LocalTime.now().format(
+                java.time.format.DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT));
+
         scoreboard.setLines(Arrays.asList(
                 "§7" + player.getName(),
-                "§fУровень: §e" + level + "§7/§e" + MAX_LEVEL,
-                "§fОпыт: §a" + xp + "§7/§a" + nextXp,
-                "§fОчки: §b" + get(player, "points", 0),
                 "§8§m----------------",
+                "§fКласс: " + rpgClassLabel(getRpgClass(player)),
+                "§fУровень: §e" + level + "§7/§e" + MAX_LEVEL,
+                level >= MAX_LEVEL ? "§6Максимальный уровень" : "§fОпыт: §a" + xp + "§7/§a" + nextXp,
+                "§fПрогресс: " + (level >= MAX_LEVEL ? "§a■■■■■■■■■■ §e100%" : xpProgressBar(xp, nextXp)),
+                "§cЗдоровье: §f" + health,
                 "§cСила: §f" + get(player, "strength", 0),
-                "§cЗдоровье: §f" + get(player, "health", 0),
-                "§aЛовкость: §f" + get(player, "agility", 0),
-                "§bИнтеллект: §f" + get(player, "intelligence", 0),
+                "§bОчки: §f" + get(player, "points", 0),
+                "§8§m----------------",
+                "§aОнлайн: §f" + online,
+                "§eВремя: §f" + serverTime,
                 getConfig().getString("scoreboard.footer", "§8play.localfast")
         ));
         if (!scoreboard.containViewer(player, DisplaySlot.SIDEBAR)) {

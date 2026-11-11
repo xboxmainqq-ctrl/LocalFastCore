@@ -1,4 +1,8 @@
 # LocalFastCore 0.9.3
+
+# Player data is saved on the main thread at this interval (seconds).
+autosave:
+  interval-seconds: 60
 scoreboard:
   enabled: true
   title: "§6§lLOCALFAST"

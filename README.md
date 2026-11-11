@@ -1,4 +1,4 @@
-# LocalFastCore 0.9.0
+# LocalFastCore 0.9.1
 
 RPG progression plugin for Nukkit-MOT 1.26.60-R1 (Java 17).
 
@@ -32,9 +32,10 @@ The plugin creates `plugins/LocalFastCore/config.yml` on first start. It control
 - Sidebar enablement, title, footer and refresh interval.
 - Points per level, stat cap, mob-kill and login XP.
 - Intelligence XP bonus scaling.
+- Daily task kill requirement and XP reward.
 - Level-up title and subtitle.
 
 Restart the server after changing configuration values.
 
 ## Upgrade notes
-Version 0.9.0 keeps the existing player-data keys from 0.8.0. Back up the plugin folder before upgrading. Test the new build on a staging server before replacing a production JAR.
+Version 0.9.1 keeps existing player-data keys and adds `daily_claimed` to prevent claiming the daily reward more than once per server-local day. Existing 0.8.0 player data is initialized automatically. Back up the plugin folder before upgrading. Test the new build on a staging server before replacing a production JAR.

@@ -401,6 +401,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 changed = true;
             }
         }
+        if (!players.exists(key + ".balance")) {
+            long startingBalance = Math.max(0L, parseConfiguredBalance());
+            players.set(key + ".balance", Long.toString(startingBalance));
+            changed = true;
+        }
         if (!players.exists(key + ".daily_claimed")) { players.set(key + ".daily_claimed", false); changed = true; }
         if (!players.exists(key + ".quest_type")) { players.set(key + ".quest_type", "any"); changed = true; }
         if (!players.exists(key + ".quest_active")) {
@@ -1018,9 +1023,104 @@ public final class LocalFastCore extends PluginBase implements Listener {
         player.sendMessage("§a[LocalFast] " + stat + " увеличена на " + amount + ".");
     }
 
+    private long parseConfiguredBalance() {
+        try {
+            return Long.parseLong(getConfig().getString("economy.starting-balance", "0").trim());
+        } catch (RuntimeException exception) {
+            getLogger().warning("Некорректный economy.starting-balance; используется 0.");
+            return 0L;
+        }
+    }
+
+    private String currencyName() {
+        String configured = getConfig().getString("economy.currency-name", "монет");
+        return configured == null || configured.trim().isEmpty() ? "монет" : configured.trim();
+    }
+
+    private long getBalance(Player player) {
+        String value = players.getString(playerKey(player) + ".balance", "0");
+        try {
+            return Math.max(0L, Long.parseLong(value.trim()));
+        } catch (RuntimeException exception) {
+            getLogger().warning("Некорректный баланс в профиле " + player.getName() + "; показан 0.");
+            return 0L;
+        }
+    }
+
+    private void setBalance(Player player, long amount) {
+        players.set(playerKey(player) + ".balance", Long.toString(amount));
+        markPlayersDirty();
+    }
+
+    private void handleEconomy(Player player, String commandName, String[] args) {
+        initialize(player);
+        if (commandName.equals("balance")) {
+            if (args.length != 0) {
+                player.sendMessage("§eИспользуй: /balance");
+                return;
+            }
+            player.sendMessage("§6[Экономика] §fБаланс: §a" + getBalance(player) + " " + currencyName());
+            return;
+        }
+        if (args.length != 2) {
+            player.sendMessage("§eИспользуй: /pay <игрок> <сумма>");
+            return;
+        }
+        Player target = getServer().getPlayer(args[0]);
+        if (target == null || !target.isOnline()) {
+            player.sendMessage("§cИгрок не найден или не в сети.");
+            return;
+        }
+        if (target.getUniqueId().equals(player.getUniqueId())) {
+            player.sendMessage("§cНельзя переводить деньги самому себе.");
+            return;
+        }
+        long amount;
+        try {
+            if (!args[1].matches("[0-9]+")) throw new NumberFormatException();
+            amount = Long.parseLong(args[1]);
+            if (amount <= 0L) throw new NumberFormatException();
+        } catch (NumberFormatException exception) {
+            player.sendMessage("§cСумма должна быть целым числом больше 0.");
+            return;
+        }
+        initialize(target);
+        long senderBalance = getBalance(player);
+        long targetBalance = getBalance(target);
+        if (senderBalance < amount) {
+            player.sendMessage("§cНедостаточно средств. Твой баланс: " + senderBalance + ".");
+            return;
+        }
+        if (targetBalance > Long.MAX_VALUE - amount) {
+            player.sendMessage("§cБаланс получателя достиг максимального значения.");
+            return;
+        }
+
+        setBalance(player, senderBalance - amount);
+        setBalance(target, targetBalance + amount);
+        if (!flushPlayers()) {
+            setBalance(player, senderBalance);
+            setBalance(target, targetBalance);
+            player.sendMessage("§cНе удалось сохранить перевод. Средства не должны быть списаны; попробуй позже.");
+            return;
+        }
+        String amountText = amount + " " + currencyName();
+        player.sendMessage("§aТы перевёл " + amountText + " игроку " + target.getName() + ".");
+        target.sendMessage("§a" + player.getName() + " перевёл тебе " + amountText + ".");
+    }
+
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         String name = command.getName().toLowerCase(Locale.ROOT);
+
+        if (name.equals("balance") || name.equals("pay")) {
+            if (!(sender instanceof Player)) {
+                sender.sendMessage("Эта команда доступна только игроку.");
+                return true;
+            }
+            handleEconomy((Player) sender, name, args);
+            return true;
+        }
 
         if (name.equals("sethome") || name.equals("home") || name.equals("delhome")) {
             if (!(sender instanceof Player)) {

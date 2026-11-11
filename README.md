@@ -154,7 +154,7 @@ Staff roles and active punishments are stored separately in `staff.yml`; staff a
 
 The operator is bound to the UUID stored in `operator.uuid`; nickname changes do not transfer operator access. On first setup, run `lfadmin setoperator <online-player>` from the server console while `operator.uuid` is empty. The bootstrap command refuses to replace an already configured operator.
 
-- `/lfadmin` — operator GUI. Includes online staff, role/command reference, player statistics, warp save, welcome-message toggle, fly/vanish and a shortcut to `/staff`.
+- `/lfadmin` — operator GUI. Includes online staff, role/command reference, player statistics, warp save, personal welcome toggle, fly/vanish and a shortcut to `/staff`.
 - `/lfadmin staff add <online-player> <rank>` and `/lfadmin staff remove <online-player>` — assign/remove staff. Ranks: `ml_helper`, `helper`, `senior_helper`, `junior_moderator`, `moderator`, `senior_moderator`, `admin`.
 - `/lfadmin staff list` — list staff UUIDs and ranks.
 - `/lfadmin warp set <name>`, `/lfadmin warp delete <name>`, `/lfadmin warp list` — manage named warp points. Warp names accept 1–24 lowercase Latin letters, digits, underscores or hyphens.
@@ -163,6 +163,6 @@ The operator is bound to the UUID stored in `operator.uuid`; nickname changes do
 - `/staff warp` — open saved warps; `/staff fly` and `/staff vanish` — administrator/operator utilities.
 - `/staff promote <online-player>`, `/staff demote <online-player>`, `/staff setrank <online-player> <rank>` — admin can manage ranks up to moderator; senior moderator/admin assignments are operator-only.
 
-Moderation limits follow the rank ladder. Administrators and the operator can issue a permanent ban with `/staff ban <player> -1 <reason>`. Punishments and action history are stored in `staff.yml` and `staff.log`. Fly/vanish are runtime modes and are re-applied for eligible staff on reconnect; demoting a staff member below admin removes those modes. The welcome message is configured at `welcome.message` in `config.yml`; the operator panel toggles the default welcome text on/off. Use `/lfadmin welcome <text>` to set custom text or `/lfadmin welcome off` to disable it. The message supports `{player}` and Minecraft color codes.
+Moderation limits follow the rank ladder. Administrators and the operator can issue a permanent ban with `/staff ban <player> -1 <reason>`. Punishments and action history are stored in `staff.yml` and `staff.log`. Fly/vanish are runtime modes and are re-applied for eligible staff on reconnect; demoting a staff member below admin removes those modes. The join greeting text is configured at `welcome.message` in `config.yml` and supports `{player}` plus Minecraft color codes. Every player can independently enable or disable their own greeting with `/staff welcome on` or `/staff welcome off`; check the setting with `/staff welcome status`. This personal preference is stored in `staff.yml`.
 
 **Important:** CI confirms Java compilation and packaging, not in-game behavior. Test moderation, flight, vanish visibility, warp teleportation and join messages on a staging Nukkit server before production. Existing `players.yml` profiles are not reset by these staff features.

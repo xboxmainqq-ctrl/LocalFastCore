@@ -127,8 +127,27 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
     }
 
-    private String playerKey(Player player) {
+    private String legacyPlayerKey(Player player) {
         return player.getName().toLowerCase(Locale.ROOT).replace('.', '_');
+    }
+
+    private String playerKey(Player player) {
+        return "uuid_" + player.getUniqueId().toString().toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Copy an existing name-keyed profile to the UUID key once.
+     * The legacy section is deliberately retained as a backup.
+     */
+    private void migrateLegacyPlayerData(Player player) {
+        String uuidKey = playerKey(player);
+        String legacyKey = legacyPlayerKey(player);
+        if (uuidKey.equals(legacyKey) || players.exists(uuidKey) || !players.exists(legacyKey)) return;
+
+        players.set(uuidKey, players.getSection(legacyKey).getAll());
+        markPlayersDirty();
+        getLogger().info("Migrated player data from legacy name key '" + legacyKey
+                + "' to UUID profile for " + player.getName() + ".");
     }
 
     private int get(Player player, String field, int fallback) {
@@ -153,7 +172,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
         String key = playerKey(player);
         IScoreboard scoreboard = sidebars.get(key);
         if (scoreboard == null) {
-            String objective = "localfast_" + key.replaceAll("[^a-z0-9_]", "_");
+            String uuidSuffix = player.getUniqueId().toString().replace("-", "").substring(0, 12);
+            String objective = "lf_" + uuidSuffix;
             scoreboard = new Scoreboard(objective, getConfig().getString("scoreboard.title", "§6§lLOCALFAST"), "dummy", SortOrder.DESCENDING);
             sidebars.put(key, scoreboard);
         }
@@ -217,6 +237,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     }
 
     private void initialize(Player player) {
+        migrateLegacyPlayerData(player);
         String key = playerKey(player);
         String[] fields = {"level", "xp", "points", "strength", "health", "agility", "intelligence",
                 "quest_kills"};
@@ -283,7 +304,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
             p.sendMessage("§aНачато! Убей " + required + " любых существ.");return;
         }
         if(a.equals("claim")){
-            if(!players.getBoolean(k+".daily_complete",false)){p.sendMessage("§cСначала выполни задание.");return;}
+            if(players.getBoolean(k+".daily_claimed",false) || !players.getBoolean(k+".daily_complete",false)){
+                p.sendMessage("§cЗадание ещё не выполнено или награда уже получена.");return;
+            }
+            // Persist the claimed state through the centralized save queue before granting XP.
             players.set(k+".daily_complete",false);players.set(k+".daily_active",false);players.set(k+".daily_claimed",true);markPlayersDirty();
             int reward = Math.max(0, getConfig().getInt("daily.xp-reward", DAILY_XP_REWARD));
             giveXp(p,reward);p.sendMessage("§aПолучено +" + reward + " XP!");return;
@@ -451,9 +475,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
         boolean complete = players.getBoolean(path + ".complete", false);
         boolean claimed = players.getBoolean(path + ".claimed", false);
         int progress = Math.max(0, players.getInt(path + ".kills", 0));
+        int reward = questXp(quest);
         FormWindowSimple form = new FormWindowSimple("§6Квест §8| §e" + quest.title,
                 "§f" + quest.description + "\\n§fПрогресс: §a" + progress + "/" + questKills(quest)
-                        + "\\n§fНаграда: §6" + questXp(quest) + " XP"
+                        + "\\n§fНаграда: §6" + reward + " XP"
                         + "\\n§fТребуемый уровень: §e" + quest.minLevel + "–" + quest.maxLevel
                         + (claimed ? "\\n§8Награда уже получена." : complete ? "\\n§aЗадание выполнено!" : ""));
         if (!claimed) {
@@ -465,24 +490,37 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null) return;
             int selected = form.getResponse().getClickedButtonId();
-            if (claimed || (active && !complete)) {
+
+            // Form state may be stale when the player has multiple quest windows open.
+            // Always re-read the persisted state at click time before changing or rewarding it.
+            boolean currentActive = players.getBoolean(path + ".active", false);
+            boolean currentComplete = players.getBoolean(path + ".complete", false);
+            boolean currentClaimed = players.getBoolean(path + ".claimed", false);
+
+            if (selected != 0 || currentClaimed || (currentActive && !currentComplete)) {
                 openQuestTierMenu(player, tier);
                 return;
             }
-            if (selected == 0 && complete && !claimed) {
+
+            if (currentActive && currentComplete) {
+                int currentReward = questXp(quest);
+                // Persist the claimed state before granting XP so another open form
+                // or a later reconnect cannot grant this reward a second time.
                 players.set(path + ".active", false);
                 players.set(path + ".complete", false);
                 players.set(path + ".claimed", true);
                 markPlayersDirty();
-                giveXp(player, questXp(quest));
-                player.sendMessage("§a[Квесты] Получено +" + questXp(quest) + " XP за " + quest.title + "!");
-            } else if (selected == 0 && !active && !claimed) {
-                if (get(player, "level", 1) < quest.minLevel || get(player, "level", 1) > quest.maxLevel) {
+                giveXp(player, currentReward);
+                player.sendMessage("§a[Квесты] Получено +" + currentReward + " XP за " + quest.title + "!");
+            } else if (!currentActive && !currentClaimed) {
+                int level = get(player, "level", 1);
+                if (level < quest.minLevel || level > quest.maxLevel) {
                     player.sendMessage("§cЭтот квест пока недоступен по уровню.");
                 } else {
                     players.set(path + ".active", true);
                     players.set(path + ".kills", 0);
                     players.set(path + ".complete", false);
+                    players.set(path + ".claimed", false);
                     markPlayersDirty();
                     player.sendMessage("§a[Квесты] Принято задание: " + quest.title);
                 }
@@ -764,8 +802,69 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 sender.sendMessage("§cНедостаточно прав.");
                 return true;
             }
+            if (args.length == 0) {
+                sender.sendMessage("§e/lfadmin xp <player> <amount>");
+                sender.sendMessage("§e/lfadmin reset <player> <level|stats|quests|all>");
+                return true;
+            }
+
+            if (args[0].equalsIgnoreCase("reset")) {
+                if (args.length != 3) {
+                    sender.sendMessage("§e/lfadmin reset <player> <level|stats|quests|all>");
+                    return true;
+                }
+                Player target = getServer().getPlayer(args[1]);
+                if (target == null) {
+                    sender.sendMessage("§cИгрок не найден или не в сети.");
+                    return true;
+                }
+                String mode = args[2].toLowerCase(Locale.ROOT);
+                if (!Arrays.asList("level", "stats", "quests", "all").contains(mode)) {
+                    sender.sendMessage("§cВыбери: level, stats, quests или all.");
+                    return true;
+                }
+
+                String key = playerKey(target);
+                if (mode.equals("level") || mode.equals("all")) {
+                    set(target, "level", 1);
+                    set(target, "xp", 0);
+                    set(target, "points", 0);
+                }
+                if (mode.equals("stats") || mode.equals("all")) {
+                    for (String stat : STATS) set(target, stat, 0);
+                }
+                if (mode.equals("quests") || mode.equals("all")) {
+                    set(target, "quest_kills", 0);
+                    setBoolean(target, "quest_active", false);
+                    setBoolean(target, "quest_complete", false);
+                    players.set(key + ".quest_type", "any");
+                    set(target, "daily_kills", 0);
+                    setBoolean(target, "daily_active", false);
+                    setBoolean(target, "daily_complete", false);
+                    setBoolean(target, "daily_claimed", false);
+                    for (QuestDefinition quest : questCatalog()) {
+                        String questPath = key + ".quests." + quest.id;
+                        players.set(questPath + ".kills", 0);
+                        players.set(questPath + ".active", false);
+                        players.set(questPath + ".complete", false);
+                        players.set(questPath + ".claimed", false);
+                    }
+                }
+                markPlayersDirty();
+                recalculateStats(target);
+                updateSidebar(target);
+                String description = mode.equals("level") ? "уровень, XP и свободные очки"
+                        : mode.equals("stats") ? "характеристики"
+                        : mode.equals("quests") ? "прогресс квестов и ежедневное задание"
+                        : "весь прогресс";
+                target.sendMessage("§e[LocalFast] Администратор сбросил: " + description + ".");
+                sender.sendMessage("§aДля игрока " + target.getName() + " сброшено: " + description + ".");
+                return true;
+            }
+
             if (args.length != 3 || !args[0].equalsIgnoreCase("xp")) {
                 sender.sendMessage("§e/lfadmin xp <player> <amount>");
+                sender.sendMessage("§e/lfadmin reset <player> <level|stats|quests|all>");
                 return true;
             }
             Player target = getServer().getPlayer(args[1]);

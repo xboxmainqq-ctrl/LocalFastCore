@@ -1,6 +1,6 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.7.0"
+version: "0.8.0"
 api: ["1.0.0"]
 author: LocalFast
 description: LOCALFAST RPG progression, stats effects, mob kill experience and quests
@@ -12,8 +12,8 @@ commands:
     description: Показать характеристики
     usage: "/stats"
   addstat:
-    description: Потратить очко характеристики
-    usage: "/addstat <strength|health|agility|intelligence>"
+    description: Потратить одно или несколько очков характеристики
+    usage: "/addstat <strength|health|agility|intelligence> [количество]"
   quest:
     description: Просмотр и выполнение заданий
     usage: "/quest [zombie|skeleton|spider|start|claim]"

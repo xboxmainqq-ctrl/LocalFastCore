@@ -1496,13 +1496,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private boolean handleStaffCommand(CommandSender sender, String[] args) {
         if (!(sender instanceof Player)) { sender.sendMessage("Команда доступна игроку."); return true; }
         Player actor = (Player) sender; String role = staffRole(actor);
+        if (staffRank(role) == 0) { sender.sendMessage("§cНет доступа к /staff."); return true; }
         if (args.length == 0) { openStaffMenu(actor); return true; }
         if (args[0].equalsIgnoreCase("fly")) { toggleFly(actor); return true; }
         if (args[0].equalsIgnoreCase("vanish")) { toggleVanish(actor); return true; }
         if (args[0].equalsIgnoreCase("warp")) { if (staffRank(role) < 5) sender.sendMessage("§cWarp доступен с ранга модератора."); else openWarpMenu(actor); return true; }
         if (args[0].equalsIgnoreCase("online")) { showOnlineStaff(actor); return true; }
         if (args[0].equalsIgnoreCase("help") || args[0].equalsIgnoreCase("ranks")) { showStaffHelp(actor); return true; }
-        if (staffRank(role) == 0) { sender.sendMessage("§cНет доступа к /staff."); return true; }
         String action = args[0].toLowerCase(Locale.ROOT);
         if (action.equals("promote") || action.equals("demote") || action.equals("setrank")) {
             boolean operator = role.equals("operator");

@@ -1,4 +1,4 @@
-# LocalFastCore 0.9.2
+# LocalFastCore 0.9.3
 scoreboard:
   enabled: true
   title: "§6§lLOCALFAST"
@@ -32,3 +32,21 @@ effects:
   level-up-title: true
   level-up-title-text: "§6УРОВЕНЬ ПОВЫШЕН!"
   level-up-subtitle: "§eНовый уровень!"
+
+  # Each quest can be tuned independently. Existing player data remains compatible.
+  catalog:
+    rookie_zombies: {kills: 10, reward: 100}
+    rookie_skeletons: {kills: 5, reward: 120}
+    rookie_hunt: {kills: 20, reward: 150}
+    adventurer_zombies: {kills: 30, reward: 300}
+    adventurer_spiders: {kills: 20, reward: 350}
+    adventurer_hunt: {kills: 40, reward: 400}
+    veteran_skeletons: {kills: 50, reward: 700}
+    veteran_spiders: {kills: 45, reward: 750}
+    veteran_hunt: {kills: 80, reward: 900}
+    elite_zombies: {kills: 100, reward: 1300}
+    elite_skeletons: {kills: 80, reward: 1500}
+    elite_hunt: {kills: 150, reward: 1800}
+    legend_spiders: {kills: 150, reward: 2500}
+    legend_skeletons: {kills: 150, reward: 2800}
+    legend_hunt: {kills: 250, reward: 3500}

@@ -342,8 +342,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 return true;
             }
 
-            if (args.length != 1) {
-                sender.sendMessage("§e/addstat <strength|health|agility|intelligence>");
+            if (args.length < 1 || args.length > 2) {
+                sender.sendMessage("§e/addstat <strength|health|agility|intelligence> [количество]");
                 return true;
             }
             String stat = args[0].toLowerCase(Locale.ROOT);
@@ -353,16 +353,26 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 sender.sendMessage("§cВыбери: strength, health, agility или intelligence.");
                 return true;
             }
+            int amount = 1;
+            if (args.length == 2) {
+                try {
+                    amount = Integer.parseInt(args[1]);
+                    if (amount < 1) throw new NumberFormatException();
+                } catch (NumberFormatException exception) {
+                    sender.sendMessage("§cКоличество должно быть целым числом больше 0.");
+                    return true;
+                }
+            }
             int points = get(player, "points", 0);
-            if (points < 1) {
-                sender.sendMessage("§cУ тебя нет свободных очков характеристик.");
+            if (points < amount) {
+                sender.sendMessage("§cНедостаточно очков. У тебя есть: " + points + ".");
                 return true;
             }
-            set(player, stat, get(player, stat, 0) + 1);
-            set(player, "points", points - 1);
+            set(player, stat, get(player, stat, 0) + amount);
+            set(player, "points", points - amount);
             players.save();
             recalculateStats(player);
-            sender.sendMessage("§a[LocalFast] Характеристика " + stat + " увеличена на 1.");
+            sender.sendMessage("§a[LocalFast] Характеристика " + stat + " увеличена на " + amount + ".");
             return true;
         }
 

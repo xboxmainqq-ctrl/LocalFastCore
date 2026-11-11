@@ -3,6 +3,7 @@ package ru.localfast.core;
 import cn.nukkit.Player;
 import cn.nukkit.block.Block;
 import cn.nukkit.level.Level;
+import cn.nukkit.level.generator.Generator;
 import cn.nukkit.level.Position;
 import cn.nukkit.command.Command;
 import cn.nukkit.command.CommandSender;
@@ -2326,6 +2327,184 @@ public final class LocalFastCore extends PluginBase implements Listener {
         sender.sendMessage("§e/staff — меню; /staff warn|ban|mute|kick|unban|unmute ..."); return true;
     }
 
+
+    private String worldRole(String name) {
+        String configured = getConfig().getString("managed-worlds." + name + ".type", "");
+        if (configured != null && !configured.trim().isEmpty()) return configured;
+        if (name.equalsIgnoreCase("spawn")) return "spawn";
+        if (name.equalsIgnoreCase("world")) return "survival";
+        if (name.equalsIgnoreCase("dungeons")) return "dungeons";
+        if (name.equalsIgnoreCase("bosses")) return "bosses";
+        return "обычный";
+    }
+
+    private void showWorldList(CommandSender sender) {
+        sender.sendMessage("§6§l[LocalFast] Миры сервера:");
+        java.util.Set<String> names = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        for (Level level : getServer().getLevels().values()) names.add(level.getFolderName());
+        if (getConfig().exists("managed-worlds")) {
+            names.addAll(getConfig().getSection("managed-worlds").getKeys(false));
+        }
+        if (names.isEmpty()) {
+            sender.sendMessage("§7Загруженных или зарегистрированных миров пока нет.");
+            return;
+        }
+        for (String name : names) {
+            boolean loaded = getServer().isLevelLoaded(name);
+            boolean generated = loaded || getServer().isLevelGenerated(name);
+            sender.sendMessage((loaded ? "§a● " : generated ? "§e○ " : "§8○ ")
+                    + "§f" + name + " §7— " + worldRole(name)
+                    + (loaded ? " §a(загружен)" : generated ? " §e(не загружен)" : " §8(только запись)"));
+        }
+        sender.sendMessage("§7Телепорт: /world tp <имя>");
+    }
+
+    private boolean handleWorldCommand(CommandSender sender, String[] args) {
+        if (args.length == 0 || args[0].equalsIgnoreCase("list")) {
+            if (args.length > 1) sender.sendMessage("§e/world list");
+            else showWorldList(sender);
+            return true;
+        }
+        String action = args[0].toLowerCase(Locale.ROOT);
+        if (action.equals("tp") || action.equals("teleport")) {
+            if (!(sender instanceof Player)) {
+                sender.sendMessage("§cТелепортация между мирами доступна игроку.");
+                return true;
+            }
+            if (args.length != 2) {
+                sender.sendMessage("§e/world tp <имя>");
+                return true;
+            }
+            String name = args[1];
+            if (!getServer().isLevelLoaded(name) && !getServer().loadLevel(name)) {
+                sender.sendMessage("§cМир '" + name + "' не найден или не удалось его загрузить.");
+                return true;
+            }
+            Level target = getServer().getLevelByName(name);
+            if (target == null) {
+                sender.sendMessage("§cМир '" + name + "' не удалось получить после загрузки.");
+                return true;
+            }
+            Player player = (Player) sender;
+            if (player.teleport(target.getSafeSpawn())) {
+                player.sendMessage("§aТы перемещён в мир §f" + target.getFolderName() + "§a.");
+            } else {
+                player.sendMessage("§cНе удалось телепортировать тебя в этот мир.");
+            }
+            return true;
+        }
+        if (action.equals("load")) {
+            if (!isOperator(sender)) {
+                sender.sendMessage("§cЗагружать миры может только оператор.");
+                return true;
+            }
+            if (args.length != 2) {
+                sender.sendMessage("§e/world load <имя>");
+                return true;
+            }
+            String name = args[1];
+            if (getServer().isLevelLoaded(name)) {
+                sender.sendMessage("§eМир '" + name + "' уже загружен.");
+                return true;
+            }
+            if (!getServer().loadLevel(name)) {
+                sender.sendMessage("§cНе удалось загрузить мир '" + name + "'. Проверь папку worlds/" + name + ".");
+                return true;
+            }
+            sender.sendMessage("§aМир '" + name + "' загружен.");
+            return true;
+        }
+        if (action.equals("create")) {
+            if (!isOperator(sender)) {
+                sender.sendMessage("§cСоздавать миры может только оператор.");
+                return true;
+            }
+            if (args.length != 3) {
+                sender.sendMessage("§e/world create <имя> <normal|flat|void>");
+                return true;
+            }
+            String name = args[1].toLowerCase(Locale.ROOT);
+            String generatorName = args[2].toLowerCase(Locale.ROOT);
+            if (!name.matches("[a-z0-9_-]{1,32}")) {
+                sender.sendMessage("§cИмя мира: 1–32 символа, латиница, цифры, _ или -.");
+                return true;
+            }
+            if (!Arrays.asList("normal", "flat", "void").contains(generatorName)) {
+                sender.sendMessage("§cГенератор: normal, flat или void.");
+                return true;
+            }
+            if (getServer().isLevelGenerated(name)) {
+                sender.sendMessage("§cМир '" + name + "' уже существует. Используй /world load " + name + ".");
+                return true;
+            }
+            Class<? extends Generator> generator = Generator.getGenerator(generatorName);
+            if (generator == null) {
+                sender.sendMessage("§cГенератор '" + generatorName + "' не зарегистрирован на сервере.");
+                return true;
+            }
+            Map<String, Object> options = new HashMap<>();
+            if (generatorName.equals("flat")) {
+                options.put("preset", "2;7,2x3,2;1;");
+                options.put("decoration", false);
+            }
+            long seed = ThreadLocalRandom.current().nextLong();
+            sender.sendMessage("§eСоздаю мир '" + name + "' (" + generatorName + ")...");
+            boolean created;
+            try {
+                created = getServer().generateLevel(name, seed, generator, options);
+            } catch (RuntimeException exception) {
+                getLogger().error("Не удалось создать мир " + name, exception);
+                sender.sendMessage("§cОшибка при создании мира. Подробности записаны в консоль.");
+                return true;
+            }
+            if (!created || getServer().getLevelByName(name) == null) {
+                sender.sendMessage("§cСервер не смог создать мир '" + name + "'.");
+                return true;
+            }
+            String type = name.equals("spawn") ? "spawn"
+                    : name.equals("world") ? "survival"
+                    : name.equals("dungeons") ? "dungeons"
+                    : name.equals("bosses") ? "bosses" : "обычный";
+            getConfig().set("managed-worlds." + name + ".type", type);
+            getConfig().set("managed-worlds." + name + ".generator", generatorName);
+            getConfig().set("managed-worlds." + name + ".seed", seed);
+            saveConfig();
+            sender.sendMessage("§aМир '" + name + "' создан и загружен.");
+            sender.sendMessage("§7Телепортация: /world tp " + name);
+            if (name.equals("spawn")) {
+                getConfig().set("spawn-world", name);
+                saveConfig();
+                sender.sendMessage("§aМир назначен миром спавна. Установи точку командой /setspawn.");
+            }
+            return true;
+        }
+        if (action.equals("info")) {
+            if (args.length != 2) {
+                sender.sendMessage("§e/world info <имя>");
+                return true;
+            }
+            String name = args[1];
+            boolean loaded = getServer().isLevelLoaded(name);
+            boolean generated = loaded || getServer().isLevelGenerated(name);
+            sender.sendMessage("§6Мир: §f" + name);
+            sender.sendMessage("§7Тип: §f" + worldRole(name));
+            sender.sendMessage("§7Существует: " + (generated ? "§aда" : "§cнет"));
+            sender.sendMessage("§7Загружен: " + (loaded ? "§aда" : "§cнет"));
+            if (loaded) {
+                Level level = getServer().getLevelByName(name);
+                sender.sendMessage("§7Папка: §f" + level.getFolderName());
+                sender.sendMessage("§7Игроков: §f" + level.getPlayers().size());
+            }
+            return true;
+        }
+        sender.sendMessage("§e/world list");
+        sender.sendMessage("§e/world create <имя> <normal|flat|void> §7(оператор)");
+        sender.sendMessage("§e/world load <имя> §7(оператор)");
+        sender.sendMessage("§e/world tp <имя>");
+        sender.sendMessage("§e/world info <имя>");
+        return true;
+    }
+
     private boolean handleOperatorCommand(CommandSender sender, String[] args) {
         if (args.length > 0 && args[0].equalsIgnoreCase("setoperator")) {
             if (sender instanceof Player) { sender.sendMessage("§cПервое назначение оператора выполняется только из консоли."); return true; }
@@ -2340,7 +2519,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             sender.sendMessage("Оператор назначен: " + target.getName()); target.sendMessage("§6Ты назначен оператором LocalFastCore."); return true;
         }
         if (!isOperator(sender)) { sender.sendMessage("§cТолько оператор может использовать /lfadmin."); return true; }
-        if (args.length > 0 && args[0].equalsIgnoreCase("quest")) {
+        if (args.length > 0 && args[0].equalsIgnoreCase("world")) {\n            return handleWorldCommand(sender, Arrays.copyOfRange(args, 1, args.length));\n        }\n        if (args.length > 0 && args[0].equalsIgnoreCase("quest")) {
             if (args.length == 2 && args[1].equalsIgnoreCase("list")) {
                 sender.sendMessage("§6[Квесты] §fСписок заданий и наград:");
                 for (QuestDefinition quest : questCatalog()) sender.sendMessage("§e" + quest.id + " §7— " + quest.title + " §8| §6" + questXp(quest) + " XP §8+ §a" + questMoney(quest) + " " + currencyName());
@@ -2478,7 +2657,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         String name = command.getName().toLowerCase(Locale.ROOT);
 
-        if (name.equals("balance") || name.equals("pay")) {
+        if (name.equals("world") || name.equals("worlds")) { handleWorldCommand(sender, args); return true; }\n\n        if (name.equals("balance") || name.equals("pay")) {
             if (!(sender instanceof Player)) {
                 sender.sendMessage("Эта команда доступна только игроку.");
                 return true;

@@ -18,7 +18,7 @@ RPG progression plugin for Nukkit-MOT 1.26.60-R1 (Java 17).
 | `/lfmenu` | Open the attribute allocation menu |
 | `/addstat <stat> [amount]` | Allocate points by command |
 | `/quest` | View available or active quests |
-| `/quest zombie|skeleton|spider` | Start a mob-specific quest |
+| `/quest <mob>` (zombie, skeleton or spider) | Start a mob-specific quest |
 | `/quest claim` | Claim a completed quest |
 | `/daily` | View daily task |
 | `/daily start` | Start the daily task |

@@ -16,6 +16,9 @@ import cn.nukkit.network.protocol.types.DisplaySlot;
 import cn.nukkit.network.protocol.types.SortOrder;
 import cn.nukkit.scoreboard.scoreboard.IScoreboard;
 import cn.nukkit.scoreboard.scoreboard.Scoreboard;
+import cn.nukkit.form.element.ElementButton;
+import cn.nukkit.form.handler.FormResponseHandler;
+import cn.nukkit.form.window.FormWindowSimple;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -51,7 +54,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
         players = new Config(new File(getDataFolder(), "players.yml"), Config.YAML);
         getServer().getPluginManager().registerEvents(this, this);
-        getLogger().info("LocalFastCore 0.8.0 включён. RPG, характеристики, скорборд и задания готовы.");
+        saveDefaultConfig();
+        int refreshTicks = Math.max(20, Math.min(1200, getConfig().getInt("scoreboard.refresh-ticks", 40)));
+        getServer().getScheduler().scheduleRepeatingTask(this, () -> {
+            if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
+            for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
+        }, refreshTicks);
+        getLogger().info("LocalFastCore 0.9.0 включён. RPG, GUI, эффекты, скорборд и задания готовы.");
     }
 
     private String playerKey(Player player) {
@@ -80,7 +89,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         IScoreboard scoreboard = sidebars.get(key);
         if (scoreboard == null) {
             String objective = "localfast_" + key.replaceAll("[^a-z0-9_]", "_");
-            scoreboard = new Scoreboard(objective, "§6§lLOCALFAST", "dummy", SortOrder.DESCENDING);
+            scoreboard = new Scoreboard(objective, getConfig().getString("scoreboard.title", "§6§lLOCALFAST"), "dummy", SortOrder.DESCENDING);
             sidebars.put(key, scoreboard);
         }
 
@@ -97,7 +106,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 "§cЗдоровье: §f" + get(player, "health", 0),
                 "§aЛовкость: §f" + get(player, "agility", 0),
                 "§bИнтеллект: §f" + get(player, "intelligence", 0),
-                "§8play.localfast"
+                getConfig().getString("scoreboard.footer", "§8play.localfast")
         ));
         if (!scoreboard.containViewer(player, DisplaySlot.SIDEBAR)) {
             scoreboard.addViewer(player, DisplaySlot.SIDEBAR);
@@ -179,7 +188,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     public void onJoin(PlayerJoinEvent e) {
         Player p=e.getPlayer(); initialize(p); refreshDaily(p); String k=playerKey(p); String d=today();
         if (!players.getString(k+".login_reward_date","").equals(d)) {
-            players.set(k+".login_reward_date",d); players.save(); giveXp(p,LOGIN_XP_REWARD);
+            players.set(k+".login_reward_date",d); players.save(); giveXp(p, Math.max(0, getConfig().getInt("progression.login-reward-xp", LOGIN_XP_REWARD)));
             p.sendMessage("§a[LocalFast] Награда за первый вход сегодня: +25 XP!");
         }
         recalculateStats(p);
@@ -216,14 +225,25 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private void giveXp(Player player, int amount) {
         initialize(player);
         int level = Math.max(1, Math.min(MAX_LEVEL, get(player, "level", 1)));
-        long totalXp = (long) get(player, "xp", 0) + amount;
+        int intelligenceStep = Math.max(1, getConfig().getInt("intelligence.xp-bonus-per", 5));
+        int intelligenceBonus = Math.max(0, get(player, "intelligence", 0) / intelligenceStep)
+                * Math.max(0, getConfig().getInt("intelligence.xp-bonus-percent", 1));
+        intelligenceBonus = Math.min(100, intelligenceBonus);
+        long boostedAmount = (long) amount + ((long) amount * intelligenceBonus / 100L);
+        long totalXp = (long) get(player, "xp", 0) + boostedAmount;
         int points = Math.max(0, get(player, "points", 0));
 
         while (level < MAX_LEVEL && totalXp >= xpForNextLevel(level)) {
             totalXp -= xpForNextLevel(level);
             level++;
-            points += POINTS_PER_LEVEL;
-            player.sendMessage("§a[LocalFast] Новый уровень: §e" + level + " §a( +" + POINTS_PER_LEVEL + " очка характеристик )");
+            points += pointsPerLevel;
+            int pointsPerLevel = Math.max(0, getConfig().getInt("progression.points-per-level", POINTS_PER_LEVEL));
+            points += pointsPerLevel;
+            if (getConfig().getBoolean("effects.level-up-title", true)) {
+                player.sendTitle(getConfig().getString("effects.level-up-title-text", "§6УРОВЕНЬ ПОВЫШЕН!"),
+                        getConfig().getString("effects.level-up-subtitle", "§eУровень " + level), 10, 50, 15);
+            }
+            player.sendMessage("§a[LocalFast] Новый уровень: §e" + level + " §a( +" + pointsPerLevel + " очков характеристик )");
         }
 
         if (level == MAX_LEVEL) totalXp = Math.min(totalXp, xpForNextLevel(MAX_LEVEL) - 1L);
@@ -244,8 +264,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
         Player killer = (Player) event.getDamager();
         initialize(killer);
-        giveXp(killer, MOB_KILL_XP);
-        killer.sendMessage("§a[LocalFast] +" + MOB_KILL_XP + " опыта за победу над существом!");
+        int mobXp = Math.max(0, getConfig().getInt("progression.mob-kill-xp", MOB_KILL_XP));
+        giveXp(killer, mobXp);
+        killer.sendMessage("§a[LocalFast] +" + mobXp + " опыта за победу над существом!");
 
 
         refreshDaily(killer); String dk=playerKey(killer);
@@ -350,6 +371,71 @@ public final class LocalFastCore extends PluginBase implements Listener {
         player.sendMessage("§eИспользуй: /quest, /quest zombie, /quest skeleton, /quest spider или /quest claim");
     }
 
+    private void openStatsMenu(Player player) {
+        initialize(player);
+        FormWindowSimple form = new FormWindowSimple("§6LocalFastCore §8| §lХарактеристики",
+                "§fУровень: §e" + get(player, "level", 1)
+                        + "\n§fСвободные очки: §b" + get(player, "points", 0)
+                        + "\n\n§7Выбери характеристику для распределения очков.");
+        form.addButton(new ElementButton("§cСила §8| §f" + get(player, "strength", 0)));
+        form.addButton(new ElementButton("§cЗдоровье §8| §f" + get(player, "health", 0)));
+        form.addButton(new ElementButton("§aЛовкость §8| §f" + get(player, "agility", 0)));
+        form.addButton(new ElementButton("§bИнтеллект §8| §f" + get(player, "intelligence", 0)));
+        form.addButton(new ElementButton("§7Обновить"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null) return;
+            int selected = form.getResponse().getClickedButtonId();
+            if (selected >= 0 && selected < STATS.length) openStatAllocationMenu(player, STATS[selected]);
+            else if (selected == 4) openStatsMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openStatAllocationMenu(Player player, String stat) {
+        initialize(player);
+        int current = get(player, stat, 0);
+        int points = get(player, "points", 0);
+        FormWindowSimple form = new FormWindowSimple("§6Распределение очков",
+                "§fХарактеристика: §e" + stat
+                        + "\n§fТекущее значение: §a" + current
+                        + "\n§fСвободные очки: §b" + points
+                        + "\n\n§7Выбери количество очков.");
+        form.addButton(new ElementButton("§a+1"));
+        form.addButton(new ElementButton("§a+5"));
+        form.addButton(new ElementButton("§aВсе доступные"));
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null) return;
+            int selected = form.getResponse().getClickedButtonId();
+            if (selected == 3) {
+                openStatsMenu(player);
+                return;
+            }
+            int requested = selected == 0 ? 1 : selected == 1 ? 5 : points;
+            spendStatPoints(player, stat, requested);
+            openStatsMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void spendStatPoints(Player player, String stat, int requested) {
+        if (requested < 1 || !Arrays.asList(STATS).contains(stat)) return;
+        int points = get(player, "points", 0);
+        int current = get(player, stat, 0);
+        int maxStat = Math.max(1, getConfig().getInt("progression.max-stat", 1000));
+        int amount = Math.min(requested, Math.min(points, maxStat - current));
+        if (amount <= 0) {
+            player.sendMessage("§cНедостаточно очков или достигнут предел характеристики.");
+            return;
+        }
+        set(player, stat, current + amount);
+        set(player, "points", points - amount);
+        players.save();
+        recalculateStats(player);
+        updateSidebar(player);
+        player.sendMessage("§a[LocalFast] " + stat + " увеличена на " + amount + ".");
+    }
+
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         String name = command.getName().toLowerCase(Locale.ROOT);
@@ -412,6 +498,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 }
             }
             int points = get(player, "points", 0);
+            int maxStat = Math.max(1, getConfig().getInt("progression.max-stat", 1000));
+            if ((long) get(player, stat, 0) + amount > maxStat) {
+                sender.sendMessage("§cМаксимум характеристики: " + maxStat + ".");
+                return true;
+            }
             if (points < amount) {
                 sender.sendMessage("§cНедостаточно очков. У тебя есть: " + points + ".");
                 return true;
@@ -422,6 +513,15 @@ public final class LocalFastCore extends PluginBase implements Listener {
             recalculateStats(player);
             updateSidebar(player);
             sender.sendMessage("§a[LocalFast] Характеристика " + stat + " увеличена на " + amount + ".");
+            return true;
+        }
+
+        if (name.equals("lfmenu")) {
+            if (!(sender instanceof Player)) {
+                sender.sendMessage("Эта команда доступна только игроку.");
+                return true;
+            }
+            openStatsMenu((Player) sender);
             return true;
         }
 

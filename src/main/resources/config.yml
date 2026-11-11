@@ -1,0 +1,22 @@
+# LocalFastCore 0.9.0
+scoreboard:
+  enabled: true
+  title: "§6§lLOCALFAST"
+  footer: "§8play.localfast"
+  refresh-ticks: 40
+
+progression:
+  points-per-level: 3
+  max-stat: 1000
+  mob-kill-xp: 10
+  login-reward-xp: 25
+
+intelligence:
+  # Each N intelligence points grants the configured XP percentage bonus.
+  xp-bonus-per: 5
+  xp-bonus-percent: 1
+
+effects:
+  level-up-title: true
+  level-up-title-text: "§6УРОВЕНЬ ПОВЫШЕН!"
+  level-up-subtitle: "§eНовый уровень!"

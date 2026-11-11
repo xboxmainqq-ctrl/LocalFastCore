@@ -1,6 +1,6 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.8.0"
+version: "0.9.0"
 api: ["1.0.0"]
 author: LocalFast
 description: LOCALFAST RPG progression, stats effects, mob kill experience and quests
@@ -20,6 +20,9 @@ commands:
   daily:
     description: Ежедневное задание
     usage: "/daily [start|claim]"
+  lfmenu:
+    description: Открыть RPG-меню характеристик
+    usage: "/lfmenu"
   lfadmin:
     description: Команды администратора LocalFast
     usage: "/lfadmin xp <player> <amount>"

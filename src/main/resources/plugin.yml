@@ -60,6 +60,9 @@ commands:
   lfmenu:
     description: Открыть RPG-меню характеристик
     usage: "/lfmenu"
+  class:
+    description: Выбрать или посмотреть класс персонажа
+    usage: "/class [info]"
   lfadmin:
     description: Операторская панель LocalFastCore
     usage: "/lfadmin"

@@ -323,8 +323,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
     @EventHandler
     public void onPlayerChat(PlayerChatEvent event) {
         Player player = event.getPlayer();
-        String prefix = staffChatPrefix(staffRole(player));
-        if (!prefix.isEmpty()) event.setFormat(prefix + " §f%1$s§7: §f%2$s");
+        String roleTag = staffChatTag(staffRole(player));
+        event.setFormat("%s" + roleTag + " §7: §f%s");
         String path = "punishments.mutes." + player.getUniqueId();
         long expires = staffData.getLong(path + ".expires", 0L);
         if (expires == -1L || expires > System.currentTimeMillis()) { event.setCancelled(true); player.sendMessage("§cЧат закрыт: у тебя активен мут."); }
@@ -1160,10 +1160,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
     };
 
     private String staffRole(Player player) {
-        if (isOperator(player)) return "operator";
-        String role = staffData.getString("staff." + player.getUniqueId().toString(), "");
-        if ("moderator".equals(role) || "admin".equals(role)) return role; // compatibility with early 0.12.0 builds
-        return role;
+        if (isOperator(player)) {
+            String testRole = getConfig().getString("operator.test-role", "");
+            if (Arrays.asList(STAFF_ROLES).contains(testRole)) return testRole;
+            return "operator";
+        }
+        return staffData.getString("staff." + player.getUniqueId().toString(), "");
     }
 
     private int staffRank(String role) {
@@ -1172,23 +1174,24 @@ public final class LocalFastCore extends PluginBase implements Listener {
         return 0;
     }
 
-    private String staffChatPrefix(String role) {
+    private String staffChatTag(String role) {
         switch (role) {
-            case "ml_helper": return "§8[§b▌ §f§lМЛ. ХЕЛПЕР §b▐§8]";
-            case "helper": return "§8[§a▌ §f§lХЕЛПЕР §a▐§8]";
-            case "senior_helper": return "§8[§6▌ §f§lСТ. ХЕЛПЕР §6▐§8]";
-            case "junior_moderator": return "§8[§d▌ §f§lМЛ. МОДЕР §d▐§8]";
-            case "moderator": return "§8[§5▌ §f§lМОДЕР §5▐§8]";
-            case "senior_moderator": return "§8[§9▌ §f§lСТ. МОДЕР §9▐§8]";
-            case "admin": return "§8[§c▌ §f§lАДМИН §c▐§8]";
-            case "operator": return "§8[§6▌ §f§lОПЕРАТОР §6▐§8]";
+            case "ml_helper": return " §bМл. хелпер";
+            case "helper": return " §aХелпер";
+            case "senior_helper": return " §6Ст. хелпер";
+            case "junior_moderator": return " §dМл. модер";
+            case "moderator": return " §5Модер";
+            case "senior_moderator": return " §9Ст. модер";
+            case "admin": return " §aAdmin";
+            case "operator": return " §eОператор";
             default: return "";
         }
     }
 
     private void refreshStaffNameTag(Player player) {
-        String prefix = staffChatPrefix(staffRole(player));
-        player.setNameTag((prefix.isEmpty() ? "" : prefix + " §f") + player.getName());
+        String role = staffRole(player);
+        String name = "operator".equals(role) ? "§e" + player.getName() : "§f" + player.getName();
+        player.setNameTag(name + staffChatTag(role));
     }
 
     private void refreshStaffModes(Player player) {
@@ -1200,6 +1203,20 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     if (!viewer.getUniqueId().equals(player.getUniqueId())) viewer.showPlayer(player);
                 }
             }
+        }
+    }
+
+    private String staffRoleColor(String role) {
+        switch (role) {
+            case "ml_helper": return "§b";
+            case "helper": return "§a";
+            case "senior_helper": return "§6";
+            case "junior_moderator": return "§d";
+            case "moderator": return "§5";
+            case "senior_moderator": return "§9";
+            case "admin": return "§c";
+            case "operator": return "§e";
+            default: return "§7";
         }
     }
 
@@ -1437,11 +1454,77 @@ public final class LocalFastCore extends PluginBase implements Listener {
         staff.showFormWindow(form);
     }
 
+    private void openOperatorStaffAssignMenu(Player operator) {
+        List<Player> online = new ArrayList<>(getServer().getOnlinePlayers().values());
+        if (online.isEmpty()) { operator.sendMessage("§cНет игроков онлайн."); return; }
+        FormWindowSimple form = new FormWindowSimple("§6Назначение персонала", "§7Выбери игрока. Затем выбери его должность.");
+        for (Player target : online) {
+            String current = staffRole(target);
+            form.addButton(new ElementButton("§f" + target.getName() + "\n" + staffRoleColor(current) + staffRoleLabel(current)));
+        }
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
+            int index = form.getResponse().getClickedButtonId();
+            if (index < 0 || index >= online.size()) return;
+            openOperatorRoleSelectMenu(operator, online.get(index), false);
+        }));
+        operator.showFormWindow(form);
+    }
+
+    private void openOperatorRoleSelectMenu(Player operator, Player target, boolean self) {
+        FormWindowSimple form = new FormWindowSimple("§6Должность: " + target.getName(),
+                "§fИгрок: §e" + target.getName() + "\n§7Выбери должность ниже:");
+        for (String role : STAFF_ROLES) form.addButton(new ElementButton(staffRoleColor(role) + staffRoleLabel(role)));
+        form.addButton(new ElementButton("§7Снять должность"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !operator.isOnline() || !target.isOnline()) return;
+            int index = form.getResponse().getClickedButtonId();
+            if (index < 0) return;
+            String path = "staff." + target.getUniqueId();
+            if (index < STAFF_ROLES.length) staffData.set(path, STAFF_ROLES[index]);
+            else staffData.remove(path);
+            staffData.save();
+            if (self) {
+                getConfig().set("operator.test-role", index < STAFF_ROLES.length ? STAFF_ROLES[index] : "");
+                saveConfig();
+            }
+            refreshStaffNameTag(target);
+            refreshStaffModes(target);
+            staffLog(operator.getName(), "staff-rank-menu", target.getName(), index < STAFF_ROLES.length ? STAFF_ROLES[index] : "remove");
+            operator.sendMessage("§aДолжность обновлена: §f" + target.getName() + " §7— " +
+                    (index < STAFF_ROLES.length ? staffRoleColor(STAFF_ROLES[index]) + staffRoleLabel(STAFF_ROLES[index]) : "§7Игрок"));
+            if (self) openOperatorMenu(operator);
+        }));
+        operator.showFormWindow(form);
+    }
+
+    private void openOperatorSelfRankMenu(Player operator) {
+        FormWindowSimple form = new FormWindowSimple("§dТест должностей", "§fТекущий тестовый ранг: §e" +
+                staffRoleLabel(staffRole(operator)) + "\n§7Выбери ранг для проверки прав /staff. Операторский доступ /lfadmin сохранится.");
+        for (String role : STAFF_ROLES) form.addButton(new ElementButton(staffRoleColor(role) + staffRoleLabel(role)));
+        form.addButton(new ElementButton("§eВернуть ранг оператора"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
+            int index = form.getResponse().getClickedButtonId();
+            if (index < 0) return;
+            getConfig().set("operator.test-role", index < STAFF_ROLES.length ? STAFF_ROLES[index] : "");
+            saveConfig();
+            refreshStaffNameTag(operator);
+            refreshStaffModes(operator);
+            operator.sendMessage(index < STAFF_ROLES.length
+                    ? "§aТестовый ранг: " + staffRoleColor(STAFF_ROLES[index]) + staffRoleLabel(STAFF_ROLES[index])
+                    : "§eВозвращён ранг оператора.");
+            openOperatorMenu(operator);
+        }));
+        operator.showFormWindow(form);
+    }
+
     private void openOperatorMenu(Player operator) {
         if (!isOperator(operator)) { operator.sendMessage("§cТолько оператор может открыть эту панель."); return; }
         FormWindowSimple form = new FormWindowSimple("§6LocalFast §8| §lОператорская панель",
                 "§fОператор: §e" + operator.getName() + "\n§7Управление сервером и персоналом.");
         form.addButton(new ElementButton("§bАдминистрация онлайн"));
+        form.addButton(new ElementButton("§aНазначить администрацию"));
         form.addButton(new ElementButton("§eДолжности и команды"));
         form.addButton(new ElementButton("§aСтатистика игрока"));
         form.addButton(new ElementButton("§6Сохранить варп здесь (operator)"));
@@ -1449,18 +1532,20 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§cFly"));
         form.addButton(new ElementButton("§cVanish"));
         form.addButton(new ElementButton("§6Открыть панель /staff"));
+        form.addButton(new ElementButton("§dТестировать должность на себе"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
             int id = form.getResponse().getClickedButtonId();
             if (id == 0) showOnlineStaff(operator);
-            else if (id == 1) showStaffHelp(operator);
-            else if (id == 2) openStaffStatsTargetMenu(operator);
-            else if (id == 3) {
+            else if (id == 1) openOperatorStaffAssignMenu(operator);
+            else if (id == 2) showStaffHelp(operator);
+            else if (id == 3) openStaffStatsTargetMenu(operator);
+            else if (id == 4) {
                 String path = "warps.operator";
                 getConfig().set(path + ".world", operator.getLevel().getFolderName());
                 getConfig().set(path + ".x", operator.getX()); getConfig().set(path + ".y", operator.getY()); getConfig().set(path + ".z", operator.getZ());
                 saveConfig(); operator.sendMessage("§aВарп operator сохранён в твоей текущей точке.");
-            } else if (id == 4) {
+            } else if (id == 5) {
                 String current = getConfig().getString("welcome.message", "");
                 if (current == null || current.trim().isEmpty()) {
                     getConfig().set("welcome.message", "§6Добро пожаловать на сервер, §e{player}§6!");
@@ -1470,9 +1555,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     operator.sendMessage("§eПриветствие отключено.");
                 }
                 saveConfig();
-            } else if (id == 5) toggleFly(operator);
-            else if (id == 6) toggleVanish(operator);
-            else if (id == 7) openStaffMenu(operator);
+            } else if (id == 6) toggleFly(operator);
+            else if (id == 7) toggleVanish(operator);
+            else if (id == 8) openStaffMenu(operator);
+            else if (id == 9) openOperatorSelfRankMenu(operator);
         }));
         operator.showFormWindow(form);
     }
@@ -1643,14 +1729,23 @@ public final class LocalFastCore extends PluginBase implements Listener {
             return true;
         }
         if (args[0].equalsIgnoreCase("staff")) {
-            if (args.length >= 2 && args[1].equalsIgnoreCase("list")) { sender.sendMessage("§6Персонал:"); for (String id : staffData.getSection("staff").getKeys(false)) sender.sendMessage("§e" + id + " §7— §f" + staffData.getString("staff." + id)); return true; }
-            if (args.length < 3) { sender.sendMessage("§e/lfadmin staff add <игрок> <admin|moderator> или remove <игрок>"); return true; }
+            if (args.length >= 2 && args[1].equalsIgnoreCase("list")) {
+                sender.sendMessage("§6§lПерсонал LocalFast:");
+                for (String id : staffData.getSection("staff").getKeys(false)) {
+                    String role = staffData.getString("staff." + id, "");
+                    Player online = getServer().getPlayer(UUID.fromString(id)).orElse(null);
+                    String nickname = online == null ? id : online.getName();
+                    sender.sendMessage("§f" + nickname + " §8— " + staffRoleColor(role) + staffRoleLabel(role));
+                }
+                return true;
+            }
+            if (args.length < 3) { sender.sendMessage("§e/lfadmin staff add <игрок> <ml_helper|helper|senior_helper|junior_moderator|moderator|senior_moderator|admin> или remove <игрок>"); return true; }
             Player target = getServer().getPlayer(args[2]); if (target == null) { sender.sendMessage("§cИгрок должен быть онлайн."); return true; }
             String path = "staff." + target.getUniqueId();
             if (args[1].equalsIgnoreCase("remove")) staffData.remove(path);
             else if (args[1].equalsIgnoreCase("add") && args.length == 4 && Arrays.asList(STAFF_ROLES).contains(args[3].toLowerCase(Locale.ROOT))) staffData.set(path, args[3].toLowerCase(Locale.ROOT));
             else { sender.sendMessage("§eУкажи add|remove и роль: ml_helper|helper|senior_helper|junior_moderator|moderator|senior_moderator|admin."); return true; }
-            staffData.save(); refreshStaffNameTag(target); refreshStaffModes(target); staffLog(((Player)sender).getName(), "staff-" + args[1], target.getName(), args.length == 4 ? args[3] : ""); sender.sendMessage("§aРоль обновлена."); return true;
+            staffData.save(); refreshStaffNameTag(target); refreshStaffModes(target); staffLog(sender.getName(), "staff-" + args[1], target.getName(), args.length == 4 ? args[3] : ""); sender.sendMessage("§aРоль обновлена: §f" + target.getName() + " §7— " + staffRoleColor(staffRole(target)) + staffRoleLabel(staffRole(target))); return true;
         }
         if (args[0].equalsIgnoreCase("warp")) {
             if (args.length == 2 && args[1].equalsIgnoreCase("list")) {

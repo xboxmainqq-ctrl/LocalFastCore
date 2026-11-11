@@ -148,7 +148,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.13.0 включён. RPG, миры, экономика и система персонала загружены.");
+        getLogger().info("LocalFastCore 0.14.0 включён. RPG, миры, экономика и система персонала загружены.");
     }
 
     private void markPlayersDirty() {
@@ -1896,7 +1896,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         FormWindowSimple form = new FormWindowSimple("§6LocalFast §8| §lМиры",
                 "§7Управление игровыми мирами 0.13.0\n§fВыбери действие:");
         form.addButton(new ElementButton("§bСписок миров"));
-        form.addButton(new ElementButton("§aСоздать spawn"));
+        form.addButton(new ElementButton("§aСоздать spawn (плоский)"));
         form.addButton(new ElementButton("§aСоздать dungeons"));
         form.addButton(new ElementButton("§aСоздать bosses"));
         form.addButton(new ElementButton("§eЗагрузить мир"));
@@ -1926,7 +1926,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             openWorldPicker(operator, "load");
             return;
         }
-        handleWorldCommand(operator, new String[]{"create", name, "normal"});
+        handleWorldCommand(operator, new String[]{"create", name, name.equalsIgnoreCase("spawn") ? "flat" : "normal"});
         openOperatorWorldMenu(operator);
     }
 

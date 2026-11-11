@@ -1859,3 +1859,98 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!(sender instanceof Player)) {
                 sender.sendMessage("Эта команда доступна только игроку.");
                 return true;
+            }
+            handleQuest((Player) sender, args);
+            return true;
+        }
+
+        if (name.equals("level") || name.equals("stats") || name.equals("addstat")) {
+            if (!(sender instanceof Player)) {
+                sender.sendMessage("Эта команда доступна только игроку.");
+                return true;
+            }
+            Player player = (Player) sender;
+            initialize(player);
+
+            if (name.equals("level")) {
+                int level = get(player, "level", 1);
+                sender.sendMessage("§6[LocalFast] §fУровень: §e" + level + "/" + MAX_LEVEL);
+                sender.sendMessage("§fОпыт: §a" + get(player, "xp", 0) + "§7/§a" + xpForNextLevel(level)
+                        + " §f| Очки: §b" + get(player, "points", 0));
+                return true;
+            }
+
+            if (name.equals("stats")) {
+                sender.sendMessage("§6[LocalFast] §eХарактеристики");
+                sender.sendMessage("§fСила: §c" + get(player, "strength", 0)
+                        + " §fЗдоровье: §c" + get(player, "health", 0));
+                sender.sendMessage("§fЛовкость: §a" + get(player, "agility", 0)
+                        + " §fИнтеллект: §b" + get(player, "intelligence", 0));
+                sender.sendMessage("§fСвободные очки: §e" + get(player, "points", 0));
+                return true;
+            }
+
+            if (args.length < 1 || args.length > 2) {
+                sender.sendMessage("§e/addstat <strength|health|agility|intelligence> [количество]");
+                return true;
+            }
+            String stat = args[0].toLowerCase(Locale.ROOT);
+            boolean valid = false;
+            for (String allowed : STATS) if (allowed.equals(stat)) valid = true;
+            if (!valid) {
+                sender.sendMessage("§cВыбери: strength, health, agility или intelligence.");
+                return true;
+            }
+            int amount = 1;
+            if (args.length == 2) {
+                try {
+                    amount = Integer.parseInt(args[1]);
+                    if (amount < 1) throw new NumberFormatException();
+                } catch (NumberFormatException exception) {
+                    sender.sendMessage("§cКоличество должно быть целым числом больше 0.");
+                    return true;
+                }
+            }
+            int points = Math.max(0, get(player, "points", 0));
+            int currentStat = Math.max(0, get(player, stat, 0));
+            int maxStat = Math.max(1, getConfig().getInt("progression.max-stat", 1000));
+            if ((long) currentStat + amount > maxStat) {
+                sender.sendMessage("§cМаксимум характеристики: " + maxStat + ".");
+                return true;
+            }
+            if (points < amount) {
+                sender.sendMessage("§cНедостаточно очков. У тебя есть: " + points + ".");
+                return true;
+            }
+            set(player, stat, currentStat + amount);
+            set(player, "points", points - amount);
+            markPlayersDirty();
+            recalculateStats(player);
+            updateSidebar(player);
+            sender.sendMessage("§a[LocalFast] Характеристика " + stat + " увеличена на " + amount + ".");
+            return true;
+        }
+
+        if (name.equals("lfmenu")) {
+            if (!(sender instanceof Player)) {
+                sender.sendMessage("Эта команда доступна только игроку.");
+                return true;
+            }
+            openStatsMenu((Player) sender);
+            return true;
+        }
+
+        if (name.equals("lfadmin")) return handleOperatorCommand(sender, args);
+        if (name.equals("staff")) return handleStaffCommand(sender, args);
+        return false;
+    }
+
+    @Override
+    public void onDisable() {
+        if (players != null) {
+            // Force a final flush even if no mutation was observed by the dirty tracker.
+            playersDirty = true;
+            flushPlayers();
+        }
+    }
+}

@@ -79,6 +79,6 @@ spawn-world: "spawn"
 # Empty main-world uses the server default world; otherwise use its exact folder name.
 main-world: ""
 
-# RTP distance from main-world origin (X=0, Z=0), in blocks.
+# RTP distance from the main world's safe-spawn point, in blocks.
 rtp-min-radius: 500
 rtp-max-radius: 5000

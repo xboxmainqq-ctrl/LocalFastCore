@@ -109,6 +109,14 @@ public final class LocalFastCore extends PluginBase implements Listener {
         return Math.max(0, getConfig().getInt("quests.catalog." + quest.id + ".reward", quest.defaultReward));
     }
 
+    private long questMoney(QuestDefinition quest) {
+        return Math.max(0L, getConfig().getLong("quests.catalog." + quest.id + ".money", 0L));
+    }
+
+    private long safeAdd(long current, long reward) {
+        return reward > Long.MAX_VALUE - current ? Long.MAX_VALUE : current + reward;
+    }
+
     @Override
     public void onEnable() {
         if (!getDataFolder().exists() && !getDataFolder().mkdirs()) {
@@ -608,11 +616,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
         refreshDaily(p); String k=playerKey(p);
         int required = Math.max(1, getConfig().getInt("daily.kills-required", DAILY_KILLS_REQUIRED));
         int reward = Math.max(0, getConfig().getInt("daily.xp-reward", DAILY_XP_REWARD));
+        long money = Math.max(0L, getConfig().getLong("daily.money-reward", 0L));
         p.sendMessage("§6[Ежедневное задание] §fУбей " + required + " любых существ.");
-        if(players.getBoolean(k+".daily_complete",false)) p.sendMessage("§aВыполнено! Награда " + reward + " XP: /daily claim");
+        if(players.getBoolean(k+".daily_complete",false)) p.sendMessage("§aВыполнено! Награда " + reward + " XP + " + money + " " + currencyName() + ": /daily claim");
         else if(players.getBoolean(k+".daily_claimed",false)) p.sendMessage("§7Сегодняшняя награда уже получена. Возвращайся завтра.");
         else if(players.getBoolean(k+".daily_active",false)) p.sendMessage("§eПрогресс: "+players.getInt(k+".daily_kills",0)+"/"+required);
-        else p.sendMessage("§eНаграда " + reward + " XP. Начать: /daily start");
+        else p.sendMessage("§eНаграда " + reward + " XP + " + money + " " + currencyName() + ". Начать: /daily start");
     }
     private void handleDaily(Player p,String[] args) {
         refreshDaily(p); String k=playerKey(p);
@@ -642,7 +651,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 return;
             }
             int reward = Math.max(0, getConfig().getInt("daily.xp-reward", DAILY_XP_REWARD));
-            giveXp(p,reward);p.sendMessage("§aПолучено +" + reward + " XP!");return;
+            long money = Math.max(0L, getConfig().getLong("daily.money-reward", 0L));
+            giveXp(p,reward); if (money > 0L) setBalance(p, safeAdd(getBalance(p), money)); flushPlayers();
+            p.sendMessage("§aПолучено +" + reward + " XP и +" + money + " " + currencyName() + "!");return;
         }
         p.sendMessage("§e/daily, /daily start или /daily claim");
     }
@@ -941,9 +952,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
         boolean claimed = players.getBoolean(path + ".claimed", false);
         int progress = Math.max(0, players.getInt(path + ".kills", 0));
         int reward = questXp(quest);
+        long moneyReward = questMoney(quest);
         FormWindowSimple form = new FormWindowSimple("§6Квест §8| §e" + quest.title,
                 "§f" + quest.description + "\n§fПрогресс: §a" + progress + "/" + questKills(quest)
-                        + "\n§fНаграда: §6" + reward + " XP"
+                        + "\n§fНаграда: §6" + reward + " XP §8+ §a" + moneyReward + " " + currencyName()
                         + "\n§fТребуемый уровень: §e" + quest.minLevel + "–" + quest.maxLevel
                         + (claimed ? "\n§8Награда уже получена." : complete ? "\n§aЗадание выполнено!" : ""));
         if (!claimed) {
@@ -985,7 +997,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     return;
                 }
                 giveXp(player, currentReward);
-                player.sendMessage("§a[Квесты] Получено +" + currentReward + " XP за " + quest.title + "!");
+                long coins = questMoney(quest);
+                if (coins > 0L) setBalance(player, safeAdd(getBalance(player), coins));
+                flushPlayers();
+                player.sendMessage("§a[Квесты] Получено +" + currentReward + " XP и +" + coins + " " + currencyName() + " за " + quest.title + "!");
             } else if (!currentActive && !currentClaimed) {
                 int level = get(player, "level", 1);
                 if (level < quest.minLevel || level > quest.maxLevel) {
@@ -2325,6 +2340,28 @@ public final class LocalFastCore extends PluginBase implements Listener {
             sender.sendMessage("Оператор назначен: " + target.getName()); target.sendMessage("§6Ты назначен оператором LocalFastCore."); return true;
         }
         if (!isOperator(sender)) { sender.sendMessage("§cТолько оператор может использовать /lfadmin."); return true; }
+        if (args.length > 0 && args[0].equalsIgnoreCase("quest")) {
+            if (args.length == 2 && args[1].equalsIgnoreCase("list")) {
+                sender.sendMessage("§6[Квесты] §fСписок заданий и наград:");
+                for (QuestDefinition quest : questCatalog()) sender.sendMessage("§e" + quest.id + " §7— " + quest.title + " §8| §6" + questXp(quest) + " XP §8+ §a" + questMoney(quest) + " " + currencyName());
+                sender.sendMessage("§7Изменить: /lfadmin quest reward <id> <xp> <монеты>"); return true;
+            }
+            if (args.length == 5 && args[1].equalsIgnoreCase("reward")) {
+                QuestDefinition selected = null;
+                for (QuestDefinition quest : questCatalog()) if (quest.id.equalsIgnoreCase(args[2])) selected = quest;
+                if (selected == null) { sender.sendMessage("§cКвест не найден. Используй /lfadmin quest list."); return true; }
+                try {
+                    int xp = Integer.parseInt(args[3]); long money = Long.parseLong(args[4]);
+                    if (xp < 0 || xp > MAX_XP_GRANT || money < 0L) throw new NumberFormatException();
+                    getConfig().set("quests.catalog." + selected.id + ".reward", xp);
+                    getConfig().set("quests.catalog." + selected.id + ".money", money);
+                    saveConfig(); staffLog(sender.getName(), "quest-reward", selected.id, xp + " XP; " + money + " " + currencyName());
+                    sender.sendMessage("§aНаграды квеста " + selected.title + " обновлены: §6" + xp + " XP §8+ §a" + money + " " + currencyName());
+                } catch (NumberFormatException ex) { sender.sendMessage("§cXP: 0–" + MAX_XP_GRANT + "; монеты: целое число от 0."); }
+                return true;
+            }
+            sender.sendMessage("§e/lfadmin quest list | /lfadmin quest reward <id> <xp> <монеты>"); return true;
+        }
         if (args.length > 0 && args[0].equalsIgnoreCase("moderation")) {
             if (args.length == 1) {
                 if (sender instanceof Player) openStaffMenu((Player) sender);

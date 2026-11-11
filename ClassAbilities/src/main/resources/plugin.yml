@@ -1,0 +1,12 @@
+name: ClassAbilities
+main: ru.localfast.abilities.ClassAbilities
+version: "0.13.0"
+api: ["1.0.0"]
+author: LocalFast
+description: Меню классов и суперспособности RPG
+depend: [LocalFastCore]
+commands:
+  abilities:
+    description: Меню классов и суперспособностей
+    usage: "/abilities"
+    aliases: [ability, skills]

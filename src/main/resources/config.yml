@@ -1,4 +1,7 @@
-# LocalFastCore 0.11.0
+# LocalFastCore 0.12.0
+# Set operator.uuid after first startup using the server console: lfadmin setoperator <online-player>
+operator:
+  uuid: ""
 # Existing player profiles are preserved; profile schema upgrades are additive.
 
 # Economy defaults. Existing player balances are never overwritten.

@@ -210,17 +210,48 @@ public final class LocalFastCore extends PluginBase implements Listener {
     }
 
     /**
-     * Recalculate bonuses from saved stats using absolute values.
-     * Vanilla Nukkit-MOT player base values: 20 HP and 0.1 movement speed.
+     * Recalculate all derived effects from absolute saved attributes.
+     * Increasing maximum HP does not heal the player: current HP is kept
+     * at its existing absolute value and only clamped if it exceeds the new maximum.
      */
     private void recalculateStats(Player player) {
-        int healthBonus = get(player, "health", 0) / 5;
+        int healthBonus = attributeBonus(player, "health",
+                "attributes.health.points-per-bonus", 5,
+                "attributes.health.hp-per-bonus", 1,
+                "attributes.health.max-bonus", 20, 40);
         int maximumHealth = 20 + healthBonus;
         player.setMaxHealth(maximumHealth);
+        // Increasing max HP does not heal; current HP is preserved in absolute points.
         if (player.getHealth() > maximumHealth) player.setHealth(maximumHealth);
-        int agilityPercent = get(player, "agility", 0) / 5;
+
+        int agilityPercent = attributeBonus(player, "agility",
+                "attributes.agility.points-per-bonus", 5,
+                "attributes.agility.speed-percent-per-bonus", 1,
+                "attributes.agility.max-bonus-percent", 25, 50);
         float movementSpeed = Player.DEFAULT_SPEED * (1.0f + agilityPercent / 100.0f);
         player.setMovementSpeed(Math.min(Player.MAXIMUM_SPEED, movementSpeed));
+    }
+
+    /**
+     * Clamp configuration values to hard safety ceilings so a malformed or
+     * overly permissive config cannot create unbounded combat/stat bonuses.
+     */
+    private int boundedConfigInt(String path, int fallback, int minimum, int hardMaximum) {
+        int configured = getConfig().getInt(path, fallback);
+        return Math.max(minimum, Math.min(hardMaximum, configured));
+    }
+
+    private int attributeBonus(Player player, String stat,
+                               String pointsPerBonusPath, int defaultPointsPerBonus,
+                               String bonusPerStepPath, int defaultBonusPerStep,
+                               String maximumBonusPath, int defaultMaximumBonus,
+                               int hardMaximumBonus) {
+        int pointsPerBonus = boundedConfigInt(pointsPerBonusPath, defaultPointsPerBonus, 1, 10000);
+        int bonusPerStep = boundedConfigInt(bonusPerStepPath, defaultBonusPerStep, 0, hardMaximumBonus);
+        int maximumBonus = boundedConfigInt(maximumBonusPath, defaultMaximumBonus, 0, hardMaximumBonus);
+        long steps = Math.max(0, get(player, stat, 0)) / (long) pointsPerBonus;
+        long calculated = steps * bonusPerStep;
+        return (int) Math.min((long) maximumBonus, Math.min((long) hardMaximumBonus, calculated));
     }
 
     @EventHandler
@@ -233,7 +264,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
     public void onPlayerAttack(EntityDamageByEntityEvent event) {
         if (!(event.getDamager() instanceof Player)) return;
         Player attacker = (Player) event.getDamager();
-        int bonusDamage = get(attacker, "strength", 0) / 5;
+        int bonusDamage = attributeBonus(attacker, "strength",
+                "attributes.strength.points-per-bonus", 5,
+                "attributes.strength.damage-per-bonus", 1,
+                "attributes.strength.max-bonus", 10, 20);
         if (bonusDamage <= 0) return;
         event.setDamage(event.getDamage(EntityDamageEvent.DamageModifier.BASE) + bonusDamage,
                 EntityDamageEvent.DamageModifier.BASE);
@@ -330,10 +364,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
     }
 
     private int intelligenceXpBonusPercent(Player player) {
-        int intelligenceStep = Math.max(1, getConfig().getInt("intelligence.xp-bonus-per", 5));
-        long bonus = (long) Math.max(0, get(player, "intelligence", 0) / intelligenceStep)
-                * Math.max(0, getConfig().getInt("intelligence.xp-bonus-percent", 1));
-        return (int) Math.min(100L, bonus);
+        int legacyStep = Math.max(1, getConfig().getInt("intelligence.xp-bonus-per", 5));
+        int legacyPercent = Math.max(0, getConfig().getInt("intelligence.xp-bonus-percent", 1));
+        return attributeBonus(player, "intelligence",
+                "attributes.intelligence.points-per-bonus", legacyStep,
+                "attributes.intelligence.xp-bonus-percent-per-bonus", legacyPercent,
+                "attributes.intelligence.max-bonus-percent", 50, 100);
     }
 
     private void giveXp(Player player, int amount) {

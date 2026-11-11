@@ -82,3 +82,15 @@ The `localfast.admin` permission grants access to `/lfadmin xp <player> <amount>
 - `/lfadmin reset <player> all` — resets all of the above
 
 The target player must be online. Back up player data before using reset commands.
+
+
+## Attribute formulas and safety limits (0.10.0)
+
+Attribute effects are recalculated from saved values; they do not stack when the player rejoins, respawns, or reallocates points. The default formulas are:
+
+- **Strength:** +1 base damage per 5 points, capped at +10 damage by default (hard ceiling +20).
+- **Health:** +1 maximum HP per 5 points, capped at +20 HP by default (hard ceiling +40). Increasing max HP does not heal the player; current HP is preserved in absolute points, and only clamped if it exceeds the new maximum.
+- **Agility:** +1% movement speed per 5 points, capped at +25% by default (hard ceiling +50%), still bounded by Nukkit-MOT's maximum movement speed.
+- **Intelligence:** +1% XP per 5 points, capped at +50% by default (hard ceiling +100%). Legacy intelligence.xp-bonus-per and intelligence.xp-bonus-percent values remain fallback defaults for older config files.
+
+New settings live under attributes.* in config.yml. Existing config files are not overwritten automatically; merge the attributes section from the shipped config to customize these formulas. The hard ceilings remain active even if a config value is set too high. progression.max-stat continues to limit saved attribute points independently.

@@ -53,3 +53,22 @@ effects:
   level-up-title: true
   level-up-title-text: "§6УРОВЕНЬ ПОВЫШЕН!"
   level-up-subtitle: "§eНовый уровень!"
+
+# RPG attribute formulas. Hard safety ceilings are enforced in code.
+attributes:
+  strength:
+    points-per-bonus: 5
+    damage-per-bonus: 1
+    max-bonus: 10
+  health:
+    points-per-bonus: 5
+    hp-per-bonus: 1
+    max-bonus: 20
+  agility:
+    points-per-bonus: 5
+    speed-percent-per-bonus: 1
+    max-bonus-percent: 25
+  intelligence:
+    points-per-bonus: 5
+    xp-bonus-percent-per-bonus: 1
+    max-bonus-percent: 50

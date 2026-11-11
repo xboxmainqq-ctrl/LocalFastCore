@@ -458,6 +458,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
     public void onJoin(PlayerJoinEvent e) {
         Player p=e.getPlayer();
         refreshStaffNameTag(p);
+        if (flyingPlayers.contains(p.getUniqueId()) && staffRank(staffRole(p)) >= 7) p.setAllowFlight(true);
+        else if (staffRank(staffRole(p)) < 7) flyingPlayers.remove(p.getUniqueId());
         for (UUID vanishedId : vanishedPlayers) {
             Player vanished = getServer().getPlayer(vanishedId).orElse(null);
             if (vanished != null && vanished.isOnline() && !vanished.getUniqueId().equals(p.getUniqueId())) p.hidePlayer(vanished);
@@ -1189,6 +1191,18 @@ public final class LocalFastCore extends PluginBase implements Listener {
         player.setNameTag((prefix.isEmpty() ? "" : prefix + " §f") + player.getName());
     }
 
+    private void refreshStaffModes(Player player) {
+        if (staffRank(staffRole(player)) < 7) {
+            flyingPlayers.remove(player.getUniqueId());
+            player.setAllowFlight(false);
+            if (vanishedPlayers.remove(player.getUniqueId())) {
+                for (Player viewer : getServer().getOnlinePlayers().values()) {
+                    if (!viewer.getUniqueId().equals(player.getUniqueId())) viewer.showPlayer(player);
+                }
+            }
+        }
+    }
+
     private String staffRoleLabel(String role) {
         switch (role) {
             case "ml_helper": return "Мл. хелпер";
@@ -1535,6 +1549,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             else staffData.set("staff." + target.getUniqueId(), STAFF_ROLES[newRank - 1]);
             staffData.save();
             refreshStaffNameTag(target);
+            refreshStaffModes(target);
             String newRole = newRank == 0 ? "" : STAFF_ROLES[newRank - 1];
             staffLog(actor.getName(), action, target.getName(), staffRoleLabel(oldRole) + " -> " + staffRoleLabel(newRole));
             sender.sendMessage("§aДолжность " + target.getName() + ": " + staffRoleLabel(oldRole) + " -> " + staffRoleLabel(newRole) + ".");
@@ -1612,7 +1627,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (args[1].equalsIgnoreCase("remove")) staffData.remove(path);
             else if (args[1].equalsIgnoreCase("add") && args.length == 4 && Arrays.asList(STAFF_ROLES).contains(args[3].toLowerCase(Locale.ROOT))) staffData.set(path, args[3].toLowerCase(Locale.ROOT));
             else { sender.sendMessage("§eУкажи add|remove и роль: ml_helper|helper|senior_helper|junior_moderator|moderator|senior_moderator|admin."); return true; }
-            staffData.save(); refreshStaffNameTag(target); staffLog(((Player)sender).getName(), "staff-" + args[1], target.getName(), args.length == 4 ? args[3] : ""); sender.sendMessage("§aРоль обновлена."); return true;
+            staffData.save(); refreshStaffNameTag(target); refreshStaffModes(target); staffLog(((Player)sender).getName(), "staff-" + args[1], target.getName(), args.length == 4 ? args[3] : ""); sender.sendMessage("§aРоль обновлена."); return true;
         }
         if (args[0].equalsIgnoreCase("money")) {
             if (args.length < 3) { sender.sendMessage("§e/lfadmin money <give|take|set|reset> <игрок> [сумма]"); return true; }

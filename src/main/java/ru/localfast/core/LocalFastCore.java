@@ -1,6 +1,9 @@
 package ru.localfast.core;
 
 import cn.nukkit.Player;
+import cn.nukkit.block.Block;
+import cn.nukkit.level.Level;
+import cn.nukkit.level.Position;
 import cn.nukkit.command.Command;
 import cn.nukkit.command.CommandSender;
 import cn.nukkit.entity.EntityCreature;
@@ -31,6 +34,7 @@ import cn.nukkit.utils.Config;
 import java.io.File;
 import java.util.Locale;
 import java.time.LocalDate;
+import java.util.concurrent.ThreadLocalRandom;
 
 public final class LocalFastCore extends PluginBase implements Listener {
     private static final int MAX_LEVEL = 100;
@@ -97,6 +101,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
         players = new Config(new File(getDataFolder(), "players.yml"), Config.YAML);
         getServer().getPluginManager().registerEvents(this, this);
         saveDefaultConfig();
+        if (!getConfig().exists("spawn-world")) getConfig().set("spawn-world", "spawn");
+        if (!getConfig().exists("main-world")) getConfig().set("main-world", "");
+        if (!getConfig().exists("rtp-min-radius")) getConfig().set("rtp-min-radius", 500);
+        if (!getConfig().exists("rtp-max-radius")) getConfig().set("rtp-max-radius", 5000);
+        saveConfig();
         int autosaveSeconds = Math.max(5, Math.min(3600,
                 getConfig().getInt("autosave.interval-seconds", 60)));
         getServer().getScheduler().scheduleRepeatingTask(this, this::flushPlayers,
@@ -106,7 +115,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.9.3 включён. RPG, GUI и уровневые квесты готовы.");
+        getLogger().info("LocalFastCore 0.10.0 включён. RPG, GUI, задания, spawn и RTP готовы.");
     }
 
     private void markPlayersDirty() {
@@ -128,6 +137,93 @@ public final class LocalFastCore extends PluginBase implements Listener {
             getLogger().error("Не удалось сохранить players.yml; повторим при следующем autosave.", exception);
             return false;
         }
+    }
+
+    private static final String DEFAULT_SPAWN_WORLD = "spawn";
+
+    private Level loadConfiguredWorld(String key, String fallback) {
+        String worldName = getConfig().getString(key, fallback);
+        if (worldName == null || worldName.trim().isEmpty()) return getServer().getDefaultLevel();
+        if (!getServer().isLevelLoaded(worldName) && !getServer().loadLevel(worldName)) return null;
+        return getServer().getLevelByName(worldName);
+    }
+
+    private void teleportToSpawn(Player player) {
+        String worldName = getConfig().getString("spawn-world", DEFAULT_SPAWN_WORLD);
+        Level world = loadConfiguredWorld("spawn-world", DEFAULT_SPAWN_WORLD);
+        boolean fallbackToDefault = false;
+        if (world == null) {
+            // Keep /spawn usable on servers that have not installed a separate lobby world yet.
+            world = getServer().getDefaultLevel();
+            if (world == null) {
+                player.sendMessage("§cМир спавна '" + worldName + "' не найден, основной мир тоже недоступен.");
+                return;
+            }
+            fallbackToDefault = true;
+            player.sendMessage("§eМир '" + worldName + "' не найден. Использую основной мир; задай точку через /setspawn.");
+        }
+        // Saved coordinates belong to the configured spawn world. Never reuse them
+        // after falling back to a different world.
+        if (!fallbackToDefault && getConfig().exists("spawn-x") && getConfig().exists("spawn-y") && getConfig().exists("spawn-z")) {
+            Position target = new Position(getConfig().getDouble("spawn-x"), getConfig().getDouble("spawn-y"),
+                    getConfig().getDouble("spawn-z"), world);
+            player.teleport(target);
+        } else {
+            player.teleport(world.getSafeSpawn());
+            if (!fallbackToDefault) {
+                player.sendMessage("§eТочка спавна ещё не задана. Встань в нужное место и введи /setspawn.");
+            }
+        }
+    }
+
+    private void setSpawn(Player player) {
+        getConfig().set("spawn-world", player.getLevel().getFolderName());
+        getConfig().set("spawn-x", player.getX());
+        getConfig().set("spawn-y", player.getY());
+        getConfig().set("spawn-z", player.getZ());
+        saveConfig();
+        player.sendMessage("§aТочка /spawn сохранена в мире " + player.getLevel().getFolderName() + ".");
+    }
+
+    private void teleportRandomly(Player player) {
+        Level world = loadConfiguredWorld("main-world", "");
+        if (world == null) {
+            player.sendMessage("§cОсновной мир не найден. Проверь параметр main-world в config.yml.");
+            return;
+        }
+        int minRadius = Math.max(0, Math.min(100000, getConfig().getInt("rtp-min-radius", 500)));
+        int maxRadius = Math.max(minRadius + 1, Math.min(100000, getConfig().getInt("rtp-max-radius", 5000)));
+        // Search around the world's safe spawn, not hard-coded X/Z=0:
+        // many servers place their playable area far from the origin.
+        Position center = world.getSafeSpawn();
+        int centerX = center.getFloorX();
+        int centerZ = center.getFloorZ();
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        for (int attempt = 0; attempt < 200; attempt++) {
+            double angle = random.nextDouble(0, Math.PI * 2);
+            double radius = Math.sqrt(random.nextDouble(minRadius * (double) minRadius,
+                    maxRadius * (double) maxRadius));
+            int x = centerX + (int) Math.round(Math.cos(angle) * radius);
+            int z = centerZ + (int) Math.round(Math.sin(angle) * radius);
+            try {
+                // Ensure the target chunk exists and is generated before querying its surface.
+                if (world.getChunk(x >> 4, z >> 4, true) == null) continue;
+                int groundY = world.getHighestBlockAt(x, z);
+                if (groundY <= world.getMinBlockY() || groundY + 2 > world.getMaxBlockY()) continue;
+                Block ground = world.getBlock(x, groundY, z);
+                Block feet = world.getBlock(x, groundY + 1, z);
+                Block head = world.getBlock(x, groundY + 2, z);
+                // Solid floor and two non-solid blocks above are sufficient.
+                // Requiring canPassThrough() rejected some valid custom/air blocks.
+                if (!ground.isSolid() || feet.isSolid() || head.isSolid()) continue;
+                player.teleport(new Position(x + 0.5, groundY + 1, z + 0.5, world));
+                player.sendMessage("§a[RTP] Телепорт в основной мир: X " + x + ", Z " + z + ".");
+                return;
+            } catch (RuntimeException ignored) {
+                // Skip unavailable or invalid terrain and try another location.
+            }
+        }
+        player.sendMessage("§cНе удалось найти безопасное место. Попробуй /rtp ещё раз.");
     }
 
     private String legacyPlayerKey(Player player) {
@@ -350,7 +446,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
             players.set(k+".daily_claimed",true);
             markPlayersDirty();
             if (!flushPlayers()) {
-                p.sendMessage("§cНе удалось сохранить награду. XP не начислен; попробуй позже или обратись к администратору.");
+                players.set(k + ".daily_complete", true);
+                players.set(k + ".daily_active", true);
+                players.set(k + ".daily_claimed", false);
+                markPlayersDirty();
+                p.sendMessage("§cНе удалось сохранить награду. XP не начислен; попробуй позже.");
                 return;
             }
             int reward = Math.max(0, getConfig().getInt("daily.xp-reward", DAILY_XP_REWARD));
@@ -475,12 +575,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
         initialize(player);
         int level = Math.max(1, get(player, "level", 1));
         FormWindowSimple form = new FormWindowSimple("§6LocalFastCore §8| §lКвесты",
-                "§fТвой уровень: §e" + level + "\\n§7Выбери диапазон уровней или посмотри свои задания.");
+                "§fТвой уровень: §e" + level + "\n§7Выбери диапазон уровней или посмотри свои задания.");
         String[] ranges = {"1–10", "11–30", "31–50", "51–75", "76–100"};
         for (String range : ranges) form.addButton(new ElementButton("§eУровни " + range));
         form.addButton(new ElementButton("§aМои задания"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null) return;
+            if (!player.isOnline()) return;
             int selected = form.getResponse().getClickedButtonId();
             if (selected >= 0 && selected < 5) openQuestTierMenu(player, selected);
             else if (selected == 5) openMyQuestsMenu(player);
@@ -490,9 +591,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void openQuestTierMenu(Player player, int tier) {
         int[][] ranges = {{1,10},{11,30},{31,50},{51,75},{76,100}};
+        if (tier < 0 || tier >= ranges.length) {
+            openQuestsMenu(player);
+            return;
+        }
         int min = ranges[tier][0], max = ranges[tier][1];
         FormWindowSimple form = new FormWindowSimple("§6Квесты §8| §e" + min + "–" + max,
-                "§fТвой уровень: §e" + get(player, "level", 1) + "\\n§7Выбери задание для просмотра.");
+                "§fТвой уровень: §e" + get(player, "level", 1) + "\n§7Выбери задание для просмотра.");
         List<QuestDefinition> quests = new ArrayList<>();
         for (QuestDefinition quest : questCatalog()) {
             if (quest.minLevel == min) {
@@ -508,6 +613,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null) return;
+            if (!player.isOnline()) return;
             int selected = form.getResponse().getClickedButtonId();
             if (selected >= 0 && selected < quests.size()) openQuestDetails(player, quests.get(selected), tier);
             else openQuestsMenu(player);
@@ -523,10 +629,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
         int progress = Math.max(0, players.getInt(path + ".kills", 0));
         int reward = questXp(quest);
         FormWindowSimple form = new FormWindowSimple("§6Квест §8| §e" + quest.title,
-                "§f" + quest.description + "\\n§fПрогресс: §a" + progress + "/" + questKills(quest)
-                        + "\\n§fНаграда: §6" + reward + " XP"
-                        + "\\n§fТребуемый уровень: §e" + quest.minLevel + "–" + quest.maxLevel
-                        + (claimed ? "\\n§8Награда уже получена." : complete ? "\\n§aЗадание выполнено!" : ""));
+                "§f" + quest.description + "\n§fПрогресс: §a" + progress + "/" + questKills(quest)
+                        + "\n§fНаграда: §6" + reward + " XP"
+                        + "\n§fТребуемый уровень: §e" + quest.minLevel + "–" + quest.maxLevel
+                        + (claimed ? "\n§8Награда уже получена." : complete ? "\n§aЗадание выполнено!" : ""));
         if (!claimed) {
             if (complete) form.addButton(new ElementButton("§aПолучить награду"));
             else if (!active) form.addButton(new ElementButton("§aПринять задание"));
@@ -535,6 +641,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null) return;
+            if (!player.isOnline()) return;
             int selected = form.getResponse().getClickedButtonId();
 
             // Form state may be stale when the player has multiple quest windows open.
@@ -557,7 +664,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 players.set(path + ".claimed", true);
                 markPlayersDirty();
                 if (!flushPlayers()) {
-                    player.sendMessage("§cНе удалось сохранить получение награды. XP не начислен; попробуй позже или обратись к администратору.");
+                    players.set(path + ".active", true);
+                    players.set(path + ".complete", true);
+                    players.set(path + ".claimed", false);
+                    markPlayersDirty();
+                    player.sendMessage("§cНе удалось сохранить получение награды. XP не начислен; попробуй позже.");
                     return;
                 }
                 giveXp(player, currentReward);
@@ -597,6 +708,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null) return;
+            if (!player.isOnline()) return;
             int selected = form.getResponse().getClickedButtonId();
             if (!entries.isEmpty() && selected >= 0 && selected < entries.size()) {
                 QuestDefinition quest = entries.get(selected);
@@ -676,11 +788,21 @@ public final class LocalFastCore extends PluginBase implements Listener {
             }
             String type = players.getString(playerKey(player) + ".quest_type", "any");
             int reward = questReward(type);
+            int completedKills = get(player, "quest_kills", 0);
             setBoolean(player, "quest_active", false);
             setBoolean(player, "quest_complete", false);
             set(player, "quest_kills", 0);
             players.set(playerKey(player) + ".quest_type", "any");
             markPlayersDirty();
+            if (!flushPlayers()) {
+                setBoolean(player, "quest_active", true);
+                setBoolean(player, "quest_complete", true);
+                set(player, "quest_kills", completedKills);
+                players.set(playerKey(player) + ".quest_type", type);
+                markPlayersDirty();
+                player.sendMessage("§cНе удалось сохранить получение награды. XP не начислен; попробуй позже.");
+                return;
+            }
             giveXp(player, reward);
             player.sendMessage("§a[Квест] Награда получена: +" + reward + " опыта!");
             return;
@@ -701,6 +823,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§7Обновить"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null) return;
+            if (!player.isOnline()) return;
             int selected = form.getResponse().getClickedButtonId();
             if (selected >= 0 && selected < STATS.length) openStatAllocationMenu(player, STATS[selected]);
             else if (selected == 4) openStatsMenu(player);
@@ -723,6 +846,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null) return;
+            if (!player.isOnline()) return;
             int selected = form.getResponse().getClickedButtonId();
             if (selected == 3) {
                 openStatsMenu(player);
@@ -756,6 +880,23 @@ public final class LocalFastCore extends PluginBase implements Listener {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         String name = command.getName().toLowerCase(Locale.ROOT);
+
+        if (name.equals("spawn") || name.equals("setspawn") || name.equals("rtp")) {
+            if (!(sender instanceof Player)) {
+                sender.sendMessage("Эта команда доступна только игроку.");
+                return true;
+            }
+            Player player = (Player) sender;
+            if (name.equals("spawn")) teleportToSpawn(player);
+            else if (name.equals("setspawn")) {
+                if (!player.hasPermission("localfast.admin")) {
+                    player.sendMessage("§cНедостаточно прав. Нужна localfast.admin.");
+                    return true;
+                }
+                setSpawn(player);
+            } else teleportRandomly(player);
+            return true;
+        }
 
         if (name.equals("quests")) {
             if (!(sender instanceof Player)) { sender.sendMessage("Эта команда доступна только игроку."); return true; }

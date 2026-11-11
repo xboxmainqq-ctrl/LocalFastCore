@@ -72,3 +72,13 @@ attributes:
     points-per-bonus: 5
     xp-bonus-percent-per-bonus: 1
     max-bonus-percent: 50
+
+# Separate lobby/spawn world. Create or copy this world into worlds/ before use.
+spawn-world: "spawn"
+
+# Empty main-world uses the server default world; otherwise use its exact folder name.
+main-world: ""
+
+# RTP distance from the main world's safe-spawn point, in blocks.
+rtp-min-radius: 500
+rtp-max-radius: 5000

@@ -26,6 +26,8 @@ RPG progression plugin for Nukkit-MOT 1.26.60-R1 (Java 17).
 | `/daily` | View daily task |
 | `/daily start` | Start the daily task |
 | `/daily claim` | Claim the daily reward |
+| `/balance` | Show your coin balance |
+| `/pay <player> <amount>` | Transfer coins to an online player |
 | `/sethome` | Save your current home location |
 | `/home` | Teleport to your saved home |
 | `/delhome` | Delete your saved home |
@@ -48,6 +50,15 @@ Open `/quests` (or `/quest`) to browse five level brackets:
 Each bracket contains three combat quests. A player can accept several quests at once; matching mob kills advance all accepted quests. The personal quests screen shows active and completed tasks. Completed rewards are claimed from each quest detail screen.
 
 Players can browse any bracket, but can only accept quests while their level is inside that bracket. An accepted quest continues tracking even if the player later levels beyond its original bracket.
+
+## Economy
+
+Each UUID profile stores its own `balance` in `players.yml`. On first profile initialization, a missing balance is initialized from `economy.starting-balance`; an existing balance is never overwritten. Balances use whole-number amounts (up to the signed 64-bit limit).
+
+- `/balance` — show your balance.
+- `/pay <player> <amount>` — transfer a positive whole-number amount to another online player. Self-payments, offline targets, invalid amounts, insufficient funds and recipient balance overflow are rejected.
+
+Configure `economy.starting-balance` and `economy.currency-name` in `config.yml`. Existing config files are not overwritten automatically; merge the `economy` section to customize the defaults. Transfers are written through the existing player-data save queue before success is reported.
 
 ## Player data saving
 

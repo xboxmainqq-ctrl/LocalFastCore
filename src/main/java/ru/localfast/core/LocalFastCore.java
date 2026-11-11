@@ -57,6 +57,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private boolean playersDirty = false;
     private final Map<String, IScoreboard> sidebars = new HashMap<>();
     private final Map<UUID, PendingTeleport> pendingTeleports = new HashMap<>();
+    private final java.util.Set<UUID> vanishedPlayers = new java.util.HashSet<>();
+    private final java.util.Set<UUID> flyingPlayers = new java.util.HashSet<>();
 
     private static final class PendingTeleport {
         final Player requester;
@@ -455,6 +457,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
     public void onJoin(PlayerJoinEvent e) {
         Player p=e.getPlayer();
         refreshStaffNameTag(p);
+        for (UUID vanishedId : vanishedPlayers) {
+            Player vanished = getServer().getPlayer(vanishedId);
+            if (vanished != null && vanished.isOnline() && !vanished.getUniqueId().equals(p.getUniqueId())) p.hidePlayer(vanished);
+        }
+        if (vanishedPlayers.contains(p.getUniqueId())) {
+            for (Player viewer : getServer().getOnlinePlayers().values()) if (!viewer.getUniqueId().equals(p.getUniqueId())) viewer.hidePlayer(p);
+        }
         String banPath = "punishments.bans." + p.getUniqueId();
         long banExpires = staffData.getLong(banPath + ".expires", 0L);
         if (banExpires == -1L || banExpires > System.currentTimeMillis()) {
@@ -462,6 +471,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
             getServer().getScheduler().scheduleDelayedTask(this, () -> { if (p.isOnline()) p.kick("§cБан: " + reason, false); }, 1);
             return;
         } else if (banExpires != 0L) { staffData.remove(banPath); staffData.save(); }
+        String welcome = getConfig().getString("welcome.message", "");
+        if (welcome != null && !welcome.trim().isEmpty()) p.sendMessage(welcome.replace("{player}", p.getName()).replace("&", "§"));
         initialize(p); refreshDaily(p); String k=playerKey(p); String d=today();
         if (!players.getString(k+".login_reward_date","").equals(d)) {
             players.set(k+".login_reward_date",d); markPlayersDirty(); giveXp(p, Math.max(0, getConfig().getInt("progression.login-reward-xp", LOGIN_XP_REWARD)));
@@ -1247,27 +1258,190 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private void openStaffMenu(Player staff) {
         String role = staffRole(staff);
         if (staffRank(role) == 0) { staff.sendMessage("§cНет доступа к /staff."); return; }
-        FormWindowSimple form = new FormWindowSimple("§6LocalFast §8| §lПерсонал",
-                "§fДолжность: §e" + staffRoleLabel(role) + "\n§7Доступные действия зависят от ранга.");
-        form.addButton(new ElementButton("§eПредупредить игрока"));
-        if (maxMuteMinutes(role) != 0L) form.addButton(new ElementButton("§6Выдать мут"));
-        if (canKick(role)) form.addButton(new ElementButton("§cКикнуть игрока"));
-        if (canBan(role)) form.addButton(new ElementButton("§4Выдать бан"));
-        if (canUnmute(role)) form.addButton(new ElementButton("§aСнять мут"));
-        if (canUnban(role)) form.addButton(new ElementButton("§aСнять бан"));
+        FormWindowSimple form = new FormWindowSimple("§6LocalFast §8| §lПанель персонала",
+                "§fДолжность: §e" + staffRoleLabel(role) + "\n§7Доступ зависит от ранга.");
+        List<String> actions = new ArrayList<>();
+        form.addButton(new ElementButton("§eПредупредить игрока")); actions.add("warn");
+        if (maxMuteMinutes(role) != 0L) { form.addButton(new ElementButton("§6Выдать мут")); actions.add("mute"); }
+        if (canKick(role)) { form.addButton(new ElementButton("§cКикнуть игрока")); actions.add("kick"); }
+        if (canBan(role)) { form.addButton(new ElementButton("§4Выдать бан")); actions.add("ban"); }
+        if (canUnmute(role)) { form.addButton(new ElementButton("§aСнять мут")); actions.add("unmute"); }
+        if (canUnban(role)) { form.addButton(new ElementButton("§aСнять бан")); actions.add("unban"); }
+        int utilityStart = actions.size();
+        form.addButton(new ElementButton("§bСтатистика игрока"));
+        form.addButton(new ElementButton("§dАдминистрация онлайн"));
+        form.addButton(new ElementButton("§eДолжности и мои команды"));
+        if (staffRank(role) >= 5) form.addButton(new ElementButton("§6Warp"));
+        if (staffRank(role) >= 7) {
+            form.addButton(new ElementButton("§aFly"));
+            form.addButton(new ElementButton("§cVanish"));
+        }
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !staff.isOnline()) return;
-            List<String> actions = new ArrayList<>();
-            actions.add("warn");
-            if (maxMuteMinutes(role) != 0L) actions.add("mute");
-            if (canKick(role)) actions.add("kick");
-            if (canBan(role)) actions.add("ban");
-            if (canUnmute(role)) actions.add("unmute");
-            if (canUnban(role)) actions.add("unban");
             int id = form.getResponse().getClickedButtonId();
-            if (id >= 0 && id < actions.size()) openStaffTargetMenu(staff, actions.get(id));
+            if (id < 0) return;
+            if (id < utilityStart) { if (id < actions.size()) openStaffTargetMenu(staff, actions.get(id)); return; }
+            int utility = id - utilityStart;
+            if (utility == 0) openStaffStatsTargetMenu(staff);
+            else if (utility == 1) showOnlineStaff(staff);
+            else if (utility == 2) showStaffHelp(staff);
+            else {
+                int cursor = 3;
+                if (staffRank(role) >= 5) {
+                    if (utility == cursor) { openWarpMenu(staff); return; }
+                    cursor++;
+                }
+                if (staffRank(role) >= 7) {
+                    if (utility == cursor) { toggleFly(staff); return; }
+                    if (utility == cursor + 1) { toggleVanish(staff); return; }
+                }
+            }
         }));
         staff.showFormWindow(form);
+    }
+
+    private void openStaffStatsTargetMenu(Player staff) {
+        List<Player> online = new ArrayList<>(getServer().getOnlinePlayers().values());
+        if (online.isEmpty()) { staff.sendMessage("§cНет игроков онлайн."); return; }
+        FormWindowSimple form = new FormWindowSimple("§bСтатистика игрока", "§7Выбери игрока:");
+        for (Player target : online) form.addButton(new ElementButton(target.getName()));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !staff.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id < 0 || id >= online.size()) return;
+            Player target = online.get(id); initialize(target);
+            String key = playerKey(target);
+            staff.sendMessage("§6Статистика §f" + target.getName() + " §7(" + target.getUniqueId() + ")");
+            staff.sendMessage("§fУровень: §e" + get(target, "level", 1) + " §fXP: §a" + get(target, "xp", 0) + " §fМонеты: §6" + getBalance(target));
+            staff.sendMessage("§cСила: " + get(target, "strength", 0) + " §cЗдоровье: " + get(target, "health", 0)
+                    + " §aЛовкость: " + get(target, "agility", 0) + " §bИнтеллект: " + get(target, "intelligence", 0));
+            staff.sendMessage("§7Предупреждений: " + staffData.getInt("warnings." + target.getUniqueId(), 0));
+        }));
+        staff.showFormWindow(form);
+    }
+
+    private void showOnlineStaff(Player viewer) {
+        viewer.sendMessage("§6§lАдминистрация онлайн:");
+        int count = 0;
+        for (Player online : getServer().getOnlinePlayers().values()) {
+            String role = staffRole(online);
+            if (staffRank(role) == 0) continue;
+            viewer.sendMessage(staffChatPrefix(role) + " §f" + online.getName());
+            count++;
+        }
+        if (count == 0) viewer.sendMessage("§7Сейчас сотрудников нет онлайн.");
+    }
+
+    private void showStaffHelp(Player viewer) {
+        String role = staffRole(viewer);
+        viewer.sendMessage("§6§lДолжности LocalFast:");
+        for (String rank : STAFF_ROLES) viewer.sendMessage("§7" + staffRank(rank) + ". §f" + staffRoleLabel(rank));
+        viewer.sendMessage("§6§lТвои команды:");
+        viewer.sendMessage("§e/staff §7— открыть панель");
+        viewer.sendMessage("§e/staff warn <игрок> <причина>");
+        if (maxMuteMinutes(role) != 0L) viewer.sendMessage("§e/staff mute <игрок> <минуты> <причина>");
+        if (canKick(role)) viewer.sendMessage("§e/staff kick <игрок> <причина>");
+        if (canBan(role)) viewer.sendMessage("§e/staff ban <игрок> <минуты> <причина>");
+        if (canUnmute(role)) viewer.sendMessage("§e/staff unmute <игрок>");
+        if (canUnban(role)) viewer.sendMessage("§e/staff unban <игрок>");
+        if (staffRank(role) >= 5) viewer.sendMessage("§e/staff warp §7— меню варпов");
+        if (staffRank(role) >= 7) viewer.sendMessage("§e/staff fly|vanish");
+        if (role.equals("admin") || role.equals("operator")) viewer.sendMessage("§e/staff promote|demote|setrank ...");
+    }
+
+    private void toggleFly(Player player) {
+        String role = staffRole(player);
+        if (staffRank(role) < 7) { player.sendMessage("§cFly доступен только администратору и оператору."); return; }
+        boolean enabled = !flyingPlayers.contains(player.getUniqueId());
+        if (enabled) {
+            flyingPlayers.add(player.getUniqueId());
+            player.setAllowFlight(true);
+            player.setFlying(true);
+        } else {
+            flyingPlayers.remove(player.getUniqueId());
+            player.setFlying(false);
+            player.setAllowFlight(false);
+        }
+        staffLog(player.getName(), "fly", player.getName(), enabled ? "on" : "off");
+        player.sendMessage(enabled ? "§aРежим полёта включён." : "§eРежим полёта выключен.");
+    }
+
+    private void toggleVanish(Player player) {
+        if (staffRank(staffRole(player)) < 7) { player.sendMessage("§cVanish доступен только администратору и оператору."); return; }
+        UUID id = player.getUniqueId();
+        if (vanishedPlayers.remove(id)) {
+            for (Player viewer : getServer().getOnlinePlayers().values()) viewer.showPlayer(player);
+            player.sendMessage("§eVanish выключен.");
+            staffLog(player.getName(), "vanish", player.getName(), "off");
+        } else {
+            vanishedPlayers.add(id);
+            for (Player viewer : getServer().getOnlinePlayers().values()) if (!viewer.getUniqueId().equals(id)) viewer.hidePlayer(player);
+            player.sendMessage("§aVanish включён.");
+            staffLog(player.getName(), "vanish", player.getName(), "on");
+        }
+    }
+
+    private void openWarpMenu(Player staff) {
+        FormWindowSimple form = new FormWindowSimple("§6LocalFast §8| §lWarp", "§7Выбери точку для телепортации:");
+        List<String> names = new ArrayList<>(getConfig().getSection("warps").getKeys(false));
+        if (names.isEmpty()) {
+            form.addButton(new ElementButton("§eСпавн"));
+            form.addHandler(FormResponseHandler.withoutPlayer(ignored -> { if (!form.wasClosed() && form.getResponse() != null && form.getResponse().getClickedButtonId() == 0) teleportToSpawn(staff); }));
+        } else {
+            for (String name : names) form.addButton(new ElementButton("§e" + name));
+            form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+                if (form.wasClosed() || form.getResponse() == null || !staff.isOnline()) return;
+                int id = form.getResponse().getClickedButtonId();
+                if (id < 0 || id >= names.size()) return;
+                String path = "warps." + names.get(id);
+                Level world = getServer().getLevelByName(getConfig().getString(path + ".world", ""));
+                if (world == null) { staff.sendMessage("§cМир варпа не загружен."); return; }
+                Position destination = new Position(getConfig().getDouble(path + ".x"), getConfig().getDouble(path + ".y"),
+                        getConfig().getDouble(path + ".z"), world);
+                if (staff.teleport(destination)) staff.sendMessage("§aТелепортирован на варп " + names.get(id) + ".");
+            }));
+        }
+        staff.showFormWindow(form);
+    }
+
+    private void openOperatorMenu(Player operator) {
+        if (!isOperator(operator)) { operator.sendMessage("§cТолько оператор может открыть эту панель."); return; }
+        FormWindowSimple form = new FormWindowSimple("§6LocalFast §8| §lОператорская панель",
+                "§fОператор: §e" + operator.getName() + "\n§7Управление сервером и персоналом.");
+        form.addButton(new ElementButton("§bАдминистрация онлайн"));
+        form.addButton(new ElementButton("§eДолжности и команды"));
+        form.addButton(new ElementButton("§aСтатистика игрока"));
+        form.addButton(new ElementButton("§6Сохранить варп здесь (operator)"));
+        form.addButton(new ElementButton("§dСообщение при входе: показать/выключить"));
+        form.addButton(new ElementButton("§cFly"));
+        form.addButton(new ElementButton("§cVanish"));
+        form.addButton(new ElementButton("§6Открыть панель /staff"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id == 0) showOnlineStaff(operator);
+            else if (id == 1) showStaffHelp(operator);
+            else if (id == 2) openStaffStatsTargetMenu(operator);
+            else if (id == 3) {
+                String path = "warps.operator";
+                getConfig().set(path + ".world", operator.getLevel().getFolderName());
+                getConfig().set(path + ".x", operator.getX()); getConfig().set(path + ".y", operator.getY()); getConfig().set(path + ".z", operator.getZ());
+                saveConfig(); operator.sendMessage("§aВарп operator сохранён в твоей текущей точке.");
+            } else if (id == 4) {
+                String current = getConfig().getString("welcome.message", "");
+                if (current == null || current.trim().isEmpty()) {
+                    getConfig().set("welcome.message", "§6Добро пожаловать на сервер, §e{player}§6!");
+                    operator.sendMessage("§aПриветствие включено. Текст можно изменить в config.yml (welcome.message).");
+                } else {
+                    getConfig().set("welcome.message", "");
+                    operator.sendMessage("§eПриветствие отключено.");
+                }
+                saveConfig();
+            } else if (id == 5) toggleFly(operator);
+            else if (id == 6) toggleVanish(operator);
+            else if (id == 7) openStaffMenu(operator);
+        }));
+        operator.showFormWindow(form);
     }
 
     private void openStaffTargetMenu(Player staff, String action) {
@@ -1314,6 +1488,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (!(sender instanceof Player)) { sender.sendMessage("Команда доступна игроку."); return true; }
         Player actor = (Player) sender; String role = staffRole(actor);
         if (args.length == 0) { openStaffMenu(actor); return true; }
+        if (args[0].equalsIgnoreCase("fly")) { toggleFly(actor); return true; }
+        if (args[0].equalsIgnoreCase("vanish")) { toggleVanish(actor); return true; }
+        if (args[0].equalsIgnoreCase("warp")) { if (staffRank(role) < 5) sender.sendMessage("§cWarp доступен с ранга модератора."); else openWarpMenu(actor); return true; }
+        if (args[0].equalsIgnoreCase("online")) { showOnlineStaff(actor); return true; }
+        if (args[0].equalsIgnoreCase("help") || args[0].equalsIgnoreCase("ranks")) { showStaffHelp(actor); return true; }
         if (staffRank(role) == 0) { sender.sendMessage("§cНет доступа к /staff."); return true; }
         String action = args[0].toLowerCase(Locale.ROOT);
         if (action.equals("promote") || action.equals("demote") || action.equals("setrank")) {
@@ -1405,7 +1584,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
             sender.sendMessage("Оператор назначен: " + target.getName()); target.sendMessage("§6Ты назначен оператором LocalFastCore."); return true;
         }
         if (!isOperator(sender)) { sender.sendMessage("§cТолько оператор может использовать /lfadmin."); return true; }
-        if (args.length == 0) { sender.sendMessage("§6/lfadmin staff add|remove|list; money give|take|set|reset; xp; reset"); return true; }
+        if (args.length == 0) {
+            if (sender instanceof Player) openOperatorMenu((Player) sender);
+            else sender.sendMessage("§6/lfadmin staff add|remove|list; money give|take|set|reset; xp; reset");
+            return true;
+        }
         if (args[0].equalsIgnoreCase("staff")) {
             if (args.length >= 2 && args[1].equalsIgnoreCase("list")) { sender.sendMessage("§6Персонал:"); for (String id : staffData.getSection("staff").getKeys(false)) sender.sendMessage("§e" + id + " §7— §f" + staffData.getString("staff." + id)); return true; }
             if (args.length < 3) { sender.sendMessage("§e/lfadmin staff add <игрок> <admin|moderator> или remove <игрок>"); return true; }

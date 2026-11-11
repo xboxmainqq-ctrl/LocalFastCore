@@ -475,7 +475,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
             return;
         } else if (banExpires != 0L) { staffData.remove(banPath); staffData.save(); }
         String welcome = getConfig().getString("welcome.message", "");
-        if (welcome != null && !welcome.trim().isEmpty()) p.sendMessage(welcome.replace("{player}", p.getName()).replace("&", "§"));
+        boolean personalWelcome = staffData.getBoolean("welcome.enabled." + p.getUniqueId(), true);
+        if (personalWelcome && welcome != null && !welcome.trim().isEmpty()) {
+            p.sendMessage(welcome.replace("{player}", p.getName()).replace("&", "§"));
+        }
         initialize(p); refreshDaily(p); String k=playerKey(p); String d=today();
         if (!players.getString(k+".login_reward_date","").equals(d)) {
             players.set(k+".login_reward_date",d); markPlayersDirty(); giveXp(p, Math.max(0, getConfig().getInt("progression.login-reward-xp", LOGIN_XP_REWARD)));
@@ -1397,7 +1400,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             viewer.sendMessage("§e/lfadmin xp <игрок> <количество>");
             viewer.sendMessage("§e/lfadmin reset <игрок> <level|stats|quests|all>");
             viewer.sendMessage("§e/lfadmin warp set|delete|list ...");
-            viewer.sendMessage("§e/lfadmin welcome <текст|off>");
+            viewer.sendMessage("§e/staff welcome <on|off|status> §7— личное приветствие при входе");
         }
     }
 
@@ -1606,24 +1609,30 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private boolean handleStaffCommand(CommandSender sender, String[] args) {
         if (!(sender instanceof Player)) { sender.sendMessage("Команда доступна игроку."); return true; }
-        Player actor = (Player) sender; String role = staffRole(actor);
-        if (staffRank(role) == 0) { sender.sendMessage("§cНет доступа к /staff."); return true; }
+        Player actor = (Player) sender;
+        if (args.length > 0 && args[0].equalsIgnoreCase("welcome")) {
+            String path = "welcome.enabled." + actor.getUniqueId();
+            if (args.length == 1 || args[1].equalsIgnoreCase("status")) {
+                boolean enabled = staffData.getBoolean(path, true);
+                sender.sendMessage(enabled ? "§aПриветствие при входе включено для тебя." : "§eПриветствие при входе выключено для тебя.");
+                sender.sendMessage("§7Используй /staff welcome on или /staff welcome off.");
+                return true;
+            }
+            if (args.length != 2 || !(args[1].equalsIgnoreCase("on") || args[1].equalsIgnoreCase("off"))) {
+                sender.sendMessage("§e/staff welcome <on|off|status>");
+                return true;
+            }
+            boolean enabled = args[1].equalsIgnoreCase("on");
+            staffData.set(path, enabled);
+            staffData.save();
+            sender.sendMessage(enabled ? "§aПриветствие при входе включено для тебя." : "§eПриветствие при входе выключено для тебя.");
+            return true;
+        }
+        String role = staffRole(actor);
+        if (staffRank(role) == 0) { sender.sendMessage("§cНет доступа к /staff. Команда /staff welcome доступна всем."); return true; }
         if (args.length == 0) { openStaffMenu(actor); return true; }
         if (args[0].equalsIgnoreCase("fly")) { toggleFly(actor); return true; }
         if (args[0].equalsIgnoreCase("vanish")) { toggleVanish(actor); return true; }
-        if (args[0].equalsIgnoreCase("welcome")) {
-            if (args.length < 2) { sender.sendMessage("§e/lfadmin welcome <текст|off>"); return true; }
-            if (args[1].equalsIgnoreCase("off")) {
-                getConfig().set("welcome.message", ""); saveConfig();
-                sender.sendMessage("§eСообщение при входе отключено."); return true;
-            }
-            StringBuilder message = new StringBuilder();
-            for (int i = 1; i < args.length; i++) { if (message.length() > 0) message.append(' '); message.append(args[i]); }
-            getConfig().set("welcome.message", message.toString()); saveConfig();
-            staffLog(sender.getName(), "welcome-change", "server", message.toString());
-            sender.sendMessage("§aСообщение при входе обновлено. Используй {player} для ника.");
-            return true;
-        }
         if (args[0].equalsIgnoreCase("warp")) { if (staffRank(role) < 5) sender.sendMessage("§cWarp доступен с ранга модератора."); else openWarpMenu(actor); return true; }
         if (args[0].equalsIgnoreCase("online")) { showOnlineStaff(actor); return true; }
         if (args[0].equalsIgnoreCase("help") || args[0].equalsIgnoreCase("ranks")) { showStaffHelp(actor); return true; }
@@ -1792,6 +1801,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         String name = command.getName().toLowerCase(Locale.ROOT);
+
+        if (name.equals("staff") && args.length > 0 && args[0].equalsIgnoreCase("welcome")) {
+            return handleStaffCommand(sender, args);
+        }
 
         if (name.equals("balance") || name.equals("pay")) {
             if (!(sender instanceof Player)) {

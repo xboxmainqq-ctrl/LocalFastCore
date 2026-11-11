@@ -2187,8 +2187,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 sender.sendMessage("§e/staff setrank <игрок> <ml_helper|helper|senior_helper|junior_moderator|moderator|senior_moderator|admin>"); return true;
             }
             Player target = getServer().getPlayer(args[1]);
-            if (target == null) { sender.sendMessage("§cИгрок должен быть онлайн."); return true; }
-            String oldRole = staffRole(target);
+            String targetUuid = target == null ? knownPlayerUuid(args[1]) : target.getUniqueId().toString();
+            if (targetUuid == null) { sender.sendMessage("§cИгрок не найден. Он должен хотя бы один раз зайти на сервер."); return true; }
+            String oldRole = target == null ? staffData.getString("staff." + targetUuid, "") : staffRole(target);
+            if (targetUuid.equalsIgnoreCase(getConfig().getString("operator.uuid", ""))) oldRole = "operator";
+            String targetName = target == null ? knownPlayerName(args[1], targetUuid) : target.getName();
             int oldRank = staffRank(oldRole);
             if (oldRank == 8 || oldRank >= staffRank(role)) {
                 sender.sendMessage("§cНельзя менять должность сотрудника равного или более высокого ранга."); return true;
@@ -2204,24 +2207,25 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (newRank < 0 || newRank > 7 || (!operator && newRank > 5)) {
                 sender.sendMessage("§cАдминистратор может назначать должности только до модера включительно. Старшие должности доступны оператору."); return true;
             }
-            if (newRank == 0) staffData.remove("staff." + target.getUniqueId());
-            else staffData.set("staff." + target.getUniqueId(), STAFF_ROLES[newRank - 1]);
+            if (newRank == 0) staffData.remove("staff." + targetUuid);
+            else staffData.set("staff." + targetUuid, STAFF_ROLES[newRank - 1]);
             staffData.save();
-            refreshStaffNameTag(target);
-            refreshStaffModes(target);
+            if (target != null) { refreshStaffNameTag(target); refreshStaffModes(target); }
             String newRole = newRank == 0 ? "" : STAFF_ROLES[newRank - 1];
-            staffLog(actor.getName(), action, target.getName(), staffRoleLabel(oldRole) + " -> " + staffRoleLabel(newRole));
-            sender.sendMessage("§aДолжность " + target.getName() + ": " + staffRoleLabel(oldRole) + " -> " + staffRoleLabel(newRole) + ".");
-            target.sendMessage("§eТвоя должность изменена: §a" + staffRoleLabel(newRole) + "§e.");
+            staffLog(actor.getName(), action, targetName, staffRoleLabel(oldRole) + " -> " + staffRoleLabel(newRole));
+            sender.sendMessage("§aДолжность " + targetName + ": " + staffRoleLabel(oldRole) + " -> " + staffRoleLabel(newRole) + ".");
+            if (target != null) target.sendMessage("§eТвоя должность изменена: §a" + staffRoleLabel(newRole) + "§e.");
             return true;
         }
         if (action.equals("warn")) {
             if (args.length < 3) { sender.sendMessage("§e/staff warn <игрок> <причина>"); return true; }
-            Player target = getServer().getPlayer(args[1]); if (target == null) { sender.sendMessage("§cИгрок должен быть онлайн."); return true; }
-            if (staffRank(staffRole(target)) >= staffRank(role)) { sender.sendMessage("§cНельзя наказать сотрудника равного или более высокого ранга."); return true; }
-            StringBuilder reason = new StringBuilder(); for (int i=2;i<args.length;i++){if(reason.length()>0)reason.append(' ');reason.append(args[i]);}
+            Player target = getServer().getPlayer(args[1]);
             String targetUuid = target == null ? knownPlayerUuid(args[1]) : target.getUniqueId().toString();
             if (targetUuid == null) { sender.sendMessage("§cИгрок не найден. Он должен хотя бы один раз зайти на сервер."); return true; }
+            String targetRole = target == null ? staffData.getString("staff." + targetUuid, "") : staffRole(target);
+            if (targetUuid.equalsIgnoreCase(getConfig().getString("operator.uuid", ""))) targetRole = "operator";
+            if (staffRank(targetRole) >= staffRank(role)) { sender.sendMessage("§cНельзя наказать сотрудника равного или более высокого ранга."); return true; }
+            StringBuilder reason = new StringBuilder(); for (int i=2;i<args.length;i++){if(reason.length()>0)reason.append(' ');reason.append(args[i]);}
             String targetName = target == null ? knownPlayerName(args[1], targetUuid) : target.getName();
             String path = "warnings." + targetUuid;
             int count = staffData.getInt(path, 0) + 1;
@@ -2364,12 +2368,22 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 return true;
             }
             if (args.length < 3) { sender.sendMessage("§e/lfadmin staff add <игрок> <ml_helper|helper|senior_helper|junior_moderator|moderator|senior_moderator|admin> или remove <игрок>"); return true; }
-            Player target = getServer().getPlayer(args[2]); if (target == null) { sender.sendMessage("§cИгрок должен быть онлайн."); return true; }
-            String path = "staff." + target.getUniqueId();
+            Player target = getServer().getPlayer(args[2]);
+            String targetUuid = target == null ? knownPlayerUuid(args[2]) : target.getUniqueId().toString();
+            if (targetUuid == null) { sender.sendMessage("§cИгрок не найден. Он должен хотя бы один раз зайти на сервер."); return true; }
+            if (targetUuid.equalsIgnoreCase(getConfig().getString("operator.uuid", ""))) { sender.sendMessage("§cНельзя изменить главного оператора через этот пункт."); return true; }
+            String path = "staff." + targetUuid;
             if (args[1].equalsIgnoreCase("remove")) staffData.remove(path);
             else if (args[1].equalsIgnoreCase("add") && args.length == 4 && Arrays.asList(STAFF_ROLES).contains(args[3].toLowerCase(Locale.ROOT))) staffData.set(path, args[3].toLowerCase(Locale.ROOT));
             else { sender.sendMessage("§eУкажи add|remove и роль: ml_helper|helper|senior_helper|junior_moderator|moderator|senior_moderator|admin."); return true; }
-            staffData.save(); refreshStaffNameTag(target); refreshStaffModes(target); staffLog(sender.getName(), "staff-" + args[1], target.getName(), args.length == 4 ? args[3] : ""); sender.sendMessage("§aРоль обновлена: §f" + target.getName() + " §7— " + staffRoleColor(staffRole(target)) + staffRoleLabel(staffRole(target))); return true;
+            staffData.save();
+            if (target != null) { refreshStaffNameTag(target); refreshStaffModes(target); }
+            String targetName = target == null ? knownPlayerName(args[2], targetUuid) : target.getName();
+            String newRole = staffData.getString(path, "");
+            staffLog(sender.getName(), "staff-" + args[1], targetName, args.length == 4 ? args[3] : "");
+            sender.sendMessage("§aРоль обновлена: §f" + targetName + " §7— " + staffRoleColor(newRole) + staffRoleLabel(newRole));
+            if (target != null) target.sendMessage("§eТвоя должность изменена: §a" + staffRoleLabel(newRole) + "§e.");
+            return true;
         }
         if (args[0].equalsIgnoreCase("warp")) {
             if (args.length == 2 && args[1].equalsIgnoreCase("list")) {

@@ -1401,7 +1401,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (sender instanceof Player) { sender.sendMessage("§cПервое назначение оператора выполняется только из консоли."); return true; }
             if (args.length != 2) { sender.sendMessage("§e/lfadmin setoperator <игрок>"); return true; }
             Player target = getServer().getPlayer(args[1]); if (target == null) { sender.sendMessage("§cИгрок должен быть онлайн."); return true; }
-            getConfig().set("operator.uuid", target.getUniqueId().toString()); saveConfig(); staffLog("CONSOLE", "setoperator", target.getName(), target.getUniqueId().toString());
+            getConfig().set("operator.uuid", target.getUniqueId().toString()); saveConfig(); refreshStaffNameTag(target); staffLog("CONSOLE", "setoperator", target.getName(), target.getUniqueId().toString());
             sender.sendMessage("Оператор назначен: " + target.getName()); target.sendMessage("§6Ты назначен оператором LocalFastCore."); return true;
         }
         if (!isOperator(sender)) { sender.sendMessage("§cТолько оператор может использовать /lfadmin."); return true; }

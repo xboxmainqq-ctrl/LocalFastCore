@@ -199,13 +199,15 @@ public final class LocalFastCore extends PluginBase implements Listener {
         int centerX = center.getFloorX();
         int centerZ = center.getFloorZ();
         ThreadLocalRandom random = ThreadLocalRandom.current();
-        for (int attempt = 0; attempt < 120; attempt++) {
+        for (int attempt = 0; attempt < 200; attempt++) {
             double angle = random.nextDouble(0, Math.PI * 2);
             double radius = Math.sqrt(random.nextDouble(minRadius * (double) minRadius,
                     maxRadius * (double) maxRadius));
             int x = centerX + (int) Math.round(Math.cos(angle) * radius);
             int z = centerZ + (int) Math.round(Math.sin(angle) * radius);
             try {
+                // Ensure the target chunk exists and is generated before querying its surface.
+                if (world.getChunk(x >> 4, z >> 4, true) == null) continue;
                 int groundY = world.getHighestBlockAt(x, z);
                 if (groundY <= world.getMinBlockY() || groundY + 2 > world.getMaxBlockY()) continue;
                 Block ground = world.getBlock(x, groundY, z);

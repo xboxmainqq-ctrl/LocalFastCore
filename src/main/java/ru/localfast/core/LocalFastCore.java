@@ -459,7 +459,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         Player p=e.getPlayer();
         refreshStaffNameTag(p);
         for (UUID vanishedId : vanishedPlayers) {
-            Player vanished = getServer().getPlayer(vanishedId);
+            Player vanished = getServer().getPlayer(vanishedId).orElse(null);
             if (vanished != null && vanished.isOnline() && !vanished.getUniqueId().equals(p.getUniqueId())) p.hidePlayer(vanished);
         }
         if (vanishedPlayers.contains(p.getUniqueId())) {
@@ -1357,10 +1357,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (enabled) {
             flyingPlayers.add(player.getUniqueId());
             player.setAllowFlight(true);
-            player.setFlying(true);
         } else {
             flyingPlayers.remove(player.getUniqueId());
-            player.setFlying(false);
             player.setAllowFlight(false);
         }
         staffLog(player.getName(), "fly", player.getName(), enabled ? "on" : "off");

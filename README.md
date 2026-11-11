@@ -123,7 +123,7 @@ No `players.yml` reset or destructive migration is part of this update. Back up 
 
 ## Homes and player teleport requests (0.11.0)
 
-Each player can save one home with `/sethome`, return using `/home`, and remove it with `/delhome`. The home stores world folder name, coordinates and rotation inside the player's existing UUID profile in `players.yml`. If the saved world is unavailable, the home is retained and the player receives an error; it is not silently redirected to another world.
+Each player can save one home with `/sethome`, return using `/home`, and remove it with `/delhome`. The home stores world folder name and coordinates inside the player's existing UUID profile in `players.yml`. If the saved world is unavailable, the home is retained and the player receives an error; it is not silently redirected to another world.
 
 Use `/tpa <player>` to request teleportation to an online player. The target can use `/tpaccept` or `/tpdeny`; requests expire after 60 seconds. A player has one pending request slot at a time. Pending requests are in-memory only and are cleared when either player leaves or the server restarts. These commands are player-only and do not require admin permission.
 

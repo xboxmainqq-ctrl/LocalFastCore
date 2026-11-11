@@ -35,6 +35,7 @@ import java.io.File;
 import java.util.Locale;
 import java.time.LocalDate;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.UUID;
 
 public final class LocalFastCore extends PluginBase implements Listener {
     private static final int MAX_LEVEL = 100;
@@ -52,6 +53,16 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private Config players;
     private boolean playersDirty = false;
     private final Map<String, IScoreboard> sidebars = new HashMap<>();
+    private final Map<UUID, PendingTeleport> pendingTeleports = new HashMap<>();
+
+    private static final class PendingTeleport {
+        final Player requester;
+        final long expiresAt;
+        PendingTeleport(Player requester, long expiresAt) {
+            this.requester = requester;
+            this.expiresAt = expiresAt;
+        }
+    }
 
     private static final class QuestDefinition {
         final String id, title, description, mobType;
@@ -302,6 +313,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
+        Player quittingPlayer = event.getPlayer();
+        UUID quittingId = quittingPlayer.getUniqueId();
+        pendingTeleports.remove(quittingId);
+        pendingTeleports.entrySet().removeIf(entry -> entry.getValue().requester.getUniqueId().equals(quittingId));
         String key = playerKey(event.getPlayer());
         IScoreboard scoreboard = sidebars.remove(key);
         if (scoreboard != null) scoreboard.removeViewer(event.getPlayer(), DisplaySlot.SIDEBAR);
@@ -466,6 +481,128 @@ public final class LocalFastCore extends PluginBase implements Listener {
             giveXp(p,reward);p.sendMessage("§aПолучено +" + reward + " XP!");return;
         }
         p.sendMessage("§e/daily, /daily start или /daily claim");
+    }
+
+
+    private void handleHome(Player player, String command) {
+        initialize(player);
+        String key = playerKey(player);
+        String homePath = key + ".home";
+        if (command.equals("sethome")) {
+            players.set(homePath + ".world", player.getLevel().getFolderName());
+            players.set(homePath + ".x", player.getX());
+            players.set(homePath + ".y", player.getY());
+            players.set(homePath + ".z", player.getZ());
+            players.set(homePath + ".yaw", player.getYaw());
+            players.set(homePath + ".pitch", player.getPitch());
+            markPlayersDirty();
+            player.sendMessage("§a[LocalFast] Дом сохранён. Вернуться: /home");
+            return;
+        }
+        if (command.equals("delhome")) {
+            if (!players.exists(homePath)) {
+                player.sendMessage("§c[LocalFast] У тебя ещё нет дома. Сначала используй /sethome.");
+                return;
+            }
+            players.remove(homePath);
+            markPlayersDirty();
+            player.sendMessage("§e[LocalFast] Точка дома удалена.");
+            return;
+        }
+        if (!players.exists(homePath + ".world")) {
+            player.sendMessage("§c[LocalFast] Дом не установлен. Используй /sethome.");
+            return;
+        }
+        String worldName = players.getString(homePath + ".world", "");
+        Level world = loadHomeWorld(worldName);
+        if (world == null) {
+            player.sendMessage("§c[LocalFast] Мир твоего дома '" + worldName + "' не найден. Дом не удалён.");
+            return;
+        }
+        double x = players.getDouble(homePath + ".x");
+        double y = players.getDouble(homePath + ".y");
+        double z = players.getDouble(homePath + ".z");
+        float yaw = (float) players.getDouble(homePath + ".yaw", 0);
+        float pitch = (float) players.getDouble(homePath + ".pitch", 0);
+        Position destination = new Position(x, y, z, world);
+        destination.setYaw(yaw);
+        destination.setPitch(pitch);
+        if (player.teleport(destination)) {
+            player.sendMessage("§a[LocalFast] Ты телепортирован домой.");
+        } else {
+            player.sendMessage("§c[LocalFast] Не удалось телепортировать тебя домой.");
+        }
+    }
+
+    private Level loadHomeWorld(String worldName) {
+        if (worldName == null || worldName.trim().isEmpty()) return null;
+        if (!getServer().isLevelLoaded(worldName) && !getServer().loadLevel(worldName)) return null;
+        return getServer().getLevelByName(worldName);
+    }
+
+    private void handleTpa(Player player, String command, String[] args) {
+        UUID playerId = player.getUniqueId();
+        if (command.equals("tpa")) {
+            if (args.length != 1) {
+                player.sendMessage("§eИспользование: /tpa <игрок>");
+                return;
+            }
+            Player target = getServer().getPlayer(args[0]);
+            if (target == null || !target.isOnline()) {
+                player.sendMessage("§c[LocalFast] Игрок не найден или не в сети.");
+                return;
+            }
+            if (target.getUniqueId().equals(playerId)) {
+                player.sendMessage("§c[LocalFast] Нельзя отправить запрос самому себе.");
+                return;
+            }
+            UUID targetId = target.getUniqueId();
+            PendingTeleport pending = new PendingTeleport(player, System.currentTimeMillis() + 60_000L);
+            pendingTeleports.put(targetId, pending);
+            target.sendMessage("§6[LocalFast] Игрок §e" + player.getName()
+                    + " §6хочет телепортироваться к тебе.");
+            target.sendMessage("§a/tpaccept §7— принять, §c/tpdeny §7— отклонить (60 секунд).");
+            player.sendMessage("§a[LocalFast] Запрос отправлен игроку " + target.getName() + ". Он действует 60 секунд.");
+            getServer().getScheduler().scheduleDelayedTask(this, () -> {
+                if (pendingTeleports.get(targetId) == pending) {
+                    pendingTeleports.remove(targetId);
+                    if (pending.requester.isOnline()) {
+                        pending.requester.sendMessage("§e[LocalFast] Запрос телепортации истёк.");
+                    }
+                    if (target.isOnline()) target.sendMessage("§e[LocalFast] Запрос телепортации истёк.");
+                }
+            }, 60 * 20);
+            return;
+        }
+        if (args.length != 0) {
+            player.sendMessage(command.equals("tpaccept") ? "§eИспользование: /tpaccept" : "§eИспользование: /tpdeny");
+            return;
+        }
+        PendingTeleport pending = pendingTeleports.get(playerId);
+        if (pending == null) {
+            player.sendMessage("§c[LocalFast] У тебя нет ожидающих запросов.");
+            return;
+        }
+        pendingTeleports.remove(playerId);
+        if (pending.expiresAt <= System.currentTimeMillis() || !pending.requester.isOnline()) {
+            player.sendMessage("§c[LocalFast] Запрос уже истёк или игрок вышел с сервера.");
+            return;
+        }
+        if (command.equals("tpdeny")) {
+            player.sendMessage("§e[LocalFast] Запрос отклонён.");
+            pending.requester.sendMessage("§c[LocalFast] Игрок " + player.getName() + " отклонил запрос.");
+            return;
+        }
+        Position destination = new Position(player.getX(), player.getY(), player.getZ(), player.getLevel());
+        destination.setYaw(player.getYaw());
+        destination.setPitch(player.getPitch());
+        if (pending.requester.teleport(destination)) {
+            player.sendMessage("§a[LocalFast] Запрос принят.");
+            pending.requester.sendMessage("§a[LocalFast] " + player.getName() + " принял запрос. Телепортация выполнена.");
+        } else {
+            player.sendMessage("§c[LocalFast] Не удалось выполнить телепортацию.");
+            pending.requester.sendMessage("§c[LocalFast] Не удалось телепортироваться к игроку.");
+        }
     }
 
     private int xpForNextLevel(int level) {
@@ -889,6 +1026,24 @@ public final class LocalFastCore extends PluginBase implements Listener {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         String name = command.getName().toLowerCase(Locale.ROOT);
+
+        if (name.equals("sethome") || name.equals("home") || name.equals("delhome")) {
+            if (!(sender instanceof Player)) {
+                sender.sendMessage("Эта команда доступна только игроку.");
+                return true;
+            }
+            handleHome((Player) sender, name);
+            return true;
+        }
+
+        if (name.equals("tpa") || name.equals("tpaccept") || name.equals("tpdeny")) {
+            if (!(sender instanceof Player)) {
+                sender.sendMessage("Эта команда доступна только игроку.");
+                return true;
+            }
+            handleTpa((Player) sender, name, args);
+            return true;
+        }
 
         if (name.equals("spawn") || name.equals("setspawn") || name.equals("rtp")) {
             if (!(sender instanceof Player)) {

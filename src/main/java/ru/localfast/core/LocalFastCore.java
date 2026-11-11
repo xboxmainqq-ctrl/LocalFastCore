@@ -326,7 +326,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     public void onPlayerChat(PlayerChatEvent event) {
         Player player = event.getPlayer();
         String roleTag = staffChatTag(staffRole(player));
-        event.setFormat("%s" + roleTag + " §7: §f%s");
+        event.setFormat("%s" + roleTag + " §8 » §f%s");
         String path = "punishments.mutes." + player.getUniqueId();
         long expires = staffData.getLong(path + ".expires", 0L);
         if (expires == -1L || expires > System.currentTimeMillis()) { event.setCancelled(true); player.sendMessage("§cЧат закрыт: у тебя активен мут."); }
@@ -476,10 +476,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
             getServer().getScheduler().scheduleDelayedTask(this, () -> { if (p.isOnline()) p.kick("§cБан: " + reason, false); }, 1);
             return;
         } else if (banExpires != 0L) { staffData.remove(banPath); staffData.save(); }
-        String welcome = getConfig().getString("welcome.message", "");
+        String role = staffRole(p);
         boolean personalWelcome = staffData.getBoolean("welcome.enabled." + p.getUniqueId(), true);
-        if (staffRank(staffRole(p)) >= 7 && personalWelcome && welcome != null && !welcome.trim().isEmpty()) {
-            p.sendMessage(welcome.replace("{player}", p.getName()).replace("&", "§"));
+        if (staffRank(role) >= 1 && personalWelcome) {
+            getServer().broadcastMessage("§b[STAFF] " + staffRoleColor(role) + "[" + staffRoleLabel(role)
+                    + "] §f" + p.getName() + " §7зашёл на сервер!");
         }
         initialize(p); refreshDaily(p); String k=playerKey(p); String d=today();
         if (!players.getString(k+".login_reward_date","").equals(d)) {
@@ -1181,14 +1182,14 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private String staffChatTag(String role) {
         switch (role) {
-            case "ml_helper": return " §bМл. хелпер";
-            case "helper": return " §aХелпер";
-            case "senior_helper": return " §6Ст. хелпер";
-            case "junior_moderator": return " §dМл. модер";
-            case "moderator": return " §5Модер";
-            case "senior_moderator": return " §9Ст. модер";
-            case "admin": return " §aAdmin";
-            case "operator": return " §eОператор";
+            case "ml_helper": return " §a[Мл.Хелпер]";
+            case "helper": return " §b[Хелпер]";
+            case "senior_helper": return " §6[Ст.Хелпер]";
+            case "junior_moderator": return " §d[Мл.Модер]";
+            case "moderator": return " §5[Модератор]";
+            case "senior_moderator": return " §9[Ст.Модер]";
+            case "admin": return " §c[Администратор]";
+            case "operator": return " §e[Оператор]";
             default: return "";
         }
     }
@@ -1305,8 +1306,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (canUnmute(role)) { form.addButton(new ElementButton("§aСнять мут")); actions.add("unmute"); }
         if (canUnban(role)) { form.addButton(new ElementButton("§aСнять бан")); actions.add("unban"); }
         int utilityStart = actions.size();
+        boolean welcomeEnabled = staffData.getBoolean("welcome.enabled." + staff.getUniqueId(), true);
+        form.addButton(new ElementButton(welcomeEnabled ? "§aПриветствие: ВКЛ" : "§cПриветствие: ВЫКЛ"));
         form.addButton(new ElementButton("§bСтатистика игрока"));
-        form.addButton(new ElementButton("§dАдминистрация онлайн"));
+        form.addButton(new ElementButton("§dСписок администрации"));
         form.addButton(new ElementButton("§eДолжности и мои команды"));
         if (staffRank(role) >= 5) form.addButton(new ElementButton("§6Warp"));
         if (staffRank(role) >= 7) {
@@ -1319,11 +1322,18 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (id < 0) return;
             if (id < utilityStart) { if (id < actions.size()) openStaffTargetMenu(staff, actions.get(id)); return; }
             int utility = id - utilityStart;
-            if (utility == 0) openStaffStatsTargetMenu(staff);
-            else if (utility == 1) showOnlineStaff(staff);
-            else if (utility == 2) showStaffHelp(staff);
+            if (utility == 0) {
+                String path = "welcome.enabled." + staff.getUniqueId();
+                boolean enabled = !staffData.getBoolean(path, true);
+                staffData.set(path, enabled);
+                staffData.save();
+                staff.sendMessage(enabled ? "§aПриветствие при входе включено." : "§eПриветствие при входе выключено.");
+                openStaffMenu(staff);
+            } else if (utility == 1) openStaffStatsTargetMenu(staff);
+            else if (utility == 2) showOnlineStaff(staff);
+            else if (utility == 3) showStaffHelp(staff);
             else {
-                int cursor = 3;
+                int cursor = 4;
                 if (staffRank(role) >= 5) {
                     if (utility == cursor) { openWarpMenu(staff); return; }
                     cursor++;
@@ -1402,7 +1412,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             viewer.sendMessage("§e/lfadmin xp <игрок> <количество>");
             viewer.sendMessage("§e/lfadmin reset <игрок> <level|stats|quests|all>");
             viewer.sendMessage("§e/lfadmin warp set|delete|list ...");
-            viewer.sendMessage("§e/staff welcome <on|off|status> §7— личное приветствие при входе");
+            viewer.sendMessage("§e/staff welcome <on|off|status> §7— общее приветствие персонала для всего сервера");
         }
     }
 
@@ -1529,8 +1539,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (!isOperator(operator)) { operator.sendMessage("§cТолько оператор может открыть эту панель."); return; }
         FormWindowSimple form = new FormWindowSimple("§6LocalFast §8| §lОператорская панель",
                 "§fОператор: §e" + operator.getName() + "\n§7Управление сервером и персоналом.");
-        form.addButton(new ElementButton("§bАдминистрация онлайн"));
-        form.addButton(new ElementButton("§aНазначить администрацию"));
+        form.addButton(new ElementButton("§bСписок администрации"));
+        form.addButton(new ElementButton("§aНазначить сотрудника"));
         form.addButton(new ElementButton("§eДолжности и команды"));
         form.addButton(new ElementButton("§aСтатистика игрока"));
         form.addButton(new ElementButton("§6Сохранить варп здесь (operator)"));
@@ -1608,6 +1618,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private boolean handleStaffCommand(CommandSender sender, String[] args) {
         if (!(sender instanceof Player)) { sender.sendMessage("Команда доступна игроку."); return true; }
         Player actor = (Player) sender;
+        String role = staffRole(actor);
+        if (staffRank(role) == 0) { sender.sendMessage("§cКоманда /staff доступна только персоналу сервера."); return true; }
         if (args.length > 0 && args[0].equalsIgnoreCase("welcome")) {
             String path = "welcome.enabled." + actor.getUniqueId();
             if (args.length == 1 || args[1].equalsIgnoreCase("status")) {
@@ -1626,8 +1638,6 @@ public final class LocalFastCore extends PluginBase implements Listener {
             sender.sendMessage(enabled ? "§aПриветствие при входе включено для тебя." : "§eПриветствие при входе выключено для тебя.");
             return true;
         }
-        String role = staffRole(actor);
-        if (staffRank(role) == 0) { sender.sendMessage("§cНет доступа к /staff. Команда /staff welcome доступна всем."); return true; }
         if (args.length == 0) { openStaffMenu(actor); return true; }
         if (args[0].equalsIgnoreCase("fly")) { toggleFly(actor); return true; }
         if (args[0].equalsIgnoreCase("vanish")) { toggleVanish(actor); return true; }
@@ -1800,11 +1810,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         String name = command.getName().toLowerCase(Locale.ROOT);
 
-        if (name.equals("staff") && args.length > 0 && args[0].equalsIgnoreCase("welcome")) {
-            return handleStaffCommand(sender, args);
-        }
-
-        if (name.equals("balance") || name.equals("pay")) {
+убрать обход команды приветствия        if (name.equals("balance") || name.equals("pay")) {
             if (!(sender instanceof Player)) {
                 sender.sendMessage("Эта команда доступна только игроку.");
                 return true;

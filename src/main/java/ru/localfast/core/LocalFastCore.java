@@ -325,24 +325,28 @@ public final class LocalFastCore extends PluginBase implements Listener {
     @EventHandler
     public void onPlayerChat(PlayerChatEvent event) {
         Player player = event.getPlayer();
+
         String mutePath = "punishments.mutes." + player.getUniqueId();
-        long expires = staffData.getLong(mutePath + ".expires", 0L);
-        if (expires == -1L || expires > System.currentTimeMillis()) {
+        long muteExpires = staffData.getLong(mutePath + ".expires", 0L);
+        if (muteExpires == -1L || muteExpires > System.currentTimeMillis()) {
             event.setCancelled(true);
-            player.sendMessage("§cЧат закрыт: у тебя активен мут.");
+            player.sendMessage("§cТы не можешь писать в чат: у тебя мут.");
             return;
         }
-        if (expires != 0L) {
+        if (muteExpires != 0L) {
             staffData.remove(mutePath);
             staffData.save();
         }
 
-        // Do not rely on PlayerChatEvent#setFormat: some Nukkit clients/builds
-        // render its format placeholders literally. Send the final line ourselves.
-        event.setCancelled(true);
         String role = staffRole(player);
-        String formatted = "§f" + player.getName() + staffChatTag(role) + " §8» §f" + event.getMessage();
-        getServer().broadcastMessage(formatted);
+        String roleText = staffRoleColor(role) + "[" + staffRoleLabel(role) + "]";
+        String chatLine = roleText + " §f" + player.getName() + " §8» §f" + event.getMessage();
+
+        // Полностью заменяем стандартный вывод чата одной готовой строкой.
+        event.setCancelled(true);
+        for (Player online : getServer().getOnlinePlayers().values()) {
+            online.sendMessage(chatLine);
+        }
     }
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {

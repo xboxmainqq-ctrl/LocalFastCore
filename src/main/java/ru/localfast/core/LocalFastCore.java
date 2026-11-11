@@ -104,8 +104,27 @@ public final class LocalFastCore extends PluginBase implements Listener {
         getLogger().info("LocalFastCore 0.9.3 включён. RPG, GUI и уровневые квесты готовы.");
     }
 
-    private String playerKey(Player player) {
+    private String legacyPlayerKey(Player player) {
         return player.getName().toLowerCase(Locale.ROOT).replace('.', '_');
+    }
+
+    private String playerKey(Player player) {
+        return "uuid_" + player.getUniqueId().toString().toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Copy an existing name-keyed profile to the UUID key once.
+     * The legacy section is deliberately retained as a backup.
+     */
+    private void migrateLegacyPlayerData(Player player) {
+        String uuidKey = playerKey(player);
+        String legacyKey = legacyPlayerKey(player);
+        if (uuidKey.equals(legacyKey) || players.exists(uuidKey) || !players.exists(legacyKey)) return;
+
+        players.set(uuidKey, players.getSection(legacyKey).getAll());
+        players.save();
+        getLogger().info("Migrated player data from legacy name key '" + legacyKey
+                + "' to UUID profile for " + player.getName() + ".");
     }
 
     private int get(Player player, String field, int fallback) {
@@ -193,6 +212,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     }
 
     private void initialize(Player player) {
+        migrateLegacyPlayerData(player);
         String key = playerKey(player);
         String[] fields = {"level", "xp", "points", "strength", "health", "agility", "intelligence",
                 "quest_kills"};

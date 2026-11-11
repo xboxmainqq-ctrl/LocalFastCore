@@ -60,7 +60,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.9.1 включён. RPG, GUI, эффекты, скорборд и задания готовы.");
+        getLogger().info("LocalFastCore 0.9.2 включён. RPG, GUI, эффекты, скорборд и задания готовы.");
     }
 
     private String playerKey(Player player) {
@@ -214,7 +214,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if(a.equals("start")){
             if(players.getBoolean(k+".daily_active",false)||players.getBoolean(k+".daily_complete",false)||players.getBoolean(k+".daily_claimed",false)){showDaily(p);return;}
             players.set(k+".daily_active",true);players.set(k+".daily_kills",0);players.save();
-            p.sendMessage("§aНачато! Убей 10 любых существ.");return;
+            int required = Math.max(1, getConfig().getInt("daily.kills-required", DAILY_KILLS_REQUIRED));
+            p.sendMessage("§aНачато! Убей " + required + " любых существ.");return;
         }
         if(a.equals("claim")){
             if(!players.getBoolean(k+".daily_complete",false)){p.sendMessage("§cСначала выполни задание.");return;}
@@ -229,14 +230,18 @@ public final class LocalFastCore extends PluginBase implements Listener {
         return 100 + (level - 1) * 50;
     }
 
+    private int intelligenceXpBonusPercent(Player player) {
+        int intelligenceStep = Math.max(1, getConfig().getInt("intelligence.xp-bonus-per", 5));
+        long bonus = (long) Math.max(0, get(player, "intelligence", 0) / intelligenceStep)
+                * Math.max(0, getConfig().getInt("intelligence.xp-bonus-percent", 1));
+        return (int) Math.min(100L, bonus);
+    }
+
     private void giveXp(Player player, int amount) {
         initialize(player);
         if (amount <= 0) return;
         int level = Math.max(1, Math.min(MAX_LEVEL, get(player, "level", 1)));
-        int intelligenceStep = Math.max(1, getConfig().getInt("intelligence.xp-bonus-per", 5));
-        long intelligenceBonusValue = (long) Math.max(0, get(player, "intelligence", 0) / intelligenceStep)
-                * Math.max(0, getConfig().getInt("intelligence.xp-bonus-percent", 1));
-        int intelligenceBonus = (int) Math.min(100L, intelligenceBonusValue);
+        int intelligenceBonus = intelligenceXpBonusPercent(player);
         long boostedAmount = (long) amount + ((long) amount * intelligenceBonus / 100L);
         long totalXp = (long) Math.max(0, get(player, "xp", 0)) + boostedAmount;
         int points = Math.max(0, get(player, "points", 0));
@@ -273,7 +278,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
         initialize(killer);
         int mobXp = Math.max(0, getConfig().getInt("progression.mob-kill-xp", MOB_KILL_XP));
         giveXp(killer, mobXp);
-        killer.sendMessage("§a[LocalFast] +" + mobXp + " базового опыта за победу над существом!");
+        int xpBonusPercent = intelligenceXpBonusPercent(killer);
+        killer.sendMessage("§a[LocalFast] +" + mobXp + " базового XP за победу над существом"
+                + (xpBonusPercent > 0 ? " §b(интеллект: +" + xpBonusPercent + "%)" : "") + "§a!");
 
 
         refreshDaily(killer); String dk=playerKey(killer);
@@ -292,24 +299,30 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     || (questType.equals("skeleton") && mobName.contains("skeleton"))
                     || (questType.equals("spider") && mobName.contains("spider"));
             if (matches) {
-                int kills = Math.min(QUEST_KILLS_REQUIRED, get(killer, "quest_kills", 0) + 1);
+                int requiredKills = questKillsRequired();
+                int kills = Math.min(requiredKills, Math.max(0, get(killer, "quest_kills", 0)) + 1);
                 set(killer, "quest_kills", kills);
-                if (kills >= QUEST_KILLS_REQUIRED) {
+                if (kills >= requiredKills) {
                     setBoolean(killer, "quest_complete", true);
                     killer.sendMessage("§6[LocalFast] Задание выполнено! Используй §e/quest claim §6, чтобы получить награду.");
                 } else {
-                    killer.sendMessage("§e[Квест] " + kills + "/" + QUEST_KILLS_REQUIRED);
+                    killer.sendMessage("§e[Квест] " + kills + "/" + requiredKills);
                 }
                 players.save();
             }
         }
     }
 
+    private int questKillsRequired() {
+        return Math.max(1, getConfig().getInt("quests.kills-required", QUEST_KILLS_REQUIRED));
+    }
+
     private int questReward(String type) {
-        if (type.equals("zombie")) return 50;
-        if (type.equals("skeleton")) return 60;
-        if (type.equals("spider")) return 70;
-        return QUEST_XP_REWARD;
+        String safeType = Arrays.asList("zombie", "skeleton", "spider").contains(type) ? type : "any";
+        int fallback = safeType.equals("zombie") ? 50
+                : safeType.equals("skeleton") ? 60
+                : safeType.equals("spider") ? 70 : QUEST_XP_REWARD;
+        return Math.max(0, getConfig().getInt("quests.rewards." + safeType, fallback));
     }
 
     private String questTitle(String type) {
@@ -323,9 +336,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
         initialize(player);
         if (!getBoolean(player, "quest_active", false)) {
             player.sendMessage("§6[Квесты] Доступные задания:");
-            player.sendMessage("§e/quest zombie §f— 5 зомби, награда 50 XP");
-            player.sendMessage("§e/quest skeleton §f— 5 скелетов, награда 60 XP");
-            player.sendMessage("§e/quest spider §f— 5 пауков, награда 70 XP");
+            int required = questKillsRequired();
+            player.sendMessage("§e/quest zombie §f— " + required + " зомби, награда " + questReward("zombie") + " XP");
+            player.sendMessage("§e/quest skeleton §f— " + required + " скелетов, награда " + questReward("skeleton") + " XP");
+            player.sendMessage("§e/quest spider §f— " + required + " пауков, награда " + questReward("spider") + " XP");
             player.sendMessage("§7Старое задание: /quest start");
             return;
         }
@@ -335,7 +349,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
             player.sendMessage("§eЗабрать " + questReward(type) + " XP: /quest claim");
         } else {
             player.sendMessage("§6[Квест] §f" + questTitle(type));
-            player.sendMessage("§eПрогресс: " + get(player, "quest_kills", 0) + "/" + QUEST_KILLS_REQUIRED);
+            player.sendMessage("§eПрогресс: " + get(player, "quest_kills", 0) + "/" + questKillsRequired());
+            player.sendMessage("§7Награда: " + questReward(type) + " XP");
         }
     }
 
@@ -356,7 +371,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             setBoolean(player, "quest_active", true);
             setBoolean(player, "quest_complete", false);
             players.save();
-            player.sendMessage("§a[Квест] Начато: " + questTitle(type) + ". Убей 5 нужных мобов!");
+            player.sendMessage("§a[Квест] Начато: " + questTitle(type) + ". Убей " + questKillsRequired() + " нужных мобов!");
             showQuest(player);
             return;
         }

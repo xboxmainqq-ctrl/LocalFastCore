@@ -1,4 +1,4 @@
-# LocalFastCore 0.9.1
+# LocalFastCore 0.9.2
 
 RPG progression plugin for Nukkit-MOT 1.26.60-R1 (Java 17).
 
@@ -33,9 +33,18 @@ The plugin creates `plugins/LocalFastCore/config.yml` on first start. It control
 - Points per level, stat cap, mob-kill and login XP.
 - Intelligence XP bonus scaling.
 - Daily task kill requirement and XP reward.
+- Quest kill requirement and individual XP rewards for any mob, zombies, skeletons and spiders.
 - Level-up title and subtitle.
 
 Restart the server after changing configuration values.
 
+## Quest configuration
+
+The `quests` section controls the shared kill requirement and each quest reward:
+- `quests.kills-required`: number of matching mobs required.
+- `quests.rewards.any`, `zombie`, `skeleton`, `spider`: XP reward for each quest type.
+
+Daily task start messages now use the configured kill requirement. Quest menus, progress, completion checks and reward messages all read the same configuration values. Mob-kill XP messages also show the intelligence bonus percentage when it applies.
+
 ## Upgrade notes
-Version 0.9.1 keeps existing player-data keys and adds `daily_claimed` to prevent claiming the daily reward more than once per server-local day. Existing 0.8.0 player data is initialized automatically. Back up the plugin folder before upgrading. Test the new build on a staging server before replacing a production JAR.
+Version 0.9.2 preserves the existing `players.yml` format; no player-data reset or migration is required. Existing installations receive the new quest defaults when the plugin creates a fresh config, but an existing `config.yml` is not overwritten. To use the new `quests` settings on an existing server, merge the section above into the existing config. Back up the plugin folder before upgrading and test the build on a staging server before replacing a production JAR.

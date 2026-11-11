@@ -1407,7 +1407,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (!isOperator(sender)) { sender.sendMessage("§cТолько оператор может использовать /lfadmin."); return true; }
         if (args.length == 0) { sender.sendMessage("§6/lfadmin staff add|remove|list; money give|take|set|reset; xp; reset"); return true; }
         if (args[0].equalsIgnoreCase("staff")) {
-            if (args.length >= 2 && args[1].equalsIgnoreCase("list")) { sender.sendMessage("§6Персонал:"); for (String id : staffData.getKeys("staff")) sender.sendMessage("§e" + id + " §7— §f" + staffData.getString("staff." + id)); return true; }
+            if (args.length >= 2 && args[1].equalsIgnoreCase("list")) { sender.sendMessage("§6Персонал:"); for (String id : staffData.getSection("staff").getKeys(false)) sender.sendMessage("§e" + id + " §7— §f" + staffData.getString("staff." + id)); return true; }
             if (args.length < 3) { sender.sendMessage("§e/lfadmin staff add <игрок> <admin|moderator> или remove <игрок>"); return true; }
             Player target = getServer().getPlayer(args[2]); if (target == null) { sender.sendMessage("§cИгрок должен быть онлайн."); return true; }
             String path = "staff." + target.getUniqueId();

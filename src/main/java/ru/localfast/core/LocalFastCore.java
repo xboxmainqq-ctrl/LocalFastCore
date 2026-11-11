@@ -259,7 +259,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
             p.sendMessage("§aНачато! Убей " + required + " любых существ.");return;
         }
         if(a.equals("claim")){
-            if(!players.getBoolean(k+".daily_complete",false)){p.sendMessage("§cСначала выполни задание.");return;}
+            if(players.getBoolean(k+".daily_claimed",false) || !players.getBoolean(k+".daily_complete",false)){
+                p.sendMessage("§cЗадание ещё не выполнено или награда уже получена.");return;
+            }
+            // Mark and persist the claim before granting XP.
             players.set(k+".daily_complete",false);players.set(k+".daily_active",false);players.set(k+".daily_claimed",true);players.save();
             int reward = Math.max(0, getConfig().getInt("daily.xp-reward", DAILY_XP_REWARD));
             giveXp(p,reward);p.sendMessage("§aПолучено +" + reward + " XP!");return;
@@ -427,9 +430,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
         boolean complete = players.getBoolean(path + ".complete", false);
         boolean claimed = players.getBoolean(path + ".claimed", false);
         int progress = Math.max(0, players.getInt(path + ".kills", 0));
+        int reward = questXp(quest);
         FormWindowSimple form = new FormWindowSimple("§6Квест §8| §e" + quest.title,
                 "§f" + quest.description + "\\n§fПрогресс: §a" + progress + "/" + questKills(quest)
-                        + "\\n§fНаграда: §6" + questXp(quest) + " XP"
+                        + "\\n§fНаграда: §6" + reward + " XP"
                         + "\\n§fТребуемый уровень: §e" + quest.minLevel + "–" + quest.maxLevel
                         + (claimed ? "\\n§8Награда уже получена." : complete ? "\\n§aЗадание выполнено!" : ""));
         if (!claimed) {
@@ -441,24 +445,37 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null) return;
             int selected = form.getResponse().getClickedButtonId();
-            if (claimed || (active && !complete)) {
+
+            // Form state may be stale when the player has multiple quest windows open.
+            // Always re-read the persisted state at click time before changing or rewarding it.
+            boolean currentActive = players.getBoolean(path + ".active", false);
+            boolean currentComplete = players.getBoolean(path + ".complete", false);
+            boolean currentClaimed = players.getBoolean(path + ".claimed", false);
+
+            if (selected != 0 || currentClaimed || (currentActive && !currentComplete)) {
                 openQuestTierMenu(player, tier);
                 return;
             }
-            if (selected == 0 && complete && !claimed) {
+
+            if (currentActive && currentComplete) {
+                int currentReward = questXp(quest);
+                // Persist the claimed state before granting XP so another open form
+                // or a later reconnect cannot grant this reward a second time.
                 players.set(path + ".active", false);
                 players.set(path + ".complete", false);
                 players.set(path + ".claimed", true);
                 players.save();
-                giveXp(player, questXp(quest));
-                player.sendMessage("§a[Квесты] Получено +" + questXp(quest) + " XP за " + quest.title + "!");
-            } else if (selected == 0 && !active && !claimed) {
-                if (get(player, "level", 1) < quest.minLevel || get(player, "level", 1) > quest.maxLevel) {
+                giveXp(player, currentReward);
+                player.sendMessage("§a[Квесты] Получено +" + currentReward + " XP за " + quest.title + "!");
+            } else if (!currentActive && !currentClaimed) {
+                int level = get(player, "level", 1);
+                if (level < quest.minLevel || level > quest.maxLevel) {
                     player.sendMessage("§cЭтот квест пока недоступен по уровню.");
                 } else {
                     players.set(path + ".active", true);
                     players.set(path + ".kills", 0);
                     players.set(path + ".complete", false);
+                    players.set(path + ".claimed", false);
                     players.save();
                     player.sendMessage("§a[Квесты] Принято задание: " + quest.title);
                 }

@@ -42,6 +42,10 @@ Each bracket contains three combat quests. A player can accept several quests at
 
 Players can browse any bracket, but can only accept quests while their level is inside that bracket. An accepted quest continues tracking even if the player later levels beyond its original bracket.
 
+## Player data saving
+
+Player changes are marked dirty and batched into a single `players.yml` write by the main-thread autosave task. The default interval is 60 seconds and can be changed with `autosave.interval-seconds` (5–3600 seconds). Pending changes are also flushed when a player quits and when the plugin disables. Nukkit `Config` access is kept on the server thread; failed saves are logged and remain pending for the next retry.
+
 ## Configuration
 
 The plugin creates `plugins/LocalFastCore/config.yml` on first start. It controls scoreboard settings, progression rewards, daily task requirements, Intelligence XP bonuses and quest requirements/rewards.
@@ -61,3 +65,20 @@ The same `kills` and `reward` keys are available for all 15 quest IDs in the def
 ## Upgrade notes
 
 Version 0.9.3 keeps the existing player-data keys and adds quest state under each player's `quests` section in `players.yml`. No player-data reset is required. Existing `config.yml` files are not overwritten automatically; merge the new `quests.catalog` section into an existing config to customize the new quests. Back up the plugin folder before upgrading and test on a staging server before production.
+
+
+## Player data identity and migration
+
+Player profiles are keyed by UUID. On first join after upgrading, LocalFastCore copies the previous nickname-based profile into the UUID profile when one exists. The old section is retained as a backup. Make a backup of `plugins/LocalFastCore/` before upgrading and verify migrated player progress before removing any legacy sections.
+
+
+## Admin commands
+
+The `localfast.admin` permission grants access to `/lfadmin xp <player> <amount>` and selective progress resets:
+
+- `/lfadmin reset <player> level` — resets level, XP and unspent points
+- `/lfadmin reset <player> stats` — resets all four characteristics
+- `/lfadmin reset <player> quests` — resets legacy, daily and level-based quest progress
+- `/lfadmin reset <player> all` — resets all of the above
+
+The target player must be online. Back up player data before using reset commands.

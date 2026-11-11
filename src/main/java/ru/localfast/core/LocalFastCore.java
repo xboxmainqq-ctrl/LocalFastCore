@@ -236,7 +236,6 @@ public final class LocalFastCore extends PluginBase implements Listener {
         while (level < MAX_LEVEL && totalXp >= xpForNextLevel(level)) {
             totalXp -= xpForNextLevel(level);
             level++;
-            points += pointsPerLevel;
             int pointsPerLevel = Math.max(0, getConfig().getInt("progression.points-per-level", POINTS_PER_LEVEL));
             points += pointsPerLevel;
             if (getConfig().getBoolean("effects.level-up-title", true)) {

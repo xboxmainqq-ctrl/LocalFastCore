@@ -2111,7 +2111,6 @@ public final class LocalFastCore extends PluginBase implements Listener {
         addSpawnRoadNetwork(blocks, cx, baseY, cz);
         addSpawnPerimeter(blocks, cx, baseY, cz);
         addSpawnDistricts(blocks, cx, baseY, cz);
-        addSpawnLandscaping(blocks, cx, baseY, cz);
 
         return new ArrayList<>(blocks.values());
     }

@@ -15,6 +15,7 @@ import cn.nukkit.event.entity.EntityDamageEvent;
 import cn.nukkit.event.player.PlayerRespawnEvent;
 import cn.nukkit.event.player.PlayerJoinEvent;
 import cn.nukkit.event.player.PlayerQuitEvent;
+import cn.nukkit.event.player.PlayerChatEvent;
 import cn.nukkit.network.protocol.types.DisplaySlot;
 import cn.nukkit.network.protocol.types.SortOrder;
 import cn.nukkit.scoreboard.scoreboard.IScoreboard;
@@ -51,6 +52,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private static final String[] STATS = {"strength", "health", "agility", "intelligence"};
 
     private Config players;
+    private Config staffData;
+    private File staffLogFile;
     private boolean playersDirty = false;
     private final Map<String, IScoreboard> sidebars = new HashMap<>();
     private final Map<UUID, PendingTeleport> pendingTeleports = new HashMap<>();
@@ -111,8 +114,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
             return;
         }
         players = new Config(new File(getDataFolder(), "players.yml"), Config.YAML);
+        staffData = new Config(new File(getDataFolder(), "staff.yml"), Config.YAML);
+        staffLogFile = new File(getDataFolder(), "staff.log");
         getServer().getPluginManager().registerEvents(this, this);
         saveDefaultConfig();
+        if (!getConfig().exists("operator.uuid")) getConfig().set("operator.uuid", "");
         if (!getConfig().exists("spawn-world")) getConfig().set("spawn-world", "spawn");
         if (!getConfig().exists("main-world")) getConfig().set("main-world", "");
         if (!getConfig().exists("rtp-min-radius")) getConfig().set("rtp-min-radius", 500);
@@ -127,7 +133,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.11.0 включён. RPG-профили, прогресс и задания загружены.");
+        getLogger().info("LocalFastCore 0.12.0 включён. RPG, экономика и система персонала загружены.");
     }
 
     private void markPlayersDirty() {

@@ -182,21 +182,27 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
         int minRadius = Math.max(0, Math.min(100000, getConfig().getInt("rtp-min-radius", 500)));
         int maxRadius = Math.max(minRadius + 1, Math.min(100000, getConfig().getInt("rtp-max-radius", 5000)));
+        // Search around the world's safe spawn, not hard-coded X/Z=0:
+        // many servers place their playable area far from the origin.
+        Position center = world.getSafeSpawn();
+        int centerX = center.getFloorX();
+        int centerZ = center.getFloorZ();
         ThreadLocalRandom random = ThreadLocalRandom.current();
-        for (int attempt = 0; attempt < 40; attempt++) {
+        for (int attempt = 0; attempt < 120; attempt++) {
             double angle = random.nextDouble(0, Math.PI * 2);
             double radius = Math.sqrt(random.nextDouble(minRadius * (double) minRadius,
                     maxRadius * (double) maxRadius));
-            int x = (int) Math.round(Math.cos(angle) * radius);
-            int z = (int) Math.round(Math.sin(angle) * radius);
+            int x = centerX + (int) Math.round(Math.cos(angle) * radius);
+            int z = centerZ + (int) Math.round(Math.sin(angle) * radius);
             try {
                 int groundY = world.getHighestBlockAt(x, z);
                 if (groundY <= world.getMinBlockY() || groundY + 2 > world.getMaxBlockY()) continue;
                 Block ground = world.getBlock(x, groundY, z);
                 Block feet = world.getBlock(x, groundY + 1, z);
                 Block head = world.getBlock(x, groundY + 2, z);
-                if (!ground.isSolid() || feet.isSolid() || head.isSolid()
-                        || !feet.canPassThrough() || !head.canPassThrough()) continue;
+                // Solid floor and two non-solid blocks above are sufficient.
+                // Requiring canPassThrough() rejected some valid custom/air blocks.
+                if (!ground.isSolid() || feet.isSolid() || head.isSolid()) continue;
                 player.teleport(new Position(x + 0.5, groundY + 1, z + 0.5, world));
                 player.sendMessage("§a[RTP] Телепорт в основной мир: X " + x + ", Z " + z + ".");
                 return;

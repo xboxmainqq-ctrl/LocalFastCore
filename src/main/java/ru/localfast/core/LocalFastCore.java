@@ -645,7 +645,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         String name = command.getName().toLowerCase(Locale.ROOT);
 
-        if (name.equals("quests")) {\n            if (!(sender instanceof Player)) { sender.sendMessage("Эта команда доступна только игроку."); return true; }\n            openQuestsMenu((Player) sender); return true;\n        }\n        if(name.equals("daily")){if(!(sender instanceof Player)){sender.sendMessage("Только для игроков.");return true;}handleDaily((Player)sender,args);return true;}
+        if (name.equals("quests")) {
+            if (!(sender instanceof Player)) { sender.sendMessage("Эта команда доступна только игроку."); return true; }
+            openQuestsMenu((Player) sender); return true;
+        }
+        if(name.equals("daily")){if(!(sender instanceof Player)){sender.sendMessage("Только для игроков.");return true;}handleDaily((Player)sender,args);return true;}
         if (name.equals("quest")) {
             if (!(sender instanceof Player)) {
                 sender.sendMessage("Эта команда доступна только игроку.");

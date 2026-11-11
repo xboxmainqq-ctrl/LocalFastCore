@@ -1420,13 +1420,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void applyMute(Player actor, Player target, long minutes, String reason) {
         String path = "punishments.mutes." + target.getUniqueId();
-        staffData.set(path + ".expires", System.currentTimeMillis() + minutes * 60000L);
+        staffData.set(path + ".expires", minutes < 0L ? -1L : System.currentTimeMillis() + minutes * 60000L);
         staffData.set(path + ".reason", reason);
         staffData.set(path + ".name", target.getName());
         staffData.set(path + ".by", actor.getName());
         staffData.save();
-        staffLog(actor.getName(), "mute", target.getName(), minutes + " мин.; " + reason);
-        target.sendMessage("§cТебе выдан мут на " + minutes + " мин. Причина: " + reason);
+        staffLog(actor.getName(), "mute", target.getName(), (minutes < 0L ? "навсегда" : minutes + " мин.") + "; " + reason);
+        target.sendMessage("§cТебе выдан мут " + (minutes < 0L ? "навсегда" : "на " + minutes + " мин.") + ". Причина: " + reason);
         actor.sendMessage("§aМут выдан игроку " + target.getName() + ".");
     }
 
@@ -1953,7 +1953,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 form.addButton(new ElementButton("§e" + formatPunishmentDuration(minutes)));
             }
         }
-        if (action.equals("ban") && maximum == -1L) {
+        if ((action.equals("ban") || action.equals("mute")) && maximum == -1L) {
             durations.add(-1L);
             form.addButton(new ElementButton("§cНавсегда"));
         }
@@ -2119,8 +2119,16 @@ public final class LocalFastCore extends PluginBase implements Listener {
             Player target = getServer().getPlayer(args[1]); if (target == null) { sender.sendMessage("§cИгрок должен быть онлайн."); return true; }
             if (staffRank(staffRole(target)) >= staffRank(role)) { sender.sendMessage("§cНельзя наказать сотрудника равного или более высокого ранга."); return true; }
             StringBuilder reason = new StringBuilder(); for (int i=2;i<args.length;i++){if(reason.length()>0)reason.append(' ');reason.append(args[i]);}
-            String path = "warnings." + target.getUniqueId(); int count = staffData.getInt(path,0)+1; staffData.set(path,count); staffData.save();
-            staffLog(actor.getName(),"warn",target.getName(),reason.toString()); target.sendMessage("§eПредупреждение №"+count+": "+reason); sender.sendMessage("§aПредупреждение выдано. Всего: "+count); return true;
+            String targetUuid = target == null ? knownPlayerUuid(args[1]) : target.getUniqueId().toString();
+            if (targetUuid == null) { sender.sendMessage("§cИгрок не найден. Он должен хотя бы один раз зайти на сервер."); return true; }
+            String targetName = target == null ? knownPlayerName(args[1], targetUuid) : target.getName();
+            String path = "warnings." + targetUuid;
+            int count = staffData.getInt(path, 0) + 1;
+            staffData.set(path, count); staffData.save();
+            staffLog(actor.getName(), "warn", targetName, reason.toString());
+            if (target != null) target.sendMessage("§eТебе выдано предупреждение №" + count + ": " + reason);
+            sender.sendMessage("§aПредупреждение выдано игроку " + targetName + ". Всего: " + count);
+            return true;
         }
         if (action.equals("ban") || action.equals("mute") || action.equals("kick")) {
             if (action.equals("ban") && !canBan(role)) { sender.sendMessage("§cТвой ранг не может выдавать баны."); return true; }
@@ -2138,8 +2146,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!action.equals("kick")) {
                 try { minutes = Long.parseLong(args[2]); } catch (NumberFormatException ex) { sender.sendMessage("§cСрок указывается в минутах."); return true; }
                 long max = action.equals("ban") ? maxBanMinutes(role) : maxMuteMinutes(role);
-                boolean permanentBan = action.equals("ban") && minutes == -1L && max == -1L;
-                if ((!permanentBan && minutes < 1L) || minutes > 525600L || (max != -1L && minutes > max)) {
+                boolean permanentAllowed = (action.equals("ban") || action.equals("mute")) && minutes == -1L && max == -1L;
+                if ((!permanentAllowed && minutes < 1L) || minutes > 525600L || (max != -1L && minutes > max)) {
                     sender.sendMessage("§cМаксимальный срок для твоего ранга: " + (max == -1L ? "без ограничения (бан навсегда: -1)" : max + " мин.") + "."); return true;
                 }
                 ri = 3;
@@ -2159,13 +2167,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 sender.sendMessage("§aБан выдан игроку " + targetName + ".");
             } else if (action.equals("mute")) {
                 String path = "punishments.mutes." + targetUuid;
-                staffData.set(path + ".expires", System.currentTimeMillis() + minutes * 60000L);
+                staffData.set(path + ".expires", minutes < 0L ? -1L : System.currentTimeMillis() + minutes * 60000L);
                 staffData.set(path + ".reason", reason.toString());
                 staffData.set(path + ".name", targetName);
                 staffData.set(path + ".by", actor.getName());
                 staffData.save();
-                staffLog(actor.getName(), "mute", targetName, minutes + " мин.; " + reason);
-                if (target != null) target.sendMessage("§cТебе выдан мут на " + minutes + " мин. Причина: " + reason);
+                staffLog(actor.getName(), "mute", targetName, (minutes < 0L ? "навсегда" : minutes + " мин.") + "; " + reason);
+                if (target != null) target.sendMessage("§cТебе выдан мут " + (minutes < 0L ? "навсегда" : "на " + minutes + " мин.") + ". Причина: " + reason);
                 sender.sendMessage("§aМут выдан игроку " + targetName + ".");
             } else { target.kick("§cКик: "+reason,false); staffLog(actor.getName(),"kick",targetName,reason.toString()); sender.sendMessage("§aИгрок кикнут."); }
             return true;

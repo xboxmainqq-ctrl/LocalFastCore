@@ -1404,6 +1404,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (canUnban(role)) viewer.sendMessage("§e/staff unban <игрок>");
         if (staffRank(role) >= 5) viewer.sendMessage("§e/staff warp §7— меню варпов");
         if (staffRank(role) >= 7) viewer.sendMessage("§e/staff fly|vanish");
+        viewer.sendMessage("§e/staff welcome <on|off|status> §7— приветствие о входе сотрудника увидит весь сервер");
         if (role.equals("admin") || role.equals("operator")) viewer.sendMessage("§e/staff promote|demote|setrank ...");
         if (role.equals("operator")) {
             viewer.sendMessage("§6§lКоманды оператора:");
@@ -1412,7 +1413,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             viewer.sendMessage("§e/lfadmin xp <игрок> <количество>");
             viewer.sendMessage("§e/lfadmin reset <игрок> <level|stats|quests|all>");
             viewer.sendMessage("§e/lfadmin warp set|delete|list ...");
-            viewer.sendMessage("§e/staff welcome <on|off|status> §7— общее приветствие персонала для всего сервера");
+
         }
     }
 

@@ -427,7 +427,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
             players.set(k+".daily_claimed",true);
             markPlayersDirty();
             if (!flushPlayers()) {
-                p.sendMessage("§cНе удалось сохранить награду. XP не начислен; попробуй позже или обратись к администратору.");
+                players.set(k + ".daily_complete", true);
+                players.set(k + ".daily_active", true);
+                players.set(k + ".daily_claimed", false);
+                markPlayersDirty();
+                p.sendMessage("§cНе удалось сохранить награду. XP не начислен; попробуй позже.");
                 return;
             }
             int reward = Math.max(0, getConfig().getInt("daily.xp-reward", DAILY_XP_REWARD));
@@ -590,6 +594,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null) return;
+            if (!player.isOnline()) return;
             int selected = form.getResponse().getClickedButtonId();
             if (selected >= 0 && selected < quests.size()) openQuestDetails(player, quests.get(selected), tier);
             else openQuestsMenu(player);
@@ -617,6 +622,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null) return;
+            if (!player.isOnline()) return;
             int selected = form.getResponse().getClickedButtonId();
 
             // Form state may be stale when the player has multiple quest windows open.
@@ -639,7 +645,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 players.set(path + ".claimed", true);
                 markPlayersDirty();
                 if (!flushPlayers()) {
-                    player.sendMessage("§cНе удалось сохранить получение награды. XP не начислен; попробуй позже или обратись к администратору.");
+                    players.set(path + ".active", true);
+                    players.set(path + ".complete", true);
+                    players.set(path + ".claimed", false);
+                    markPlayersDirty();
+                    player.sendMessage("§cНе удалось сохранить получение награды. XP не начислен; попробуй позже.");
                     return;
                 }
                 giveXp(player, currentReward);
@@ -679,6 +689,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null) return;
+            if (!player.isOnline()) return;
             int selected = form.getResponse().getClickedButtonId();
             if (!entries.isEmpty() && selected >= 0 && selected < entries.size()) {
                 QuestDefinition quest = entries.get(selected);
@@ -758,12 +769,17 @@ public final class LocalFastCore extends PluginBase implements Listener {
             }
             String type = players.getString(playerKey(player) + ".quest_type", "any");
             int reward = questReward(type);
+            int completedKills = get(player, "quest_kills", 0);
             setBoolean(player, "quest_active", false);
             setBoolean(player, "quest_complete", false);
             set(player, "quest_kills", 0);
             players.set(playerKey(player) + ".quest_type", "any");
             markPlayersDirty();
             if (!flushPlayers()) {
+                setBoolean(player, "quest_active", true);
+                setBoolean(player, "quest_complete", true);
+                set(player, "quest_kills", completedKills);
+                markPlayersDirty();
                 player.sendMessage("§cНе удалось сохранить получение награды. XP не начислен; попробуй позже.");
                 return;
             }
@@ -787,6 +803,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§7Обновить"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null) return;
+            if (!player.isOnline()) return;
             int selected = form.getResponse().getClickedButtonId();
             if (selected >= 0 && selected < STATS.length) openStatAllocationMenu(player, STATS[selected]);
             else if (selected == 4) openStatsMenu(player);
@@ -809,6 +826,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null) return;
+            if (!player.isOnline()) return;
             int selected = form.getResponse().getClickedButtonId();
             if (selected == 3) {
                 openStatsMenu(player);

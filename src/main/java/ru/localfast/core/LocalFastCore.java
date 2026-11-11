@@ -1176,7 +1176,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (form.wasClosed() || form.getResponse() == null || !staff.isOnline()) return;
             int id = form.getResponse().getClickedButtonId();
             if (id == 0) openStaffTargetMenu(staff, "punish");
-            else if (id == 1) openStaffTargetMenu(staff, "unban");
+            else if (id == 1) { if (role.equals("moderator")) staff.sendMessage("§cМодератор не может снимать баны."); else openStaffTargetMenu(staff, "unban"); }
             else if (id == 2) openStaffTargetMenu(staff, "unmute");
         }));
         staff.showFormWindow(form);
@@ -1221,7 +1221,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             int min = action.equals("kick") ? 3 : 4;
             if (args.length < min) { sender.sendMessage(action.equals("kick") ? "§e/staff kick <игрок> <причина>" : "§e/staff " + action + " <игрок> <минуты" + (action.equals("ban") ? "|-1" : "") + "> <причина>"); return true; }
             Player target = getServer().getPlayer(args[1]); if (target == null) { sender.sendMessage("§cИгрок должен быть онлайн."); return true; }
-            String tr = staffRole(target); if (tr.equals("operator") || (tr.equals("admin") && !role.equals("operator"))) { sender.sendMessage("§cНельзя наказать сотрудника с более высоким рангом."); return true; }
+            String tr = staffRole(target); int actorRank = role.equals("operator") ? 3 : role.equals("admin") ? 2 : 1; int targetRank = tr.equals("operator") ? 3 : tr.equals("admin") ? 2 : tr.equals("moderator") ? 1 : 0; if (targetRank >= actorRank) { sender.sendMessage("§cНельзя наказать сотрудника с равным или более высоким рангом."); return true; }
             long minutes = 0L; int ri = 2;
             if (!action.equals("kick")) { try { minutes = Long.parseLong(args[2]); } catch (NumberFormatException ex) { sender.sendMessage("§cСрок указывается в минутах."); return true; } if (minutes == 0 || minutes < -1 || (action.equals("mute") && minutes < 1) || minutes > 525600) { sender.sendMessage("§cНедопустимый срок."); return true; } ri = 3; }
             StringBuilder reason = new StringBuilder(); for (int i = ri; i < args.length; i++) { if (reason.length() > 0) reason.append(' '); reason.append(args[i]); }

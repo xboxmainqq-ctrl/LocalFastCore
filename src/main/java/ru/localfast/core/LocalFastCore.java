@@ -117,13 +117,16 @@ public final class LocalFastCore extends PluginBase implements Listener {
      * Config is deliberately saved on the server thread: Nukkit Config is not
      * assumed to be thread-safe. Failed writes keep the dirty flag for retry.
      */
-    private void flushPlayers() {
-        if (players == null || !playersDirty) return;
+    private boolean flushPlayers() {
+        if (players == null) return false;
+        if (!playersDirty) return true;
         try {
             players.save();
             playersDirty = false;
+            return true;
         } catch (RuntimeException exception) {
             getLogger().error("Не удалось сохранить players.yml; повторим при следующем autosave.", exception);
+            return false;
         }
     }
 
@@ -308,7 +311,14 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 p.sendMessage("§cЗадание ещё не выполнено или награда уже получена.");return;
             }
             // Persist the claimed state through the centralized save queue before granting XP.
-            players.set(k+".daily_complete",false);players.set(k+".daily_active",false);players.set(k+".daily_claimed",true);markPlayersDirty();
+            players.set(k+".daily_complete",false);
+            players.set(k+".daily_active",false);
+            players.set(k+".daily_claimed",true);
+            markPlayersDirty();
+            if (!flushPlayers()) {
+                p.sendMessage("§cНе удалось сохранить награду. XP не начислен; попробуй позже или обратись к администратору.");
+                return;
+            }
             int reward = Math.max(0, getConfig().getInt("daily.xp-reward", DAILY_XP_REWARD));
             giveXp(p,reward);p.sendMessage("§aПолучено +" + reward + " XP!");return;
         }
@@ -510,6 +520,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 players.set(path + ".complete", false);
                 players.set(path + ".claimed", true);
                 markPlayersDirty();
+                if (!flushPlayers()) {
+                    player.sendMessage("§cНе удалось сохранить получение награды. XP не начислен; попробуй позже или обратись к администратору.");
+                    return;
+                }
                 giveXp(player, currentReward);
                 player.sendMessage("§a[Квесты] Получено +" + currentReward + " XP за " + quest.title + "!");
             } else if (!currentActive && !currentClaimed) {
@@ -851,6 +865,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     }
                 }
                 markPlayersDirty();
+                if (!flushPlayers()) {
+                    sender.sendMessage("§cСброс применён в памяти, но players.yml не удалось сохранить; повторная попытка будет выполнена автоматически.");
+                }
                 recalculateStats(target);
                 updateSidebar(target);
                 String description = mode.equals("level") ? "уровень, XP и свободные очки"

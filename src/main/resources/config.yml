@@ -1,6 +1,11 @@
 # LocalFastCore 0.11.0
 # Existing player profiles are preserved; profile schema upgrades are additive.
 
+# Economy defaults. Existing player balances are never overwritten.
+economy:
+  starting-balance: "0"
+  currency-name: "монет"
+
 # Player data is saved on the main thread at this interval (seconds).
 autosave:
   interval-seconds: 60

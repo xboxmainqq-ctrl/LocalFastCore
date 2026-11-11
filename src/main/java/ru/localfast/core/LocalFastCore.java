@@ -50,6 +50,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private static final int DAILY_XP_REWARD = 100;
     private static final int LOGIN_XP_REWARD = 25;
     private static final String[] STATS = {"strength", "health", "agility", "intelligence"};
+    private static final String[] RPG_CLASSES = {"warrior", "mage", "archer", "assassin", "tank"};
 
     private Config players;
     private Config staffData;
@@ -281,6 +282,72 @@ public final class LocalFastCore extends PluginBase implements Listener {
         markPlayersDirty();
     }
 
+    private String getRpgClass(Player player) {
+        String value = players.getString(playerKey(player) + ".rpg_class", "none");
+        return Arrays.asList(RPG_CLASSES).contains(value) ? value : "none";
+    }
+
+    private String rpgClassLabel(String id) {
+        switch (id) {
+            case "warrior": return "§cВоин";
+            case "mage": return "§bМаг";
+            case "archer": return "§aЛучник";
+            case "assassin": return "§dАссасин";
+            case "tank": return "§6Танк";
+            default: return "§7Не выбран";
+        }
+    }
+
+    private String rpgClassDescription(String id) {
+        switch (id) {
+            case "warrior": return "§7+2 к максимальному здоровью, +1 урон";
+            case "mage": return "§7+15% к получаемому опыту";
+            case "archer": return "§7+8% к скорости передвижения";
+            case "assassin": return "§7+4% к скорости, 15% шанс нанести +3 урона";
+            case "tank": return "§7+6 к максимальному здоровью, -5% скорости";
+            default: return "§7Выбери один из пяти классов.";
+        }
+    }
+
+    private void openClassMenu(Player player) {
+        initialize(player);
+        String current = getRpgClass(player);
+        FormWindowSimple form = new FormWindowSimple("§6Выбор класса",
+                current.equals("none")
+                        ? "§fВыбери свой класс. §cПосле выбора сменить его можно только через оператора."
+                        : "§fТвой класс: " + rpgClassLabel(current) + "\n" + rpgClassDescription(current)
+                          + "\n\n§7Класс уже выбран. Для смены обратись к оператору.");
+        if (current.equals("none")) {
+            form.addButton(new ElementButton("§cВоин\n§7Здоровье и урон"));
+            form.addButton(new ElementButton("§bМаг\n§7Больше опыта"));
+            form.addButton(new ElementButton("§aЛучник\n§7Быстрое передвижение"));
+            form.addButton(new ElementButton("§dАссасин\n§7Критические удары"));
+            form.addButton(new ElementButton("§6Танк\n§7Повышенное здоровье"));
+        } else {
+            form.addButton(new ElementButton("§7Закрыть"));
+        }
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            if (!current.equals("none")) return;
+            int selected = form.getResponse().getClickedButtonId();
+            if (selected >= 0 && selected < RPG_CLASSES.length) {
+                String chosen = RPG_CLASSES[selected];
+                players.set(playerKey(player) + ".rpg_class", chosen);
+                markPlayersDirty();
+                if (!flushPlayers()) {
+                    players.set(playerKey(player) + ".rpg_class", "none");
+                    markPlayersDirty();
+                    player.sendMessage("§cНе удалось сохранить класс. Попробуй ещё раз.");
+                    return;
+                }
+                recalculateStats(player);
+                updateSidebar(player);
+                player.sendMessage("§aТвой класс: " + rpgClassLabel(chosen) + "§a. " + rpgClassDescription(chosen));
+            }
+        }));
+        player.showFormWindow(form);
+    }
+
     private boolean getBoolean(Player player, String field, boolean fallback) {
         return players.getBoolean(playerKey(player) + "." + field, fallback);
     }
@@ -366,11 +433,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
      * at its existing absolute value and only clamped if it exceeds the new maximum.
      */
     private void recalculateStats(Player player) {
+        String playerClass = getRpgClass(player);
+        int classHealthBonus = playerClass.equals("warrior") ? 2 : playerClass.equals("tank") ? 6 : 0;
         int healthBonus = attributeBonus(player, "health",
                 "attributes.health.points-per-bonus", 5,
                 "attributes.health.hp-per-bonus", 1,
                 "attributes.health.max-bonus", 20, 40);
-        int maximumHealth = 20 + healthBonus;
+        int maximumHealth = 20 + healthBonus + classHealthBonus;
         player.setMaxHealth(maximumHealth);
         // Increasing max HP does not heal; current HP is preserved in absolute points.
         if (player.getHealth() > maximumHealth) player.setHealth(maximumHealth);
@@ -379,8 +448,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 "attributes.agility.points-per-bonus", 5,
                 "attributes.agility.speed-percent-per-bonus", 1,
                 "attributes.agility.max-bonus-percent", 25, 50);
-        float movementSpeed = Player.DEFAULT_SPEED * (1.0f + agilityPercent / 100.0f);
-        player.setMovementSpeed(Math.min(Player.MAXIMUM_SPEED, movementSpeed));
+        int classSpeedPercent = playerClass.equals("archer") ? 8
+                : playerClass.equals("assassin") ? 4 : playerClass.equals("tank") ? -5 : 0;
+        float movementSpeed = Player.DEFAULT_SPEED * (1.0f + (agilityPercent + classSpeedPercent) / 100.0f);
+        player.setMovementSpeed(Math.max(Player.DEFAULT_SPEED * 0.75f,
+                Math.min(Player.MAXIMUM_SPEED, movementSpeed)));
     }
 
     /**
@@ -419,6 +491,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 "attributes.strength.points-per-bonus", 5,
                 "attributes.strength.damage-per-bonus", 1,
                 "attributes.strength.max-bonus", 10, 20);
+        String playerClass = getRpgClass(attacker);
+        if (playerClass.equals("warrior")) bonusDamage += 1;
+        if (playerClass.equals("assassin") && ThreadLocalRandom.current().nextInt(100) < 15) {
+            bonusDamage += 3;
+            attacker.sendMessage("§dКритический удар!");
+        }
         if (bonusDamage <= 0) return;
         event.setDamage(event.getDamage(EntityDamageEvent.DamageModifier.BASE) + bonusDamage,
                 EntityDamageEvent.DamageModifier.BASE);
@@ -437,6 +515,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 players.set(path, defaults[i]);
                 changed = true;
             }
+        }
+        if (!players.exists(key + ".rpg_class")) {
+            players.set(key + ".rpg_class", "none");
+            changed = true;
         }
         if (!players.exists(key + ".balance")) {
             long startingBalance = Math.max(0L, parseConfiguredBalance());
@@ -684,6 +766,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (amount <= 0) return;
         int level = Math.max(1, Math.min(MAX_LEVEL, get(player, "level", 1)));
         int intelligenceBonus = intelligenceXpBonusPercent(player);
+        if (getRpgClass(player).equals("mage")) intelligenceBonus += 15;
         long boostedAmount = (long) amount + ((long) amount * intelligenceBonus / 100L);
         long totalXp = (long) Math.max(0, get(player, "xp", 0)) + boostedAmount;
         int points = Math.max(0, get(player, "points", 0));
@@ -1027,13 +1110,15 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§cЗдоровье §8| §f" + get(player, "health", 0)));
         form.addButton(new ElementButton("§aЛовкость §8| §f" + get(player, "agility", 0)));
         form.addButton(new ElementButton("§bИнтеллект §8| §f" + get(player, "intelligence", 0)));
+        form.addButton(new ElementButton("§6Класс §8| " + rpgClassLabel(getRpgClass(player))));
         form.addButton(new ElementButton("§7Обновить"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null) return;
             if (!player.isOnline()) return;
             int selected = form.getResponse().getClickedButtonId();
             if (selected >= 0 && selected < STATS.length) openStatAllocationMenu(player, STATS[selected]);
-            else if (selected == 4) openStatsMenu(player);
+            else if (selected == 4) openClassMenu(player);
+            else if (selected == 5) openStatsMenu(player);
         }));
         player.showFormWindow(form);
     }
@@ -1763,6 +1848,29 @@ public final class LocalFastCore extends PluginBase implements Listener {
             else sender.sendMessage("§6/lfadmin staff add|remove|list; money give|take|set|reset; xp; reset");
             return true;
         }
+        if (args[0].equalsIgnoreCase("class")) {
+            if (args.length != 4 || !args[1].equalsIgnoreCase("set")) {
+                sender.sendMessage("§e/lfadmin class set <игрок> <warrior|mage|archer|assassin|tank>");
+                return true;
+            }
+            Player target = getServer().getPlayer(args[2]);
+            String chosen = args[3].toLowerCase(Locale.ROOT);
+            if (target == null) { sender.sendMessage("§cИгрок должен быть онлайн."); return true; }
+            if (!Arrays.asList(RPG_CLASSES).contains(chosen)) {
+                sender.sendMessage("§cКласс: warrior, mage, archer, assassin или tank.");
+                return true;
+            }
+            initialize(target);
+            players.set(playerKey(target) + ".rpg_class", chosen);
+            markPlayersDirty();
+            if (!flushPlayers()) { sender.sendMessage("§cНе удалось сохранить класс."); return true; }
+            recalculateStats(target);
+            updateSidebar(target);
+            staffLog(sender.getName(), "class-set", target.getName(), chosen);
+            target.sendMessage("§aОператор установил тебе класс: " + rpgClassLabel(chosen));
+            sender.sendMessage("§aКласс игрока " + target.getName() + ": " + rpgClassLabel(chosen));
+            return true;
+        }
         if (args[0].equalsIgnoreCase("staff")) {
             if (args.length >= 2 && args[1].equalsIgnoreCase("list")) {
                 sender.sendMessage("§6§lПерсонал LocalFast:");
@@ -1949,6 +2057,20 @@ public final class LocalFastCore extends PluginBase implements Listener {
             recalculateStats(player);
             updateSidebar(player);
             sender.sendMessage("§a[LocalFast] Характеристика " + stat + " увеличена на " + amount + ".");
+            return true;
+        }
+
+        if (name.equals("class")) {
+            if (!(sender instanceof Player)) { sender.sendMessage("Эта команда доступна только игроку."); return true; }
+            Player player = (Player) sender;
+            initialize(player);
+            if (args.length == 0 || args[0].equalsIgnoreCase("info")) {
+                player.sendMessage("§6Твой класс: " + rpgClassLabel(getRpgClass(player)));
+                player.sendMessage(rpgClassDescription(getRpgClass(player)));
+                if (getRpgClass(player).equals("none")) openClassMenu(player);
+                return true;
+            }
+            player.sendMessage("§eИспользуй /class для выбора или просмотра класса.");
             return true;
         }
 

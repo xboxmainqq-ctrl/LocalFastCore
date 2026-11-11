@@ -325,12 +325,24 @@ public final class LocalFastCore extends PluginBase implements Listener {
     @EventHandler
     public void onPlayerChat(PlayerChatEvent event) {
         Player player = event.getPlayer();
-        String roleTag = staffChatTag(staffRole(player));
-        event.setFormat("%1$s" + roleTag + " §8 » §f%2$s");
-        String path = "punishments.mutes." + player.getUniqueId();
-        long expires = staffData.getLong(path + ".expires", 0L);
-        if (expires == -1L || expires > System.currentTimeMillis()) { event.setCancelled(true); player.sendMessage("§cЧат закрыт: у тебя активен мут."); }
-        else if (expires != 0L) { staffData.remove(path); staffData.save(); }
+        String mutePath = "punishments.mutes." + player.getUniqueId();
+        long expires = staffData.getLong(mutePath + ".expires", 0L);
+        if (expires == -1L || expires > System.currentTimeMillis()) {
+            event.setCancelled(true);
+            player.sendMessage("§cЧат закрыт: у тебя активен мут.");
+            return;
+        }
+        if (expires != 0L) {
+            staffData.remove(mutePath);
+            staffData.save();
+        }
+
+        // Do not rely on PlayerChatEvent#setFormat: some Nukkit clients/builds
+        // render its format placeholders literally. Send the final line ourselves.
+        event.setCancelled(true);
+        String role = staffRole(player);
+        String formatted = "§f" + player.getName() + staffChatTag(role) + " §8» §f" + event.getMessage();
+        getServer().broadcastMessage(formatted);
     }
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {

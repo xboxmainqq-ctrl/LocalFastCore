@@ -332,10 +332,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
             else killer.sendMessage("§eЕжедневное задание: "+n+"/"+required);
             players.save();
         }
+        String mobName = mob.getClass().getSimpleName().toLowerCase(Locale.ROOT);
         updateLevelQuests(killer, mobName);
         if (getBoolean(killer, "quest_active", false) && !getBoolean(killer, "quest_complete", false)) {
             String questType = players.getString(playerKey(killer) + ".quest_type", "any");
-            String mobName = mob.getClass().getSimpleName().toLowerCase(Locale.ROOT);
             boolean matches = questType.equals("any")
                     || (questType.equals("zombie") && mobName.contains("zombie"))
                     || (questType.equals("skeleton") && mobName.contains("skeleton"))
@@ -357,10 +357,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void updateLevelQuests(Player player, String mobName) {
         String key = playerKey(player);
-        int level = Math.max(1, get(player, "level", 1));
         boolean changed = false;
         for (QuestDefinition quest : questCatalog()) {
-            if (level < quest.minLevel || level > quest.maxLevel) continue;
             String path = key + ".quests." + quest.id;
             if (!players.getBoolean(path + ".active", false) || players.getBoolean(path + ".complete", false)) continue;
             boolean matches = quest.mobType.equals("any") || mobName.contains(quest.mobType);

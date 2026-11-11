@@ -1901,6 +1901,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§aСоздать bosses"));
         form.addButton(new ElementButton("§eЗагрузить мир"));
         form.addButton(new ElementButton("§dИнформация о мире"));
+        form.addButton(new ElementButton("§bТелепортироваться в мир"));
+        form.addButton(new ElementButton("§aУстановить точку /spawn здесь"));
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
@@ -1911,7 +1913,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
             else if (id == 3) createWorldFromMenu(operator, "bosses");
             else if (id == 4) openWorldPicker(operator, "load");
             else if (id == 5) openWorldPicker(operator, "info");
-            else if (id == 6) openOperatorMenu(operator);
+            else if (id == 6) openWorldPicker(operator, "tp");
+            else if (id == 7) { setSpawn(operator); openOperatorWorldMenu(operator); }
+            else if (id == 8) openOperatorMenu(operator);
         }));
         operator.showFormWindow(form);
     }
@@ -1942,7 +1946,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             return;
         }
         FormWindowSimple form = new FormWindowSimple(
-                action.equals("load") ? "§6Загрузить мир" : "§6Информация о мире",
+                action.equals("load") ? "§6Загрузить мир" : action.equals("tp") ? "§6Перейти в мир" : "§6Информация о мире",
                 "§7Выбери мир:");
         for (String name : names) {
             boolean loaded = getServer().isLevelLoaded(name);
@@ -1958,6 +1962,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
             String selected = names.get(id);
             if (action.equals("load")) {
                 handleWorldCommand(operator, new String[]{"load", selected});
+                openOperatorWorldMenu(operator);
+            } else if (action.equals("tp")) {
+                handleWorldCommand(operator, new String[]{"tp", selected});
                 openOperatorWorldMenu(operator);
             } else {
                 handleWorldCommand(operator, new String[]{"info", selected});

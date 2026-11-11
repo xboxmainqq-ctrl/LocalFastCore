@@ -740,8 +740,69 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 sender.sendMessage("§cНедостаточно прав.");
                 return true;
             }
+            if (args.length == 0) {
+                sender.sendMessage("§e/lfadmin xp <player> <amount>");
+                sender.sendMessage("§e/lfadmin reset <player> <level|stats|quests|all>");
+                return true;
+            }
+
+            if (args[0].equalsIgnoreCase("reset")) {
+                if (args.length != 3) {
+                    sender.sendMessage("§e/lfadmin reset <player> <level|stats|quests|all>");
+                    return true;
+                }
+                Player target = getServer().getPlayer(args[1]);
+                if (target == null) {
+                    sender.sendMessage("§cИгрок не найден или не в сети.");
+                    return true;
+                }
+                String mode = args[2].toLowerCase(Locale.ROOT);
+                if (!Arrays.asList("level", "stats", "quests", "all").contains(mode)) {
+                    sender.sendMessage("§cВыбери: level, stats, quests или all.");
+                    return true;
+                }
+
+                String key = playerKey(target);
+                if (mode.equals("level") || mode.equals("all")) {
+                    set(target, "level", 1);
+                    set(target, "xp", 0);
+                    set(target, "points", 0);
+                }
+                if (mode.equals("stats") || mode.equals("all")) {
+                    for (String stat : STATS) set(target, stat, 0);
+                }
+                if (mode.equals("quests") || mode.equals("all")) {
+                    set(target, "quest_kills", 0);
+                    setBoolean(target, "quest_active", false);
+                    setBoolean(target, "quest_complete", false);
+                    players.set(key + ".quest_type", "any");
+                    set(target, "daily_kills", 0);
+                    setBoolean(target, "daily_active", false);
+                    setBoolean(target, "daily_complete", false);
+                    setBoolean(target, "daily_claimed", false);
+                    for (QuestDefinition quest : questCatalog()) {
+                        String questPath = key + ".quests." + quest.id;
+                        players.set(questPath + ".kills", 0);
+                        players.set(questPath + ".active", false);
+                        players.set(questPath + ".complete", false);
+                        players.set(questPath + ".claimed", false);
+                    }
+                }
+                players.save();
+                recalculateStats(target);
+                updateSidebar(target);
+                String description = mode.equals("level") ? "уровень, XP и свободные очки"
+                        : mode.equals("stats") ? "характеристики"
+                        : mode.equals("quests") ? "прогресс квестов и ежедневное задание"
+                        : "весь прогресс";
+                target.sendMessage("§e[LocalFast] Администратор сбросил: " + description + ".");
+                sender.sendMessage("§aДля игрока " + target.getName() + " сброшено: " + description + ".");
+                return true;
+            }
+
             if (args.length != 3 || !args[0].equalsIgnoreCase("xp")) {
                 sender.sendMessage("§e/lfadmin xp <player> <amount>");
+                sender.sendMessage("§e/lfadmin reset <player> <level|stats|quests|all>");
                 return true;
             }
             Player target = getServer().getPlayer(args[1]);

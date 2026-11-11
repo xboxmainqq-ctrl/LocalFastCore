@@ -17,6 +17,9 @@ commands:
   quest:
     description: Открыть уровневое меню заданий
     usage: "/quest"
+  quests:
+    description: Открыть уровневое меню заданий
+    usage: "/quests"
   daily:
     description: Ежедневное задание
     usage: "/daily [start|claim]"

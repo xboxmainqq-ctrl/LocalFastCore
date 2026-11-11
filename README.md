@@ -1,25 +1,27 @@
-# LocalFastCore 0.9.2
+# LocalFastCore 0.9.3
 
 RPG progression plugin for Nukkit-MOT 1.26.60-R1 (Java 17).
 
 ## Features
 - Player level and XP progression (maximum level: 100).
-- Four stats: strength (bonus melee damage), health (maximum health), agility (movement speed), intelligence (bonus XP).
-- Sidebar scoreboard with configurable refresh interval.
-- GUI stat allocation via `/lfmenu`.
-- Daily login XP, mob-kill XP, daily tasks and mob-type quests.
-- Player progress stored in `plugins/LocalFastCore/players.yml`.
+- Four stats: strength, health, agility and intelligence.
+- Sidebar scoreboard and GUI stat allocation via `/lfmenu`.
+- Daily login XP, mob-kill XP and daily tasks.
+- Level-based quest GUI with 15 combat quests across five level brackets.
+- Multiple accepted quests progress simultaneously.
+- Quest progress, completion and claimed rewards persist in `players.yml`.
 
 ## Commands
+
 | Command | Description |
 | --- | --- |
 | `/level` | Show level, XP and available points |
 | `/stats` | Show current attributes |
-| `/lfmenu` | Open the attribute allocation menu |
-| `/addstat <stat> [amount]` | Allocate points by command |
-| `/quest` | View available or active quests |
-| `/quest <mob>` (zombie, skeleton or spider) | Start a mob-specific quest |
-| `/quest claim` | Claim a completed quest |
+| `/lfmenu` | Open attribute allocation menu |
+| `/addstat <stat> [amount]` | Allocate stat points |
+| `/quest` or `/quests` | Open the level-based quest menu |
+| `/quest <mob>` | Start a legacy single-mob quest |
+| `/quest claim` | Claim a legacy quest reward |
 | `/daily` | View daily task |
 | `/daily start` | Start the daily task |
 | `/daily claim` | Claim the daily reward |
@@ -27,24 +29,35 @@ RPG progression plugin for Nukkit-MOT 1.26.60-R1 (Java 17).
 
 Valid stat names: `strength`, `health`, `agility`, `intelligence`.
 
+## Quest GUI
+
+Open `/quests` (or `/quest`) to browse five level brackets:
+- Beginner: 1–10
+- Adventurer: 11–30
+- Veteran: 31–50
+- Elite: 51–75
+- Legend: 76–100
+
+Each bracket contains three combat quests. A player can accept several quests at once; matching mob kills advance all accepted quests. The personal quests screen shows active and completed tasks. Completed rewards are claimed from each quest detail screen.
+
+Players can browse any bracket, but can only accept quests while their level is inside that bracket. An accepted quest continues tracking even if the player later levels beyond its original bracket.
+
 ## Configuration
-The plugin creates `plugins/LocalFastCore/config.yml` on first start. It controls:
-- Sidebar enablement, title, footer and refresh interval.
-- Points per level, stat cap, mob-kill and login XP.
-- Intelligence XP bonus scaling.
-- Daily task kill requirement and XP reward.
-- Quest kill requirement and individual XP rewards for any mob, zombies, skeletons and spiders.
-- Level-up title and subtitle.
 
-Restart the server after changing configuration values.
+The plugin creates `plugins/LocalFastCore/config.yml` on first start. It controls scoreboard settings, progression rewards, daily task requirements, Intelligence XP bonuses and quest requirements/rewards.
 
-## Quest configuration
+Every level-based quest has its own settings under `quests.catalog`:
 
-The `quests` section controls the shared kill requirement and each quest reward:
-- `quests.kills-required`: number of matching mobs required.
-- `quests.rewards.any`, `zombie`, `skeleton`, `spider`: XP reward for each quest type.
+```yaml
+quests:
+  catalog:
+    rookie_zombies:
+      kills: 10
+      reward: 100
+```
 
-Daily task start messages now use the configured kill requirement. Quest menus, progress, completion checks and reward messages all read the same configuration values. Mob-kill XP messages also show the intelligence bonus percentage when it applies.
+The same `kills` and `reward` keys are available for all 15 quest IDs in the default config. Restart the server after changing configuration values.
 
 ## Upgrade notes
-Version 0.9.2 preserves the existing `players.yml` format; no player-data reset or migration is required. Existing installations receive the new quest defaults when the plugin creates a fresh config, but an existing `config.yml` is not overwritten. To use the new `quests` settings on an existing server, merge the section above into the existing config. Back up the plugin folder before upgrading and test the build on a staging server before replacing a production JAR.
+
+Version 0.9.3 keeps the existing player-data keys and adds quest state under each player's `quests` section in `players.yml`. No player-data reset is required. Existing `config.yml` files are not overwritten automatically; merge the new `quests.catalog` section into an existing config to customize the new quests. Back up the plugin folder before upgrading and test on a staging server before production.

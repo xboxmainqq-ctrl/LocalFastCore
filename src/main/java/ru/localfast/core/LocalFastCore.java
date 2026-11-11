@@ -23,6 +23,8 @@ import cn.nukkit.form.window.FormWindowSimple;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 import cn.nukkit.plugin.PluginBase;
 import cn.nukkit.utils.Config;
 
@@ -45,6 +47,45 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private Config players;
     private final Map<String, IScoreboard> sidebars = new HashMap<>();
 
+    private static final class QuestDefinition {
+        final String id, title, description, mobType;
+        final int minLevel, maxLevel, defaultKills, defaultReward;
+        QuestDefinition(String id, String title, String description, String mobType,
+                        int minLevel, int maxLevel, int defaultKills, int defaultReward) {
+            this.id = id; this.title = title; this.description = description; this.mobType = mobType;
+            this.minLevel = minLevel; this.maxLevel = maxLevel;
+            this.defaultKills = defaultKills; this.defaultReward = defaultReward;
+        }
+    }
+
+    private List<QuestDefinition> questCatalog() {
+        return Arrays.asList(
+                new QuestDefinition("rookie_zombies", "Зомби вокруг", "Победи 10 зомби", "zombie", 1, 10, 10, 100),
+                new QuestDefinition("rookie_skeletons", "Костяная угроза", "Победи 5 скелетов", "skeleton", 1, 10, 5, 120),
+                new QuestDefinition("rookie_hunt", "Первая охота", "Победи 20 любых монстров", "any", 1, 10, 20, 150),
+                new QuestDefinition("adventurer_zombies", "Зачистка деревни", "Победи 30 зомби", "zombie", 11, 30, 30, 300),
+                new QuestDefinition("adventurer_spiders", "Паучье логово", "Победи 20 пауков", "spider", 11, 30, 20, 350),
+                new QuestDefinition("adventurer_hunt", "Опытный охотник", "Победи 40 любых монстров", "any", 11, 30, 40, 400),
+                new QuestDefinition("veteran_skeletons", "Костяной легион", "Победи 50 скелетов", "skeleton", 31, 50, 50, 700),
+                new QuestDefinition("veteran_spiders", "Гнездо пауков", "Победи 45 пауков", "spider", 31, 50, 45, 750),
+                new QuestDefinition("veteran_hunt", "Закалённый боец", "Победи 80 любых монстров", "any", 31, 50, 80, 900),
+                new QuestDefinition("elite_zombies", "Орда мертвецов", "Победи 100 зомби", "zombie", 51, 75, 100, 1300),
+                new QuestDefinition("elite_skeletons", "Нескончаемый обстрел", "Победи 80 скелетов", "skeleton", 51, 75, 80, 1500),
+                new QuestDefinition("elite_hunt", "Элитный истребитель", "Победи 150 любых монстров", "any", 51, 75, 150, 1800),
+                new QuestDefinition("legend_spiders", "Король пауков", "Победи 150 пауков", "spider", 76, 100, 150, 2500),
+                new QuestDefinition("legend_skeletons", "Последний рубеж", "Победи 150 скелетов", "skeleton", 76, 100, 150, 2800),
+                new QuestDefinition("legend_hunt", "Легендарная охота", "Победи 250 любых монстров", "any", 76, 100, 250, 3500)
+        );
+    }
+
+    private int questKills(QuestDefinition quest) {
+        return Math.max(1, getConfig().getInt("quests.catalog." + quest.id + ".kills", quest.defaultKills));
+    }
+
+    private int questXp(QuestDefinition quest) {
+        return Math.max(0, getConfig().getInt("quests.catalog." + quest.id + ".reward", quest.defaultReward));
+    }
+
     @Override
     public void onEnable() {
         if (!getDataFolder().exists() && !getDataFolder().mkdirs()) {
@@ -60,7 +101,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.9.2 включён. RPG, GUI, эффекты, скорборд и задания готовы.");
+        getLogger().info("LocalFastCore 0.9.3 включён. RPG, GUI и уровневые квесты готовы.");
     }
 
     private String playerKey(Player player) {
@@ -291,9 +332,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
             else killer.sendMessage("§eЕжедневное задание: "+n+"/"+required);
             players.save();
         }
+        String mobName = mob.getClass().getSimpleName().toLowerCase(Locale.ROOT);
+        updateLevelQuests(killer, mobName);
         if (getBoolean(killer, "quest_active", false) && !getBoolean(killer, "quest_complete", false)) {
             String questType = players.getString(playerKey(killer) + ".quest_type", "any");
-            String mobName = mob.getClass().getSimpleName().toLowerCase(Locale.ROOT);
             boolean matches = questType.equals("any")
                     || (questType.equals("zombie") && mobName.contains("zombie"))
                     || (questType.equals("skeleton") && mobName.contains("skeleton"))
@@ -311,6 +353,146 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 players.save();
             }
         }
+    }
+
+    private void updateLevelQuests(Player player, String mobName) {
+        String key = playerKey(player);
+        boolean changed = false;
+        for (QuestDefinition quest : questCatalog()) {
+            String path = key + ".quests." + quest.id;
+            if (!players.getBoolean(path + ".active", false) || players.getBoolean(path + ".complete", false)) continue;
+            boolean matches = quest.mobType.equals("any") || mobName.contains(quest.mobType);
+            if (!matches) continue;
+            int required = questKills(quest);
+            int progress = Math.min(required, Math.max(0, players.getInt(path + ".kills", 0)) + 1);
+            players.set(path + ".kills", progress);
+            if (progress >= required) {
+                players.set(path + ".complete", true);
+                player.sendMessage("§6[Квесты] Выполнено: §e" + quest.title + "§6! Забери награду в /quests.");
+            } else {
+                player.sendMessage("§e[Квесты] " + quest.title + ": " + progress + "/" + required);
+            }
+            changed = true;
+        }
+        if (changed) players.save();
+    }
+
+    private void openQuestsMenu(Player player) {
+        initialize(player);
+        int level = Math.max(1, get(player, "level", 1));
+        FormWindowSimple form = new FormWindowSimple("§6LocalFastCore §8| §lКвесты",
+                "§fТвой уровень: §e" + level + "\\n§7Выбери диапазон уровней или посмотри свои задания.");
+        String[] ranges = {"1–10", "11–30", "31–50", "51–75", "76–100"};
+        for (String range : ranges) form.addButton(new ElementButton("§eУровни " + range));
+        form.addButton(new ElementButton("§aМои задания"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null) return;
+            int selected = form.getResponse().getClickedButtonId();
+            if (selected >= 0 && selected < 5) openQuestTierMenu(player, selected);
+            else if (selected == 5) openMyQuestsMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openQuestTierMenu(Player player, int tier) {
+        int[][] ranges = {{1,10},{11,30},{31,50},{51,75},{76,100}};
+        int min = ranges[tier][0], max = ranges[tier][1];
+        FormWindowSimple form = new FormWindowSimple("§6Квесты §8| §e" + min + "–" + max,
+                "§fТвой уровень: §e" + get(player, "level", 1) + "\\n§7Выбери задание для просмотра.");
+        List<QuestDefinition> quests = new ArrayList<>();
+        for (QuestDefinition quest : questCatalog()) {
+            if (quest.minLevel == min) {
+                quests.add(quest);
+                String path = playerKey(player) + ".quests." + quest.id;
+                String status = players.getBoolean(path + ".claimed", false) ? "§8[Получено]"
+                        : players.getBoolean(path + ".complete", false) ? "§a[Готово]"
+                        : players.getBoolean(path + ".active", false) ? "§e[В процессе]"
+                        : "§7[Доступен]";
+                form.addButton(new ElementButton(status + " §f" + quest.title));
+            }
+        }
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null) return;
+            int selected = form.getResponse().getClickedButtonId();
+            if (selected >= 0 && selected < quests.size()) openQuestDetails(player, quests.get(selected), tier);
+            else openQuestsMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openQuestDetails(Player player, QuestDefinition quest, int tier) {
+        String path = playerKey(player) + ".quests." + quest.id;
+        boolean active = players.getBoolean(path + ".active", false);
+        boolean complete = players.getBoolean(path + ".complete", false);
+        boolean claimed = players.getBoolean(path + ".claimed", false);
+        int progress = Math.max(0, players.getInt(path + ".kills", 0));
+        FormWindowSimple form = new FormWindowSimple("§6Квест §8| §e" + quest.title,
+                "§f" + quest.description + "\\n§fПрогресс: §a" + progress + "/" + questKills(quest)
+                        + "\\n§fНаграда: §6" + questXp(quest) + " XP"
+                        + "\\n§fТребуемый уровень: §e" + quest.minLevel + "–" + quest.maxLevel
+                        + (claimed ? "\\n§8Награда уже получена." : complete ? "\\n§aЗадание выполнено!" : ""));
+        if (!claimed) {
+            if (complete) form.addButton(new ElementButton("§aПолучить награду"));
+            else if (!active) form.addButton(new ElementButton("§aПринять задание"));
+            else form.addButton(new ElementButton("§eЗадание активно"));
+        }
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null) return;
+            int selected = form.getResponse().getClickedButtonId();
+            if (claimed || (active && !complete)) {
+                openQuestTierMenu(player, tier);
+                return;
+            }
+            if (selected == 0 && complete && !claimed) {
+                players.set(path + ".active", false);
+                players.set(path + ".complete", false);
+                players.set(path + ".claimed", true);
+                players.save();
+                giveXp(player, questXp(quest));
+                player.sendMessage("§a[Квесты] Получено +" + questXp(quest) + " XP за " + quest.title + "!");
+            } else if (selected == 0 && !active && !claimed) {
+                if (get(player, "level", 1) < quest.minLevel || get(player, "level", 1) > quest.maxLevel) {
+                    player.sendMessage("§cЭтот квест пока недоступен по уровню.");
+                } else {
+                    players.set(path + ".active", true);
+                    players.set(path + ".kills", 0);
+                    players.set(path + ".complete", false);
+                    players.save();
+                    player.sendMessage("§a[Квесты] Принято задание: " + quest.title);
+                }
+            }
+            openQuestTierMenu(player, tier);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openMyQuestsMenu(Player player) {
+        String key = playerKey(player);
+        FormWindowSimple form = new FormWindowSimple("§6Мои задания", "§7Активные и завершённые задания:");
+        List<QuestDefinition> entries = new ArrayList<>();
+        for (QuestDefinition quest : questCatalog()) {
+            String path = key + ".quests." + quest.id;
+            if (players.getBoolean(path + ".active", false) || players.getBoolean(path + ".complete", false)) {
+                entries.add(quest);
+                int progress = players.getInt(path + ".kills", 0);
+                String status = players.getBoolean(path + ".complete", false) ? "§a[Готово] " : "§e";
+                form.addButton(new ElementButton(status + quest.title + " §7" + progress + "/" + questKills(quest)));
+            }
+        }
+        if (entries.isEmpty()) form.addButton(new ElementButton("§7Пока нет активных заданий"));
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null) return;
+            int selected = form.getResponse().getClickedButtonId();
+            if (!entries.isEmpty() && selected >= 0 && selected < entries.size()) {
+                QuestDefinition quest = entries.get(selected);
+                int tier = quest.minLevel == 1 ? 0 : quest.minLevel == 11 ? 1 : quest.minLevel == 31 ? 2 : quest.minLevel == 51 ? 3 : 4;
+                openQuestDetails(player, quest, tier);
+            } else openQuestsMenu(player);
+        }));
+        player.showFormWindow(form);
     }
 
     private int questKillsRequired() {
@@ -356,7 +538,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void handleQuest(Player player, String[] args) {
         initialize(player);
-        if (args.length == 0) { showQuest(player); return; }
+        if (args.length == 0) { openQuestsMenu(player); return; }
 
         String choice = args[0].toLowerCase(Locale.ROOT);
         if (choice.equals("zombie") || choice.equals("skeleton") || choice.equals("spider") || choice.equals("start")) {
@@ -463,6 +645,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         String name = command.getName().toLowerCase(Locale.ROOT);
 
+        if (name.equals("quests")) {
+            if (!(sender instanceof Player)) { sender.sendMessage("Эта команда доступна только игроку."); return true; }
+            openQuestsMenu((Player) sender); return true;
+        }
         if(name.equals("daily")){if(!(sender instanceof Player)){sender.sendMessage("Только для игроков.");return true;}handleDaily((Player)sender,args);return true;}
         if (name.equals("quest")) {
             if (!(sender instanceof Player)) {

@@ -148,7 +148,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.12.0 включён. RPG, экономика и система персонала загружены.");
+        getLogger().info("LocalFastCore 0.13.0 включён. RPG, миры, экономика и система персонала загружены.");
     }
 
     private void markPlayersDirty() {

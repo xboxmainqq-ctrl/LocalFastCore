@@ -238,7 +238,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 * Math.max(0, getConfig().getInt("intelligence.xp-bonus-percent", 1));
         int intelligenceBonus = (int) Math.min(100L, intelligenceBonusValue);
         long boostedAmount = (long) amount + ((long) amount * intelligenceBonus / 100L);
-        long totalXp = (long) get(player, "xp", 0) + boostedAmount;
+        long totalXp = (long) Math.max(0, get(player, "xp", 0)) + boostedAmount;
         int points = Math.max(0, get(player, "points", 0));
 
         while (level < MAX_LEVEL && totalXp >= xpForNextLevel(level)) {

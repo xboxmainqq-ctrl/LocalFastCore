@@ -122,7 +122,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         saveDefaultConfig();
         if (!getConfig().exists("operator.uuid")) getConfig().set("operator.uuid", "");
         if (!getConfig().exists("welcome.message") || getConfig().getString("welcome.message", "").trim().isEmpty()) {
-            getConfig().set("welcome.message", "§6Добро пожаловать на сервер, §e{player}§6!");
+            getConfig().set("welcome.message", "§7[Персонал] §fДобро пожаловать, §b{player}§f!");
         }
         if (!getConfig().exists("spawn-world")) getConfig().set("spawn-world", "spawn");
         if (!getConfig().exists("main-world")) getConfig().set("main-world", "");
@@ -478,7 +478,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         } else if (banExpires != 0L) { staffData.remove(banPath); staffData.save(); }
         String welcome = getConfig().getString("welcome.message", "");
         boolean personalWelcome = staffData.getBoolean("welcome.enabled." + p.getUniqueId(), true);
-        if (personalWelcome && welcome != null && !welcome.trim().isEmpty()) {
+        if (staffRank(staffRole(p)) >= 7 && personalWelcome && welcome != null && !welcome.trim().isEmpty()) {
             p.sendMessage(welcome.replace("{player}", p.getName()).replace("&", "§"));
         }
         initialize(p); refreshDaily(p); String k=playerKey(p); String d=today();

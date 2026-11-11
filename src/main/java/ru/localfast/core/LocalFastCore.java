@@ -552,7 +552,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
             }
             UUID targetId = target.getUniqueId();
             PendingTeleport pending = new PendingTeleport(player, System.currentTimeMillis() + 60_000L);
-            pendingTeleports.put(targetId, pending);
+            PendingTeleport replaced = pendingTeleports.put(targetId, pending);
+            if (replaced != null && replaced.requester.isOnline()) {
+                replaced.requester.sendMessage("§e[LocalFast] Твой запрос заменён более новым запросом к этому игроку.");
+            }
             target.sendMessage("§6[LocalFast] Игрок §e" + player.getName()
                     + " §6хочет телепортироваться к тебе.");
             target.sendMessage("§a/tpaccept §7— принять, §c/tpdeny §7— отклонить (60 секунд).");

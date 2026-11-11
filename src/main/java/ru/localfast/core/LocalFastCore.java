@@ -24,6 +24,7 @@ import cn.nukkit.scoreboard.scoreboard.Scoreboard;
 import cn.nukkit.form.element.ElementButton;
 import cn.nukkit.form.handler.FormResponseHandler;
 import cn.nukkit.form.window.FormWindowSimple;
+import cn.nukkit.scheduler.TaskHandler;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -61,6 +62,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private final Map<UUID, PendingTeleport> pendingTeleports = new HashMap<>();
     private final java.util.Set<UUID> vanishedPlayers = new java.util.HashSet<>();
     private final java.util.Set<UUID> flyingPlayers = new java.util.HashSet<>();
+    private TaskHandler castleBuildTask;
+    private boolean castleBuildActive = false;
+    private int castleBuildPlaced = 0;
+    private int castleBuildTotal = 0;
 
     private static final class PendingTeleport {
         final Player requester;
@@ -1891,6 +1896,191 @@ public final class LocalFastCore extends PluginBase implements Listener {
         operator.showFormWindow(form);
     }
 
+
+    private static final class CastleBlock {
+        final int x, y, z, id;
+        CastleBlock(int x, int y, int z, int id) { this.x=x; this.y=y; this.z=z; this.id=id; }
+    }
+
+    private void openCastleBuilderMenu(Player operator) {
+        if (!isOperator(operator)) return;
+        String worldName = getConfig().getString("castle.world", "spawn");
+        boolean centerSet = getConfig().exists("castle.center-x") && getConfig().exists("castle.center-y")
+                && getConfig().exists("castle.center-z");
+        String centerText = centerSet ? "§aЦентр: X " + getConfig().getInt("castle.center-x")
+                + ", Y " + getConfig().getInt("castle.center-y") + ", Z " + getConfig().getInt("castle.center-z")
+                : "§cЦентр не выбран";
+        String progress = castleBuildActive ? "§eСтроится: " + castleBuildPlaced + "/" + castleBuildTotal
+                : "§7Строитель остановлен";
+        FormWindowSimple form = new FormWindowSimple("§6Строитель замка",
+                "§fМир: §b" + worldName + "\n" + centerText + "\n" + progress
+                        + "\n§7Размер проекта: около 110×110 блоков. Существующие блоки не заменяются.");
+        form.addButton(new ElementButton("§aВыбрать центр здесь"));
+        form.addButton(new ElementButton("§bПроверить площадку"));
+        form.addButton(new ElementButton("§6Начать строительство"));
+        form.addButton(new ElementButton("§cОстановить строительство"));
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id == 0) {
+                if (!operator.getLevel().getFolderName().equalsIgnoreCase("spawn")) {
+                    operator.sendMessage("§cСначала перейди в мир spawn: /world tp spawn.");
+                    openCastleBuilderMenu(operator);
+                    return;
+                }
+                int x = operator.getFloorX(), z = operator.getFloorZ();
+                int y = operator.getLevel().getHighestBlockAt(x, z) + 1;
+                getConfig().set("castle.world", "spawn");
+                getConfig().set("castle.center-x", x);
+                getConfig().set("castle.center-y", y);
+                getConfig().set("castle.center-z", z);
+                saveConfig();
+                operator.sendMessage("§aЦентр замка сохранён: " + x + ", " + y + ", " + z + ".");
+                openCastleBuilderMenu(operator);
+            } else if (id == 1) {
+                validateCastleSite(operator, false);
+                openCastleBuilderMenu(operator);
+            } else if (id == 2) {
+                startCastleBuild(operator);
+                openCastleBuilderMenu(operator);
+            } else if (id == 3) {
+                castleBuildActive = false;
+                if (castleBuildTask != null) { castleBuildTask.cancel(); castleBuildTask = null; }
+                operator.sendMessage("§eСтроительство замка остановлено. Уже поставленные блоки оставлены на месте.");
+                openCastleBuilderMenu(operator);
+            } else if (id == 4) openOperatorWorldMenu(operator);
+        }));
+        operator.showFormWindow(form);
+    }
+
+    private List<CastleBlock> createCastlePlan(int cx, int baseY, int cz) {
+        Map<String, CastleBlock> blocks = new java.util.LinkedHashMap<>();
+        for (int x=-50; x<=50; x++) for (int z=-50; z<=50; z++) {
+            if (Math.abs(x)==50 || Math.abs(z)==50) {
+                for (int y=0; y<9; y++) addCastleBlock(blocks,cx+x,baseY+y,cz+z,98);
+                if ((x+z)%4==0) addCastleBlock(blocks,cx+x,baseY+9,cz+z,98);
+            }
+        }
+        for (int tx : new int[]{-50,50}) for (int tz : new int[]{-50,50}) {
+            for (int y=0; y<22; y++) for (int dx=-7; dx<=7; dx++) for (int dz=-7; dz<=7; dz++) {
+                int d=dx*dx+dz*dz;
+                if (d<=49 && d>=36) addCastleBlock(blocks,cx+tx+dx,baseY+y,cz+tz+dz,98);
+            }
+            for (int dx=-7; dx<=7; dx++) for (int dz=-7; dz<=7; dz++)
+                if (dx*dx+dz*dz<=49) addCastleBlock(blocks,cx+tx+dx,baseY+22,cz+tz+dz,98);
+        }
+        for (int x=-15; x<=15; x++) for (int z=-15; z<=15; z++) {
+            if (Math.abs(x)==15 || Math.abs(z)==15) {
+                for (int y=0; y<18; y++) addCastleBlock(blocks,cx+x,baseY+y,cz+z,98);
+            }
+        }
+        for (int tx : new int[]{-15,15}) for (int tz : new int[]{-15,15}) {
+            for (int y=0; y<26; y++) for (int dx=-4; dx<=4; dx++) for (int dz=-4; dz<=4; dz++)
+                if (dx*dx+dz*dz<=16 && dx*dx+dz*dz>=9)
+                    addCastleBlock(blocks,cx+tx+dx,baseY+y,cz+tz+dz,98);
+        }
+        // Main gatehouse and a raised central keep roof.
+        for (int x=-6; x<=6; x++) for (int z=-5; z<=5; z++) {
+            if (Math.abs(x)==6 || Math.abs(z)==5)
+                for (int y=0; y<13; y++) addCastleBlock(blocks,cx+x,baseY+y,cz+z,98);
+        }
+        for (int x=-9; x<=9; x++) for (int z=-9; z<=9; z++)
+            if (Math.abs(x)==9 || Math.abs(z)==9)
+                addCastleBlock(blocks,cx+x,baseY+28,cz+z,98);
+        for (int y=0; y<8; y++) for (int x=-2; x<=2; x++) {
+            addCastleBlock(blocks,cx+x,baseY+y,cz-50,20);
+            addCastleBlock(blocks,cx+x,baseY+y,cz+50,20);
+        }
+        return new ArrayList<>(blocks.values());
+    }
+
+    private void addCastleBlock(Map<String, CastleBlock> blocks, int x, int y, int z, int id) {
+        blocks.put(x+":"+y+":"+z, new CastleBlock(x,y,z,id));
+    }
+
+    private boolean validateCastleSite(Player operator, boolean quiet) {
+        if (!getConfig().exists("castle.center-x") || !getConfig().exists("castle.center-y")
+                || !getConfig().exists("castle.center-z")) {
+            if (!quiet) operator.sendMessage("§cСначала выбери центр замка в мире spawn.");
+            return false;
+        }
+        String worldName = getConfig().getString("castle.world", "spawn");
+        if (!worldName.equalsIgnoreCase("spawn")) {
+            if (!quiet) operator.sendMessage("§cСтроительство разрешено только в мире spawn.");
+            return false;
+        }
+        if (!getServer().isLevelLoaded("spawn") && !getServer().loadLevel("spawn")) {
+            if (!quiet) operator.sendMessage("§cМир spawn не удалось загрузить.");
+            return false;
+        }
+        Level world = getServer().getLevelByName("spawn");
+        int cx=getConfig().getInt("castle.center-x"), y=getConfig().getInt("castle.center-y"), cz=getConfig().getInt("castle.center-z");
+        if (y<world.getMinBlockY() || y+30>=world.getMaxBlockY()) {
+            if (!quiet) operator.sendMessage("§cВысота центра вне допустимых границ мира.");
+            return false;
+        }
+        List<CastleBlock> plan=createCastlePlan(cx,y,cz);
+        int checked=0;
+        try {
+            for (CastleBlock b : plan) {
+                if (world.getChunk(b.x >> 4,b.z >> 4,true)==null || world.getBlock(b.x,b.y,b.z).getId()!=0) {
+                    if (!quiet) operator.sendMessage("§cПлощадка занята или чанк недоступен. Первый конфликт: "
+                            + b.x + ", " + b.y + ", " + b.z + ". Ничего не построено.");
+                    return false;
+                }
+                checked++;
+            }
+        } catch (RuntimeException ex) {
+            if (!quiet) operator.sendMessage("§cНе удалось проверить площадку: " + ex.getMessage());
+            return false;
+        }
+        if (!quiet) operator.sendMessage("§aПлощадка свободна. Проверено блоков: " + checked
+                + ". Строительство займёт несколько минут и не заменяет существующие блоки.");
+        return true;
+    }
+
+    private void startCastleBuild(Player operator) {
+        if (castleBuildActive) { operator.sendMessage("§eСтроительство уже запущено."); return; }
+        if (!validateCastleSite(operator, true)) {
+            operator.sendMessage("§cСначала выбери центр и проверь, что площадка свободна.");
+            return;
+        }
+        Level world=getServer().getLevelByName("spawn");
+        List<CastleBlock> plan=createCastlePlan(getConfig().getInt("castle.center-x"),
+                getConfig().getInt("castle.center-y"),getConfig().getInt("castle.center-z"));
+        castleBuildPlaced=0; castleBuildTotal=plan.size(); castleBuildActive=true;
+        final int[] cursor={0};
+        operator.sendMessage("§aСтроительство замка началось. Блоков в плане: " + castleBuildTotal + ".");
+        castleBuildTask=getServer().getScheduler().scheduleRepeatingTask(this, () -> {
+            if (!castleBuildActive) {
+                if (castleBuildTask!=null) { castleBuildTask.cancel(); castleBuildTask=null; }
+                return;
+            }
+            int batch=0;
+            while (cursor[0]<plan.size() && batch<250) {
+                CastleBlock b=plan.get(cursor[0]++);
+                try {
+                    if (world.getBlock(b.x,b.y,b.z).getId()==0) {
+                        world.setBlock(new Position(b.x,b.y,b.z,world),Block.get(b.id),true,true);
+                        castleBuildPlaced++;
+                    }
+                } catch (RuntimeException ex) {
+                    getLogger().warning("Castle builder skipped block " + b.x + "," + b.y + "," + b.z + ": " + ex.getMessage());
+                }
+                batch++;
+            }
+            if (cursor[0]>=plan.size()) {
+                castleBuildActive=false;
+                if (castleBuildTask!=null) { castleBuildTask.cancel(); castleBuildTask=null; }
+                getConfig().set("castle.completed",true);
+                saveConfig();
+                for (Player online : getServer().getOnlinePlayers().values())
+                    if (isOperator(online)) online.sendMessage("§aЗамок построен! Установлено блоков: " + castleBuildPlaced + ".");
+            }
+        },1);
+    }
+
     private void openOperatorWorldMenu(Player operator) {
         if (!isOperator(operator)) return;
         FormWindowSimple form = new FormWindowSimple("§6LocalFast §8| §lМиры",
@@ -1915,7 +2105,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             else if (id == 5) openWorldPicker(operator, "info");
             else if (id == 6) openWorldPicker(operator, "tp");
             else if (id == 7) { setSpawn(operator); openOperatorWorldMenu(operator); }
-            else if (id == 8) openOperatorMenu(operator);
+            else if (id == 8) openCastleBuilderMenu(operator);\n            else if (id == 9) openOperatorMenu(operator);
         }));
         operator.showFormWindow(form);
     }

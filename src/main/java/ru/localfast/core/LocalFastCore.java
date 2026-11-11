@@ -1558,6 +1558,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§bСтатистика игрока"));
         form.addButton(new ElementButton("§dСписок администрации"));
         form.addButton(new ElementButton("§eДолжности и мои команды"));
+        form.addButton(new ElementButton("§bПроверить игрока"));
+        form.addButton(new ElementButton("§6История действий"));
         if (canUnban(role) || canUnmute(role)) form.addButton(new ElementButton("§cАктивные баны и муты"));
         if (staffRank(role) >= 5) form.addButton(new ElementButton("§6Warp"));
         if (staffRank(role) >= 7) {
@@ -1579,10 +1581,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 staff.sendMessage(enabled ? "§aПриветствие при входе включено." : "§eПриветствие при входе выключено.");
                 openStaffMenu(staff);
             } else if (utility == 1) openStaffStatsTargetMenu(staff);
-            else if (utility == 2) showOnlineStaff(staff);
+            else if (utility == 2) showStaffRoster(staff);
             else if (utility == 3) showStaffHelp(staff);
+            else if (utility == 4) openStaffCheckTargetMenu(staff);
+            else if (utility == 5) showStaffHistory(staff, "");
             else {
-                int cursor = 4;
+                int cursor = 6;
                 if (canUnban(role) || canUnmute(role)) {
                     if (utility == cursor) { openActivePunishmentsMenu(staff); return; }
                     cursor++;
@@ -1634,6 +1638,76 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (count == 0) viewer.sendMessage("§7Сейчас сотрудников нет онлайн.");
     }
 
+
+    private void showStaffRoster(Player viewer) {
+        Map<String, String> roster = new HashMap<>();
+        if (staffData.exists("staff")) {
+            for (String uuid : staffData.getSection("staff").getKeys(false)) {
+                String rank = staffData.getString("staff." + uuid, "");
+                if (staffRank(rank) > 0) roster.put(uuid, rank);
+            }
+        }
+        String operatorUuid = getConfig().getString("operator.uuid", "");
+        if (operatorUuid != null && !operatorUuid.trim().isEmpty()) roster.put(operatorUuid, "operator");
+        viewer.sendMessage("§6§lПолный состав администрации:");
+        if (roster.isEmpty()) { viewer.sendMessage("§7Список администрации пуст."); return; }
+        for (Map.Entry<String, String> entry : roster.entrySet()) {
+            String uuid = entry.getKey();
+            String nickname = uuid;
+            boolean online = false;
+            try {
+                Player found = getServer().getPlayer(UUID.fromString(uuid)).orElse(null);
+                if (found != null) { nickname = found.getName(); online = found.isOnline(); }
+            } catch (IllegalArgumentException ignored) { }
+            if (!online && staffData.exists("knownPlayers")) {
+                for (String known : staffData.getSection("knownPlayers").getKeys(false)) {
+                    if (uuid.equalsIgnoreCase(staffData.getString("knownPlayers." + known + ".uuid", ""))) {
+                        nickname = staffData.getString("knownPlayers." + known + ".name", known);
+                        break;
+                    }
+                }
+            }
+            viewer.sendMessage(staffRoleColor(entry.getValue()) + nickname + " §8— "
+                    + staffRoleLabel(entry.getValue()) + (online ? " §a● онлайн" : " §7○ не в сети"));
+        }
+    }
+
+    private void showPlayerModeration(CommandSender viewer, String requestedName) {
+        String uuid = knownPlayerUuid(requestedName);
+        if (uuid == null) { viewer.sendMessage("§cИгрок не найден. Он должен хотя бы один раз зайти на сервер."); return; }
+        String name = knownPlayerName(requestedName, uuid);
+        Player online = getServer().getPlayer(requestedName);
+        viewer.sendMessage("§6§lНаказания игрока §f" + name);
+        viewer.sendMessage("§eПредупреждения: §f" + staffData.getInt("warnings." + uuid, 0));
+        for (String type : new String[]{"bans", "mutes"}) {
+            String path = "punishments." + type + "." + uuid;
+            if (!staffData.exists(path)) continue;
+            long expires = staffData.getLong(path + ".expires", 0L);
+            if (expires != -1L && expires <= System.currentTimeMillis()) {
+                staffData.remove(path); staffData.save(); continue;
+            }
+            viewer.sendMessage((type.equals("bans") ? "§cБАН: " : "§6МУТ: ")
+                    + remainingPunishmentTime(expires) + " §7| Причина: "
+                    + staffData.getString(path + ".reason", "Не указана")
+                    + " §7| Выдал: " + staffData.getString(path + ".by", "Неизвестно"));
+        }
+        viewer.sendMessage(online == null ? "§7Игрок не в сети." : "§aИгрок сейчас онлайн.");
+        staffLog(viewer.getName(), "check-player", name, "просмотр статуса наказаний");
+    }
+
+    private void openStaffCheckTargetMenu(Player staff) {
+        List<Player> online = new ArrayList<>(getServer().getOnlinePlayers().values());
+        if (online.isEmpty()) { staff.sendMessage("§cНет игроков онлайн."); return; }
+        FormWindowSimple form = new FormWindowSimple("§bПроверка игрока", "§7Выбери игрока:");
+        for (Player target : online) form.addButton(new ElementButton(target.getName()));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !staff.isOnline()) return;
+            int index = form.getResponse().getClickedButtonId();
+            if (index >= 0 && index < online.size()) showPlayerModeration(staff, online.get(index).getName());
+        }));
+        staff.showFormWindow(form);
+    }
+
     private void showStaffHelp(Player viewer) {
         String role = staffRole(viewer);
         viewer.sendMessage("§6§lДолжности LocalFast:");
@@ -1658,6 +1732,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (canUnban(role)) viewer.sendMessage("§e/staff unban <игрок>");
         if (staffRank(role) >= 5) viewer.sendMessage("§e/staff warp §7— меню варпов");
         if (staffRank(role) >= 7) viewer.sendMessage("§e/staff fly|vanish");
+        viewer.sendMessage("§e/staff check <ник> §7— проверить наказания и предупреждения");
+        viewer.sendMessage("§e/staff warnings <ник> §7— число предупреждений");
+        if (staffRank(role) >= 7) viewer.sendMessage("§e/staff clearwarns <ник> §7— сбросить предупреждения");
+        viewer.sendMessage("§e/staff roster §7— весь состав; /staff online — кто в сети");
         viewer.sendMessage("§e/staff welcome <on|off|status> §7— приветствие о входе сотрудника увидит весь сервер");
         if (role.equals("admin") || role.equals("operator")) viewer.sendMessage("§e/staff promote|demote|setrank ...");
         if (role.equals("operator")) {
@@ -1808,7 +1886,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
             int id = form.getResponse().getClickedButtonId();
-            if (id == 0) showOnlineStaff(operator);
+            if (id == 0) showStaffRoster(operator);
             else if (id == 1) openOperatorStaffAssignMenu(operator);
             else if (id == 2) showStaffHelp(operator);
             else if (id == 3) openStaffStatsTargetMenu(operator);
@@ -2074,6 +2152,29 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (args[0].equalsIgnoreCase("vanish")) { toggleVanish(actor); return true; }
         if (args[0].equalsIgnoreCase("warp")) { if (staffRank(role) < 5) sender.sendMessage("§cWarp доступен с ранга модератора."); else openWarpMenu(actor); return true; }
         if (args[0].equalsIgnoreCase("online")) { showOnlineStaff(actor); return true; }
+        if (args[0].equalsIgnoreCase("roster") || args[0].equalsIgnoreCase("list")) { showStaffRoster(actor); return true; }
+        if (args[0].equalsIgnoreCase("check") || args[0].equalsIgnoreCase("warnings")) {
+            if (args.length != 2) { sender.sendMessage("§e/staff " + args[0] + " <игрок>"); return true; }
+            String uuid = knownPlayerUuid(args[1]);
+            if (uuid == null) { sender.sendMessage("§cИгрок не найден в истории сервера."); return true; }
+            if (args[0].equalsIgnoreCase("warnings")) {
+                sender.sendMessage("§eПредупреждения игрока §f" + knownPlayerName(args[1], uuid)
+                        + "§e: §c" + staffData.getInt("warnings." + uuid, 0));
+            } else showPlayerModeration(sender, args[1]);
+            return true;
+        }
+        if (args[0].equalsIgnoreCase("clearwarns")) {
+            if (staffRank(role) < 7) { sender.sendMessage("§cСбрасывать предупреждения может только администратор или оператор."); return true; }
+            if (args.length != 2) { sender.sendMessage("§e/staff clearwarns <игрок>"); return true; }
+            String uuid = knownPlayerUuid(args[1]);
+            if (uuid == null) { sender.sendMessage("§cИгрок не найден в истории сервера."); return true; }
+            String targetName = knownPlayerName(args[1], uuid);
+            int oldWarnings = staffData.getInt("warnings." + uuid, 0);
+            staffData.remove("warnings." + uuid); staffData.save();
+            staffLog(actor.getName(), "clear-warnings", targetName, "было: " + oldWarnings);
+            sender.sendMessage("§aПредупреждения игрока " + targetName + " сброшены.");
+            return true;
+        }
         if (args[0].equalsIgnoreCase("help") || args[0].equalsIgnoreCase("ranks")) { showStaffHelp(actor); return true; }
         String action = args[0].toLowerCase(Locale.ROOT);
         if (action.equals("promote") || action.equals("demote") || action.equals("setrank")) {
@@ -2220,7 +2321,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             }
             return handleStaffCommand(sender, Arrays.copyOfRange(args, 1, args.length));
         }
-        if (args.length > 0 && Arrays.asList("warn", "ban", "mute", "kick", "unban", "unmute", "history", "punishments", "active", "fly", "vanish", "warp", "online", "help", "ranks").contains(args[0].toLowerCase(Locale.ROOT))) {
+        if (args.length > 0 && Arrays.asList("warn", "ban", "mute", "kick", "unban", "unmute", "history", "punishments", "active", "fly", "vanish", "warp", "online", "roster", "list", "check", "warnings", "clearwarns", "help", "ranks").contains(args[0].toLowerCase(Locale.ROOT))) {
             return handleStaffCommand(sender, args);
         }
         if (args.length == 0) {

@@ -149,7 +149,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
         String key = playerKey(player);
         IScoreboard scoreboard = sidebars.get(key);
         if (scoreboard == null) {
-            String objective = "localfast_" + key.replaceAll("[^a-z0-9_]", "_");
+            String uuidSuffix = player.getUniqueId().toString().replace("-", "").substring(0, 12);
+            String objective = "lf_" + uuidSuffix;
             scoreboard = new Scoreboard(objective, getConfig().getString("scoreboard.title", "§6§lLOCALFAST"), "dummy", SortOrder.DESCENDING);
             sidebars.put(key, scoreboard);
         }

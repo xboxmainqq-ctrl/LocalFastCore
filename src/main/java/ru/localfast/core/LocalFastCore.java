@@ -2491,36 +2491,70 @@ public final class LocalFastCore extends PluginBase implements Listener {
         operator.showFormWindow(form);
     }
 
-    private List<CastleBlock> createSecondSpawnPlan(int cx, int y, int cz) {
-        Map<String, CastleBlock> blocks = new java.util.LinkedHashMap<>();
-        // A compact 500 x 500 hub: perimeter promenade, four avenues and a central plaza.
-        for (int x=-250;x<=250;x++) for (int z=-250;z<=250;z++) {
-            boolean avenue = Math.abs(x)<=4 || Math.abs(z)<=4;
-            boolean ring = Math.abs(x)==245 || Math.abs(z)==245;
-            boolean innerRing = (Math.abs(x)==120 || Math.abs(z)==120) && Math.abs(x)<=120 && Math.abs(z)<=120;
-            if (avenue || ring || innerRing) addCastleBlock(blocks,cx+x,y,cz+z, avenue?24:98);
-            else if (Math.abs(x)<=48 && Math.abs(z)<=48) addCastleBlock(blocks,cx+x,y,cz+z,((x+z)&1)==0?98:4);
-            else if (Math.abs(x)%24==0 && Math.abs(z)%24==0) addCastleBlock(blocks,cx+x,y,cz+z,2);
+
+    private void spawnFill(Map<String, CastleBlock> b,int x1,int y,int z1,int x2,int z2,int id) {
+        for(int x=Math.min(x1,x2);x<=Math.max(x1,x2);x++) for(int z=Math.min(z1,z2);z<=Math.max(z1,z2);z++) addCastleBlock(b,x,y,z,id);
+    }
+    private void spawnBuilding(Map<String, CastleBlock> b,int x,int y,int z,int w,int d,int h,int wall,int roof,int accent) {
+        int x1=x-w/2,x2=x+w/2,z1=z-d/2,z2=z+d/2;
+        spawnFill(b,x1,y,z1,x2,z2,98);
+        for(int yy=y+1;yy<=y+h;yy++) {
+            for(int xx=x1;xx<=x2;xx++){addCastleBlock(b,xx,yy,z1,wall);addCastleBlock(b,xx,yy,z2,wall);}
+            for(int zz=z1;zz<=z2;zz++){addCastleBlock(b,x1,yy,zz,wall);addCastleBlock(b,x2,yy,zz,wall);}
         }
-        // Four themed district squares and service buildings.
-        int[][] districts={{-170,-170},{170,-170},{-170,170},{170,170}};
-        for (int i=0;i<districts.length;i++) {
-            int dx=districts[i][0], dz=districts[i][1], theme=i%3;
-            for (int x=-28;x<=28;x++) for (int z=-28;z<=28;z++)
-                if (Math.abs(x)==28 || Math.abs(z)==28 || (Math.abs(x)<=2 || Math.abs(z)<=2))
-                    addCastleBlock(blocks,cx+dx+x,y,cz+dz+z,theme==1?45:98);
-            addSpawnBuilding(blocks,cx+dx,y,cz+dz,theme,15,13);
-            for (int sx : new int[]{-1,1}) for (int sz : new int[]{-1,1})
-                addSpawnTree(blocks,cx+dx+sx*36,y,cz+dz+sz*36,(theme+1)%3);
+        int wy=y+Math.max(2,h/2);
+        for(int xx=x1+2;xx<x2-1;xx+=4){addCastleBlock(b,xx,wy,z1,20);addCastleBlock(b,xx,wy,z2,20);}
+        for(int zz=z1+2;zz<z2-1;zz+=4){addCastleBlock(b,x1,wy,zz,20);addCastleBlock(b,x2,wy,zz,20);}
+        for(int yy=y+1;yy<=y+3;yy++)addCastleBlock(b,x,yy,z1,0);
+        addCastleBlock(b,x,y+h+1,z1,accent);
+        for(int layer=0;layer<4;layer++){int in=layer;for(int xx=x1-in;xx<=x2+in;xx++)for(int zz=z1-in;zz<=z2+in;zz++)
+            if(xx==x1-in||xx==x2+in||zz==z1-in||zz==z2+in)addCastleBlock(b,xx,y+h+2+layer,zz,roof);}
+        addCastleBlock(b,x,y+h+6,z,accent);
+        for(int side=-1;side<=1;side++){addCastleBlock(b,x+side*2,y+1,z1-1,89);addCastleBlock(b,x+side*2,y+2,z1-1,89);}
+        for(int step=1;step<=3;step++)for(int side=-1;side<=1;side++)addCastleBlock(b,x+side,y+step,z1-step,98);
+    }
+    private void spawnTower(Map<String, CastleBlock> b,int x,int y,int z,int r,int h,int wall,int roof) {
+        for(int yy=y;yy<=y+h;yy++)for(int dx=-r;dx<=r;dx++)for(int dz=-r;dz<=r;dz++){int q=dx*dx+dz*dz;if(q<=r*r&&q>=(r-1)*(r-1))addCastleBlock(b,x+dx,yy,z+dz,wall);}
+        for(int yy=y+3;yy<y+h-2;yy+=5){addCastleBlock(b,x-r,yy,z,20);addCastleBlock(b,x+r,yy,z,20);addCastleBlock(b,x,yy,z-r,20);addCastleBlock(b,x,yy,z+r,20);}
+        for(int layer=0;layer<=r+1;layer++){int rr=r+1-layer;for(int dx=-rr;dx<=rr;dx++)for(int dz=-rr;dz<=rr;dz++)if(Math.abs(dx)==rr||Math.abs(dz)==rr)addCastleBlock(b,x+dx,y+h+layer,z+dz,roof);}
+        addCastleBlock(b,x,y+h+r+2,z,89);
+    }
+    private void spawnTreeDetailed(Map<String, CastleBlock> b,int x,int y,int z,int variant) {
+        int trunk=variant==0?17:162;
+        for(int yy=0;yy<7;yy++)addCastleBlock(b,x,y+yy,z,trunk);
+        for(int yy=4;yy<=8;yy++){int r=yy==8?1:yy==7?2:3;for(int dx=-r;dx<=r;dx++)for(int dz=-r;dz<=r;dz++)if(dx*dx+dz*dz<=r*r+1&&!(Math.abs(dx)==r&&Math.abs(dz)==r))addCastleBlock(b,x+dx,y+yy,z+dz,18);}
+        addCastleBlock(b,x,y+9,z,18);addCastleBlock(b,x+1,y+5,z,89);addCastleBlock(b,x-1,y+5,z,89);
+    }
+    private List<CastleBlock> createSecondSpawnPlan(int cx,int y,int cz) {
+        Map<String,CastleBlock> b=new java.util.LinkedHashMap<>();
+        for(int x=-250;x<=250;x++)for(int z=-250;z<=250;z++){
+            boolean road=Math.abs(x)<=5||Math.abs(z)<=5,edge=Math.abs(x)==245||Math.abs(z)==245;
+            boolean ring=(Math.abs(x)==118||Math.abs(z)==118)&&Math.abs(x)<=118&&Math.abs(z)<=118;
+            if(road||edge||ring)addCastleBlock(b,cx+x,y,cz+z,98);
         }
-        // Fountain and four lamp-lined approaches.
-        for (int x=-8;x<=8;x++) for (int z=-8;z<=8;z++)
-            if (x*x+z*z<=64) addCastleBlock(blocks,cx+x,y+1,cz+z,98);
-        addCastleBlock(blocks,cx,y+2,cz,9);
-        addCastleBlock(blocks,cx,y+3,cz,9);
-        for (int p=-220;p<=220;p+=20) for (int[] d : new int[][]{{1,0},{-1,0},{0,1},{0,-1}})
-            addSpawnLamp(blocks,cx+d[0]*5,y,cz+d[1]*5+p);
-        return new ArrayList<>(blocks.values());
+        spawnFill(b,cx-48,y,cz-48,cx+48,cz+48,98);
+        for(int x=-45;x<=45;x++)for(int z=-45;z<=45;z++)if(Math.abs(x)==45||Math.abs(z)==45)addCastleBlock(b,cx+x,y+1,cz+z,45);
+        spawnBuilding(b,cx,y+1,cz,43,35,15,98,45,155);
+        spawnTower(b,cx-39,y+1,cz-39,5,22,98,45);spawnTower(b,cx+39,y+1,cz-39,5,22,98,45);
+        spawnTower(b,cx-39,y+1,cz+39,5,22,98,45);spawnTower(b,cx+39,y+1,cz+39,5,22,98,45);
+        for(int r=12;r>=4;r-=2)for(int dx=-r;dx<=r;dx++)for(int dz=-r;dz<=r;dz++)if(Math.abs(dx)==r||Math.abs(dz)==r)addCastleBlock(b,cx+dx,y+1+(12-r)/2,cz+dz,155);
+        for(int yy=2;yy<=9;yy++)addCastleBlock(b,cx,y+yy,cz,155);addCastleBlock(b,cx,y+10,cz,89);
+        for(int[] d:new int[][]{{1,0},{-1,0},{0,1},{0,-1}})for(int n=1;n<=8;n++)addCastleBlock(b,cx+d[0]*n,y+2,cz+d[1]*n,9);
+        int[][] ds={{-170,-170},{170,-170},{-170,170},{170,170}};int[] walls={45,155,98,5},roofs={45,155,98,5},lights={89,89,155,89};
+        for(int i=0;i<4;i++){int dx=ds[i][0],dz=ds[i][1];
+            for(int p=-34;p<=34;p++){addCastleBlock(b,cx+dx+p,y,cz+dz-34,98);addCastleBlock(b,cx+dx+p,y,cz+dz+34,98);addCastleBlock(b,cx+dx-34,y,cz+dz+p,98);addCastleBlock(b,cx+dx+34,y,cz+dz+p,98);}
+            spawnBuilding(b,cx+dx,y+1,cz+dz,29,25,10,walls[i],roofs[i],lights[i]);
+            spawnBuilding(b,cx+dx-43,y+1,cz+dz,17,17,7,walls[(i+1)%4],roofs[(i+1)%4],lights[i]);
+            spawnBuilding(b,cx+dx+43,y+1,cz+dz,17,17,8,walls[(i+2)%4],roofs[(i+2)%4],lights[i]);
+            for(int sx:new int[]{-1,1})for(int sz:new int[]{-1,1})spawnTreeDetailed(b,cx+dx+sx*25,y+1,cz+dz+sz*25,i%2);
+            for(int p=-28;p<=28;p+=14){addSpawnLamp(b,cx+dx+p,y,cz+dz-39);addSpawnLamp(b,cx+dx+p,y,cz+dz+39);}
+        }
+        for(int gx=-2;gx<=2;gx++)for(int gz=-2;gz<=2;gz++){if(gx==0||gz==0)continue;int bx=gx*82,bz=gz*82;if(Math.abs(bx)>210||Math.abs(bz)>210)continue;
+            spawnBuilding(b,cx+bx,y+1,cz+bz,15,15,7,5,45,89);spawnTreeDetailed(b,cx+bx+13,y+1,cz+bz+10,(gx+gz)&1);addSpawnLamp(b,cx+bx-12,y,cz+bz-10);}
+        for(int side=-1;side<=1;side++)for(int yy=0;yy<=15;yy++){addCastleBlock(b,cx+side*15,y+yy,cz-240,98);addCastleBlock(b,cx+side*15,y+yy,cz+240,98);addCastleBlock(b,cx-240,y+yy,cz+side*15,98);addCastleBlock(b,cx+240,y+yy,cz+side*15,98);}
+        for(int p=-220;p<=220;p+=22){spawnTreeDetailed(b,cx+p,y+1,cz+14,(p/22)&1);spawnTreeDetailed(b,cx+p,y+1,cz-14,(p/22)&1);spawnTreeDetailed(b,cx+14,y+1,cz+p,(p/22)&1);spawnTreeDetailed(b,cx-14,y+1,cz+p,(p/22)&1);}
+        for(int p=-220;p<=220;p+=18){addSpawnLamp(b,cx+8,y,cz+p);addSpawnLamp(b,cx-8,y,cz+p);addSpawnLamp(b,cx+p,y,cz+8);addSpawnLamp(b,cx+p,y,cz-8);}
+        return new ArrayList<>(b.values());
     }
 
     private boolean validateSecondSpawnSite(Player operator) {

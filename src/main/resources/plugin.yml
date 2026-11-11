@@ -1,10 +1,20 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.6.0"
+version: "0.10.0"
 api: ["1.0.0"]
 author: LocalFast
 description: RPG progression, mob kill experience and hunting quests for LocalFast Survival
 commands:
+  spawn:
+    description: Телепорт на отдельный спавн
+    usage: "/spawn"
+  setspawn:
+    description: Установить точку отдельного спавна
+    usage: "/setspawn"
+    permission: localfast.admin
+  rtp:
+    description: Случайная безопасная телепортация в основной мир
+    usage: "/rtp"
   level:
     description: Показать уровень и опыт
     usage: "/level"

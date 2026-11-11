@@ -2388,30 +2388,202 @@ public final class LocalFastCore extends PluginBase implements Listener {
         FormWindowSimple form = new FormWindowSimple("§6LocalFast §8| §lМиры",
                 "§7Управление игровыми мирами 0.14.0\n§fВыбери действие:");
         form.addButton(new ElementButton("§bСписок миров"));
-        form.addButton(new ElementButton("§aСоздать spawn (плоский)"));
+        form.addButton(new ElementButton("§aСоздать spawn (суперплоский)"));
+        form.addButton(new ElementButton("§aСоздать spawn2 (суперплоский)"));
         form.addButton(new ElementButton("§aСоздать dungeons"));
         form.addButton(new ElementButton("§aСоздать bosses"));
         form.addButton(new ElementButton("§eЗагрузить мир"));
         form.addButton(new ElementButton("§dИнформация о мире"));
         form.addButton(new ElementButton("§bТелепортироваться в мир"));
+        form.addButton(new ElementButton("§cУдалить мир"));
         form.addButton(new ElementButton("§aУстановить точку /spawn здесь"));
-        form.addButton(new ElementButton("§6Строительство замка"));
+        form.addButton(new ElementButton("§6Строительство замка 1000×1000"));
+        form.addButton(new ElementButton("§6Строительство spawn2 500×500"));
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
             int id = form.getResponse().getClickedButtonId();
             if (id == 0) showWorldList(operator);
             else if (id == 1) createWorldFromMenu(operator, "spawn");
-            else if (id == 2) createWorldFromMenu(operator, "dungeons");
-            else if (id == 3) createWorldFromMenu(operator, "bosses");
-            else if (id == 4) openWorldPicker(operator, "load");
-            else if (id == 5) openWorldPicker(operator, "info");
-            else if (id == 6) openWorldPicker(operator, "tp");
-            else if (id == 7) { setSpawn(operator); openOperatorWorldMenu(operator); }
-            else if (id == 8) openCastleBuilderMenu(operator);
-            else if (id == 9) openOperatorMenu(operator);
+            else if (id == 2) createWorldFromMenu(operator, "spawn2");
+            else if (id == 3) createWorldFromMenu(operator, "dungeons");
+            else if (id == 4) createWorldFromMenu(operator, "bosses");
+            else if (id == 5) openWorldPicker(operator, "load");
+            else if (id == 6) openWorldPicker(operator, "info");
+            else if (id == 7) openWorldPicker(operator, "tp");
+            else if (id == 8) openWorldPicker(operator, "delete");
+            else if (id == 9) { setSpawn(operator); openOperatorWorldMenu(operator); }
+            else if (id == 10) openCastleBuilderMenu(operator);
+            else if (id == 11) openSecondSpawnBuilderMenu(operator);
+            else if (id == 12) openOperatorMenu(operator);
         }));
         operator.showFormWindow(form);
+    }
+
+    private void openWorldDeleteConfirm(Player operator, String name) {
+        if (!isOperator(operator)) return;
+        if (name.equalsIgnoreCase("world")) {
+            operator.sendMessage("§cМир world — основной мир выживания. Его удаление заблокировано для защиты игроков и их построек.");
+            openOperatorWorldMenu(operator);
+            return;
+        }
+        FormWindowSimple confirm = new FormWindowSimple("§cУдаление мира",
+                "§fТы собираешься удалить мир §e" + name + "§f.\n"
+                + "§cВсе постройки и данные этого мира будут удалены без возможности восстановления.\n"
+                + "§7Мир world защищён и удалить его нельзя.");
+        confirm.addButton(new ElementButton("§cДа, удалить мир"));
+        confirm.addButton(new ElementButton("§7Отмена"));
+        confirm.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (confirm.wasClosed() || confirm.getResponse() == null || !operator.isOnline()) return;
+            if (confirm.getResponse().getClickedButtonId() == 0) {
+                handleWorldCommand(operator, new String[]{"delete", name});
+            }
+            openOperatorWorldMenu(operator);
+        }));
+        operator.showFormWindow(confirm);
+    }
+
+    private boolean deleteWorldFolder(File file) {
+        if (file == null || !file.exists()) return true;
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children == null) return false;
+            for (File child : children) if (!deleteWorldFolder(child)) return false;
+        }
+        return file.delete();
+    }
+
+    private void openSecondSpawnBuilderMenu(Player operator) {
+        if (!isOperator(operator)) return;
+        boolean set = getConfig().exists("spawn2.center-x") && getConfig().exists("spawn2.center-y")
+                && getConfig().exists("spawn2.center-z");
+        String center = set ? "§aЦентр: X " + getConfig().getInt("spawn2.center-x")
+                + ", Y " + getConfig().getInt("spawn2.center-y") + ", Z " + getConfig().getInt("spawn2.center-z")
+                : "§cЦентр не выбран";
+        FormWindowSimple form = new FormWindowSimple("§6Второй спавн 500×500",
+                "§7Мир: spawn2\n" + center + "\n§fОтдельная площадь с дорогами, центральной площадью, зелёными зонами и малыми постройками.");
+        form.addButton(new ElementButton("§aВыбрать центр здесь"));
+        form.addButton(new ElementButton("§bПроверить площадку"));
+        form.addButton(new ElementButton("§6Построить спавн 500×500"));
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id == 0) {
+                if (!operator.getLevel().getFolderName().equalsIgnoreCase("spawn2")) {
+                    operator.sendMessage("§cСначала перейди в spawn2: /world tp spawn2.");
+                    openSecondSpawnBuilderMenu(operator); return;
+                }
+                int x=operator.getFloorX(), z=operator.getFloorZ();
+                int y=operator.getLevel().getHighestBlockAt(x,z)+1;
+                getConfig().set("spawn2.center-x",x); getConfig().set("spawn2.center-y",y);
+                getConfig().set("spawn2.center-z",z); saveConfig();
+                operator.sendMessage("§aЦентр второго спавна сохранён.");
+                openSecondSpawnBuilderMenu(operator);
+            } else if (id == 1) {
+                validateSecondSpawnSite(operator);
+                openSecondSpawnBuilderMenu(operator);
+            } else if (id == 2) {
+                startSecondSpawnBuild(operator);
+                openSecondSpawnBuilderMenu(operator);
+            } else openOperatorWorldMenu(operator);
+        }));
+        operator.showFormWindow(form);
+    }
+
+    private List<CastleBlock> createSecondSpawnPlan(int cx, int y, int cz) {
+        Map<String, CastleBlock> blocks = new java.util.LinkedHashMap<>();
+        // A compact 500 x 500 hub: perimeter promenade, four avenues and a central plaza.
+        for (int x=-250;x<=250;x++) for (int z=-250;z<=250;z++) {
+            boolean avenue = Math.abs(x)<=4 || Math.abs(z)<=4;
+            boolean ring = Math.abs(x)==245 || Math.abs(z)==245;
+            boolean innerRing = (Math.abs(x)==120 || Math.abs(z)==120) && Math.abs(x)<=120 && Math.abs(z)<=120;
+            if (avenue || ring || innerRing) addCastleBlock(blocks,cx+x,y,cz+z, avenue?24:98);
+            else if (Math.abs(x)<=48 && Math.abs(z)<=48) addCastleBlock(blocks,cx+x,y,cz+z,((x+z)&1)==0?98:4);
+            else if (Math.abs(x)%24==0 && Math.abs(z)%24==0) addCastleBlock(blocks,cx+x,y,cz+z,2);
+        }
+        // Four themed district squares and service buildings.
+        int[][] districts={{-170,-170},{170,-170},{-170,170},{170,170}};
+        for (int i=0;i<districts.length;i++) {
+            int dx=districts[i][0], dz=districts[i][1], theme=i%3;
+            for (int x=-28;x<=28;x++) for (int z=-28;z<=28;z++)
+                if (Math.abs(x)==28 || Math.abs(z)==28 || (Math.abs(x)<=2 || Math.abs(z)<=2))
+                    addCastleBlock(blocks,cx+dx+x,y,cz+dz+z,theme==1?45:98);
+            addSpawnBuilding(blocks,cx+dx,y,cz+dz,theme,15,13);
+            for (int sx : new int[]{-1,1}) for (int sz : new int[]{-1,1})
+                addSpawnTree(blocks,cx+dx+sx*36,y,cz+dz+sz*36,(theme+1)%3);
+        }
+        // Fountain and four lamp-lined approaches.
+        for (int x=-8;x<=8;x++) for (int z=-8;z<=8;z++)
+            if (x*x+z*z<=64) addCastleBlock(blocks,cx+x,y+1,cz+z,98);
+        addCastleBlock(blocks,cx,y+2,cz,9);
+        addCastleBlock(blocks,cx,y+3,cz,9);
+        for (int p=-220;p<=220;p+=20) for (int[] d : new int[][]{{1,0},{-1,0},{0,1},{0,-1}})
+            addSpawnLamp(blocks,cx+d[0]*5,y,cz+d[1]*5+p);
+        return new ArrayList<>(blocks.values());
+    }
+
+    private boolean validateSecondSpawnSite(Player operator) {
+        if (!getServer().isLevelLoaded("spawn2") && !getServer().loadLevel("spawn2")) {
+            operator.sendMessage("§cСначала создай мир spawn2.");
+            return false;
+        }
+        Level world=getServer().getLevelByName("spawn2");
+        if (!getConfig().exists("spawn2.center-x") || !getConfig().exists("spawn2.center-y")
+                || !getConfig().exists("spawn2.center-z")) {
+            operator.sendMessage("§cСначала выбери центр в мире spawn2."); return false;
+        }
+        int cx=getConfig().getInt("spawn2.center-x"), y=getConfig().getInt("spawn2.center-y"), cz=getConfig().getInt("spawn2.center-z");
+        if (y<world.getMinBlockY() || y+20>=world.getMaxBlockY()) {
+            operator.sendMessage("§cВысота центра вне границ мира."); return false;
+        }
+        List<CastleBlock> plan=createSecondSpawnPlan(cx,y,cz);
+        try {
+            for (CastleBlock b:plan) {
+                if (world.getChunk(b.x>>4,b.z>>4,true)==null || world.getBlock(b.x,b.y,b.z).getId()!=0) {
+                    operator.sendMessage("§cПлощадка занята. Конфликт: "+b.x+", "+b.y+", "+b.z+". Ничего не построено.");
+                    return false;
+                }
+            }
+        } catch (RuntimeException ex) {
+            operator.sendMessage("§cОшибка проверки площадки: "+ex.getMessage()); return false;
+        }
+        operator.sendMessage("§aПлощадка spawn2 свободна. Проверено блоков: "+plan.size()+".");
+        return true;
+    }
+
+    private void startSecondSpawnBuild(Player operator) {
+        if (castleBuildActive) { operator.sendMessage("§eДругое строительство уже выполняется."); return; }
+        if (!validateSecondSpawnSite(operator)) return;
+        Level world=getServer().getLevelByName("spawn2");
+        List<CastleBlock> plan=createSecondSpawnPlan(getConfig().getInt("spawn2.center-x"),
+                getConfig().getInt("spawn2.center-y"),getConfig().getInt("spawn2.center-z"));
+        castleBuildActive=true; castleBuildPlaced=0; castleBuildTotal=plan.size();
+        final int[] cursor={0};
+        operator.sendMessage("§aСтроительство второго спавна началось. Блоков: "+castleBuildTotal+".");
+        castleBuildTask=getServer().getScheduler().scheduleRepeatingTask(this, () -> {
+            if (!castleBuildActive) { if (castleBuildTask!=null) { castleBuildTask.cancel(); castleBuildTask=null; } return; }
+            int batch=0;
+            while (cursor[0]<plan.size() && batch<250) {
+                CastleBlock b=plan.get(cursor[0]++);
+                try {
+                    if (world.getBlock(b.x,b.y,b.z).getId()==0) {
+                        world.setBlock(new Position(b.x,b.y,b.z,world),Block.get(b.id),true,true);
+                        castleBuildPlaced++;
+                    }
+                } catch (RuntimeException ex) {
+                    getLogger().warning("Second spawn builder skipped block: "+ex.getMessage());
+                }
+                batch++;
+            }
+            if (cursor[0]>=plan.size()) {
+                castleBuildActive=false;
+                if (castleBuildTask!=null) { castleBuildTask.cancel(); castleBuildTask=null; }
+                getConfig().set("spawn2.completed",true); saveConfig();
+                for (Player online:getServer().getOnlinePlayers().values())
+                    if (isOperator(online)) online.sendMessage("§aВторой спавн построен. Блоков: "+castleBuildPlaced+".");
+            }
+        },1);
     }
 
     private void createWorldFromMenu(Player operator, String name) {
@@ -2420,13 +2592,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
             openWorldPicker(operator, "load");
             return;
         }
-        handleWorldCommand(operator, new String[]{"create", name, name.equalsIgnoreCase("spawn") ? "flat" : "normal"});
+        handleWorldCommand(operator, new String[]{"create", name, (name.equalsIgnoreCase("spawn") || name.equalsIgnoreCase("spawn2")) ? "flat" : "normal"});
         openOperatorWorldMenu(operator);
     }
 
     private void openWorldPicker(Player operator, String action) {
         List<String> names = new ArrayList<>();
-        for (String name : new String[]{"spawn", "world", "dungeons", "bosses"}) {
+        for (String name : new String[]{"spawn", "spawn2", "world", "dungeons", "bosses"}) {
             if (getServer().isLevelGenerated(name) || getServer().isLevelLoaded(name)) names.add(name);
         }
         if (getConfig().exists("managed-worlds")) {
@@ -2440,7 +2612,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             return;
         }
         FormWindowSimple form = new FormWindowSimple(
-                action.equals("load") ? "§6Загрузить мир" : action.equals("tp") ? "§6Перейти в мир" : "§6Информация о мире",
+                action.equals("load") ? "§6Загрузить мир" : action.equals("tp") ? "§6Перейти в мир" : action.equals("delete") ? "§cВыбрать мир для удаления" : "§6Информация о мире",
                 "§7Выбери мир:");
         for (String name : names) {
             boolean loaded = getServer().isLevelLoaded(name);
@@ -2460,6 +2632,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
             } else if (action.equals("tp")) {
                 handleWorldCommand(operator, new String[]{"tp", selected});
                 openOperatorWorldMenu(operator);
+            } else if (action.equals("delete")) {
+                openWorldDeleteConfirm(operator, selected);
             } else {
                 handleWorldCommand(operator, new String[]{"info", selected});
                 openWorldPicker(operator, "info");
@@ -2910,7 +3084,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private String worldRole(String name) {
         String configured = getConfig().getString("managed-worlds." + name + ".type", "");
         if (configured != null && !configured.trim().isEmpty()) return configured;
-        if (name.equalsIgnoreCase("spawn")) return "spawn";
+        if (name.equalsIgnoreCase("spawn")) return "главный спавн 1000×1000";
+        if (name.equalsIgnoreCase("spawn2")) return "второй спавн 500×500";
         if (name.equalsIgnoreCase("world")) return "survival";
         if (name.equalsIgnoreCase("dungeons")) return "dungeons";
         if (name.equalsIgnoreCase("bosses")) return "bosses";
@@ -3055,6 +3230,33 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 saveConfig();
                 sender.sendMessage("§aМир назначен миром спавна. Установи точку командой /setspawn.");
             }
+            return true;
+        }
+        if (action.equals("delete")) {
+            if (!isOperator(sender)) { sender.sendMessage("§cУдалять миры может только оператор."); return true; }
+            if (args.length != 2) { sender.sendMessage("§e/world delete <имя>"); return true; }
+            String name=args[1].toLowerCase(Locale.ROOT);
+            if (!name.matches("[a-z0-9_-]{1,32}")) { sender.sendMessage("§cНекорректное имя мира."); return true; }
+            if (name.equals("world")) { sender.sendMessage("§cУдаление основного мира world заблокировано для защиты игроков."); return true; }
+            if (!getServer().isLevelGenerated(name) && !getServer().isLevelLoaded(name)) {
+                sender.sendMessage("§cМир не найден."); return true;
+            }
+            Level level=getServer().getLevelByName(name);
+            if (level!=null && !level.getPlayers().isEmpty()) {
+                sender.sendMessage("§cВ мире ещё есть игроки. Выведи всех игроков из него и повтори удаление."); return true;
+            }
+            if (level!=null && !getServer().unloadLevel(level)) {
+                sender.sendMessage("§cНе удалось выгрузить мир. Удаление отменено."); return true;
+            }
+            File worldFolder=new File(getServer().getDataPath(),"worlds"+File.separator+name);
+            if (!deleteWorldFolder(worldFolder)) {
+                sender.sendMessage("§cНе удалось полностью удалить папку мира: "+worldFolder.getAbsolutePath()); return true;
+            }
+            getConfig().remove("managed-worlds."+name);
+            if (name.equals("spawn2")) getConfig().remove("spawn2");
+            saveConfig();
+            sender.sendMessage("§aМир '"+name+"' удалён.");
+            staffLog(sender.getName(),"world-delete",name,"operator panel");
             return true;
         }
         if (action.equals("info")) {

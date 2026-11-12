@@ -3,6 +3,8 @@ package ru.localfast.core;
 import cn.nukkit.Player;
 import cn.nukkit.item.Item;
 import cn.nukkit.block.Block;
+import cn.nukkit.block.BlockChest;
+import cn.nukkit.blockentity.BlockEntityChest;
 import cn.nukkit.level.Level;
 import cn.nukkit.level.generator.Generator;
 import cn.nukkit.level.Position;
@@ -739,11 +741,22 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void prepareDungeonRewardChest(Level level) {
         try {
+            Position chestPosition=new Position(0,6,28,level);
             level.getChunk(0,1,true);
-            level.setBlock(new Position(0,6,28,level),Block.get(54),true,true);
-            level.setBlock(new Position(0,7,28,level),Block.get(89),true,true);
+            level.setBlock(chestPosition,Block.get(54),true,true);
+            Block chestBlock=level.getBlock(chestPosition);
+            if(chestBlock instanceof BlockChest) {
+                BlockEntityChest chest=(BlockEntityChest)level.getBlockEntity(chestPosition);
+                if(chest!=null) {
+                    chest.getInventory().clearAll();
+                    chest.getInventory().addItem(Item.get(261,0,1),Item.get(262,0,16));
+                    getLogger().info("Сундук награды катакомб заполнен луком и 16 стрелами.");
+                } else {
+                    getLogger().warning("Блок сундука поставлен, но BlockEntityChest не создан.");
+                }
+            }
         } catch(RuntimeException exception) {
-            getLogger().warning("Не удалось поставить сундук награды: "+exception.getMessage());
+            getLogger().warning("Не удалось заполнить сундук награды: "+exception.getMessage());
         }
     }
 
@@ -990,7 +1003,6 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 players.set(k + ".dungeon.wave", 1);
                 players.set(k + ".dungeon.kills", 0);
                 players.set(k + ".dungeon.spawned-wave", 0);
-                prepareDungeonRewardChest(dungeon);
             }
             markPlayersDirty();
 
@@ -1016,11 +1028,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
             int xp=Math.max(0,getConfig().getInt("dungeons.xp-reward",600));
             long money=Math.max(0L,getConfig().getLong("dungeons.money-reward",250L));
             players.set(k+".dungeon.complete",false); players.set(k+".dungeon.active",false); players.set(k+".dungeon.claimed",true);
-            giveXp(p,xp); setBalance(p,safeAdd(getBalance(p),money));
-            p.getInventory().addItem(Item.get(261,0,1));
-            p.getInventory().addItem(Item.get(262,0,16));
-            markPlayersDirty();
-            p.sendMessage("§6Награда подземелья: §a+"+xp+" XP §7и §e+"+money+" "+currencyName()+"§6! §fПолучены лук и 16 стрел.");
+            giveXp(p,xp); setBalance(p,safeAdd(getBalance(p),money)); markPlayersDirty();
+            p.sendMessage("§6Награда подземелья: §a+"+xp+" XP §7и §e+"+money+" "+currencyName()+"§6! §fЛук и 16 стрел лежат в сундуке катакомб.");
             returnFromDungeon(p);
             return;
         }

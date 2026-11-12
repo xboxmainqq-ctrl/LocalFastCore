@@ -1,9 +1,9 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.21.0"
+version: "0.22.0"
 api: ["1.0.0"]
 author: LocalFast
-description: LocalFastCore 0.21.0 RPG, guilds, market, auctions, trading, economy and staff systems
+description: LocalFastCore 0.22.0 RPG, guilds, market, auctions, dungeons, bosses, trading, economy and staff systems
 commands:
   spawn:
     description: Телепорт на отдельный спавн
@@ -101,6 +101,12 @@ commands:
   guild:
     description: Создать гильдию, приглашать игроков и управлять составом
     usage: "/guild <create|invite|accept|info|list|leave|kick|role|transfer|disband>"
+  dungeon:
+    description: Прохождение подземелья и получение награды
+    usage: "/dungeon <info|start|claim>"
+  boss:
+    description: Охота на мирового босса
+    usage: "/boss <info|start|claim>"
   world:
     description: Управление отдельными мирами LocalFast
     usage: "/world <list|create|load|tp|info>"

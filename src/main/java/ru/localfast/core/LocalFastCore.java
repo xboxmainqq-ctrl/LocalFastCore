@@ -907,6 +907,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
             players.set(k+".daily_complete",false);
             players.set(k+".daily_active",false);
             players.set(k+".daily_claimed",true);
+            String claimDate = today();
+            String previousClaimDate = players.getString(k + ".daily_last_claim", "");
+            int currentStreak = previousClaimDate.equals(LocalDate.now().minusDays(1).toString())
+                    ? Math.max(0, players.getInt(k + ".daily_streak", 0)) + 1 : 1;
+            players.set(k + ".daily_last_claim", claimDate);
+            players.set(k + ".daily_streak", currentStreak);
             markPlayersDirty();
             if (!flushPlayers()) {
                 players.set(k + ".daily_complete", true);
@@ -919,8 +925,15 @@ public final class LocalFastCore extends PluginBase implements Listener {
             String type=dailyType(p);
             int reward=dailyXpReward(type);
             long money=dailyMoneyReward(type);
-            giveXp(p,reward); if (money > 0L) setBalance(p, safeAdd(getBalance(p), money)); flushPlayers();
-            p.sendMessage("§aПолучено +" + reward + " XP и +" + money + " " + currencyName() + "!");return;
+            giveXp(p,reward);
+            if (money > 0L) setBalance(p, safeAdd(getBalance(p), money));
+            int streakBonus = Math.max(0, getConfig().getInt("daily.streak-bonus-xp." + currentStreak,
+                    currentStreak >= 14 ? 500 : currentStreak >= 7 ? 200 : currentStreak >= 3 ? 50 : 0));
+            if (streakBonus > 0) giveXp(p, streakBonus);
+            flushPlayers();
+            p.sendMessage("§aПолучено +" + reward + " XP и +" + money + " " + currencyName()
+                    + "! §eСерия: " + currentStreak + " дн."
+                    + (streakBonus > 0 ? " §6Бонус серии: +" + streakBonus + " XP!" : ""));return;
         }
         p.sendMessage("§e/daily, /daily start или /daily claim");
     }

@@ -1,4 +1,4 @@
-# LocalFastCore 0.20.0
+# LocalFastCore 0.21.0
 # Set operator.uuid after first startup using the server console: lfadmin setoperator <online-player>
 operator:
   uuid: ""
@@ -132,3 +132,10 @@ quest-chain:
 guilds:
   creation-cost: 1000
   invitation-hours: 24
+
+# Marketplace and auction settings. Listings and bids are stored in market.yml.
+market:
+  max-active-listings-per-player: 10
+  default-auction-minutes: 30
+  max-auction-minutes: 10080
+  trade-request-seconds: 60

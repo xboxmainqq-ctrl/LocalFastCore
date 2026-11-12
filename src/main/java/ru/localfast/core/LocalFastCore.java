@@ -1060,7 +1060,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
             boolean firstLocationEntry = !players.getBoolean(k + ".dungeon.location-entered", false);
             boolean alreadyClaimed = players.getBoolean(k + ".dungeon.claimed", false);
-            if (alreadyClaimed && !firstLocationEntry) {
+            if ((alreadyClaimed && !firstLocationEntry)
+                    || players.getBoolean(k + ".dungeon.complete", false)) {
                 showDungeon(p);
                 return;
             }

@@ -4,7 +4,11 @@ import cn.nukkit.Player;
 import cn.nukkit.item.Item;
 import cn.nukkit.block.Block;
 import cn.nukkit.block.BlockChest;
+import cn.nukkit.blockentity.BlockEntity;
 import cn.nukkit.blockentity.BlockEntityChest;
+import cn.nukkit.event.entity.EntityExplodeEvent;
+import cn.nukkit.nbt.tag.CompoundTag;
+import cn.nukkit.nbt.tag.ListTag;
 import cn.nukkit.level.Level;
 import cn.nukkit.level.generator.Generator;
 import cn.nukkit.level.Position;
@@ -581,6 +585,30 @@ public final class LocalFastCore extends PluginBase implements Listener {
             }
         }
 
+        // Dungeon creatures hit harder as the player advances through the waves.
+        if (event.getEntity() instanceof Player && event.getDamager() instanceof EntityCreature) {
+            Player victim = (Player) event.getEntity();
+            if (isDungeonWorld(victim.getLevel())) {
+                String victimPath = playerKey(victim);
+                float multiplier = 1.0f;
+                if (players.getBoolean(victimPath + ".dungeon.active", false)) {
+                    int wave = Math.max(1, players.getInt(victimPath + ".dungeon.wave", 1));
+                    if (wave == 1) multiplier = 1.15f;
+                    else if (wave == 2) multiplier = 1.45f;
+                    else if (wave == 3) multiplier = 1.85f;
+                    else multiplier = 2.2f;
+                } else if (players.getBoolean(victimPath + ".boss_hunt.active", false)
+                        && victim.getX() >= 99 && victim.getX() <= 141
+                        && victim.getZ() >= -21 && victim.getZ() <= 21) {
+                    multiplier = 2.2f;
+                }
+                if (multiplier > 1.0f) {
+                    float baseDamage = event.getDamage(EntityDamageEvent.DamageModifier.BASE);
+                    event.setDamage(baseDamage * multiplier, EntityDamageEvent.DamageModifier.BASE);
+                }
+            }
+        }
+
         if (!(event.getDamager() instanceof Player)) return;
         Player attacker = (Player) event.getDamager();
         UUID attackerId = attacker.getUniqueId();
@@ -714,49 +742,102 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private void spawnDungeonWave(Player player, Level level, int wave) {
         String[] types;
         double z;
-        if(wave==1) { types=new String[]{"Zombie","Zombie","Zombie"}; z=-20.5; }
-        else if(wave==2) { types=new String[]{"Skeleton","Skeleton","Skeleton"}; z=0.5; }
-        else if(wave==3) { types=new String[]{"Spider","Spider","Spider"}; z=20.5; }
-        else { types=new String[]{"Ravager"}; z=25.5; }
-        for(int i=0;i<types.length;i++) {
+        int maxHealth;
+        if (wave == 1) { types = new String[]{"Zombie","Zombie","Zombie"}; z = -20.5; maxHealth = 22; }
+        else if (wave == 2) { types = new String[]{"Skeleton","Skeleton","Skeleton"}; z = 0.5; maxHealth = 42; }
+        else if (wave == 3) { types = new String[]{"Spider","Spider","Spider"}; z = 20.5; maxHealth = 68; }
+        else { types = new String[]{"Ravager"}; z = 25.5; maxHealth = 500; }
+        for (int i = 0; i < types.length; i++) {
             try {
-                double x=wave==4?0.5:(i-1)*5.0+0.5;
-                Entity mob=Entity.createEntity(types[i],new Position(x,6,z,level));
-                if(mob==null) {
-                    player.sendMessage("§cНе удалось создать существо: "+types[i]+". Проверь поддержку мобов сервером.");
+                double x = wave == 4 ? 0.5 : (i - 1) * 5.0 + 0.5;
+                Entity mob = Entity.createEntity(types[i], new Position(x, 6, z, level));
+                if (mob == null) {
+                    player.sendMessage("§cНе удалось создать существо: " + types[i] + ". Проверь поддержку мобов сервером.");
                     continue;
                 }
-                mob.setNameTag(wave==4?"§c§lХРАНИТЕЛЬ КАТАКОМБ":"§7Страж катакомб");
+                mob.setMaxHealth(maxHealth);
+                mob.setHealth(maxHealth);
+                mob.setNameTag(wave == 4
+                        ? "§c§lХРАНИТЕЛЬ КАТАКОМБ §7| §c500 HP"
+                        : "§7Страж катакомб §8| §c" + maxHealth + " HP");
                 mob.setNameTagVisible(true);
                 mob.setNameTagAlwaysVisible(true);
                 mob.spawnToAll();
-            } catch(RuntimeException exception) {
-                getLogger().warning("Dungeon mob spawn failed ("+types[i]+"): "+exception.getMessage());
+            } catch (RuntimeException exception) {
+                getLogger().warning("Dungeon mob spawn failed (" + types[i] + "): " + exception.getMessage());
             }
         }
-        players.set(playerKey(player)+".dungeon.spawned-wave",wave);
+        players.set(playerKey(player) + ".dungeon.spawned-wave", wave);
         markPlayersDirty();
-        player.sendMessage(wave==4?"§c§lФИНАЛЬНЫЙ БОСС ВЫШЕЛ!":"§6Волна "+wave+"/3 §7— монстры появились!");
+        player.sendMessage(wave == 4
+                ? "§c§lФИНАЛЬНЫЙ БОСС ВЫШЕЛ! §7У него 500 HP и усиленный урон."
+                : "§6Волна " + wave + "/3 §7— монстры появились! §cHP: " + maxHealth);
     }
 
-    private void prepareDungeonRewardChest(Level level) {
+    private boolean prepareDungeonRewardChest(Level level) {
         try {
-            Position chestPosition=new Position(0,6,28,level);
-            level.getChunk(0,1,true);
-            level.setBlock(chestPosition,Block.get(54),true,true);
-            Block chestBlock=level.getBlock(chestPosition);
-            if(chestBlock instanceof BlockChest) {
-                BlockEntityChest chest=(BlockEntityChest)level.getBlockEntity(chestPosition);
-                if(chest!=null) {
-                    chest.getInventory().clearAll();
-                    chest.getInventory().addItem(Item.get(261,0,1),Item.get(262,0,16));
-                    getLogger().info("Сундук награды катакомб заполнен луком и 16 стрелами.");
-                } else {
-                    getLogger().warning("Блок сундука поставлен, но BlockEntityChest не создан.");
-                }
+            Position chestPosition = new Position(0, 6, 28, level);
+            cn.nukkit.level.format.FullChunk chunk = level.getChunk(0, 1, true);
+            level.setBlock(chestPosition, Block.get(54), true, true);
+            if (!(level.getBlock(chestPosition) instanceof BlockChest)) {
+                getLogger().warning("Не удалось установить блок сундука награды катакомб.");
+                return false;
             }
-        } catch(RuntimeException exception) {
-            getLogger().warning("Не удалось заполнить сундук награды: "+exception.getMessage());
+
+            BlockEntity blockEntity = level.getBlockEntity(chestPosition);
+            if (!(blockEntity instanceof BlockEntityChest)) {
+                // setBlock() alone does not always create a tile entity for a chest.
+                CompoundTag nbt = new CompoundTag("")
+                        .putList(new ListTag<>("Items"))
+                        .putString("id", BlockEntity.CHEST)
+                        .putInt("x", 0).putInt("y", 6).putInt("z", 28);
+                blockEntity = BlockEntity.createBlockEntity(BlockEntity.CHEST, chunk, nbt);
+            }
+            if (!(blockEntity instanceof BlockEntityChest)) {
+                getLogger().warning("Не удалось создать BlockEntityChest для награды катакомб.");
+                return false;
+            }
+
+            BlockEntityChest chest = (BlockEntityChest) blockEntity;
+            chest.getInventory().clearAll();
+            chest.getInventory().addItem(Item.get(261, 0, 1), Item.get(262, 0, 16));
+            chest.saveNBT();
+            getLogger().info("Сундук катакомб заполнен: лук и 16 стрел.");
+            return true;
+        } catch (RuntimeException exception) {
+            getLogger().warning("Не удалось заполнить сундук награды: " + exception.getMessage());
+            return false;
+        }
+    }
+
+    private boolean isDungeonWorld(Level level) {
+        return level != null && level.getFolderName().equalsIgnoreCase(
+                getConfig().getString("dungeons.world", "dungeons"));
+    }
+
+    private void setDungeonGate(Level level, int z, boolean open) {
+        for (int x = -2; x <= 2; x++) {
+            for (int y = 6; y <= 11; y++) {
+                level.setBlock(new Position(x, y, z, level), open ? Block.get(0) : Block.get(98), true, true);
+            }
+        }
+    }
+
+    private void closeDungeonGates(Level level) {
+        setDungeonGate(level, -11, false);
+        setDungeonGate(level, 10, false);
+    }
+
+    private void openDungeonGate(Level level, int z) {
+        setDungeonGate(level, z, true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void protectDungeonFromExplosions(EntityExplodeEvent event) {
+        Position position = event.getPosition();
+        if (position != null && isDungeonWorld(position.getLevel())) {
+            // Explosions may still deal damage, but never remove dungeon structure blocks.
+            event.setBlockList(new ArrayList<>());
         }
     }
 
@@ -795,9 +876,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
         } catch (RuntimeException exception) {
             getLogger().warning("Не удалось проверить площадку подземелья: " + exception.getMessage());
         }
-        if (!getConfig().getBoolean("dungeons.location-built", false) || !floorExists) {
+        if (!getConfig().getBoolean("dungeons.location-built", false) || !floorExists
+                || !getConfig().getBoolean("dungeons.wave-gates-built", false)) {
             buildDungeonLocation(level);
             getConfig().set("dungeons.location-built", true);
+            getConfig().set("dungeons.wave-gates-built", true);
             getConfig().set("managed-worlds." + worldName + ".type", "dungeons");
             saveConfig();
         }
@@ -823,12 +906,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 blocks.add(new CastleBlock(-13, y, z, 98));
                 blocks.add(new CastleBlock(13, y, z, 98));
             }
-            // Dividing walls leave a five-block-wide passage in the center.
+            // The passages are fully sealed with reinforced gates at first.
             for (int x = -13; x <= 13; x++) {
-                if (Math.abs(x) > 2) {
-                    blocks.add(new CastleBlock(x, y, -11, 98));
-                    blocks.add(new CastleBlock(x, y, 10, 98));
-                }
+                blocks.add(new CastleBlock(x, y, -11, 98));
+                blocks.add(new CastleBlock(x, y, 10, 98));
             }
         }
         for (int z : new int[]{-29, -8, 13, 29}) {
@@ -908,7 +989,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 markPlayersDirty();
                 return;
             }
-            boss.setNameTag("§c§lАРЕННЫЙ БОСС");
+            boss.setMaxHealth(500);
+            boss.setHealth(500);
+            boss.setNameTag("§c§lАРЕННЫЙ БОСС §7| §c500 HP");
             boss.setNameTagVisible(true);
             boss.setNameTagAlwaysVisible(true);
             boss.spawnToAll();
@@ -999,10 +1082,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 players.set(k + ".dungeon.return-z", p.getZ());
             }
             if (!players.getBoolean(k + ".dungeon.active", false) && !players.getBoolean(k + ".dungeon.complete", false)) {
+                closeDungeonGates(dungeon);
                 players.set(k + ".dungeon.active", true);
                 players.set(k + ".dungeon.wave", 1);
                 players.set(k + ".dungeon.kills", 0);
                 players.set(k + ".dungeon.spawned-wave", 0);
+                players.set(k + ".dungeon.chest-ready", false);
+                players.set(k + ".dungeon.loot-fallback-given", false);
             }
             markPlayersDirty();
 
@@ -1633,20 +1719,34 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if(wave<=3) {
                 int kills=Math.min(3,Math.max(0,players.getInt(playerPath+".dungeon.kills",0))+1);
                 players.set(playerPath+".dungeon.kills",kills);
-                if(kills>=3) {
+                if (kills >= 3) {
+                    if (wave == 1) {
+                        openDungeonGate(killer.getLevel(), -11);
+                        killer.sendMessage("§aПервая волна пройдена! Проход во второй зал открыт.");
+                    } else if (wave == 2) {
+                        openDungeonGate(killer.getLevel(), 10);
+                        killer.sendMessage("§aВторая волна пройдена! Проход в третий зал открыт.");
+                    }
                     wave++;
-                    players.set(playerPath+".dungeon.wave",wave);
-                    players.set(playerPath+".dungeon.kills",0);
-                    spawnDungeonWave(killer,killer.getLevel(),wave);
-                } else killer.sendMessage("§6[Катакомбы] §eВолна "+wave+"/3: "+kills+"/3");
+                    players.set(playerPath + ".dungeon.wave", wave);
+                    players.set(playerPath + ".dungeon.kills", 0);
+                    spawnDungeonWave(killer, killer.getLevel(), wave);
+                } else killer.sendMessage("§6[Катакомбы] §eВолна " + wave + "/3: " + kills + "/3");
                 markPlayersDirty();
-            } else if(wave==4 && mobName.contains("ravager")) {
-                players.set(playerPath+".dungeon.complete",true);
-                players.set(playerPath+".dungeon.active",false);
-                players.set(playerPath+".dungeon.wave",5);
-                prepareDungeonRewardChest(killer.getLevel());
+            } else if (wave == 4 && mobName.contains("ravager")) {
+                players.set(playerPath + ".dungeon.complete", true);
+                players.set(playerPath + ".dungeon.active", false);
+                players.set(playerPath + ".dungeon.wave", 5);
+                boolean chestReady = prepareDungeonRewardChest(killer.getLevel());
+                players.set(playerPath + ".dungeon.chest-ready", chestReady);
+                if (!chestReady) {
+                    killer.getInventory().addItem(Item.get(261, 0, 1), Item.get(262, 0, 16));
+                    players.set(playerPath + ".dungeon.loot-fallback-given", true);
+                }
                 markPlayersDirty();
-                killer.sendMessage("§6§lКАТАКОМБЫ ЗАЧИЩЕНЫ! §eСундук с наградой открыт. Вернись в меню /dungeon.");
+                killer.sendMessage(chestReady
+                        ? "§6§lКАТАКОМБЫ ЗАЧИЩЕНЫ! §eСундук в третьем зале заполнен луком и стрелами. /dungeon"
+                        : "§6§lКАТАКОМБЫ ЗАЧИЩЕНЫ! §eСундук не создался — лук и стрелы выданы прямо в инвентарь. /dungeon");
             }
         }
         if(isBossMob(mobName) && players.getBoolean(playerPath+".boss_hunt.active",false)

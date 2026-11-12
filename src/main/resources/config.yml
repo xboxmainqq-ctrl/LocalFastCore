@@ -33,6 +33,10 @@ daily:
   kills-required: 10
   xp-reward: 100
   money-reward: 50
+  streak-bonus-xp:
+    3: 50
+    7: 200
+    14: 500
   objectives:
     zombie: {kills: 8, xp: 100, money: 50}
     skeleton: {kills: 8, xp: 110, money: 55}

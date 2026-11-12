@@ -182,7 +182,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.17.0 включён. RPG, достижения, миры, экономика и система персонала загружены.");
+        getLogger().info("LocalFastCore 0.18.0 включён. RPG, достижения, миры, экономика и система персонала загружены.");
     }
 
     private void markPlayersDirty() {
@@ -787,12 +787,58 @@ public final class LocalFastCore extends PluginBase implements Listener {
     }
 
     private String today() { return LocalDate.now().toString(); }
+
+    // All players receive the same daily objective. The objective rotates by calendar day,
+    // so reconnecting or restarting the server cannot reroll it.
+    private String dailyTypeForDate(String date) {
+        String[] types = {"zombie", "skeleton", "spider", "any"};
+        long day = LocalDate.parse(date).toEpochDay();
+        return types[(int) Math.floorMod(day, types.length)];
+    }
+
+    private String dailyType(Player player) {
+        return players.getString(playerKey(player) + ".daily_type", dailyTypeForDate(today()));
+    }
+
+    private String dailyTargetLabel(String type) {
+        switch (type) {
+            case "zombie": return "зомби";
+            case "skeleton": return "скелетов";
+            case "spider": return "пауков";
+            default: return "любых монстров";
+        }
+    }
+
+    private boolean dailyMatches(String type, String mobName) {
+        return type.equals("any") || mobName.contains(type);
+    }
+
+    private int dailyRequired(String type) {
+        int fallback = type.equals("spider") ? 6 : type.equals("any") ? DAILY_KILLS_REQUIRED : 8;
+        return Math.max(1, getConfig().getInt("daily.objectives." + type + ".kills",
+                getConfig().getInt("daily.kills-required", fallback)));
+    }
+
+    private int dailyXpReward(String type) {
+        return Math.max(0, getConfig().getInt("daily.objectives." + type + ".xp",
+                getConfig().getInt("daily.xp-reward", DAILY_XP_REWARD)));
+    }
+
+    private long dailyMoneyReward(String type) {
+        return Math.max(0L, getConfig().getLong("daily.objectives." + type + ".money",
+                getConfig().getLong("daily.money-reward", 0L)));
+    }
+
     private void refreshDaily(Player p) {
         initialize(p); String k=playerKey(p); String d=today();
         if (!players.getString(k+".daily_date","").equals(d)) {
-            players.set(k+".daily_date",d); players.set(k+".daily_kills",0);
+            players.set(k+".daily_date",d);
+            players.set(k+".daily_type",dailyTypeForDate(d));
+            players.set(k+".daily_kills",0);
             players.set(k+".daily_active",false); players.set(k+".daily_complete",false);
             players.set(k+".daily_claimed",false); markPlayersDirty();
+        } else if (!players.exists(k+".daily_type")) {
+            players.set(k+".daily_type",dailyTypeForDate(d)); markPlayersDirty();
         }
     }
     @EventHandler
@@ -834,13 +880,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
         updateSidebar(p);
     }
     private void showDaily(Player p) {
-        refreshDaily(p); String k=playerKey(p);
-        int required = Math.max(1, getConfig().getInt("daily.kills-required", DAILY_KILLS_REQUIRED));
-        int reward = Math.max(0, getConfig().getInt("daily.xp-reward", DAILY_XP_REWARD));
-        long money = Math.max(0L, getConfig().getLong("daily.money-reward", 0L));
-        p.sendMessage("§6[Ежедневное задание] §fУбей " + required + " любых существ.");
+        refreshDaily(p); String k=playerKey(p); String type=dailyType(p);
+        int required=dailyRequired(type), reward=dailyXpReward(type);
+        long money=dailyMoneyReward(type);
+        p.sendMessage("§6[Ежедневный квест] §fУбей " + required + " " + dailyTargetLabel(type) + ".");
         if(players.getBoolean(k+".daily_complete",false)) p.sendMessage("§aВыполнено! Награда " + reward + " XP + " + money + " " + currencyName() + ": /daily claim");
-        else if(players.getBoolean(k+".daily_claimed",false)) p.sendMessage("§7Сегодняшняя награда уже получена. Возвращайся завтра.");
+        else if(players.getBoolean(k+".daily_claimed",false)) p.sendMessage("§7Сегодняшняя награда уже получена. Новое задание завтра.");
         else if(players.getBoolean(k+".daily_active",false)) p.sendMessage("§eПрогресс: "+players.getInt(k+".daily_kills",0)+"/"+required);
         else p.sendMessage("§eНаграда " + reward + " XP + " + money + " " + currencyName() + ". Начать: /daily start");
     }
@@ -851,8 +896,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if(a.equals("start")){
             if(players.getBoolean(k+".daily_active",false)||players.getBoolean(k+".daily_complete",false)||players.getBoolean(k+".daily_claimed",false)){showDaily(p);return;}
             players.set(k+".daily_active",true);players.set(k+".daily_kills",0);markPlayersDirty();
-            int required = Math.max(1, getConfig().getInt("daily.kills-required", DAILY_KILLS_REQUIRED));
-            p.sendMessage("§aНачато! Убей " + required + " любых существ.");return;
+            String type=dailyType(p); int required=dailyRequired(type);
+            p.sendMessage("§aНачато! Убей " + required + " " + dailyTargetLabel(type) + ".");return;
         }
         if(a.equals("claim")){
             if(players.getBoolean(k+".daily_claimed",false) || !players.getBoolean(k+".daily_complete",false)){
@@ -871,8 +916,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 p.sendMessage("§cНе удалось сохранить награду. XP не начислен; попробуй позже.");
                 return;
             }
-            int reward = Math.max(0, getConfig().getInt("daily.xp-reward", DAILY_XP_REWARD));
-            long money = Math.max(0L, getConfig().getLong("daily.money-reward", 0L));
+            String type=dailyType(p);
+            int reward=dailyXpReward(type);
+            long money=dailyMoneyReward(type);
             giveXp(p,reward); if (money > 0L) setBalance(p, safeAdd(getBalance(p), money)); flushPlayers();
             p.sendMessage("§aПолучено +" + reward + " XP и +" + money + " " + currencyName() + "!");return;
         }
@@ -1068,15 +1114,18 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 + (xpBonusPercent > 0 ? " §b(интеллект: +" + xpBonusPercent + "%)" : "") + "§a!");
 
 
+        String mobName = mob.getClass().getSimpleName().toLowerCase(Locale.ROOT);
         refreshDaily(killer); String dk=playerKey(killer);
         if(players.getBoolean(dk+".daily_active",false)&&!players.getBoolean(dk+".daily_complete",false)){
-            int required = Math.max(1, getConfig().getInt("daily.kills-required", DAILY_KILLS_REQUIRED));
-            int n=Math.min(required,Math.max(0,players.getInt(dk+".daily_kills",0))+1);players.set(dk+".daily_kills",n);
-            if(n>=required){players.set(dk+".daily_complete",true);killer.sendMessage("§6Ежедневное задание выполнено! /daily claim");}
-            else killer.sendMessage("§eЕжедневное задание: "+n+"/"+required);
-            markPlayersDirty();
+            String type=dailyType(killer);
+            if(dailyMatches(type,mobName)){
+                int required=dailyRequired(type);
+                int n=Math.min(required,Math.max(0,players.getInt(dk+".daily_kills",0))+1);players.set(dk+".daily_kills",n);
+                if(n>=required){players.set(dk+".daily_complete",true);killer.sendMessage("§6Ежедневный квест выполнен! /daily claim");}
+                else killer.sendMessage("§eЕжедневный квест: "+n+"/"+required);
+                markPlayersDirty();
+            }
         }
-        String mobName = mob.getClass().getSimpleName().toLowerCase(Locale.ROOT);
         updateLevelQuests(killer, mobName);
         if (getBoolean(killer, "quest_active", false) && !getBoolean(killer, "quest_complete", false)) {
             String questType = players.getString(playerKey(killer) + ".quest_type", "any");

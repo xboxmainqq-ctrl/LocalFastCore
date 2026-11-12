@@ -1,9 +1,9 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.18.0"
+version: "0.19.0"
 api: ["1.0.0"]
 author: LocalFast
-description: LocalFastCore 0.18.0 RPG quests, economy, operator and staff moderation systems
+description: LocalFastCore 0.19.0 RPG quests, economy, operator and staff moderation systems
 commands:
   spawn:
     description: Телепорт на отдельный спавн
@@ -61,6 +61,12 @@ commands:
   daily:
     description: Ежедневное задание
     usage: "/daily [start|claim]"
+  weekly:
+    description: Еженедельное RPG-испытание
+    usage: "/weekly [start|claim]"
+  questchain:
+    description: Цепочка последовательных RPG-заданий
+    usage: "/questchain [start|claim]"
   achievements:
     description: Открыть RPG-достижения
     usage: "/achievements"

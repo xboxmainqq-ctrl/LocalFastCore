@@ -1,4 +1,4 @@
-# LocalFastCore 0.18.0
+# LocalFastCore 0.19.0
 # Set operator.uuid after first startup using the server console: lfadmin setoperator <online-player>
 operator:
   uuid: ""
@@ -110,3 +110,16 @@ main-world: ""
 # RTP distance from the main world's safe-spawn point, in blocks.
 rtp-min-radius: 500
 rtp-max-radius: 5000
+
+# Еженедельное испытание; прогресс обновляется каждый понедельник.
+weekly:
+  kills-required: 100
+  xp-reward: 750
+  money-reward: 300
+
+# Последовательная цепочка: зомби -> скелеты -> пауки.
+quest-chain:
+  stages:
+    zombie: {kills: 10, xp: 150, money: 50}
+    skeleton: {kills: 12, xp: 200, money: 75}
+    spider: {kills: 15, xp: 300, money: 150}

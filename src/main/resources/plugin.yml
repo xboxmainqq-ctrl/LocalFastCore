@@ -1,9 +1,9 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.16.0"
+version: "0.17.0"
 api: ["1.0.0"]
 author: LocalFast
-description: LocalFastCore 0.16.0 RPG quests, economy, operator and staff moderation systems
+description: LocalFastCore 0.17.0 RPG quests, economy, operator and staff moderation systems
 commands:
   spawn:
     description: Телепорт на отдельный спавн
@@ -89,3 +89,8 @@ permissions:
   localfast.admin:
     description: Управление RPG-прогрессом LocalFast
     default: op
+
+  achievements:
+    description: Открыть RPG-достижения
+    usage: "/achievements"
+    aliases: [achieve]

@@ -172,3 +172,11 @@ Moderation limits follow the rank ladder. Administrators and the operator can is
 
 - Adds a separate generated dungeon world with an entrance and a return teleport to the player's previous world and position.
 - Dungeon progress is tracked only while the player is inside the dungeon world.
+
+
+## LocalFastCore 0.26.0 — обновление катакомб
+- Локация защищена от разрушения взрывами мобов.
+- Два прохода между залами закрыты до зачистки предыдущей волны и открываются автоматически после победы.
+- Сила противников растёт по волнам: зомби — 22 HP, скелеты — 42 HP, пауки — 68 HP.
+- Финальный Разоритель и босс арены усилены до 500 HP; их урон повышен.
+- Сундук награды создаётся вместе с BlockEntity и заполняется луком и 16 стрелами. Если сервер не создаёт контейнер, предметы выдаются игроку напрямую.

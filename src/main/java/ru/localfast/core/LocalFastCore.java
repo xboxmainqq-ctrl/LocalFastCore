@@ -449,6 +449,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
         UUID quittingId = quittingPlayer.getUniqueId();
         pendingTeleports.remove(quittingId);
         pendingTeleports.entrySet().removeIf(entry -> entry.getValue().requester.getUniqueId().equals(quittingId));
+        temporaryAbilityDamage.remove(quittingId);
+        nextAbilityDamage.remove(quittingId);
         String key = playerKey(event.getPlayer());
         IScoreboard scoreboard = sidebars.remove(key);
         if (scoreboard != null) scoreboard.removeViewer(event.getPlayer(), DisplaySlot.SIDEBAR);

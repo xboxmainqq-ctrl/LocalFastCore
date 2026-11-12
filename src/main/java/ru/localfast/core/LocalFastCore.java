@@ -654,6 +654,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void handleDungeon(Player p,String[] args) {
         initialize(p); String k=playerKey(p);
+        if(!players.getString(k+".dungeon.date","").equals(today())) {
+            players.set(k+".dungeon.date",today()); players.set(k+".dungeon.kills",0);
+            players.set(k+".dungeon.active",false); players.set(k+".dungeon.complete",false);
+            players.set(k+".dungeon.claimed",false); markPlayersDirty();
+        }
         String action=args.length==0?"info":args[0].toLowerCase(Locale.ROOT);
         if(action.equals("info")||action.equals("help")) { showDungeon(p); return; }
         if(action.equals("start")) {
@@ -695,6 +700,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void handleBossHunt(Player p,String[] args) {
         initialize(p); String k=playerKey(p);
+        if(!players.getString(k+".boss_hunt.date","").equals(today())) {
+            players.set(k+".boss_hunt.date",today()); players.set(k+".boss_hunt.active",false);
+            players.set(k+".boss_hunt.complete",false); players.set(k+".boss_hunt.claimed",false);
+            markPlayersDirty();
+        }
         String action=args.length==0?"info":args[0].toLowerCase(Locale.ROOT);
         if(action.equals("info")||action.equals("help")) { showBossHunt(p); return; }
         if(action.equals("start")) {

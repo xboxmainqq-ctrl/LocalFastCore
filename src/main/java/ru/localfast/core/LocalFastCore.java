@@ -198,7 +198,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.24.0 включён. RPG, гильдии, рынок, аукцион, отдельные подземелья, охота на боссов и система персонала загружены.");
+        getLogger().info("LocalFastCore 0.25.0 включён. RPG, гильдии, рынок, приключения с подземельями и боссами, система персонала загружены.");
     }
 
     private void markPlayersDirty() {
@@ -639,18 +639,110 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void showDungeon(Player p) {
         String k=playerKey(p);
-        int required=Math.max(1,getConfig().getInt("dungeons.kills-required",20));
+        int wave=Math.max(1,players.getInt(k+".dungeon.wave",1));
         int kills=Math.max(0,players.getInt(k+".dungeon.kills",0));
         boolean active=players.getBoolean(k+".dungeon.active",false);
         boolean complete=players.getBoolean(k+".dungeon.complete",false);
         boolean claimed=players.getBoolean(k+".dungeon.claimed",false);
-        p.sendMessage("§6§l[ПОДЗЕМЕЛЬЕ] §fИспытание «Затерянные катакомбы»");
-        p.sendMessage("§7Победи монстров: §e"+kills+"/"+required);
-        p.sendMessage("§7Награда: §a"+getConfig().getInt("dungeons.xp-reward",600)+" XP §7и §e"+getConfig().getLong("dungeons.money-reward",250)+" "+currencyName());
-        if(claimed) p.sendMessage("§7Награда уже получена. Новое прохождение можно начать завтра.");
-        else if(complete) p.sendMessage("§aПодземелье пройдено! §e/dungeon claim");
-        else if(active) p.sendMessage("§eПрохождение активно — продолжай охоту!");
-        else p.sendMessage("§eНачать прохождение: /dungeon start");
+        p.sendMessage("§6§l[ПОДЗЕМЕЛЬЕ] §f«Затерянные катакомбы»");
+        p.sendMessage("§7Этап: §e"+(complete?"Босс повержен": "волна "+Math.min(3,wave)+"/3") + " §8| §7Убийств: §e"+kills+"/3");
+        p.sendMessage("§7Финал: §cРазоритель §7| Награда: §a"+getConfig().getInt("dungeons.xp-reward",600)+" XP §7и §e"+getConfig().getLong("dungeons.money-reward",250)+" "+currencyName()+" §7+ лук и стрелы");
+        if(claimed) p.sendMessage("§7Награда уже получена сегодня.");
+        else if(complete) p.sendMessage("§aСундук открыт! Забери награду в меню приключений.");
+        else if(active) p.sendMessage("§eПрохождение активно. /dungeon leave — вернуться.");
+        else p.sendMessage("§eОткрой /dungeon и выбери «Затерянные катакомбы».");
+    }
+
+    private void openAdventureMenu(Player player) {
+        initialize(player);
+        String dk=playerKey(player)+".dungeon";
+        String bk=playerKey(player)+".boss_hunt";
+        boolean dungeonReady=players.getBoolean(dk+".complete",false) && !players.getBoolean(dk+".claimed",false);
+        boolean bossReady=players.getBoolean(bk+".complete",false) && !players.getBoolean(bk+".claimed",false);
+        FormWindowSimple form=new FormWindowSimple("§6§lПРИКЛЮЧЕНИЯ",
+                "§fВыбери место для путешествия. Здесь можно посмотреть награды и отправиться в бой.\n"
+                +"§7Катакомбы: 3 волны монстров и финальный босс.\n"
+                +"§7Арена: отдельный бой с мировым боссом.");
+        form.addButton(new ElementButton((dungeonReady?"§a[НАГРАДА ГОТОВА] ":"§6")+"§fЗатерянные катакомбы\n§7Монстры, босс и сундук с луком"));
+        form.addButton(new ElementButton((bossReady?"§a[НАГРАДА ГОТОВА] ":"§c")+"§fАрена мирового босса\n§7Разоритель и ежедневная награда"));
+        form.addButton(new ElementButton("§7Закрыть"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if(form.wasClosed()||form.getResponse()==null||!player.isOnline()) return;
+            int selected=form.getResponse().getClickedButtonId();
+            if(selected==0) openAdventureDetails(player,false);
+            else if(selected==1) openAdventureDetails(player,true);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openAdventureDetails(Player player, boolean boss) {
+        initialize(player);
+        String path=playerKey(player)+(boss?".boss_hunt":".dungeon");
+        boolean active=players.getBoolean(path+".active",false);
+        boolean complete=players.getBoolean(path+".complete",false);
+        boolean claimed=players.getBoolean(path+".claimed",false);
+        int xp=Math.max(0,getConfig().getInt(boss?"boss-hunt.xp-reward":"dungeons.xp-reward",boss?1200:600));
+        long money=Math.max(0L,getConfig().getLong(boss?"boss-hunt.money-reward":"dungeons.money-reward",boss?750L:250L));
+        String title=boss?"§c§lАРЕНА МИРОВОГО БОССА":"§6§lЗАТЕРЯННЫЕ КАТАКОМБЫ";
+        String description=boss
+                ?"§fБой с призванным Разорителем.\n§7Награда: §a"+xp+" XP §7и §e"+money+" "+currencyName()
+                :"§fТри волны: зомби, скелеты и пауки. Затем Разоритель и сундук.\n§7Награда: §a"+xp+" XP §7и §e"+money+" "+currencyName()+"\n§7Дополнительно: §fлук и 16 стрел";
+        if(claimed) description+="\n§8Награда за сегодня уже получена.";
+        else if(complete) description+="\n§aПобеда! Награда готова к получению.";
+        else if(active) description+="\n§eПрохождение уже начато.";
+        FormWindowSimple form=new FormWindowSimple(title,description);
+        form.addButton(new ElementButton(boss?"§cТелепорт на арену":"§6Телепорт в катакомбы"));
+        form.addButton(new ElementButton("§aЗабрать награду"));
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if(form.wasClosed()||form.getResponse()==null||!player.isOnline()) return;
+            int selected=form.getResponse().getClickedButtonId();
+            if(selected==0) {
+                if(boss) handleBossHunt(player,new String[]{"start"});
+                else handleDungeon(player,new String[]{"start"});
+            } else if(selected==1) {
+                if(boss) handleBossHunt(player,new String[]{"claim"});
+                else handleDungeon(player,new String[]{"claim"});
+                openAdventureMenu(player);
+            } else openAdventureMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void spawnDungeonWave(Player player, Level level, int wave) {
+        String[] types;
+        double z;
+        if(wave==1) { types=new String[]{"Zombie","Zombie","Zombie"}; z=-20.5; }
+        else if(wave==2) { types=new String[]{"Skeleton","Skeleton","Skeleton"}; z=0.5; }
+        else if(wave==3) { types=new String[]{"Spider","Spider","Spider"}; z=20.5; }
+        else { types=new String[]{"Ravager"}; z=25.5; }
+        for(int i=0;i<types.length;i++) {
+            try {
+                double x=wave==4?0.5:(i-1)*5.0+0.5;
+                Entity mob=Entity.createEntity(types[i],new Position(x,6,z,level));
+                if(mob==null) {
+                    player.sendMessage("§cНе удалось создать существо: "+types[i]+". Проверь поддержку мобов сервером.");
+                    continue;
+                }
+                mob.setNameTag(wave==4?"§c§lХРАНИТЕЛЬ КАТАКОМБ":"§7Страж катакомб");
+                mob.setNameTagVisible(true);
+                mob.setNameTagAlwaysVisible(true);
+                mob.spawnToAll();
+            } catch(RuntimeException exception) {
+                getLogger().warning("Dungeon mob spawn failed ("+types[i]+"): "+exception.getMessage());
+            }
+        }
+        player.sendMessage(wave==4?"§c§lФИНАЛЬНЫЙ БОСС ВЫШЕЛ!":"§6Волна "+wave+"/3 §7— монстры появились!");
+    }
+
+    private void prepareDungeonRewardChest(Level level) {
+        try {
+            level.getChunk(0,1,true);
+            level.setBlock(new Position(0,6,28,level),Block.get(54),true,true);
+            level.setBlock(new Position(0,7,28,level),Block.get(89),true,true);
+        } catch(RuntimeException exception) {
+            getLogger().warning("Не удалось поставить сундук награды: "+exception.getMessage());
+        }
     }
 
     private Level ensureDungeonWorld(Player player) {
@@ -860,8 +952,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
             players.set(k+".dungeon.active",false); players.set(k+".dungeon.complete",false);
             players.set(k+".dungeon.claimed",false); markPlayersDirty();
         }
-        // Bare /dungeon now enters the location; /dungeon info only displays status.
-        String action=args.length==0?"start":args[0].toLowerCase(Locale.ROOT);
+        // Bare /dungeon opens the unified adventure menu.
+        String action=args.length==0?"menu":args[0].toLowerCase(Locale.ROOT);
+        if(action.equals("menu")) { openAdventureMenu(p); return; }
         if(action.equals("info")||action.equals("help")) { showDungeon(p); return; }
         if(action.equals("start")) {
             Level dungeon = ensureDungeonWorld(p);
@@ -890,8 +983,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 players.set(k + ".dungeon.return-y", p.getY());
                 players.set(k + ".dungeon.return-z", p.getZ());
             }
-            if (!players.getBoolean(k + ".dungeon.complete", false)) {
+            if (!players.getBoolean(k + ".dungeon.active", false) && !players.getBoolean(k + ".dungeon.complete", false)) {
                 players.set(k + ".dungeon.active", true);
+                players.set(k + ".dungeon.wave", 1);
+                players.set(k + ".dungeon.kills", 0);
+                prepareDungeonRewardChest(dungeon);
             }
             markPlayersDirty();
 
@@ -902,9 +998,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 return;
             }
             p.sendMessage("§6§lЗАТЕРЯННЫЕ КАТАКОМБЫ");
-            p.sendMessage("§7Ты вошёл в отдельный мир подземелья с тремя залами.");
-            p.sendMessage("§eЦель: §fпобедить " + Math.max(1, getConfig().getInt("dungeons.kills-required", 20)) + " монстров.");
+            p.sendMessage("§7Три волны: зомби, скелеты, пауки. Затем финальный босс.");
             p.sendMessage("§e/dungeon leave §7— вернуться обратно.");
+            if(players.getInt(k+".dungeon.kills",0)==0 && players.getInt(k+".dungeon.wave",1)==1) spawnDungeonWave(p,dungeon,1);
             return;
         }
         if(action.equals("leave")) {
@@ -916,8 +1012,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
             int xp=Math.max(0,getConfig().getInt("dungeons.xp-reward",600));
             long money=Math.max(0L,getConfig().getLong("dungeons.money-reward",250L));
             players.set(k+".dungeon.complete",false); players.set(k+".dungeon.active",false); players.set(k+".dungeon.claimed",true);
-            giveXp(p,xp); setBalance(p,safeAdd(getBalance(p),money)); markPlayersDirty();
-            p.sendMessage("§6Награда подземелья: §a+"+xp+" XP §7и §e+"+money+" "+currencyName()+"§6!");
+            giveXp(p,xp); setBalance(p,safeAdd(getBalance(p),money));
+            p.getInventory().addItem(Item.get(261,0,1));
+            p.getInventory().addItem(Item.get(262,0,16));
+            markPlayersDirty();
+            p.sendMessage("§6Награда подземелья: §a+"+xp+" XP §7и §e+"+money+" "+currencyName()+"§6! §fПолучены лук и 16 стрел.");
             returnFromDungeon(p);
             return;
         }
@@ -950,7 +1049,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
             players.set(k+".boss_hunt.complete",false); players.set(k+".boss_hunt.claimed",false);
             markPlayersDirty();
         }
-        String action=args.length==0?"start":args[0].toLowerCase(Locale.ROOT);
+        String action=args.length==0?"menu":args[0].toLowerCase(Locale.ROOT);
+        if(action.equals("menu")) { openAdventureMenu(p); return; }
         if(action.equals("info")||action.equals("help")) { showBossHunt(p); return; }
         if(action.equals("start")) {
             if(players.getBoolean(k+".boss_hunt.claimed",false)) { showBossHunt(p); return; }
@@ -1514,13 +1614,27 @@ public final class LocalFastCore extends PluginBase implements Listener {
         String playerPath = playerKey(killer);
         if(players.getBoolean(playerPath+".dungeon.active",false)
                 && killer.getLevel().getFolderName().equalsIgnoreCase(getConfig().getString("dungeons.world", "dungeons"))
+                && killer.getX() >= -14 && killer.getX() <= 14 && killer.getZ() >= -33 && killer.getZ() <= 33
                 && !players.getBoolean(playerPath+".dungeon.complete",false)) {
-            int required=Math.max(1,getConfig().getInt("dungeons.kills-required",20));
-            int kills=Math.min(required,Math.max(0,players.getInt(playerPath+".dungeon.kills",0))+1);
-            players.set(playerPath+".dungeon.kills",kills);
-            if(kills>=required) { players.set(playerPath+".dungeon.complete",true); players.set(playerPath+".dungeon.active",false); killer.sendMessage("§6§lПодземелье пройдено! §eЗабери награду: /dungeon claim"); }
-            else if(kills%5==0) killer.sendMessage("§6[Подземелье] §eПрогресс: "+kills+"/"+required);
-            markPlayersDirty();
+            int wave=Math.max(1,players.getInt(playerPath+".dungeon.wave",1));
+            if(wave<=3) {
+                int kills=Math.min(3,Math.max(0,players.getInt(playerPath+".dungeon.kills",0))+1);
+                players.set(playerPath+".dungeon.kills",kills);
+                if(kills>=3) {
+                    wave++;
+                    players.set(playerPath+".dungeon.wave",wave);
+                    players.set(playerPath+".dungeon.kills",0);
+                    spawnDungeonWave(killer,killer.getLevel(),wave);
+                } else killer.sendMessage("§6[Катакомбы] §eВолна "+wave+"/3: "+kills+"/3");
+                markPlayersDirty();
+            } else if(wave==4 && mobName.contains("ravager")) {
+                players.set(playerPath+".dungeon.complete",true);
+                players.set(playerPath+".dungeon.active",false);
+                players.set(playerPath+".dungeon.wave",5);
+                prepareDungeonRewardChest(killer.getLevel());
+                markPlayersDirty();
+                killer.sendMessage("§6§lКАТАКОМБЫ ЗАЧИЩЕНЫ! §eСундук с наградой открыт. Вернись в меню /dungeon.");
+            }
         }
         if(isBossMob(mobName) && players.getBoolean(playerPath+".boss_hunt.active",false)
                 && killer.getLevel().getFolderName().equalsIgnoreCase(getConfig().getString("dungeons.world", "dungeons"))
@@ -5073,7 +5187,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
         if (name.equals("dungeon") || name.equals("boss")) {
             if (!(sender instanceof Player)) { sender.sendMessage("Команда доступна только игроку."); return true; }
-            if(name.equals("dungeon")) handleDungeon((Player)sender,args); else handleBossHunt((Player)sender,args);
+            Player player=(Player)sender;
+            if(args.length==0 || args[0].equalsIgnoreCase("menu")) openAdventureMenu(player);
+            else if(name.equals("dungeon")) handleDungeon(player,args);
+            else handleBossHunt(player,args);
             return true;
         }
 

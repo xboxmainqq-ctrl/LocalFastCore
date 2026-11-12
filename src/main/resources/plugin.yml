@@ -1,9 +1,9 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.19.0"
+version: "0.20.0"
 api: ["1.0.0"]
 author: LocalFast
-description: LocalFastCore 0.19.0 RPG quests, economy, operator and staff moderation systems
+description: LocalFastCore 0.20.0 RPG, guilds, quests, economy, operator and staff moderation systems
 commands:
   spawn:
     description: Телепорт на отдельный спавн
@@ -89,6 +89,9 @@ commands:
   staff:
     description: Панель администрации и модерации
     usage: "/staff"
+  guild:
+    description: Создать гильдию, приглашать игроков и управлять составом
+    usage: "/guild <create|invite|accept|info|list|leave|kick|role|transfer|disband>"
   world:
     description: Управление отдельными мирами LocalFast
     usage: "/world <list|create|load|tp|info>"

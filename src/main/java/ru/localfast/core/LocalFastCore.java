@@ -2397,8 +2397,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§bТелепортироваться в мир"));
         form.addButton(new ElementButton("§cУдалить мир"));
         form.addButton(new ElementButton("§aУстановить точку /spawn здесь"));
-        form.addButton(new ElementButton("§6Строительство замка 1000×1000"));
-        form.addButton(new ElementButton("§6Строительство spawn2 500×500"));
+        form.addButton(new ElementButton("§6Построить средневековый город 500×500"));
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
@@ -2413,9 +2412,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
             else if (id == 7) openWorldPicker(operator, "tp");
             else if (id == 8) openWorldPicker(operator, "delete");
             else if (id == 9) { setSpawn(operator); openOperatorWorldMenu(operator); }
-            else if (id == 10) openCastleBuilderMenu(operator);
-            else if (id == 11) openSecondSpawnBuilderMenu(operator);
-            else if (id == 12) openOperatorMenu(operator);
+            else if (id == 10) openSecondSpawnBuilderMenu(operator);
+            else if (id == 11) openOperatorMenu(operator);
         }));
         operator.showFormWindow(form);
     }
@@ -2464,7 +2462,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 "§7Мир: spawn2\n" + center + "\n§fОтдельная площадь с дорогами, центральной площадью, зелёными зонами и малыми постройками.");
         form.addButton(new ElementButton("§aВыбрать центр здесь"));
         form.addButton(new ElementButton("§bПроверить площадку"));
-        form.addButton(new ElementButton("§6Построить спавн 500×500"));
+        form.addButton(new ElementButton("§6Построить готовый средневековый город"));
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
@@ -2478,7 +2476,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 int y=operator.getLevel().getHighestBlockAt(x,z)+1;
                 getConfig().set("spawn2.center-x",x); getConfig().set("spawn2.center-y",y);
                 getConfig().set("spawn2.center-z",z); saveConfig();
-                operator.sendMessage("§aЦентр второго спавна сохранён.");
+                operator.sendMessage("§aЦентр средневекового города сохранён.");
                 openSecondSpawnBuilderMenu(operator);
             } else if (id == 1) {
                 validateSecondSpawnSite(operator);
@@ -2525,36 +2523,177 @@ public final class LocalFastCore extends PluginBase implements Listener {
         for(int yy=4;yy<=8;yy++){int r=yy==8?1:yy==7?2:3;for(int dx=-r;dx<=r;dx++)for(int dz=-r;dz<=r;dz++)if(dx*dx+dz*dz<=r*r+1&&!(Math.abs(dx)==r&&Math.abs(dz)==r))addCastleBlock(b,x+dx,y+yy,z+dz,18);}
         addCastleBlock(b,x,y+9,z,18);addCastleBlock(b,x+1,y+5,z,89);addCastleBlock(b,x-1,y+5,z,89);
     }
+    /**
+     * Finished 500 x 500 medieval town for spawn2.
+     * The first layer is a continuous landscaped grass/earth terrain; roads,
+     * plazas, two side castles, homes, market tents, gardens and trees are
+     * then placed above it. Coordinates are relative to the selected center.
+     */
     private List<CastleBlock> createSecondSpawnPlan(int cx,int y,int cz) {
         Map<String,CastleBlock> b=new java.util.LinkedHashMap<>();
-        for(int x=-250;x<=250;x++)for(int z=-250;z<=250;z++){
-            boolean road=Math.abs(x)<=5||Math.abs(z)<=5,edge=Math.abs(x)==245||Math.abs(z)==245;
-            boolean ring=(Math.abs(x)==118||Math.abs(z)==118)&&Math.abs(x)<=118&&Math.abs(z)<=118;
-            if(road||edge||ring)addCastleBlock(b,cx+x,y,cz+z,98);
+
+        // Continuous natural ground: no hollow voids or exposed superflat grid.
+        for(int x=-250;x<=250;x++) for(int z=-250;z<=250;z++) {
+            int ground=2;
+            if(((x*13+z*7)&31)==0) ground=3; // occasional coarse-earth patches
+            if(Math.abs(x)>238 || Math.abs(z)>238) ground=3;
+            addCastleBlock(b,cx+x,y,cz+z,ground);
         }
-        spawnFill(b,cx-48,y,cz-48,cx+48,cz+48,98);
-        for(int x=-45;x<=45;x++)for(int z=-45;z<=45;z++)if(Math.abs(x)==45||Math.abs(z)==45)addCastleBlock(b,cx+x,y+1,cz+z,45);
-        spawnBuilding(b,cx,y+1,cz,43,35,15,98,45,155);
-        spawnTower(b,cx-39,y+1,cz-39,5,22,98,45);spawnTower(b,cx+39,y+1,cz-39,5,22,98,45);
-        spawnTower(b,cx-39,y+1,cz+39,5,22,98,45);spawnTower(b,cx+39,y+1,cz+39,5,22,98,45);
-        for(int r=12;r>=4;r-=2)for(int dx=-r;dx<=r;dx++)for(int dz=-r;dz<=r;dz++)if(Math.abs(dx)==r||Math.abs(dz)==r)addCastleBlock(b,cx+dx,y+1+(12-r)/2,cz+dz,155);
-        for(int yy=2;yy<=9;yy++)addCastleBlock(b,cx,y+yy,cz,155);addCastleBlock(b,cx,y+10,cz,89);
-        for(int[] d:new int[][]{{1,0},{-1,0},{0,1},{0,-1}})for(int n=1;n<=8;n++)addCastleBlock(b,cx+d[0]*n,y+2,cz+d[1]*n,9);
-        int[][] ds={{-170,-170},{170,-170},{-170,170},{170,170}};int[] walls={45,155,98,5},roofs={45,155,98,5},lights={89,89,155,89};
-        for(int i=0;i<4;i++){int dx=ds[i][0],dz=ds[i][1];
-            for(int p=-34;p<=34;p++){addCastleBlock(b,cx+dx+p,y,cz+dz-34,98);addCastleBlock(b,cx+dx+p,y,cz+dz+34,98);addCastleBlock(b,cx+dx-34,y,cz+dz+p,98);addCastleBlock(b,cx+dx+34,y,cz+dz+p,98);}
-            spawnBuilding(b,cx+dx,y+1,cz+dz,29,25,10,walls[i],roofs[i],lights[i]);
-            spawnBuilding(b,cx+dx-43,y+1,cz+dz,17,17,7,walls[(i+1)%4],roofs[(i+1)%4],lights[i]);
-            spawnBuilding(b,cx+dx+43,y+1,cz+dz,17,17,8,walls[(i+2)%4],roofs[(i+2)%4],lights[i]);
-            for(int sx:new int[]{-1,1})for(int sz:new int[]{-1,1})spawnTreeDetailed(b,cx+dx+sx*25,y+1,cz+dz+sz*25,i%2);
-            for(int p=-28;p<=28;p+=14){addSpawnLamp(b,cx+dx+p,y,cz+dz-39);addSpawnLamp(b,cx+dx+p,y,cz+dz+39);}
+
+        // Main streets and a smaller cobbled ring, with gravel shoulders.
+        for(int p=-238;p<=238;p++) {
+            for(int w=-7;w<=7;w++) {
+                int road=Math.abs(w)>=6?13:((Math.abs(w)==0 || Math.abs(w)==1)?98:4);
+                addCastleBlock(b,cx+w,y+1,cz+p,road);
+                addCastleBlock(b,cx+p,y+1,cz+w,road);
+            }
         }
-        for(int gx=-2;gx<=2;gx++)for(int gz=-2;gz<=2;gz++){if(gx==0||gz==0)continue;int bx=gx*82,bz=gz*82;if(Math.abs(bx)>210||Math.abs(bz)>210)continue;
-            spawnBuilding(b,cx+bx,y+1,cz+bz,15,15,7,5,45,89);spawnTreeDetailed(b,cx+bx+13,y+1,cz+bz+10,(gx+gz)&1);addSpawnLamp(b,cx+bx-12,y,cz+bz-10);}
-        for(int side=-1;side<=1;side++)for(int yy=0;yy<=15;yy++){addCastleBlock(b,cx+side*15,y+yy,cz-240,98);addCastleBlock(b,cx+side*15,y+yy,cz+240,98);addCastleBlock(b,cx-240,y+yy,cz+side*15,98);addCastleBlock(b,cx+240,y+yy,cz+side*15,98);}
-        for(int p=-220;p<=220;p+=22){spawnTreeDetailed(b,cx+p,y+1,cz+14,(p/22)&1);spawnTreeDetailed(b,cx+p,y+1,cz-14,(p/22)&1);spawnTreeDetailed(b,cx+14,y+1,cz+p,(p/22)&1);spawnTreeDetailed(b,cx-14,y+1,cz+p,(p/22)&1);}
-        for(int p=-220;p<=220;p+=18){addSpawnLamp(b,cx+8,y,cz+p);addSpawnLamp(b,cx-8,y,cz+p);addSpawnLamp(b,cx+p,y,cz+8);addSpawnLamp(b,cx+p,y,cz-8);}
+        for(int r:new int[]{105,205}) for(int p=-r;p<=r;p++) for(int w=-4;w<=4;w++) {
+            int road=Math.abs(w)==4?13:98;
+            addCastleBlock(b,cx+r+w,y+1,cz+p,road);
+            addCastleBlock(b,cx-r+w,y+1,cz+p,road);
+            addCastleBlock(b,cx+p,y+1,cz+r+w,road);
+            addCastleBlock(b,cx+p,y+1,cz-r+w,road);
+        }
+
+        // Grand central plaza, patterned stone floor, gardens and fountain.
+        for(int x=-48;x<=48;x++) for(int z=-48;z<=48;z++) {
+            int floor=((x/4+z/4)&1)==0?98:4;
+            if(Math.abs(x)==48||Math.abs(z)==48) floor=45;
+            if(Math.abs(x)<=3||Math.abs(z)<=3) floor=24;
+            addCastleBlock(b,cx+x,y+1,cz+z,floor);
+        }
+        for(int gx:new int[]{-34,34}) for(int gz:new int[]{-34,34}) {
+            for(int dx=-8;dx<=8;dx++) for(int dz=-8;dz<=8;dz++) {
+                if(dx*dx+dz*dz<=64) addCastleBlock(b,cx+gx+dx,y+1,cz+gz+dz,2);
+                if(dx*dx+dz*dz<=25) addCastleBlock(b,cx+gx+dx,y+2,cz+gz+dz,38);
+            }
+            spawnTreeDetailed(b,cx+gx,y+1,cz+gz,Math.abs(gx+gz)%2);
+            for(int a=-9;a<=9;a+=3) {
+                addCastleBlock(b,cx+gx+a,y+2,cz+gz-9,89);
+                addCastleBlock(b,cx+gx+a,y+2,cz+gz+9,89);
+            }
+        }
+        // Layered fountain basin and centerpiece.
+        for(int dx=-10;dx<=10;dx++) for(int dz=-10;dz<=10;dz++) {
+            int d=dx*dx+dz*dz;
+            if(d<=100) addCastleBlock(b,cx+dx,y+2,cz+dz,d>=81?24:98);
+            if(d<=49) addCastleBlock(b,cx+dx,y+3,cz+dz,9);
+        }
+        for(int h=4;h<=10;h++) addCastleBlock(b,cx,y+h,cz,98);
+        addCastleBlock(b,cx,y+11,cz,89);
+
+        // Two distinct side castles facing the central plaza.
+        for(int side:new int[]{-1,1}) {
+            int kx=side*145, kz=0;
+            // Castle courtyard and surrounding curtain wall.
+            for(int dx=-48;dx<=48;dx++) for(int dz=-42;dz<=42;dz++) {
+                if(Math.abs(dx)==48||Math.abs(dz)==42)
+                    for(int h=1;h<=11;h++) addCastleBlock(b,cx+kx+dx,y+1+h,cz+kz+dz,98);
+                if(Math.abs(dx)<=46&&Math.abs(dz)<=40)
+                    addCastleBlock(b,cx+kx+dx,y+1,cz+kz+dz,((dx+dz)&1)==0?98:4);
+            }
+            // Front gate faces inward toward the plaza.
+            int gateX=-side*48;
+            for(int h=1;h<=14;h++) {
+                addCastleBlock(b,cx+kx+gateX,y+1+h,cz-9,45);
+                addCastleBlock(b,cx+kx+gateX,y+1+h,cz+9,45);
+            }
+            for(int dx=-9;dx<=9;dx++) addCastleBlock(b,cx+kx+gateX,y+16,cz+dx,45);
+
+            // Main keep, side wings, four corner towers and roof caps.
+            spawnBuilding(b,cx+kx,y+2,cz-4,43,35,17,98,45,155);
+            spawnBuilding(b,cx+kx,y+2,cz+29,27,17,10,45,5,155);
+            for(int tx:new int[]{-40,40}) for(int tz:new int[]{-34,34})
+                spawnTower(b,cx+kx+tx,y+2,cz+tz,6,25,98,45);
+            // Banners, lamps and courtyard planters.
+            for(int p=-28;p<=28;p+=14) {
+                addSpawnLamp(b,cx+kx+p,y+1,cz-23);
+                addSpawnLamp(b,cx+kx+p,y+1,cz+23);
+            }
+            for(int p=-24;p<=24;p+=12) {
+                spawnTreeDetailed(b,cx+kx+p,y+2,cz-31,(p/12)&1);
+                spawnTreeDetailed(b,cx+kx+p,y+2,cz+31,(p/12)&1);
+            }
+        }
+
+        // Medieval houses in compact, varied little streets around the plaza.
+        int[][] homes={
+            {-82,-76,0},{-82,76,1},{82,-76,2},{82,76,3},
+            {-205,-75,1},{-205,75,2},{205,-75,3},{205,75,0},
+            {-190,-165,2},{-125,-190,0},{125,-190,1},{190,-165,3},
+            {-190,165,1},{-125,190,3},{125,190,2},{190,165,0}
+        };
+        for(int[] h:homes) {
+            int hx=h[0],hz=h[1],t=h[2];
+            spawnBuilding(b,cx+hx,y+1,cz+hz,17+(t%2)*4,15+(t%2)*4,7+(t%3),t==1?45:5,t==2?45:5,89);
+            spawnTreeDetailed(b,cx+hx+13,y+1,cz+hz+11,t%2);
+            spawnTreeDetailed(b,cx+hx-13,y+1,cz+hz-10,(t+1)%2);
+            addSpawnLamp(b,cx+hx+18,y+1,cz+hz);
+        }
+
+        // Market lane: colorful wool canopies, counters, posts and lanterns.
+        for(int side:new int[]{-1,1}) for(int n=0;n<5;n++) {
+            int tx=side*(35+n*13), tz=side==1?-72:72;
+            spawnMarketTent(b,cx+tx,y+1,cz+tz,n%3);
+            addSpawnLamp(b,cx+tx,y+1,cz+tz+9);
+        }
+        // Additional guild stalls at the edge of the plaza.
+        for(int n=0;n<4;n++) {
+            spawnMarketTent(b,cx-24+n*16,y+1,cz+93,n%3);
+        }
+
+        // Small park gardens, flowerbeds, benches and trees in the outer ring.
+        for(int side:new int[]{-1,1}) for(int n=0;n<7;n++) {
+            int tx=side*(205+(n%2)*18), tz=-135+n*45;
+            spawnTreeDetailed(b,cx+tx,y+1,cz+tz,n%2);
+            for(int dx=-4;dx<=4;dx++) for(int dz=-4;dz<=4;dz++)
+                if(Math.abs(dx)==4||Math.abs(dz)==4) addCastleBlock(b,cx+tx+dx,y+1,cz+tz+dz,13);
+            addCastleBlock(b,cx+tx+2,y+2,cz+tz,89);
+        }
+        for(int p=-220;p<=220;p+=22) {
+            addSpawnLamp(b,cx+12,y+1,cz+p);
+            addSpawnLamp(b,cx-12,y+1,cz+p);
+            addSpawnLamp(b,cx+p,y+1,cz+12);
+            addSpawnLamp(b,cx+p,y+1,cz-12);
+        }
+
+        // Decorative boundary: low stone wall, corner watch posts and entrance arches.
+        for(int p=-250;p<=250;p++) {
+            if(Math.abs(p)>18) {
+                addCastleBlock(b,cx-250,y+1,cz+p,98);
+                addCastleBlock(b,cx+250,y+1,cz+p,98);
+                addCastleBlock(b,cx+p,y+1,cz-250,98);
+                addCastleBlock(b,cx+p,y+1,cz+250,98);
+                if((p&1)==0) {
+                    addCastleBlock(b,cx-250,y+2,cz+p,45);
+                    addCastleBlock(b,cx+250,y+2,cz+p,45);
+                    addCastleBlock(b,cx+p,y+2,cz-250,45);
+                    addCastleBlock(b,cx+p,y+2,cz+250,45);
+                }
+            }
+        }
+        for(int sx:new int[]{-1,1}) for(int sz:new int[]{-1,1}) {
+            spawnTower(b,cx+sx*235,y+1,cz+sz*235,4,13,98,45);
+        }
         return new ArrayList<>(b.values());
+    }
+
+    private void spawnMarketTent(Map<String,CastleBlock> b,int x,int y,int z,int style) {
+        int canopy=style==0?35:(style==1?45:5);
+        // Dirt/stone pad, wooden counter, four posts and a sloped canopy.
+        for(int dx=-5;dx<=5;dx++) for(int dz=-4;dz<=4;dz++)
+            addCastleBlock(b,x+dx,y, z+dz, dx==0?98:13);
+        for(int h=1;h<=4;h++) {
+            for(int dx:new int[]{-5,5}) for(int dz:new int[]{-4,4})
+                addCastleBlock(b,x+dx,y+h,z+dz,17);
+        }
+        for(int dx=-3;dx<=3;dx++) addCastleBlock(b,x+dx,y+2,z+2,5);
+        for(int dx=-5;dx<=5;dx++) for(int dz=-4;dz<=4;dz++) {
+            if(Math.abs(dx)+Math.abs(dz)<=8)
+                addCastleBlock(b,x+dx,y+5-Math.max(0,(Math.abs(dx)+Math.abs(dz)-4)/3),z+dz,canopy);
+        }
+        addCastleBlock(b,x,y+6,z,89);
     }
 
     private boolean validateSecondSpawnSite(Player operator) {
@@ -2594,7 +2733,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 getConfig().getInt("spawn2.center-y"),getConfig().getInt("spawn2.center-z"));
         castleBuildActive=true; castleBuildPlaced=0; castleBuildTotal=plan.size();
         final int[] cursor={0};
-        operator.sendMessage("§aСтроительство второго спавна началось. Блоков: "+castleBuildTotal+".");
+        operator.sendMessage("§aСтроительство средневекового города началось. Блоков: "+castleBuildTotal+".");
         castleBuildTask=getServer().getScheduler().scheduleRepeatingTask(this, () -> {
             if (!castleBuildActive) { if (castleBuildTask!=null) { castleBuildTask.cancel(); castleBuildTask=null; } return; }
             int batch=0;
@@ -2615,7 +2754,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 if (castleBuildTask!=null) { castleBuildTask.cancel(); castleBuildTask=null; }
                 getConfig().set("spawn2.completed",true); saveConfig();
                 for (Player online:getServer().getOnlinePlayers().values())
-                    if (isOperator(online)) online.sendMessage("§aВторой спавн построен. Блоков: "+castleBuildPlaced+".");
+                    if (isOperator(online)) online.sendMessage("§aСредневековый город построен. Блоков: "+castleBuildPlaced+".");
             }
         },1);
     }

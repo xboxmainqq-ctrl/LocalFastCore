@@ -64,6 +64,14 @@ effects:
   level-up-title-text: "§6УРОВЕНЬ ПОВЫШЕН!"
   level-up-subtitle: "§eНовый уровень!"
 
+# RPG combat. Values are clamped in code to safe limits.
+combat:
+  combo-window-ms: 1600
+  combo-second-hit-bonus: 1
+  combo-finisher-bonus: 2
+  tank-guard-percent: 20
+  tank-guard-duration-ms: 2000
+
 # RPG attribute formulas. Hard safety ceilings are enforced in code.
 attributes:
   strength:

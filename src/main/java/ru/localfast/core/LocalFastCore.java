@@ -171,7 +171,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.15.0 включён. RPG, миры, экономика и система персонала загружены.");
+        getLogger().info("LocalFastCore 0.16.0 включён. RPG, миры, экономика и система персонала загружены.");
     }
 
     private void markPlayersDirty() {
@@ -864,7 +864,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
     }
 
     private int xpForNextLevel(int level) {
-        return 100 + (level - 1) * 50;
+        int safeLevel = Math.max(1, Math.min(MAX_LEVEL, level));
+        long base = Math.max(1, getConfig().getInt("progression.xp-base", 100));
+        long perLevel = Math.max(0, getConfig().getInt("progression.xp-per-level", 50));
+        long required = base + (long) (safeLevel - 1) * perLevel;
+        return (int) Math.min(Integer.MAX_VALUE, required);
     }
 
     private String xpProgressBar(int currentXp, int requiredXp) {

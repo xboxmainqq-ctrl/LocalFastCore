@@ -1,4 +1,4 @@
-# LocalFastCore 0.17.0
+# LocalFastCore 0.18.0
 # Set operator.uuid after first startup using the server console: lfadmin setoperator <online-player>
 operator:
   uuid: ""
@@ -28,9 +28,16 @@ progression:
   login-reward-xp: 25
 
 daily:
+  # One objective is shared by all players and rotates every calendar day:
+  # zombie -> skeleton -> spider -> any -> repeat.
   kills-required: 10
   xp-reward: 100
   money-reward: 50
+  objectives:
+    zombie: {kills: 8, xp: 100, money: 50}
+    skeleton: {kills: 8, xp: 110, money: 55}
+    spider: {kills: 6, xp: 120, money: 60}
+    any: {kills: 10, xp: 100, money: 50}
 
 quests:
   kills-required: 5

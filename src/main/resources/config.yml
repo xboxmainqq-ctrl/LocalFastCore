@@ -1,4 +1,4 @@
-# LocalFastCore 0.19.0
+# LocalFastCore 0.20.0
 # Set operator.uuid after first startup using the server console: lfadmin setoperator <online-player>
 operator:
   uuid: ""
@@ -127,3 +127,8 @@ quest-chain:
     zombie: {kills: 10, xp: 150, money: 50}
     skeleton: {kills: 12, xp: 200, money: 75}
     spider: {kills: 15, xp: 300, money: 150}
+
+# Guild system. The creation fee is charged once; guild membership is stored in guilds.yml.
+guilds:
+  creation-cost: 1000
+  invitation-hours: 24

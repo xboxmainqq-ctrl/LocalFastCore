@@ -1245,7 +1245,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 player.sendMessage("§d§l[Способность] §fСмертельный выпад! §eСледующий удар получит +7 урона.");
                 break;
             case "tank":
-                player.setMaxHealth(player.getMaxHealth() + 6.0f);
+                player.setMaxHealth(player.getMaxHealth() + 6);
                 player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + 6.0f));
                 getServer().getScheduler().scheduleDelayedTask(this, () -> {
                     if (player.isOnline()) recalculateStats(player);

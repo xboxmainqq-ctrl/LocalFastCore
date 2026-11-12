@@ -62,6 +62,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private final Map<UUID, PendingTeleport> pendingTeleports = new HashMap<>();
     private final Map<UUID, Integer> temporaryAbilityDamage = new HashMap<>();
     private final Map<UUID, Integer> nextAbilityDamage = new HashMap<>();
+    private final Map<UUID, ComboState> combatCombos = new HashMap<>();
+    private final Map<UUID, Long> tankGuardUntil = new HashMap<>();
     private final java.util.Set<UUID> vanishedPlayers = new java.util.HashSet<>();
     private final java.util.Set<UUID> flyingPlayers = new java.util.HashSet<>();
     private TaskHandler castleBuildTask;
@@ -75,6 +77,15 @@ public final class LocalFastCore extends PluginBase implements Listener {
         PendingTeleport(Player requester, long expiresAt) {
             this.requester = requester;
             this.expiresAt = expiresAt;
+        }
+    }
+
+    private static final class ComboState {
+        final int stage;
+        final long lastHitAt;
+        ComboState(int stage, long lastHitAt) {
+            this.stage = stage;
+            this.lastHitAt = lastHitAt;
         }
     }
 
@@ -145,6 +156,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (!getConfig().exists("main-world")) getConfig().set("main-world", "");
         if (!getConfig().exists("rtp-min-radius")) getConfig().set("rtp-min-radius", 500);
         if (!getConfig().exists("rtp-max-radius")) getConfig().set("rtp-max-radius", 5000);
+        if (!getConfig().exists("combat.combo-window-ms")) getConfig().set("combat.combo-window-ms", 1600);
+        if (!getConfig().exists("combat.combo-second-hit-bonus")) getConfig().set("combat.combo-second-hit-bonus", 1);
+        if (!getConfig().exists("combat.combo-finisher-bonus")) getConfig().set("combat.combo-finisher-bonus", 2);
+        if (!getConfig().exists("combat.tank-guard-percent")) getConfig().set("combat.tank-guard-percent", 20);
+        if (!getConfig().exists("combat.tank-guard-duration-ms")) getConfig().set("combat.tank-guard-duration-ms", 2000);
         saveConfig();
         int autosaveSeconds = Math.max(5, Math.min(3600,
                 getConfig().getInt("autosave.interval-seconds", 60)));
@@ -451,6 +467,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
         pendingTeleports.entrySet().removeIf(entry -> entry.getValue().requester.getUniqueId().equals(quittingId));
         temporaryAbilityDamage.remove(quittingId);
         nextAbilityDamage.remove(quittingId);
+        combatCombos.remove(quittingId);
+        tankGuardUntil.remove(quittingId);
         String key = playerKey(event.getPlayer());
         IScoreboard scoreboard = sidebars.remove(key);
         if (scoreboard != null) scoreboard.removeViewer(event.getPlayer(), DisplaySlot.SIDEBAR);
@@ -515,24 +533,79 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onPlayerAttack(EntityDamageByEntityEvent event) {
+        long now = System.currentTimeMillis();
+
+        // Tank's finisher briefly creates a defensive stance against the next incoming hits.
+        if (event.getEntity() instanceof Player) {
+            Player defender = (Player) event.getEntity();
+            UUID defenderId = defender.getUniqueId();
+            long guardUntil = tankGuardUntil.getOrDefault(defenderId, 0L);
+            if (guardUntil > now && getRpgClass(defender).equals("tank")) {
+                int reduction = boundedConfigInt("combat.tank-guard-percent", 20, 0, 60);
+                float baseDamage = event.getDamage(EntityDamageEvent.DamageModifier.BASE);
+                event.setDamage(Math.max(0.0f, baseDamage * (100 - reduction) / 100.0f),
+                        EntityDamageEvent.DamageModifier.BASE);
+            } else if (guardUntil != 0L && guardUntil <= now) {
+                tankGuardUntil.remove(defenderId);
+            }
+        }
+
         if (!(event.getDamager() instanceof Player)) return;
         Player attacker = (Player) event.getDamager();
+        UUID attackerId = attacker.getUniqueId();
+        String playerClass = getRpgClass(attacker);
+
+        // Three-hit chain. A pause longer than the configured window starts a new combo.
+        int comboWindow = boundedConfigInt("combat.combo-window-ms", 1600, 400, 5000);
+        ComboState previous = combatCombos.get(attackerId);
+        int stage = previous == null || now - previous.lastHitAt > comboWindow
+                ? 1 : previous.stage >= 3 ? 1 : previous.stage + 1;
+        combatCombos.put(attackerId, new ComboState(stage, now));
+
         int bonusDamage = attributeBonus(attacker, "strength",
                 "attributes.strength.points-per-bonus", 5,
                 "attributes.strength.damage-per-bonus", 1,
                 "attributes.strength.max-bonus", 10, 20);
-        String playerClass = getRpgClass(attacker);
         if (playerClass.equals("warrior")) bonusDamage += 1;
         if (playerClass.equals("assassin") && ThreadLocalRandom.current().nextInt(100) < 15) {
             bonusDamage += 3;
-            attacker.sendMessage("§dКритический удар!");
+            attacker.sendMessage("§d§lКРИТИЧЕСКИЙ УДАР!");
         }
-        bonusDamage += temporaryAbilityDamage.getOrDefault(attacker.getUniqueId(), 0);
-        bonusDamage += nextAbilityDamage.getOrDefault(attacker.getUniqueId(), 0);
-        nextAbilityDamage.remove(attacker.getUniqueId());
-        if (bonusDamage <= 0) return;
-        event.setDamage(event.getDamage(EntityDamageEvent.DamageModifier.BASE) + bonusDamage,
-                EntityDamageEvent.DamageModifier.BASE);
+
+        if (stage == 2) {
+            bonusDamage += boundedConfigInt("combat.combo-second-hit-bonus", 1, 0, 5);
+            attacker.sendMessage("§eКомбо §6x2§e — продолжай серию!");
+        } else if (stage == 3) {
+            bonusDamage += boundedConfigInt("combat.combo-finisher-bonus", 2, 0, 8);
+            int classFinisherBonus;
+            switch (playerClass) {
+                case "warrior": classFinisherBonus = 2; break;
+                case "mage": classFinisherBonus = 1; break;
+                case "archer": classFinisherBonus = 2; break;
+                case "assassin": classFinisherBonus = 4; break;
+                case "tank": classFinisherBonus = 1; break;
+                default: classFinisherBonus = 0;
+            }
+            bonusDamage += classFinisherBonus;
+            attacker.sendTitle("§6§lКОМБО x3!", "§eФИНИШНЫЙ УДАР", 0, 20, 5);
+            attacker.sendMessage("§6§lФИНИШЕР! §eДополнительный урон: +" + classFinisherBonus + ".");
+
+            if (playerClass.equals("tank")) {
+                int duration = boundedConfigInt("combat.tank-guard-duration-ms", 2000, 500, 5000);
+                tankGuardUntil.put(attackerId, now + duration);
+                attacker.sendMessage("§6Железная защита: §e-" +
+                        boundedConfigInt("combat.tank-guard-percent", 20, 0, 60) +
+                        "% входящего урона на " + (duration / 1000.0) + " сек.");
+            }
+        }
+
+        bonusDamage += temporaryAbilityDamage.getOrDefault(attackerId, 0);
+        bonusDamage += nextAbilityDamage.getOrDefault(attackerId, 0);
+        nextAbilityDamage.remove(attackerId);
+        if (bonusDamage > 0) {
+            event.setDamage(event.getDamage(EntityDamageEvent.DamageModifier.BASE) + bonusDamage,
+                    EntityDamageEvent.DamageModifier.BASE);
+        }
     }
 
     private void initialize(Player player) {

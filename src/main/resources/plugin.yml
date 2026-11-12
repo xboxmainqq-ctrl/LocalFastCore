@@ -61,6 +61,10 @@ commands:
   daily:
     description: Ежедневное задание
     usage: "/daily [start|claim]"
+  achievements:
+    description: Открыть RPG-достижения
+    usage: "/achievements"
+    aliases: [achieve]
   lfmenu:
     description: Открыть RPG-меню характеристик
     usage: "/lfmenu"
@@ -89,8 +93,3 @@ permissions:
   localfast.admin:
     description: Управление RPG-прогрессом LocalFast
     default: op
-
-  achievements:
-    description: Открыть RPG-достижения
-    usage: "/achievements"
-    aliases: [achieve]

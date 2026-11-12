@@ -2113,6 +2113,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 return;
             }
             String sellerUuid = marketData.getString(path + ".seller", "");
+            String sellerName = marketData.getString(path + ".seller-name", "");
             if (sellerUuid.equals(player.getUniqueId().toString())) { player.sendMessage("§cНельзя купить собственный предмет."); return; }
             long price = marketData.getLong(path + ".price", 0L);
             int itemId = marketData.getInt(path + ".item-id", 0), damage = marketData.getInt(path + ".item-damage", 0);
@@ -2144,7 +2145,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             }
             player.getInventory().addItem(item);
             player.sendMessage("§aПокупка завершена: " + count + " предмет(ов) за " + price + " " + currencyName() + ".");
-            Player seller = getServer().getPlayer(marketData.getString(path + ".seller-name", ""));
+            Player seller = getServer().getPlayer(sellerName);
             if (seller != null) seller.sendMessage("§aТвой предмет купили за " + price + " " + currencyName() + ".");
             return;
         }
@@ -2280,16 +2281,25 @@ public final class LocalFastCore extends PluginBase implements Listener {
             Item item = Item.get(marketData.getInt(path + ".item-id", 0), marketData.getInt(path + ".item-damage", 0),
                     marketData.getInt(path + ".count", 0));
             if (!player.getInventory().canAddItem(item)) { player.sendMessage("§cОсвободи место в инвентаре."); return; }
+            long winningBid = marketData.getLong(path + ".current-bid", 0L);
+            long sellerBalance = bidder.isEmpty() ? 0L : balanceByUuid(seller);
+            if (!bidder.isEmpty() && sellerBalance > Long.MAX_VALUE - winningBid) {
+                player.sendMessage("§cБаланс продавца переполнен; обратись к администрации."); return;
+            }
+            if (!bidder.isEmpty()) {
+                setBalanceByUuid(seller, sellerBalance + winningBid);
+                if (!flushPlayers()) {
+                    setBalanceByUuid(seller, sellerBalance);
+                    player.sendMessage("§cНе удалось сохранить выплату продавцу."); return;
+                }
+            }
             marketData.remove(path);
             try { marketData.save(); }
-            catch (RuntimeException ex) { player.sendMessage("§cНе удалось завершить получение лота."); return; }
-            player.getInventory().addItem(item);
-            if (!bidder.isEmpty()) {
-                long bid = marketData.getLong(path + ".current-bid", 0L);
-                long sellerBalance = balanceByUuid(seller);
-                if (sellerBalance <= Long.MAX_VALUE - bid) setBalanceByUuid(seller, sellerBalance + bid);
-                flushPlayers();
+            catch (RuntimeException ex) {
+                if (!bidder.isEmpty()) { setBalanceByUuid(seller, sellerBalance); flushPlayers(); }
+                player.sendMessage("§cНе удалось завершить получение лота."); return;
             }
+            player.getInventory().addItem(item);
             player.sendMessage("§aТы получил предмет с аукциона #" + args[1] + ".");
             return;
         }

@@ -1,4 +1,4 @@
-# LocalFastCore 0.15.0
+# LocalFastCore 0.16.0
 # Set operator.uuid after first startup using the server console: lfadmin setoperator <online-player>
 operator:
   uuid: ""
@@ -19,6 +19,9 @@ scoreboard:
   refresh-ticks: 40
 
 progression:
+  # XP required for level 2; preserves the previous 100 + 50 per level curve.
+  xp-base: 100
+  xp-per-level: 50
   points-per-level: 3
   max-stat: 1000
   mob-kill-xp: 10

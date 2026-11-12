@@ -1711,6 +1711,233 @@ public final class LocalFastCore extends PluginBase implements Listener {
         return configured == null || configured.trim().isEmpty() ? "монет" : configured.trim();
     }
 
+
+    private Config guildData;
+
+    private String guildMemberPath(String guildId, String uuid) {
+        return "guilds." + guildId + ".members." + uuid;
+    }
+
+    private String currentGuildId(Player player) {
+        return guildData.getString("players." + player.getUniqueId().toString(), "");
+    }
+
+    private boolean guildExists(String guildId) {
+        return guildId != null && !guildId.isEmpty() && guildData.exists("guilds." + guildId + ".name");
+    }
+
+    private String guildRole(String guildId, String uuid) {
+        return guildData.getString(guildMemberPath(guildId, uuid) + ".role", "member");
+    }
+
+    private boolean guildCanManage(String guildId, Player player) {
+        String role = guildRole(guildId, player.getUniqueId().toString());
+        return role.equals("leader") || role.equals("officer");
+    }
+
+    private void showGuildInfo(Player player, String guildId) {
+        if (!guildExists(guildId)) {
+            player.sendMessage("§cГильдия не найдена.");
+            return;
+        }
+        String base = "guilds." + guildId;
+        String name = guildData.getString(base + ".name", "Без названия");
+        String owner = guildData.getString(base + ".owner-name", "Неизвестно");
+        Map<String, Object> members = guildData.getSection(base + ".members").getAll();
+        player.sendMessage("§6§lГИЛЬДИЯ §e" + name);
+        player.sendMessage("§7Глава: §f" + owner + " §8| §7Участников: §a" + members.size());
+        for (Map.Entry<String, Object> entry : members.entrySet()) {
+            String uuid = entry.getKey();
+            String memberName = guildData.getString(guildMemberPath(guildId, uuid) + ".name", "Игрок");
+            String role = guildRole(guildId, uuid);
+            String roleLabel = role.equals("leader") ? "§6Глава" : role.equals("officer") ? "§bОфицер" : "§7Участник";
+            player.sendMessage(" §8• §f" + memberName + " §8— " + roleLabel);
+        }
+    }
+
+    private void handleGuildCommand(Player player, String[] args) {
+        String uuid = player.getUniqueId().toString();
+        String guildId = currentGuildId(player);
+        if (args.length == 0 || args[0].equalsIgnoreCase("info")) {
+            if (guildId.isEmpty()) {
+                player.sendMessage("§6[Гильдии] §fТы пока не состоишь в гильдии.");
+                player.sendMessage("§e/guild create <название> §7— создать гильдию");
+                player.sendMessage("§e/guild list §7— список гильдий");
+            } else showGuildInfo(player, guildId);
+            return;
+        }
+        String action = args[0].toLowerCase(Locale.ROOT);
+        if (action.equals("list")) {
+            Map<String, Object> all = guildData.getSection("guilds").getAll();
+            player.sendMessage("§6§lГИЛЬДИИ СЕРВЕРА");
+            if (all.isEmpty()) { player.sendMessage("§7Пока нет созданных гильдий."); return; }
+            for (String id : all.keySet()) {
+                player.sendMessage("§e" + guildData.getString("guilds." + id + ".name", id)
+                        + " §8— §7" + guildData.getSection("guilds." + id + ".members").getAll().size() + " участников");
+            }
+            return;
+        }
+        if (action.equals("create")) {
+            if (!guildId.isEmpty()) { player.sendMessage("§cТы уже состоишь в гильдии. Сначала выйди из неё."); return; }
+            if (args.length < 2) { player.sendMessage("§e/guild create <название>"); return; }
+            String name = String.join(" ", Arrays.copyOfRange(args, 1, args.length)).trim();
+            if (name.length() < 3 || name.length() > 24 || name.contains("§") || name.contains("\n") || name.contains("\r")) {
+                player.sendMessage("§cНазвание должно быть длиной 3–24 символа без цветовых кодов."); return;
+            }
+            for (String id : guildData.getSection("guilds").getAll().keySet()) {
+                if (guildData.getString("guilds." + id + ".name", "").equalsIgnoreCase(name)) {
+                    player.sendMessage("§cГильдия с таким названием уже существует."); return;
+                }
+            }
+            long cost = Math.max(0L, getConfig().getLong("guilds.creation-cost", 1000L));
+            long balance = getBalance(player);
+            if (balance < cost) { player.sendMessage("§cСоздание стоит " + cost + " " + currencyName() + ". Твой баланс: " + balance + "."); return; }
+            String id = "g_" + UUID.randomUUID().toString().replace("-", "");
+            String base = "guilds." + id;
+            guildData.set(base + ".name", name);
+            guildData.set(base + ".owner", uuid);
+            guildData.set(base + ".owner-name", player.getName());
+            guildData.set(base + ".created", System.currentTimeMillis());
+            guildData.set(guildMemberPath(id, uuid) + ".name", player.getName());
+            guildData.set(guildMemberPath(id, uuid) + ".role", "leader");
+            guildData.set("players." + uuid, id);
+            setBalance(player, balance - cost);
+            try {
+                guildData.save();
+                if (!flushPlayers()) throw new IllegalStateException("players.yml save failed");
+                player.sendMessage("§aГильдия §e" + name + " §aсоздана! Списано " + cost + " " + currencyName() + ".");
+            } catch (RuntimeException ex) {
+                guildData.remove(base);
+                guildData.remove("players." + uuid);
+                setBalance(player, balance);
+                try { guildData.save(); } catch (RuntimeException ignored) {}
+                player.sendMessage("§cНе удалось сохранить гильдию. Деньги возвращены.");
+                getLogger().error("Guild creation save failed.", ex);
+            }
+            return;
+        }
+        if (action.equals("accept")) {
+            String invitePath = "invites." + uuid;
+            String invitedGuild = guildData.getString(invitePath + ".guild", "");
+            long expires = guildData.getLong(invitePath + ".expires", 0L);
+            if (!guildId.isEmpty()) { player.sendMessage("§cСначала выйди из текущей гильдии."); return; }
+            if (invitedGuild.isEmpty() || expires < System.currentTimeMillis() || !guildExists(invitedGuild)) {
+                guildData.remove(invitePath); guildData.save();
+                player.sendMessage("§cУ тебя нет действующего приглашения."); return;
+            }
+            guildData.set(guildMemberPath(invitedGuild, uuid) + ".name", player.getName());
+            guildData.set(guildMemberPath(invitedGuild, uuid) + ".role", "member");
+            guildData.set("players." + uuid, invitedGuild);
+            guildData.remove(invitePath);
+            guildData.save();
+            if (!flushPlayers()) {
+                guildData.remove(guildMemberPath(invitedGuild, uuid));
+                guildData.remove("players." + uuid);
+                guildData.save();
+                player.sendMessage("§cНе удалось сохранить вступление. Попробуй ещё раз.");
+                return;
+            }
+            player.sendMessage("§aТы вступил в гильдию §e" + guildData.getString("guilds." + invitedGuild + ".name", "") + "§a!");
+            return;
+        }
+        if (action.equals("decline")) {
+            guildData.remove("invites." + uuid); guildData.save();
+            player.sendMessage("§7Приглашение отклонено."); return;
+        }
+        if (action.equals("invite")) {
+            if (guildId.isEmpty() || !guildCanManage(guildId, player)) { player.sendMessage("§cПриглашать могут глава и офицеры гильдии."); return; }
+            if (args.length != 2) { player.sendMessage("§e/guild invite <игрок>"); return; }
+            Player target = getServer().getPlayer(args[1]);
+            if (target == null || !target.isOnline()) { player.sendMessage("§cИгрок должен быть онлайн."); return; }
+            if (target.getUniqueId().equals(player.getUniqueId())) { player.sendMessage("§cНельзя пригласить самого себя."); return; }
+            String targetUuid = target.getUniqueId().toString();
+            if (!currentGuildId(target).isEmpty()) { player.sendMessage("§cЭтот игрок уже состоит в гильдии."); return; }
+            guildData.set("invites." + targetUuid + ".guild", guildId);
+            guildData.set("invites." + targetUuid + ".expires", System.currentTimeMillis() + 86400000L);
+            guildData.save();
+            String name = guildData.getString("guilds." + guildId + ".name", "");
+            player.sendMessage("§aПриглашение отправлено игроку " + target.getName() + ".");
+            target.sendMessage("§6[Гильдия] §fТебя пригласили в §e" + name + "§f. Введи §a/guild accept §fили §c/guild decline§f (24 часа).");
+            return;
+        }
+        if (action.equals("leave")) {
+            if (guildId.isEmpty()) { player.sendMessage("§cТы не состоишь в гильдии."); return; }
+            if (guildRole(guildId, uuid).equals("leader")) { player.sendMessage("§cГлава не может выйти. Передай лидерство или распусти гильдию: /guild disband."); return; }
+            guildData.remove(guildMemberPath(guildId, uuid));
+            guildData.remove("players." + uuid);
+            guildData.save();
+            flushPlayers();
+            player.sendMessage("§eТы покинул гильдию.");
+            return;
+        }
+        if (action.equals("kick")) {
+            if (guildId.isEmpty() || !guildRole(guildId, uuid).equals("leader")) { player.sendMessage("§cИсключать участников может только глава."); return; }
+            if (args.length != 2) { player.sendMessage("§e/guild kick <игрок>"); return; }
+            Player target = getServer().getPlayer(args[1]);
+            if (target == null || !target.isOnline() || !currentGuildId(target).equals(guildId)) { player.sendMessage("§cУкажи участника своей гильдии, который сейчас онлайн."); return; }
+            if (target.getUniqueId().equals(player.getUniqueId())) { player.sendMessage("§cНельзя исключить самого себя."); return; }
+            String targetUuid = target.getUniqueId().toString();
+            guildData.remove(guildMemberPath(guildId, targetUuid));
+            guildData.remove("players." + targetUuid);
+            guildData.save(); flushPlayers();
+            player.sendMessage("§aИгрок " + target.getName() + " исключён из гильдии.");
+            target.sendMessage("§cТебя исключили из гильдии.");
+            return;
+        }
+        if (action.equals("role")) {
+            if (guildId.isEmpty() || !guildRole(guildId, uuid).equals("leader")) { player.sendMessage("§cМенять роли может только глава."); return; }
+            if (args.length != 3 || !(args[2].equalsIgnoreCase("officer") || args[2].equalsIgnoreCase("member"))) {
+                player.sendMessage("§e/guild role <игрок> <officer|member>"); return;
+            }
+            Player target = getServer().getPlayer(args[1]);
+            if (target == null || !target.isOnline() || !currentGuildId(target).equals(guildId)
+                    || target.getUniqueId().equals(player.getUniqueId())) { player.sendMessage("§cИгрок должен быть другим участником твоей гильдии и находиться онлайн."); return; }
+            guildData.set(guildMemberPath(guildId, target.getUniqueId().toString()) + ".role", args[2].toLowerCase(Locale.ROOT));
+            guildData.save();
+            player.sendMessage("§aРоль игрока " + target.getName() + " обновлена.");
+            target.sendMessage("§eТвоя роль в гильдии: " + (args[2].equalsIgnoreCase("officer") ? "§bОфицер" : "§7Участник"));
+            return;
+        }
+        if (action.equals("transfer")) {
+            if (guildId.isEmpty() || !guildRole(guildId, uuid).equals("leader")) { player.sendMessage("§cПередать лидерство может только глава."); return; }
+            if (args.length != 2) { player.sendMessage("§e/guild transfer <игрок>"); return; }
+            Player target = getServer().getPlayer(args[1]);
+            if (target == null || !target.isOnline() || !currentGuildId(target).equals(guildId) || target.getUniqueId().equals(player.getUniqueId())) {
+                player.sendMessage("§cНужен другой участник твоей гильдии онлайн."); return;
+            }
+            String targetUuid = target.getUniqueId().toString();
+            guildData.set(guildMemberPath(guildId, uuid) + ".role", "officer");
+            guildData.set(guildMemberPath(guildId, targetUuid) + ".role", "leader");
+            guildData.set("guilds." + guildId + ".owner", targetUuid);
+            guildData.set("guilds." + guildId + ".owner-name", target.getName());
+            guildData.save();
+            player.sendMessage("§aТы передал лидерство игроку " + target.getName() + ".");
+            target.sendMessage("§6Теперь ты глава гильдии!");
+            return;
+        }
+        if (action.equals("disband")) {
+            if (guildId.isEmpty() || !guildRole(guildId, uuid).equals("leader")) { player.sendMessage("§cРаспустить гильдию может только глава."); return; }
+            if (args.length != 1) { player.sendMessage("§e/guild disband"); return; }
+            String name = guildData.getString("guilds." + guildId + ".name", "");
+            Map<String, Object> members = guildData.getSection("guilds." + guildId + ".members").getAll();
+            for (String memberUuid : members.keySet()) guildData.remove("players." + memberUuid);
+            guildData.remove("guilds." + guildId);
+            guildData.save(); flushPlayers();
+            player.sendMessage("§cГильдия §e" + name + " §cраспущена.");
+            return;
+        }
+        if (action.equals("help")) {
+            player.sendMessage("§6[Гильдии] §e/guild create <название> §7— создать (цена в config.yml)");
+            player.sendMessage("§e/guild list §7— список §8| §e/guild info §7— состав");
+            player.sendMessage("§e/guild invite <игрок> §7— пригласить §8| §e/guild accept/decline");
+            player.sendMessage("§e/guild leave §7— выйти §8| §e/guild kick <игрок> §7— исключить");
+            player.sendMessage("§e/guild role <игрок> <officer|member> §7— роль");
+            player.sendMessage("§e/guild transfer <игрок> §7— передать главу §8| §e/guild disband §7— распустить");
+            return;
+        }
+        player.sendMessage("§cНеизвестная команда. Используй §e/guild help§c.");
+    }
+
     private long getBalance(Player player) {
         String value = players.getString(playerKey(player) + ".balance", "0");
         try {

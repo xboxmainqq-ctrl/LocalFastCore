@@ -155,6 +155,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             return;
         }
         players = new Config(new File(getDataFolder(), "players.yml"), Config.YAML);
+        guildData = new Config(new File(getDataFolder(), "guilds.yml"), Config.YAML);
         staffData = new Config(new File(getDataFolder(), "staff.yml"), Config.YAML);
         staffLogFile = new File(getDataFolder(), "staff.log");
         getServer().getPluginManager().registerEvents(this, this);
@@ -182,7 +183,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.19.0 включён. RPG, достижения, миры, экономика и система персонала загружены.");
+        getLogger().info("LocalFastCore 0.20.0 включён. RPG, гильдии, достижения, миры, экономика и система персонала загружены.");
     }
 
     private void markPlayersDirty() {
@@ -4327,6 +4328,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
         String name = command.getName().toLowerCase(Locale.ROOT);
 
         if (name.equals("world") || name.equals("worlds")) { handleWorldCommand(sender, args); return true; }
+
+        if (name.equals("guild")) {
+            if (!(sender instanceof Player)) { sender.sendMessage("Команда доступна только игроку."); return true; }
+            handleGuildCommand((Player) sender, args);
+            return true;
+        }
 
         if (name.equals("balance") || name.equals("pay")) {
             if (!(sender instanceof Player)) {

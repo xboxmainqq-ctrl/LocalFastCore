@@ -1532,15 +1532,17 @@ public final class LocalFastCore extends PluginBase implements Listener {
      * glyphs frame each title while preserving vanilla text rendering.
      */
     private String staffChatTag(String role) {
+        // Rank emblems use Bedrock-friendly Unicode symbols so they appear
+        // consistently in both chat and player name tags without a custom font.
         switch (role) {
-            case "ml_helper": return "§8[§b§l▰ МЛ. ХЕЛПЕР ▰§r§8]";
-            case "helper": return "§8[§a§l▰ ХЕЛПЕР ▰§r§8]";
-            case "senior_helper": return "§8[§6§l▰ СТ. ХЕЛПЕР ▰§r§8]";
-            case "junior_moderator": return "§8[§d§l▰ МЛ. МОДЕР ▰§r§8]";
-            case "moderator": return "§8[§5§l▰ МОДЕР ▰§r§8]";
-            case "senior_moderator": return "§8[§9§l▰ СТ. МОДЕР ▰§r§8]";
-            case "admin": return "§8[§c§l▰ АДМИНИСТРАТОР ▰§r§8]";
-            case "operator": return "§8[§e§l▰ ОПЕРАТОР ▰§r§8]";
+            case "ml_helper": return "§8[§b✧ §lМЛ. ХЕЛПЕР §r§b✧§8]";
+            case "helper": return "§8[§a❖ §lХЕЛПЕР §r§a❖§8]";
+            case "senior_helper": return "§8[§6✦ §lСТ. ХЕЛПЕР §r§6✦§8]";
+            case "junior_moderator": return "§8[§d⚔ §lМЛ. МОДЕР §r§d⚔§8]";
+            case "moderator": return "§8[§5◆ §lМОДЕР §r§5◆§8]";
+            case "senior_moderator": return "§8[§9⚜ §lСТ. МОДЕР §r§9⚜§8]";
+            case "admin": return "§8[§c♛ §lАДМИНИСТРАТОР §r§c♛§8]";
+            case "operator": return "§8[§e★ §lОПЕРАТОР §r§e★§8]";
             default: return "";
         }
     }

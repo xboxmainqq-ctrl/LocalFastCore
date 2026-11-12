@@ -197,7 +197,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.21.0 включён. RPG, гильдии, рынок, аукцион, торговля и система персонала загружены.");
+        getLogger().info("LocalFastCore 0.22.0 включён. RPG, гильдии, рынок, аукцион, подземелья, охота на боссов и система персонала загружены.");
     }
 
     private void markPlayersDirty() {
@@ -634,6 +634,85 @@ public final class LocalFastCore extends PluginBase implements Listener {
             event.setDamage(event.getDamage(EntityDamageEvent.DamageModifier.BASE) + bonusDamage,
                     EntityDamageEvent.DamageModifier.BASE);
         }
+    }
+
+    private void showDungeon(Player p) {
+        String k=playerKey(p);
+        int required=Math.max(1,getConfig().getInt("dungeons.kills-required",20));
+        int kills=Math.max(0,players.getInt(k+".dungeon.kills",0));
+        boolean active=players.getBoolean(k+".dungeon.active",false);
+        boolean complete=players.getBoolean(k+".dungeon.complete",false);
+        boolean claimed=players.getBoolean(k+".dungeon.claimed",false);
+        p.sendMessage("§6§l[ПОДЗЕМЕЛЬЕ] §fИспытание «Затерянные катакомбы»");
+        p.sendMessage("§7Победи монстров: §e"+kills+"/"+required);
+        p.sendMessage("§7Награда: §a"+getConfig().getInt("dungeons.xp-reward",600)+" XP §7и §e"+getConfig().getLong("dungeons.money-reward",250)+" "+currencyName());
+        if(claimed) p.sendMessage("§7Награда уже получена. Новое прохождение можно начать завтра.");
+        else if(complete) p.sendMessage("§aПодземелье пройдено! §e/dungeon claim");
+        else if(active) p.sendMessage("§eПрохождение активно — продолжай охоту!");
+        else p.sendMessage("§eНачать прохождение: /dungeon start");
+    }
+
+    private void handleDungeon(Player p,String[] args) {
+        initialize(p); String k=playerKey(p);
+        String action=args.length==0?"info":args[0].toLowerCase(Locale.ROOT);
+        if(action.equals("info")||action.equals("help")) { showDungeon(p); return; }
+        if(action.equals("start")) {
+            if(players.getBoolean(k+".dungeon.active",false)||players.getBoolean(k+".dungeon.complete",false)||players.getBoolean(k+".dungeon.claimed",false)) { showDungeon(p); return; }
+            players.set(k+".dungeon.kills",0); players.set(k+".dungeon.active",true); markPlayersDirty();
+            p.sendMessage("§aТы вошёл в «Затерянные катакомбы»! Победи "+Math.max(1,getConfig().getInt("dungeons.kills-required",20))+" монстров.");
+            return;
+        }
+        if(action.equals("claim")) {
+            if(!players.getBoolean(k+".dungeon.complete",false)||players.getBoolean(k+".dungeon.claimed",false)) { p.sendMessage("§cСначала заверши подземелье."); return; }
+            int xp=Math.max(0,getConfig().getInt("dungeons.xp-reward",600));
+            long money=Math.max(0L,getConfig().getLong("dungeons.money-reward",250L));
+            players.set(k+".dungeon.complete",false); players.set(k+".dungeon.active",false); players.set(k+".dungeon.claimed",true);
+            giveXp(p,xp); setBalance(p,safeAdd(getBalance(p),money)); markPlayersDirty();
+            p.sendMessage("§6Награда подземелья: §a+"+xp+" XP §7и §e+"+money+" "+currencyName()+"§6!");
+            return;
+        }
+        p.sendMessage("§e/dungeon [info|start|claim]");
+    }
+
+    private boolean isBossMob(String mobName) {
+        return mobName.contains("wither") || mobName.contains("enderdragon")
+                || mobName.contains("elderguardian") || mobName.contains("ravager");
+    }
+
+    private void showBossHunt(Player p) {
+        String k=playerKey(p);
+        boolean active=players.getBoolean(k+".boss_hunt.active",false);
+        boolean complete=players.getBoolean(k+".boss_hunt.complete",false);
+        boolean claimed=players.getBoolean(k+".boss_hunt.claimed",false);
+        p.sendMessage("§c§l[МИРОВОЙ БОСС] §fОхота на легендарное существо");
+        p.sendMessage("§7Цель: победить визера, дракона Края, древнего стража или разорителя.");
+        p.sendMessage("§7Награда: §a"+getConfig().getInt("boss-hunt.xp-reward",1200)+" XP §7и §e"+getConfig().getLong("boss-hunt.money-reward",750)+" "+currencyName());
+        if(claimed) p.sendMessage("§7Награда уже получена. Новая охота доступна после сброса.");
+        else if(complete) p.sendMessage("§aБосс повержен! §e/boss claim");
+        else if(active) p.sendMessage("§eОхота активна. Найди и победи мирового босса!");
+        else p.sendMessage("§eНачать охоту: /boss start");
+    }
+
+    private void handleBossHunt(Player p,String[] args) {
+        initialize(p); String k=playerKey(p);
+        String action=args.length==0?"info":args[0].toLowerCase(Locale.ROOT);
+        if(action.equals("info")||action.equals("help")) { showBossHunt(p); return; }
+        if(action.equals("start")) {
+            if(players.getBoolean(k+".boss_hunt.active",false)||players.getBoolean(k+".boss_hunt.complete",false)||players.getBoolean(k+".boss_hunt.claimed",false)) { showBossHunt(p); return; }
+            players.set(k+".boss_hunt.active",true); markPlayersDirty();
+            p.sendMessage("§cОхота началась! Победи одного из легендарных боссов.");
+            return;
+        }
+        if(action.equals("claim")) {
+            if(!players.getBoolean(k+".boss_hunt.complete",false)||players.getBoolean(k+".boss_hunt.claimed",false)) { p.sendMessage("§cСначала победи мирового босса."); return; }
+            int xp=Math.max(0,getConfig().getInt("boss-hunt.xp-reward",1200));
+            long money=Math.max(0L,getConfig().getLong("boss-hunt.money-reward",750L));
+            players.set(k+".boss_hunt.complete",false); players.set(k+".boss_hunt.active",false); players.set(k+".boss_hunt.claimed",true);
+            giveXp(p,xp); setBalance(p,safeAdd(getBalance(p),money)); markPlayersDirty();
+            p.sendMessage("§6Награда за босса: §a+"+xp+" XP §7и §e+"+money+" "+currencyName()+"§6!");
+            return;
+        }
+        p.sendMessage("§e/boss [info|start|claim]");
     }
 
     private void initialize(Player player) {
@@ -1143,6 +1222,23 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
 
         String mobName = mob.getClass().getSimpleName().toLowerCase(Locale.ROOT);
+        String playerPath = playerKey(killer);
+        if(players.getBoolean(playerPath+".dungeon.active",false) && !players.getBoolean(playerPath+".dungeon.complete",false)) {
+            int required=Math.max(1,getConfig().getInt("dungeons.kills-required",20));
+            int kills=Math.min(required,Math.max(0,players.getInt(playerPath+".dungeon.kills",0))+1);
+            players.set(playerPath+".dungeon.kills",kills);
+            if(kills>=required) { players.set(playerPath+".dungeon.complete",true); players.set(playerPath+".dungeon.active",false); killer.sendMessage("§6§lПодземелье пройдено! §eЗабери награду: /dungeon claim"); }
+            else if(kills%5==0) killer.sendMessage("§6[Подземелье] §eПрогресс: "+kills+"/"+required);
+            markPlayersDirty();
+        }
+        if(isBossMob(mobName) && players.getBoolean(playerPath+".boss_hunt.active",false)
+                && !players.getBoolean(playerPath+".boss_hunt.complete",false)) {
+            players.set(playerPath+".boss_hunt.complete",true);
+            players.set(playerPath+".boss_hunt.active",false);
+            players.set(playerPath+".boss_hunt.target",mobName);
+            markPlayersDirty();
+            killer.sendMessage("§c§lМИРОВОЙ БОСС ПОВЕРЖЕН! §eНаграда: /boss claim");
+        }
         refreshDaily(killer); String dk=playerKey(killer);
         if(players.getBoolean(dk+".daily_active",false)&&!players.getBoolean(dk+".daily_complete",false)){
             String type=dailyType(killer);
@@ -4680,6 +4776,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
         String name = command.getName().toLowerCase(Locale.ROOT);
 
         if (name.equals("world") || name.equals("worlds")) { handleWorldCommand(sender, args); return true; }
+
+        if (name.equals("dungeon") || name.equals("boss")) {
+            if (!(sender instanceof Player)) { sender.sendMessage("Команда доступна только игроку."); return true; }
+            if(name.equals("dungeon")) handleDungeon((Player)sender,args); else handleBossHunt((Player)sender,args);
+            return true;
+        }
 
         if (name.equals("trade") || name.equals("market") || name.equals("auction")) {
             if (!(sender instanceof Player)) { sender.sendMessage("Эта команда доступна только игроку."); return true; }

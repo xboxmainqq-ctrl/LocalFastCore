@@ -60,6 +60,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private boolean playersDirty = false;
     private final Map<String, IScoreboard> sidebars = new HashMap<>();
     private final Map<UUID, PendingTeleport> pendingTeleports = new HashMap<>();
+    private final Map<UUID, Integer> temporaryAbilityDamage = new HashMap<>();
+    private final Map<UUID, Integer> nextAbilityDamage = new HashMap<>();
     private final java.util.Set<UUID> vanishedPlayers = new java.util.HashSet<>();
     private final java.util.Set<UUID> flyingPlayers = new java.util.HashSet<>();
     private TaskHandler castleBuildTask;
@@ -523,6 +525,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
             bonusDamage += 3;
             attacker.sendMessage("§dКритический удар!");
         }
+        bonusDamage += temporaryAbilityDamage.getOrDefault(attacker.getUniqueId(), 0);
+        bonusDamage += nextAbilityDamage.getOrDefault(attacker.getUniqueId(), 0);
+        nextAbilityDamage.remove(attacker.getUniqueId());
         if (bonusDamage <= 0) return;
         event.setDamage(event.getDamage(EntityDamageEvent.DamageModifier.BASE) + bonusDamage,
                 EntityDamageEvent.DamageModifier.BASE);
@@ -1144,6 +1149,116 @@ public final class LocalFastCore extends PluginBase implements Listener {
         player.sendMessage("§eИспользуй: /quest, /quest zombie, /quest skeleton, /quest spider или /quest claim");
     }
 
+    private String abilityName(String playerClass) {
+        switch (playerClass) {
+            case "warrior": return "Боевой натиск";
+            case "mage": return "Магическое восстановление";
+            case "archer": return "Стремительный шаг";
+            case "assassin": return "Смертельный выпад";
+            case "tank": return "Железная стойка";
+            default: return "Нет способности";
+        }
+    }
+
+    private String abilityDescription(String playerClass) {
+        switch (playerClass) {
+            case "warrior": return "§7На 8 секунд увеличивает урон каждого удара на 3.";
+            case "mage": return "§7Мгновенно восстанавливает до 8 единиц здоровья.";
+            case "archer": return "§7На 8 секунд увеличивает скорость передвижения на 20%.";
+            case "assassin": return "§7Следующий удар наносит дополнительно 7 единиц урона.";
+            case "tank": return "§7На 8 секунд повышает максимум здоровья на 6 и лечит на 6.";
+            default: return "§7Сначала выбери класс через /class.";
+        }
+    }
+
+    private long abilityCooldownRemaining(Player player) {
+        long until = players.getLong(playerKey(player) + ".ability_cooldown_until", 0L);
+        return Math.max(0L, until - System.currentTimeMillis());
+    }
+
+    private void openAbilitiesMenu(Player player) {
+        initialize(player);
+        String playerClass = getRpgClass(player);
+        long remaining = abilityCooldownRemaining(player);
+        String cooldown = remaining > 0
+                ? "§cПерезарядка: " + ((remaining + 999L) / 1000L) + " сек."
+                : "§aСпособность готова!";
+        FormWindowSimple form = new FormWindowSimple("§6§lСпособности",
+                "§fКласс: " + rpgClassLabel(playerClass)
+                        + "\n§fСпособность: §e" + abilityName(playerClass)
+                        + "\n" + abilityDescription(playerClass)
+                        + "\n\n" + cooldown
+                        + "\n§7Перезарядка после применения: 30 секунд.");
+        form.addButton(new ElementButton("§aИспользовать способность"));
+        form.addButton(new ElementButton("§7Обновить"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int selected = form.getResponse().getClickedButtonId();
+            if (selected == 0) activateClassAbility(player);
+            else if (selected == 1) openAbilitiesMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void activateClassAbility(Player player) {
+        initialize(player);
+        String playerClass = getRpgClass(player);
+        if (playerClass.equals("none")) {
+            player.sendMessage("§cСначала выбери класс: §e/class");
+            return;
+        }
+        long remaining = abilityCooldownRemaining(player);
+        if (remaining > 0) {
+            player.sendMessage("§cСпособность перезаряжается. Осталось "
+                    + ((remaining + 999L) / 1000L) + " сек.");
+            return;
+        }
+
+        long cooldownUntil = System.currentTimeMillis() + 30_000L;
+        players.set(playerKey(player) + ".ability_cooldown_until", cooldownUntil);
+        markPlayersDirty();
+        flushPlayers();
+        UUID uuid = player.getUniqueId();
+
+        switch (playerClass) {
+            case "warrior":
+                temporaryAbilityDamage.put(uuid, 3);
+                getServer().getScheduler().scheduleDelayedTask(this, () -> temporaryAbilityDamage.remove(uuid), 160);
+                player.sendMessage("§c§l[Способность] §fБоевой натиск! §e+3 урона на 8 секунд.");
+                break;
+            case "mage":
+                float healed = Math.min(8.0f, player.getMaxHealth() - player.getHealth());
+                if (healed > 0.0f) player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + healed));
+                player.sendMessage("§b§l[Способность] §fМагическое восстановление! §a+" + (int) healed + " здоровья.");
+                break;
+            case "archer":
+                player.setMovementSpeed(Math.min(Player.MAXIMUM_SPEED, player.getMovementSpeed() * 1.20f));
+                getServer().getScheduler().scheduleDelayedTask(this, () -> {
+                    if (player.isOnline()) recalculateStats(player);
+                }, 160);
+                player.sendMessage("§a§l[Способность] §fСтремительный шаг! §e+20% скорости на 8 секунд.");
+                break;
+            case "assassin":
+                nextAbilityDamage.put(uuid, 7);
+                player.sendMessage("§d§l[Способность] §fСмертельный выпад! §eСледующий удар получит +7 урона.");
+                break;
+            case "tank":
+                player.setMaxHealth(player.getMaxHealth() + 6.0f);
+                player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + 6.0f));
+                getServer().getScheduler().scheduleDelayedTask(this, () -> {
+                    if (player.isOnline()) recalculateStats(player);
+                }, 160);
+                player.sendMessage("§6§l[Способность] §fЖелезная стойка! §e+6 максимального здоровья на 8 секунд.");
+                break;
+            default:
+                players.set(playerKey(player) + ".ability_cooldown_until", 0L);
+                markPlayersDirty();
+                player.sendMessage("§cДля этого класса способность не настроена.");
+                return;
+        }
+        updateSidebar(player);
+    }
+
     private void openStatsMenu(Player player) {
         initialize(player);
         int level = Math.max(1, Math.min(MAX_LEVEL, get(player, "level", 1)));
@@ -1162,6 +1277,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§aЛовкость §8| §f" + get(player, "agility", 0)));
         form.addButton(new ElementButton("§bИнтеллект §8| §f" + get(player, "intelligence", 0)));
         form.addButton(new ElementButton("§6Класс §8| " + rpgClassLabel(getRpgClass(player))));
+        form.addButton(new ElementButton("§dСпособности"));
         form.addButton(new ElementButton("§7Обновить"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null) return;
@@ -1169,7 +1285,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
             int selected = form.getResponse().getClickedButtonId();
             if (selected >= 0 && selected < STATS.length) openStatAllocationMenu(player, STATS[selected]);
             else if (selected == 4) openClassMenu(player);
-            else if (selected == 5) openStatsMenu(player);
+            else if (selected == 5) openAbilitiesMenu(player);
+            else if (selected == 6) openStatsMenu(player);
         }));
         player.showFormWindow(form);
     }
@@ -3755,6 +3872,17 @@ public final class LocalFastCore extends PluginBase implements Listener {
             recalculateStats(player);
             updateSidebar(player);
             sender.sendMessage("§a[LocalFast] Характеристика " + stat + " увеличена на " + amount + ".");
+            return true;
+        }
+
+        if (name.equals("ability") || name.equals("abilities")) {
+            if (!(sender instanceof Player)) {
+                sender.sendMessage("Эта команда доступна только игроку.");
+                return true;
+            }
+            Player player = (Player) sender;
+            if (name.equals("ability")) activateClassAbility(player);
+            else openAbilitiesMenu(player);
             return true;
         }
 

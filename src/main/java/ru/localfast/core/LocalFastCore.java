@@ -2174,7 +2174,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (args.length == 0 || args[0].equalsIgnoreCase("help")) {
             player.sendMessage("§6[Аукцион] §e/auction create <стартовая_цена> [минуты]");
             player.sendMessage("§e/auction list §7— лоты; §e/auction bid <id> <ставка>");
-            player.sendMessage("§e/auction claim <id> §7— забрать выигранный предмет; продавец затем использует /auction payout <id>");
+            player.sendMessage("§e/auction claim <id> §7— получить предмет; выплата продавцу проходит автоматически.");
             return;
         }
         if (args[0].equalsIgnoreCase("list")) {

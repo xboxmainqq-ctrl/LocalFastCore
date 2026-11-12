@@ -624,6 +624,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 changed = true;
             }
         }
+        String savedName = players.getString(key + ".last_name", "");
+        if (!player.getName().equals(savedName)) {
+            players.set(key + ".last_name", player.getName());
+            changed = true;
+        }
         if (!players.exists(key + ".rpg_class")) {
             players.set(key + ".rpg_class", "none");
             changed = true;
@@ -652,6 +657,49 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (changed) markPlayersDirty();
     }
 
+
+    private void showLeaderboard(CommandSender sender) {
+        Map<String, Object> allProfiles = players.getAll();
+        List<Map.Entry<String, Integer>> ranking = new ArrayList<>();
+        for (String key : allProfiles.keySet()) {
+            if (!key.startsWith("uuid_")) continue;
+            int level = Math.max(1, Math.min(MAX_LEVEL, players.getInt(key + ".level", 1)));
+            ranking.add(new java.util.AbstractMap.SimpleEntry<>(key, level));
+        }
+        ranking.sort((left, right) -> {
+            int byLevel = Integer.compare(right.getValue(), left.getValue());
+            if (byLevel != 0) return byLevel;
+            int leftXp = Math.max(0, players.getInt(left.getKey() + ".xp", 0));
+            int rightXp = Math.max(0, players.getInt(right.getKey() + ".xp", 0));
+            return Integer.compare(rightXp, leftXp);
+        });
+
+        sender.sendMessage("§6§l━━━━━━━━ ТОП ИГРОКОВ ━━━━━━━━");
+        if (ranking.isEmpty()) {
+            sender.sendMessage("§7Пока нет сохранённых персонажей.");
+            return;
+        }
+        int shown = Math.min(10, ranking.size());
+        for (int i = 0; i < shown; i++) {
+            String key = ranking.get(i).getKey();
+            String playerName = players.getString(key + ".last_name", "Неизвестный");
+            int level = ranking.get(i).getValue();
+            int xp = Math.max(0, players.getInt(key + ".xp", 0));
+            String prefix = i == 0 ? "§6①" : i == 1 ? "§f②" : i == 2 ? "§c③" : "§7" + (i + 1) + ".";
+            sender.sendMessage(prefix + " §f" + playerName + " §8— §eУр. " + level
+                    + " §8| §a" + xp + " XP");
+        }
+        if (sender instanceof Player) {
+            String ownKey = playerKey((Player) sender);
+            for (int i = 0; i < ranking.size(); i++) {
+                if (ranking.get(i).getKey().equals(ownKey)) {
+                    sender.sendMessage("§7Твоё место: §e#" + (i + 1) + " §8из §f" + ranking.size());
+                    break;
+                }
+            }
+        }
+        sender.sendMessage("§8Сортировка: уровень, затем текущий опыт.");
+    }
 
     private String today() { return LocalDate.now().toString(); }
     private void refreshDaily(Player p) {
@@ -3877,6 +3925,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 return true;
             }
             handleQuest((Player) sender, args);
+            return true;
+        }
+
+        if (name.equals("top") || name.equals("leaderboard")) {
+            showLeaderboard(sender);
             return true;
         }
 

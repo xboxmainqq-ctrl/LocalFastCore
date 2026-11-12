@@ -652,6 +652,119 @@ public final class LocalFastCore extends PluginBase implements Listener {
         else p.sendMessage("§eНачать прохождение: /dungeon start");
     }
 
+    private Level ensureDungeonWorld(Player player) {
+        String worldName = getConfig().getString("dungeons.world", "dungeons");
+        if (!getServer().isLevelLoaded(worldName)) {
+            if (!getServer().isLevelGenerated(worldName)) {
+                Class<? extends Generator> generator = Generator.getGenerator("flat");
+                if (generator == null) {
+                    player.sendMessage("§cНа сервере не найден flat-генератор для подземелья.");
+                    return null;
+                }
+                Map<String, Object> options = new HashMap<>();
+                options.put("preset", "2;7,2x3,2;1;");
+                options.put("decoration", false);
+                if (!getServer().generateLevel(worldName, ThreadLocalRandom.current().nextLong(), generator, options)) {
+                    player.sendMessage("§cНе удалось создать отдельный мир подземелья.");
+                    return null;
+                }
+            } else if (!getServer().loadLevel(worldName)) {
+                player.sendMessage("§cНе удалось загрузить мир подземелья.");
+                return null;
+            }
+        }
+        Level level = getServer().getLevelByName(worldName);
+        if (level == null) {
+            player.sendMessage("§cМир подземелья недоступен.");
+            return null;
+        }
+        if (!getConfig().getBoolean("dungeons.location-built", false)) {
+            buildDungeonLocation(level);
+            getConfig().set("dungeons.location-built", true);
+            getConfig().set("managed-worlds." + worldName + ".type", "dungeons");
+            saveConfig();
+        }
+        return level;
+    }
+
+    private void buildDungeonLocation(Level level) {
+        List<CastleBlock> blocks = new ArrayList<>();
+        int floorY = 5;
+        // Three connected chambers: entrance, monster hall and final boss room.
+        for (int x = -13; x <= 13; x++) {
+            for (int z = -32; z <= 32; z++) {
+                blocks.add(new CastleBlock(x, floorY, z, 98));
+                blocks.add(new CastleBlock(x, floorY + 7, z, 4));
+            }
+        }
+        for (int y = floorY + 1; y <= floorY + 6; y++) {
+            for (int x = -13; x <= 13; x++) {
+                blocks.add(new CastleBlock(x, y, -32, 98));
+                blocks.add(new CastleBlock(x, y, 32, 98));
+            }
+            for (int z = -32; z <= 32; z++) {
+                blocks.add(new CastleBlock(-13, y, z, 98));
+                blocks.add(new CastleBlock(13, y, z, 98));
+            }
+            // Dividing walls leave a five-block-wide passage in the center.
+            for (int x = -13; x <= 13; x++) {
+                if (Math.abs(x) > 2) {
+                    blocks.add(new CastleBlock(x, y, -11, 98));
+                    blocks.add(new CastleBlock(x, y, 10, 98));
+                }
+            }
+        }
+        for (int z : new int[]{-29, -8, 13, 29}) {
+            for (int x : new int[]{-11, 11}) {
+                blocks.add(new CastleBlock(x, floorY + 1, z, 89));
+                blocks.add(new CastleBlock(x, floorY + 2, z, 89));
+            }
+        }
+        // Build in small batches so the first visit does not freeze the server.
+        final int[] cursor = {0};
+        final TaskHandler[] task = {null};
+        task[0] = getServer().getScheduler().scheduleRepeatingTask(this, () -> {
+            int placed = 0;
+            while (cursor[0] < blocks.size() && placed < 350) {
+                CastleBlock block = blocks.get(cursor[0]++);
+                try {
+                    level.getChunk(block.x >> 4, block.z >> 4, true);
+                    level.setBlock(new Position(block.x, block.y, block.z, level), Block.get(block.id), true, true);
+                } catch (RuntimeException exception) {
+                    getLogger().warning("Dungeon builder skipped block: " + exception.getMessage());
+                }
+                placed++;
+            }
+            if (cursor[0] >= blocks.size() && task[0] != null) task[0].cancel();
+        }, 1);
+    }
+
+    private void returnFromDungeon(Player player) {
+        String key = playerKey(player);
+        if (!players.exists(key + ".dungeon.return-world")) {
+            player.sendMessage("§cТочка возвращения не сохранена. Используй /spawn.");
+            return;
+        }
+        String worldName = players.getString(key + ".dungeon.return-world", "");
+        if (!getServer().isLevelLoaded(worldName) && !getServer().loadLevel(worldName)) {
+            player.sendMessage("§cНе удалось загрузить прежний мир. Используй /spawn.");
+            return;
+        }
+        Level world = getServer().getLevelByName(worldName);
+        if (world == null) return;
+        Position target = new Position(players.getDouble(key + ".dungeon.return-x"),
+                players.getDouble(key + ".dungeon.return-y"),
+                players.getDouble(key + ".dungeon.return-z"), world);
+        if (player.teleport(target)) {
+            players.remove(key + ".dungeon.return-world");
+            players.remove(key + ".dungeon.return-x");
+            players.remove(key + ".dungeon.return-y");
+            players.remove(key + ".dungeon.return-z");
+            markPlayersDirty();
+            player.sendMessage("§aТы покинул подземелье и вернулся в прежнее место.");
+        } else player.sendMessage("§cНе удалось вернуться в прежний мир.");
+    }
+
     private void handleDungeon(Player p,String[] args) {
         initialize(p); String k=playerKey(p);
         if(!players.getString(k+".dungeon.date","").equals(today())) {
@@ -663,8 +776,25 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if(action.equals("info")||action.equals("help")) { showDungeon(p); return; }
         if(action.equals("start")) {
             if(players.getBoolean(k+".dungeon.active",false)||players.getBoolean(k+".dungeon.complete",false)||players.getBoolean(k+".dungeon.claimed",false)) { showDungeon(p); return; }
+            Level dungeon = ensureDungeonWorld(p);
+            if (dungeon == null) return;
+            players.set(k+".dungeon.return-world", p.getLevel().getFolderName());
+            players.set(k+".dungeon.return-x", p.getX());
+            players.set(k+".dungeon.return-y", p.getY());
+            players.set(k+".dungeon.return-z", p.getZ());
             players.set(k+".dungeon.kills",0); players.set(k+".dungeon.active",true); markPlayersDirty();
-            p.sendMessage("§aТы вошёл в «Затерянные катакомбы»! Победи "+Math.max(1,getConfig().getInt("dungeons.kills-required",20))+" монстров.");
+            if (!p.teleport(new Position(0.5, 6, -25.5, dungeon))) {
+                players.set(k+".dungeon.active",false); markPlayersDirty();
+                p.sendMessage("§cНе удалось телепортировать тебя в подземелье.");
+                return;
+            }
+            p.sendMessage("§6§lЗАТЕРЯННЫЕ КАТАКОМБЫ");
+            p.sendMessage("§7Ты в отдельной локации с тремя залами. Победи "+Math.max(1,getConfig().getInt("dungeons.kills-required",20))+" монстров.");
+            p.sendMessage("§e/dungeon leave §7— вернуться обратно.");
+            return;
+        }
+        if(action.equals("leave")) {
+            returnFromDungeon(p);
             return;
         }
         if(action.equals("claim")) {
@@ -674,9 +804,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
             players.set(k+".dungeon.complete",false); players.set(k+".dungeon.active",false); players.set(k+".dungeon.claimed",true);
             giveXp(p,xp); setBalance(p,safeAdd(getBalance(p),money)); markPlayersDirty();
             p.sendMessage("§6Награда подземелья: §a+"+xp+" XP §7и §e+"+money+" "+currencyName()+"§6!");
+            returnFromDungeon(p);
             return;
         }
-        p.sendMessage("§e/dungeon [info|start|claim]");
+        p.sendMessage("§e/dungeon [info|start|leave|claim]");
     }
 
     private boolean isBossMob(String mobName) {
@@ -1233,7 +1364,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
         String mobName = mob.getClass().getSimpleName().toLowerCase(Locale.ROOT);
         String playerPath = playerKey(killer);
-        if(players.getBoolean(playerPath+".dungeon.active",false) && !players.getBoolean(playerPath+".dungeon.complete",false)) {
+        if(players.getBoolean(playerPath+".dungeon.active",false)
+                && killer.getLevel().getFolderName().equalsIgnoreCase(getConfig().getString("dungeons.world", "dungeons"))
+                && !players.getBoolean(playerPath+".dungeon.complete",false)) {
             int required=Math.max(1,getConfig().getInt("dungeons.kills-required",20));
             int kills=Math.min(required,Math.max(0,players.getInt(playerPath+".dungeon.kills",0))+1);
             players.set(playerPath+".dungeon.kills",kills);

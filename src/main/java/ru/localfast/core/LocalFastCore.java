@@ -182,7 +182,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.18.0 включён. RPG, достижения, миры, экономика и система персонала загружены.");
+        getLogger().info("LocalFastCore 0.19.0 включён. RPG, достижения, миры, экономика и система персонала загружены.");
     }
 
     private void markPlayersDirty() {
@@ -1127,6 +1127,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
             }
         }
         updateLevelQuests(killer, mobName);
+        updateWeeklyProgress(killer);
+        updateQuestChainProgress(killer, mobName);
         if (getBoolean(killer, "quest_active", false) && !getBoolean(killer, "quest_complete", false)) {
             String questType = players.getString(playerKey(killer) + ".quest_type", "any");
             boolean matches = questType.equals("any")
@@ -1361,6 +1363,87 @@ public final class LocalFastCore extends PluginBase implements Listener {
             player.sendMessage("§eПрогресс: " + get(player, "quest_kills", 0) + "/" + questKillsRequired());
             player.sendMessage("§7Награда: " + questReward(type) + " XP");
         }
+    }
+
+
+    private String weekKey() { return LocalDate.now().with(java.time.DayOfWeek.MONDAY).toString(); }
+    private void refreshWeekly(Player p) {
+        String k=playerKey(p), w=weekKey();
+        if (!players.getString(k+".weekly.date","").equals(w)) {
+            players.set(k+".weekly.date",w); players.set(k+".weekly.kills",0);
+            players.set(k+".weekly.active",false); players.set(k+".weekly.complete",false);
+            players.set(k+".weekly.claimed",false); markPlayersDirty();
+        }
+    }
+    private void showWeekly(Player p) {
+        refreshWeekly(p); String k=playerKey(p);
+        int need=Math.max(1,getConfig().getInt("weekly.kills-required",100));
+        p.sendMessage("§6[Еженедельное испытание] §fПобеди "+need+" любых монстров.");
+        p.sendMessage("§eПрогресс: "+players.getInt(k+".weekly.kills",0)+"/"+need);
+        if(players.getBoolean(k+".weekly.claimed",false)) p.sendMessage("§7Награда за неделю уже получена.");
+        else if(players.getBoolean(k+".weekly.complete",false)) p.sendMessage("§aВыполнено! /weekly claim");
+        else if(!players.getBoolean(k+".weekly.active",false)) p.sendMessage("§eНачать: /weekly start");
+    }
+    private void handleWeekly(Player p,String[] args) {
+        refreshWeekly(p); String k=playerKey(p);
+        if(args.length==0){showWeekly(p);return;}
+        String a=args[0].toLowerCase(Locale.ROOT);
+        if(a.equals("start")) {
+            if(players.getBoolean(k+".weekly.claimed",false)){showWeekly(p);return;}
+            players.set(k+".weekly.active",true);markPlayersDirty();p.sendMessage("§aЕженедельное испытание начато!");showWeekly(p);return;
+        }
+        if(a.equals("claim")) {
+            if(!players.getBoolean(k+".weekly.complete",false)||players.getBoolean(k+".weekly.claimed",false)){p.sendMessage("§cИспытание ещё не выполнено.");return;}
+            int xp=Math.max(0,getConfig().getInt("weekly.xp-reward",750));
+            long money=Math.max(0L,getConfig().getLong("weekly.money-reward",300L));
+            players.set(k+".weekly.complete",false);players.set(k+".weekly.active",false);players.set(k+".weekly.claimed",true);markPlayersDirty();
+            if(!flushPlayers()){players.set(k+".weekly.complete",true);players.set(k+".weekly.active",true);players.set(k+".weekly.claimed",false);markPlayersDirty();p.sendMessage("§cНе удалось сохранить награду.");return;}
+            giveXp(p,xp);if(money>0)setBalance(p,safeAdd(getBalance(p),money));flushPlayers();
+            p.sendMessage("§aНаграда: +"+xp+" XP и +"+money+" "+currencyName()+"!");return;
+        }
+        p.sendMessage("§e/weekly [start|claim]");
+    }
+    private static final String[] CHAIN_TYPES={"zombie","skeleton","spider"};
+    private static final String[] CHAIN_LABELS={"зомби","скелетов","пауков"};
+    private int chainKills(int stage){String t=CHAIN_TYPES[Math.max(0,Math.min(2,stage))];int d=stage==0?10:stage==1?12:15;return Math.max(1,getConfig().getInt("quest-chain.stages."+t+".kills",d));}
+    private int chainXp(int stage){String t=CHAIN_TYPES[Math.max(0,Math.min(2,stage))];int d=stage==0?150:stage==1?200:300;return Math.max(0,getConfig().getInt("quest-chain.stages."+t+".xp",d));}
+    private long chainMoney(int stage){String t=CHAIN_TYPES[Math.max(0,Math.min(2,stage))];long d=stage==0?50:stage==1?75:150;return Math.max(0L,getConfig().getLong("quest-chain.stages."+t+".money",d));}
+    private void showQuestChain(Player p){
+        String k=playerKey(p);int stage=Math.max(0,Math.min(3,players.getInt(k+".quest_chain.stage",0)));
+        if(stage>=3){p.sendMessage("§6[Цепочка] §aВсе три этапа пройдены!");return;}
+        int need=chainKills(stage);p.sendMessage("§6[Цепочка] §fЭтап "+(stage+1)+"/3: победи "+need+" "+CHAIN_LABELS[stage]+".");
+        p.sendMessage("§eПрогресс: "+players.getInt(k+".quest_chain.kills",0)+"/"+need+" §8| §a+"+chainXp(stage)+" XP §8+ §6"+chainMoney(stage)+" "+currencyName());
+        if(players.getBoolean(k+".quest_chain.complete",false))p.sendMessage("§aЭтап выполнен! /questchain claim");
+        else if(!players.getBoolean(k+".quest_chain.active",false))p.sendMessage("§eНачать: /questchain start");
+    }
+    private void handleQuestChain(Player p,String[] args){
+        String k=playerKey(p);if(args.length==0){showQuestChain(p);return;}
+        String a=args[0].toLowerCase(Locale.ROOT);
+        if(a.equals("start")){int st=players.getInt(k+".quest_chain.stage",0);if(st>=3||players.getBoolean(k+".quest_chain.complete",false)){showQuestChain(p);return;}players.set(k+".quest_chain.active",true);markPlayersDirty();p.sendMessage("§aЦепочка заданий начата!");showQuestChain(p);return;}
+        if(a.equals("claim")){
+            int st=Math.max(0,Math.min(2,players.getInt(k+".quest_chain.stage",0)));
+            if(!players.getBoolean(k+".quest_chain.complete",false)){p.sendMessage("§cСначала выполни текущий этап.");return;}
+            int xp=chainXp(st);long money=chainMoney(st);
+            players.set(k+".quest_chain.stage",st+1);players.set(k+".quest_chain.kills",0);players.set(k+".quest_chain.complete",false);players.set(k+".quest_chain.active",st+1<3);markPlayersDirty();
+            if(!flushPlayers()){players.set(k+".quest_chain.stage",st);players.set(k+".quest_chain.kills",chainKills(st));players.set(k+".quest_chain.complete",true);players.set(k+".quest_chain.active",true);markPlayersDirty();p.sendMessage("§cНе удалось сохранить этап. Награда не выдана.");return;}
+            giveXp(p,xp);if(money>0)setBalance(p,safeAdd(getBalance(p),money));flushPlayers();
+            p.sendMessage("§aЭтап "+(st+1)+": +"+xp+" XP и +"+money+" "+currencyName()+"!");
+            if(st==2)p.sendMessage("§6§lПоздравляем! §eЦепочка полностью пройдена.");else showQuestChain(p);return;
+        }
+        p.sendMessage("§e/questchain [start|claim]");
+    }
+    private void updateWeeklyProgress(Player p){
+        refreshWeekly(p);String k=playerKey(p);if(!players.getBoolean(k+".weekly.active",false)||players.getBoolean(k+".weekly.complete",false))return;
+        int need=Math.max(1,getConfig().getInt("weekly.kills-required",100));int n=Math.min(need,players.getInt(k+".weekly.kills",0)+1);players.set(k+".weekly.kills",n);
+        if(n>=need){players.set(k+".weekly.complete",true);p.sendMessage("§6Еженедельное испытание выполнено! /weekly claim");}
+        else if(n%10==0)p.sendMessage("§eЕженедельный прогресс: "+n+"/"+need);markPlayersDirty();
+    }
+    private void updateQuestChainProgress(Player p,String mob){
+        String k=playerKey(p);if(!players.getBoolean(k+".quest_chain.active",false)||players.getBoolean(k+".quest_chain.complete",false))return;
+        int st=players.getInt(k+".quest_chain.stage",0);if(st<0||st>=3||!mob.contains(CHAIN_TYPES[st]))return;
+        int need=chainKills(st),n=Math.min(need,players.getInt(k+".quest_chain.kills",0)+1);players.set(k+".quest_chain.kills",n);
+        if(n>=need){players.set(k+".quest_chain.complete",true);p.sendMessage("§6Этап цепочки выполнен! /questchain claim");}
+        else p.sendMessage("§eЦепочка "+(st+1)+"/3: "+n+"/"+need);markPlayersDirty();
     }
 
     private void handleQuest(Player player, String[] args) {
@@ -4049,6 +4132,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
             return true;
         }
 
+        if (name.equals("weekly")) { if (!(sender instanceof Player)) { sender.sendMessage("Только для игроков."); return true; } handleWeekly((Player)sender,args); return true; }
+        if (name.equals("questchain")) { if (!(sender instanceof Player)) { sender.sendMessage("Только для игроков."); return true; } handleQuestChain((Player)sender,args); return true; }
         if (name.equals("quests")) {
             if (!(sender instanceof Player)) { sender.sendMessage("Эта команда доступна только игроку."); return true; }
             openQuestsMenu((Player) sender); return true;

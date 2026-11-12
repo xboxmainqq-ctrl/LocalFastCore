@@ -166,3 +166,9 @@ The operator is bound to the UUID stored in `operator.uuid`; nickname changes do
 Moderation limits follow the rank ladder. Administrators and the operator can issue a permanent ban with `/staff ban <player> -1 <reason>`. Punishments and action history are stored in `staff.yml` and `staff.log`. Fly/vanish are runtime modes and are re-applied for eligible staff on reconnect; demoting a staff member below admin removes those modes. The join greeting text is configured at `welcome.message` in `config.yml` and supports `{player}` plus Minecraft color codes. Every player can independently enable or disable their own greeting with `/staff welcome on` or `/staff welcome off`; check the setting with `/staff welcome status`. This personal preference is stored in `staff.yml`.
 
 **Important:** CI confirms Java compilation and packaging, not in-game behavior. Test moderation, flight, vanish visibility, warp teleportation and join messages on a staging Nukkit server before production. Existing `players.yml` profiles are not reset by these staff features.
+
+
+## Version 0.23.0
+
+- Adds a separate generated dungeon world with an entrance and a return teleport to the player's previous world and position.
+- Dungeon progress is tracked only while the player is inside the dungeon world.

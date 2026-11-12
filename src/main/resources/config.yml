@@ -1,4 +1,4 @@
-# LocalFastCore 0.21.0
+# LocalFastCore 0.22.0
 # Set operator.uuid after first startup using the server console: lfadmin setoperator <online-player>
 operator:
   uuid: ""
@@ -139,3 +139,12 @@ market:
   default-auction-minutes: 30
   max-auction-minutes: 10080
   trade-request-seconds: 60
+
+# Dungeon and world-boss rewards. Existing player data is preserved.
+dungeons:
+  kills-required: 20
+  xp-reward: 600
+  money-reward: 250
+boss-hunt:
+  xp-reward: 1200
+  money-reward: 750

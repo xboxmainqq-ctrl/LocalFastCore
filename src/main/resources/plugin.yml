@@ -63,6 +63,12 @@ commands:
   class:
     description: Выбрать или посмотреть класс персонажа
     usage: "/class [info]"
+  ability:
+    description: Использовать активную способность класса
+    usage: "/ability"
+  abilities:
+    description: Открыть меню способностей класса
+    usage: "/abilities"
   lfadmin:
     description: Операторская панель LocalFastCore
     usage: "/lfadmin"

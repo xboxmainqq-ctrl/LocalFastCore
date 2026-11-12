@@ -89,6 +89,17 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
     }
 
+    private static final class AchievementDefinition {
+        final String id, title, description, metric;
+        final int target, xpReward;
+        final long moneyReward;
+        AchievementDefinition(String id, String title, String description, String metric,
+                              int target, int xpReward, long moneyReward) {
+            this.id = id; this.title = title; this.description = description; this.metric = metric;
+            this.target = target; this.xpReward = xpReward; this.moneyReward = moneyReward;
+        }
+    }
+
     private static final class QuestDefinition {
         final String id, title, description, mobType;
         final int minLevel, maxLevel, defaultKills, defaultReward;
@@ -171,7 +182,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.16.0 включён. RPG, миры, экономика и система персонала загружены.");
+        getLogger().info("LocalFastCore 0.17.0 включён. RPG, достижения, миры, экономика и система персонала загружены.");
     }
 
     private void markPlayersDirty() {
@@ -658,6 +669,80 @@ public final class LocalFastCore extends PluginBase implements Listener {
     }
 
 
+    private List<AchievementDefinition> achievementCatalog() {
+        return Arrays.asList(
+                new AchievementDefinition("first_blood", "Первая кровь", "Победи первое существо", "kills", 1, 25, 10),
+                new AchievementDefinition("hunter_25", "Охотник", "Победи 25 существ", "kills", 25, 100, 50),
+                new AchievementDefinition("hunter_100", "Истребитель", "Победи 100 существ", "kills", 100, 300, 150),
+                new AchievementDefinition("hunter_500", "Легенда охоты", "Победи 500 существ", "kills", 500, 1000, 500),
+                new AchievementDefinition("level_10", "Начинающий герой", "Достигни 10 уровня", "level", 10, 150, 75),
+                new AchievementDefinition("level_25", "Опытный герой", "Достигни 25 уровня", "level", 25, 400, 200),
+                new AchievementDefinition("level_50", "Герой королевства", "Достигни 50 уровня", "level", 50, 1000, 500)
+        );
+    }
+
+    private int achievementProgress(Player player, AchievementDefinition achievement) {
+        if (achievement.metric.equals("kills")) {
+            return Math.max(0, get(player, "achievement_kills", 0));
+        }
+        if (achievement.metric.equals("level")) {
+            return Math.max(1, get(player, "level", 1));
+        }
+        return 0;
+    }
+
+    private void openAchievementsMenu(Player player) {
+        initialize(player);
+        List<AchievementDefinition> achievements = achievementCatalog();
+        FormWindowSimple form = new FormWindowSimple("§6§lДОСТИЖЕНИЯ",
+                "§fВыполняй цели, забирай награды и развивай своего персонажа!\n§7Нажми на выполненное достижение, чтобы получить награду.");
+        for (AchievementDefinition achievement : achievements) {
+            String path = playerKey(player) + ".achievements." + achievement.id;
+            boolean claimed = players.getBoolean(path + ".claimed", false);
+            int progress = Math.min(achievement.target, achievementProgress(player, achievement));
+            String status = claimed ? "§8[Получено]" : progress >= achievement.target ? "§a[Забрать]" : "§e[В процессе]";
+            form.addButton(new ElementButton(status + " §f" + achievement.title + "\n§7" + progress + "/" + achievement.target
+                    + " §8| §a+" + achievement.xpReward + " XP §6+" + achievement.moneyReward + " монет"));
+        }
+        form.addButton(new ElementButton("§7Закрыть"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int selected = form.getResponse().getClickedButtonId();
+            if (selected >= 0 && selected < achievements.size()) {
+                claimAchievement(player, achievements.get(selected));
+            }
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void claimAchievement(Player player, AchievementDefinition achievement) {
+        String path = playerKey(player) + ".achievements." + achievement.id;
+        if (players.getBoolean(path + ".claimed", false)) {
+            player.sendMessage("§7Эта награда уже получена.");
+            openAchievementsMenu(player);
+            return;
+        }
+        if (achievementProgress(player, achievement) < achievement.target) {
+            player.sendMessage("§eДостижение ещё не выполнено: " + achievement.description + ".");
+            openAchievementsMenu(player);
+            return;
+        }
+        players.set(path + ".claimed", true);
+        markPlayersDirty();
+        if (!flushPlayers()) {
+            players.set(path + ".claimed", false);
+            markPlayersDirty();
+            player.sendMessage("§cНе удалось сохранить достижение. Награда не выдана; попробуй позже.");
+            return;
+        }
+        giveXp(player, Math.max(0, achievement.xpReward));
+        if (achievement.moneyReward > 0L) setBalance(player, safeAdd(getBalance(player), achievement.moneyReward));
+        flushPlayers();
+        player.sendMessage("§6§lДОСТИЖЕНИЕ ПОЛУЧЕНО! §f" + achievement.title);
+        player.sendMessage("§aНаграда: +" + achievement.xpReward + " XP и +" + achievement.moneyReward + " монет.");
+        openAchievementsMenu(player);
+    }
+
     private void showLeaderboard(CommandSender sender) {
         Map<String, Object> allProfiles = players.getAll();
         List<Map.Entry<String, Integer>> ranking = new ArrayList<>();
@@ -977,6 +1062,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         initialize(killer);
         int mobXp = Math.max(0, getConfig().getInt("progression.mob-kill-xp", MOB_KILL_XP));
         giveXp(killer, mobXp);
+        set(killer, "achievement_kills", Math.min(Integer.MAX_VALUE, get(killer, "achievement_kills", 0) + 1));
         int xpBonusPercent = intelligenceXpBonusPercent(killer);
         killer.sendMessage("§a[LocalFast] +" + mobXp + " базового XP за победу над существом"
                 + (xpBonusPercent > 0 ? " §b(интеллект: +" + xpBonusPercent + "%)" : "") + "§a!");
@@ -3925,6 +4011,15 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 return true;
             }
             handleQuest((Player) sender, args);
+            return true;
+        }
+
+        if (name.equals("achievements") || name.equals("achieve")) {
+            if (!(sender instanceof Player)) {
+                sender.sendMessage("Эта команда доступна только игроку.");
+                return true;
+            }
+            openAchievementsMenu((Player) sender);
             return true;
         }
 

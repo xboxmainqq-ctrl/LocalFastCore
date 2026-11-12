@@ -9,6 +9,7 @@ import cn.nukkit.level.Position;
 import cn.nukkit.command.Command;
 import cn.nukkit.command.CommandSender;
 import cn.nukkit.entity.EntityCreature;
+import cn.nukkit.entity.Entity;
 import cn.nukkit.event.EventHandler;
 import cn.nukkit.event.EventPriority;
 import cn.nukkit.event.Listener;
@@ -750,6 +751,82 @@ public final class LocalFastCore extends PluginBase implements Listener {
         getLogger().info("Локация подземелья построена: " + placed + "/" + blocks.size() + " блоков.");
     }
 
+    private void buildBossArena(Level level) {
+        List<CastleBlock> blocks = new ArrayList<>();
+        int floorY = 5;
+        for (int x = 100; x <= 140; x++) {
+            for (int z = -20; z <= 20; z++) {
+                blocks.add(new CastleBlock(x, floorY, z, 98));
+                blocks.add(new CastleBlock(x, floorY + 9, z, 4));
+            }
+        }
+        for (int y = floorY + 1; y <= floorY + 8; y++) {
+            for (int x = 100; x <= 140; x++) {
+                blocks.add(new CastleBlock(x, y, -20, 98));
+                blocks.add(new CastleBlock(x, y, 20, 98));
+            }
+            for (int z = -20; z <= 20; z++) {
+                blocks.add(new CastleBlock(100, y, z, 98));
+                blocks.add(new CastleBlock(140, y, z, 98));
+            }
+        }
+        int placed = 0;
+        for (CastleBlock block : blocks) {
+            try {
+                level.getChunk(block.x >> 4, block.z >> 4, true);
+                level.setBlock(new Position(block.x, block.y, block.z, level), Block.get(block.id), true, true);
+                placed++;
+            } catch (RuntimeException exception) {
+                getLogger().warning("Boss arena skipped block: " + exception.getMessage());
+            }
+        }
+        getLogger().info("Арена мирового босса построена: " + placed + "/" + blocks.size() + " блоков.");
+    }
+
+    private void ensureBossArena(Level level) {
+        if (!getConfig().getBoolean("boss-hunt.arena-built", false)) {
+            buildBossArena(level);
+            getConfig().set("boss-hunt.arena-built", true);
+            saveConfig();
+        }
+    }
+
+    private void spawnArenaBoss(Player player, Level level) {
+        try {
+            Position spawn = new Position(120.5, 6, 0.5, level);
+            Entity boss = Entity.createEntity("Ravager", spawn);
+            if (boss == null) {
+                player.sendMessage("§cНе удалось создать босса. Проверь поддержку Ravager на сервере.");
+                players.set(playerKey(player) + ".boss_hunt.active", false);
+                markPlayersDirty();
+                return;
+            }
+            boss.setNameTag("§c§lАРЕННЫЙ БОСС");
+            boss.setNameTagVisible(true);
+            boss.setNameTagAlwaysVisible(true);
+            boss.spawnToAll();
+            player.sendMessage("§c§lБОСС ВЫШЕЛ НА АРЕНУ!");
+        } catch (RuntimeException exception) {
+            getLogger().warning("Не удалось создать босса на арене: " + exception.getMessage());
+            players.set(playerKey(player) + ".boss_hunt.active", false);
+            markPlayersDirty();
+            player.sendMessage("§cНе удалось призвать босса: " + exception.getMessage());
+        }
+    }
+
+    private void returnFromBossArena(Player player) {
+        String key = playerKey(player);
+        String worldName = players.getString(key + ".boss_hunt.return-world", "");
+        Level returnLevel = worldName.isEmpty() ? null : getServer().getLevelByName(worldName);
+        if (returnLevel == null) returnLevel = getServer().getDefaultLevel();
+        if (returnLevel != null) {
+            double x = players.getDouble(key + ".boss_hunt.return-x", returnLevel.getSpawnLocation().getX());
+            double y = players.getDouble(key + ".boss_hunt.return-y", returnLevel.getSpawnLocation().getY());
+            double z = players.getDouble(key + ".boss_hunt.return-z", returnLevel.getSpawnLocation().getZ());
+            player.teleport(new Position(x, y, z, returnLevel));
+        }
+    }
+
     private void returnFromDungeon(Player player) {
         String key = playerKey(player);
         if (!players.exists(key + ".dungeon.return-world")) {
@@ -857,13 +934,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
         boolean active=players.getBoolean(k+".boss_hunt.active",false);
         boolean complete=players.getBoolean(k+".boss_hunt.complete",false);
         boolean claimed=players.getBoolean(k+".boss_hunt.claimed",false);
-        p.sendMessage("§c§l[МИРОВОЙ БОСС] §fОхота на легендарное существо");
-        p.sendMessage("§7Цель: победить визера, дракона Края, древнего стража или разорителя.");
+        p.sendMessage("§c§l[МИРОВОЙ БОСС] §fАрена легендарного существа");
+        p.sendMessage("§7Цель: войти на арену и победить призванного разорителя.");
         p.sendMessage("§7Награда: §a"+getConfig().getInt("boss-hunt.xp-reward",1200)+" XP §7и §e"+getConfig().getLong("boss-hunt.money-reward",750)+" "+currencyName());
-        if(claimed) p.sendMessage("§7Награда уже получена. Новая охота доступна после сброса.");
+        if(claimed) p.sendMessage("§7Награда уже получена. Новая охота доступна после ежедневного сброса.");
         else if(complete) p.sendMessage("§aБосс повержен! §e/boss claim");
-        else if(active) p.sendMessage("§eОхота активна. Найди и победи мирового босса!");
-        else p.sendMessage("§eНачать охоту: /boss start");
+        else if(active) p.sendMessage("§eОхота активна. §e/boss leave §7— вернуться обратно.");
+        else p.sendMessage("§eНачать бой: /boss start");
     }
 
     private void handleBossHunt(Player p,String[] args) {
@@ -873,24 +950,58 @@ public final class LocalFastCore extends PluginBase implements Listener {
             players.set(k+".boss_hunt.complete",false); players.set(k+".boss_hunt.claimed",false);
             markPlayersDirty();
         }
-        String action=args.length==0?"info":args[0].toLowerCase(Locale.ROOT);
+        String action=args.length==0?"start":args[0].toLowerCase(Locale.ROOT);
         if(action.equals("info")||action.equals("help")) { showBossHunt(p); return; }
         if(action.equals("start")) {
-            if(players.getBoolean(k+".boss_hunt.active",false)||players.getBoolean(k+".boss_hunt.complete",false)||players.getBoolean(k+".boss_hunt.claimed",false)) { showBossHunt(p); return; }
-            players.set(k+".boss_hunt.active",true); markPlayersDirty();
-            p.sendMessage("§cОхота началась! Победи одного из легендарных боссов.");
+            if(players.getBoolean(k+".boss_hunt.claimed",false)) { showBossHunt(p); return; }
+            Level arena = ensureDungeonWorld(p);
+            if(arena == null) return;
+            ensureBossArena(arena);
+            if (!players.getBoolean(k+".boss_hunt.active",false)) {
+                players.set(k+".boss_hunt.return-world",p.getLevel().getFolderName());
+                players.set(k+".boss_hunt.return-x",p.getX());
+                players.set(k+".boss_hunt.return-y",p.getY());
+                players.set(k+".boss_hunt.return-z",p.getZ());
+                players.set(k+".boss_hunt.active",true);
+                players.set(k+".boss_hunt.complete",false);
+                markPlayersDirty();
+            }
+            if (!p.teleport(new Position(120.5,6,0.5,arena))) {
+                players.set(k+".boss_hunt.active",false); markPlayersDirty();
+                p.sendMessage("§cНе удалось перенести тебя на арену босса.");
+                return;
+            }
+            if (!players.getBoolean(k+".boss_hunt.spawned",false)) {
+                players.set(k+".boss_hunt.spawned",true);
+                markPlayersDirty();
+                spawnArenaBoss(p,arena);
+            } else {
+                p.sendMessage("§c§lАРЕНА БОССА §7— продолжай бой.");
+            }
+            p.sendMessage("§e/boss leave §7— покинуть арену.");
+            return;
+        }
+        if(action.equals("leave")) {
+            if(!players.getBoolean(k+".boss_hunt.active",false)) { p.sendMessage("§cТы не участвуешь в охоте."); return; }
+            players.set(k+".boss_hunt.active",false);
+            players.set(k+".boss_hunt.spawned",false);
+            markPlayersDirty();
+            returnFromBossArena(p);
+            p.sendMessage("§7Ты покинул арену мирового босса.");
             return;
         }
         if(action.equals("claim")) {
-            if(!players.getBoolean(k+".boss_hunt.complete",false)||players.getBoolean(k+".boss_hunt.claimed",false)) { p.sendMessage("§cСначала победи мирового босса."); return; }
+            if(!players.getBoolean(k+".boss_hunt.complete",false)||players.getBoolean(k+".boss_hunt.claimed",false)) { p.sendMessage("§cСначала победи босса на арене."); return; }
             int xp=Math.max(0,getConfig().getInt("boss-hunt.xp-reward",1200));
             long money=Math.max(0L,getConfig().getLong("boss-hunt.money-reward",750L));
             players.set(k+".boss_hunt.complete",false); players.set(k+".boss_hunt.active",false); players.set(k+".boss_hunt.claimed",true);
+            players.set(k+".boss_hunt.spawned",false);
             giveXp(p,xp); setBalance(p,safeAdd(getBalance(p),money)); markPlayersDirty();
             p.sendMessage("§6Награда за босса: §a+"+xp+" XP §7и §e+"+money+" "+currencyName()+"§6!");
+            returnFromBossArena(p);
             return;
         }
-        p.sendMessage("§e/boss [info|start|claim]");
+        p.sendMessage("§e/boss [info|start|leave|claim]");
     }
 
     private void initialize(Player player) {
@@ -1412,10 +1523,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
             markPlayersDirty();
         }
         if(isBossMob(mobName) && players.getBoolean(playerPath+".boss_hunt.active",false)
+                && killer.getLevel().getFolderName().equalsIgnoreCase(getConfig().getString("dungeons.world", "dungeons"))
+                && killer.getX() >= 99 && killer.getX() <= 141 && killer.getZ() >= -21 && killer.getZ() <= 21
                 && !players.getBoolean(playerPath+".boss_hunt.complete",false)) {
             players.set(playerPath+".boss_hunt.complete",true);
             players.set(playerPath+".boss_hunt.active",false);
             players.set(playerPath+".boss_hunt.target",mobName);
+            players.set(playerPath+".boss_hunt.spawned",false);
             markPlayersDirty();
             killer.sendMessage("§c§lМИРОВОЙ БОСС ПОВЕРЖЕН! §eНаграда: /boss claim");
         }

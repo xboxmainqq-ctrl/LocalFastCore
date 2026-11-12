@@ -171,7 +171,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.14.0 включён. RPG, миры, экономика и система персонала загружены.");
+        getLogger().info("LocalFastCore 0.15.0 включён. RPG, миры, экономика и система персонала загружены.");
     }
 
     private void markPlayersDirty() {
@@ -450,8 +450,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
 
         String role = staffRole(player);
-        String roleText = staffRoleColor(role) + "[" + staffRoleLabel(role) + "]";
-        String chatLine = roleText + " §f" + player.getName() + " §8» §f" + event.getMessage();
+        String roleText = staffChatTag(role);
+        String chatLine = (roleText.isEmpty() ? "" : roleText + " ") +
+                ("operator".equals(role) ? "§e" : "§f") + player.getName() +
+                " §8» §f" + event.getMessage();
 
         // Полностью заменяем стандартный вывод чата одной готовой строкой.
         event.setCancelled(true);
@@ -1524,16 +1526,21 @@ public final class LocalFastCore extends PluginBase implements Listener {
         return 0;
     }
 
+    /**
+     * Compact filled-looking rank ribbons for Bedrock chat/name tags.
+     * Bedrock chat does not support true background fills, so colored block
+     * glyphs frame each title while preserving vanilla text rendering.
+     */
     private String staffChatTag(String role) {
         switch (role) {
-            case "ml_helper": return " §a[Мл.Хелпер]";
-            case "helper": return " §b[Хелпер]";
-            case "senior_helper": return " §6[Ст.Хелпер]";
-            case "junior_moderator": return " §d[Мл.Модер]";
-            case "moderator": return " §5[Модератор]";
-            case "senior_moderator": return " §9[Ст.Модер]";
-            case "admin": return " §c[Администратор]";
-            case "operator": return " §e[Оператор]";
+            case "ml_helper": return "§8[§b§l▰ МЛ. ХЕЛПЕР ▰§r§8]";
+            case "helper": return "§8[§a§l▰ ХЕЛПЕР ▰§r§8]";
+            case "senior_helper": return "§8[§6§l▰ СТ. ХЕЛПЕР ▰§r§8]";
+            case "junior_moderator": return "§8[§d§l▰ МЛ. МОДЕР ▰§r§8]";
+            case "moderator": return "§8[§5§l▰ МОДЕР ▰§r§8]";
+            case "senior_moderator": return "§8[§9§l▰ СТ. МОДЕР ▰§r§8]";
+            case "admin": return "§8[§c§l▰ АДМИНИСТРАТОР ▰§r§8]";
+            case "operator": return "§8[§e§l▰ ОПЕРАТОР ▰§r§8]";
             default: return "";
         }
     }
@@ -1541,7 +1548,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private void refreshStaffNameTag(Player player) {
         String role = staffRole(player);
         String name = "operator".equals(role) ? "§e" + player.getName() : "§f" + player.getName();
-        player.setNameTag(name + staffChatTag(role));
+        String tag = staffChatTag(role);
+        player.setNameTag(tag.isEmpty() ? name : tag + " §f" + name);
     }
 
     private void refreshStaffModes(Player player) {

@@ -732,6 +732,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 getLogger().warning("Dungeon mob spawn failed ("+types[i]+"): "+exception.getMessage());
             }
         }
+        players.set(playerKey(player)+".dungeon.spawned-wave",wave);
+        markPlayersDirty();
         player.sendMessage(wave==4?"§c§lФИНАЛЬНЫЙ БОСС ВЫШЕЛ!":"§6Волна "+wave+"/3 §7— монстры появились!");
     }
 
@@ -987,6 +989,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 players.set(k + ".dungeon.active", true);
                 players.set(k + ".dungeon.wave", 1);
                 players.set(k + ".dungeon.kills", 0);
+                players.set(k + ".dungeon.spawned-wave", 0);
                 prepareDungeonRewardChest(dungeon);
             }
             markPlayersDirty();
@@ -1000,7 +1003,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
             p.sendMessage("§6§lЗАТЕРЯННЫЕ КАТАКОМБЫ");
             p.sendMessage("§7Три волны: зомби, скелеты, пауки. Затем финальный босс.");
             p.sendMessage("§e/dungeon leave §7— вернуться обратно.");
-            if(players.getInt(k+".dungeon.kills",0)==0 && players.getInt(k+".dungeon.wave",1)==1) spawnDungeonWave(p,dungeon,1);
+            int currentWave=Math.max(1,players.getInt(k+".dungeon.wave",1));
+            if(players.getInt(k+".dungeon.spawned-wave",0)<currentWave) spawnDungeonWave(p,dungeon,currentWave);
             return;
         }
         if(action.equals("leave")) {

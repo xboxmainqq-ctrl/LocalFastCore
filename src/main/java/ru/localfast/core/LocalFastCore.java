@@ -6882,6 +6882,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
             guildData.set(base + ".wins", 0L);
             guildData.remove(base + ".achievements");
         }
+        for (String uuid : guildData.getSection("season.players").getAll().keySet()) {
+            String base = "season.players." + uuid;
+            guildData.set(base + ".points", 0L);
+            guildData.set(base + ".kills", 0L);
+            guildData.remove(base + ".achievements");
+        }
     }
 
     private void ensureGuildSeason() {

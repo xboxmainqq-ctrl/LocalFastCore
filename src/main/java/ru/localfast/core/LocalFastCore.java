@@ -211,7 +211,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.32.0 включён. RPG, гильдии, рынок, командные катакомбы с рекордами, система персонала загружены.");
+        getLogger().info("LocalFastCore 0.33.0 включён. RPG, гильдии, рынок, катакомбы с тремя уровнями сложности и рекордами, система персонала загружены.");
     }
 
     private void markPlayersDirty() {
@@ -617,6 +617,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     else if (wave == 2) multiplier = 1.45f;
                     else if (wave == 3) multiplier = 1.85f;
                     else multiplier = 2.2f;
+                    multiplier *= dungeonDamageMultiplier(players.getString(victimPath + ".dungeon.difficulty", "normal"));
                 } else if (players.getBoolean(victimPath + ".boss_hunt.active", false)
                         && victim.getX() >= 99 && victim.getX() <= 141
                         && victim.getZ() >= -21 && victim.getZ() <= 21) {
@@ -759,6 +760,44 @@ public final class LocalFastCore extends PluginBase implements Listener {
         player.showFormWindow(form);
     }
 
+    private String normalizeDungeonDifficulty(String value) {
+        if (value == null) return "normal";
+        String difficulty = value.toLowerCase(Locale.ROOT);
+        return Arrays.asList("easy", "normal", "hard").contains(difficulty) ? difficulty : "normal";
+    }
+
+    private String dungeonDifficultyLabel(String difficulty) {
+        switch (normalizeDungeonDifficulty(difficulty)) {
+            case "easy": return "§aЛёгкая";
+            case "hard": return "§cСложная";
+            default: return "§eОбычная";
+        }
+    }
+
+    private double dungeonHealthMultiplier(String difficulty) {
+        switch (normalizeDungeonDifficulty(difficulty)) {
+            case "easy": return 0.75;
+            case "hard": return 1.5;
+            default: return 1.0;
+        }
+    }
+
+    private double dungeonDamageMultiplier(String difficulty) {
+        switch (normalizeDungeonDifficulty(difficulty)) {
+            case "easy": return 0.75;
+            case "hard": return 1.45;
+            default: return 1.0;
+        }
+    }
+
+    private double dungeonRewardMultiplier(String difficulty) {
+        switch (normalizeDungeonDifficulty(difficulty)) {
+            case "easy": return 0.8;
+            case "hard": return 1.5;
+            default: return 1.0;
+        }
+    }
+
     private void spawnDungeonWave(Player player, Level level, int wave) {
         String[] types;
         double z;
@@ -767,6 +806,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
         else if (wave == 2) { types = new String[]{"Skeleton","Skeleton","Skeleton"}; z = 0.5; maxHealth = 42; }
         else if (wave == 3) { types = new String[]{"Spider","Spider","Spider"}; z = 20.5; maxHealth = 68; }
         else { types = new String[]{"Ravager"}; z = 25.5; maxHealth = 500; }
+        String difficulty = normalizeDungeonDifficulty(players.getString(playerKey(player) + ".dungeon.difficulty", "normal"));
+        maxHealth = Math.max(1, (int) Math.round(maxHealth * dungeonHealthMultiplier(difficulty)));
         for (int i = 0; i < types.length; i++) {
             try {
                 double x = wave == 4 ? 0.5 : (i - 1) * 5.0 + 0.5;
@@ -778,7 +819,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 mob.setMaxHealth(maxHealth);
                 mob.setHealth(maxHealth);
                 mob.setNameTag(wave == 4
-                        ? "§c§lХРАНИТЕЛЬ КАТАКОМБ §7| §c500 HP"
+                        ? "§c§lХРАНИТЕЛЬ КАТАКОМБ §7| §c" + maxHealth + " HP"
                         : "§7Страж катакомб §8| §c" + maxHealth + " HP");
                 mob.setNameTagVisible(true);
                 mob.setNameTagAlwaysVisible(true);
@@ -790,11 +831,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
         players.set(playerKey(player) + ".dungeon.spawned-wave", wave);
         markPlayersDirty();
         if (wave == 4) {
-            player.sendTitle("§c§lФИНАЛЬНЫЙ БОСС", "§7Хранитель катакомб • 500 HP", 5, 45, 10);
-            player.sendMessage("§c§lФИНАЛЬНЫЙ БОСС ВЫШЕЛ! §7У него 500 HP и усиленный урон.");
+            player.sendTitle("§c§lФИНАЛЬНЫЙ БОСС", "§7Хранитель катакомб • " + maxHealth + " HP", 5, 45, 10);
+            player.sendMessage("§c§lФИНАЛЬНЫЙ БОСС ВЫШЕЛ! §7У него " + maxHealth + " HP. Сложность: " + dungeonDifficultyLabel(difficulty) + "§7.");
         } else {
             player.sendTitle("§6§lВОЛНА " + wave + "/3", "§7Противники: " + types.length + " • " + maxHealth + " HP", 5, 35, 10);
-            player.sendMessage("§6Волна " + wave + "/3 §7— монстры появились! §cHP: " + maxHealth);
+            player.sendMessage("§6Волна " + wave + "/3 §7— монстры появились! §cHP: " + maxHealth + " §7| Сложность: " + dungeonDifficultyLabel(difficulty));
         }
     }
 
@@ -907,8 +948,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void rewardDungeonWave(Player player, int completedWave) {
         String key = "dungeons.wave-rewards.wave-" + completedWave;
-        int xp = Math.max(0, getConfig().getInt(key + ".xp", 40 * completedWave));
-        long money = Math.max(0L, getConfig().getLong(key + ".money", 25L * completedWave));
+        double multiplier = dungeonRewardMultiplier(players.getString(playerKey(player) + ".dungeon.difficulty", "normal"));
+        int xp = Math.max(0, (int) Math.round(getConfig().getInt(key + ".xp", 40 * completedWave) * multiplier));
+        long money = Math.max(0L, Math.round(getConfig().getLong(key + ".money", 25L * completedWave) * multiplier));
         if (xp > 0) giveXp(player, xp);
         if (money > 0) setBalance(player, safeAdd(getBalance(player), money));
         markPlayersDirty();
@@ -1348,7 +1390,51 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if(action.equals("info")||action.equals("help")) { showDungeon(p); return; }
         if(action.equals("stats")) { showDungeonStats(p); return; }
         if(action.equals("top")) { showDungeonLeaderboard(p); return; }
+        if(action.equals("difficulty")) {
+            if (players.getBoolean(k + ".dungeon.active", false)) {
+                p.sendMessage("§cНельзя менять сложность во время прохождения.");
+                return;
+            }
+            if (args.length < 2) {
+                p.sendMessage("§eВыбери сложность: §a/dungeon difficulty easy §7| §e/dungeon difficulty normal §7| §c/dungeon difficulty hard");
+                p.sendMessage("§7Сейчас: " + dungeonDifficultyLabel(players.getString(k + ".dungeon.difficulty", "normal")));
+                return;
+            }
+            String requested = args[1].toLowerCase(Locale.ROOT);
+            if (!Arrays.asList("easy", "normal", "hard").contains(requested)) {
+                p.sendMessage("§cНеизвестная сложность. Используй easy, normal или hard.");
+                return;
+            }
+            UUID leader = dungeonPartyLeader.getOrDefault(p.getUniqueId(), p.getUniqueId());
+            if (!leader.equals(p.getUniqueId())) {
+                p.sendMessage("§cСложность группы может менять только лидер.");
+                return;
+            }
+            players.set(k + ".dungeon.difficulty", requested);
+            markPlayersDirty();
+            p.sendMessage("§aСложность катакомб установлена: " + dungeonDifficultyLabel(requested) + "§a.");
+            return;
+        }
         if(action.equals("start")) {
+            UUID requestedLeader = dungeonPartyLeader.getOrDefault(p.getUniqueId(), p.getUniqueId());
+            if (!requestedLeader.equals(p.getUniqueId())) {
+                p.sendMessage("§cНачать подземелье может только лидер группы.");
+                return;
+            }
+            if (players.getBoolean(k + ".dungeon.active", false)) {
+                p.sendMessage("§cПрохождение уже активно.");
+                return;
+            }
+            if (args.length > 1) {
+                String requested = args[1].toLowerCase(Locale.ROOT);
+                if (!Arrays.asList("easy", "normal", "hard").contains(requested)) {
+                    p.sendMessage("§cИспользуй: /dungeon start [easy|normal|hard]");
+                    return;
+                }
+                players.set(k + ".dungeon.difficulty", requested);
+            }
+            String selectedDifficulty = normalizeDungeonDifficulty(players.getString(k + ".dungeon.difficulty", "normal"));
+            players.set(k + ".dungeon.difficulty", selectedDifficulty);
             Level dungeon = ensureDungeonWorld(p);
             if (dungeon == null) return;
 
@@ -1404,7 +1490,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     players.set(memberKey + ".dungeon.return-y", member.getY());
                     players.set(memberKey + ".dungeon.return-z", member.getZ());
                 }
-                for (String field : new String[]{"active","wave","kills","spawned-wave","complete","claimed","chest-ready","loot-fallback-given"}) {
+                for (String field : new String[]{"active","wave","kills","spawned-wave","complete","claimed","chest-ready","loot-fallback-given","difficulty"}) {
                     Object value = players.get(k + ".dungeon." + field);
                     if (value != null) players.set(memberKey + ".dungeon." + field, value);
                 }
@@ -1419,7 +1505,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
             }
             p.sendMessage("§6§lЗАТЕРЯННЫЕ КАТАКОМБЫ");
             p.sendMessage("§7Команда: " + partyMembers.size() + "/4 игроков. Волны и босс общие.");
-            p.sendMessage("§7Три волны: зомби, скелеты, пауки. Затем финальный босс.");
+            p.sendMessage("§7Сложность: " + dungeonDifficultyLabel(selectedDifficulty) + "§7. Три волны и финальный босс.");
+            p.sendMessage("§7Сложность можно выбрать через /dungeon difficulty easy|normal|hard.");
             p.sendMessage("§e/dungeon leave §7— вернуться обратно.");
             int currentWave=Math.max(1,players.getInt(k+".dungeon.wave",1));
             if(players.getInt(k+".dungeon.spawned-wave",0)<currentWave) spawnDungeonWave(p,dungeon,currentWave);
@@ -1439,7 +1526,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             returnFromDungeon(p);
             return;
         }
-        p.sendMessage("§e/dungeon [info|start|leave|claim|party|stats|top]");
+        p.sendMessage("§e/dungeon [info|start [easy|normal|hard]|difficulty <easy|normal|hard>|leave|claim|party|stats|top]");
     }
 
     private boolean isDungeonWaveTarget(String mobName, int wave) {

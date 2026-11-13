@@ -771,9 +771,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
         players.set(playerKey(player) + ".dungeon.spawned-wave", wave);
         markPlayersDirty();
-        player.sendMessage(wave == 4
-                ? "§c§lФИНАЛЬНЫЙ БОСС ВЫШЕЛ! §7У него 500 HP и усиленный урон."
-                : "§6Волна " + wave + "/3 §7— монстры появились! §cHP: " + maxHealth);
+        if (wave == 4) {
+            player.sendTitle("§c§lФИНАЛЬНЫЙ БОСС", "§7Хранитель катакомб • 500 HP", 5, 45, 10);
+            player.sendMessage("§c§lФИНАЛЬНЫЙ БОСС ВЫШЕЛ! §7У него 500 HP и усиленный урон.");
+        } else {
+            player.sendTitle("§6§lВОЛНА " + wave + "/3", "§7Противники: " + types.length + " • " + maxHealth + " HP", 5, 35, 10);
+            player.sendMessage("§6Волна " + wave + "/3 §7— монстры появились! §cHP: " + maxHealth);
+        }
     }
 
     private boolean prepareDungeonRewardChest(Level level) {
@@ -802,9 +806,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
             BlockEntityChest chest = (BlockEntityChest) blockEntity;
             chest.getInventory().clearAll();
-            chest.getInventory().addItem(Item.get(261, 0, 1), Item.get(262, 0, 16));
+            chest.getInventory().addItem(Item.get(261, 0, 1), Item.get(262, 0, 16),
+                    Item.get(264, 0, 2), Item.get(266, 0, 8));
             chest.saveNBT();
-            getLogger().info("Сундук катакомб заполнен: лук и 16 стрел.");
+            getLogger().info("Сундук катакомб заполнен: лук, стрелы, 2 алмаза и 8 золотых слитков.");
             return true;
         } catch (RuntimeException exception) {
             getLogger().warning("Не удалось заполнить сундук награды: " + exception.getMessage());
@@ -868,6 +873,26 @@ public final class LocalFastCore extends PluginBase implements Listener {
         markPlayersDirty();
         player.sendMessage("§a[Катакомбы] Волна " + completedWave + " очищена! §e+" + xp
                 + " XP §7и §6+" + money + " " + currencyName() + "§a.");
+    }
+
+    private void rollDungeonRareLoot(Player player) {
+        int roll = ThreadLocalRandom.current().nextInt(100);
+        if (roll < 3) {
+            player.getInventory().addItem(Item.get(264, 0, 1));
+            player.sendMessage("§b✦ РЕДКАЯ ДОБЫЧА: §fАлмаз!");
+        } else if (roll < 12) {
+            player.getInventory().addItem(Item.get(388, 0, 1));
+            player.sendMessage("§a✦ РЕДКАЯ ДОБЫЧА: §fИзумруд!");
+        } else if (roll < 30) {
+            player.getInventory().addItem(Item.get(266, 0, 2));
+            player.sendMessage("§6Добыча: §f2 золотых слитка.");
+        }
+    }
+
+    private void giveDungeonBossLoot(Player player) {
+        player.getInventory().addItem(Item.get(261, 0, 1), Item.get(262, 0, 16),
+                Item.get(264, 0, 2), Item.get(266, 0, 8));
+        player.sendMessage("§6§lСОКРОВИЩА БОССА: §b2 алмаза §7и §e8 золотых слитков§7, лук и 16 стрел!");
     }
 
     private Level ensureDungeonWorld(Player player) {
@@ -1746,6 +1771,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 && killer.getX() >= -14 && killer.getX() <= 14 && killer.getZ() >= -33 && killer.getZ() <= 33
                 && !players.getBoolean(playerPath+".dungeon.complete",false)) {
             int wave=Math.max(1,players.getInt(playerPath+".dungeon.wave",1));
+            rollDungeonRareLoot(killer);
             if(wave<=3) {
                 int kills=Math.min(3,Math.max(0,players.getInt(playerPath+".dungeon.kills",0))+1);
                 players.set(playerPath+".dungeon.kills",kills);
@@ -1762,7 +1788,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     players.set(playerPath + ".dungeon.wave", wave);
                     players.set(playerPath + ".dungeon.kills", 0);
                     spawnDungeonWave(killer, killer.getLevel(), wave);
-                } else killer.sendMessage("§6[Катакомбы] §eВолна " + wave + "/3: " + kills + "/3");
+                } else {
+                    killer.sendMessage("§6[Катакомбы] §eВолна " + wave + "/3: " + kills + "/3");
+                    killer.sendTitle("§6ВОЛНА " + wave + "/3", "§eУничтожено: " + kills + "/3", 0, 18, 5);
+                }
                 markPlayersDirty();
             } else if (wave == 4 && mobName.contains("ravager")) {
                 players.set(playerPath + ".dungeon.complete", true);
@@ -1771,13 +1800,14 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 boolean chestReady = prepareDungeonRewardChest(killer.getLevel());
                 players.set(playerPath + ".dungeon.chest-ready", chestReady);
                 if (!chestReady) {
-                    killer.getInventory().addItem(Item.get(261, 0, 1), Item.get(262, 0, 16));
+                    giveDungeonBossLoot(killer);
                     players.set(playerPath + ".dungeon.loot-fallback-given", true);
                 }
                 markPlayersDirty();
+                killer.sendTitle("§6§lПОБЕДА!", "§eКатакомбы полностью зачищены", 10, 60, 15);
                 killer.sendMessage(chestReady
-                        ? "§6§lКАТАКОМБЫ ЗАЧИЩЕНЫ! §eСундук в третьем зале заполнен луком и стрелами. /dungeon"
-                        : "§6§lКАТАКОМБЫ ЗАЧИЩЕНЫ! §eСундук не создался — лук и стрелы выданы прямо в инвентарь. /dungeon");
+                        ? "§6§lКАТАКОМБЫ ЗАЧИЩЕНЫ! §eВ сундуке: лук, стрелы, 2 алмаза и 8 золотых слитков. /dungeon"
+                        : "§6§lКАТАКОМБЫ ЗАЧИЩЕНЫ! §eСокровища выданы в инвентарь. /dungeon");
             }
         }
         if(isBossMob(mobName) && players.getBoolean(playerPath+".boss_hunt.active",false)

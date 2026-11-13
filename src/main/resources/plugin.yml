@@ -1,9 +1,9 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.59.0"
+version: "0.60.0"
 api: ["1.0.0"]
 author: LocalFast
-description: LocalFastCore 0.59.0 guild wars, PvP scoring, leaderboard, territory upgrades and RPG systems
+description: LocalFastCore 0.60.0 guild seasons, seasonal rewards, achievements, guild wars and RPG systems
 commands:
   spawn:
     description: Телепорт на отдельный спавн

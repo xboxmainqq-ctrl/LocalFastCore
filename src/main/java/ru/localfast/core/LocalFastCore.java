@@ -33,8 +33,10 @@ import cn.nukkit.network.protocol.types.SortOrder;
 import cn.nukkit.scoreboard.scoreboard.IScoreboard;
 import cn.nukkit.scoreboard.scoreboard.Scoreboard;
 import cn.nukkit.form.element.ElementButton;
+import cn.nukkit.form.element.ElementInput;
 import cn.nukkit.form.handler.FormResponseHandler;
 import cn.nukkit.form.window.FormWindowSimple;
+import cn.nukkit.form.window.FormWindowCustom;
 import cn.nukkit.scheduler.TaskHandler;
 
 import java.util.Arrays;
@@ -602,6 +604,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 player.sendMessage("§aТы вернулся в командное подземелье. Не оставляй команду!");
             }
         }, 2);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onPetDamage(EntityDamageEvent event) {
+        if (activePets.containsValue(event.getEntity())) {
+            event.setCancelled(true);
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -4172,34 +4181,59 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 + "\n§7Уровень: §e" + guildLevel(guildId) + "§7/§e10"
                 + "\n§7Вложено участниками: §a" + guildData.getLong(base + ".donated", 0L)
                 + "\n" + guildPerksDescription(guildId)
-                + "\n§8Каждые 5 000 монет взносов повышают уровень.");
-        form.addButton(new ElementButton("§aВнести 100"));
-        form.addButton(new ElementButton("§aВнести 500"));
-        form.addButton(new ElementButton("§aВнести 1 000"));
-        if (guildRole(guildId, player.getUniqueId().toString()).equals("leader")) {
-            form.addButton(new ElementButton("§eСнять 100"));
-            form.addButton(new ElementButton("§eСнять 500"));
-            form.addButton(new ElementButton("§eСнять 1 000"));
-        }
+                + "\n§8Введи любую сумму — без фиксированных кнопок.");
+        form.addButton(new ElementButton("§aВнести свою сумму"));
+        boolean leader = guildRole(guildId, player.getUniqueId().toString()).equals("leader");
+        if (leader) form.addButton(new ElementButton("§eСнять свою сумму"));
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
             int id = form.getResponse().getClickedButtonId();
-            long[] amounts = {100L, 500L, 1000L};
-            if (id >= 0 && id < 3) {
-                long amount = amounts[id], balance = getBalance(player);
-                if (balance < amount) player.sendMessage("§cНедостаточно монет для взноса.");
-                else {
+            if (id == 0) openGuildBankAmountForm(player, guildId, true);
+            else if (leader && id == 1) openGuildBankAmountForm(player, guildId, false);
+            else openPlayerGuildMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openGuildBankAmountForm(Player player, String guildId, boolean deposit) {
+        if (!guildExists(guildId) || !currentGuildId(player).equals(guildId)) { openPlayerGuildMenu(player); return; }
+        if (!deposit && !guildRole(guildId, player.getUniqueId().toString()).equals("leader")) {
+            player.sendMessage("§cСнимать деньги из казны может только глава гильдии.");
+            openGuildBankMenu(player);
+            return;
+        }
+        FormWindowCustom form = new FormWindowCustom(deposit ? "§aВзнос в казну" : "§eСнятие из казны");
+        form.addElement(new ElementInput("Сумма монет", "Введи любое целое число", "1000"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            String raw = form.getResponse().getInputResponse(0);
+            long amount = parsePositiveAmount(raw == null ? "" : raw.trim());
+            if (amount < 1L) {
+                player.sendMessage("§cВведи корректную сумму больше нуля.");
+                openGuildBankMenu(player);
+                return;
+            }
+            String base = "guilds." + guildId;
+            long bank = guildBank(guildId);
+            if (deposit) {
+                long balance = getBalance(player);
+                if (balance < amount) {
+                    player.sendMessage("§cНедостаточно монет. Твой баланс: " + balance + ".");
+                } else if (bank > Long.MAX_VALUE - amount
+                        || guildData.getLong(base + ".donated", 0L) > Long.MAX_VALUE - amount) {
+                    player.sendMessage("§cСумма слишком большая.");
+                } else {
                     setBalance(player, balance - amount);
-                    guildData.set(base + ".bank", safeAdd(guildBank(guildId), amount));
-                    guildData.set(base + ".donated", safeAdd(guildData.getLong(base + ".donated", 0L), amount));
+                    guildData.set(base + ".bank", bank + amount);
+                    guildData.set(base + ".donated", guildData.getLong(base + ".donated", 0L) + amount);
                     try {
                         guildData.save();
                         if (!flushPlayers()) throw new IllegalStateException("players.yml save failed");
-                        player.sendMessage("§aВзнос в банк гильдии: §6" + amount + " " + currencyName());
+                        player.sendMessage("§aВ казну внесено §6" + amount + " " + currencyName() + ".");
                     } catch (RuntimeException ex) {
                         setBalance(player, balance);
-                        guildData.set(base + ".bank", Math.max(0L, guildBank(guildId) - amount));
+                        guildData.set(base + ".bank", bank);
                         guildData.set(base + ".donated", Math.max(0L, guildData.getLong(base + ".donated", 0L) - amount));
                         try { guildData.save(); } catch (RuntimeException ignoredSave) {}
                         flushPlayers();
@@ -4207,27 +4241,26 @@ public final class LocalFastCore extends PluginBase implements Listener {
                         getLogger().error("Guild bank deposit failed.", ex);
                     }
                 }
-                openGuildBankMenu(player);
-            } else if (guildRole(guildId, player.getUniqueId().toString()).equals("leader") && id >= 3 && id < 6) {
-                long amount = amounts[id - 3], bank = guildBank(guildId);
-                if (bank < amount) player.sendMessage("§cВ банке недостаточно средств.");
+            } else {
+                if (bank < amount) player.sendMessage("§cВ казне недостаточно средств.");
                 else {
+                    long balance = getBalance(player);
                     guildData.set(base + ".bank", bank - amount);
-                    setBalance(player, safeAdd(getBalance(player), amount));
+                    setBalance(player, safeAdd(balance, amount));
                     try {
                         guildData.save();
                         if (!flushPlayers()) throw new IllegalStateException("players.yml save failed");
-                        player.sendMessage("§aИз банка снято §6" + amount + " " + currencyName());
+                        player.sendMessage("§aИз казны снято §6" + amount + " " + currencyName() + ".");
                     } catch (RuntimeException ex) {
                         guildData.set(base + ".bank", bank);
-                        setBalance(player, Math.max(0L, getBalance(player) - amount));
+                        setBalance(player, balance);
                         flushPlayers();
-                        player.sendMessage("§cНе удалось сохранить снятие.");
+                        player.sendMessage("§cНе удалось сохранить снятие. Баланс восстановлен.");
                         getLogger().error("Guild bank withdrawal failed.", ex);
                     }
                 }
-                openGuildBankMenu(player);
-            } else openPlayerGuildMenu(player);
+            }
+            openGuildBankMenu(player);
         }));
         player.showFormWindow(form);
     }
@@ -6663,7 +6696,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
     }
 
     private void openPlayerAuctionMenu(Player player) {
-        FormWindowSimple form = new FormWindowSimple("§eАукцион", "§7Активные торги и завершённые лоты. Выбери лот для ставки или получения предмета.");
+        FormWindowSimple form = new FormWindowSimple("§6§lАУКЦИОН",
+                "§7Лоты, торги и получение предметов.\n§eВыставление и ставки — по любой сумме, которую введёшь сам.");
         List<String> lotIds = new ArrayList<>();
         long now = System.currentTimeMillis();
         for (String id : marketData.getSection("listings").getAll().keySet()) {
@@ -6676,25 +6710,38 @@ public final class LocalFastCore extends PluginBase implements Listener {
             form.addButton(new ElementButton("§e#" + id + " §f" + marketData.getString(path + ".item-name", "Предмет")
                     + " x" + marketData.getInt(path + ".count", 1) + "\n§7Ставка: §a"
                     + marketData.getLong(path + ".current-bid", 0L) + " §8| " + status));
-            if (lotIds.size() >= 12) break;
+            if (lotIds.size() >= 20) break;
         }
-        form.addButton(new ElementButton("§aСоздать лот: 100 монет / 30 мин."));
-        form.addButton(new ElementButton("§aСоздать лот: 500 монет / 1 час"));
-        form.addButton(new ElementButton("§aСоздать лот: 1000 монет / 24 часа"));
+        form.addButton(new ElementButton("§a§lВыставить предмет"));
         form.addButton(new ElementButton("§7Обновить"));
         form.addButton(new ElementButton("§8Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
             int id = form.getResponse().getClickedButtonId();
             if (id >= 0 && id < lotIds.size()) openPlayerAuctionLotMenu(player, lotIds.get(id));
-            else {
-                int action = id - lotIds.size();
-                if (action == 0) handleAuction(player, new String[]{"create","100","30"});
-                else if (action == 1) handleAuction(player, new String[]{"create","500","60"});
-                else if (action == 2) handleAuction(player, new String[]{"create","1000","1440"});
-                if (action >= 0 && action <= 3) openPlayerAuctionMenu(player);
-                else openPlayerEconomyMenu(player);
-            }
+            else if (id == lotIds.size()) openAuctionCreateForm(player);
+            else if (id == lotIds.size() + 1) openPlayerAuctionMenu(player);
+            else openPlayerEconomyMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openAuctionCreateForm(Player player) {
+        Item hand = player.getInventory().getItemInHand();
+        if (hand == null || hand.isNull() || hand.getId() <= 0) {
+            player.sendMessage("§cВозьми предмет в руку, чтобы выставить его на аукцион.");
+            openPlayerAuctionMenu(player);
+            return;
+        }
+        FormWindowCustom form = new FormWindowCustom("§6Выставление лота");
+        form.addElement(new ElementInput("Стартовая цена (монеты)", "Например: 750", "100"));
+        form.addElement(new ElementInput("Длительность в минутах (1–10080)", "Например: 60", "60"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            String price = form.getResponse().getInputResponse(0);
+            String minutes = form.getResponse().getInputResponse(1);
+            handleAuction(player, new String[]{"create", price == null ? "" : price.trim(), minutes == null ? "" : minutes.trim()});
+            openPlayerAuctionMenu(player);
         }));
         player.showFormWindow(form);
     }
@@ -6717,13 +6764,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 + "\n§7Минимальная ставка: §e" + minimum
                 + (active ? "\n§7До конца: §a" + Math.max(0L, ends - System.currentTimeMillis()) / 60000L + " мин."
                           : "\n§cТорги завершены."));
-        long step = Math.max(10L, current / 10L);
-        long higher = safeAdd(minimum, step);
-        long premium = safeAdd(minimum, 500L);
         if (active) {
-            form.addButton(new ElementButton("§aСтавка: " + minimum));
-            form.addButton(new ElementButton("§eСтавка: " + higher));
-            form.addButton(new ElementButton("§6Ставка: " + premium));
+            form.addButton(new ElementButton("§a§lВвести свою ставку"));
         } else {
             form.addButton(new ElementButton("§aПолучить предмет / забрать непроданный лот"));
         }
@@ -6731,17 +6773,27 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
             int id = form.getResponse().getClickedButtonId();
-            if (active && id >= 0 && id <= 2) {
-                long bid = id == 0 ? minimum : id == 1 ? higher : premium;
-                handleAuction(player, new String[]{"bid", lotId, Long.toString(bid)});
-            } else if (!active && id == 0) {
+            if (active && id == 0) openAuctionBidForm(player, lotId, minimum);
+            else if (!active && id == 0) {
                 handleAuction(player, new String[]{"claim", lotId});
-            }
-            openPlayerAuctionMenu(player);
+                openPlayerAuctionMenu(player);
+            } else openPlayerAuctionMenu(player);
         }));
         player.showFormWindow(form);
     }
 
+
+    private void openAuctionBidForm(Player player, String lotId, long minimum) {
+        FormWindowCustom form = new FormWindowCustom("§eСтавка на лот #" + lotId);
+        form.addElement(new ElementInput("Твоя ставка (монеты), минимум " + minimum, "Введи сумму", Long.toString(minimum)));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            String amount = form.getResponse().getInputResponse(0);
+            handleAuction(player, new String[]{"bid", lotId, amount == null ? "" : amount.trim()});
+            openPlayerAuctionMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
 
     private void openPlayerTradeTargetsMenu(Player player) {
         FormWindowSimple form = new FormWindowSimple("§bПеревод монет", "§7Выбери получателя. Сумму можно выбрать на следующем экране.");
@@ -7919,33 +7971,47 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (!isOperator(operator) || !guildExists(guildId)) { openOperatorGuildBankMenu(operator); return; }
         String base = "guilds." + guildId;
         FormWindowSimple form = new FormWindowSimple("§6Казна гильдии",
-                "§e" + guildData.getString(base + ".name", guildId) + "\n§7Баланс: §6" + guildBank(guildId));
-        long[] amounts = {1000L, 5000L, 10000L, 50000L};
-        for (long amount : amounts) form.addButton(new ElementButton("§aДобавить " + amount));
-        for (long amount : amounts) form.addButton(new ElementButton("§cЗабрать " + amount));
+                "§e" + guildData.getString(base + ".name", guildId)
+                + "\n§7Баланс: §6" + guildBank(guildId)
+                + "\n§8Вводи произвольную сумму в поле.");
+        form.addButton(new ElementButton("§aДобавить сумму"));
+        form.addButton(new ElementButton("§cЗабрать сумму"));
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
             int id = form.getResponse().getClickedButtonId();
-            if (id >= 0 && id < 8) {
-                long amount = amounts[id % 4], bank = guildBank(guildId);
-                if (id < 4) guildData.set(base + ".bank", safeAdd(bank, amount));
-                else if (bank < amount) operator.sendMessage("§cВ казне недостаточно средств.");
-                else guildData.set(base + ".bank", bank - amount);
-                if (id < 4 || bank >= amount) {
-                    try {
-                        guildData.save();
-                        staffLog(operator.getName(), id < 4 ? "guild-bank-give" : "guild-bank-take",
-                                guildData.getString(base + ".name", guildId), String.valueOf(amount));
-                        operator.sendMessage("§aКазна обновлена.");
-                    } catch (RuntimeException ex) {
-                        guildData.set(base + ".bank", bank);
-                        operator.sendMessage("§cНе удалось сохранить казну.");
-                        getLogger().error("Operator guild bank update failed.", ex);
-                    }
+            if (id == 0 || id == 1) openOperatorGuildBankAmountForm(operator, guildId, id == 0);
+            else openOperatorGuildBankMenu(operator);
+        }));
+        operator.showFormWindow(form);
+    }
+
+    private void openOperatorGuildBankAmountForm(Player operator, String guildId, boolean deposit) {
+        if (!isOperator(operator) || !guildExists(guildId)) { openOperatorGuildBankMenu(operator); return; }
+        FormWindowCustom form = new FormWindowCustom(deposit ? "§aПополнение казны" : "§cСнятие из казны");
+        form.addElement(new ElementInput("Сумма монет", "Введи целое число", "1000"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
+            String raw = form.getResponse().getInputResponse(0);
+            long amount = parsePositiveAmount(raw == null ? "" : raw.trim());
+            long bank = guildBank(guildId);
+            if (amount < 1L) operator.sendMessage("§cВведи корректную сумму больше нуля.");
+            else if (deposit && bank > Long.MAX_VALUE - amount) operator.sendMessage("§cСумма слишком большая.");
+            else if (!deposit && bank < amount) operator.sendMessage("§cВ казне недостаточно средств.");
+            else {
+                guildData.set("guilds." + guildId + ".bank", deposit ? bank + amount : bank - amount);
+                try {
+                    guildData.save();
+                    staffLog(operator.getName(), deposit ? "guild-bank-give" : "guild-bank-take",
+                            guildData.getString("guilds." + guildId + ".name", guildId), String.valueOf(amount));
+                    operator.sendMessage("§aКазна обновлена: §e" + (deposit ? "+" : "-") + amount + ".");
+                } catch (RuntimeException ex) {
+                    guildData.set("guilds." + guildId + ".bank", bank);
+                    operator.sendMessage("§cНе удалось сохранить казну.");
+                    getLogger().error("Operator guild bank update failed.", ex);
                 }
-                openOperatorGuildBankActions(operator, guildId);
-            } else openOperatorGuildBankMenu(operator);
+            }
+            openOperatorGuildBankActions(operator, guildId);
         }));
         operator.showFormWindow(form);
     }

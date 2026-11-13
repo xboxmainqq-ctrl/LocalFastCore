@@ -779,8 +779,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
             int legendaryArmorLevel = Math.max(0, Math.min(5,
                     players.getInt(victimPath + ".forge.armor-level", 0)));
             long armorReadyAt = legendaryArmorCooldowns.getOrDefault(victim.getUniqueId(), 0L);
-            if (legendaryArmorLevel >= 5 && now >= armorReadyAt
-                    && ThreadLocalRandom.current().nextInt(100) < 20) {
+            if (legendaryArmorLevel >= 5 && hasLegendaryArmorEquipped(victim)
+                    && now >= armorReadyAt && ThreadLocalRandom.current().nextInt(100) < 20) {
                 legendaryArmorCooldowns.put(victim.getUniqueId(), now + 25000L);
                 event.setDamage(0.0f, EntityDamageEvent.DamageModifier.BASE);
                 victim.sendTitle("§b§lЛЕГЕНДАРНАЯ ЗАЩИТА", "§fУдар полностью отражён", 0, 25, 5);
@@ -831,7 +831,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 players.getInt(playerKey(attacker) + ".forge.weapon-level", 0)));
         bonusDamage += forgeWeaponLevel;
         long weaponReadyAt = legendaryWeaponCooldowns.getOrDefault(attackerId, 0L);
-        if (forgeWeaponLevel >= 5 && now >= weaponReadyAt
+        Item heldWeapon = attacker.getInventory().getItemInHand();
+        boolean hasLegendaryWeaponEquipped = heldWeapon != null && heldWeapon.getId() == 276
+                && "§6Клинок Хранителя".equals(heldWeapon.getCustomName());
+        if (forgeWeaponLevel >= 5 && hasLegendaryWeaponEquipped && now >= weaponReadyAt
                 && ThreadLocalRandom.current().nextInt(100) < 15) {
             legendaryWeaponCooldowns.put(attackerId, now + 10000L);
             bonusDamage += 5;
@@ -913,6 +916,32 @@ public final class LocalFastCore extends PluginBase implements Listener {
         return remaining == 0;
     }
 
+    private boolean hasNamedItem(Player player, String customName) {
+        for (int slot = 0; slot < player.getInventory().getSize(); slot++) {
+            Item item = player.getInventory().getItem(slot);
+            if (item != null && item.getId() > 0 && customName.equals(item.getCustomName())) return true;
+        }
+        for (Item item : player.getInventory().getArmorContents()) {
+            if (item != null && item.getId() > 0 && customName.equals(item.getCustomName())) return true;
+        }
+        return false;
+    }
+
+    private Item createLegendaryGear(int itemId, String customName) {
+        Item item = Item.get(itemId, 0, 1);
+        item.setCustomName(customName);
+        item.setLore(new String[]{"§7Реликвия Хранителя катакомб", "§dЛегендарное снаряжение"});
+        return item;
+    }
+
+    private boolean hasLegendaryArmorEquipped(Player player) {
+        for (Item item : player.getInventory().getArmorContents()) {
+            if (item != null && item.getId() == 311
+                    && "§bДоспех Хранителя".equals(item.getCustomName())) return true;
+        }
+        return false;
+    }
+
     private String selectedDungeonDifficulty(String playerKey) {
         return normalizeDungeonDifficulty(players.getString(playerKey + ".dungeon.difficulty", "normal"));
     }
@@ -924,6 +953,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
         int armorLevel = Math.max(0, Math.min(5, players.getInt(key + ".armor-level", 0)));
         String shardName = "§bОсколок катакомб";
         String crystalName = "§dКристалл катакомб";
+        String heartName = "§5Сердце Хранителя";
+        String weaponName = "§6Клинок Хранителя";
+        String armorName = "§bДоспех Хранителя";
 
         if (args.length == 0 || args[0].equalsIgnoreCase("info")) {
             player.sendMessage("§6§lКУЗНИЦА КАТАКОМБ");
@@ -933,18 +965,61 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (armorLevel >= 5) player.sendMessage("§b✦ Легендарный эффект: 20% шанс полностью заблокировать удар существа (перезарядка 25 сек.)");
             player.sendMessage("§7Материалы: §b" + countForgeMaterial(player, shardName) + " осколков §7и §d"
                     + countForgeMaterial(player, crystalName) + " кристаллов");
+            player.sendMessage("§7Сердца Хранителя: §5" + countForgeMaterial(player, heartName));
             player.sendMessage("§e/forge weapon §7— улучшить оружие");
             player.sendMessage("§e/forge armor §7— улучшить броню");
+            player.sendMessage("§e/forge legendary-weapon §7— создать Клинок Хранителя (ур. оружия 5)");
+            player.sendMessage("§e/forge legendary-armor §7— создать Доспех Хранителя (ур. брони 5)");
+            player.sendMessage("§e/forge collection §7— коллекция реликвий");
             player.sendMessage("§8Следующий уровень: " + (4 + 2 * Math.max(weaponLevel, armorLevel))
                     + " осколка и " + (1 + Math.max(weaponLevel, armorLevel) / 2) + " кристалл(а).");
             return;
         }
 
         String type = args[0].toLowerCase(Locale.ROOT);
+        if (type.equals("collection")) {
+            player.sendMessage("§6§lРЕЛИКВИИ ХРАНИТЕЛЯ");
+            player.sendMessage((hasNamedItem(player, weaponName) ? "§a✓ " : "§7○ ") + weaponName);
+            player.sendMessage((hasNamedItem(player, armorName) ? "§a✓ " : "§7○ ") + armorName);
+            player.sendMessage("§7Клинок активен только в руке, доспех — только в слоте нагрудника.");
+            return;
+        }
+        boolean craftWeapon = type.equals("legendary-weapon");
+        boolean craftArmor = type.equals("legendary-armor");
+        if (craftWeapon || craftArmor) {
+            int requiredLevel = craftWeapon ? weaponLevel : armorLevel;
+            String gearName = craftWeapon ? weaponName : armorName;
+            Item gear = createLegendaryGear(craftWeapon ? 276 : 311, gearName);
+            if (requiredLevel < 5) {
+                player.sendMessage("§cСначала улучши " + (craftWeapon ? "оружие" : "броню") + " до 5 уровня.");
+                return;
+            }
+            if (hasNamedItem(player, gearName)) {
+                player.sendMessage("§eЭта реликвия уже есть в твоей коллекции.");
+                return;
+            }
+            if (countForgeMaterial(player, heartName) < 1
+                    || countForgeMaterial(player, shardName) < 12
+                    || countForgeMaterial(player, crystalName) < 4
+                    || !player.getInventory().canAddItem(gear)) {
+                player.sendMessage("§cНужно: 1 Сердце Хранителя, 12 осколков, 4 кристалла и свободное место.");
+                return;
+            }
+            if (!consumeForgeMaterial(player, heartName, 1)
+                    || !consumeForgeMaterial(player, shardName, 12)
+                    || !consumeForgeMaterial(player, crystalName, 4)) {
+                player.sendMessage("§cНе удалось списать материалы. Проверь инвентарь и повтори.");
+                return;
+            }
+            player.getInventory().addItem(gear);
+            player.sendTitle("§6§lРЕЛИКВИЯ СОЗДАНА", gearName, 5, 45, 10);
+            player.sendMessage("§aСоздано легендарное снаряжение! Открой §e/forge collection§a.");
+            return;
+        }
         boolean weapon = type.equals("weapon") || type.equals("sword");
         boolean armor = type.equals("armor");
         if (!weapon && !armor) {
-            player.sendMessage("§eИспользуй: /forge [info|weapon|armor]");
+            player.sendMessage("§eИспользуй: /forge [info|weapon|armor|legendary-weapon|legendary-armor|collection]");
             return;
         }
         int current = weapon ? weaponLevel : armorLevel;
@@ -1958,6 +2033,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
             int crystalCount = "hard".equals(selectedDungeonDifficulty(k)) ? 2 : 1;
             p.getInventory().addItem(createForgeMaterial(406, "§bОсколок катакомб", shardCount));
             p.getInventory().addItem(createForgeMaterial(388, "§dКристалл катакомб", crystalCount));
+            if ("hard".equals(selectedDungeonDifficulty(k))) {
+                p.getInventory().addItem(createForgeMaterial(399, "§5Сердце Хранителя", 1));
+                p.sendMessage("§5✦ РЕДКАЯ ДОБЫЧА: Сердце Хранителя! Оно нужно для создания легендарной экипировки.");
+            }
             markPlayersDirty();
             p.sendMessage("§6Награда подземелья: §a+"+xp+" XP §7и §e+"+money+" "+currencyName()
                     +"§6! §bПечать Хранителя§6 — особая добыча за победу.");

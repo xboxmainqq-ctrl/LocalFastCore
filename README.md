@@ -1,4 +1,4 @@
-# LocalFastCore 0.48.0
+# LocalFastCore 0.51.0
 
 RPG progression plugin for Nukkit-MOT 1.26.60-R1 (Java 17).
 
@@ -22,6 +22,8 @@ RPG progression plugin for Nukkit-MOT 1.26.60-R1 (Java 17).
 - Multiple accepted quests progress simultaneously.
 - Quest progress, completion and claimed rewards persist in `players.yml`.
 - UUID-based player profiles with additive profile schema versioning.
+
+- Rift of the Abyss relic forge: /rift forge weapon|armor|amulet crafts three unique relics from Rift Shards. /rift collection tracks permanent ownership. The Rift clear reward grants 3 shards. The Rift Blade adds +6 damage while held, Abyss Armor reduces creature damage by 10% while equipped, and Rift Heart adds 15% mob-kill XP while carried.
 
 ## Commands
 

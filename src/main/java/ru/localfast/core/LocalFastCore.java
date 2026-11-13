@@ -513,6 +513,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     public void onQuit(PlayerQuitEvent event) {
         Player quittingPlayer = event.getPlayer();
         UUID quittingId = quittingPlayer.getUniqueId();
+        removePet(quittingPlayer);
         pendingTeleports.remove(quittingId);
         pendingTeleports.entrySet().removeIf(entry -> entry.getValue().requester.getUniqueId().equals(quittingId));
         temporaryAbilityDamage.remove(quittingId);
@@ -598,6 +599,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
     public void onPlayerAttack(EntityDamageByEntityEvent event) {
         long now = System.currentTimeMillis();
 
+        if (activePets.containsValue(event.getEntity())) { event.setCancelled(true); return; }
+
         // Tank's finisher briefly creates a defensive stance against the next incoming hits.
         if (event.getEntity() instanceof Player) {
             Player defender = (Player) event.getEntity();
@@ -611,6 +614,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
             } else if (guardUntil != 0L && guardUntil <= now) {
                 tankGuardUntil.remove(defenderId);
             }
+        }
+
+        if (event.getEntity() instanceof Player && event.getDamager() instanceof EntityCreature
+                && selectedPet((Player) event.getEntity()).equals("golem")) {
+            float petBaseDamage = event.getDamage(EntityDamageEvent.DamageModifier.BASE);
+            event.setDamage(Math.max(0.0f, petBaseDamage * 0.92f), EntityDamageEvent.DamageModifier.BASE);
         }
 
         // The Catacombs Keeper gains three escalating phases on hard difficulty.
@@ -830,6 +839,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         int forgeWeaponLevel = Math.max(0, Math.min(5,
                 players.getInt(playerKey(attacker) + ".forge.weapon-level", 0)));
         bonusDamage += forgeWeaponLevel;
+        if (selectedPet(attacker).equals("wolf")) bonusDamage += 1;
         long weaponReadyAt = legendaryWeaponCooldowns.getOrDefault(attackerId, 0L);
         Item heldWeapon = attacker.getInventory().getItemInHand();
         boolean hasLegendaryWeaponEquipped = heldWeapon != null && heldWeapon.getId() == 276
@@ -944,6 +954,99 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private String selectedDungeonDifficulty(String playerKey) {
         return normalizeDungeonDifficulty(players.getString(playerKey + ".dungeon.difficulty", "normal"));
+    }
+
+    private final Map<UUID, Entity> activePets = new HashMap<>();
+
+    private String petPath(Player player) { return playerKey(player) + ".pets"; }
+    private int petUnlockClears(Player player) { return Math.max(0, players.getInt(playerKey(player) + ".dungeon.clears", 0)); }
+    private boolean isPetUnlocked(Player player, String pet) {
+        if (pet.equals("wolf")) return true;
+        int clears = petUnlockClears(player);
+        return pet.equals("golem") ? clears >= 3 : pet.equals("snow") && clears >= 5;
+    }
+    private String petLabel(String pet) {
+        switch (pet) {
+            case "wolf": return "§aВолк-компаньон";
+            case "golem": return "§6Железный голем";
+            case "snow": return "§bСнежный дух";
+            default: return "§7Нет питомца";
+        }
+    }
+    private String petEntityType(String pet) {
+        switch (pet) {
+            case "wolf": return "Wolf";
+            case "golem": return "IronGolem";
+            case "snow": return "SnowGolem";
+            default: return null;
+        }
+    }
+    private String selectedPet(Player player) {
+        String pet = players.getString(petPath(player) + ".selected", "wolf");
+        return pet.equals("wolf") || pet.equals("golem") || pet.equals("snow") ? pet : "none";
+    }
+    private void removePet(Player player) {
+        Entity old = activePets.remove(player.getUniqueId());
+        if (old != null && !old.isClosed()) old.close();
+    }
+    private void summonPet(Player player) {
+        removePet(player);
+        String pet = selectedPet(player);
+        if (pet.equals("none") || !isPetUnlocked(player, pet)) return;
+        try {
+            Entity companion = Entity.createEntity(petEntityType(pet), new Position(player.getX() - 1.2, player.getY(), player.getZ() - 1.2, player.getLevel()));
+            if (companion == null) { player.sendMessage("§cНе удалось создать питомца этого типа на текущем ядре."); return; }
+            companion.setNameTag(petLabel(pet));
+            companion.setNameTagVisible(true);
+            companion.setNameTagAlwaysVisible(true);
+            companion.spawnToAll();
+            activePets.put(player.getUniqueId(), companion);
+        } catch (RuntimeException exception) {
+            getLogger().warning("Pet spawn failed for " + player.getName() + ": " + exception.getMessage());
+            player.sendMessage("§cНе удалось призвать питомца. Проверь поддержку сущностей на ядре.");
+        }
+    }
+    private void openPetsMenu(Player player) {
+        initialize(player);
+        String selected = selectedPet(player);
+        int clears = petUnlockClears(player);
+        FormWindowSimple form = new FormWindowSimple("§6§lПИТОМЦЫ",
+                "§fВыбери спутника. Бонус действует, пока питомец выбран.\n"
+                + "§7Новые питомцы открываются за победы в катакомбах.\n\n"
+                + "§aВолк: §f+1 урон по существам (сразу)\n"
+                + "§6Голем: §f-8% урона от существ (3 победы)\n"
+                + "§bСнежный дух: §f+10% опыта за убийства (5 побед)\n"
+                + "§7Побед в катакомбах: §e" + clears);
+        String[] pets = {"wolf", "golem", "snow"};
+        for (String pet : pets) {
+            String state = !isPetUnlocked(player, pet) ? "§c[Закрыт]" : selected.equals(pet) ? "§a[Выбран]" : "§e[Выбрать]";
+            form.addButton(new ElementButton(state + " " + petLabel(pet)));
+        }
+        form.addButton(new ElementButton("§7Убрать питомца"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int choice = form.getResponse().getClickedButtonId();
+            if (choice >= 0 && choice < pets.length) {
+                String chosen = pets[choice];
+                if (!isPetUnlocked(player, chosen)) {
+                    int required = chosen.equals("golem") ? 3 : 5;
+                    player.sendMessage("§cНужно пройти катакомбы ещё " + Math.max(0, required - clears) + " раз.");
+                    return;
+                }
+                players.set(petPath(player) + ".selected", chosen);
+                markPlayersDirty();
+                if (!flushPlayers()) { player.sendMessage("§cНе удалось сохранить выбор питомца."); return; }
+                summonPet(player);
+                player.sendTitle("§6ПИТОМЕЦ ВЫБРАН", petLabel(chosen), 5, 30, 5);
+            } else if (choice == pets.length) {
+                players.set(petPath(player) + ".selected", "none");
+                markPlayersDirty();
+                flushPlayers();
+                removePet(player);
+                player.sendMessage("§7Питомец убран.");
+            }
+        }));
+        player.showFormWindow(form);
     }
 
     private void handleForge(Player player, String[] args) {
@@ -1279,6 +1382,14 @@ public final class LocalFastCore extends PluginBase implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void handleDungeonTraps(PlayerMoveEvent event) {
         Player player = event.getPlayer();
+        Entity companion = activePets.get(player.getUniqueId());
+        if (companion != null && !companion.isClosed()
+                && (companion.getLevel() != player.getLevel()
+                || Math.pow(companion.getX() - player.getX(), 2)
+                + Math.pow(companion.getY() - player.getY(), 2)
+                + Math.pow(companion.getZ() - player.getZ(), 2) > 36.0)) {
+            companion.teleport(new Position(player.getX() - 1.2, player.getY(), player.getZ() - 1.2, player.getLevel()));
+        }
         if (!isDungeonWorld(player.getLevel())) return;
         String key = playerKey(player);
         if (!players.getBoolean(key + ".dungeon.active", false)) return;
@@ -2390,7 +2501,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             getServer().broadcastMessage("§b[STAFF] " + staffRoleColor(role) + "[" + staffRoleLabel(role)
                     + "] §f" + p.getName() + " §7зашёл на сервер!");
         }
-        initialize(p); refreshDaily(p); String k=playerKey(p); String d=today();
+        initialize(p); refreshDaily(p); summonPet(p); String k=playerKey(p); String d=today();
         if (!players.getString(k+".login_reward_date","").equals(d)) {
             players.set(k+".login_reward_date",d); markPlayersDirty(); giveXp(p, Math.max(0, getConfig().getInt("progression.login-reward-xp", LOGIN_XP_REWARD)));
             p.sendMessage("§a[LocalFast] Награда за первый вход сегодня: +" + Math.max(0, getConfig().getInt("progression.login-reward-xp", LOGIN_XP_REWARD)) + " XP!");
@@ -2639,6 +2750,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         Player killer = (Player) event.getDamager();
         initialize(killer);
         int mobXp = Math.max(0, getConfig().getInt("progression.mob-kill-xp", MOB_KILL_XP));
+        if (selectedPet(killer).equals("snow")) mobXp += Math.max(1, mobXp / 10);
         giveXp(killer, mobXp);
         set(killer, "achievement_kills", Math.min(Integer.MAX_VALUE, get(killer, "achievement_kills", 0) + 1));
         int xpBonusPercent = intelligenceXpBonusPercent(killer);
@@ -6326,6 +6438,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if(args.length==0 || args[0].equalsIgnoreCase("menu")) openAdventureMenu(player);
             else if(name.equals("dungeon")) handleDungeon(player,args);
             else handleBossHunt(player,args);
+            return true;
+        }
+
+        if (name.equals("pets") || name.equals("pet")) {
+            if (!(sender instanceof Player)) { sender.sendMessage("Питомцы доступны только игроку."); return true; }
+            openPetsMenu((Player) sender);
             return true;
         }
 

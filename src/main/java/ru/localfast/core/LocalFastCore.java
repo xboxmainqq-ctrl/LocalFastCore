@@ -901,9 +901,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
 
         if (petWolfDamageUntil.getOrDefault(attackerId, 0L) > now) {
-            bonusDamage += 8;
+            int wolfStrike = hasPetCollar(attacker) ? 12 : 8;
+            bonusDamage += wolfStrike;
             petWolfDamageUntil.remove(attackerId);
-            attacker.sendMessage("§aВолк усилил твой удар на 8 урона!");
+            attacker.sendMessage("§aВолк усилил твой удар на " + wolfStrike + " урона!");
         }
         bonusDamage += temporaryAbilityDamage.getOrDefault(attackerId, 0);
         bonusDamage += nextAbilityDamage.getOrDefault(attackerId, 0);
@@ -1261,7 +1262,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 petSnowXpUntil.put(id, now + snowDuration);
                 player.sendTitle("§b§lЛЕДЯНОЕ ВДОХНОВЕНИЕ", "§f+50% XP за убийства на " + (snowDuration / 1000) + " сек.", 5, 35, 5);
                 player.sendMessage("§bСнежный дух усилил получение XP за убийства на 50% на " + (snowDuration / 1000) + " секунд.");
-                getServer().getScheduler().scheduleDelayedTask(this, () -> petSnowXpUntil.remove(id), snowDuration / 50);
+                getServer().getScheduler().scheduleDelayedTask(this, () -> {
+                    if (petSnowXpUntil.getOrDefault(id, 0L) <= System.currentTimeMillis()) {
+                        petSnowXpUntil.remove(id);
+                    }
+                }, snowDuration / 50);
                 break;
             default:
                 petAbilityCooldowns.remove(id);

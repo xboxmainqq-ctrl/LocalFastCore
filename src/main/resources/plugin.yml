@@ -1,9 +1,9 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.29.0"
+version: "0.30.0"
 api: ["1.0.0"]
 author: LocalFast
-description: LocalFastCore 0.29.0 RPG, protected dungeon waves, wave rewards, bosses, trading, economy and staff systems
+description: LocalFastCore 0.30.0 RPG, dungeon traps, sealed treasure vault, protected waves, bosses, trading, economy and staff systems
 commands:
   spawn:
     description: Телепорт на отдельный спавн

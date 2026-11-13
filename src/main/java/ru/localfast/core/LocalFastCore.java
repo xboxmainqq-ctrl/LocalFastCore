@@ -6210,6 +6210,257 @@ public final class LocalFastCore extends PluginBase implements Listener {
         operator.showFormWindow(form);
     }
 
+
+    private void openOperatorRpgPlayersMenu(Player operator) {
+        if (!isOperator(operator)) return;
+        List<Player> online = new ArrayList<>(getServer().getOnlinePlayers().values());
+        if (online.isEmpty()) { operator.sendMessage("§cНет игроков онлайн."); return; }
+        FormWindowSimple form = new FormWindowSimple("§6RPG §8| §lУправление игроками",
+                "§7Выбери игрока, которому нужно изменить RPG-прогресс.");
+        for (Player target : online) form.addButton(new ElementButton("§f" + target.getName()
+                + "\n§7Ур. " + get(target, "level", 1) + " §8| §6" + getBalance(target) + " монет"));
+        form.addButton(new ElementButton("§8Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id >= 0 && id < online.size() && online.get(id).isOnline())
+                openOperatorRpgTargetMenu(operator, online.get(id));
+            else openOperatorMenu(operator);
+        }));
+        operator.showFormWindow(form);
+    }
+
+    private void openOperatorRpgTargetMenu(Player operator, Player target) {
+        if (!isOperator(operator) || !target.isOnline()) return;
+        initialize(target);
+        String key = playerKey(target);
+        FormWindowSimple form = new FormWindowSimple("§6RPG §8| §f" + target.getName(),
+                "§7Уровень: §e" + get(target, "level", 1) + " §8| §7XP: §a" + get(target, "xp", 0)
+                + "\n§7Монеты: §6" + getBalance(target) + "\n§7Победы в катакомбах: §e" + petUnlockClears(target));
+        form.addButton(new ElementButton("§aВыдать осколки Катакомб"));
+        form.addButton(new ElementButton("§5Выдать осколки Бездны"));
+        form.addButton(new ElementButton("§dУправление питомцами"));
+        form.addButton(new ElementButton("§bСбросить таймеры подземелий"));
+        form.addButton(new ElementButton("§cСбросить прогресс Разлома"));
+        form.addButton(new ElementButton("§eУстановить уровень питомца"));
+        form.addButton(new ElementButton("§6Назад к игрокам"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !operator.isOnline() || !target.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id == 0) openOperatorMaterialAmountMenu(operator, target, false);
+            else if (id == 1) openOperatorMaterialAmountMenu(operator, target, true);
+            else if (id == 2) openOperatorPetMenu(operator, target);
+            else if (id == 3) {
+                String d = key + ".dungeon.";
+                players.set(d + "date", "2000-01-01");
+                players.set(d + "active", false); players.set(d + "complete", false);
+                players.set(d + "claimed", false); players.set(d + "chest-ready", false);
+                players.set(d + "loot-fallback-given", false); players.set(d + "keeper-trophy-given", false);
+                players.set(d + "wave", 1); players.set(d + "spawned-wave", 0); players.set(d + "started-at", 0L);
+                players.set(key + ".boss_hunt.date", "2000-01-01");
+                players.set(key + ".boss_hunt.active", false); players.set(key + ".boss_hunt.complete", false);
+                players.set(key + ".boss_hunt.claimed", false);
+                markPlayersDirty();
+                if (flushPlayers()) { staffLog(operator.getName(), "rpg-dungeon-reset-menu", target.getName(), "daily timers"); operator.sendMessage("§aТаймеры подземелий сброшены для " + target.getName()); target.sendMessage("§eОператор сбросил твои таймеры подземелий."); }
+                else operator.sendMessage("§cНе удалось сохранить изменения.");
+                openOperatorRpgTargetMenu(operator, target);
+            } else if (id == 4) {
+                players.set(key + ".rift.active", false); players.set(key + ".rift.complete", false);
+                players.set(key + ".rift.claimed", false); players.set(key + ".rift.wave", 1);
+                players.set(key + ".rift.kills", 0); players.set(key + ".rift.spawned-wave", 0);
+                players.set(key + ".rift.next-at", 0L);
+                markPlayersDirty();
+                if (flushPlayers()) { staffLog(operator.getName(), "rift-reset-menu", target.getName(), "progress and cooldown"); operator.sendMessage("§aПрогресс и таймер Разлома сброшены."); target.sendMessage("§eОператор сбросил твой прогресс Разлома."); }
+                else operator.sendMessage("§cНе удалось сохранить изменения.");
+                openOperatorRpgTargetMenu(operator, target);
+            } else if (id == 5) openOperatorPetMenu(operator, target);
+            else openOperatorRpgPlayersMenu(operator);
+        }));
+        operator.showFormWindow(form);
+    }
+
+    private void openOperatorMaterialAmountMenu(Player operator, Player target, boolean rift) {
+        String label = rift ? "§5Осколок Бездны" : "§bОсколок катакомб";
+        FormWindowSimple form = new FormWindowSimple("§6Выдача ресурса", "§fИгрок: §e" + target.getName()
+                + "\n§fРесурс: " + label + "\n§7Выбери действие и количество.");
+        int[] amounts = {1, 5, 10, 32, 64};
+        for (int amount : amounts) form.addButton(new ElementButton("§aВыдать " + amount));
+        for (int amount : amounts) form.addButton(new ElementButton("§cЗабрать " + amount));
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !operator.isOnline() || !target.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id < 0 || id >= 10) { openOperatorRpgTargetMenu(operator, target); return; }
+            int amount = amounts[id % 5];
+            boolean give = id < 5;
+            Item resource = createForgeMaterial(rift ? 399 : 406, label, amount);
+            if (give) {
+                Map<Integer, Item> leftovers = target.getInventory().addItem(resource);
+                if (!leftovers.isEmpty()) operator.sendMessage("§cНе всё поместилось в инвентарь.");
+            } else {
+                int remaining = amount;
+                for (Item item : target.getInventory().getContents().values()) {
+                    if (remaining <= 0) break;
+                    if (item != null && item.getId() == resource.getId() && label.equals(item.getCustomName())) {
+                        int take = Math.min(remaining, item.getCount());
+                        Item reduced = item.clone(); reduced.setCount(item.getCount() - take);
+                        target.getInventory().setItem(target.getInventory().getHeldItemIndex(), reduced);
+                        remaining -= take;
+                    }
+                }
+                if (remaining > 0) operator.sendMessage("§eНе хватило предметов для полного изъятия.");
+            }
+            staffLog(operator.getName(), (give ? "give-" : "take-") + (rift ? "rift-shard" : "catacomb-shard"), target.getName(), String.valueOf(amount));
+            operator.sendMessage((give ? "§aВыдано: " : "§cИзъято: ") + amount + " × " + label);
+            openOperatorRpgTargetMenu(operator, target);
+        }));
+        operator.showFormWindow(form);
+    }
+
+    private void openOperatorPetMenu(Player operator, Player target) {
+        String[] pets = {"wolf", "golem", "snow"};
+        FormWindowSimple form = new FormWindowSimple("§dПитомцы §8| §f" + target.getName(),
+                "§7Выбери питомца для настройки. Текущий выбранный: §e" + selectedPet(target));
+        for (String pet : pets) form.addButton(new ElementButton(petLabel(pet) + "\n§7Ур. " + petLevel(target, pet)
+                + " §8| §7XP " + petXp(target, pet)));
+        form.addButton(new ElementButton("§aВыдать ошейник"));
+        form.addButton(new ElementButton("§aВыдать броню питомца"));
+        form.addButton(new ElementButton("§cСбросить уровни питомцев"));
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !operator.isOnline() || !target.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            String path = petPath(target);
+            if (id >= 0 && id < 3) {
+                String pet = pets[id];
+                players.set(path + "." + pet + ".level", 5);
+                players.set(path + "." + pet + ".xp", 0);
+                players.set(playerKey(target) + ".dungeon.clears", Math.max(5, petUnlockClears(target)));
+                markPlayersDirty();
+                flushPlayers();
+                staffLog(operator.getName(), "pet-max-level", target.getName(), pet);
+                operator.sendMessage("§a" + petLabel(pet) + " установлен 5 уровень.");
+                openOperatorPetMenu(operator, target);
+            } else if (id == 3 || id == 4) {
+                players.set(path + ".gear." + (id == 3 ? "collar" : "armor"), true);
+                markPlayersDirty(); flushPlayers();
+                staffLog(operator.getName(), "pet-gear-give", target.getName(), id == 3 ? "collar" : "armor");
+                operator.sendMessage("§aПредмет питомца выдан.");
+                openOperatorPetMenu(operator, target);
+            } else if (id == 5) {
+                for (String pet : pets) { players.set(path + "." + pet + ".level", 1); players.set(path + "." + pet + ".xp", 0); }
+                markPlayersDirty(); flushPlayers();
+                staffLog(operator.getName(), "pet-reset", target.getName(), "all pets");
+                operator.sendMessage("§eУровни питомцев сброшены.");
+                openOperatorPetMenu(operator, target);
+            } else openOperatorRpgTargetMenu(operator, target);
+        }));
+        operator.showFormWindow(form);
+    }
+
+    private void openPlayerMainMenu(Player player) {
+        initialize(player);
+        FormWindowSimple form = new FormWindowSimple("§6§lLOCALFAST §8| §fГлавное меню",
+                "§7Твой персонаж: §e" + player.getName() + "\n§7Уровень: §e" + get(player, "level", 1)
+                + " §8| §7Монеты: §6" + getBalance(player) + "\n§8Выбери нужный раздел.");
+        form.addButton(new ElementButton("§bПерсонаж и характеристики"));
+        form.addButton(new ElementButton("§dКласс и способности"));
+        form.addButton(new ElementButton("§aПитомцы и их снаряжение"));
+        form.addButton(new ElementButton("§6Приключения и подземелья"));
+        form.addButton(new ElementButton("§5Разлом Бездны"));
+        form.addButton(new ElementButton("§eКузница и улучшение"));
+        form.addButton(new ElementButton("§bКоллекция экипировки"));
+        form.addButton(new ElementButton("§aКвесты и достижения"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id == 0) openStatsMenu(player);
+            else if (id == 1) { if (getRpgClass(player).equals("none")) openClassMenu(player); else openAbilitiesMenu(player); }
+            else if (id == 2) openPetsMenu(player);
+            else if (id == 3) openAdventureMenu(player);
+            else if (id == 4) openPlayerRiftMenu(player);
+            else if (id == 5) openPlayerForgeMenu(player);
+            else if (id == 6) showGearCollection(player);
+            else if (id == 7) openPlayerQuestMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openPlayerRiftMenu(Player player) {
+        FormWindowSimple form = new FormWindowSimple("§5§lРАЗЛОМ БЕЗДНЫ",
+                "§7Отдельное испытание, награды и реликвии Разлома.");
+        form.addButton(new ElementButton("§aИнформация"));
+        form.addButton(new ElementButton("§cНачать испытание"));
+        form.addButton(new ElementButton("§eЗабрать награду"));
+        form.addButton(new ElementButton("§bКузница реликвий"));
+        form.addButton(new ElementButton("§dКоллекция Разлома"));
+        form.addButton(new ElementButton("§7В главное меню"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id == 0) handleRiftCommand(player, new String[]{"info"});
+            else if (id == 1) handleRiftCommand(player, new String[]{"start"});
+            else if (id == 2) handleRiftCommand(player, new String[]{"claim"});
+            else if (id == 3) openPlayerRiftForgeMenu(player);
+            else if (id == 4) handleRiftCommand(player, new String[]{"collection"});
+            else openPlayerMainMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openPlayerRiftForgeMenu(Player player) {
+        FormWindowSimple form = new FormWindowSimple("§5Кузница Разлома", "§7Создание постоянных реликвий за осколки.");
+        form.addButton(new ElementButton("§5Клинок Разлома §8(8 осколков)"));
+        form.addButton(new ElementButton("§5Броня Бездны §8(8 осколков)"));
+        form.addButton(new ElementButton("§dСердце Разлома §8(5 осколков)"));
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id >= 0 && id <= 2) handleRiftCommand(player, new String[]{"forge", new String[]{"weapon","armor","amulet"}[id]});
+            else openPlayerRiftMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openPlayerForgeMenu(Player player) {
+        FormWindowSimple form = new FormWindowSimple("§6Кузница", "§7Улучшай снаряжение и смотри доступные рецепты.");
+        form.addButton(new ElementButton("§eИнформация о кузнице"));
+        form.addButton(new ElementButton("§aУлучшить оружие"));
+        form.addButton(new ElementButton("§bУлучшить броню"));
+        form.addButton(new ElementButton("§dКоллекция кузницы"));
+        form.addButton(new ElementButton("§7Главное меню"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id == 0) handleForge(player, new String[]{"info"});
+            else if (id == 1) handleForge(player, new String[]{"weapon"});
+            else if (id == 2) handleForge(player, new String[]{"armor"});
+            else if (id == 3) handleForge(player, new String[]{"collection"});
+            else openPlayerMainMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openPlayerQuestMenu(Player player) {
+        FormWindowSimple form = new FormWindowSimple("§aКвесты и достижения", "§7Выбери приключение.");
+        form.addButton(new ElementButton("§eЕжедневное задание"));
+        form.addButton(new ElementButton("§6Еженедельное испытание"));
+        form.addButton(new ElementButton("§bЦепочка заданий"));
+        form.addButton(new ElementButton("§dДостижения"));
+        form.addButton(new ElementButton("§7Главное меню"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id == 0) handleDaily(player, new String[0]);
+            else if (id == 1) handleWeekly(player, new String[0]);
+            else if (id == 2) handleQuestChain(player, new String[0]);
+            else if (id == 3) openAchievementsMenu(player);
+            else openPlayerMainMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
     private void openOperatorMenu(Player operator) {
         if (!isOperator(operator)) { operator.sendMessage("§cТолько оператор может открыть эту панель."); return; }
         FormWindowSimple form = new FormWindowSimple("§6LocalFast §8| §lОператорская панель",
@@ -6226,6 +6477,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§cАктивные баны и муты"));
         form.addButton(new ElementButton("§dТестировать должность на себе"));
         form.addButton(new ElementButton("§bУправление мирами"));
+        form.addButton(new ElementButton("§dRPG: выдача, питомцы и сбросы"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
             int id = form.getResponse().getClickedButtonId();
@@ -6250,6 +6502,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             else if (id == 9) openActivePunishmentsMenu(operator);
             else if (id == 10) openOperatorSelfRankMenu(operator);
             else if (id == 11) openOperatorWorldMenu(operator);
+            else if (id == 12) openOperatorRpgPlayersMenu(operator);
         }));
         operator.showFormWindow(form);
     }
@@ -7046,7 +7299,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         String name = command.getName().toLowerCase(Locale.ROOT);
 
-        if (name.equals("world") || name.equals("worlds")) { handleWorldCommand(sender, args); return true; }
+        if (name.equals("menu") || name.equals("lfmenu")) { if (!(sender instanceof Player)) { sender.sendMessage("Меню доступно только игроку."); return true; } openPlayerMainMenu((Player)sender); return true; }\n\n        if (name.equals("world") || name.equals("worlds")) { handleWorldCommand(sender, args); return true; }
 
         if (name.equals("rift")) {
             if (!(sender instanceof Player)) { sender.sendMessage("Разлом доступен только игроку."); return true; }

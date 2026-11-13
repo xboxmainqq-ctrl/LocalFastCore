@@ -1219,6 +1219,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private void buildDungeonLocation(Level level) {
         List<CastleBlock> blocks = new ArrayList<>();
         int floorY = 5;
+        // Remove the previous rectangular footprint before laying out the new cave silhouette.
+        for (int x = -16; x <= 16; x++) {
+            for (int z = -32; z <= 32; z++) {
+                for (int y = floorY; y <= floorY + 7; y++)
+                    level.setBlock(new Position(x, y, z, level), Block.get(0), true, true);
+            }
+        }
         // Organic cave route: a narrow entrance, broad winding hall and a rounded boss cavern.
         for (int z = -32; z <= 32; z++) {
             int width = dungeonCavernWidth(z);
@@ -1306,20 +1313,46 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private void buildDungeonTreasureRoom(Level level) {
         List<CastleBlock> blocks = new ArrayList<>();
         int floorY = 5;
-        // Sealed vault behind the boss chamber, connected through the gate at z=32.
-        for (int x = -13; x <= 13; x++) {
+        // Clear the old square vault, then shape a rounded reliquary chamber.
+        for (int x = -15; x <= 15; x++) {
             for (int z = 33; z <= 55; z++) {
+                for (int y = floorY; y <= floorY + 7; y++)
+                    level.setBlock(new Position(x, y, z, level), Block.get(0), true, true);
+            }
+        }
+        for (int z = 33; z <= 55; z++) {
+            double t = (z - 33.0) / 22.0;
+            int width = Math.max(8, (int) Math.round(9 + 4 * Math.sin(Math.PI * t)
+                    + 0.8 * Math.sin(3 * Math.PI * t)));
+            for (int x = -width; x <= width; x++) {
                 blocks.add(new CastleBlock(x, floorY, z, 98));
                 blocks.add(new CastleBlock(x, floorY + 7, z, 4));
             }
+            for (int y = floorY + 1; y <= floorY + 6; y++) {
+                blocks.add(new CastleBlock(-width, y, z, 98));
+                blocks.add(new CastleBlock(width, y, z, 98));
+            }
         }
         for (int y = floorY + 1; y <= floorY + 6; y++) {
-            for (int z = 33; z <= 55; z++) {
-                blocks.add(new CastleBlock(-13, y, z, 98));
-                blocks.add(new CastleBlock(13, y, z, 98));
-            }
-            for (int x = -13; x <= 13; x++) blocks.add(new CastleBlock(x, y, 55, 98));
+            for (int x = -8; x <= 8; x++) blocks.add(new CastleBlock(x, y, 55, 98));
             for (int x = -2; x <= 2; x++) blocks.add(new CastleBlock(x, y, 32, 98));
+        }
+        // Gold-trimmed pillars and glowstone around the central treasure platform.
+        for (int z : new int[]{37, 42, 49, 53}) {
+            double t = (z - 33.0) / 22.0;
+            int width = Math.max(8, (int) Math.round(9 + 4 * Math.sin(Math.PI * t)
+                    + 0.8 * Math.sin(3 * Math.PI * t)));
+            for (int side : new int[]{-1, 1}) {
+                int x = side * Math.max(5, width - 2);
+                for (int y = floorY + 1; y <= floorY + 4; y++)
+                    blocks.add(new CastleBlock(x, y, z, 4));
+                blocks.add(new CastleBlock(x, floorY + 4, z, 41));
+                blocks.add(new CastleBlock(x - side, floorY + 3, z, 89));
+            }
+        }
+        for (int x = -2; x <= 2; x++) {
+            blocks.add(new CastleBlock(x, floorY, 47, 41));
+            blocks.add(new CastleBlock(x, floorY, 48, 41));
         }
         for (CastleBlock block : blocks) {
             try {
@@ -1329,7 +1362,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 getLogger().warning("Treasure room skipped block " + block.x + ", " + block.y + ", " + block.z + ": " + exception.getMessage());
             }
         }
-        getLogger().info("Комната сокровищ катакомб построена и запечатана до победы над боссом.");
+        getLogger().info("Органический зал сокровищ построен и запечатан до победы над боссом.");
     }
 
     private void buildBossArena(Level level) {

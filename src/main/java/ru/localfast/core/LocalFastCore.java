@@ -211,7 +211,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.30.0 включён. RPG, гильдии, рынок, катакомбы с ловушками и комнатой сокровищ, система персонала загружены.");
+        getLogger().info("LocalFastCore 0.32.0 включён. RPG, гильдии, рынок, командные катакомбы с рекордами, система персонала загружены.");
     }
 
     private void markPlayersDirty() {
@@ -1276,6 +1276,61 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
     }
 
+    private void showDungeonStats(Player player) {
+        String key = playerKey(player);
+        int clears = Math.max(0, players.getInt(key + ".dungeon.total-clears", 0));
+        int wave = Math.max(1, players.getInt(key + ".dungeon.wave", 1));
+        boolean active = players.getBoolean(key + ".dungeon.active", false);
+        String lastClear = players.getString(key + ".dungeon.last-clear-date", "ещё не было");
+        player.sendMessage("§6§lТВОИ РЕКОРДЫ КАТАКОМБ");
+        player.sendMessage("§7Полных прохождений: §e" + clears);
+        player.sendMessage("§7Последняя победа: §e" + lastClear);
+        player.sendMessage("§7Текущий прогресс: " + (active ? "§aволна " + wave + "/4" : "§7нет активного прохождения"));
+        player.sendMessage("§8Статистика сохраняется между перезапусками сервера.");
+    }
+
+    private void showDungeonLeaderboard(CommandSender sender) {
+        Map<String, Object> allProfiles = players.getAll();
+        List<Map.Entry<String, Integer>> ranking = new ArrayList<>();
+        for (String key : allProfiles.keySet()) {
+            if (!key.startsWith("uuid_")) continue;
+            int clears = Math.max(0, players.getInt(key + ".dungeon.total-clears", 0));
+            if (clears > 0) ranking.add(new java.util.AbstractMap.SimpleEntry<>(key, clears));
+        }
+        ranking.sort((left, right) -> Integer.compare(right.getValue(), left.getValue()));
+        sender.sendMessage("§6§l━━━━━━━━ ТОП КАТАКОМБ ━━━━━━━━");
+        if (ranking.isEmpty()) {
+            sender.sendMessage("§7Пока никто не завершил катакомбы.");
+            return;
+        }
+        int shown = Math.min(10, ranking.size());
+        for (int i = 0; i < shown; i++) {
+            String key = ranking.get(i).getKey();
+            String playerName = players.getString(key + ".last_name", "Неизвестный");
+            int clears = ranking.get(i).getValue();
+            String prefix = i == 0 ? "§6①" : i == 1 ? "§f②" : i == 2 ? "§c③" : "§7" + (i + 1) + ".";
+            sender.sendMessage(prefix + " §f" + playerName + " §8— §e" + clears + " побед");
+        }
+        if (sender instanceof Player) {
+            String ownKey = playerKey((Player) sender);
+            for (int i = 0; i < ranking.size(); i++) {
+                if (ranking.get(i).getKey().equals(ownKey)) {
+                    sender.sendMessage("§7Твоё место: §e#" + (i + 1) + " §8из §f" + ranking.size());
+                    break;
+                }
+            }
+        }
+        sender.sendMessage("§8Сортировка: количество полных побед над Хранителем.");
+    }
+
+    private void recordDungeonClear(Player player) {
+        String key = playerKey(player);
+        int clears = Math.max(0, players.getInt(key + ".dungeon.total-clears", 0));
+        players.set(key + ".dungeon.total-clears", clears == Integer.MAX_VALUE ? clears : clears + 1);
+        players.set(key + ".dungeon.last-clear-date", today());
+        players.set(key + ".last_name", player.getName());
+    }
+
     private void handleDungeon(Player p,String[] args) {
         if (args.length > 0 && args[0].equalsIgnoreCase("party")) {
             handleDungeonParty(p, Arrays.copyOfRange(args, 1, args.length));
@@ -1291,6 +1346,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
         String action=args.length==0?"menu":args[0].toLowerCase(Locale.ROOT);
         if(action.equals("menu")) { openAdventureMenu(p); return; }
         if(action.equals("info")||action.equals("help")) { showDungeon(p); return; }
+        if(action.equals("stats")) { showDungeonStats(p); return; }
+        if(action.equals("top")) { showDungeonLeaderboard(p); return; }
         if(action.equals("start")) {
             Level dungeon = ensureDungeonWorld(p);
             if (dungeon == null) return;
@@ -1382,7 +1439,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             returnFromDungeon(p);
             return;
         }
-        p.sendMessage("§e/dungeon [info|start|leave|claim|party]");
+        p.sendMessage("§e/dungeon [info|start|leave|claim|party|stats|top]");
     }
 
     private boolean isDungeonWaveTarget(String mobName, int wave) {
@@ -2049,6 +2106,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     String memberPath = playerKey(member) + ".dungeon";
                     players.set(memberPath + ".complete", true);
                     players.set(memberPath + ".active", false);
+                    recordDungeonClear(member);
                     players.set(memberPath + ".wave", 5);
                     players.set(memberPath + ".chest-ready", chestReady);
                     if (!chestReady) {

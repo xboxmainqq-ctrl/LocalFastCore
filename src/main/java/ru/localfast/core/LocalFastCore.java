@@ -76,6 +76,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private final Map<UUID, ComboState> combatCombos = new HashMap<>();
     private final Map<UUID, Long> tankGuardUntil = new HashMap<>();
     private final Map<UUID, Long> dungeonBossAbilityCooldowns = new HashMap<>();
+    private final Map<String, Long> dungeonBossSummonCooldowns = new HashMap<>();
     private final Map<UUID, Long> dungeonTrapCooldowns = new HashMap<>();
     private final Map<UUID, java.util.Set<UUID>> dungeonParties = new HashMap<>();
     private final Map<UUID, UUID> dungeonPartyLeader = new HashMap<>();
@@ -623,6 +624,40 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     event.setDamage(baseDamage + 8.0f, EntityDamageEvent.DamageModifier.BASE);
                     target.sendTitle("§4§lСОКРУШИТЕЛЬНЫЙ УДАР", "§cХранитель пробивает защиту!", 0, 25, 5);
                     target.sendMessage("§cХранитель катакомб использовал особую способность: §4Сокрушительный удар§c! Дополнительный урон: 8.");
+                }
+
+                // Hard-mode boss summons two guards at most once every 25 seconds.
+                String dungeonKey = target.getLevel().getFolderName();
+                long lastSummon = dungeonBossSummonCooldowns.getOrDefault(dungeonKey, 0L);
+                if (now - lastSummon >= 25000L) {
+                    dungeonBossSummonCooldowns.put(dungeonKey, now);
+                    int summoned = 0;
+                    for (int i = 0; i < 2; i++) {
+                        try {
+                            double offset = i == 0 ? -3.0 : 3.0;
+                            Entity guard = Entity.createEntity("Zombie",
+                                    new Position(boss.getX() + offset, boss.getY(), boss.getZ() + 2.0, target.getLevel()));
+                            if (guard == null) continue;
+                            guard.setMaxHealth(30);
+                            guard.setHealth(30);
+                            guard.setNameTag("§cПризванный страж §8| §c30 HP");
+                            guard.setNameTagVisible(true);
+                            guard.setNameTagAlwaysVisible(true);
+                            guard.spawnToAll();
+                            summoned++;
+                        } catch (RuntimeException exception) {
+                            getLogger().warning("Dungeon boss reinforcement spawn failed: " + exception.getMessage());
+                        }
+                    }
+                    if (summoned > 0) {
+                        for (Player member : getServer().getOnlinePlayers().values()) {
+                            if (member.getLevel().getFolderName().equalsIgnoreCase(dungeonKey)
+                                    && players.getBoolean(playerKey(member) + ".dungeon.active", false)) {
+                                member.sendTitle("§c§lПОДКРЕПЛЕНИЕ!", "§7Хранитель призвал стражей", 0, 25, 5);
+                                member.sendMessage("§cХранитель катакомб призвал " + summoned + " стражей!");
+                            }
+                        }
+                    }
                 }
             }
         }

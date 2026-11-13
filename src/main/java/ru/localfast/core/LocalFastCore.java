@@ -81,6 +81,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private final Map<UUID, Long> petWolfDamageUntil = new HashMap<>();
     private final Map<UUID, Long> petGuardUntil = new HashMap<>();
     private final Map<UUID, Long> petSnowXpUntil = new HashMap<>();
+    private final Map<UUID, Long> guildWarKillCooldowns = new HashMap<>();
     private final Map<UUID, Long> dungeonBossAbilityCooldowns = new HashMap<>();
     private final Map<String, Long> dungeonBossSummonCooldowns = new HashMap<>();
     private final Map<String, Long> dungeonBossAreaCooldowns = new HashMap<>();
@@ -224,7 +225,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.57.0 включён. Войны гильдий, территории, штурмы, RPG и система персонала загружены.");
+        getLogger().info("LocalFastCore 0.59.0 включён. Гильдейские войны, рейтинг, территории, RPG и система персонала загружены.");
     }
 
     private void markPlayersDirty() {
@@ -603,7 +604,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onPlayerAttack(EntityDamageByEntityEvent event) {
         long now = System.currentTimeMillis();
-
+        if (event.getDamager() instanceof Player && event.getEntity() instanceof Player) {
+            Player killer = (Player) event.getDamager(); Player victim = (Player) event.getEntity();
+            if (event.getFinalDamage() >= victim.getHealth()) recordGuildWarKill(killer, victim);
+        }
         if (activePets.containsValue(event.getEntity())) { event.setCancelled(true); return; }
 
         // Tank's finisher briefly creates a defensive stance against the next incoming hits.
@@ -6750,6 +6754,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§aЗахватить текущий чанк (глава/офицер)"));
         form.addButton(new ElementButton("§cСписок территорий и штурм"));
         form.addButton(new ElementButton("§6Улучшить территорию"));
+        form.addButton(new ElementButton("§cГильдейские войны"));
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
@@ -6786,6 +6791,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 openGuildWarMenu(player);
             } else if (id == 1) openGuildTerritoryList(player);
             else if (id == 2) openGuildTerritoryUpgradeMenu(player);
+            else if (id == 3) openGuildWarsMenu(player);
             else openPlayerGuildMenu(player);
         }));
         player.showFormWindow(form);
@@ -6854,6 +6860,201 @@ public final class LocalFastCore extends PluginBase implements Listener {
             openGuildTerritoryUpgradeMenu(player);
         }));
         player.showFormWindow(form);
+    }
+
+
+    private String guildWarKey(String first, String second) {
+        String a = first.compareTo(second) <= 0 ? first : second;
+        String b = first.compareTo(second) <= 0 ? second : first;
+        return a.replaceAll("[^A-Za-z0-9_-]", "_") + "__" + b.replaceAll("[^A-Za-z0-9_-]", "_");
+    }
+
+    private void notifyGuild(String guildId, String message) {
+        for (Player online : getServer().getOnlinePlayers().values()) {
+            if (currentGuildId(online).equals(guildId)) online.sendMessage(message);
+        }
+    }
+
+    private void openGuildWarsMenu(Player player) {
+        String gid = currentGuildId(player);
+        if (gid.isEmpty() || !guildExists(gid)) { openPlayerGuildMenu(player); return; }
+        List<String> targets = new ArrayList<>();
+        FormWindowSimple form = new FormWindowSimple("§4§lГИЛЬДЕЙСКИЕ ВОЙНЫ",
+                "§7Объявление войны стоит §e2000 монет§7. Победа — 10 очков. Награда победителю — §a2000 монет§7.");
+        for (String other : guildData.getSection("guilds").getAll().keySet()) {
+            if (other.equals(gid) || !guildExists(other)) continue;
+            String path = "guildWars." + guildWarKey(gid, other);
+            String status = guildData.getString(path + ".status", "");
+            String label;
+            if ("pending".equals(status)) label = guildData.getString(path + ".challenger", "").equals(gid)
+                    ? "\n§eОжидает ответа" : "\n§6Вызов! Нужен ответ";
+            else if ("active".equals(status)) {
+                int a = guildData.getInt(path + ".score-a", 0), b = guildData.getInt(path + ".score-b", 0);
+                boolean first = guildData.getString(path + ".guild-a", "").equals(gid);
+                label = "\n§cВОЙНА §f" + (first ? a + " : " + b : b + " : " + a);
+            } else if ("finished".equals(status)) label = "\n§7Завершена — можно вызвать снова";
+            else label = "\n§aОбъявить войну";
+            targets.add(other);
+            form.addButton(new ElementButton("§e" + guildData.getString("guilds." + other + ".name", other) + label));
+            if (targets.size() >= 18) break;
+        }
+        form.addButton(new ElementButton("§6Таблица лидеров войн"));
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id == targets.size()) { openGuildWarLeaderboard(player); return; }
+            if (id < 0 || id >= targets.size()) { openGuildWarMenu(player); return; }
+            String other = targets.get(id), path = "guildWars." + guildWarKey(gid, other);
+            String status = guildData.getString(path + ".status", "");
+            String challenger = guildData.getString(path + ".challenger", "");
+            if ("active".equals(status)) {
+                int a = guildData.getInt(path + ".score-a", 0), b = guildData.getInt(path + ".score-b", 0);
+                boolean first = guildData.getString(path + ".guild-a", "").equals(gid);
+                player.sendMessage("§cВойна идёт: §e" + guildData.getString("guilds." + other + ".name", other)
+                        + " §7| Счёт: §f" + (first ? a + " : " + b : b + " : " + a) + " §7(до 10 очков).");
+                openGuildWarsMenu(player); return;
+            }
+            if ("pending".equals(status)) {
+                if (challenger.equals(gid)) { player.sendMessage("§eВызов уже отправлен. Ожидайте ответа."); openGuildWarsMenu(player); }
+                else openGuildWarResponseMenu(player, gid, other, path);
+                return;
+            }
+            if (!guildCanManage(gid, player)) { player.sendMessage("§cОбъявлять войну может только глава или офицер."); openGuildWarsMenu(player); return; }
+            long bank = guildBank(gid);
+            if (bank < 2000L) { player.sendMessage("§cВ казне нужно 2000 монет для объявления войны."); openGuildWarsMenu(player); return; }
+            guildData.set("guilds." + gid + ".bank", bank - 2000L);
+            guildData.set(path + ".guild-a", gid.compareTo(other) <= 0 ? gid : other);
+            guildData.set(path + ".guild-b", gid.compareTo(other) <= 0 ? other : gid);
+            guildData.set(path + ".challenger", gid);
+            guildData.set(path + ".status", "pending");
+            guildData.set(path + ".created-at", System.currentTimeMillis());
+            guildData.set(path + ".score-a", 0);
+            guildData.set(path + ".score-b", 0);
+            try {
+                guildData.save();
+                player.sendMessage("§cВызов отправлен гильдии §e" + guildData.getString("guilds." + other + ".name", other) + "§c.");
+                notifyGuild(other, "§4§lВОЙНА! §e" + guildData.getString("guilds." + gid + ".name", gid) + " §fвызвала вашу гильдию. Ответьте в меню гильдий.");
+            } catch (RuntimeException ex) {
+                guildData.set("guilds." + gid + ".bank", bank); guildData.remove(path);
+                player.sendMessage("§cНе удалось сохранить вызов. Монеты возвращены.");
+                getLogger().error("Guild war declaration failed.", ex);
+            }
+            openGuildWarsMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openGuildWarResponseMenu(Player player, String gid, String other, String path) {
+        if (!guildCanManage(gid, player)) { player.sendMessage("§cПринять или отклонить войну может глава или офицер."); openGuildWarsMenu(player); return; }
+        String challenger = guildData.getString(path + ".challenger", other);
+        FormWindowSimple form = new FormWindowSimple("§4§lВЫЗОВ НА ВОЙНУ",
+                "§e" + guildData.getString("guilds." + challenger + ".name", challenger)
+                + " §fвызвала вашу гильдию. Победа засчитывается при наборе 10 очков.");
+        form.addButton(new ElementButton("§cПринять вызов"));
+        form.addButton(new ElementButton("§7Отклонить вызов"));
+        form.addButton(new ElementButton("§8Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (!"pending".equals(guildData.getString(path + ".status", ""))
+                    || !guildData.getString(path + ".challenger", "").equals(challenger)) { player.sendMessage("§7Этот вызов уже недействителен."); openGuildWarsMenu(player); return; }
+            if (id == 0) {
+                guildData.set(path + ".status", "active"); guildData.set(path + ".started-at", System.currentTimeMillis());
+                guildData.set(path + ".score-a", 0); guildData.set(path + ".score-b", 0);
+                try {
+                    guildData.save();
+                    notifyGuild(gid, "§4§lВОЙНА НАЧАЛАСЬ! §fПротивник: §e" + guildData.getString("guilds." + challenger + ".name", challenger));
+                    notifyGuild(challenger, "§4§lВОЙНА НАЧАЛАСЬ! §fПротивник принял ваш вызов.");
+                } catch (RuntimeException ex) { guildData.set(path + ".status", "pending"); player.sendMessage("§cНе удалось сохранить начало войны."); getLogger().error("Guild war acceptance failed.", ex); }
+            } else if (id == 1) {
+                guildData.set(path + ".status", "declined");
+                try { guildData.save(); notifyGuild(challenger, "§7Ваша заявка на войну была отклонена."); notifyGuild(gid, "§7Вызов отклонён."); }
+                catch (RuntimeException ex) { getLogger().error("Guild war decline failed.", ex); }
+            }
+            openGuildWarsMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openGuildWarLeaderboard(Player player) {
+        List<String> ids = new ArrayList<>(guildData.getSection("guilds").getAll().keySet());
+        ids.removeIf(id -> !guildExists(id));
+        ids.sort((a, b) -> Long.compare(guildData.getLong("guilds." + b + ".war-points", 0L),
+                guildData.getLong("guilds." + a + ".war-points", 0L)));
+        StringBuilder content = new StringBuilder("§7Рейтинг по очкам побед в гильдейских войнах.\n\n");
+        int rank = 1;
+        for (String id : ids) {
+            if (rank > 15) break;
+            content.append("§e").append(rank++).append(". §f").append(guildData.getString("guilds." + id + ".name", id))
+                    .append(" §8— §6").append(guildData.getLong("guilds." + id + ".war-points", 0L)).append(" очков\n");
+        }
+        FormWindowSimple form = new FormWindowSimple("§6§lЛИДЕРЫ ВОЙН", content.toString());
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (!form.wasClosed() && form.getResponse() != null && player.isOnline()) openGuildWarsMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void recordGuildWarKill(Player killer, Player victim) {
+        String attackerGuild = currentGuildId(killer), victimGuild = currentGuildId(victim);
+        if (attackerGuild.isEmpty() || victimGuild.isEmpty() || attackerGuild.equals(victimGuild)) return;
+        long now = System.currentTimeMillis();
+        Long previous = guildWarKillCooldowns.get(victim.getUniqueId());
+        if (previous != null && now - previous < 60000L) return;
+        String path = "guildWars." + guildWarKey(attackerGuild, victimGuild);
+        if (!"active".equals(guildData.getString(path + ".status", ""))) return;
+        String a = guildData.getString(path + ".guild-a", ""), b = guildData.getString(path + ".guild-b", "");
+        if (!(a.equals(attackerGuild) && b.equals(victimGuild)) && !(b.equals(attackerGuild) && a.equals(victimGuild))) return;
+        guildWarKillCooldowns.put(victim.getUniqueId(), now);
+        String scorePath = path + (a.equals(attackerGuild) ? ".score-a" : ".score-b");
+        int score = guildData.getInt(scorePath, 0) + 1;
+        guildData.set(scorePath, score);
+        guildData.set("guilds." + attackerGuild + ".war-points",
+                safeAdd(guildData.getLong("guilds." + attackerGuild + ".war-points", 0L), 1L));
+        if (score >= 10) {
+            guildData.set(path + ".status", "finished"); guildData.set(path + ".winner", attackerGuild);
+            guildData.set("guilds." + attackerGuild + ".war-points",
+                    safeAdd(guildData.getLong("guilds." + attackerGuild + ".war-points", 0L), 10L));
+            guildData.set("guilds." + attackerGuild + ".bank", safeAdd(guildBank(attackerGuild), 2000L));
+            notifyGuild(attackerGuild, "§6§lПОБЕДА В ВОЙНЕ! §a+10 очков рейтинга и 2000 монет в казну.");
+            notifyGuild(victimGuild, "§cВаша гильдия проиграла войну. Победитель: §e" + guildData.getString("guilds." + attackerGuild + ".name", attackerGuild));
+        } else {
+            notifyGuild(attackerGuild, "§c§lВОЙНА §f+1 очко! Счёт: §e" + score + "/10");
+            notifyGuild(victimGuild, "§c§lВОЙНА §fПротивник набрал очко. Счёт: §e" + score + "/10");
+        }
+        try { guildData.save(); } catch (RuntimeException ex) { getLogger().error("Guild war score save failed.", ex); killer.sendMessage("§cНе удалось сохранить результат войны."); }
+    }
+
+    private void openOperatorGuildWarsMenu(Player operator) {
+        if (!isOperator(operator)) return;
+        List<String> keys = new ArrayList<>();
+        FormWindowSimple form = new FormWindowSimple("§4Оператор §8| §cГильдейские войны", "§7Выбери войну, чтобы завершить её принудительно.");
+        for (String key : guildData.getSection("guildWars").getAll().keySet()) {
+            String status = guildData.getString("guildWars." + key + ".status", "");
+            if (!"active".equals(status) && !"pending".equals(status)) continue;
+            keys.add(key);
+            String a = guildData.getString("guildWars." + key + ".guild-a", ""), b = guildData.getString("guildWars." + key + ".guild-b", "");
+            form.addButton(new ElementButton("§e" + guildData.getString("guilds." + a + ".name", a)
+                    + " §8vs §c" + guildData.getString("guilds." + b + ".name", b)
+                    + "\n§7" + status + " §8| §f" + guildData.getInt("guildWars." + key + ".score-a", 0)
+                    + ":" + guildData.getInt("guildWars." + key + ".score-b", 0)));
+            if (keys.size() >= 20) break;
+        }
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id < 0 || id >= keys.size()) { openOperatorMenu(operator); return; }
+            String path = "guildWars." + keys.get(id), a = guildData.getString("guildWars." + keys.get(id) + ".guild-a", "");
+            String b = guildData.getString("guildWars." + keys.get(id) + ".guild-b", "");
+            guildData.set(path + ".status", "cancelled");
+            try { guildData.save(); notifyGuild(a, "§7Оператор завершил гильдейскую войну."); notifyGuild(b, "§7Оператор завершил гильдейскую войну."); operator.sendMessage("§aВойна завершена принудительно."); }
+            catch (RuntimeException ex) { getLogger().error("Operator guild war cancel failed.", ex); }
+            openOperatorGuildWarsMenu(operator);
+        }));
+        operator.showFormWindow(form);
     }
 
     private void openGuildTerritoryList(Player player) {
@@ -7341,6 +7542,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§dRPG: выдача, питомцы и сбросы"));
         form.addButton(new ElementButton("§6Управление казнами гильдий"));
         form.addButton(new ElementButton("§4Управление территориями"));
+        form.addButton(new ElementButton("§cУправление гильдейскими войнами"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
             int id = form.getResponse().getClickedButtonId();
@@ -7368,6 +7570,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             else if (id == 12) openOperatorRpgPlayersMenu(operator);
             else if (id == 13) openOperatorGuildBankMenu(operator);
             else if (id == 14) openOperatorTerritoriesMenu(operator);
+            else if (id == 15) openOperatorGuildWarsMenu(operator);
         }));
         operator.showFormWindow(form);
     }

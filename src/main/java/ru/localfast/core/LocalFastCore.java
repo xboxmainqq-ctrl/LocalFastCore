@@ -4775,6 +4775,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         player.sendMessage("§e/auction help");
     }
 
+
     private void handleAuction(Player player, String[] args) {
         if (args.length == 0 || args[0].equalsIgnoreCase("help")) {
             player.sendMessage("§6[Аукцион] §e/auction create <стартовая_цена> [минуты]");

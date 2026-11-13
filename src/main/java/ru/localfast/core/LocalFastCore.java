@@ -221,6 +221,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         getServer().getScheduler().scheduleRepeatingTask(this, this::flushPlayers,
                 autosaveSeconds * 20);
         getServer().getScheduler().scheduleRepeatingTask(this, this::tickGuildSieges, 20);
+        getServer().getScheduler().scheduleRepeatingTask(this, this::ensureGuildSeason, 20 * 60 * 60);
         int refreshTicks = Math.max(20, Math.min(1200, getConfig().getInt("scoreboard.refresh-ticks", 40)));
         getServer().getScheduler().scheduleRepeatingTask(this, () -> {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
@@ -7246,6 +7247,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     }
 
     private void recordGuildWarKill(Player killer, Player victim) {
+        ensureGuildSeason();
         String attackerGuild = currentGuildId(killer), victimGuild = currentGuildId(victim);
         if (attackerGuild.isEmpty() || victimGuild.isEmpty() || attackerGuild.equals(victimGuild)) return;
         long now = System.currentTimeMillis();

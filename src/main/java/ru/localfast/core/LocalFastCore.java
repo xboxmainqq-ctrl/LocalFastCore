@@ -3228,7 +3228,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             getServer().broadcastMessage("§b[STAFF] " + staffRoleColor(role) + "[" + staffRoleLabel(role)
                     + "] §f" + p.getName() + " §7зашёл на сервер!");
         }
-        initialize(p); refreshDaily(p); summonPet(p); String k=playerKey(p); String d=today();
+        initialize(p); refreshDaily(p); summonPet(p); deliverAuctionReturns(p); String k=playerKey(p); String d=today();
         int unreadMail = unreadPlayerNotifications(p);
         if (unreadMail > 0) p.sendMessage("§b[Почта] §fУ тебя §e" + unreadMail + " §fновых уведомлений. Открой §e/menu §f→ Почта.");
         if (!players.getString(k+".login_reward_date","").equals(d)) {
@@ -4476,6 +4476,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
             guildData.set("invites." + targetUuid + ".expires", System.currentTimeMillis() + 86400000L);
             guildData.save();
             String name = guildData.getString("guilds." + guildId + ".name", "");
+            addPlayerNotification(targetUuid, "guild_invite", "Приглашение в гильдию",
+                    "Гильдия «" + name + "». Приглашение действует 24 часа. Открой меню гильдий или используй /guild accept.");
             player.sendMessage("§aПриглашение отправлено игроку " + target.getName() + ".");
             target.sendMessage("§6[Гильдия] §fТебя пригласили в §e" + name + "§f. Введи §a/guild accept §fили §c/guild decline§f (24 часа).");
             return;
@@ -8278,6 +8280,138 @@ public final class LocalFastCore extends PluginBase implements Listener {
         operator.showFormWindow(form);
     }
 
+
+    private void deliverAuctionReturns(Player player) {
+        String root = "uuid_" + player.getUniqueId() + ".auction_returns";
+        List<String> ids = new ArrayList<>(players.getSection(root).getAll().keySet());
+        for (String id : ids) {
+            String path = root + "." + id;
+            Item item = Item.get(players.getInt(path + ".item-id", 0),
+                    players.getInt(path + ".item-damage", 0),
+                    players.getInt(path + ".count", 0));
+            if (item == null || item.isNull() || item.getCount() <= 0) {
+                getLogger().warning("Пропущен повреждённый возврат предмета аукциона для " + player.getName() + " (#" + id + ").");
+                continue;
+            }
+            if (!player.getInventory().canAddItem(item)) {
+                player.sendMessage("§e[Аукцион] Освободи место в инвентаре: у тебя есть возвращённые модерацией лоты.");
+                break;
+            }
+            player.getInventory().addItem(item);
+            players.remove(path);
+            markPlayersDirty();
+            player.sendMessage("§a[Аукцион] Твой лот #" + id + " возвращён администрацией.");
+        }
+        flushPlayers();
+    }
+
+    private void openOperatorAuctionMenu(Player operator, int page) {
+        if (!isOperator(operator)) {
+            operator.sendMessage("§cТолько оператор может управлять лотами аукциона.");
+            return;
+        }
+        List<String> ids = new ArrayList<>(marketData.getSection("listings").getAll().keySet());
+        ids.removeIf(id -> !marketData.exists(listingPath(id) + ".seller"));
+        ids.sort((a, b) -> Long.compare(
+                marketData.getLong(listingPath(b) + ".created-at", 0L),
+                marketData.getLong(listingPath(a) + ".created-at", 0L)));
+        int pages = Math.max(1, (ids.size() + 7) / 8);
+        int current = Math.max(0, Math.min(page, pages - 1));
+        int start = current * 8;
+        int shown = Math.min(8, Math.max(0, ids.size() - start));
+        FormWindowSimple form = new FormWindowSimple("§c§lМОДЕРАЦИЯ АУКЦИОНА",
+                "§7Активных лотов: §e" + ids.size() + " §8| §7Страница: §e" + (current + 1) + "§7/§e" + pages
+                + "\n§7Выбери лот для просмотра и проверки.");
+        for (int i = 0; i < shown; i++) {
+            String id = ids.get(start + i), path = listingPath(id);
+            form.addButton(new ElementButton("§e#" + id + " §f" + marketData.getString(path + ".item-name", "Предмет")
+                    + " x" + marketData.getInt(path + ".count", 1) + "\n§7"
+                    + marketData.getString(path + ".seller-name", "?") + " §8| §6"
+                    + marketData.getLong(path + ".price", 0L) + " " + currencyName()));
+        }
+        if (shown == 0) form.setContent(form.getContent() + "\n§7Активных лотов нет.");
+        int nav = shown;
+        if (pages > 1) {
+            form.addButton(new ElementButton(current > 0 ? "§e← Назад" : "§8← Начало"));
+            form.addButton(new ElementButton(current + 1 < pages ? "§eДальше →" : "§8Конец →"));
+        }
+        form.addButton(new ElementButton("§7Закрыть"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
+            int selected = form.getResponse().getClickedButtonId();
+            if (selected >= 0 && selected < shown) openOperatorAuctionLot(operator, ids.get(start + selected), current);
+            else if (pages > 1 && selected == nav) openOperatorAuctionMenu(operator, Math.max(0, current - 1));
+            else if (pages > 1 && selected == nav + 1) openOperatorAuctionMenu(operator, Math.min(pages - 1, current + 1));
+            else openOperatorMenu(operator);
+        }));
+        operator.showFormWindow(form);
+    }
+
+    private void openOperatorAuctionLot(Player operator, String id, int page) {
+        if (!isOperator(operator)) return;
+        String path = listingPath(id);
+        if (!marketData.exists(path + ".seller")) {
+            operator.sendMessage("§eЛот уже снят или куплен.");
+            openOperatorAuctionMenu(operator, page);
+            return;
+        }
+        String sellerUuid = marketData.getString(path + ".seller", "");
+        String sellerName = marketData.getString(path + ".seller-name", "?");
+        FormWindowSimple form = new FormWindowSimple("§cПроверка лота #" + id,
+                "§fПредмет: §e" + marketData.getString(path + ".item-name", "Предмет")
+                + " x" + marketData.getInt(path + ".count", 1)
+                + "\n§fЦена: §6" + marketData.getLong(path + ".price", 0L) + " " + currencyName()
+                + "\n§fПродавец: §b" + sellerName
+                + "\n§fUUID: §7" + sellerUuid
+                + "\n§7Снятие лота вернёт предмет владельцу при следующем входе.");
+        form.addButton(new ElementButton("§cСнять лот и вернуть предмет"));
+        form.addButton(new ElementButton("§7Назад к списку"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
+            int selected = form.getResponse().getClickedButtonId();
+            if (selected == 0) {
+                if (!isOperator(operator) || !marketData.exists(path + ".seller")) {
+                    openOperatorAuctionMenu(operator, page);
+                    return;
+                }
+                String returnId = id + "_" + UUID.randomUUID().toString().substring(0, 8);
+                String returnPath = "uuid_" + sellerUuid + ".auction_returns." + returnId;
+                players.set(returnPath + ".item-id", marketData.getInt(path + ".item-id", 0));
+                players.set(returnPath + ".item-damage", marketData.getInt(path + ".item-damage", 0));
+                players.set(returnPath + ".count", marketData.getInt(path + ".count", 0));
+                markPlayersDirty();
+                if (!flushPlayers()) {
+                    players.remove(returnPath);
+                    markPlayersDirty();
+                    operator.sendMessage("§cНе удалось сохранить возврат. Лот оставлен на аукционе.");
+                    return;
+                }
+                Map<String, Object> listing = new HashMap<>(marketData.getSection(path).getAll());
+                marketData.remove(path);
+                try {
+                    marketData.save();
+                } catch (RuntimeException ex) {
+                    players.remove(returnPath);
+                    markPlayersDirty();
+                    flushPlayers();
+                    for (Map.Entry<String, Object> entry : listing.entrySet())
+                        marketData.set(path + "." + entry.getKey(), entry.getValue());
+                    try { marketData.save(); } catch (RuntimeException ignoredSave) {}
+                    operator.sendMessage("§cНе удалось снять лот. Изменения отменены.");
+                    getLogger().error("Auction moderation rollback failed for lot #" + id, ex);
+                    return;
+                }
+                addPlayerNotification(sellerUuid, "auction_return", "Лот снят администрацией",
+                        "Лот #" + id + " был снят с аукциона. Предмет будет возвращён при входе.");
+                Player seller = onlinePlayer(UUID.fromString(sellerUuid));
+                if (seller != null) deliverAuctionReturns(seller);
+                operator.sendMessage("§aЛот #" + id + " снят. Предмет возвращён владельцу или помещён в очередь возврата.");
+                openOperatorAuctionMenu(operator, page);
+            } else openOperatorAuctionMenu(operator, page);
+        }));
+        operator.showFormWindow(form);
+    }
+
     private void openOperatorMenu(Player operator) {
         if (!isOperator(operator)) { operator.sendMessage("§cТолько оператор может открыть эту панель."); return; }
         FormWindowSimple form = new FormWindowSimple("§6LocalFast §8| §lОператорская панель",
@@ -8299,6 +8433,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§4Управление территориями"));
         form.addButton(new ElementButton("§cУправление гильдейскими войнами"));
         form.addButton(new ElementButton("§dУправление гильдейскими сезонами"));
+        form.addButton(new ElementButton("§cМодерация аукциона"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
             int id = form.getResponse().getClickedButtonId();
@@ -8328,6 +8463,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             else if (id == 14) openOperatorTerritoriesMenu(operator);
             else if (id == 15) openOperatorGuildWarsMenu(operator);
             else if (id == 16) openOperatorGuildSeasonMenu(operator);
+            else if (id == 17) openOperatorAuctionMenu(operator, 0);
         }));
         operator.showFormWindow(form);
     }

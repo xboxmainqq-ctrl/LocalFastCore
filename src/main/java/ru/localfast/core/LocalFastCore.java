@@ -223,7 +223,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.52.0 включён. Кузница реликвий Разлома, питомцы, экипировка, катакомбы, RPG и система персонала загружены.");
+        getLogger().info("LocalFastCore 0.53.0 включён. Меню рынка, аукциона, гильдий и переводов, кузница реликвий Разлома, питомцы, экипировка, катакомбы, RPG и система персонала загружены.");
     }
 
     private void markPlayersDirty() {
@@ -6405,6 +6405,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§eКузница и улучшение"));
         form.addButton(new ElementButton("§bКоллекция экипировки"));
         form.addButton(new ElementButton("§aКвесты и достижения"));
+        form.addButton(new ElementButton("§6Экономика: рынок и переводы"));
+        form.addButton(new ElementButton("§dГильдии"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
             int id = form.getResponse().getClickedButtonId();
@@ -6416,6 +6418,182 @@ public final class LocalFastCore extends PluginBase implements Listener {
             else if (id == 5) openPlayerForgeMenu(player);
             else if (id == 6) showGearCollection(player);
             else if (id == 7) openPlayerQuestMenu(player);
+            else if (id == 8) openPlayerEconomyMenu(player);
+            else if (id == 9) openPlayerGuildMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openPlayerEconomyMenu(Player player) {
+        FormWindowSimple form = new FormWindowSimple("§6Экономика", "§7Баланс: §e" + getBalance(player) + " " + currencyName() + "\n§7Выбери раздел.");
+        form.addButton(new ElementButton("§aРынок предметов"));
+        form.addButton(new ElementButton("§eАукцион"));
+        form.addButton(new ElementButton("§bПеревести монеты игроку"));
+        form.addButton(new ElementButton("§dПринять входящий перевод"));
+        form.addButton(new ElementButton("§7Главное меню"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id == 0) openPlayerMarketMenu(player);
+            else if (id == 1) openPlayerAuctionMenu(player);
+            else if (id == 2) openPlayerTradeTargetsMenu(player);
+            else if (id == 3) {
+                handleTrade(player, new String[]{"accept"});
+                openPlayerEconomyMenu(player);
+            } else openPlayerMainMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openPlayerMarketMenu(Player player) {
+        FormWindowSimple form = new FormWindowSimple("§6Рынок", "§7Покупай и выставляй предметы. Продажа выставляет весь предмет из руки.");
+        List<String> listingIds = new ArrayList<>();
+        for (String id : marketData.getSection("listings").getAll().keySet()) {
+            String path = listingPath(id);
+            if (marketData.getBoolean(path + ".auction", false)) continue;
+            listingIds.add(id);
+            form.addButton(new ElementButton("§e#" + id + " §f" + marketData.getString(path + ".item-name", "Предмет")
+                    + " x" + marketData.getInt(path + ".count", 1) + " §a" + marketData.getLong(path + ".price", 0L)));
+            if (listingIds.size() >= 12) break;
+        }
+        form.addButton(new ElementButton("§aПродать из руки: 100 монет"));
+        form.addButton(new ElementButton("§aПродать из руки: 500 монет"));
+        form.addButton(new ElementButton("§aПродать из руки: 1000 монет"));
+        form.addButton(new ElementButton("§aПродать из руки: 5000 монет"));
+        form.addButton(new ElementButton("§7Обновить"));
+        form.addButton(new ElementButton("§8Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id >= 0 && id < listingIds.size()) {
+                handleMarket(player, new String[]{"buy", listingIds.get(id)});
+                openPlayerMarketMenu(player);
+            } else {
+                int sell = id - listingIds.size();
+                if (sell >= 0 && sell <= 3) {
+                    handleMarket(player, new String[]{"sell", new String[]{"100","500","1000","5000"}[sell]});
+                    openPlayerMarketMenu(player);
+                } else if (sell == 4) openPlayerMarketMenu(player);
+                else openPlayerEconomyMenu(player);
+            }
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openPlayerAuctionMenu(Player player) {
+        FormWindowSimple form = new FormWindowSimple("§eАукцион", "§7Выставь предмет из руки на торги. Ставки и завершённые лоты пока доступны через команды /auction.");
+        form.addButton(new ElementButton("§aСоздать лот: старт 100 монет, 30 минут"));
+        form.addButton(new ElementButton("§aСоздать лот: старт 500 монет, 60 минут"));
+        form.addButton(new ElementButton("§aСоздать лот: старт 1000 монет, 24 часа"));
+        form.addButton(new ElementButton("§eПоказать активные лоты"));
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id == 0) handleAuction(player, new String[]{"create","100","30"});
+            else if (id == 1) handleAuction(player, new String[]{"create","500","60"});
+            else if (id == 2) handleAuction(player, new String[]{"create","1000","1440"});
+            else if (id == 3) handleAuction(player, new String[]{"list"});
+            openPlayerEconomyMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openPlayerTradeTargetsMenu(Player player) {
+        FormWindowSimple form = new FormWindowSimple("§bПеревод монет", "§7Выбери получателя. Сумму можно выбрать на следующем экране.");
+        List<Player> targets = new ArrayList<>();
+        for (Player target : getServer().getOnlinePlayers().values()) {
+            if (target.isOnline() && !target.getUniqueId().equals(player.getUniqueId())) {
+                targets.add(target);
+                form.addButton(new ElementButton("§f" + target.getName()));
+                if (targets.size() >= 20) break;
+            }
+        }
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id >= 0 && id < targets.size() && targets.get(id).isOnline()) openPlayerTradeAmountMenu(player, targets.get(id));
+            else openPlayerEconomyMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openPlayerTradeAmountMenu(Player player, Player target) {
+        FormWindowSimple form = new FormWindowSimple("§bПеревод игроку", "§7Получатель: §e" + target.getName() + "\n§7Выбери сумму предложения.");
+        String[] amounts = {"10","50","100","500","1000","5000"};
+        for (String amount : amounts) form.addButton(new ElementButton("§a" + amount + " " + currencyName()));
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id >= 0 && id < amounts.length && target.isOnline()) handleTrade(player, new String[]{target.getName(), amounts[id]});
+            openPlayerEconomyMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openPlayerGuildMenu(Player player) {
+        String guildId = currentGuildId(player);
+        FormWindowSimple form = new FormWindowSimple("§dГильдии", guildId.isEmpty()
+                ? "§7Ты пока без гильдии. Создание стоит §e" + getConfig().getLong("guilds.creation-cost", 1000L) + " " + currencyName() + "."
+                : "§7Текущая гильдия: §e" + guildData.getString("guilds." + guildId + ".name", guildId));
+        form.addButton(new ElementButton("§eСписок гильдий"));
+        form.addButton(new ElementButton("§aИнформация о моей гильдии"));
+        if (guildId.isEmpty()) {
+            form.addButton(new ElementButton("§aСоздать гильдию"));
+            form.addButton(new ElementButton("§bПринять приглашение"));
+        } else {
+            form.addButton(new ElementButton("§bПригласить игрока"));
+            form.addButton(new ElementButton("§cПокинуть гильдию"));
+        }
+        form.addButton(new ElementButton("§7Главное меню"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id == 0) handleGuildCommand(player, new String[]{"list"});
+            else if (id == 1) handleGuildCommand(player, new String[]{"info"});
+            else if (guildId.isEmpty() && id == 2) {
+                String suffix = player.getName().replaceAll("[^A-Za-z0-9_]", "");
+                if (suffix.length() > 12) suffix = suffix.substring(0, 12);
+                handleGuildCommand(player, new String[]{"create", "Г-" + suffix});
+                openPlayerGuildMenu(player);
+            } else if (guildId.isEmpty() && id == 3) {
+                handleGuildCommand(player, new String[]{"accept"});
+                openPlayerGuildMenu(player);
+            } else if (!guildId.isEmpty() && id == 2) openPlayerGuildInviteMenu(player);
+            else if (!guildId.isEmpty() && id == 3) {
+                handleGuildCommand(player, new String[]{"leave"});
+                openPlayerGuildMenu(player);
+            } else openPlayerMainMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openPlayerGuildInviteMenu(Player player) {
+        String guildId = currentGuildId(player);
+        if (guildId.isEmpty() || !guildCanManage(guildId, player)) {
+            player.sendMessage("§cПриглашать могут глава и офицеры гильдии.");
+            return;
+        }
+        FormWindowSimple form = new FormWindowSimple("§dПригласить в гильдию", "§7Выбери игрока онлайн.");
+        List<Player> targets = new ArrayList<>();
+        for (Player target : getServer().getOnlinePlayers().values()) {
+            if (target.isOnline() && !target.getUniqueId().equals(player.getUniqueId())
+                    && currentGuildId(target).isEmpty()) {
+                targets.add(target);
+                form.addButton(new ElementButton("§f" + target.getName()));
+                if (targets.size() >= 20) break;
+            }
+        }
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id >= 0 && id < targets.size() && targets.get(id).isOnline()) {
+                handleGuildCommand(player, new String[]{"invite", targets.get(id).getName()});
+            }
+            openPlayerGuildMenu(player);
         }));
         player.showFormWindow(form);
     }

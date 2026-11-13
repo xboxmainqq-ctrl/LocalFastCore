@@ -1173,7 +1173,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 + "§bСнежный дух: §f+" + petSnowXpPercent(player) + "% XP (ур. " + petLevel(player, "snow") + ", 5 побед)\n"
                 + petProgress + "\n§7Ошейник: " + (hasPetCollar(player) ? "§aУстановлен (+сила бонуса)" : "§7Нет")
                 + "\n§7Броня: " + (hasPetArmor(player) ? "§aУстановлена (-5% урона)" : "§7Нет")
-                + "\n§8Команды: /pets gear, /pets gear craft collar|armor, /pets gear equip collar|armor"
+                + "\n§8Открой кнопку снаряжения, чтобы создать и установить предметы."
                 + "\n§7Побед в катакомбах: §e" + clears);
         String[] pets = {"wolf", "golem", "snow"};
         for (String pet : pets) {
@@ -1182,6 +1182,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
         form.addButton(new ElementButton("§7Убрать питомца"));
         form.addButton(new ElementButton("§6Использовать способность питомца"));
+        form.addButton(new ElementButton("§eСнаряжение питомца"));
+        form.addButton(new ElementButton("§7Главное меню"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
             int choice = form.getResponse().getClickedButtonId();
@@ -1205,7 +1207,37 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 player.sendMessage("§7Питомец убран.");
             } else if (choice == pets.length + 1) {
                 activatePetAbility(player);
+            } else if (choice == pets.length + 2) {
+                openPlayerPetGearMenu(player);
+            } else if (choice == pets.length + 3) {
+                openPlayerMainMenu(player);
             }
+        }));
+        player.showFormWindow(form);
+    }
+
+
+    private void openPlayerPetGearMenu(Player player) {
+        FormWindowSimple form = new FormWindowSimple("§eСнаряжение питомца",
+                "§7Ошейник: " + (hasPetCollar(player) ? "§aустановлен" : "§cне установлен")
+                + "\n§7Броня: " + (hasPetArmor(player) ? "§aустановлена" : "§cне установлена")
+                + "\n§8Создание требует осколки и кристаллы Катакомб.");
+        form.addButton(new ElementButton("§aСоздать ошейник"));
+        form.addButton(new ElementButton("§aУстановить ошейник"));
+        form.addButton(new ElementButton("§cСнять ошейник"));
+        form.addButton(new ElementButton("§bСоздать броню"));
+        form.addButton(new ElementButton("§bУстановить броню"));
+        form.addButton(new ElementButton("§cСнять броню"));
+        form.addButton(new ElementButton("§7Назад к питомцам"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id >= 0 && id <= 5) {
+                String type = id < 3 ? "collar" : "armor";
+                String action = new String[]{"craft","equip","unequip"}[id % 3];
+                handlePetGear(player, new String[]{"gear", action, type});
+                openPlayerPetGearMenu(player);
+            } else openPetsMenu(player);
         }));
         player.showFormWindow(form);
     }
@@ -6299,12 +6331,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 if (!leftovers.isEmpty()) operator.sendMessage("§cНе всё поместилось в инвентарь.");
             } else {
                 int remaining = amount;
-                for (Item item : target.getInventory().getContents().values()) {
+                for (Map.Entry<Integer, Item> entry : target.getInventory().getContents().entrySet()) {
                     if (remaining <= 0) break;
+                    Item item = entry.getValue();
                     if (item != null && item.getId() == resource.getId() && label.equals(item.getCustomName())) {
                         int take = Math.min(remaining, item.getCount());
-                        Item reduced = item.clone(); reduced.setCount(item.getCount() - take);
-                        target.getInventory().setItem(target.getInventory().getHeldItemIndex(), reduced);
+                        int left = item.getCount() - take;
+                        target.getInventory().setItem(entry.getKey(), left > 0 ? item.clone().setCount(left) : Item.get(0));
                         remaining -= take;
                     }
                 }

@@ -1178,6 +1178,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
         } catch (RuntimeException exception) {
             getLogger().warning("Не удалось проверить площадку подземелья: " + exception.getMessage());
         }
+        boolean refreshCavernStyle = getConfig().getInt("dungeons.visual-style-version", 0) < 1;
+        if (refreshCavernStyle) {
+            getConfig().set("dungeons.location-built", false);
+            getConfig().set("dungeons.wave-gates-built", false);
+            getConfig().set("dungeons.treasure-room-built", false);
+        }
         if (!getConfig().getBoolean("dungeons.location-built", false) || !floorExists
                 || !getConfig().getBoolean("dungeons.wave-gates-built", false)) {
             buildDungeonLocation(level);
@@ -1196,50 +1202,82 @@ public final class LocalFastCore extends PluginBase implements Listener {
             getConfig().set("dungeons.traps-built", true);
             saveConfig();
         }
+        if (refreshCavernStyle) {
+            getConfig().set("dungeons.visual-style-version", 1);
+            saveConfig();
+        }
         return level;
+    }
+
+    // Width changes along the route to create a natural cave silhouette instead of a box.
+    private int dungeonCavernWidth(int z) {
+        double t = Math.max(0.0, Math.min(1.0, (z + 32.0) / 64.0));
+        return Math.max(7, (int) Math.round(8.0 + 6.0 * Math.sin(Math.PI * t)
+                + 1.4 * Math.sin(3.0 * Math.PI * t)));
     }
 
     private void buildDungeonLocation(Level level) {
         List<CastleBlock> blocks = new ArrayList<>();
         int floorY = 5;
-        // Three connected chambers: entrance, monster hall and final boss room.
-        for (int x = -13; x <= 13; x++) {
-            for (int z = -32; z <= 32; z++) {
-                blocks.add(new CastleBlock(x, floorY, z, 98));
+        // Organic cave route: a narrow entrance, broad winding hall and a rounded boss cavern.
+        for (int z = -32; z <= 32; z++) {
+            int width = dungeonCavernWidth(z);
+            for (int x = -width; x <= width; x++) {
+                blocks.add(new CastleBlock(x, floorY, z, (Math.abs(x) == width || z % 9 == 0) ? 98 : 1));
                 blocks.add(new CastleBlock(x, floorY + 7, z, 4));
             }
+            for (int y = floorY + 1; y <= floorY + 6; y++) {
+                blocks.add(new CastleBlock(-width, y, z, 98));
+                blocks.add(new CastleBlock(width, y, z, 98));
+            }
         }
+        // End walls close the entrance and the boss cavern; wave gates remain in their original positions.
         for (int y = floorY + 1; y <= floorY + 6; y++) {
-            for (int x = -13; x <= 13; x++) {
+            for (int x = -dungeonCavernWidth(-32); x <= dungeonCavernWidth(-32); x++)
                 blocks.add(new CastleBlock(x, y, -32, 98));
+            for (int x = -dungeonCavernWidth(32); x <= dungeonCavernWidth(32); x++)
                 blocks.add(new CastleBlock(x, y, 32, 98));
+        }
+        // Reinforced gates seal the two wave transitions until their wave is cleared.
+        for (int z : new int[]{-11, 10}) {
+            for (int x = -2; x <= 2; x++)
+                for (int y = floorY + 1; y <= floorY + 6; y++)
+                    blocks.add(new CastleBlock(x, y, z, 98));
+        }
+        // Carved support pillars, overhead ribs and warm glowstone sconces.
+        for (int z : new int[]{-26, -19, -3, 4, 19, 27}) {
+            int width = dungeonCavernWidth(z);
+            for (int side : new int[]{-1, 1}) {
+                int px = side * Math.max(4, width - 3);
+                for (int y = floorY + 1; y <= floorY + 4; y++)
+                    blocks.add(new CastleBlock(px, y, z, 4));
+                blocks.add(new CastleBlock(px, floorY + 4, z, 48));
+                blocks.add(new CastleBlock(px - side, floorY + 3, z, 89));
+                blocks.add(new CastleBlock(px - side, floorY + 4, z, 89));
+                // Small stalactites hang from the roof near the cave walls, clear of the path.
+                blocks.add(new CastleBlock(side * Math.max(3, width - 5), floorY + 6, z + 1, 4));
+                blocks.add(new CastleBlock(side * Math.max(3, width - 5), floorY + 5, z + 1, 4));
             }
-            for (int z = -32; z <= 32; z++) {
-                blocks.add(new CastleBlock(-13, y, z, 98));
-                blocks.add(new CastleBlock(13, y, z, 98));
-            }
-            // The passages are fully sealed with reinforced gates at first.
-            for (int x = -13; x <= 13; x++) {
-                blocks.add(new CastleBlock(x, y, -11, 98));
-                blocks.add(new CastleBlock(x, y, 10, 98));
+            // A broken rib across the ceiling gives each chamber a different silhouette.
+            for (int x = -width + 2; x <= width - 2; x++) {
+                if (Math.abs(x) > 2)
+                    blocks.add(new CastleBlock(x, floorY + 6, z, 4));
             }
         }
-        for (int z : new int[]{-29, -8, 13, 29}) {
-            for (int x : new int[]{-11, 11}) {
-                blocks.add(new CastleBlock(x, floorY + 1, z, 89));
-                blocks.add(new CastleBlock(x, floorY + 2, z, 89));
+        // Rubble and moss along the edges make the floor less uniform without blocking combat.
+        for (int z = -30; z <= 30; z += 5) {
+            int width = dungeonCavernWidth(z);
+            for (int side : new int[]{-1, 1}) {
+                blocks.add(new CastleBlock(side * Math.max(2, width - 1), floorY, z + 1, 48));
+                blocks.add(new CastleBlock(side * Math.max(2, width - 2), floorY, z + 2, 4));
             }
         }
 
-        // Finish the structure before teleporting the player into it. This avoids
-        // the old race where the player arrived while the async builder was still
-        // placing the floor, walls and ceiling.
         int placed = 0;
         for (CastleBlock block : blocks) {
             try {
-                if (level.getChunk(block.x >> 4, block.z >> 4, true) == null) {
+                if (level.getChunk(block.x >> 4, block.z >> 4, true) == null)
                     throw new IllegalStateException("chunk unavailable");
-                }
                 level.setBlock(new Position(block.x, block.y, block.z, level),
                         Block.get(block.id), true, true);
                 placed++;
@@ -1248,7 +1286,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                         + block.y + ", " + block.z + ": " + exception.getMessage());
             }
         }
-        getLogger().info("Локация подземелья построена: " + placed + "/" + blocks.size() + " блоков.");
+        getLogger().info("Органические катакомбы построены: " + placed + "/" + blocks.size() + " блоков.");
     }
 
     private void buildDungeonTraps(Level level) {

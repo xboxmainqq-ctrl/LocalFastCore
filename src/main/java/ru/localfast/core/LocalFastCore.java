@@ -3229,6 +3229,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     + "] §f" + p.getName() + " §7зашёл на сервер!");
         }
         initialize(p); refreshDaily(p); summonPet(p); String k=playerKey(p); String d=today();
+        int unreadMail = unreadPlayerNotifications(p);
+        if (unreadMail > 0) p.sendMessage("§b[Почта] §fУ тебя §e" + unreadMail + " §fновых уведомлений. Открой §e/menu §f→ Почта.");
         if (!players.getString(k+".login_reward_date","").equals(d)) {
             players.set(k+".login_reward_date",d); markPlayersDirty(); giveXp(p, Math.max(0, getConfig().getInt("progression.login-reward-xp", LOGIN_XP_REWARD)));
             p.sendMessage("§a[LocalFast] Награда за первый вход сегодня: +" + Math.max(0, getConfig().getInt("progression.login-reward-xp", LOGIN_XP_REWARD)) + " XP!");
@@ -4625,8 +4627,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 return;
             }
             player.sendMessage("§aТы получил " + offer.amount + " " + currencyName() + " от " + offer.senderName + ".");
+            addPlayerNotification(to, "transfer", "Входящий перевод",
+                    offer.senderName + " перевёл тебе " + offer.amount + " " + currencyName() + ".");
             Player sender = getServer().getPlayer(offer.senderName);
             if (sender != null) sender.sendMessage("§a" + player.getName() + " принял перевод " + offer.amount + ".");
+            else addPlayerNotification(from, "transfer", "Перевод принят",
+                    player.getName() + " принял твой перевод " + offer.amount + " " + currencyName() + ".");
             return;
         }
         if (args.length != 2) {
@@ -4813,6 +4819,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
             player.sendMessage("§aТы купил " + item.getName() + " x" + item.getCount() + " за " + price + " " + currencyName() + ".");
             Player seller = getServer().getPlayer(sellerName);
             if (seller != null) seller.sendMessage("§aТвой лот #" + id + " купили за " + price + " " + currencyName() + ".");
+            else addPlayerNotification(sellerUuid, "auction_sale", "Продажа на аукционе",
+                    "Лот #" + id + " продан за " + price + " " + currencyName() + ".");
             return;
         }
         if (args[0].equalsIgnoreCase("cancel")) {
@@ -4895,6 +4903,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
         String amountText = amount + " " + currencyName();
         player.sendMessage("§aТы перевёл " + amountText + " игроку " + target.getName() + ".");
         target.sendMessage("§a" + player.getName() + " перевёл тебе " + amountText + ".");
+        addPlayerNotification(target.getUniqueId().toString(), "transfer", "Входящий перевод",
+                player.getName() + " перевёл тебе " + amountText + ".");
     }
 
     private boolean isOperator(CommandSender sender) {
@@ -6608,6 +6618,91 @@ public final class LocalFastCore extends PluginBase implements Listener {
         player.showFormWindow(form);
     }
 
+
+    private void addPlayerNotification(String uuid, String type, String title, String message) {
+        if (uuid == null || uuid.trim().isEmpty()) return;
+        String root = "uuid_" + uuid + ".mail";
+        String id = System.currentTimeMillis() + "_" + UUID.randomUUID().toString().substring(0, 8);
+        String path = root + "." + id;
+        players.set(path + ".type", type == null ? "info" : type);
+        players.set(path + ".title", title == null ? "Уведомление" : title);
+        players.set(path + ".message", message == null ? "" : message);
+        players.set(path + ".created-at", System.currentTimeMillis());
+        players.set(path + ".read", false);
+        List<String> ids = new ArrayList<>(players.getSection(root).getAll().keySet());
+        ids.sort((a, b) -> Long.compare(players.getLong(root + "." + a + ".created-at", 0L),
+                players.getLong(root + "." + b + ".created-at", 0L)));
+        while (ids.size() >= 50) players.remove(root + "." + ids.remove(0));
+        markPlayersDirty();
+    }
+
+    private int unreadPlayerNotifications(Player player) {
+        String root = "uuid_" + player.getUniqueId() + ".mail";
+        int unread = 0;
+        for (String id : players.getSection(root).getAll().keySet())
+            if (!players.getBoolean(root + "." + id + ".read", false)) unread++;
+        return unread;
+    }
+
+    private void openPlayerNotifications(Player player) { openPlayerNotifications(player, 0, false); }
+
+    private void openPlayerNotifications(Player player, int page, boolean unreadOnly) {
+        String root = "uuid_" + player.getUniqueId() + ".mail";
+        List<String> ids = new ArrayList<>();
+        for (String id : players.getSection(root).getAll().keySet())
+            if (!unreadOnly || !players.getBoolean(root + "." + id + ".read", false)) ids.add(id);
+        ids.sort((a, b) -> Long.compare(players.getLong(root + "." + b + ".created-at", 0L),
+                players.getLong(root + "." + a + ".created-at", 0L)));
+        int pages = Math.max(1, (ids.size() + 7) / 8);
+        int current = Math.max(0, Math.min(page, pages - 1));
+        int start = current * 8, shown = Math.min(8, Math.max(0, ids.size() - start));
+        FormWindowSimple form = new FormWindowSimple("§b§lПОЧТА И УВЕДОМЛЕНИЯ",
+                "§7Непрочитано: §e" + unreadPlayerNotifications(player) + " §8| §7Всего: §f" + ids.size()
+                + "\n§7Фильтр: " + (unreadOnly ? "§aтолько новые" : "§fвсе")
+                + " §8| §7Страница: §e" + (current + 1) + "§7/§e" + pages);
+        for (int i = 0; i < shown; i++) {
+            String id = ids.get(start + i), path = root + "." + id;
+            form.addButton(new ElementButton((players.getBoolean(path + ".read", false) ? "§8✓ " : "§a● ")
+                    + players.getString(path + ".title", "Уведомление") + "\n§7"
+                    + players.getString(path + ".message", "")));
+        }
+        if (shown == 0) form.setContent(form.getContent() + "\n§7Здесь пока пусто.");
+        int nav = shown;
+        if (pages > 1) {
+            form.addButton(new ElementButton(current > 0 ? "§e← Назад" : "§8← Начало"));
+            form.addButton(new ElementButton(current + 1 < pages ? "§eДальше →" : "§8Конец →"));
+        }
+        int base = nav + (pages > 1 ? 2 : 0);
+        form.addButton(new ElementButton(unreadOnly ? "§bПоказать все" : "§bТолько непрочитанные"));
+        form.addButton(new ElementButton("§aОтметить всё прочитанным"));
+        form.addButton(new ElementButton("§7В главное меню"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int selected = form.getResponse().getClickedButtonId();
+            if (selected >= 0 && selected < shown) {
+                String id = ids.get(start + selected), path = root + "." + id;
+                players.set(path + ".read", true); markPlayersDirty(); flushPlayers();
+                FormWindowSimple detail = new FormWindowSimple(players.getString(path + ".title", "Уведомление"),
+                        "§7" + players.getString(path + ".message", "") + "\n\n§8Дата: "
+                        + new java.text.SimpleDateFormat("dd.MM.yyyy HH:mm")
+                        .format(new java.util.Date(players.getLong(path + ".created-at", 0L))));
+                detail.addButton(new ElementButton("§7Назад к уведомлениям"));
+                detail.addHandler(FormResponseHandler.withoutPlayer(response -> {
+                    if (!detail.wasClosed() && detail.getResponse() != null && player.isOnline())
+                        openPlayerNotifications(player, current, unreadOnly);
+                }));
+                player.showFormWindow(detail);
+            } else if (pages > 1 && selected == nav) openPlayerNotifications(player, Math.max(0, current - 1), unreadOnly);
+            else if (pages > 1 && selected == nav + 1) openPlayerNotifications(player, Math.min(pages - 1, current + 1), unreadOnly);
+            else if (selected == base) openPlayerNotifications(player, 0, !unreadOnly);
+            else if (selected == base + 1) {
+                for (String id : players.getSection(root).getAll().keySet()) players.set(root + "." + id + ".read", true);
+                markPlayersDirty(); flushPlayers(); openPlayerNotifications(player, current, unreadOnly);
+            } else openPlayerMainMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
     private void openPlayerMainMenu(Player player) {
         initialize(player);
         FormWindowSimple form = new FormWindowSimple("§6§lLOCALFAST §8| §fГлавное меню",
@@ -6624,6 +6719,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§6Экономика: аукцион и переводы"));
         form.addButton(new ElementButton("§dГильдии"));
         form.addButton(new ElementButton("§dКоллекция титулов"));
+        form.addButton(new ElementButton("§bПочта и уведомления §8(" + unreadPlayerNotifications(player) + ")"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
             int id = form.getResponse().getClickedButtonId();
@@ -6638,6 +6734,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             else if (id == 8) openPlayerEconomyMenu(player);
             else if (id == 9) openPlayerGuildMenu(player);
             else if (id == 10) openPlayerTitleCollection(player);
+            else if (id == 11) openPlayerNotifications(player);
         }));
         player.showFormWindow(form);
     }

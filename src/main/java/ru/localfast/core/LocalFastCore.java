@@ -1152,8 +1152,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
         String itemName = type.equals("collar") ? collarName : armorName;
         String profileKey = petPath(player) + ".gear." + type;
         if (action.equals("craft")) {
-            if (players.getBoolean(profileKey, false)) {
-                player.sendMessage("§eЭта экипировка уже установлена.");
+            if (players.getBoolean(profileKey, false) || hasNamedItem(player, itemName)) {
+                player.sendMessage("§eЭта экипировка уже установлена или уже лежит в инвентаре.");
                 return;
             }
             int shards = type.equals("collar") ? 4 : 8;
@@ -1175,7 +1175,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     ? "§eУсиливает способности и пассивные бонусы" : "§6Снижает урон хозяина от существ на 5%"});
             Item[] leftovers = player.getInventory().addItem(gear);
             if (leftovers != null && leftovers.length > 0) {
-                player.getInventory().addItem(Item.get(406, 0, shards), Item.get(388, 0, crystals));
+                player.getInventory().addItem(
+                        createForgeMaterial(406, "§bОсколок катакомб", shards),
+                        createForgeMaterial(388, "§dКристалл катакомб", crystals));
                 player.sendMessage("§cОсвободи место в инвентаре. Материалы возвращены.");
                 return;
             }
@@ -1199,7 +1201,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
             markPlayersDirty();
             if (!flushPlayers()) {
                 players.set(profileKey, false);
-                player.getInventory().addItem(Item.get(type.equals("collar") ? 264 : 311, 0, 1).setCustomName(itemName));
+                Item returnedGear = Item.get(type.equals("collar") ? 264 : 311, 0, 1);
+                returnedGear.setCustomName(itemName);
+                player.getInventory().addItem(returnedGear);
                 markPlayersDirty();
                 player.sendMessage("§cНе удалось сохранить экипировку. Предмет возвращён.");
                 return;

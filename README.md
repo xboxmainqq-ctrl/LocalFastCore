@@ -223,3 +223,13 @@ The Lost Catacombs now support parties of up to four online players. Use `/dunge
 Party size is limited to four. Invites and party membership are in-memory and are cleared by a server restart; create the party again after restart. The solo dungeon path remains available when a player is not in a party.
 
 The automated build validates compilation and packaging. Test party invites, a four-player run, shared wave advancement, individual reward claims, player death/respawn, and reconnect behavior on a staging server before production.
+
+
+## LocalFastCore 0.32.0 — рекорды катакомб
+- Добавлена постоянная статистика прохождений: каждая победа над Хранителем увеличивает личный счётчик участника.
+- `/dungeon stats` показывает личное число побед, дату последнего прохождения и текущую волну.
+- `/dungeon top` выводит десятку игроков с наибольшим количеством полных прохождений и место текущего игрока.
+- Рекорды хранятся в существующем `players.yml` и не сбрасываются при ежедневном обновлении задания или перезапуске сервера.
+- Для участников командного прохождения победа записывается каждому онлайн-участнику команды.
+
+CI проверяет компиляцию и упаковку. Проверь на тестовом сервере соло-прохождение, командную победу, сохранение рекорда после перезапуска и команды `/dungeon stats` и `/dungeon top`.

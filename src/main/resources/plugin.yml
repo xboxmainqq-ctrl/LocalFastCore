@@ -1,9 +1,9 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.43.0"
+version: "0.44.0"
 api: ["1.0.0"]
 author: LocalFast
-description: LocalFastCore 0.43.0 dungeon forge upgrades, clear-time records and speed leaderboard, Keeper final phase, second phase life siphon and trophy reward, hard-mode boss abilities and reinforcements, records and leaderboard, cooperative waves and bosses, RPG, economy and staff systems
+description: LocalFastCore 0.44.0 legendary forge effects and upgrades, clear-time records and speed leaderboard, Keeper final phase, second phase life siphon and trophy reward, hard-mode boss abilities and reinforcements, records and leaderboard, cooperative waves and bosses, RPG, economy and staff systems
 commands:
   spawn:
     description: Телепорт на отдельный спавн

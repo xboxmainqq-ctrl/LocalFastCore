@@ -622,10 +622,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
         if (event.getEntity() instanceof Player && event.getDamager() instanceof EntityCreature) {
             Player defender = (Player) event.getEntity();
-            if (selectedPet(defender).equals("golem")) {
-                int reduction = petGolemReductionPercent(defender);
+            int petReduction = selectedPet(defender).equals("golem") ? petGolemReductionPercent(defender) : 0;
+            petReduction += petArmorReductionPercent(defender);
+            if (petReduction > 0) {
                 float petBaseDamage = event.getDamage(EntityDamageEvent.DamageModifier.BASE);
-                event.setDamage(Math.max(0.0f, petBaseDamage * (100 - reduction) / 100.0f),
+                event.setDamage(Math.max(0.0f, petBaseDamage * (100 - Math.min(25, petReduction)) / 100.0f),
                         EntityDamageEvent.DamageModifier.BASE);
             }
             long guardUntil = petGuardUntil.getOrDefault(defender.getUniqueId(), 0L);
@@ -987,14 +988,23 @@ public final class LocalFastCore extends PluginBase implements Listener {
         return Math.max(0, players.getInt(petPath(player) + "." + pet + ".xp", 0));
     }
     private int petXpForNextLevel(int level) { return Math.max(100, level * 100); }
+    private boolean hasPetCollar(Player player) {
+        return players.getBoolean(petPath(player) + ".gear.collar", false);
+    }
+    private boolean hasPetArmor(Player player) {
+        return players.getBoolean(petPath(player) + ".gear.armor", false);
+    }
     private int petWolfBonusDamage(Player player) {
-        return 1 + (petLevel(player, "wolf") - 1) / 2;
+        return 1 + (petLevel(player, "wolf") - 1) / 2 + (hasPetCollar(player) ? 1 : 0);
     }
     private int petGolemReductionPercent(Player player) {
-        return Math.min(16, 8 + (petLevel(player, "golem") - 1) * 2);
+        return Math.min(20, 8 + (petLevel(player, "golem") - 1) * 2 + (hasPetCollar(player) ? 2 : 0));
     }
     private int petSnowXpPercent(Player player) {
-        return Math.min(18, 10 + (petLevel(player, "snow") - 1) * 2);
+        return Math.min(20, 10 + (petLevel(player, "snow") - 1) * 2 + (hasPetCollar(player) ? 2 : 0));
+    }
+    private int petArmorReductionPercent(Player player) {
+        return hasPetArmor(player) ? 5 : 0;
     }
     private void grantPetXp(Player player, int amount) {
         String pet = selectedPet(player);
@@ -1079,7 +1089,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 + "§aВолк: §f+" + petWolfBonusDamage(player) + " урон (ур. " + petLevel(player, "wolf") + ")\n"
                 + "§6Голем: §f-" + petGolemReductionPercent(player) + "% урона (ур. " + petLevel(player, "golem") + ", 3 победы)\n"
                 + "§bСнежный дух: §f+" + petSnowXpPercent(player) + "% XP (ур. " + petLevel(player, "snow") + ", 5 побед)\n"
-                + petProgress + "\n§7Побед в катакомбах: §e" + clears);
+                + petProgress + "\n§7Ошейник: " + (hasPetCollar(player) ? "§aУстановлен (+сила бонуса)" : "§7Нет")
+                + "\n§7Броня: " + (hasPetArmor(player) ? "§aУстановлена (-5% урона)" : "§7Нет")
+                + "\n§8Команды: /pets gear, /pets gear craft collar|armor, /pets gear equip collar|armor"
+                + "\n§7Побед в катакомбах: §e" + clears);
         String[] pets = {"wolf", "golem", "snow"};
         for (String pet : pets) {
             String state = !isPetUnlocked(player, pet) ? "§c[Закрыт]" : selected.equals(pet) ? "§a[Выбран]" : "§e[Выбрать]";
@@ -1115,6 +1128,100 @@ public final class LocalFastCore extends PluginBase implements Listener {
         player.showFormWindow(form);
     }
 
+    private void handlePetGear(Player player, String[] args) {
+        initialize(player);
+        String collarName = "§eОшейник спутника";
+        String armorName = "§6Броня спутника";
+        if (args.length == 1 || args[1].equalsIgnoreCase("info")) {
+            player.sendMessage("§6§lЭКИПИРОВКА ПИТОМЦА");
+            player.sendMessage("§7Ошейник: " + (hasPetCollar(player) ? "§aустановлен" : "§cне установлен")
+                    + " §8— усиливает пассивный бонус и способность питомца.");
+            player.sendMessage("§7Броня: " + (hasPetArmor(player) ? "§aустановлена" : "§cне установлена")
+                    + " §8— снижает урон от существ на 5%.");
+            player.sendMessage("§eСоздание: §f/pets gear craft collar|armor");
+            player.sendMessage("§eУстановка: §f/pets gear equip collar|armor");
+            player.sendMessage("§7Ошейник: 4 осколка + 2 кристалла. Броня: 8 осколков + 3 кристалла.");
+            return;
+        }
+        String action = args[1].toLowerCase(Locale.ROOT);
+        if (args.length != 3 || (!args[2].equalsIgnoreCase("collar") && !args[2].equalsIgnoreCase("armor"))) {
+            player.sendMessage("§e/pets gear [info|craft collar|armor|equip collar|armor|unequip collar|armor]");
+            return;
+        }
+        String type = args[2].toLowerCase(Locale.ROOT);
+        String itemName = type.equals("collar") ? collarName : armorName;
+        String profileKey = petPath(player) + ".gear." + type;
+        if (action.equals("craft")) {
+            if (players.getBoolean(profileKey, false)) {
+                player.sendMessage("§eЭта экипировка уже установлена.");
+                return;
+            }
+            int shards = type.equals("collar") ? 4 : 8;
+            int crystals = type.equals("collar") ? 2 : 3;
+            if (countForgeMaterial(player, "§bОсколок катакомб") < shards
+                    || countForgeMaterial(player, "§dКристалл катакомб") < crystals) {
+                player.sendMessage("§cНе хватает материалов: нужно " + shards + " осколков катакомб и "
+                        + crystals + " кристаллов.");
+                return;
+            }
+            if (!consumeForgeMaterial(player, "§bОсколок катакомб", shards)
+                    || !consumeForgeMaterial(player, "§dКристалл катакомб", crystals)) {
+                player.sendMessage("§cНе удалось списать материалы. Повтори попытку.");
+                return;
+            }
+            Item gear = type.equals("collar") ? Item.get(264, 0, 1) : Item.get(311, 0, 1);
+            gear.setCustomName(itemName);
+            gear.setLore(new String[]{"§7Экипировка спутника", type.equals("collar")
+                    ? "§eУсиливает способности и пассивные бонусы" : "§6Снижает урон хозяина от существ на 5%"});
+            Item[] leftovers = player.getInventory().addItem(gear);
+            if (leftovers != null && leftovers.length > 0) {
+                player.getInventory().addItem(Item.get(406, 0, shards), Item.get(388, 0, crystals));
+                player.sendMessage("§cОсвободи место в инвентаре. Материалы возвращены.");
+                return;
+            }
+            player.sendMessage("§aСоздано: " + itemName + "§a. Установи: /pets gear equip " + type);
+            return;
+        }
+        if (action.equals("equip")) {
+            if (players.getBoolean(profileKey, false)) {
+                player.sendMessage("§eЭта экипировка уже установлена.");
+                return;
+            }
+            if (!hasNamedItem(player, itemName)) {
+                player.sendMessage("§cСначала создай экипировку: /pets gear craft " + type);
+                return;
+            }
+            if (!consumeForgeMaterial(player, itemName, 1)) {
+                player.sendMessage("§cНе удалось установить предмет.");
+                return;
+            }
+            players.set(profileKey, true);
+            markPlayersDirty();
+            if (!flushPlayers()) {
+                players.set(profileKey, false);
+                player.getInventory().addItem(Item.get(type.equals("collar") ? 264 : 311, 0, 1).setCustomName(itemName));
+                markPlayersDirty();
+                player.sendMessage("§cНе удалось сохранить экипировку. Предмет возвращён.");
+                return;
+            }
+            player.sendTitle("§6ЭКИПИРОВКА УСТАНОВЛЕНА", itemName, 5, 30, 5);
+            player.sendMessage("§aЭкипировка питомца установлена и сохранена.");
+            return;
+        }
+        if (action.equals("unequip")) {
+            if (!players.getBoolean(profileKey, false)) {
+                player.sendMessage("§cЭтот слот уже пуст.");
+                return;
+            }
+            players.set(profileKey, false);
+            markPlayersDirty();
+            flushPlayers();
+            player.sendMessage("§7Экипировка снята. Предмет не возвращается.");
+            return;
+        }
+        player.sendMessage("§e/pets gear [info|craft collar|armor|equip collar|armor|unequip collar|armor]");
+    }
+
     private void activatePetAbility(Player player) {
         initialize(player);
         String pet = selectedPet(player);
@@ -1132,22 +1239,25 @@ public final class LocalFastCore extends PluginBase implements Listener {
         petAbilityCooldowns.put(id, now + 60000L);
         switch (pet) {
             case "wolf":
+                int wolfStrike = hasPetCollar(player) ? 12 : 8;
                 petWolfDamageUntil.put(id, now + 10000L);
-                player.sendTitle("§a§lВОЛЧИЙ РЫВОК", "§fСледующий удар: §c+8 урона", 5, 35, 5);
-                player.sendMessage("§aВолк усилил следующий удар на 8 урона. Эффект действует 10 секунд.");
+                player.sendTitle("§a§lВОЛЧИЙ РЫВОК", "§fСледующий удар: §c+" + wolfStrike + " урона", 5, 35, 5);
+                player.sendMessage("§aВолк усилил следующий удар на " + wolfStrike + " урона. Эффект действует 10 секунд.");
                 getServer().getScheduler().scheduleDelayedTask(this, () -> petWolfDamageUntil.remove(id), 200);
                 break;
             case "golem":
-                petGuardUntil.put(id, now + 8000L);
-                player.sendTitle("§6§lКАМЕННАЯ ЗАЩИТА", "§f-40% входящего урона на 8 сек.", 5, 35, 5);
-                player.sendMessage("§6Железный голем защищает тебя: входящий урон от существ снижен на 40% на 8 секунд.");
-                getServer().getScheduler().scheduleDelayedTask(this, () -> petGuardUntil.remove(id), 160);
+                int guardDuration = hasPetCollar(player) ? 12000 : 8000;
+                petGuardUntil.put(id, now + guardDuration);
+                player.sendTitle("§6§lКАМЕННАЯ ЗАЩИТА", "§f-40% входящего урона на " + (guardDuration / 1000) + " сек.", 5, 35, 5);
+                player.sendMessage("§6Железный голем защищает тебя: входящий урон от существ снижен на 40% на " + (guardDuration / 1000) + " секунд.");
+                getServer().getScheduler().scheduleDelayedTask(this, () -> petGuardUntil.remove(id), guardDuration / 50);
                 break;
             case "snow":
-                petSnowXpUntil.put(id, now + 60000L);
-                player.sendTitle("§b§lЛЕДЯНОЕ ВДОХНОВЕНИЕ", "§f+50% XP за убийства на 60 сек.", 5, 35, 5);
-                player.sendMessage("§bСнежный дух усилил получение XP за убийства на 50% на 60 секунд.");
-                getServer().getScheduler().scheduleDelayedTask(this, () -> petSnowXpUntil.remove(id), 1200);
+                int snowDuration = hasPetCollar(player) ? 90000 : 60000;
+                petSnowXpUntil.put(id, now + snowDuration);
+                player.sendTitle("§b§lЛЕДЯНОЕ ВДОХНОВЕНИЕ", "§f+50% XP за убийства на " + (snowDuration / 1000) + " сек.", 5, 35, 5);
+                player.sendMessage("§bСнежный дух усилил получение XP за убийства на 50% на " + (snowDuration / 1000) + " секунд.");
+                getServer().getScheduler().scheduleDelayedTask(this, () -> petSnowXpUntil.remove(id), snowDuration / 50);
                 break;
             default:
                 petAbilityCooldowns.remove(id);
@@ -6558,6 +6668,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
             Player player = (Player) sender;
             if (args.length > 0 && (args[0].equalsIgnoreCase("ability") || args[0].equalsIgnoreCase("use"))) {
                 activatePetAbility(player);
+            } else if (args.length > 0 && args[0].equalsIgnoreCase("gear")) {
+                handlePetGear(player, args);
             } else {
                 openPetsMenu(player);
             }

@@ -6760,7 +6760,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (ids.size() >= 20) break;
         }
         if (!ownOnly) form.addButton(new ElementButton("§a§lВыставить предмет из руки"));
-        form.addButton(new ElementButton("§eМои лоты"));
+        form.addButton(new ElementButton(ownOnly ? "§eК аукциону" : "§eМои лоты"));
         form.addButton(new ElementButton("§7Обновить"));
         form.addButton(new ElementButton("§8Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
@@ -6770,8 +6770,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
             else {
                 int base = ids.size();
                 if (!ownOnly && selected == base) openAuctionCreateForm(player);
-                else if (selected == base + (ownOnly ? 0 : 1)) openPlayerMyAuctionMenu(player);
-                else if (selected == base + (ownOnly ? 1 : 2)) openPlayerAuctionListings(player, ownOnly);
+                else if (selected == base + (ownOnly ? 0 : 1)) {
+                    if (ownOnly) openPlayerAuctionMenu(player);
+                    else openPlayerMyAuctionMenu(player);
+                } else if (selected == base + (ownOnly ? 1 : 2)) openPlayerAuctionListings(player, ownOnly);
                 else openPlayerEconomyMenu(player);
             }
         }));

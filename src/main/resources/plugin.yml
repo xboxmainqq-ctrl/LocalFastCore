@@ -1,9 +1,9 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.57.0"
+version: "0.58.0"
 api: ["1.0.0"]
 author: LocalFast
-description: LocalFastCore 0.57.0 guild territory wars, chunk claims and siege capture, guild level perks, guild bank deposits, withdrawals and progression, auction bidding and guild member management menus, player economy, market, guild and trade menus, Rift relic forge, pet collar and armor gear, active wolf, golem and snow pet abilities with cooldowns, pet leveling, pet XP and scalable companion bonuses, dungeon unlocks craftable Keeper relic equipment, forge legendary gear and collection, legendary forge effects and upgrades, clear-time records and speed leaderboard, Keeper final phase, second phase life siphon and trophy reward, hard-mode boss abilities and reinforcements, records and leaderboard, cooperative waves and bosses, RPG, economy and staff systems
+description: LocalFastCore 0.58.0 guild territory upgrades, passive income, stronger defenses and siege capture, guild bank deposits, withdrawals and progression, auction bidding and guild member management menus, player economy, market, guild and trade menus, Rift relic forge, pet collar and armor gear, active wolf, golem and snow pet abilities with cooldowns, pet leveling, pet XP and scalable companion bonuses, dungeon unlocks craftable Keeper relic equipment, forge legendary gear and collection, legendary forge effects and upgrades, clear-time records and speed leaderboard, Keeper final phase, second phase life siphon and trophy reward, hard-mode boss abilities and reinforcements, records and leaderboard, cooperative waves and bosses, RPG, economy and staff systems
 commands:
   spawn:
     description: Телепорт на отдельный спавн

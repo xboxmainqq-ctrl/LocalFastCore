@@ -473,6 +473,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 "§7" + player.getName(),
                 "§8§m----------------",
                 "§fКласс: " + rpgClassLabel(getRpgClass(player)),
+                "§fТитул: " + players.getString(key + ".season_title", "§7Нет"),
                 "§fУровень: §e" + level + "§7/§e" + MAX_LEVEL,
                 level >= MAX_LEVEL ? "§6Максимальный уровень" : "§fОпыт: §a" + xp + "§7/§a" + nextXp,
                 "§fПрогресс: " + (level >= MAX_LEVEL ? "§a■■■■■■■■■■ §e100%" : xpProgressBar(xp, nextXp)),
@@ -6931,6 +6932,43 @@ public final class LocalFastCore extends PluginBase implements Listener {
             notifyGuild(id, "§6§lСЕЗОН ЗАВЕРШЁН! §fМесто: §e#" + rank
                     + " §8| §fНаграда в казну: §6" + rewards[rank - 1] + " монет.");
             rank++;
+        }
+        // Personal season podium: rewards are written by UUID, so offline players
+        // receive their coins and title safely when they next join.
+        List<String> playerIds = new ArrayList<>(guildData.getSection("season.players").getAll().keySet());
+        playerIds.sort((a, b) -> Long.compare(
+                guildData.getLong("season.players." + b + ".points", 0L),
+                guildData.getLong("season.players." + a + ".points", 0L)));
+        long[] playerRewards = {5000L, 3000L, 1500L};
+        String[] playerTitles = {"§6Чемпион сезона", "§bВетеран сезона", "§aГерой сезона"};
+        int playerRank = 1;
+        for (String uuid : playerIds) {
+            long points = guildData.getLong("season.players." + uuid + ".points", 0L);
+            if (playerRank > 3 || points <= 0L) break;
+            String history = "season.history." + seasonId + ".players.top." + playerRank;
+            String name = guildData.getString("season.players." + uuid + ".name", "Игрок");
+            String playerDataPath = "uuid_" + uuid;
+            guildData.set(history + ".uuid", uuid);
+            guildData.set(history + ".name", name);
+            guildData.set(history + ".points", points);
+            guildData.set(history + ".reward", playerRewards[playerRank - 1]);
+            guildData.set(history + ".title", playerTitles[playerRank - 1]);
+            setBalanceByUuid(uuid, safeAdd(balanceByUuid(uuid), playerRewards[playerRank - 1]));
+            players.set(playerDataPath + ".season_title", playerTitles[playerRank - 1]);
+            markPlayersDirty();
+            Player online = getServer().getPlayer(UUID.fromString(uuid));
+            if (online != null && online.isOnline()) {
+                online.sendMessage("§6§lЛИЧНЫЙ ПОДИУМ СЕЗОНА! §fМесто: §e#" + playerRank
+                        + " §8| §fНаграда: §6+" + playerRewards[playerRank - 1]
+                        + " монет §8| §fТитул: " + playerTitles[playerRank - 1]);
+            }
+            playerRank++;
+        }
+        try {
+            guildData.save();
+            flushPlayers();
+        } catch (RuntimeException ex) {
+            getLogger().error("Season rewards save failed for " + seasonId, ex);
         }
         guildData.set("season.history." + seasonId + ".finalized", true);
         guildData.set("season.history." + seasonId + ".finalized-at", System.currentTimeMillis());

@@ -3,7 +3,7 @@ main: ru.localfast.core.LocalFastCore
 version: "0.37.0"
 api: ["1.0.0"]
 author: LocalFast
-description: LocalFastCore 0.36.0 dungeon difficulty modes, hard-mode boss abilities, reinforcements and telegraphed area strike, records and leaderboard, cooperative waves and bosses, RPG, economy and staff systems
+description: LocalFastCore 0.37.0 dungeon difficulty modes, Keeper second phase, hard-mode boss abilities and reinforcements, records and leaderboard, cooperative waves and bosses, RPG, economy and staff systems
 commands:
   spawn:
     description: Телепорт на отдельный спавн

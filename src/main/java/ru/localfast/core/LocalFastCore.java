@@ -75,6 +75,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private final Map<UUID, Integer> nextAbilityDamage = new HashMap<>();
     private final Map<UUID, ComboState> combatCombos = new HashMap<>();
     private final Map<UUID, Long> tankGuardUntil = new HashMap<>();
+    private final Map<UUID, Long> legendaryWeaponCooldowns = new HashMap<>();
+    private final Map<UUID, Long> legendaryArmorCooldowns = new HashMap<>();
     private final Map<UUID, Long> dungeonBossAbilityCooldowns = new HashMap<>();
     private final Map<String, Long> dungeonBossSummonCooldowns = new HashMap<>();
     private final Map<String, Long> dungeonBossAreaCooldowns = new HashMap<>();
@@ -773,8 +775,19 @@ public final class LocalFastCore extends PluginBase implements Listener {
         // Dungeon creatures hit harder as the player advances through the waves.
         if (event.getEntity() instanceof Player && event.getDamager() instanceof EntityCreature) {
             Player victim = (Player) event.getEntity();
+            String victimPath = playerKey(victim);
+            int legendaryArmorLevel = Math.max(0, Math.min(5,
+                    players.getInt(victimPath + ".forge.armor-level", 0)));
+            long armorReadyAt = legendaryArmorCooldowns.getOrDefault(victim.getUniqueId(), 0L);
+            if (legendaryArmorLevel >= 5 && now >= armorReadyAt
+                    && ThreadLocalRandom.current().nextInt(100) < 20) {
+                legendaryArmorCooldowns.put(victim.getUniqueId(), now + 25000L);
+                event.setDamage(0.0f, EntityDamageEvent.DamageModifier.BASE);
+                victim.sendTitle("§b§lЛЕГЕНДАРНАЯ ЗАЩИТА", "§fУдар полностью отражён", 0, 25, 5);
+                victim.sendMessage("§bПечать Хранителя заблокировала удар существа! §7Перезарядка: 25 сек.");
+                return;
+            }
             if (isDungeonWorld(victim.getLevel())) {
-                String victimPath = playerKey(victim);
                 float multiplier = 1.0f;
                 if (players.getBoolean(victimPath + ".dungeon.active", false)) {
                     int wave = Math.max(1, players.getInt(victimPath + ".dungeon.wave", 1));
@@ -814,8 +827,17 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 "attributes.strength.points-per-bonus", 5,
                 "attributes.strength.damage-per-bonus", 1,
                 "attributes.strength.max-bonus", 10, 20);
-        bonusDamage += Math.max(0, Math.min(5,
+        int forgeWeaponLevel = Math.max(0, Math.min(5,
                 players.getInt(playerKey(attacker) + ".forge.weapon-level", 0)));
+        bonusDamage += forgeWeaponLevel;
+        long weaponReadyAt = legendaryWeaponCooldowns.getOrDefault(attackerId, 0L);
+        if (forgeWeaponLevel >= 5 && now >= weaponReadyAt
+                && ThreadLocalRandom.current().nextInt(100) < 15) {
+            legendaryWeaponCooldowns.put(attackerId, now + 10000L);
+            bonusDamage += 5;
+            attacker.sendTitle("§6§lЛЕГЕНДАРНЫЙ КРИТ", "§c+5 дополнительного урона", 0, 25, 5);
+            attacker.sendMessage("§6Печать Хранителя усилила твой удар! §7Перезарядка: 10 сек.");
+        }
         if (playerClass.equals("warrior")) bonusDamage += 1;
         if (playerClass.equals("assassin") && ThreadLocalRandom.current().nextInt(100) < 15) {
             bonusDamage += 3;
@@ -907,6 +929,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
             player.sendMessage("§6§lКУЗНИЦА КАТАКОМБ");
             player.sendMessage("§7Оружие: §c+" + weaponLevel + " урона §8(макс. 5)");
             player.sendMessage("§7Броня: §a-" + (armorLevel * 3) + "% входящего урона §8(макс. 15%)");
+            if (weaponLevel >= 5) player.sendMessage("§6✦ Легендарный эффект: 15% шанс нанести ещё +5 урона (перезарядка 10 сек.)");
+            if (armorLevel >= 5) player.sendMessage("§b✦ Легендарный эффект: 20% шанс полностью заблокировать удар существа (перезарядка 25 сек.)");
             player.sendMessage("§7Материалы: §b" + countForgeMaterial(player, shardName) + " осколков §7и §d"
                     + countForgeMaterial(player, crystalName) + " кристаллов");
             player.sendMessage("§e/forge weapon §7— улучшить оружие");
@@ -958,9 +982,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (weapon) {
             player.sendTitle("§6§lОРУЖИЕ УЛУЧШЕНО", "§c+" + next + " к урону", 5, 35, 10);
             player.sendMessage("§aОружие улучшено до уровня §e" + next + "§a. Постоянный бонус: +" + next + " урона.");
+            if (next == 5) player.sendMessage("§6✦ ЛЕГЕНДАРНОЕ ОРУЖИЕ! Теперь доступен усиленный критический удар.");
         } else {
             player.sendTitle("§a§lБРОНЯ УЛУЧШЕНА", "§a-" + (next * 3) + "% урона", 5, 35, 10);
             player.sendMessage("§aБроня улучшена до уровня §e" + next + "§a. Снижение урона от существ: " + (next * 3) + "%.");
+            if (next == 5) player.sendMessage("§b✦ ЛЕГЕНДАРНАЯ БРОНЯ! Теперь доступна полная блокировка удара.");
         }
     }
 

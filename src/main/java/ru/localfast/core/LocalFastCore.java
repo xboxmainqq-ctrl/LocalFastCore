@@ -77,6 +77,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private final Map<UUID, Long> tankGuardUntil = new HashMap<>();
     private final Map<UUID, Long> legendaryWeaponCooldowns = new HashMap<>();
     private final Map<UUID, Long> legendaryArmorCooldowns = new HashMap<>();
+    private final Map<UUID, Long> petAbilityCooldowns = new HashMap<>();
+    private final Map<UUID, Long> petGuardUntil = new HashMap<>();
+    private final Map<UUID, Long> petSnowXpUntil = new HashMap<>();
     private final Map<UUID, Long> dungeonBossAbilityCooldowns = new HashMap<>();
     private final Map<String, Long> dungeonBossSummonCooldowns = new HashMap<>();
     private final Map<String, Long> dungeonBossAreaCooldowns = new HashMap<>();
@@ -219,7 +222,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.47.0 включён. RPG, гильдии, рынок, катакомбы с рекордами скорости и тремя фазами Хранителя, система персонала загружены.");
+        getLogger().info("LocalFastCore 0.48.0 включён. RPG, активные способности питомцев, гильдии, рынок, катакомбы и система персонала загружены.");
     }
 
     private void markPlayersDirty() {
@@ -616,13 +619,21 @@ public final class LocalFastCore extends PluginBase implements Listener {
             }
         }
 
-        if (event.getEntity() instanceof Player && event.getDamager() instanceof EntityCreature
-                && selectedPet((Player) event.getEntity()).equals("golem")) {
+        if (event.getEntity() instanceof Player && event.getDamager() instanceof EntityCreature) {
             Player defender = (Player) event.getEntity();
-            int reduction = petGolemReductionPercent(defender);
-            float petBaseDamage = event.getDamage(EntityDamageEvent.DamageModifier.BASE);
-            event.setDamage(Math.max(0.0f, petBaseDamage * (100 - reduction) / 100.0f),
-                    EntityDamageEvent.DamageModifier.BASE);
+            if (selectedPet(defender).equals("golem")) {
+                int reduction = petGolemReductionPercent(defender);
+                float petBaseDamage = event.getDamage(EntityDamageEvent.DamageModifier.BASE);
+                event.setDamage(Math.max(0.0f, petBaseDamage * (100 - reduction) / 100.0f),
+                        EntityDamageEvent.DamageModifier.BASE);
+            }
+            long guardUntil = petGuardUntil.getOrDefault(defender.getUniqueId(), 0L);
+            if (guardUntil > now) {
+                float guardedDamage = event.getDamage(EntityDamageEvent.DamageModifier.BASE);
+                event.setDamage(Math.max(0.0f, guardedDamage * 0.60f), EntityDamageEvent.DamageModifier.BASE);
+            } else if (guardUntil != 0L) {
+                petGuardUntil.remove(defender.getUniqueId());
+            }
         }
 
         // The Catacombs Keeper gains three escalating phases on hard difficulty.
@@ -1069,6 +1080,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             form.addButton(new ElementButton(state + " " + petLabel(pet)));
         }
         form.addButton(new ElementButton("§7Убрать питомца"));
+        form.addButton(new ElementButton("§6Использовать способность питомца"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
             int choice = form.getResponse().getClickedButtonId();
@@ -1090,9 +1102,51 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 flushPlayers();
                 removePet(player);
                 player.sendMessage("§7Питомец убран.");
+            } else if (choice == pets.length + 1) {
+                activatePetAbility(player);
             }
         }));
         player.showFormWindow(form);
+    }
+
+    private void activatePetAbility(Player player) {
+        initialize(player);
+        String pet = selectedPet(player);
+        if (pet.equals("none") || !isPetUnlocked(player, pet)) {
+            player.sendMessage("§cСначала выбери доступного питомца в меню /pets.");
+            return;
+        }
+        long now = System.currentTimeMillis();
+        UUID id = player.getUniqueId();
+        long readyAt = petAbilityCooldowns.getOrDefault(id, 0L);
+        if (readyAt > now) {
+            player.sendMessage("§eСпособность питомца перезаряжается: §f" + ((readyAt - now + 999) / 1000) + " сек.");
+            return;
+        }
+        petAbilityCooldowns.put(id, now + 60000L);
+        switch (pet) {
+            case "wolf":
+                nextAbilityDamage.put(id, 8);
+                player.sendTitle("§a§lВОЛЧИЙ РЫВОК", "§fСледующий удар: §c+8 урона", 5, 35, 5);
+                player.sendMessage("§aВолк усилил следующий удар на 8 урона. Эффект действует 10 секунд.");
+                getServer().getScheduler().scheduleDelayedTask(this, () -> nextAbilityDamage.remove(id), 200);
+                break;
+            case "golem":
+                petGuardUntil.put(id, now + 8000L);
+                player.sendTitle("§6§lКАМЕННАЯ ЗАЩИТА", "§f-40% входящего урона на 8 сек.", 5, 35, 5);
+                player.sendMessage("§6Железный голем защищает тебя: входящий урон от существ снижен на 40% на 8 секунд.");
+                getServer().getScheduler().scheduleDelayedTask(this, () -> petGuardUntil.remove(id), 160);
+                break;
+            case "snow":
+                petSnowXpUntil.put(id, now + 60000L);
+                player.sendTitle("§b§lЛЕДЯНОЕ ВДОХНОВЕНИЕ", "§f+50% XP за убийства на 60 сек.", 5, 35, 5);
+                player.sendMessage("§bСнежный дух усилил получение XP за убийства на 50% на 60 секунд.");
+                getServer().getScheduler().scheduleDelayedTask(this, () -> petSnowXpUntil.remove(id), 1200);
+                break;
+            default:
+                petAbilityCooldowns.remove(id);
+                player.sendMessage("§cУ этого питомца пока нет способности.");
+        }
     }
 
     private void handleForge(Player player, String[] args) {
@@ -2799,6 +2853,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
         int mobXp = Math.max(0, getConfig().getInt("progression.mob-kill-xp", MOB_KILL_XP));
         if (selectedPet(killer).equals("snow")) {
             mobXp += Math.max(1, (int) Math.floor(mobXp * petSnowXpPercent(killer) / 100.0));
+        }
+        if (petSnowXpUntil.getOrDefault(killer.getUniqueId(), 0L) > System.currentTimeMillis()) {
+            mobXp += Math.max(1, (int) Math.floor(mobXp * 0.50));
         }
         giveXp(killer, mobXp);
         set(killer, "achievement_kills", Math.min(Integer.MAX_VALUE, get(killer, "achievement_kills", 0) + 1));
@@ -6492,7 +6549,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
         if (name.equals("pets") || name.equals("pet")) {
             if (!(sender instanceof Player)) { sender.sendMessage("Питомцы доступны только игроку."); return true; }
-            openPetsMenu((Player) sender);
+            Player player = (Player) sender;
+            if (args.length > 0 && (args[0].equalsIgnoreCase("ability") || args[0].equalsIgnoreCase("use"))) {
+                activatePetAbility(player);
+            } else {
+                openPetsMenu(player);
+            }
             return true;
         }
 

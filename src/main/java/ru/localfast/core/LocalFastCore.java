@@ -196,6 +196,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
         players = new Config(new File(getDataFolder(), "players.yml"), Config.YAML);
         guildData = new Config(new File(getDataFolder(), "guilds.yml"), Config.YAML);
+        ensureGuildSeason();
         marketData = new Config(new File(getDataFolder(), "market.yml"), Config.YAML);
         staffData = new Config(new File(getDataFolder(), "staff.yml"), Config.YAML);
         staffLogFile = new File(getDataFolder(), "staff.log");
@@ -6864,6 +6865,250 @@ public final class LocalFastCore extends PluginBase implements Listener {
     }
 
 
+
+    private String guildSeasonMonth() {
+        return java.time.YearMonth.now().toString();
+    }
+
+    private void startGuildSeason(String seasonId, String calendarMonth) {
+        guildData.set("season.current", seasonId);
+        guildData.set("season.calendar-month", calendarMonth);
+        for (String id : guildData.getSection("guilds").getAll().keySet()) {
+            if (!guildExists(id)) continue;
+            String base = "guilds." + id + ".season";
+            guildData.set(base + ".points", 0L);
+            guildData.set(base + ".kills", 0L);
+            guildData.set(base + ".wins", 0L);
+            guildData.remove(base + ".achievements");
+        }
+    }
+
+    private void ensureGuildSeason() {
+        if (guildData == null) return;
+        String month = guildSeasonMonth();
+        String current = guildData.getString("season.current", "");
+        String checkedMonth = guildData.getString("season.calendar-month", "");
+        if (current.isEmpty()) {
+            startGuildSeason(month, month);
+            try { guildData.save(); }
+            catch (RuntimeException ex) { getLogger().error("Initial guild season save failed.", ex); }
+            return;
+        }
+        if (!month.equals(checkedMonth)) {
+            finalizeGuildSeason(current);
+            startGuildSeason(month, month);
+            try { guildData.save(); }
+            catch (RuntimeException ex) { getLogger().error("Guild season rollover save failed.", ex); }
+        }
+    }
+
+    private void finalizeGuildSeason(String seasonId) {
+        if (seasonId == null || seasonId.isEmpty()
+                || guildData.getBoolean("season.history." + seasonId + ".finalized", false)) return;
+        List<String> ids = new ArrayList<>(guildData.getSection("guilds").getAll().keySet());
+        ids.removeIf(id -> !guildExists(id));
+        ids.sort((a, b) -> Long.compare(
+                guildData.getLong("guilds." + b + ".season.points", 0L),
+                guildData.getLong("guilds." + a + ".season.points", 0L)));
+        long[] rewards = {10000L, 6000L, 3000L};
+        int rank = 1;
+        for (String id : ids) {
+            long points = guildData.getLong("guilds." + id + ".season.points", 0L);
+            if (rank > 3 || points <= 0L) break;
+            String history = "season.history." + seasonId + ".top." + rank;
+            guildData.set(history + ".guild-id", id);
+            guildData.set(history + ".name", guildData.getString("guilds." + id + ".name", id));
+            guildData.set(history + ".points", points);
+            guildData.set(history + ".reward", rewards[rank - 1]);
+            guildData.set("guilds." + id + ".bank", safeAdd(guildBank(id), rewards[rank - 1]));
+            notifyGuild(id, "§6§lСЕЗОН ЗАВЕРШЁН! §fМесто: §e#" + rank
+                    + " §8| §fНаграда в казну: §6" + rewards[rank - 1] + " монет.");
+            rank++;
+        }
+        guildData.set("season.history." + seasonId + ".finalized", true);
+        guildData.set("season.history." + seasonId + ".finalized-at", System.currentTimeMillis());
+    }
+
+    private void addGuildSeasonProgress(String guildId, long points, boolean kill, boolean win) {
+        if (guildId == null || guildId.isEmpty() || !guildExists(guildId)) return;
+        String base = "guilds." + guildId + ".season";
+        guildData.set(base + ".points", safeAdd(guildData.getLong(base + ".points", 0L), Math.max(0L, points)));
+        if (kill) guildData.set(base + ".kills", safeAdd(guildData.getLong(base + ".kills", 0L), 1L));
+        if (win) guildData.set(base + ".wins", safeAdd(guildData.getLong(base + ".wins", 0L), 1L));
+        grantGuildSeasonAchievements(guildId);
+    }
+
+    private void grantGuildSeasonAchievements(String guildId) {
+        String base = "guilds." + guildId + ".season";
+        long points = guildData.getLong(base + ".points", 0L);
+        long[] goals = {10L, 25L, 50L, 100L};
+        long[] rewards = {500L, 1000L, 2500L, 5000L};
+        for (int i = 0; i < goals.length; i++) {
+            String achievement = "milestone-" + goals[i];
+            if (points < goals[i] || guildData.getBoolean(base + ".achievements." + achievement, false)) continue;
+            guildData.set(base + ".achievements." + achievement, true);
+            guildData.set("guilds." + guildId + ".bank",
+                    safeAdd(guildBank(guildId), rewards[i]));
+            notifyGuild(guildId, "§d§lСЕЗОННОЕ ДОСТИЖЕНИЕ! §f" + goals[i]
+                    + " очков сезона. §6+" + rewards[i] + " монет в казну гильдии.");
+        }
+    }
+
+    private void openGuildSeasonMenu(Player player) {
+        String gid = currentGuildId(player);
+        if (gid.isEmpty() || !guildExists(gid)) { openPlayerGuildMenu(player); return; }
+        ensureGuildSeason();
+        String season = guildData.getString("season.current", guildSeasonMonth());
+        java.time.YearMonth month = java.time.YearMonth.now();
+        int daysLeft = Math.max(0, month.lengthOfMonth() - java.time.LocalDate.now().getDayOfMonth());
+        String base = "guilds." + gid + ".season";
+        FormWindowSimple form = new FormWindowSimple("§d§lГИЛЬДЕЙСКИЙ СЕЗОН",
+                "§7Сезон: §e" + season + "\n§7До конца календарного месяца: §e" + daysLeft + " дн."
+                + "\n\n§7Очки гильдии: §6" + guildData.getLong(base + ".points", 0L)
+                + "\n§7Победы: §a" + guildData.getLong(base + ".wins", 0L)
+                + " §8| §7Убийства: §c" + guildData.getLong(base + ".kills", 0L)
+                + "\n\n§7Награды топ-3 в конце сезона:"
+                + "\n§e1 место: §6+10 000 монет"
+                + "\n§72 место: §6+6 000 монет"
+                + "\n§63 место: §6+3 000 монет"
+                + "\n§8Очки и достижения сбрасываются автоматически при новом сезоне.");
+        form.addButton(new ElementButton("§6Сезонный рейтинг"));
+        form.addButton(new ElementButton("§dСезонные достижения"));
+        form.addButton(new ElementButton("§7Назад к войнам"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id == 0) openGuildSeasonLeaderboard(player);
+            else if (id == 1) openGuildSeasonAchievements(player);
+            else openGuildWarsMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openGuildSeasonLeaderboard(Player player) {
+        ensureGuildSeason();
+        List<String> ids = new ArrayList<>(guildData.getSection("guilds").getAll().keySet());
+        ids.removeIf(id -> !guildExists(id));
+        ids.sort((a, b) -> Long.compare(
+                guildData.getLong("guilds." + b + ".season.points", 0L),
+                guildData.getLong("guilds." + a + ".season.points", 0L)));
+        StringBuilder content = new StringBuilder("§7Текущий сезон: §e")
+                .append(guildData.getString("season.current", guildSeasonMonth())).append("\n\n");
+        int rank = 1;
+        for (String id : ids) {
+            if (rank > 15) break;
+            content.append("§e").append(rank++).append(". §f")
+                    .append(guildData.getString("guilds." + id + ".name", id))
+                    .append(" §8— §6").append(guildData.getLong("guilds." + id + ".season.points", 0L))
+                    .append(" очков\n");
+        }
+        if (rank == 1) content.append("§7Пока нет набранных очков.");
+        FormWindowSimple form = new FormWindowSimple("§d§lСЕЗОННЫЙ РЕЙТИНГ", content.toString());
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (!form.wasClosed() && form.getResponse() != null && player.isOnline()) openGuildSeasonMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openGuildSeasonAchievements(Player player) {
+        String gid = currentGuildId(player);
+        if (gid.isEmpty() || !guildExists(gid)) { openPlayerGuildMenu(player); return; }
+        String base = "guilds." + gid + ".season";
+        long points = guildData.getLong(base + ".points", 0L);
+        long[] goals = {10L, 25L, 50L, 100L};
+        long[] rewards = {500L, 1000L, 2500L, 5000L};
+        StringBuilder content = new StringBuilder("§7Очки сезона: §6").append(points).append("\n\n");
+        for (int i = 0; i < goals.length; i++) {
+            boolean done = guildData.getBoolean(base + ".achievements.milestone-" + goals[i], false);
+            content.append(done ? "§a✓ " : (points >= goals[i] ? "§e◆ " : "§7○ "))
+                    .append("§f").append(goals[i]).append(" очков")
+                    .append(" §8— §6+").append(rewards[i]).append(" монет в казну")
+                    .append(done ? " §a(получено)" : "").append("\n");
+        }
+        FormWindowSimple form = new FormWindowSimple("§d§lСЕЗОННЫЕ ДОСТИЖЕНИЯ", content.toString());
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (!form.wasClosed() && form.getResponse() != null && player.isOnline()) openGuildSeasonMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openOperatorGuildSeasonMenu(Player operator) {
+        if (!isOperator(operator)) return;
+        ensureGuildSeason();
+        String season = guildData.getString("season.current", guildSeasonMonth());
+        FormWindowSimple form = new FormWindowSimple("§d§lОПЕРАТОР §8| §dСЕЗОНЫ",
+                "§7Текущий сезон: §e" + season
+                + "\n§7Управление сезонным рейтингом, наградами и досрочным завершением."
+                + "\n§8При завершении топ-3 автоматически получают награды в казну.");
+        form.addButton(new ElementButton("§6Посмотреть сезонный рейтинг"));
+        form.addButton(new ElementButton("§cЗавершить сезон досрочно"));
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id == 0) openOperatorGuildSeasonLeaderboard(operator);
+            else if (id == 1) {
+                FormWindowSimple confirm = new FormWindowSimple("§cПодтверждение завершения сезона",
+                        "§fЗавершить сезон §e" + season + "§f сейчас?\n§7Топ-3 получат награды, очки и достижения начнутся заново.");
+                confirm.addButton(new ElementButton("§cДа, завершить сезон"));
+                confirm.addButton(new ElementButton("§7Отмена"));
+                confirm.addHandler(FormResponseHandler.withoutPlayer(response -> {
+                    if (confirm.wasClosed() || confirm.getResponse() == null || !operator.isOnline()) return;
+                    if (confirm.getResponse().getClickedButtonId() == 0) {
+                        finalizeGuildSeason(season);
+                        String month = guildData.getString("season.calendar-month", guildSeasonMonth());
+                        String prefix = month;
+                        int next = 2;
+                        String current = guildData.getString("season.current", month);
+                        if (current.startsWith(month + "-")) {
+                            try { next = Integer.parseInt(current.substring((month + "-").length())) + 1; }
+                            catch (NumberFormatException ignoredNumber) { next = 2; }
+                        }
+                        startGuildSeason(prefix + "-" + next, month);
+                        try {
+                            guildData.save();
+                            operator.sendMessage("§aСезон завершён. Начался новый сезон: §e" + prefix + "-" + next);
+                        } catch (RuntimeException ex) {
+                            getLogger().error("Manual guild season close failed.", ex);
+                            operator.sendMessage("§cНе удалось сохранить завершение сезона.");
+                        }
+                    }
+                    openOperatorGuildSeasonMenu(operator);
+                }));
+                operator.showFormWindow(confirm);
+            } else openOperatorMenu(operator);
+        }));
+        operator.showFormWindow(form);
+    }
+
+    private void openOperatorGuildSeasonLeaderboard(Player operator) {
+        if (!isOperator(operator)) return;
+        List<String> ids = new ArrayList<>(guildData.getSection("guilds").getAll().keySet());
+        ids.removeIf(id -> !guildExists(id));
+        ids.sort((a, b) -> Long.compare(
+                guildData.getLong("guilds." + b + ".season.points", 0L),
+                guildData.getLong("guilds." + a + ".season.points", 0L)));
+        StringBuilder content = new StringBuilder("§7Сезон: §e")
+                .append(guildData.getString("season.current", guildSeasonMonth())).append("\n\n");
+        int rank = 1;
+        for (String id : ids) {
+            if (rank > 15) break;
+            content.append("§e").append(rank++).append(". §f")
+                    .append(guildData.getString("guilds." + id + ".name", id))
+                    .append(" §8— §6").append(guildData.getLong("guilds." + id + ".season.points", 0L))
+                    .append(" очков\n");
+        }
+        if (rank == 1) content.append("§7Пока нет результатов.");
+        FormWindowSimple form = new FormWindowSimple("§dРейтинг сезона §8| §cОператор", content.toString());
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (!form.wasClosed() && form.getResponse() != null && operator.isOnline()) openOperatorGuildSeasonMenu(operator);
+        }));
+        operator.showFormWindow(form);
+    }
+
     private String guildWarKey(String first, String second) {
         String a = first.compareTo(second) <= 0 ? first : second;
         String b = first.compareTo(second) <= 0 ? second : first;
@@ -6900,11 +7145,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (targets.size() >= 18) break;
         }
         form.addButton(new ElementButton("§6Таблица лидеров войн"));
+        form.addButton(new ElementButton("§dСезонный рейтинг и достижения"));
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
             int id = form.getResponse().getClickedButtonId();
             if (id == targets.size()) { openGuildWarLeaderboard(player); return; }
+            if (id == targets.size() + 1) { openGuildSeasonMenu(player); return; }
             if (id < 0 || id >= targets.size()) { openGuildWarMenu(player); return; }
             String other = targets.get(id), path = "guildWars." + guildWarKey(gid, other);
             String status = guildData.getString(path + ".status", "");
@@ -7014,11 +7261,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
         guildData.set(scorePath, score);
         guildData.set("guilds." + attackerGuild + ".war-points",
                 safeAdd(guildData.getLong("guilds." + attackerGuild + ".war-points", 0L), 1L));
+        addGuildSeasonProgress(attackerGuild, 1L, true, false);
         if (score >= 10) {
             guildData.set(path + ".status", "finished"); guildData.set(path + ".winner", attackerGuild);
             guildData.set("guilds." + attackerGuild + ".war-points",
                     safeAdd(guildData.getLong("guilds." + attackerGuild + ".war-points", 0L), 10L));
             guildData.set("guilds." + attackerGuild + ".bank", safeAdd(guildBank(attackerGuild), 2000L));
+            addGuildSeasonProgress(attackerGuild, 10L, false, true);
             notifyGuild(attackerGuild, "§6§lПОБЕДА В ВОЙНЕ! §a+10 очков рейтинга и 2000 монет в казну.");
             notifyGuild(victimGuild, "§cВаша гильдия проиграла войну. Победитель: §e" + guildData.getString("guilds." + attackerGuild + ".name", attackerGuild));
         } else {
@@ -7544,6 +7793,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§6Управление казнами гильдий"));
         form.addButton(new ElementButton("§4Управление территориями"));
         form.addButton(new ElementButton("§cУправление гильдейскими войнами"));
+        form.addButton(new ElementButton("§dУправление гильдейскими сезонами"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
             int id = form.getResponse().getClickedButtonId();
@@ -7572,6 +7822,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             else if (id == 13) openOperatorGuildBankMenu(operator);
             else if (id == 14) openOperatorTerritoriesMenu(operator);
             else if (id == 15) openOperatorGuildWarsMenu(operator);
+            else if (id == 16) openOperatorGuildSeasonMenu(operator);
         }));
         operator.showFormWindow(form);
     }

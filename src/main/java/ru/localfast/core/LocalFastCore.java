@@ -200,6 +200,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         guildData = new Config(new File(getDataFolder(), "guilds.yml"), Config.YAML);
         ensureGuildSeason();
         marketData = new Config(new File(getDataFolder(), "market.yml"), Config.YAML);
+        migrateLegacyListingsToFixedAuction();
         staffData = new Config(new File(getDataFolder(), "staff.yml"), Config.YAML);
         staffLogFile = new File(getDataFolder(), "staff.log");
         getServer().getPluginManager().registerEvents(this, this);
@@ -230,6 +231,76 @@ public final class LocalFastCore extends PluginBase implements Listener {
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
         getLogger().info("LocalFastCore 0.63.0 включён. Сезонные награды игроков, гильдейские войны, RPG и система персонала загружены.");
+    }
+
+    private void migrateLegacyListingsToFixedAuction() {
+        if (marketData == null || players == null) return;
+        boolean changed = false;
+        for (String id : new ArrayList<>(marketData.getSection("listings").getAll().keySet())) {
+            String path = listingPath(id);
+            if (!marketData.exists(path + ".seller")) continue;
+            boolean wasBidAuction = marketData.getBoolean(path + ".auction", false);
+            String bidder = wasBidAuction ? marketData.getString(path + ".bidder", "") : "";
+            long oldBid = marketData.getLong(path + ".current-bid", 0L);
+            if (!bidder.isEmpty() && oldBid > 0L) {
+                String refundPath = "legacy-refunds." + bidder + "." + id;
+                if (!marketData.exists(refundPath)) {
+                    marketData.set(refundPath, oldBid);
+                    changed = true;
+                }
+            }
+            long price = marketData.getLong(path + ".price", 0L);
+            if (price < 1L) price = !bidder.isEmpty() && oldBid > 0L ? oldBid : Math.max(1L, oldBid + 1L);
+            if (!marketData.getBoolean(path + ".auction", false)
+                    || marketData.getLong(path + ".price", 0L) != price
+                    || marketData.exists(path + ".current-bid")
+                    || marketData.exists(path + ".bidder")
+                    || marketData.exists(path + ".ends-at")) {
+                marketData.set(path + ".auction", true);
+                marketData.set(path + ".price", price);
+                marketData.remove(path + ".current-bid");
+                marketData.remove(path + ".bidder");
+                marketData.remove(path + ".ends-at");
+                changed = true;
+            }
+        }
+        if (changed) {
+            try { marketData.save(); }
+            catch (RuntimeException ex) {
+                getLogger().error("Не удалось перенести старые объявления в обычный аукцион.", ex);
+                return;
+            }
+        }
+        for (String uuid : new ArrayList<>(marketData.getSection("legacy-refunds").getAll().keySet())) {
+            String refundRoot = "legacy-refunds." + uuid;
+            for (String id : new ArrayList<>(marketData.getSection(refundRoot).getAll().keySet())) {
+                long amount = marketData.getLong(refundRoot + "." + id, 0L);
+                String donePath = "uuid_" + uuid + ".auction_refund_done." + id;
+                if (amount > 0L && !players.getBoolean(donePath, false)) {
+                    long balance = balanceByUuid(uuid);
+                    if (balance > Long.MAX_VALUE - amount) {
+                        getLogger().warning("Не удалось вернуть старую ставку #" + id + ": баланс игрока переполнен.");
+                        continue;
+                    }
+                    setBalanceByUuid(uuid, balance + amount);
+                    players.set(donePath, true);
+                    if (!flushPlayers()) {
+                        setBalanceByUuid(uuid, balance);
+                        players.remove(donePath);
+                        markPlayersDirty();
+                        getLogger().warning("Не удалось сохранить возврат ставки #" + id + "; повторим позже.");
+                        return;
+                    }
+                }
+                marketData.remove(refundRoot + "." + id);
+                try { marketData.save(); }
+                catch (RuntimeException ex) {
+                    getLogger().error("Не удалось очистить очередь возврата старой ставки #" + id + ".", ex);
+                    return;
+                }
+            }
+        }
+        getLogger().info("Система торговли переведена на обычный аукцион с фиксированной ценой.");
     }
 
     private void markPlayersDirty() {
@@ -4581,32 +4652,29 @@ public final class LocalFastCore extends PluginBase implements Listener {
         target.sendMessage("§a/trade accept §7— принять; §c/trade decline §7— отклонить (60 секунд).");
     }
 
-    private void handleMarket(Player player, String[] args) {
+    private void handleAuction(Player player, String[] args) {
         if (args.length == 0 || args[0].equalsIgnoreCase("help")) {
-            player.sendMessage("§6[Рынок] §e/market list §7— объявления");
-            player.sendMessage("§e/market sell <цена> §7— выставить предмет из руки");
-            player.sendMessage("§e/market buy <id> §7— купить; §e/market cancel <id> §7— снять своё объявление");
-            player.sendMessage("§7/auction create <стартовая_цена> [минуты], /auction bid <id> <ставка>, /auction claim <id>");
+            player.sendMessage("§6[Аукцион] §e/auction list §7— список предметов");
+            player.sendMessage("§e/auction sell <цена> §7— выставить предмет из руки");
+            player.sendMessage("§e/auction buy <id> §7— купить предмет; §e/auction cancel <id> §7— снять свой лот");
             return;
         }
         if (args[0].equalsIgnoreCase("list")) {
-            Map<String, Object> listings = marketData.getSection("listings").getAll();
-            player.sendMessage("§6§l[РЫНОК] §7Объявлений: " + listings.size());
             int shown = 0;
-            for (String id : listings.keySet()) {
+            for (String id : marketData.getSection("listings").getAll().keySet()) {
                 String path = listingPath(id);
-                if (marketData.getBoolean(path + ".auction", false)) continue;
+                if (!marketData.exists(path + ".seller")) continue;
                 player.sendMessage("§e#" + id + " §f" + marketData.getString(path + ".item-name", "Предмет")
                         + " x" + marketData.getInt(path + ".count", 1) + " §8— §a"
                         + marketData.getLong(path + ".price", 0L) + " " + currencyName()
                         + " §8— §7" + marketData.getString(path + ".seller-name", "?"));
-                if (++shown >= 15) break;
+                if (++shown >= 20) break;
             }
-            if (shown == 0) player.sendMessage("§7Пока нет объявлений.");
+            if (shown == 0) player.sendMessage("§7На аукционе пока нет предметов.");
             return;
         }
         if (args[0].equalsIgnoreCase("sell")) {
-            if (args.length != 2) { player.sendMessage("§e/market sell <цена>"); return; }
+            if (args.length != 2) { player.sendMessage("§e/auction sell <цена>"); return; }
             long price = parsePositiveAmount(args[1]);
             Item hand = player.getInventory().getItemInHand();
             if (price < 1L || hand == null || hand.isNull() || hand.getId() <= 0 || hand.getCount() <= 0) {
@@ -4616,7 +4684,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             String id = Integer.toString(Math.max(1, marketData.getInt("next-id", 1)));
             marketData.set("next-id", Integer.parseInt(id) + 1);
             String path = listingPath(id);
-            marketData.set(path + ".auction", false);
+            marketData.set(path + ".auction", true);
             marketData.set(path + ".seller", player.getUniqueId().toString());
             marketData.set(path + ".seller-name", player.getName());
             marketData.set(path + ".item-id", hand.getId());
@@ -4630,28 +4698,28 @@ public final class LocalFastCore extends PluginBase implements Listener {
             catch (RuntimeException ex) {
                 player.getInventory().setItemInHand(hand);
                 marketData.remove(path);
-                player.sendMessage("§cНе удалось сохранить объявление; предмет возвращён.");
+                player.sendMessage("§cНе удалось сохранить лот; предмет возвращён.");
                 return;
             }
-            player.sendMessage("§aПредмет выставлен на рынок под номером #" + id + " за " + price + " " + currencyName() + ".");
+            player.sendMessage("§aПредмет выставлен на аукцион под номером #" + id + " за " + price + " " + currencyName() + ".");
             return;
         }
         if (args[0].equalsIgnoreCase("buy")) {
-            if (args.length != 2) { player.sendMessage("§e/market buy <id>"); return; }
+            if (args.length != 2) { player.sendMessage("§e/auction buy <id>"); return; }
             String id = args[1], path = listingPath(id);
-            if (!marketData.exists(path + ".seller") || marketData.getBoolean(path + ".auction", false)) {
-                player.sendMessage("§cОбъявление не найдено.");
+            if (!marketData.exists(path + ".seller")) { player.sendMessage("§cЛот не найден или уже куплен."); return; }
+            String sellerUuid = marketData.getString(path + ".seller", "");
+            String sellerName = marketData.getString(path + ".seller-name", "?");
+            if (sellerUuid.equals(player.getUniqueId().toString())) {
+                player.sendMessage("§cНельзя купить собственный предмет. Сними его через «Мои лоты».");
                 return;
             }
-            String sellerUuid = marketData.getString(path + ".seller", "");
-            String sellerName = marketData.getString(path + ".seller-name", "");
-            if (sellerUuid.equals(player.getUniqueId().toString())) { player.sendMessage("§cНельзя купить собственный предмет."); return; }
             long price = marketData.getLong(path + ".price", 0L);
-            int itemId = marketData.getInt(path + ".item-id", 0), damage = marketData.getInt(path + ".item-damage", 0);
-            int count = marketData.getInt(path + ".count", 0);
-            Item item = Item.get(itemId, damage, count);
-            if (price < 1L || count < 1 || item.isNull() || !player.getInventory().canAddItem(item)) {
-                player.sendMessage("§cНедостаточно места в инвентаре или объявление повреждено.");
+            Item item = Item.get(marketData.getInt(path + ".item-id", 0),
+                    marketData.getInt(path + ".item-damage", 0), marketData.getInt(path + ".count", 0));
+            if (price < 1L || item == null || item.isNull() || item.getCount() <= 0
+                    || !player.getInventory().canAddItem(item)) {
+                player.sendMessage("§cНедостаточно места в инвентаре или лот повреждён.");
                 return;
             }
             initialize(player);
@@ -4663,42 +4731,48 @@ public final class LocalFastCore extends PluginBase implements Listener {
             setBalance(player, buyerBalance - price);
             setBalanceByUuid(sellerUuid, sellerBalance + price);
             if (!flushPlayers()) {
-                setBalance(player, buyerBalance); setBalanceByUuid(sellerUuid, sellerBalance);
-                player.sendMessage("§cНе удалось сохранить покупку; попробуй позже.");
+                setBalance(player, buyerBalance);
+                setBalanceByUuid(sellerUuid, sellerBalance);
+                player.sendMessage("§cНе удалось сохранить покупку; средства не списаны.");
                 return;
             }
             marketData.remove(path);
             try { marketData.save(); }
             catch (RuntimeException ex) {
-                setBalance(player, buyerBalance); setBalanceByUuid(sellerUuid, sellerBalance); flushPlayers();
+                setBalance(player, buyerBalance);
+                setBalanceByUuid(sellerUuid, sellerBalance);
+                flushPlayers();
                 player.sendMessage("§cНе удалось завершить покупку; средства возвращены.");
                 return;
             }
             player.getInventory().addItem(item);
-            player.sendMessage("§aПокупка завершена: " + count + " предмет(ов) за " + price + " " + currencyName() + ".");
+            player.sendMessage("§aТы купил " + item.getName() + " x" + item.getCount() + " за " + price + " " + currencyName() + ".");
             Player seller = getServer().getPlayer(sellerName);
-            if (seller != null) seller.sendMessage("§aТвой предмет купили за " + price + " " + currencyName() + ".");
+            if (seller != null) seller.sendMessage("§aТвой лот #" + id + " купили за " + price + " " + currencyName() + ".");
             return;
         }
         if (args[0].equalsIgnoreCase("cancel")) {
-            if (args.length != 2) { player.sendMessage("§e/market cancel <id>"); return; }
+            if (args.length != 2) { player.sendMessage("§e/auction cancel <id>"); return; }
             String path = listingPath(args[1]);
-            if (!marketData.exists(path + ".seller") || marketData.getBoolean(path + ".auction", false)
+            if (!marketData.exists(path + ".seller")
                     || !marketData.getString(path + ".seller", "").equals(player.getUniqueId().toString())) {
-                player.sendMessage("§cТвоё объявление не найдено.");
+                player.sendMessage("§cТвой лот не найден.");
                 return;
             }
-            Item item = Item.get(marketData.getInt(path + ".item-id", 0), marketData.getInt(path + ".item-damage", 0),
-                    marketData.getInt(path + ".count", 0));
-            if (!player.getInventory().canAddItem(item)) { player.sendMessage("§cОсвободи место в инвентаре."); return; }
+            Item item = Item.get(marketData.getInt(path + ".item-id", 0),
+                    marketData.getInt(path + ".item-damage", 0), marketData.getInt(path + ".count", 0));
+            if (item == null || item.isNull() || !player.getInventory().canAddItem(item)) {
+                player.sendMessage("§cОсвободи место в инвентаре.");
+                return;
+            }
             marketData.remove(path);
             try { marketData.save(); }
-            catch (RuntimeException ex) { player.sendMessage("§cНе удалось снять объявление."); return; }
+            catch (RuntimeException ex) { player.sendMessage("§cНе удалось снять лот; попробуй ещё раз."); return; }
             player.getInventory().addItem(item);
-            player.sendMessage("§aОбъявление снято, предмет возвращён.");
+            player.sendMessage("§aЛот снят с аукциона, предмет возвращён.");
             return;
         }
-        player.sendMessage("§e/market help");
+        player.sendMessage("§e/auction help");
     }
 
     private void handleAuction(Player player, String[] args) {
@@ -6618,7 +6692,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§eКузница и улучшение"));
         form.addButton(new ElementButton("§bКоллекция экипировки"));
         form.addButton(new ElementButton("§aКвесты и достижения"));
-        form.addButton(new ElementButton("§6Экономика: рынок и переводы"));
+        form.addButton(new ElementButton("§6Экономика: аукцион и переводы"));
         form.addButton(new ElementButton("§dГильдии"));
         form.addButton(new ElementButton("§dКоллекция титулов"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
@@ -6640,19 +6714,18 @@ public final class LocalFastCore extends PluginBase implements Listener {
     }
 
     private void openPlayerEconomyMenu(Player player) {
-        FormWindowSimple form = new FormWindowSimple("§6Экономика", "§7Баланс: §e" + getBalance(player) + " " + currencyName() + "\n§7Выбери раздел.");
-        form.addButton(new ElementButton("§aРынок предметов"));
-        form.addButton(new ElementButton("§eАукцион"));
+        FormWindowSimple form = new FormWindowSimple("§6Экономика",
+                "§7Баланс: §e" + getBalance(player) + " " + currencyName() + "\n§7Обычный аукцион и переводы игрокам.");
+        form.addButton(new ElementButton("§e§lОткрыть аукцион"));
         form.addButton(new ElementButton("§bПеревести монеты игроку"));
         form.addButton(new ElementButton("§dПринять входящий перевод"));
         form.addButton(new ElementButton("§7Главное меню"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
             int id = form.getResponse().getClickedButtonId();
-            if (id == 0) openPlayerMarketMenu(player);
-            else if (id == 1) openPlayerAuctionMenu(player);
-            else if (id == 2) openPlayerTradeTargetsMenu(player);
-            else if (id == 3) {
+            if (id == 0) openPlayerAuctionMenu(player);
+            else if (id == 1) openPlayerTradeTargetsMenu(player);
+            else if (id == 2) {
                 handleTrade(player, new String[]{"accept"});
                 openPlayerEconomyMenu(player);
             } else openPlayerMainMenu(player);
@@ -6660,87 +6733,64 @@ public final class LocalFastCore extends PluginBase implements Listener {
         player.showFormWindow(form);
     }
 
-    private void openPlayerMarketMenu(Player player) {
-        FormWindowSimple form = new FormWindowSimple("§6Рынок", "§7Покупай и выставляй предметы. Продажа выставляет весь предмет из руки.");
-        List<String> listingIds = new ArrayList<>();
+    private void openPlayerAuctionMenu(Player player) {
+        openPlayerAuctionListings(player, false);
+    }
+
+    private void openPlayerMyAuctionMenu(Player player) {
+        openPlayerAuctionListings(player, true);
+    }
+
+    private void openPlayerAuctionListings(Player player, boolean ownOnly) {
+        FormWindowSimple form = new FormWindowSimple(ownOnly ? "§6Мои лоты" : "§6§lАУКЦИОН",
+                "§7Покупай предметы по фиксированной цене или выставляй свои.\n§7Твой баланс: §e" + getBalance(player) + " " + currencyName());
+        List<String> ids = new ArrayList<>();
+        String uuid = player.getUniqueId().toString();
         for (String id : marketData.getSection("listings").getAll().keySet()) {
             String path = listingPath(id);
-            if (marketData.getBoolean(path + ".auction", false)) continue;
-            listingIds.add(id);
-            form.addButton(new ElementButton("§e#" + id + " §f" + marketData.getString(path + ".item-name", "Предмет")
-                    + " x" + marketData.getInt(path + ".count", 1) + " §a" + marketData.getLong(path + ".price", 0L)));
-            if (listingIds.size() >= 12) break;
+            if (!marketData.exists(path + ".seller")) continue;
+            boolean own = marketData.getString(path + ".seller", "").equals(uuid);
+            if (ownOnly && !own) continue;
+            ids.add(id);
+            String prefix = own ? "§e[ТВОЁ] " : "§a";
+            form.addButton(new ElementButton(prefix + "§f" + marketData.getString(path + ".item-name", "Предмет")
+                    + " x" + marketData.getInt(path + ".count", 1) + "\n§7Цена: §6"
+                    + marketData.getLong(path + ".price", 0L) + " " + currencyName()
+                    + " §8| §7Продавец: " + marketData.getString(path + ".seller-name", "?")));
+            if (ids.size() >= 20) break;
         }
-        form.addButton(new ElementButton("§aПродать из руки: 100 монет"));
-        form.addButton(new ElementButton("§aПродать из руки: 500 монет"));
-        form.addButton(new ElementButton("§aПродать из руки: 1000 монет"));
-        form.addButton(new ElementButton("§aПродать из руки: 5000 монет"));
+        if (!ownOnly) form.addButton(new ElementButton("§a§lВыставить предмет из руки"));
+        form.addButton(new ElementButton("§eМои лоты"));
         form.addButton(new ElementButton("§7Обновить"));
         form.addButton(new ElementButton("§8Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
-            int id = form.getResponse().getClickedButtonId();
-            if (id >= 0 && id < listingIds.size()) {
-                handleMarket(player, new String[]{"buy", listingIds.get(id)});
-                openPlayerMarketMenu(player);
-            } else {
-                int sell = id - listingIds.size();
-                if (sell >= 0 && sell <= 3) {
-                    handleMarket(player, new String[]{"sell", new String[]{"100","500","1000","5000"}[sell]});
-                    openPlayerMarketMenu(player);
-                } else if (sell == 4) openPlayerMarketMenu(player);
+            int selected = form.getResponse().getClickedButtonId();
+            if (selected >= 0 && selected < ids.size()) openPlayerAuctionLotMenu(player, ids.get(selected));
+            else {
+                int base = ids.size();
+                if (!ownOnly && selected == base) openAuctionCreateForm(player);
+                else if (selected == base + (ownOnly ? 0 : 1)) openPlayerMyAuctionMenu(player);
+                else if (selected == base + (ownOnly ? 1 : 2)) openPlayerAuctionListings(player, ownOnly);
                 else openPlayerEconomyMenu(player);
             }
         }));
         player.showFormWindow(form);
     }
 
-    private void openPlayerAuctionMenu(Player player) {
-        FormWindowSimple form = new FormWindowSimple("§6§lАУКЦИОН",
-                "§7Лоты, торги и получение предметов.\n§eВыставление и ставки — по любой сумме, которую введёшь сам.");
-        List<String> lotIds = new ArrayList<>();
-        long now = System.currentTimeMillis();
-        for (String id : marketData.getSection("listings").getAll().keySet()) {
-            String path = listingPath(id);
-            if (!marketData.getBoolean(path + ".auction", false)) continue;
-            lotIds.add(id);
-            long ends = marketData.getLong(path + ".ends-at", 0L);
-            long left = Math.max(0L, ends - now);
-            String status = ends > now ? "§a" + (left / 60000L) + " мин." : "§cЗавершён";
-            form.addButton(new ElementButton("§e#" + id + " §f" + marketData.getString(path + ".item-name", "Предмет")
-                    + " x" + marketData.getInt(path + ".count", 1) + "\n§7Ставка: §a"
-                    + marketData.getLong(path + ".current-bid", 0L) + " §8| " + status));
-            if (lotIds.size() >= 20) break;
-        }
-        form.addButton(new ElementButton("§a§lВыставить предмет"));
-        form.addButton(new ElementButton("§7Обновить"));
-        form.addButton(new ElementButton("§8Назад"));
-        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
-            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
-            int id = form.getResponse().getClickedButtonId();
-            if (id >= 0 && id < lotIds.size()) openPlayerAuctionLotMenu(player, lotIds.get(id));
-            else if (id == lotIds.size()) openAuctionCreateForm(player);
-            else if (id == lotIds.size() + 1) openPlayerAuctionMenu(player);
-            else openPlayerEconomyMenu(player);
-        }));
-        player.showFormWindow(form);
-    }
-
     private void openAuctionCreateForm(Player player) {
         Item hand = player.getInventory().getItemInHand();
-        if (hand == null || hand.isNull() || hand.getId() <= 0) {
+        if (hand == null || hand.isNull() || hand.getId() <= 0 || hand.getCount() <= 0) {
             player.sendMessage("§cВозьми предмет в руку, чтобы выставить его на аукцион.");
             openPlayerAuctionMenu(player);
             return;
         }
-        FormWindowCustom form = new FormWindowCustom("§6Выставление лота");
-        form.addElement(new ElementInput("Стартовая цена (монеты)", "Например: 750", "100"));
-        form.addElement(new ElementInput("Длительность в минутах (1–10080)", "Например: 60", "60"));
+        FormWindowCustom form = new FormWindowCustom("§6Выставление предмета");
+        form.addElement(new ElementInput("Цена продажи (" + currencyName() + ")", "Введи свою цену", "100"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
             String price = form.getResponse().getInputResponse(0);
-            String minutes = form.getResponse().getInputResponse(1);
-            handleAuction(player, new String[]{"create", price == null ? "" : price.trim(), minutes == null ? "" : minutes.trim()});
+            handleAuction(player, new String[]{"sell", price == null ? "" : price.trim()});
             openPlayerAuctionMenu(player);
         }));
         player.showFormWindow(form);
@@ -6748,48 +6798,28 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void openPlayerAuctionLotMenu(Player player, String lotId) {
         String path = listingPath(lotId);
-        if (!marketData.exists(path + ".seller") || !marketData.getBoolean(path + ".auction", false)) {
+        if (!marketData.exists(path + ".seller")) {
             player.sendMessage("§cЛот уже недоступен.");
             openPlayerAuctionMenu(player);
             return;
         }
+        String seller = marketData.getString(path + ".seller", "");
+        String sellerName = marketData.getString(path + ".seller-name", "?");
         String itemName = marketData.getString(path + ".item-name", "Предмет");
-        long current = marketData.getLong(path + ".current-bid", 0L);
-        long minimum = current == Long.MAX_VALUE ? Long.MAX_VALUE : current + 1L;
-        long ends = marketData.getLong(path + ".ends-at", 0L);
-        boolean active = ends > System.currentTimeMillis();
-        FormWindowSimple form = new FormWindowSimple("§eЛот #" + lotId,
-                "§f" + itemName + " x" + marketData.getInt(path + ".count", 1)
-                + "\n§7Текущая ставка: §a" + current + " " + currencyName()
-                + "\n§7Минимальная ставка: §e" + minimum
-                + (active ? "\n§7До конца: §a" + Math.max(0L, ends - System.currentTimeMillis()) / 60000L + " мин."
-                          : "\n§cТорги завершены."));
-        if (active) {
-            form.addButton(new ElementButton("§a§lВвести свою ставку"));
-        } else {
-            form.addButton(new ElementButton("§aПолучить предмет / забрать непроданный лот"));
-        }
+        int count = marketData.getInt(path + ".count", 1);
+        long price = marketData.getLong(path + ".price", 0L);
+        boolean own = seller.equals(player.getUniqueId().toString());
+        FormWindowSimple form = new FormWindowSimple("§eПредмет #" + lotId,
+                "§f" + itemName + " x" + count + "\n§7Продавец: §e" + sellerName
+                + "\n§7Цена: §6" + price + " " + currencyName()
+                + (own ? "\n§eЭто твой лот." : "\n§7После покупки предмет сразу попадёт в инвентарь."));
+        form.addButton(new ElementButton(own ? "§cСнять лот и вернуть предмет" : "§a§lКупить за " + price));
         form.addButton(new ElementButton("§7Назад к аукциону"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
-            int id = form.getResponse().getClickedButtonId();
-            if (active && id == 0) openAuctionBidForm(player, lotId, minimum);
-            else if (!active && id == 0) {
-                handleAuction(player, new String[]{"claim", lotId});
-                openPlayerAuctionMenu(player);
-            } else openPlayerAuctionMenu(player);
-        }));
-        player.showFormWindow(form);
-    }
-
-
-    private void openAuctionBidForm(Player player, String lotId, long minimum) {
-        FormWindowCustom form = new FormWindowCustom("§eСтавка на лот #" + lotId);
-        form.addElement(new ElementInput("Твоя ставка (монеты), минимум " + minimum, "Введи сумму", Long.toString(minimum)));
-        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
-            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
-            String amount = form.getResponse().getInputResponse(0);
-            handleAuction(player, new String[]{"bid", lotId, amount == null ? "" : amount.trim()});
+            if (form.getResponse().getClickedButtonId() == 0) {
+                handleAuction(player, new String[]{own ? "cancel" : "buy", lotId});
+            }
             openPlayerAuctionMenu(player);
         }));
         player.showFormWindow(form);
@@ -8906,11 +8936,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
             return true;
         }
 
-        if (name.equals("trade") || name.equals("market") || name.equals("auction")) {
+        if (name.equals("trade") || name.equals("auction")) {
             if (!(sender instanceof Player)) { sender.sendMessage("Эта команда доступна только игроку."); return true; }
             Player player = (Player) sender;
             if (name.equals("trade")) handleTrade(player, args);
-            else if (name.equals("market")) handleMarket(player, args);
+            else if (args.length == 0) openPlayerAuctionMenu(player);
             else handleAuction(player, args);
             return true;
         }

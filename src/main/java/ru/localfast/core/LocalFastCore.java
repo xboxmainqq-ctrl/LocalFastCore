@@ -570,7 +570,20 @@ public final class LocalFastCore extends PluginBase implements Listener {
     @EventHandler
     public void onRespawn(PlayerRespawnEvent event) {
         Player player = event.getPlayer();
-        getServer().getScheduler().scheduleDelayedTask(this, () -> recalculateStats(player), 1);
+        getServer().getScheduler().scheduleDelayedTask(this, () -> {
+            recalculateStats(player);
+            UUID id = player.getUniqueId();
+            if (dungeonPartyMembers(id).size() < 2) return;
+            String key = playerKey(player) + ".dungeon";
+            if (!players.getBoolean(key + ".active", false)) return;
+            String worldName = getConfig().getString("dungeons.world", "dungeons");
+            Level dungeon = getServer().getLevelByName(worldName);
+            if (dungeon == null) return;
+            if (player.teleport(new Position(0.5, 6, -25.5, dungeon))) {
+                player.sendTitle("§a§lВОЗРОЖДЕНИЕ", "§7Товарищи продолжают бой", 5, 30, 10);
+                player.sendMessage("§aТы вернулся в командное подземелье. Не оставляй команду!");
+            }
+        }, 2);
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)

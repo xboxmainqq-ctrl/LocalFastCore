@@ -1,9 +1,9 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.42.0"
+version: "0.43.0"
 api: ["1.0.0"]
 author: LocalFast
-description: LocalFastCore 0.42.0 dungeon clear-time records and speed leaderboard, Keeper final phase, second phase life siphon and trophy reward, hard-mode boss abilities and reinforcements, records and leaderboard, cooperative waves and bosses, RPG, economy and staff systems
+description: LocalFastCore 0.43.0 dungeon forge upgrades, clear-time records and speed leaderboard, Keeper final phase, second phase life siphon and trophy reward, hard-mode boss abilities and reinforcements, records and leaderboard, cooperative waves and bosses, RPG, economy and staff systems
 commands:
   spawn:
     description: Телепорт на отдельный спавн
@@ -101,6 +101,9 @@ commands:
   guild:
     description: Создать гильдию, приглашать игроков и управлять составом
     usage: "/guild <create|invite|accept|info|list|leave|kick|role|transfer|disband>"
+  forge:
+    description: Кузница катакомб и постоянные улучшения экипировки
+    usage: "/forge [info|weapon|armor]"
   dungeon:
     description: Прохождение подземелья и получение награды
     usage: "/dungeon [menu|info|start [easy|normal|hard]|difficulty <easy|normal|hard>|leave|claim|party|stats|top|speed]"

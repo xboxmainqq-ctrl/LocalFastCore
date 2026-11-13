@@ -4101,6 +4101,84 @@ public final class LocalFastCore extends PluginBase implements Listener {
         return guildData.getString("players." + player.getUniqueId().toString(), "");
     }
 
+    private long guildBank(String guildId) {
+        return Math.max(0L, guildData.getLong("guilds." + guildId + ".bank", 0L));
+    }
+
+    private int guildLevel(String guildId) {
+        long donated = Math.max(0L, guildData.getLong("guilds." + guildId + ".donated", 0L));
+        return Math.min(10, 1 + (int) (donated / 5000L));
+    }
+
+    private void openGuildBankMenu(Player player) {
+        String guildId = currentGuildId(player);
+        if (guildId.isEmpty() || !guildExists(guildId)) { openPlayerGuildMenu(player); return; }
+        String base = "guilds." + guildId;
+        FormWindowSimple form = new FormWindowSimple("§6Банк гильдии",
+                "§7Гильдия: §e" + guildData.getString(base + ".name", guildId)
+                + "\n§7Баланс: §6" + guildBank(guildId) + " " + currencyName()
+                + "\n§7Уровень: §e" + guildLevel(guildId) + "§7/§e10"
+                + "\n§7Вложено участниками: §a" + guildData.getLong(base + ".donated", 0L)
+                + "\n§8Каждые 5 000 монет взносов повышают уровень.");
+        form.addButton(new ElementButton("§aВнести 100"));
+        form.addButton(new ElementButton("§aВнести 500"));
+        form.addButton(new ElementButton("§aВнести 1 000"));
+        if (guildRole(guildId, player.getUniqueId().toString()).equals("leader")) {
+            form.addButton(new ElementButton("§eСнять 100"));
+            form.addButton(new ElementButton("§eСнять 500"));
+            form.addButton(new ElementButton("§eСнять 1 000"));
+        }
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            long[] amounts = {100L, 500L, 1000L};
+            if (id >= 0 && id < 3) {
+                long amount = amounts[id], balance = getBalance(player);
+                if (balance < amount) player.sendMessage("§cНедостаточно монет для взноса.");
+                else {
+                    setBalance(player, balance - amount);
+                    guildData.set(base + ".bank", safeAdd(guildBank(guildId), amount));
+                    guildData.set(base + ".donated", safeAdd(guildData.getLong(base + ".donated", 0L), amount));
+                    try {
+                        guildData.save();
+                        if (!flushPlayers()) throw new IllegalStateException("players.yml save failed");
+                        player.sendMessage("§aВзнос в банк гильдии: §6" + amount + " " + currencyName());
+                    } catch (RuntimeException ex) {
+                        setBalance(player, balance);
+                        guildData.set(base + ".bank", Math.max(0L, guildBank(guildId) - amount));
+                        guildData.set(base + ".donated", Math.max(0L, guildData.getLong(base + ".donated", 0L) - amount));
+                        try { guildData.save(); } catch (RuntimeException ignoredSave) {}
+                        flushPlayers();
+                        player.sendMessage("§cНе удалось сохранить взнос. Средства возвращены.");
+                        getLogger().error("Guild bank deposit failed.", ex);
+                    }
+                }
+                openGuildBankMenu(player);
+            } else if (guildRole(guildId, player.getUniqueId().toString()).equals("leader") && id >= 3 && id < 6) {
+                long amount = amounts[id - 3], bank = guildBank(guildId);
+                if (bank < amount) player.sendMessage("§cВ банке недостаточно средств.");
+                else {
+                    guildData.set(base + ".bank", bank - amount);
+                    setBalance(player, safeAdd(getBalance(player), amount));
+                    try {
+                        guildData.save();
+                        if (!flushPlayers()) throw new IllegalStateException("players.yml save failed");
+                        player.sendMessage("§aИз банка снято §6" + amount + " " + currencyName());
+                    } catch (RuntimeException ex) {
+                        guildData.set(base + ".bank", bank);
+                        setBalance(player, Math.max(0L, getBalance(player) - amount));
+                        flushPlayers();
+                        player.sendMessage("§cНе удалось сохранить снятие.");
+                        getLogger().error("Guild bank withdrawal failed.", ex);
+                    }
+                }
+                openGuildBankMenu(player);
+            } else openPlayerGuildMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
     private boolean guildExists(String guildId) {
         return guildId != null && !guildId.isEmpty() && guildData.exists("guilds." + guildId + ".name");
     }
@@ -4193,6 +4271,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 player.sendMessage("§cНе удалось сохранить гильдию. Деньги возвращены.");
                 getLogger().error("Guild creation save failed.", ex);
             }
+            return;
+        }
+        if (action.equals("bank")) {
+            openGuildBankMenu(player);
             return;
         }
         if (action.equals("accept")) {
@@ -4310,6 +4392,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             player.sendMessage("§e/guild list §7— список §8| §e/guild info §7— состав");
             player.sendMessage("§e/guild invite <игрок> §7— пригласить §8| §e/guild accept/decline");
             player.sendMessage("§e/guild leave §7— выйти §8| §e/guild kick <игрок> §7— исключить");
+            player.sendMessage("§e/guild bank §7— банк, взносы и развитие гильдии");
             player.sendMessage("§e/guild role <игрок> <officer|member> §7— роль");
             player.sendMessage("§e/guild transfer <игрок> §7— передать главу §8| §e/guild disband §7— распустить");
             return;
@@ -6611,6 +6694,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (hasInvite) form.addButton(new ElementButton("§cОтклонить приглашение"));
         } else {
             form.addButton(new ElementButton("§aСостав и управление участниками"));
+            form.addButton(new ElementButton("§6Банк и развитие гильдии"));
             if (guildCanManage(guildId, player)) form.addButton(new ElementButton("§bПригласить игрока"));
             form.addButton(new ElementButton("§cПокинуть гильдию"));
             if (guildRole(guildId, player.getUniqueId().toString()).equals("leader")) {
@@ -6639,6 +6723,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 boolean leader = guildRole(guildId, player.getUniqueId().toString()).equals("leader");
                 int cursor = 1;
                 if (id == cursor++) openPlayerGuildMembersMenu(player);
+                else if (id == cursor++) openGuildBankMenu(player);
                 else {
                     if (guildCanManage(guildId, player)) {
                         if (id == cursor++) { openPlayerGuildInviteMenu(player); return; }

@@ -230,7 +230,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.68.0 включён. Аукцион с избранным и страницами, RPG и система персонала загружены.");
+        getLogger().info("LocalFastCore 0.69.0 включён. История сделок аукциона, избранное, страницы, RPG и система персонала загружены.");
     }
 
     private void migrateLegacyListingsToFixedAuction() {
@@ -4652,6 +4652,40 @@ public final class LocalFastCore extends PluginBase implements Listener {
         target.sendMessage("§a/trade accept §7— принять; §c/trade decline §7— отклонить (60 секунд).");
     }
 
+    private void openPlayerAuctionHistory(Player player) {
+        String uuid = player.getUniqueId().toString();
+        List<String> ids = new ArrayList<>();
+        for (String id : marketData.getSection("history").getAll().keySet()) {
+            String path = "history." + id;
+            if (uuid.equals(marketData.getString(path + ".buyer-uuid", ""))
+                    || uuid.equals(marketData.getString(path + ".seller-uuid", ""))) ids.add(id);
+        }
+        ids.sort((a, b) -> Long.compare(
+                marketData.getLong("history." + b + ".timestamp", 0L),
+                marketData.getLong("history." + a + ".timestamp", 0L)));
+        FormWindowSimple form = new FormWindowSimple("§6§lИСТОРИЯ СДЕЛОК",
+                "§7Последние покупки и продажи на аукционе");
+        int shown = Math.min(20, ids.size());
+        for (int i = 0; i < shown; i++) {
+            String id = ids.get(i), path = "history." + id;
+            boolean bought = uuid.equals(marketData.getString(path + ".buyer-uuid", ""));
+            String action = bought ? "§aКУПИЛ" : "§eПРОДАЛ";
+            String other = bought ? marketData.getString(path + ".seller-name", "?")
+                    : marketData.getString(path + ".buyer-name", "?");
+            form.addButton(new ElementButton(action + " §f" + marketData.getString(path + ".item-name", "Предмет")
+                    + " x" + marketData.getInt(path + ".count", 1) + "\n§7Цена: §6"
+                    + marketData.getLong(path + ".price", 0L) + " " + currencyName()
+                    + " §8| §7" + (bought ? "Продавец: " : "Покупатель: ") + other));
+        }
+        if (shown == 0) form.setContent(form.getContent() + "\n§7Пока сделок нет.");
+        form.addButton(new ElementButton("§7Назад к аукциону"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            openPlayerAuctionMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
     private void handleAuction(Player player, String[] args) {
         if (args.length == 0 || args[0].equalsIgnoreCase("help")) {
             player.sendMessage("§6[Аукцион] §e/auction list §7— список предметов");
@@ -4715,8 +4749,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 return;
             }
             long price = marketData.getLong(path + ".price", 0L);
-            Item item = Item.get(marketData.getInt(path + ".item-id", 0),
-                    marketData.getInt(path + ".item-damage", 0), marketData.getInt(path + ".count", 0));
+            int itemId = marketData.getInt(path + ".item-id", 0);
+            int itemDamage = marketData.getInt(path + ".item-damage", 0);
+            int itemCount = marketData.getInt(path + ".count", 0);
+            String itemName = marketData.getString(path + ".item-name", "Предмет");
+            long createdAt = marketData.getLong(path + ".created-at", 0L);
+            Item item = Item.get(itemId, itemDamage, itemCount);
             if (price < 1L || item == null || item.isNull() || item.getCount() <= 0
                     || !player.getInventory().canAddItem(item)) {
                 player.sendMessage("§cНедостаточно места в инвентаре или лот повреждён.");
@@ -4736,15 +4774,41 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 player.sendMessage("§cНе удалось сохранить покупку; средства не списаны.");
                 return;
             }
+            String historyId = Long.toString(Math.max(1L, marketData.getLong("next-history-id", 1L)));
+            String historyPath = "history." + historyId;
+            marketData.set("next-history-id", Long.parseLong(historyId) + 1L);
+            marketData.set(historyPath + ".lot-id", id);
+            marketData.set(historyPath + ".buyer-uuid", player.getUniqueId().toString());
+            marketData.set(historyPath + ".buyer-name", player.getName());
+            marketData.set(historyPath + ".seller-uuid", sellerUuid);
+            marketData.set(historyPath + ".seller-name", sellerName);
+            marketData.set(historyPath + ".item-name", itemName);
+            marketData.set(historyPath + ".item-id", itemId);
+            marketData.set(historyPath + ".item-damage", itemDamage);
+            marketData.set(historyPath + ".count", itemCount);
+            marketData.set(historyPath + ".price", price);
+            marketData.set(historyPath + ".timestamp", System.currentTimeMillis());
             marketData.remove(path);
-            try { marketData.save(); }
-            catch (RuntimeException ex) {
+            try {
+                marketData.save();
+            } catch (RuntimeException ex) {
+                marketData.remove(historyPath);
+                marketData.set(path + ".auction", true);
+                marketData.set(path + ".seller", sellerUuid);
+                marketData.set(path + ".seller-name", sellerName);
+                marketData.set(path + ".item-id", itemId);
+                marketData.set(path + ".item-damage", itemDamage);
+                marketData.set(path + ".item-name", itemName);
+                marketData.set(path + ".count", itemCount);
+                marketData.set(path + ".price", price);
+                marketData.set(path + ".created-at", createdAt);
                 setBalance(player, buyerBalance);
                 setBalanceByUuid(sellerUuid, sellerBalance);
                 flushPlayers();
-                player.sendMessage("§cНе удалось завершить покупку; средства возвращены.");
+                player.sendMessage("§cНе удалось завершить покупку; лот восстановлен, средства возвращены.");
                 return;
             }
+            // Final inventory check happens before charging; the preflight above prevents partial delivery.
             player.getInventory().addItem(item);
             player.sendMessage("§aТы купил " + item.getName() + " x" + item.getCount() + " за " + price + " " + currencyName() + ".");
             Player seller = getServer().getPlayer(sellerName);
@@ -6757,6 +6821,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (!ownOnly && !favoritesOnly) form.addButton(new ElementButton("§a§lВыставить предмет из руки"));
         form.addButton(new ElementButton(ownOnly ? "§eК аукциону" : "§eМои лоты"));
         form.addButton(new ElementButton("§7Сбросить фильтры"));
+        form.addButton(new ElementButton("§bИстория сделок"));
         form.addButton(new ElementButton("§8Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
@@ -6775,6 +6840,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     if (ownOnly) openPlayerAuctionMenu(player);
                     else openPlayerMyAuctionMenu(player);
                 } else if (action == (!ownOnly && !favoritesOnly ? 2 : 1)) openPlayerAuctionListings(player, ownOnly);
+                else if (action == (!ownOnly && !favoritesOnly ? 3 : 2)) openPlayerAuctionHistory(player);
                 else openPlayerEconomyMenu(player);
             }
         }));

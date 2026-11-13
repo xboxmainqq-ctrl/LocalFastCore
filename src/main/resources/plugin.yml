@@ -1,9 +1,9 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.45.0"
+version: "0.46.0"
 api: ["1.0.0"]
 author: LocalFast
-description: LocalFastCore 0.45.0 craftable Keeper relic equipment, forge legendary gear and collection, legendary forge effects and upgrades, clear-time records and speed leaderboard, Keeper final phase, second phase life siphon and trophy reward, hard-mode boss abilities and reinforcements, records and leaderboard, cooperative waves and bosses, RPG, economy and staff systems
+description: LocalFastCore 0.46.0 companion pets, pet bonuses and dungeon unlocks craftable Keeper relic equipment, forge legendary gear and collection, legendary forge effects and upgrades, clear-time records and speed leaderboard, Keeper final phase, second phase life siphon and trophy reward, hard-mode boss abilities and reinforcements, records and leaderboard, cooperative waves and bosses, RPG, economy and staff systems
 commands:
   spawn:
     description: Телепорт на отдельный спавн
@@ -104,6 +104,9 @@ commands:
   forge:
     description: Кузница катакомб и постоянные улучшения экипировки
     usage: "/forge [info|weapon|armor]"
+  pets:
+    description: Меню питомцев-компаньонов
+    usage: "/pets"
   dungeon:
     description: Прохождение подземелья и получение награды
     usage: "/dungeon [menu|info|start [easy|normal|hard]|difficulty <easy|normal|hard>|leave|claim|party|stats|top|speed]"

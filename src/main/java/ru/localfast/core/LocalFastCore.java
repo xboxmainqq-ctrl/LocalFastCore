@@ -7333,7 +7333,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         String name = command.getName().toLowerCase(Locale.ROOT);
 
-        if (name.equals("menu") || name.equals("lfmenu")) { if (!(sender instanceof Player)) { sender.sendMessage("Меню доступно только игроку."); return true; } openPlayerMainMenu((Player)sender); return true; }\n\n        if (name.equals("world") || name.equals("worlds")) { handleWorldCommand(sender, args); return true; }
+        if (name.equals("menu") || name.equals("lfmenu")) { if (!(sender instanceof Player)) { sender.sendMessage("Меню доступно только игроку."); return true; } openPlayerMainMenu((Player)sender); return true; }
+
+        if (name.equals("world") || name.equals("worlds")) { handleWorldCommand(sender, args); return true; }
 
         if (name.equals("rift")) {
             if (!(sender instanceof Player)) { sender.sendMessage("Разлом доступен только игроку."); return true; }

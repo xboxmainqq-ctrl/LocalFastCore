@@ -1,9 +1,9 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.66.0"
+version: "0.67.0"
 api: ["1.0.0"]
 author: LocalFast
-description: LocalFastCore 0.66.0 unified fixed-price player auction, instant purchases, RPG systems
+description: LocalFastCore 0.67.0 unified fixed-price player auction, instant purchases, RPG systems
 commands:
   spawn:
     description: Телепорт на отдельный спавн

@@ -2039,25 +2039,26 @@ public final class LocalFastCore extends PluginBase implements Listener {
             } else if (wave == 4 && mobName.contains("ravager")) {
                 players.set(playerPath + ".dungeon.complete", true);
                 players.set(playerPath + ".dungeon.active", false);
-                UUID partyLeader = dungeonPartyLeader.getOrDefault(killer.getUniqueId(), killer.getUniqueId());
-                for (UUID memberId : dungeonPartyMembers(killer.getUniqueId())) {
+                java.util.Set<UUID> winners = dungeonPartyMembers(killer.getUniqueId());
+                players.set(playerPath + ".dungeon.wave", 5);
+                openDungeonGate(killer.getLevel(), 32);
+                boolean chestReady = prepareDungeonRewardChest(killer.getLevel());
+                for (UUID memberId : winners) {
                     Player member = onlinePlayer(memberId);
                     if (member == null) continue;
                     String memberPath = playerKey(member) + ".dungeon";
                     players.set(memberPath + ".complete", true);
                     players.set(memberPath + ".active", false);
                     players.set(memberPath + ".wave", 5);
-                    players.set(memberPath + ".chest-ready", true);
+                    players.set(memberPath + ".chest-ready", chestReady);
+                    if (!chestReady) {
+                        giveDungeonBossLoot(member);
+                        players.set(memberPath + ".loot-fallback-given", true);
+                    }
                     member.sendTitle("§6§lПОБЕДА!", "§eКоманда победила Хранителя катакомб", 10, 60, 15);
-                    member.sendMessage("§6Командное подземелье пройдено! §eТвоя награда доступна через /dungeon claim.");
-                }
-                players.set(playerPath + ".dungeon.wave", 5);
-                openDungeonGate(killer.getLevel(), 32);
-                boolean chestReady = prepareDungeonRewardChest(killer.getLevel());
-                players.set(playerPath + ".dungeon.chest-ready", chestReady);
-                if (!chestReady) {
-                    giveDungeonBossLoot(killer);
-                    players.set(playerPath + ".dungeon.loot-fallback-given", true);
+                    member.sendMessage(chestReady
+                            ? "§6Командное подземелье пройдено! §eСокровищница открыта, награда: /dungeon claim."
+                            : "§6Командное подземелье пройдено! §eДобыча выдана в инвентарь, награда: /dungeon claim.");
                 }
                 markPlayersDirty();
                 killer.sendTitle("§6§lПОБЕДА!", "§eКатакомбы полностью зачищены", 10, 60, 15);

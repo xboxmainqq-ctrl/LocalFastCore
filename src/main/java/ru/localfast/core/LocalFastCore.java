@@ -78,6 +78,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private final Map<UUID, Long> dungeonBossAbilityCooldowns = new HashMap<>();
     private final Map<String, Long> dungeonBossSummonCooldowns = new HashMap<>();
     private final Map<String, Long> dungeonBossAreaCooldowns = new HashMap<>();
+    private final Map<Long, Long> dungeonBossSoulSiphonCooldowns = new HashMap<>();
     private final java.util.Set<Long> dungeonBossSecondPhase = new java.util.HashSet<>();
     private final Map<UUID, Long> dungeonTrapCooldowns = new HashMap<>();
     private final Map<UUID, java.util.Set<UUID>> dungeonParties = new HashMap<>();
@@ -645,6 +646,17 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 if (secondPhase) {
                     float phaseDamage = event.getDamage(EntityDamageEvent.DamageModifier.BASE);
                     event.setDamage(phaseDamage + 4.0f, EntityDamageEvent.DamageModifier.BASE);
+
+                    // Unique phase-two attack: the Keeper drains life and restores a little health.
+                    long lastSiphon = dungeonBossSoulSiphonCooldowns.getOrDefault(boss.getId(), 0L);
+                    if (now - lastSiphon >= 30000L) {
+                        dungeonBossSoulSiphonCooldowns.put(boss.getId(), now);
+                        float siphonDamage = event.getDamage(EntityDamageEvent.DamageModifier.BASE);
+                        event.setDamage(siphonDamage + 6.0f, EntityDamageEvent.DamageModifier.BASE);
+                        boss.setHealth(Math.min(boss.getMaxHealth(), boss.getHealth() + 8.0f));
+                        target.sendTitle("§5§lПОХИЩЕНИЕ ЖИЗНИ!", "§dХранитель восстановил 8 HP", 0, 30, 5);
+                        target.sendMessage("§5Хранитель использовал «Похищение жизни»: +6 урона и восстановил себе до 8 HP!");
+                    }
                 }
 
                 // In phase two the Keeper summons three guards more frequently.
@@ -863,7 +875,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         String title=boss?"§c§lАРЕНА МИРОВОГО БОССА":"§6§lЗАТЕРЯННЫЕ КАТАКОМБЫ";
         String description=boss
                 ?"§fБой с призванным Разорителем.\n§7Награда: §a"+xp+" XP §7и §e"+money+" "+currencyName()
-                :"§fТри волны: зомби, скелеты и пауки. Затем Разоритель и сундук.\n§7Награда: §a"+xp+" XP §7и §e"+money+" "+currencyName()+"\n§7Дополнительно: §fлук и 16 стрел";
+                :"§fТри волны: зомби, скелеты и пауки. Затем Разоритель и сундук.\n§7Награда: §a"+xp+" XP §7и §e"+money+" "+currencyName()+"\n§7Дополнительно: §fлук, стрелы и Печать Хранителя";
         if(claimed) description+="\n§8Награда за сегодня уже получена.";
         else if(complete) description+="\n§aПобеда! Награда готова к получению.";
         else if(active) description+="\n§eПрохождение уже начато.";
@@ -1101,7 +1113,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private void giveDungeonBossLoot(Player player) {
         player.getInventory().addItem(Item.get(261, 0, 1), Item.get(262, 0, 16),
                 Item.get(264, 0, 2), Item.get(266, 0, 8));
-        player.sendMessage("§6§lСОКРОВИЩА БОССА: §b2 алмаза §7и §e8 золотых слитков§7, лук и 16 стрел!");
+        player.sendMessage("§6§lСОКРОВИЩА БОССА: §b2 алмаза §7и §e8 золотых слитков§7, лук и 16 стрел. Печать Хранителя выдаётся отдельно при /dungeon claim.");
     }
 
     private Level ensureDungeonWorld(Player player) {
@@ -1508,7 +1520,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if(!players.getString(k+".dungeon.date","").equals(today())) {
             players.set(k+".dungeon.date",today()); players.set(k+".dungeon.kills",0);
             players.set(k+".dungeon.active",false); players.set(k+".dungeon.complete",false);
-            players.set(k+".dungeon.claimed",false); markPlayersDirty();
+            players.set(k+".dungeon.claimed",false); players.set(k+".dungeon.keeper-trophy-given",false); markPlayersDirty();
         }
         // Bare /dungeon opens the unified adventure menu.
         String action=args.length==0?"menu":args[0].toLowerCase(Locale.ROOT);
@@ -1602,6 +1614,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 players.set(k + ".dungeon.spawned-wave", 0);
                 players.set(k + ".dungeon.chest-ready", false);
                 players.set(k + ".dungeon.loot-fallback-given", false);
+                players.set(k + ".dungeon.keeper-trophy-given", false);
             }
             markPlayersDirty();
 
@@ -1616,7 +1629,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     players.set(memberKey + ".dungeon.return-y", member.getY());
                     players.set(memberKey + ".dungeon.return-z", member.getZ());
                 }
-                for (String field : new String[]{"active","wave","kills","spawned-wave","complete","claimed","chest-ready","loot-fallback-given","difficulty"}) {
+                for (String field : new String[]{"active","wave","kills","spawned-wave","complete","claimed","chest-ready","loot-fallback-given","difficulty","keeper-trophy-given"}) {
                     Object value = players.get(k + ".dungeon." + field);
                     if (value != null) players.set(memberKey + ".dungeon." + field, value);
                 }
@@ -1648,8 +1661,15 @@ public final class LocalFastCore extends PluginBase implements Listener {
             int xp=Math.max(0,(int)Math.round(getConfig().getInt("dungeons.xp-reward",600) * rewardMultiplier));
             long money=Math.max(0L,Math.round(getConfig().getLong("dungeons.money-reward",250L) * rewardMultiplier));
             players.set(k+".dungeon.complete",false); players.set(k+".dungeon.active",false); players.set(k+".dungeon.claimed",true);
-            giveXp(p,xp); setBalance(p,safeAdd(getBalance(p),money)); markPlayersDirty();
-            p.sendMessage("§6Награда подземелья: §a+"+xp+" XP §7и §e+"+money+" "+currencyName()+"§6! §fЛук и 16 стрел лежат в сундуке катакомб.");
+            giveXp(p,xp); setBalance(p,safeAdd(getBalance(p),money));
+            boolean trophyGiven = players.getBoolean(k + ".dungeon.keeper-trophy-given", false);
+            if (!trophyGiven) {
+                p.getInventory().addItem(Item.get(399, 0, 1));
+                players.set(k + ".dungeon.keeper-trophy-given", true);
+            }
+            markPlayersDirty();
+            p.sendMessage("§6Награда подземелья: §a+"+xp+" XP §7и §e+"+money+" "+currencyName()
+                    +"§6! §bПечать Хранителя§6 — особая добыча за победу.");
             returnFromDungeon(p);
             return;
         }

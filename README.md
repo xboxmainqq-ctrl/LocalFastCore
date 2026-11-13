@@ -1,4 +1,4 @@
-# LocalFastCore 0.12.0
+# LocalFastCore 0.31.0
 
 RPG progression plugin for Nukkit-MOT 1.26.60-R1 (Java 17).
 
@@ -214,3 +214,12 @@ CI проверяет компиляцию и упаковку. Игровую �
 - Новые части локации и ловушки достраиваются также в уже существующем мире `dungeons`; пересоздавать мир и сбрасывать прогресс игроков не требуется.
 
 CI проверяет компиляцию и упаковку. Ловушки, открытие двери и содержимое сундука необходимо проверить в игре на тестовом сервере Nukkit перед обновлением рабочего сервера.
+
+
+## Cooperative dungeons (0.31.0)
+
+The Lost Catacombs now support parties of up to four online players. Use `/dungeon party create` to create a party, `/dungeon party invite <player>` to invite, and `/dungeon party accept` to join. The leader starts the run with `/dungeon start`; party members are transported into the same dungeon instance. Waves and the final boss are shared, each online party member receives wave rewards, and each member can claim the final reward separately with `/dungeon claim`. A fallen party member is returned to the dungeon after respawning while the team run remains active. Use `/dungeon party` to view the party and `/dungeon party leave` to leave it.
+
+Party size is limited to four. Invites and party membership are in-memory and are cleared by a server restart; create the party again after restart. The solo dungeon path remains available when a player is not in a party.
+
+The automated build validates compilation and packaging. Test party invites, a four-player run, shared wave advancement, individual reward claims, player death/respawn, and reconnect behavior on a staging server before production.

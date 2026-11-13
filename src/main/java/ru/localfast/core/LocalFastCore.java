@@ -26,6 +26,7 @@ import cn.nukkit.event.entity.EntityDamageEvent;
 import cn.nukkit.event.player.PlayerRespawnEvent;
 import cn.nukkit.event.player.PlayerJoinEvent;
 import cn.nukkit.event.player.PlayerQuitEvent;
+import cn.nukkit.event.player.PlayerMoveEvent;
 import cn.nukkit.event.player.PlayerChatEvent;
 import cn.nukkit.network.protocol.types.DisplaySlot;
 import cn.nukkit.network.protocol.types.SortOrder;
@@ -74,6 +75,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private final Map<UUID, Integer> nextAbilityDamage = new HashMap<>();
     private final Map<UUID, ComboState> combatCombos = new HashMap<>();
     private final Map<UUID, Long> tankGuardUntil = new HashMap<>();
+    private final Map<UUID, Long> dungeonTrapCooldowns = new HashMap<>();
     private final java.util.Set<UUID> vanishedPlayers = new java.util.HashSet<>();
     private final java.util.Set<UUID> flyingPlayers = new java.util.HashSet<>();
     private TaskHandler castleBuildTask;
@@ -206,7 +208,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.27.0 включён. RPG, гильдии, рынок, защищённые катакомбы с наградами за волны и боссами, система персонала загружены.");
+        getLogger().info("LocalFastCore 0.30.0 включён. RPG, гильдии, рынок, катакомбы с ловушками и комнатой сокровищ, система персонала загружены.");
     }
 
     private void markPlayersDirty() {
@@ -782,8 +784,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private boolean prepareDungeonRewardChest(Level level) {
         try {
-            Position chestPosition = new Position(0, 6, 28, level);
-            cn.nukkit.level.format.FullChunk chunk = level.getChunk(0, 1, true);
+            Position chestPosition = new Position(0, 6, 45, level);
+            cn.nukkit.level.format.FullChunk chunk = level.getChunk(0, 2, true);
             level.setBlock(chestPosition, Block.get(54), true, true);
             if (!(level.getBlock(chestPosition) instanceof BlockChest)) {
                 getLogger().warning("Не удалось установить блок сундука награды катакомб.");
@@ -796,7 +798,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 CompoundTag nbt = new CompoundTag("")
                         .putList(new ListTag<>("Items"))
                         .putString("id", BlockEntity.CHEST)
-                        .putInt("x", 0).putInt("y", 6).putInt("z", 28);
+                        .putInt("x", 0).putInt("y", 6).putInt("z", 45);
                 blockEntity = BlockEntity.createBlockEntity(BlockEntity.CHEST, chunk, nbt);
             }
             if (!(blockEntity instanceof BlockEntityChest)) {
@@ -833,10 +835,33 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private void closeDungeonGates(Level level) {
         setDungeonGate(level, -11, false);
         setDungeonGate(level, 10, false);
+        setDungeonGate(level, 32, false);
     }
 
     private void openDungeonGate(Level level, int z) {
         setDungeonGate(level, z, true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void handleDungeonTraps(PlayerMoveEvent event) {
+        Player player = event.getPlayer();
+        if (!isDungeonWorld(player.getLevel())) return;
+        String key = playerKey(player);
+        if (!players.getBoolean(key + ".dungeon.active", false)) return;
+        int wave = players.getInt(key + ".dungeon.wave", 1);
+        if (wave < 1 || wave > 4) return;
+        int x = player.getFloorX();
+        int z = player.getFloorZ();
+        boolean onTrap = x >= -8 && x <= 8
+                && (Math.abs(z + 17) <= 1 || Math.abs(z - 4) <= 1 || Math.abs(z - 24) <= 1);
+        if (!onTrap) return;
+        long now = System.currentTimeMillis();
+        UUID id = player.getUniqueId();
+        if (now - dungeonTrapCooldowns.getOrDefault(id, 0L) < 2500L) return;
+        dungeonTrapCooldowns.put(id, now);
+        player.setHealth(Math.max(1.0f, player.getHealth() - 4.0f));
+        player.sendMessage("§c§lЛОВУШКА! §7Пол катакомб ранил тебя на 2 сердца.");
+        player.sendTitle("§cЛОВУШКА!", "§7Смотри под ноги", 0, 20, 5);
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -938,6 +963,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
             getConfig().set("managed-worlds." + worldName + ".type", "dungeons");
             saveConfig();
         }
+        if (!getConfig().getBoolean("dungeons.treasure-room-built", false)) {
+            buildDungeonTreasureRoom(level);
+            getConfig().set("dungeons.treasure-room-built", true);
+            saveConfig();
+        }
         return level;
     }
 
@@ -973,6 +1003,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
             }
         }
 
+        // Red hazard strips are embedded in the floor and trigger during active runs.
+        for (int x = -8; x <= 8; x++) {
+            for (int z : new int[]{-17, 4, 24}) blocks.add(new CastleBlock(x, floorY, z, 152));
+        }
+
         // Finish the structure before teleporting the player into it. This avoids
         // the old race where the player arrived while the async builder was still
         // placing the floor, walls and ceiling.
@@ -991,6 +1026,35 @@ public final class LocalFastCore extends PluginBase implements Listener {
             }
         }
         getLogger().info("Локация подземелья построена: " + placed + "/" + blocks.size() + " блоков.");
+    }
+
+    private void buildDungeonTreasureRoom(Level level) {
+        List<CastleBlock> blocks = new ArrayList<>();
+        int floorY = 5;
+        // Sealed vault behind the boss chamber, connected through the gate at z=32.
+        for (int x = -13; x <= 13; x++) {
+            for (int z = 33; z <= 55; z++) {
+                blocks.add(new CastleBlock(x, floorY, z, 98));
+                blocks.add(new CastleBlock(x, floorY + 7, z, 4));
+            }
+        }
+        for (int y = floorY + 1; y <= floorY + 6; y++) {
+            for (int z = 33; z <= 55; z++) {
+                blocks.add(new CastleBlock(-13, y, z, 98));
+                blocks.add(new CastleBlock(13, y, z, 98));
+            }
+            for (int x = -13; x <= 13; x++) blocks.add(new CastleBlock(x, y, 55, 98));
+            for (int x = -2; x <= 2; x++) blocks.add(new CastleBlock(x, y, 32, 98));
+        }
+        for (CastleBlock block : blocks) {
+            try {
+                level.getChunk(block.x >> 4, block.z >> 4, true);
+                level.setBlock(new Position(block.x, block.y, block.z, level), Block.get(block.id), true, true);
+            } catch (RuntimeException exception) {
+                getLogger().warning("Treasure room skipped block " + block.x + ", " + block.y + ", " + block.z + ": " + exception.getMessage());
+            }
+        }
+        getLogger().info("Комната сокровищ катакомб построена и запечатана до победы над боссом.");
     }
 
     private void buildBossArena(Level level) {
@@ -1812,6 +1876,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 players.set(playerPath + ".dungeon.complete", true);
                 players.set(playerPath + ".dungeon.active", false);
                 players.set(playerPath + ".dungeon.wave", 5);
+                openDungeonGate(killer.getLevel(), 32);
                 boolean chestReady = prepareDungeonRewardChest(killer.getLevel());
                 players.set(playerPath + ".dungeon.chest-ready", chestReady);
                 if (!chestReady) {
@@ -1821,8 +1886,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 markPlayersDirty();
                 killer.sendTitle("§6§lПОБЕДА!", "§eКатакомбы полностью зачищены", 10, 60, 15);
                 killer.sendMessage(chestReady
-                        ? "§6§lКАТАКОМБЫ ЗАЧИЩЕНЫ! §eВ сундуке: лук, стрелы, 2 алмаза и 8 золотых слитков. /dungeon"
-                        : "§6§lКАТАКОМБЫ ЗАЧИЩЕНЫ! §eСокровища выданы в инвентарь. /dungeon");
+                        ? "§6§lКАТАКОМБЫ ЗАЧИЩЕНЫ! §eТайная дверь открылась — войди в комнату сокровищ за ареной и открой сундук!"
+                        : "§6§lКАТАКОМБЫ ЗАЧИЩЕНЫ! §eДверь в сокровищницу открыта, добыча выдана в инвентарь.");
             }
             }
         }

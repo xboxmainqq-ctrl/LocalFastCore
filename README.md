@@ -182,10 +182,16 @@ Moderation limits follow the rank ladder. Administrators and the operator can is
 - Сундук награды создаётся вместе с BlockEntity и заполняется луком и 16 стрелами. Если сервер не создаёт контейнер, предметы выдаются игроку напрямую.
 
 
-## LocalFastCore 0.27.0 — награды и защита катакомб
+## LocalFastCore 0.28.0 — награды и защита катакомб
 - В катакомбах запрещено ломать и ставить блоки; взрывы также не разрушают постройку.
 - За полное прохождение каждой из первых трёх волн выдаются XP и монеты. Награды настраиваются в `config.yml` через `dungeons.wave-rewards.wave-1`, `wave-2` и `wave-3` (`xp` и `money`).
 - Значения по умолчанию: волна 1 — 40 XP и 25 монет; волна 2 — 80 XP и 50 монет; волна 3 — 120 XP и 75 монет.
 - После каждой зачистки игрок получает сообщение с номером волны и точной наградой. Существующая финальная награда за босса сохраняется.
 
 CI проверяет компиляцию и упаковку. Защиту блоков, награды и прохождение волн нужно проверить на тестовом сервере Nukkit перед обновлением рабочего сервера.
+
+
+## 0.28.0 — dungeon improvements
+- Wave titles and live kill progress for the active dungeon run.
+- Rare monster loot: 3% diamond, 9% emerald, and 18% two gold ingots.
+- The final treasure chest now contains a bow, 16 arrows, 2 diamonds and 8 gold ingots; inventory fallback grants the same loot if the chest cannot be created.

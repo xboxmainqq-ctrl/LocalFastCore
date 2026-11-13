@@ -6756,6 +6756,34 @@ public final class LocalFastCore extends PluginBase implements Listener {
     }
 
 
+    private void openPlayerGuildInviteMenu(Player player) {
+        String guildId = currentGuildId(player);
+        if (guildId.isEmpty() || !guildCanManage(guildId, player)) {
+            player.sendMessage("§cПриглашать могут глава и офицеры гильдии.");
+            return;
+        }
+        FormWindowSimple form = new FormWindowSimple("§dПригласить в гильдию", "§7Выбери игрока онлайн, который ещё не состоит в гильдии.");
+        List<Player> targets = new ArrayList<>();
+        for (Player target : getServer().getOnlinePlayers().values()) {
+            if (target.isOnline() && !target.getUniqueId().equals(player.getUniqueId())
+                    && currentGuildId(target).isEmpty()) {
+                targets.add(target);
+                form.addButton(new ElementButton("§f" + target.getName()));
+                if (targets.size() >= 20) break;
+            }
+        }
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id >= 0 && id < targets.size() && targets.get(id).isOnline()) {
+                handleGuildCommand(player, new String[]{"invite", targets.get(id).getName()});
+            }
+            openPlayerGuildMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
     private void openPlayerRiftMenu(Player player) {
         FormWindowSimple form = new FormWindowSimple("§5§lРАЗЛОМ БЕЗДНЫ",
                 "§7Отдельное испытание, награды и реликвии Разлома.");

@@ -6327,8 +6327,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
             boolean give = id < 5;
             Item resource = createForgeMaterial(rift ? 399 : 406, label, amount);
             if (give) {
-                Map<Integer, Item> leftovers = target.getInventory().addItem(resource);
-                if (!leftovers.isEmpty()) operator.sendMessage("§cНе всё поместилось в инвентарь.");
+                Item[] leftovers = target.getInventory().addItem(resource);
+                if (leftovers != null && leftovers.length > 0) operator.sendMessage("§cНе всё поместилось в инвентарь.");
             } else {
                 int remaining = amount;
                 Item[] inventoryContents = target.getInventory().getContents();

@@ -788,7 +788,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
                         && victim.getZ() >= -21 && victim.getZ() <= 21) {
                     multiplier = 2.2f;
                 }
-                if (multiplier > 1.0f) {
+                int forgeArmorLevel = Math.max(0, Math.min(5,
+                        players.getInt(victimPath + ".forge.armor-level", 0)));
+                multiplier *= (1.0f - forgeArmorLevel * 0.03f);
+                if (Math.abs(multiplier - 1.0f) > 0.0001f) {
                     float baseDamage = event.getDamage(EntityDamageEvent.DamageModifier.BASE);
                     event.setDamage(baseDamage * multiplier, EntityDamageEvent.DamageModifier.BASE);
                 }
@@ -811,6 +814,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 "attributes.strength.points-per-bonus", 5,
                 "attributes.strength.damage-per-bonus", 1,
                 "attributes.strength.max-bonus", 10, 20);
+        bonusDamage += Math.max(0, Math.min(5,
+                players.getInt(playerKey(attacker) + ".forge.weapon-level", 0)));
         if (playerClass.equals("warrior")) bonusDamage += 1;
         if (playerClass.equals("assassin") && ThreadLocalRandom.current().nextInt(100) < 15) {
             bonusDamage += 3;
@@ -850,6 +855,112 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (bonusDamage > 0) {
             event.setDamage(event.getDamage(EntityDamageEvent.DamageModifier.BASE) + bonusDamage,
                     EntityDamageEvent.DamageModifier.BASE);
+        }
+    }
+
+    private Item createForgeMaterial(int itemId, String customName, int amount) {
+        Item item = Item.get(itemId, 0, amount);
+        item.setCustomName(customName);
+        return item;
+    }
+
+    private int countForgeMaterial(Player player, String customName) {
+        int total = 0;
+        for (int slot = 0; slot < player.getInventory().getSize(); slot++) {
+            Item item = player.getInventory().getItem(slot);
+            if (item != null && item.getId() > 0 && customName.equals(item.getCustomName())) {
+                total += item.getCount();
+            }
+        }
+        return total;
+    }
+
+    private boolean consumeForgeMaterial(Player player, String customName, int amount) {
+        int remaining = amount;
+        for (int slot = 0; slot < player.getInventory().getSize() && remaining > 0; slot++) {
+            Item item = player.getInventory().getItem(slot);
+            if (item == null || item.getId() <= 0 || !customName.equals(item.getCustomName())) continue;
+            int take = Math.min(remaining, item.getCount());
+            remaining -= take;
+            if (take >= item.getCount()) player.getInventory().setItem(slot, Item.get(0));
+            else {
+                item.setCount(item.getCount() - take);
+                player.getInventory().setItem(slot, item);
+            }
+        }
+        return remaining == 0;
+    }
+
+    private String selectedDungeonDifficulty(String playerKey) {
+        return normalizeDungeonDifficulty(players.getString(playerKey + ".dungeon.difficulty", "normal"));
+    }
+
+    private void handleForge(Player player, String[] args) {
+        initialize(player);
+        String key = playerKey(player) + ".forge";
+        int weaponLevel = Math.max(0, Math.min(5, players.getInt(key + ".weapon-level", 0)));
+        int armorLevel = Math.max(0, Math.min(5, players.getInt(key + ".armor-level", 0)));
+        String shardName = "§bОсколок катакомб";
+        String crystalName = "§dКристалл катакомб";
+
+        if (args.length == 0 || args[0].equalsIgnoreCase("info")) {
+            player.sendMessage("§6§lКУЗНИЦА КАТАКОМБ");
+            player.sendMessage("§7Оружие: §c+" + weaponLevel + " урона §8(макс. 5)");
+            player.sendMessage("§7Броня: §a-" + (armorLevel * 3) + "% входящего урона §8(макс. 15%)");
+            player.sendMessage("§7Материалы: §b" + countForgeMaterial(player, shardName) + " осколков §7и §d"
+                    + countForgeMaterial(player, crystalName) + " кристаллов");
+            player.sendMessage("§e/forge weapon §7— улучшить оружие");
+            player.sendMessage("§e/forge armor §7— улучшить броню");
+            player.sendMessage("§8Следующий уровень: " + (4 + 2 * Math.max(weaponLevel, armorLevel))
+                    + " осколка и " + (1 + Math.max(weaponLevel, armorLevel) / 2) + " кристалл(а).");
+            return;
+        }
+
+        String type = args[0].toLowerCase(Locale.ROOT);
+        boolean weapon = type.equals("weapon") || type.equals("sword");
+        boolean armor = type.equals("armor");
+        if (!weapon && !armor) {
+            player.sendMessage("§eИспользуй: /forge [info|weapon|armor]");
+            return;
+        }
+        int current = weapon ? weaponLevel : armorLevel;
+        if (current >= 5) {
+            player.sendMessage("§aЭто улучшение уже достигло максимального уровня!");
+            return;
+        }
+        int shardCost = 4 + current * 2;
+        int crystalCost = 1 + current / 2;
+        if (countForgeMaterial(player, shardName) < shardCost
+                || countForgeMaterial(player, crystalName) < crystalCost) {
+            player.sendMessage("§cНедостаточно материалов. Нужно: §b" + shardCost + " осколка §7и §d"
+                    + crystalCost + " кристалл(а). §7Побеждай Хранителя катакомб!");
+            return;
+        }
+        if (!consumeForgeMaterial(player, shardName, shardCost)
+                || !consumeForgeMaterial(player, crystalName, crystalCost)) {
+            player.getInventory().addItem(createForgeMaterial(406, shardName, shardCost));
+            player.sendMessage("§cНе удалось списать материалы. Попробуй ещё раз.");
+            return;
+        }
+
+        int next = current + 1;
+        String field = weapon ? ".weapon-level" : ".armor-level";
+        players.set(key + field, next);
+        markPlayersDirty();
+        if (!flushPlayers()) {
+            players.set(key + field, current);
+            player.getInventory().addItem(createForgeMaterial(406, shardName, shardCost));
+            player.getInventory().addItem(createForgeMaterial(388, crystalName, crystalCost));
+            markPlayersDirty();
+            player.sendMessage("§cНе удалось сохранить улучшение. Материалы возвращены.");
+            return;
+        }
+        if (weapon) {
+            player.sendTitle("§6§lОРУЖИЕ УЛУЧШЕНО", "§c+" + next + " к урону", 5, 35, 10);
+            player.sendMessage("§aОружие улучшено до уровня §e" + next + "§a. Постоянный бонус: +" + next + " урона.");
+        } else {
+            player.sendTitle("§a§lБРОНЯ УЛУЧШЕНА", "§a-" + (next * 3) + "% урона", 5, 35, 10);
+            player.sendMessage("§aБроня улучшена до уровня §e" + next + "§a. Снижение урона от существ: " + (next * 3) + "%.");
         }
     }
 
@@ -1817,9 +1928,15 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 p.getInventory().addItem(Item.get(399, 0, 1));
                 players.set(k + ".dungeon.keeper-trophy-given", true);
             }
+            int shardCount = "hard".equals(selectedDungeonDifficulty(k)) ? 6 : ("easy".equals(selectedDungeonDifficulty(k)) ? 3 : 4);
+            int crystalCount = "hard".equals(selectedDungeonDifficulty(k)) ? 2 : 1;
+            p.getInventory().addItem(createForgeMaterial(406, "§bОсколок катакомб", shardCount));
+            p.getInventory().addItem(createForgeMaterial(388, "§dКристалл катакомб", crystalCount));
             markPlayersDirty();
             p.sendMessage("§6Награда подземелья: §a+"+xp+" XP §7и §e+"+money+" "+currencyName()
                     +"§6! §bПечать Хранителя§6 — особая добыча за победу.");
+            p.sendMessage("§bКузница: §f+" + shardCount + " осколков и +" + crystalCount
+                    + " кристаллов катакомб. Используй §e/forge§f.");
             returnFromDungeon(p);
             return;
         }
@@ -6104,6 +6221,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if(args.length==0 || args[0].equalsIgnoreCase("menu")) openAdventureMenu(player);
             else if(name.equals("dungeon")) handleDungeon(player,args);
             else handleBossHunt(player,args);
+            return true;
+        }
+
+        if (name.equals("forge")) {
+            if (!(sender instanceof Player)) { sender.sendMessage("Кузница доступна только игроку."); return true; }
+            handleForge((Player) sender, args);
             return true;
         }
 

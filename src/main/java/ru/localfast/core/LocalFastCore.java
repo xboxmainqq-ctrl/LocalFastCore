@@ -6944,6 +6944,61 @@ public final class LocalFastCore extends PluginBase implements Listener {
         player.showFormWindow(form);
     }
 
+    private void openOperatorGuildBankMenu(Player operator) {
+        if (!isOperator(operator)) return;
+        List<String> ids = new ArrayList<>();
+        FormWindowSimple form = new FormWindowSimple("§6Гильдии §8| §lБанки", "§7Выбери гильдию для управления казной.");
+        for (String id : guildData.getSection("guilds").getAll().keySet()) {
+            ids.add(id);
+            form.addButton(new ElementButton("§e" + guildData.getString("guilds." + id + ".name", id)
+                    + "\n§7Казна: §6" + guildBank(id) + " §8| §7Ур. " + guildLevel(id)));
+            if (ids.size() >= 20) break;
+        }
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id >= 0 && id < ids.size()) openOperatorGuildBankActions(operator, ids.get(id));
+            else openOperatorMenu(operator);
+        }));
+        operator.showFormWindow(form);
+    }
+
+    private void openOperatorGuildBankActions(Player operator, String guildId) {
+        if (!isOperator(operator) || !guildExists(guildId)) { openOperatorGuildBankMenu(operator); return; }
+        String base = "guilds." + guildId;
+        FormWindowSimple form = new FormWindowSimple("§6Казна гильдии",
+                "§e" + guildData.getString(base + ".name", guildId) + "\n§7Баланс: §6" + guildBank(guildId));
+        long[] amounts = {1000L, 5000L, 10000L, 50000L};
+        for (long amount : amounts) form.addButton(new ElementButton("§aДобавить " + amount));
+        for (long amount : amounts) form.addButton(new ElementButton("§cЗабрать " + amount));
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id >= 0 && id < 8) {
+                long amount = amounts[id % 4], bank = guildBank(guildId);
+                if (id < 4) guildData.set(base + ".bank", safeAdd(bank, amount));
+                else if (bank < amount) operator.sendMessage("§cВ казне недостаточно средств.");
+                else guildData.set(base + ".bank", bank - amount);
+                if (id < 4 || bank >= amount) {
+                    try {
+                        guildData.save();
+                        staffLog(operator.getName(), id < 4 ? "guild-bank-give" : "guild-bank-take",
+                                guildData.getString(base + ".name", guildId), String.valueOf(amount));
+                        operator.sendMessage("§aКазна обновлена.");
+                    } catch (RuntimeException ex) {
+                        guildData.set(base + ".bank", bank);
+                        operator.sendMessage("§cНе удалось сохранить казну.");
+                        getLogger().error("Operator guild bank update failed.", ex);
+                    }
+                }
+                openOperatorGuildBankActions(operator, guildId);
+            } else openOperatorGuildBankMenu(operator);
+        }));
+        operator.showFormWindow(form);
+    }
+
     private void openOperatorMenu(Player operator) {
         if (!isOperator(operator)) { operator.sendMessage("§cТолько оператор может открыть эту панель."); return; }
         FormWindowSimple form = new FormWindowSimple("§6LocalFast §8| §lОператорская панель",
@@ -6961,6 +7016,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§dТестировать должность на себе"));
         form.addButton(new ElementButton("§bУправление мирами"));
         form.addButton(new ElementButton("§dRPG: выдача, питомцы и сбросы"));
+        form.addButton(new ElementButton("§6Управление казнами гильдий"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
             int id = form.getResponse().getClickedButtonId();
@@ -6986,6 +7042,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             else if (id == 10) openOperatorSelfRankMenu(operator);
             else if (id == 11) openOperatorWorldMenu(operator);
             else if (id == 12) openOperatorRpgPlayersMenu(operator);
+            else if (id == 13) openOperatorGuildBankMenu(operator);
         }));
         operator.showFormWindow(form);
     }

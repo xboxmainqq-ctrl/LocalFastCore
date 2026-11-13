@@ -218,12 +218,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 getConfig().getInt("autosave.interval-seconds", 60)));
         getServer().getScheduler().scheduleRepeatingTask(this, this::flushPlayers,
                 autosaveSeconds * 20);
+        getServer().getScheduler().scheduleRepeatingTask(this, this::tickGuildSieges, 20);
         int refreshTicks = Math.max(20, Math.min(1200, getConfig().getInt("scoreboard.refresh-ticks", 40)));
         getServer().getScheduler().scheduleRepeatingTask(this, () -> {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.54.0 включён. Меню рынка, аукциона, гильдий и переводов, кузница реликвий Разлома, питомцы, экипировка, катакомбы, RPG и система персонала загружены.");
+        getLogger().info("LocalFastCore 0.57.0 включён. Войны гильдий, территории, штурмы, RPG и система персонала загружены.");
     }
 
     private void markPlayersDirty() {
@@ -6722,6 +6723,179 @@ public final class LocalFastCore extends PluginBase implements Listener {
         player.showFormWindow(form);
     }
 
+
+    private String territoryKey(String world, int cx, int cz) {
+        return (world == null ? "world" : world.replaceAll("[^A-Za-z0-9_-]", "_")) + "_" + cx + "_" + cz;
+    }
+
+    private String territoryLabel(String key) {
+        String p = "territories." + key;
+        return guildData.getString(p + ".world", "?") + " §8| §7чанк §f"
+                + guildData.getInt(p + ".chunk-x", 0) + ", " + guildData.getInt(p + ".chunk-z", 0);
+    }
+
+    private void openGuildWarMenu(Player player) {
+        String gid = currentGuildId(player);
+        if (gid.isEmpty() || !guildExists(gid)) { player.sendMessage("§cДля участия в войнах нужна гильдия."); openPlayerGuildMenu(player); return; }
+        String owned = guildData.getString("guilds." + gid + ".territory", "");
+        FormWindowSimple form = new FormWindowSimple("§4§lВОЙНЫ ГИЛЬДИЙ",
+                "§7Территория: " + (owned.isEmpty() ? "§cне захвачена" : "§a" + territoryLabel(owned))
+                + "\n§7Захват чанка: §e5000 монет§7. Штурм: §e1000 монет."
+                + "\n§7Для захвата нужно удерживать чанк §e60 секунд§7. Защитники сбрасывают прогресс.");
+        form.addButton(new ElementButton("§aЗахватить текущий чанк (глава/офицер)"));
+        form.addButton(new ElementButton("§cСписок территорий и штурм"));
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id == 0) {
+                if (!guildCanManage(gid, player)) player.sendMessage("§cЗахватывать территории может глава или офицер.");
+                else if (!owned.isEmpty()) player.sendMessage("§cУ гильдии уже есть территория.");
+                else {
+                    String world = player.getLevel().getFolderName();
+                    int cx = player.getFloorX() >> 4, cz = player.getFloorZ() >> 4;
+                    String key = territoryKey(world, cx, cz), p = "territories." + key;
+                    long bank = guildBank(gid);
+                    if (!guildData.getString(p + ".owner", "").isEmpty()) player.sendMessage("§cЭтот чанк уже занят.");
+                    else if (bank < 5000L) player.sendMessage("§cВ казне недостаточно средств (нужно 5000).");
+                    else {
+                        guildData.set("guilds." + gid + ".bank", bank - 5000L);
+                        guildData.set("guilds." + gid + ".territory", key);
+                        guildData.set(p + ".owner", gid);
+                        guildData.set(p + ".world", world);
+                        guildData.set(p + ".chunk-x", cx);
+                        guildData.set(p + ".chunk-z", cz);
+                        try { guildData.save(); player.sendMessage("§aЧанк захвачен! Координаты чанка: " + cx + ", " + cz); }
+                        catch (RuntimeException ex) {
+                            guildData.set("guilds." + gid + ".bank", bank);
+                            guildData.remove("guilds." + gid + ".territory");
+                            guildData.remove(p);
+                            player.sendMessage("§cОшибка сохранения. Монеты возвращены.");
+                            getLogger().error("Guild territory claim failed.", ex);
+                        }
+                    }
+                }
+                openGuildWarMenu(player);
+            } else if (id == 1) openGuildTerritoryList(player);
+            else openPlayerGuildMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openGuildTerritoryList(Player player) {
+        String gid = currentGuildId(player);
+        if (gid.isEmpty() || !guildExists(gid)) { openPlayerGuildMenu(player); return; }
+        List<String> keys = new ArrayList<>();
+        FormWindowSimple form = new FormWindowSimple("§4Территории и штурм",
+                "§7Выбери чужую территорию. После вызова штурма атакующая гильдия должна удерживать чанк 60 секунд.");
+        for (String key : guildData.getSection("territories").getAll().keySet()) {
+            String owner = guildData.getString("territories." + key + ".owner", "");
+            if (owner.isEmpty() || owner.equals(gid) || !guildExists(owner)) continue;
+            keys.add(key);
+            String name = guildData.getString("guilds." + owner + ".name", owner);
+            String siege = guildData.getString("territories." + key + ".siege.attacker", "");
+            form.addButton(new ElementButton("§e" + name + "\n§7" + territoryLabel(key)
+                    + (siege.isEmpty() ? "\n§aМожно атаковать" : "\n§cУже идёт штурм")));
+            if (keys.size() >= 20) break;
+        }
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id < 0 || id >= keys.size()) { openGuildWarMenu(player); return; }
+            String key = keys.get(id), p = "territories." + key;
+            String owner = guildData.getString(p + ".owner", "");
+            long bank = guildBank(gid);
+            if (!guildCanManage(gid, player)) player.sendMessage("§cНачать штурм может глава или офицер.");
+            else if (owner.isEmpty() || owner.equals(gid)) player.sendMessage("§cТерритория больше недоступна.");
+            else if (!guildData.getString(p + ".siege.attacker", "").isEmpty()) player.sendMessage("§cНа эту территорию уже идёт штурм.");
+            else if (bank < 1000L) player.sendMessage("§cВ казне нужно 1000 монет.");
+            else {
+                guildData.set("guilds." + gid + ".bank", bank - 1000L);
+                guildData.set(p + ".siege.attacker", gid);
+                guildData.set(p + ".siege.progress", 0);
+                try { guildData.save(); player.sendMessage("§cШтурм начался! Доберись до указанного чанка и удерживай его."); }
+                catch (RuntimeException ex) {
+                    guildData.set("guilds." + gid + ".bank", bank);
+                    guildData.remove(p + ".siege");
+                    player.sendMessage("§cНе удалось сохранить штурм, монеты возвращены.");
+                    getLogger().error("Guild siege start failed.", ex);
+                }
+            }
+            openGuildWarMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void tickGuildSieges() {
+        if (guildData == null) return;
+        boolean changed = false;
+        for (String key : new ArrayList<>(guildData.getSection("territories").getAll().keySet())) {
+            String p = "territories." + key;
+            String attacker = guildData.getString(p + ".siege.attacker", "");
+            String owner = guildData.getString(p + ".owner", "");
+            if (attacker.isEmpty()) continue;
+            if (!guildExists(attacker) || !guildExists(owner) || attacker.equals(owner)) {
+                guildData.remove(p + ".siege"); changed = true; continue;
+            }
+            Level level = getServer().getLevelByName(guildData.getString(p + ".world", ""));
+            if (level == null) continue;
+            int cx = guildData.getInt(p + ".chunk-x", 0), cz = guildData.getInt(p + ".chunk-z", 0);
+            boolean attack = false, defend = false;
+            for (Player online : getServer().getOnlinePlayers().values()) {
+                if (online.getLevel() != level || (online.getFloorX() >> 4) != cx || (online.getFloorZ() >> 4) != cz) continue;
+                String memberGuild = currentGuildId(online);
+                if (memberGuild.equals(attacker)) attack = true;
+                if (memberGuild.equals(owner)) defend = true;
+            }
+            if (defend) {
+                if (guildData.getInt(p + ".siege.progress", 0) != 0) { guildData.set(p + ".siege.progress", 0); changed = true; }
+            } else if (attack) {
+                int progress = guildData.getInt(p + ".siege.progress", 0) + 1;
+                if (progress >= 60) {
+                    guildData.set(p + ".owner", attacker);
+                    guildData.set("guilds." + attacker + ".territory", key);
+                    if (guildData.getString("guilds." + owner + ".territory", "").equals(key)) guildData.remove("guilds." + owner + ".territory");
+                    guildData.remove(p + ".siege");
+                    guildData.set("guilds." + attacker + ".bank", safeAdd(guildBank(attacker), 2000L));
+                    for (Player online : getServer().getOnlinePlayers().values()) {
+                        if (currentGuildId(online).equals(attacker)) online.sendMessage("§6§lПОБЕДА! §aТерритория захвачена. В казну начислено 2000 монет.");
+                        else if (currentGuildId(online).equals(owner)) online.sendMessage("§cВаша территория захвачена другой гильдией.");
+                    }
+                } else guildData.set(p + ".siege.progress", progress);
+                changed = true;
+            }
+        }
+        if (changed) try { guildData.save(); } catch (RuntimeException ex) { getLogger().error("Guild siege save failed.", ex); }
+    }
+
+    private void openOperatorTerritoriesMenu(Player operator) {
+        if (!isOperator(operator)) return;
+        List<String> keys = new ArrayList<>();
+        FormWindowSimple form = new FormWindowSimple("§6Оператор §8| §4Территории", "§7Выбери территорию для сброса.");
+        for (String key : guildData.getSection("territories").getAll().keySet()) {
+            keys.add(key);
+            String owner = guildData.getString("territories." + key + ".owner", "");
+            form.addButton(new ElementButton("§e" + guildData.getString("guilds." + owner + ".name", "Без владельца")
+                    + "\n§7" + territoryLabel(key)));
+            if (keys.size() >= 20) break;
+        }
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id < 0 || id >= keys.size()) { openOperatorMenu(operator); return; }
+            String key = keys.get(id), p = "territories." + key;
+            String owner = guildData.getString(p + ".owner", "");
+            guildData.remove("guilds." + owner + ".territory");
+            guildData.remove(p);
+            try { guildData.save(); operator.sendMessage("§aТерритория и её штурм сброшены."); }
+            catch (RuntimeException ex) { getLogger().error("Operator territory reset failed.", ex); }
+            openOperatorTerritoriesMenu(operator);
+        }));
+        operator.showFormWindow(form);
+    }
+
     private void openPlayerGuildMenu(Player player) {
         String guildId = currentGuildId(player);
         String invitePath = "invites." + player.getUniqueId().toString();
@@ -6740,6 +6914,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         } else {
             form.addButton(new ElementButton("§aСостав и управление участниками"));
             form.addButton(new ElementButton("§6Банк и развитие гильдии"));
+            form.addButton(new ElementButton("§4Войны и территории"));
             if (guildCanManage(guildId, player)) form.addButton(new ElementButton("§bПригласить игрока"));
             form.addButton(new ElementButton("§cПокинуть гильдию"));
             if (guildRole(guildId, player.getUniqueId().toString()).equals("leader")) {
@@ -6769,6 +6944,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 int cursor = 1;
                 if (id == cursor++) openPlayerGuildMembersMenu(player);
                 else if (id == cursor++) openGuildBankMenu(player);
+                else if (id == cursor++) openGuildWarMenu(player);
                 else {
                     if (guildCanManage(guildId, player)) {
                         if (id == cursor++) { openPlayerGuildInviteMenu(player); return; }
@@ -7063,6 +7239,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§bУправление мирами"));
         form.addButton(new ElementButton("§dRPG: выдача, питомцы и сбросы"));
         form.addButton(new ElementButton("§6Управление казнами гильдий"));
+        form.addButton(new ElementButton("§4Управление территориями"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !operator.isOnline()) return;
             int id = form.getResponse().getClickedButtonId();
@@ -7089,6 +7266,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             else if (id == 11) openOperatorWorldMenu(operator);
             else if (id == 12) openOperatorRpgPlayersMenu(operator);
             else if (id == 13) openOperatorGuildBankMenu(operator);
+            else if (id == 14) openOperatorTerritoriesMenu(operator);
         }));
         operator.showFormWindow(form);
     }

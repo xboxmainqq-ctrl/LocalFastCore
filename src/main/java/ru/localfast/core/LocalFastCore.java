@@ -223,7 +223,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.48.0 включён. RPG, активные способности питомцев, гильдии, рынок, катакомбы и система персонала загружены.");
+        getLogger().info("LocalFastCore 0.50.0 включён. Разлом Бездны, питомцы, экипировка, катакомбы, RPG и система персонала загружены.");
     }
 
     private void markPlayersDirty() {
@@ -1503,6 +1503,218 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
     }
 
+
+    private void buildRiftArena(Level level) {
+        List<CastleBlock> blocks = new ArrayList<>();
+        for (int x = 200; x <= 240; x++) {
+            for (int z = -20; z <= 20; z++) {
+                blocks.add(new CastleBlock(x, 5, z, (Math.abs(x - 220) > 17 || Math.abs(z) > 17) ? 49 : 112));
+                blocks.add(new CastleBlock(x, 14, z, 87));
+            }
+        }
+        for (int y = 6; y <= 13; y++) {
+            for (int x = 200; x <= 240; x++) {
+                blocks.add(new CastleBlock(x, y, -20, 49));
+                blocks.add(new CastleBlock(x, y, 20, 49));
+            }
+            for (int z = -20; z <= 20; z++) {
+                blocks.add(new CastleBlock(200, y, z, 49));
+                blocks.add(new CastleBlock(240, y, z, 49));
+            }
+        }
+        for (int x : new int[]{207, 233}) {
+            for (int z : new int[]{-12, 12}) {
+                for (int y = 6; y <= 10; y++) blocks.add(new CastleBlock(x, y, z, 49));
+                blocks.add(new CastleBlock(x, 11, z, 89));
+            }
+        }
+        for (CastleBlock block : blocks) {
+            try {
+                level.getChunk(block.x >> 4, block.z >> 4, true);
+                level.setBlock(new Position(block.x, block.y, block.z, level), Block.get(block.id), true, true);
+            } catch (RuntimeException exception) {
+                getLogger().warning("Rift arena block skipped: " + exception.getMessage());
+            }
+        }
+        getLogger().info("Арена Разлома Бездны построена: " + blocks.size() + " блоков.");
+    }
+
+    private Level ensureRiftArena(Player player) {
+        Level level = ensureDungeonWorld(player);
+        if (level == null) return null;
+        if (!getConfig().getBoolean("dungeons.rift-arena-built", false)) {
+            buildRiftArena(level);
+            getConfig().set("dungeons.rift-arena-built", true);
+            saveConfig();
+        }
+        return level;
+    }
+
+    private void spawnRiftWave(Player player, Level level, int wave) {
+        String[] types;
+        int health;
+        double z;
+        if (wave == 1) { types = new String[]{"Zombie", "Zombie", "Zombie"}; health = 35; z = -5.5; }
+        else if (wave == 2) { types = new String[]{"Skeleton", "Skeleton", "Skeleton"}; health = 55; z = 0.5; }
+        else if (wave == 3) { types = new String[]{"Spider", "Spider", "Spider"}; health = 80; z = 6.5; }
+        else { types = new String[]{"Ravager"}; health = 650; z = 12.5; }
+        for (int i = 0; i < types.length; i++) {
+            try {
+                Entity mob = Entity.createEntity(types[i],
+                        new Position(wave == 4 ? 220.5 : 215.5 + i * 5.0, 6, z, level));
+                if (mob == null) {
+                    player.sendMessage("§cНе удалось создать противника Разлома: " + types[i]);
+                    continue;
+                }
+                mob.setMaxHealth(health);
+                mob.setHealth(health);
+                mob.setNameTag(wave == 4
+                        ? "§5§lАВАТАР БЕЗДНЫ §7| §d" + health + " HP"
+                        : "§5Искажённый страж §8| §d" + health + " HP");
+                mob.setNameTagVisible(true);
+                mob.setNameTagAlwaysVisible(true);
+                mob.spawnToAll();
+            } catch (RuntimeException exception) {
+                getLogger().warning("Rift enemy spawn failed: " + exception.getMessage());
+            }
+        }
+        players.set(playerKey(player) + ".rift.spawned-wave", wave);
+        markPlayersDirty();
+        if (wave == 4) {
+            player.sendTitle("§5§lАВАТАР БЕЗДНЫ", "§d650 HP • финальное сражение", 5, 50, 10);
+            player.sendMessage("§5Разлом раскрылся! Победи Аватара Бездны.");
+        } else {
+            player.sendTitle("§5§lРАЗЛОМ • ВОЛНА " + wave + "/3", "§dПротивники появились!", 5, 35, 10);
+            player.sendMessage("§5Волна " + wave + "/3: уничтожь всех трёх искажённых стражей.");
+        }
+    }
+
+    private void handleRiftKill(Player killer, String mobName) {
+        String key = playerKey(killer) + ".rift";
+        if (!players.getBoolean(key + ".active", false)
+                || !killer.getLevel().getFolderName().equalsIgnoreCase(getConfig().getString("dungeons.world", "dungeons"))
+                || killer.getX() < 199 || killer.getX() > 241 || killer.getZ() < -21 || killer.getZ() > 21) return;
+        int wave = Math.max(1, players.getInt(key + ".wave", 1));
+        if (wave == 4) {
+            if (!mobName.contains("ravager")) return;
+            players.set(key + ".active", false);
+            players.set(key + ".complete", true);
+            players.set(key + ".completed-at", System.currentTimeMillis());
+            players.set(key + ".wave", 5);
+            markPlayersDirty();
+            killer.sendTitle("§5§lРАЗЛОМ ЗАКРЫТ!", "§dАватар Бездны повержен", 10, 60, 15);
+            killer.sendMessage("§5§lПОБЕДА! §dНаграда ждёт тебя: §e/dungeon rift claim");
+            return;
+        }
+        String expected = wave == 1 ? "zombie" : wave == 2 ? "skeleton" : "spider";
+        if (!mobName.contains(expected)) return;
+        int kills = Math.min(3, players.getInt(key + ".kills", 0) + 1);
+        players.set(key + ".kills", kills);
+        if (kills >= 3) {
+            wave++;
+            players.set(key + ".wave", wave);
+            players.set(key + ".kills", 0);
+            players.set(key + ".spawned-wave", wave);
+            markPlayersDirty();
+            killer.sendTitle("§5§lВОЛНА ПРОЙДЕНА", "§dГотовься к следующей!", 5, 35, 10);
+            spawnRiftWave(killer, killer.getLevel(), wave);
+        } else {
+            markPlayersDirty();
+            killer.sendMessage("§5Разлом: волна " + wave + "/3 §d— " + kills + "/3");
+        }
+    }
+
+    private void handleRiftCommand(Player player, String[] args) {
+        initialize(player);
+        String key = playerKey(player) + ".rift";
+        String action = args.length == 0 ? "info" : args[0].toLowerCase(Locale.ROOT);
+        if (action.equals("info") || action.equals("help")) {
+            player.sendMessage("§5§lРАЗЛОМ БЕЗДНЫ");
+            player.sendMessage("§7Три волны искажённых стражей, затем Аватар Бездны.");
+            player.sendMessage("§e/dungeon rift start §7— начать; §e/dungeon rift leave §7— выйти.");
+            player.sendMessage("§e/dungeon rift claim §7— забрать награду после победы.");
+            long readyAt = players.getLong(key + ".next-at", 0L);
+            if (readyAt > System.currentTimeMillis()) player.sendMessage("§7Следующий вход: §e" + Math.max(1, (readyAt - System.currentTimeMillis() + 59999) / 60000) + " мин.");
+            else player.sendMessage("§aВход доступен.");
+            return;
+        }
+        if (action.equals("start")) {
+            if (players.getBoolean(key + ".active", false)) { player.sendMessage("§cТы уже внутри Разлома."); return; }
+            if (players.getBoolean(key + ".complete", false)) { player.sendMessage("§eСначала забери награду: /dungeon rift claim"); return; }
+            if (players.getBoolean(playerKey(player) + ".dungeon.active", false)
+                    || players.getBoolean(playerKey(player) + ".boss_hunt.active", false)) {
+                player.sendMessage("§cСначала заверши или покинь другое подземелье.");
+                return;
+            }
+            long readyAt = players.getLong(key + ".next-at", 0L);
+            if (readyAt > System.currentTimeMillis()) {
+                player.sendMessage("§cРазлом ещё восстанавливается. Осталось примерно " + Math.max(1, (readyAt - System.currentTimeMillis() + 59999) / 60000) + " мин.");
+                return;
+            }
+            Level level = ensureRiftArena(player);
+            if (level == null) return;
+            players.set(key + ".return-world", player.getLevel().getFolderName());
+            players.set(key + ".return-x", player.getX());
+            players.set(key + ".return-y", player.getY());
+            players.set(key + ".return-z", player.getZ());
+            players.set(key + ".active", true);
+            players.set(key + ".complete", false);
+            players.set(key + ".claimed", false);
+            players.set(key + ".wave", 1);
+            players.set(key + ".kills", 0);
+            players.set(key + ".spawned-wave", 0);
+            markPlayersDirty();
+            if (!player.teleport(new Position(220.5, 6, -14.5, level))) {
+                players.set(key + ".active", false);
+                markPlayersDirty();
+                player.sendMessage("§cНе удалось войти в Разлом.");
+                return;
+            }
+            player.sendTitle("§5§lРАЗЛОМ БЕЗДНЫ", "§dЗакрой разлом и победи Аватара", 10, 50, 10);
+            spawnRiftWave(player, level, 1);
+            return;
+        }
+        if (action.equals("leave")) {
+            if (!players.getBoolean(key + ".active", false)) { player.sendMessage("§cТы не находишься в Разломе."); return; }
+            players.set(key + ".active", false);
+            markPlayersDirty();
+            String worldName = players.getString(key + ".return-world", "");
+            Level world = worldName.isEmpty() ? null : getServer().getLevelByName(worldName);
+            if (world == null) world = getServer().getDefaultLevel();
+            if (world == null || !player.teleport(new Position(
+                    players.getDouble(key + ".return-x", 0.5),
+                    players.getDouble(key + ".return-y", 64),
+                    players.getDouble(key + ".return-z", 0.5), world))) {
+                player.sendMessage("§cНе удалось вернуться. Используй /spawn.");
+            } else player.sendMessage("§7Ты покинул Разлом. Прогресс текущего забега сброшен.");
+            players.set(key + ".wave", 1);
+            players.set(key + ".kills", 0);
+            players.set(key + ".spawned-wave", 0);
+            markPlayersDirty();
+            return;
+        }
+        if (action.equals("claim")) {
+            if (!players.getBoolean(key + ".complete", false) || players.getBoolean(key + ".claimed", false)) {
+                player.sendMessage("§cСначала победи Аватара Бездны.");
+                return;
+            }
+            players.set(key + ".complete", false);
+            players.set(key + ".claimed", true);
+            players.set(key + ".next-at", System.currentTimeMillis() + 24L * 60L * 60L * 1000L);
+            giveXp(player, 900);
+            setBalance(player, safeAdd(getBalance(player), 500L));
+            Item shard = Item.get(399, 0, 1);
+            shard.setCustomName("§5Осколок Бездны");
+            player.getInventory().addItem(shard);
+            markPlayersDirty();
+            if (!flushPlayers()) { player.sendMessage("§cНаграда выдана, но сохранение профиля не удалось. Сообщи оператору."); return; }
+            player.sendTitle("§5§lНАГРАДА РАЗЛОМА", "§d+900 XP • +500 монет", 5, 45, 10);
+            player.sendMessage("§5Получено: §dОсколок Бездны §7(1), §e900 XP §7и §6500 монет§7. Повторный вход через 24 часа.");
+            return;
+        }
+        player.sendMessage("§e/dungeon rift info|start|leave|claim");
+    }
+
     private void spawnDungeonWave(Player player, Level level, int wave) {
         String[] types;
         double z;
@@ -2208,6 +2420,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
     }
 
     private void handleDungeon(Player p,String[] args) {
+        if (args.length > 0 && args[0].equalsIgnoreCase("rift")) {
+            handleRiftCommand(p, Arrays.copyOfRange(args, 1, args.length));
+            return;
+        }
         if (args.length > 0 && args[0].equalsIgnoreCase("party")) {
             handleDungeonParty(p, Arrays.copyOfRange(args, 1, args.length));
             return;
@@ -2991,6 +3207,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
         String mobName = mob.getClass().getSimpleName().toLowerCase(Locale.ROOT);
         String playerPath = playerKey(killer);
+        handleRiftKill(killer, mobName);
         if(players.getBoolean(playerPath+".dungeon.active",false)
                 && killer.getLevel().getFolderName().equalsIgnoreCase(getConfig().getString("dungeons.world", "dungeons"))
                 && killer.getX() >= -14 && killer.getX() <= 14 && killer.getZ() >= -33 && killer.getZ() <= 33

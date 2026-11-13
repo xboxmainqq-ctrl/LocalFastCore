@@ -6939,6 +6939,55 @@ public final class LocalFastCore extends PluginBase implements Listener {
         grantGuildSeasonAchievements(guildId);
     }
 
+
+    private void addGuildSeasonPlayerProgress(Player player, long points) {
+        if (player == null || points <= 0L) return;
+        String uuid = player.getUniqueId().toString();
+        String base = "season.players." + uuid;
+        guildData.set(base + ".name", player.getName());
+        guildData.set(base + ".points", safeAdd(guildData.getLong(base + ".points", 0L), points));
+        guildData.set(base + ".kills", safeAdd(guildData.getLong(base + ".kills", 0L), 1L));
+        long total = guildData.getLong(base + ".points", 0L);
+        long[] goals = {5L, 15L, 30L, 50L};
+        long[] rewards = {250L, 750L, 1500L, 3000L};
+        for (int i = 0; i < goals.length; i++) {
+            String achievement = "milestone-" + goals[i];
+            if (total >= goals[i] && !guildData.getBoolean(base + ".achievements." + achievement, false)) {
+                guildData.set(base + ".achievements." + achievement, true);
+                setBalance(player, safeAdd(getBalance(player), rewards[i]));
+                player.sendMessage("§d§lЛИЧНОЕ СЕЗОННОЕ ДОСТИЖЕНИЕ! §f" + goals[i]
+                        + " очков вклада. §6+" + rewards[i] + " " + currencyName() + "!");
+            }
+        }
+    }
+
+    private void openGuildSeasonPersonalMenu(Player player) {
+        ensureGuildSeason();
+        String base = "season.players." + player.getUniqueId().toString();
+        long points = guildData.getLong(base + ".points", 0L);
+        long kills = guildData.getLong(base + ".kills", 0L);
+        StringBuilder content = new StringBuilder("§7Сезон: §e")
+                .append(guildData.getString("season.current", guildSeasonMonth()))
+                .append("\n§7Твой вклад: §6").append(points)
+                .append(" очков §8| §c").append(kills).append(" убийств\n\n")
+                .append("§7Личные награды за вклад:");
+        long[] goals = {5L, 15L, 30L, 50L};
+        long[] rewards = {250L, 750L, 1500L, 3000L};
+        for (int i = 0; i < goals.length; i++) {
+            boolean done = guildData.getBoolean(base + ".achievements.milestone-" + goals[i], false);
+            content.append("\n").append(done ? "§a✓ " : "§7○ ")
+                    .append("§f").append(goals[i]).append(" очков §8— §6+")
+                    .append(rewards[i]).append(" ").append(currencyName());
+        }
+        content.append("\n\n§7Награды выдаются автоматически за убийства в гильдейских войнах.");
+        FormWindowSimple form = new FormWindowSimple("§d§lЛИЧНЫЙ СЕЗОННЫЙ ПРОГРЕСС", content.toString());
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (!form.wasClosed() && form.getResponse() != null && player.isOnline()) openGuildSeasonMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
     private void grantGuildSeasonAchievements(String guildId) {
         String base = "guilds." + guildId + ".season";
         long points = guildData.getLong(base + ".points", 0L);
@@ -6975,12 +7024,14 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 + "\n§8Очки и достижения сбрасываются автоматически при новом сезоне.");
         form.addButton(new ElementButton("§6Сезонный рейтинг"));
         form.addButton(new ElementButton("§dСезонные достижения"));
+        form.addButton(new ElementButton("§bЛичный сезонный прогресс"));
         form.addButton(new ElementButton("§7Назад к войнам"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
             int id = form.getResponse().getClickedButtonId();
             if (id == 0) openGuildSeasonLeaderboard(player);
             else if (id == 1) openGuildSeasonAchievements(player);
+            else if (id == 2) openGuildSeasonPersonalMenu(player);
             else openGuildWarsMenu(player);
         }));
         player.showFormWindow(form);
@@ -7264,6 +7315,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         guildData.set("guilds." + attackerGuild + ".war-points",
                 safeAdd(guildData.getLong("guilds." + attackerGuild + ".war-points", 0L), 1L));
         addGuildSeasonProgress(attackerGuild, 1L, true, false);
+        addGuildSeasonPlayerProgress(killer, 1L);
         if (score >= 10) {
             guildData.set(path + ".status", "finished"); guildData.set(path + ".winner", attackerGuild);
             guildData.set("guilds." + attackerGuild + ".war-points",

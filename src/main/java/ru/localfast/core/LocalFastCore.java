@@ -4659,21 +4659,34 @@ public final class LocalFastCore extends PluginBase implements Listener {
     }
 
     private void openPlayerAuctionHistory(Player player) {
+        openPlayerAuctionHistory(player, 0, "all");
+    }
+
+    private void openPlayerAuctionHistory(Player player, int page, String filter) {
         String uuid = player.getUniqueId().toString();
         List<String> ids = new ArrayList<>();
         for (String id : marketData.getSection("history").getAll().keySet()) {
             String path = "history." + id;
-            if (uuid.equals(marketData.getString(path + ".buyer-uuid", ""))
-                    || uuid.equals(marketData.getString(path + ".seller-uuid", ""))) ids.add(id);
+            boolean bought = uuid.equals(marketData.getString(path + ".buyer-uuid", ""));
+            boolean sold = uuid.equals(marketData.getString(path + ".seller-uuid", ""));
+            if (!bought && !sold) continue;
+            if ("bought".equals(filter) && !bought) continue;
+            if ("sold".equals(filter) && !sold) continue;
+            ids.add(id);
         }
         ids.sort((a, b) -> Long.compare(
                 marketData.getLong("history." + b + ".timestamp", 0L),
                 marketData.getLong("history." + a + ".timestamp", 0L)));
+        int pages = Math.max(1, (ids.size() + 7) / 8);
+        int current = Math.max(0, Math.min(page, pages - 1));
+        int start = current * 8;
+        int shown = Math.min(8, Math.max(0, ids.size() - start));
+        String filterLabel = "bought".equals(filter) ? "покупки" : "sold".equals(filter) ? "продажи" : "все сделки";
         FormWindowSimple form = new FormWindowSimple("§6§lИСТОРИЯ СДЕЛОК",
-                "§7Последние покупки и продажи на аукционе");
-        int shown = Math.min(20, ids.size());
+                "§7Фильтр: §b" + filterLabel + " §8| §7Сделок: §f" + ids.size()
+                + "\n§7Страница: §e" + (current + 1) + "§7/§e" + pages);
         for (int i = 0; i < shown; i++) {
-            String id = ids.get(i), path = "history." + id;
+            String id = ids.get(start + i), path = "history." + id;
             boolean bought = uuid.equals(marketData.getString(path + ".buyer-uuid", ""));
             String action = bought ? "§aКУПИЛ" : "§eПРОДАЛ";
             String other = bought ? marketData.getString(path + ".seller-name", "?")
@@ -4681,13 +4694,47 @@ public final class LocalFastCore extends PluginBase implements Listener {
             form.addButton(new ElementButton(action + " §f" + marketData.getString(path + ".item-name", "Предмет")
                     + " x" + marketData.getInt(path + ".count", 1) + "\n§7Цена: §6"
                     + marketData.getLong(path + ".price", 0L) + " " + currencyName()
-                    + " §8| §7" + (bought ? "Продавец: " : "Покупатель: ") + other));
+                    + " §8| §7" + other));
         }
-        if (shown == 0) form.setContent(form.getContent() + "\n§7Пока сделок нет.");
+        if (shown == 0) form.setContent(form.getContent() + "\n§7По этому фильтру сделок нет.");
+        int nav = shown;
+        if (pages > 1) {
+            form.addButton(new ElementButton(current > 0 ? "§e← Предыдущая страница" : "§8← Начало"));
+            form.addButton(new ElementButton(current + 1 < pages ? "§eСледующая страница →" : "§8Конец списка →"));
+        }
+        int base = nav + (pages > 1 ? 2 : 0);
+        form.addButton(new ElementButton("§bФильтр: " + filterLabel + " §7(сменить)"));
         form.addButton(new ElementButton("§7Назад к аукциону"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
-            openPlayerAuctionMenu(player);
+            int selected = form.getResponse().getClickedButtonId();
+            if (selected >= 0 && selected < shown) {
+                String id = ids.get(start + selected), path = "history." + id;
+                boolean bought = uuid.equals(marketData.getString(path + ".buyer-uuid", ""));
+                long timestamp = marketData.getLong(path + ".timestamp", 0L);
+                String date = new java.text.SimpleDateFormat("dd.MM.yyyy HH:mm").format(new java.util.Date(timestamp));
+                FormWindowSimple detail = new FormWindowSimple("§6§lСДЕЛКА #" + id,
+                        "§fПредмет: §e" + marketData.getString(path + ".item-name", "Предмет")
+                        + " x" + marketData.getInt(path + ".count", 1)
+                        + "\n§fЦена: §6" + marketData.getLong(path + ".price", 0L) + " " + currencyName()
+                        + "\n§fПокупатель: §b" + marketData.getString(path + ".buyer-name", "?")
+                        + "\n§fПродавец: §b" + marketData.getString(path + ".seller-name", "?")
+                        + "\n§fТвоя роль: " + (bought ? "§aпокупатель" : "§eпродавец")
+                        + "\n§fДата: §7" + date);
+                detail.addButton(new ElementButton("§7Назад к истории"));
+                detail.addHandler(FormResponseHandler.withoutPlayer(response -> {
+                    if (!detail.wasClosed() && detail.getResponse() != null && player.isOnline())
+                        openPlayerAuctionHistory(player, current, filter);
+                }));
+                player.showFormWindow(detail);
+            } else if (pages > 1 && selected == nav)
+                openPlayerAuctionHistory(player, Math.max(0, current - 1), filter);
+            else if (pages > 1 && selected == nav + 1)
+                openPlayerAuctionHistory(player, Math.min(pages - 1, current + 1), filter);
+            else if (selected == base) {
+                String next = "all".equals(filter) ? "bought" : "bought".equals(filter) ? "sold" : "all";
+                openPlayerAuctionHistory(player, 0, next);
+            } else openPlayerAuctionMenu(player);
         }));
         player.showFormWindow(form);
     }

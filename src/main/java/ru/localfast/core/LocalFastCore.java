@@ -6337,7 +6337,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     if (item != null && item.getId() == resource.getId() && label.equals(item.getCustomName())) {
                         int take = Math.min(remaining, item.getCount());
                         int left = item.getCount() - take;
-                        target.getInventory().setItem(entry.getKey(), left > 0 ? item.clone().setCount(left) : Item.get(0));
+                        if (left > 0) { Item reduced = item.clone(); reduced.setCount(left); target.getInventory().setItem(entry.getKey(), reduced); }
+                        else target.getInventory().setItem(entry.getKey(), Item.get(0));
                         remaining -= take;
                     }
                 }

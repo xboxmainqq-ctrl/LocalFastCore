@@ -1,8 +1,11 @@
-# LocalFastCore 0.43.0
+# LocalFastCore 0.45.0
 
 RPG progression plugin for Nukkit-MOT 1.26.60-R1 (Java 17).
 
 ## Features
+- Legendary relic crafting: `/forge legendary-weapon` creates the Keeper Blade and `/forge legendary-armor` creates the Keeper Chestplate after the matching forge upgrade reaches level 5. Each recipe costs 1 Keeper Heart, 12 Catacombs Shards and 4 Catacombs Crystals.
+- Keeper Hearts drop as a guaranteed reward for Hard-difficulty dungeon clears. The legendary blade effect only activates while the blade is held; the armor block effect only activates while the Keeper Chestplate is equipped.
+- `/forge collection` displays which Keeper relics the player owns. Existing forge levels and player progress are preserved.
 - Dungeon forge: `/forge` shows materials and permanent upgrade levels; `/forge weapon` adds up to +5 damage, `/forge armor` reduces creature damage by up to 15%. Upgrades persist in player data.
 - Keeper reward now includes named Catacombs Shards and Catacombs Crystals; Hard difficulty grants more materials. Upgrade costs rise with each level.
 - Operator command `/lfadmin dungeon reset <player>` resets the selected online player's daily dungeon entry and reward claim, allowing another run the same day; active runs must be left first. Lifetime clears and best-time records are preserved.

@@ -7,6 +7,8 @@ import cn.nukkit.block.BlockChest;
 import cn.nukkit.blockentity.BlockEntity;
 import cn.nukkit.blockentity.BlockEntityChest;
 import cn.nukkit.event.entity.EntityExplodeEvent;
+import cn.nukkit.event.block.BlockBreakEvent;
+import cn.nukkit.event.block.BlockPlaceEvent;
 import cn.nukkit.nbt.tag.CompoundTag;
 import cn.nukkit.nbt.tag.ListTag;
 import cn.nukkit.level.Level;
@@ -204,7 +206,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.26.0 включён. RPG, гильдии, рынок, приключения с подземельями и боссами, система персонала загружены.");
+        getLogger().info("LocalFastCore 0.27.0 включён. RPG, гильдии, рынок, защищённые катакомбы с наградами за волны и боссами, система персонала загружены.");
     }
 
     private void markPlayersDirty() {
@@ -839,6 +841,33 @@ public final class LocalFastCore extends PluginBase implements Listener {
             // Explosions may still deal damage, but never remove dungeon structure blocks.
             event.setBlockList(new ArrayList<>());
         }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void protectDungeonBlocks(BlockBreakEvent event) {
+        if (isDungeonWorld(event.getPlayer().getLevel())) {
+            event.setCancelled(true);
+            event.getPlayer().sendMessage("§cВ катакомбах нельзя ломать блоки.");
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void protectDungeonPlacement(BlockPlaceEvent event) {
+        if (isDungeonWorld(event.getPlayer().getLevel())) {
+            event.setCancelled(true);
+            event.getPlayer().sendMessage("§cВ катакомбах нельзя ставить блоки.");
+        }
+    }
+
+    private void rewardDungeonWave(Player player, int completedWave) {
+        String key = "dungeons.wave-rewards.wave-" + completedWave;
+        int xp = Math.max(0, getConfig().getInt(key + ".xp", 40 * completedWave));
+        long money = Math.max(0L, getConfig().getLong(key + ".money", 25L * completedWave));
+        if (xp > 0) giveXp(player, xp);
+        if (money > 0) setBalance(player, safeAdd(getBalance(player), money));
+        markPlayersDirty();
+        player.sendMessage("§a[Катакомбы] Волна " + completedWave + " очищена! §e+" + xp
+                + " XP §7и §6+" + money + " " + currencyName() + "§a.");
     }
 
     private Level ensureDungeonWorld(Player player) {
@@ -1721,6 +1750,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 int kills=Math.min(3,Math.max(0,players.getInt(playerPath+".dungeon.kills",0))+1);
                 players.set(playerPath+".dungeon.kills",kills);
                 if (kills >= 3) {
+                    rewardDungeonWave(killer, wave);
                     if (wave == 1) {
                         openDungeonGate(killer.getLevel(), -11);
                         killer.sendMessage("§aПервая волна пройдена! Проход во второй зал открыт.");

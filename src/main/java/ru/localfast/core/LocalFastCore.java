@@ -6742,8 +6742,14 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 "§7Территория: " + (owned.isEmpty() ? "§cне захвачена" : "§a" + territoryLabel(owned))
                 + "\n§7Захват чанка: §e5000 монет§7. Штурм: §e1000 монет."
                 + "\n§7Для захвата нужно удерживать чанк §e60 секунд§7. Защитники сбрасывают прогресс.");
+        int ownedLevel = owned.isEmpty() ? 0 : Math.max(0, Math.min(3, guildData.getInt("territories." + owned + ".level", 0)));
+        long income = owned.isEmpty() ? 0L : territoryIncomeForLevel(ownedLevel);
+        form.setContent(form.getContent() + (owned.isEmpty() ? "" : "\n§7Уровень укреплений: §e" + ownedLevel + "/3"
+                + "\n§7Доход: §a" + income + " монет/час"
+                + "\n§7Время отражения штурма: §e" + (60 + ownedLevel * 30) + " сек."));
         form.addButton(new ElementButton("§aЗахватить текущий чанк (глава/офицер)"));
         form.addButton(new ElementButton("§cСписок территорий и штурм"));
+        form.addButton(new ElementButton("§6Улучшить территорию"));
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
@@ -6765,6 +6771,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
                         guildData.set(p + ".world", world);
                         guildData.set(p + ".chunk-x", cx);
                         guildData.set(p + ".chunk-z", cz);
+                        guildData.set(p + ".level", 0);
+                        guildData.set(p + ".last-income", System.currentTimeMillis());
                         try { guildData.save(); player.sendMessage("§aЧанк захвачен! Координаты чанка: " + cx + ", " + cz); }
                         catch (RuntimeException ex) {
                             guildData.set("guilds." + gid + ".bank", bank);
@@ -6777,7 +6785,73 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 }
                 openGuildWarMenu(player);
             } else if (id == 1) openGuildTerritoryList(player);
+            else if (id == 2) openGuildTerritoryUpgradeMenu(player);
             else openPlayerGuildMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private long territoryIncomeForLevel(int level) {
+        return 250L + Math.max(0, Math.min(3, level)) * 250L;
+    }
+
+    private void openGuildTerritoryUpgradeMenu(Player player) {
+        String gid = currentGuildId(player);
+        if (gid.isEmpty() || !guildExists(gid)) { openPlayerGuildMenu(player); return; }
+        String key = guildData.getString("guilds." + gid + ".territory", "");
+        if (key.isEmpty() || !guildData.getString("territories." + key + ".owner", "").equals(gid)) {
+            player.sendMessage("§cУ гильдии пока нет своей территории.");
+            openGuildWarMenu(player);
+            return;
+        }
+        String path = "territories." + key;
+        int level = Math.max(0, Math.min(3, guildData.getInt(path + ".level", 0)));
+        long income = territoryIncomeForLevel(level);
+        long[] costs = {5000L, 10000L, 20000L};
+        FormWindowSimple form = new FormWindowSimple("§6§lРАЗВИТИЕ ТЕРРИТОРИИ",
+                "§7Территория: §f" + territoryLabel(key)
+                + "\n§7Укрепления: §e" + level + "/3"
+                + "\n§7Доход: §a" + income + " монет/час"
+                + "\n§7Время штурма: §e" + (60 + level * 30) + " секунд"
+                + "\n§7Казна гильдии: §e" + guildBank(gid) + " монет"
+                + "\n\n§7Каждый уровень повышает доход на 250 монет/час и добавляет 30 секунд к обороне.");
+        if (level < 3) form.addButton(new ElementButton("§aУлучшить до уровня " + (level + 1) + " §8| §e" + costs[level] + " монет"));
+        else form.addButton(new ElementButton("§6Максимальный уровень достигнут"));
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id != 0 || level >= 3) { openGuildWarMenu(player); return; }
+            if (!guildCanManage(gid, player)) {
+                player.sendMessage("§cУлучшать территорию может глава или офицер.");
+                openGuildTerritoryUpgradeMenu(player);
+                return;
+            }
+            if (!guildData.getString(path + ".owner", "").equals(gid)
+                    || !guildData.getString("guilds." + gid + ".territory", "").equals(key)) {
+                player.sendMessage("§cТерритория больше не принадлежит гильдии.");
+                openGuildWarMenu(player);
+                return;
+            }
+            long bank = guildBank(gid);
+            long cost = costs[level];
+            if (bank < cost) {
+                player.sendMessage("§cВ казне недостаточно монет. Нужно: " + cost + ".");
+                openGuildTerritoryUpgradeMenu(player);
+                return;
+            }
+            guildData.set("guilds." + gid + ".bank", bank - cost);
+            guildData.set(path + ".level", level + 1);
+            try {
+                guildData.save();
+                player.sendMessage("§aТерритория улучшена до уровня " + (level + 1) + "!");
+            } catch (RuntimeException ex) {
+                guildData.set("guilds." + gid + ".bank", bank);
+                guildData.set(path + ".level", level);
+                player.sendMessage("§cНе удалось сохранить улучшение. Монеты возвращены.");
+                getLogger().error("Guild territory upgrade failed.", ex);
+            }
+            openGuildTerritoryUpgradeMenu(player);
         }));
         player.showFormWindow(form);
     }
@@ -6851,9 +6925,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (defend) {
                 if (guildData.getInt(p + ".siege.progress", 0) != 0) { guildData.set(p + ".siege.progress", 0); changed = true; }
             } else if (attack) {
+                int defenseLevel = Math.max(0, Math.min(3, guildData.getInt(p + ".level", 0)));
+                int requiredProgress = 60 + defenseLevel * 30;
                 int progress = guildData.getInt(p + ".siege.progress", 0) + 1;
-                if (progress >= 60) {
+                if (progress >= requiredProgress) {
                     guildData.set(p + ".owner", attacker);
+                    guildData.set(p + ".level", 0);
+                    guildData.set(p + ".last-income", System.currentTimeMillis());
                     guildData.set("guilds." + attacker + ".territory", key);
                     if (guildData.getString("guilds." + owner + ".territory", "").equals(key)) guildData.remove("guilds." + owner + ".territory");
                     guildData.remove(p + ".siege");
@@ -6866,7 +6944,29 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 changed = true;
             }
         }
-        if (changed) try { guildData.save(); } catch (RuntimeException ex) { getLogger().error("Guild siege save failed.", ex); }
+        long now = System.currentTimeMillis();
+        for (String key : new ArrayList<>(guildData.getSection("territories").getAll().keySet())) {
+            String p = "territories." + key;
+            String owner = guildData.getString(p + ".owner", "");
+            if (owner.isEmpty() || !guildExists(owner)) continue;
+            long lastIncome = guildData.getLong(p + ".last-income", 0L);
+            if (lastIncome <= 0L) {
+                guildData.set(p + ".last-income", now);
+                changed = true;
+            } else if (now - lastIncome >= 3600000L) {
+                int level = Math.max(0, Math.min(3, guildData.getInt(p + ".level", 0)));
+                long income = territoryIncomeForLevel(level);
+                guildData.set("guilds." + owner + ".bank", safeAdd(guildBank(owner), income));
+                guildData.set(p + ".last-income", now);
+                for (Player online : getServer().getOnlinePlayers().values()) {
+                    if (currentGuildId(online).equals(owner)) {
+                        online.sendMessage("§6§lТЕРРИТОРИЯ §aВ казну гильдии поступило " + income + " монет за владение территорией.");
+                    }
+                }
+                changed = true;
+            }
+        }
+        if (changed) try { guildData.save(); } catch (RuntimeException ex) { getLogger().error("Guild territory/siege save failed.", ex); }
     }
 
     private void openOperatorTerritoriesMenu(Player operator) {
@@ -6876,8 +6976,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
         for (String key : guildData.getSection("territories").getAll().keySet()) {
             keys.add(key);
             String owner = guildData.getString("territories." + key + ".owner", "");
+            int level = Math.max(0, Math.min(3, guildData.getInt("territories." + key + ".level", 0)));
             form.addButton(new ElementButton("§e" + guildData.getString("guilds." + owner + ".name", "Без владельца")
-                    + "\n§7" + territoryLabel(key)));
+                    + "\n§7" + territoryLabel(key) + "\n§6Уровень " + level + "/3 §8| §a" + territoryIncomeForLevel(level) + "/ч"));
             if (keys.size() >= 20) break;
         }
         form.addButton(new ElementButton("§7Назад"));

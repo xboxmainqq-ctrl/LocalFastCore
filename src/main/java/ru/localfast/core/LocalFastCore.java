@@ -6967,6 +6967,33 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
     }
 
+
+    private void openGuildSeasonPlayerLeaderboard(Player player) {
+        ensureGuildSeason();
+        List<String> ids = new ArrayList<>(guildData.getSection("season.players").getAll().keySet());
+        ids.sort((a, b) -> Long.compare(
+                guildData.getLong("season.players." + b + ".points", 0L),
+                guildData.getLong("season.players." + a + ".points", 0L)));
+        StringBuilder content = new StringBuilder("§7Личный рейтинг текущего сезона\n\n");
+        int rank = 1;
+        for (String uuid : ids) {
+            if (rank > 15) break;
+            String base = "season.players." + uuid;
+            long points = guildData.getLong(base + ".points", 0L);
+            if (points <= 0L) continue;
+            content.append("§e").append(rank++).append(". §f")
+                    .append(guildData.getString(base + ".name", "Игрок"))
+                    .append(" §8— §6").append(points).append(" очков\n");
+        }
+        if (rank == 1) content.append("§7Пока нет участников с очками.");
+        FormWindowSimple form = new FormWindowSimple("§b§lЛУЧШИЕ ВОИНЫ СЕЗОНА", content.toString());
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (!form.wasClosed() && form.getResponse() != null && player.isOnline()) openGuildSeasonMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
     private void openGuildSeasonPersonalMenu(Player player) {
         ensureGuildSeason();
         String base = "season.players." + player.getUniqueId().toString();
@@ -7031,6 +7058,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§6Сезонный рейтинг"));
         form.addButton(new ElementButton("§dСезонные достижения"));
         form.addButton(new ElementButton("§bЛичный сезонный прогресс"));
+        form.addButton(new ElementButton("§eЛучшие воины сезона"));
         form.addButton(new ElementButton("§7Назад к войнам"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
@@ -7038,6 +7066,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (id == 0) openGuildSeasonLeaderboard(player);
             else if (id == 1) openGuildSeasonAchievements(player);
             else if (id == 2) openGuildSeasonPersonalMenu(player);
+            else if (id == 3) openGuildSeasonPlayerLeaderboard(player);
             else openGuildWarsMenu(player);
         }));
         player.showFormWindow(form);

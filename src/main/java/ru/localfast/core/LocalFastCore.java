@@ -7012,7 +7012,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         ids.sort((a, b) -> Long.compare(
                 guildData.getLong("season.players." + b + ".points", 0L),
                 guildData.getLong("season.players." + a + ".points", 0L)));
-        StringBuilder content = new StringBuilder("§7Личный рейтинг текущего сезона\n\n");
+        StringBuilder content = new StringBuilder("§7Личный рейтинг текущего сезона\n§7Награды в конце месяца:\n§e#1 §6+5 000 монет §8| §6Чемпион сезона\n§b#2 §6+3 000 монет §8| §bВетеран сезона\n§a#3 §6+1 500 монет §8| §aГерой сезона\n\n");
         int rank = 1;
         for (String uuid : ids) {
             if (rank > 15) break;

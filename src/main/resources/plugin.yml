@@ -1,9 +1,9 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.70.0"
+version: "0.71.0"
 api: ["1.0.0"]
 author: LocalFast
-description: LocalFastCore 0.70.0 player mailbox, persistent notifications, auction history and RPG systems
+description: LocalFastCore 0.71.0 guild notifications, auction moderation, mailbox and RPG systems
 commands:
   spawn:
     description: Телепорт на отдельный спавн

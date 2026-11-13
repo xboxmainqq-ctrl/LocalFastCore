@@ -968,6 +968,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
             getConfig().set("dungeons.treasure-room-built", true);
             saveConfig();
         }
+        if (!getConfig().getBoolean("dungeons.traps-built", false)) {
+            buildDungeonTraps(level);
+            getConfig().set("dungeons.traps-built", true);
+            saveConfig();
+        }
         return level;
     }
 
@@ -1003,11 +1008,6 @@ public final class LocalFastCore extends PluginBase implements Listener {
             }
         }
 
-        // Red hazard strips are embedded in the floor and trigger during active runs.
-        for (int x = -8; x <= 8; x++) {
-            for (int z : new int[]{-17, 4, 24}) blocks.add(new CastleBlock(x, floorY, z, 152));
-        }
-
         // Finish the structure before teleporting the player into it. This avoids
         // the old race where the player arrived while the async builder was still
         // placing the floor, walls and ceiling.
@@ -1026,6 +1026,20 @@ public final class LocalFastCore extends PluginBase implements Listener {
             }
         }
         getLogger().info("Локация подземелья построена: " + placed + "/" + blocks.size() + " блоков.");
+    }
+
+    private void buildDungeonTraps(Level level) {
+        for (int x = -8; x <= 8; x++) {
+            for (int z : new int[]{-17, 4, 24}) {
+                try {
+                    level.getChunk(x >> 4, z >> 4, true);
+                    level.setBlock(new Position(x, 5, z, level), Block.get(152), true, true);
+                } catch (RuntimeException exception) {
+                    getLogger().warning("Не удалось установить ловушку катакомб на " + x + ", " + z + ": " + exception.getMessage());
+                }
+            }
+        }
+        getLogger().info("Ловушки катакомб установлены в трёх залах.");
     }
 
     private void buildDungeonTreasureRoom(Level level) {

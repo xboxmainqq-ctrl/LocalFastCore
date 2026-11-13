@@ -1,8 +1,11 @@
-# LocalFastCore 0.31.0
+# LocalFastCore 0.41.0
 
 RPG progression plugin for Nukkit-MOT 1.26.60-R1 (Java 17).
 
 ## Features
+- Dungeon rebuilt as an organic cavern instead of a rectangular box: variable-width chambers, uneven cave walls, stone ribs, support pillars, stalactites and glowstone sconces.
+- Treasure vault reshaped into a rounded reliquary chamber with gold-trimmed pillars and a central gold path; existing chest and boss gate coordinates are preserved.
+- Existing rectangular dungeon footprint is cleared once on upgrade using `dungeons.visual-style-version`, then the new layout is built; wave gates, traps, protection and reward logic remain in place.
 - Player level and XP progression (maximum level: 100).
 - Four stats: strength, health, agility and intelligence.
 - Sidebar scoreboard and GUI stat allocation via `/lfmenu`.

@@ -223,7 +223,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.51.0 включён. Кузница реликвий Разлома, питомцы, экипировка, катакомбы, RPG и система персонала загружены.");
+        getLogger().info("LocalFastCore 0.52.0 включён. Кузница реликвий Разлома, питомцы, экипировка, катакомбы, RPG и система персонала загружены.");
     }
 
     private void markPlayersDirty() {
@@ -634,6 +634,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 event.setDamage(Math.max(0.0f, riftArmorDamage * 0.90f),
                         EntityDamageEvent.DamageModifier.BASE);
             }
+            if (hasKeeperSetEquipped(defender) || hasRiftSetEquipped(defender)) {
+                float setDamage = event.getDamage(EntityDamageEvent.DamageModifier.BASE);
+                event.setDamage(Math.max(0.0f, setDamage * 0.95f),
+                        EntityDamageEvent.DamageModifier.BASE);
+            }
             long guardUntil = petGuardUntil.getOrDefault(defender.getUniqueId(), 0L);
             if (guardUntil > now) {
                 float guardedDamage = event.getDamage(EntityDamageEvent.DamageModifier.BASE);
@@ -869,6 +874,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 && "§5Клинок Разлома".equals(heldWeapon.getCustomName())) {
             bonusDamage += 6;
         }
+        if (hasKeeperSetEquipped(attacker)) {
+            bonusDamage += 3;
+        }
+        if (hasRiftSetEquipped(attacker)) {
+            bonusDamage += 4;
+        }
         if (forgeWeaponLevel >= 5 && hasLegendaryWeaponEquipped && now >= weaponReadyAt
                 && ThreadLocalRandom.current().nextInt(100) < 15) {
             legendaryWeaponCooldowns.put(attackerId, now + 10000L);
@@ -989,6 +1000,47 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     && "§5Броня Бездны".equals(item.getCustomName())) return true;
         }
         return false;
+    }
+
+    private boolean hasNamedArmorEquipped(Player player, String customName) {
+        for (Item item : player.getInventory().getArmorContents()) {
+            if (item != null && item.getId() == 311 && customName.equals(item.getCustomName())) return true;
+        }
+        return false;
+    }
+
+    private boolean hasNamedWeaponInHand(Player player, int itemId, String customName) {
+        Item held = player.getInventory().getItemInHand();
+        return held != null && held.getId() == itemId && customName.equals(held.getCustomName());
+    }
+
+    private boolean hasKeeperSetEquipped(Player player) {
+        return hasNamedWeaponInHand(player, 276, "§6Клинок Хранителя")
+                && hasNamedArmorEquipped(player, "§bДоспех Хранителя");
+    }
+
+    private boolean hasRiftSetEquipped(Player player) {
+        return hasNamedWeaponInHand(player, 276, "§5Клинок Разлома")
+                && hasRiftArmorEquipped(player);
+    }
+
+    private void showGearCollection(Player player) {
+        initialize(player);
+        boolean keeperBlade = hasNamedItem(player, "§6Клинок Хранителя");
+        boolean keeperArmor = hasNamedItem(player, "§bДоспех Хранителя");
+        boolean riftBlade = hasNamedItem(player, "§5Клинок Разлома");
+        boolean riftArmor = hasNamedItem(player, "§5Броня Бездны");
+        boolean riftAmulet = hasNamedItem(player, "§dСердце Разлома");
+        player.sendMessage("§6§lКОЛЛЕКЦИЯ ЭКИПИРОВКИ");
+        player.sendMessage("§eКомплект Хранителя: " + (keeperBlade ? "§a✓" : "§7○")
+                + " §6Клинок §8| " + (keeperArmor ? "§a✓" : "§7○") + " §bДоспех");
+        player.sendMessage("§7Бонус полного комплекта: §a+3 урона и -5% входящего урона.");
+        player.sendMessage("§5Комплект Разлома: " + (riftBlade ? "§a✓" : "§7○")
+                + " §5Клинок §8| " + (riftArmor ? "§a✓" : "§7○") + " §5Броня"
+                + " §8| " + (riftAmulet ? "§a✓" : "§7○") + " §dСердце");
+        player.sendMessage("§7Бонус полного комплекта: §c+4 урона, §a-5% входящего урона и +5% XP.");
+        player.sendMessage("§8Бонусы активны, когда клинок в руке, а броня надета.");
+        player.sendMessage("§e/rift forge §7— создать реликвии Разлома.");
     }
 
     private boolean hasRiftAmulet(Player player) {
@@ -3309,6 +3361,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
         if (hasRiftAmulet(killer)) {
             mobXp += Math.max(1, (int) Math.floor(mobXp * 0.15));
+        }
+        if (hasRiftSetEquipped(killer)) {
+            mobXp += Math.max(1, (int) Math.floor(mobXp * 0.05));
         }
         giveXp(killer, mobXp);
         set(killer, "achievement_kills", Math.min(Integer.MAX_VALUE, get(killer, "achievement_kills", 0) + 1));
@@ -6995,6 +7050,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (name.equals("rift")) {
             if (!(sender instanceof Player)) { sender.sendMessage("Разлом доступен только игроку."); return true; }
             handleRiftCommand((Player) sender, args);
+            return true;
+        }
+
+        if (name.equals("gear")) {
+            if (!(sender instanceof Player)) { sender.sendMessage("Коллекция доступна только игроку."); return true; }
+            showGearCollection((Player) sender);
             return true;
         }
 

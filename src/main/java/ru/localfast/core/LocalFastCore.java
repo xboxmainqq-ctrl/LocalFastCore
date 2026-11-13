@@ -6331,14 +6331,14 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 if (!leftovers.isEmpty()) operator.sendMessage("§cНе всё поместилось в инвентарь.");
             } else {
                 int remaining = amount;
-                for (Map.Entry<Integer, Item> entry : target.getInventory().getContents().entrySet()) {
-                    if (remaining <= 0) break;
-                    Item item = entry.getValue();
+                Item[] inventoryContents = target.getInventory().getContents();
+                for (int slot = 0; slot < inventoryContents.length && remaining > 0; slot++) {
+                    Item item = inventoryContents[slot];
                     if (item != null && item.getId() == resource.getId() && label.equals(item.getCustomName())) {
                         int take = Math.min(remaining, item.getCount());
                         int left = item.getCount() - take;
-                        if (left > 0) { Item reduced = item.clone(); reduced.setCount(left); target.getInventory().setItem(entry.getKey(), reduced); }
-                        else target.getInventory().setItem(entry.getKey(), Item.get(0));
+                        if (left > 0) { Item reduced = item.clone(); reduced.setCount(left); target.getInventory().setItem(slot, reduced); }
+                        else target.getInventory().setItem(slot, Item.get(0));
                         remaining -= take;
                     }
                 }

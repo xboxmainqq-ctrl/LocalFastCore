@@ -1,9 +1,9 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.64.0"
+version: "0.65.0"
 api: ["1.0.0"]
 author: LocalFast
-description: LocalFastCore 0.64.0 title collection, seasonal rewards, guild wars and RPG systems
+description: LocalFastCore 0.65.0 manual auction and guild bank inputs, invulnerable pets, title collection and RPG systems
 commands:
   spawn:
     description: Телепорт на отдельный спавн

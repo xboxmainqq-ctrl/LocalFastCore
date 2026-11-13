@@ -219,7 +219,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.40.0 включён. RPG, гильдии, рынок, катакомбы с рекордами скорости и тремя фазами Хранителя, система персонала загружены.");
+        getLogger().info("LocalFastCore 0.47.0 включён. RPG, гильдии, рынок, катакомбы с рекордами скорости и тремя фазами Хранителя, система персонала загружены.");
     }
 
     private void markPlayersDirty() {
@@ -618,8 +618,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
         if (event.getEntity() instanceof Player && event.getDamager() instanceof EntityCreature
                 && selectedPet((Player) event.getEntity()).equals("golem")) {
+            Player defender = (Player) event.getEntity();
+            int reduction = petGolemReductionPercent(defender);
             float petBaseDamage = event.getDamage(EntityDamageEvent.DamageModifier.BASE);
-            event.setDamage(Math.max(0.0f, petBaseDamage * 0.92f), EntityDamageEvent.DamageModifier.BASE);
+            event.setDamage(Math.max(0.0f, petBaseDamage * (100 - reduction) / 100.0f),
+                    EntityDamageEvent.DamageModifier.BASE);
         }
 
         // The Catacombs Keeper gains three escalating phases on hard difficulty.
@@ -839,7 +842,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         int forgeWeaponLevel = Math.max(0, Math.min(5,
                 players.getInt(playerKey(attacker) + ".forge.weapon-level", 0)));
         bonusDamage += forgeWeaponLevel;
-        if (selectedPet(attacker).equals("wolf")) bonusDamage += 1;
+        if (selectedPet(attacker).equals("wolf")) bonusDamage += petWolfBonusDamage(attacker);
         long weaponReadyAt = legendaryWeaponCooldowns.getOrDefault(attackerId, 0L);
         Item heldWeapon = attacker.getInventory().getItemInHand();
         boolean hasLegendaryWeaponEquipped = heldWeapon != null && heldWeapon.getId() == 276
@@ -960,6 +963,46 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private String petPath(Player player) { return playerKey(player) + ".pets"; }
     private int petUnlockClears(Player player) { return Math.max(0, players.getInt(playerKey(player) + ".dungeon.clears", 0)); }
+    private int petLevel(Player player, String pet) {
+        return Math.max(1, Math.min(5, players.getInt(petPath(player) + "." + pet + ".level", 1)));
+    }
+    private int petXp(Player player, String pet) {
+        return Math.max(0, players.getInt(petPath(player) + "." + pet + ".xp", 0));
+    }
+    private int petXpForNextLevel(int level) { return Math.max(100, level * 100); }
+    private int petWolfBonusDamage(Player player) {
+        return 1 + (petLevel(player, "wolf") - 1) / 2;
+    }
+    private int petGolemReductionPercent(Player player) {
+        return Math.min(16, 8 + (petLevel(player, "golem") - 1) * 2);
+    }
+    private int petSnowXpPercent(Player player) {
+        return Math.min(18, 10 + (petLevel(player, "snow") - 1) * 2);
+    }
+    private void grantPetXp(Player player, int amount) {
+        String pet = selectedPet(player);
+        if (pet.equals("none") || amount <= 0) return;
+        String path = petPath(player) + "." + pet;
+        int level = petLevel(player, pet);
+        if (level >= 5) return;
+        int xp = petXp(player, pet) + amount;
+        boolean leveled = false;
+        while (level < 5 && xp >= petXpForNextLevel(level)) {
+            xp -= petXpForNextLevel(level);
+            level++;
+            leveled = true;
+        }
+        if (level >= 5) xp = 0;
+        players.set(path + ".level", level);
+        players.set(path + ".xp", xp);
+        markPlayersDirty();
+        if (leveled) {
+            player.sendTitle("§6§lПИТОМЕЦ ПОВЫСИЛ УРОВЕНЬ!", petLabel(pet) + " §eур. " + level, 5, 35, 5);
+            player.sendMessage("§aТвой питомец достиг " + level + "-го уровня! Его бонус стал сильнее.");
+            Entity companion = activePets.get(player.getUniqueId());
+            if (companion != null && !companion.isClosed()) companion.setNameTag(petLabel(pet) + " §eур. " + level);
+        }
+    }
     private boolean isPetUnlocked(Player player, String pet) {
         if (pet.equals("wolf")) return true;
         int clears = petUnlockClears(player);
@@ -996,7 +1039,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         try {
             Entity companion = Entity.createEntity(petEntityType(pet), new Position(player.getX() - 1.2, player.getY(), player.getZ() - 1.2, player.getLevel()));
             if (companion == null) { player.sendMessage("§cНе удалось создать питомца этого типа на текущем ядре."); return; }
-            companion.setNameTag(petLabel(pet));
+            companion.setNameTag(petLabel(pet) + " §eур. " + petLevel(player, pet));
             companion.setNameTagVisible(true);
             companion.setNameTagAlwaysVisible(true);
             companion.spawnToAll();
@@ -1010,13 +1053,16 @@ public final class LocalFastCore extends PluginBase implements Listener {
         initialize(player);
         String selected = selectedPet(player);
         int clears = petUnlockClears(player);
+        String petProgress = selected.equals("none") ? "§7Выбери питомца, чтобы увидеть его прогресс."
+                : "§eУровень: §f" + petLevel(player, selected) + "§7/§f5  §eОпыт: §f"
+                + (petLevel(player, selected) >= 5 ? "МАКС." : petXp(player, selected) + "/" + petXpForNextLevel(petLevel(player, selected)));
         FormWindowSimple form = new FormWindowSimple("§6§lПИТОМЦЫ",
-                "§fВыбери спутника. Бонус действует, пока питомец выбран.\n"
-                + "§7Новые питомцы открываются за победы в катакомбах.\n\n"
-                + "§aВолк: §f+1 урон по существам (сразу)\n"
-                + "§6Голем: §f-8% урона от существ (3 победы)\n"
-                + "§bСнежный дух: §f+10% опыта за убийства (5 побед)\n"
-                + "§7Побед в катакомбах: §e" + clears);
+                "§fВыбери спутника. За убийства выбранный питомец получает §e5 XP§f.\n"
+                + "§7Максимальный уровень — 5, прогресс сохраняется.\n\n"
+                + "§aВолк: §f+" + petWolfBonusDamage(player) + " урон (ур. " + petLevel(player, "wolf") + ")\n"
+                + "§6Голем: §f-" + petGolemReductionPercent(player) + "% урона (ур. " + petLevel(player, "golem") + ", 3 победы)\n"
+                + "§bСнежный дух: §f+" + petSnowXpPercent(player) + "% XP (ур. " + petLevel(player, "snow") + ", 5 побед)\n"
+                + petProgress + "\n§7Побед в катакомбах: §e" + clears);
         String[] pets = {"wolf", "golem", "snow"};
         for (String pet : pets) {
             String state = !isPetUnlocked(player, pet) ? "§c[Закрыт]" : selected.equals(pet) ? "§a[Выбран]" : "§e[Выбрать]";
@@ -2749,8 +2795,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
         Player killer = (Player) event.getDamager();
         initialize(killer);
+        grantPetXp(killer, 5);
         int mobXp = Math.max(0, getConfig().getInt("progression.mob-kill-xp", MOB_KILL_XP));
-        if (selectedPet(killer).equals("snow")) mobXp += Math.max(1, mobXp / 10);
+        if (selectedPet(killer).equals("snow")) {
+            mobXp += Math.max(1, (int) Math.floor(mobXp * petSnowXpPercent(killer) / 100.0));
+        }
         giveXp(killer, mobXp);
         set(killer, "achievement_kills", Math.min(Integer.MAX_VALUE, get(killer, "achievement_kills", 0) + 1));
         int xpBonusPercent = intelligenceXpBonusPercent(killer);

@@ -77,6 +77,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private final Map<UUID, Long> tankGuardUntil = new HashMap<>();
     private final Map<UUID, Long> dungeonBossAbilityCooldowns = new HashMap<>();
     private final Map<String, Long> dungeonBossSummonCooldowns = new HashMap<>();
+    private final Map<String, Long> dungeonBossAreaCooldowns = new HashMap<>();
     private final Map<UUID, Long> dungeonTrapCooldowns = new HashMap<>();
     private final Map<UUID, java.util.Set<UUID>> dungeonParties = new HashMap<>();
     private final Map<UUID, UUID> dungeonPartyLeader = new HashMap<>();
@@ -213,7 +214,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.34.0 включён. RPG, гильдии, рынок, катакомбы с особыми способностями босса на высокой сложности и рекордами, система персонала загружены.");
+        getLogger().info("LocalFastCore 0.36.0 включён. RPG, гильдии, рынок, катакомбы с особыми способностями босса на высокой сложности и рекордами, система персонала загружены.");
     }
 
     private void markPlayersDirty() {
@@ -658,6 +659,47 @@ public final class LocalFastCore extends PluginBase implements Listener {
                             }
                         }
                     }
+                }
+
+                // Telegraph a hard-mode area strike, then damage only active dungeon players
+                // who remain close to the boss's marked position after the 2-second warning.
+                long lastAreaStrike = dungeonBossAreaCooldowns.getOrDefault(dungeonKey, 0L);
+                if (now - lastAreaStrike >= 20000L) {
+                    dungeonBossAreaCooldowns.put(dungeonKey, now);
+                    final Level strikeLevel = target.getLevel();
+                    final double strikeX = boss.getX();
+                    final double strikeY = boss.getY();
+                    final double strikeZ = boss.getZ();
+                    for (Player member : getServer().getOnlinePlayers().values()) {
+                        if (member.getLevel() == strikeLevel
+                                && players.getBoolean(playerKey(member) + ".dungeon.active", false)) {
+                            member.sendTitle("§4§lУДАРНАЯ ВОЛНА!", "§cОтойди от Хранителя за 2 секунды!", 0, 40, 5);
+                            member.sendMessage("§cХранитель готовит ударную волну! Срочно отойди!");
+                        }
+                    }
+                    getServer().getScheduler().scheduleDelayedTask(this, () -> {
+                        if (boss.getHealth() <= 0.0f) return;
+                        int hitCount = 0;
+                        for (Player member : getServer().getOnlinePlayers().values()) {
+                            if (member.getLevel() != strikeLevel) continue;
+                            String memberPath = playerKey(member);
+                            if (!players.getBoolean(memberPath + ".dungeon.active", false)
+                                    || players.getInt(memberPath + ".dungeon.wave", 1) < 4
+                                    || !"hard".equals(normalizeDungeonDifficulty(
+                                            players.getString(memberPath + ".dungeon.difficulty", "normal")))) continue;
+                            double dx = member.getX() - strikeX;
+                            double dy = member.getY() - strikeY;
+                            double dz = member.getZ() - strikeZ;
+                            if (dx * dx + dy * dy + dz * dz > 30.25) continue;
+                            member.setHealth(Math.max(1.0f, member.getHealth() - 10.0f));
+                            member.sendTitle("§4§lПОПАДАНИЕ!", "§cУдарная волна: -10 HP", 0, 25, 5);
+                            member.sendMessage("§cУдарная волна Хранителя нанесла 10 урона. В следующий раз уклонись!");
+                            hitCount++;
+                        }
+                        if (hitCount > 0) {
+                            getLogger().info("Dungeon Keeper area strike hit " + hitCount + " player(s).");
+                        }
+                    }, 40);
                 }
             }
         }

@@ -5921,6 +5921,43 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (args.length > 0 && args[0].equalsIgnoreCase("world")) {
             return handleWorldCommand(sender, Arrays.copyOfRange(args, 1, args.length));
         }
+        if (args.length > 0 && args[0].equalsIgnoreCase("dungeon")) {
+            if (args.length != 3 || !args[1].equalsIgnoreCase("reset")) {
+                sender.sendMessage("§eИспользуй: /lfadmin dungeon reset <игрок>");
+                return true;
+            }
+            Player target = getServer().getPlayer(args[2]);
+            if (target == null) {
+                sender.sendMessage("§cИгрок должен быть онлайн для сброса.");
+                return true;
+            }
+            initialize(target);
+            String targetKey = playerKey(target);
+            if (players.getBoolean(targetKey + ".dungeon.active", false)) {
+                sender.sendMessage("§cСначала игрок должен выйти из активного подземелья: /dungeon leave.");
+                return true;
+            }
+            players.set(targetKey + ".dungeon.date", today());
+            players.set(targetKey + ".dungeon.kills", 0);
+            players.set(targetKey + ".dungeon.active", false);
+            players.set(targetKey + ".dungeon.complete", false);
+            players.set(targetKey + ".dungeon.claimed", false);
+            players.set(targetKey + ".dungeon.chest-ready", false);
+            players.set(targetKey + ".dungeon.loot-fallback-given", false);
+            players.set(targetKey + ".dungeon.keeper-trophy-given", false);
+            players.set(targetKey + ".dungeon.wave", 1);
+            players.set(targetKey + ".dungeon.spawned-wave", 0);
+            players.set(targetKey + ".dungeon.started-at", 0L);
+            markPlayersDirty();
+            if (!flushPlayers()) {
+                sender.sendMessage("§cНе удалось сохранить сброс. Проверь players.yml.");
+                return true;
+            }
+            staffLog(sender.getName(), "dungeon-reset", target.getName(), "daily entry and rewards");
+            sender.sendMessage("§aДневной доступ в подземелье сброшен для §e" + target.getName() + "§a.");
+            target.sendMessage("§6§lПОДЗЕМЕЛЬЕ §7— оператор сбросил твой дневной таймер. Можешь начать новый забег: §e/dungeon start");
+            return true;
+        }
         if (args.length > 0 && args[0].equalsIgnoreCase("quest")) {
             if (args.length == 2 && args[1].equalsIgnoreCase("list")) {
                 sender.sendMessage("§6[Квесты] §fСписок заданий и наград:");

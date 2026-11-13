@@ -223,7 +223,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.53.0 включён. Меню рынка, аукциона, гильдий и переводов, кузница реликвий Разлома, питомцы, экипировка, катакомбы, RPG и система персонала загружены.");
+        getLogger().info("LocalFastCore 0.54.0 включён. Меню рынка, аукциона, гильдий и переводов, кузница реликвий Разлома, питомцы, экипировка, катакомбы, RPG и система персонала загружены.");
     }
 
     private void markPlayersDirty() {
@@ -6481,6 +6481,86 @@ public final class LocalFastCore extends PluginBase implements Listener {
     }
 
     private void openPlayerAuctionMenu(Player player) {
+        FormWindowSimple form = new FormWindowSimple("§eАукцион", "§7Активные торги и завершённые лоты. Выбери лот для ставки или получения предмета.");
+        List<String> lotIds = new ArrayList<>();
+        long now = System.currentTimeMillis();
+        for (String id : marketData.getSection("listings").getAll().keySet()) {
+            String path = listingPath(id);
+            if (!marketData.getBoolean(path + ".auction", false)) continue;
+            lotIds.add(id);
+            long ends = marketData.getLong(path + ".ends-at", 0L);
+            long left = Math.max(0L, ends - now);
+            String status = ends > now ? "§a" + (left / 60000L) + " мин." : "§cЗавершён";
+            form.addButton(new ElementButton("§e#" + id + " §f" + marketData.getString(path + ".item-name", "Предмет")
+                    + " x" + marketData.getInt(path + ".count", 1) + "\n§7Ставка: §a"
+                    + marketData.getLong(path + ".current-bid", 0L) + " §8| " + status));
+            if (lotIds.size() >= 12) break;
+        }
+        form.addButton(new ElementButton("§aСоздать лот: 100 монет / 30 мин."));
+        form.addButton(new ElementButton("§aСоздать лот: 500 монет / 1 час"));
+        form.addButton(new ElementButton("§aСоздать лот: 1000 монет / 24 часа"));
+        form.addButton(new ElementButton("§7Обновить"));
+        form.addButton(new ElementButton("§8Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id >= 0 && id < lotIds.size()) openPlayerAuctionLotMenu(player, lotIds.get(id));
+            else {
+                int action = id - lotIds.size();
+                if (action == 0) handleAuction(player, new String[]{"create","100","30"});
+                else if (action == 1) handleAuction(player, new String[]{"create","500","60"});
+                else if (action == 2) handleAuction(player, new String[]{"create","1000","1440"});
+                if (action >= 0 && action <= 3) openPlayerAuctionMenu(player);
+                else openPlayerEconomyMenu(player);
+            }
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openPlayerAuctionLotMenu(Player player, String lotId) {
+        String path = listingPath(lotId);
+        if (!marketData.exists(path + ".seller") || !marketData.getBoolean(path + ".auction", false)) {
+            player.sendMessage("§cЛот уже недоступен.");
+            openPlayerAuctionMenu(player);
+            return;
+        }
+        String itemName = marketData.getString(path + ".item-name", "Предмет");
+        long current = marketData.getLong(path + ".current-bid", 0L);
+        long minimum = current == Long.MAX_VALUE ? Long.MAX_VALUE : current + 1L;
+        long ends = marketData.getLong(path + ".ends-at", 0L);
+        boolean active = ends > System.currentTimeMillis();
+        FormWindowSimple form = new FormWindowSimple("§eЛот #" + lotId,
+                "§f" + itemName + " x" + marketData.getInt(path + ".count", 1)
+                + "\n§7Текущая ставка: §a" + current + " " + currencyName()
+                + "\n§7Минимальная ставка: §e" + minimum
+                + (active ? "\n§7До конца: §a" + Math.max(0L, ends - System.currentTimeMillis()) / 60000L + " мин."
+                          : "\n§cТорги завершены."));
+        if (active) {
+            form.addButton(new ElementButton("§aСтавка: " + minimum));
+            long step = Math.max(10L, current / 10L);
+            long higher = safeAdd(minimum, step);
+            form.addButton(new ElementButton("§eСтавка: " + higher));
+            long premium = safeAdd(minimum, 500L);
+            form.addButton(new ElementButton("§6Ставка: " + premium));
+        } else {
+            form.addButton(new ElementButton("§aПолучить предмет / забрать непроданный лот"));
+        }
+        form.addButton(new ElementButton("§7Назад к аукциону"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (active && id >= 0 && id <= 2) {
+                long bid = id == 0 ? minimum : id == 1 ? higher : premium;
+                handleAuction(player, new String[]{"bid", lotId, Long.toString(bid)});
+            } else if (!active && id == 0) {
+                handleAuction(player, new String[]{"claim", lotId});
+            }
+            openPlayerAuctionMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+
         FormWindowSimple form = new FormWindowSimple("§eАукцион", "§7Выставь предмет из руки на торги. Ставки и завершённые лоты пока доступны через команды /auction.");
         form.addButton(new ElementButton("§aСоздать лот: старт 100 монет, 30 минут"));
         form.addButton(new ElementButton("§aСоздать лот: старт 500 монет, 60 минут"));
@@ -6534,6 +6614,166 @@ public final class LocalFastCore extends PluginBase implements Listener {
     }
 
     private void openPlayerGuildMenu(Player player) {
+        String guildId = currentGuildId(player);
+        String invitePath = "invites." + player.getUniqueId().toString();
+        boolean hasInvite = !guildData.getString(invitePath + ".guild", "").isEmpty()
+                && guildData.getLong(invitePath + ".expires", 0L) >= System.currentTimeMillis();
+        FormWindowSimple form = new FormWindowSimple("§dГильдии", guildId.isEmpty()
+                ? "§7Ты пока без гильдии. Создание стоит §e" + getConfig().getLong("guilds.creation-cost", 1000L) + " " + currencyName() + "."
+                : "§7Текущая гильдия: §e" + guildData.getString("guilds." + guildId + ".name", guildId)
+                  + "\n§7Твоя роль: §b" + guildRole(guildId, player.getUniqueId().toString()));
+        form.addButton(new ElementButton("§eСписок гильдий сервера"));
+        if (guildId.isEmpty()) {
+            form.addButton(new ElementButton("§aСоздать гильдию"));
+            form.addButton(new ElementButton(hasInvite ? "§bПринять приглашение" : "§7Нет приглашений"));
+            if (hasInvite) form.addButton(new ElementButton("§cОтклонить приглашение"));
+        } else {
+            form.addButton(new ElementButton("§aСостав и управление участниками"));
+            if (guildCanManage(guildId, player)) form.addButton(new ElementButton("§bПригласить игрока"));
+            form.addButton(new ElementButton("§cПокинуть гильдию"));
+            if (guildRole(guildId, player.getUniqueId().toString()).equals("leader")) {
+                form.addButton(new ElementButton("§4Распустить гильдию"));
+            }
+        }
+        form.addButton(new ElementButton("§7Главное меню"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id == 0) openPlayerGuildListMenu(player);
+            else if (guildId.isEmpty()) {
+                if (id == 1) {
+                    String suffix = player.getName().replaceAll("[^A-Za-z0-9_]", "");
+                    if (suffix.length() > 12) suffix = suffix.substring(0, 12);
+                    handleGuildCommand(player, new String[]{"create", "Guild-" + suffix});
+                    openPlayerGuildMenu(player);
+                } else if (id == 2 && hasInvite) {
+                    handleGuildCommand(player, new String[]{"accept"});
+                    openPlayerGuildMenu(player);
+                } else if (id == 3 && hasInvite) {
+                    handleGuildCommand(player, new String[]{"decline"});
+                    openPlayerGuildMenu(player);
+                } else openPlayerMainMenu(player);
+            } else {
+                boolean leader = guildRole(guildId, player.getUniqueId().toString()).equals("leader");
+                int cursor = 1;
+                if (id == cursor++) openPlayerGuildMembersMenu(player);
+                else {
+                    if (guildCanManage(guildId, player)) {
+                        if (id == cursor++) { openPlayerGuildInviteMenu(player); return; }
+                    }
+                    if (id == cursor++) {
+                        handleGuildCommand(player, new String[]{"leave"});
+                        openPlayerGuildMenu(player);
+                    } else if (leader && id == cursor++) {
+                        handleGuildCommand(player, new String[]{"disband"});
+                        openPlayerGuildMenu(player);
+                    } else openPlayerMainMenu(player);
+                }
+            }
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openPlayerGuildListMenu(Player player) {
+        FormWindowSimple form = new FormWindowSimple("§dГильдии сервера", "§7Выбери гильдию, чтобы посмотреть её состав.");
+        List<String> ids = new ArrayList<>();
+        for (String id : guildData.getSection("guilds").getAll().keySet()) {
+            ids.add(id);
+            String name = guildData.getString("guilds." + id + ".name", id);
+            int count = guildData.getSection("guilds." + id + ".members").getAll().size();
+            form.addButton(new ElementButton("§e" + name + "\n§7Участников: §f" + count));
+            if (ids.size() >= 18) break;
+        }
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id >= 0 && id < ids.size()) openPlayerGuildPublicInfoMenu(player, ids.get(id));
+            else openPlayerGuildMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openPlayerGuildPublicInfoMenu(Player player, String guildId) {
+        if (!guildExists(guildId)) { openPlayerGuildListMenu(player); return; }
+        String name = guildData.getString("guilds." + guildId + ".name", guildId);
+        Map<String, Object> members = guildData.getSection("guilds." + guildId + ".members").getAll();
+        StringBuilder description = new StringBuilder("§7Гильдия: §e").append(name)
+                .append("\n§7Участников: §f").append(members.size()).append("\n§7Состав:");
+        int shown = 0;
+        for (String member : members.keySet()) {
+            description.append("\n§f").append(guildData.getString(guildMemberPath(guildId, member) + ".name", member))
+                    .append(" §8— §b").append(guildData.getString(guildMemberPath(guildId, member) + ".role", "member"));
+            if (++shown >= 8) break;
+        }
+        FormWindowSimple form = new FormWindowSimple("§d" + name, description.toString());
+        form.addButton(new ElementButton("§7Назад к списку"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (!form.wasClosed() && player.isOnline()) openPlayerGuildListMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openPlayerGuildMembersMenu(Player player) {
+        String guildId = currentGuildId(player);
+        if (guildId.isEmpty() || !guildExists(guildId)) { openPlayerGuildMenu(player); return; }
+        Map<String, Object> members = guildData.getSection("guilds." + guildId + ".members").getAll();
+        FormWindowSimple form = new FormWindowSimple("§dСостав гильдии",
+                "§7Выбери участника. Управление ролями и исключение доступны главе.");
+        List<String> memberIds = new ArrayList<>();
+        for (String uuid : members.keySet()) {
+            memberIds.add(uuid);
+            String memberName = guildData.getString(guildMemberPath(guildId, uuid) + ".name", uuid);
+            String role = guildData.getString(guildMemberPath(guildId, uuid) + ".role", "member");
+            Player online = getServer().getPlayer(memberName);
+            form.addButton(new ElementButton("§f" + memberName + "\n§b" + role + (online != null && online.isOnline() ? " §a● онлайн" : " §8● офлайн")));
+            if (memberIds.size() >= 18) break;
+        }
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (id >= 0 && id < memberIds.size()) openPlayerGuildMemberActions(player, memberIds.get(id));
+            else openPlayerGuildMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openPlayerGuildMemberActions(Player player, String memberUuid) {
+        String guildId = currentGuildId(player);
+        if (guildId.isEmpty() || !guildExists(guildId)) { openPlayerGuildMenu(player); return; }
+        String memberPath = guildMemberPath(guildId, memberUuid);
+        String name = guildData.getString(memberPath + ".name", memberUuid);
+        String role = guildData.getString(memberPath + ".role", "member");
+        Player target = getServer().getPlayer(name);
+        boolean leader = guildRole(guildId, player.getUniqueId().toString()).equals("leader");
+        boolean self = memberUuid.equals(player.getUniqueId().toString());
+        FormWindowSimple form = new FormWindowSimple("§dУчастник: " + name,
+                "§7Роль: §b" + role + "\n§7Статус: " + (target != null && target.isOnline() ? "§aонлайн" : "§8офлайн"));
+        if (leader && !self) {
+            form.addButton(new ElementButton("§aНазначить офицером"));
+            form.addButton(new ElementButton("§eСделать участником"));
+            form.addButton(new ElementButton("§cИсключить из гильдии"));
+            form.addButton(new ElementButton("§6Передать лидерство"));
+        }
+        form.addButton(new ElementButton("§7Назад к составу"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int id = form.getResponse().getClickedButtonId();
+            if (leader && !self && id >= 0 && id <= 3) {
+                if (target == null || !target.isOnline()) {
+                    player.sendMessage("§cДля этого действия участник должен быть онлайн.");
+                } else if (id == 0) handleGuildCommand(player, new String[]{"role", name, "officer"});
+                else if (id == 1) handleGuildCommand(player, new String[]{"role", name, "member"});
+                else if (id == 2) handleGuildCommand(player, new String[]{"kick", name});
+                else if (id == 3) handleGuildCommand(player, new String[]{"transfer", name});
+                openPlayerGuildMembersMenu(player);
+            } else openPlayerGuildMembersMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+
         String guildId = currentGuildId(player);
         FormWindowSimple form = new FormWindowSimple("§dГильдии", guildId.isEmpty()
                 ? "§7Ты пока без гильдии. Создание стоит §e" + getConfig().getLong("guilds.creation-cost", 1000L) + " " + currencyName() + "."

@@ -6535,12 +6535,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 + "\n§7Минимальная ставка: §e" + minimum
                 + (active ? "\n§7До конца: §a" + Math.max(0L, ends - System.currentTimeMillis()) / 60000L + " мин."
                           : "\n§cТорги завершены."));
+        long step = Math.max(10L, current / 10L);
+        long higher = safeAdd(minimum, step);
+        long premium = safeAdd(minimum, 500L);
         if (active) {
             form.addButton(new ElementButton("§aСтавка: " + minimum));
-            long step = Math.max(10L, current / 10L);
-            long higher = safeAdd(minimum, step);
             form.addButton(new ElementButton("§eСтавка: " + higher));
-            long premium = safeAdd(minimum, 500L);
             form.addButton(new ElementButton("§6Ставка: " + premium));
         } else {
             form.addButton(new ElementButton("§aПолучить предмет / забрать непроданный лот"));

@@ -195,3 +195,12 @@ CI проверяет компиляцию и упаковку. Защиту б�
 - Wave titles and live kill progress for the active dungeon run.
 - Rare monster loot: 3% diamond, 9% emerald, and 18% two gold ingots.
 - The final treasure chest now contains a bow, 16 arrows, 2 diamonds and 8 gold ingots; inventory fallback grants the same loot if the chest cannot be created.
+
+
+## LocalFastCore 0.29.0 — точный учёт волн катакомб
+- Убийства засчитываются только по типу моба, назначенному текущей волне: зомби, скелеты, пауки, затем Разоритель.
+- Другие существа в пределах локации больше не продвигают волну и не выдают редкую добычу катакомб.
+- На арене мирового босса победа засчитывается только за Разорителя, которого использует бой арены.
+- Исправление защищает прогресс от случайных мобов и посторонних боссов в общем мире.
+
+CI проверяет компиляцию и упаковку. Игровую механику необходимо проверить на тестовом сервере Nukkit.

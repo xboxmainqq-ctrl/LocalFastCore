@@ -71,9 +71,10 @@ commands:
     description: Открыть RPG-достижения
     usage: "/achievements"
     aliases: [achieve]
-  lfmenu:
-    description: Открыть RPG-меню характеристик
-    usage: "/lfmenu"
+  menu:
+    description: Главное меню игрока LocalFastCore
+    usage: "/menu"
+    aliases: [lfmenu]
   class:
     description: Выбрать или посмотреть класс персонажа
     usage: "/class [info]"

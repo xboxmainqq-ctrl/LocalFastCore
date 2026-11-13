@@ -76,6 +76,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private final Map<UUID, ComboState> combatCombos = new HashMap<>();
     private final Map<UUID, Long> tankGuardUntil = new HashMap<>();
     private final Map<UUID, Long> dungeonTrapCooldowns = new HashMap<>();
+    private final Map<UUID, java.util.Set<UUID>> dungeonParties = new HashMap<>();
+    private final Map<UUID, UUID> dungeonPartyLeader = new HashMap<>();
+    private final Map<UUID, UUID> dungeonPartyInvites = new HashMap<>();
     private final java.util.Set<UUID> vanishedPlayers = new java.util.HashSet<>();
     private final java.util.Set<UUID> flyingPlayers = new java.util.HashSet<>();
     private TaskHandler castleBuildTask;
@@ -1175,7 +1178,96 @@ public final class LocalFastCore extends PluginBase implements Listener {
         } else player.sendMessage("§cНе удалось вернуться в прежний мир.");
     }
 
+    private java.util.Set<UUID> dungeonPartyMembers(UUID playerId) {
+        UUID leader = dungeonPartyLeader.getOrDefault(playerId, playerId);
+        java.util.Set<UUID> members = dungeonParties.get(leader);
+        if (members == null) {
+            members = new java.util.HashSet<>();
+            members.add(leader);
+        }
+        return new java.util.HashSet<>(members);
+    }
+
+    private Player onlinePlayer(UUID id) {
+        for (Player online : getServer().getOnlinePlayers().values()) {
+            if (online.getUniqueId().equals(id)) return online;
+        }
+        return null;
+    }
+
+    private void handleDungeonParty(Player player, String[] args) {
+        UUID id = player.getUniqueId();
+        String action = args.length == 0 ? "info" : args[0].toLowerCase(Locale.ROOT);
+        UUID leader = dungeonPartyLeader.getOrDefault(id, id);
+        if (action.equals("create")) {
+            if (dungeonPartyLeader.containsKey(id)) {
+                player.sendMessage("§cТы уже состоишь в группе подземелья.");
+                return;
+            }
+            java.util.Set<UUID> members = new java.util.HashSet<>();
+            members.add(id);
+            dungeonParties.put(id, members);
+            dungeonPartyLeader.put(id, id);
+            player.sendMessage("§aГруппа создана. Приглашай игроков: §e/dungeon party invite <ник>§a.");
+        } else if (action.equals("invite")) {
+            if (args.length < 2) { player.sendMessage("§e/dungeon party invite <ник>"); return; }
+            if (!id.equals(leader)) { player.sendMessage("§cПриглашать может только лидер группы."); return; }
+            java.util.Set<UUID> members = dungeonParties.computeIfAbsent(id, key -> {
+                java.util.Set<UUID> set = new java.util.HashSet<>(); set.add(id); dungeonPartyLeader.put(id,id); return set;
+            });
+            if (members.size() >= 4) { player.sendMessage("§cВ группе уже максимум 4 игрока."); return; }
+            Player target = getServer().getPlayer(args[1]);
+            if (target == null || !target.isOnline()) { player.sendMessage("§cИгрок должен быть онлайн."); return; }
+            if (members.contains(target.getUniqueId())) { player.sendMessage("§eИгрок уже в группе."); return; }
+            dungeonPartyInvites.put(target.getUniqueId(), id);
+            target.sendMessage("§6" + player.getName() + " §eприглашает тебя в группу подземелья. §a/dungeon party accept");
+            player.sendMessage("§aПриглашение отправлено игроку §e" + target.getName() + "§a.");
+        } else if (action.equals("accept")) {
+            UUID inviter = dungeonPartyInvites.remove(id);
+            if (inviter == null || !dungeonParties.containsKey(inviter)) {
+                player.sendMessage("§cУ тебя нет действующего приглашения.");
+                return;
+            }
+            java.util.Set<UUID> members = dungeonParties.get(inviter);
+            if (members.size() >= 4) { player.sendMessage("§cГруппа уже заполнена."); return; }
+            if (dungeonPartyLeader.containsKey(id)) { player.sendMessage("§cСначала выйди из своей группы."); return; }
+            members.add(id);
+            dungeonPartyLeader.put(id, inviter);
+            Player owner = onlinePlayer(inviter);
+            player.sendMessage("§aТы вступил в группу подземелья.");
+            if (owner != null) owner.sendMessage("§e" + player.getName() + " §aвступил в группу.");
+        } else if (action.equals("leave")) {
+            java.util.Set<UUID> members = dungeonParties.get(leader);
+            if (members == null) { player.sendMessage("§cТы не состоишь в группе."); return; }
+            if (id.equals(leader)) {
+                for (UUID member : members) dungeonPartyLeader.remove(member);
+                dungeonParties.remove(leader);
+                player.sendMessage("§eГруппа расформирована.");
+            } else {
+                members.remove(id);
+                dungeonPartyLeader.remove(id);
+                player.sendMessage("§eТы покинул группу подземелья.");
+                Player owner = onlinePlayer(leader);
+                if (owner != null) owner.sendMessage("§e" + player.getName() + " покинул группу.");
+            }
+        } else {
+            java.util.Set<UUID> members = dungeonPartyMembers(id);
+            player.sendMessage("§6§lГРУППА ПОДЗЕМЕЛЬЯ §7(" + members.size() + "/4)");
+            for (UUID member : members) {
+                Player online = onlinePlayer(member);
+                player.sendMessage((member.equals(leader) ? "§6★ " : "§7• ")
+                        + (online == null ? member.toString().substring(0, 8) : online.getName())
+                        + (member.equals(id) ? " §a(ты)" : ""));
+            }
+            player.sendMessage("§7Команды: create, invite <ник>, accept, leave");
+        }
+    }
+
     private void handleDungeon(Player p,String[] args) {
+        if (args.length > 0 && args[0].equalsIgnoreCase("party")) {
+            handleDungeonParty(p, Arrays.copyOfRange(args, 1, args.length));
+            return;
+        }
         initialize(p); String k=playerKey(p);
         if(!players.getString(k+".dungeon.date","").equals(today())) {
             players.set(k+".dungeon.date",today()); players.set(k+".dungeon.kills",0);
@@ -1214,6 +1306,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 players.set(k + ".dungeon.return-y", p.getY());
                 players.set(k + ".dungeon.return-z", p.getZ());
             }
+            UUID partyLeader = dungeonPartyLeader.getOrDefault(p.getUniqueId(), p.getUniqueId());
+            if (!partyLeader.equals(p.getUniqueId())) {
+                p.sendMessage("§cНачать подземелье может только лидер группы.");
+                return;
+            }
+            java.util.Set<UUID> partyMembers = dungeonPartyMembers(p.getUniqueId());
             if (!players.getBoolean(k + ".dungeon.active", false) && !players.getBoolean(k + ".dungeon.complete", false)) {
                 closeDungeonGates(dungeon);
                 players.set(k + ".dungeon.active", true);
@@ -1225,6 +1323,24 @@ public final class LocalFastCore extends PluginBase implements Listener {
             }
             markPlayersDirty();
 
+            for (UUID memberId : partyMembers) {
+                Player member = onlinePlayer(memberId);
+                if (member == null) continue;
+                initialize(member);
+                String memberKey = playerKey(member);
+                if (member != p && !member.getLevel().getFolderName().equalsIgnoreCase(dungeonWorldName)) {
+                    players.set(memberKey + ".dungeon.return-world", member.getLevel().getFolderName());
+                    players.set(memberKey + ".dungeon.return-x", member.getX());
+                    players.set(memberKey + ".dungeon.return-y", member.getY());
+                    players.set(memberKey + ".dungeon.return-z", member.getZ());
+                }
+                for (String field : new String[]{"active","wave","kills","spawned-wave","complete","claimed","chest-ready","loot-fallback-given"}) {
+                    Object value = players.get(k + ".dungeon." + field);
+                    if (value != null) players.set(memberKey + ".dungeon." + field, value);
+                }
+                if (member != p) member.teleport(new Position(0.5, 6, -25.5, dungeon));
+                member.sendMessage("§6§lКОМАНДНОЕ ПОДЗЕМЕЛЬЕ §7— лидер: §e" + p.getName());
+            }
             if (!p.teleport(new Position(0.5, 6, -25.5, dungeon))) {
                 players.set(k + ".dungeon.active", false);
                 markPlayersDirty();
@@ -1232,6 +1348,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 return;
             }
             p.sendMessage("§6§lЗАТЕРЯННЫЕ КАТАКОМБЫ");
+            p.sendMessage("§7Команда: " + partyMembers.size() + "/4 игроков. Волны и босс общие.");
             p.sendMessage("§7Три волны: зомби, скелеты, пауки. Затем финальный босс.");
             p.sendMessage("§e/dungeon leave §7— вернуться обратно.");
             int currentWave=Math.max(1,players.getInt(k+".dungeon.wave",1));
@@ -1252,7 +1369,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             returnFromDungeon(p);
             return;
         }
-        p.sendMessage("§e/dungeon [info|start|leave|claim]");
+        p.sendMessage("§e/dungeon [info|start|leave|claim|party]");
     }
 
     private boolean isDungeonWaveTarget(String mobName, int wave) {
@@ -1868,8 +1985,18 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if(wave<=3) {
                 int kills=Math.min(3,Math.max(0,players.getInt(playerPath+".dungeon.kills",0))+1);
                 players.set(playerPath+".dungeon.kills",kills);
+                UUID partyLeader = dungeonPartyLeader.getOrDefault(killer.getUniqueId(), killer.getUniqueId());
+                java.util.Set<UUID> partyMembers = dungeonPartyMembers(killer.getUniqueId());
+                for (UUID memberId : partyMembers) {
+                    Player member = onlinePlayer(memberId);
+                    if (member == null) continue;
+                    String memberPath = playerKey(member) + ".dungeon";
+                    players.set(memberPath + ".kills", kills);
+                    players.set(memberPath + ".wave", wave);
+                    players.set(memberPath + ".active", true);
+                    if (kills >= 3) rewardDungeonWave(member, wave);
+                }
                 if (kills >= 3) {
-                    rewardDungeonWave(killer, wave);
                     if (wave == 1) {
                         openDungeonGate(killer.getLevel(), -11);
                         killer.sendMessage("§aПервая волна пройдена! Проход во второй зал открыт.");
@@ -1880,6 +2007,16 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     wave++;
                     players.set(playerPath + ".dungeon.wave", wave);
                     players.set(playerPath + ".dungeon.kills", 0);
+                    for (UUID memberId : partyMembers) {
+                        Player member = onlinePlayer(memberId);
+                        if (member != null) {
+                            String memberPath = playerKey(member) + ".dungeon";
+                            players.set(memberPath + ".wave", wave);
+                            players.set(memberPath + ".kills", 0);
+                            players.set(memberPath + ".spawned-wave", wave);
+                            member.sendTitle("§6§lВОЛНА " + wave + "/3", "§7Команда открыла следующий зал", 5, 35, 10);
+                        }
+                    }
                     spawnDungeonWave(killer, killer.getLevel(), wave);
                 } else {
                     killer.sendMessage("§6[Катакомбы] §eВолна " + wave + "/3: " + kills + "/3");
@@ -1889,6 +2026,18 @@ public final class LocalFastCore extends PluginBase implements Listener {
             } else if (wave == 4 && mobName.contains("ravager")) {
                 players.set(playerPath + ".dungeon.complete", true);
                 players.set(playerPath + ".dungeon.active", false);
+                UUID partyLeader = dungeonPartyLeader.getOrDefault(killer.getUniqueId(), killer.getUniqueId());
+                for (UUID memberId : dungeonPartyMembers(killer.getUniqueId())) {
+                    Player member = onlinePlayer(memberId);
+                    if (member == null) continue;
+                    String memberPath = playerKey(member) + ".dungeon";
+                    players.set(memberPath + ".complete", true);
+                    players.set(memberPath + ".active", false);
+                    players.set(memberPath + ".wave", 5);
+                    players.set(memberPath + ".chest-ready", true);
+                    member.sendTitle("§6§lПОБЕДА!", "§eКоманда победила Хранителя катакомб", 10, 60, 15);
+                    member.sendMessage("§6Командное подземелье пройдено! §eТвоя награда доступна через /dungeon claim.");
+                }
                 players.set(playerPath + ".dungeon.wave", 5);
                 openDungeonGate(killer.getLevel(), 32);
                 boolean chestReady = prepareDungeonRewardChest(killer.getLevel());

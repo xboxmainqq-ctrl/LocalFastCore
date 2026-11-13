@@ -1,9 +1,9 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.30.0"
+version: "0.31.0"
 api: ["1.0.0"]
 author: LocalFast
-description: LocalFastCore 0.30.0 RPG, dungeon traps, sealed treasure vault, protected waves, bosses, trading, economy and staff systems
+description: LocalFastCore 0.31.0 cooperative dungeons, shared waves and bosses, teammate revival, RPG, economy and staff systems
 commands:
   spawn:
     description: Телепорт на отдельный спавн
@@ -103,7 +103,7 @@ commands:
     usage: "/guild <create|invite|accept|info|list|leave|kick|role|transfer|disband>"
   dungeon:
     description: Прохождение подземелья и получение награды
-    usage: "/dungeon [menu|info|start|leave|claim]"
+    usage: "/dungeon [menu|info|start|leave|claim|party]"
   boss:
     description: Охота на мирового босса
     usage: "/boss [menu|info|start|leave|claim]"

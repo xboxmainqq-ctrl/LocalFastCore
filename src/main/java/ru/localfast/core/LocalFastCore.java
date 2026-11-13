@@ -230,7 +230,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.67.0 включён. Обычный аукцион с фиксированными ценами, RPG и система персонала загружены.");
+        getLogger().info("LocalFastCore 0.68.0 включён. Аукцион с избранным и страницами, RPG и система персонала загружены.");
     }
 
     private void migrateLegacyListingsToFixedAuction() {

@@ -75,6 +75,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private final Map<UUID, Integer> nextAbilityDamage = new HashMap<>();
     private final Map<UUID, ComboState> combatCombos = new HashMap<>();
     private final Map<UUID, Long> tankGuardUntil = new HashMap<>();
+    private final Map<UUID, Long> dungeonBossAbilityCooldowns = new HashMap<>();
     private final Map<UUID, Long> dungeonTrapCooldowns = new HashMap<>();
     private final Map<UUID, java.util.Set<UUID>> dungeonParties = new HashMap<>();
     private final Map<UUID, UUID> dungeonPartyLeader = new HashMap<>();
@@ -211,7 +212,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.33.0 включён. RPG, гильдии, рынок, катакомбы с тремя уровнями сложности и рекордами, система персонала загружены.");
+        getLogger().info("LocalFastCore 0.34.0 включён. RPG, гильдии, рынок, катакомбы с особыми способностями босса на высокой сложности и рекордами, система персонала загружены.");
     }
 
     private void markPlayersDirty() {
@@ -602,6 +603,27 @@ public final class LocalFastCore extends PluginBase implements Listener {
                         EntityDamageEvent.DamageModifier.BASE);
             } else if (guardUntil != 0L && guardUntil <= now) {
                 tankGuardUntil.remove(defenderId);
+            }
+        }
+
+        // On hard difficulty the Catacombs Keeper periodically uses a crushing strike.
+        if (event.getEntity() instanceof Player && event.getDamager() instanceof EntityCreature) {
+            Player target = (Player) event.getEntity();
+            EntityCreature boss = (EntityCreature) event.getDamager();
+            String targetPath = playerKey(target);
+            if (isDungeonWorld(target.getLevel())
+                    && players.getBoolean(targetPath + ".dungeon.active", false)
+                    && players.getInt(targetPath + ".dungeon.wave", 1) >= 4
+                    && "hard".equals(normalizeDungeonDifficulty(players.getString(targetPath + ".dungeon.difficulty", "normal")))
+                    && boss.getNameTag() != null && boss.getNameTag().contains("ХРАНИТЕЛЬ КАТАКОМБ")) {
+                long lastAbility = dungeonBossAbilityCooldowns.getOrDefault(target.getUniqueId(), 0L);
+                if (now - lastAbility >= 12000L) {
+                    dungeonBossAbilityCooldowns.put(target.getUniqueId(), now);
+                    float baseDamage = event.getDamage(EntityDamageEvent.DamageModifier.BASE);
+                    event.setDamage(baseDamage + 8.0f, EntityDamageEvent.DamageModifier.BASE);
+                    target.sendTitle("§4§lСОКРУШИТЕЛЬНЫЙ УДАР", "§cХранитель пробивает защиту!", 0, 25, 5);
+                    target.sendMessage("§cХранитель катакомб использовал особую способность: §4Сокрушительный удар§c! Дополнительный урон: 8.");
+                }
             }
         }
 

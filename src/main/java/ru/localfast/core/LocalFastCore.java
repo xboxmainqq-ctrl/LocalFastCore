@@ -78,6 +78,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private final Map<UUID, Long> dungeonBossAbilityCooldowns = new HashMap<>();
     private final Map<String, Long> dungeonBossSummonCooldowns = new HashMap<>();
     private final Map<String, Long> dungeonBossAreaCooldowns = new HashMap<>();
+    private final java.util.Set<Long> dungeonBossSecondPhase = new java.util.HashSet<>();
     private final Map<UUID, Long> dungeonTrapCooldowns = new HashMap<>();
     private final Map<UUID, java.util.Set<UUID>> dungeonParties = new HashMap<>();
     private final Map<UUID, UUID> dungeonPartyLeader = new HashMap<>();
@@ -618,6 +619,21 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     && players.getInt(targetPath + ".dungeon.wave", 1) >= 4
                     && "hard".equals(normalizeDungeonDifficulty(players.getString(targetPath + ".dungeon.difficulty", "normal")))
                     && boss.getNameTag() != null && boss.getNameTag().contains("ХРАНИТЕЛЬ КАТАКОМБ")) {
+                boolean secondPhase = boss.getMaxHealth() > 0
+                        && boss.getHealth() <= boss.getMaxHealth() * 0.5f;
+                if (secondPhase && dungeonBossSecondPhase.add(boss.getId())) {
+                    for (Player member : getServer().getOnlinePlayers().values()) {
+                        if (member.getLevel() == target.getLevel()
+                                && players.getBoolean(playerKey(member) + ".dungeon.active", false)
+                                && players.getInt(playerKey(member) + ".dungeon.wave", 1) >= 4
+                                && "hard".equals(normalizeDungeonDifficulty(
+                                        players.getString(playerKey(member) + ".dungeon.difficulty", "normal")))) {
+                            member.sendTitle("§4§lЯРОСТЬ ХРАНИТЕЛЯ!", "§cВторая фаза — босс усилился!", 5, 45, 10);
+                            member.sendMessage("§4Хранитель катакомб впал в ярость! Его атаки стали сильнее.");
+                        }
+                    }
+                }
+
                 long lastAbility = dungeonBossAbilityCooldowns.getOrDefault(target.getUniqueId(), 0L);
                 if (now - lastAbility >= 12000L) {
                     dungeonBossAbilityCooldowns.put(target.getUniqueId(), now);
@@ -626,14 +642,19 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     target.sendTitle("§4§lСОКРУШИТЕЛЬНЫЙ УДАР", "§cХранитель пробивает защиту!", 0, 25, 5);
                     target.sendMessage("§cХранитель катакомб использовал особую способность: §4Сокрушительный удар§c! Дополнительный урон: 8.");
                 }
+                if (secondPhase) {
+                    float phaseDamage = event.getDamage(EntityDamageEvent.DamageModifier.BASE);
+                    event.setDamage(phaseDamage + 4.0f, EntityDamageEvent.DamageModifier.BASE);
+                }
 
-                // Hard-mode boss summons two guards at most once every 25 seconds.
+                // In phase two the Keeper summons three guards more frequently.
                 String dungeonKey = target.getLevel().getFolderName();
                 long lastSummon = dungeonBossSummonCooldowns.getOrDefault(dungeonKey, 0L);
-                if (now - lastSummon >= 25000L) {
+                long summonCooldown = secondPhase ? 18000L : 25000L;
+                if (now - lastSummon >= summonCooldown) {
                     dungeonBossSummonCooldowns.put(dungeonKey, now);
                     int summoned = 0;
-                    for (int i = 0; i < 2; i++) {
+                    for (int i = 0; i < (secondPhase ? 3 : 2); i++) {
                         try {
                             double offset = i == 0 ? -3.0 : 3.0;
                             Entity guard = Entity.createEntity("Zombie",
@@ -664,7 +685,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 // Telegraph a hard-mode area strike, then damage only active dungeon players
                 // who remain close to the boss's marked position after the 2-second warning.
                 long lastAreaStrike = dungeonBossAreaCooldowns.getOrDefault(dungeonKey, 0L);
-                if (now - lastAreaStrike >= 20000L) {
+                long areaCooldown = secondPhase ? 12000L : 20000L;
+                if (now - lastAreaStrike >= areaCooldown) {
                     dungeonBossAreaCooldowns.put(dungeonKey, now);
                     final Level strikeLevel = target.getLevel();
                     final double strikeX = boss.getX();
@@ -673,8 +695,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     for (Player member : getServer().getOnlinePlayers().values()) {
                         if (member.getLevel() == strikeLevel
                                 && players.getBoolean(playerKey(member) + ".dungeon.active", false)) {
-                            member.sendTitle("§4§lУДАРНАЯ ВОЛНА!", "§cОтойди от Хранителя за 2 секунды!", 0, 40, 5);
-                            member.sendMessage("§cХранитель готовит ударную волну! Срочно отойди!");
+                            member.sendTitle(secondPhase ? "§4§lЯРОСТНАЯ ВОЛНА!" : "§4§lУДАРНАЯ ВОЛНА!",
+                                    secondPhase ? "§cУклоняйся! У тебя 1 секунда!" : "§cОтойди от Хранителя за 2 секунды!", 0, 40, 5);
+                            member.sendMessage(secondPhase
+                                    ? "§4Хранитель готовит усиленную волну! Срочно уклоняйся!"
+                                    : "§cХранитель готовит ударную волну! Срочно отойди!");
                         }
                     }
                     getServer().getScheduler().scheduleDelayedTask(this, () -> {
@@ -690,16 +715,18 @@ public final class LocalFastCore extends PluginBase implements Listener {
                             double dx = member.getX() - strikeX;
                             double dy = member.getY() - strikeY;
                             double dz = member.getZ() - strikeZ;
-                            if (dx * dx + dy * dy + dz * dz > 30.25) continue;
-                            member.setHealth(Math.max(1.0f, member.getHealth() - 10.0f));
-                            member.sendTitle("§4§lПОПАДАНИЕ!", "§cУдарная волна: -10 HP", 0, 25, 5);
-                            member.sendMessage("§cУдарная волна Хранителя нанесла 10 урона. В следующий раз уклонись!");
+                            double radius = secondPhase ? 7.0 : 5.5;
+                            if (dx * dx + dy * dy + dz * dz > radius * radius) continue;
+                            int strikeDamage = secondPhase ? 12 : 10;
+                            member.setHealth(Math.max(1.0f, member.getHealth() - strikeDamage));
+                            member.sendTitle("§4§lПОПАДАНИЕ!", "§cУдарная волна: -" + strikeDamage + " HP", 0, 25, 5);
+                            member.sendMessage("§cУдарная волна Хранителя нанесла " + strikeDamage + " урона. В следующий раз уклонись!");
                             hitCount++;
                         }
                         if (hitCount > 0) {
                             getLogger().info("Dungeon Keeper area strike hit " + hitCount + " player(s).");
                         }
-                    }, 40);
+                    }, secondPhase ? 20 : 40);
                 }
             }
         }

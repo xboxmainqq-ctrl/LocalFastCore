@@ -1,8 +1,9 @@
-# LocalFastCore 0.45.0
+# LocalFastCore 0.46.0
 
 RPG progression plugin for Nukkit-MOT 1.26.60-R1 (Java 17).
 
 ## Features
+- Companion pets: `/pets` opens a menu with a following Wolf (+1 creature damage), Iron Golem (-8% incoming creature damage) and Snow Spirit (+10% mob-kill XP). The Wolf is available immediately; the Golem unlocks after 3 dungeon clears and the Snow Spirit after 5. Selection is saved, the companion respawns on login and follows its owner. `/pet` is an alias.
 - Legendary relic crafting: `/forge legendary-weapon` creates the Keeper Blade and `/forge legendary-armor` creates the Keeper Chestplate after the matching forge upgrade reaches level 5. Each recipe costs 1 Keeper Heart, 12 Catacombs Shards and 4 Catacombs Crystals.
 - Keeper Hearts drop as a guaranteed reward for Hard-difficulty dungeon clears. The legendary blade effect only activates while the blade is held; the armor block effect only activates while the Keeper Chestplate is equipped.
 - `/forge collection` displays which Keeper relics the player owns. Existing forge levels and player progress are preserved.

@@ -1,9 +1,9 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.33.0"
+version: "0.34.0"
 api: ["1.0.0"]
 author: LocalFast
-description: LocalFastCore 0.33.0 dungeon difficulty modes, records and leaderboard, cooperative waves and bosses, RPG, economy and staff systems
+description: LocalFastCore 0.34.0 dungeon difficulty modes, hard-mode boss abilities, records and leaderboard, cooperative waves and bosses, RPG, economy and staff systems
 commands:
   spawn:
     description: Телепорт на отдельный спавн

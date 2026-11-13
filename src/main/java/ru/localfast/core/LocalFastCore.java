@@ -78,6 +78,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private final Map<UUID, Long> legendaryWeaponCooldowns = new HashMap<>();
     private final Map<UUID, Long> legendaryArmorCooldowns = new HashMap<>();
     private final Map<UUID, Long> petAbilityCooldowns = new HashMap<>();
+    private final Map<UUID, Long> petWolfDamageUntil = new HashMap<>();
     private final Map<UUID, Long> petGuardUntil = new HashMap<>();
     private final Map<UUID, Long> petSnowXpUntil = new HashMap<>();
     private final Map<UUID, Long> dungeonBossAbilityCooldowns = new HashMap<>();
@@ -898,6 +899,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
             }
         }
 
+        if (petWolfDamageUntil.getOrDefault(attackerId, 0L) > now) {
+            bonusDamage += 8;
+            petWolfDamageUntil.remove(attackerId);
+            attacker.sendMessage("§aВолк усилил твой удар на 8 урона!");
+        }
         bonusDamage += temporaryAbilityDamage.getOrDefault(attackerId, 0);
         bonusDamage += nextAbilityDamage.getOrDefault(attackerId, 0);
         nextAbilityDamage.remove(attackerId);
@@ -1126,10 +1132,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
         petAbilityCooldowns.put(id, now + 60000L);
         switch (pet) {
             case "wolf":
-                nextAbilityDamage.put(id, 8);
+                petWolfDamageUntil.put(id, now + 10000L);
                 player.sendTitle("§a§lВОЛЧИЙ РЫВОК", "§fСледующий удар: §c+8 урона", 5, 35, 5);
                 player.sendMessage("§aВолк усилил следующий удар на 8 урона. Эффект действует 10 секунд.");
-                getServer().getScheduler().scheduleDelayedTask(this, () -> nextAbilityDamage.remove(id), 200);
+                getServer().getScheduler().scheduleDelayedTask(this, () -> petWolfDamageUntil.remove(id), 200);
                 break;
             case "golem":
                 petGuardUntil.put(id, now + 8000L);

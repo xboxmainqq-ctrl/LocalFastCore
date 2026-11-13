@@ -865,6 +865,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
         int forgeWeaponLevel = Math.max(0, Math.min(5,
                 players.getInt(playerKey(attacker) + ".forge.weapon-level", 0)));
         bonusDamage += forgeWeaponLevel;
+        if (event.getEntity() instanceof EntityCreature) {
+            bonusDamage += guildPveDamageBonus(attacker);
+        }
         if (selectedPet(attacker).equals("wolf")) bonusDamage += petWolfBonusDamage(attacker);
         long weaponReadyAt = legendaryWeaponCooldowns.getOrDefault(attackerId, 0L);
         Item heldWeapon = attacker.getInventory().getItemInHand();
@@ -3350,6 +3353,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         int level = Math.max(1, Math.min(MAX_LEVEL, get(player, "level", 1)));
         int intelligenceBonus = intelligenceXpBonusPercent(player);
         if (getRpgClass(player).equals("mage")) intelligenceBonus += 15;
+        intelligenceBonus += guildXpBonusPercent(player);
         long boostedAmount = (long) amount + ((long) amount * intelligenceBonus / 100L);
         long totalXp = (long) Math.max(0, get(player, "xp", 0)) + boostedAmount;
         int points = Math.max(0, get(player, "points", 0));
@@ -4110,6 +4114,45 @@ public final class LocalFastCore extends PluginBase implements Listener {
         return Math.min(10, 1 + (int) (donated / 5000L));
     }
 
+    private int guildXpBonusPercentForGuild(String guildId) {
+        if (!guildExists(guildId)) return 0;
+        int level = guildLevel(guildId);
+        return level >= 10 ? 15 : level >= 8 ? 10 : level >= 6 ? 7 : level >= 4 ? 5 : level >= 2 ? 3 : 0;
+    }
+
+    private int guildXpBonusPercent(Player player) {
+        String guildId = currentGuildId(player);
+        if (guildId.isEmpty() || !guildExists(guildId)) return 0;
+        int level = guildLevel(guildId);
+        if (level >= 10) return 15;
+        if (level >= 8) return 10;
+        if (level >= 6) return 7;
+        if (level >= 4) return 5;
+        if (level >= 2) return 3;
+        return 0;
+    }
+
+    private int guildPveDamageBonus(Player player) {
+        String guildId = currentGuildId(player);
+        if (guildId.isEmpty() || !guildExists(guildId)) return 0;
+        int level = guildLevel(guildId);
+        return level >= 10 ? 2 : level >= 5 ? 1 : 0;
+    }
+
+    private String guildPerksDescription(String guildId) {
+        int level = guildLevel(guildId);
+        int xp = level >= 10 ? 15 : level >= 8 ? 10 : level >= 6 ? 7 : level >= 4 ? 5 : level >= 2 ? 3 : 0;
+        int damage = level >= 10 ? 2 : level >= 5 ? 1 : 0;
+        String next = level >= 10 ? "§6Максимум достигнут" :
+                level < 2 ? "§7Ур. 2: §a+3% XP" :
+                level < 4 ? "§7Ур. 4: §a+5% XP" :
+                level < 5 ? "§7Ур. 5: §c+1 урон по мобам" :
+                level < 6 ? "§7Ур. 6: §a+7% XP" :
+                level < 8 ? "§7Ур. 8: §a+10% XP" :
+                level < 10 ? "§7Ур. 10: §a+15% XP §8и §c+2 урона" : "§6Максимум достигнут";
+        return "§7Бонус гильдии: §a+" + xp + "% XP §8| §c+" + damage + " урона мобам\n" + next;
+    }
+
     private void openGuildBankMenu(Player player) {
         String guildId = currentGuildId(player);
         if (guildId.isEmpty() || !guildExists(guildId)) { openPlayerGuildMenu(player); return; }
@@ -4119,6 +4162,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 + "\n§7Баланс: §6" + guildBank(guildId) + " " + currencyName()
                 + "\n§7Уровень: §e" + guildLevel(guildId) + "§7/§e10"
                 + "\n§7Вложено участниками: §a" + guildData.getLong(base + ".donated", 0L)
+                + "\n" + guildPerksDescription(guildId)
                 + "\n§8Каждые 5 000 монет взносов повышают уровень.");
         form.addButton(new ElementButton("§aВнести 100"));
         form.addButton(new ElementButton("§aВнести 500"));
@@ -6686,7 +6730,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
         FormWindowSimple form = new FormWindowSimple("§dГильдии", guildId.isEmpty()
                 ? "§7Ты пока без гильдии. Создание стоит §e" + getConfig().getLong("guilds.creation-cost", 1000L) + " " + currencyName() + "."
                 : "§7Текущая гильдия: §e" + guildData.getString("guilds." + guildId + ".name", guildId)
-                  + "\n§7Твоя роль: §b" + guildRole(guildId, player.getUniqueId().toString()));
+                  + "\n§7Твоя роль: §b" + guildRole(guildId, player.getUniqueId().toString())
+                  + "\n" + guildPerksDescription(guildId));
         form.addButton(new ElementButton("§eСписок гильдий сервера"));
         if (guildId.isEmpty()) {
             form.addButton(new ElementButton("§aСоздать гильдию"));
@@ -6951,7 +6996,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
         for (String id : guildData.getSection("guilds").getAll().keySet()) {
             ids.add(id);
             form.addButton(new ElementButton("§e" + guildData.getString("guilds." + id + ".name", id)
-                    + "\n§7Казна: §6" + guildBank(id) + " §8| §7Ур. " + guildLevel(id)));
+                    + "\n§7Казна: §6" + guildBank(id) + " §8| §7Ур. " + guildLevel(id)
+                    + " §8| §a+" + guildXpBonusPercentForGuild(id) + "% XP"));
             if (ids.size() >= 20) break;
         }
         form.addButton(new ElementButton("§7Назад"));

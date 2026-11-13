@@ -1,8 +1,10 @@
-# LocalFastCore 0.42.0
+# LocalFastCore 0.43.0
 
 RPG progression plugin for Nukkit-MOT 1.26.60-R1 (Java 17).
 
 ## Features
+- Dungeon forge: `/forge` shows materials and permanent upgrade levels; `/forge weapon` adds up to +5 damage, `/forge armor` reduces creature damage by up to 15%. Upgrades persist in player data.
+- Keeper reward now includes named Catacombs Shards and Catacombs Crystals; Hard difficulty grants more materials. Upgrade costs rise with each level.
 - Operator command `/lfadmin dungeon reset <player>` resets the selected online player's daily dungeon entry and reward claim, allowing another run the same day; active runs must be left first. Lifetime clears and best-time records are preserved.
 - Dungeon rebuilt as an organic cavern instead of a rectangular box: variable-width chambers, uneven cave walls, stone ribs, support pillars, stalactites and glowstone sconces.
 - Treasure vault reshaped into a rounded reliquary chamber with gold-trimmed pillars and a central gold path; existing chest and boss gate coordinates are preserved.

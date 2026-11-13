@@ -6586,7 +6586,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§bКоллекция экипировки"));
         form.addButton(new ElementButton("§aКвесты и достижения"));
         form.addButton(new ElementButton("§6Экономика: рынок и переводы"));
-        form.addButton(new ElementButton("§dГильдии"));\n        form.addButton(new ElementButton("§dКоллекция титулов"));
+        form.addButton(new ElementButton("§dГильдии"));
+        form.addButton(new ElementButton("§dКоллекция титулов"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
             int id = form.getResponse().getClickedButtonId();
@@ -6599,7 +6600,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
             else if (id == 6) showGearCollection(player);
             else if (id == 7) openPlayerQuestMenu(player);
             else if (id == 8) openPlayerEconomyMenu(player);
-            else if (id == 9) openPlayerGuildMenu(player);\n            else if (id == 10) openPlayerTitleCollection(player);
+            else if (id == 9) openPlayerGuildMenu(player);
+            else if (id == 10) openPlayerTitleCollection(player);
         }));
         player.showFormWindow(form);
     }

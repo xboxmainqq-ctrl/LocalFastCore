@@ -6607,7 +6607,22 @@ public final class LocalFastCore extends PluginBase implements Listener {
     }
 
     private void openPlayerAuctionListings(Player player, boolean ownOnly) {
-        openPlayerAuctionListings(player, ownOnly, "all", "", "new");
+        openPlayerAuctionListings(player, ownOnly, "all", "", "new", 0, false);
+    }
+
+    private String auctionFavoritePath(Player player, String lotId) {
+        return playerKey(player) + ".auction_favorites." + lotId;
+    }
+
+    private boolean isAuctionFavorite(Player player, String lotId) {
+        return players.getBoolean(auctionFavoritePath(player, lotId), false);
+    }
+
+    private void toggleAuctionFavorite(Player player, String lotId) {
+        String path = auctionFavoritePath(player, lotId);
+        players.set(path, !players.getBoolean(path, false));
+        markPlayersDirty();
+        flushPlayers();
     }
 
     private String auctionCategory(int itemId, String itemName) {
@@ -6671,14 +6686,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void openPlayerAuctionListings(Player player, boolean ownOnly, String category,
                                            String search, String sort) {
-        FormWindowSimple form = new FormWindowSimple(ownOnly ? "§6Мои лоты" : "§6§lАУКЦИОН",
-                "§7Фиксированные цены • мгновенная покупка\n§7Баланс: §e" + getBalance(player) + " " + currencyName()
-                + "\n§7Категория: §b" + auctionCategoryLabel(category)
-                + "\n§7Поиск: §f" + (search.isEmpty() ? "не задан" : search)
-                + "\n§7Сортировка: §f" + auctionSortLabel(sort));
-        form.addButton(new ElementButton("§bКатегория: " + auctionCategoryLabel(category) + " §7(сменить)"));
-        form.addButton(new ElementButton("§eСортировка: " + auctionSortLabel(sort)));
-        form.addButton(new ElementButton("§dПоиск по названию / продавцу"));
+        openPlayerAuctionListings(player, ownOnly, category, search, sort, 0, false);
+    }
+
+    private void openPlayerAuctionListings(Player player, boolean ownOnly, String category,
+                                           String search, String sort, int page, boolean favoritesOnly) {
         List<String> ids = new ArrayList<>();
         String uuid = player.getUniqueId().toString();
         for (String id : marketData.getSection("listings").getAll().keySet()) {
@@ -6686,6 +6698,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!marketData.exists(path + ".seller")) continue;
             boolean own = marketData.getString(path + ".seller", "").equals(uuid);
             if (ownOnly && !own) continue;
+            if (favoritesOnly && !isAuctionFavorite(player, id)) continue;
             String itemName = marketData.getString(path + ".item-name", "Предмет");
             if (!"all".equals(category) && !category.equals(auctionCategory(
                     marketData.getInt(path + ".item-id", 0), itemName))) continue;
@@ -6707,36 +6720,61 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     marketData.getLong(listingPath(a) + ".created-at", 0L)));
         }
         int total = ids.size();
-        int shown = Math.min(20, total);
+        int pages = Math.max(1, (total + 19) / 20);
+        int currentPage = Math.max(0, Math.min(page, pages - 1));
+        int start = currentPage * 20;
+        int shown = Math.min(20, Math.max(0, total - start));
+
+        FormWindowSimple form = new FormWindowSimple(
+                favoritesOnly ? "§d§lИЗБРАННОЕ" : (ownOnly ? "§6Мои лоты" : "§6§lАУКЦИОН"),
+                "§7Фиксированные цены • мгновенная покупка\n§7Баланс: §e" + getBalance(player) + " " + currencyName()
+                + "\n§7Категория: §b" + auctionCategoryLabel(category)
+                + "\n§7Поиск: §f" + (search.isEmpty() ? "не задан" : search)
+                + "\n§7Сортировка: §f" + auctionSortLabel(sort)
+                + "\n§7Страница: §e" + (currentPage + 1) + "§7/§e" + pages
+                + "\n§7Избранное: " + (favoritesOnly ? "§aтолько избранное" : "§fвсе лоты"));
+        form.addButton(new ElementButton("§bКатегория: " + auctionCategoryLabel(category) + " §7(сменить)"));
+        form.addButton(new ElementButton("§eСортировка: " + auctionSortLabel(sort)));
+        form.addButton(new ElementButton("§dПоиск по названию / продавцу"));
+        form.addButton(new ElementButton(favoritesOnly ? "§aПоказать все лоты" : "§d§lИзбранное"));
         for (int i = 0; i < shown; i++) {
-            String id = ids.get(i), path = listingPath(id);
+            String id = ids.get(start + i), path = listingPath(id);
             boolean own = marketData.getString(path + ".seller", "").equals(uuid);
             String prefix = own ? "§e[ТВОЁ] " : "§a";
+            String favorite = isAuctionFavorite(player, id) ? " §d★" : "";
             form.addButton(new ElementButton(prefix + "§f" + marketData.getString(path + ".item-name", "Предмет")
-                    + " x" + marketData.getInt(path + ".count", 1) + "\n§7Цена: §6"
+                    + " x" + marketData.getInt(path + ".count", 1) + favorite + "\n§7Цена: §6"
                     + marketData.getLong(path + ".price", 0L) + " " + currencyName()
                     + " §8| §7Продавец: " + marketData.getString(path + ".seller-name", "?")));
         }
         if (total == 0) form.setContent(form.getContent() + "\n§cПо этому фильтру лотов нет.");
-        else if (total > shown) form.setContent(form.getContent() + "\n§7Показаны первые " + shown + " из " + total + " лотов. Уточни поиск или категорию.");
-        if (!ownOnly) form.addButton(new ElementButton("§a§lВыставить предмет из руки"));
+        int navBase = 4 + shown;
+        if (pages > 1) {
+            form.addButton(new ElementButton(currentPage > 0 ? "§e← Предыдущая страница" : "§8← Начало списка"));
+            form.addButton(new ElementButton(currentPage + 1 < pages ? "§eСледующая страница →" : "§8Конец списка →"));
+        }
+        int base = navBase + (pages > 1 ? 2 : 0);
+        if (!ownOnly && !favoritesOnly) form.addButton(new ElementButton("§a§lВыставить предмет из руки"));
         form.addButton(new ElementButton(ownOnly ? "§eК аукциону" : "§eМои лоты"));
         form.addButton(new ElementButton("§7Сбросить фильтры"));
         form.addButton(new ElementButton("§8Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
             int selected = form.getResponse().getClickedButtonId();
-            if (selected == 0) openPlayerAuctionListings(player, ownOnly, nextAuctionCategory(category), search, sort);
-            else if (selected == 1) openPlayerAuctionListings(player, ownOnly, category, search, nextAuctionSort(sort));
+            if (selected == 0) openPlayerAuctionListings(player, ownOnly, nextAuctionCategory(category), search, sort, currentPage, favoritesOnly);
+            else if (selected == 1) openPlayerAuctionListings(player, ownOnly, category, search, nextAuctionSort(sort), currentPage, favoritesOnly);
             else if (selected == 2) openAuctionSearchForm(player, ownOnly, category, search, sort);
-            else if (selected >= 3 && selected < 3 + shown) openPlayerAuctionLotMenu(player, ids.get(selected - 3));
+            else if (selected == 3) openPlayerAuctionListings(player, ownOnly, category, search, sort, 0, !favoritesOnly);
+            else if (selected >= 4 && selected < 4 + shown) openPlayerAuctionLotMenu(player, ids.get(start + selected - 4));
+            else if (pages > 1 && selected == navBase) openPlayerAuctionListings(player, ownOnly, category, search, sort, Math.max(0, currentPage - 1), favoritesOnly);
+            else if (pages > 1 && selected == navBase + 1) openPlayerAuctionListings(player, ownOnly, category, search, sort, Math.min(pages - 1, currentPage + 1), favoritesOnly);
             else {
-                int base = 3 + shown;
-                if (!ownOnly && selected == base) openAuctionCreateForm(player);
-                else if (selected == base + (ownOnly ? 0 : 1)) {
+                int action = selected - base;
+                if (!ownOnly && !favoritesOnly && action == 0) openAuctionCreateForm(player);
+                else if (action == (!ownOnly && !favoritesOnly ? 1 : 0)) {
                     if (ownOnly) openPlayerAuctionMenu(player);
                     else openPlayerMyAuctionMenu(player);
-                } else if (selected == base + (ownOnly ? 1 : 2)) openPlayerAuctionListings(player, ownOnly);
+                } else if (action == (!ownOnly && !favoritesOnly ? 2 : 1)) openPlayerAuctionListings(player, ownOnly);
                 else openPlayerEconomyMenu(player);
             }
         }));
@@ -6792,11 +6830,17 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 + "\n§7Цена: §6" + price + " " + currencyName()
                 + (own ? "\n§eЭто твой лот." : "\n§7После покупки предмет сразу попадёт в инвентарь."));
         form.addButton(new ElementButton(own ? "§cСнять лот и вернуть предмет" : "§a§lКупить за " + price));
+        form.addButton(new ElementButton(isAuctionFavorite(player, lotId)
+                ? "§d★ Убрать из избранного" : "§d☆ В избранное"));
         form.addButton(new ElementButton("§7Назад к аукциону"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
-            if (form.getResponse().getClickedButtonId() == 0) {
-                handleAuction(player, new String[]{own ? "cancel" : "buy", lotId});
+            int selected = form.getResponse().getClickedButtonId();
+            if (selected == 0) handleAuction(player, new String[]{own ? "cancel" : "buy", lotId});
+            else if (selected == 1) {
+                toggleAuctionFavorite(player, lotId);
+                openPlayerAuctionLotMenu(player, lotId);
+                return;
             }
             openPlayerAuctionMenu(player);
         }));

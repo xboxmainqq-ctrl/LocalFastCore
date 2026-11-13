@@ -604,10 +604,6 @@ public final class LocalFastCore extends PluginBase implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onPlayerAttack(EntityDamageByEntityEvent event) {
         long now = System.currentTimeMillis();
-        if (event.getDamager() instanceof Player && event.getEntity() instanceof Player) {
-            Player killer = (Player) event.getDamager(); Player victim = (Player) event.getEntity();
-            if (event.getFinalDamage() >= victim.getHealth()) recordGuildWarKill(killer, victim);
-        }
         if (activePets.containsValue(event.getEntity())) { event.setCancelled(true); return; }
 
         // Tank's finisher briefly creates a defensive stance against the next incoming hits.
@@ -940,6 +936,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (bonusDamage > 0) {
             event.setDamage(event.getDamage(EntityDamageEvent.DamageModifier.BASE) + bonusDamage,
                     EntityDamageEvent.DamageModifier.BASE);
+        }
+        if (event.getDamager() instanceof Player && event.getEntity() instanceof Player) {
+            Player killer = (Player) event.getDamager();
+            Player victim = (Player) event.getEntity();
+            if (event.getFinalDamage() >= victim.getHealth()) recordGuildWarKill(killer, victim);
         }
     }
 

@@ -1021,7 +1021,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private boolean hasRiftSetEquipped(Player player) {
         return hasNamedWeaponInHand(player, 276, "§5Клинок Разлома")
-                && hasRiftArmorEquipped(player);
+                && hasRiftArmorEquipped(player)
+                && hasRiftAmulet(player);
     }
 
     private void showGearCollection(Player player) {

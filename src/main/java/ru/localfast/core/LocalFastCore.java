@@ -6561,24 +6561,6 @@ public final class LocalFastCore extends PluginBase implements Listener {
     }
 
 
-        FormWindowSimple form = new FormWindowSimple("§eАукцион", "§7Выставь предмет из руки на торги. Ставки и завершённые лоты пока доступны через команды /auction.");
-        form.addButton(new ElementButton("§aСоздать лот: старт 100 монет, 30 минут"));
-        form.addButton(new ElementButton("§aСоздать лот: старт 500 монет, 60 минут"));
-        form.addButton(new ElementButton("§aСоздать лот: старт 1000 монет, 24 часа"));
-        form.addButton(new ElementButton("§eПоказать активные лоты"));
-        form.addButton(new ElementButton("§7Назад"));
-        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
-            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
-            int id = form.getResponse().getClickedButtonId();
-            if (id == 0) handleAuction(player, new String[]{"create","100","30"});
-            else if (id == 1) handleAuction(player, new String[]{"create","500","60"});
-            else if (id == 2) handleAuction(player, new String[]{"create","1000","1440"});
-            else if (id == 3) handleAuction(player, new String[]{"list"});
-            openPlayerEconomyMenu(player);
-        }));
-        player.showFormWindow(form);
-    }
-
     private void openPlayerTradeTargetsMenu(Player player) {
         FormWindowSimple form = new FormWindowSimple("§bПеревод монет", "§7Выбери получателя. Сумму можно выбрать на следующем экране.");
         List<Player> targets = new ArrayList<>();
@@ -6773,70 +6755,6 @@ public final class LocalFastCore extends PluginBase implements Listener {
         player.showFormWindow(form);
     }
 
-
-        String guildId = currentGuildId(player);
-        FormWindowSimple form = new FormWindowSimple("§dГильдии", guildId.isEmpty()
-                ? "§7Ты пока без гильдии. Создание стоит §e" + getConfig().getLong("guilds.creation-cost", 1000L) + " " + currencyName() + "."
-                : "§7Текущая гильдия: §e" + guildData.getString("guilds." + guildId + ".name", guildId));
-        form.addButton(new ElementButton("§eСписок гильдий"));
-        form.addButton(new ElementButton("§aИнформация о моей гильдии"));
-        if (guildId.isEmpty()) {
-            form.addButton(new ElementButton("§aСоздать гильдию"));
-            form.addButton(new ElementButton("§bПринять приглашение"));
-        } else {
-            form.addButton(new ElementButton("§bПригласить игрока"));
-            form.addButton(new ElementButton("§cПокинуть гильдию"));
-        }
-        form.addButton(new ElementButton("§7Главное меню"));
-        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
-            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
-            int id = form.getResponse().getClickedButtonId();
-            if (id == 0) handleGuildCommand(player, new String[]{"list"});
-            else if (id == 1) handleGuildCommand(player, new String[]{"info"});
-            else if (guildId.isEmpty() && id == 2) {
-                String suffix = player.getName().replaceAll("[^A-Za-z0-9_]", "");
-                if (suffix.length() > 12) suffix = suffix.substring(0, 12);
-                handleGuildCommand(player, new String[]{"create", "Г-" + suffix});
-                openPlayerGuildMenu(player);
-            } else if (guildId.isEmpty() && id == 3) {
-                handleGuildCommand(player, new String[]{"accept"});
-                openPlayerGuildMenu(player);
-            } else if (!guildId.isEmpty() && id == 2) openPlayerGuildInviteMenu(player);
-            else if (!guildId.isEmpty() && id == 3) {
-                handleGuildCommand(player, new String[]{"leave"});
-                openPlayerGuildMenu(player);
-            } else openPlayerMainMenu(player);
-        }));
-        player.showFormWindow(form);
-    }
-
-    private void openPlayerGuildInviteMenu(Player player) {
-        String guildId = currentGuildId(player);
-        if (guildId.isEmpty() || !guildCanManage(guildId, player)) {
-            player.sendMessage("§cПриглашать могут глава и офицеры гильдии.");
-            return;
-        }
-        FormWindowSimple form = new FormWindowSimple("§dПригласить в гильдию", "§7Выбери игрока онлайн.");
-        List<Player> targets = new ArrayList<>();
-        for (Player target : getServer().getOnlinePlayers().values()) {
-            if (target.isOnline() && !target.getUniqueId().equals(player.getUniqueId())
-                    && currentGuildId(target).isEmpty()) {
-                targets.add(target);
-                form.addButton(new ElementButton("§f" + target.getName()));
-                if (targets.size() >= 20) break;
-            }
-        }
-        form.addButton(new ElementButton("§7Назад"));
-        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
-            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
-            int id = form.getResponse().getClickedButtonId();
-            if (id >= 0 && id < targets.size() && targets.get(id).isOnline()) {
-                handleGuildCommand(player, new String[]{"invite", targets.get(id).getName()});
-            }
-            openPlayerGuildMenu(player);
-        }));
-        player.showFormWindow(form);
-    }
 
     private void openPlayerRiftMenu(Player player) {
         FormWindowSimple form = new FormWindowSimple("§5§lРАЗЛОМ БЕЗДНЫ",

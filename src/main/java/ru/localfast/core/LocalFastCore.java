@@ -1518,8 +1518,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
         if(action.equals("claim")) {
             if(!players.getBoolean(k+".dungeon.complete",false)||players.getBoolean(k+".dungeon.claimed",false)) { p.sendMessage("§cСначала заверши подземелье."); return; }
-            int xp=Math.max(0,getConfig().getInt("dungeons.xp-reward",600));
-            long money=Math.max(0L,getConfig().getLong("dungeons.money-reward",250L));
+            double rewardMultiplier = dungeonRewardMultiplier(players.getString(k + ".dungeon.difficulty", "normal"));
+            int xp=Math.max(0,(int)Math.round(getConfig().getInt("dungeons.xp-reward",600) * rewardMultiplier));
+            long money=Math.max(0L,Math.round(getConfig().getLong("dungeons.money-reward",250L) * rewardMultiplier));
             players.set(k+".dungeon.complete",false); players.set(k+".dungeon.active",false); players.set(k+".dungeon.claimed",true);
             giveXp(p,xp); setBalance(p,safeAdd(getBalance(p),money)); markPlayersDirty();
             p.sendMessage("§6Награда подземелья: §a+"+xp+" XP §7и §e+"+money+" "+currencyName()+"§6! §fЛук и 16 стрел лежат в сундуке катакомб.");

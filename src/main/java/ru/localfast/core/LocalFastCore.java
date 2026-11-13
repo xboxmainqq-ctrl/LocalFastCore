@@ -629,6 +629,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 event.setDamage(Math.max(0.0f, petBaseDamage * (100 - Math.min(25, petReduction)) / 100.0f),
                         EntityDamageEvent.DamageModifier.BASE);
             }
+            if (hasRiftArmorEquipped(defender)) {
+                float riftArmorDamage = event.getDamage(EntityDamageEvent.DamageModifier.BASE);
+                event.setDamage(Math.max(0.0f, riftArmorDamage * 0.90f),
+                        EntityDamageEvent.DamageModifier.BASE);
+            }
             long guardUntil = petGuardUntil.getOrDefault(defender.getUniqueId(), 0L);
             if (guardUntil > now) {
                 float guardedDamage = event.getDamage(EntityDamageEvent.DamageModifier.BASE);
@@ -860,6 +865,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
         Item heldWeapon = attacker.getInventory().getItemInHand();
         boolean hasLegendaryWeaponEquipped = heldWeapon != null && heldWeapon.getId() == 276
                 && "§6Клинок Хранителя".equals(heldWeapon.getCustomName());
+        if (heldWeapon != null && heldWeapon.getId() == 276
+                && "§5Клинок Разлома".equals(heldWeapon.getCustomName())) {
+            bonusDamage += 6;
+        }
         if (forgeWeaponLevel >= 5 && hasLegendaryWeaponEquipped && now >= weaponReadyAt
                 && ThreadLocalRandom.current().nextInt(100) < 15) {
             legendaryWeaponCooldowns.put(attackerId, now + 10000L);
@@ -972,6 +981,25 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     && "§bДоспех Хранителя".equals(item.getCustomName())) return true;
         }
         return false;
+    }
+
+    private boolean hasRiftArmorEquipped(Player player) {
+        for (Item item : player.getInventory().getArmorContents()) {
+            if (item != null && item.getId() == 311
+                    && "§5Броня Бездны".equals(item.getCustomName())) return true;
+        }
+        return false;
+    }
+
+    private boolean hasRiftAmulet(Player player) {
+        return hasNamedItem(player, "§dСердце Разлома");
+    }
+
+    private Item createRiftRelic(int itemId, String name, String... lore) {
+        Item item = Item.get(itemId, 0, 1);
+        item.setCustomName(name);
+        item.setLore(lore);
+        return item;
     }
 
     private String selectedDungeonDifficulty(String playerKey) {
@@ -1624,15 +1652,96 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
     }
 
+    private void handleRiftForge(Player player, String[] args) {
+        initialize(player);
+        String profile = playerKey(player) + ".rift.gear";
+        String action = args.length == 0 ? "info" : args[0].toLowerCase(Locale.ROOT);
+        String[] names = {"§5Клинок Разлома", "§5Броня Бездны", "§dСердце Разлома"};
+        String[] keys = {"weapon", "armor", "amulet"};
+        int[] ids = {276, 311, 399};
+        int[] costs = {8, 8, 5};
+        String shardName = "§5Осколок Бездны";
+
+        if (action.equals("info") || action.equals("help")) {
+            player.sendMessage("§5§lКУЗНИЦА РАЗЛОМА");
+            player.sendMessage("§7Твои осколки Бездны: §d" + countForgeMaterial(player, shardName));
+            player.sendMessage("§e/rift forge weapon §7— Клинок Разлома (8 осколков, +6 урона)");
+            player.sendMessage("§e/rift forge armor §7— Броня Бездны (8 осколков, -10% урона существ)");
+            player.sendMessage("§e/rift forge amulet §7— Сердце Разлома (5 осколков, +15% XP)");
+            player.sendMessage("§e/rift collection §7— коллекция реликвий");
+            return;
+        }
+        if (action.equals("collection")) {
+            player.sendMessage("§5§lКОЛЛЕКЦИЯ РАЗЛОМА");
+            for (int i = 0; i < names.length; i++) {
+                boolean owned = players.getBoolean(profile + "." + keys[i] + "-crafted", false)
+                        || hasNamedItem(player, names[i]);
+                player.sendMessage((owned ? "§a✓ " : "§7○ ") + names[i]);
+            }
+            player.sendMessage("§8Клинок действует в руке, броня — в слоте нагрудника, амулет — пока находится в инвентаре.");
+            return;
+        }
+        int index = -1;
+        for (int i = 0; i < keys.length; i++) if (keys[i].equals(action)) index = i;
+        if (index < 0) {
+            player.sendMessage("§e/rift forge [info|weapon|armor|amulet|collection]");
+            return;
+        }
+        String flag = profile + "." + keys[index] + "-crafted";
+        Item relic = createRiftRelic(ids[index], names[index],
+                "§7Реликвия Разлома Бездны",
+                index == 0 ? "§c+6 постоянного урона при удержании" :
+                index == 1 ? "§a-10% урона от существ при ношении" :
+                "§b+15% опыта за победу над существами");
+        if (players.getBoolean(flag, false) || hasNamedItem(player, names[index])) {
+            player.sendMessage("§eЭта реликвия уже есть в твоей коллекции.");
+            return;
+        }
+        if (!player.getInventory().canAddItem(relic)) {
+            player.sendMessage("§cОсвободи место в инвентаре.");
+            return;
+        }
+        if (countForgeMaterial(player, shardName) < costs[index]) {
+            player.sendMessage("§cНужно " + costs[index] + " осколков Бездны. Сейчас: "
+                    + countForgeMaterial(player, shardName) + ".");
+            return;
+        }
+        if (!consumeForgeMaterial(player, shardName, costs[index])) {
+            player.sendMessage("§cНе удалось списать осколки. Повтори попытку.");
+            return;
+        }
+        players.set(flag, true);
+        markPlayersDirty();
+        if (!flushPlayers()) {
+            players.set(flag, false);
+            player.getInventory().addItem(createForgeMaterial(399, shardName, costs[index]));
+            markPlayersDirty();
+            player.sendMessage("§cНе удалось сохранить реликвию. Осколки возвращены.");
+            return;
+        }
+        player.getInventory().addItem(relic);
+        player.sendTitle("§5§lРЕЛИКВИЯ СОЗДАНА", names[index], 5, 45, 10);
+        player.sendMessage("§aСоздано: " + names[index] + "§a. Реликвия добавлена в коллекцию.");
+    }
+
     private void handleRiftCommand(Player player, String[] args) {
         initialize(player);
         String key = playerKey(player) + ".rift";
         String action = args.length == 0 ? "info" : args[0].toLowerCase(Locale.ROOT);
+        if (action.equals("forge")) {
+            handleRiftForge(player, Arrays.copyOfRange(args, 1, args.length));
+            return;
+        }
+        if (action.equals("collection")) {
+            handleRiftForge(player, new String[]{"collection"});
+            return;
+        }
         if (action.equals("info") || action.equals("help")) {
             player.sendMessage("§5§lРАЗЛОМ БЕЗДНЫ");
             player.sendMessage("§7Три волны искажённых стражей, затем Аватар Бездны.");
             player.sendMessage("§e/dungeon rift start §7— начать; §e/dungeon rift leave §7— выйти.");
             player.sendMessage("§e/dungeon rift claim §7— забрать награду после победы.");
+            player.sendMessage("§e/rift forge §7— создать оружие, броню и амулет из осколков.");
             long readyAt = players.getLong(key + ".next-at", 0L);
             if (readyAt > System.currentTimeMillis()) player.sendMessage("§7Следующий вход: §e" + Math.max(1, (readyAt - System.currentTimeMillis() + 59999) / 60000) + " мин.");
             else player.sendMessage("§aВход доступен.");
@@ -1703,13 +1812,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
             players.set(key + ".next-at", System.currentTimeMillis() + 24L * 60L * 60L * 1000L);
             giveXp(player, 900);
             setBalance(player, safeAdd(getBalance(player), 500L));
-            Item shard = Item.get(399, 0, 1);
+            Item shard = Item.get(399, 0, 3);
             shard.setCustomName("§5Осколок Бездны");
             player.getInventory().addItem(shard);
             markPlayersDirty();
             if (!flushPlayers()) { player.sendMessage("§cНаграда выдана, но сохранение профиля не удалось. Сообщи оператору."); return; }
             player.sendTitle("§5§lНАГРАДА РАЗЛОМА", "§d+900 XP • +500 монет", 5, 45, 10);
-            player.sendMessage("§5Получено: §dОсколок Бездны §7(1), §e900 XP §7и §6500 монет§7. Повторный вход через 24 часа.");
+            player.sendMessage("§5Получено: §dОсколки Бездны §7(3), §e900 XP §7и §6500 монет§7. Повторный вход через 24 часа.");
             return;
         }
         player.sendMessage("§e/dungeon rift info|start|leave|claim");
@@ -3197,6 +3306,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
         if (petSnowXpUntil.getOrDefault(killer.getUniqueId(), 0L) > System.currentTimeMillis()) {
             mobXp += Math.max(1, (int) Math.floor(mobXp * 0.50));
+        }
+        if (hasRiftAmulet(killer)) {
+            mobXp += Math.max(1, (int) Math.floor(mobXp * 0.15));
         }
         giveXp(killer, mobXp);
         set(killer, "achievement_kills", Math.min(Integer.MAX_VALUE, get(killer, "achievement_kills", 0) + 1));
@@ -6879,6 +6991,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
         String name = command.getName().toLowerCase(Locale.ROOT);
 
         if (name.equals("world") || name.equals("worlds")) { handleWorldCommand(sender, args); return true; }
+
+        if (name.equals("rift")) {
+            if (!(sender instanceof Player)) { sender.sendMessage("Разлом доступен только игроку."); return true; }
+            handleRiftCommand((Player) sender, args);
+            return true;
+        }
 
         if (name.equals("dungeon") || name.equals("boss")) {
             if (!(sender instanceof Player)) { sender.sendMessage("Команда доступна только игроку."); return true; }

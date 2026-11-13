@@ -1177,6 +1177,17 @@ public final class LocalFastCore extends PluginBase implements Listener {
         p.sendMessage("§e/dungeon [info|start|leave|claim]");
     }
 
+    private boolean isDungeonWaveTarget(String mobName, int wave) {
+        if (mobName == null) return false;
+        switch (wave) {
+            case 1: return mobName.contains("zombie");
+            case 2: return mobName.contains("skeleton");
+            case 3: return mobName.contains("spider");
+            case 4: return mobName.contains("ravager");
+            default: return false;
+        }
+    }
+
     private boolean isBossMob(String mobName) {
         return mobName.contains("wither") || mobName.contains("enderdragon")
                 || mobName.contains("elderguardian") || mobName.contains("ravager");
@@ -1771,6 +1782,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 && killer.getX() >= -14 && killer.getX() <= 14 && killer.getZ() >= -33 && killer.getZ() <= 33
                 && !players.getBoolean(playerPath+".dungeon.complete",false)) {
             int wave=Math.max(1,players.getInt(playerPath+".dungeon.wave",1));
+            if (!isDungeonWaveTarget(mobName, wave)) {
+                // Only the intended creature type can advance this room or drop dungeon bonus loot.
+                refreshDaily(killer);
+            } else {
             rollDungeonRareLoot(killer);
             if(wave<=3) {
                 int kills=Math.min(3,Math.max(0,players.getInt(playerPath+".dungeon.kills",0))+1);
@@ -1809,8 +1824,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
                         ? "§6§lКАТАКОМБЫ ЗАЧИЩЕНЫ! §eВ сундуке: лук, стрелы, 2 алмаза и 8 золотых слитков. /dungeon"
                         : "§6§lКАТАКОМБЫ ЗАЧИЩЕНЫ! §eСокровища выданы в инвентарь. /dungeon");
             }
+            }
         }
-        if(isBossMob(mobName) && players.getBoolean(playerPath+".boss_hunt.active",false)
+        if(mobName.contains("ravager") && players.getBoolean(playerPath+".boss_hunt.active",false)
                 && killer.getLevel().getFolderName().equalsIgnoreCase(getConfig().getString("dungeons.world", "dungeons"))
                 && killer.getX() >= 99 && killer.getX() <= 141 && killer.getZ() >= -21 && killer.getZ() <= 21
                 && !players.getBoolean(playerPath+".boss_hunt.complete",false)) {

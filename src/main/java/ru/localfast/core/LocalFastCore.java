@@ -6956,7 +6956,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             setBalanceByUuid(uuid, safeAdd(balanceByUuid(uuid), playerRewards[playerRank - 1]));
             players.set(playerDataPath + ".season_title", playerTitles[playerRank - 1]);
             markPlayersDirty();
-            Player online = getServer().getPlayer(UUID.fromString(uuid));
+            Player online = getServer().getPlayer(UUID.fromString(uuid)).orElse(null);
             if (online != null && online.isOnline()) {
                 online.sendMessage("§6§lЛИЧНЫЙ ПОДИУМ СЕЗОНА! §fМесто: §e#" + playerRank
                         + " §8| §fНаграда: §6+" + playerRewards[playerRank - 1]

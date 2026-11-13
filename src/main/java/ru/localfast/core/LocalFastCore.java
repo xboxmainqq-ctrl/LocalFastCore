@@ -6528,6 +6528,50 @@ public final class LocalFastCore extends PluginBase implements Listener {
         operator.showFormWindow(form);
     }
 
+    private void openPlayerTitleCollection(Player player) {
+        initialize(player);
+        String path = playerKey(player);
+        String[] ids = {"champion", "veteran", "hero"};
+        String[] titles = {"§6Чемпион сезона", "§bВетеран сезона", "§aГерой сезона"};
+        String[] descriptions = {"§7Награда за 1 место в личном сезонном рейтинге",
+                "§7Награда за 2 место в личном сезонном рейтинге",
+                "§7Награда за 3 место в личном сезонном рейтинге"};
+        String active = players.getString(path + ".season_title", "");
+        FormWindowSimple form = new FormWindowSimple("§d§lКОЛЛЕКЦИЯ ТИТУЛОВ",
+                "§7Активный титул: " + (active.isEmpty() ? "§7Нет" : active)
+                + "\n§7Выбери любой полученный титул. Новые титулы сохраняются между сезонами.");
+        List<String> available = new ArrayList<>();
+        for (int i = 0; i < ids.length; i++) {
+            if (!players.getBoolean(path + ".season_titles." + ids[i], false)) continue;
+            available.add(ids[i]);
+            form.addButton(new ElementButton(titles[i] + "\n" + descriptions[i]
+                    + (titles[i].equals(active) ? "\n§aАктивен" : "")));
+        }
+        form.addButton(new ElementButton("§7Снять титул"));
+        form.addButton(new ElementButton("§8Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int selected = form.getResponse().getClickedButtonId();
+            if (selected >= 0 && selected < available.size()) {
+                String id = available.get(selected);
+                int index = Arrays.asList(ids).indexOf(id);
+                players.set(path + ".season_title", titles[index]);
+                markPlayersDirty();
+                if (flushPlayers()) player.sendMessage("§aАктивный титул: " + titles[index]);
+                else player.sendMessage("§cНе удалось сохранить выбранный титул.");
+                updateSidebar(player);
+                openPlayerTitleCollection(player);
+            } else if (selected == available.size()) {
+                players.set(path + ".season_title", "");
+                markPlayersDirty();
+                if (flushPlayers()) player.sendMessage("§eТитул снят.");
+                updateSidebar(player);
+                openPlayerTitleCollection(player);
+            } else openPlayerMainMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
     private void openPlayerMainMenu(Player player) {
         initialize(player);
         FormWindowSimple form = new FormWindowSimple("§6§lLOCALFAST §8| §fГлавное меню",
@@ -6542,7 +6586,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§bКоллекция экипировки"));
         form.addButton(new ElementButton("§aКвесты и достижения"));
         form.addButton(new ElementButton("§6Экономика: рынок и переводы"));
-        form.addButton(new ElementButton("§dГильдии"));
+        form.addButton(new ElementButton("§dГильдии"));\n        form.addButton(new ElementButton("§dКоллекция титулов"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
             int id = form.getResponse().getClickedButtonId();
@@ -6555,7 +6599,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             else if (id == 6) showGearCollection(player);
             else if (id == 7) openPlayerQuestMenu(player);
             else if (id == 8) openPlayerEconomyMenu(player);
-            else if (id == 9) openPlayerGuildMenu(player);
+            else if (id == 9) openPlayerGuildMenu(player);\n            else if (id == 10) openPlayerTitleCollection(player);
         }));
         player.showFormWindow(form);
     }
@@ -6954,7 +6998,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
             guildData.set(history + ".reward", playerRewards[playerRank - 1]);
             guildData.set(history + ".title", playerTitles[playerRank - 1]);
             setBalanceByUuid(uuid, safeAdd(balanceByUuid(uuid), playerRewards[playerRank - 1]));
-            players.set(playerDataPath + ".season_title", playerTitles[playerRank - 1]);
+            String titleId = new String[]{"champion", "veteran", "hero"}[playerRank - 1];
+            players.set(playerDataPath + ".season_titles." + titleId, true);
+            if (players.getString(playerDataPath + ".season_title", "").isEmpty()) {
+                players.set(playerDataPath + ".season_title", playerTitles[playerRank - 1]);
+            }
             markPlayersDirty();
             Player online = getServer().getPlayer(UUID.fromString(uuid)).orElse(null);
             if (online != null && online.isOnline()) {

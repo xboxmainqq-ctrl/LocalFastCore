@@ -1,9 +1,9 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.32.0"
+version: "0.33.0"
 api: ["1.0.0"]
 author: LocalFast
-description: LocalFastCore 0.32.0 dungeon records and leaderboard, cooperative waves and bosses, RPG, economy and staff systems
+description: LocalFastCore 0.33.0 dungeon difficulty modes, records and leaderboard, cooperative waves and bosses, RPG, economy and staff systems
 commands:
   spawn:
     description: Телепорт на отдельный спавн
@@ -103,7 +103,7 @@ commands:
     usage: "/guild <create|invite|accept|info|list|leave|kick|role|transfer|disband>"
   dungeon:
     description: Прохождение подземелья и получение награды
-    usage: "/dungeon [menu|info|start|leave|claim|party|stats|top]"
+    usage: "/dungeon [menu|info|start [easy|normal|hard]|difficulty <easy|normal|hard>|leave|claim|party|stats|top]"
   boss:
     description: Охота на мирового босса
     usage: "/boss [menu|info|start|leave|claim]"

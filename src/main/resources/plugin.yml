@@ -1,9 +1,9 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.65.0"
+version: "0.66.0"
 api: ["1.0.0"]
 author: LocalFast
-description: LocalFastCore 0.65.0 manual auction and guild bank inputs, invulnerable pets, title collection and RPG systems
+description: LocalFastCore 0.66.0 unified fixed-price player auction, instant purchases, RPG systems
 commands:
   spawn:
     description: Телепорт на отдельный спавн
@@ -93,12 +93,9 @@ commands:
   trade:
     description: Безопасный перевод монет с подтверждением игрока
     usage: "/trade <игрок> <сумма>|accept|decline"
-  market:
-    description: Рынок предметов игроков
-    usage: "/market <list|sell|buy|cancel>"
   auction:
-    description: Аукцион с торгами и возвратом предметов победителю
-    usage: "/auction <list|create|bid|claim>"
+    description: Обычный аукцион предметов игроков
+    usage: "/auction [list|sell <цена>|buy <id>|cancel <id>]"
   guild:
     description: Создать гильдию, приглашать игроков и управлять составом
     usage: "/guild <create|invite|accept|info|list|leave|kick|role|transfer|disband>"

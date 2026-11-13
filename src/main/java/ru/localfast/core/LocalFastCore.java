@@ -1183,6 +1183,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             getConfig().set("dungeons.location-built", false);
             getConfig().set("dungeons.wave-gates-built", false);
             getConfig().set("dungeons.treasure-room-built", false);
+            getConfig().set("dungeons.traps-built", false);
         }
         if (!getConfig().getBoolean("dungeons.location-built", false) || !floorExists
                 || !getConfig().getBoolean("dungeons.wave-gates-built", false)) {

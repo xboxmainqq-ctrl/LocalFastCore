@@ -1483,17 +1483,61 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
     }
 
+    private String formatDungeonTime(long millis) {
+        long totalSeconds = Math.max(0L, millis) / 1000L;
+        long minutes = totalSeconds / 60L;
+        long seconds = totalSeconds % 60L;
+        long tenths = (Math.max(0L, millis) % 1000L) / 100L;
+        return String.format(Locale.ROOT, "%02d:%02d.%d", minutes, seconds, tenths);
+    }
+
     private void showDungeonStats(Player player) {
         String key = playerKey(player);
         int clears = Math.max(0, players.getInt(key + ".dungeon.total-clears", 0));
         int wave = Math.max(1, players.getInt(key + ".dungeon.wave", 1));
         boolean active = players.getBoolean(key + ".dungeon.active", false);
         String lastClear = players.getString(key + ".dungeon.last-clear-date", "ещё не было");
+        long bestTime = Math.max(0L, players.getLong(key + ".dungeon.best-clear-ms", 0L));
         player.sendMessage("§6§lТВОИ РЕКОРДЫ КАТАКОМБ");
         player.sendMessage("§7Полных прохождений: §e" + clears);
+        player.sendMessage("§7Лучшее время: " + (bestTime > 0L ? "§b" + formatDungeonTime(bestTime) : "§7ещё нет"));
         player.sendMessage("§7Последняя победа: §e" + lastClear);
         player.sendMessage("§7Текущий прогресс: " + (active ? "§aволна " + wave + "/4" : "§7нет активного прохождения"));
+        player.sendMessage("§8Топ по скорости: /dungeon speed");
         player.sendMessage("§8Статистика сохраняется между перезапусками сервера.");
+    }
+
+    private void showDungeonSpeedLeaderboard(CommandSender sender) {
+        Map<String, Object> allProfiles = players.getAll();
+        List<Map.Entry<String, Long>> ranking = new ArrayList<>();
+        for (String key : allProfiles.keySet()) {
+            if (!key.startsWith("uuid_")) continue;
+            long best = Math.max(0L, players.getLong(key + ".dungeon.best-clear-ms", 0L));
+            if (best > 0L) ranking.add(new java.util.AbstractMap.SimpleEntry<>(key, best));
+        }
+        ranking.sort((left, right) -> Long.compare(left.getValue(), right.getValue()));
+        sender.sendMessage("§b§l━━━━━━━━ ТОП СКОРОСТИ КАТАКОМБ ━━━━━━━━");
+        if (ranking.isEmpty()) {
+            sender.sendMessage("§7Пока нет завершённых забегов с записанным временем.");
+            return;
+        }
+        int shown = Math.min(10, ranking.size());
+        for (int i = 0; i < shown; i++) {
+            String key = ranking.get(i).getKey();
+            String playerName = players.getString(key + ".last_name", "Неизвестный");
+            String prefix = i == 0 ? "§6①" : i == 1 ? "§f②" : i == 2 ? "§c③" : "§7" + (i + 1) + ".";
+            sender.sendMessage(prefix + " §f" + playerName + " §8— §b" + formatDungeonTime(ranking.get(i).getValue()));
+        }
+        if (sender instanceof Player) {
+            String ownKey = playerKey((Player) sender);
+            for (int i = 0; i < ranking.size(); i++) {
+                if (ranking.get(i).getKey().equals(ownKey)) {
+                    sender.sendMessage("§7Твоё место по скорости: §b#" + (i + 1) + " §8из §f" + ranking.size());
+                    break;
+                }
+            }
+        }
+        sender.sendMessage("§8Учитывается лучшее время полного прохождения; меньше — лучше.");
     }
 
     private void showDungeonLeaderboard(CommandSender sender) {
@@ -1530,10 +1574,15 @@ public final class LocalFastCore extends PluginBase implements Listener {
         sender.sendMessage("§8Сортировка: количество полных побед над Хранителем.");
     }
 
-    private void recordDungeonClear(Player player) {
+    private void recordDungeonClear(Player player, long elapsedMillis) {
         String key = playerKey(player);
         int clears = Math.max(0, players.getInt(key + ".dungeon.total-clears", 0));
         players.set(key + ".dungeon.total-clears", clears == Integer.MAX_VALUE ? clears : clears + 1);
+        long previousBest = Math.max(0L, players.getLong(key + ".dungeon.best-clear-ms", 0L));
+        if (elapsedMillis > 0L && (previousBest == 0L || elapsedMillis < previousBest)) {
+            players.set(key + ".dungeon.best-clear-ms", elapsedMillis);
+            players.set(key + ".dungeon.last-clear-ms", elapsedMillis);
+        }
         players.set(key + ".dungeon.last-clear-date", today());
         players.set(key + ".last_name", player.getName());
     }
@@ -1555,6 +1604,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if(action.equals("info")||action.equals("help")) { showDungeon(p); return; }
         if(action.equals("stats")) { showDungeonStats(p); return; }
         if(action.equals("top")) { showDungeonLeaderboard(p); return; }
+        if(action.equals("speed") || action.equals("fastest")) { showDungeonSpeedLeaderboard(p); return; }
         if(action.equals("difficulty")) {
             if (players.getBoolean(k + ".dungeon.active", false)) {
                 p.sendMessage("§cНельзя менять сложность во время прохождения.");
@@ -1639,6 +1689,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 players.set(k + ".dungeon.wave", 1);
                 players.set(k + ".dungeon.kills", 0);
                 players.set(k + ".dungeon.spawned-wave", 0);
+                players.set(k + ".dungeon.started-at", System.currentTimeMillis());
                 players.set(k + ".dungeon.chest-ready", false);
                 players.set(k + ".dungeon.loot-fallback-given", false);
                 players.set(k + ".dungeon.keeper-trophy-given", false);
@@ -1656,7 +1707,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     players.set(memberKey + ".dungeon.return-y", member.getY());
                     players.set(memberKey + ".dungeon.return-z", member.getZ());
                 }
-                for (String field : new String[]{"active","wave","kills","spawned-wave","complete","claimed","chest-ready","loot-fallback-given","difficulty","keeper-trophy-given"}) {
+                for (String field : new String[]{"active","wave","kills","spawned-wave","started-at","complete","claimed","chest-ready","loot-fallback-given","difficulty","keeper-trophy-given"}) {
                     Object value = players.get(k + ".dungeon." + field);
                     if (value != null) players.set(memberKey + ".dungeon." + field, value);
                 }
@@ -1700,7 +1751,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             returnFromDungeon(p);
             return;
         }
-        p.sendMessage("§e/dungeon [info|start [easy|normal|hard]|difficulty <easy|normal|hard>|leave|claim|party|stats|top]");
+        p.sendMessage("§e/dungeon [info|start [easy|normal|hard]|difficulty <easy|normal|hard>|leave|claim|party|stats|top|speed]");
     }
 
     private boolean isDungeonWaveTarget(String mobName, int wave) {
@@ -2357,6 +2408,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
             } else if (wave == 4 && mobName.contains("ravager")) {
                 players.set(playerPath + ".dungeon.complete", true);
                 players.set(playerPath + ".dungeon.active", false);
+                long startedAt = Math.max(0L, players.getLong(playerPath + ".dungeon.started-at", 0L));
+                long elapsedMillis = startedAt > 0L ? Math.max(1L, System.currentTimeMillis() - startedAt) : 0L;
                 java.util.Set<UUID> winners = dungeonPartyMembers(killer.getUniqueId());
                 players.set(playerPath + ".dungeon.wave", 5);
                 openDungeonGate(killer.getLevel(), 32);
@@ -2367,7 +2420,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     String memberPath = playerKey(member) + ".dungeon";
                     players.set(memberPath + ".complete", true);
                     players.set(memberPath + ".active", false);
-                    recordDungeonClear(member);
+                    recordDungeonClear(member, elapsedMillis);
                     players.set(memberPath + ".wave", 5);
                     players.set(memberPath + ".chest-ready", chestReady);
                     if (!chestReady) {

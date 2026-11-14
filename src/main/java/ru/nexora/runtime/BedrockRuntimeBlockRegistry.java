@@ -14,6 +14,11 @@ import java.util.Objects;
 public interface BedrockRuntimeBlockRegistry {
     int runtimeId(BlockState state);
 
+    /** Computes hashed block IDs from the NBT representation of each state. */
+    static BedrockRuntimeBlockRegistry hashing() {
+        return BedrockBlockStateHash::hash;
+    }
+
     static BedrockRuntimeBlockRegistry of(Map<BlockState, Integer> entries) {
         Map<BlockState, Integer> copy = Map.copyOf(Objects.requireNonNull(entries, "entries"));
         if (!copy.containsKey(BlockState.AIR)) {

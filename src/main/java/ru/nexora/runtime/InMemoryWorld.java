@@ -70,6 +70,51 @@ public final class InMemoryWorld implements World {
     }
 
     @Override
+    public int biomeAt(BlockPosition position) {
+        validatePosition(position);
+        WorldChunk chunk = chunks.get(position.chunkPosition());
+        return chunk == null ? BiomeSection.DEFAULT_BIOME_ID : chunk.biomeAt(position);
+    }
+
+    @Override
+    public void setBiome(BlockPosition position, int biomeId) {
+        validatePosition(position);
+        if (biomeId < 0) {
+            throw new IllegalArgumentException("Biome ID must be non-negative");
+        }
+        ChunkPosition chunkPosition = position.chunkPosition();
+        if (biomeId == BiomeSection.DEFAULT_BIOME_ID) {
+            chunks.computeIfPresent(chunkPosition, (ignored, chunk) -> {
+                chunk.setBiome(position, biomeId);
+                return chunk.isEmpty() ? null : chunk;
+            });
+            return;
+        }
+        chunks.compute(chunkPosition, (ignored, chunk) -> {
+            WorldChunk target = chunk == null ? new WorldChunk() : chunk;
+            target.setBiome(position, biomeId);
+            return target;
+        });
+    }
+
+    @Override
+    public int[] biomesInSection(ChunkPosition position, int sectionY) {
+        Objects.requireNonNull(position, "position");
+        int minSectionY = Math.floorDiv(height.minY(), 16);
+        int maxSectionY = Math.floorDiv(height.maxYExclusive() - 1, 16);
+        if (sectionY < minSectionY || sectionY > maxSectionY) {
+            throw new IllegalArgumentException("Biome section Y is outside world height");
+        }
+        WorldChunk chunk = chunks.get(position);
+        if (chunk == null) {
+            int[] defaults = new int[BiomeSection.CELL_COUNT];
+            java.util.Arrays.fill(defaults, BiomeSection.DEFAULT_BIOME_ID);
+            return defaults;
+        }
+        return chunk.biomesInSection(sectionY);
+    }
+
+    @Override
     public boolean loadChunk(GeneratedChunk generatedChunk) {
         Objects.requireNonNull(generatedChunk, "generatedChunk");
         for (BlockPosition position : generatedChunk.blocks().keySet()) {

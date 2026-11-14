@@ -69,6 +69,10 @@ final class WorldChunk {
                 : section.snapshotXzy();
     }
 
+    synchronized java.util.List<Integer> biomeSectionYs() {
+        return biomeSections.keySet().stream().sorted().toList();
+    }
+
     synchronized boolean isEmpty() {
         return sections.isEmpty() && biomeSections.isEmpty();
     }

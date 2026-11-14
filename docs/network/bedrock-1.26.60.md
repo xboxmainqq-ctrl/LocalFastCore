@@ -313,10 +313,8 @@ Spawn chunks must be generated/loaded before this handler starts. The handler de
 Example:
 
 ```java
-BedrockRuntimeBlockRegistryFile.Loaded loadedBlockTable =
-    BedrockRuntimeBlockRegistryFile.load(blockRegistryInput, expectedSha256);
 BedrockRuntimeBlockRegistryProfile blockProfile =
-    BedrockRuntimeBlockRegistryProfile.from(loadedBlockTable);
+    BedrockRuntimeBlockRegistryProfile.hashing();
 BedrockWorldStartupHandler worldStartup = new BedrockWorldStartupHandler(
     networkSettings, overworld, 0, -1, List.of(new ChunkPosition(0, 0)),
     blockProfile, startGameSettingsFactory

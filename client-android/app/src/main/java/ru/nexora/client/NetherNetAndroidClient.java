@@ -137,7 +137,9 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         } catch (Exception failure) {
             reportError(failure.getMessage() == null
                     ? failure.getClass().getSimpleName() : failure.getMessage());
+            closed.set(true);
             closePeerConnection();
+            executor.shutdown();
         }
     }
 

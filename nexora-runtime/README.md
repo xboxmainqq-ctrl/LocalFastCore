@@ -9,7 +9,10 @@ This module is the beginning of the independent NEXORA server process. It has **
 - Runtime module registration with unique identifiers.
 - Deterministic startup order and reverse shutdown order.
 - Startup rollback: modules already started are stopped if a later module fails.
-- Unit tests for lifecycle ordering, rollback, and registration rules.
+- Shutdown failure reporting preserves the original cause and suppressed failures.
+- Failed shutdown modules remain available for a later retry; modules that stopped successfully are not stopped twice.
+- Runtime module contract documents cleanup requirements for partial startup and retryable shutdown.
+- Unit tests cover lifecycle ordering, rollback, duplicate/late registration, idempotent stop, and shutdown retry.
 
 ## Important limitation
 

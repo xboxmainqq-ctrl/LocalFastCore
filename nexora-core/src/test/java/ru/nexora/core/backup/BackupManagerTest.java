@@ -113,7 +113,7 @@ class BackupManagerTest {
         Path manifest = backup.resolve("NEXORA-BACKUP-MANIFEST.tsv");
         String[] lines = Files.readString(manifest).split("\\R");
         assertEquals(2, lines.length);
-        Files.writeString(manifest, lines[0] + "\\n" + lines[1] + "\\n" + lines[1] + "\\n");
+        Files.writeString(manifest, lines[0] + "\n" + lines[1] + "\\n" + lines[1] + "\\n");
 
         assertThrows(IOException.class, () -> manager.verifyBackup(backup));
     }

@@ -29,6 +29,10 @@ public final class AsyncChunkGenerationService implements RuntimeModule {
     private final int completionCapacity;
     private final ConcurrentMap<ChunkPosition, Request> inFlight = new ConcurrentHashMap<>();
     private final ArrayBlockingQueue<Completed> completed;
+    private final AtomicLong acceptedRequests = new AtomicLong();
+    private final AtomicLong deduplicatedRequests = new AtomicLong();
+    private final AtomicLong rejectedRequests = new AtomicLong();
+    private final AtomicLong cancelledRequests = new AtomicLong();
     private final AtomicLong generatedCount = new AtomicLong();
     private final AtomicLong failedCount = new AtomicLong();
     private final AtomicLong droppedResults = new AtomicLong();
@@ -109,6 +113,7 @@ public final class AsyncChunkGenerationService implements RuntimeModule {
         Request request = new Request(position);
         Request existing = inFlight.putIfAbsent(position, request);
         if (existing != null) {
+            deduplicatedRequests.incrementAndGet();
             return RequestStatus.ALREADY_PENDING;
         }
         request.task = new FutureTask<>(() -> {
@@ -117,9 +122,11 @@ public final class AsyncChunkGenerationService implements RuntimeModule {
         });
         try {
             executor.execute(request.task);
+            acceptedRequests.incrementAndGet();
             return RequestStatus.ACCEPTED;
         } catch (java.util.concurrent.RejectedExecutionException rejected) {
             inFlight.remove(position, request);
+            rejectedRequests.incrementAndGet();
             return RequestStatus.QUEUE_FULL;
         }
     }
@@ -132,6 +139,7 @@ public final class AsyncChunkGenerationService implements RuntimeModule {
             return false;
         }
         request.cancelled = true;
+        cancelledRequests.incrementAndGet();
         FutureTask<Void> task = request.task;
         if (task != null) {
             task.cancel(true);
@@ -183,6 +191,16 @@ public final class AsyncChunkGenerationService implements RuntimeModule {
 
     public int completedCount() {
         return completed.size();
+    }
+
+    /** Cumulative request counters; queue sizes and pending count remain live gauges. */
+    public Metrics metrics() {
+        ThreadPoolExecutor current = executor;
+        return new Metrics(
+                acceptedRequests.get(), deduplicatedRequests.get(), rejectedRequests.get(),
+                cancelledRequests.get(), generatedCount.get(), failedCount.get(), droppedResults.get(),
+                pendingCount(), current == null ? 0 : current.getQueue().size(), completed.size()
+        );
     }
 
     public long generatedCount() {
@@ -242,6 +260,20 @@ public final class AsyncChunkGenerationService implements RuntimeModule {
             droppedResults.incrementAndGet();
             inFlight.remove(request.position, request);
         }
+    }
+
+    public record Metrics(
+            long acceptedRequests,
+            long deduplicatedRequests,
+            long rejectedRequests,
+            long cancelledRequests,
+            long generatedCount,
+            long failedCount,
+            long droppedResults,
+            int pendingCount,
+            int queuedWorkerCount,
+            int completedCount
+    ) {
     }
 
     public enum RequestStatus {

@@ -32,6 +32,9 @@ class AsyncChunkGenerationServiceTest {
             assertEquals(1, delivered.get());
             assertEquals(0, service.pendingCount());
             assertEquals(1L, service.generatedCount());
+            assertEquals(1L, service.metrics().acceptedRequests());
+            assertEquals(0L, service.metrics().deduplicatedRequests());
+            assertEquals(0, service.metrics().pendingCount());
         } finally {
             service.stop();
         }
@@ -52,6 +55,8 @@ class AsyncChunkGenerationServiceTest {
             ChunkPosition position = new ChunkPosition(0, 0);
             assertEquals(AsyncChunkGenerationService.RequestStatus.ACCEPTED, service.request(position));
             assertEquals(AsyncChunkGenerationService.RequestStatus.ALREADY_PENDING, service.request(position));
+            assertEquals(1L, service.metrics().acceptedRequests());
+            assertEquals(1L, service.metrics().deduplicatedRequests());
             release.countDown();
             await(() -> service.completedCount() == 1);
             assertEquals(AsyncChunkGenerationService.RequestStatus.ALREADY_PENDING, service.request(position));
@@ -84,6 +89,8 @@ class AsyncChunkGenerationServiceTest {
             assertTrue(started.await(2, TimeUnit.SECONDS));
             assertEquals(AsyncChunkGenerationService.RequestStatus.ACCEPTED, service.request(second));
             assertEquals(AsyncChunkGenerationService.RequestStatus.QUEUE_FULL, service.request(third));
+            assertEquals(2L, service.metrics().acceptedRequests());
+            assertEquals(1L, service.metrics().rejectedRequests());
             assertTrue(service.cancel(second));
             assertEquals(AsyncChunkGenerationService.RequestStatus.ACCEPTED, service.request(third));
         } finally {
@@ -108,6 +115,7 @@ class AsyncChunkGenerationServiceTest {
                 assertEquals("bad terrain", result.failure().getMessage());
             }));
             assertEquals(1L, service.failedCount());
+            assertEquals(1L, service.metrics().failedCount());
         } finally {
             service.stop();
         }

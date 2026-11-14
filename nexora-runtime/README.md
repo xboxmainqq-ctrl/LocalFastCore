@@ -20,6 +20,7 @@ This module is the beginning of the independent NEXORA server process. It has **
 - Bounded asynchronous chunk generation with fixed worker count, a capped work queue, in-flight request deduplication, cancellation, and a bounded completion handoff for the game thread.
 - Atomic insertion of generated chunks into the in-memory world; duplicate loads do not overwrite live chunk data.
 - Generation workers produce immutable results only; world mutation is left to the game thread when it drains completed results.
+- `WorldChunkPipeline` connects generation to `TickScheduler`, commits completed chunks on game ticks, and limits chunk commits per tick.
 - Thread-safe `WorldRegistry` for multiple worlds, with duplicate-ID rejection, normalized lookup/removal, stable registration order, and immutable snapshots.
 - Immutable chunk and block snapshots exposed by the world contract.
 - `FileWorldStorage` saves a world's loaded chunks to a versioned `.nxw` file, verifies a CRC32C checksum on load, rejects unsafe world IDs and symbolic-link targets, and replaces files atomically when supported.

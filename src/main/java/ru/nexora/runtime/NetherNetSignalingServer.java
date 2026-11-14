@@ -235,10 +235,14 @@ public final class NetherNetSignalingServer implements RuntimeModule {
 
             // This is deliberately before WebRTC allocation. The validator is
             // mandatory and must perform cryptographic verification.
-            validator.validate(networkId, parsedOffer);
+            NetherNetIdentityValidator.VerifiedIdentity authenticatedIdentity =
+                    validator.validateAndGetIdentity(networkId, parsedOffer);
+            if (validator.requiresIdentity() && authenticatedIdentity == null) {
+                throw new SecurityException("Offer validator did not return its verified identity");
+            }
 
             CompletionStage<String> answerStage =
-                    peerHost.createAnswer(networkId, parsedOffer.webRtcSdp());
+                    peerHost.createAnswer(networkId, parsedOffer.webRtcSdp(), authenticatedIdentity);
             peerNegotiationStarted = true;
             String answer = answerStage.toCompletableFuture()
                     .get(answerTimeoutMillis, TimeUnit.MILLISECONDS);

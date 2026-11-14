@@ -67,6 +67,8 @@ The Maven package phase creates an executable shaded JAR with the runtime depend
 
 The first launch creates a flat test world and its spawn chunk. Existing `.nxw` world data is loaded on later launches and saved again during graceful shutdown (Ctrl+C). The default data directory is `./nexora-data`.
 
+When the server workflow succeeds, download the `nexora-core-server` artifact from the [NEXORA Server Runtime workflow](https://github.com/aqaqpopa-del/LocalFastCore/actions/workflows/nexora-server.yml) to obtain the executable JAR.
+
 **This is an offline development bootstrap, not a playable multiplayer release.** It starts world storage, chunk-generation workers, and the 20 TPS game loop, but deliberately does not bind a NetherNet signaling endpoint or accept Android clients yet. The production login identity, exact Bedrock block palette, and live client session still need to be completed and tested.
 
 ## Build

@@ -492,7 +492,8 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         }
         int packetStart = batch.position();
         int header = readVarUInt32(batch);
-        if ((header & 0x3ff) != 143 || (header & 0x3c00) != 0) {
+        if ((header & 0x3ff) != 143 || (header & 0x3c00) != 0
+                || (header & ~0x3fff) != 0) {
             throw new IllegalArgumentException("Expected NetworkSettings packet ID 143");
         }
         int headerBytes = batch.position() - packetStart;

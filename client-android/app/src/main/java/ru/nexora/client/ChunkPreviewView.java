@@ -44,6 +44,11 @@ final class ChunkPreviewView extends GLSurfaceView {
         setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
     }
 
+    void setFirstPersonMode(boolean enabled) {
+        queueEvent(() -> renderer.setFirstPersonMode(enabled));
+        requestRender();
+    }
+
     void setCenter(int chunkX, int chunkZ) {
         centerChunkX = chunkX;
         centerChunkZ = chunkZ;
@@ -159,8 +164,13 @@ final class ChunkPreviewView extends GLSurfaceView {
         private float elevation = 32f;
         private float distance = 72f;
         private float targetY = 64f;
+        private boolean firstPersonMode;
         private int surfaceWidth = 1;
         private int surfaceHeight = 1;
+
+        void setFirstPersonMode(boolean enabled) {
+            firstPersonMode = enabled;
+        }
 
         void markMeshDirty() {
             meshDirty = true;
@@ -208,12 +218,21 @@ final class ChunkPreviewView extends GLSurfaceView {
             float centerZ = 24f;
             double yawRadians = Math.toRadians(yaw);
             double elevationRadians = Math.toRadians(elevation);
-            float horizontal = (float) (distance * Math.cos(elevationRadians));
-            float eyeX = centerX + (float) Math.cos(yawRadians) * horizontal;
-            float eyeY = targetY + (float) Math.sin(elevationRadians) * distance;
-            float eyeZ = centerZ + (float) Math.sin(yawRadians) * horizontal;
-            Matrix.setLookAtM(view, 0, eyeX, eyeY, eyeZ,
-                    centerX, targetY, centerZ, 0f, 1f, 0f);
+            if (firstPersonMode) {
+                float eyeY = targetY + 1.6f;
+                float lookX = -(float) Math.cos(yawRadians) * (float) Math.cos(elevationRadians);
+                float lookY = (float) Math.sin(elevationRadians);
+                float lookZ = -(float) Math.sin(yawRadians) * (float) Math.cos(elevationRadians);
+                Matrix.setLookAtM(view, 0, centerX, eyeY, centerZ,
+                        centerX + lookX, eyeY + lookY, centerZ + lookZ, 0f, 1f, 0f);
+            } else {
+                float horizontal = (float) (distance * Math.cos(elevationRadians));
+                float eyeX = centerX + (float) Math.cos(yawRadians) * horizontal;
+                float eyeY = targetY + (float) Math.sin(elevationRadians) * distance;
+                float eyeZ = centerZ + (float) Math.sin(yawRadians) * horizontal;
+                Matrix.setLookAtM(view, 0, eyeX, eyeY, eyeZ,
+                        centerX, targetY, centerZ, 0f, 1f, 0f);
+            }
             Matrix.multiplyMM(mvp, 0, projection, 0, view, 0);
 
             GLES20.glUseProgram(program);

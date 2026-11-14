@@ -12,7 +12,9 @@ This is a Nukkit-MOT plugin built with Java 17 against Nukkit-MOT 1.26.60-R1. It
 - Typed, thread-safe service registry.
 - Public `NexoraAPI` entry point for future modules.
 - Synchronous typed event bus with removable subscriptions.
-- Player join/quit lifecycle bridge that publishes UUID and current name without exposing mutable Nukkit player objects.
+- Player join/quit lifecycle bridge, isolated under the Nukkit integration package, that publishes UUID and current name without exposing mutable server objects.
+- Platform-neutral `NexoraPlatform` contract and immutable `PlayerSnapshot` model.
+- Nukkit-MOT adapter that provides online-player snapshots and UUID lookup through the platform contract.
 - Namespaced persistent key-value storage, saved atomically to the plugin data folder.
 - Default configuration resource.
 - JUnit tests for core utility APIs.
@@ -36,7 +38,7 @@ Output JAR:
 
 ## Next milestones
 
-1. Verify this plugin on the target Nukkit-MOT server.
+1. Verify the Nukkit-MOT adapter on the target server and confirm the platform boundary with automated architecture checks.
 2. Add stable player profile APIs and persistence/migration rules.
 3. Add protocol negotiation and client capability handshake.
 4. Add NexoraUI abstractions with a fallback for ordinary Bedrock clients.

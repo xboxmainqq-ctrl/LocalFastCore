@@ -95,6 +95,51 @@ class NetherNetGameServerTokenVerifierTest {
         assertThrows(SecurityException.class, () -> verifier.verify(spoofed));
     }
 
+
+    @Test
+    void verifiesModernBedrockLoginTokenPayload() throws Exception {
+        KeyPairGenerator rsaGenerator = KeyPairGenerator.getInstance("RSA");
+        rsaGenerator.initialize(new RSAKeyGenParameterSpec(2048, RSAKeyGenParameterSpec.F4));
+        KeyPair rsa = rsaGenerator.generateKeyPair();
+        KeyPairGenerator ecGenerator = KeyPairGenerator.getInstance("EC");
+        ecGenerator.initialize(new ECGenParameterSpec("secp384r1"));
+        KeyPair cpk = ecGenerator.generateKeyPair();
+
+        String token = signedToken(rsa, cpk.getPublic().getEncoded(), 5000L);
+        BedrockConnectionRequest request = BedrockConnectionRequest.parse(
+                "{\"AuthenticationType\":0,\"Token\":\"" + token + "\",\"Certificate\":\"\"}");
+        NetherNetGameServerTokenVerifier tokenVerifier = new NetherNetGameServerTokenVerifier(
+                kid -> "issuer-key".equals(kid) ? (java.security.interfaces.RSAPublicKey) rsa.getPublic() : null,
+                Clock.fixed(Instant.ofEpochSecond(1000L), ZoneOffset.UTC), 0L);
+
+        NetherNetGameServerTokenVerifier.VerifiedClientIdentity identity =
+                new BedrockLoginIdentityVerifier(tokenVerifier).verify(request);
+
+        assertEquals("123456789", identity.xuid());
+        assertEquals("NexoraTester", identity.displayName());
+        assertArrayEquals(cpk.getPublic().getEncoded(), identity.clientPublicKey().getEncoded());
+    }
+
+    @Test
+    void rejectsOfflineAuthenticationTypeByDefault() throws Exception {
+        KeyPairGenerator rsaGenerator = KeyPairGenerator.getInstance("RSA");
+        rsaGenerator.initialize(2048);
+        KeyPair rsa = rsaGenerator.generateKeyPair();
+        KeyPairGenerator ecGenerator = KeyPairGenerator.getInstance("EC");
+        ecGenerator.initialize(new ECGenParameterSpec("secp384r1"));
+        KeyPair cpk = ecGenerator.generateKeyPair();
+
+        String token = signedToken(rsa, cpk.getPublic().getEncoded(), 5000L);
+        BedrockConnectionRequest request = BedrockConnectionRequest.parse(
+                "{\"AuthenticationType\":2,\"Token\":\"" + token + "\",\"Certificate\":\"\"}");
+        NetherNetGameServerTokenVerifier tokenVerifier = new NetherNetGameServerTokenVerifier(
+                kid -> (java.security.interfaces.RSAPublicKey) rsa.getPublic(),
+                Clock.fixed(Instant.ofEpochSecond(1000L), ZoneOffset.UTC), 0L);
+
+        assertThrows(SecurityException.class,
+                () -> new BedrockLoginIdentityVerifier(tokenVerifier).verify(request));
+    }
+
     private static String signedToken(KeyPair signingKey, byte[] cpkSpki, long exp)
             throws Exception {
         String header = "{\"alg\":\"RS256\",\"kid\":\"issuer-key\"}";

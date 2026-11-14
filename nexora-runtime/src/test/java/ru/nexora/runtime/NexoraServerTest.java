@@ -71,6 +71,26 @@ class NexoraServerTest {
     }
 
     @Test
+    void capturesModuleIdAtRegistrationTime() {
+        NexoraServer server = new NexoraServer();
+        List<String> calls = new ArrayList<>();
+        RuntimeModule changingId = new RuntimeModule() {
+            private int reads;
+            @Override public String id() { return ++reads == 1 ? "initial" : "changed"; }
+            @Override public void start() { calls.add("start"); }
+            @Override public void stop() { calls.add("stop"); }
+        };
+
+        server.register(changingId);
+
+        assertEquals(List.of("initial"), server.moduleIds());
+        assertThrows(IllegalArgumentException.class, () -> server.register(module("initial", calls)));
+        server.start();
+        server.stop();
+        assertEquals(List.of("initial"), server.moduleIds());
+    }
+
+    @Test
     void stopIsIdempotentWhenNoModulesAreActive() {
         NexoraServer server = new NexoraServer();
         assertDoesNotThrow(server::stop);

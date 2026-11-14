@@ -47,6 +47,8 @@ public final class NetherNetAndroidClient implements AutoCloseable {
     private static final int MAX_FRAGMENTS = 255;
     private static final long MAX_BUFFERED_BYTES = 8L * 1024 * 1024;
     private static final int MAX_SDP_BYTES = 256 * 1024;
+    private static final Object FACTORY_INIT_LOCK = new Object();
+    private static boolean factoryInitialized;
 
     private final Context appContext;
     private final SharedPreferences trustStore;
@@ -138,9 +140,14 @@ public final class NetherNetAndroidClient implements AutoCloseable {
     }
 
     private void initializePeerConnection() throws Exception {
-        PeerConnectionFactory.initialize(
-                PeerConnectionFactory.InitializationOptions.builder(appContext)
-                        .createInitializationOptions());
+        synchronized (FACTORY_INIT_LOCK) {
+            if (!factoryInitialized) {
+                PeerConnectionFactory.initialize(
+                        PeerConnectionFactory.InitializationOptions.builder(appContext)
+                                .createInitializationOptions());
+                factoryInitialized = true;
+            }
+        }
         factory = PeerConnectionFactory.builder().createPeerConnectionFactory();
 
         PeerConnection.RTCConfiguration configuration =
@@ -159,9 +166,11 @@ public final class NetherNetAndroidClient implements AutoCloseable {
 
             @Override
             public void onIceConnectionChange(PeerConnection.IceConnectionState state) {
-                if (state == PeerConnection.IceConnectionState.FAILED
-                        || state == PeerConnection.IceConnectionState.DISCONNECTED) {
+                if (state == PeerConnection.IceConnectionState.FAILED) {
+                    failIceGathering("ICE-соединение завершилось ошибкой");
                     reportError("ICE-соединение потеряно: " + state);
+                } else if (state == PeerConnection.IceConnectionState.DISCONNECTED) {
+                    reportError("ICE-соединение временно потеряно");
                 }
             }
 
@@ -172,6 +181,7 @@ public final class NetherNetAndroidClient implements AutoCloseable {
             @Override
             public void onConnectionChange(PeerConnection.PeerConnectionState state) {
                 if (state == PeerConnection.PeerConnectionState.FAILED) {
+                    failIceGathering("WebRTC peer connection failed");
                     reportError("WebRTC соединение завершилось ошибкой");
                 }
             }
@@ -307,6 +317,13 @@ public final class NetherNetAndroidClient implements AutoCloseable {
 
     private volatile CompletableFuture<Void> iceGatheringFuture;
 
+    private void failIceGathering(String reason) {
+        CompletableFuture<Void> waiting = iceGatheringFuture;
+        if (waiting != null) {
+            waiting.completeExceptionally(new IllegalStateException(reason));
+        }
+    }
+
     private void setRemoteDescription(String sdp) throws Exception {
         CompletableFuture<Void> result = new CompletableFuture<>();
         peer.setRemoteDescription(new SdpObserver() {
@@ -364,8 +381,8 @@ public final class NetherNetAndroidClient implements AutoCloseable {
     }
 
     private void receiveFrame(byte[] frame, boolean reliable) {
-        if (frame.length == 0) {
-            reportError("Пустой NetherNet frame");
+        if (frame.length == 0 || frame.length > MAX_FRAME_BYTES) {
+            reportError("Недопустимый размер NetherNet frame");
             return;
         }
         int remaining = frame[0] & 0xff;
@@ -598,6 +615,7 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         if (pending != null) {
             pending.complete(false);
         }
+        failIceGathering("NEXORA client was closed");
         executor.execute(this::closePeerConnection);
         executor.shutdown();
     }

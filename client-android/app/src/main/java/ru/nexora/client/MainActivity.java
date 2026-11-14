@@ -177,6 +177,12 @@ public final class MainActivity extends Activity {
             }
 
             @Override
+            public void onNexoraReady(String serverId, int maxMessageBytes) {
+                connectionStatus.setText("NEXORA подключён • сервер " + serverId
+                        + " • лимит " + (maxMessageBytes / 1024) + " КБ");
+            }
+
+            @Override
             public void onNetworkSettingsReceived(BedrockAndroidNetworkSettings settings) {
                 connectionStatus.setText("NetworkSettings получены • вход игрока ещё не подключён");
             }

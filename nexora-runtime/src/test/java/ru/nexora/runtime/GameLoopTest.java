@@ -66,6 +66,35 @@ class GameLoopTest {
     }
 
     @Test
+    void canBeStoppedFromOneOfItsOwnScheduledTasks() throws Exception {
+        TickScheduler scheduler = new TickScheduler();
+        java.util.concurrent.atomic.AtomicReference<GameLoop> loopRef =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        CountDownLatch stopRequested = new CountDownLatch(1);
+        GameLoop loop = new GameLoop(100, 2, scheduler);
+        loopRef.set(loop);
+        scheduler.schedule(1, () -> {
+            try {
+                loopRef.get().stop();
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(interrupted);
+            }
+            stopRequested.countDown();
+        });
+
+        loop.start();
+        assertTrue(stopRequested.await(2, TimeUnit.SECONDS));
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (loop.isRunning() && System.nanoTime() < deadline) {
+            Thread.sleep(5);
+        }
+
+        assertFalse(loop.isRunning());
+        assertDoesNotThrow(loop::stop);
+    }
+
+    @Test
     void exposesStableModuleIdentityAndCounters() throws Exception {
         GameLoop loop = new GameLoop(60, 4, new TickScheduler());
         assertEquals("game-loop", loop.id());

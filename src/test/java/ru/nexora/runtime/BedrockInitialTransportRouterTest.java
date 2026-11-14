@@ -84,7 +84,8 @@ class BedrockInitialTransportRouterTest {
                 (java.security.interfaces.ECPublicKey) generator.generateKeyPair().getPublic();
         NetherNetIdentityValidator.VerifiedIdentity identity =
                 new NetherNetIdentityValidator.VerifiedIdentity(
-                        "minecraft-services.net", "nethernet-xuid", "NetherNetPlayer", key);
+                        "minecraft-services.net", "nethernet-xuid", "NetherNetPlayer", key,
+                        NetherNetIdentityValidator.tokenSha256(JWT));
         AtomicInteger playStarts = new AtomicInteger();
         BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
                 SETTINGS,

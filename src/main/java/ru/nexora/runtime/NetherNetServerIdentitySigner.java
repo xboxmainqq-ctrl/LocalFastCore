@@ -39,6 +39,10 @@ public final class NetherNetServerIdentitySigner {
         Objects.requireNonNull(expiresAt, "expiresAt");
 
         validateDomain(partnerDomain);
+        if (answerSdp.getBytes(StandardCharsets.UTF_8).length > MAX_SDP_BYTES
+                || answerSdp.indexOf('\\0') >= 0) {
+            throw new IllegalArgumentException("SDP answer is invalid or exceeds configured limit");
+        }
         long iat = issuedAt.getEpochSecond();
         long exp = expiresAt.getEpochSecond();
         long lifetime;

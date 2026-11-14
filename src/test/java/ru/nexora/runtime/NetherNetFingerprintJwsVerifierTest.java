@@ -2,18 +2,24 @@ package ru.nexora.runtime;
 
 import org.junit.jupiter.api.Test;
 
-import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.Signature;
 import java.security.spec.ECGenParameterSpec;
 import java.util.Base64;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class NetherNetFingerprintJwsVerifierTest {
     private static final Base64.Encoder URL = Base64.getUrlEncoder().withoutPadding();
+    private static final String DIGEST_A =
+            "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:"
+            + "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99";
+    private static final String DIGEST_B =
+            "11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:"
+            + "11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00";
 
     @Test
     void canonicalizesSdpFingerprintAndVerifiesEs384DetachedSignature() throws Exception {
@@ -22,8 +28,7 @@ class NetherNetFingerprintJwsVerifierTest {
         KeyPair keyPair = generator.generateKeyPair();
 
         NetherNetFingerprintPayload payload = new NetherNetFingerprintPayload(
-                java.util.List.of(new NetherNetFingerprintPayload.Fingerprint(
-                        "sha-256", "AA:BB:CC:DD")));
+                List.of(new NetherNetFingerprintPayload.Fingerprint("sha-256", DIGEST_A)));
 
         String protectedHeader = URL.encodeToString(
                 "{\"alg\":\"ES384\"}".getBytes(StandardCharsets.UTF_8));
@@ -39,20 +44,26 @@ class NetherNetFingerprintJwsVerifierTest {
         assertTrue(NetherNetFingerprintJwsVerifier.verify(jws, payload, keyPair.getPublic()));
 
         NetherNetFingerprintPayload tampered = new NetherNetFingerprintPayload(
-                java.util.List.of(new NetherNetFingerprintPayload.Fingerprint(
-                        "sha-256", "00:BB:CC:DD")));
+                List.of(new NetherNetFingerprintPayload.Fingerprint("sha-256", DIGEST_B)));
         assertFalse(NetherNetFingerprintJwsVerifier.verify(jws, tampered, keyPair.getPublic()));
     }
 
     @Test
     void serializesFingerprintPayloadWithExactCanonicalFieldOrder() {
         NetherNetFingerprintPayload payload = new NetherNetFingerprintPayload(
-                java.util.List.of(
-                        new NetherNetFingerprintPayload.Fingerprint("sha-256", "AA:BB"),
-                        new NetherNetFingerprintPayload.Fingerprint("sha-384", "CC:DD")));
+                List.of(
+                        new NetherNetFingerprintPayload.Fingerprint("sha-256", DIGEST_A),
+                        new NetherNetFingerprintPayload.Fingerprint("sha-384",
+                                "CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:"
+                                + "CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:"
+                                + "CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB")));
 
-        assertEquals("{\"fingerprint\":[{\"algorithm\":\"sha-256\",\"digest\":\"AA:BB\"},"
-                + "{\"algorithm\":\"sha-384\",\"digest\":\"CC:DD\"}]}",
+        assertEquals("{\"fingerprint\":[{\"algorithm\":\"sha-256\",\"digest\":\"" + DIGEST_A
+                + "\"},{\"algorithm\":\"sha-384\",\"digest\":\""
+                + "CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:"
+                + "CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:"
+                + "CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB"
+                + "\"}]}",
                 payload.canonicalJson());
     }
 
@@ -64,25 +75,18 @@ class NetherNetFingerprintJwsVerifierTest {
         String unsupported = "v=0\na=fingerprint:md5 AA:BB\na=identity:" + identity
                 + "\nm=application 9 x";
         assertThrows(IllegalArgumentException.class, () ->
-                NetherNetFingerprintPayload.fromSdp(NetherNetSdpDocument.parseOffer(unsupported)));
+                NetherNetFingerprintPayload.fromSdpText(unsupported));
+        assertThrows(IllegalArgumentException.class, () ->
+                new NetherNetFingerprintPayload.Fingerprint("sha-256", "AA:BB"));
     }
 
     private static byte[] derToRaw(byte[] der, int coordinateBytes) {
         int offset = 2;
-        if ((der[1] & 0x80) != 0) {
-            offset = 2 + (der[1] & 0x7f);
-        }
-        if (der[offset++] != 0x02) {
-            throw new IllegalArgumentException("Missing DER r integer");
-        }
-        int rLength = der[offset++] & 0xff;
-        byte[] r = java.util.Arrays.copyOfRange(der, offset, offset + rLength);
-        offset += rLength;
-        if (der[offset++] != 0x02) {
-            throw new IllegalArgumentException("Missing DER s integer");
-        }
-        int sLength = der[offset++] & 0xff;
-        byte[] s = java.util.Arrays.copyOfRange(der, offset, offset + sLength);
+        int rLength = der[offset + 1] & 0xff;
+        byte[] r = java.util.Arrays.copyOfRange(der, offset + 2, offset + 2 + rLength);
+        offset += 2 + rLength;
+        int sLength = der[offset + 1] & 0xff;
+        byte[] s = java.util.Arrays.copyOfRange(der, offset + 2, offset + 2 + sLength);
         byte[] raw = new byte[coordinateBytes * 2];
         copyInteger(r, raw, 0, coordinateBytes);
         copyInteger(s, raw, coordinateBytes, coordinateBytes);

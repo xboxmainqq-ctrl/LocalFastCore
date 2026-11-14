@@ -23,7 +23,7 @@ public final class BedrockSessionHandshake {
         return state;
     }
 
-    /** Returns the protocol reported by the first accepted request, if any. */
+    /** Returns the protocol reported by the first received request, if any. */
     public synchronized Integer clientProtocolVersion() {
         return clientProtocolVersion;
     }

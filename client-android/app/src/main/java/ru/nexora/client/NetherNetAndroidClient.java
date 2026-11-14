@@ -150,6 +150,9 @@ public final class NetherNetAndroidClient implements AutoCloseable {
             }
         }
         factory = PeerConnectionFactory.builder().createPeerConnectionFactory();
+        if (factory == null) {
+            throw new IllegalStateException("Не удалось создать WebRTC PeerConnectionFactory");
+        }
 
         PeerConnection.RTCConfiguration configuration =
                 new PeerConnection.RTCConfiguration(new ArrayList<>());

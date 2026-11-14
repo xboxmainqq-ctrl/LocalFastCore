@@ -193,6 +193,7 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
             if (netherNetIdentity.isPresent()) {
                 NetherNetIdentityValidator.VerifiedIdentity identity = netherNetIdentity.get();
                 if (!connectionRequest.isTokenPayload()
+                        || connectionRequest.authenticationType() != 0
                         || !identity.gameServerTokenSha256().equals(
                                 NetherNetIdentityValidator.tokenSha256(connectionRequest.token()))) {
                     throw new SecurityException(

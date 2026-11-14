@@ -99,6 +99,7 @@ class BedrockInitialTransportRouterTest {
                     assertEquals("nethernet-xuid", player.identityId());
                     assertEquals("NetherNetPlayer", player.displayName());
                     assertSame(key, player.clientIdentityPublicKey());
+                    assertTrue(player.clientDataJson().contains("\\"ClientRandomId\\":123"));
                     playStarts.incrementAndGet();
                 },
                 (connection, message) -> { });

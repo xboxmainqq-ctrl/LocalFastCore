@@ -29,6 +29,32 @@ class NexoraInventorySyncCodecTest {
     }
 
     @Test
+    void preservesEmptySlotIndexesInsteadOfCompactingStacks() {
+        PlayerInventory inventory = new PlayerInventory(UUID.randomUUID());
+        assertTrue(inventory.addOne("minecraft:apple"));
+        assertTrue(inventory.addOne("minecraft:diamond"));
+        assertNotNull(inventory.removeStack(0));
+
+        NexoraInventorySyncCodec.InventoryState decoded =
+                NexoraInventorySyncCodec.decode(ByteBuffer.wrap(NexoraInventorySyncCodec.encode(inventory)));
+
+        assertEquals(1, decoded.stacks().size());
+        assertEquals(1, decoded.stacks().get(0).slot());
+        assertEquals(new ItemStack("minecraft:diamond", 1), decoded.stacks().get(0).stack());
+    }
+
+    @Test
+    void movesAndMergesStacksWithoutExceedingTheStackLimit() {
+        PlayerInventory inventory = new PlayerInventory(UUID.randomUUID());
+        for (int i = 0; i < 63; i++) assertTrue(inventory.addOne("minecraft:apple"));
+        assertTrue(inventory.addOne("minecraft:apple"));
+        assertTrue(inventory.moveOrSwap(1, 0));
+
+        assertEquals(new ItemStack("minecraft:apple", 64), inventory.stackAt(0));
+        assertNull(inventory.stackAt(1));
+    }
+
+    @Test
     void rejectsTruncatedOrTrailingData() {
         PlayerInventory inventory = new PlayerInventory(UUID.randomUUID());
         inventory.addOne("minecraft:stone");

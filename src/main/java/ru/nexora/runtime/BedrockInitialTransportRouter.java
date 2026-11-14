@@ -3,8 +3,13 @@ package ru.nexora.runtime;
 import java.nio.ByteBuffer;
 import java.util.Optional;
 import java.util.Objects;
+import java.time.Duration;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
@@ -19,6 +24,8 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
     private final LoginAuthenticator loginAuthenticator;
     private final Consumer<TransportConnection> playListener;
     private final BiConsumer<TransportConnection, TransportMessage> playMessageHandler;
+    private final Duration handshakeTimeout;
+    private final ScheduledExecutorService timeoutExecutor;
     private final ConcurrentMap<String, Session> sessions = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
 
@@ -26,10 +33,29 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
                                          LoginAuthenticator loginAuthenticator,
                                          Consumer<TransportConnection> playListener,
                                          BiConsumer<TransportConnection, TransportMessage> playMessageHandler) {
+        this(networkSettings, loginAuthenticator, playListener, playMessageHandler,
+                Duration.ofSeconds(60));
+    }
+
+    public BedrockInitialTransportRouter(BedrockNetworkSettings networkSettings,
+                                         LoginAuthenticator loginAuthenticator,
+                                         Consumer<TransportConnection> playListener,
+                                         BiConsumer<TransportConnection, TransportMessage> playMessageHandler,
+                                         Duration handshakeTimeout) {
         this.networkSettings = Objects.requireNonNull(networkSettings, "networkSettings");
         this.loginAuthenticator = Objects.requireNonNull(loginAuthenticator, "loginAuthenticator");
         this.playListener = Objects.requireNonNull(playListener, "playListener");
         this.playMessageHandler = Objects.requireNonNull(playMessageHandler, "playMessageHandler");
+        this.handshakeTimeout = Objects.requireNonNull(handshakeTimeout, "handshakeTimeout");
+        if (handshakeTimeout.isNegative() || handshakeTimeout.isZero()
+                || handshakeTimeout.compareTo(Duration.ofMinutes(10)) > 0) {
+            throw new IllegalArgumentException("Handshake timeout must be between 1 ms and 10 minutes");
+        }
+        this.timeoutExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "nexora-bedrock-handshake-timeouts");
+            thread.setDaemon(true);
+            return thread;
+        });
     }
 
     @Override
@@ -91,11 +117,13 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
                     close(session, "Could not enqueue NetworkSettings response");
                     return;
                 }
-                if (result.status() == BedrockHandshakeFrameStatus.NETWORK_SETTINGS_RESPONSE_READY
-                        && session.processor.markNetworkSettingsSent()
-                        != BedrockHandshakeResult.ACCEPTED) {
-                    close(session, "NetworkSettings state transition failed");
-                    return;
+                if (result.status() == BedrockHandshakeFrameStatus.NETWORK_SETTINGS_RESPONSE_READY) {
+                    if (session.processor.markNetworkSettingsSent()
+                            != BedrockHandshakeResult.ACCEPTED) {
+                        close(session, "NetworkSettings state transition failed");
+                        return;
+                    }
+                    scheduleTimeout(session, "Bedrock Login packet timed out");
                 }
             }
 
@@ -108,6 +136,7 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
     }
 
     private void authenticate(Session session) {
+        scheduleTimeout(session, "Bedrock Login authentication timed out");
         BedrockLoginPacket login = session.processor.pendingLogin().orElse(null);
         if (login == null) {
             close(session, "Login packet was not retained for authentication");
@@ -140,6 +169,7 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
                 return;
             }
             synchronized (session) {
+                cancelTimeout(session);
                 if (session.closed.get()
                         || session.processor.markAuthenticated() != BedrockHandshakeResult.ACCEPTED) {
                     close(session, "Could not enter Bedrock play state");
@@ -156,6 +186,7 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
 
     private void remove(Session session) {
         if (session.closed.compareAndSet(false, true)) {
+            cancelTimeout(session);
             sessions.remove(session.connection.id(), session);
             session.processor.close();
         }
@@ -163,6 +194,7 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
 
     private void close(Session session, String reason) {
         if (session.closed.compareAndSet(false, true)) {
+            cancelTimeout(session);
             sessions.remove(session.connection.id(), session);
             session.processor.close();
             session.connection.close();
@@ -178,6 +210,25 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
             close(session, "Bedrock transport router stopped");
         }
         sessions.clear();
+        timeoutExecutor.shutdownNow();
+    }
+
+    private void scheduleTimeout(Session session, String reason) {
+        if (session.closed.get() || closed.get()) {
+            return;
+        }
+        cancelTimeout(session);
+        session.timeoutFuture = timeoutExecutor.schedule(
+                () -> close(session, reason),
+                handshakeTimeout.toMillis(), TimeUnit.MILLISECONDS);
+    }
+
+    private static void cancelTimeout(Session session) {
+        ScheduledFuture<?> future = session.timeoutFuture;
+        session.timeoutFuture = null;
+        if (future != null) {
+            future.cancel(false);
+        }
     }
 
     @FunctionalInterface
@@ -191,6 +242,7 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
         private final TransportConnection connection;
         private final BedrockInitialHandshakeProcessor processor;
         private final AtomicBoolean closed = new AtomicBoolean();
+        private volatile ScheduledFuture<?> timeoutFuture;
 
         private Session(TransportConnection connection,
                         BedrockInitialHandshakeProcessor processor) {

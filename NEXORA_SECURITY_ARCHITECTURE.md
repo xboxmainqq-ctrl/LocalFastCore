@@ -92,7 +92,7 @@ Ordinary Bedrock clients must continue to connect through the compatible server 
 
 ## Release workflow activation
 
-The release workflow is stored at `.github/workflows/release-nexora.yml` on the compatibility branch. GitHub requires a workflow file to exist on the repository's default branch for tag-triggered workflows to run. Merge this workflow to the default branch before creating the first `nexora-vX.Y.Z` tag. The release job independently checks that the tagged commit is already an ancestor of `nexora/compatibility-edition`.
+The release workflow is stored at `.github/workflows/release-nexora.yml` on both `main` and `nexora/compatibility-edition`. GitHub requires a workflow file to exist on the default branch for tag-triggered workflows to run; the workflow has now been added to `main`. The release job independently checks that the tagged commit is already an ancestor of `nexora/compatibility-edition`.
 
 ## Operational rule
 

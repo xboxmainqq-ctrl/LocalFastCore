@@ -1,5 +1,6 @@
 package ru.nexora.runtime;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -16,10 +17,9 @@ public record GeneratedChunk(ChunkPosition position, Map<BlockPosition, BlockSta
         Objects.requireNonNull(position, "position");
         Objects.requireNonNull(blocks, "blocks");
 
-        // Validate and copy in one pass. Avoid an intermediate mutable HashMap:
-        // generated chunks can contain many thousands of entries, and retaining
-        // both a validation copy and Map.copyOf's immutable copy needlessly
-        // increases peak allocation during chunk generation.
+        // Copy and validate once, then expose only an unmodifiable view of our
+        // private copy. Unlike Map.copyOf(copy), this avoids allocating a second
+        // full map for chunks that may contain many thousands of blocks.
         Map<BlockPosition, BlockState> copy = new HashMap<>(capacityFor(blocks.size()));
         blocks.forEach((blockPosition, state) -> {
             Objects.requireNonNull(blockPosition, "block position");
@@ -34,7 +34,7 @@ public record GeneratedChunk(ChunkPosition position, Map<BlockPosition, BlockSta
             }
             copy.put(blockPosition, state);
         });
-        blocks = Map.copyOf(copy);
+        blocks = Collections.unmodifiableMap(copy);
     }
 
     private static int capacityFor(int expectedSize) {

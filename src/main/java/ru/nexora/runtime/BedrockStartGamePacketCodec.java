@@ -151,7 +151,7 @@ public final class BedrockStartGamePacketCodec {
         // 23: optional server_config is intentionally absent for this minimal server.
         writeBoolean(out, false);
 
-        // 24: protocol-2225 ServerTelemetryData (server ID, scenario ID).
+        // 24: protocol-2225 ServerTelemetryData (server, scenario, world, owner IDs).
         BedrockBinary.writeString(out, settings.telemetry().serverId(), MAX_STRING_BYTES);
         BedrockBinary.writeString(out, settings.telemetry().scenarioId(), MAX_STRING_BYTES);
         BedrockBinary.writeString(out, settings.telemetry().worldId(), MAX_STRING_BYTES);

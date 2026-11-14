@@ -56,7 +56,6 @@ public final class PlayerProgressionService {
             throw new IllegalStateException("Stored player level does not match total experience");
         }
 
-        // Level 100 is reached at the level-99 threshold; XP beyond that is not banked.
         long maximumExperience = experienceRequiredForLevel(MAX_LEVEL - 1);
         long updatedExperience;
         try {
@@ -78,7 +77,8 @@ public final class PlayerProgressionService {
                 current.lastKnownName(), current.classId(), updatedLevel,
                 updatedExperience, attributes);
         profiles.save(updated);
-        return new ProgressResult(updated, amount, gainedLevels,
+        long appliedExperience = updatedExperience - current.experience();
+        return new ProgressResult(updated, appliedExperience, gainedLevels,
                 updated.attributes().getOrDefault(UNSPENT_POINTS, 0));
     }
 

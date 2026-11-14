@@ -27,9 +27,9 @@ class BedrockInitialTransportRouterTest {
                     assertEquals(LOGIN_JSON, login.connectionRequest());
                     assertEquals(List.of(JWT), request.chain());
                     assertEquals(JWT, request.clientDataJwt());
-                    return CompletableFuture.completedFuture(true);
+                    return CompletableFuture.completedFuture(authenticatedPlayer());
                 },
-                connection -> playStarts.incrementAndGet(),
+                (connection, player) -> { assertEquals("NEXORA-Test", player.displayName()); playStarts.incrementAndGet(); },
                 (connection, message) -> playMessages.incrementAndGet());
 
         FakeConnection connection = new FakeConnection("peer-1");
@@ -48,6 +48,13 @@ class BedrockInitialTransportRouterTest {
                 BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, LOGIN_JSON)),
                 true));
 
+        assertEquals(2, connection.sent.size());
+        ByteBuffer loginSuccessBatch = BedrockBatchCompressionCodec.decodeAfterNetworkSettings(
+                connection.sent.get(1), SETTINGS);
+        BedrockGamePacket loginSuccess = BedrockPacketBatchCodec.decodeUncompressed(loginSuccessBatch).get(0);
+        assertEquals(BedrockPlayStatusPacketCodec.PACKET_ID, loginSuccess.header().packetId());
+        assertEquals(BedrockPlayStatus.LOGIN_SUCCESS,
+                BedrockPlayStatusPacketCodec.decodePayload(loginSuccess.payloadBuffer()));
         assertEquals(1, playStarts.get());
         assertTrue(connection.isOpen());
         connection.receive(new TransportMessage(ByteBuffer.wrap(new byte[]{9, 8, 7}),
@@ -62,8 +69,8 @@ class BedrockInitialTransportRouterTest {
     void rejectsLoginWhenAuthenticatorDeniesIt() {
         BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
                 SETTINGS,
-                (connection, login, request) -> CompletableFuture.completedFuture(false),
-                connection -> fail("Rejected login must not enter play"),
+                (connection, login, request) -> CompletableFuture.completedFuture(null),
+                (connection, player) -> fail("Rejected login must not enter play"),
                 (connection, message) -> fail("Rejected login must not receive play messages"));
         FakeConnection connection = new FakeConnection("peer-2");
         router.accept(connection);
@@ -86,9 +93,9 @@ class BedrockInitialTransportRouterTest {
                 SETTINGS,
                 (connection, login, request) -> {
                     fail("Malformed JSON must not reach the authenticator");
-                    return CompletableFuture.completedFuture(false);
+                    return CompletableFuture.completedFuture(null);
                 },
-                connection -> fail("Malformed login must not enter play"),
+                (connection, player) -> fail("Malformed login must not enter play"),
                 (connection, message) -> fail("Malformed login must not receive play messages"));
         FakeConnection connection = new FakeConnection("peer-invalid-json");
         router.accept(connection);
@@ -108,8 +115,8 @@ class BedrockInitialTransportRouterTest {
     void rejectsHandshakeFramesOnUnreliableDelivery() {
         BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
                 SETTINGS,
-                (connection, login, request) -> CompletableFuture.completedFuture(true),
-                connection -> fail("Invalid handshake must not enter play"),
+                (connection, login, request) -> CompletableFuture.completedFuture(authenticatedPlayer()),
+                (connection, player) -> fail("Invalid handshake must not enter play"),
                 (connection, message) -> fail("Invalid handshake must not reach play"));
         FakeConnection connection = new FakeConnection("peer-3");
         router.accept(connection);
@@ -125,7 +132,7 @@ class BedrockInitialTransportRouterTest {
     void closesPeerThatNeverSendsLogin() throws Exception {
         BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
                 SETTINGS,
-                (connection, login, request) -> CompletableFuture.completedFuture(false),
+                (connection, login, request) -> CompletableFuture.completedFuture(null),
                 connection -> { },
                 (connection, message) -> { },
                 java.time.Duration.ofMillis(40));
@@ -138,6 +145,18 @@ class BedrockInitialTransportRouterTest {
         assertEquals(1, connection.sent.size());
         assertTrue(connection.closedLatch.await(2, java.util.concurrent.TimeUnit.SECONDS));
         router.close();
+    }
+
+    private static BedrockAuthenticatedPlayer authenticatedPlayer() {
+        try {
+            java.security.KeyPairGenerator generator = java.security.KeyPairGenerator.getInstance("EC");
+            generator.initialize(new java.security.spec.ECGenParameterSpec("secp384r1"));
+            java.security.interfaces.ECPublicKey key =
+                    (java.security.interfaces.ECPublicKey) generator.generateKeyPair().getPublic();
+            return new BedrockAuthenticatedPlayer("test-xuid", "NEXORA-Test", key);
+        } catch (java.security.GeneralSecurityException failure) {
+            throw new AssertionError(failure);
+        }
     }
 
     private static ByteBuffer frame(int packetId, ByteBuffer payload, boolean compressed) {

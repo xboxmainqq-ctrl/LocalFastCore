@@ -114,3 +114,9 @@ Server-side pieces are available as `NexoraPrivateProtocolCodec`, `NexoraWorldIn
 The client must not bundle proprietary Minecraft code, textures, sounds, fonts, or other assets without appropriate rights. Use original assets or assets with licenses compatible with distribution. Compatibility engineering does not imply permission to redistribute Minecraft content or impersonate official services.
 
 The Android client is a substantial separate engineering effort. Performance must be measured on actual devices; high FPS cannot be guaranteed from server-side optimization alone.
+
+### Player inventory synchronization (private NEXORA v1.1)
+
+The private protocol currently uses message type 11 for a server-authoritative inventory snapshot. The server sends the joining player an initial snapshot and sends a new snapshot after one or more dropped items are collected. The packet identifies the owning player UUID and contains up to 36 occupied stacks; each item identifier is UTF-8 and each stack count is bounded to 1–64. Empty slots are omitted from this compact display snapshot. Android validates the packet bounds and item identifiers before rendering a compact inventory list with item names and stack counts.
+
+Inventory mutations remain server-side. This message is a read-only snapshot; the client cannot grant itself items or submit inventory changes. Slot selection, item movement, use/drop actions, persistence across reconnects, and full item metadata are not yet implemented.

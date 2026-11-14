@@ -136,7 +136,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                         new AtomicReference<>(new NexoraMovementValidator.Position(
                                 worldInfo.spawnX() + 0.5, worldInfo.spawnY(),
                                 worldInfo.spawnZ() + 0.5));
-                PlayerSession session = new PlayerSession(UUID.randomUUID(), playerPosition);
+                PlayerSession session = new PlayerSession(UUID.randomUUID(), hello.playerName(), playerPosition);
                 activeSession.set(session);
                 playerSessions.put(connection, session);
                 synchronizeNewPlayer(connection, session);
@@ -234,16 +234,18 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
         NexoraMovementValidator.Position position = session.position.get();
         return NexoraPlayerSyncCodec.encodePlayerState(
                 new NexoraPlayerSyncCodec.PlayerState(
-                        session.playerId, position.x(), position.y(), position.z()));
+                        session.playerId, session.playerName, position.x(), position.y(), position.z()));
     }
 
     private static final class PlayerSession {
         private final UUID playerId;
+        private final String playerName;
         private final AtomicReference<NexoraMovementValidator.Position> position;
 
-        private PlayerSession(UUID playerId,
+        private PlayerSession(UUID playerId, String playerName,
                               AtomicReference<NexoraMovementValidator.Position> position) {
             this.playerId = playerId;
+            this.playerName = playerName;
             this.position = position;
         }
     }

@@ -18,8 +18,13 @@ public final class NexoraPlayerSyncCodec {
     private NexoraPlayerSyncCodec() {
     }
 
-    public record PlayerState(UUID playerId, String playerName, double x, double y, double z) {
-        public PlayerState(UUID playerId, double x, double y, double z) { this(playerId, "Игрок", x, y, z); }
+    public record PlayerState(UUID playerId, String playerName, double x, double y, double z, double yaw) {
+        public PlayerState(UUID playerId, String playerName, double x, double y, double z) {
+            this(playerId, playerName, x, y, z, 0.0);
+        }
+        public PlayerState(UUID playerId, double x, double y, double z) {
+            this(playerId, "Игрок", x, y, z, 0.0);
+        }
         public PlayerState {
             Objects.requireNonNull(playerId, "playerId");
             Objects.requireNonNull(playerName, "playerName");
@@ -29,24 +34,25 @@ public final class NexoraPlayerSyncCodec {
             if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
                     || Math.abs(x) > 30_000_000d || Math.abs(y) > 30_000_000d
                     || Math.abs(z) > 30_000_000d) throw new IllegalArgumentException("Invalid player coordinates");
+            if (!Double.isFinite(yaw) || yaw < -180.0 || yaw > 180.0) throw new IllegalArgumentException("Invalid player yaw");
         }
     }
 
     public static byte[] encodePlayerState(PlayerState state) {
         Objects.requireNonNull(state, "state");
         byte[] name = state.playerName().getBytes(StandardCharsets.UTF_8);
-        ByteBuffer output = header(48 + name.length, PLAYER_STATE);
+        ByteBuffer output = header(56 + name.length, PLAYER_STATE);
         output.putLong(state.playerId().getMostSignificantBits());
         output.putLong(state.playerId().getLeastSignificantBits());
         output.put((byte) name.length).put(name);
-        output.putDouble(state.x()).putDouble(state.y()).putDouble(state.z());
+        output.putDouble(state.x()).putDouble(state.y()).putDouble(state.z()).putDouble(state.yaw());
         return output.array();
     }
 
     public static PlayerState decodePlayerState(ByteBuffer source) {
         Objects.requireNonNull(source, "source");
         ByteBuffer input = source.slice().order(ByteOrder.BIG_ENDIAN);
-        if (input.remaining() < 49) throw new IllegalArgumentException("Invalid player state size");
+        if (input.remaining() < 57) throw new IllegalArgumentException("Invalid player state size");
         for (byte expected : MAGIC) if (input.get() != expected) throw new IllegalArgumentException("Invalid NEXORA packet magic");
         int major = Byte.toUnsignedInt(input.get());
         int minor = Byte.toUnsignedInt(input.get());
@@ -54,7 +60,7 @@ public final class NexoraPlayerSyncCodec {
         if (major != 1 || minor != 0 || type != PLAYER_STATE) throw new IllegalArgumentException("Unexpected NEXORA player state");
         UUID id = new UUID(input.getLong(), input.getLong());
         int nameLength = Byte.toUnsignedInt(input.get());
-        if (nameLength < 1 || nameLength > 48 || input.remaining() != nameLength + 24) throw new IllegalArgumentException("Invalid player name length");
+        if (nameLength < 1 || nameLength > 48 || input.remaining() != nameLength + 32) throw new IllegalArgumentException("Invalid player name length");
         byte[] name = new byte[nameLength];
         input.get(name);
         final String playerName;
@@ -64,7 +70,7 @@ public final class NexoraPlayerSyncCodec {
         } catch (CharacterCodingException invalidName) {
             throw new IllegalArgumentException("Player name is not valid UTF-8", invalidName);
         }
-        return new PlayerState(id, playerName, input.getDouble(), input.getDouble(), input.getDouble());
+        return new PlayerState(id, playerName, input.getDouble(), input.getDouble(), input.getDouble(), input.getDouble());
     }
 
     public static byte[] encodePlayerLeft(UUID playerId) {

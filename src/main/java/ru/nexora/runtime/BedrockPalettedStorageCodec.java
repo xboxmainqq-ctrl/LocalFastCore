@@ -34,9 +34,6 @@ public final class BedrockPalettedStorageCodec {
             for (int z = 0; z < 16; z++) {
                 for (int y = 0; y < 16; y++) {
                     int runtimeId = registry.runtimeId(section.get(x, y, z));
-                    if (runtimeId < 0) {
-                        throw new IllegalArgumentException("Runtime block IDs must not be negative");
-                    }
                     runtimeIds[cursor++] = runtimeId;
                     if (!paletteIndices.containsKey(runtimeId)) {
                         paletteIndices.put(runtimeId, palette.size());

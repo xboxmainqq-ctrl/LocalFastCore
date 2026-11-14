@@ -2,6 +2,7 @@ package ru.nexora.core.profile;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -31,10 +32,17 @@ public final class SqlitePlayerProfileRepository implements PlayerProfileReposit
         if (databaseFile == null) {
             throw new IllegalArgumentException("databaseFile must not be null");
         }
-        Path absolute = databaseFile.toAbsolutePath();
+        Path absolute = databaseFile.toAbsolutePath().normalize();
         Path parent = absolute.getParent();
         if (parent != null) {
             Files.createDirectories(parent);
+        }
+        if (Files.isSymbolicLink(absolute)) {
+            throw new IOException("Profile database path must not be a symbolic link: " + absolute);
+        }
+        if (Files.exists(absolute, LinkOption.NOFOLLOW_LINKS)
+                && !Files.isRegularFile(absolute, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Profile database path is not a regular file: " + absolute);
         }
 
         Connection opened = null;
@@ -75,36 +83,70 @@ public final class SqlitePlayerProfileRepository implements PlayerProfileReposit
                     + " is newer than this NEXORA build supports (" + SCHEMA_VERSION + ")");
         }
         if (currentVersion == 0) {
-            boolean previousAutoCommit = connection.getAutoCommit();
-            connection.setAutoCommit(false);
-            try (Statement statement = connection.createStatement()) {
-                statement.execute("""
-                        CREATE TABLE IF NOT EXISTS player_profiles (
-                            player_uuid TEXT PRIMARY KEY NOT NULL,
-                            last_known_name TEXT NOT NULL,
-                            class_id TEXT,
-                            level INTEGER NOT NULL CHECK (level >= 1),
-                            experience INTEGER NOT NULL CHECK (experience >= 0)
-                        )
-                        """);
-                statement.execute("""
-                        CREATE TABLE IF NOT EXISTS player_profile_attributes (
-                            player_uuid TEXT NOT NULL,
-                            attribute_key TEXT NOT NULL,
-                            attribute_value INTEGER NOT NULL,
-                            PRIMARY KEY (player_uuid, attribute_key),
-                            FOREIGN KEY (player_uuid) REFERENCES player_profiles(player_uuid)
-                                ON DELETE CASCADE
-                        )
-                        """);
-                statement.execute("PRAGMA user_version = " + SCHEMA_VERSION);
-                connection.commit();
-            } catch (SQLException exception) {
+            runInTransaction(() -> {
+                try (Statement statement = connection.createStatement()) {
+                    statement.execute("""
+                            CREATE TABLE IF NOT EXISTS player_profiles (
+                                player_uuid TEXT PRIMARY KEY NOT NULL,
+                                last_known_name TEXT NOT NULL,
+                                class_id TEXT,
+                                level INTEGER NOT NULL CHECK (level >= 1),
+                                experience INTEGER NOT NULL CHECK (experience >= 0)
+                            )
+                            """);
+                    statement.execute("""
+                            CREATE TABLE IF NOT EXISTS player_profile_attributes (
+                                player_uuid TEXT NOT NULL,
+                                attribute_key TEXT NOT NULL,
+                                attribute_value INTEGER NOT NULL,
+                                PRIMARY KEY (player_uuid, attribute_key),
+                                FOREIGN KEY (player_uuid) REFERENCES player_profiles(player_uuid)
+                                    ON DELETE CASCADE
+                            )
+                            """);
+                    statement.execute("PRAGMA user_version = " + SCHEMA_VERSION);
+                }
+            });
+        }
+    }
+
+    @FunctionalInterface
+    private interface SqlWork {
+        void run() throws SQLException;
+    }
+
+    /**
+     * Runs one repository-owned transaction and preserves the connection's
+     * previous auto-commit setting. A committed transaction is never followed
+     * by a misleading rollback if restoring auto-commit fails.
+     */
+    private void runInTransaction(SqlWork work) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        SQLException failure = null;
+        try {
+            work.run();
+            connection.commit();
+        } catch (SQLException exception) {
+            failure = exception;
+            try {
                 connection.rollback();
-                throw exception;
-            } finally {
-                connection.setAutoCommit(previousAutoCommit);
+            } catch (SQLException rollbackFailure) {
+                failure.addSuppressed(rollbackFailure);
             }
+        }
+
+        try {
+            connection.setAutoCommit(previousAutoCommit);
+        } catch (SQLException restoreFailure) {
+            if (failure == null) {
+                failure = restoreFailure;
+            } else {
+                failure.addSuppressed(restoreFailure);
+            }
+        }
+        if (failure != null) {
+            throw failure;
         }
     }
 
@@ -159,58 +201,62 @@ public final class SqlitePlayerProfileRepository implements PlayerProfileReposit
         if (profile == null) {
             throw new IllegalArgumentException("profile must not be null");
         }
-        boolean previousAutoCommit;
         try {
-            previousAutoCommit = connection.getAutoCommit();
-            connection.setAutoCommit(false);
-            try (PreparedStatement statement = connection.prepareStatement("""
-                    INSERT INTO player_profiles
-                        (player_uuid, last_known_name, class_id, level, experience)
-                    VALUES (?, ?, ?, ?, ?)
-                    ON CONFLICT(player_uuid) DO UPDATE SET
-                        last_known_name = excluded.last_known_name,
-                        class_id = excluded.class_id,
-                        level = excluded.level,
-                        experience = excluded.experience
-                    """)) {
-                statement.setString(1, profile.uniqueId().toString());
-                statement.setString(2, profile.lastKnownName());
-                statement.setString(3, profile.classId().orElse(null));
-                statement.setInt(4, profile.level());
-                statement.setLong(5, profile.experience());
-                statement.executeUpdate();
-            }
-
-            try (PreparedStatement delete = connection.prepareStatement(
-                    "DELETE FROM player_profile_attributes WHERE player_uuid = ?");
-                 PreparedStatement insert = connection.prepareStatement("""
-                    INSERT INTO player_profile_attributes
-                        (player_uuid, attribute_key, attribute_value) VALUES (?, ?, ?)
-                    """)) {
-                delete.setString(1, profile.uniqueId().toString());
-                delete.executeUpdate();
-                for (Map.Entry<String, Integer> entry : profile.attributes().entrySet()) {
-                    insert.setString(1, profile.uniqueId().toString());
-                    insert.setString(2, entry.getKey());
-                    insert.setInt(3, entry.getValue());
-                    insert.addBatch();
+            runInTransaction(() -> {
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        INSERT INTO player_profiles
+                            (player_uuid, last_known_name, class_id, level, experience)
+                        VALUES (?, ?, ?, ?, ?)
+                        ON CONFLICT(player_uuid) DO UPDATE SET
+                            last_known_name = excluded.last_known_name,
+                            class_id = excluded.class_id,
+                            level = excluded.level,
+                            experience = excluded.experience
+                        """)) {
+                    statement.setString(1, profile.uniqueId().toString());
+                    statement.setString(2, profile.lastKnownName());
+                    statement.setString(3, profile.classId().orElse(null));
+                    statement.setInt(4, profile.level());
+                    statement.setLong(5, profile.experience());
+                    statement.executeUpdate();
                 }
-                insert.executeBatch();
-            }
-            connection.commit();
-            connection.setAutoCommit(previousAutoCommit);
+
+                try (PreparedStatement delete = connection.prepareStatement(
+                        "DELETE FROM player_profile_attributes WHERE player_uuid = ?");
+                     PreparedStatement insert = connection.prepareStatement("""
+                        INSERT INTO player_profile_attributes
+                            (player_uuid, attribute_key, attribute_value) VALUES (?, ?, ?)
+                        """)) {
+                    delete.setString(1, profile.uniqueId().toString());
+                    delete.executeUpdate();
+                    for (Map.Entry<String, Integer> entry : profile.attributes().entrySet()) {
+                        insert.setString(1, profile.uniqueId().toString());
+                        insert.setString(2, entry.getKey());
+                        insert.setInt(3, entry.getValue());
+                        insert.addBatch();
+                    }
+                    insert.executeBatch();
+                }
+            });
         } catch (SQLException exception) {
-            try {
-                connection.rollback();
-            } catch (SQLException rollbackException) {
-                exception.addSuppressed(rollbackException);
-            }
-            try {
-                connection.setAutoCommit(true);
-            } catch (SQLException restoreException) {
-                exception.addSuppressed(restoreException);
-            }
             throw new IOException("Could not save player profile " + profile.uniqueId(), exception);
+        }
+    }
+
+    /**
+     * Runs SQLite's lightweight database consistency check.
+     *
+     * @throws IOException when SQLite reports corruption or the check cannot run
+     */
+    public synchronized void verifyIntegrity() throws IOException {
+        ensureOpen();
+        try (Statement statement = connection.createStatement();
+             ResultSet result = statement.executeQuery("PRAGMA quick_check")) {
+            if (!result.next() || !"ok".equalsIgnoreCase(result.getString(1)) || result.next()) {
+                throw new IOException("NEXORA profile database integrity check failed");
+            }
+        } catch (SQLException exception) {
+            throw new IOException("Could not verify NEXORA profile database integrity", exception);
         }
     }
 

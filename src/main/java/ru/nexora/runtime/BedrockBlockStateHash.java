@@ -64,8 +64,11 @@ public final class BedrockBlockStateHash {
             throw new IllegalArgumentException("Block property names and values must not be blank");
         }
 
-        if (encodedValue.length() > 2 && encodedValue.charAt(1) == ':') {
+        if (encodedValue.length() >= 2 && encodedValue.charAt(1) == ':') {
             String value = encodedValue.substring(2);
+            if (value.isEmpty()) {
+                throw new IllegalArgumentException("Empty typed block property value: " + name);
+            }
             switch (encodedValue.charAt(0)) {
                 case 's' -> writeNamedString(out, name, value);
                 case 'b' -> {

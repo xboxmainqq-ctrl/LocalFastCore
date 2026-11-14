@@ -8,7 +8,7 @@ import java.util.Objects;
 /** Protocol-2225 decoder for client SubChunkRequest packet 175. */
 public final class BedrockSubChunkRequestPacketCodec {
     public static final int PACKET_ID = 175;
-    public static final int MAX_REQUESTED_SUBCHUNKS = 4096;
+    public static final int MAX_REQUESTED_SUBCHUNKS = 64;
 
     public record SubChunkPosition(int x, int y, int z) {
     }

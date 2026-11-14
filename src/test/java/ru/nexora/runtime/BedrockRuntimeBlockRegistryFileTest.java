@@ -97,6 +97,40 @@ class BedrockRuntimeBlockRegistryFileTest {
                 new ByteArrayInputStream(oversized)));
     }
 
+
+    @Test
+    void validatesStartGameHashFlagAgainstLoadedRegistryMode() throws Exception {
+        String file = """
+                NEXORA-BEDROCK-BLOCK-REGISTRY\t1
+                protocol\t2225
+                game\t1.26.60
+                id-mode\thash
+                --
+                minecraft:air\t0
+                """;
+        var loaded = BedrockRuntimeBlockRegistryFile.load(input(file));
+
+        assertDoesNotThrow(() -> loaded.validateStartGameSettings(startSettings(true)));
+        assertThrows(IllegalArgumentException.class,
+                () -> loaded.validateStartGameSettings(startSettings(false)));
+    }
+
+    private static BedrockStartGamePacketCodec.Settings startSettings(boolean hashes) {
+        var level = new BedrockLevelSettingsCodec.Settings(
+                1L, 0, new BedrockStartGamePrimitivesCodec.BlockPosition(0, 64, 0),
+                2, -1, 4, "1.26.60");
+        return new BedrockStartGamePacketCodec.Settings(
+                1L, 1L, 0,
+                new BedrockStartGamePrimitivesCodec.Vec3(0, 65, 0),
+                new BedrockStartGamePrimitivesCodec.Vec2(0, 0),
+                level, "nexora", "NEXORA", "", false,
+                new BedrockStartGamePrimitivesCodec.SyncedPlayerMovementSettings(0, false),
+                0L, 0, "test", false, "NEXORA/0.1",
+                BedrockStartGamePacketCodec.PlayerPropertyData.empty(),
+                0L, 0L, 0L, false, hashes, false,
+                BedrockStartGamePacketCodec.Telemetry.empty());
+    }
+
     private static ByteArrayInputStream input(String value) {
         return new ByteArrayInputStream(value.getBytes(StandardCharsets.UTF_8));
     }

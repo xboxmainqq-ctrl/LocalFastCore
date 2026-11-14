@@ -101,21 +101,13 @@ class BedrockSubChunkResponseBuilderTest {
     }
 
     @Test
-    void splitsLargeRequestsIntoBoundedPacketBatches() {
-        InMemoryWorld world = new InMemoryWorld("test", new WorldHeight(-64, 320));
-        world.loadChunk(new GeneratedChunk(new ChunkPosition(0, 0),
-                Map.of(new BlockPosition(0, 0, 0), STONE)));
+    void rejectsRequestsLargerThanOneBoundedResponseBatch() {
         var offsets = java.util.Collections.nCopies(65,
                 new BedrockSubChunkRequestPacketCodec.Offset(0, 0, 0));
-        var request = new BedrockSubChunkRequestPacketCodec.Request(
-                0, offsets, new BedrockSubChunkRequestPacketCodec.SubChunkPosition(0, 0, 0));
-        var registry = BedrockRuntimeBlockRegistry.of(Map.of(BlockState.AIR, 0, STONE, 1));
-
-        List<BedrockGamePacket> packets =
-                BedrockSubChunkResponseBuilder.buildPackets(world, request, 0, registry);
-        assertEquals(2, packets.size());
-        assertEquals(64, readEntryCount(packets.get(0)));
-        assertEquals(1, readEntryCount(packets.get(1)));
+        assertThrows(IllegalArgumentException.class, () ->
+                new BedrockSubChunkRequestPacketCodec.Request(
+                        0, offsets,
+                        new BedrockSubChunkRequestPacketCodec.SubChunkPosition(0, 0, 0)));
     }
 
     private static int firstResult(BedrockGamePacket packet) {

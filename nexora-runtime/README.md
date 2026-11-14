@@ -19,7 +19,8 @@ This module is the beginning of the independent NEXORA server process. It has **
 - Thread-safe `WorldRegistry` for multiple worlds, with duplicate-ID rejection, normalized lookup/removal, stable registration order, and immutable snapshots.
 - Immutable chunk and block snapshots exposed by the world contract.
 - `FileWorldStorage` saves a world's loaded chunks to a versioned `.nxw` file, verifies a CRC32C checksum on load, rejects unsafe world IDs and symbolic-link targets, and replaces files atomically when supported.
-- Persistence tests cover save/load, replacement, missing worlds, unsafe IDs, checksum corruption, and symbolic-link rejection.
+- `WorldStorageModule` loads configured worlds during runtime startup and saves them during shutdown. It reuses worlds already in the registry, rolls back worlds it registered if startup fails, and keeps failed shutdown saves retryable.
+- Persistence tests cover save/load, replacement, missing worlds, unsafe IDs, checksum corruption, symbolic-link rejection, lifecycle integration, and reload into a fresh registry.
 
 ## World storage format
 

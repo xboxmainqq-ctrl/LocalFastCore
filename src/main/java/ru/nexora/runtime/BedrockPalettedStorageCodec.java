@@ -22,6 +22,16 @@ public final class BedrockPalettedStorageCodec {
     }
 
     public static ByteBuffer encode(ChunkSection section, BedrockRuntimeBlockRegistry registry) {
+        return encodeInternal(section, registry, false);
+    }
+
+    /** Encodes a separate liquid layer; only fluid block states and air are accepted. */
+    static ByteBuffer encodeFluidLayer(ChunkSection section, BedrockRuntimeBlockRegistry registry) {
+        return encodeInternal(section, registry, true);
+    }
+
+    private static ByteBuffer encodeInternal(
+            ChunkSection section, BedrockRuntimeBlockRegistry registry, boolean fluidLayer) {
         Objects.requireNonNull(section, "section");
         Objects.requireNonNull(registry, "registry");
 
@@ -36,7 +46,12 @@ public final class BedrockPalettedStorageCodec {
             for (int z = 0; z < 16; z++) {
                 for (int y = 0; y < 16; y++) {
                     BlockState state = section.get(x, y, z);
-                    rejectUnsupportedFluidState(state);
+                    if (fluidLayer) {
+                        FluidStates.requireFluidOrAir(state);
+                    } else if (FluidStates.isFluid(state)) {
+                        throw new IllegalArgumentException(
+                                "Fluid state must be stored in the separate liquid layer: " + state);
+                    }
                     int runtimeId = registry.runtimeId(state);
                     BlockState previousState = statesByRuntimeId.putIfAbsent(runtimeId, state);
                     if (previousState != null && !previousState.equals(state)) {
@@ -89,31 +104,10 @@ public final class BedrockPalettedStorageCodec {
         return out.asReadOnlyBuffer();
     }
 
-    private static void rejectUnsupportedFluidState(BlockState state) {
-        String identifier = state.identifier();
-        if (identifier.equals("minecraft:water")
-                || identifier.equals("minecraft:flowing_water")
-                || identifier.equals("minecraft:lava")
-                || identifier.equals("minecraft:flowing_lava")) {
-            throw new IllegalArgumentException(
-                    "Fluid block states require explicit NEXORA fluid-layer storage: " + state);
-        }
-        for (Map.Entry<String, String> property : state.properties().entrySet()) {
-            String key = property.getKey();
-            String value = property.getValue();
-            if ((key.equals("waterlogged") || key.equals("waterlogged_bit"))
-                    && (value.equalsIgnoreCase("true") || value.equals("1")
-                    || value.equalsIgnoreCase("b:1"))) {
-                throw new IllegalArgumentException(
-                        "Waterlogged block states require explicit NEXORA fluid-layer storage: " + state);
-            }
-        }
-    }
-
     /** Encodes the currently empty liquid layer as a uniform air palette. */
     static ByteBuffer encodeEmptyFluidLayer(BedrockRuntimeBlockRegistry registry) {
         Objects.requireNonNull(registry, "registry");
-        return encode(new ChunkSection(), registry);
+        return encodeFluidLayer(new ChunkSection(), registry);
     }
 
     private static int bitsForPalette(int paletteSize) {

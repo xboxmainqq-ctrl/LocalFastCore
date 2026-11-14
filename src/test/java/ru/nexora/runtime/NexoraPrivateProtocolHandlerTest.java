@@ -168,6 +168,40 @@ class NexoraPrivateProtocolHandlerTest {
     }
 
     @Test
+    void acceptedPlayerMovementAutomaticallyCollectsNearbyDroppedItems() {
+        InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
+        FlatChunkGenerator generator = new FlatChunkGenerator(64, 5,
+                new BlockState("minecraft:grass_block"),
+                new BlockState("minecraft:dirt"),
+                new BlockState("minecraft:bedrock"));
+        world.loadChunk(generator.generate(new ChunkPosition(0, 0), world.height(), 9L));
+        EntityRegistry entities = new EntityRegistry();
+        java.util.Map<UUID, PlayerInventory> inventories = new java.util.concurrent.ConcurrentHashMap<>();
+        UUID itemId = UUID.randomUUID();
+        entities.spawn(new WorldEntity(itemId, WorldEntity.Type.ITEM,
+                "minecraft:apple", 1.2, 65.0, 0.5, 0, -1));
+        FakeConnection connection = new FakeConnection();
+        NexoraWorldInfo info = new NexoraWorldInfo("world", 0, 128, 0, 65, 0, 20, 1);
+        NexoraPrivateProtocolHandler handler = new NexoraPrivateProtocolHandler(
+                UUID.randomUUID(), 8 * 1024 * 1024, () -> info,
+                () -> world, ignored -> true, ignored -> { }, entities, inventories);
+        handler.accept(connection);
+        connection.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev", "Picker", 0));
+
+        UUID playerId = entities.snapshot().stream()
+                .filter(entity -> entity.type() == WorldEntity.Type.PLAYER)
+                .findFirst().orElseThrow().id();
+        assertEquals(1, entities.size());
+
+        connection.deliver(NexoraMovementPacketCodec.encodeClientMove(
+                new NexoraMovementValidator.Position(0.7, 65.0, 0.5)));
+
+        assertTrue(entities.find(itemId).isEmpty());
+        assertEquals(1, handler.inventory(playerId).orElseThrow().count("minecraft:apple"));
+        assertEquals(1, inventories.get(playerId).count("minecraft:apple"));
+    }
+
+    @Test
     void rejectsMovementThroughBlockAndReturnsPreviousPosition() {
         InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
         FlatChunkGenerator generator = new FlatChunkGenerator(64, 5,

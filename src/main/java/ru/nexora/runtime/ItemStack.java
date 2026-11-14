@@ -10,8 +10,8 @@ public record ItemStack(String itemId, int count) {
 
     public ItemStack {
         Objects.requireNonNull(itemId, "itemId");
-        if (!ITEM_ID.matcher(itemId).matches()) {
-            throw new IllegalArgumentException("Item identifier must be namespaced");
+        if (!ITEM_ID.matcher(itemId).matches() || itemId.length() > 96) {
+            throw new IllegalArgumentException("Item identifier must be namespaced and at most 96 bytes");
         }
         if (count < 1 || count > MAX_STACK_SIZE) {
             throw new IllegalArgumentException("Item stack count must be between 1 and 64");

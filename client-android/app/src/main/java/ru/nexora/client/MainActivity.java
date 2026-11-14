@@ -155,7 +155,8 @@ public final class MainActivity extends Activity {
                                                     java.util.function.Consumer<Boolean> decision) {
                 new AlertDialog.Builder(MainActivity.this)
                         .setTitle("Подтвердить ключ сервера?")
-                        .setMessage("Домен (не проверен): " + domain
+                        .setMessage("Адрес: " + serverAddress.getText().toString().trim()
+                                + "\nДомен (не проверен): " + domain
                                 + "\n\nSHA-256 отпечаток ключа:\n" + fingerprint
                                 + "\n\nЭто первое подключение по HTTP. Доверяй ключу только если можешь сверить отпечаток с владельцем сервера.")
                         .setPositiveButton("ДОВЕРЯТЬ КЛЮЧУ",

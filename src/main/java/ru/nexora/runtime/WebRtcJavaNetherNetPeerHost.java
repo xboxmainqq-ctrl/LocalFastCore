@@ -218,18 +218,40 @@ public final class WebRtcJavaNetherNetPeerHost
 
     @Override
     public synchronized void close() {
-        if (closed) {
+        if (closed && sessions.isEmpty() && factory == null) {
             return;
         }
         closed = true;
+        RuntimeException failure = null;
         for (PeerSession session : sessions.values()) {
-            session.close("WebRTC peer host stopped", false);
+            try {
+                session.close("WebRTC peer host stopped", false);
+            } catch (RuntimeException closeFailure) {
+                if (failure == null) {
+                    failure = closeFailure;
+                } else {
+                    failure.addSuppressed(closeFailure);
+                }
+            }
         }
         sessions.clear();
         PeerConnectionFactory current = factory;
-        factory = null;
         if (current != null) {
-            current.dispose();
+            try {
+                current.dispose();
+                if (factory == current) {
+                    factory = null;
+                }
+            } catch (RuntimeException disposeFailure) {
+                if (failure == null) {
+                    failure = disposeFailure;
+                } else {
+                    failure.addSuppressed(disposeFailure);
+                }
+            }
+        }
+        if (failure != null) {
+            throw failure;
         }
     }
 

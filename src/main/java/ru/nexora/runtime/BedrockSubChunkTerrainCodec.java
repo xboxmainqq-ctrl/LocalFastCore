@@ -14,8 +14,7 @@ public final class BedrockSubChunkTerrainCodec {
 
     /**
      * Encodes one subchunk response blob, including its empty block-actor NBT
-     * terminator. The current terrain profile writes the block layer and an explicit empty
-     * liquid layer; fluid-bearing states are rejected until world fluid storage exists.
+     * terminator. Fluid cells are read from the separately stored liquid section.
      */
     public static ByteBuffer encode(
             ChunkSection section,

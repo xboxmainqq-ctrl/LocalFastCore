@@ -247,6 +247,39 @@ class NexoraPrivateProtocolHandlerTest {
     }
 
     @Test
+    void doesNotReplicatePlayersOutsideVisibilityRadius() {
+        InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
+        AtomicInteger worldInfoRequests = new AtomicInteger();
+        NexoraPrivateProtocolHandler handler = new NexoraPrivateProtocolHandler(
+                UUID.randomUUID(), 8 * 1024 * 1024,
+                () -> {
+                    int index = worldInfoRequests.getAndIncrement();
+                    int spawnX = index == 0 ? 0 : 200;
+                    return new NexoraWorldInfo("world", 0, 128, spawnX, 65, 0, 20, 1);
+                },
+                () -> world, ignored -> true, ignored -> { });
+        FakeConnection first = new FakeConnection();
+        FakeConnection distant = new FakeConnection();
+
+        handler.accept(first);
+        first.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev", "Ближний", 0));
+        handler.accept(distant);
+        distant.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev", "Дальний", 1));
+
+        assertEquals(2, handler.entities().size());
+        assertEquals(3, first.sentMessages.size(),
+                "The first client should not receive a distant player's state");
+        assertEquals(3, distant.sentMessages.size(),
+                "The distant client should not receive the first player's state");
+
+        distant.close();
+
+        assertEquals(3, first.sentMessages.size(),
+                "A client that never saw the distant player should not receive a leave packet");
+        assertEquals(1, handler.entities().size());
+    }
+
+    @Test
     void refusesChunkRequestsOutsideSpawnNeighborhood() {
         InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
         FakeConnection connection = new FakeConnection();

@@ -32,7 +32,7 @@ The official 1.26.60 release notes state that the dedicated-server warning about
 
 - Keep transport, Bedrock session/protocol, gameplay, world, and persistence as separate layers.
 - The game runtime must depend on a transport-neutral connection contract, not on NetherNet implementation classes.
-- The transport adapter owns connection establishment, reliability/ordering semantics exposed by its API, close/error propagation, and transport diagnostics.
+- The transport adapter owns connection establishment, reliability/ordering semantics exposed by its API, close/error propagation, and transport diagnostics. It must use bounded inbound reassembly and outbound queues; queue saturation is surfaced as backpressure rather than unbounded memory growth.
 - The Bedrock protocol layer owns packet framing/serialization, compression/encryption negotiation, login/session state, and packet-version selection.
 - Do not assume NetherNet is interchangeable with generic WebRTC. Its exact signaling, channel setup, framing, and platform requirements must follow the Mojang onboarding guide and be verified against real clients.
 - Do not copy packet IDs or schemas from a different protocol version. Pin schema inputs to protocol 2225 and add version-specific tests.
@@ -117,7 +117,8 @@ When targeting a newer Bedrock release:
 2. Signaling and the game-data transport are separate concerns and should have separate lifecycle/metrics.
 3. Authentication and operator identity are transport-adjacent security requirements. Do not mark a connection authenticated merely because the WebRTC data channel opened.
 4. Reliable and unreliable delivery must remain distinct all the way to packet scheduling; do not silently send latency-sensitive movement traffic through the reliable queue.
-5. Fragment reassembly must be bounded (maximum in-flight messages, maximum assembled bytes, and timeout) to prevent memory exhaustion.
-6. The metadata endpoint must advertise the exact NEXORA game version and protocol target: **1.26.60 / 2225**. Do not copy illustrative values from onboarding examples.
+5. Fragment reassembly and outbound buffering must be bounded (maximum in-flight messages, maximum assembled bytes, per-message limit, queued-byte limit, and timeout) to prevent memory exhaustion.
+6. A send operation must report whether a message was accepted, rejected due to backpressure, or rejected because the connection is closed. `ACCEPTED` is not a delivery acknowledgement.
+7. The metadata endpoint must advertise the exact NEXORA game version and protocol target: **1.26.60 / 2225**. Do not copy illustrative values from onboarding examples.
 
 These are protocol requirements from Mojang documentation, not proof that NEXORA has implemented them. The implementation remains pending.

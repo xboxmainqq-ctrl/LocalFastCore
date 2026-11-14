@@ -88,6 +88,47 @@ class EntityRegistryTest {
     }
 
     @Test
+    void reindexesEntitiesWhenTheyCrossPositiveAndNegativeCellBoundaries() {
+        EntityRegistry registry = new EntityRegistry();
+        UUID id = UUID.randomUUID();
+        registry.spawn(new WorldEntity(id, WorldEntity.Type.MOB, "Zombie", 15.5, 64, 0, 0, -1));
+
+        assertEquals(1, registry.within(15.5, 64, 0, 1).size());
+        assertTrue(registry.updatePosition(id, 16.5, 64, 0, 0));
+        assertTrue(registry.within(15.5, 64, 0, 1).isEmpty());
+        assertEquals(id, registry.within(16.5, 64, 0, 0).get(0).id());
+
+        assertTrue(registry.updatePosition(id, -16.5, 64, 0, 0));
+        assertTrue(registry.within(16.5, 64, 0, 1).isEmpty());
+        assertEquals(id, registry.within(-16.5, 64, 0, 0).get(0).id());
+    }
+
+    @Test
+    void removesEntityFromSpatialIndex() {
+        EntityRegistry registry = new EntityRegistry();
+        UUID id = UUID.randomUUID();
+        registry.spawn(new WorldEntity(id, WorldEntity.Type.ITEM, "Dropped item", -20, 5, 31, 0, -1));
+
+        assertTrue(registry.remove(id).isPresent());
+        assertTrue(registry.within(-20, 5, 31, 0).isEmpty());
+        assertTrue(registry.isEmpty());
+    }
+
+    @Test
+    void largeRadiusUsesSafeFallbackAndStillReturnsCorrectResults() {
+        EntityRegistry registry = new EntityRegistry();
+        WorldEntity first = new WorldEntity(UUID.randomUUID(), WorldEntity.Type.MOB,
+                "Zombie", -25_000_000, 64, 0, 0, -1);
+        WorldEntity second = new WorldEntity(UUID.randomUUID(), WorldEntity.Type.ITEM,
+                "Dropped item", 25_000_000, 64, 0, 0, -1);
+        registry.spawn(first);
+        registry.spawn(second);
+
+        assertEquals(2, registry.within(0, 64, 0, 30_000_000).size());
+        assertEquals(1, registry.within(-25_000_000, 64, 0, 1).size());
+    }
+
+    @Test
     void validatesEntityDataAndSearchArguments() {
         UUID id = UUID.randomUUID();
         assertThrows(IllegalArgumentException.class,

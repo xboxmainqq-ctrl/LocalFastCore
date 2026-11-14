@@ -19,8 +19,8 @@ public final class FlatChunkGenerator implements ChunkGenerator {
 
     /**
      * @param surfaceY absolute Y coordinate of the top layer
-     * @param depth number of layers from foundation to surface, inclusive;
-     *              must be at least one
+     * @param depth vertical distance in blocks from the foundation layer to the surface layer;
+     *              must be between one and the configured safety limit
      */
     public FlatChunkGenerator(
             int surfaceY,

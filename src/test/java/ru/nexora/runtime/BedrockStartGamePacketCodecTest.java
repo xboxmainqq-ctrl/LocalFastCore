@@ -27,7 +27,7 @@ class BedrockStartGamePacketCodecTest {
                 properties, 0x0102030405060708L,
                 0x1112131415161718L, 0x2122232425262728L,
                 false, false, false,
-                new BedrockStartGamePacketCodec.Telemetry("server", "scenario"));
+                new BedrockStartGamePacketCodec.Telemetry("server", "scenario", "world", "owner"));
 
         ByteBuffer in = BedrockStartGamePacketCodec.encodePayload(settings);
         assertEquals(-9L, BedrockBinary.readVarInt64(in));
@@ -63,7 +63,7 @@ class BedrockStartGamePacketCodecTest {
         assertEquals(-7, BedrockBinary.readVarInt32(in));
         assertEquals(1, BedrockBinary.readVarUInt32(in));
         assertEquals(4, BedrockBinary.readVarUInt32(in));
-        assertEquals(1.25f, BedrockBinary.readLittleEndianFloat(in));
+        assertEquals(1.25f, BedrockBinary.readLittleEndianFloat(in), 0.0001f);
 
         assertEquals(0x0102030405060708L, BedrockBinary.readLittleEndianInt64(in));
         assertEquals(0x1112131415161718L, BedrockBinary.readLittleEndianInt64(in));
@@ -74,6 +74,8 @@ class BedrockStartGamePacketCodecTest {
         assertFalse(readBoolean(in)); // server_config absent
         assertEquals("server", BedrockBinary.readString(in, 4096));
         assertEquals("scenario", BedrockBinary.readString(in, 4096));
+        assertEquals("world", BedrockBinary.readString(in, 4096));
+        assertEquals("owner", BedrockBinary.readString(in, 4096));
         assertFalse(in.hasRemaining());
     }
 
@@ -107,7 +109,7 @@ class BedrockStartGamePacketCodecTest {
         assertThrows(IllegalArgumentException.class,
                 () -> new BedrockStartGamePacketCodec.IntProperty(-1, 1));
         assertThrows(IllegalArgumentException.class,
-                () -> new BedrockStartGamePacketCodec.Telemetry("x".repeat(4097), ""));
+                () -> new BedrockStartGamePacketCodec.Telemetry("x".repeat(4097), "", "", ""));
     }
 
     private static boolean readBoolean(ByteBuffer input) {

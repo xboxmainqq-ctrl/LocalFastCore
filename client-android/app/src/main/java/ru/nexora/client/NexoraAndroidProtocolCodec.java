@@ -119,6 +119,7 @@ final class NexoraAndroidProtocolCodec {
         double x = input.getDouble();
         double y = input.getDouble();
         double z = input.getDouble();
+        double yaw = input.getDouble();
         if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
                 || Math.abs(x) > 30_000_000d || Math.abs(y) > 30_000_000d
                 || Math.abs(z) > 30_000_000d) {
@@ -132,7 +133,7 @@ final class NexoraAndroidProtocolCodec {
         if (input.remaining() < 42) throw new IllegalArgumentException("Malformed NEXORA remote player state");
         UUID playerId = new UUID(input.getLong(), input.getLong());
         int nameLength = Byte.toUnsignedInt(input.get());
-        if (nameLength < 1 || nameLength > 48 || input.remaining() != nameLength + 24) throw new IllegalArgumentException("Invalid remote player name length");
+        if (nameLength < 1 || nameLength > 48 || input.remaining() != nameLength + 32) throw new IllegalArgumentException("Invalid remote player name length");
         byte[] nameBytes = new byte[nameLength];
         input.get(nameBytes);
         String playerName = decodeUtf8(nameBytes);
@@ -142,10 +143,10 @@ final class NexoraAndroidProtocolCodec {
         double z = input.getDouble();
         if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
                 || Math.abs(x) > 30_000_000d || Math.abs(y) > 30_000_000d
-                || Math.abs(z) > 30_000_000d) {
-            throw new IllegalArgumentException("Invalid NEXORA remote player coordinates");
+                || Math.abs(z) > 30_000_000d || !Double.isFinite(yaw) || yaw < -180.0 || yaw > 180.0) {
+            throw new IllegalArgumentException("Invalid NEXORA remote player coordinates or yaw");
         }
-        return new RemotePlayerState(playerId, playerName, x, y, z);
+        return new RemotePlayerState(playerId, playerName, x, y, z, yaw);
     }
 
     static UUID decodeRemotePlayerLeft(byte[] bytes) {
@@ -262,7 +263,7 @@ final class NexoraAndroidProtocolCodec {
     record ChunkData(int chunkX, int chunkZ, java.util.List<ChunkBlock> blocks) {
     }
 
-    record PlayerPosition(double x, double y, double z) {\n    }\n\n    record WorldInfo(String worldId, int minY, int maxYExclusive,
+    record RemotePlayerState(UUID playerId, String playerName, double x, double y, double z, double yaw) {\n    }\n\n    record PlayerPosition(double x, double y, double z) {\n    }\n\n    record WorldInfo(String worldId, int minY, int maxYExclusive,
                      int spawnX, int spawnY, int spawnZ,
                      int tickRate, int loadedChunks) {
     }

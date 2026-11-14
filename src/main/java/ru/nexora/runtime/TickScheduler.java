@@ -11,7 +11,9 @@ import java.util.PriorityQueue;
  *
  * <p>The scheduler does not create its own thread or clock. The future game
  * loop calls {@link #tick()} exactly once for each completed server tick.
- * Tasks are ordered by due tick and then by registration order.</p>
+ * Tasks are ordered by due tick and then by registration order. User actions
+ * execute outside the scheduler monitor so slow tasks cannot block scheduling
+ * or cancellation from network and worker threads.</p>
  */
 public final class TickScheduler {
     private final PriorityQueue<ScheduledTask> pending = new PriorityQueue<>(
@@ -21,6 +23,7 @@ public final class TickScheduler {
 
     private long currentTick;
     private long nextSequence;
+    private boolean tickInProgress;
 
     /** Returns the number of ticks processed by this scheduler. */
     public synchronized long currentTick() {
@@ -52,38 +55,64 @@ public final class TickScheduler {
     /**
      * Advances the scheduler by one tick and executes all tasks due on it.
      *
-     * <p>All due tasks are attempted even if one throws a RuntimeException.
-     * The first failure is rethrown after execution, with later failures
-     * attached as suppressed exceptions.</p>
+     * <p>Only one tick may execute at a time. The due-task snapshot is taken
+     * under the monitor, then callbacks run without it. Tasks scheduled by a
+     * callback therefore become eligible on a later tick. All due callbacks
+     * are attempted after RuntimeException failures; the first failure is
+     * rethrown with subsequent failures attached as suppressed exceptions.</p>
      */
-    public synchronized void tick() {
-        currentTick = Math.incrementExact(currentTick);
-        List<ScheduledTask> due = new ArrayList<>();
-
-        while (!pending.isEmpty() && pending.peek().dueTick <= currentTick) {
-            due.add(pending.remove());
+    public void tick() {
+        final long executingTick;
+        final List<ScheduledTask> due = new ArrayList<>();
+        synchronized (this) {
+            if (tickInProgress) {
+                throw new IllegalStateException("A scheduler tick is already in progress");
+            }
+            tickInProgress = true;
+            try {
+                currentTick = Math.incrementExact(currentTick);
+                executingTick = currentTick;
+                while (!pending.isEmpty() && pending.peek().dueTick <= executingTick) {
+                    due.add(pending.remove());
+                }
+            } catch (RuntimeException failure) {
+                tickInProgress = false;
+                throw failure;
+            }
         }
 
         RuntimeException failure = null;
-        for (ScheduledTask task : due) {
-            if (task.cancelled) {
-                continue;
+        try {
+            for (ScheduledTask task : due) {
+                synchronized (this) {
+                    if (task.cancelled) {
+                        task.finished = true;
+                        continue;
+                    }
+                }
+
+                try {
+                    task.action.run();
+                } catch (RuntimeException taskFailure) {
+                    if (failure == null) {
+                        failure = taskFailure;
+                    } else {
+                        failure.addSuppressed(taskFailure);
+                    }
+                } finally {
+                    synchronized (this) {
+                        if (!task.cancelled && task.periodTicks > 0) {
+                            task.dueTick = Math.addExact(executingTick, task.periodTicks);
+                            pending.add(task);
+                        } else {
+                            task.finished = true;
+                        }
+                    }
+                }
             }
-            try {
-                task.action.run();
-            } catch (RuntimeException taskFailure) {
-                if (failure == null) {
-                    failure = taskFailure;
-                } else {
-                    failure.addSuppressed(taskFailure);
-                }
-            } finally {
-                if (!task.cancelled && task.periodTicks > 0) {
-                    task.dueTick = Math.addExact(currentTick, task.periodTicks);
-                    pending.add(task);
-                } else {
-                    task.finished = true;
-                }
+        } finally {
+            synchronized (this) {
+                tickInProgress = false;
             }
         }
 
@@ -95,7 +124,9 @@ public final class TickScheduler {
     private TaskHandle enqueue(long delayTicks, long periodTicks, Runnable action) {
         Objects.requireNonNull(action, "action");
         long dueTick = Math.addExact(currentTick, delayTicks);
-        ScheduledTask task = new ScheduledTask(dueTick, periodTicks, nextSequence++, action);
+        long sequence = nextSequence;
+        nextSequence = Math.incrementExact(nextSequence);
+        ScheduledTask task = new ScheduledTask(dueTick, periodTicks, sequence, action);
         pending.add(task);
         return new TaskHandle(task);
     }
@@ -130,7 +161,7 @@ public final class TickScheduler {
             this.task = task;
         }
 
-        /** Cancels the task; returns false if it has already finished or was cancelled. */
+        /** Cancels a pending or currently executing task. */
         public boolean cancel() {
             synchronized (TickScheduler.this) {
                 if (task.cancelled || task.finished) {

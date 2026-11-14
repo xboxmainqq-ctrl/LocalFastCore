@@ -15,6 +15,9 @@ import java.util.Map;
 /** Lightweight isometric voxel preview for a 3x3 NEXORA chunk area. */
 final class ChunkPreviewView extends View {
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Path topPath = new Path();
+    private final Path leftPath = new Path();
+    private final Path rightPath = new Path();
     private final Map<Long, NexoraAndroidProtocolCodec.ChunkData> chunks = new HashMap<>();
     private int centerChunkX;
     private int centerChunkZ;
@@ -94,37 +97,37 @@ final class ChunkPreviewView extends View {
     private void drawCube(Canvas canvas, float x, float y, float halfW,
                           float halfH, float depth, int color) {
         float bottomY = y + depth;
-        Path top = new Path();
-        top.moveTo(x, y);
-        top.lineTo(x + halfW, y + halfH);
-        top.lineTo(x, y + halfH * 2f);
-        top.lineTo(x - halfW, y + halfH);
-        top.close();
+        topPath.reset();
+        topPath.moveTo(x, y);
+        topPath.lineTo(x + halfW, y + halfH);
+        topPath.lineTo(x, y + halfH * 2f);
+        topPath.lineTo(x - halfW, y + halfH);
+        topPath.close();
 
-        Path left = new Path();
-        left.moveTo(x - halfW, y + halfH);
-        left.lineTo(x, y + halfH * 2f);
-        left.lineTo(x, bottomY + halfH * 2f);
-        left.lineTo(x - halfW, bottomY + halfH);
-        left.close();
+        leftPath.reset();
+        leftPath.moveTo(x - halfW, y + halfH);
+        leftPath.lineTo(x, y + halfH * 2f);
+        leftPath.lineTo(x, bottomY + halfH * 2f);
+        leftPath.lineTo(x - halfW, bottomY + halfH);
+        leftPath.close();
 
-        Path right = new Path();
-        right.moveTo(x + halfW, y + halfH);
-        right.lineTo(x, y + halfH * 2f);
-        right.lineTo(x, bottomY + halfH * 2f);
-        right.lineTo(x + halfW, bottomY + halfH);
-        right.close();
+        rightPath.reset();
+        rightPath.moveTo(x + halfW, y + halfH);
+        rightPath.lineTo(x, y + halfH * 2f);
+        rightPath.lineTo(x, bottomY + halfH * 2f);
+        rightPath.lineTo(x + halfW, bottomY + halfH);
+        rightPath.close();
 
         paint.setColor(darken(color, 0.68f));
-        canvas.drawPath(left, paint);
+        canvas.drawPath(leftPath, paint);
         paint.setColor(darken(color, 0.48f));
-        canvas.drawPath(right, paint);
+        canvas.drawPath(rightPath, paint);
         paint.setColor(color);
-        canvas.drawPath(top, paint);
+        canvas.drawPath(topPath, paint);
         paint.setColor(0x55304050);
         paint.setStyle(Paint.Style.STROKE);
         paint.setStrokeWidth(0.55f);
-        canvas.drawPath(top, paint);
+        canvas.drawPath(topPath, paint);
         paint.setStyle(Paint.Style.FILL);
     }
 

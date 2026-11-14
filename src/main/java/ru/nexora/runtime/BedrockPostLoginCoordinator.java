@@ -18,8 +18,7 @@ import java.util.function.Function;
  * only after that implementation completes successfully.</p>
  */
 public final class BedrockPostLoginCoordinator implements
-        BiConsumer<TransportConnection, BedrockAuthenticatedPlayer>,
-        BiConsumer<TransportConnection, TransportMessage>, AutoCloseable {
+        BiConsumer<TransportConnection, BedrockAuthenticatedPlayer>, AutoCloseable {
 
     @FunctionalInterface
     public interface WorldStartupHandler {
@@ -108,8 +107,7 @@ public final class BedrockPostLoginCoordinator implements
         }
     }
 
-    @Override
-    public void accept(TransportConnection connection, TransportMessage message) {
+    public void handleMessage(TransportConnection connection, TransportMessage message) {
         Objects.requireNonNull(connection, "connection");
         Objects.requireNonNull(message, "message");
         Session session = sessions.get(connection.id());

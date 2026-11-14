@@ -44,14 +44,7 @@ The packet header and batch format are cross-checked against the Bedrock protoco
 
 ## Initial server-side handshake processor
 
-`BedrockInitialHandshakeProcessor` now joins the packet-batch decoder, compression envelope, packet payload codecs, and `BedrockSessionHandshake`. Given a complete incoming frame, it:
-
-1. `AWAITING_NETWORK_SETTINGS_REQUEST`
-2. `NETWORK_SETTINGS_PENDING` after an accepted protocol-2225 request
-3. `AWAITING_LOGIN` only after the host confirms that NetworkSettings was handed to the transport
-4. `AUTHENTICATION_PENDING` after a matching Login packet
-5. `PLAY` only after the host explicitly reports successful authentication
-6. `CLOSED` for unsupported protocol, Login protocol mismatch, or explicit close
+`BedrockInitialHandshakeProcessor` now joins the packet-batch decoder, compression envelope, packet payload codecs, and `BedrockSessionHandshake`. Given a complete incoming frame, it accepts the initial request only in `AWAITING_NETWORK_SETTINGS_REQUEST`, transitions to `NETWORK_SETTINGS_PENDING`, and waits for the host to confirm delivery before entering `AWAITING_LOGIN`. A matching Login packet moves the session to `AUTHENTICATION_PENDING`; the host may move it to `PLAY` only after successful authentication. Unsupported protocol, malformed or out-of-order packets, and explicit close lead to `CLOSED`.
 
 On a valid initial request it creates a NetworkSettings response frame (still uncompressed, as required before negotiation). The host must actually send that frame and only then call `markNetworkSettingsSent()`. The processor subsequently decodes Login frames using the negotiated compression setting and moves the session to `AUTHENTICATION_PENDING`. It rejects unexpected packet IDs, multi-packet handshake batches, nonzero sub-client routing, malformed frames, unsupported compression, and protocol mismatches. Snappy negotiation is blocked because its codec is not implemented. The processor does not open a transport, deliver the response, verify JWTs or signatures, contact Microsoft/Xbox services, or authenticate a player. The host must not call `markAuthenticated()` until those checks have genuinely succeeded.
 

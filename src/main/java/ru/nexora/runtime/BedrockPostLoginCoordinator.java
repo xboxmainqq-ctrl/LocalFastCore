@@ -190,23 +190,32 @@ public final class BedrockPostLoginCoordinator implements
             return;
         }
         startup.whenComplete((ignored, failure) -> {
+            if (failure != null || !session.connection.isOpen()) {
+                fail(session);
+                return;
+            }
             synchronized (session) {
                 if (session.closed || sessions.get(session.connection.id()) != session) {
                     return;
                 }
-                if (failure != null || !session.connection.isOpen()) {
-                    fail(session);
-                    return;
-                }
+            }
+
+            // Do not hold the coordinator session lock while entering the
+            // router: router callbacks can arrive while holding its own lock.
+            final BedrockHandshakeResult readyResult;
+            try {
                 Function<TransportConnection, BedrockHandshakeResult> transition =
                         playReadyTransition;
-                final BedrockHandshakeResult readyResult;
-                try {
-                    readyResult = transition == null
-                            ? BedrockHandshakeResult.INVALID_STATE
-                            : transition.apply(session.connection);
-                } catch (RuntimeException transitionFailure) {
-                    fail(session);
+                readyResult = transition == null
+                        ? BedrockHandshakeResult.INVALID_STATE
+                        : transition.apply(session.connection);
+            } catch (RuntimeException transitionFailure) {
+                fail(session);
+                return;
+            }
+
+            synchronized (session) {
+                if (session.closed || sessions.get(session.connection.id()) != session) {
                     return;
                 }
                 if (readyResult != BedrockHandshakeResult.ACCEPTED) {
@@ -216,7 +225,7 @@ public final class BedrockPostLoginCoordinator implements
                 session.closed = true;
                 sessions.remove(session.connection.id(), session);
             }
-        });
+        });;
     }
 
     private BedrockResourcePackCodec.ClientResponse decodeResponse(ByteBuffer frame) {
@@ -249,12 +258,14 @@ public final class BedrockPostLoginCoordinator implements
     }
 
     private void fail(Session session) {
-        if (session.closed) {
-            return;
+        synchronized (session) {
+            if (session.closed) {
+                return;
+            }
+            session.closed = true;
+            sessions.remove(session.connection.id(), session);
+            session.connection.close();
         }
-        session.closed = true;
-        sessions.remove(session.connection.id(), session);
-        session.connection.close();
     }
 
     private static byte[] bytes(ByteBuffer source) {

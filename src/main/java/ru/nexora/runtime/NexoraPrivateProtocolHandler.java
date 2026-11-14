@@ -1,6 +1,9 @@
 package ru.nexora.runtime;
 
 import java.nio.ByteBuffer;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -28,6 +31,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
             new ConcurrentHashMap<>();
     private final EntityRegistry entities;
     private final Map<UUID, PlayerInventory> inventories;
+    private final FilePlayerInventoryStorage inventoryStorage;
 
     /** Returns the authoritative entity registry for this server world. */
     public EntityRegistry entities() {
@@ -76,6 +80,18 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                                         Consumer<TransportConnection> readyListener,
                                         EntityRegistry entities,
                                         Map<UUID, PlayerInventory> inventories) {
+        this(serverId, maxMessageBytes, worldInfoSupplier, worldSupplier, chunkLoader,
+                readyListener, entities, inventories, null);
+    }
+
+    public NexoraPrivateProtocolHandler(UUID serverId, int maxMessageBytes,
+                                        Supplier<NexoraWorldInfo> worldInfoSupplier,
+                                        Supplier<World> worldSupplier,
+                                        Function<ChunkPosition, Boolean> chunkLoader,
+                                        Consumer<TransportConnection> readyListener,
+                                        EntityRegistry entities,
+                                        Map<UUID, PlayerInventory> inventories,
+                                        FilePlayerInventoryStorage inventoryStorage) {
         this.serverId = Objects.requireNonNull(serverId, "serverId");
         if (maxMessageBytes < 1 || maxMessageBytes > 8 * 1024 * 1024) {
             throw new IllegalArgumentException("maxMessageBytes is outside the supported range");
@@ -87,6 +103,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
         this.readyListener = Objects.requireNonNull(readyListener, "readyListener");
         this.entities = Objects.requireNonNull(entities, "entities");
         this.inventories = Objects.requireNonNull(inventories, "inventories");
+        this.inventoryStorage = inventoryStorage;
     }
 
     @Override
@@ -100,7 +117,10 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 PlayerSession session = activeSession.getAndSet(null);
                 if (session != null && playerSessions.remove(connection, session)) {
                     entities.remove(session.playerId);
-                    inventories.remove(session.playerId);
+                    boolean persisted = persistInventory(session.inventory);
+                    if (persisted || inventoryStorage == null) {
+                        inventories.remove(session.playerId, session.inventory);
+                    }
                     broadcastPlayerLeft(connection, session.playerId);
                 }
             }
@@ -169,8 +189,29 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                         new AtomicReference<>(new NexoraMovementValidator.Position(
                                 worldInfo.spawnX() + 0.5, worldInfo.spawnY(),
                                 worldInfo.spawnZ() + 0.5));
-                UUID playerId = UUID.randomUUID();
-                PlayerInventory inventory = inventories.computeIfAbsent(playerId, PlayerInventory::new);
+                UUID playerId = UUID.nameUUIDFromBytes((serverId + ":"
+                        + hello.playerName().toLowerCase(Locale.ROOT))
+                        .getBytes(StandardCharsets.UTF_8));
+                if (playerSessions.values().stream().anyMatch(active ->
+                        active.playerId.equals(playerId))) {
+                    reject(connection, REJECT_INVALID_HELLO, "Player name is already online");
+                    return;
+                }
+                final PlayerInventory inventory;
+                try {
+                    PlayerInventory existing = inventories.get(playerId);
+                    if (existing != null) {
+                        inventory = existing;
+                    } else {
+                        PlayerInventory loaded = inventoryStorage == null
+                                ? new PlayerInventory(playerId) : inventoryStorage.load(playerId);
+                        PlayerInventory raced = inventories.putIfAbsent(playerId, loaded);
+                        inventory = raced == null ? loaded : raced;
+                    }
+                } catch (IOException storageFailure) {
+                    connection.close();
+                    return;
+                }
                 PlayerSession session = new PlayerSession(playerId, hello.playerName(), hello.skinIndex(),
                         playerPosition, inventory);
                 synchronized (connection) {
@@ -318,6 +359,16 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 || send(connection, NexoraInventorySyncCodec.encode(session.inventory))
                 != TransportSendResult.ACCEPTED) {
             connection.close();
+        }
+    }
+
+    private boolean persistInventory(PlayerInventory inventory) {
+        if (inventoryStorage == null) return true;
+        try {
+            inventoryStorage.save(inventory);
+            return true;
+        } catch (IOException failure) {
+            return false;
         }
     }
 

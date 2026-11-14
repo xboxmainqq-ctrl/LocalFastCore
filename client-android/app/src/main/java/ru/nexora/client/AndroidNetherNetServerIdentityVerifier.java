@@ -76,7 +76,13 @@ public final class AndroidNetherNetServerIdentityVerifier {
             throw new SecurityException("SDP answer has missing or misplaced identity/fingerprint attributes");
         }
 
+        if (encodedIdentity.length() > 32 * 1024) {
+            throw new SecurityException("Operator identity envelope exceeds the configured limit");
+        }
         byte[] envelopeBytes = Base64.getDecoder().decode(encodedIdentity);
+        if (envelopeBytes.length > 16 * 1024) {
+            throw new SecurityException("Operator identity envelope exceeds the configured limit");
+        }
         JSONObject envelope = new JSONObject(decodeUtf8(envelopeBytes));
         JSONObject idp = envelope.getJSONObject("idp");
         String domain = idp.getString("domain");

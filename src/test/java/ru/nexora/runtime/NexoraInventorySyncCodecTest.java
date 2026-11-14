@@ -46,8 +46,8 @@ class NexoraInventorySyncCodecTest {
     @Test
     void movesAndMergesStacksWithoutExceedingTheStackLimit() {
         PlayerInventory inventory = new PlayerInventory(UUID.randomUUID());
-        for (int i = 0; i < 63; i++) assertTrue(inventory.addOne("minecraft:apple"));
-        assertTrue(inventory.addOne("minecraft:apple"));
+        for (int i = 0; i < 65; i++) assertTrue(inventory.addOne("minecraft:apple"));
+        assertNotNull(inventory.removeOne(0));
         assertTrue(inventory.moveOrSwap(1, 0));
 
         assertEquals(new ItemStack("minecraft:apple", 64), inventory.stackAt(0));

@@ -2,7 +2,7 @@
 
 Target: Bedrock 1.26.60, protocol 2225.
 
-The Java runtime contains payload codecs for three packet types, bounded packet-batch framing, a compression envelope, a frame-level coordinator for the initial server-side login handshake, and transport-independent NetherNet message framing and a bounded client identity verification chain. Client and operator NetherNet identity assertions now have bounded parsing and signature-verification components. The runtime now has bounded HTTP/HTTPS signaling and a desktop Java WebRTC peer-host adapter. The Android client now creates both data channels, gathers full ICE, performs HTTP(S) signaling, verifies the operator assertion, and waits for both channels to open. It still does not acquire Microsoft/Xbox credentials or perform the Bedrock login handshake, and no live device interoperability has been confirmed.
+The Java runtime contains payload codecs for three packet types, bounded packet-batch framing, a compression envelope, a frame-level coordinator for the initial server-side login handshake, and transport-independent NetherNet message framing and a bounded client identity verification chain. Client and operator NetherNet identity assertions now have bounded parsing and signature-verification components. The runtime now has bounded HTTP/HTTPS signaling and a desktop Java WebRTC peer-host adapter. The Android client now creates both data channels, gathers full ICE, performs HTTP(S) signaling, verifies the operator assertion, waits for both channels to open, and sends the initial Bedrock RequestNetworkSettings packet. It still does not acquire Microsoft/Xbox credentials or complete the Bedrock Login flow, and no live device interoperability has been confirmed.
 
 | Packet | ID | Payload implemented | Status |
 |---|---:|---|---|
@@ -132,6 +132,7 @@ Authenticated deployments must use `NetherNetAuthenticatedOfferValidator`. For l
 - Reliable frames are reassembled with the bounded countdown assembler; unreliable frames must carry a zero header and are never fragmented.
 - The transport copies inbound bytes before native callbacks return, applies bounded outbound buffering, and closes peers on malformed framing or asynchronous send failure.
 - The adapter uses a conservative 64 KiB SCTP message-frame limit, an 8 MiB application-message cap, and a 10-second fragment-assembly timeout.
+`BedrockInitialTransportRouter` installs per-connection handshake processors. It accepts the reliable RequestNetworkSettings frame, enqueues the NetworkSettings response, advances the handshake only after the response is accepted by the transport, and delegates Login authentication to a required host callback. After authentication succeeds it routes play messages to the configured game-session handler. `NetherNetServerTransportStack` starts the WebRTC peer host before HTTP signaling and wires the connection listener to this router.
 
 Register its `NetworkTransport` connection listener before `start()`, start the peer host before the signaling server, and configure a directly reachable UDP host candidate. This configuration intentionally does not provide STUN/TURN relay traversal; a host behind NAT may therefore be unreachable without a public address or a future relay-enabled profile.
 

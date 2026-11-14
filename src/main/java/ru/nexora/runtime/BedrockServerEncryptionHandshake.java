@@ -1,11 +1,6 @@
 package ru.nexora.runtime;
 
 import javax.crypto.KeyAgreement;
-import javax.crypto.Cipher;
-import javax.crypto.spec.IvParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
-import java.io.ByteArrayOutputStream;
-import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.KeyPair;
@@ -27,7 +22,9 @@ import java.util.Objects;
  * calling this class. This class does not authenticate a player.</p>
  *
  * <p>The generated token is an ES384 JWT with the server public key in x5u
- * and a random salt claim. The session key is SHA-256(salt || ECDH-secret).</p>
+ * and a random salt claim. The derived key material is SHA-256(salt || ECDH-secret).
+ * Transport-specific encryption must be selected separately; NetherNet already
+ * provides DTLS protection and must not inherit an unverified legacy cipher mode.</p>
  */
 public final class BedrockServerEncryptionHandshake {
     public static final int SALT_BYTES = 16;
@@ -177,22 +174,6 @@ public final class BedrockServerEncryptionHandshake {
             return salt.clone();
         }
 
-        /**
-         * Creates a streaming AES-256-CFB8 cipher. The Bedrock session owner
-         * must keep one cipher instance per direction for the entire session.
-         */
-        public Cipher newCipher(int mode) {
-            if (mode != Cipher.ENCRYPT_MODE && mode != Cipher.DECRYPT_MODE) {
-                throw new IllegalArgumentException("Cipher mode must be ENCRYPT_MODE or DECRYPT_MODE");
-            }
-            try {
-                Cipher cipher = Cipher.getInstance("AES/CFB8/NoPadding");
-                SecretKeySpec key = new SecretKeySpec(encryptionKey, "AES");
-                cipher.init(mode, key, new IvParameterSpec(encryptionKey));
-                return cipher;
-            } catch (GeneralSecurityException failure) {
-                throw new IllegalStateException("AES-256-CFB8 is unavailable", failure);
-            }
-        }
+
     }
 }

@@ -54,6 +54,7 @@ public final class WebRtcJavaNetherNetPeerHost
 
     private final int maxPeers;
     private final ConcurrentMap<String, PeerSession> sessions = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, PeerSession> sessionsByNetworkId = new ConcurrentHashMap<>();
     private final Semaphore peerPermits;
     private volatile Consumer<TransportConnection> connectionListener;
     private volatile PeerConnectionFactory factory;
@@ -131,6 +132,10 @@ public final class WebRtcJavaNetherNetPeerHost
             session.peer = peer;
             peer.setAudioPlayout(false);
             peer.setAudioRecording(false);
+            if (sessionsByNetworkId.putIfAbsent(networkId, session) != null) {
+                session.failAnswer(new IllegalStateException("NetworkID is already active"));
+                return session.answer;
+            }
             sessions.put(session.id, session);
             peer.setRemoteDescription(
                     new RTCSessionDescription(RTCSdpType.OFFER, webRtcOfferSdp),
@@ -402,6 +407,7 @@ public final class WebRtcJavaNetherNetPeerHost
             answer.completeExceptionally(new IllegalStateException(description));
             reliableAssembler.reset();
             sessions.remove(id, this);
+            sessionsByNetworkId.remove(networkId, this);
             if (permitReleased.compareAndSet(false, true)) {
                 peerPermits.release();
             }

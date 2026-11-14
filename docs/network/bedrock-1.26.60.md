@@ -231,3 +231,18 @@ Protocol references:
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/start-game-packet/
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/types/property-sync-data/
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/types/server-telemetry-data/
+### LevelChunk packet envelope — protocol 2225
+
+`BedrockLevelChunkPacketCodec` now serializes all eight fields of packet 58 in schema order: chunk X/Z, dimension, subchunk count, optional client request limit, cache flag and metadata, length-prefixed binary chunk data, and the 1.26.60 client-biome-update flag.
+
+- Binary chunk data is treated as an opaque byte sequence with a varuint32 byte length; it is never decoded or converted through UTF-8.
+- Cache metadata uses little-endian uint64 blob IDs and is rejected unless cache mode is enabled.
+- The codec can emit a skeleton LevelChunk using the `0xffffffff` subchunk-request sentinel, with an empty payload and no block entities.
+- Bounds are applied to subchunk counts, cache metadata, and serialized chunk bytes.
+
+**Important boundary:** this is the outer packet envelope only. It does not yet serialize Bedrock subchunk palettes, block-state runtime IDs/hashes, biome data, heightmaps, or block entities, and it is not yet connected to the world/chunk delivery pipeline. The client subchunk request system and the protocol-2225 SubChunk packet response path still need implementation before terrain can be displayed. No playable-world or live-client compatibility claim is made.
+
+Protocol references:
+- https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/level-chunk-packet/
+- https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/sub-chunk-packet/
+- https://mojang.github.io/bedrock-protocol-docs/guides/sub-chunk-request-system-v1-18-10/

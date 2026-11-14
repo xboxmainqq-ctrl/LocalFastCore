@@ -203,7 +203,7 @@ class NexoraPrivateProtocolHandlerTest {
                 NexoraInventorySyncCodec.decode(ByteBuffer.wrap(connection.sentMessages.get(3)));
         assertTrue(initial.stacks().isEmpty());
         NexoraInventorySyncCodec.InventoryState updated =
-                NexoraInventorySyncCodec.decode(ByteBuffer.wrap(connection.sentMessages.get(5)));
+                NexoraInventorySyncCodec.decode(ByteBuffer.wrap(connection.sentMessages.get(4)));
         assertEquals(playerId, updated.playerId());
         assertEquals(1, updated.stacks().size());
         assertEquals(new ItemStack("minecraft:apple", 1), updated.stacks().get(0));

@@ -51,9 +51,9 @@ public final class NexoraServer implements AutoCloseable {
             }
             state = ServerState.RUNNING;
         } catch (Exception startupFailure) {
-            List<RuntimeModule> failedToStop = stopReverse(activeModules, startupFailure);
+            StopResult rollback = stopReverse(activeModules, startupFailure);
             activeModules.clear();
-            activeModules.addAll(failedToStop);
+            activeModules.addAll(rollback.failedModules());
             state = ServerState.FAILED;
             throw new IllegalStateException("NEXORA server startup failed", startupFailure);
         }
@@ -67,12 +67,14 @@ public final class NexoraServer implements AutoCloseable {
             throw new IllegalStateException("Cannot stop NEXORA server from state " + state);
         }
         state = ServerState.STOPPING;
-        List<RuntimeModule> failedToStop = stopReverse(activeModules, null);
+        StopResult shutdown = stopReverse(activeModules, null);
         activeModules.clear();
-        activeModules.addAll(failedToStop);
-        state = failedToStop.isEmpty() ? ServerState.STOPPED : ServerState.FAILED;
-        if (!failedToStop.isEmpty()) {
-            throw new IllegalStateException("One or more NEXORA modules failed to stop");
+        activeModules.addAll(shutdown.failedModules());
+        state = activeModules.isEmpty() ? ServerState.STOPPED : ServerState.FAILED;
+        if (!activeModules.isEmpty()) {
+            throw new IllegalStateException(
+                    "One or more NEXORA modules failed to stop; a later stop() may retry them",
+                    shutdown.failure());
         }
     }
 
@@ -82,11 +84,10 @@ public final class NexoraServer implements AutoCloseable {
     }
 
     /**
-     * Stops active modules in reverse order and returns only modules whose
-     * shutdown failed, allowing a later stop() call to retry those modules.
+     * Stops active modules in reverse order. Failed modules remain eligible
+     * for a later shutdown retry; successful modules are never stopped twice.
      */
-    private static List<RuntimeModule> stopReverse(
-            List<RuntimeModule> active, Exception primaryFailure) {
+    private static StopResult stopReverse(List<RuntimeModule> active, Exception primaryFailure) {
         List<RuntimeModule> failed = new ArrayList<>();
         Exception aggregate = primaryFailure;
         for (int index = active.size() - 1; index >= 0; index--) {
@@ -102,6 +103,9 @@ public final class NexoraServer implements AutoCloseable {
                 }
             }
         }
-        return failed;
+        return new StopResult(List.copyOf(failed), aggregate);
+    }
+
+    private record StopResult(List<RuntimeModule> failedModules, Exception failure) {
     }
 }

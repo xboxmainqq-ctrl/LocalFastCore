@@ -4453,6 +4453,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
             case "healing_light": return "§aСвет исцеления";
             case "arcane_shield": return "§dЧародейский щит";
             case "meteor": return "§6Метеор";
+            case "chain_lightning": return "§eЦепная молния";
+            case "arcane_storm": return "§5Арканный шторм";
+            case "soul_drain": return "§dПохищение души";
+            case "mana_surge": return "§bВсплеск маны";
             default: return "Неизвестное заклинание";
         }
     }
@@ -4465,6 +4469,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
             case "healing_light": return "§7Восстанавливает часть твоего здоровья.";
             case "arcane_shield": return "§7На 8 секунд снижает входящий урон.";
             case "meteor": return "§7Мощный удар по области вокруг выбранной цели.";
+            case "chain_lightning": return "§7Молния поражает цель и цепляет ближайших врагов.";
+            case "arcane_storm": return "§7Создаёт вокруг тебя шторм, бьющий всех врагов поблизости.";
+            case "soul_drain": return "§7Похищает жизненную силу цели и лечит тебя.";
+            case "mana_surge": return "§7Мгновенно возвращает 55 маны.";
             default: return "§7Нет описания.";
         }
     }
@@ -4477,6 +4485,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
             case "healing_light": return 7;
             case "arcane_shield": return 10;
             case "meteor": return 15;
+            case "chain_lightning": return 8;
+            case "arcane_storm": return 12;
+            case "soul_drain": return 18;
+            case "mana_surge": return 5;
             default: return Integer.MAX_VALUE;
         }
     }
@@ -4489,6 +4501,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
             case "healing_light": return 28;
             case "arcane_shield": return 35;
             case "meteor": return 60;
+            case "chain_lightning": return 38;
+            case "arcane_storm": return 55;
+            case "soul_drain": return 48;
+            case "mana_surge": return 0;
             default: return Integer.MAX_VALUE;
         }
     }
@@ -4501,16 +4517,22 @@ public final class LocalFastCore extends PluginBase implements Listener {
             case "healing_light": return 15000L;
             case "arcane_shield": return 25000L;
             case "meteor": return 35000L;
+            case "chain_lightning": return 18000L;
+            case "arcane_storm": return 30000L;
+            case "soul_drain": return 26000L;
+            case "mana_surge": return 45000L;
             default: return 60000L;
         }
     }
 
     private long magicSpellCooldownRemaining(Player player, String id) {
         long until = players.getLong(playerKey(player) + ".magic.cooldowns." + id, 0L);
-        return Math.max(0L, until - System.currentTimeMillis());
+        long remaining = Math.max(0L, until - System.currentTimeMillis());
+        if (hasMagicRelic(player, "chrono_talisman")) remaining = (long) (remaining * 0.90);
+        return remaining;
     }
 
-    private void openMagicMenu(Player player) {
+    private void openMagicSpellsMenu(Player player) {
         initialize(player);
         int level = Math.max(1, Math.min(MAX_MAGIC_LEVEL,
                 players.getInt(playerKey(player) + ".magic.level", 1)));
@@ -4519,7 +4541,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         int maxMana = magicMaxMana(player);
         String progress = level >= MAX_MAGIC_LEVEL ? "§6Максимальный уровень магии достигнут!"
                 : "§7Опыт магии: §b" + xp + "§7/" + magicXpRequired(level);
-        String[] spells = {"arcane_bolt", "fireball", "frost_nova", "healing_light", "arcane_shield", "meteor"};
+        String[] spells = {"arcane_bolt", "fireball", "frost_nova", "healing_light", "arcane_shield", "meteor", "chain_lightning", "arcane_storm", "soul_drain", "mana_surge"};
         StringBuilder spellGuide = new StringBuilder();
         for (String spell : spells) {
             spellGuide.append("\n").append(magicSpellName(spell)).append(" §8— ")
@@ -4546,9 +4568,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
             int selected = form.getResponse().getClickedButtonId();
             if (selected >= 0 && selected < spells.length) {
                 castMagicSpell(player, spells[selected]);
-                openMagicMenu(player);
+                openMagicSpellsMenu(player);
             } else if (selected == spells.length) {
-                openMagicMenu(player);
+                openMagicSpellsMenu(player);
             }
         }));
         player.showFormWindow(form);
@@ -4580,6 +4602,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
         int intelligence = Math.max(0, get(player, "intelligence", 0));
         double damage = base + level * 0.45 + intelligence * 0.15;
         if (getRpgClass(player).equals("mage")) damage *= 1.10;
+        if (hasMagicRelic(player, "archmage_orb")) damage *= 1.15;
+        if (hasMagicRelic(player, "ember_amulet") && base >= 10) damage *= 1.10;
+        if (hasMagicRelic(player, "frost_amulet") && base <= 10) damage *= 1.10;
+        if (hasMagicRelic(player, "storm_seal")) damage *= 1.08;
         return (int) Math.max(1, Math.min(500, Math.round(damage)));
     }
 
@@ -4627,7 +4653,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         }
 
         EntityCreature target = null;
-        if (id.equals("arcane_bolt") || id.equals("fireball") || id.equals("meteor")) {
+        if (id.equals("arcane_bolt") || id.equals("fireball") || id.equals("meteor") || id.equals("chain_lightning") || id.equals("soul_drain")) {
             target = findMagicTarget(player, id.equals("meteor") ? 20.0 : 16.0);
             if (target == null) {
                 player.sendMessage("§cНаведи прицел на существо в пределах досягаемости.");

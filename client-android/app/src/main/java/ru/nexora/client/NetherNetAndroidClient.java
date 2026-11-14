@@ -6,16 +6,16 @@ import android.os.Handler;
 import android.os.Looper;
 
 import org.json.JSONObject;
-import org.webrtc.DataChannel;
-import org.webrtc.IceCandidate;
-import org.webrtc.MediaConstraints;
-import org.webrtc.MediaStream;
-import org.webrtc.PeerConnection;
-import org.webrtc.PeerConnectionFactory;
-import org.webrtc.RtpReceiver;
-import org.webrtc.RtpTransceiver;
-import org.webrtc.SdpObserver;
-import org.webrtc.SessionDescription;
+import livekit.org.webrtc.DataChannel;
+import livekit.org.webrtc.IceCandidate;
+import livekit.org.webrtc.MediaConstraints;
+import livekit.org.webrtc.MediaStream;
+import livekit.org.webrtc.PeerConnection;
+import livekit.org.webrtc.PeerConnectionFactory;
+import livekit.org.webrtc.RtpReceiver;
+import livekit.org.webrtc.RtpTransceiver;
+import livekit.org.webrtc.SdpObserver;
+import livekit.org.webrtc.SessionDescription;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;

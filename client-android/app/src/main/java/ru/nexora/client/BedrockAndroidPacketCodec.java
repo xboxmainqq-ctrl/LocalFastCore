@@ -13,6 +13,7 @@ public final class BedrockAndroidPacketCodec {
     public static final int NETWORK_SETTINGS_PACKET_ID = 143;
     public static final int LOGIN_PACKET_ID = 1;
     public static final int MAX_CONNECTION_REQUEST_BYTES = 1024 * 1024;
+    public static final int MAX_CLIENT_DATA_JWT_BYTES = 1024 * 1024;
 
     private BedrockAndroidPacketCodec() {
     }
@@ -64,20 +65,29 @@ public final class BedrockAndroidPacketCodec {
     }
 
     /** Encodes LoginPacket, packet-batch framing, and negotiated compression envelope. */
-    public static byte[] encodeLoginBatch(String connectionRequestJson,
+    public static byte[] encodeLoginBatch(String authenticationPayloadJson,
+                                          String clientDataJwt,
                                           BedrockAndroidNetworkSettings settings) {
-        if (connectionRequestJson == null || settings == null) {
-            throw new IllegalArgumentException("Connection Request and NetworkSettings are required");
+        if (authenticationPayloadJson == null || clientDataJwt == null || settings == null) {
+            throw new IllegalArgumentException("Authentication payload, client-data JWT, and NetworkSettings are required");
         }
-        byte[] request = connectionRequestJson.getBytes(StandardCharsets.UTF_8);
-        if (request.length == 0 || request.length > MAX_CONNECTION_REQUEST_BYTES) {
-            throw new IllegalArgumentException("Bedrock Connection Request exceeds the configured limit");
+        byte[] auth = authenticationPayloadJson.getBytes(StandardCharsets.UTF_8);
+        byte[] clientData = clientDataJwt.getBytes(StandardCharsets.UTF_8);
+        if (auth.length == 0 || auth.length > MAX_CONNECTION_REQUEST_BYTES) {
+            throw new IllegalArgumentException("Bedrock authentication payload exceeds the configured limit");
+        }
+        if (clientData.length > MAX_CLIENT_DATA_JWT_BYTES) {
+            throw new IllegalArgumentException("Bedrock client-data JWT exceeds the configured limit");
         }
 
-        ByteBuffer payload = ByteBuffer.allocate(4 + varUInt32Size(request.length) + request.length);
+        int jwtBlockLength = 2 * Integer.BYTES + auth.length + clientData.length;
+        ByteBuffer payload = ByteBuffer.allocate(
+                4 + varUInt32Size(jwtBlockLength) + jwtBlockLength);
         payload.putInt(PROTOCOL_VERSION);
-        writeVarUInt32(payload, request.length);
-        payload.put(request);
+        writeVarUInt32(payload, jwtBlockLength);
+        payload.order(ByteOrder.LITTLE_ENDIAN);
+        payload.putInt(auth.length).put(auth);
+        payload.putInt(clientData.length).put(clientData);
         payload.flip();
 
         int packetLength = varUInt32Size(LOGIN_PACKET_ID) + payload.remaining();

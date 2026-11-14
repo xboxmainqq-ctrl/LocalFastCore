@@ -256,9 +256,30 @@ Protocol references:
 - The decoder rejects zero/oversized request counts, truncated offset/position data, invalid dimensions, and trailing bytes.
 - `Request.absolutePositions()` resolves relative offsets against the center using overflow-checked coordinate addition.
 
-This is only the client request parser. NEXORA still needs to map requested positions to world sections and encode server packet 174 responses with valid subchunk palettes, heightmaps, and block-entity data. The request-system guide explains that a skeleton LevelChunk enables this request flow, but it does not replace the required subchunk responses.
+This is only the client request parser. NEXORA now has an initial world-backed response builder and packet-174 serializer. The remaining limitations are the externally supplied exact runtime block registry, biome/heightmap completeness, block entities, and wiring the builder into the live transport message handler. The request-system guide explains that a skeleton LevelChunk enables this request flow, but it does not replace the required subchunk responses.
 
 Protocol references:
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/sub-chunk-request-packet/
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/sub-chunk-packet/
+- https://mojang.github.io/bedrock-protocol-docs/guides/sub-chunk-request-system-v1-18-10/
+### Runtime block palettes and SubChunkPacket responses — protocol 2225
+
+The terrain serialization milestone now includes four standalone components:
+
+- `BedrockRuntimeBlockRegistry` is an explicit adapter from NEXORA `BlockState` values to Bedrock runtime block IDs. It requires an air entry and rejects unknown states; it deliberately does not guess IDs from block names. The registry must be populated from the exact 1.26.60 block palette before a client connection can use this path.
+- `BedrockPalettedStorageCodec` emits network/runtime paletted storage: runtime header bit, XZY-ordered 4096 indices, little-endian packed words, varint palette size, and varint runtime IDs. Uniform sections use the zero-bit single-entry form.
+- `BedrockSubChunkTerrainCodec` emits a version-9 subchunk header, one block-storage layer, and its network palette. The current profile has no fluid layer or block actors.
+- `BedrockSubChunkPacketCodec` emits packet 174 with cache disabled, relative signed-byte offsets, protocol-2225 result values, binary length-prefixed subchunk data, and explicit `NoData` heightmap markers. It uses the 1.26.60 enum values: Success=1, LevelChunkDoesntExist=2, WrongDimension=3, PlayerDoesntExist=4, IndexOutOfBounds=5, SuccessAllAir=6.
+
+`BedrockSubChunkResponseBuilder` now resolves request offsets against the center position, checks player dimension, loaded chunk presence, and world section bounds, then serializes the corresponding loaded section. Empty sections return `SuccessAllAir`; missing chunks and invalid section Y values return their protocol result codes. Large requests are split into batches of at most 64 entries, and each chunk snapshot is reused within the request.
+
+**Remaining integration and protocol limits:** the exact 1.26.60 runtime block-ID table is not yet bundled or loaded; no live request handler currently sends these packets through the authenticated transport; the initial subchunk blob contains one block layer only and does not yet include fluid storage, biome palette data, block entities, or computed heightmaps. The packet codec marks both heightmap variants `NoData`, so this is not yet a complete production terrain stream. The LevelChunk skeleton and SubChunk response flow still require a real client test.
+
+Tests have been added for uniform and multi-entry palettes, XZY index order, missing runtime IDs, version-9 subchunk headers, protocol-2225 result values, world-backed section lookup, missing chunks, wrong dimensions, out-of-range Y, and bounded packet batching. Tests have not been executed: the latest GitHub Actions jobs have been failing before any steps run because no runner is assigned. No live Bedrock client test has been performed.
+
+Protocol references:
+- https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/sub-chunk-packet/
+- https://mojang.github.io/bedrock-protocol-docs/1.26.60/types/sub-chunk-packet-data/
+- https://mojang.github.io/bedrock-protocol-docs/1.26.60/types/sub-chunk-heightmap-data/
+- https://mojang.github.io/bedrock-protocol-docs/1.26.60/types/sub-chunk-pos-offset/
 - https://mojang.github.io/bedrock-protocol-docs/guides/sub-chunk-request-system-v1-18-10/

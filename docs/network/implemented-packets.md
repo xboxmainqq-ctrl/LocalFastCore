@@ -132,9 +132,9 @@ Authenticated deployments must use `NetherNetAuthenticatedOfferValidator`. For l
 - Reliable frames are reassembled with the bounded countdown assembler; unreliable frames must carry a zero header and are never fragmented.
 - The transport copies inbound bytes before native callbacks return, applies bounded outbound buffering, and closes peers on malformed framing or asynchronous send failure.
 - The adapter uses a conservative 64 KiB SCTP message-frame limit, an 8 MiB application-message cap, and a 10-second fragment-assembly timeout.
-`BedrockInitialTransportRouter` installs per-connection handshake processors. It accepts the reliable RequestNetworkSettings frame, enqueues the NetworkSettings response, advances the handshake only after the response is accepted by the transport, and delegates Login authentication to a required host callback. After authentication succeeds it routes play messages to the configured game-session handler. `NetherNetServerTransportStack` starts the WebRTC peer host before HTTP signaling and wires the connection listener to this router.
+`BedrockInitialTransportRouter` installs per-connection handshake processors. It accepts the reliable RequestNetworkSettings frame, enqueues the NetworkSettings response, advances the handshake only after the response is accepted by the transport, and delegates Login authentication to a required host callback. After authentication succeeds it routes play messages to the configured game-session handler. `NetherNetBedrockModule` starts the WebRTC peer host before HTTP signaling and wires the connection listener to this router.
 
-`NetherNetServerTransportStack` performs that order and wires the peer host to the handshake router. Construct the same `WebRtcJavaNetherNetPeerHost` instance into the signaling server and the stack; the stack checks that they match.
+`NetherNetBedrockModule` performs that order and wires the peer host to the handshake router. Construct the same `WebRtcJavaNetherNetPeerHost` instance into the signaling server and module; the module checks that they match.
 
 A minimal host setup is:
 
@@ -145,8 +145,10 @@ var handshakeRouter = new BedrockInitialTransportRouter(
 var signaling = new NetherNetSignalingServer(
     bindAddress, serverInfo, offerValidator, peerHost,
     partnerDomain, operatorKeyPair);
-var stack = new NetherNetServerTransportStack(peerHost, signaling, handshakeRouter);
-stack.start();
+var module = new NetherNetBedrockModule(peerHost, peerHost, signaling, handshakeRouter);
+var server = new NexoraServer();
+server.register(module);
+server.start();
 ```
 
 Configure a directly reachable UDP host candidate. This configuration intentionally does not provide STUN/TURN relay traversal; a host behind NAT may therefore be unreachable without a public address or a future relay-enabled profile.

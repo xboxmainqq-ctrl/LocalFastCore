@@ -206,7 +206,52 @@ class NexoraPrivateProtocolHandlerTest {
                 NexoraInventorySyncCodec.decode(ByteBuffer.wrap(connection.sentMessages.get(4)));
         assertEquals(playerId, updated.playerId());
         assertEquals(1, updated.stacks().size());
-        assertEquals(new ItemStack("minecraft:apple", 1), updated.stacks().get(0));
+        assertEquals(new NexoraInventorySyncCodec.InventoryEntry(0,
+                new ItemStack("minecraft:apple", 1)), updated.stacks().get(0));
+    }
+
+    @Test
+    void movesAndDropsInventoryItemsOnlyThroughServerActions() {
+        InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
+        FlatChunkGenerator generator = new FlatChunkGenerator(64, 5,
+                new BlockState("minecraft:grass_block"),
+                new BlockState("minecraft:dirt"),
+                new BlockState("minecraft:bedrock"));
+        world.loadChunk(generator.generate(new ChunkPosition(0, 0), world.height(), 9L));
+        EntityRegistry entities = new EntityRegistry();
+        java.util.Map<UUID, PlayerInventory> inventories = new java.util.concurrent.ConcurrentHashMap<>();
+        FakeConnection connection = new FakeConnection();
+        NexoraWorldInfo info = new NexoraWorldInfo("world", 0, 128, 0, 65, 0, 20, 1);
+        NexoraPrivateProtocolHandler handler = new NexoraPrivateProtocolHandler(
+                UUID.randomUUID(), 8 * 1024 * 1024, () -> info,
+                () -> world, ignored -> true, ignored -> { }, entities, inventories);
+        handler.accept(connection);
+        connection.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev", "Mover", 0));
+        UUID playerId = entities.snapshot().stream()
+                .filter(entity -> entity.type() == WorldEntity.Type.PLAYER)
+                .findFirst().orElseThrow().id();
+        PlayerInventory inventory = handler.inventory(playerId).orElseThrow();
+        assertTrue(inventory.addOne("minecraft:apple"));
+        assertTrue(inventory.addOne("minecraft:apple"));
+
+        connection.deliver(NexoraInventoryActionCodec.encodeRequest(
+                NexoraInventoryActionCodec.Action.MOVE_OR_SWAP, 0, 5));
+
+        assertNull(inventory.stackAt(0));
+        assertEquals(new ItemStack("minecraft:apple", 2), inventory.stackAt(5));
+        assertEquals(13, Byte.toUnsignedInt(connection.sentMessages.get(4)[6]));
+        NexoraInventorySyncCodec.InventoryState moved =
+                NexoraInventorySyncCodec.decode(ByteBuffer.wrap(connection.sentMessages.get(5)));
+        assertEquals(5, moved.stacks().get(0).slot());
+
+        connection.deliver(NexoraInventoryActionCodec.encodeRequest(
+                NexoraInventoryActionCodec.Action.DROP_ONE, 5, 0));
+
+        assertEquals(new ItemStack("minecraft:apple", 1), inventory.stackAt(5));
+        assertEquals(1, entities.snapshot().stream()
+                .filter(entity -> entity.type() == WorldEntity.Type.ITEM
+                        && entity.name().equals("minecraft:apple")).count());
+        assertEquals(13, Byte.toUnsignedInt(connection.sentMessages.get(6)[6]));
     }
 
     @Test

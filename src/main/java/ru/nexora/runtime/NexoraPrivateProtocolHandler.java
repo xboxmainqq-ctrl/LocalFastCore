@@ -16,6 +16,7 @@ import java.util.Map;
 public final class NexoraPrivateProtocolHandler implements Consumer<TransportConnection> {
     private static final int REJECT_UNSUPPORTED_VERSION = 1;
     private static final int REJECT_INVALID_HELLO = 2;
+    private static final double PLAYER_VISIBILITY_RADIUS = 128.0;
 
     private final UUID serverId;
     private final int maxMessageBytes;
@@ -225,31 +226,68 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
     private void synchronizeNewPlayer(TransportConnection newcomer, PlayerSession joining) {
         for (Map.Entry<TransportConnection, PlayerSession> entry : playerSessions.entrySet()) {
             TransportConnection peer = entry.getKey();
-            PlayerSession session = entry.getValue();
-            if (peer == newcomer || !peer.isOpen()) continue;
-            if (send(newcomer, encodePlayerState(session)) != TransportSendResult.ACCEPTED) {
+            PlayerSession existing = entry.getValue();
+            if (peer == newcomer || !peer.isOpen()
+                    || !EntityVisibility.isWithin(joining.position.get(), existing.position.get(),
+                    PLAYER_VISIBILITY_RADIUS)) {
+                continue;
+            }
+            if (joining.visiblePlayers.add(existing.playerId)
+                    && send(newcomer, encodePlayerState(existing)) != TransportSendResult.ACCEPTED) {
                 newcomer.close();
                 return;
             }
-            if (send(peer, encodePlayerState(joining)) != TransportSendResult.ACCEPTED) {
+            if (existing.visiblePlayers.add(joining.playerId)
+                    && send(peer, encodePlayerState(joining)) != TransportSendResult.ACCEPTED) {
                 peer.close();
             }
         }
     }
 
+    /** Replicates player entities only to connections whose visibility radius contains them. */
     private void broadcastPlayerState(TransportConnection sender, PlayerSession session) {
-        byte[] packet = encodePlayerState(session);
-        for (TransportConnection peer : playerSessions.keySet()) {
+        byte[] statePacket = encodePlayerState(session);
+        for (Map.Entry<TransportConnection, PlayerSession> entry : playerSessions.entrySet()) {
+            TransportConnection peer = entry.getKey();
+            PlayerSession other = entry.getValue();
             if (peer == sender || !peer.isOpen()) continue;
-            if (send(peer, packet) != TransportSendResult.ACCEPTED) peer.close();
+
+            boolean visibleNow = EntityVisibility.isWithin(
+                    session.position.get(), other.position.get(), PLAYER_VISIBILITY_RADIUS);
+            boolean wasVisible = session.visiblePlayers.contains(other.playerId);
+            if (visibleNow) {
+                session.visiblePlayers.add(other.playerId);
+                other.visiblePlayers.add(session.playerId);
+                if (!wasVisible && send(sender, encodePlayerState(other))
+                        != TransportSendResult.ACCEPTED) {
+                    sender.close();
+                    return;
+                }
+                if (send(peer, statePacket) != TransportSendResult.ACCEPTED) peer.close();
+            } else if (wasVisible) {
+                session.visiblePlayers.remove(other.playerId);
+                other.visiblePlayers.remove(session.playerId);
+                if (send(sender, NexoraPlayerSyncCodec.encodePlayerLeft(other.playerId))
+                        != TransportSendResult.ACCEPTED) {
+                    sender.close();
+                    return;
+                }
+                if (send(peer, NexoraPlayerSyncCodec.encodePlayerLeft(session.playerId))
+                        != TransportSendResult.ACCEPTED) peer.close();
+            }
         }
     }
 
     private void broadcastPlayerLeft(TransportConnection leaver, UUID playerId) {
         byte[] packet = NexoraPlayerSyncCodec.encodePlayerLeft(playerId);
-        for (TransportConnection peer : playerSessions.keySet()) {
+        for (Map.Entry<TransportConnection, PlayerSession> entry : playerSessions.entrySet()) {
+            TransportConnection peer = entry.getKey();
+            PlayerSession session = entry.getValue();
             if (peer == leaver || !peer.isOpen()) continue;
-            if (send(peer, packet) != TransportSendResult.ACCEPTED) peer.close();
+            if (session.visiblePlayers.remove(playerId)
+                    && send(peer, packet) != TransportSendResult.ACCEPTED) {
+                peer.close();
+            }
         }
     }
 
@@ -266,6 +304,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
         private final int skinIndex;
         private final AtomicReference<NexoraMovementValidator.Position> position;
         private final AtomicReference<Double> yaw = new AtomicReference<>(0.0);
+        private final java.util.Set<UUID> visiblePlayers = ConcurrentHashMap.newKeySet();
 
         private PlayerSession(UUID playerId, String playerName, int skinIndex,
                               AtomicReference<NexoraMovementValidator.Position> position) {

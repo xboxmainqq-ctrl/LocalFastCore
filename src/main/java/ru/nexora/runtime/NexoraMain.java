@@ -69,7 +69,8 @@ public final class NexoraMain {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             try {
                 runtime.server().stop();
-                System.out.println("NEXORA Core stopped; world saved.");
+                runtime.saveInventories();
+                System.out.println("NEXORA Core stopped; world and player inventories saved.");
             } catch (RuntimeException failure) {
                 System.err.println("NEXORA shutdown failed: " + failure.getMessage());
             }
@@ -134,6 +135,8 @@ public final class NexoraMain {
         TickScheduler scheduler = new TickScheduler();
         EntityRegistry entities = new EntityRegistry();
         Map<UUID, PlayerInventory> inventories = new ConcurrentHashMap<>();
+        FilePlayerInventoryStorage playerInventoryStorage =
+                new FilePlayerInventoryStorage(dataDirectory.resolve("players"));
         int workers = Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() - 1));
         server.register(new RuntimeModule() {
             private WorldChunkPipeline pipeline;
@@ -224,12 +227,13 @@ public final class NexoraMain {
                     },
                     connection -> log.accept("NEXORA client completed protocol handshake: "
                             + connection.id()),
-                    entities, inventories);
+                    entities, inventories, playerInventoryStorage);
             server.register(new NetherNetPrivateProtocolModule(
                     peerHost, peerHost, signaling, protocolHandler));
         }
 
-        return new RuntimeHandle(server, worlds, entities, inventories, gameLoop, options.tickRate());
+        return new RuntimeHandle(server, worlds, entities, inventories,
+                playerInventoryStorage, gameLoop, options.tickRate());
     }
 
     private static KeyPair createDevelopmentSigningKey() {
@@ -344,18 +348,37 @@ public final class NexoraMain {
         }
     }
 
-    record RuntimeHandle(NexoraServer server, WorldRegistry worlds, EntityRegistry entities, Map<UUID, PlayerInventory> inventories, GameLoop gameLoop, int tickRate) {
+    record RuntimeHandle(NexoraServer server, WorldRegistry worlds, EntityRegistry entities,
+                    Map<UUID, PlayerInventory> inventories,
+                    FilePlayerInventoryStorage playerInventoryStorage,
+                    GameLoop gameLoop, int tickRate) {
         RuntimeHandle {
             Objects.requireNonNull(server, "server");
             Objects.requireNonNull(worlds, "worlds");
             Objects.requireNonNull(entities, "entities");
             Objects.requireNonNull(inventories, "inventories");
+            Objects.requireNonNull(playerInventoryStorage, "playerInventoryStorage");
             Objects.requireNonNull(gameLoop, "gameLoop");
             if (tickRate < 1 || tickRate > 120) {
                 throw new IllegalArgumentException("tickRate must be between 1 and 120");
             }
         }
 
+
+        void saveInventories() throws java.io.IOException {
+            java.io.IOException aggregate = null;
+            for (PlayerInventory inventory : inventories.values()) {
+                try {
+                    playerInventoryStorage.save(inventory);
+                } catch (java.io.IOException failure) {
+                    if (aggregate == null) {
+                        aggregate = new java.io.IOException("One or more player inventories could not be saved");
+                    }
+                    aggregate.addSuppressed(failure);
+                }
+            }
+            if (aggregate != null) throw aggregate;
+        }
 
         PlayerInventory inventory(UUID playerId) {
             Objects.requireNonNull(playerId, "playerId");

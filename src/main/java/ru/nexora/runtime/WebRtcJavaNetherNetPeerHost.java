@@ -119,13 +119,14 @@ public final class WebRtcJavaNetherNetPeerHost
         }
 
         PeerSession session = new PeerSession(UUID.randomUUID().toString(), networkId);
-        RTCConfiguration configuration = createConfiguration();
         try {
+            RTCConfiguration configuration = createConfiguration();
             RTCPeerConnection peer = currentFactory.createPeerConnection(
                     configuration, session.peerObserver);
             if (peer == null) {
-                return CompletableFuture.failedFuture(
-                        new IllegalStateException("WebRTC could not create a peer connection"));
+                session.failAnswer(new IllegalStateException(
+                        "WebRTC could not create a peer connection"));
+                return session.answer;
             }
             session.peer = peer;
             sessions.put(session.id, session);

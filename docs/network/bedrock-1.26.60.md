@@ -69,6 +69,18 @@ The standalone runtime currently has bounded Login packet decoding and a structu
 
 **Security boundary:** this is parsing only. It does not verify JWT signatures, certificate-chain trust, issuer/audience/expiry claims, Xbox identity, or player identity. It must never be used as proof that a player is authenticated. Those checks require a separate verifier against the correct Mojang trust material and must be tested with genuine client login exchanges.
 
+### Server encryption handshake primitive
+
+A first cryptographic building block now exists in `BedrockServerEncryptionHandshake`:
+
+- Requires an EC server key pair and an authenticated P-384 client identity public key.
+- Creates an ES384 compact JWT with the server public key in `x5u` and a random salt claim.
+- Derives the 256-bit session key as SHA-256(salt || ECDH-secret) using P-384 ECDH.
+- Exposes independent streaming AES-256-CFB8 cipher instances for inbound and outbound directions. A session owner must retain each cipher continuously; recreating it per packet is incorrect.
+- Includes unit tests for JWT signature, client/server key agreement, key size, and continuous CFB8 round-trip.
+
+**Not integrated yet:** the transport router still uses the earlier boolean authenticator contract and currently advances directly to PLAY after authentication. This new primitive is not yet wired into Login verification, handshake packet 3/4 exchange, packet stream encryption, or PlayStatus. Therefore it is not yet a working encrypted Bedrock login and must not be advertised as one. The next integration step must change authentication to return a verified player identity plus its trusted P-384 public key, then perform the encryption acknowledgement before entering PLAY.
+
 ## Acceptance gates
 
 A transport implementation is not considered supported until all of these are demonstrated against an unmodified Bedrock 1.26.60 client:

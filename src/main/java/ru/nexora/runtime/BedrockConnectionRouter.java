@@ -41,8 +41,13 @@ public final class BedrockConnectionRouter implements RuntimeModule {
             throw new IllegalStateException("Bedrock connection router is already started");
         }
         transport.setConnectionListener(this::accept);
-        transport.start();
         started = true;
+        try {
+            transport.start();
+        } catch (Exception failure) {
+            started = false;
+            throw failure;
+        }
     }
 
     @Override

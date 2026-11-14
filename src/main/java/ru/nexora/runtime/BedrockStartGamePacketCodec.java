@@ -47,14 +47,16 @@ public final class BedrockStartGamePacketCodec {
         }
     }
 
-    public record Telemetry(String serverId, String scenarioId) {
+    public record Telemetry(String serverId, String scenarioId, String worldId, String ownerId) {
         public Telemetry {
             requireString(serverId, "serverId", MAX_STRING_BYTES);
             requireString(scenarioId, "scenarioId", MAX_STRING_BYTES);
+            requireString(worldId, "worldId", MAX_STRING_BYTES);
+            requireString(ownerId, "ownerId", MAX_STRING_BYTES);
         }
 
         public static Telemetry empty() {
-            return new Telemetry("", "");
+            return new Telemetry("", "", "", "");
         }
     }
 
@@ -152,6 +154,8 @@ public final class BedrockStartGamePacketCodec {
         // 24: protocol-2225 ServerTelemetryData (server ID, scenario ID).
         BedrockBinary.writeString(out, settings.telemetry().serverId(), MAX_STRING_BYTES);
         BedrockBinary.writeString(out, settings.telemetry().scenarioId(), MAX_STRING_BYTES);
+        BedrockBinary.writeString(out, settings.telemetry().worldId(), MAX_STRING_BYTES);
+        BedrockBinary.writeString(out, settings.telemetry().ownerId(), MAX_STRING_BYTES);
 
         out.flip();
         return out.asReadOnlyBuffer();

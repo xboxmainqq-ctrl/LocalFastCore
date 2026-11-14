@@ -382,3 +382,12 @@ Consequently, do not append biome palettes to SubChunkPacket entries or silently
 The full-column field ordering is based on a detailed secondary reference whose implementation basis is PowerNukkitX 3.0.5 / protocol 2193, while the outer LevelChunk envelope and final biome-update boolean are taken from the official protocol-2225 schema. This serializer is intentionally not wired into `BedrockWorldStartupHandler` yet: byte-for-byte layout and empty-column behavior must first be checked against an unmodified Bedrock 1.26.60 client or an authoritative 2225 fixture. Do not treat the codec's existence as proof of live client compatibility.
 
 Tests cover section ordering, negative section Y, biome palette alignment, empty gap sections, and an empty loaded chunk payload. These tests are source additions only until CI actually executes them.
+
+
+### Full-column LevelChunk packet wrapper
+
+`BedrockLevelChunkPacketCodec.encodeFullColumnPacket(...)` now wraps the experimental `BedrockLevelChunkColumnDataCodec` output in packet 58. It takes the subchunk count from the encoded column, leaves request-mode and blob caching disabled, writes the binary column body as the length-prefixed serialized chunk string, and sets `Is Client Biome Update=true` so the server's biome palettes are intended to override client biome data.
+
+This is a packet-construction path only; `BedrockWorldStartupHandler` still sends skeleton chunks and does not call this method. The column body layout remains experimental because the detailed field-order reference is based on protocol 2193 rather than an authoritative protocol-2225 byte fixture. The new packet test verifies the outer schema and biome-update flag, not the client's interpretation of the inner column body. No live client test or CI test run is claimed.
+
+Protocol reference: https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/level-chunk-packet/

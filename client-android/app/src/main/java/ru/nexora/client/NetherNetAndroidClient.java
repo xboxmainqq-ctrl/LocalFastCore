@@ -541,6 +541,19 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                     return;
                 }
             }
+            if (complete.length >= 7 && complete[6] == 8) {
+                try {
+                    NexoraAndroidProtocolCodec.PlayerPosition position =
+                            NexoraAndroidProtocolCodec.decodeServerPosition(complete);
+                    Listener current = listener;
+                    if (current != null) {
+                        mainHandler.post(() -> current.onServerPosition(position));
+                    }
+                } catch (RuntimeException malformed) {
+                    reportError("Некорректная позиция сервера NEXORA: " + malformed.getMessage());
+                }
+                return;
+            }
             try {
                 NexoraAndroidProtocolCodec.ChunkData chunk =
                         NexoraAndroidProtocolCodec.decodeChunkData(complete);
@@ -590,6 +603,16 @@ public final class NetherNetAndroidClient implements AutoCloseable {
 
     private boolean sendNexoraClientHello() {
         return sendReliable(NexoraAndroidProtocolCodec.encodeClientHello("android-0.1.0-dev"));
+    }
+
+    /** Sends a client movement proposal; the server reply is authoritative. */
+    public boolean sendPlayerMove(double x, double y, double z) {
+        if (!nexoraProtocolReady || !worldInfoReceived || !isConnected()) return false;
+        try {
+            return sendUnreliable(NexoraAndroidProtocolCodec.encodePlayerMove(x, y, z));
+        } catch (RuntimeException invalid) {
+            return false;
+        }
     }
 
     private boolean sendNetworkSettingsRequest() {
@@ -829,6 +852,9 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         }
 
         default void onChunkDataReceived(NexoraAndroidProtocolCodec.ChunkData chunk) {
+        }
+
+        default void onServerPosition(NexoraAndroidProtocolCodec.PlayerPosition position) {
         }
 
         default void onNetworkSettingsReceived(BedrockAndroidNetworkSettings settings) {

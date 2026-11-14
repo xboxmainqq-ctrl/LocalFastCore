@@ -31,10 +31,11 @@ import java.util.zip.CheckedOutputStream;
  */
 public final class FileWorldStorage {
     private static final int MAGIC = 0x4E585752; // NXWR
-    private static final short FORMAT_VERSION = 2;
+    private static final short FORMAT_VERSION = 3;
     private static final int MAX_FILE_BYTES = 128 * 1024 * 1024;
     private static final int MAX_CHUNKS = 100_000;
     private static final int MAX_BLOCKS_PER_CHUNK = 1_000_000;
+    private static final int MAX_FLUIDS_PER_CHUNK = 1_000_000;
     private static final int MAX_PROPERTIES = 256;
     private static final Pattern WORLD_ID = Pattern.compile("[A-Za-z0-9_-]{1,64}");
 
@@ -220,6 +221,50 @@ public final class FileWorldStorage {
                         }
                     }
                 }
+                if (version >= 3) {
+                    int fluidCount = input.readInt();
+                    if (fluidCount < 0 || fluidCount > MAX_FLUIDS_PER_CHUNK) {
+                        throw new IOException("Invalid fluid count in chunk " + chunk + ": " + fluidCount);
+                    }
+                    Set<BlockPosition> seenFluids = new HashSet<>();
+                    for (int fluidIndex = 0; fluidIndex < fluidCount; fluidIndex++) {
+                        int localX = input.readUnsignedByte();
+                        int y = input.readInt();
+                        int localZ = input.readUnsignedByte();
+                        if (localX > 15 || localZ > 15 || !height.contains(y)) {
+                            throw new IOException("Invalid fluid coordinates in chunk " + chunk);
+                        }
+                        String identifier = input.readUTF();
+                        int propertyCount = input.readUnsignedShort();
+                        if (propertyCount > MAX_PROPERTIES) {
+                            throw new IOException("Too many fluid properties: " + propertyCount);
+                        }
+                        Map<String, String> properties = new java.util.HashMap<>();
+                        for (int property = 0; property < propertyCount; property++) {
+                            String key = input.readUTF();
+                            String value = input.readUTF();
+                            if (properties.putIfAbsent(key, value) != null) {
+                                throw new IOException("Duplicate fluid property: " + key);
+                            }
+                        }
+                        int blockX = Math.addExact(Math.multiplyExact(chunk.x(), 16), localX);
+                        int blockZ = Math.addExact(Math.multiplyExact(chunk.z(), 16), localZ);
+                        BlockPosition position = new BlockPosition(blockX, y, blockZ);
+                        if (!seenFluids.add(position)) {
+                            throw new IOException("Duplicate fluid position in chunk " + chunk);
+                        }
+                        try {
+                            BlockState fluidState = new BlockState(identifier, properties);
+                            FluidStates.requireFluidOrAir(fluidState);
+                            if (fluidState.isAir()) {
+                                throw new IOException("Empty fluid cells must not be stored in chunk data");
+                            }
+                            world.setFluid(position, fluidState);
+                        } catch (IllegalArgumentException exception) {
+                            throw new IOException("Invalid fluid data in world file", exception);
+                        }
+                    }
+                }
             }
 
             long actualChecksum = checked.getChecksum().getValue();
@@ -298,6 +343,31 @@ public final class FileWorldStorage {
                         throw new IOException("World returned a negative biome ID");
                     }
                     output.writeInt(biomeId);
+                }
+            }
+            Map<BlockPosition, BlockState> fluids = world.fluidsInChunk(chunk);
+            if (fluids.size() > MAX_FLUIDS_PER_CHUNK) {
+                throw new IOException("Chunk contains too many fluid cells: " + chunk);
+            }
+            output.writeInt(fluids.size());
+            for (Map.Entry<BlockPosition, BlockState> entry : fluids.entrySet()) {
+                BlockPosition position = entry.getKey();
+                BlockState fluidState = entry.getValue();
+                if (!position.chunkPosition().equals(chunk) || !world.height().contains(position.y())
+                        || !FluidStates.isFluid(fluidState)) {
+                    throw new IOException("World returned an invalid fluid snapshot");
+                }
+                output.writeByte(position.localX());
+                output.writeInt(position.y());
+                output.writeByte(position.localZ());
+                output.writeUTF(fluidState.identifier());
+                if (fluidState.properties().size() > MAX_PROPERTIES) {
+                    throw new IOException("Fluid has too many properties at " + position);
+                }
+                output.writeShort(fluidState.properties().size());
+                for (Map.Entry<String, String> property : fluidState.properties().entrySet()) {
+                    output.writeUTF(property.getKey());
+                    output.writeUTF(property.getValue());
                 }
             }
         }

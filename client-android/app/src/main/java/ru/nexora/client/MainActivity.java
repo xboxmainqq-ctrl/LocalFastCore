@@ -106,7 +106,7 @@ public final class MainActivity extends Activity {
         ), matchWrap());
 
         addSpace(page, 18);
-        TextView mapTitle = text("КАРТА ПОВЕРХНОСТИ • 16×16", 12, MUTED, true);
+        TextView mapTitle = text("ОБЪЁМНЫЙ ПРОСМОТР МИРА • 3×3 ЧАНКА", 12, MUTED, true);
         page.addView(mapTitle, matchWrap());
         addSpace(page, 8);
         chunkPreview = new ChunkPreviewView(this);
@@ -193,6 +193,9 @@ public final class MainActivity extends Activity {
 
             @Override
             public void onWorldInfoReceived(NexoraAndroidProtocolCodec.WorldInfo world) {
+                chunkPreview.setCenter(Math.floorDiv(world.spawnX(), 16),
+                        Math.floorDiv(world.spawnZ(), 16));
+                chunkPreview.setVisibility(View.VISIBLE);
                 connectionStatus.setText("Мир: " + world.worldId()
                         + "\nВысота: " + world.minY() + ".." + (world.maxYExclusive() - 1)
                         + "\nПоявление: " + world.spawnX() + ", " + world.spawnY() + ", " + world.spawnZ()
@@ -203,11 +206,11 @@ public final class MainActivity extends Activity {
             @Override
             public void onChunkDataReceived(NexoraAndroidProtocolCodec.ChunkData chunk) {
                 chunkPreview.setChunk(chunk);
-                chunkPreview.setVisibility(View.VISIBLE);
-                connectionStatus.setText("Чанк " + chunk.chunkX() + ", " + chunk.chunkZ()
-                        + " • столбцов поверхности: "
-                        + java.util.Arrays.stream(chunk.blockIds()).filter(java.util.Objects::nonNull).count()
-                        + "\nОтображается карта поверхности 16×16");
+                connectionStatus.setText("Получено чанков: "
+                        + chunkPreview.receivedChunkCount() + "/9"
+                        + "\nПоследний чанк: " + chunk.chunkX() + ", " + chunk.chunkZ()
+                        + "\nБлоков в нём: " + chunk.blocks().size()
+                        + "\nИзометрический объёмный просмотр");
             }
 
             @Override

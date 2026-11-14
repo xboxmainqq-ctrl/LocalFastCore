@@ -4162,7 +4162,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
     public void onMagicEquipmentClick(InventoryClickEvent event) {
         Player player = event.getPlayer();
         MagicEquipmentInventory inventory = magicEquipmentInventories.get(player.getUniqueId());
-        if (inventory == null || event.getInventory() != inventory) return;
+        if (inventory == null) return;
+        if (event.getInventory() != inventory) {
+            if (event.getInventory() == player.getInventory()) event.setCancelled(true);
+            return;
+        }
         event.setCancelled(true);
         int slot = magicEquipmentIndex(event.getSlot());
         if (slot < 0) return;

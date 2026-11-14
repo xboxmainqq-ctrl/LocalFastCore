@@ -200,8 +200,16 @@ public final class BedrockPostLoginCoordinator implements
                 }
                 Function<TransportConnection, BedrockHandshakeResult> transition =
                         playReadyTransition;
-                if (transition == null
-                        || transition.apply(session.connection) != BedrockHandshakeResult.ACCEPTED) {
+                final BedrockHandshakeResult readyResult;
+                try {
+                    readyResult = transition == null
+                            ? BedrockHandshakeResult.INVALID_STATE
+                            : transition.apply(session.connection);
+                } catch (RuntimeException transitionFailure) {
+                    fail(session);
+                    return;
+                }
+                if (readyResult != BedrockHandshakeResult.ACCEPTED) {
                     fail(session);
                     return;
                 }

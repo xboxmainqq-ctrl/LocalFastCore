@@ -69,24 +69,31 @@ public final class BedrockSubChunkRequestHandler
             return;
         }
 
-        if (packets.isEmpty() || packets.size() > MAX_REQUEST_PACKETS_PER_MESSAGE) {
+        if (packets.isEmpty()) {
             connection.close();
             return;
         }
-        if (packets.stream().anyMatch(packet ->
-                packet.header().packetId() != BedrockSubChunkRequestPacketCodec.PACKET_ID)) {
+        List<BedrockGamePacket> subChunkRequests = packets.stream()
+                .filter(packet -> packet.header().packetId()
+                        == BedrockSubChunkRequestPacketCodec.PACKET_ID)
+                .toList();
+        List<BedrockGamePacket> otherPackets = packets.stream()
+                .filter(packet -> packet.header().packetId()
+                        != BedrockSubChunkRequestPacketCodec.PACKET_ID)
+                .toList();
+        if (subChunkRequests.isEmpty()) {
             fallback.accept(connection, message);
             return;
         }
-
-        if (message.deliveryMode() != DeliveryMode.RELIABLE_ORDERED) {
+        if (subChunkRequests.size() > MAX_REQUEST_PACKETS_PER_MESSAGE
+                || message.deliveryMode() != DeliveryMode.RELIABLE_ORDERED) {
             connection.close();
             return;
         }
 
         try {
             int dimension = playerDimension.applyAsInt(connection);
-            for (BedrockGamePacket packet : packets) {
+            for (BedrockGamePacket packet : subChunkRequests) {
                 if (packet.header().senderSubClientId() != 0
                         || packet.header().targetSubClientId() != 0) {
                     throw new IllegalArgumentException("Unexpected sub-client routing on SubChunkRequest");
@@ -106,6 +113,12 @@ public final class BedrockSubChunkRequestHandler
                         return;
                     }
                 }
+            }
+            if (!otherPackets.isEmpty() && connection.isOpen()) {
+                ByteBuffer otherBatch = BedrockPacketBatchCodec.encodeUncompressed(otherPackets);
+                ByteBuffer otherFrame = BedrockBatchCompressionCodec.encodeAfterNetworkSettings(
+                        otherBatch, networkSettings);
+                fallback.accept(connection, new TransportMessage(otherFrame, message.deliveryMode()));
             }
         } catch (RuntimeException invalidRequestOrResponse) {
             connection.close();

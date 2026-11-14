@@ -2,7 +2,7 @@
 
 Target: Bedrock 1.26.60, protocol 2225.
 
-The Java runtime contains payload codecs for three packet types, bounded packet-batch framing, a compression envelope, a frame-level coordinator for the initial server-side login handshake, and transport-independent NetherNet message framing and a bounded client identity verification chain. Client and operator NetherNet identity assertions now have bounded parsing and signature-verification components. The runtime now has a bounded HTTP signaling endpoint, but it still does not implement the WebRTC peer connection or a complete client session, and it does not acquire Microsoft/Xbox credentials or prove live-account interoperability.
+The Java runtime contains payload codecs for three packet types, bounded packet-batch framing, a compression envelope, a frame-level coordinator for the initial server-side login handshake, and transport-independent NetherNet message framing and a bounded client identity verification chain. Client and operator NetherNet identity assertions now have bounded parsing and signature-verification components. The runtime now has bounded HTTP/HTTPS signaling and a desktop Java WebRTC peer-host adapter. The Android client has the WebRTC SDK dependency but its end-to-end connection flow is still being integrated. The project does not acquire Microsoft/Xbox credentials or prove live-account interoperability.
 
 | Packet | ID | Payload implemented | Status |
 |---|---:|---|---|
@@ -121,8 +121,22 @@ The authorization-service endpoint, RS256 algorithm, issuer, audience, and clien
 
 The current signaling listener is plain HTTP. For non-TLS connections, clients must apply the TOFU confirmation returned by `NetherNetServerIdentityVerifier`. HTTPS termination and certificate management are not implemented in this listener. `NetherNetPeerHost` is still an adapter interface: no WebRTC implementation, ICE gathering, SCTP data channels, or live peer transport is included yet.
 
+## WebRTC peer host and data channels
+
+`WebRtcJavaNetherNetPeerHost` is the first native WebRTC adapter. It uses `dev.onvoid.webrtc:webrtc-java:1.0.0` and implements both `NetherNetPeerHost` and `NetworkTransport`.
+
+- ICE configuration matches the NetherNet profile: no STUN/TURN servers, TCP candidates disabled, `MAX_BUNDLE`, and `GATHER_ONCE` (full ICE).
+- The host receives the client's in-band `ReliableDataChannel` and `UnreliableDataChannel` through `onDataChannel` and validates their ordered/retransmission settings.
+- Reliable frames are reassembled with the bounded countdown assembler; unreliable frames must carry a zero header and are never fragmented.
+- The transport copies inbound bytes before native callbacks return, applies bounded outbound buffering, and closes peers on malformed framing or asynchronous send failure.
+- The adapter uses a conservative 64 KiB SCTP message-frame limit, an 8 MiB application-message cap, and a 10-second fragment-assembly timeout.
+
+Register its `NetworkTransport` connection listener before `start()`, start the peer host before the signaling server, and configure a directly reachable UDP host candidate. This configuration intentionally does not provide STUN/TURN relay traversal; a host behind NAT may therefore be unreachable without a public address or a future relay-enabled profile.
+
+The desktop native library is not the Android SDK. The Android app now depends on `io.github.webrtc-sdk:android:150.7871.04`; its own PeerConnection, signaling, identity-pinning UI, and Bedrock login flow are still being implemented. The desktop adapter and Android SDK have not yet been proven to interoperate with each other or with an unmodified Minecraft client.
+
 ## Verification boundary
 
-JUnit tests have been authored for the codecs, NetherNet framing, identity parsing, canonical fingerprint serialization, RS256 GameServerToken verification, detached ES384 proof verification, and operator identity signing/TOFU verification, and bounded HTTP signaling. They must be run by Maven or CI before being described as passing. These tests are authored but have not yet been confirmed by a successful Maven/CI run. Even when they pass, they validate isolated implementation behavior only and do not establish interoperability with an unmodified Bedrock client or a live Microsoft/Xbox account.
+JUnit tests have been authored for the codecs, NetherNet framing, identity parsing, canonical fingerprint serialization, RS256 GameServerToken verification, detached ES384 proof verification, and operator identity signing/TOFU verification, and bounded HTTP/HTTPS signaling and a desktop WebRTC peer-host adapter. They must be run by Maven or CI before being described as passing. These tests are authored but have not yet been confirmed by a successful Maven/CI run. Even when they pass, they validate isolated implementation behavior only and do not establish interoperability with an unmodified Bedrock client or a live Microsoft/Xbox account.
 
 ## Compression envelope

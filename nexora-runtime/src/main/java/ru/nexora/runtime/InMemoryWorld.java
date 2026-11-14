@@ -49,18 +49,20 @@ public final class InMemoryWorld implements World {
         ChunkPosition chunkPosition = position.chunkPosition();
 
         if (state.isAir()) {
-            WorldChunk chunk = chunks.get(chunkPosition);
-            if (chunk != null) {
+            // computeIfPresent serializes empty-chunk removal with concurrent writes
+            // to the same chunk, preventing a newly written block from being lost.
+            chunks.computeIfPresent(chunkPosition, (ignored, chunk) -> {
                 chunk.setBlock(position, BlockState.AIR);
-                if (chunk.isEmpty()) {
-                    chunks.remove(chunkPosition, chunk);
-                }
-            }
+                return chunk.isEmpty() ? null : chunk;
+            });
             return;
         }
 
-        chunks.computeIfAbsent(chunkPosition, ignored -> new WorldChunk())
-                .setBlock(position, state);
+        chunks.compute(chunkPosition, (ignored, chunk) -> {
+            WorldChunk target = chunk == null ? new WorldChunk() : chunk;
+            target.setBlock(position, state);
+            return target;
+        });
     }
 
     @Override
@@ -87,14 +89,14 @@ public final class InMemoryWorld implements World {
         private final ConcurrentMap<LocalBlockPosition, BlockState> blocks =
                 new ConcurrentHashMap<>();
 
-        private BlockState blockAt(BlockPosition position) {
+        private synchronized BlockState blockAt(BlockPosition position) {
             return blocks.getOrDefault(
                     new LocalBlockPosition(position.localX(), position.y(), position.localZ()),
                     BlockState.AIR
             );
         }
 
-        private void setBlock(BlockPosition position, BlockState state) {
+        private synchronized void setBlock(BlockPosition position, BlockState state) {
             LocalBlockPosition local = new LocalBlockPosition(
                     position.localX(), position.y(), position.localZ()
             );
@@ -105,7 +107,7 @@ public final class InMemoryWorld implements World {
             }
         }
 
-        private boolean isEmpty() {
+        private synchronized boolean isEmpty() {
             return blocks.isEmpty();
         }
     }

@@ -4175,7 +4175,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             Item item;
             if (id == null || id.isEmpty()) {
                 item = Item.get(160, 7, 1);
-                item.setCustomName("§7" + new String[]{"Артефакт I", "Артефакт II", "Амулет I", "Амулет II", "Кольцо I", "Кольцо II"}[i]
+                item.setCustomName("§7" + new String[]{"Артефакт I", "Артефакт II", "Амулет I", "Амулет II", "Кольцо I", "Кольцо II", "Талисман I", "Талисман II"}[i]
                         + "\n§8Возьми реликвию в руку и нажми сюда");
             } else {
                 item = createMagicRelicItem(id);

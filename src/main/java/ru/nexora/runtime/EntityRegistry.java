@@ -71,7 +71,7 @@ public final class EntityRegistry {
                 result.add(entity);
             }
         }
-        result.sort(Comparator.comparingDouble(entity -> distanceSquared(entity, x, y, z))
+        result.sort(Comparator.comparingDouble((WorldEntity entity) -> distanceSquared(entity, x, y, z))
                 .thenComparing(entity -> entity.id().toString()));
         return List.copyOf(result);
     }

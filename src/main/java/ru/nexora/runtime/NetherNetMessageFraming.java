@@ -59,6 +59,26 @@ public final class NetherNetMessageFraming {
     }
 
     /**
+     * Prefixes a single unreliable application message with the mandatory zero header.
+     * Unreliable messages are never fragmented.
+     */
+    public static ByteBuffer frameUnreliable(ByteBuffer payload, int maxFrameBytes) {
+        Objects.requireNonNull(payload, "payload");
+        if (maxFrameBytes < 1) {
+            throw new IllegalArgumentException("maxFrameBytes must be positive");
+        }
+        ByteBuffer source = payload.slice();
+        if (source.remaining() + 1 > maxFrameBytes) {
+            throw new IllegalArgumentException("Unreliable message exceeds single-frame limit");
+        }
+        ByteBuffer frame = ByteBuffer.allocate(source.remaining() + 1);
+        frame.put((byte) 0);
+        frame.put(source);
+        frame.flip();
+        return frame.asReadOnlyBuffer();
+    }
+
+    /**
      * Removes and validates the NetherNet header on an unreliable channel.
      * Fragmentation is forbidden on that channel, so the header must be zero.
      * The returned read-only view shares the input storage.

@@ -22,11 +22,11 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Bounded HTTP signaling endpoint for NetherNet.
+ * Bounded HTTP/HTTPS signaling endpoint for NetherNet.
  *
- * <p>This is the signaling plane only. A real {@link NetherNetPeerHost} must
- * provide WebRTC negotiation and the validator must perform cryptographic
- * client authentication. No permissive default implementations are supplied.</p>
+ * <p>This is the signaling plane. A {@link NetherNetPeerHost} provides WebRTC
+ * negotiation and the mandatory validator performs client identity checks.
+ * Every answer is signed with the configured operator key before it is sent.</p>
  */
 public final class NetherNetSignalingServer implements RuntimeModule {
     public static final int DEFAULT_MAX_SDP_BYTES = 256 * 1024;

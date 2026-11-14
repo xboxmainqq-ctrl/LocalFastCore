@@ -189,12 +189,12 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                         new AtomicReference<>(new NexoraMovementValidator.Position(
                                 worldInfo.spawnX() + 0.5, worldInfo.spawnY(),
                                 worldInfo.spawnZ() + 0.5));
-                UUID playerId = UUID.nameUUIDFromBytes((serverId + ":"
+                UUID playerId = UUID.nameUUIDFromBytes(("nexora-player:"
                         + hello.playerName().toLowerCase(Locale.ROOT))
                         .getBytes(StandardCharsets.UTF_8));
                 if (playerSessions.values().stream().anyMatch(active ->
                         active.playerId.equals(playerId))) {
-                    reject(connection, REJECT_INVALID_HELLO, "Player name is already online");
+                    connection.close();
                     return;
                 }
                 final PlayerInventory inventory;

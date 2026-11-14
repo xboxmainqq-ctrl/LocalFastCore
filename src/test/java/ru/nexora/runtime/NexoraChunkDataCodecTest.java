@@ -11,7 +11,7 @@ class NexoraChunkDataCodecTest {
     @Test
     void chunkRequestMatchesTheAndroidWireLayout() {
         byte[] expected = ByteBuffer.allocate(15)
-                .put(new byte[] {'N','X','R','A',1,1,5})
+                .put(new byte[] {'N','X','R','A',1,2,5})
                 .putInt(-2).putInt(7).array();
         assertArrayEquals(expected, NexoraChunkDataCodec.encodeChunkRequest(-2, 7));
         assertEquals(new NexoraChunkDataCodec.ChunkRequest(-2, 7),

@@ -212,6 +212,9 @@ public final class FileWorldStorage {
                                 int blockX = Math.addExact(Math.multiplyExact(chunk.x(), 16), localX);
                                 int blockZ = Math.addExact(Math.multiplyExact(chunk.z(), 16), localZ);
                                 int blockY = Math.addExact(Math.multiplyExact(sectionY, 16), localY);
+                                if (!height.contains(blockY)) {
+                                    throw new IOException("Biome cell is outside world height in chunk " + chunk);
+                                }
                                 world.setBiome(new BlockPosition(blockX, blockY, blockZ), biomeId);
                             }
                         }

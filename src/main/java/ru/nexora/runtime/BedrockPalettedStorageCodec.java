@@ -65,10 +65,15 @@ public final class BedrockPalettedStorageCodec {
             }
         }
 
-        // Even a zero-bit (uniform) storage writes its one-entry palette.
-        BedrockBinary.writeVarInt32(out, palette.size());
-        for (int runtimeId : palette) {
-            BedrockBinary.writeVarInt32(out, runtimeId);
+        if (bits == 0) {
+            // Uniform storage has an implicit one-entry palette: write only
+            // its signed runtime ID, without a palette-size prefix.
+            BedrockBinary.writeVarInt32(out, palette.get(0));
+        } else {
+            BedrockBinary.writeVarInt32(out, palette.size());
+            for (int runtimeId : palette) {
+                BedrockBinary.writeVarInt32(out, runtimeId);
+            }
         }
 
         out.flip();

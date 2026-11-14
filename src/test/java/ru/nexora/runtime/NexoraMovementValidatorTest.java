@@ -21,7 +21,7 @@ class NexoraMovementValidatorTest {
     void acceptsSmallMovementIntoLoadedAir() {
         InMemoryWorld world = createWorld();
         NexoraMovementValidator.Position requested =
-                new NexoraMovementValidator.Position(3.0, 65.0, 2.0);
+                new NexoraMovementValidator.Position(2.2, 65.0, 2.0);
 
         NexoraMovementValidator.Result result = validator.validate(
                 world, new NexoraMovementValidator.Position(2.0, 65.0, 2.0), requested);

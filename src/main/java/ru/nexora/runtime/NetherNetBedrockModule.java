@@ -49,13 +49,18 @@ public final class NetherNetBedrockModule implements RuntimeModule {
             throw new IllegalStateException("NetherNet Bedrock module is already started");
         }
         transport.setConnectionListener(router);
-        transport.start();
         try {
+            transport.start();
             signalingServer.start();
             started = true;
         } catch (Exception failure) {
             closed = true;
             router.close();
+            try {
+                signalingServer.stop();
+            } catch (RuntimeException cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
             try {
                 transport.stop();
             } catch (Exception cleanupFailure) {
@@ -72,8 +77,24 @@ public final class NetherNetBedrockModule implements RuntimeModule {
         }
         started = false;
         closed = true;
-        signalingServer.stop();
+        Exception failure = null;
+        try {
+            signalingServer.stop();
+        } catch (RuntimeException stopFailure) {
+            failure = stopFailure;
+        }
         router.close();
-        transport.stop();
+        try {
+            transport.stop();
+        } catch (Exception stopFailure) {
+            if (failure == null) {
+                failure = stopFailure;
+            } else {
+                failure.addSuppressed(stopFailure);
+            }
+        }
+        if (failure != null) {
+            throw failure;
+        }
     }
 }

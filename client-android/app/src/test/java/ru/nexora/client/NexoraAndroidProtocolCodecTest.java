@@ -9,6 +9,15 @@ import static org.junit.Assert.*;
 
 public class NexoraAndroidProtocolCodecTest {
     @Test
+    public void clientHelloMatchesTheServerGoldenVector() {
+        byte[] expected = new byte[] {
+                'N', 'X', 'R', 'A', 1, 0, 1, 11,
+                'a', 'n', 'd', 'r', 'o', 'i', 'd', '-', 'd', 'e', 'v'
+        };
+        assertArrayEquals(expected, NexoraAndroidProtocolCodec.encodeClientHello("android-dev"));
+    }
+
+    @Test
     public void encodesClientHelloWithExpectedMagicAndVersion() {
         byte[] encoded = NexoraAndroidProtocolCodec.encodeClientHello("android-dev");
         assertEquals(78, Byte.toUnsignedInt(encoded[0]));

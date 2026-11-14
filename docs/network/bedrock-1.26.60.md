@@ -85,7 +85,7 @@ The protocol-2225 `PlayStatus` values and 4-byte big-endian packet codec are imp
 
 **Current router checkpoint:** the signaling validator now returns its verified player identity. The signaling server passes it to the peer host, the WebRTC session retains it, and the resulting transport connection exposes it as an optional authenticated identity. In the production authenticated path, the Bedrock router converts that trusted XUID, display name and P-384 key into `BedrockAuthenticatedPlayer`; it does not ask a second authenticator to trust the unverified Login JSON. Explicit development mode can still create identity-free sessions, but that mode is unauthenticated and must not be used publicly. The router sends compressed `PlayStatus(LoginSuccess)` and enters the distinct `LOGIN_SUCCESS_SENT` phase. It does **not** mark the client as PLAY immediately. The post-login callback is responsible for resource-pack negotiation and world startup; it must call `markPlayReady(connection)` only after the required StartGame/world initialization packets have been sent. A bounded post-login timeout closes sessions that never complete this phase. Unit tests cover identity propagation, the pre-PLAY phase, and the explicit world-ready transition.
 
-**Still not complete:** no real unmodified 1.26.60 client has been connected to verify that the SDP identity, Login payload and PlayStatus sequence match the live client. The legacy certificate-chain verifier is not used as the production NetherNet trust anchor; the Mojang GameServerToken plus detached fingerprint proof is. Resource-pack negotiation and the protocol-2225 StartGame packet serializer are now present. Initial chunk streaming and the production world-startup callback that advances `LOGIN_SUCCESS_SENT` to `PLAY` are still not implemented. Unit tests do not establish playable compatibility.
+**Still not complete:** no real unmodified 1.26.60 client has been connected to verify that the SDP identity, Login payload and PlayStatus sequence match the live client. The legacy certificate-chain verifier is not used as the production NetherNet trust anchor; the Mojang GameServerToken plus detached fingerprint proof is. Resource-pack negotiation, the StartGame serializer, a preloaded-spawn-chunk startup handler, and the subchunk request response path are now present as components. Full terrain data (including runtime palette, biome, fluid, and heightmap requirements), production composition, and live-client verification remain incomplete. Unit tests do not establish playable compatibility.
 
 ## Acceptance gates
 
@@ -167,7 +167,7 @@ The official protocol reference identifies packet IDs 6, 7 and 8 and documents t
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/resource-pack-client-response-packet/
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/primitives/
 
-**Scope limitation:** these codecs do not yet form a post-login negotiation coordinator and do not prove that a live client accepts the chosen empty world-template metadata. The production server composition still does not invoke the `StartGame` serializer or send initial chunks; the packet codecs and startup hooks exist, but no playable world startup is wired. `LOGIN_SUCCESS_SENT` must remain distinct from `PLAY`; only the later completed world-startup path may call `markPlayReady(connection)`. No real Bedrock client compatibility is claimed.
+**Scope limitation:** these codecs do not yet form a post-login negotiation coordinator and do not prove that a live client accepts the chosen empty world-template metadata. The reusable `BedrockWorldStartupHandler` can send StartGame and skeleton chunks, but the production server composition still does not instantiate and wire it with a verified block registry and loaded spawn chunks. `LOGIN_SUCCESS_SENT` must remain distinct from `PLAY`; only the later completed world-startup path may call `markPlayReady(connection)`. No real Bedrock client compatibility is claimed.
 ### Post-login negotiation coordinator
 
 `BedrockPostLoginCoordinator` now connects the packet codecs into a bounded state flow:
@@ -190,7 +190,7 @@ BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
 postLogin.attachTo(router); // before starting the transport module
 ```
 
-The `WorldStartupHandler` is still an injected boundary. NEXORA now provides a protocol-2225 `StartGame` serializer, but initial chunk delivery and a production playable world-startup implementation are still missing. The coordinator's unit tests exercise ordering, packet emission, malformed/out-of-order response rejection, world-startup failure, and the explicit PLAY transition; they are not live-client tests.
+The `WorldStartupHandler` remains an injected boundary. `BedrockWorldStartupHandler` now provides a concrete minimal implementation: it verifies that configured spawn chunks are already loaded, then sends packet 11 (`StartGame`) followed by packet 58 skeleton chunks in one reliable-ordered batch. The subchunk request handler can answer requests during asynchronous startup before the router transitions to PLAY. Full section streaming still depends on a verified 1.26.60 runtime block registry and complete terrain metadata. Coordinator and startup tests are not live-client tests.
 ### StartGame serializer foundation — protocol 2225
 
 Before writing the complete packet, the runtime now has the missing numeric primitives required by its schema:
@@ -225,7 +225,7 @@ Reference: https://mojang.github.io/bedrock-protocol-docs/1.26.60/types/level-se
 
 **Current profile limits:** block properties are empty; optional server configuration is absent; player property lists are bounded to 4096 entries each; telemetry and packet strings have explicit byte limits. This is a valid schema-complete minimal profile, not evidence that every optional StartGame configuration is supported.
 
-A new schema-order test reads every top-level field and asserts that no payload bytes remain. A packet-level test checks packet ID 11 and sub-client header values. Tests have been added but have not yet been executed because the GitHub Actions runner allocation has been failing before job steps begin. No live unmodified Bedrock client test has been performed, and chunk streaming/playable world startup are still outstanding.
+A new schema-order test reads every top-level field and asserts that no payload bytes remain. A packet-level test checks packet ID 11 and sub-client header values. Tests have been added but have not yet been executed because the GitHub Actions runner allocation has been failing before job steps begin. No live unmodified Bedrock client test has been performed. The skeleton-chunk startup path is implemented, but full terrain streaming and playable-world verification remain outstanding.
 
 Protocol references:
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/start-game-packet/
@@ -314,3 +314,34 @@ The example assumes the registry has already been loaded from the matching 1.26.
 
 Additional reference:
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/sub-chunk-request-packet/
+### Minimal world-startup handler
+
+`BedrockWorldStartupHandler` now implements the coordinator's injected startup boundary for the first NEXORA world session:
+
+1. It verifies that the configured spawn chunks are already loaded in the standalone `World`.
+2. It creates the protocol-2225 `StartGame` packet using a caller-supplied per-player settings factory.
+3. It appends one skeleton `LevelChunk` packet (subchunk request sentinel `0xffffffff`) for each configured spawn chunk.
+4. It sends the ordered packet batch on the reliable channel and completes only when the transport accepts it.
+5. The post-login coordinator then performs the explicit `LOGIN_SUCCESS_SENT` → `PLAY` transition. Requests arriving during the asynchronous startup window are routed to `BedrockSubChunkRequestHandler`.
+
+Spawn chunks must be generated/loaded before this handler starts. The handler deliberately does not fabricate missing chunks or invent a Bedrock runtime palette. The exact 1.26.60 block runtime registry must be supplied to the subchunk request handler; without it, non-air NEXORA block states cannot be serialized safely.
+
+Example:
+
+```java
+BedrockWorldStartupHandler worldStartup = new BedrockWorldStartupHandler(
+    networkSettings, overworld, 0, -1, List.of(new ChunkPosition(0, 0)),
+    startGameSettingsFactory
+);
+BedrockSubChunkRequestHandler subchunks = new BedrockSubChunkRequestHandler(
+    networkSettings, overworld, connection -> 0, bedrockRuntimeBlockRegistry,
+    existingPlayMessageHandler
+);
+BedrockPostLoginCoordinator postLogin = new BedrockPostLoginCoordinator(
+    networkSettings, "1.26.60", worldStartup, subchunks
+);
+BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
+    networkSettings, loginAuthenticator, postLogin, subchunks
+);
+postLogin.attachTo(router);
+```

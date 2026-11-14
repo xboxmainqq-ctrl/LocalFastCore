@@ -52,6 +52,21 @@ class NetherNetServerIdentitySignerTest {
         NetherNetFingerprintPayload payload = NetherNetFingerprintPayload.fromSdp(parsed);
         assertTrue(NetherNetFingerprintJwsVerifier.verify(
                 inner.get("fingerprints"), payload, operator.getPublic()));
+
+        NetherNetServerIdentityVerifier identityVerifier = new NetherNetServerIdentityVerifier(
+                java.time.Clock.fixed(Instant.ofEpochSecond(2000), java.time.ZoneOffset.UTC), 0L);
+        NetherNetServerIdentityVerifier.VerifiedOperatorIdentity firstUse =
+                identityVerifier.verify(signed, false, fingerprint -> false);
+        assertEquals(NetherNetServerIdentityVerifier.TrustStatus.FIRST_USE_CONFIRMATION_REQUIRED,
+                firstUse.trustStatus());
+        assertEquals(64, firstUse.sha256PublicKeyFingerprint().length());
+        NetherNetServerIdentityVerifier.VerifiedOperatorIdentity pinned =
+                identityVerifier.verify(signed, false, fingerprint -> true);
+        assertEquals(NetherNetServerIdentityVerifier.TrustStatus.PINNED, pinned.trustStatus());
+        NetherNetServerIdentityVerifier.VerifiedOperatorIdentity tls =
+                identityVerifier.verify(signed, true, fingerprint -> false);
+        assertEquals(NetherNetServerIdentityVerifier.TrustStatus.TLS_AUTHENTICATED,
+                tls.trustStatus());
     }
 
     @Test

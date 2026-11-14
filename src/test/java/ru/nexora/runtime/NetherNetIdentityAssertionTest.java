@@ -9,14 +9,20 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class NetherNetIdentityAssertionTest {
     private static final Base64.Encoder URL = Base64.getUrlEncoder().withoutPadding();
+    private static final String ISSUER = "https://authorization.franchise.minecraft-services.net/";
+    private static final String AUDIENCE = "api://auth-minecraft-services/multiplayer";
+    private static final String CPK = Base64.getEncoder().encodeToString(new byte[91]);
 
     private static String b64(String value) {
         return URL.encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
 
-    private static String jwt(String claims) {
-        return b64("{\"alg\":\"RS256\",\"typ\":\"JWT\"}") + "."
-                + b64(claims) + "." + URL.encodeToString(new byte[] {1, 2, 3});
+    private static String jwt(String algorithm, boolean includeCpk) {
+        String header = "{\"alg\":\"" + algorithm + "\",\"typ\":\"JWT\",\"kid\":\"test-key\"}";
+        String claims = "{\"iss\":\"" + ISSUER + "\",\"aud\":\"" + AUDIENCE
+                + "\",\"exp\":9999999999,\"nbf\":1,\"xid\":\"123\",\"xname\":\"Player\""
+                + (includeCpk ? ",\"cpk\":\"" + CPK + "\"" : "") + "}";
+        return b64(header) + "." + b64(claims) + "." + URL.encodeToString(new byte[] {1, 2, 3});
     }
 
     private static String detachedJws() {
@@ -42,51 +48,53 @@ class NetherNetIdentityAssertionTest {
     }
 
     @Test
-    void parsesIdentityEnvelopeAndCompactJwtAndDetachedJwsShapes() {
-        String token = jwt("{\"xuid\":\"123\",\"cpk\":{\"kty\":\"EC\",\"crv\":\"P-384\"}}");
+    void parsesCurrentGameServerTokenClaimsAndDetachedJwsShape() {
+        String token = jwt("RS256", true);
 
         NetherNetIdentityAssertion parsed = NetherNetIdentityAssertion.parse(
-                document("auth.minecraftservices.com", "default", token, detachedJws()));
+                document("authorization.franchise.minecraft-services.net", "default",
+                        token, detachedJws()));
 
-        assertEquals("auth.minecraftservices.com", parsed.identityProviderDomain());
+        assertEquals("authorization.franchise.minecraft-services.net", parsed.identityProviderDomain());
         assertEquals("default", parsed.identityProviderProtocol());
         assertEquals(token, parsed.token());
+        assertEquals("test-key", parsed.jwtKeyId());
+        assertEquals("RS256", parsed.jwtAlgorithm());
+        assertEquals(CPK, parsed.clientPublicKeySpkiBase64());
+        assertEquals(ISSUER, parsed.issuer());
+        assertEquals(AUDIENCE, parsed.audience());
+        assertEquals(9999999999L, parsed.expiresAtEpochSeconds());
+        assertEquals(1L, parsed.notBeforeEpochSeconds());
+        assertEquals("123", parsed.xuid());
+        assertEquals("Player", parsed.displayName());
         assertEquals("ES384", parsed.jwsAlgorithm());
-        assertTrue(parsed.detachedFingerprintsJws().contains(".."));
     }
 
     @Test
     void rejectsUnsupportedIdentityProviderProtocol() {
-        String token = jwt("{\"cpk\":{\"kty\":\"EC\"}}");
         assertThrows(IllegalArgumentException.class, () ->
                 NetherNetIdentityAssertion.parse(
-                        document("auth.example", "other", token, detachedJws())));
+                        document("auth.example", "other", jwt("RS256", true), detachedJws())));
     }
 
     @Test
-    void rejectsJwtWithoutCpkOrWithNoneAlgorithm() {
-        String noCpk = jwt("{\"xuid\":\"123\"}");
+    void rejectsJwtWithoutCpkOrWithUnsupportedAlgorithm() {
         assertThrows(IllegalArgumentException.class, () ->
                 NetherNetIdentityAssertion.parse(
-                        document("auth.example", "default", noCpk, detachedJws())));
-
-        String none = b64("{\"alg\":\"none\"}") + "."
-                + b64("{\"cpk\":{\"kty\":\"EC\"}}") + "."
-                + URL.encodeToString(new byte[] {1});
+                        document("auth.example", "default", jwt("RS256", false), detachedJws())));
         assertThrows(IllegalArgumentException.class, () ->
                 NetherNetIdentityAssertion.parse(
-                        document("auth.example", "default", none, detachedJws())));
+                        document("auth.example", "default", jwt("none", true), detachedJws())));
     }
 
     @Test
     void rejectsMalformedDetachedJwsAndOversizedFields() {
-        String token = jwt("{\"cpk\":{\"kty\":\"EC\"}}");
         assertThrows(IllegalArgumentException.class, () ->
                 NetherNetIdentityAssertion.parse(
-                        document("auth.example", "default", token, "a.b.c")));
+                        document("auth.example", "default", jwt("RS256", true), "a.b.c")));
         assertThrows(IllegalArgumentException.class, () ->
                 NetherNetIdentityAssertion.parse(
-                        document("auth.example", "default", token, detachedJws()), 8, 8));
+                        document("auth.example", "default", jwt("RS256", true), detachedJws()), 8, 8));
     }
 
     @Test
@@ -99,5 +107,16 @@ class NetherNetIdentityAssertionTest {
                 + "\nm=application 9 x";
         NetherNetSdpDocument parsed = NetherNetSdpDocument.parseOffer(sdp);
         assertThrows(IllegalArgumentException.class, () -> NetherNetIdentityAssertion.parse(parsed));
+    }
+
+    @Test
+    void rejectsWrongIssuerAndAudience() {
+        String token = b64("{\"alg\":\"RS256\",\"kid\":\"k\"}") + "."
+                + b64("{\"iss\":\"https://wrong.example/\",\"aud\":\"" + AUDIENCE
+                + "\",\"exp\":9999999999,\"cpk\":\"" + CPK + "\"}") + "."
+                + URL.encodeToString(new byte[] {1});
+        assertThrows(IllegalArgumentException.class, () ->
+                NetherNetIdentityAssertion.parse(
+                        document("auth.example", "default", token, detachedJws())));
     }
 }

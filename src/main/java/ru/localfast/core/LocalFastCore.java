@@ -3984,6 +3984,408 @@ public final class LocalFastCore extends PluginBase implements Listener {
     }
 
 
+
+    private static final class MagicEquipmentInventory extends ContainerInventory {
+        MagicEquipmentInventory(Player owner) {
+            super(owner, InventoryType.CHEST, new HashMap<>(), 27, "§5Артефакты и амулеты");
+        }
+    }
+
+    private String[] magicRelicIds() {
+        return new String[]{"mana_heart", "archmage_orb", "phoenix_feather", "ember_amulet",
+                "frost_amulet", "void_ring", "guardian_ring", "swift_ring",
+                "chrono_talisman", "rune_focus", "soul_pendant", "storm_seal"};
+    }
+
+    private String magicRelicName(String id) {
+        switch (id) {
+            case "mana_heart": return "§bСердце маны";
+            case "archmage_orb": return "§dСфера архимага";
+            case "phoenix_feather": return "§6Перо феникса";
+            case "ember_amulet": return "§cАмулет пламени";
+            case "frost_amulet": return "§9Амулет стужи";
+            case "void_ring": return "§5Кольцо Бездны";
+            case "guardian_ring": return "§eКольцо хранителя";
+            case "swift_ring": return "§aКольцо стремительности";
+            case "chrono_talisman": return "§6Талисман времени";
+            case "rune_focus": return "§dРуна концентрации";
+            case "soul_pendant": return "§cПодвеска души";
+            case "storm_seal": return "§eПечать грозы";
+            default: return "§7Неизвестный артефакт";
+        }
+    }
+
+    private String magicRelicDescription(String id) {
+        switch (id) {
+            case "mana_heart": return "§7+50 к максимальной мане. Активно: восстановить 55 маны.";
+            case "archmage_orb": return "§7+25 к максимальной мане и +15% к урону заклинаний. Активно: арканный взрыв.";
+            case "phoenix_feather": return "§7Активно: восстановить до 12 здоровья.";
+            case "ember_amulet": return "§7+10% к урону огненной магии. Активно: взрыв пламени по цели.";
+            case "frost_amulet": return "§7+10% к урону ледяной магии. Активно: ледяная буря вокруг тебя.";
+            case "void_ring": return "§7Активно: импульс Бездны наносит урон ближайшим врагам.";
+            case "guardian_ring": return "§7Пассивно: -10% входящего урона. Активно: защитный барьер.";
+            case "swift_ring": return "§7Активно: ускорение на 12 секунд.";
+            case "chrono_talisman": return "§7+1 мана/сек. и -10% перезарядки заклинаний. Активно: ускорить восстановление.";
+            case "rune_focus": return "§7+15% к получаемому опыту магии. Активно: получить 60 опыта магии.";
+            case "soul_pendant": return "§7Активно: восстановить здоровье и ману.";
+            case "storm_seal": return "§7+8% к силе заклинаний. Активно: грозовой удар по области.";
+            default: return "§7Нет описания.";
+        }
+    }
+
+    private int magicRelicItemId(String id) {
+        switch (id) {
+            case "mana_heart": return 388;
+            case "archmage_orb": return 399;
+            case "phoenix_feather": return 288;
+            case "ember_amulet": return 377;
+            case "frost_amulet": return 332;
+            case "void_ring": return 368;
+            case "guardian_ring": return 322;
+            case "swift_ring": return 353;
+            case "chrono_talisman": return 347;
+            case "rune_focus": return 331;
+            case "soul_pendant": return 370;
+            case "storm_seal": return 369;
+            default: return 399;
+        }
+    }
+
+    private long magicRelicPrice(String id) {
+        switch (id) {
+            case "mana_heart": return 3500L;
+            case "archmage_orb": return 14000L;
+            case "phoenix_feather": return 7500L;
+            case "ember_amulet": return 5500L;
+            case "frost_amulet": return 5500L;
+            case "void_ring": return 9000L;
+            case "guardian_ring": return 9500L;
+            case "swift_ring": return 4500L;
+            case "chrono_talisman": return 8500L;
+            case "rune_focus": return 6000L;
+            case "soul_pendant": return 11000L;
+            case "storm_seal": return 12500L;
+            default: return Long.MAX_VALUE;
+        }
+    }
+
+    private Item createMagicRelicItem(String id) {
+        Item item = Item.get(magicRelicItemId(id), 0, 1);
+        item.setCustomName(magicRelicName(id));
+        item.setLore(new String[]{"§7Магическая экипировка LocalFast", magicRelicDescription(id),
+                "§8Помести в специальный слот через /magic"});
+        return item;
+    }
+
+    private String magicRelicFromItem(Item item) {
+        if (item == null || item.getId() <= 0 || item.getCustomName() == null) return null;
+        for (String id : magicRelicIds()) if (magicRelicName(id).equals(item.getCustomName())) return id;
+        return null;
+    }
+
+    private String magicEquipmentPath(Player player) {
+        return playerKey(player) + ".magic.equipment";
+    }
+
+    private String equippedMagicRelic(Player player, int slot) {
+        return players.getString(magicEquipmentPath(player) + "." + slot, "");
+    }
+
+    private boolean hasMagicRelic(Player player, String id) {
+        for (int slot = 0; slot < MAGIC_EQUIPMENT_SLOTS.length; slot++) {
+            if (id.equals(equippedMagicRelic(player, slot))) return true;
+        }
+        return false;
+    }
+
+    private int magicEquipmentIndex(int inventorySlot) {
+        for (int i = 0; i < MAGIC_EQUIPMENT_SLOTS.length; i++) {
+            if (MAGIC_EQUIPMENT_SLOTS[i] == inventorySlot) return i;
+        }
+        return -1;
+    }
+
+    private void updateMagicHud(Player player) {
+        int current = magicMana(player);
+        int max = Math.max(1, magicMaxMana(player));
+        int filled = Math.max(0, Math.min(12, (int) Math.round(current * 12.0 / max)));
+        String bar = "§bМАНА §3" + "■".repeat(filled) + "§8" + "□".repeat(12 - filled)
+                + " §f" + current + "§7/§f" + max;
+        player.sendTip(bar);
+    }
+
+    private void refreshMagicEquipmentInventory(Player player, MagicEquipmentInventory inventory) {
+        Item filler = Item.get(160, 15, 1);
+        filler.setCustomName("§8Магический узор");
+        for (int slot = 0; slot < 27; slot++) inventory.setItem(slot, filler);
+        for (int i = 0; i < MAGIC_EQUIPMENT_SLOTS.length; i++) {
+            String id = equippedMagicRelic(player, i);
+            Item item;
+            if (id == null || id.isEmpty()) {
+                item = Item.get(160, 7, 1);
+                item.setCustomName("§7" + new String[]{"Артефакт I", "Артефакт II", "Амулет I", "Амулет II", "Кольцо I", "Кольцо II"}[i]
+                        + "\n§8Возьми реликвию в руку и нажми сюда");
+            } else {
+                item = createMagicRelicItem(id);
+            }
+            inventory.setItem(MAGIC_EQUIPMENT_SLOTS[i], item);
+        }
+    }
+
+    private void openMagicEquipmentInventory(Player player) {
+        initialize(player);
+        MagicEquipmentInventory inventory = new MagicEquipmentInventory(player);
+        magicEquipmentInventories.put(player.getUniqueId(), inventory);
+        refreshMagicEquipmentInventory(player, inventory);
+        player.addWindow(inventory);
+        updateMagicHud(player);
+    }
+
+    @EventHandler
+    public void onMagicEquipmentClick(InventoryClickEvent event) {
+        Player player = event.getPlayer();
+        MagicEquipmentInventory inventory = magicEquipmentInventories.get(player.getUniqueId());
+        if (inventory == null || event.getInventory() != inventory) return;
+        event.setCancelled(true);
+        int slot = magicEquipmentIndex(event.getSlot());
+        if (slot < 0) return;
+        String current = equippedMagicRelic(player, slot);
+        if (current != null && !current.isEmpty()) {
+            openMagicRelicDetails(player, slot);
+            return;
+        }
+        Item hand = player.getInventory().getItemInHand();
+        String relicId = magicRelicFromItem(hand);
+        if (relicId == null) {
+            player.sendMessage("§eВозьми артефакт или амулет в руку, затем нажми на пустой слот.");
+            return;
+        }
+        for (int i = 0; i < MAGIC_EQUIPMENT_SLOTS.length; i++) {
+            if (relicId.equals(equippedMagicRelic(player, i))) {
+                player.sendMessage("§cЭтот артефакт уже установлен.");
+                return;
+            }
+        }
+        players.set(magicEquipmentPath(player) + "." + slot, relicId);
+        if (hand.getCount() > 1) {
+            hand.setCount(hand.getCount() - 1);
+            player.getInventory().setItemInHand(hand);
+        } else {
+            player.getInventory().setItemInHand(Item.get(0, 0, 0));
+        }
+        markPlayersDirty();
+        flushPlayers();
+        refreshMagicEquipmentInventory(player, inventory);
+        recalculateStats(player);
+        player.sendMessage("§aУстановлено: " + magicRelicName(relicId));
+    }
+
+    @EventHandler
+    public void onMagicEquipmentClose(InventoryCloseEvent event) {
+        if (!(event.getInventory() instanceof MagicEquipmentInventory)) return;
+        MagicEquipmentInventory current = magicEquipmentInventories.get(event.getPlayer().getUniqueId());
+        if (current == event.getInventory()) magicEquipmentInventories.remove(event.getPlayer().getUniqueId());
+    }
+
+    private void openMagicRelicShop(Player player) {
+        initialize(player);
+        String[] relics = magicRelicIds();
+        FormWindowSimple form = new FormWindowSimple("§5§lРЕЛИКВИИ И АМУЛЕТЫ",
+                "§7Монеты: §6" + getBalance(player) + "\n§7Всего предметов: 12. Выбери реликвию для покупки.");
+        for (String id : relics) {
+            form.addButton(new ElementButton(magicRelicName(id) + "\n§7Цена: §6" + magicRelicPrice(id) + " " + currencyName()));
+        }
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int selected = form.getResponse().getClickedButtonId();
+            if (selected < 0 || selected >= relics.length) { openMagicMenu(player); return; }
+            String id = relics[selected];
+            long price = magicRelicPrice(id);
+            if (getBalance(player) < price) {
+                player.sendMessage("§cНедостаточно монет для покупки " + magicRelicName(id) + ".");
+                openMagicRelicShop(player);
+                return;
+            }
+            Item[] leftovers = player.getInventory().addItem(createMagicRelicItem(id));
+            if (leftovers != null && leftovers.length > 0) {
+                player.sendMessage("§cОсвободи место в инвентаре. Покупка отменена.");
+                openMagicRelicShop(player);
+                return;
+            }
+            setBalance(player, getBalance(player) - price);
+            flushPlayers();
+            player.sendMessage("§aКуплено: " + magicRelicName(id) + "§a. Установи предмет в отдельный слот через /magic.");
+            openMagicRelicShop(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openMagicRelicDetails(Player player, int slot) {
+        String id = equippedMagicRelic(player, slot);
+        if (id == null || id.isEmpty()) { openMagicEquipmentInventory(player); return; }
+        FormWindowSimple form = new FormWindowSimple(magicRelicName(id),
+                magicRelicDescription(id) + "\n\n§7Перезарядка активного эффекта: 60 секунд.");
+        form.addButton(new ElementButton("§aИспользовать способность"));
+        form.addButton(new ElementButton("§cСнять артефакт"));
+        form.addButton(new ElementButton("§7Назад к слотам"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int selected = form.getResponse().getClickedButtonId();
+            if (selected == 0) {
+                activateMagicRelic(player, id);
+                openMagicRelicDetails(player, slot);
+            } else if (selected == 1) {
+                Item[] leftovers = player.getInventory().addItem(createMagicRelicItem(id));
+                if (leftovers != null && leftovers.length > 0) {
+                    player.sendMessage("§cНет свободного места в инвентаре.");
+                } else {
+                    players.set(magicEquipmentPath(player) + "." + slot, "");
+                    markPlayersDirty();
+                    flushPlayers();
+                    recalculateStats(player);
+                    player.sendMessage("§eСнято: " + magicRelicName(id));
+                }
+                openMagicEquipmentInventory(player);
+            } else {
+                openMagicEquipmentInventory(player);
+            }
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void activateMagicRelic(Player player, String id) {
+        String key = playerKey(player) + ".magic.relic_cooldowns." + id;
+        long remaining = Math.max(0L, players.getLong(key, 0L) - System.currentTimeMillis());
+        if (remaining > 0L) {
+            player.sendMessage("§cСпособность реликвии перезаряжается: " + ((remaining + 999L) / 1000L) + " сек.");
+            return;
+        }
+        int cost = 25;
+        if (id.equals("mana_heart") || id.equals("chrono_talisman") || id.equals("rune_focus")) cost = 0;
+        if (id.equals("archmage_orb") || id.equals("storm_seal")) cost = 35;
+        if (magicMana(player) < cost) {
+            player.sendMessage("§cНедостаточно маны для способности реликвии.");
+            return;
+        }
+        boolean success = true;
+        String message;
+        switch (id) {
+            case "mana_heart": {
+                int restored = Math.min(55, magicMaxMana(player) - magicMana(player));
+                if (restored <= 0) { player.sendMessage("§bМана уже полная."); return; }
+                setMagicMana(player, magicMana(player) + restored);
+                message = "§bСердце маны вернуло " + restored + " маны.";
+                break;
+            }
+            case "archmage_orb": {
+                int hits = damageMagicArea(player, player, 6.0, 17, false);
+                message = "§dАрканный взрыв поразил существ: " + hits + ".";
+                break;
+            }
+            case "phoenix_feather": {
+                float heal = Math.min(12.0f, player.getMaxHealth() - player.getHealth());
+                if (heal <= 0.1f) { player.sendMessage("§cЗдоровье уже полное."); return; }
+                player.heal(heal);
+                message = "§6Перо феникса восстановило " + (int) heal + " здоровья.";
+                break;
+            }
+            case "ember_amulet": {
+                EntityCreature target = findMagicTarget(player, 16.0);
+                if (target == null) { player.sendMessage("§cНаведи прицел на моба."); return; }
+                int hits = damageMagicArea(player, target, 4.0, 19, false);
+                message = "§cПламя охватило область. Поражено: " + hits + ".";
+                break;
+            }
+            case "frost_amulet": {
+                int hits = damageMagicArea(player, player, 5.0, 10, true);
+                message = "§9Ледяная буря замедлила врагов: " + hits + ".";
+                break;
+            }
+            case "void_ring": {
+                int hits = damageMagicArea(player, player, 5.0, 16, true);
+                message = "§5Импульс Бездны поразил врагов: " + hits + ".";
+                break;
+            }
+            case "guardian_ring": {
+                Effect effect = Effect.getEffect(Effect.DAMAGE_RESISTANCE);
+                if (effect == null) { player.sendMessage("§cЭффект защиты недоступен."); return; }
+                player.addEffect(effect.setDuration(240).setAmplifier(1));
+                message = "§eБарьер хранителя защищает тебя 12 секунд.";
+                break;
+            }
+            case "swift_ring": {
+                Effect effect = Effect.getEffect(Effect.SPEED);
+                if (effect == null) { player.sendMessage("§cЭффект скорости недоступен."); return; }
+                player.addEffect(effect.setDuration(240).setAmplifier(1));
+                message = "§aКольцо стремительности ускорило тебя на 12 секунд.";
+                break;
+            }
+            case "chrono_talisman": {
+                for (String spell : new String[]{"arcane_bolt","fireball","frost_nova","healing_light","arcane_shield","meteor","chain_lightning","arcane_storm","soul_drain","mana_surge"}) {
+                    players.set(playerKey(player) + ".magic.cooldowns." + spell, 0L);
+                }
+                setMagicMana(player, Math.min(magicMaxMana(player), magicMana(player) + 20));
+                message = "§6Время замедлилось: перезарядки заклинаний сброшены.";
+                break;
+            }
+            case "rune_focus":
+                grantMagicXp(player, 60);
+                message = "§dРуна концентрации даровала 60 опыта магии.";
+                break;
+            case "soul_pendant": {
+                float heal = Math.min(8.0f, player.getMaxHealth() - player.getHealth());
+                if (heal > 0.1f) player.heal(heal);
+                int restored = Math.min(30, magicMaxMana(player) - magicMana(player));
+                setMagicMana(player, magicMana(player) + restored);
+                message = "§cПодвеска души восстановила здоровье и " + restored + " маны.";
+                break;
+            }
+            case "storm_seal": {
+                int hits = damageMagicArea(player, player, 8.0, 18, false);
+                message = "§eГрозовой удар поразил существ: " + hits + ".";
+                break;
+            }
+            default:
+                success = false;
+                message = "§cНеизвестная способность реликвии.";
+        }
+        if (!success) return;
+        if (cost > 0) setMagicMana(player, magicMana(player) - cost);
+        players.set(key, System.currentTimeMillis() + 60000L);
+        markPlayersDirty();
+        flushPlayers();
+        grantMagicXp(player, 5);
+        player.sendMessage("§5§l[АРТЕФАКТ] §f" + message + (cost > 0 ? " §8(-" + cost + " маны)" : ""));
+        updateMagicHud(player);
+    }
+
+    private void openMagicMenu(Player player) {
+        initialize(player);
+        int level = Math.max(1, Math.min(MAX_MAGIC_LEVEL, players.getInt(playerKey(player) + ".magic.level", 1)));
+        FormWindowSimple form = new FormWindowSimple("§5§lАРКАНУМ",
+                "§7Уровень магии: §d" + level + "§7/" + MAX_MAGIC_LEVEL
+                        + "\n§7Мана: §b" + magicMana(player) + "§7/" + magicMaxMana(player)
+                        + "\n§7Класс: " + rpgClassLabel(getRpgClass(player))
+                        + "\n\n§fВсе заклинания, классы и реликвии собраны здесь.");
+        form.addButton(new ElementButton("§bКнига заклинаний"));
+        form.addButton(new ElementButton("§6Магазин артефактов и амулетов"));
+        form.addButton(new ElementButton("§dМои слоты экипировки"));
+        form.addButton(new ElementButton("§eВыбрать класс"));
+        form.addButton(new ElementButton("§7Назад в главное меню"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int selected = form.getResponse().getClickedButtonId();
+            if (selected == 0) openMagicSpellsMenu(player);
+            else if (selected == 1) openMagicRelicShop(player);
+            else if (selected == 2) openMagicEquipmentInventory(player);
+            else if (selected == 3) openClassMenu(player);
+            else openPlayerMainMenu(player);
+        }));
+        player.showFormWindow(form);
+        updateMagicHud(player);
+    }
+
     private int magicMaxMana(Player player) {
         int magicLevel = Math.max(1, Math.min(MAX_MAGIC_LEVEL, players.getInt(playerKey(player) + ".magic.level", 1)));
         int intelligence = Math.max(0, get(player, "intelligence", 0));

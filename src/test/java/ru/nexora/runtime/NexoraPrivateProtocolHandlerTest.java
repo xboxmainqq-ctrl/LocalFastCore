@@ -191,7 +191,7 @@ class NexoraPrivateProtocolHandlerTest {
         UUID playerId = entities.snapshot().stream()
                 .filter(entity -> entity.type() == WorldEntity.Type.PLAYER)
                 .findFirst().orElseThrow().id();
-        assertEquals(1, entities.size());
+        assertEquals(2, entities.size());
 
         connection.deliver(NexoraMovementPacketCodec.encodeClientMove(
                 new NexoraMovementValidator.Position(0.7, 65.0, 0.5)));

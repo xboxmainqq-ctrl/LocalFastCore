@@ -4,6 +4,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.Objects;
 
 /**
@@ -15,7 +16,7 @@ public final class BedrockSubChunkResponseBuilder {
     private BedrockSubChunkResponseBuilder() {
     }
 
-    public static BedrockGamePacket build(
+    public static List<BedrockGamePacket> buildPackets(
             World world,
             BedrockSubChunkRequestPacketCodec.Request request,
             int playerDimension,
@@ -29,6 +30,7 @@ public final class BedrockSubChunkResponseBuilder {
         }
 
         List<BedrockSubChunkPacketCodec.Entry> entries = new ArrayList<>(request.offsets().size());
+        Map<ChunkPosition, Map<BlockPosition, BlockState>> chunkSnapshots = new HashMap<>();
         List<BedrockSubChunkRequestPacketCodec.SubChunkPosition> positions =
                 request.absolutePositions();
 
@@ -60,7 +62,8 @@ public final class BedrockSubChunkResponseBuilder {
             }
 
             ChunkSection section = new ChunkSection();
-            Map<BlockPosition, BlockState> blocks = world.blocksInChunk(chunkPosition);
+            Map<BlockPosition, BlockState> blocks = chunkSnapshots.computeIfAbsent(
+                    chunkPosition, world::blocksInChunk);
             for (Map.Entry<BlockPosition, BlockState> block : blocks.entrySet()) {
                 BlockPosition blockPosition = block.getKey();
                 if (Math.floorDiv(blockPosition.y(), 16) == position.y()) {
@@ -80,10 +83,15 @@ public final class BedrockSubChunkResponseBuilder {
             }
         }
 
-        return BedrockSubChunkPacketCodec.encodePacket(
-                request.dimension(),
-                new BedrockSubChunkPacketCodec.Position(
-                        request.center().x(), request.center().y(), request.center().z()),
-                entries);
+        List<BedrockGamePacket> packets = new ArrayList<>(
+                (entries.size() + 63) / 64);
+        BedrockSubChunkPacketCodec.Position center = new BedrockSubChunkPacketCodec.Position(
+                request.center().x(), request.center().y(), request.center().z());
+        for (int start = 0; start < entries.size(); start += 64) {
+            int end = Math.min(start + 64, entries.size());
+            packets.add(BedrockSubChunkPacketCodec.encodePacket(
+                    request.dimension(), center, entries.subList(start, end)));
+        }
+        return List.copyOf(packets);
     }
 }

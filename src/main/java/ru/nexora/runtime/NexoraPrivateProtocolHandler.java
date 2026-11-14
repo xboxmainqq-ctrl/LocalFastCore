@@ -43,36 +43,42 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 connection.close();
                 return;
             }
+
+            final NexoraPrivateProtocolCodec.ClientHello hello;
             try {
-                NexoraPrivateProtocolCodec.ClientHello hello =
-                        NexoraPrivateProtocolCodec.decodeClientHello(message.payload());
-                if (hello.majorVersion() != NexoraPrivateProtocolCodec.MAJOR_VERSION
-                        || hello.minorVersion() > NexoraPrivateProtocolCodec.MINOR_VERSION) {
-                    connection.setMessageListener(ignored -> connection.close());
-                    sendReject(connection, REJECT_UNSUPPORTED_VERSION,
-                            "Unsupported NEXORA protocol version");
-                    return;
-                }
-                TransportSendResult sent = connection.send(
-                        ByteBuffer.wrap(NexoraPrivateProtocolCodec.encodeServerHello(
-                                serverId, maxMessageBytes)),
-                        DeliveryMode.RELIABLE_ORDERED);
-                if (sent != TransportSendResult.ACCEPTED) {
-                    connection.close();
-                    return;
-                }
-                connection.setMessageListener(ignored -> {
-                    // The next application protocol layer will replace this listener.
-                });
-                readyListener.accept(connection);
+                hello = NexoraPrivateProtocolCodec.decodeClientHello(message.payload());
             } catch (RuntimeException malformed) {
-                connection.setMessageListener(ignored -> connection.close());
-                sendReject(connection, REJECT_INVALID_HELLO, "Invalid NEXORA client hello");
+                reject(connection, REJECT_INVALID_HELLO, "Invalid NEXORA client hello");
+                return;
+            }
+            if (hello.majorVersion() != NexoraPrivateProtocolCodec.MAJOR_VERSION
+                    || hello.minorVersion() > NexoraPrivateProtocolCodec.MINOR_VERSION) {
+                reject(connection, REJECT_UNSUPPORTED_VERSION,
+                        "Unsupported NEXORA protocol version");
+                return;
+            }
+
+            TransportSendResult sent = connection.send(
+                    ByteBuffer.wrap(NexoraPrivateProtocolCodec.encodeServerHello(
+                            serverId, maxMessageBytes)),
+                    DeliveryMode.RELIABLE_ORDERED);
+            if (sent != TransportSendResult.ACCEPTED) {
+                connection.close();
+                return;
+            }
+            // Leave the channel open; the gameplay/session layer can install its listener next.
+            connection.setMessageListener(ignored -> {
+            });
+            try {
+                readyListener.accept(connection);
+            } catch (RuntimeException listenerFailure) {
+                connection.close();
             }
         });
     }
 
-    private static void sendReject(TransportConnection connection, int code, String reason) {
+    private static void reject(TransportConnection connection, int code, String reason) {
+        connection.setMessageListener(ignored -> connection.close());
         TransportSendResult sent = connection.send(
                 ByteBuffer.wrap(NexoraPrivateProtocolCodec.encodeReject(code, reason)),
                 DeliveryMode.RELIABLE_ORDERED);

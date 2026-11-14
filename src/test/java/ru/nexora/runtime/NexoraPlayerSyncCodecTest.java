@@ -25,7 +25,7 @@ class NexoraPlayerSyncCodecTest {
     @Test
     void roundTripsPlayerNickname() {
         NexoraPlayerSyncCodec.PlayerState expected = new NexoraPlayerSyncCodec.PlayerState(
-                UUID.randomUUID(), "ТестовыйИгрок", 1.5, 70.0, -2.5);
+                UUID.randomUUID(), "ТестовыйИгрок", 1.5, 70.0, -2.5, 135.0);
         NexoraPlayerSyncCodec.PlayerState actual = NexoraPlayerSyncCodec.decodePlayerState(
                 ByteBuffer.wrap(NexoraPlayerSyncCodec.encodePlayerState(expected)));
         assertEquals(expected, actual);

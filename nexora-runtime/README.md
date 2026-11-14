@@ -16,8 +16,9 @@ This module is the beginning of the independent NEXORA server process. It has **
 - Deterministic tick scheduler with delayed and repeating tasks, cancellation, stable execution order, and task-failure isolation.
 - Dedicated game loop driven by `System.nanoTime()`, with configurable tick rate, bounded catch-up, backlog dropping, clean thread shutdown, and failure reporting.
 - Protocol-independent world foundation: immutable block/chunk coordinates, configurable vertical world bounds, immutable namespaced block states, a minimal `World` contract, and a sparse concurrent in-memory world implementation.
+- Thread-safe `WorldRegistry` for multiple worlds, with duplicate-ID rejection, normalized lookup/removal, stable registration order, and immutable snapshots.
 - In-memory world chunks are created on demand and removed when their last non-air block is cleared; negative coordinates use correct floor-based chunk mapping.
-- Unit tests cover lifecycle ordering, rollback, duplicate/late registration, idempotent stop, shutdown retry, settings validation, scheduler behavior, and game-loop lifecycle/error handling.
+- Unit tests cover lifecycle ordering, rollback, duplicate/late registration, idempotent stop, shutdown retry, settings validation, scheduler behavior, game-loop lifecycle/error handling, and world-registry behavior.
 
 ## Important limitation
 

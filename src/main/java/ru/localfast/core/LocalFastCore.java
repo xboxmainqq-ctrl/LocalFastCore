@@ -4320,7 +4320,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         form.addButton(new ElementButton("§aЛовкость §8| §f" + get(player, "agility", 0)));
         form.addButton(new ElementButton("§bИнтеллект §8| §f" + get(player, "intelligence", 0)));
         form.addButton(new ElementButton("§6Класс §8| " + rpgClassLabel(getRpgClass(player))));
-        form.addButton(new ElementButton("§dСпособности"));
+        form.addButton(new ElementButton("§dМагия и артефакты"));
         form.addButton(new ElementButton("§7Обновить"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null) return;
@@ -4328,7 +4328,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             int selected = form.getResponse().getClickedButtonId();
             if (selected >= 0 && selected < STATS.length) openStatAllocationMenu(player, STATS[selected]);
             else if (selected == 4) openClassMenu(player);
-            else if (selected == 5) openAbilitiesMenu(player);
+            else if (selected == 5) openMagicMenu(player);
             else if (selected == 6) openStatsMenu(player);
         }));
         player.showFormWindow(form);
@@ -6969,8 +6969,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 "§7Твой персонаж: §e" + player.getName() + "\n§7Уровень: §e" + get(player, "level", 1)
                 + " §8| §7Монеты: §6" + getBalance(player) + "\n§8Выбери нужный раздел.");
         form.addButton(new ElementButton("§bПерсонаж и характеристики"));
-        form.addButton(new ElementButton("§dКласс и способности"));
-        form.addButton(new ElementButton("§dКнига магии и заклинания"));
+        form.addButton(new ElementButton("§dМагия, классы и артефакты"));
         form.addButton(new ElementButton("§aПитомцы и их снаряжение"));
         form.addButton(new ElementButton("§6Приключения и подземелья"));
         form.addButton(new ElementButton("§5Разлом Бездны"));
@@ -6985,18 +6984,17 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
             int id = form.getResponse().getClickedButtonId();
             if (id == 0) openStatsMenu(player);
-            else if (id == 1) { if (getRpgClass(player).equals("none")) openClassMenu(player); else openAbilitiesMenu(player); }
-            else if (id == 2) openMagicMenu(player);
-            else if (id == 3) openPetsMenu(player);
-            else if (id == 4) openAdventureMenu(player);
-            else if (id == 5) openPlayerRiftMenu(player);
-            else if (id == 6) openPlayerForgeMenu(player);
-            else if (id == 7) showGearCollection(player);
-            else if (id == 8) openPlayerQuestMenu(player);
-            else if (id == 9) openPlayerEconomyMenu(player);
-            else if (id == 10) openPlayerGuildMenu(player);
-            else if (id == 11) openPlayerTitleCollection(player);
-            else if (id == 12) openPlayerNotifications(player);
+            else if (id == 1) openMagicMenu(player);
+            else if (id == 2) openPetsMenu(player);
+            else if (id == 3) openAdventureMenu(player);
+            else if (id == 4) openPlayerRiftMenu(player);
+            else if (id == 5) openPlayerForgeMenu(player);
+            else if (id == 6) showGearCollection(player);
+            else if (id == 7) openPlayerQuestMenu(player);
+            else if (id == 8) openPlayerEconomyMenu(player);
+            else if (id == 9) openPlayerGuildMenu(player);
+            else if (id == 10) openPlayerTitleCollection(player);
+            else if (id == 11) openPlayerNotifications(player);
         }));
         player.showFormWindow(form);
     }

@@ -6,7 +6,7 @@ import java.util.Objects;
 
 /**
  * Protocol-2225 server SubChunkPacket (174) encoder for non-cached responses.
- * Each entry includes the subchunk blob and explicit no-heightmap markers.
+ * Each entry includes its subchunk blob and both protocol heightmap descriptors.
  */
 public final class BedrockSubChunkPacketCodec {
     public static final int PACKET_ID = 174;
@@ -32,9 +32,59 @@ public final class BedrockSubChunkPacketCodec {
         }
     }
 
-    public record Entry(Offset offset, int result, byte[] serializedSubChunk) {
+    public record HeightmapData(
+            int heightMapType,
+            byte[] heightMap,
+            int renderHeightMapType,
+            byte[] renderHeightMap
+    ) {
+        public static final int NO_DATA = 0;
+        public static final int HAS_DATA = 1;
+        public static final int ALL_TOO_HIGH = 2;
+        public static final int ALL_TOO_LOW = 3;
+        public static final int RENDER_ALL_COPIED = 4;
+
+        public HeightmapData {
+            heightMap = Objects.requireNonNull(heightMap, "heightMap").clone();
+            renderHeightMap = Objects.requireNonNull(renderHeightMap, "renderHeightMap").clone();
+            validateMap(heightMapType, heightMap, false);
+            validateMap(renderHeightMapType, renderHeightMap, true);
+        }
+
+        public static HeightmapData noData() {
+            return new HeightmapData(NO_DATA, new byte[0], NO_DATA, new byte[0]);
+        }
+
+        @Override
+        public byte[] heightMap() {
+            return heightMap.clone();
+        }
+
+        @Override
+        public byte[] renderHeightMap() {
+            return renderHeightMap.clone();
+        }
+
+        private static void validateMap(int type, byte[] values, boolean render) {
+            int maxType = render ? RENDER_ALL_COPIED : ALL_TOO_LOW;
+            if (type < NO_DATA || type > maxType) {
+                throw new IllegalArgumentException("Unknown heightmap type");
+            }
+            if ((type == HAS_DATA && values.length != 256)
+                    || (type != HAS_DATA && values.length != 0)) {
+                throw new IllegalArgumentException("Heightmap data must contain exactly 256 bytes only for HasData");
+            }
+        }
+    }
+
+    public record Entry(Offset offset, int result, byte[] serializedSubChunk, HeightmapData heightmaps) {
+        public Entry(Offset offset, int result, byte[] serializedSubChunk) {
+            this(offset, result, serializedSubChunk, HeightmapData.noData());
+        }
+
         public Entry {
             Objects.requireNonNull(offset, "offset");
+            Objects.requireNonNull(heightmaps, "heightmaps");
             serializedSubChunk = Objects.requireNonNull(serializedSubChunk, "serializedSubChunk").clone();
             if (result < RESULT_SUCCESS || result > RESULT_SUCCESS_ALL_AIR) {
                 throw new IllegalArgumentException("Unknown protocol-2225 subchunk result");
@@ -60,11 +110,19 @@ public final class BedrockSubChunkPacketCodec {
         }
 
         public static Entry success(Offset offset, byte[] serializedSubChunk) {
-            return new Entry(offset, RESULT_SUCCESS, serializedSubChunk);
+            return success(offset, serializedSubChunk, HeightmapData.noData());
+        }
+
+        public static Entry success(Offset offset, byte[] serializedSubChunk, HeightmapData heightmaps) {
+            return new Entry(offset, RESULT_SUCCESS, serializedSubChunk, heightmaps);
         }
 
         public static Entry allAir(Offset offset) {
-            return new Entry(offset, RESULT_SUCCESS_ALL_AIR, new byte[0]);
+            return allAir(offset, HeightmapData.noData());
+        }
+
+        public static Entry allAir(Offset offset, HeightmapData heightmaps) {
+            return new Entry(offset, RESULT_SUCCESS_ALL_AIR, new byte[0], heightmaps);
         }
 
         public static Entry error(Offset offset, int result) {
@@ -93,7 +151,8 @@ public final class BedrockSubChunkPacketCodec {
         for (Entry entry : entries) {
             Objects.requireNonNull(entry, "entry");
             estimated += 3L + 1 + BedrockGamePacket.varUInt32Size(entry.serializedSubChunk.length)
-                    + entry.serializedSubChunk.length + 2;
+                    + entry.serializedSubChunk.length + 2
+                    + entry.heightmaps.heightMap.length + entry.heightmaps.renderHeightMap.length;
         }
         if (estimated > MAX_PACKET_BYTES) {
             throw new IllegalArgumentException("SubChunkPacket exceeds the configured byte limit");
@@ -117,9 +176,8 @@ public final class BedrockSubChunkPacketCodec {
             BedrockBinary.writeVarUInt32(out, serialized.length);
             out.put(serialized);
 
-            // SubChunkHeightmapData: both heightmap kinds are NoData.
-            out.put((byte) 0);
-            out.put((byte) 0);
+            writeHeightmap(out, entry.heightmaps.heightMapType, entry.heightmaps.heightMap);
+            writeHeightmap(out, entry.heightmaps.renderHeightMapType, entry.heightmaps.renderHeightMap);
             // Cache is disabled, so the optional blob ID is omitted.
         }
 
@@ -132,6 +190,11 @@ public final class BedrockSubChunkPacketCodec {
         byte[] bytes = new byte[payload.remaining()];
         payload.get(bytes);
         return new BedrockGamePacket(new BedrockPacketHeader(PACKET_ID, 0, 0), bytes);
+    }
+
+    private static void writeHeightmap(ByteBuffer out, int type, byte[] values) {
+        out.put((byte) type);
+        out.put(values);
     }
 
     private static void writeBoolean(ByteBuffer out, boolean value) {

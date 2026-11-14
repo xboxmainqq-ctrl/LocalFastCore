@@ -108,9 +108,16 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
             close(session, "Login packet was not retained for authentication");
             return;
         }
+        final BedrockConnectionRequest connectionRequest;
+        try {
+            connectionRequest = login.parseConnectionRequest();
+        } catch (RuntimeException malformedRequest) {
+            close(session, "Bedrock Connection Request JSON is invalid");
+            return;
+        }
         final CompletionStage<Boolean> authentication;
         try {
-            authentication = loginAuthenticator.authenticate(session.connection, login);
+            authentication = loginAuthenticator.authenticate(session.connection, login, connectionRequest);
             if (authentication == null) {
                 close(session, "Login authenticator returned no result");
                 return;
@@ -171,7 +178,8 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
     @FunctionalInterface
     public interface LoginAuthenticator {
         CompletionStage<Boolean> authenticate(TransportConnection connection,
-                                              BedrockLoginPacket login);
+                                              BedrockLoginPacket login,
+                                              BedrockConnectionRequest connectionRequest);
     }
 
     private static final class Session {

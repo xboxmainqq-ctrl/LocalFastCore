@@ -1,6 +1,7 @@
 package ru.nexora.runtime;
 
 import java.util.concurrent.CompletionStage;
+import java.util.function.Consumer;
 
 /**
  * WebRTC host adapter used by the HTTP signaling endpoint.
@@ -11,6 +12,12 @@ import java.util.concurrent.CompletionStage;
  * as a {@link TransportConnection} to the runtime's NetworkTransport.</p>
  */
 public interface NetherNetPeerHost extends AutoCloseable {
+    /**
+     * Registers the listener for peers whose two NetherNet data channels have
+     * been announced. The callback may run on a WebRTC I/O thread.
+     */
+    void setConnectionListener(Consumer<TransportConnection> listener);
+
     /**
      * Accepts an already validated offer with the a=identity line removed.
      * The returned answer must contain complete ICE candidates (full ICE).

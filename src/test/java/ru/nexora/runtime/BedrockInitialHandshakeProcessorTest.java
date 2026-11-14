@@ -43,7 +43,7 @@ class BedrockInitialHandshakeProcessorTest {
 
         ByteBuffer loginFrame = encodePacket(
                 BedrockLoginPacketCodec.PACKET_ID,
-                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, "opaque-login")),
+                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, "opaque-login", "opaque-client-jwt")),
                 true
         );
         BedrockHandshakeFrameResult loginResult = processor.receiveFrame(loginFrame);
@@ -120,7 +120,7 @@ class BedrockInitialHandshakeProcessorTest {
 
         BedrockHandshakeFrameResult result = processor.receiveFrame(encodePacket(
                 BedrockLoginPacketCodec.PACKET_ID,
-                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2224, "opaque-login")),
+                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2224, "opaque-login", "opaque-client-jwt")),
                 true
         ));
         assertEquals(BedrockHandshakeFrameStatus.REJECTED_PACKET, result.status());
@@ -140,7 +140,7 @@ class BedrockInitialHandshakeProcessorTest {
         assertEquals(BedrockHandshakeResult.ACCEPTED, processor.markNetworkSettingsSent());
         processor.receiveFrame(encodePacket(
                 BedrockLoginPacketCodec.PACKET_ID,
-                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, "sensitive-request")),
+                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, "sensitive-request", "sensitive-client-jwt")),
                 true));
 
         assertTrue(processor.pendingLogin().isPresent());

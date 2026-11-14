@@ -5,15 +5,17 @@ import ru.nexora.core.api.EventBus;
 import ru.nexora.core.api.NexoraAPI;
 import ru.nexora.core.api.ServiceRegistry;
 import ru.nexora.core.api.SimpleEventBus;
+import ru.nexora.core.integration.nukkit.NukkitPlatformAdapter;
+import ru.nexora.core.integration.nukkit.NukkitPlayerListener;
+import ru.nexora.core.platform.NexoraPlatform;
 import ru.nexora.core.storage.KeyValueStore;
-import ru.nexora.core.listener.NexoraPlayerListener;
 
 import java.io.IOException;
 import java.nio.file.Path;
 
 /**
- * Compatibility-first NEXORA foundation.
- * Nukkit-MOT remains responsible for loading legacy plugins.
+ * Compatibility host bootstrap.
+ * Nukkit-MOT-specific wiring is isolated in the integration.nukkit package.
  */
 public final class NexoraCore extends PluginBase {
     private static volatile NexoraCore instance;
@@ -21,6 +23,7 @@ public final class NexoraCore extends PluginBase {
     private final ServiceRegistry services = new ServiceRegistry();
     private SimpleEventBus eventBus;
     private KeyValueStore storage;
+    private NexoraPlatform platform;
     private NexoraAPI api;
 
     @Override
@@ -32,17 +35,21 @@ public final class NexoraCore extends PluginBase {
             Path dataFile = getDataFolder().toPath().resolve("nexora-data.properties");
             storage = new KeyValueStore(dataFile);
             eventBus = new SimpleEventBus();
-            api = new NexoraAPI(services, eventBus, storage);
+            platform = new NukkitPlatformAdapter(this);
+            api = new NexoraAPI(services, eventBus, storage, platform);
 
             services.register(EventBus.class, eventBus);
             services.register(KeyValueStore.class, storage);
+            services.register(NexoraPlatform.class, platform);
             services.register(NexoraAPI.class, api);
 
-            getServer().getPluginManager().registerEvents(new NexoraPlayerListener(eventBus), this);
+            getServer().getPluginManager().registerEvents(new NukkitPlayerListener(eventBus), this);
 
             getLogger().info("NexoraCore API 0.1.0 enabled.");
-            getLogger().info("Services ready: event bus, persistent key-value storage.");
+            getLogger().info("Services ready: event bus, persistent key-value storage, platform adapter.");
             getLogger().info("Player lifecycle bridge registered: join, quit.");
+            getLogger().info("Platform adapter: " + platform.getPlatformName()
+                    + " " + platform.getPlatformVersion());
             if (!getConfig().getBoolean("core.compatibility-mode", true)) {
                 getLogger().warning("Compatibility mode is disabled in config, but Nukkit-MOT remains the plugin loader.");
             }
@@ -68,6 +75,9 @@ public final class NexoraCore extends PluginBase {
 
         if (api != null) {
             services.unregister(NexoraAPI.class, api);
+        }
+        if (platform != null) {
+            services.unregister(NexoraPlatform.class, platform);
         }
         if (eventBus != null) {
             services.unregister(EventBus.class, eventBus);

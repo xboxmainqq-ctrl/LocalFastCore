@@ -11,6 +11,8 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 import ru.nexora.core.rpg.RpgClassDefinition;
 import ru.nexora.core.rpg.RpgClassRegistry;
+import ru.nexora.core.rpg.RpgAbilityDefinition;
+import ru.nexora.core.rpg.RpgAbilityRegistry;
 
 class PlayerProgressionServiceTest {
     @Test
@@ -98,6 +100,23 @@ class PlayerProgressionServiceTest {
 
         assertThrows(IllegalArgumentException.class, () -> service.chooseClass(id, "warrior"));
         assertEquals("mage", service.chooseClass(id, "MAGE").classId().orElseThrow());
+    }
+
+    @Test
+    void classSelectionWaitsUntilEveryDeclaredAbilityIsRegistered() throws IOException {
+        InMemoryProfiles repository = new InMemoryProfiles();
+        RpgClassRegistry classes = new RpgClassRegistry();
+        RpgAbilityRegistry abilities = new RpgAbilityRegistry();
+        classes.register(new RpgClassDefinition("mage", "Mage", "Spellcaster",
+                Map.of("intelligence", 8), java.util.List.of("fire_bolt")));
+        PlayerProgressionService service = new PlayerProgressionService(repository, classes, abilities);
+        UUID id = UUID.randomUUID();
+        service.loadOrCreate(id, "Player");
+
+        assertThrows(IllegalArgumentException.class, () -> service.chooseClass(id, "mage"));
+        abilities.register(new RpgAbilityDefinition("fire_bolt", "Fire Bolt",
+                "A simple ranged spell", 40, 10, RpgAbilityDefinition.TargetMode.ENTITY));
+        assertEquals("mage", service.chooseClass(id, "mage").classId().orElseThrow());
     }
 
     private static final class InMemoryProfiles implements PlayerProfileRepository {

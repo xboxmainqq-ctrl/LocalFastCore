@@ -12,6 +12,8 @@ import ru.nexora.core.profile.PlayerProgressionService;
 import ru.nexora.core.profile.PlayerProfileRepository;
 import ru.nexora.core.profile.SqlitePlayerProfileRepository;
 import ru.nexora.core.rpg.RpgClassRegistry;
+import ru.nexora.core.rpg.RpgAbilityRegistry;
+import ru.nexora.core.rpg.AbilityCooldownService;
 import ru.nexora.core.security.AuditLogger;
 import ru.nexora.core.security.IntegrityChecker;
 import ru.nexora.core.security.NexoraSecurityManager;
@@ -36,6 +38,8 @@ public final class NexoraCore extends PluginBase {
     private PlayerProfileRepository profileRepository;
     private PlayerProgressionService progression;
     private RpgClassRegistry classes;
+    private RpgAbilityRegistry abilities;
+    private AbilityCooldownService cooldowns;
     private NexoraAPI api;
 
     @Override
@@ -56,8 +60,11 @@ public final class NexoraCore extends PluginBase {
             profileRepository = new SqlitePlayerProfileRepository(
                     dataFolder.resolve("players.sqlite"));
             classes = new RpgClassRegistry();
-            progression = new PlayerProgressionService(profileRepository, classes);
-            api = new NexoraAPI(services, eventBus, storage, platform, security, progression, classes);
+            abilities = new RpgAbilityRegistry();
+            cooldowns = new AbilityCooldownService();
+            progression = new PlayerProgressionService(profileRepository, classes, abilities);
+            api = new NexoraAPI(services, eventBus, storage, platform, security,
+                    progression, classes, abilities, cooldowns);
 
             services.register(EventBus.class, eventBus);
             services.register(KeyValueStore.class, storage);
@@ -66,12 +73,14 @@ public final class NexoraCore extends PluginBase {
             services.register(PlayerProfileRepository.class, profileRepository);
             services.register(PlayerProgressionService.class, progression);
             services.register(RpgClassRegistry.class, classes);
+            services.register(RpgAbilityRegistry.class, abilities);
+            services.register(AbilityCooldownService.class, cooldowns);
             services.register(NexoraAPI.class, api);
 
             getServer().getPluginManager().registerEvents(new NukkitPlayerListener(eventBus), this);
 
             getLogger().info("NexoraCore API 0.1.0 enabled.");
-            getLogger().info("RPG profile storage ready: UUID profiles, levels, total XP, classes and attributes.");
+            getLogger().info("RPG services ready: UUID profiles, progression, class and ability registries, cooldown tracking.");
             getLogger().info("Services ready: event bus, persistent storage, platform adapter, security and RPG progression.");
             getLogger().info("Player lifecycle bridge registered: join, quit.");
             getLogger().info("Platform adapter: " + platform.getPlatformName()
@@ -109,6 +118,8 @@ public final class NexoraCore extends PluginBase {
         if (api != null) services.unregister(NexoraAPI.class, api);
         if (progression != null) services.unregister(PlayerProgressionService.class, progression);
         if (classes != null) services.unregister(RpgClassRegistry.class, classes);
+        if (abilities != null) services.unregister(RpgAbilityRegistry.class, abilities);
+        if (cooldowns != null) services.unregister(AbilityCooldownService.class, cooldowns);
         if (profileRepository != null) services.unregister(PlayerProfileRepository.class, profileRepository);
         if (platform != null) services.unregister(NexoraPlatform.class, platform);
         if (security != null) services.unregister(NexoraSecurityManager.class, security);

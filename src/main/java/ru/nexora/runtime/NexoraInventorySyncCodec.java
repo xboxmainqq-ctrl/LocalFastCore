@@ -38,6 +38,9 @@ public final class NexoraInventorySyncCodec {
 
     public static byte[] encode(PlayerInventory inventory) {
         Objects.requireNonNull(inventory, "inventory");
+        if (inventory.slotCount() > MAX_SLOTS) {
+            throw new IllegalArgumentException("Inventory exceeds the wire slot limit");
+        }
         List<InventoryEntry> stacks = new ArrayList<>();
         for (int slot = 0; slot < inventory.slotCount(); slot++) {
             ItemStack stack = inventory.stackAt(slot);
@@ -83,7 +86,7 @@ public final class NexoraInventorySyncCodec {
         List<InventoryEntry> stacks = new ArrayList<>(count);
         boolean[] seenSlots = new boolean[MAX_SLOTS];
         for (int i = 0; i < count; i++) {
-            if (!input.hasRemaining()) throw new IllegalArgumentException("Truncated inventory stack");
+            if (input.remaining() < 2) throw new IllegalArgumentException("Truncated inventory stack");
             int slot = Byte.toUnsignedInt(input.get());
             int length = Byte.toUnsignedInt(input.get());
             if (slot >= MAX_SLOTS || seenSlots[slot] || length < 1 || length > MAX_ITEM_ID_BYTES || input.remaining() < length + 1) {

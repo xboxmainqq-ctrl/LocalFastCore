@@ -19,11 +19,14 @@ public interface BedrockRuntimeBlockRegistry {
         if (!copy.containsKey(BlockState.AIR)) {
             throw new IllegalArgumentException("The runtime block registry must define minecraft:air");
         }
+        java.util.HashSet<Integer> uniqueIds = new java.util.HashSet<>();
         for (Map.Entry<BlockState, Integer> entry : copy.entrySet()) {
             Objects.requireNonNull(entry.getKey(), "block state");
             Integer id = Objects.requireNonNull(entry.getValue(), "runtime ID");
-            if (id < 0) {
-                throw new IllegalArgumentException("Runtime block IDs must not be negative");
+            // Protocol 2225 supports signed ZigZag int32 block IDs when the
+            // server advertises hashed block network IDs in StartGame.
+            if (!uniqueIds.add(id)) {
+                throw new IllegalArgumentException("Duplicate Bedrock block runtime ID: " + id);
             }
         }
         return state -> {

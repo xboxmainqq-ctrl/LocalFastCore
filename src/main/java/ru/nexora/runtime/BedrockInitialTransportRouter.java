@@ -86,14 +86,25 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
             if (session.closed.get()) {
                 return;
             }
-            if (session.processor.state() == BedrockHandshakeState.LOGIN_SUCCESS_SENT
-                    || session.processor.state() == BedrockHandshakeState.PLAY) {
+            if (session.processor.state() == BedrockHandshakeState.LOGIN_SUCCESS_SENT) {
+                if (message.deliveryMode() != DeliveryMode.RELIABLE_ORDERED) {
+                    close(session, "Post-login initialization packet arrived on unreliable channel");
+                    return;
+                }
                 try {
-                    // Before PLAY this handler owns resource-pack and world-startup
-                    // responses; after markPlayReady it owns normal gameplay packets.
+                    // This handler owns resource-pack and world-startup responses
+                    // until the host explicitly marks the session PLAY-ready.
                     playMessageHandler.accept(session.connection, message);
                 } catch (RuntimeException failure) {
-                    close(session, "Post-login message handler failed");
+                    close(session, "Post-login initialization handler failed");
+                }
+                return;
+            }
+            if (session.processor.state() == BedrockHandshakeState.PLAY) {
+                try {
+                    playMessageHandler.accept(session.connection, message);
+                } catch (RuntimeException failure) {
+                    close(session, "Play message handler failed");
                 }
                 return;
             }

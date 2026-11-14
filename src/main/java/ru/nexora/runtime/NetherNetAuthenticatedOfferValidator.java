@@ -2,10 +2,7 @@ package ru.nexora.runtime;
 
 import java.util.Objects;
 
-/**
- * Adapts the cryptographic identity verifier and server admission policy to
- * the signaling server's mandatory offer-validation boundary.
- */
+/** Cryptographically validates and authorizes incoming NetherNet identities. */
 public final class NetherNetAuthenticatedOfferValidator implements NetherNetOfferValidator {
     private final NetherNetIdentityValidator identityValidator;
     private final NetherNetPlayerAdmissionPolicy admissionPolicy;
@@ -19,7 +16,14 @@ public final class NetherNetAuthenticatedOfferValidator implements NetherNetOffe
 
     @Override
     public void validate(String networkId, NetherNetSdpDocument offer) throws Exception {
+        validateAndGetIdentity(networkId, offer);
+    }
+
+    @Override
+    public NetherNetIdentityValidator.VerifiedIdentity validateAndGetIdentity(
+            String networkId, NetherNetSdpDocument offer) throws Exception {
         NetherNetIdentityValidator.VerifiedIdentity identity = identityValidator.validate(offer);
         admissionPolicy.authorize(networkId, identity);
+        return identity;
     }
 }

@@ -92,8 +92,8 @@ public final class BedrockSessionHandshake {
     }
 
     /**
-     * Moves to PLAY after the host has completed real identity and account
-     * authentication. This method intentionally performs no authentication.
+     * Records that authentication succeeded and LoginSuccess was sent.
+     * Resource-pack negotiation and world startup still remain before PLAY.
      */
     public synchronized BedrockHandshakeResult markAuthenticated() {
         if (state == BedrockHandshakeState.CLOSED) {
@@ -103,6 +103,21 @@ public final class BedrockSessionHandshake {
             return BedrockHandshakeResult.INVALID_STATE;
         }
 
+        state = BedrockHandshakeState.LOGIN_SUCCESS_SENT;
+        return BedrockHandshakeResult.ACCEPTED;
+    }
+
+    /**
+     * Moves to PLAY only after resource-pack negotiation and the StartGame/world
+     * initialization sequence have completed and the host has sent its startup data.
+     */
+    public synchronized BedrockHandshakeResult markPlayReady() {
+        if (state == BedrockHandshakeState.CLOSED) {
+            return BedrockHandshakeResult.SESSION_CLOSED;
+        }
+        if (state != BedrockHandshakeState.LOGIN_SUCCESS_SENT) {
+            return BedrockHandshakeResult.INVALID_STATE;
+        }
         state = BedrockHandshakeState.PLAY;
         return BedrockHandshakeResult.ACCEPTED;
     }

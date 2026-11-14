@@ -10,8 +10,9 @@ import java.util.Objects;
 /**
  * Bedrock network paletted block storage for a 16x16x16 section.
  *
- * <p>Network palettes contain global runtime IDs, not NEXORA block names.
- * The caller must provide the exact version-matched runtime registry.</p>
+ * <p>Network palettes contain protocol-selected block network IDs, not NEXORA block names.
+ * Depending on StartGame's block-network-ID mode, these are version-matched runtime IDs
+ * or the Bedrock block-state hashes. The caller supplies the matching registry profile.</p>
  */
 public final class BedrockPalettedStorageCodec {
     private static final int BLOCK_COUNT = 4096;

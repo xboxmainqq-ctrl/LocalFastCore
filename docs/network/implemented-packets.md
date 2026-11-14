@@ -2,7 +2,7 @@
 
 Target: Bedrock 1.26.60, protocol 2225.
 
-The Java runtime contains payload codecs for three packet types, bounded packet-batch framing, a compression envelope, a frame-level coordinator for the initial server-side login handshake, and transport-independent NetherNet message framing and a bounded client identity verification chain. Client and operator NetherNet identity assertions now have bounded parsing and signature-verification components. The runtime still does not implement the WebRTC peer connection or a complete client session, and it does not acquire Microsoft/Xbox credentials or prove live-account interoperability.
+The Java runtime contains payload codecs for three packet types, bounded packet-batch framing, a compression envelope, a frame-level coordinator for the initial server-side login handshake, and transport-independent NetherNet message framing and a bounded client identity verification chain. Client and operator NetherNet identity assertions now have bounded parsing and signature-verification components. The runtime now has a bounded HTTP signaling endpoint, but it still does not implement the WebRTC peer connection or a complete client session, and it does not acquire Microsoft/Xbox credentials or prove live-account interoperability.
 
 | Packet | ID | Payload implemented | Status |
 |---|---:|---|---|
@@ -108,8 +108,21 @@ The server side is also represented:
 
 The authorization-service endpoint, RS256 algorithm, issuer, audience, and client `cpk` SPKI representation are cross-checked against [MiNET's current GameServerToken validator](https://github.com/NiclasOlofsson/MiNET/blob/master/src/MiNET/MiNET/Utils/Cryptography/FranchiseTokenValidator.cs). This is an implementation reference, not a substitute for the [Mojang NetherNet onboarding guide](https://mojang.github.io/bedrock-protocol-docs/guides/nether-net-onboarding-guide/).
 
+## NetherNet HTTP signaling
+
+`NetherNetSignalingServer` exposes the documented HTTP routes:
+
+- `GET /v1/join` returns bounded server metadata.
+- `POST /v1/join/{networkId}` accepts an `application/sdp` offer with a strict UTF-8 and byte limit.
+- The configured `NetherNetOfferValidator` runs before the peer-host adapter allocates a WebRTC peer. The authenticated adapter can be built with `NetherNetAuthenticatedOfferValidator`.
+- The peer host receives the SDP with the client-only `a=identity` attribute removed.
+- The returned SDP answer is signed with the configured operator P-384 key using `NetherNetServerIdentitySigner`; the response is checked for a valid session-level identity attribute before being returned.
+- HTTP worker count, queue depth, request size, and answer timeout are bounded.
+
+The current signaling listener is plain HTTP. For non-TLS connections, clients must apply the TOFU confirmation returned by `NetherNetServerIdentityVerifier`. HTTPS termination and certificate management are not implemented in this listener. `NetherNetPeerHost` is still an adapter interface: no WebRTC implementation, ICE gathering, SCTP data channels, or live peer transport is included yet.
+
 ## Verification boundary
 
-JUnit tests have been authored for the codecs, NetherNet framing, identity parsing, canonical fingerprint serialization, RS256 GameServerToken verification, detached ES384 proof verification, and operator identity signing/TOFU verification. They must be run by Maven or CI before being described as passing. These tests are authored but have not yet been confirmed by a successful Maven/CI run. Even when they pass, they validate isolated implementation behavior only and do not establish interoperability with an unmodified Bedrock client or a live Microsoft/Xbox account.
+JUnit tests have been authored for the codecs, NetherNet framing, identity parsing, canonical fingerprint serialization, RS256 GameServerToken verification, detached ES384 proof verification, and operator identity signing/TOFU verification, and bounded HTTP signaling. They must be run by Maven or CI before being described as passing. These tests are authored but have not yet been confirmed by a successful Maven/CI run. Even when they pass, they validate isolated implementation behavior only and do not establish interoperability with an unmodified Bedrock client or a live Microsoft/Xbox account.
 
 ## Compression envelope

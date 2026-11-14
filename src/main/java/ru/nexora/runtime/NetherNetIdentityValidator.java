@@ -42,7 +42,22 @@ public final class NetherNetIdentityValidator {
                                    java.security.interfaces.ECPublicKey clientPublicKey) {
         public VerifiedIdentity {
             Objects.requireNonNull(identityProviderDomain, "identityProviderDomain");
+            Objects.requireNonNull(xuid, "xuid");
+            Objects.requireNonNull(displayName, "displayName");
             Objects.requireNonNull(clientPublicKey, "clientPublicKey");
+            if (identityProviderDomain.isBlank() || identityProviderDomain.length() > 253
+                    || xuid.isBlank() || xuid.length() > 64
+                    || displayName.isBlank() || displayName.length() > 64
+                    || identityProviderDomain.chars().anyMatch(Character::isISOControl)
+                    || xuid.chars().anyMatch(Character::isISOControl)
+                    || displayName.chars().anyMatch(Character::isISOControl)) {
+                throw new IllegalArgumentException("Verified NetherNet player identity claims are invalid");
+            }
+            if (clientPublicKey.getParams() == null
+                    || clientPublicKey.getParams().getOrder().bitLength() != 384
+                    || clientPublicKey.getParams().getCurve().getField().getFieldSize() != 384) {
+                throw new IllegalArgumentException("Verified NetherNet client key must use P-384");
+            }
         }
     }
 }

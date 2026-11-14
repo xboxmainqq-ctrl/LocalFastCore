@@ -294,23 +294,7 @@ Protocol references:
 - Sends packet 174 responses as compressed reliable-ordered batches and closes on malformed requests, invalid routing, or transport backpressure.
 - Caps each client request at 64 subchunk offsets and processes at most 16 request packets per inbound message to bound CPU, memory, and outbound queue pressure.
 
-Example composition after resource-pack/world startup is configured:
-
-```java
-BedrockSubChunkRequestHandler subchunks = new BedrockSubChunkRequestHandler(
-    networkSettings, overworld, connection -> 0, bedrockRuntimeBlockRegistry,
-    existingPlayMessageHandler
-);
-BedrockPostLoginCoordinator postLogin = new BedrockPostLoginCoordinator(
-    networkSettings, "1.26.60", worldStartupHandler, subchunks
-);
-BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
-    networkSettings, loginAuthenticator, postLogin, subchunks
-);
-postLogin.attachTo(router);
-```
-
-The example assumes the registry has already been loaded from the matching 1.26.60 runtime palette and that the connection is assigned to the shown dimension/world. The post-login coordinator now forwards reliable-ordered gameplay requests to this handler while asynchronous world startup is still completing, so a client can request subchunks immediately after receiving StartGame/skeleton chunks. The handler and coordinator composition are implemented as reusable components but are not yet installed by a production server composition root. A real Android Bedrock client test remains required.
+Compose this handler as the gameplay delegate for the post-login coordinator. Use the same `BedrockRuntimeBlockRegistryProfile` for startup and subchunk serialization; the complete profile-aware example appears in the next section.
 
 Additional reference:
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/sub-chunk-request-packet/
@@ -324,7 +308,7 @@ Additional reference:
 4. It sends the ordered packet batch on the reliable channel and completes only when the transport accepts it.
 5. The post-login coordinator then performs the explicit `LOGIN_SUCCESS_SENT` → `PLAY` transition. Requests arriving during the asynchronous startup window are routed to `BedrockSubChunkRequestHandler`.
 
-Spawn chunks must be generated/loaded before this handler starts. The handler deliberately does not fabricate missing chunks or invent a Bedrock runtime palette. The exact 1.26.60 block runtime registry must be supplied to the subchunk request handler; without it, non-air NEXORA block states cannot be serialized safely.
+Spawn chunks must be generated/loaded before this handler starts. The handler deliberately does not fabricate missing chunks or invent a Bedrock runtime palette. The exact 1.26.60 block runtime registry must be supplied to the subchunk request handler; without a version-pinned registry profile or hash-based profile, non-air NEXORA block states cannot be serialized safely.
 
 Example:
 

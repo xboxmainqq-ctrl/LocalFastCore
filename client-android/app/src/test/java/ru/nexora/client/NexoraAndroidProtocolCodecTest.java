@@ -101,6 +101,23 @@ public class NexoraAndroidProtocolCodecTest {
         assertEquals("minecraft:grass_block", chunk.blocks().get(0).blockId());
     }
 
+
+    @Test
+    public void decodesRemotePlayerStateAndYaw() {
+        UUID id = UUID.fromString("c7f9a7c3-18b0-4dc5-a3c2-7b7f10f2f1a1");
+        byte[] name = "Тест".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        ByteBuffer packet = ByteBuffer.allocate(7 + 16 + 1 + name.length + 32);
+        packet.put(new byte[] {'N','X','R','A',1,0,9});
+        packet.putLong(id.getMostSignificantBits()).putLong(id.getLeastSignificantBits());
+        packet.put((byte) name.length).put(name);
+        packet.putDouble(12.5).putDouble(65.0).putDouble(-8.25).putDouble(135.0);
+        NexoraAndroidProtocolCodec.RemotePlayerState state =
+                NexoraAndroidProtocolCodec.decodeRemotePlayerState(packet.array());
+        assertEquals(id, state.playerId());
+        assertEquals("Тест", state.playerName());
+        assertEquals(135.0, state.yaw(), 0.0001);
+    }
+
     @Test(expected = IllegalArgumentException.class)
     public void rejectsWrongMagic() {
         NexoraAndroidProtocolCodec.decodeServerResponse(new byte[] {0,0,0,0,1,0,2});

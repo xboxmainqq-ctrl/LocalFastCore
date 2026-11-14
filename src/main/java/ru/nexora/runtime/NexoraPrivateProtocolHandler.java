@@ -5,26 +5,32 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
-/**
- * Handles the initial NEXORA-only protocol negotiation on a reliable transport.
- * A successful negotiation is not player authentication.
- */
+/** Negotiates the private NEXORA protocol and sends initial world metadata. */
 public final class NexoraPrivateProtocolHandler implements Consumer<TransportConnection> {
     private static final int REJECT_UNSUPPORTED_VERSION = 1;
     private static final int REJECT_INVALID_HELLO = 2;
 
     private final UUID serverId;
     private final int maxMessageBytes;
+    private final Supplier<NexoraWorldInfo> worldInfoSupplier;
     private final Consumer<TransportConnection> readyListener;
 
     public NexoraPrivateProtocolHandler(UUID serverId, int maxMessageBytes,
+                                        Consumer<TransportConnection> readyListener) {
+        this(serverId, maxMessageBytes, () -> null, readyListener);
+    }
+
+    public NexoraPrivateProtocolHandler(UUID serverId, int maxMessageBytes,
+                                        Supplier<NexoraWorldInfo> worldInfoSupplier,
                                         Consumer<TransportConnection> readyListener) {
         this.serverId = Objects.requireNonNull(serverId, "serverId");
         if (maxMessageBytes < 1 || maxMessageBytes > 8 * 1024 * 1024) {
             throw new IllegalArgumentException("maxMessageBytes is outside the supported range");
         }
         this.maxMessageBytes = maxMessageBytes;
+        this.worldInfoSupplier = Objects.requireNonNull(worldInfoSupplier, "worldInfoSupplier");
         this.readyListener = Objects.requireNonNull(readyListener, "readyListener");
     }
 
@@ -58,31 +64,36 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 return;
             }
 
-            TransportSendResult sent = connection.send(
-                    ByteBuffer.wrap(NexoraPrivateProtocolCodec.encodeServerHello(
-                            serverId, maxMessageBytes)),
-                    DeliveryMode.RELIABLE_ORDERED);
-            if (sent != TransportSendResult.ACCEPTED) {
+            if (send(connection, NexoraPrivateProtocolCodec.encodeServerHello(
+                    serverId, maxMessageBytes)) != TransportSendResult.ACCEPTED) {
                 connection.close();
                 return;
             }
-            // Leave the channel open; the gameplay/session layer can install its listener next.
-            connection.setMessageListener(ignored -> {
-            });
             try {
+                NexoraWorldInfo worldInfo = worldInfoSupplier.get();
+                if (worldInfo != null && send(connection,
+                        NexoraPrivateProtocolCodec.encodeWorldInfo(worldInfo))
+                        != TransportSendResult.ACCEPTED) {
+                    connection.close();
+                    return;
+                }
+                connection.setMessageListener(ignored -> {
+                });
                 readyListener.accept(connection);
-            } catch (RuntimeException listenerFailure) {
+            } catch (RuntimeException failure) {
                 connection.close();
             }
         });
     }
 
+    private static TransportSendResult send(TransportConnection connection, byte[] payload) {
+        return connection.send(ByteBuffer.wrap(payload), DeliveryMode.RELIABLE_ORDERED);
+    }
+
     private static void reject(TransportConnection connection, int code, String reason) {
         connection.setMessageListener(ignored -> connection.close());
-        TransportSendResult sent = connection.send(
-                ByteBuffer.wrap(NexoraPrivateProtocolCodec.encodeReject(code, reason)),
-                DeliveryMode.RELIABLE_ORDERED);
-        if (sent != TransportSendResult.ACCEPTED) {
+        if (send(connection, NexoraPrivateProtocolCodec.encodeReject(code, reason))
+                != TransportSendResult.ACCEPTED) {
             connection.close();
         }
     }

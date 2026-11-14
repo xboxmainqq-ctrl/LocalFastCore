@@ -133,6 +133,7 @@ public final class NexoraMain {
 
         TickScheduler scheduler = new TickScheduler();
         EntityRegistry entities = new EntityRegistry();
+        Map<UUID, PlayerInventory> inventories = new ConcurrentHashMap<>();
         int workers = Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() - 1));
         server.register(new RuntimeModule() {
             private WorldChunkPipeline pipeline;
@@ -222,12 +223,13 @@ public final class NexoraMain {
                         return world.loadChunk(generator.generate(position, world.height(), seed));
                     },
                     connection -> log.accept("NEXORA client completed protocol handshake: "
-                            + connection.id()));
+                            + connection.id()),
+                    entities, inventories);
             server.register(new NetherNetPrivateProtocolModule(
                     peerHost, peerHost, signaling, protocolHandler));
         }
 
-        return new RuntimeHandle(server, worlds, entities, new ConcurrentHashMap<>(), gameLoop, options.tickRate());
+        return new RuntimeHandle(server, worlds, entities, inventories, gameLoop, options.tickRate());
     }
 
     private static KeyPair createDevelopmentSigningKey() {

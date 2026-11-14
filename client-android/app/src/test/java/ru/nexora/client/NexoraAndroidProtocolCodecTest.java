@@ -33,6 +33,20 @@ public class NexoraAndroidProtocolCodecTest {
     }
 
     @Test
+    public void encodesMovementWithProtocolOnePointOne() {
+        byte[] packet = NexoraAndroidProtocolCodec.encodePlayerMove(1.25, 65.0, -2.5);
+        assertEquals(31, packet.length);
+        assertEquals(1, Byte.toUnsignedInt(packet[4]));
+        assertEquals(1, Byte.toUnsignedInt(packet[5]));
+        assertEquals(7, Byte.toUnsignedInt(packet[6]));
+        ByteBuffer values = ByteBuffer.wrap(packet);
+        values.position(7);
+        assertEquals(1.25, values.getDouble(), 0.0001);
+        assertEquals(65.0, values.getDouble(), 0.0001);
+        assertEquals(-2.5, values.getDouble(), 0.0001);
+    }
+
+    @Test
     public void decodesServerHello() {
         UUID id = UUID.fromString("f8d2c8e0-a2c4-4a87-a69d-02e7d8dff921");
         ByteBuffer bytes = ByteBuffer.allocate(27);

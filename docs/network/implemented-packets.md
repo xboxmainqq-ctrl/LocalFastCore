@@ -134,7 +134,22 @@ Authenticated deployments must use `NetherNetAuthenticatedOfferValidator`. For l
 - The adapter uses a conservative 64 KiB SCTP message-frame limit, an 8 MiB application-message cap, and a 10-second fragment-assembly timeout.
 `BedrockInitialTransportRouter` installs per-connection handshake processors. It accepts the reliable RequestNetworkSettings frame, enqueues the NetworkSettings response, advances the handshake only after the response is accepted by the transport, and delegates Login authentication to a required host callback. After authentication succeeds it routes play messages to the configured game-session handler. `NetherNetServerTransportStack` starts the WebRTC peer host before HTTP signaling and wires the connection listener to this router.
 
-Register its `NetworkTransport` connection listener before `start()`, start the peer host before the signaling server, and configure a directly reachable UDP host candidate. This configuration intentionally does not provide STUN/TURN relay traversal; a host behind NAT may therefore be unreachable without a public address or a future relay-enabled profile.
+`NetherNetServerTransportStack` performs that order and wires the peer host to the handshake router. Construct the same `WebRtcJavaNetherNetPeerHost` instance into the signaling server and the stack; the stack checks that they match.
+
+A minimal host setup is:
+
+```java
+var peerHost = new WebRtcJavaNetherNetPeerHost();
+var handshakeRouter = new BedrockInitialTransportRouter(
+    networkSettings, loginAuthenticator, playListener, playMessageHandler);
+var signaling = new NetherNetSignalingServer(
+    bindAddress, serverInfo, offerValidator, peerHost,
+    partnerDomain, operatorKeyPair);
+var stack = new NetherNetServerTransportStack(peerHost, signaling, handshakeRouter);
+stack.start();
+```
+
+Configure a directly reachable UDP host candidate. This configuration intentionally does not provide STUN/TURN relay traversal; a host behind NAT may therefore be unreachable without a public address or a future relay-enabled profile.
 
 The desktop native library is not the Android SDK. The Android app now depends on `io.github.webrtc-sdk:android:150.7871.04`; its own PeerConnection, signaling, identity-pinning UI, and Bedrock login flow are still being implemented. The desktop adapter and Android SDK have not yet been proven to interoperate with each other or with an unmodified Minecraft client.
 

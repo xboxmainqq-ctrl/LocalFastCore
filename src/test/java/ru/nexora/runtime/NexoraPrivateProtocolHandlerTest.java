@@ -139,6 +139,54 @@ class NexoraPrivateProtocolHandlerTest {
     }
 
     @Test
+    void validatesMovementAndReturnsAuthoritativePosition() {
+        InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
+        FlatChunkGenerator generator = new FlatChunkGenerator(64, 5,
+                new BlockState("minecraft:grass_block"),
+                new BlockState("minecraft:dirt"),
+                new BlockState("minecraft:bedrock"));
+        world.loadChunk(generator.generate(new ChunkPosition(0, 0), world.height(), 9L));
+        FakeConnection connection = new FakeConnection();
+        NexoraWorldInfo info = new NexoraWorldInfo("world", 0, 128, 0, 65, 0, 20, 1);
+        new NexoraPrivateProtocolHandler(UUID.randomUUID(), 8 * 1024 * 1024, () -> info,
+                () -> world, ignored -> true, ignored -> { }).accept(connection);
+        connection.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
+
+        NexoraMovementValidator.Position proposed =
+                new NexoraMovementValidator.Position(0.7, 65.0, 0.5);
+        connection.deliver(NexoraMovementPacketCodec.encodeClientMove(proposed));
+
+        assertEquals(3, connection.sentMessages.size());
+        NexoraMovementValidator.Position accepted = NexoraMovementPacketCodec.decodeServerPosition(
+                ByteBuffer.wrap(connection.sentMessages.get(2)));
+        assertEquals(proposed, accepted);
+    }
+
+    @Test
+    void rejectsMovementThroughBlockAndReturnsPreviousPosition() {
+        InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
+        FlatChunkGenerator generator = new FlatChunkGenerator(64, 5,
+                new BlockState("minecraft:grass_block"),
+                new BlockState("minecraft:dirt"),
+                new BlockState("minecraft:bedrock"));
+        world.loadChunk(generator.generate(new ChunkPosition(0, 0), world.height(), 9L));
+        world.setBlock(new BlockPosition(1, 66, 0), new BlockState("minecraft:stone"));
+        FakeConnection connection = new FakeConnection();
+        NexoraWorldInfo info = new NexoraWorldInfo("world", 0, 128, 0, 65, 0, 20, 1);
+        new NexoraPrivateProtocolHandler(UUID.randomUUID(), 8 * 1024 * 1024, () -> info,
+                () -> world, ignored -> true, ignored -> { }).accept(connection);
+        connection.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
+
+        connection.deliver(NexoraMovementPacketCodec.encodeClientMove(
+                new NexoraMovementValidator.Position(1.2, 65.0, 0.5)));
+
+        NexoraMovementValidator.Position corrected = NexoraMovementPacketCodec.decodeServerPosition(
+                ByteBuffer.wrap(connection.sentMessages.get(2)));
+        assertEquals(new NexoraMovementValidator.Position(0.5, 65.0, 0.5), corrected);
+        assertFalse(connection.closed);
+    }
+
+    @Test
     void refusesChunkRequestsOutsideSpawnNeighborhood() {
         InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
         FakeConnection connection = new FakeConnection();

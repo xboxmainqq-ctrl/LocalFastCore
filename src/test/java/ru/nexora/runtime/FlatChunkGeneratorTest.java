@@ -2,6 +2,7 @@ package ru.nexora.runtime;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -38,6 +39,20 @@ class FlatChunkGeneratorTest {
         assertEquals(first, second, "flat generator does not use the seed and must be deterministic");
         assertThrows(UnsupportedOperationException.class,
                 () -> first.blocks().put(new BlockPosition(-48, 4, 80), GRASS));
+    }
+
+    @Test
+    void generatedChunkDefensivelyCopiesInputWithoutExposingMutableStorage() {
+        Map<BlockPosition, BlockState> source = new HashMap<>();
+        BlockPosition block = new BlockPosition(1, 5, 1);
+        source.put(block, GRASS);
+
+        GeneratedChunk generated = new GeneratedChunk(new ChunkPosition(0, 0), source);
+        source.clear();
+
+        assertEquals(Map.of(block, GRASS), generated.blocks());
+        assertThrows(UnsupportedOperationException.class,
+                () -> generated.blocks().put(new BlockPosition(2, 5, 2), DIRT));
     }
 
     @Test

@@ -6,6 +6,8 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.function.Function;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /** Negotiates the private NEXORA protocol and sends initial world metadata. */
 public final class NexoraPrivateProtocolHandler implements Consumer<TransportConnection> {
@@ -17,21 +19,30 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
     private final Supplier<NexoraWorldInfo> worldInfoSupplier;
     private final Consumer<TransportConnection> readyListener;
     private final Supplier<World> worldSupplier;
+    private final Function<ChunkPosition, Boolean> chunkLoader;
 
     public NexoraPrivateProtocolHandler(UUID serverId, int maxMessageBytes,
                                         Consumer<TransportConnection> readyListener) {
-        this(serverId, maxMessageBytes, () -> null, null, readyListener);
+        this(serverId, maxMessageBytes, () -> null, null, null, readyListener);
     }
 
     public NexoraPrivateProtocolHandler(UUID serverId, int maxMessageBytes,
                                         Supplier<NexoraWorldInfo> worldInfoSupplier,
                                         Consumer<TransportConnection> readyListener) {
-        this(serverId, maxMessageBytes, worldInfoSupplier, null, readyListener);
+        this(serverId, maxMessageBytes, worldInfoSupplier, null, null, readyListener);
     }
 
     public NexoraPrivateProtocolHandler(UUID serverId, int maxMessageBytes,
                                         Supplier<NexoraWorldInfo> worldInfoSupplier,
                                         Supplier<World> worldSupplier,
+                                        Consumer<TransportConnection> readyListener) {
+        this(serverId, maxMessageBytes, worldInfoSupplier, worldSupplier, null, readyListener);
+    }
+
+    public NexoraPrivateProtocolHandler(UUID serverId, int maxMessageBytes,
+                                        Supplier<NexoraWorldInfo> worldInfoSupplier,
+                                        Supplier<World> worldSupplier,
+                                        Function<ChunkPosition, Boolean> chunkLoader,
                                         Consumer<TransportConnection> readyListener) {
         this.serverId = Objects.requireNonNull(serverId, "serverId");
         if (maxMessageBytes < 1 || maxMessageBytes > 8 * 1024 * 1024) {
@@ -40,6 +51,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
         this.maxMessageBytes = maxMessageBytes;
         this.worldInfoSupplier = Objects.requireNonNull(worldInfoSupplier, "worldInfoSupplier");
         this.worldSupplier = worldSupplier;
+        this.chunkLoader = chunkLoader;
         this.readyListener = Objects.requireNonNull(readyListener, "readyListener");
     }
 
@@ -91,10 +103,12 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 connection.close();
                 return;
             }
-            if (worldSupplier == null) {
+            if (worldSupplier == null || chunkLoader == null || worldInfo == null) {
                 connection.setMessageListener(ignored -> connection.close());
             } else {
-                connection.setMessageListener(message -> handleChunkRequest(connection, message));
+                AtomicInteger requestedChunks = new AtomicInteger();
+                connection.setMessageListener(message ->
+                        handleChunkRequest(connection, message, worldInfo, requestedChunks));
             }
             try {
                 readyListener.accept(connection);
@@ -104,7 +118,8 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
         });
     }
 
-    private void handleChunkRequest(TransportConnection connection, TransportMessage message) {
+    private void handleChunkRequest(TransportConnection connection, TransportMessage message,
+                                    NexoraWorldInfo worldInfo, AtomicInteger requestedChunks) {
         if (!connection.isOpen()) return;
         if (message.deliveryMode() != DeliveryMode.RELIABLE_ORDERED
                 || message.sizeBytes() > NexoraChunkDataCodec.MAX_MESSAGE_BYTES) {
@@ -114,8 +129,24 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
         try {
             NexoraChunkDataCodec.ChunkRequest request =
                     NexoraChunkDataCodec.decodeChunkRequest(message.payload());
+            if (requestedChunks.incrementAndGet() > 9) {
+                connection.close();
+                return;
+            }
+            int spawnChunkX = Math.floorDiv(worldInfo.spawnX(), 16);
+            int spawnChunkZ = Math.floorDiv(worldInfo.spawnZ(), 16);
+            if (Math.abs((long) request.chunkX() - spawnChunkX) > 1
+                    || Math.abs((long) request.chunkZ() - spawnChunkZ) > 1) {
+                connection.close();
+                return;
+            }
+            ChunkPosition position = new ChunkPosition(request.chunkX(), request.chunkZ());
+            if (!Boolean.TRUE.equals(chunkLoader.apply(position))) {
+                connection.close();
+                return;
+            }
             World world = Objects.requireNonNull(worldSupplier.get(), "world");
-            NexoraChunkData chunk = NexoraChunkData.topSurface(
+            NexoraChunkData chunk = NexoraChunkData.volume(
                     world, request.chunkX(), request.chunkZ());
             if (send(connection, NexoraChunkDataCodec.encodeChunkData(chunk))
                     != TransportSendResult.ACCEPTED) {

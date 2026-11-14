@@ -213,6 +213,7 @@ class NexoraPrivateProtocolHandlerTest {
 
         assertEquals(4, first.sentMessages.size());
         assertEquals(4, second.sentMessages.size());
+        assertEquals(2, handler.entities().size());
         NexoraPlayerSyncCodec.PlayerState firstSeenBySecond =
                 NexoraPlayerSyncCodec.decodePlayerState(ByteBuffer.wrap(second.sentMessages.get(3)));
         NexoraPlayerSyncCodec.PlayerState secondSeenByFirst =
@@ -220,6 +221,11 @@ class NexoraPrivateProtocolHandlerTest {
         assertNotEquals(firstSeenBySecond.playerId(), secondSeenByFirst.playerId());
         assertEquals(2, firstSeenBySecond.skinIndex());
         assertEquals(4, secondSeenByFirst.skinIndex());
+        WorldEntity firstEntity = handler.entities().find(firstSeenBySecond.playerId()).orElseThrow();
+        assertEquals(WorldEntity.Type.PLAYER, firstEntity.type());
+        assertEquals("Первый", firstEntity.name());
+        assertEquals(2, firstEntity.skinIndex());
+        assertEquals(0.5, firstEntity.x());
 
         first.deliver(NexoraMovementPacketCodec.encodeClientMove(
                 new NexoraMovementValidator.Position(0.7, 65.0, 0.5)));
@@ -229,12 +235,15 @@ class NexoraPrivateProtocolHandlerTest {
                 NexoraPlayerSyncCodec.decodePlayerState(ByteBuffer.wrap(second.sentMessages.get(4)));
         assertEquals(firstSeenBySecond.playerId(), moved.playerId());
         assertEquals(0.7, moved.x(), 0.0001);
+        assertEquals(0.7, handler.entities().find(firstSeenBySecond.playerId()).orElseThrow().x(), 0.0001);
 
         first.close();
 
         assertEquals(6, second.sentMessages.size());
         assertEquals(firstSeenBySecond.playerId(),
                 NexoraPlayerSyncCodec.decodePlayerLeft(ByteBuffer.wrap(second.sentMessages.get(5))));
+        assertTrue(handler.entities().find(firstSeenBySecond.playerId()).isEmpty());
+        assertEquals(1, handler.entities().size());
     }
 
     @Test

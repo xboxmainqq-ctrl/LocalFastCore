@@ -86,6 +86,7 @@ class BedrockInitialTransportRouterTest {
                 new NetherNetIdentityValidator.VerifiedIdentity(
                         "minecraft-services.net", "nethernet-xuid", "NetherNetPlayer", key,
                         NetherNetIdentityValidator.tokenSha256(JWT));
+        String signedClientData = signedClientDataJwt(generator.generateKeyPair());
         AtomicInteger playStarts = new AtomicInteger();
         BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
                 SETTINGS,
@@ -106,7 +107,7 @@ class BedrockInitialTransportRouterTest {
                 BedrockRequestNetworkSettingsPacketCodec.encodePayload(
                         new BedrockRequestNetworkSettingsPacket(2225)), false));
         connection.receive(frame(BedrockLoginPacketCodec.PACKET_ID,
-                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, LOGIN_JSON, CLIENT_DATA_JWT)),
+                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, LOGIN_JSON, signedClientData)),
                 true));
 
         assertTrue(connection.isOpen());
@@ -217,6 +218,39 @@ class BedrockInitialTransportRouterTest {
         assertEquals(1, connection.sent.size());
         assertTrue(connection.closedLatch.await(2, java.util.concurrent.TimeUnit.SECONDS));
         router.close();
+    }
+
+
+    private static String signedClientDataJwt(java.security.KeyPair clientKey) throws Exception {
+        java.util.Base64.Encoder encoder = java.util.Base64.getUrlEncoder().withoutPadding();
+        String header = encoder.encodeToString("{\\"alg\\":\\"ES384\\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        String payload = encoder.encodeToString("{\\"ClientRandomId\\":123,\\"DeviceOS\\":7}"
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        String signingInput = header + "." + payload;
+        java.security.Signature signer = java.security.Signature.getInstance("SHA384withECDSA");
+        signer.initSign(clientKey.getPrivate());
+        signer.update(signingInput.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+        byte[] raw = derToRaw(signer.sign(), 48);
+        return signingInput + "." + encoder.encodeToString(raw);
+    }
+
+    private static byte[] derToRaw(byte[] der, int coordinateBytes) {
+        int offset = 2;
+        int rLength = der[offset + 1] & 0xff;
+        byte[] r = java.util.Arrays.copyOfRange(der, offset + 2, offset + 2 + rLength);
+        offset += 2 + rLength;
+        int sLength = der[offset + 1] & 0xff;
+        byte[] s = java.util.Arrays.copyOfRange(der, offset + 2, offset + 2 + sLength);
+        byte[] raw = new byte[coordinateBytes * 2];
+        copyInteger(r, raw, 0, coordinateBytes);
+        copyInteger(s, raw, coordinateBytes, coordinateBytes);
+        return raw;
+    }
+
+    private static void copyInteger(byte[] value, byte[] target, int offset, int size) {
+        int sourceOffset = value.length > size && value[0] == 0 ? 1 : 0;
+        int length = value.length - sourceOffset;
+        System.arraycopy(value, sourceOffset, target, offset + size - length, length);
     }
 
     private static BedrockAuthenticatedPlayer authenticatedPlayer() {

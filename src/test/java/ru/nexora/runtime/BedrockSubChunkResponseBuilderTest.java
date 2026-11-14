@@ -95,6 +95,21 @@ class BedrockSubChunkResponseBuilderTest {
     }
 
     @Test
+    void reportsAllTooHighWhenColumnSurfaceIsAboveRequestedSubchunk() {
+        InMemoryWorld world = new InMemoryWorld("test", new WorldHeight(-64, 320));
+        world.loadChunk(new GeneratedChunk(new ChunkPosition(0, 0),
+                Map.of(new BlockPosition(0, 32, 0), STONE)));
+        var request = new BedrockSubChunkRequestPacketCodec.Request(
+                0, List.of(new BedrockSubChunkRequestPacketCodec.Offset(0, -1, 0)),
+                new BedrockSubChunkRequestPacketCodec.SubChunkPosition(0, 0, 0));
+        var registry = BedrockRuntimeBlockRegistry.of(Map.of(BlockState.AIR, 0, STONE, 1));
+
+        BedrockGamePacket response = BedrockSubChunkResponseBuilder.buildPackets(
+                world, request, 0, registry).get(0);
+        assertEquals(2, firstHeightmapType(response)); // AllTooHigh
+    }
+
+    @Test
     void reportsWrongDimensionAndMissingChunks() {
         InMemoryWorld world = new InMemoryWorld("test", new WorldHeight(-64, 320));
         world.loadChunk(new GeneratedChunk(new ChunkPosition(0, 0),

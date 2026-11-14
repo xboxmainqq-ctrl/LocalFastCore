@@ -104,4 +104,35 @@ class BackupManagerTest {
                 manager.createBackup(source, tempDir.resolve("backups"), "with-link"));
         assertFalse(Files.exists(tempDir.resolve("backups/with-link")));
     }
+    @Test
+    void rejectsDuplicateManifestEntries() throws IOException {
+        Path source = Files.createDirectory(tempDir.resolve("duplicate-source"));
+        Files.writeString(source.resolve("safe.txt"), "safe");
+        Path backup = manager.createBackup(source, tempDir.resolve("duplicate-backups"), "duplicate")
+                .backupDirectory();
+        Path manifest = backup.resolve("NEXORA-BACKUP-MANIFEST.tsv");
+        String[] lines = Files.readString(manifest).split("\\R");
+        assertEquals(2, lines.length);
+        Files.writeString(manifest, lines[0] + "\\n" + lines[1] + "\\n" + lines[1] + "\\n");
+
+        assertThrows(IOException.class, () -> manager.verifyBackup(backup));
+    }
+
+    @Test
+    void rejectsSymbolicLinksInsideExistingBackupWhenSupported() throws IOException {
+        Path source = Files.createDirectory(tempDir.resolve("link-source"));
+        Files.writeString(source.resolve("safe.txt"), "safe");
+        Path backup = manager.createBackup(source, tempDir.resolve("link-backups"), "link")
+                .backupDirectory();
+        Path outside = Files.writeString(tempDir.resolve("outside-backup.txt"), "outside");
+        Files.delete(backup.resolve("safe.txt"));
+        try {
+            Files.createSymbolicLink(backup.resolve("safe.txt"), outside);
+        } catch (UnsupportedOperationException | SecurityException | IOException unavailable) {
+            return;
+        }
+
+        assertThrows(IOException.class, () -> manager.verifyBackup(backup));
+    }
+
 }

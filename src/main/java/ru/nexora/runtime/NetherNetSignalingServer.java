@@ -8,9 +8,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyPair;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -30,6 +33,10 @@ public final class NetherNetSignalingServer implements RuntimeModule {
     private final NetherNetServerInfo serverInfo;
     private final NetherNetOfferValidator validator;
     private final NetherNetPeerHost peerHost;
+    private final String partnerDomain;
+    private final KeyPair operatorKeyPair;
+    private final Clock clock;
+    private final Duration identityTokenLifetime;
     private final int maxSdpBytes;
     private final long answerTimeoutMillis;
 
@@ -39,23 +46,35 @@ public final class NetherNetSignalingServer implements RuntimeModule {
     public NetherNetSignalingServer(InetSocketAddress bindAddress,
                                     NetherNetServerInfo serverInfo,
                                     NetherNetOfferValidator validator,
-                                    NetherNetPeerHost peerHost) {
-        this(bindAddress, serverInfo, validator, peerHost,
-                DEFAULT_MAX_SDP_BYTES, 15_000L);
+                                    NetherNetPeerHost peerHost,
+                                    String partnerDomain,
+                                    KeyPair operatorKeyPair) {
+        this(bindAddress, serverInfo, validator, peerHost, partnerDomain, operatorKeyPair,
+                Clock.systemUTC(), Duration.ofDays(30), DEFAULT_MAX_SDP_BYTES, 15_000L);
     }
 
     public NetherNetSignalingServer(InetSocketAddress bindAddress,
                                     NetherNetServerInfo serverInfo,
                                     NetherNetOfferValidator validator,
                                     NetherNetPeerHost peerHost,
+                                    String partnerDomain,
+                                    KeyPair operatorKeyPair,
+                                    Clock clock,
+                                    Duration identityTokenLifetime,
                                     int maxSdpBytes,
                                     long answerTimeoutMillis) {
         this.bindAddress = Objects.requireNonNull(bindAddress, "bindAddress");
         this.serverInfo = Objects.requireNonNull(serverInfo, "serverInfo");
         this.validator = Objects.requireNonNull(validator, "validator");
         this.peerHost = Objects.requireNonNull(peerHost, "peerHost");
-        if (maxSdpBytes < 1 || answerTimeoutMillis < 1) {
-            throw new IllegalArgumentException("SDP limit and answer timeout must be positive");
+        this.partnerDomain = Objects.requireNonNull(partnerDomain, "partnerDomain");
+        this.operatorKeyPair = Objects.requireNonNull(operatorKeyPair, "operatorKeyPair");
+        this.clock = Objects.requireNonNull(clock, "clock");
+        this.identityTokenLifetime = Objects.requireNonNull(identityTokenLifetime, "identityTokenLifetime");
+        if (identityTokenLifetime.isNegative() || identityTokenLifetime.isZero()
+                || identityTokenLifetime.compareTo(Duration.ofDays(3650)) > 0
+                || maxSdpBytes < 1 || answerTimeoutMillis < 1) {
+            throw new IllegalArgumentException("Identity lifetime, SDP limit, or answer timeout is invalid");
         }
         this.maxSdpBytes = maxSdpBytes;
         this.answerTimeoutMillis = answerTimeoutMillis;
@@ -154,12 +173,16 @@ public final class NetherNetSignalingServer implements RuntimeModule {
             if (answer == null || answer.isBlank()) {
                 throw new IllegalStateException("WebRTC host returned an empty SDP answer");
             }
-            byte[] answerBytes = answer.getBytes(StandardCharsets.UTF_8);
+            Instant issuedAt = clock.instant();
+            String signedAnswer = NetherNetServerIdentitySigner.addIdentity(
+                    answer, partnerDomain, operatorKeyPair,
+                    issuedAt, issuedAt.plus(identityTokenLifetime));
+            byte[] answerBytes = signedAnswer.getBytes(StandardCharsets.UTF_8);
             if (answerBytes.length > maxSdpBytes) {
-                throw new IllegalStateException("SDP answer exceeds configured byte limit");
+                throw new IllegalStateException("Signed SDP answer exceeds configured byte limit");
             }
-            // A valid NetherNet answer must carry the server identity assertion.
-            NetherNetSdpDocument.parseOffer(answer, maxSdpBytes,
+            // Parse the generated assertion again before returning it to the client.
+            NetherNetSdpDocument.parseOffer(signedAnswer, maxSdpBytes,
                     Math.min(maxSdpBytes, 16 * 1024));
             send(exchange, 200, "application/sdp; charset=utf-8", answerBytes);
         } catch (java.util.concurrent.TimeoutException timeout) {

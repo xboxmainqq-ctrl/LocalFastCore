@@ -192,6 +192,50 @@ class NexoraPrivateProtocolHandlerTest {
     }
 
     @Test
+    void synchronizesRemotePlayersJoinMoveAndLeave() {
+        InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
+        FlatChunkGenerator generator = new FlatChunkGenerator(64, 5,
+                new BlockState("minecraft:grass_block"),
+                new BlockState("minecraft:dirt"),
+                new BlockState("minecraft:bedrock"));
+        world.loadChunk(generator.generate(new ChunkPosition(0, 0), world.height(), 9L));
+        NexoraWorldInfo info = new NexoraWorldInfo("world", 0, 128, 0, 65, 0, 20, 1);
+        NexoraPrivateProtocolHandler handler = new NexoraPrivateProtocolHandler(
+                UUID.randomUUID(), 8 * 1024 * 1024, () -> info,
+                () -> world, ignored -> true, ignored -> { });
+        FakeConnection first = new FakeConnection();
+        FakeConnection second = new FakeConnection();
+
+        handler.accept(first);
+        first.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
+        handler.accept(second);
+        second.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
+
+        assertEquals(4, first.sentMessages.size());
+        assertEquals(4, second.sentMessages.size());
+        NexoraPlayerSyncCodec.PlayerState firstSeenBySecond =
+                NexoraPlayerSyncCodec.decodePlayerState(ByteBuffer.wrap(second.sentMessages.get(3)));
+        NexoraPlayerSyncCodec.PlayerState secondSeenByFirst =
+                NexoraPlayerSyncCodec.decodePlayerState(ByteBuffer.wrap(first.sentMessages.get(3)));
+        assertNotEquals(firstSeenBySecond.playerId(), secondSeenByFirst.playerId());
+
+        first.deliver(NexoraMovementPacketCodec.encodeClientMove(
+                new NexoraMovementValidator.Position(0.7, 65.0, 0.5)));
+
+        assertEquals(5, second.sentMessages.size());
+        NexoraPlayerSyncCodec.PlayerState moved =
+                NexoraPlayerSyncCodec.decodePlayerState(ByteBuffer.wrap(second.sentMessages.get(4)));
+        assertEquals(firstSeenBySecond.playerId(), moved.playerId());
+        assertEquals(0.7, moved.x(), 0.0001);
+
+        first.close();
+
+        assertEquals(6, second.sentMessages.size());
+        assertEquals(firstSeenBySecond.playerId(),
+                NexoraPlayerSyncCodec.decodePlayerLeft(ByteBuffer.wrap(second.sentMessages.get(5))));
+    }
+
+    @Test
     void refusesChunkRequestsOutsideSpawnNeighborhood() {
         InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
         FakeConnection connection = new FakeConnection();

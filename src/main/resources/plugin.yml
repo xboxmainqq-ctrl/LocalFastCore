@@ -1,9 +1,9 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.71.0"
+version: "0.72.0"
 api: ["1.0.0"]
 author: LocalFast
-description: LocalFastCore 0.71.0 guild notifications, auction moderation, mailbox and RPG systems
+description: LocalFastCore 0.72.0 magic, mana, spell progression, guilds, auction and RPG systems
 commands:
   spawn:
     description: Телепорт на отдельный спавн
@@ -78,6 +78,9 @@ commands:
   class:
     description: Выбрать или посмотреть класс персонажа
     usage: "/class [info]"
+  magic:
+    description: Открыть книгу магии и заклинаний
+    usage: "/magic"
   ability:
     description: Использовать активную способность класса
     usage: "/ability"

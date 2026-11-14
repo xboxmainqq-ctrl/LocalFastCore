@@ -266,8 +266,8 @@ Protocol references:
 
 The terrain serialization milestone now includes four standalone components:
 
-- `BedrockRuntimeBlockRegistry` is an explicit adapter from NEXORA `BlockState` values to Bedrock runtime block IDs. It requires an air entry and rejects unknown states; it deliberately does not guess IDs from block names. The registry must be populated from the exact 1.26.60 block palette before a client connection can use this path.
-- `BedrockPalettedStorageCodec` emits network/runtime paletted storage: runtime header bit, XZY-ordered 4096 indices, little-endian packed words, varint palette size, and varint runtime IDs. Uniform sections use the zero-bit single-entry form.
+- `BedrockRuntimeBlockRegistry` is an explicit adapter from NEXORA `BlockState` values to signed Bedrock int32 network IDs. It requires an air entry, rejects duplicate IDs and unknown states, and never guesses IDs from block names. Signed values are required for hashed block network IDs.
+- `BedrockPalettedStorageCodec` emits network paletted storage: runtime header bit, XZY-ordered 4096 indices, little-endian packed words, varint palette size, and signed ZigZag-varint32 block IDs. Uniform sections use a zero-bit header but still serialize the one-entry palette and its ID.
 - `BedrockSubChunkTerrainCodec` emits a version-9 subchunk header, one block-storage layer, its network palette, and the empty block-actor NBT terminator (`TAG_End`). The current profile has no fluid layer or block actors.
 - `BedrockSubChunkPacketCodec` emits packet 174 with cache disabled, relative signed-byte offsets, protocol-2225 result values, binary length-prefixed subchunk data, and explicit `NoData` heightmap markers. It uses the 1.26.60 enum values: Success=1, LevelChunkDoesntExist=2, WrongDimension=3, PlayerDoesntExist=4, IndexOutOfBounds=5, SuccessAllAir=6.
 
@@ -345,3 +345,21 @@ BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
 );
 postLogin.attachTo(router);
 ```
+### Version-pinned external block registry file
+
+`BedrockRuntimeBlockRegistryFile` now loads a strict UTF-8 registry file and rejects a protocol/game-version mismatch. The loader enforces a 32 MiB file limit, 500,000 state limit, unique block states and IDs, valid namespaced identifiers, valid property pairs, and a required `minecraft:air` entry. It computes SHA-256 over the exact file bytes for diagnostics.
+
+Supported file header:
+
+```text
+NEXORA-BEDROCK-BLOCK-REGISTRY<TAB>1
+protocol<TAB>2225
+game<TAB>1.26.60
+id-mode<TAB>runtime
+--
+<namespaced-block-id><TAB><signed-int32-id>[<TAB><property>=<value>...]
+```
+
+`id-mode` is either `runtime` or `hash`. The loaded profile exposes `blockNetworkIdsAreHashes()`; the StartGame settings factory must copy this exact flag into `Settings.blockNetworkIdsAreHashes`. Never set the flag independently from the registry source. Rows are data from a trusted, version-matched palette provider; NEXORA does not generate fabricated vanilla IDs.
+
+No 1.26.60 palette file is bundled yet. This loader establishes the safe integration point, but a real matching palette export is still required before the terrain response handler can serialize arbitrary world blocks. The registry file is deliberately external so an unverified or stale palette cannot silently become the default.

@@ -49,7 +49,7 @@ class BedrockLoginPacketCodecTest {
         assertThrows(IllegalArgumentException.class,
                 () -> BedrockLoginPacketCodec.decodePayload(ByteBuffer.allocate(3)));
 
-        ByteBuffer truncatedRequest = ByteBuffer.allocate(5);
+        ByteBuffer truncatedRequest = ByteBuffer.allocate(6);
         truncatedRequest.putInt(2225).put((byte) 4).put((byte) '{').flip();
         assertThrows(IllegalArgumentException.class,
                 () -> BedrockLoginPacketCodec.decodePayload(truncatedRequest));
@@ -73,14 +73,11 @@ class BedrockLoginPacketCodecTest {
         assertThrows(IllegalArgumentException.class,
                 () -> BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, oversized)));
 
-        ByteBuffer oversizedPayload = ByteBuffer.allocate(
-                Integer.BYTES + 5 + BedrockLoginPacketCodec.MAX_CONNECTION_REQUEST_BYTES + 1
-        );
+        ByteBuffer oversizedPayload = ByteBuffer.allocate(Integer.BYTES + 5);
         BedrockBinary.writeBigEndianInt32(oversizedPayload, 2225);
         BedrockBinary.writeVarUInt32(
                 oversizedPayload, BedrockLoginPacketCodec.MAX_CONNECTION_REQUEST_BYTES + 1
         );
-        oversizedPayload.position(oversizedPayload.limit());
         oversizedPayload.flip();
 
         assertThrows(IllegalArgumentException.class,

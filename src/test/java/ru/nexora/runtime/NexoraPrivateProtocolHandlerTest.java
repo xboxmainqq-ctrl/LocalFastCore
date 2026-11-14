@@ -110,6 +110,34 @@ class NexoraPrivateProtocolHandlerTest {
     }
 
 
+
+    @Test
+    void generatesAndStreamsAnUnloadedNeighborChunk() {
+        InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(-64, 320));
+        FlatChunkGenerator generator = new FlatChunkGenerator(64, 5,
+                new BlockState("minecraft:grass_block"),
+                new BlockState("minecraft:dirt"),
+                new BlockState("minecraft:bedrock"));
+        FakeConnection connection = new FakeConnection();
+        NexoraWorldInfo info = new NexoraWorldInfo("world", -64, 320, 0, 65, 0, 20, 0);
+        new NexoraPrivateProtocolHandler(UUID.randomUUID(), 8 * 1024 * 1024, () -> info,
+                () -> world,
+                position -> world.isChunkLoaded(position)
+                        || world.loadChunk(generator.generate(position, world.height(), 42L)),
+                ignored -> { }).accept(connection);
+        connection.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
+
+        connection.deliver(NexoraChunkDataCodec.encodeChunkRequest(1, 1));
+
+        assertTrue(world.isChunkLoaded(new ChunkPosition(1, 1)));
+        NexoraChunkData chunk = NexoraChunkDataCodec.decodeChunkData(
+                ByteBuffer.wrap(connection.sentMessages.get(2)));
+        assertEquals(1536, chunk.blocks().size());
+        assertEquals("minecraft:bedrock", chunk.blocks().get(0).blockIdentifier());
+        assertEquals("minecraft:grass_block",
+                chunk.blocks().get(chunk.blocks().size() - 1).blockIdentifier());
+    }
+
     @Test
     void refusesChunkRequestsOutsideSpawnNeighborhood() {
         InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));

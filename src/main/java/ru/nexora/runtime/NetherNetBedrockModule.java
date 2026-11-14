@@ -48,8 +48,8 @@ public final class NetherNetBedrockModule implements RuntimeModule {
         if (started) {
             throw new IllegalStateException("NetherNet Bedrock module is already started");
         }
-        transport.setConnectionListener(router);
         try {
+            transport.setConnectionListener(router);
             transport.start();
             signalingServer.start();
             started = true;

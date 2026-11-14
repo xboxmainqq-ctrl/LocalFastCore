@@ -378,7 +378,12 @@ public final class NexoraMain {
                 UUID serverId, Consumer<TransportConnection> readyListener) {
             return new NexoraPrivateProtocolHandler(serverId,
                     WebRtcJavaNetherNetPeerHost.MAX_MESSAGE_BYTES,
-                    this::worldInfo, readyListener);
+                    this::worldInfo,
+                    () -> worlds.get(DEFAULT_WORLD_ID)
+                            .orElseThrow(() -> new IllegalStateException("Default world is not loaded")),
+                    position -> worlds.get(DEFAULT_WORLD_ID)
+                            .map(world -> world.isChunkLoaded(position)).orElse(false),
+                    readyListener, entities, inventories);
         }
     }
 }

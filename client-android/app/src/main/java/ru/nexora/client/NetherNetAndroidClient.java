@@ -135,6 +135,11 @@ public final class NetherNetAndroidClient implements AutoCloseable {
             reportStatus("Проверяем SDP answer и устанавливаем соединение...");
             setRemoteDescription(identity.cleanedSdp());
             reportStatus("SDP согласован, ожидаем открытия каналов...");
+            mainHandler.postDelayed(() -> {
+                if (!closed.get() && !connectedNotified.get()) {
+                    reportError("Тайм-аут ожидания открытия NetherNet каналов");
+                }
+            }, 30_000L);
         } catch (Exception failure) {
             reportError(failure.getMessage() == null
                     ? failure.getClass().getSimpleName() : failure.getMessage());
@@ -381,6 +386,12 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                     mainHandler.post(() -> listener.onConnected());
                     if (!sendNetworkSettingsRequest()) {
                         reportError("Не удалось отправить RequestNetworkSettings");
+                    } else {
+                        mainHandler.postDelayed(() -> {
+                            if (!closed.get() && !networkSettingsReceived) {
+                                reportError("Тайм-аут ожидания Bedrock NetworkSettings");
+                            }
+                        }, 15_000L);
                     }
                 }
             }

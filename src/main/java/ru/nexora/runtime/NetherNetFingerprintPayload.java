@@ -112,6 +112,16 @@ public record NetherNetFingerprintPayload(List<Fingerprint> fingerprints) {
         public Fingerprint {
             Objects.requireNonNull(algorithm, "algorithm");
             Objects.requireNonNull(digest, "digest");
+            algorithm = algorithm.toLowerCase(Locale.ROOT);
+            int expectedBytes = switch (algorithm) {
+                case "sha-256" -> 32;
+                case "sha-384" -> 48;
+                case "sha-512" -> 64;
+                default -> throw new IllegalArgumentException("Unsupported SDP fingerprint algorithm");
+            };
+            if (!DIGEST.matcher(digest).matches() || digest.length() != expectedBytes * 3 - 1) {
+                throw new IllegalArgumentException("Malformed SDP fingerprint digest");
+            }
         }
     }
 }

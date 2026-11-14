@@ -4,7 +4,10 @@ import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.zip.Deflater;
+import java.util.zip.Inflater;
 
 /** Pure-Java Bedrock 2225 packet helpers shared by the Android transport and unit tests. */
 public final class BedrockAndroidPacketCodec {
@@ -15,6 +18,9 @@ public final class BedrockAndroidPacketCodec {
     public static final int MAX_CONNECTION_REQUEST_BYTES = 1024 * 1024;
     public static final int MAX_CLIENT_DATA_JWT_BYTES = 1024 * 1024;
     public static final int MAX_LOGIN_JWT_BLOCK_BYTES = 2 * 1024 * 1024 - 32;
+    public static final int MAX_BATCH_BYTES = 8 * 1024 * 1024;
+    public static final int MAX_PACKET_BYTES = 2 * 1024 * 1024;
+    public static final int MAX_PACKETS_PER_BATCH = 1024;
 
     private BedrockAndroidPacketCodec() {
     }
@@ -102,6 +108,101 @@ public final class BedrockAndroidPacketCodec {
         batch.flip();
 
         return bytes(encodeAfterNetworkSettings(batch, settings));
+    }
+
+    /** Decompresses and decodes one post-NetworkSettings server batch. */
+    public static List<BedrockAndroidServerPacket> decodeServerBatch(
+            byte[] envelope, BedrockAndroidNetworkSettings settings) {
+        if (envelope == null || settings == null || envelope.length < 2
+                || envelope.length > MAX_BATCH_BYTES) {
+            throw new IllegalArgumentException("Bedrock server batch size is invalid");
+        }
+        int algorithm = Byte.toUnsignedInt(envelope[0]);
+        byte[] batch;
+        if (algorithm == 0xff) {
+            batch = java.util.Arrays.copyOfRange(envelope, 1, envelope.length);
+        } else if (algorithm == 0x00) {
+            if (settings.compressionAlgorithm() != 0 || settings.compressionThreshold() == 0) {
+                throw new IllegalArgumentException("Server used unnegotiated ZLIB compression");
+            }
+            batch = inflateRaw(envelope, 1, envelope.length - 1);
+        } else if (algorithm == 0x01) {
+            throw new UnsupportedOperationException("Snappy decompression is not implemented in Android client");
+        } else {
+            throw new IllegalArgumentException("Unknown Bedrock batch compression algorithm");
+        }
+        if (batch.length == 0 || batch.length > MAX_BATCH_BYTES) {
+            throw new IllegalArgumentException("Decompressed Bedrock batch size is invalid");
+        }
+
+        ByteBuffer input = ByteBuffer.wrap(batch);
+        List<BedrockAndroidServerPacket> packets = new ArrayList<>();
+        while (input.hasRemaining()) {
+            if (packets.size() >= MAX_PACKETS_PER_BATCH) {
+                throw new IllegalArgumentException("Bedrock batch contains too many packets");
+            }
+            int packetLength = readVarUInt32(input);
+            if (packetLength <= 0 || packetLength > MAX_PACKET_BYTES
+                    || packetLength > input.remaining()) {
+                throw new IllegalArgumentException("Bedrock packet length is invalid");
+            }
+            ByteBuffer packet = input.slice();
+            packet.limit(packetLength);
+            int header = readVarUInt32(packet);
+            if ((header & ~0x3fff) != 0) {
+                throw new IllegalArgumentException("Bedrock packet header contains reserved bits");
+            }
+            int packetId = header & 0x3ff;
+            int senderSubClientId = (header >>> 10) & 0x3;
+            int targetSubClientId = (header >>> 12) & 0x3;
+            byte[] payload = new byte[packet.remaining()];
+            packet.get(payload);
+            packets.add(new BedrockAndroidServerPacket(
+                    packetId, senderSubClientId, targetSubClientId, payload));
+            input.position(input.position() + packetLength);
+        }
+        return List.copyOf(packets);
+    }
+
+    public static BedrockAndroidPlayStatus decodePlayStatus(BedrockAndroidServerPacket packet) {
+        if (packet == null || packet.packetId() != 2) {
+            throw new IllegalArgumentException("Expected Bedrock PlayStatus packet ID 2");
+        }
+        byte[] payload = packet.payload();
+        if (payload.length != Integer.BYTES) {
+            throw new IllegalArgumentException("Bedrock PlayStatus payload must be exactly 4 bytes");
+        }
+        return BedrockAndroidPlayStatus.fromWireValue(ByteBuffer.wrap(payload).getInt());
+    }
+
+    private static byte[] inflateRaw(byte[] input, int offset, int length) {
+        Inflater inflater = new Inflater(true);
+        try {
+            inflater.setInput(input, offset, length);
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            byte[] buffer = new byte[8192];
+            while (!inflater.finished()) {
+                int count = inflater.inflate(buffer);
+                if (count > 0) {
+                    if (output.size() + count > MAX_BATCH_BYTES) {
+                        throw new IllegalArgumentException("Inflated Bedrock batch exceeds the configured limit");
+                    }
+                    output.write(buffer, 0, count);
+                } else if (inflater.needsInput() || inflater.needsDictionary()) {
+                    throw new IllegalArgumentException("Truncated or invalid raw DEFLATE batch");
+                } else {
+                    throw new IllegalArgumentException("Raw DEFLATE decoder made no progress");
+                }
+            }
+            if (inflater.getRemaining() != 0) {
+                throw new IllegalArgumentException("Trailing bytes after compressed Bedrock batch");
+            }
+            return output.toByteArray();
+        } catch (java.util.zip.DataFormatException failure) {
+            throw new IllegalArgumentException("Invalid raw DEFLATE Bedrock batch", failure);
+        } finally {
+            inflater.end();
+        }
     }
 
     private static ByteBuffer encodeAfterNetworkSettings(

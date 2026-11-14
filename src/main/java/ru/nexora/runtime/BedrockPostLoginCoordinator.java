@@ -126,6 +126,18 @@ public final class BedrockPostLoginCoordinator implements
                 fail(session);
                 return;
             }
+            if (session.phase == Phase.STARTING_WORLD) {
+                // StartGame may cause the client to request subchunks before
+                // the startup stage completes. Route those packets through
+                // the normal gameplay handler instead of parsing them as
+                // ResourcePackClientResponse.
+                try {
+                    playMessageHandler.accept(connection, message);
+                } catch (RuntimeException gameplayFailure) {
+                    fail(session);
+                }
+                return;
+            }
             final BedrockResourcePackCodec.ClientResponse response;
             try {
                 response = decodeResponse(message.payload());

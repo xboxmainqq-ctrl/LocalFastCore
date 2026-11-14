@@ -301,6 +301,9 @@ final class ChunkPreviewView extends GLSurfaceView {
                     verticalVelocity = 0f;
                 }
                 if (playerY < -64f) verticalVelocity = 0f;
+                if (Math.abs(verticalVelocity) > 0.0001f) {
+                    ChunkPreviewView.this.requestRender();
+                }
             }
             if (vertexBuffer == null || vertexCount == 0 || program == 0) return;
 

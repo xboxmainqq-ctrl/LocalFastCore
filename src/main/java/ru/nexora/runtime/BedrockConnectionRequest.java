@@ -14,9 +14,10 @@ import java.util.Objects;
 /**
  * Structurally decoded Bedrock Connection Request for protocol 2225.
  *
- * <p>This class deliberately does not trust or authenticate any JWT. It only
- * extracts the certificate-chain tokens and client-data token so a separate
- * cryptographic verifier can validate their signatures and claims.</p>
+ * <p>Supports both the legacy {@code chain}/{@code clientData} object and the
+ * newer {@code AuthenticationType}/{@code Token}/{@code Certificate} envelope.
+ * This class deliberately does not trust or authenticate either representation;
+ * a separate verifier must validate signatures, issuers, claims, and key binding.</p>
  */
 public record BedrockConnectionRequest(
         Format format,

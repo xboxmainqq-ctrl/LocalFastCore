@@ -2,7 +2,7 @@
 
 Target: Bedrock 1.26.60, protocol 2225.
 
-The Java runtime now contains payload codecs for three packet types, bounded packet-batch framing, a compression envelope, and a state model for the initial server-side login handshake. This still does not implement NetherNet transport, identity verification, Microsoft/Xbox authentication, or a complete client session.
+The Java runtime now contains payload codecs for three packet types, bounded packet-batch framing, a compression envelope, and a frame-level coordinator for the initial server-side login handshake. This still does not implement NetherNet transport, identity verification, Microsoft/Xbox authentication, or a complete client session.
 
 | Packet | ID | Payload implemented | Status |
 |---|---:|---|---|
@@ -16,7 +16,7 @@ The payload is exactly four bytes: the client's protocol version as a big-endian
 
 ## NetworkSettingsPacket
 
-The payload is exactly ten bytes and uses little-endian fixed-width fields:
+The payload codec (`BedrockNetworkSettingsPacketCodec`, packet ID 143) reads and writes exactly ten bytes using little-endian fixed-width fields:
 
 1. Compression threshold: uint16.
 2. Compression algorithm: uint16 (ZLIB=0, SNAPPY=1, NONE=65535).
@@ -32,7 +32,7 @@ The implemented payload is the big-endian protocol version followed by a varuint
 
 ## Uncompressed packet batches
 
-The batch codec implements the raw, uncompressed Bedrock batch body. It does not add a RakNet 0xFE marker and does not implement the post-NetworkSettings compression algorithm byte.
+The batch codec implements the raw, uncompressed Bedrock batch body. It does not add a RakNet 0xFE marker. The separate compression envelope handles the post-NetworkSettings algorithm byte, raw DEFLATE, and uncompressed frames; Snappy remains unsupported.
 
 - A batch is a sequence of packets until the batch buffer is exhausted.
 - Each packet is prefixed by its byte length as varuint32. The length includes the packet header and payload, but not the length prefix.
@@ -42,9 +42,9 @@ The batch codec implements the raw, uncompressed Bedrock batch body. It does not
 
 The packet header and batch format are cross-checked against the Bedrock protocol documentation ecosystem and the PocketMine BedrockProtocol batch encoder/decoder implementation. These are framing-level implementation references, not proof of interoperability with protocol 2225 clients.
 
-## Initial server-side handshake state machine
+## Initial server-side handshake processor
 
-`BedrockSessionHandshake` coordinates decoded `RequestNetworkSettingsPacket` and `LoginPacket` payloads through these states:
+`BedrockInitialHandshakeProcessor` now joins the packet-batch decoder, compression envelope, packet payload codecs, and `BedrockSessionHandshake`. Given a complete incoming frame, it:
 
 1. `AWAITING_NETWORK_SETTINGS_REQUEST`
 2. `NETWORK_SETTINGS_PENDING` after an accepted protocol-2225 request
@@ -53,7 +53,7 @@ The packet header and batch format are cross-checked against the Bedrock protoco
 5. `PLAY` only after the host explicitly reports successful authentication
 6. `CLOSED` for unsupported protocol, Login protocol mismatch, or explicit close
 
-Out-of-order and repeated packets are rejected without advancing the state. The handshake is synchronized for safe state transitions across transport/authentication callbacks. It does not send packets, verify JWTs or signatures, contact Microsoft/Xbox services, or authenticate a player. The host must not call `markAuthenticated()` until those checks have genuinely succeeded.
+On a valid initial request it creates a NetworkSettings response frame (still uncompressed, as required before negotiation). The host must actually send that frame and only then call `markNetworkSettingsSent()`. The processor subsequently decodes Login frames using the negotiated compression setting and moves the session to `AUTHENTICATION_PENDING`. It rejects unexpected packet IDs, multi-packet handshake batches, nonzero sub-client routing, malformed frames, unsupported compression, and protocol mismatches. Snappy negotiation is blocked because its codec is not implemented. The processor does not open a transport, deliver the response, verify JWTs or signatures, contact Microsoft/Xbox services, or authenticate a player. The host must not call `markAuthenticated()` until those checks have genuinely succeeded.
 
 ## Verification boundary
 

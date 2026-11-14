@@ -54,7 +54,14 @@ public final class BedrockRuntimeBlockRegistryFile {
             Objects.requireNonNull(gameVersion, "gameVersion");
             Objects.requireNonNull(idMode, "idMode");
             Objects.requireNonNull(sha256, "sha256");
+            if (protocolVersion != PROTOCOL_VERSION || !GAME_VERSION.equals(gameVersion)) {
+                throw new IllegalArgumentException("Loaded block registry must target Bedrock 1.26.60 / protocol 2225");
+            }
+            if (!sha256.matches("(?i)[0-9a-f]{64}")) {
+                throw new IllegalArgumentException("Invalid registry SHA-256");
+            }
             entries = Map.copyOf(Objects.requireNonNull(entries, "entries"));
+            BedrockRuntimeBlockRegistry.of(entries);
         }
 
         public BedrockRuntimeBlockRegistry registry() {

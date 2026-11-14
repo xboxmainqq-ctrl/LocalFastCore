@@ -10,7 +10,7 @@ import java.util.Objects;
  * Assembles the serialized data string of a full Bedrock LevelChunk column.
  *
  * <p>The column layout is sections from the dimension's minimum section Y
- * through the highest section containing non-air blocks or non-default
+ * through the highest section containing non-air blocks, non-empty fluids or non-default
  * biome data, followed by the matching biome palettes, an empty border-block
  * list, and an empty block-entity NBT list. The field order follows the
  * documented full-column layout used by established Bedrock implementations;

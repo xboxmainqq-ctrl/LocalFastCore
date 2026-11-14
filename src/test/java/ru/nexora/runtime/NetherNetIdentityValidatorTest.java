@@ -65,6 +65,8 @@ class NetherNetIdentityValidatorTest {
         assertEquals("NexoraTester", identityResult.displayName());
         assertArrayEquals(clientKey.getPublic().getEncoded(),
                 identityResult.clientPublicKey().getEncoded());
+        assertEquals(NetherNetIdentityValidator.tokenSha256(token),
+                identityResult.gameServerTokenSha256());
     }
 
     private static String signedToken(KeyPair issuerKey, byte[] cpkSpki) throws Exception {

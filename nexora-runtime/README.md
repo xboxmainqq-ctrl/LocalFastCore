@@ -17,7 +17,9 @@ This module is the beginning of the independent NEXORA server process. It has **
 - Dedicated game loop driven by `System.nanoTime()`, with configurable tick rate, bounded catch-up, backlog dropping, clean thread shutdown, and failure reporting.
 - Protocol-independent world foundation: immutable block/chunk coordinates, configurable vertical world bounds, immutable namespaced block states, a sparse concurrent in-memory world, and immutable generated-chunk snapshots.
 - A deterministic flat-terrain chunk generator with validated world bounds, negative chunk-coordinate support, and a bounded generation depth.
+- Bounded asynchronous chunk generation with fixed worker count, a capped work queue, in-flight request deduplication, cancellation, and a bounded completion handoff for the game thread.
 - Atomic insertion of generated chunks into the in-memory world; duplicate loads do not overwrite live chunk data.
+- Generation workers produce immutable results only; world mutation is left to the game thread when it drains completed results.
 - Thread-safe `WorldRegistry` for multiple worlds, with duplicate-ID rejection, normalized lookup/removal, stable registration order, and immutable snapshots.
 - Immutable chunk and block snapshots exposed by the world contract.
 - `FileWorldStorage` saves a world's loaded chunks to a versioned `.nxw` file, verifies a CRC32C checksum on load, rejects unsafe world IDs and symbolic-link targets, and replaces files atomically when supported.
@@ -32,7 +34,7 @@ The current `.nxw` format is an internal NEXORA development format. It stores wo
 
 ## Important limitation
 
-This is a runtime foundation, not yet a playable Minecraft Bedrock server. It does not currently implement RakNet/Bedrock networking, Microsoft/Xbox authentication, packet codecs, Bedrock LevelDB storage, entities, inventory, or gameplay. Basic flat chunk generation and in-memory chunk insertion exist, but chunk streaming to clients and a production terrain generator are not implemented. The game loop currently drives the scheduler; full world simulation and network event processing still need to be integrated before NEXORA can accept real Bedrock clients.
+This is a runtime foundation, not yet a playable Minecraft Bedrock server. It does not currently implement RakNet/Bedrock networking, Microsoft/Xbox authentication, packet codecs, Bedrock LevelDB storage, entities, inventory, or gameplay. Basic flat chunk generation, bounded background generation, and in-memory chunk insertion exist, but chunk streaming to clients and a production terrain generator are not implemented. The game loop currently drives the scheduler; full world simulation and network event processing still need to be integrated before NEXORA can accept real Bedrock clients.
 
 ## Build
 

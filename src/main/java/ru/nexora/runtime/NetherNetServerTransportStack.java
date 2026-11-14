@@ -20,6 +20,9 @@ public final class NetherNetServerTransportStack implements RuntimeModule {
         this.peerHost = Objects.requireNonNull(peerHost, "peerHost");
         this.signalingServer = Objects.requireNonNull(signalingServer, "signalingServer");
         this.handshakeRouter = Objects.requireNonNull(handshakeRouter, "handshakeRouter");
+        if (!this.signalingServer.usesPeerHost(this.peerHost)) {
+            throw new IllegalArgumentException("Signaling server and transport stack must share one peer host");
+        }
         this.peerHost.setConnectionListener(handshakeRouter);
     }
 

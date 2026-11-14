@@ -60,14 +60,14 @@ public final class NexoraInventoryActionCodec {
         Objects.requireNonNull(action, "action");
         Objects.requireNonNull(result, "result");
         return ByteBuffer.allocate(9).order(ByteOrder.BIG_ENDIAN)
-                .put(MAGIC).put((byte) 1).put((byte) 1).put((byte) RESULT_TYPE)
+                .put(MAGIC).put((byte) NexoraPrivateProtocolCodec.MAJOR_VERSION).put((byte) NexoraPrivateProtocolCodec.MINOR_VERSION).put((byte) RESULT_TYPE)
                 .put((byte) action.wireId).put((byte) result.wireId).array();
     }
 
     public static byte[] encodeRequest(Action action, int sourceSlot, int targetSlot) {
         Request request = new Request(action, sourceSlot, targetSlot);
         return ByteBuffer.allocate(10).order(ByteOrder.BIG_ENDIAN)
-                .put(MAGIC).put((byte) 1).put((byte) 1).put((byte) ACTION_TYPE)
+                .put(MAGIC).put((byte) NexoraPrivateProtocolCodec.MAJOR_VERSION).put((byte) NexoraPrivateProtocolCodec.MINOR_VERSION).put((byte) ACTION_TYPE)
                 .put((byte) request.action().wireId)
                 .put((byte) request.sourceSlot()).put((byte) request.targetSlot()).array();
     }
@@ -77,7 +77,8 @@ public final class NexoraInventoryActionCodec {
         for (byte expected : MAGIC) {
             if (input.get() != expected) throw new IllegalArgumentException("Invalid NEXORA packet magic");
         }
-        if (Byte.toUnsignedInt(input.get()) != 1 || Byte.toUnsignedInt(input.get()) != 1
+        if (Byte.toUnsignedInt(input.get()) != NexoraPrivateProtocolCodec.MAJOR_VERSION
+                || Byte.toUnsignedInt(input.get()) != NexoraPrivateProtocolCodec.MINOR_VERSION
                 || Byte.toUnsignedInt(input.get()) != type) {
             throw new IllegalArgumentException("Unexpected inventory action packet");
         }

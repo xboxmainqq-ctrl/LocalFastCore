@@ -64,6 +64,17 @@ class NetherNetSdpDocumentTest {
     }
 
     @Test
+    void permitsMissingIdentityOnlyWhenExplicitlyConfigured() {
+        String sdp = "v=0\na=fingerprint:sha-256 AA:BB\nm=application 9 x";
+        assertThrows(IllegalArgumentException.class, () ->
+                NetherNetSdpDocument.parseOffer(sdp));
+        NetherNetSdpDocument parsed = NetherNetSdpDocument.parseOffer(
+                sdp, 256 * 1024, 16 * 1024, false);
+        assertNull(parsed.identityEnvelopeJson());
+        assertEquals(sdp, parsed.webRtcSdp());
+    }
+
+    @Test
     void rejectsIdentityWithoutFingerprint() {
         assertThrows(IllegalArgumentException.class, () ->
                 NetherNetSdpDocument.parseOffer("v=0\na=identity:" + IDENTITY));

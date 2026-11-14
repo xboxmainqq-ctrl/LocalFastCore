@@ -73,16 +73,10 @@ public record NetherNetIdentityAssertion(
 
         Map<String, String> envelope = readStringObject(document.identityEnvelopeJson(),
                 "identity envelope", "assertion");
-        String domain;
-        String protocol;
-        try {
-            Map<String, String> idp = readStringObject(readRawObjectField(
-                    document.identityEnvelopeJson(), "idp"), "identity provider", "domain", "protocol");
-            domain = required(idp, "domain");
-            protocol = required(idp, "protocol");
-        } catch (IOException e) {
-            throw invalid("Invalid identity provider object", e);
-        }
+        Map<String, String> idp = readObjectField(document.identityEnvelopeJson(),
+                "idp", "domain", "protocol");
+        String domain = required(idp, "domain");
+        String protocol = required(idp, "protocol");
 
         if (domain.isBlank() || domain.length() > 253 || containsControl(domain)) {
             throw new IllegalArgumentException("Identity provider domain is invalid");
@@ -122,7 +116,8 @@ public record NetherNetIdentityAssertion(
         }
     }
 
-    private static String readRawObjectField(String json, String field) throws IOException {
+    private static Map<String, String> readObjectField(String json, String objectField,
+                                                         String... wanted) {
         try (JsonParser parser = JSON.createParser(json)) {
             if (parser.nextToken() != JsonToken.START_OBJECT) {
                 throw new IllegalArgumentException("Identity envelope must be a JSON object");
@@ -130,15 +125,17 @@ public record NetherNetIdentityAssertion(
             while (parser.nextToken() == JsonToken.FIELD_NAME) {
                 String name = parser.currentName();
                 JsonToken value = parser.nextToken();
-                if (field.equals(name)) {
+                if (objectField.equals(name)) {
                     if (value != JsonToken.START_OBJECT) {
-                        throw new IllegalArgumentException("Identity provider must be a JSON object");
+                        throw new IllegalArgumentException(objectField + " must be a JSON object");
                     }
-                    return parser.readValueAsTree().toString();
+                    return readFields(parser, wanted);
                 }
                 parser.skipChildren();
             }
-            throw new IllegalArgumentException("Identity envelope is missing " + field);
+            throw new IllegalArgumentException("Identity envelope is missing " + objectField);
+        } catch (IOException e) {
+            throw invalid("Malformed identity provider JSON", e);
         }
     }
 

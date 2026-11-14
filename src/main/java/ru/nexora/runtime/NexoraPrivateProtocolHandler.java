@@ -107,8 +107,19 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 connection.setMessageListener(ignored -> connection.close());
             } else {
                 AtomicInteger requestedChunks = new AtomicInteger();
-                connection.setMessageListener(message ->
-                        handleChunkRequest(connection, message, worldInfo, requestedChunks));
+                NexoraMovementValidator movementValidator = new NexoraMovementValidator();
+                java.util.concurrent.atomic.AtomicReference<NexoraMovementValidator.Position> playerPosition =
+                        new java.util.concurrent.atomic.AtomicReference<>(
+                                new NexoraMovementValidator.Position(
+                                        worldInfo.spawnX() + 0.5, worldInfo.spawnY(),
+                                        worldInfo.spawnZ() + 0.5));
+                connection.setMessageListener(message -> {
+                    if (isMovementPacket(message.payload())) {
+                        handleMovement(connection, message, playerPosition, movementValidator);
+                    } else {
+                        handleChunkRequest(connection, message, worldInfo, requestedChunks);
+                    }
+                });
             }
             try {
                 readyListener.accept(connection);
@@ -116,6 +127,45 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 connection.close();
             }
         });
+    }
+
+    private void handleMovement(
+            TransportConnection connection, TransportMessage message,
+            java.util.concurrent.atomic.AtomicReference<NexoraMovementValidator.Position> playerPosition,
+            NexoraMovementValidator validator) {
+        if (!connection.isOpen()) return;
+        if (message.deliveryMode() != DeliveryMode.UNRELIABLE_UNORDERED
+                && message.deliveryMode() != DeliveryMode.RELIABLE_ORDERED) {
+            connection.close();
+            return;
+        }
+        try {
+            NexoraMovementValidator.Position requested =
+                    NexoraMovementPacketCodec.decodeClientMove(message.payload());
+            World world = Objects.requireNonNull(worldSupplier.get(), "world");
+            NexoraMovementValidator.Result result =
+                    validator.validate(world, playerPosition.get(), requested);
+            if (result.accepted()) {
+                playerPosition.set(result.position());
+            }
+            NexoraMovementValidator.Position authoritative = playerPosition.get();
+            if (send(connection, NexoraMovementPacketCodec.encodeServerPosition(authoritative))
+                    != TransportSendResult.ACCEPTED) {
+                connection.close();
+            }
+        } catch (RuntimeException malformedMovement) {
+            connection.close();
+        }
+    }
+
+    private static boolean isMovementPacket(ByteBuffer payload) {
+        ByteBuffer input = payload.slice();
+        return input.remaining() >= 7
+                && input.get(input.position()) == 'N'
+                && input.get(input.position() + 1) == 'X'
+                && input.get(input.position() + 2) == 'R'
+                && input.get(input.position() + 3) == 'A'
+                && Byte.toUnsignedInt(input.get(input.position() + 6)) == 7;
     }
 
     private void handleChunkRequest(TransportConnection connection, TransportMessage message,

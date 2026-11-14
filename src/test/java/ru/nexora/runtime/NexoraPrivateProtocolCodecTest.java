@@ -54,6 +54,17 @@ class NexoraPrivateProtocolCodecTest {
     }
 
     @Test
+    void worldInfoRoundTripsSpawnHeightAndRuntimeCounts() {
+        NexoraWorldInfo expected = new NexoraWorldInfo(
+                "world", -64, 320, 0, 65, 0, 20, 1);
+        byte[] encoded = NexoraPrivateProtocolCodec.encodeWorldInfo(expected);
+        NexoraWorldInfo decoded =
+                NexoraPrivateProtocolCodec.decodeWorldInfo(ByteBuffer.wrap(encoded));
+
+        assertEquals(expected, decoded);
+    }
+
+    @Test
     void rejectsTruncatedAndOversizedMessages() {
         assertThrows(IllegalArgumentException.class,
                 () -> NexoraPrivateProtocolCodec.decodeClientHello(ByteBuffer.wrap(new byte[] {1, 2})));

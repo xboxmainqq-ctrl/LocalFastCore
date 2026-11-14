@@ -23,6 +23,7 @@ public final class BedrockWorldStartupHandler
     private final int dimension;
     private final int clientRequestSubChunkLimit;
     private final List<ChunkPosition> initialChunks;
+    private final BedrockRuntimeBlockRegistryFile.Loaded blockRegistryProfile;
     private final BiFunction<TransportConnection, BedrockAuthenticatedPlayer,
             BedrockStartGamePacketCodec.Settings> settingsFactory;
 
@@ -32,6 +33,7 @@ public final class BedrockWorldStartupHandler
             int dimension,
             int clientRequestSubChunkLimit,
             List<ChunkPosition> initialChunks,
+            BedrockRuntimeBlockRegistryFile.Loaded blockRegistryProfile,
             BiFunction<TransportConnection, BedrockAuthenticatedPlayer,
                     BedrockStartGamePacketCodec.Settings> settingsFactory
     ) {
@@ -46,6 +48,7 @@ public final class BedrockWorldStartupHandler
         this.dimension = dimension;
         this.clientRequestSubChunkLimit = clientRequestSubChunkLimit;
         this.initialChunks = List.copyOf(Objects.requireNonNull(initialChunks, "initialChunks"));
+        this.blockRegistryProfile = Objects.requireNonNull(blockRegistryProfile, "blockRegistryProfile");
         if (this.initialChunks.isEmpty() || this.initialChunks.size() > MAX_INITIAL_CHUNKS) {
             throw new IllegalArgumentException("Initial chunk count must be between 1 and 128");
         }
@@ -83,6 +86,7 @@ public final class BedrockWorldStartupHandler
             if (startSettings.levelSettings().dimension() != dimension) {
                 throw new IllegalArgumentException("StartGame dimension does not match startup dimension");
             }
+            blockRegistryProfile.validateStartGameSettings(startSettings);
 
             List<BedrockGamePacket> packets = new ArrayList<>(initialChunks.size() + 1);
             packets.add(BedrockStartGamePacketCodec.encodePacket(startSettings));

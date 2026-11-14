@@ -182,6 +182,12 @@ public final class NetherNetAndroidClient implements AutoCloseable {
 
             @Override
             public void onIceGatheringChange(PeerConnection.IceGatheringState state) {
+                if (state == PeerConnection.IceGatheringState.COMPLETE) {
+                    CompletableFuture<Void> waiting = iceGatheringFuture;
+                    if (waiting != null) {
+                        waiting.complete(null);
+                    }
+                }
             }
 
             @Override
@@ -263,6 +269,7 @@ public final class NetherNetAndroidClient implements AutoCloseable {
 
         CompletableFuture<Void> localSet = new CompletableFuture<>();
         CompletableFuture<Void> iceComplete = new CompletableFuture<>();
+        iceGatheringFuture = iceComplete;
         peer.setLocalDescription(new SdpObserver() {
             @Override
             public void onCreateSuccess(SessionDescription description) {
@@ -287,11 +294,10 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         // in case gathering completed before this waiter was created.
         if (peer.iceGatheringState() == PeerConnection.IceGatheringState.COMPLETE) {
             iceComplete.complete(null);
-        } else {
-            iceGatheringFuture = iceComplete;
         }
         localSet.get(10, TimeUnit.SECONDS);
         iceComplete.get(30, TimeUnit.SECONDS);
+        iceGatheringFuture = null;
         SessionDescription local = peer.getLocalDescription();
         if (local == null || local.description == null || local.description.isEmpty()) {
             throw new IllegalStateException("WebRTC не вернул полный SDP offer");
@@ -380,6 +386,10 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         synchronized (fragmentLock) {
             if (reliableAssembly == null) {
                 if (remaining == 0) {
+                    if (payload.length > MAX_MESSAGE_BYTES) {
+                        reportError("NetherNet message exceeds the configured limit");
+                        return;
+                    }
                     complete = payload;
                 } else {
                     if (remaining + 1 > MAX_FRAGMENTS || payload.length > MAX_MESSAGE_BYTES) {
@@ -435,6 +445,8 @@ public final class NetherNetAndroidClient implements AutoCloseable {
             System.arraycopy(payload, offset, frame, 1, count);
             offset += count;
             if (!reliableChannel.send(new DataChannel.Buffer(ByteBuffer.wrap(frame), true))) {
+                reportError("Не удалось отправить reliable NetherNet frame");
+                executor.execute(this::closePeerConnection);
                 return false;
             }
         }
@@ -448,7 +460,11 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         }
         byte[] frame = new byte[payload.length + 1];
         System.arraycopy(payload, 0, frame, 1, payload.length);
-        return unreliableChannel.send(new DataChannel.Buffer(ByteBuffer.wrap(frame), true));
+        boolean accepted = unreliableChannel.send(new DataChannel.Buffer(ByteBuffer.wrap(frame), true));
+        if (!accepted) {
+            reportError("Не удалось отправить unreliable NetherNet frame");
+        }
+        return accepted;
     }
 
     public boolean isConnected() {

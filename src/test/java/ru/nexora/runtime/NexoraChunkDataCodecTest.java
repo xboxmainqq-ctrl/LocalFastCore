@@ -19,39 +19,48 @@ class NexoraChunkDataCodecTest {
     }
 
     @Test
-    void chunkDataRoundTripsSparseSurfaceColumns() {
+    void chunkVolumeRoundTripsThreeDimensionalBlocks() {
         NexoraChunkData expected = new NexoraChunkData(3, -4, List.of(
-                new NexoraChunkData.Column(0, 64, "minecraft:grass_block"),
-                new NexoraChunkData.Column(255, 70, "minecraft:stone")));
+                new NexoraChunkData.Block(0, 60, 0, "minecraft:bedrock"),
+                new NexoraChunkData.Block(0, 64, 0, "minecraft:grass_block"),
+                new NexoraChunkData.Block(15, 63, 15, "minecraft:stone")));
         assertEquals(expected, NexoraChunkDataCodec.decodeChunkData(
                 ByteBuffer.wrap(NexoraChunkDataCodec.encodeChunkData(expected))));
     }
 
     @Test
-    void topSurfaceUsesHighestNonAirBlockInEachColumn() {
+    void volumeIncludesEveryNonAirLayerInLoadedChunk() {
         InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
-        world.setBlock(new BlockPosition(0, 60, 0), new BlockState("minecraft:dirt"));
+        world.setBlock(new BlockPosition(0, 60, 0), new BlockState("minecraft:bedrock"));
+        world.setBlock(new BlockPosition(0, 63, 0), new BlockState("minecraft:dirt"));
         world.setBlock(new BlockPosition(0, 64, 0), new BlockState("minecraft:grass_block"));
         world.setBlock(new BlockPosition(1, 63, 0), new BlockState("minecraft:stone"));
 
-        NexoraChunkData chunk = NexoraChunkData.topSurface(world, 0, 0);
+        NexoraChunkData chunk = NexoraChunkData.volume(world, 0, 0);
 
-        assertEquals(2, chunk.columns().size());
-        assertEquals(new NexoraChunkData.Column(0, 64, "minecraft:grass_block"),
-                chunk.columns().get(0));
-        assertEquals(new NexoraChunkData.Column(1, 63, "minecraft:stone"),
-                chunk.columns().get(1));
+        assertEquals(4, chunk.blocks().size());
+        assertEquals(new NexoraChunkData.Block(0, 60, 0, "minecraft:bedrock"),
+                chunk.blocks().get(0));
+        assertEquals(new NexoraChunkData.Block(0, 64, 0, "minecraft:grass_block"),
+                chunk.blocks().get(2));
     }
 
     @Test
-    void rejectsDuplicateColumnsAndTrailingBytes() {
+    void rejectsDuplicateBlocksAndTrailingBytes() {
         assertThrows(IllegalArgumentException.class, () -> new NexoraChunkData(0, 0, List.of(
-                new NexoraChunkData.Column(1, 2, "minecraft:stone"),
-                new NexoraChunkData.Column(1, 3, "minecraft:dirt"))));
-        byte[] encoded = NexoraChunkDataCodec.encodeChunkData(
-                new NexoraChunkData(0, 0, List.of()));
+                new NexoraChunkData.Block(1, 2, 3, "minecraft:stone"),
+                new NexoraChunkData.Block(1, 2, 3, "minecraft:dirt"))));
+        byte[] encoded = NexoraChunkDataCodec.encodeChunkData(new NexoraChunkData(0, 0, List.of()));
         byte[] trailing = java.util.Arrays.copyOf(encoded, encoded.length + 1);
         assertThrows(IllegalArgumentException.class,
                 () -> NexoraChunkDataCodec.decodeChunkData(ByteBuffer.wrap(trailing)));
+    }
+
+    @Test
+    void rejectsMoreThanMaximumBlocks() {
+        assertThrows(IllegalArgumentException.class, () ->
+                new NexoraChunkData(0, 0, java.util.Collections.nCopies(
+                        NexoraChunkData.MAX_BLOCKS + 1,
+                        new NexoraChunkData.Block(0, 1, 0, "minecraft:stone"))));
     }
 }

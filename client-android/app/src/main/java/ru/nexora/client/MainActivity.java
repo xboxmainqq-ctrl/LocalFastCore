@@ -35,6 +35,8 @@ public final class MainActivity extends Activity {
     private Button connectButton;
     private NetherNetAndroidClient netherNetClient;
     private ChunkPreviewView chunkPreview;
+    private Button cameraModeButton;
+    private boolean firstPersonCamera;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -113,6 +115,15 @@ public final class MainActivity extends Activity {
         chunkPreview.setVisibility(View.GONE);
         page.addView(chunkPreview, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(300)));
+        addSpace(page, 8);
+        cameraModeButton = button("ВИД: СВОБОДНАЯ КАМЕРА");
+        page.addView(cameraModeButton, matchWrap());
+        cameraModeButton.setOnClickListener(view -> {
+            firstPersonCamera = !firstPersonCamera;
+            chunkPreview.setFirstPersonMode(firstPersonCamera);
+            cameraModeButton.setText(firstPersonCamera
+                    ? "ВИД: ОТ ПЕРВОГО ЛИЦА" : "ВИД: СВОБОДНАЯ КАМЕРА");
+        });
         addSpace(page, 6);
         page.addView(text("Проведи пальцем — повернуть камеру • двумя пальцами — приблизить или отдалить",
                 12, MUTED, false), matchWrap());
@@ -126,7 +137,7 @@ public final class MainActivity extends Activity {
         addSpace(infoCard, 8);
         infoCard.addView(text("Внутренний протокол NEXORA v1", 13, MUTED, false), matchWrap());
         addSpace(infoCard, 8);
-        infoCard.addView(text("Режим: перспективный 3D-просмотр • разработка", 13, MUTED, false), matchWrap());
+        infoCard.addView(text("Режим: перспективный 3D-рендер • прототип камеры", 13, MUTED, false), matchWrap());
 
         addSpace(page, 26);
         TextView footer = text("СОЗДАЁМ СВОЙ МИР", 11, MUTED, true);

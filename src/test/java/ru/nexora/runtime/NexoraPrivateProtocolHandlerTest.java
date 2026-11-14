@@ -207,9 +207,9 @@ class NexoraPrivateProtocolHandlerTest {
         FakeConnection second = new FakeConnection();
 
         handler.accept(first);
-        first.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
+        first.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev", "Первый", 2));
         handler.accept(second);
-        second.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
+        second.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev", "Второй", 4));
 
         assertEquals(4, first.sentMessages.size());
         assertEquals(4, second.sentMessages.size());
@@ -218,6 +218,8 @@ class NexoraPrivateProtocolHandlerTest {
         NexoraPlayerSyncCodec.PlayerState secondSeenByFirst =
                 NexoraPlayerSyncCodec.decodePlayerState(ByteBuffer.wrap(first.sentMessages.get(3)));
         assertNotEquals(firstSeenBySecond.playerId(), secondSeenByFirst.playerId());
+        assertEquals(2, firstSeenBySecond.skinIndex());
+        assertEquals(4, secondSeenByFirst.skinIndex());
 
         first.deliver(NexoraMovementPacketCodec.encodeClientMove(
                 new NexoraMovementValidator.Position(0.7, 65.0, 0.5)));

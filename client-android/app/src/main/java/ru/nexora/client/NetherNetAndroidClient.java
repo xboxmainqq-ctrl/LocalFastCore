@@ -476,7 +476,7 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         if (complete != null) {
             if (!networkSettingsReceived) {
                 try {
-                    NetworkSettings settings = BedrockAndroidPacketCodec.decodeNetworkSettings(complete);
+                    BedrockAndroidNetworkSettings settings = BedrockAndroidPacketCodec.decodeNetworkSettings(complete);
                     networkSettings = settings;
                     networkSettingsReceived = true;
                     Listener current = listener;
@@ -719,34 +719,11 @@ public final class NetherNetAndroidClient implements AutoCloseable {
 
         void onError(String message);
 
-        default void onNetworkSettingsReceived(NetworkSettings settings) {
+        default void onNetworkSettingsReceived(BedrockAndroidNetworkSettings settings) {
         }
 
         default void onMessage(byte[] payload, boolean reliable) {
         }
     }
 
-    public static final class NetworkSettings {
-        private final int compressionThreshold;
-        private final int compressionAlgorithm;
-        private final boolean clientThrottleEnabled;
-        private final int clientThrottleThreshold;
-        private final float clientThrottleScalar;
-
-        NetworkSettings(int compressionThreshold, int compressionAlgorithm,
-                                boolean clientThrottleEnabled, int clientThrottleThreshold,
-                                float clientThrottleScalar) {
-            this.compressionThreshold = compressionThreshold;
-            this.compressionAlgorithm = compressionAlgorithm;
-            this.clientThrottleEnabled = clientThrottleEnabled;
-            this.clientThrottleThreshold = clientThrottleThreshold;
-            this.clientThrottleScalar = clientThrottleScalar;
-        }
-
-        public int compressionThreshold() { return compressionThreshold; }
-        public int compressionAlgorithm() { return compressionAlgorithm; }
-        public boolean clientThrottleEnabled() { return clientThrottleEnabled; }
-        public int clientThrottleThreshold() { return clientThrottleThreshold; }
-        public float clientThrottleScalar() { return clientThrottleScalar; }
-    }
 }

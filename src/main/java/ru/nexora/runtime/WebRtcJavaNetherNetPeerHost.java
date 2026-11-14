@@ -349,6 +349,9 @@ public final class WebRtcJavaNetherNetPeerHost
                 return;
             }
             try {
+                if (framed.remaining() > MAX_FRAME_BYTES) {
+                    throw new IllegalArgumentException("NetherNet frame exceeds configured byte limit");
+                }
                 if (channel == reliableChannel) {
                     Optional<ByteBuffer> complete;
                     synchronized (reliableAssembler) {

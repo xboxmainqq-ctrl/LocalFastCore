@@ -60,9 +60,9 @@ final class ChunkPreviewView extends GLSurfaceView {
 
     void setPlayerSpawn(int worldX, int worldY, int worldZ) {
         queueEvent(() -> renderer.setPlayerSpawn(
-                worldX - centerChunkX * 16 + 16,
+                worldX - centerChunkX * 16 + 16 + 0.5f,
                 worldY,
-                worldZ - centerChunkZ * 16 + 16));
+                worldZ - centerChunkZ * 16 + 16 + 0.5f));
         requestRender();
     }
 

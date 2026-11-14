@@ -23,7 +23,7 @@ class EntityTickEngineTest {
 
         WorldEntity item = entities.find(itemId).orElseThrow();
         assertEquals(64.0, item.y(), 0.0001);
-        assertEquals(0, engine.tick() .despawnedItems());
+        assertEquals(0, engine.tick().despawnedItems());
     }
 
     @Test
@@ -82,6 +82,27 @@ class EntityTickEngineTest {
 
         assertEquals(32.5, entities.find(mobId).orElseThrow().x(), 0.0001);
         assertEquals(70, entities.find(itemId).orElseThrow().y(), 0.0001);
+    }
+
+    @Test
+    void moduleRunsSimulationOnSharedServerTicksAndStopsCleanly() {
+        InMemoryWorld world = new InMemoryWorld("overworld", new WorldHeight(0, 128));
+        world.setBlock(new BlockPosition(0, 63, 0), new BlockState("minecraft:stone"));
+        EntityRegistry entities = new EntityRegistry();
+        entities.spawn(new WorldEntity(UUID.randomUUID(), WorldEntity.Type.ITEM,
+                "Dropped item", 0.5, 70, 0.5, 0, -1));
+        EntityTickEngine engine = new EntityTickEngine(entities, world);
+        TickScheduler scheduler = new TickScheduler();
+        EntitySimulationModule module = new EntitySimulationModule(scheduler, engine);
+
+        module.start();
+        scheduler.tick();
+        scheduler.tick();
+        assertEquals(2, engine.currentTick());
+
+        module.stop();
+        scheduler.tick();
+        assertEquals(2, engine.currentTick());
     }
 
     @Test

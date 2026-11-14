@@ -110,6 +110,108 @@ public final class BedrockAndroidPacketCodec {
         return bytes(encodeAfterNetworkSettings(batch, settings));
     }
 
+    /** Validates the empty-pack ResourcePacksInfo variant used by NEXORA. */
+    public static void decodeEmptyResourcePacksInfo(byte[] payloadBytes) {
+        ByteBuffer payload = ByteBuffer.wrap(payloadBytes);
+        boolean forced = readBoolean(payload);
+        boolean hasAddonPacks = readBoolean(payload);
+        boolean scriptingEnabled = readBoolean(payload);
+        boolean vibrantVisualsForceDisabled = readBoolean(payload);
+        if (forced || hasAddonPacks || scriptingEnabled || vibrantVisualsForceDisabled) {
+            throw new UnsupportedOperationException("This client build only negotiates empty vanilla resource packs");
+        }
+        if (payload.remaining() < 16) {
+            throw new IllegalArgumentException("Truncated ResourcePacksInfo world-template UUID");
+        }
+        payload.position(payload.position() + 16);
+        readUtf8String(payload, 32); // world template version
+        int packCount = readVarUInt32(payload);
+        if (packCount != 0) {
+            throw new UnsupportedOperationException("Non-empty resource packs are not implemented yet");
+        }
+        if (payload.hasRemaining()) {
+            throw new IllegalArgumentException("Trailing ResourcePacksInfo payload bytes");
+        }
+    }
+
+    /** Validates the empty-pack ResourcePackStack variant used by NEXORA. */
+    public static void decodeEmptyResourcePackStack(byte[] payloadBytes) {
+        ByteBuffer payload = ByteBuffer.wrap(payloadBytes);
+        boolean forced = readBoolean(payload);
+        int packCount = readVarUInt32(payload);
+        if (forced || packCount != 0) {
+            throw new UnsupportedOperationException("This client build only supports an empty resource-pack stack");
+        }
+        readUtf8String(payload, 32); // game version
+        int experimentCount = readVarUInt32(payload);
+        if (experimentCount != 0) {
+            throw new UnsupportedOperationException("Experiments are not implemented in the Android client");
+        }
+        boolean experimentsPreviouslyToggled = readBoolean(payload);
+        boolean hasEditorPacks = readBoolean(payload);
+        if (experimentsPreviouslyToggled || hasEditorPacks || payload.hasRemaining()) {
+            throw new IllegalArgumentException("Unsupported or trailing ResourcePackStack fields");
+        }
+    }
+
+    /** Encodes HAVE_ALL_PACKS or COMPLETED response for an empty server pack set. */
+    public static byte[] encodeResourcePackClientResponse(
+            BedrockAndroidResourcePackStatus status, BedrockAndroidNetworkSettings settings) {
+        if (status != BedrockAndroidResourcePackStatus.HAVE_ALL_PACKS
+                && status != BedrockAndroidResourcePackStatus.COMPLETED) {
+            throw new IllegalArgumentException("Only empty-pack HAVE_ALL_PACKS and COMPLETED responses are supported");
+        }
+        String statusName = status == BedrockAndroidResourcePackStatus.HAVE_ALL_PACKS
+                ? "downloadingfinished" : "resourcepackstackfinished";
+        ByteBuffer payload = ByteBuffer.allocate(64);
+        writeVarUInt32(payload, status.wireValue());
+        writeUtf8String(payload, statusName);
+        payload.flip();
+
+        int packetLength = varUInt32Size(8) + payload.remaining();
+        ByteBuffer batch = ByteBuffer.allocate(varUInt32Size(packetLength) + packetLength);
+        writeVarUInt32(batch, packetLength);
+        writeVarUInt32(batch, 8); // ResourcePackClientResponse packet ID
+        batch.put(payload);
+        batch.flip();
+        return bytes(encodeAfterNetworkSettings(batch, settings));
+    }
+
+    private static boolean readBoolean(ByteBuffer input) {
+        if (!input.hasRemaining()) {
+            throw new IllegalArgumentException("Truncated Bedrock boolean");
+        }
+        int value = Byte.toUnsignedInt(input.get());
+        if (value > 1) {
+            throw new IllegalArgumentException("Bedrock boolean must be zero or one");
+        }
+        return value != 0;
+    }
+
+    private static String readUtf8String(ByteBuffer input, int maxBytes) {
+        int length = readVarUInt32(input);
+        if (length < 0 || length > maxBytes || length > input.remaining()) {
+            throw new IllegalArgumentException("Bedrock string length is invalid");
+        }
+        ByteBuffer bytes = input.slice();
+        bytes.limit(length);
+        input.position(input.position() + length);
+        try {
+            return StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                    .decode(bytes).toString();
+        } catch (java.nio.charset.CharacterCodingException invalid) {
+            throw new IllegalArgumentException("Bedrock string is not valid UTF-8", invalid);
+        }
+    }
+
+    private static void writeUtf8String(ByteBuffer output, String value) {
+        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+        writeVarUInt32(output, bytes.length);
+        output.put(bytes);
+    }
+
     /** Decompresses and decodes one post-NetworkSettings server batch. */
     public static List<BedrockAndroidServerPacket> decodeServerBatch(
             byte[] envelope, BedrockAndroidNetworkSettings settings) {

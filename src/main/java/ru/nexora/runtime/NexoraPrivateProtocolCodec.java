@@ -15,7 +15,7 @@ import java.util.UUID;
  */
 public final class NexoraPrivateProtocolCodec {
     public static final int MAJOR_VERSION = 1;
-    public static final int MINOR_VERSION = 0;
+    public static final int MINOR_VERSION = 1;
     public static final int MAX_MESSAGE_BYTES = 1024;
     private static final byte[] MAGIC = {'N', 'X', 'R', 'A'};
     private static final int TYPE_CLIENT_HELLO = 1;
@@ -27,15 +27,20 @@ public final class NexoraPrivateProtocolCodec {
     }
 
     public static byte[] encodeClientHello(String clientBuild) {
-        return encodeClientHello(clientBuild, "Игрок");
+        return encodeClientHello(clientBuild, "Игрок", 0);
     }
 
     public static byte[] encodeClientHello(String clientBuild, String playerName) {
+        return encodeClientHello(clientBuild, playerName, 0);
+    }
+
+    public static byte[] encodeClientHello(String clientBuild, String playerName, int skinIndex) {
         byte[] build = encodeText(clientBuild, 64, "clientBuild");
         byte[] name = encodeText(playerName, 48, "playerName");
         if (playerName.length() > 16 || playerName.isBlank()) throw new IllegalArgumentException("Invalid player name");
-        ByteBuffer output = header(TYPE_CLIENT_HELLO, 2 + build.length + name.length);
-        output.put((byte) build.length).put(build).put((byte) name.length).put(name);
+        if (skinIndex < 0 || skinIndex > 4) throw new IllegalArgumentException("Invalid player skin");
+        ByteBuffer output = header(TYPE_CLIENT_HELLO, 3 + build.length + name.length);
+        output.put((byte) build.length).put(build).put((byte) name.length).put(name).put((byte) skinIndex);
         return output.array();
     }
 
@@ -45,11 +50,13 @@ public final class NexoraPrivateProtocolCodec {
         if (length < 1 || length > 64 || input.remaining() < length + 1) throw new IllegalArgumentException("Invalid NEXORA client build length");
         String build = decodeText(input, length);
         int nameLength = Byte.toUnsignedInt(readByte(input, "player name length"));
-        if (nameLength < 1 || nameLength > 48 || input.remaining() != nameLength) throw new IllegalArgumentException("Invalid NEXORA player name length");
+        if (nameLength < 1 || nameLength > 48 || input.remaining() != nameLength + 1) throw new IllegalArgumentException("Invalid NEXORA player name length");
         String playerName = decodeText(input, nameLength);
         if (playerName.isBlank() || playerName.length() > 16 || !playerName.equals(playerName.trim())) throw new IllegalArgumentException("Invalid NEXORA player name");
+        int skinIndex = Byte.toUnsignedInt(input.get());
+        if (skinIndex > 4) throw new IllegalArgumentException("Invalid NEXORA player skin");
         return new ClientHello(Byte.toUnsignedInt(sourceVersionMajor(source)),
-                Byte.toUnsignedInt(sourceVersionMinor(source)), build, playerName);
+                Byte.toUnsignedInt(sourceVersionMinor(source)), build, playerName, skinIndex);
     }
 
     public static byte[] encodeServerHello(UUID serverId, int maxMessageBytes) {
@@ -221,7 +228,7 @@ public final class NexoraPrivateProtocolCodec {
         }
     }
 
-    public record ClientHello(int majorVersion, int minorVersion, String clientBuild, String playerName) {
+    public record ClientHello(int majorVersion, int minorVersion, String clientBuild, String playerName, int skinIndex) {
         public ClientHello {
             Objects.requireNonNull(clientBuild, "clientBuild");
             Objects.requireNonNull(playerName, "playerName");

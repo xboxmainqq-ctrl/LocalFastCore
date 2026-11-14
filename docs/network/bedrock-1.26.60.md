@@ -271,7 +271,7 @@ The terrain serialization milestone now includes four standalone components:
 - `BedrockSubChunkTerrainCodec` emits a version-9 subchunk header, one block-storage layer, and its network palette. The current profile has no fluid layer or block actors.
 - `BedrockSubChunkPacketCodec` emits packet 174 with cache disabled, relative signed-byte offsets, protocol-2225 result values, binary length-prefixed subchunk data, and explicit `NoData` heightmap markers. It uses the 1.26.60 enum values: Success=1, LevelChunkDoesntExist=2, WrongDimension=3, PlayerDoesntExist=4, IndexOutOfBounds=5, SuccessAllAir=6.
 
-`BedrockSubChunkResponseBuilder` now resolves request offsets against the center position, checks player dimension, loaded chunk presence, and world section bounds, then serializes the corresponding loaded section. Empty sections return `SuccessAllAir`; missing chunks and invalid section Y values return their protocol result codes. Large requests are split into batches of at most 64 entries, and each chunk snapshot is reused within the request.
+`BedrockSubChunkResponseBuilder` now resolves request offsets against the center position, checks player dimension, loaded chunk presence, and world section bounds, then serializes the corresponding loaded section. Empty sections return `SuccessAllAir`; missing chunks and invalid section Y values return their protocol result codes. Each request is capped at 64 offsets, each response packet at 64 entries, and each chunk snapshot is reused within the request.
 
 **Remaining integration and protocol limits:** the exact 1.26.60 runtime block-ID table is not yet bundled or loaded; no live request handler currently sends these packets through the authenticated transport; the initial subchunk blob contains one block layer only and does not yet include fluid storage, biome palette data, block entities, or computed heightmaps. The packet codec marks both heightmap variants `NoData`, so this is not yet a complete production terrain stream. The LevelChunk skeleton and SubChunk response flow still require a real client test.
 
@@ -283,3 +283,31 @@ Protocol references:
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/types/sub-chunk-heightmap-data/
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/types/sub-chunk-pos-offset/
 - https://mojang.github.io/bedrock-protocol-docs/guides/sub-chunk-request-system-v1-18-10/
+### SubChunkRequest transport handler
+
+`BedrockSubChunkRequestHandler` can now be supplied as the router's post-login/play message handler (or composed ahead of an existing gameplay handler). It:
+
+- Decodes the negotiated Bedrock compression envelope and packet batch.
+- Routes batches containing only packet 175 to the subchunk request parser and world response builder.
+- Delegates unrelated gameplay batches unchanged to the configured fallback handler.
+- Requires reliable-ordered delivery for subchunk requests and zero sub-client IDs.
+- Sends packet 174 responses as compressed reliable-ordered batches and closes on malformed requests, invalid routing, or transport backpressure.
+- Caps each client request at 64 subchunk offsets and processes at most 16 request packets per inbound message to bound CPU, memory, and outbound queue pressure.
+
+Example composition after resource-pack/world startup is configured:
+
+```java
+BedrockSubChunkRequestHandler subchunks = new BedrockSubChunkRequestHandler(
+    networkSettings, overworld, connection -> 0, bedrockRuntimeBlockRegistry,
+    existingPlayMessageHandler
+);
+BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
+    networkSettings, loginAuthenticator, postLogin, subchunks
+);
+postLogin.attachTo(router);
+```
+
+The example assumes the registry has already been loaded from the matching 1.26.60 runtime palette and that the connection is assigned to the shown dimension/world. The handler is implemented but is not yet installed by a production server composition root. A real Android Bedrock client test remains required.
+
+Additional reference:
+- https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/sub-chunk-request-packet/

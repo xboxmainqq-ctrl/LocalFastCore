@@ -78,6 +78,7 @@ public final class NetherNetAndroidClient implements AutoCloseable {
     private int expectedFragments;
     private long reliableAssemblyStartedNanos;
     private volatile boolean networkSettingsReceived;
+    private volatile boolean nexoraProtocolReady;
 
     public NetherNetAndroidClient(Context context) {
         appContext = context.getApplicationContext();
@@ -389,12 +390,13 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                         && b.state() == DataChannel.State.OPEN
                         && connectedNotified.compareAndSet(false, true)) {
                     mainHandler.post(() -> listener.onConnected());
-                    if (!sendNetworkSettingsRequest()) {
-                        reportError("Не удалось отправить RequestNetworkSettings");
+                    if (!sendNexoraClientHello()) {
+                        reportError("Не удалось отправить NEXORA ClientHello");
                     } else {
+                        reportStatus("NetherNet открыт • согласуем протокол NEXORA...");
                         mainHandler.postDelayed(() -> {
-                            if (!closed.get() && !networkSettingsReceived) {
-                                reportError("Тайм-аут ожидания Bedrock NetworkSettings");
+                            if (!closed.get() && !nexoraProtocolReady) {
+                                reportError("Тайм-аут рукопожатия NEXORA");
                             }
                         }, 15_000L);
                     }
@@ -476,20 +478,32 @@ public final class NetherNetAndroidClient implements AutoCloseable {
             }
         }
         if (complete != null) {
-            if (!networkSettingsReceived) {
+            if (!nexoraProtocolReady) {
                 try {
-                    BedrockAndroidNetworkSettings settings = BedrockAndroidPacketCodec.decodeNetworkSettings(complete);
-                    networkSettings = settings;
-                    networkSettingsReceived = true;
+                    NexoraAndroidProtocolCodec.ServerResponse response =
+                            NexoraAndroidProtocolCodec.decodeServerResponse(complete);
+                    if (!response.accepted()) {
+                        reportError("Сервер отклонил протокол NEXORA (" + response.rejectionCode()
+                                + "): " + response.rejectionReason());
+                        return;
+                    }
+                    nexoraProtocolReady = true;
                     Listener current = listener;
                     if (current != null) {
-                        mainHandler.post(() -> current.onNetworkSettingsReceived(settings));
+                        mainHandler.post(() -> current.onNexoraReady(
+                                response.serverId(), response.maxMessageBytes()));
                     }
+                    reportStatus("Протокол NEXORA " + NexoraAndroidProtocolCodec.MAJOR_VERSION
+                            + "." + NexoraAndroidProtocolCodec.MINOR_VERSION + " согласован");
                     return;
                 } catch (RuntimeException malformed) {
-                    reportError("Некорректный NetworkSettings пакет: " + malformed.getMessage());
+                    reportError("Некорректный ответ протокола NEXORA: " + malformed.getMessage());
                     return;
                 }
+            }
+            if (!networkSettingsReceived) {
+                reportError("Сервер прислал сообщение до реализации следующего этапа NEXORA");
+                return;
             }
             deliverBedrockBatch(complete, true);
         }
@@ -526,6 +540,10 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         } catch (RuntimeException malformed) {
             reportError("Некорректный Bedrock server batch: " + malformed.getMessage());
         }
+    }
+
+    private boolean sendNexoraClientHello() {
+        return sendReliable(NexoraAndroidProtocolCodec.encodeClientHello("android-0.1.0-dev"));
     }
 
     private boolean sendNetworkSettingsRequest() {
@@ -757,6 +775,9 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         void onConnected();
 
         void onError(String message);
+
+        default void onNexoraReady(String serverId, int maxMessageBytes) {
+        }
 
         default void onNetworkSettingsReceived(BedrockAndroidNetworkSettings settings) {
         }

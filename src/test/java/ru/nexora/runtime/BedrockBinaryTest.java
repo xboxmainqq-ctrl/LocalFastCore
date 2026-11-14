@@ -3,6 +3,7 @@ package ru.nexora.runtime;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -37,6 +38,15 @@ class BedrockBinaryTest {
         BedrockBinary.writeBigEndianInt32(buffer, 2225);
         buffer.flip();
         assertEquals(2225, BedrockBinary.readBigEndianInt32(buffer));
+    }
+
+    @Test
+    void bigEndianInt32IgnoresBufferByteOrder() {
+        ByteBuffer buffer = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN);
+        BedrockBinary.writeBigEndianInt32(buffer, 0x01020304);
+        assertArrayEquals(new byte[] {1, 2, 3, 4}, buffer.array());
+        buffer.flip();
+        assertEquals(0x01020304, BedrockBinary.readBigEndianInt32(buffer));
     }
 
     @Test

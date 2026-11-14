@@ -76,11 +76,11 @@ public final class NetherNetGameServerTokenVerifier {
         verifyParsedFieldsMatchSignedToken(parts, assertion);
 
         long now = clock.instant().getEpochSecond();
-        if (assertion.expiresAtEpochSeconds() + clockSkewSeconds <= now) {
+        if (assertion.expiresAtEpochSeconds() <= now - clockSkewSeconds) {
             throw new SecurityException("GameServerToken has expired");
         }
         Long nbf = assertion.notBeforeEpochSeconds();
-        if (nbf != null && nbf - clockSkewSeconds > now) {
+        if (nbf != null && nbf > now + clockSkewSeconds) {
             throw new SecurityException("GameServerToken is not yet valid");
         }
 
@@ -90,9 +90,10 @@ public final class NetherNetGameServerTokenVerifier {
         } catch (IllegalArgumentException e) {
             throw new SecurityException("Invalid cpk SubjectPublicKeyInfo", e);
         }
-        ECPublicKey clientKey = (ECPublicKey) KeyFactory.getInstance("EC")
+        java.security.PublicKey decodedClientKey = KeyFactory.getInstance("EC")
                 .generatePublic(new X509EncodedKeySpec(spki));
-        if (clientKey.getParams().getCurve().getField().getFieldSize() != 384) {
+        if (!(decodedClientKey instanceof ECPublicKey clientKey)
+                || clientKey.getParams().getCurve().getField().getFieldSize() != 384) {
             throw new SecurityException("GameServerToken cpk must be a P-384 public key");
         }
         return new VerifiedClientIdentity(assertion.xuid(), assertion.displayName(), clientKey,

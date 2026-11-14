@@ -16,6 +16,10 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.UUID;
+
 /**
  * Android entry screen for the NEXORA client.
  *
@@ -38,6 +42,8 @@ public final class MainActivity extends Activity {
     private Button cameraModeButton;
     private boolean firstPersonCamera;
     private TextView movementStatus;
+    private TextView playersStatus;
+    private final Map<UUID, String> remotePlayerNames = new LinkedHashMap<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -122,6 +128,13 @@ public final class MainActivity extends Activity {
         chunkPreview.setVisibility(View.GONE);
         page.addView(chunkPreview, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(300)));
+        addSpace(page, 8);
+        LinearLayout playersCard = card();
+        page.addView(playersCard, matchWrap());
+        playersCard.addView(text("ИГРОКИ В МИРЕ", 12, MUTED, true), matchWrap());
+        addSpace(playersCard, 6);
+        playersStatus = text("Других игроков пока нет", 13, TEXT, false);
+        playersCard.addView(playersStatus, matchWrap());
         addSpace(page, 8);
         cameraModeButton = button("ВИД: СВОБОДНАЯ КАМЕРА");
         page.addView(cameraModeButton, matchWrap());
@@ -264,11 +277,16 @@ public final class MainActivity extends Activity {
             public void onRemotePlayerState(
                     NexoraAndroidProtocolCodec.RemotePlayerState player) {
                 chunkPreview.setRemotePlayerState(player);
+                String suffix = player.playerId().toString().substring(0, 4).toUpperCase(java.util.Locale.ROOT);
+                remotePlayerNames.put(player.playerId(), "Игрок-" + suffix);
+                refreshRemotePlayers();
             }
 
             @Override
             public void onRemotePlayerLeft(java.util.UUID playerId) {
                 chunkPreview.removeRemotePlayer(playerId);
+                remotePlayerNames.remove(playerId);
+                refreshRemotePlayers();
             }
 
             @Override
@@ -298,6 +316,20 @@ public final class MainActivity extends Activity {
             }
         });
         connectButton.setText("ПОДКЛЮЧАЕМСЯ...");
+    }
+
+    private void refreshRemotePlayers() {
+        if (playersStatus == null) return;
+        if (remotePlayerNames.isEmpty()) {
+            playersStatus.setText("Других игроков пока нет");
+            return;
+        }
+        StringBuilder text = new StringBuilder();
+        text.append("Онлайн: ").append(remotePlayerNames.size());
+        for (String name : remotePlayerNames.values()) {
+            text.append((char) 10).append("• ").append(name);
+        }
+        playersStatus.setText(text.toString());
     }
 
     @Override

@@ -106,6 +106,29 @@ class NexoraMainTest {
     }
 
     @Test
+    void runtimeOwnsPlayerInventoriesAndCanCollectDroppedItems() {
+        NexoraMain.RuntimeHandle runtime = NexoraMain.createRuntime(
+                temporaryDirectory.resolve("inventory-runtime"), 42L, ignored -> { });
+        java.util.UUID playerId = java.util.UUID.randomUUID();
+        runtime.server().start();
+        try {
+            assertSame(runtime.inventory(playerId), runtime.inventory(playerId));
+            java.util.UUID itemId = java.util.UUID.randomUUID();
+            runtime.entities().spawn(new WorldEntity(itemId, WorldEntity.Type.ITEM,
+                    "minecraft:apple", 0.5, 65, 0.5, 0, -1));
+
+            ItemPickupService.PickupResult result =
+                    runtime.pickupItems(playerId, 0.5, 65, 0.5);
+
+            assertEquals(1, result.collected());
+            assertEquals(1, runtime.inventory(playerId).count("minecraft:apple"));
+            assertTrue(runtime.entities().find(itemId).isEmpty());
+        } finally {
+            runtime.server().stop();
+        }
+    }
+
+    @Test
     void startsWorldAndTickLoopThenPersistsWorldOnStop() {
         Path dataDirectory = temporaryDirectory.resolve("nexora");
         NexoraMain.RuntimeHandle runtime = NexoraMain.createRuntime(dataDirectory, 42L, ignored -> { });

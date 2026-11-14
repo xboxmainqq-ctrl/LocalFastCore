@@ -83,7 +83,7 @@ final class ChunkPreviewView extends GLSurfaceView {
     }
 
     void setServerPosition(double worldX, double worldY, double worldZ) {
-        queueEvent(() -> renderer.setPlayerSpawn(
+        queueEvent(() -> renderer.applyServerPosition(
                 (float) (worldX - centerChunkX * 16 + 16),
                 (float) worldY,
                 (float) (worldZ - centerChunkZ * 16 + 16)));
@@ -252,6 +252,13 @@ final class ChunkPreviewView extends GLSurfaceView {
             playerY = y;
             playerZ = z;
             verticalVelocity = 0f;
+            playerInitialized = true;
+        }
+
+        void applyServerPosition(float x, float y, float z) {
+            playerX = x;
+            playerY = y;
+            playerZ = z;
             playerInitialized = true;
         }
 

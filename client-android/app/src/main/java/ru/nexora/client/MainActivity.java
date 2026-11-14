@@ -176,6 +176,11 @@ public final class MainActivity extends Activity {
             }
 
             @Override
+            public void onNetworkSettingsReceived(NetherNetAndroidClient.NetworkSettings settings) {
+                connectionStatus.setText("Bedrock NetworkSettings получены • протокол 2225");
+            }
+
+            @Override
             public void onError(String message) {
                 connectionStatus.setText("Ошибка: " + message);
                 if (netherNetClient != null) {

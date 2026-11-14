@@ -31,13 +31,15 @@ public final class BedrockNetworkSettingsCodec {
         int throttleThreshold = Byte.toUnsignedInt(input.get());
         float throttleScalar = input.getFloat();
 
-        return new BedrockNetworkSettings(
+        BedrockNetworkSettings settings = new BedrockNetworkSettings(
                 compressionThreshold,
                 BedrockNetworkSettings.CompressionAlgorithm.fromWireValue(algorithmValue),
                 throttleEnabled,
                 throttleThreshold,
                 throttleScalar
         );
+        payload.position(payload.position() + PAYLOAD_BYTES);
+        return settings;
     }
 
     public static ByteBuffer encodePayload(BedrockNetworkSettings settings) {

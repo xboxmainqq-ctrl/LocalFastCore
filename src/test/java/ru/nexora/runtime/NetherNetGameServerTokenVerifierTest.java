@@ -70,6 +70,31 @@ class NetherNetGameServerTokenVerifierTest {
         assertThrows(SecurityException.class, () -> verifier.verify(tampered));
     }
 
+    @Test
+    void rejectsIdentityFieldsThatDoNotMatchTheSignedJwt() throws Exception {
+        KeyPairGenerator rsaGenerator = KeyPairGenerator.getInstance("RSA");
+        rsaGenerator.initialize(2048);
+        KeyPair rsa = rsaGenerator.generateKeyPair();
+        KeyPairGenerator ecGenerator = KeyPairGenerator.getInstance("EC");
+        ecGenerator.initialize(new ECGenParameterSpec("secp384r1"));
+        KeyPair cpk = ecGenerator.generateKeyPair();
+
+        NetherNetIdentityAssertion parsed = parseAssertion(
+                signedToken(rsa, cpk.getPublic().getEncoded(), 5000L));
+        NetherNetIdentityAssertion spoofed = new NetherNetIdentityAssertion(
+                parsed.identityProviderDomain(), parsed.identityProviderProtocol(),
+                parsed.token(), parsed.jwtKeyId(), parsed.jwtAlgorithm(),
+                parsed.clientPublicKeySpkiBase64(), parsed.issuer(), parsed.audience(),
+                parsed.expiresAtEpochSeconds(), parsed.notBeforeEpochSeconds(),
+                "spoofed-xuid", parsed.displayName(),
+                parsed.detachedFingerprintsJws(), parsed.jwsAlgorithm());
+        NetherNetGameServerTokenVerifier verifier = new NetherNetGameServerTokenVerifier(
+                kid -> (java.security.interfaces.RSAPublicKey) rsa.getPublic(),
+                Clock.fixed(Instant.ofEpochSecond(1000L), ZoneOffset.UTC), 0L);
+
+        assertThrows(SecurityException.class, () -> verifier.verify(spoofed));
+    }
+
     private static String signedToken(KeyPair signingKey, byte[] cpkSpki, long exp)
             throws Exception {
         String header = "{\"alg\":\"RS256\",\"kid\":\"issuer-key\"}";

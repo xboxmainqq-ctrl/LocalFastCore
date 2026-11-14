@@ -359,6 +359,9 @@ public final class NetherNetAndroidClient implements AutoCloseable {
 
             @Override
             public void onStateChange() {
+                if (closed.get()) {
+                    return;
+                }
                 DataChannel current = reliable ? reliableChannel : unreliableChannel;
                 if (current != null && current.state() == DataChannel.State.CLOSED) {
                     reportError("NetherNet data channel закрыт");
@@ -660,6 +663,9 @@ public final class NetherNetAndroidClient implements AutoCloseable {
     }
 
     private void reportStatus(String message) {
+        if (closed.get()) {
+            return;
+        }
         Listener current = listener;
         if (current != null) {
             mainHandler.post(() -> current.onStatus(message));
@@ -667,6 +673,9 @@ public final class NetherNetAndroidClient implements AutoCloseable {
     }
 
     private void reportError(String message) {
+        if (closed.get()) {
+            return;
+        }
         Listener current = listener;
         if (current != null) {
             mainHandler.post(() -> current.onError(message));

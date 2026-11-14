@@ -6,6 +6,7 @@ import java.util.Objects;
 import java.time.Duration;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -31,6 +32,8 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
     private final ConcurrentMap<String, Session> sessions = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
     private volatile Consumer<TransportConnection> connectionCloseListener = ignored -> { };
+    private final CopyOnWriteArrayList<Consumer<TransportConnection>> additionalCloseListeners =
+            new CopyOnWriteArrayList<>();
 
     public BedrockInitialTransportRouter(BedrockNetworkSettings networkSettings,
                                          LoginAuthenticator loginAuthenticator,
@@ -71,11 +74,27 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
         this.connectionCloseListener = listener;
     }
 
+    /** Adds an additional lifecycle observer before the router accepts peers. */
+    public synchronized void addConnectionCloseListener(Consumer<TransportConnection> listener) {
+        Objects.requireNonNull(listener, "listener");
+        if (!sessions.isEmpty()) {
+            throw new IllegalStateException("Connection close listeners must be installed before accepting peers");
+        }
+        additionalCloseListeners.addIfAbsent(listener);
+    }
+
     private void notifyConnectionClosed(TransportConnection connection) {
         try {
             connectionCloseListener.accept(connection);
         } catch (RuntimeException ignored) {
             // Lifecycle observers must not prevent transport/session cleanup.
+        }
+        for (Consumer<TransportConnection> listener : additionalCloseListeners) {
+            try {
+                listener.accept(connection);
+            } catch (RuntimeException ignored) {
+                // One observer must not block other cleanup listeners.
+            }
         }
     }
 

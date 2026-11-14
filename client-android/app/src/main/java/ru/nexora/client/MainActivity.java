@@ -17,10 +17,11 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 /**
- * First runnable Android shell for the NEXORA client.
+ * Android entry screen for the NEXORA client.
  *
- * <p>This screen deliberately does not pretend to connect: NetherNet,
- * authentication, and the Bedrock client session are separate pending modules.</p>
+ * <p>This screen connects the NetherNet transport and completes the initial
+ * NetworkSettings exchange. Player authentication and the full Bedrock play
+ * session remain separate pending stages.</p>
  */
 public final class MainActivity extends Activity {
     private static final int BACKGROUND = Color.rgb(12, 16, 25);

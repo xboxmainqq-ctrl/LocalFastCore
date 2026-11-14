@@ -13,6 +13,9 @@ public interface World {
 
     void setBlock(BlockPosition position, BlockState state);
 
+    /** Atomically adds a generated chunk if it is not already loaded. */
+    boolean loadChunk(GeneratedChunk generatedChunk);
+
     boolean isChunkLoaded(ChunkPosition position);
 
     int loadedChunkCount();

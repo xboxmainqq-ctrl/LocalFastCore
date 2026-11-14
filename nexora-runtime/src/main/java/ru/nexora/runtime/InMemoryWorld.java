@@ -66,6 +66,16 @@ public final class InMemoryWorld implements World {
     }
 
     @Override
+    public boolean loadChunk(GeneratedChunk generatedChunk) {
+        Objects.requireNonNull(generatedChunk, "generatedChunk");
+        for (BlockPosition position : generatedChunk.blocks().keySet()) {
+            validatePosition(position);
+        }
+        WorldChunk chunk = WorldChunk.from(generatedChunk.blocks());
+        return chunks.putIfAbsent(generatedChunk.position(), chunk) == null;
+    }
+
+    @Override
     public boolean isChunkLoaded(ChunkPosition position) {
         return chunks.containsKey(Objects.requireNonNull(position, "position"));
     }
@@ -100,6 +110,14 @@ public final class InMemoryWorld implements World {
     private static final class WorldChunk {
         private final ConcurrentMap<LocalBlockPosition, BlockState> blocks =
                 new ConcurrentHashMap<>();
+
+        private static WorldChunk from(Map<BlockPosition, BlockState> snapshot) {
+            WorldChunk chunk = new WorldChunk();
+            snapshot.forEach((position, state) -> chunk.blocks.put(
+                    new LocalBlockPosition(position.localX(), position.y(), position.localZ()), state
+            ));
+            return chunk;
+        }
 
         private synchronized BlockState blockAt(BlockPosition position) {
             return blocks.getOrDefault(

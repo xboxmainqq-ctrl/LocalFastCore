@@ -11,7 +11,7 @@ public class NexoraAndroidProtocolCodecTest {
     @Test
     public void clientHelloMatchesTheServerGoldenVector() {
         byte[] expected = new byte[] {
-                'N', 'X', 'R', 'A', 1, 1, 1, 11,
+                'N', 'X', 'R', 'A', 1, 2, 1, 11,
                 'a', 'n', 'd', 'r', 'o', 'i', 'd', '-', 'd', 'e', 'v',
                 10, (byte) 0xd0, (byte) 0x98, (byte) 0xd0, (byte) 0xb3,
                 (byte) 0xd1, (byte) 0x80, (byte) 0xd0, (byte) 0xbe,
@@ -33,7 +33,7 @@ public class NexoraAndroidProtocolCodecTest {
     }
 
     @Test
-    public void encodesMovementWithProtocolOnePointOne() {
+    public void encodesMovementWithProtocolOnePointTwo() {
         byte[] packet = NexoraAndroidProtocolCodec.encodePlayerMove(1.25, 65.0, -2.5);
         assertEquals(31, packet.length);
         assertEquals(1, Byte.toUnsignedInt(packet[4]));

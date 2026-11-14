@@ -25,8 +25,9 @@ class BedrockInitialTransportRouterTest {
                 SETTINGS,
                 (connection, login, request) -> {
                     assertEquals(LOGIN_JSON, login.connectionRequest());
-                    assertEquals(List.of(JWT), request.chain());
-                    assertEquals(JWT, request.clientDataJwt());
+                    assertEquals(CLIENT_DATA_JWT, login.clientDataJwt());
+                    assertTrue(request.isTokenPayload());
+                    assertEquals(JWT, request.token());
                     return CompletableFuture.completedFuture(authenticatedPlayer());
                 },
                 (connection, player) -> { assertEquals("NEXORA-Test", player.displayName()); playStarts.incrementAndGet(); },
@@ -46,7 +47,7 @@ class BedrockInitialTransportRouterTest {
                                 connection.sent.get(0), 1024)).get(0).header().packetId());
 
         connection.receive(frame(BedrockLoginPacketCodec.PACKET_ID,
-                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, LOGIN_JSON)),
+                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, LOGIN_JSON, CLIENT_DATA_JWT)),
                 true));
 
         assertEquals(2, connection.sent.size());
@@ -102,7 +103,7 @@ class BedrockInitialTransportRouterTest {
                 BedrockRequestNetworkSettingsPacketCodec.encodePayload(
                         new BedrockRequestNetworkSettingsPacket(2225)), false));
         connection.receive(frame(BedrockLoginPacketCodec.PACKET_ID,
-                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, LOGIN_JSON)),
+                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, LOGIN_JSON, CLIENT_DATA_JWT)),
                 true));
 
         assertTrue(connection.isOpen());
@@ -124,7 +125,7 @@ class BedrockInitialTransportRouterTest {
                 BedrockRequestNetworkSettingsPacketCodec.encodePayload(
                         new BedrockRequestNetworkSettingsPacket(2225)), false));
         connection.receive(frame(BedrockLoginPacketCodec.PACKET_ID,
-                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, LOGIN_JSON)),
+                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, LOGIN_JSON, CLIENT_DATA_JWT)),
                 true));
 
         assertFalse(connection.isOpen());
@@ -149,7 +150,7 @@ class BedrockInitialTransportRouterTest {
                 BedrockRequestNetworkSettingsPacketCodec.encodePayload(
                         new BedrockRequestNetworkSettingsPacket(2225)), false));
         connection.receive(frame(BedrockLoginPacketCodec.PACKET_ID,
-                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, "not-json")),
+                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, "not-json", CLIENT_DATA_JWT)),
                 true));
 
         assertFalse(connection.isOpen());
@@ -186,7 +187,7 @@ class BedrockInitialTransportRouterTest {
                 BedrockRequestNetworkSettingsPacketCodec.encodePayload(
                         new BedrockRequestNetworkSettingsPacket(2225)), false));
         connection.receive(frame(BedrockLoginPacketCodec.PACKET_ID,
-                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, LOGIN_JSON)),
+                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, LOGIN_JSON, CLIENT_DATA_JWT)),
                 true));
 
         assertTrue(connection.isOpen());

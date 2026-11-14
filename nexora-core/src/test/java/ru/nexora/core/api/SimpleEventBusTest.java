@@ -3,6 +3,7 @@ package ru.nexora.core.api;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -30,7 +31,8 @@ class SimpleEventBusTest {
     }
     @Test
     void dispatchesToRemainingListenersBeforeReportingFailures() {
-        SimpleEventBus bus = new SimpleEventBus();
+        AtomicReference<EventDispatchException> reported = new AtomicReference<>();
+        SimpleEventBus bus = new SimpleEventBus(reported::set);
         AtomicInteger received = new AtomicInteger();
         IllegalStateException firstFailure = new IllegalStateException("first listener failed");
         IllegalArgumentException secondFailure = new IllegalArgumentException("second listener failed");
@@ -39,9 +41,10 @@ class SimpleEventBusTest {
         bus.subscribe(TestEvent.class, event -> received.incrementAndGet());
         bus.subscribe(TestEvent.class, event -> { throw secondFailure; });
 
-        EventDispatchException failure = assertThrows(EventDispatchException.class,
-                () -> bus.publish(new TestEvent(1)));
+        assertDoesNotThrow(() -> bus.publish(new TestEvent(1)));
+        EventDispatchException failure = reported.get();
 
+        assertNotNull(failure);
         assertEquals(1, received.get());
         assertSame(firstFailure, failure.getCause());
         assertArrayEquals(new Throwable[]{secondFailure}, failure.getSuppressed());

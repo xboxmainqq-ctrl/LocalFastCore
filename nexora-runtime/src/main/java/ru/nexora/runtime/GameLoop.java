@@ -83,9 +83,12 @@ public final class GameLoop implements RuntimeModule {
 
         running.set(false);
         thread.interrupt();
-        if (thread != Thread.currentThread()) {
-            thread.join(STOP_JOIN_MILLIS);
+        // A task may request shutdown from the game-loop thread itself.
+        // It cannot join itself; the runLoop finally block completes shutdown.
+        if (thread == Thread.currentThread()) {
+            return;
         }
+        thread.join(STOP_JOIN_MILLIS);
         if (thread.isAlive()) {
             throw new IllegalStateException(
                     "Game loop did not stop within " + STOP_JOIN_MILLIS + " ms"

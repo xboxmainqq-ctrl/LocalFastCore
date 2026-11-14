@@ -13,6 +13,7 @@ public final class NetherNetBedrockModule implements RuntimeModule {
     private final NetherNetSignalingServer signalingServer;
     private final BedrockInitialTransportRouter router;
     private boolean started;
+    private boolean shutdownRequested;
     private boolean closed;
 
     public NetherNetBedrockModule(
@@ -42,8 +43,8 @@ public final class NetherNetBedrockModule implements RuntimeModule {
 
     @Override
     public synchronized void start() throws Exception {
-        if (closed) {
-            throw new IllegalStateException("NetherNet Bedrock module cannot be restarted after close");
+        if (closed || shutdownRequested) {
+            throw new IllegalStateException("NetherNet Bedrock module cannot be restarted after shutdown");
         }
         if (started) {
             throw new IllegalStateException("NetherNet Bedrock module is already started");
@@ -54,29 +55,33 @@ public final class NetherNetBedrockModule implements RuntimeModule {
             signalingServer.start();
             started = true;
         } catch (Exception failure) {
-            closed = true;
+            shutdownRequested = true;
             router.close();
+            boolean cleanupSucceeded = true;
             try {
                 signalingServer.stop();
             } catch (RuntimeException cleanupFailure) {
+                cleanupSucceeded = false;
                 failure.addSuppressed(cleanupFailure);
             }
             try {
                 transport.stop();
             } catch (Exception cleanupFailure) {
+                cleanupSucceeded = false;
                 failure.addSuppressed(cleanupFailure);
             }
+            closed = cleanupSucceeded;
             throw failure;
         }
     }
 
     @Override
     public synchronized void stop() throws Exception {
-        if (!started) {
+        if (closed || (!started && !shutdownRequested)) {
             return;
         }
         started = false;
-        closed = true;
+        shutdownRequested = true;
         Exception failure = null;
         try {
             signalingServer.stop();
@@ -96,5 +101,6 @@ public final class NetherNetBedrockModule implements RuntimeModule {
         if (failure != null) {
             throw failure;
         }
+        closed = true;
     }
 }

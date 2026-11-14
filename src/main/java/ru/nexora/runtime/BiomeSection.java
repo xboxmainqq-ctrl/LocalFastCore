@@ -6,11 +6,11 @@ import java.util.Arrays;
 final class BiomeSection {
     static final int DEFAULT_BIOME_ID = 1; // Bedrock plains in protocol 1.26.60.
     static final int CELL_COUNT = 4096;
-    private int uniformBiomeId = DEFAULT_BIOME_ID;
     private int[] values;
+    private int nonDefaultCount;
 
     int get(int localX, int localY, int localZ) {
-        return values == null ? uniformBiomeId : values[index(localX, localY, localZ)];
+        return values == null ? DEFAULT_BIOME_ID : values[index(localX, localY, localZ)];
     }
 
     void set(int localX, int localY, int localZ, int biomeId) {
@@ -19,42 +19,40 @@ final class BiomeSection {
         }
         int index = index(localX, localY, localZ);
         if (values == null) {
-            if (biomeId == uniformBiomeId) {
+            if (biomeId == DEFAULT_BIOME_ID) {
                 return;
             }
             values = new int[CELL_COUNT];
-            Arrays.fill(values, uniformBiomeId);
+            Arrays.fill(values, DEFAULT_BIOME_ID);
+        }
+
+        int previous = values[index];
+        if (previous == biomeId) {
+            return;
         }
         values[index] = biomeId;
-        int first = values[0];
-        for (int i = 1; i < values.length; i++) {
-            if (values[i] != first) {
-                return;
+        if (previous == DEFAULT_BIOME_ID) {
+            nonDefaultCount++;
+        } else if (biomeId == DEFAULT_BIOME_ID) {
+            nonDefaultCount--;
+            if (nonDefaultCount == 0) {
+                values = null;
             }
         }
-        uniformBiomeId = first;
-        values = null;
     }
 
     boolean isDefault() {
-        return values == null && uniformBiomeId == DEFAULT_BIOME_ID;
+        return values == null;
     }
 
     /** Returns a detached array in Bedrock XZY order (Y is the fastest axis). */
     int[] snapshotXzy() {
-        int[] snapshot = new int[CELL_COUNT];
         if (values == null) {
-            Arrays.fill(snapshot, uniformBiomeId);
-            return snapshot;
+            int[] defaults = new int[CELL_COUNT];
+            Arrays.fill(defaults, DEFAULT_BIOME_ID);
+            return defaults;
         }
-        for (int x = 0; x < 16; x++) {
-            for (int z = 0; z < 16; z++) {
-                for (int y = 0; y < 16; y++) {
-                    snapshot[index(x, y, z)] = values[index(x, y, z)];
-                }
-            }
-        }
-        return snapshot;
+        return values.clone();
     }
 
     private static int index(int x, int y, int z) {

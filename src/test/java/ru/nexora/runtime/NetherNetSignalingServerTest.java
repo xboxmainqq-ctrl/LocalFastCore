@@ -42,6 +42,10 @@ class NetherNetSignalingServerTest {
         AtomicBoolean closed = new AtomicBoolean();
         NetherNetPeerHost peerHost = new NetherNetPeerHost() {
             @Override
+            public void setConnectionListener(java.util.function.Consumer<TransportConnection> listener) {
+            }
+
+            @Override
             public CompletableFuture<String> createAnswer(String networkId, String webRtcOfferSdp) {
                 assertEquals("network-1", networkId);
                 remoteDescription.set(webRtcOfferSdp);

@@ -111,28 +111,32 @@ final class NexoraAndroidProtocolCodec {
 
     static ChunkData decodeChunkData(byte[] bytes) {
         ByteBuffer input = checkedHeader(bytes, TYPE_CHUNK_DATA);
-        if (input.remaining() < 10) {
+        if (input.remaining() < 12) {
             throw new IllegalArgumentException("Truncated NEXORA chunk data");
         }
         int chunkX = input.getInt();
         int chunkZ = input.getInt();
-        int count = Short.toUnsignedInt(input.getShort());
-        if (count > 256) {
-            throw new IllegalArgumentException("NEXORA chunk contains too many columns");
+        int count = input.getInt();
+        if (count < 0 || count > 32768) {
+            throw new IllegalArgumentException("NEXORA chunk contains an invalid block count");
         }
-        int[] heights = new int[256];
-        String[] blockIds = new String[256];
-        java.util.Arrays.fill(heights, Integer.MIN_VALUE);
+        java.util.ArrayList<ChunkBlock> blocks = new java.util.ArrayList<>(count);
+        java.util.HashSet<Long> positions = new java.util.HashSet<>();
         for (int i = 0; i < count; i++) {
-            if (input.remaining() < 6) {
-                throw new IllegalArgumentException("Truncated NEXORA chunk column");
+            if (input.remaining() < 7) {
+                throw new IllegalArgumentException("Truncated NEXORA chunk block");
             }
-            int index = Byte.toUnsignedInt(input.get());
+            int localX = Byte.toUnsignedInt(input.get());
             int y = input.getInt();
+            int localZ = Byte.toUnsignedInt(input.get());
             int length = Byte.toUnsignedInt(input.get());
-            if (length < 1 || length > 128 || input.remaining() < length
-                    || blockIds[index] != null) {
-                throw new IllegalArgumentException("Invalid NEXORA chunk column");
+            if (localX > 15 || localZ > 15 || length < 1 || length > 128
+                    || input.remaining() < length) {
+                throw new IllegalArgumentException("Invalid NEXORA chunk block");
+            }
+            long position = ((long) y << 8) | (localZ << 4) | localX;
+            if (!positions.add(position)) {
+                throw new IllegalArgumentException("Duplicate NEXORA chunk block");
             }
             byte[] identifier = new byte[length];
             input.get(identifier);
@@ -140,13 +144,12 @@ final class NexoraAndroidProtocolCodec {
             if (blockId.isBlank()) {
                 throw new IllegalArgumentException("Empty NEXORA block identifier");
             }
-            heights[index] = y;
-            blockIds[index] = blockId;
+            blocks.add(new ChunkBlock(localX, y, localZ, blockId));
         }
         if (input.hasRemaining()) {
             throw new IllegalArgumentException("Trailing bytes in NEXORA chunk data");
         }
-        return new ChunkData(chunkX, chunkZ, heights, blockIds);
+        return new ChunkData(chunkX, chunkZ, java.util.List.copyOf(blocks));
     }
 
     private static ByteBuffer checkedHeader(byte[] bytes, int expectedType) {
@@ -187,7 +190,7 @@ final class NexoraAndroidProtocolCodec {
                           int rejectionCode, String rejectionReason) {
     }
 
-    record ChunkData(int chunkX, int chunkZ, int[] heights, String[] blockIds) {\n    }\n\n    record WorldInfo(String worldId, int minY, int maxYExclusive,
+    record ChunkBlock(int localX, int y, int localZ, String blockId) {\n    }\n\n    record ChunkData(int chunkX, int chunkZ, java.util.List<ChunkBlock> blocks) {\n    }\n\n    record WorldInfo(String worldId, int minY, int maxYExclusive,
                      int spawnX, int spawnY, int spawnZ,
                      int tickRate, int loadedChunks) {
     }

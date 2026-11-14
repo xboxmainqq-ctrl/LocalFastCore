@@ -36,6 +36,7 @@ public final class MainActivity extends Activity {
 
     private TextView connectionStatus;
     private EditText serverAddress;
+    private EditText playerNickname;
     private Button connectButton;
     private NetherNetAndroidClient netherNetClient;
     private ChunkPreviewView chunkPreview;
@@ -94,6 +95,20 @@ public final class MainActivity extends Activity {
         serverAddress.setPadding(dp(14), dp(12), dp(14), dp(12));
         serverAddress.setBackground(rounded(Color.rgb(14, 20, 31), 12));
         serverCard.addView(serverAddress, matchWrap());
+
+        addSpace(serverCard, 10);
+        playerNickname = new EditText(this);
+        playerNickname.setSingleLine(true);
+        playerNickname.setText("Игрок");
+        playerNickname.setTextColor(TEXT);
+        playerNickname.setHintTextColor(MUTED);
+        playerNickname.setHint("Игровой ник (до 16 символов)");
+        playerNickname.setTextSize(16);
+        playerNickname.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        playerNickname.setPadding(dp(14), dp(12), dp(14), dp(12));
+        playerNickname.setBackground(rounded(Color.rgb(14, 20, 31), 12));
+        serverCard.addView(playerNickname, matchWrap());
 
         addSpace(serverCard, 12);
         connectButton = button("ПОДКЛЮЧИТЬСЯ");
@@ -219,7 +234,13 @@ public final class MainActivity extends Activity {
         connectButton.setEnabled(false);
         connectionStatus.setText("Запуск NetherNet...");
         netherNetClient = new NetherNetAndroidClient(this);
-        netherNetClient.connect(address, new NetherNetAndroidClient.Listener() {
+        String nickname = playerNickname.getText().toString().trim();
+        if (nickname.isEmpty() || nickname.length() > 16) {
+            playerNickname.setError("Ник должен содержать от 1 до 16 символов");
+            connectButton.setEnabled(true);
+            return;
+        }
+        netherNetClient.connect(address, nickname, new NetherNetAndroidClient.Listener() {
             @Override
             public void onStatus(String status) {
                 connectionStatus.setText(status);
@@ -277,8 +298,7 @@ public final class MainActivity extends Activity {
             public void onRemotePlayerState(
                     NexoraAndroidProtocolCodec.RemotePlayerState player) {
                 chunkPreview.setRemotePlayerState(player);
-                String suffix = player.playerId().toString().substring(0, 4).toUpperCase(java.util.Locale.ROOT);
-                remotePlayerNames.put(player.playerId(), "Игрок-" + suffix);
+                remotePlayerNames.put(player.playerId(), player.playerName());
                 refreshRemotePlayers();
             }
 

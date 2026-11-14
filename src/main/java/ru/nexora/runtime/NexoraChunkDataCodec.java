@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-/** Bounded wire messages for requesting and transferring the first NEXORA chunk preview. */
+/** Bounded wire messages for requesting and transferring sparse NEXORA chunk volumes. */
 public final class NexoraChunkDataCodec {
     public static final int MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
     private static final byte[] MAGIC = {'N','X','R','A'};
@@ -32,46 +32,51 @@ public final class NexoraChunkDataCodec {
 
     public static byte[] encodeChunkData(NexoraChunkData chunk) {
         Objects.requireNonNull(chunk, "chunk");
-        int size = 7 + 4 + 4 + 2;
-        List<byte[]> identifiers = new ArrayList<>(chunk.columns().size());
-        for (NexoraChunkData.Column column : chunk.columns()) {
-            byte[] id = column.blockIdentifier().getBytes(StandardCharsets.UTF_8);
-            if (id.length < 1 || id.length > 128) throw new IllegalArgumentException("Block identifier is too long");
+        int size = 7 + 4 + 4 + 4;
+        List<byte[]> identifiers = new ArrayList<>(chunk.blocks().size());
+        for (NexoraChunkData.Block block : chunk.blocks()) {
+            byte[] id = block.blockIdentifier().getBytes(StandardCharsets.UTF_8);
+            if (id.length < 1 || id.length > 128) {
+                throw new IllegalArgumentException("Block identifier is too long");
+            }
             identifiers.add(id);
-            size = Math.addExact(size, 1 + 4 + 1 + id.length);
+            size = Math.addExact(size, 1 + 4 + 1 + 1 + id.length);
         }
         if (size > MAX_MESSAGE_BYTES) throw new IllegalArgumentException("NEXORA chunk message is too large");
         ByteBuffer out = header(CHUNK_DATA, size - 7);
-        out.putInt(chunk.chunkX()).putInt(chunk.chunkZ()).putShort((short) chunk.columns().size());
-        for (int i = 0; i < chunk.columns().size(); i++) {
-            NexoraChunkData.Column column = chunk.columns().get(i);
+        out.putInt(chunk.chunkX()).putInt(chunk.chunkZ()).putInt(chunk.blocks().size());
+        for (int i = 0; i < chunk.blocks().size(); i++) {
+            NexoraChunkData.Block block = chunk.blocks().get(i);
             byte[] id = identifiers.get(i);
-            out.put((byte) column.index()).putInt(column.y()).put((byte) id.length).put(id);
+            out.put((byte) block.localX()).putInt(block.y()).put((byte) block.localZ())
+                    .put((byte) id.length).put(id);
         }
         return out.array();
     }
 
     public static NexoraChunkData decodeChunkData(ByteBuffer source) {
         ByteBuffer in = checked(source, CHUNK_DATA);
-        if (in.remaining() < 10) throw new IllegalArgumentException("Truncated NEXORA chunk data");
-        int x = in.getInt(), z = in.getInt();
-        int count = Short.toUnsignedInt(in.getShort());
-        if (count > 256) throw new IllegalArgumentException("NEXORA chunk has too many columns");
-        List<NexoraChunkData.Column> columns = new ArrayList<>(count);
+        if (in.remaining() < 12) throw new IllegalArgumentException("Truncated NEXORA chunk data");
+        int x = in.getInt(), z = in.getInt(), count = in.getInt();
+        if (count < 0 || count > NexoraChunkData.MAX_BLOCKS) {
+            throw new IllegalArgumentException("NEXORA chunk has an invalid block count");
+        }
+        List<NexoraChunkData.Block> blocks = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
-            if (in.remaining() < 6) throw new IllegalArgumentException("Truncated NEXORA chunk column");
-            int index = Byte.toUnsignedInt(in.get());
+            if (in.remaining() < 7) throw new IllegalArgumentException("Truncated NEXORA chunk block");
+            int localX = Byte.toUnsignedInt(in.get());
             int y = in.getInt();
+            int localZ = Byte.toUnsignedInt(in.get());
             int length = Byte.toUnsignedInt(in.get());
             if (length < 1 || length > 128 || in.remaining() < length) {
                 throw new IllegalArgumentException("Invalid NEXORA block identifier length");
             }
             byte[] id = new byte[length];
             in.get(id);
-            columns.add(new NexoraChunkData.Column(index, y, decodeUtf8(id)));
+            blocks.add(new NexoraChunkData.Block(localX, y, localZ, decodeUtf8(id)));
         }
         if (in.hasRemaining()) throw new IllegalArgumentException("Trailing bytes in NEXORA chunk data");
-        return new NexoraChunkData(x, z, columns);
+        return new NexoraChunkData(x, z, blocks);
     }
 
     private static ByteBuffer header(int type, int payloadLength) {

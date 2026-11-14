@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
 import java.util.UUID;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
@@ -23,10 +25,32 @@ class NexoraPrivateProtocolHandlerTest {
         assertEquals(1, ready.get());
         assertFalse(connection.closed);
         NexoraPrivateProtocolCodec.ServerResponse response =
-                NexoraPrivateProtocolCodec.decodeServerResponse(ByteBuffer.wrap(connection.sent));
+                NexoraPrivateProtocolCodec.decodeServerResponse(ByteBuffer.wrap(connection.sentMessages.get(0)));
         assertTrue(response.accepted());
         assertEquals(serverId, response.serverId());
         assertEquals(1024 * 1024, response.maxMessageBytes());
+    }
+
+    @Test
+    void sendsWorldInfoImmediatelyAfterServerHello() {
+        UUID serverId = UUID.randomUUID();
+        NexoraWorldInfo expected = new NexoraWorldInfo(
+                "world", -64, 320, 0, 65, 0, 20, 1);
+        FakeConnection connection = new FakeConnection();
+        new NexoraPrivateProtocolHandler(serverId, 1024 * 1024, () -> expected,
+                ignored -> { }).accept(connection);
+
+        connection.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
+
+        assertEquals(2, connection.sentMessages.size());
+        NexoraPrivateProtocolCodec.ServerResponse hello =
+                NexoraPrivateProtocolCodec.decodeServerResponse(
+                        ByteBuffer.wrap(connection.sentMessages.get(0)));
+        assertTrue(hello.accepted());
+        assertEquals(serverId, hello.serverId());
+        NexoraWorldInfo actual = NexoraPrivateProtocolCodec.decodeWorldInfo(
+                ByteBuffer.wrap(connection.sentMessages.get(1)));
+        assertEquals(expected, actual);
     }
 
     @Test
@@ -62,7 +86,7 @@ class NexoraPrivateProtocolHandlerTest {
     private static final class FakeConnection implements TransportConnection {
         private Consumer<TransportMessage> messageListener;
         private Consumer<TransportCloseEvent> closeListener;
-        private byte[] sent;
+        private final List<byte[]> sentMessages = new ArrayList<>();
         private boolean closed;
 
         void deliver(byte[] bytes) {
@@ -80,8 +104,9 @@ class NexoraPrivateProtocolHandlerTest {
         }
         @Override public TransportSendResult send(ByteBuffer payload, DeliveryMode mode) {
             ByteBuffer copy = payload.duplicate();
-            sent = new byte[copy.remaining()];
+            byte[] sent = new byte[copy.remaining()];
             copy.get(sent);
+            sentMessages.add(sent);
             return closed ? TransportSendResult.CLOSED : TransportSendResult.ACCEPTED;
         }
         @Override public void close() {

@@ -8,6 +8,11 @@ public record BedrockLoginPacket(int protocolVersion, String connectionRequest) 
         Objects.requireNonNull(connectionRequest, "connectionRequest");
     }
 
+    /** Parses the signed JWT envelope without treating its contents as authenticated. */
+    public BedrockConnectionRequest parseConnectionRequest() {
+        return BedrockConnectionRequest.parse(connectionRequest);
+    }
+
     /** True only when this login targets the pinned NEXORA protocol version. */
     public boolean isSupportedProtocol() {
         return BedrockProtocolVersion.supportsProtocol(protocolVersion);

@@ -20,6 +20,8 @@ final class NexoraAndroidProtocolCodec {
     private static final int TYPE_REMOTE_PLAYER_STATE = 9;
     private static final int TYPE_REMOTE_PLAYER_LEFT = 10;
     private static final int TYPE_INVENTORY = 11;
+    private static final int TYPE_INVENTORY_ACTION = 12;
+    private static final int TYPE_INVENTORY_ACTION_RESULT = 13;
 
     private NexoraAndroidProtocolCodec() {
     }
@@ -177,8 +179,9 @@ final class NexoraAndroidProtocolCodec {
         int total = 0;
         for (int i = 0; i < count; i++) {
             if (!input.hasRemaining()) throw new IllegalArgumentException("Truncated NEXORA inventory stack");
+            int slot = Byte.toUnsignedInt(input.get());
             int length = Byte.toUnsignedInt(input.get());
-            if (length < 1 || length > 96 || input.remaining() < length + 1) {
+            if (slot >= 36 || length < 1 || length > 96 || input.remaining() < length + 1) {
                 throw new IllegalArgumentException("Invalid NEXORA item identifier length");
             }
             byte[] id = new byte[length];
@@ -192,10 +195,31 @@ final class NexoraAndroidProtocolCodec {
                 throw new IllegalArgumentException("Invalid NEXORA item stack size");
             }
             total += amount;
-            stacks.add(new InventoryStack(itemId, amount));
+            stacks.add(new InventoryStack(slot, itemId, amount));
         }
         if (input.hasRemaining()) throw new IllegalArgumentException("Trailing NEXORA inventory bytes");
         return new InventoryState(owner, java.util.Collections.unmodifiableList(stacks), total);
+    }
+
+    static byte[] encodeInventoryAction(InventoryAction action, int sourceSlot, int targetSlot) {
+        if (action == null || sourceSlot < 0 || sourceSlot >= 36
+                || targetSlot < 0 || targetSlot >= 36) {
+            throw new IllegalArgumentException("Invalid NEXORA inventory action");
+        }
+        ByteBuffer output = ByteBuffer.allocate(10).order(ByteOrder.BIG_ENDIAN);
+        output.put(MAGIC).put((byte) MAJOR_VERSION).put((byte) MINOR_VERSION)
+                .put((byte) TYPE_INVENTORY_ACTION).put((byte) action.wireId)
+                .put((byte) sourceSlot).put((byte) targetSlot);
+        return output.array();
+    }
+
+    static InventoryActionResult decodeInventoryActionResult(byte[] bytes) {
+        ByteBuffer input = checkedHeader(bytes, TYPE_INVENTORY_ACTION_RESULT);
+        if (input.remaining() != 2) throw new IllegalArgumentException("Malformed inventory action result");
+        int action = Byte.toUnsignedInt(input.get());
+        int result = Byte.toUnsignedInt(input.get());
+        return new InventoryActionResult(InventoryAction.fromWire(action),
+                InventoryActionStatus.fromWire(result));
     }
 
     private static byte[] encodePosition(int type, double x, double y, double z) {
@@ -307,7 +331,30 @@ final class NexoraAndroidProtocolCodec {
     record RemotePlayerState(UUID playerId, String playerName, int skinIndex, double x, double y, double z, double yaw) {
     }
 
-    record InventoryStack(String itemId, int count) {
+    enum InventoryAction {
+        MOVE_OR_SWAP(1), DROP_ONE(2), DROP_STACK(3), USE(4);
+        final int wireId;
+        InventoryAction(int wireId) { this.wireId = wireId; }
+        static InventoryAction fromWire(int value) {
+            for (InventoryAction action : values()) if (action.wireId == value) return action;
+            throw new IllegalArgumentException("Unknown inventory action");
+        }
+    }
+
+    enum InventoryActionStatus {
+        OK(0), INVALID_SLOT(1), EMPTY_SLOT(2), NOT_USABLE(3);
+        final int wireId;
+        InventoryActionStatus(int wireId) { this.wireId = wireId; }
+        static InventoryActionStatus fromWire(int value) {
+            for (InventoryActionStatus status : values()) if (status.wireId == value) return status;
+            throw new IllegalArgumentException("Unknown inventory action status");
+        }
+    }
+
+    record InventoryActionResult(InventoryAction action, InventoryActionStatus status) {
+    }
+
+    record InventoryStack(int slotIndex, String itemId, int count) {
     }
 
     record InventoryState(UUID playerId, java.util.List<InventoryStack> stacks, int totalItems) {

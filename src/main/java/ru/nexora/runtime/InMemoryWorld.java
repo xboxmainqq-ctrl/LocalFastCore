@@ -115,6 +115,13 @@ public final class InMemoryWorld implements World {
     }
 
     @Override
+    public List<Integer> biomeSectionsInChunk(ChunkPosition position) {
+        Objects.requireNonNull(position, "position");
+        WorldChunk chunk = chunks.get(position);
+        return chunk == null ? List.of() : chunk.biomeSectionYs();
+    }
+
+    @Override
     public boolean loadChunk(GeneratedChunk generatedChunk) {
         Objects.requireNonNull(generatedChunk, "generatedChunk");
         for (BlockPosition position : generatedChunk.blocks().keySet()) {

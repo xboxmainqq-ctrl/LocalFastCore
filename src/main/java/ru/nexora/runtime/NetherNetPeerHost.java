@@ -32,6 +32,11 @@ public interface NetherNetPeerHost extends AutoCloseable {
     default CompletionStage<String> createAnswer(
             String networkId, String webRtcOfferSdp,
             NetherNetIdentityValidator.VerifiedIdentity identity) {
+        if (identity != null) {
+            return java.util.concurrent.CompletableFuture.failedFuture(
+                    new UnsupportedOperationException(
+                            "Peer host does not bind authenticated identity to its transport session"));
+        }
         return createAnswer(networkId, webRtcOfferSdp);
     }
 

@@ -1,7 +1,12 @@
 package ru.nexora.client;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
 import android.opengl.GLES20;
+import android.opengl.GLUtils;
 import android.opengl.GLSurfaceView;
 import android.opengl.Matrix;
 import android.view.MotionEvent;
@@ -205,6 +210,12 @@ final class ChunkPreviewView extends GLSurfaceView {
         private static final String FRAGMENT_SHADER =
                 "precision mediump float; varying vec3 vColor;"
                 + " void main(){ gl_FragColor=vec4(vColor,1.0); }";
+        private static final String LABEL_VERTEX_SHADER =
+                "attribute vec2 aPosition; attribute vec2 aTexCoord; varying vec2 vTexCoord;"
+                + " void main(){ gl_Position=vec4(aPosition,0.0,1.0); vTexCoord=aTexCoord; }";
+        private static final String LABEL_FRAGMENT_SHADER =
+                "precision mediump float; uniform sampler2D uTexture; varying vec2 vTexCoord;"
+                + " void main(){ gl_FragColor=texture2D(uTexture,vTexCoord); }";
 
         private final float[] projection = new float[16];
         private final float[] view = new float[16];
@@ -217,6 +228,12 @@ final class ChunkPreviewView extends GLSurfaceView {
         private int positionHandle;
         private int colorHandle;
         private int matrixHandle;
+        private int labelProgram;
+        private int labelPositionHandle;
+        private int labelTexCoordHandle;
+        private int labelTextureHandle;
+        private final Map<java.util.UUID, PlayerLabelTexture> playerLabelTextures = new HashMap<>();
+        private boolean playerLabelsDirty = true;
         private float yaw = 42f;
         private float elevation = 32f;
         private float distance = 72f;
@@ -261,12 +278,16 @@ final class ChunkPreviewView extends GLSurfaceView {
         }
 
         void setRemotePlayerState(NexoraAndroidProtocolCodec.RemotePlayerState player) {
-            remotePlayers.put(player.playerId(), player);
+            NexoraAndroidProtocolCodec.RemotePlayerState previous = remotePlayers.put(player.playerId(), player);
             remotePlayerMeshDirty = true;
+            if (previous == null || !previous.playerName().equals(player.playerName())) playerLabelsDirty = true;
         }
 
         void removeRemotePlayer(java.util.UUID playerId) {
-            if (remotePlayers.remove(playerId) != null) remotePlayerMeshDirty = true;
+            if (remotePlayers.remove(playerId) != null) {
+                remotePlayerMeshDirty = true;
+                playerLabelsDirty = true;
+            }
         }
 
         void movePlayer(float forward, float strafe) {
@@ -337,8 +358,13 @@ final class ChunkPreviewView extends GLSurfaceView {
             positionHandle = GLES20.glGetAttribLocation(program, "aPosition");
             colorHandle = GLES20.glGetAttribLocation(program, "aColor");
             matrixHandle = GLES20.glGetUniformLocation(program, "uMvp");
+            labelProgram = createProgram(LABEL_VERTEX_SHADER, LABEL_FRAGMENT_SHADER);
+            labelPositionHandle = GLES20.glGetAttribLocation(labelProgram, "aPosition");
+            labelTexCoordHandle = GLES20.glGetAttribLocation(labelProgram, "aTexCoord");
+            labelTextureHandle = GLES20.glGetUniformLocation(labelProgram, "uTexture");
             Matrix.setIdentityM(identity, 0);
             meshDirty = true;
+            playerLabelsDirty = true;
         }
 
         @Override
@@ -424,8 +450,92 @@ final class ChunkPreviewView extends GLSurfaceView {
                         false, 6 * 4, remotePlayerBuffer);
                 GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, remotePlayerVertexCount);
             }
+            drawRemotePlayerLabels();
             GLES20.glDisableVertexAttribArray(positionHandle);
             GLES20.glDisableVertexAttribArray(colorHandle);
+        }
+
+        private void drawRemotePlayerLabels() {
+            if (playerLabelsDirty) rebuildPlayerLabelTextures();
+            if (playerLabelTextures.isEmpty() || labelProgram == 0) return;
+            GLES20.glDisable(GLES20.GL_DEPTH_TEST);
+            GLES20.glEnable(GLES20.GL_BLEND);
+            GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
+            GLES20.glUseProgram(labelProgram);
+            GLES20.glUniform1i(labelTextureHandle, 0);
+            GLES20.glEnableVertexAttribArray(labelPositionHandle);
+            GLES20.glEnableVertexAttribArray(labelTexCoordHandle);
+            float[] world = new float[4];
+            float[] clip = new float[4];
+            for (Map.Entry<java.util.UUID, NexoraAndroidProtocolCodec.RemotePlayerState> entry : remotePlayers.entrySet()) {
+                PlayerLabelTexture label = playerLabelTextures.get(entry.getKey());
+                if (label == null) continue;
+                NexoraAndroidProtocolCodec.RemotePlayerState player = entry.getValue();
+                world[0] = (float) (player.x() - centerChunkX * 16 + 16);
+                world[1] = (float) player.y() + 2.05f;
+                world[2] = (float) (player.z() - centerChunkZ * 16 + 16);
+                world[3] = 1f;
+                Matrix.multiplyMV(clip, 0, mvp, 0, world, 0);
+                if (clip[3] <= 0.01f) continue;
+                float centerX = clip[0] / clip[3];
+                float centerY = clip[1] / clip[3];
+                if (centerX < -1.3f || centerX > 1.3f || centerY < -1.3f || centerY > 1.3f) continue;
+                float halfWidth = Math.min(0.55f, (float) label.width / surfaceWidth);
+                float halfHeight = (float) label.height / surfaceHeight;
+                float left = centerX - halfWidth;
+                float right = centerX + halfWidth;
+                float bottom = centerY;
+                float top = centerY + halfHeight * 2f;
+                float[] vertices = {left,bottom,0f,1f, right,bottom,1f,1f, right,top,1f,0f, left,bottom,0f,1f, right,top,1f,0f, left,top,0f,0f};
+                FloatBuffer buffer = ByteBuffer.allocateDirect(vertices.length * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+                buffer.put(vertices).position(0);
+                GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+                GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, label.textureId);
+                GLES20.glVertexAttribPointer(labelPositionHandle, 2, GLES20.GL_FLOAT, false, 16, buffer);
+                buffer.position(2);
+                GLES20.glVertexAttribPointer(labelTexCoordHandle, 2, GLES20.GL_FLOAT, false, 16, buffer);
+                GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, 6);
+            }
+            GLES20.glDisableVertexAttribArray(labelPositionHandle);
+            GLES20.glDisableVertexAttribArray(labelTexCoordHandle);
+            GLES20.glDisable(GLES20.GL_BLEND);
+            GLES20.glEnable(GLES20.GL_DEPTH_TEST);
+        }
+
+        private void rebuildPlayerLabelTextures() {
+            playerLabelsDirty = false;
+            for (PlayerLabelTexture old : playerLabelTextures.values()) {
+                GLES20.glDeleteTextures(1, new int[]{old.textureId}, 0);
+            }
+            playerLabelTextures.clear();
+            for (NexoraAndroidProtocolCodec.RemotePlayerState player : remotePlayers.values()) {
+                String name = player.playerName();
+                Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+                paint.setTextSize(25f);
+                paint.setTypeface(android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD));
+                int width = Math.max(72, Math.min(260, (int) Math.ceil(paint.measureText(name)) + 28));
+                int height = 42;
+                Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+                Canvas canvas = new Canvas(bitmap);
+                paint.setColor(Color.argb(205, 12, 19, 31));
+                canvas.drawRoundRect(0f, 0f, width, height, 10f, 10f, paint);
+                paint.setColor(Color.WHITE);
+                paint.setTextAlign(Paint.Align.CENTER);
+                canvas.drawText(name, width * 0.5f, 29f, paint);
+                int[] texture = new int[1];
+                GLES20.glGenTextures(1, texture, 0);
+                GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture[0]);
+                GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+                GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+                GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
+                GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
+                GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0);
+                bitmap.recycle();
+                playerLabelTextures.put(player.playerId(), new PlayerLabelTexture(texture[0], width, height));
+            }
+        }
+
+        private record PlayerLabelTexture(int textureId, int width, int height) {
         }
 
         private void rebuildRemotePlayerMesh() {

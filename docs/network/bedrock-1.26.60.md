@@ -336,7 +336,7 @@ BedrockWorldStartupHandler worldStartup = new BedrockWorldStartupHandler(
     blockProfile, startGameSettingsFactory
 );
 BedrockSubChunkRequestHandler subchunks = new BedrockSubChunkRequestHandler(
-    networkSettings, overworld, connection -> 0, blockProfile.registry(),
+    networkSettings, overworld, connection -> 0, blockProfile,
     existingPlayMessageHandler
 );
 BedrockPostLoginCoordinator postLogin = new BedrockPostLoginCoordinator(

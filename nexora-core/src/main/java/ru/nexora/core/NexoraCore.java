@@ -9,6 +9,7 @@ import ru.nexora.core.integration.nukkit.NukkitPlatformAdapter;
 import ru.nexora.core.integration.nukkit.NukkitPlayerListener;
 import ru.nexora.core.platform.NexoraPlatform;
 import ru.nexora.core.profile.PlayerProgressionService;
+import ru.nexora.core.profile.AsyncPlayerProgressionService;
 import ru.nexora.core.profile.PlayerProfileRepository;
 import ru.nexora.core.profile.SqlitePlayerProfileRepository;
 import ru.nexora.core.rpg.RpgClassRegistry;
@@ -37,6 +38,7 @@ public final class NexoraCore extends PluginBase {
     private NexoraSecurityManager security;
     private PlayerProfileRepository profileRepository;
     private PlayerProgressionService progression;
+    private AsyncPlayerProgressionService asyncProgression;
     private RpgClassRegistry classes;
     private RpgAbilityRegistry abilities;
     private AbilityCooldownService cooldowns;
@@ -63,8 +65,9 @@ public final class NexoraCore extends PluginBase {
             abilities = new RpgAbilityRegistry();
             cooldowns = new AbilityCooldownService();
             progression = new PlayerProgressionService(profileRepository, classes, abilities);
+            asyncProgression = new AsyncPlayerProgressionService(progression, 2048);
             api = new NexoraAPI(services, eventBus, storage, platform, security,
-                    progression, classes, abilities, cooldowns);
+                    progression, classes, abilities, cooldowns, asyncProgression);
 
             services.register(EventBus.class, eventBus);
             services.register(KeyValueStore.class, storage);
@@ -75,12 +78,13 @@ public final class NexoraCore extends PluginBase {
             services.register(RpgClassRegistry.class, classes);
             services.register(RpgAbilityRegistry.class, abilities);
             services.register(AbilityCooldownService.class, cooldowns);
+            services.register(AsyncPlayerProgressionService.class, asyncProgression);
             services.register(NexoraAPI.class, api);
 
             getServer().getPluginManager().registerEvents(new NukkitPlayerListener(eventBus), this);
 
             getLogger().info("NexoraCore API 0.1.0 enabled.");
-            getLogger().info("RPG services ready: UUID profiles, progression, class and ability registries, cooldown tracking.");
+            getLogger().info("RPG services ready: UUID profiles, async progression, class and ability registries, cooldown tracking.");
             getLogger().info("Services ready: event bus, persistent storage, platform adapter, security and RPG progression.");
             getLogger().info("Player lifecycle bridge registered: join, quit.");
             getLogger().info("Platform adapter: " + platform.getPlatformName()
@@ -100,7 +104,14 @@ public final class NexoraCore extends PluginBase {
         if (eventBus != null) {
             eventBus.clear();
         }
-        if (profileRepository != null) {
+        boolean profileQueueDrained = true;
+        if (asyncProgression != null) {
+            profileQueueDrained = asyncProgression.closeGracefully(java.time.Duration.ofSeconds(12));
+            if (!profileQueueDrained) {
+                getLogger().warning("RPG profile worker did not stop in time; leaving its database connection open to avoid interrupting an active write.");
+            }
+        }
+        if (profileRepository != null && profileQueueDrained) {
             try {
                 profileRepository.close();
             } catch (IOException exception) {
@@ -120,6 +131,7 @@ public final class NexoraCore extends PluginBase {
         if (classes != null) services.unregister(RpgClassRegistry.class, classes);
         if (abilities != null) services.unregister(RpgAbilityRegistry.class, abilities);
         if (cooldowns != null) services.unregister(AbilityCooldownService.class, cooldowns);
+        if (asyncProgression != null) services.unregister(AsyncPlayerProgressionService.class, asyncProgression);
         if (profileRepository != null) services.unregister(PlayerProfileRepository.class, profileRepository);
         if (platform != null) services.unregister(NexoraPlatform.class, platform);
         if (security != null) services.unregister(NexoraSecurityManager.class, security);

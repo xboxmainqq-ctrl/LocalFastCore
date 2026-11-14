@@ -136,3 +136,33 @@ class BackupManagerTest {
     }
 
 }
+    @Test
+    void rejectsManifestPathsThatCannotBeRepresentedByThePlatform() throws IOException {
+        Path source = Files.createDirectory(tempDir.resolve("invalid-path-source"));
+        Files.writeString(source.resolve("safe.txt"), "safe");
+        Path backup = manager.createBackup(source, tempDir.resolve("invalid-path-backups"), "invalid-path")
+                .backupDirectory();
+        Path manifest = backup.resolve("NEXORA-BACKUP-MANIFEST.tsv");
+        String nulPath = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString("bad\\u0000name".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(manifest, "NEXORA-BACKUP-MANIFEST\\t1\\n" + nulPath + "\\t0\\t"
+                + "0".repeat(64) + "\\n");
+
+        assertThrows(IOException.class, () -> manager.verifyBackup(backup));
+    }
+
+    @Test
+    void rejectsMalformedUtf8InManifestPath() throws IOException {
+        Path source = Files.createDirectory(tempDir.resolve("invalid-utf8-source"));
+        Files.writeString(source.resolve("safe.txt"), "safe");
+        Path backup = manager.createBackup(source, tempDir.resolve("invalid-utf8-backups"), "invalid-utf8")
+                .backupDirectory();
+        Path manifest = backup.resolve("NEXORA-BACKUP-MANIFEST.tsv");
+        String malformedUtf8 = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(new byte[] {(byte) 0xc3, (byte) 0x28});
+        Files.writeString(manifest, "NEXORA-BACKUP-MANIFEST\\t1\\n" + malformedUtf8 + "\\t0\\t"
+                + "0".repeat(64) + "\\n");
+
+        assertThrows(IOException.class, () -> manager.verifyBackup(backup));
+    }
+

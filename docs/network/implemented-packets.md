@@ -2,7 +2,7 @@
 
 Target: Bedrock 1.26.60, protocol 2225.
 
-The Java runtime now contains payload codecs for three packet types, bounded packet-batch framing, a compression envelope, and a frame-level coordinator for the initial server-side login handshake. This still does not implement NetherNet transport, identity verification, Microsoft/Xbox authentication, or a complete client session.
+The Java runtime contains payload codecs for three packet types, bounded packet-batch framing, a compression envelope, a frame-level coordinator for the initial server-side login handshake, and a transport-independent NetherNet data-message framing helper. This still does not implement the WebRTC peer connection, HTTP signaling, identity verification, Microsoft/Xbox authentication, or a complete client session.
 
 | Packet | ID | Payload implemented | Status |
 |---|---:|---|---|
@@ -44,12 +44,24 @@ The packet header and batch format are cross-checked against the Bedrock protoco
 
 ## Initial server-side handshake processor
 
-`BedrockInitialHandshakeProcessor` now joins the packet-batch decoder, compression envelope, packet payload codecs, and `BedrockSessionHandshake`. Given a complete incoming frame, it accepts the initial request only in `AWAITING_NETWORK_SETTINGS_REQUEST`, transitions to `NETWORK_SETTINGS_PENDING`, and waits for the host to confirm delivery before entering `AWAITING_LOGIN`. A matching Login packet moves the session to `AUTHENTICATION_PENDING`; the host may move it to `PLAY` only after successful authentication. Unsupported protocol, malformed or out-of-order packets, and explicit close lead to `CLOSED`.
+`BedrockInitialHandshakeProcessor` joins the packet-batch decoder, compression envelope, packet payload codecs, and `BedrockSessionHandshake`. Given a complete incoming frame, it accepts the initial request only in `AWAITING_NETWORK_SETTINGS_REQUEST`, transitions to `NETWORK_SETTINGS_PENDING`, and waits for the host to confirm delivery before entering `AWAITING_LOGIN`. A matching Login packet moves the session to `AUTHENTICATION_PENDING`; the host may move it to `PLAY` only after successful authentication. Unsupported protocol, malformed or out-of-order packets, and explicit close lead to `CLOSED`.
 
 On a valid initial request it creates a NetworkSettings response frame (still uncompressed, as required before negotiation). The host must actually send that frame and only then call `markNetworkSettingsSent()`. The processor subsequently decodes Login frames using the negotiated compression setting and moves the session to `AUTHENTICATION_PENDING`. It rejects unexpected packet IDs, multi-packet handshake batches, nonzero sub-client routing, malformed frames, unsupported compression, and protocol mismatches. Snappy negotiation is blocked because its codec is not implemented. The processor does not open a transport, deliver the response, verify JWTs or signatures, contact Microsoft/Xbox services, or authenticate a player. The host must not call `markAuthenticated()` until those checks have genuinely succeeded.
 
+## NetherNet data-message framing
+
+`NetherNetMessageFraming` implements the one-byte data-channel message envelope independently of any WebRTC library:
+
+- `fragmentReliable` splits an application payload into bounded frames. The configured maximum frame size includes the one-byte header.
+- Fragment headers count down: the first frame carries the number of fragments remaining, and the final frame carries zero.
+- The encoder enforces the configured fragment cap and the protocol's one-byte header limit of 255 fragments.
+- `decodeUnreliable` strips the header only when it is zero, rejects fragmented unreliable messages, and enforces a caller-provided frame-size limit.
+- The existing `NetherNetFragmentAssembler` reassembles reliable fragments and applies message-size, fragment-count, and timeout limits.
+
+These helpers do not create data channels, perform SDP negotiation, gather ICE candidates, or authenticate peers. The transport adapter must use one assembler per reliable channel direction, deliver unreliable messages without reassembly, and apply bounded outbound queues. See the [Mojang NetherNet onboarding guide](https://github.com/Mojang/bedrock-protocol-docs/blob/main/additional_docs/NetherNetOnboardingGuide.md) for the signaling and WebRTC requirements.
+
 ## Verification boundary
 
-JUnit tests have been authored for the codecs. They must be run by Maven or CI before being described as passing. These tests validate serialization and bounds only. They do not establish interoperability with an unmodified Bedrock client.
+JUnit tests have been authored for the codecs and NetherNet framing helpers. They must be run by Maven or CI before being described as passing. These tests validate serialization, fragment sequencing, and bounds only. They do not establish interoperability with an unmodified Bedrock client.
 
 ## Compression envelope

@@ -2,6 +2,8 @@ package ru.nexora.client;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Intent;
+import android.net.Uri;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -42,6 +44,7 @@ public final class MainActivity extends Activity {
     private ChunkPreviewView chunkPreview;
     private Button cameraModeButton;
     private Button skinButton;
+    private Button customSkinButton;
     private int selectedSkin;
     private boolean firstPersonCamera;
     private TextView movementStatus;
@@ -158,6 +161,11 @@ public final class MainActivity extends Activity {
         playersCard.addView(skinButton, matchWrap());
         updateSkinButton();
         skinButton.setOnClickListener(view -> showSkinPicker());
+        addSpace(playersCard, 8);
+        customSkinButton = button("ЗАГРУЗИТЬ PNG-СКИН (64x64)");
+        playersCard.addView(customSkinButton, matchWrap());
+        customSkinButton.setOnClickListener(view -> openCustomSkinPicker());
+        refreshCustomSkinButton();
         addSpace(page, 8);
         cameraModeButton = button("ВИД: СВОБОДНАЯ КАМЕРА");
         page.addView(cameraModeButton, matchWrap());
@@ -344,6 +352,43 @@ public final class MainActivity extends Activity {
             }
         });
         connectButton.setText("ПОДКЛЮЧАЕМСЯ...");
+    }
+
+
+    private static final int REQUEST_CUSTOM_SKIN = 4107;
+
+    private void openCustomSkinPicker() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("image/png");
+        startActivityForResult(intent, REQUEST_CUSTOM_SKIN);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_CUSTOM_SKIN || resultCode != RESULT_OK
+                || data == null || data.getData() == null) return;
+        try {
+            NexoraSkinFile.importPng(this, data.getData());
+            getPreferences(MODE_PRIVATE).edit().putBoolean("nexora_custom_skin_saved", true).apply();
+            refreshCustomSkinButton();
+            Toast.makeText(this,
+                    "PNG проверен и сохранён. Отображение текстуры будет добавлено следующим этапом.",
+                    Toast.LENGTH_LONG).show();
+        } catch (Exception invalid) {
+            Toast.makeText(this, "Не удалось загрузить скин: " + invalid.getMessage(),
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void refreshCustomSkinButton() {
+        if (customSkinButton == null) return;
+        boolean saved = getPreferences(MODE_PRIVATE)
+                .getBoolean("nexora_custom_skin_saved", false);
+        customSkinButton.setText(saved
+                ? "PNG-СКИН СОХРАНЁН • ПРИМЕНЕНИЕ В РАБОТЕ"
+                : "ЗАГРУЗИТЬ PNG-СКИН (64x64)");
     }
 
     private void showSkinPicker() {

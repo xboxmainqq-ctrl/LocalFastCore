@@ -17,6 +17,7 @@ public final class BedrockSubChunkRequestHandler
     private final ToIntFunction<TransportConnection> playerDimension;
     private final BedrockRuntimeBlockRegistry blockRegistry;
     private final BiConsumer<TransportConnection, TransportMessage> fallback;
+    private static final int MAX_REQUEST_PACKETS_PER_MESSAGE = 16;
     private final int maximumBatchBytes;
 
     public BedrockSubChunkRequestHandler(
@@ -68,7 +69,11 @@ public final class BedrockSubChunkRequestHandler
             return;
         }
 
-        if (packets.isEmpty() || packets.stream().anyMatch(packet ->
+        if (packets.isEmpty() || packets.size() > MAX_REQUEST_PACKETS_PER_MESSAGE) {
+            connection.close();
+            return;
+        }
+        if (packets.stream().anyMatch(packet ->
                 packet.header().packetId() != BedrockSubChunkRequestPacketCodec.PACKET_ID)) {
             fallback.accept(connection, message);
             return;

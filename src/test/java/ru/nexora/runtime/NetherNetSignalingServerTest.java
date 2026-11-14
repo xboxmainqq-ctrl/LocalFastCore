@@ -104,6 +104,66 @@ class NetherNetSignalingServerTest {
         assertTrue(closed.get());
     }
 
+    @Test
+    void allowsExplicitDevelopmentOfferWithoutClientIdentity() throws Exception {
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
+        generator.initialize(new ECGenParameterSpec("secp384r1"));
+        KeyPair operator = generator.generateKeyPair();
+
+        String offer = "v=0\r\no=- 1 1 IN IP4 0.0.0.0\r\ns=-\r\nt=0 0\r\n"
+                + "m=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n"
+                + "a=fingerprint:sha-256 " + FINGERPRINT + "\r\n";
+        String answer = "v=0\r\no=- 2 2 IN IP4 0.0.0.0\r\ns=-\r\nt=0 0\r\n"
+                + "m=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n"
+                + "a=fingerprint:sha-256 " + FINGERPRINT + "\r\n";
+        AtomicReference<String> remoteDescription = new AtomicReference<>();
+        AtomicBoolean closed = new AtomicBoolean();
+        NetherNetPeerHost peerHost = new NetherNetPeerHost() {
+            @Override
+            public void setConnectionListener(java.util.function.Consumer<TransportConnection> listener) {
+            }
+
+            @Override
+            public CompletableFuture<String> createAnswer(String networkId, String webRtcOfferSdp) {
+                remoteDescription.set(webRtcOfferSdp);
+                return CompletableFuture.completedFuture(answer);
+            }
+
+            @Override
+            public void close() {
+                closed.set(true);
+            }
+        };
+
+        NetherNetSignalingServer server = new NetherNetSignalingServer(
+                new InetSocketAddress("127.0.0.1", 0),
+                new NetherNetServerInfo("NEXORA", 2225, "1.26.60", "Dev", 0, 10, 0),
+                new NetherNetDevelopmentOfferValidator(true),
+                peerHost, "nexora.example", operator,
+                Clock.fixed(Instant.ofEpochSecond(2000), ZoneOffset.UTC),
+                Duration.ofDays(30), 256 * 1024, 5000L);
+        server.start();
+        try {
+            URI base = URI.create("http://127.0.0.1:" + server.localAddress().getPort());
+            HttpResponse<String> response = HttpClient.newHttpClient().send(
+                    HttpRequest.newBuilder(base.resolve("/v1/join/android-dev"))
+                            .header("Content-Type", "application/sdp")
+                            .POST(HttpRequest.BodyPublishers.ofString(offer))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+
+            assertEquals(200, response.statusCode());
+            assertEquals(offer, remoteDescription.get());
+            NetherNetSdpDocument parsedAnswer = NetherNetSdpDocument.parseOffer(response.body());
+            assertNotNull(parsedAnswer.identityEnvelopeJson());
+            assertTrue(parsedAnswer.webRtcSdp().contains("m=application"));
+            assertTrue(parsedAnswer.webRtcSdp().contains("a=fingerprint:sha-256"));
+        } finally {
+            server.stop();
+        }
+        assertTrue(closed.get());
+    }
+
     private static String createDummyIdentitySdp(KeyPair keyPair) throws Exception {
         String plain = "v=0\na=fingerprint:sha-256 " + FINGERPRINT + "\nm=application 9 x";
         return NetherNetServerIdentitySigner.addIdentity(plain, "nexora.example", keyPair,

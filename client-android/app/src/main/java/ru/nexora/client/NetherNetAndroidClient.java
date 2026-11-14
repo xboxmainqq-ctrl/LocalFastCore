@@ -520,12 +520,21 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                     }
                     int spawnChunkX = Math.floorDiv(world.spawnX(), 16);
                     int spawnChunkZ = Math.floorDiv(world.spawnZ(), 16);
-                    if (!sendReliable(NexoraAndroidProtocolCodec.encodeChunkRequest(
-                            spawnChunkX, spawnChunkZ))) {
-                        reportError("Не удалось запросить стартовый чанк NEXORA");
-                    } else {
-                        reportStatus("Сведения о мире получены • запрашиваем стартовый чанк...");
+                    int requested = 0;
+                    for (int radius = 0; radius <= 1; radius++) {
+                        for (int dz = -radius; dz <= radius; dz++) {
+                            for (int dx = -radius; dx <= radius; dx++) {
+                                if (radius == 1 && Math.abs(dx) != 1 && Math.abs(dz) != 1) continue;
+                                if (!sendReliable(NexoraAndroidProtocolCodec.encodeChunkRequest(
+                                        spawnChunkX + dx, spawnChunkZ + dz))) {
+                                    reportError("Не удалось запросить соседние чанки NEXORA");
+                                    return;
+                                }
+                                requested++;
+                            }
+                        }
                     }
+                    reportStatus("Мир получен • запрошено чанков: " + requested);
                     return;
                 } catch (RuntimeException malformed) {
                     reportError("Некорректные сведения о мире NEXORA: " + malformed.getMessage());

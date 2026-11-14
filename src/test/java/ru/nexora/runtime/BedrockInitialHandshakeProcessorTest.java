@@ -52,6 +52,8 @@ class BedrockInitialHandshakeProcessorTest {
         assertTrue(loginResult.outboundFrame().isEmpty());
 
         assertEquals(BedrockHandshakeResult.ACCEPTED, processor.markAuthenticated());
+        assertEquals(BedrockHandshakeState.LOGIN_SUCCESS_SENT, processor.state());
+        assertEquals(BedrockHandshakeResult.ACCEPTED, processor.markPlayReady());
         assertEquals(BedrockHandshakeState.PLAY, processor.state());
     }
 

@@ -17,8 +17,7 @@ class BedrockPalettedStorageCodecTest {
 
         ByteBuffer encoded = BedrockPalettedStorageCodec.encode(section, registry);
         assertEquals(1, Byte.toUnsignedInt(encoded.get())); // zero bits, runtime flag set
-        assertEquals(1, BedrockBinary.readVarInt32(encoded));
-        assertEquals(0, BedrockBinary.readVarInt32(encoded));
+        assertEquals(0, BedrockBinary.readVarInt32(encoded)); // implicit single air ID
         assertFalse(encoded.hasRemaining());
     }
 

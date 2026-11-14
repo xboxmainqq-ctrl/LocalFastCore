@@ -26,29 +26,38 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
     private final Function<ChunkPosition, Boolean> chunkLoader;
     private final Map<TransportConnection, PlayerSession> playerSessions =
             new ConcurrentHashMap<>();
-    private final EntityRegistry entities = new EntityRegistry();
+    private final EntityRegistry entities;
+    private final Map<UUID, PlayerInventory> inventories;
 
     /** Returns the authoritative entity registry for this server world. */
     public EntityRegistry entities() {
         return entities;
     }
 
+    /** Returns the server-side inventory for an active player session. */
+    public java.util.Optional<PlayerInventory> inventory(UUID playerId) {
+        return java.util.Optional.ofNullable(inventories.get(Objects.requireNonNull(playerId, "playerId")));
+    }
+
     public NexoraPrivateProtocolHandler(UUID serverId, int maxMessageBytes,
                                         Consumer<TransportConnection> readyListener) {
-        this(serverId, maxMessageBytes, () -> null, null, null, readyListener);
+        this(serverId, maxMessageBytes, () -> null, null, null, readyListener,
+                new EntityRegistry(), new ConcurrentHashMap<>());
     }
 
     public NexoraPrivateProtocolHandler(UUID serverId, int maxMessageBytes,
                                         Supplier<NexoraWorldInfo> worldInfoSupplier,
                                         Consumer<TransportConnection> readyListener) {
-        this(serverId, maxMessageBytes, worldInfoSupplier, null, null, readyListener);
+        this(serverId, maxMessageBytes, worldInfoSupplier, null, null, readyListener,
+                new EntityRegistry(), new ConcurrentHashMap<>());
     }
 
     public NexoraPrivateProtocolHandler(UUID serverId, int maxMessageBytes,
                                         Supplier<NexoraWorldInfo> worldInfoSupplier,
                                         Supplier<World> worldSupplier,
                                         Consumer<TransportConnection> readyListener) {
-        this(serverId, maxMessageBytes, worldInfoSupplier, worldSupplier, null, readyListener);
+        this(serverId, maxMessageBytes, worldInfoSupplier, worldSupplier, null, readyListener,
+                new EntityRegistry(), new ConcurrentHashMap<>());
     }
 
     public NexoraPrivateProtocolHandler(UUID serverId, int maxMessageBytes,
@@ -56,6 +65,17 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                                         Supplier<World> worldSupplier,
                                         Function<ChunkPosition, Boolean> chunkLoader,
                                         Consumer<TransportConnection> readyListener) {
+        this(serverId, maxMessageBytes, worldInfoSupplier, worldSupplier, chunkLoader,
+                readyListener, new EntityRegistry(), new ConcurrentHashMap<>());
+    }
+
+    public NexoraPrivateProtocolHandler(UUID serverId, int maxMessageBytes,
+                                        Supplier<NexoraWorldInfo> worldInfoSupplier,
+                                        Supplier<World> worldSupplier,
+                                        Function<ChunkPosition, Boolean> chunkLoader,
+                                        Consumer<TransportConnection> readyListener,
+                                        EntityRegistry entities,
+                                        Map<UUID, PlayerInventory> inventories) {
         this.serverId = Objects.requireNonNull(serverId, "serverId");
         if (maxMessageBytes < 1 || maxMessageBytes > 8 * 1024 * 1024) {
             throw new IllegalArgumentException("maxMessageBytes is outside the supported range");
@@ -65,6 +85,8 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
         this.worldSupplier = worldSupplier;
         this.chunkLoader = chunkLoader;
         this.readyListener = Objects.requireNonNull(readyListener, "readyListener");
+        this.entities = Objects.requireNonNull(entities, "entities");
+        this.inventories = Objects.requireNonNull(inventories, "inventories");
     }
 
     @Override
@@ -78,6 +100,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 PlayerSession session = activeSession.getAndSet(null);
                 if (session != null && playerSessions.remove(connection, session)) {
                     entities.remove(session.playerId);
+                    inventories.remove(session.playerId);
                     broadcastPlayerLeft(connection, session.playerId);
                 }
             }
@@ -146,7 +169,10 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                         new AtomicReference<>(new NexoraMovementValidator.Position(
                                 worldInfo.spawnX() + 0.5, worldInfo.spawnY(),
                                 worldInfo.spawnZ() + 0.5));
-                PlayerSession session = new PlayerSession(UUID.randomUUID(), hello.playerName(), hello.skinIndex(), playerPosition);
+                UUID playerId = UUID.randomUUID();
+                PlayerInventory inventory = inventories.computeIfAbsent(playerId, PlayerInventory::new);
+                PlayerSession session = new PlayerSession(playerId, hello.playerName(), hello.skinIndex(),
+                        playerPosition, inventory);
                 synchronized (connection) {
                     if (!connection.isOpen()) return;
                     activeSession.set(session);
@@ -208,6 +234,9 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 session.position.set(result.position());
                 entities.updatePosition(session.playerId, result.position().x(),
                         result.position().y(), result.position().z(), session.yaw.get());
+                ItemPickupService.PickupResult pickup = new ItemPickupService(entities, world).pickup(
+                        session.playerId, result.position().x(), result.position().y(),
+                        result.position().z(), session.inventory);
             }
             NexoraMovementValidator.Position authoritative = session.position.get();
             if (send(connection, NexoraMovementPacketCodec.encodeServerPosition(authoritative))
@@ -303,15 +332,18 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
         private final String playerName;
         private final int skinIndex;
         private final AtomicReference<NexoraMovementValidator.Position> position;
+        private final PlayerInventory inventory;
         private final AtomicReference<Double> yaw = new AtomicReference<>(0.0);
         private final java.util.Set<UUID> visiblePlayers = ConcurrentHashMap.newKeySet();
 
         private PlayerSession(UUID playerId, String playerName, int skinIndex,
-                              AtomicReference<NexoraMovementValidator.Position> position) {
+                              AtomicReference<NexoraMovementValidator.Position> position,
+                              PlayerInventory inventory) {
             this.playerId = playerId;
             this.playerName = playerName;
             this.skinIndex = skinIndex;
             this.position = position;
+            this.inventory = inventory;
         }
     }
 

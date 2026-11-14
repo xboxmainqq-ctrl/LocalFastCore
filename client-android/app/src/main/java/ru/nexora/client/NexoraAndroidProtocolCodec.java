@@ -10,7 +10,7 @@ import java.util.UUID;
 /** Wire codec matching the server's private NEXORA protocol v1. */
 final class NexoraAndroidProtocolCodec {
     static final int MAJOR_VERSION = 1;
-    static final int MINOR_VERSION = 0;
+    static final int MINOR_VERSION = 1;
     static final int MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
     private static final byte[] MAGIC = {'N', 'X', 'R', 'A'};
     private static final int TYPE_WORLD_INFO = 4;
@@ -24,17 +24,21 @@ final class NexoraAndroidProtocolCodec {
     }
 
     static byte[] encodeClientHello(String build) {
-        return encodeClientHello(build, "Игрок");
+        return encodeClientHello(build, "Игрок", 0);
     }
 
     static byte[] encodeClientHello(String build, String playerName) {
-        if (build == null || playerName == null || playerName.isBlank() || playerName.length() > 16) throw new IllegalArgumentException("Client build and player name are required");
+        return encodeClientHello(build, playerName, 0);
+    }
+
+    static byte[] encodeClientHello(String build, String playerName, int skinIndex) {
+        if (build == null || playerName == null || playerName.isBlank() || playerName.length() > 16 || skinIndex < 0 || skinIndex > 4) throw new IllegalArgumentException("Client build and player name are required");
         byte[] text = build.getBytes(StandardCharsets.UTF_8);
         byte[] name = playerName.getBytes(StandardCharsets.UTF_8);
         if (text.length < 1 || text.length > 64 || name.length < 1 || name.length > 48) throw new IllegalArgumentException("Invalid NEXORA hello text length");
-        ByteBuffer output = ByteBuffer.allocate(9 + text.length + name.length).order(ByteOrder.BIG_ENDIAN);
+        ByteBuffer output = ByteBuffer.allocate(10 + text.length + name.length).order(ByteOrder.BIG_ENDIAN);
         output.put(MAGIC).put((byte) MAJOR_VERSION).put((byte) MINOR_VERSION)
-                .put((byte) 1).put((byte) text.length).put(text).put((byte) name.length).put(name);
+                .put((byte) 1).put((byte) text.length).put(text).put((byte) name.length).put(name).put((byte) skinIndex);
         return output.array();
     }
 
@@ -133,20 +137,23 @@ final class NexoraAndroidProtocolCodec {
         if (input.remaining() < 50) throw new IllegalArgumentException("Malformed NEXORA remote player state");
         UUID playerId = new UUID(input.getLong(), input.getLong());
         int nameLength = Byte.toUnsignedInt(input.get());
-        if (nameLength < 1 || nameLength > 48 || input.remaining() != nameLength + 32) throw new IllegalArgumentException("Invalid remote player name length");
+        if (nameLength < 1 || nameLength > 48 || input.remaining() != nameLength + 33) throw new IllegalArgumentException("Invalid remote player name length");
         byte[] nameBytes = new byte[nameLength];
         input.get(nameBytes);
         String playerName = decodeUtf8(nameBytes);
+        int skinIndex = Byte.toUnsignedInt(input.get());
+        if (skinIndex > 4) throw new IllegalArgumentException("Invalid remote player skin");
         if (playerName.isBlank() || playerName.length() > 16) throw new IllegalArgumentException("Invalid remote player name");
         double x = input.getDouble();
         double y = input.getDouble();
         double z = input.getDouble();
+        double yaw = input.getDouble();
         if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
                 || Math.abs(x) > 30_000_000d || Math.abs(y) > 30_000_000d
                 || Math.abs(z) > 30_000_000d || !Double.isFinite(yaw) || yaw < -180.0 || yaw > 180.0) {
             throw new IllegalArgumentException("Invalid NEXORA remote player coordinates or yaw");
         }
-        return new RemotePlayerState(playerId, playerName, x, y, z, yaw);
+        return new RemotePlayerState(playerId, playerName, skinIndex, x, y, z, yaw);
     }
 
     static UUID decodeRemotePlayerLeft(byte[] bytes) {
@@ -263,7 +270,7 @@ final class NexoraAndroidProtocolCodec {
     record ChunkData(int chunkX, int chunkZ, java.util.List<ChunkBlock> blocks) {
     }
 
-    record RemotePlayerState(UUID playerId, String playerName, double x, double y, double z, double yaw) {
+    record RemotePlayerState(UUID playerId, String playerName, int skinIndex, double x, double y, double z, double yaw) {
     }
 
     record PlayerPosition(double x, double y, double z) {

@@ -594,6 +594,19 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                 }
                 return;
             }
+            if (complete.length >= 7 && complete[6] == 13) {
+                try {
+                    NexoraAndroidProtocolCodec.InventoryActionResult result =
+                            NexoraAndroidProtocolCodec.decodeInventoryActionResult(complete);
+                    Listener current = listener;
+                    if (current != null) {
+                        mainHandler.post(() -> current.onInventoryActionResult(result));
+                    }
+                } catch (RuntimeException malformed) {
+                    reportError("Некорректный ответ действия инвентаря: " + malformed.getMessage());
+                }
+                return;
+            }
             if (complete.length >= 7 && complete[6] == 11) {
                 try {
                     NexoraAndroidProtocolCodec.InventoryState inventory =
@@ -663,6 +676,18 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         if (!nexoraProtocolReady || !worldInfoReceived || !isConnected()) return false;
         try {
             return sendUnreliable(NexoraAndroidProtocolCodec.encodePlayerMove(x, y, z));
+        } catch (RuntimeException invalid) {
+            return false;
+        }
+    }
+
+    /** Sends a server-authoritative inventory operation. */
+    public boolean sendInventoryAction(NexoraAndroidProtocolCodec.InventoryAction action,
+                                       int sourceSlot, int targetSlot) {
+        if (!nexoraProtocolReady || !worldInfoReceived || !isConnected()) return false;
+        try {
+            return sendReliable(NexoraAndroidProtocolCodec.encodeInventoryAction(
+                    action, sourceSlot, targetSlot));
         } catch (RuntimeException invalid) {
             return false;
         }
@@ -917,6 +942,10 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         }
 
         default void onInventoryReceived(NexoraAndroidProtocolCodec.InventoryState inventory) {
+        }
+
+        default void onInventoryActionResult(
+                NexoraAndroidProtocolCodec.InventoryActionResult result) {
         }
 
         default void onNetworkSettingsReceived(BedrockAndroidNetworkSettings settings) {

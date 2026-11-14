@@ -246,3 +246,19 @@ Protocol references:
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/level-chunk-packet/
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/sub-chunk-packet/
 - https://mojang.github.io/bedrock-protocol-docs/guides/sub-chunk-request-system-v1-18-10/
+### Client subchunk requests — protocol 2225
+
+`BedrockSubChunkRequestPacketCodec` now decodes client packet 175 using the stable 1.26.60 schema:
+
+- Dimension is ZigZag `varint32`.
+- The offset list uses a bounded `varuint32` count; each offset is three signed `int8` values.
+- The center subchunk position is three little-endian `int32` coordinates.
+- The decoder rejects zero/oversized request counts, truncated offset/position data, invalid dimensions, and trailing bytes.
+- `Request.absolutePositions()` resolves relative offsets against the center using overflow-checked coordinate addition.
+
+This is only the client request parser. NEXORA still needs to map requested positions to world sections and encode server packet 174 responses with valid subchunk palettes, heightmaps, and block-entity data. The request-system guide explains that a skeleton LevelChunk enables this request flow, but it does not replace the required subchunk responses.
+
+Protocol references:
+- https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/sub-chunk-request-packet/
+- https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/sub-chunk-packet/
+- https://mojang.github.io/bedrock-protocol-docs/guides/sub-chunk-request-system-v1-18-10/

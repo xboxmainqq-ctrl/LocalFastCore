@@ -56,7 +56,9 @@ public final class PlayerInventory {
     public synchronized List<ItemStack> snapshot() {
         List<ItemStack> result = new ArrayList<>(slots.length);
         for (ItemStack stack : slots) {
-            result.add(stack);
+            if (stack != null) {
+                result.add(stack);
+            }
         }
         return List.copyOf(result);
     }

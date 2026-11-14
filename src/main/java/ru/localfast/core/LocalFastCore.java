@@ -39,6 +39,10 @@ import cn.nukkit.form.window.FormWindowSimple;
 import cn.nukkit.form.window.FormWindowCustom;
 import cn.nukkit.scheduler.TaskHandler;
 import cn.nukkit.potion.Effect;
+import cn.nukkit.inventory.ContainerInventory;
+import cn.nukkit.inventory.InventoryType;
+import cn.nukkit.event.inventory.InventoryClickEvent;
+import cn.nukkit.event.inventory.InventoryCloseEvent;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -57,6 +61,7 @@ import java.util.UUID;
 public final class LocalFastCore extends PluginBase implements Listener {
     private static final int MAX_LEVEL = 100;
     private static final int MAX_MAGIC_LEVEL = 30;
+    private static final int[] MAGIC_EQUIPMENT_SLOTS = {10, 12, 14, 16, 20, 22};
     private static final int CURRENT_PLAYER_DATA_VERSION = 1;
     private static final int POINTS_PER_LEVEL = 3;
     private static final int MAX_XP_GRANT = 1_000_000;
@@ -75,8 +80,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private boolean playersDirty = false;
     private final Map<String, IScoreboard> sidebars = new HashMap<>();
     private final Map<UUID, PendingTeleport> pendingTeleports = new HashMap<>();
-    private final Map<UUID, Integer> temporaryAbilityDamage = new HashMap<>();
-    private final Map<UUID, Integer> nextAbilityDamage = new HashMap<>();
+    private final Map<UUID, MagicEquipmentInventory> magicEquipmentInventories = new HashMap<>();
     private final Map<UUID, ComboState> combatCombos = new HashMap<>();
     private final Map<UUID, Long> tankGuardUntil = new HashMap<>();
     private final Map<UUID, Long> legendaryWeaponCooldowns = new HashMap<>();
@@ -601,8 +605,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         removePet(quittingPlayer);
         pendingTeleports.remove(quittingId);
         pendingTeleports.entrySet().removeIf(entry -> entry.getValue().requester.getUniqueId().equals(quittingId));
-        temporaryAbilityDamage.remove(quittingId);
-        nextAbilityDamage.remove(quittingId);
+        magicEquipmentInventories.remove(quittingId);
         combatCombos.remove(quittingId);
         tankGuardUntil.remove(quittingId);
         String key = playerKey(event.getPlayer());
@@ -1016,9 +1019,6 @@ public final class LocalFastCore extends PluginBase implements Listener {
             petWolfDamageUntil.remove(attackerId);
             attacker.sendMessage("§aВолк усилил твой удар на " + wolfStrike + " урона!");
         }
-        bonusDamage += temporaryAbilityDamage.getOrDefault(attackerId, 0);
-        bonusDamage += nextAbilityDamage.getOrDefault(attackerId, 0);
-        nextAbilityDamage.remove(attackerId);
         if (bonusDamage > 0) {
             event.setDamage(event.getDamage(EntityDamageEvent.DamageModifier.BASE) + bonusDamage,
                     EntityDamageEvent.DamageModifier.BASE);
@@ -4300,122 +4300,6 @@ public final class LocalFastCore extends PluginBase implements Listener {
         player.sendMessage("§5§l[МАГИЯ] §f" + result + " §8(-" + cost + " маны)");
         updateSidebar(player);
         return true;
-    }
-
-    private String abilityName(String playerClass) {
-        switch (playerClass) {
-            case "warrior": return "Боевой натиск";
-            case "mage": return "Поток маны";
-            case "archer": return "Стремительный шаг";
-            case "assassin": return "Смертельный выпад";
-            case "tank": return "Железная стойка";
-            default: return "Нет способности";
-        }
-    }
-
-    private String abilityDescription(String playerClass) {
-        switch (playerClass) {
-            case "warrior": return "§7На 8 секунд увеличивает урон каждого удара на 3.";
-            case "mage": return "§7Восстанавливает 40 единиц маны. Перезарядка общей способности — 30 секунд.";
-            case "archer": return "§7На 8 секунд увеличивает скорость передвижения на 20%.";
-            case "assassin": return "§7Следующий удар наносит дополнительно 7 единиц урона.";
-            case "tank": return "§7На 8 секунд повышает максимум здоровья на 6 и лечит на 6.";
-            default: return "§7Сначала выбери класс через /class.";
-        }
-    }
-
-    private long abilityCooldownRemaining(Player player) {
-        long until = players.getLong(playerKey(player) + ".ability_cooldown_until", 0L);
-        return Math.max(0L, until - System.currentTimeMillis());
-    }
-
-    private void openAbilitiesMenu(Player player) {
-        initialize(player);
-        String playerClass = getRpgClass(player);
-        long remaining = abilityCooldownRemaining(player);
-        String cooldown = remaining > 0
-                ? "§cПерезарядка: " + ((remaining + 999L) / 1000L) + " сек."
-                : "§aСпособность готова!";
-        FormWindowSimple form = new FormWindowSimple("§6§lСпособности",
-                "§fКласс: " + rpgClassLabel(playerClass)
-                        + "\n§fСпособность: §e" + abilityName(playerClass)
-                        + "\n" + abilityDescription(playerClass)
-                        + "\n\n" + cooldown
-                        + "\n§7Перезарядка после применения: 30 секунд.");
-        form.addButton(new ElementButton("§aИспользовать способность"));
-        form.addButton(new ElementButton("§7Обновить"));
-        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
-            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
-            int selected = form.getResponse().getClickedButtonId();
-            if (selected == 0) activateClassAbility(player);
-            else if (selected == 1) openAbilitiesMenu(player);
-        }));
-        player.showFormWindow(form);
-    }
-
-    private void activateClassAbility(Player player) {
-        initialize(player);
-        String playerClass = getRpgClass(player);
-        if (playerClass.equals("none")) {
-            player.sendMessage("§cСначала выбери класс: §e/class");
-            return;
-        }
-        long remaining = abilityCooldownRemaining(player);
-        if (remaining > 0) {
-            player.sendMessage("§cСпособность перезаряжается. Осталось "
-                    + ((remaining + 999L) / 1000L) + " сек.");
-            return;
-        }
-
-        long cooldownUntil = System.currentTimeMillis() + 30_000L;
-        players.set(playerKey(player) + ".ability_cooldown_until", cooldownUntil);
-        markPlayersDirty();
-        flushPlayers();
-        UUID uuid = player.getUniqueId();
-
-        switch (playerClass) {
-            case "warrior":
-                temporaryAbilityDamage.put(uuid, 3);
-                getServer().getScheduler().scheduleDelayedTask(this, () -> temporaryAbilityDamage.remove(uuid), 160);
-                player.sendMessage("§c§l[Способность] §fБоевой натиск! §e+3 урона на 8 секунд.");
-                break;
-            case "mage":
-                int restoredMana = Math.min(40, magicMaxMana(player) - magicMana(player));
-                if (restoredMana <= 0) {
-                    players.set(playerKey(player) + ".ability_cooldown_until", 0L);
-                    markPlayersDirty();
-                    player.sendMessage("§bУ тебя уже полная мана.");
-                    return;
-                }
-                setMagicMana(player, magicMana(player) + restoredMana);
-                player.sendMessage("§b§l[Способность] §fПоток маны! §a+" + restoredMana + " маны.");
-                break;
-            case "archer":
-                player.setMovementSpeed(Math.min(Player.MAXIMUM_SPEED, player.getMovementSpeed() * 1.20f));
-                getServer().getScheduler().scheduleDelayedTask(this, () -> {
-                    if (player.isOnline()) recalculateStats(player);
-                }, 160);
-                player.sendMessage("§a§l[Способность] §fСтремительный шаг! §e+20% скорости на 8 секунд.");
-                break;
-            case "assassin":
-                nextAbilityDamage.put(uuid, 7);
-                player.sendMessage("§d§l[Способность] §fСмертельный выпад! §eСледующий удар получит +7 урона.");
-                break;
-            case "tank":
-                player.setMaxHealth(player.getMaxHealth() + 6);
-                player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + 6.0f));
-                getServer().getScheduler().scheduleDelayedTask(this, () -> {
-                    if (player.isOnline()) recalculateStats(player);
-                }, 160);
-                player.sendMessage("§6§l[Способность] §fЖелезная стойка! §e+6 максимального здоровья на 8 секунд.");
-                break;
-            default:
-                players.set(playerKey(player) + ".ability_cooldown_until", 0L);
-                markPlayersDirty();
-                player.sendMessage("§cДля этого класса способность не настроена.");
-                return;
-        }
-        updateSidebar(player);
     }
 
     private void openStatsMenu(Player player) {

@@ -2,7 +2,7 @@
 
 Target: Bedrock 1.26.60, protocol 2225.
 
-The Java runtime contains payload codecs for three packet types, bounded packet-batch framing, a compression envelope, a frame-level coordinator for the initial server-side login handshake, and transport-independent NetherNet message framing and a bounded client identity verification chain. This still does not implement the WebRTC peer connection, HTTP signaling, cryptographic identity verification, Microsoft/Xbox authentication, or a complete client session.
+The Java runtime contains payload codecs for three packet types, bounded packet-batch framing, a compression envelope, a frame-level coordinator for the initial server-side login handshake, and transport-independent NetherNet message framing and a bounded client identity verification chain. Client and operator NetherNet identity assertions now have bounded parsing and signature-verification components. The runtime still does not implement the WebRTC peer connection or a complete client session, and it does not acquire Microsoft/Xbox credentials or prove live-account interoperability.
 
 | Packet | ID | Payload implemented | Status |
 |---|---:|---|---|
@@ -110,6 +110,6 @@ The authorization-service endpoint, RS256 algorithm, issuer, audience, and clien
 
 ## Verification boundary
 
-JUnit tests have been authored for the codecs, NetherNet framing, identity parsing, canonical fingerprint serialization, RS256 GameServerToken verification, and detached ES384 proof verification. They must be run by Maven or CI before being described as passing. These tests are authored but have not yet been confirmed by a successful Maven/CI run. Even when they pass, they validate isolated implementation behavior only and do not establish interoperability with an unmodified Bedrock client or a live Microsoft/Xbox account.
+JUnit tests have been authored for the codecs, NetherNet framing, identity parsing, canonical fingerprint serialization, RS256 GameServerToken verification, detached ES384 proof verification, and operator identity signing/TOFU verification. They must be run by Maven or CI before being described as passing. These tests are authored but have not yet been confirmed by a successful Maven/CI run. Even when they pass, they validate isolated implementation behavior only and do not establish interoperability with an unmodified Bedrock client or a live Microsoft/Xbox account.
 
 ## Compression envelope

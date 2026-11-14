@@ -17,7 +17,7 @@ class FluidWorldStorageTest {
     void storesFluidSeparatelyAndUnloadsChunkWhenCleared() {
         InMemoryWorld world = new InMemoryWorld("fluids", new WorldHeight(-64, 320));
         BlockPosition position = new BlockPosition(-1, -17, -16);
-        BlockState water = new BlockState("minecraft:water", Map.of("liquid_depth", "0"));
+        BlockState water = new BlockState("minecraft:water");
 
         world.setFluid(position, water);
 
@@ -37,7 +37,7 @@ class FluidWorldStorageTest {
         BlockPosition waterPosition = new BlockPosition(18, 4, -31);
         BlockPosition lavaPosition = new BlockPosition(19, 5, -31);
         BlockState water = new BlockState("minecraft:water", Map.of("liquid_depth", "0"));
-        BlockState lava = new BlockState("minecraft:lava", Map.of("liquid_depth", "0"));
+        BlockState lava = new BlockState("minecraft:lava");
         original.setFluid(waterPosition, water);
         original.setFluid(lavaPosition, lava);
 

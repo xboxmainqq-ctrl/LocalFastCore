@@ -46,4 +46,4 @@ The packet header and batch format are cross-checked against the Bedrock protoco
 
 JUnit tests have been authored for the codecs. They must be run by Maven or CI before being described as passing. These tests validate serialization and bounds only. They do not establish interoperability with an unmodified Bedrock client.
 
-The next separate layer is the negotiated compression envelope. Keep it separate from raw packet batching: before NetworkSettings and after NetworkSettings are different framing states, and NetherNet does not use the RakNet 0xFE marker. Do not mark compression or transport support as implemented until verified independently.
+## Compression envelope

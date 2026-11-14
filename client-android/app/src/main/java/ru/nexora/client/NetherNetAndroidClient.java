@@ -489,13 +489,13 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                         return;
                     }
                     nexoraProtocolReady = true;
+                    reportStatus("Протокол NEXORA " + NexoraAndroidProtocolCodec.MAJOR_VERSION
+                            + "." + NexoraAndroidProtocolCodec.MINOR_VERSION + " согласован");
                     Listener current = listener;
                     if (current != null) {
                         mainHandler.post(() -> current.onNexoraReady(
                                 response.serverId(), response.maxMessageBytes()));
                     }
-                    reportStatus("Протокол NEXORA " + NexoraAndroidProtocolCodec.MAJOR_VERSION
-                            + "." + NexoraAndroidProtocolCodec.MINOR_VERSION + " согласован");
                     return;
                 } catch (RuntimeException malformed) {
                     reportError("Некорректный ответ протокола NEXORA: " + malformed.getMessage());

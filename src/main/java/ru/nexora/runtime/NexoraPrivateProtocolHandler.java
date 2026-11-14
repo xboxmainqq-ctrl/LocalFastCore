@@ -107,6 +107,8 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 connection.setMessageListener(ignored -> connection.close());
             } else {
                 AtomicInteger requestedChunks = new AtomicInteger();
+                java.util.concurrent.atomic.AtomicLong lastMovementNanos =
+                        new java.util.concurrent.atomic.AtomicLong();
                 NexoraMovementValidator movementValidator = new NexoraMovementValidator();
                 java.util.concurrent.atomic.AtomicReference<NexoraMovementValidator.Position> playerPosition =
                         new java.util.concurrent.atomic.AtomicReference<>(
@@ -115,7 +117,8 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                                         worldInfo.spawnZ() + 0.5));
                 connection.setMessageListener(message -> {
                     if (isMovementPacket(message.payload())) {
-                        handleMovement(connection, message, playerPosition, movementValidator);
+                        handleMovement(connection, message, playerPosition,
+                                movementValidator, lastMovementNanos);
                     } else {
                         handleChunkRequest(connection, message, worldInfo, requestedChunks);
                     }
@@ -132,11 +135,20 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
     private void handleMovement(
             TransportConnection connection, TransportMessage message,
             java.util.concurrent.atomic.AtomicReference<NexoraMovementValidator.Position> playerPosition,
-            NexoraMovementValidator validator) {
+            NexoraMovementValidator validator,
+            java.util.concurrent.atomic.AtomicLong lastMovementNanos) {
         if (!connection.isOpen()) return;
         if (message.deliveryMode() != DeliveryMode.UNRELIABLE
                 && message.deliveryMode() != DeliveryMode.RELIABLE_ORDERED) {
             connection.close();
+            return;
+        }
+        long now = System.nanoTime();
+        long previous = lastMovementNanos.get();
+        if (previous != 0L && now - previous < 50_000_000L) {
+            return;
+        }
+        if (!lastMovementNanos.compareAndSet(previous, now)) {
             return;
         }
         try {

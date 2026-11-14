@@ -10,7 +10,6 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -91,11 +90,14 @@ final class ChunkPreviewView extends GLSurfaceView {
             if (action == MotionEvent.ACTION_POINTER_UP) {
                 previousSpan = 0f;
                 scaling = false;
+                previousX = event.getX(0);
+                previousY = event.getY(0);
                 return true;
             }
         }
         switch (action) {
             case MotionEvent.ACTION_DOWN:
+                if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
                 previousX = event.getX();
                 previousY = event.getY();
                 previousSpan = 0f;
@@ -241,8 +243,8 @@ final class ChunkPreviewView extends GLSurfaceView {
             int minY = Integer.MAX_VALUE;
             int maxY = Integer.MIN_VALUE;
             for (NexoraAndroidProtocolCodec.ChunkData chunk : snapshot) {
-                int offsetX = (chunk.chunkX() - centerChunkX) * 16;
-                int offsetZ = (chunk.chunkZ() - centerChunkZ) * 16;
+                int offsetX = (chunk.chunkX() - centerChunkX + 1) * 16;
+                int offsetZ = (chunk.chunkZ() - centerChunkZ + 1) * 16;
                 for (NexoraAndroidProtocolCodec.ChunkBlock block : chunk.blocks()) {
                     int x = offsetX + block.localX();
                     int y = block.y();
@@ -334,27 +336,35 @@ final class ChunkPreviewView extends GLSurfaceView {
     }
 
     private static final class MeshBuilder {
-        private final float[] data;
+        private final int maxFloats;
+        private float[] data = new float[65_536];
         private int size;
 
         MeshBuilder(int maxFloats) {
-            data = new float[maxFloats];
+            this.maxFloats = maxFloats;
         }
 
         boolean full() {
-            return size + 36 > data.length;
+            return size + 36 > maxFloats;
         }
 
         void quad(float ax, float ay, float az, float bx, float by, float bz,
                   float cx, float cy, float cz, float dx, float dy, float dz,
                   float[] color, float shade) {
             if (full()) return;
+            ensureCapacity(size + 36);
             vertex(ax,ay,az,color,shade);
             vertex(bx,by,bz,color,shade);
             vertex(cx,cy,cz,color,shade);
             vertex(ax,ay,az,color,shade);
             vertex(cx,cy,cz,color,shade);
             vertex(dx,dy,dz,color,shade);
+        }
+
+        private void ensureCapacity(int required) {
+            if (required <= data.length) return;
+            int next = Math.min(maxFloats, Math.max(required, data.length * 2));
+            data = java.util.Arrays.copyOf(data, next);
         }
 
         private void vertex(float x, float y, float z, float[] color, float shade) {

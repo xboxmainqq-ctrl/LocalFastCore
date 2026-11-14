@@ -1,5 +1,12 @@
 package ru.nexora.runtime;
 
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
+import com.fasterxml.jackson.core.StreamReadFeature;
+import com.fasterxml.jackson.core.StreamReadConstraints;
+
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
 import java.security.Signature;
@@ -8,6 +15,8 @@ import java.security.interfaces.RSAPublicKey;
 import java.security.spec.X509EncodedKeySpec;
 import java.time.Clock;
 import java.util.Base64;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -16,6 +25,11 @@ import java.util.Objects;
  */
 public final class NetherNetGameServerTokenVerifier {
     public static final long DEFAULT_CLOCK_SKEW_SECONDS = 120L;
+    private static final JsonFactory JSON = JsonFactory.builder()
+            .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+            .streamReadConstraints(StreamReadConstraints.builder()
+                    .maxNestingDepth(8).maxStringLength(16 * 1024).maxNumberLength(64).build())
+            .build();
 
     private final NetherNetSigningKeyResolver keyResolver;
     private final Clock clock;
@@ -59,6 +73,7 @@ public final class NetherNetGameServerTokenVerifier {
         if (!verifier.verify(signatureBytes)) {
             throw new SecurityException("GameServerToken signature verification failed");
         }
+        verifyParsedFieldsMatchSignedToken(parts, assertion);
 
         long now = clock.instant().getEpochSecond();
         if (assertion.expiresAtEpochSeconds() + clockSkewSeconds <= now) {
@@ -82,6 +97,98 @@ public final class NetherNetGameServerTokenVerifier {
         }
         return new VerifiedClientIdentity(assertion.xuid(), assertion.displayName(), clientKey,
                 assertion.expiresAtEpochSeconds());
+    }
+
+    private static void verifyParsedFieldsMatchSignedToken(String[] parts,
+                                                            NetherNetIdentityAssertion assertion)
+            throws Exception {
+        String headerJson = decodeUtf8(decodeUrl(parts[0]));
+        String claimsJson = decodeUtf8(decodeUrl(parts[1]));
+        Map<String, String> header = readStringFields(headerJson, "alg", "kid");
+        Map<String, String> claims = readStringFields(claimsJson,
+                "iss", "aud", "cpk", "xid", "xname");
+        Long exp = readLong(claimsJson, "exp");
+        Long nbf = readLong(claimsJson, "nbf");
+        if (!"RS256".equals(header.get("alg"))
+                || !assertion.jwtKeyId().equals(header.get("kid"))
+                || !assertion.issuer().equals(claims.get("iss"))
+                || !assertion.audience().equals(claims.get("aud"))
+                || !assertion.clientPublicKeySpkiBase64().equals(claims.get("cpk"))
+                || !Objects.equals(assertion.xuid(), claims.get("xid"))
+                || !Objects.equals(assertion.displayName(), claims.get("xname"))
+                || exp == null || exp.longValue() != assertion.expiresAtEpochSeconds()
+                || !Objects.equals(assertion.notBeforeEpochSeconds(), nbf)) {
+            throw new SecurityException("Parsed identity fields do not match signed JWT contents");
+        }
+    }
+
+    private static Map<String, String> readStringFields(String json, String... wanted)
+            throws IOException {
+        Map<String, String> values = new HashMap<>();
+        try (JsonParser parser = JSON.createParser(json)) {
+            if (parser.nextToken() != JsonToken.START_OBJECT) {
+                throw new IOException("JWT JSON must be an object");
+            }
+            while (parser.nextToken() == JsonToken.FIELD_NAME) {
+                String name = parser.currentName();
+                JsonToken value = parser.nextToken();
+                boolean capture = false;
+                for (String field : wanted) {
+                    if (field.equals(name)) {
+                        capture = true;
+                        break;
+                    }
+                }
+                if (capture) {
+                    if (value != JsonToken.VALUE_STRING) {
+                        throw new IOException("JWT field " + name + " must be a string");
+                    }
+                    values.put(name, parser.getText());
+                } else {
+                    parser.skipChildren();
+                }
+            }
+            if (parser.nextToken() != null) {
+                throw new IOException("JWT JSON contains trailing data");
+            }
+        }
+        return values;
+    }
+
+    private static Long readLong(String json, String wanted) throws IOException {
+        try (JsonParser parser = JSON.createParser(json)) {
+            if (parser.nextToken() != JsonToken.START_OBJECT) {
+                throw new IOException("JWT claims must be an object");
+            }
+            Long result = null;
+            while (parser.nextToken() == JsonToken.FIELD_NAME) {
+                String name = parser.currentName();
+                JsonToken value = parser.nextToken();
+                if (wanted.equals(name)) {
+                    if (value != JsonToken.VALUE_NUMBER_INT) {
+                        throw new IOException("JWT " + wanted + " must be an integer");
+                    }
+                    result = parser.getLongValue();
+                } else {
+                    parser.skipChildren();
+                }
+            }
+            if (parser.nextToken() != null) {
+                throw new IOException("JWT claims contain trailing data");
+            }
+            return result;
+        }
+    }
+
+    private static String decodeUtf8(byte[] bytes) throws IOException {
+        try {
+            return StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                    .decode(java.nio.ByteBuffer.wrap(bytes)).toString();
+        } catch (java.nio.charset.CharacterCodingException e) {
+            throw new IOException("JWT JSON is not valid UTF-8", e);
+        }
     }
 
     private static byte[] decodeUrl(String value) {

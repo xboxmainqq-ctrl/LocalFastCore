@@ -9,7 +9,7 @@ import java.util.Objects;
  * playable-world milestone. It creates a foundation layer, filler layers,
  * and a surface layer across all 256 columns in a chunk.
  */
-public final class FlatChunkGenerator implements ChunkGenerator {
+public final class FlatChunkGenerator implements ChunkGenerator {\n    private static final int MAX_DEPTH = 512;
     private final int surfaceY;
     private final int depth;
     private final BlockState surface;

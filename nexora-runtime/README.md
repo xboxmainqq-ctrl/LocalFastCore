@@ -15,7 +15,7 @@ This module is the beginning of the independent NEXORA server process. It has **
 - Runtime module contract documents cleanup requirements for partial startup and retryable shutdown.
 - Deterministic tick scheduler with delayed and repeating tasks, cancellation, stable execution order, and task-failure isolation.
 - Dedicated game loop driven by `System.nanoTime()`, with configurable tick rate, bounded catch-up, backlog dropping, clean thread shutdown, and failure reporting.
-- Protocol-independent world foundation: immutable block/chunk coordinates, configurable vertical world bounds, immutable namespaced block states, and a sparse concurrent in-memory world.
+- Protocol-independent world foundation: immutable block/chunk coordinates, configurable vertical world bounds, immutable namespaced block states, a sparse concurrent in-memory world, and immutable generated-chunk snapshots.\n- A deterministic flat-terrain chunk generator with validated world bounds, negative chunk-coordinate support, and a bounded generation depth.
 - Thread-safe `WorldRegistry` for multiple worlds, with duplicate-ID rejection, normalized lookup/removal, stable registration order, and immutable snapshots.
 - Immutable chunk and block snapshots exposed by the world contract.
 - `FileWorldStorage` saves a world's loaded chunks to a versioned `.nxw` file, verifies a CRC32C checksum on load, rejects unsafe world IDs and symbolic-link targets, and replaces files atomically when supported.

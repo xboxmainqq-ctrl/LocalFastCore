@@ -7,6 +7,7 @@ import java.util.Map;
 final class WorldChunk {
     private final Map<Integer, ChunkSection> sections = new HashMap<>();
     private final Map<Integer, BiomeSection> biomeSections = new HashMap<>();
+    private final Map<Integer, ChunkSection> fluidSections = new HashMap<>();
 
     static WorldChunk from(Map<BlockPosition, BlockState> snapshot) {
         WorldChunk chunk = new WorldChunk();
@@ -35,6 +36,29 @@ final class WorldChunk {
         section.set(position.localX(), localY, position.localZ(), state);
         if (section.isEmpty()) {
             sections.remove(sectionY);
+        }
+    }
+
+    synchronized BlockState fluidAt(BlockPosition position) {
+        ChunkSection section = fluidSections.get(Math.floorDiv(position.y(), 16));
+        return section == null ? BlockState.AIR
+                : section.get(position.localX(), Math.floorMod(position.y(), 16), position.localZ());
+    }
+
+    synchronized void setFluid(BlockPosition position, BlockState fluidState) {
+        FluidStates.requireFluidOrAir(fluidState);
+        int sectionY = Math.floorDiv(position.y(), 16);
+        ChunkSection section = fluidSections.get(sectionY);
+        if (section == null) {
+            if (fluidState.isAir()) {
+                return;
+            }
+            section = new ChunkSection();
+            fluidSections.put(sectionY, section);
+        }
+        section.set(position.localX(), Math.floorMod(position.y(), 16), position.localZ(), fluidState);
+        if (section.isEmpty()) {
+            fluidSections.remove(sectionY);
         }
     }
 
@@ -74,7 +98,7 @@ final class WorldChunk {
     }
 
     synchronized boolean isEmpty() {
-        return sections.isEmpty() && biomeSections.isEmpty();
+        return sections.isEmpty() && biomeSections.isEmpty() && fluidSections.isEmpty();
     }
 
     synchronized Map<BlockPosition, BlockState> snapshot(ChunkPosition chunkPosition) {
@@ -94,6 +118,29 @@ final class WorldChunk {
                                     y,
                                     Math.addExact(baseZ, localZ)
                             ), state);
+                        }
+                    }
+                }
+            }
+        });
+        return Map.copyOf(snapshot);
+    }
+
+    synchronized Map<BlockPosition, BlockState> fluidSnapshot(ChunkPosition chunkPosition) {
+        int baseX = Math.multiplyExact(chunkPosition.x(), 16);
+        int baseZ = Math.multiplyExact(chunkPosition.z(), 16);
+        Map<BlockPosition, BlockState> snapshot = new HashMap<>();
+        fluidSections.forEach((sectionY, section) -> {
+            int baseY = Math.multiplyExact(sectionY, 16);
+            for (int localY = 0; localY < 16; localY++) {
+                int y = Math.addExact(baseY, localY);
+                for (int localZ = 0; localZ < 16; localZ++) {
+                    for (int localX = 0; localX < 16; localX++) {
+                        BlockState state = section.get(localX, localY, localZ);
+                        if (!state.isAir()) {
+                            snapshot.put(new BlockPosition(
+                                    Math.addExact(baseX, localX), y,
+                                    Math.addExact(baseZ, localZ)), state);
                         }
                     }
                 }

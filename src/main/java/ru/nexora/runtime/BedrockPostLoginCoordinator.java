@@ -225,7 +225,7 @@ public final class BedrockPostLoginCoordinator implements
                 session.closed = true;
                 sessions.remove(session.connection.id(), session);
             }
-        });;
+        });
     }
 
     private BedrockResourcePackCodec.ClientResponse decodeResponse(ByteBuffer frame) {
@@ -264,8 +264,8 @@ public final class BedrockPostLoginCoordinator implements
             }
             session.closed = true;
             sessions.remove(session.connection.id(), session);
-            session.connection.close();
         }
+        session.connection.close();
     }
 
     private static byte[] bytes(ByteBuffer source) {
@@ -278,9 +278,7 @@ public final class BedrockPostLoginCoordinator implements
     public void close() {
         closed = true;
         for (Session session : sessions.values()) {
-            synchronized (session) {
-                fail(session);
-            }
+            fail(session);
         }
         sessions.clear();
     }

@@ -176,12 +176,13 @@ final class NexoraAndroidProtocolCodec {
         int count = Byte.toUnsignedInt(input.get());
         if (count > 36) throw new IllegalArgumentException("Too many NEXORA inventory stacks");
         java.util.ArrayList<InventoryStack> stacks = new java.util.ArrayList<>(count);
+        boolean[] seenSlots = new boolean[36];
         int total = 0;
         for (int i = 0; i < count; i++) {
-            if (!input.hasRemaining()) throw new IllegalArgumentException("Truncated NEXORA inventory stack");
+            if (input.remaining() < 2) throw new IllegalArgumentException("Truncated NEXORA inventory stack");
             int slot = Byte.toUnsignedInt(input.get());
             int length = Byte.toUnsignedInt(input.get());
-            if (slot >= 36 || length < 1 || length > 96 || input.remaining() < length + 1) {
+            if (slot >= 36 || seenSlots[slot] || length < 1 || length > 96 || input.remaining() < length + 1) {
                 throw new IllegalArgumentException("Invalid NEXORA item identifier length");
             }
             byte[] id = new byte[length];
@@ -195,6 +196,7 @@ final class NexoraAndroidProtocolCodec {
                 throw new IllegalArgumentException("Invalid NEXORA item stack size");
             }
             total += amount;
+            seenSlots[slot] = true;
             stacks.add(new InventoryStack(slot, itemId, amount));
         }
         if (input.hasRemaining()) throw new IllegalArgumentException("Trailing NEXORA inventory bytes");

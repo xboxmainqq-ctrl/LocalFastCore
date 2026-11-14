@@ -6,6 +6,8 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -31,6 +33,36 @@ class BackupManagerTest {
         assertEquals(Files.size(sourceFile), result.totalBytes());
         assertEquals("player-state", Files.readString(sourceFile));
         assertTrue(Files.readString(result.manifest()).contains("NEXORA-BACKUP-MANIFEST\t1"));
+
+        BackupManager.VerificationResult verified = manager.verifyBackup(result.backupDirectory());
+        assertEquals(1, verified.fileCount());
+        assertEquals(result.totalBytes(), verified.totalBytes());
+    }
+
+    @Test
+    void rejectsTamperedFileAndUnexpectedFiles() throws IOException {
+        Path source = Files.createDirectory(tempDir.resolve("source"));
+        Files.writeString(source.resolve("data.txt"), "original");
+        Path backup = manager.createBackup(source, tempDir.resolve("backups"), "tamper").backupDirectory();
+
+        Files.writeString(backup.resolve("data.txt"), "changed");
+        assertThrows(IOException.class, () -> manager.verifyBackup(backup));
+
+        Files.writeString(backup.resolve("extra.txt"), "extra");
+        assertThrows(IOException.class, () -> manager.verifyBackup(backup));
+    }
+
+    @Test
+    void rejectsManifestPathTraversalAndDuplicateEntries() throws IOException {
+        Path source = Files.createDirectory(tempDir.resolve("source"));
+        Files.writeString(source.resolve("safe.txt"), "safe");
+        Path backup = manager.createBackup(source, tempDir.resolve("backups"), "manifest").backupDirectory();
+        Path manifest = backup.resolve("NEXORA-BACKUP-MANIFEST.tsv");
+        String traversal = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString("../escape".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(manifest, "NEXORA-BACKUP-MANIFEST\t1\n" + traversal + "\t0\t"
+                + "0".repeat(64) + "\n");
+        assertThrows(IOException.class, () -> manager.verifyBackup(backup));
     }
 
     @Test

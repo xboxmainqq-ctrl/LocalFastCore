@@ -183,6 +183,12 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
             NexoraMovementValidator.Result result =
                     validator.validate(world, session.position.get(), requested);
             if (result.accepted()) {
+                NexoraMovementValidator.Position previousPosition = session.position.get();
+                double dx = result.position().x() - previousPosition.x();
+                double dz = result.position().z() - previousPosition.z();
+                if (dx * dx + dz * dz > 0.0001) {
+                    session.yaw.set(Math.toDegrees(Math.atan2(-dz, -dx)));
+                }
                 session.position.set(result.position());
             }
             NexoraMovementValidator.Position authoritative = session.position.get();
@@ -234,13 +240,14 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
         NexoraMovementValidator.Position position = session.position.get();
         return NexoraPlayerSyncCodec.encodePlayerState(
                 new NexoraPlayerSyncCodec.PlayerState(
-                        session.playerId, session.playerName, position.x(), position.y(), position.z()));
+                        session.playerId, session.playerName, position.x(), position.y(), position.z(), session.yaw.get()));
     }
 
     private static final class PlayerSession {
         private final UUID playerId;
         private final String playerName;
         private final AtomicReference<NexoraMovementValidator.Position> position;
+        private final AtomicReference<Double> yaw = new AtomicReference<>(0.0);
 
         private PlayerSession(UUID playerId, String playerName,
                               AtomicReference<NexoraMovementValidator.Position> position) {

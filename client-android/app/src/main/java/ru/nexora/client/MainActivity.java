@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.net.Uri;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -13,6 +14,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -45,6 +47,7 @@ public final class MainActivity extends Activity {
     private Button cameraModeButton;
     private Button skinButton;
     private Button customSkinButton;
+    private ImageView customSkinPreview;
     private int selectedSkin;
     private boolean firstPersonCamera;
     private TextView movementStatus;
@@ -161,6 +164,14 @@ public final class MainActivity extends Activity {
         playersCard.addView(skinButton, matchWrap());
         updateSkinButton();
         skinButton.setOnClickListener(view -> showSkinPicker());
+        addSpace(playersCard, 8);
+        customSkinPreview = new ImageView(this);
+        customSkinPreview.setAdjustViewBounds(true);
+        customSkinPreview.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        customSkinPreview.setBackground(rounded(Color.rgb(14, 20, 31), 12));
+        LinearLayout.LayoutParams skinPreviewParams = new LinearLayout.LayoutParams(dp(128), dp(128));
+        skinPreviewParams.gravity = Gravity.CENTER_HORIZONTAL;
+        playersCard.addView(customSkinPreview, skinPreviewParams);
         addSpace(playersCard, 8);
         customSkinButton = button("ЗАГРУЗИТЬ PNG-СКИН (64x64)");
         playersCard.addView(customSkinButton, matchWrap());
@@ -371,10 +382,9 @@ public final class MainActivity extends Activity {
                 || data == null || data.getData() == null) return;
         try {
             NexoraSkinFile.importPng(this, data.getData());
-            getPreferences(MODE_PRIVATE).edit().putBoolean("nexora_custom_skin_saved", true).apply();
             refreshCustomSkinButton();
             Toast.makeText(this,
-                    "PNG проверен и сохранён. Отображение текстуры будет добавлено следующим этапом.",
+                    "PNG проверен и сохранён. Ниже доступен предпросмотр; 3D-текстура будет следующим этапом.",
                     Toast.LENGTH_LONG).show();
         } catch (Exception invalid) {
             Toast.makeText(this, "Не удалось загрузить скин: " + invalid.getMessage(),
@@ -384,10 +394,19 @@ public final class MainActivity extends Activity {
 
     private void refreshCustomSkinButton() {
         if (customSkinButton == null) return;
-        boolean saved = getPreferences(MODE_PRIVATE)
-                .getBoolean("nexora_custom_skin_saved", false);
+        java.io.File storedSkin = NexoraSkinFile.storedFile(this);
+        boolean saved = storedSkin.isFile() && storedSkin.length() > 0L;
+        if (customSkinPreview != null) {
+            if (saved) {
+                customSkinPreview.setImageBitmap(BitmapFactory.decodeFile(storedSkin.getAbsolutePath()));
+                customSkinPreview.setVisibility(View.VISIBLE);
+            } else {
+                customSkinPreview.setImageDrawable(null);
+                customSkinPreview.setVisibility(View.GONE);
+            }
+        }
         customSkinButton.setText(saved
-                ? "PNG-СКИН СОХРАНЁН • ПРИМЕНЕНИЕ В РАБОТЕ"
+                ? "PNG-СКИН СОХРАНЁН • ПРЕДПРОСМОТР"
                 : "ЗАГРУЗИТЬ PNG-СКИН (64x64)");
     }
 

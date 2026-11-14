@@ -20,6 +20,7 @@ This module is the beginning of the independent NEXORA server process. It has **
 - Bedrock batch compression envelope for pre-negotiation batches, raw DEFLATE, and uncompressed frames, with decompression limits; Snappy remains explicitly unsupported.
 - Frame-level Bedrock initial handshake processor joins batch framing, compression, RequestNetworkSettings, NetworkSettings response creation, and compressed Login decoding.
 - `BedrockInitialTransportRouter` connects accepted NetherNet peers to per-connection handshake processors, sends NetworkSettings over the reliable ordered channel, and hands decoded Login requests to an asynchronous authentication callback, then forwards subsequent messages to the play handler only after authentication succeeds.
+- `NetherNetBedrockModule` composes the WebRTC host, HTTP signaling server, and Bedrock transport router into one lifecycle-managed module for `NexoraServer`.
 - NetherNet message framing helper: bounded reliable-message fragmentation with countdown headers, strict unfragmented-message validation for unreliable delivery, and tests that feed encoded fragments through the reassembler.
 - Existing NetherNet fragment assembler enforces per-message byte, fragment-count, and assembly-time limits.
 - Bounded NetherNet SDP parsing preserves the original offer for identity verification and removes the non-standard `a=identity` line only from the SDP passed to WebRTC.

@@ -99,9 +99,6 @@ public final class BedrockStartGamePacketCodec {
             if (gameType < -1 || gameType > 6) {
                 throw new IllegalArgumentException("Unsupported GameType value");
             }
-            if (enchantmentSeed < 0) {
-                throw new IllegalArgumentException("Enchantment seed must not be negative");
-            }
         }
     }
 
@@ -111,7 +108,7 @@ public final class BedrockStartGamePacketCodec {
     /** Encodes the StartGame payload, excluding the packet header and batch length. */
     public static ByteBuffer encodePayload(Settings settings) {
         Objects.requireNonNull(settings, "settings");
-        ByteBuffer out = ByteBuffer.allocate(64 * 1024);
+        ByteBuffer out = ByteBuffer.allocate(128 * 1024);
 
         // 0-5: identity, game mode, transform, and the complete nested LevelSettings.
         BedrockBinary.writeVarInt64(out, settings.entityUniqueId());

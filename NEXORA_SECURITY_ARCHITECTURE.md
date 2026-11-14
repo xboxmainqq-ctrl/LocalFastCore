@@ -72,7 +72,7 @@ Still planned:
 
 - `SignatureVerifier`: local verification of release bundles or trusted manifests where offline verification is required. Release signing currently happens in GitHub Actions through Cosign/Sigstore, not inside the server plugin.
 - Per-module permission-node registration and command/action integration. Each module must call `security().access().authorize(...)` before performing a protected action.
-- `BackupManager`: coordinates safe backup/restore workflows with explicit operator approval.
+- Backup verification and restore workflow: the current `BackupManager` creates snapshots only; manifest verification and restore are not implemented yet. Backups are not automatically scheduled or wired to server world folders. The caller must choose a quiesced/consistent source because copying actively changing world files is not guaranteed to produce a consistent snapshot.
 
 The runtime foundation is report-and-audit only. It must not silently delete, rewrite, quarantine files, disable plugins, or stop the server after an integrity mismatch. Any future enforcement mode must be explicitly configured, tested on a separate server copy, and preserve a recovery path.
 

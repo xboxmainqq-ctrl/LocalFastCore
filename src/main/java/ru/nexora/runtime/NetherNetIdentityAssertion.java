@@ -67,6 +67,9 @@ public record NetherNetIdentityAssertion(
     public static NetherNetIdentityAssertion parse(NetherNetSdpDocument document,
                                                      int maxTokenChars, int maxJwsChars) {
         Objects.requireNonNull(document, "document");
+        if (document.identityEnvelopeJson() == null) {
+            throw new IllegalArgumentException("Authenticated identity envelope is required");
+        }
         if (maxTokenChars < 1 || maxJwsChars < 1) {
             throw new IllegalArgumentException("Token and JWS limits must be positive");
         }

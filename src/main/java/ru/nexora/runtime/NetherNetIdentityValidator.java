@@ -1,6 +1,9 @@
 package ru.nexora.runtime;
 
-import java.security.GeneralSecurityException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.Objects;
 
 /**
@@ -34,17 +37,34 @@ public final class NetherNetIdentityValidator {
         }
         return new VerifiedIdentity(assertion.identityProviderDomain(),
                 tokenIdentity.xuid(), tokenIdentity.displayName(),
-                tokenIdentity.clientPublicKey());
+                tokenIdentity.clientPublicKey(), tokenSha256(assertion.token()));
+    }
+
+    /** SHA-256 fingerprint binds the later Bedrock Login token to this SDP-authenticated token. */
+    public static String tokenSha256(String token) {
+        Objects.requireNonNull(token, "token");
+        try {
+            return HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256")
+                            .digest(token.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 is unavailable", impossible);
+        }
     }
 
     public record VerifiedIdentity(String identityProviderDomain, String xuid,
                                    String displayName,
-                                   java.security.interfaces.ECPublicKey clientPublicKey) {
+                                   java.security.interfaces.ECPublicKey clientPublicKey,
+                                   String gameServerTokenSha256) {
         public VerifiedIdentity {
             Objects.requireNonNull(identityProviderDomain, "identityProviderDomain");
             Objects.requireNonNull(xuid, "xuid");
             Objects.requireNonNull(displayName, "displayName");
             Objects.requireNonNull(clientPublicKey, "clientPublicKey");
+            Objects.requireNonNull(gameServerTokenSha256, "gameServerTokenSha256");
+            if (!gameServerTokenSha256.matches("[0-9a-f]{64}")) {
+                throw new IllegalArgumentException("Verified GameServerToken hash must be SHA-256 hex");
+            }
             if (identityProviderDomain.isBlank() || identityProviderDomain.length() > 253
                     || xuid.isBlank() || xuid.length() > 64
                     || displayName.isBlank() || displayName.length() > 64

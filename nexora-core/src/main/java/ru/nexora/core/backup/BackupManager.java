@@ -201,13 +201,18 @@ public final class BackupManager {
                 }
                 final String decoded;
                 final long size;
+                final Path relative;
                 try {
-                    decoded = new String(Base64.getUrlDecoder().decode(fields[0]), StandardCharsets.UTF_8);
+                    byte[] pathBytes = Base64.getUrlDecoder().decode(fields[0]);
+                    decoded = StandardCharsets.UTF_8.newDecoder()
+                            .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                            .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                            .decode(java.nio.ByteBuffer.wrap(pathBytes)).toString();
                     size = Long.parseLong(fields[1]);
-                } catch (IllegalArgumentException malformed) {
+                    relative = Path.of(decoded);
+                } catch (java.nio.charset.CharacterCodingException | IllegalArgumentException malformed) {
                     throw new IOException("Invalid backup manifest value on line " + lineNumber, malformed);
                 }
-                Path relative = Path.of(decoded);
                 Path normalized = relative.normalize();
                 if (decoded.isBlank() || relative.isAbsolute() || !normalized.equals(relative)
                         || normalized.startsWith("..") || normalized.toString().isBlank()

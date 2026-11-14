@@ -490,9 +490,33 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                 }
             }
             byte[] delivered = complete;
-            Listener current = listener;
-            if (current != null) {
-                mainHandler.post(() -> current.onMessage(delivered, true));
+            try {
+                List<BedrockAndroidServerPacket> packets =
+                        BedrockAndroidPacketCodec.decodeServerBatch(delivered, networkSettings);
+                Listener current = listener;
+                if (current != null) {
+                    mainHandler.post(() -> {
+                        current.onMessage(delivered, true);
+                        for (BedrockAndroidServerPacket packet : packets) {
+                            if (packet.packetId() == 2) {
+                                BedrockAndroidPlayStatus status =
+                                        BedrockAndroidPacketCodec.decodePlayStatus(packet);
+                                current.onPlayStatus(status);
+                                if (status == BedrockAndroidPlayStatus.LOGIN_SUCCESS) {
+                                    current.onStatus("Bedrock Login подтверждён сервером");
+                                } else if (status == BedrockAndroidPlayStatus.PLAYER_SPAWN) {
+                                    current.onStatus("Игрок появился в мире");
+                                } else {
+                                    current.onError("Bedrock Login отклонён: " + status);
+                                }
+                            } else {
+                                current.onBedrockPacket(packet);
+                            }
+                        }
+                    });
+                }
+            } catch (RuntimeException malformed) {
+                reportError("Некорректный Bedrock server batch: " + malformed.getMessage());
             }
         }
     }
@@ -523,6 +547,8 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         boolean accepted = sendReliable(framedBatch);
         if (!accepted) {
             loginSent.set(false);
+        } else {
+            reportStatus("Bedrock Login отправлен, ожидаем ответ сервера");
         }
         return accepted;
     }
@@ -724,6 +750,12 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         }
 
         default void onMessage(byte[] payload, boolean reliable) {
+        }
+
+        default void onPlayStatus(BedrockAndroidPlayStatus status) {
+        }
+
+        default void onBedrockPacket(BedrockAndroidServerPacket packet) {
         }
     }
 

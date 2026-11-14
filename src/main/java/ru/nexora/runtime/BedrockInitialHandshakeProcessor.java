@@ -43,6 +43,7 @@ public final class BedrockInitialHandshakeProcessor {
         }
         if (state == BedrockHandshakeState.NETWORK_SETTINGS_PENDING
                 || state == BedrockHandshakeState.AUTHENTICATION_PENDING
+                || state == BedrockHandshakeState.LOGIN_SUCCESS_SENT
                 || state == BedrockHandshakeState.PLAY) {
             return result(BedrockHandshakeFrameStatus.INVALID_STATE,
                     BedrockHandshakeResult.INVALID_STATE, null);
@@ -96,13 +97,18 @@ public final class BedrockInitialHandshakeProcessor {
         return handshake.markNetworkSettingsSent();
     }
 
-    /** Call only after external identity and account authentication succeeds. */
+    /** Call only after identity authentication succeeds and LoginSuccess is sent. */
     public synchronized BedrockHandshakeResult markAuthenticated() {
         BedrockHandshakeResult result = handshake.markAuthenticated();
         if (result == BedrockHandshakeResult.ACCEPTED) {
             pendingLogin = null;
         }
         return result;
+    }
+
+    /** Call only after resource packs and the StartGame/world initialization flow are complete. */
+    public synchronized BedrockHandshakeResult markPlayReady() {
+        return handshake.markPlayReady();
     }
 
     public synchronized void close() {

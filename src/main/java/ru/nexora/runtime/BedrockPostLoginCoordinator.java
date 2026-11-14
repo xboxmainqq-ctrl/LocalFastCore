@@ -64,6 +64,16 @@ public final class BedrockPostLoginCoordinator implements
     }
 
     /**
+     * Wires the coordinator into its router. Call immediately after router
+     * construction and before the transport module starts accepting peers.
+     */
+    public void attachTo(BedrockInitialTransportRouter router) {
+        Objects.requireNonNull(router, "router");
+        router.setConnectionCloseListener(this::onConnectionClosed);
+        bindPlayReadyTransition(router::markPlayReady);
+    }
+
+    /**
      * Bind this to router::markPlayReady after constructing the router and
      * before accepting any connections.
      */

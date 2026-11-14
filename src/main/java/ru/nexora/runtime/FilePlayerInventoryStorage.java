@@ -114,8 +114,9 @@ public final class FilePlayerInventoryStorage {
                 output.writeLong(inventory.ownerId().getMostSignificantBits());
                 output.writeLong(inventory.ownerId().getLeastSignificantBits());
                 output.writeInt(SLOT_COUNT);
+                ItemStack[] slots = inventory.slotSnapshot();
                 for (int slot = 0; slot < SLOT_COUNT; slot++) {
-                    ItemStack stack = inventory.stackAt(slot);
+                    ItemStack stack = slots[slot];
                     output.writeBoolean(stack != null);
                     if (stack != null) {
                         output.writeUTF(stack.itemId());

@@ -9,5 +9,10 @@ package ru.nexora.runtime;
  */
 @FunctionalInterface
 public interface NetherNetOfferValidator {
+    /** Whether the offer must carry a cryptographically verified client identity. */
+    default boolean requiresIdentity() {
+        return true;
+    }
+
     void validate(String networkId, NetherNetSdpDocument offer) throws Exception;
 }

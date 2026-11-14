@@ -22,6 +22,9 @@ public interface World {
     /** Returns a detached 4096-entry biome array in Bedrock XZY order for a loaded chunk section. */
     int[] biomesInSection(ChunkPosition position, int sectionY);
 
+    /** Returns sorted section Y coordinates that contain non-default biome data. */
+    List<Integer> biomeSectionsInChunk(ChunkPosition position);
+
     /** Atomically adds a generated chunk if it is not already loaded. */
     boolean loadChunk(GeneratedChunk generatedChunk);
 

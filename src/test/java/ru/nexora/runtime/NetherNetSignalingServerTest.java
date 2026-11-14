@@ -53,14 +53,33 @@ class NetherNetSignalingServerTest {
             }
 
             @Override
+            public CompletableFuture<String> createAnswer(String networkId, String webRtcOfferSdp,
+                    NetherNetIdentityValidator.VerifiedIdentity identity) {
+                assertEquals("verified-xuid", identity.xuid());
+                return createAnswer(networkId, webRtcOfferSdp);
+            }
+
+            @Override
             public void close() {
                 closed.set(true);
             }
         };
 
-        NetherNetOfferValidator validator = (networkId, document) -> {
-            assertEquals("network-1", networkId);
-            assertEquals(offer, document.originalSdp());
+        NetherNetOfferValidator validator = new NetherNetOfferValidator() {
+            @Override
+            public void validate(String networkId, NetherNetSdpDocument document) {
+                assertEquals("network-1", networkId);
+                assertEquals(offer, document.originalSdp());
+            }
+
+            @Override
+            public NetherNetIdentityValidator.VerifiedIdentity validateAndGetIdentity(
+                    String networkId, NetherNetSdpDocument document) {
+                validate(networkId, document);
+                return new NetherNetIdentityValidator.VerifiedIdentity(
+                        "minecraft-services.net", "verified-xuid", "VerifiedPlayer",
+                        (java.security.interfaces.ECPublicKey) operator.getPublic());
+            }
         };
         NetherNetServerInfo info = new NetherNetServerInfo(
                 "NEXORA", 2225, "1.26.60", "NEXORA World", 0, 20, 0);

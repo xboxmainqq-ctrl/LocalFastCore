@@ -176,7 +176,7 @@ public final class WebRtcJavaNetherNetPeerHost
         });
     }
 
-    private static RTCConfiguration createConfiguration() {
+    static RTCConfiguration createConfiguration() {
         RTCConfiguration configuration = new RTCConfiguration();
         configuration.iceServers.clear();
         configuration.iceTransportPolicy = RTCIceTransportPolicy.ALL;

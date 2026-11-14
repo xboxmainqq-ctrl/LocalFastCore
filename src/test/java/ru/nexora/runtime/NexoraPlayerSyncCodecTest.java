@@ -23,6 +23,14 @@ class NexoraPlayerSyncCodecTest {
     }
 
     @Test
+    void roundTripsPlayerNickname() {
+        NexoraPlayerSyncCodec.PlayerState expected = new NexoraPlayerSyncCodec.PlayerState(
+                UUID.randomUUID(), "ТестовыйИгрок", 1.5, 70.0, -2.5);
+        NexoraPlayerSyncCodec.PlayerState actual = NexoraPlayerSyncCodec.decodePlayerState(
+                ByteBuffer.wrap(NexoraPlayerSyncCodec.encodePlayerState(expected)));
+        assertEquals(expected, actual);
+    }
+    @Test
     void roundTripsPlayerLeave() {
         UUID expected = UUID.randomUUID();
 

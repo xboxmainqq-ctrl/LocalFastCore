@@ -134,7 +134,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
             java.util.concurrent.atomic.AtomicReference<NexoraMovementValidator.Position> playerPosition,
             NexoraMovementValidator validator) {
         if (!connection.isOpen()) return;
-        if (message.deliveryMode() != DeliveryMode.UNRELIABLE_UNORDERED
+        if (message.deliveryMode() != DeliveryMode.UNRELIABLE
                 && message.deliveryMode() != DeliveryMode.RELIABLE_ORDERED) {
             connection.close();
             return;

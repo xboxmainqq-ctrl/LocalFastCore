@@ -84,7 +84,9 @@ The protocol-2225 `PlayStatus` values and 4-byte big-endian packet codec are als
 
 **Transport boundary:** NEXORA targets NetherNet. Mojang's onboarding guide specifies WebRTC data channels, which are protected by DTLS. The existence of the legacy Bedrock packet 3/4 schemas does not by itself prove that this extra application-layer handshake is required over NetherNet. NEXORA must follow the NetherNet path and confirm the exact login exchange against an unmodified 1.26.60 client; do not force a legacy cipher onto the DTLS-protected channel.
 
-**Not integrated yet:** the router still uses the earlier boolean authenticator contract and currently advances directly to PLAY after authentication. This key-derivation primitive is not wired into Login verification or packet flow, and it is not proof of an authenticated or playable session. The next step is to replace the boolean callback with a verified Bedrock player identity and implement the correct NetherNet login/PlayStatus sequence before entering PLAY.
+**Current router checkpoint:** the boolean callback has been replaced with a typed `BedrockAuthenticatedPlayer` result, which must contain a verified identity and its P-384 client key. After the authenticator accepts the Login, the router sends the compressed `PlayStatus(LoginSuccess)` packet and only then transitions to PLAY and notifies the play listener. Tests cover the successful path and rejection path.
+
+**Still not complete:** there is no production Bedrock Login authenticator yet. The router contract is now ready for one, but no certificate/JWT trust chain is accepted by default, and the cryptographic key-derivation primitive is not wired into packet flow. NetherNet DTLS remains the transport security layer; the exact packet 3/4 behavior must be confirmed with an unmodified 1.26.60 client before any application-layer handshake is added. Unit tests do not establish playable compatibility.
 
 ## Acceptance gates
 

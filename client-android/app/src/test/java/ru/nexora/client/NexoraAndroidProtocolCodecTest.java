@@ -86,19 +86,19 @@ public class NexoraAndroidProtocolCodecTest {
     }
 
     @Test
-    public void decodesChunkDataFromServerGoldenVector() {
+    public void decodesChunkVolumeFromServerGoldenVector() {
         byte[] id = "minecraft:grass_block".getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        ByteBuffer bytes = ByteBuffer.allocate(7 + 10 + 1 + 4 + 1 + id.length);
+        ByteBuffer bytes = ByteBuffer.allocate(7 + 12 + 1 + 4 + 1 + 1 + id.length);
         bytes.put(new byte[] {'N','X','R','A',1,0,6});
-        bytes.putInt(2).putInt(-3).putShort((short) 1);
-        bytes.put((byte) 0).putInt(64).put((byte) id.length).put(id);
+        bytes.putInt(2).putInt(-3).putInt(1);
+        bytes.put((byte) 0).putInt(64).put((byte) 0).put((byte) id.length).put(id);
         NexoraAndroidProtocolCodec.ChunkData chunk =
                 NexoraAndroidProtocolCodec.decodeChunkData(bytes.array());
         assertEquals(2, chunk.chunkX());
         assertEquals(-3, chunk.chunkZ());
-        assertEquals(64, chunk.heights()[0]);
-        assertEquals("minecraft:grass_block", chunk.blockIds()[0]);
-        assertNull(chunk.blockIds()[1]);
+        assertEquals(1, chunk.blocks().size());
+        assertEquals(64, chunk.blocks().get(0).y());
+        assertEquals("minecraft:grass_block", chunk.blocks().get(0).blockId());
     }
 
     @Test(expected = IllegalArgumentException.class)

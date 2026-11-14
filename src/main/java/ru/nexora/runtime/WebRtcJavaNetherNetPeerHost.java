@@ -284,7 +284,7 @@ public final class WebRtcJavaNetherNetPeerHost
                             NetherNetIdentityValidator.VerifiedIdentity authenticatedIdentity) {
             this.id = id;
             this.networkId = networkId;
-            this.authenticatedIdentity = Objects.requireNonNull(authenticatedIdentity, "authenticatedIdentity");
+            this.authenticatedIdentity = authenticatedIdentity;
             this.peerObserver = new PeerConnectionObserver() {
                 @Override
                 public void onIceCandidate(dev.onvoid.webrtc.RTCIceCandidate candidate) {

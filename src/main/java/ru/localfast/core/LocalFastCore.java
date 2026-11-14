@@ -4710,6 +4710,37 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 result = "§6Метеор обрушился на цель! §fЗадето существ: " + hits + ".";
                 break;
             }
+            case "chain_lightning": {
+                int hits = damageMagicArea(player, target, 5.0, 14, true);
+                success = hits > 0;
+                result = "§eЦепная молния пронзила врагов: " + hits + ".";
+                break;
+            }
+            case "arcane_storm": {
+                int hits = damageMagicArea(player, player, 7.0, 14, false);
+                success = true;
+                result = "§5Арканный шторм накрыл область. §fПоражено: " + hits + ".";
+                break;
+            }
+            case "soul_drain": {
+                boolean hit = target.attack(new EntityDamageByEntityEvent(player, target,
+                        EntityDamageEvent.DamageCause.MAGIC, (float) magicDamage(player, 16)));
+                success = hit;
+                if (hit) player.heal(Math.min(player.getMaxHealth() - player.getHealth(), 8.0f));
+                result = "§dПохищение души вернуло тебе жизненную силу.";
+                break;
+            }
+            case "mana_surge": {
+                int restored = Math.min(55, magicMaxMana(player) - magicMana(player));
+                if (restored <= 0) {
+                    player.sendMessage("§cМана уже полная.");
+                    return false;
+                }
+                setMagicMana(player, magicMana(player) + restored);
+                success = true;
+                result = "§bВсплеск маны восстановил " + restored + ".";
+                break;
+            }
             default:
                 player.sendMessage("§cНеизвестное заклинание.");
                 return false;

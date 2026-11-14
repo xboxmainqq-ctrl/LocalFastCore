@@ -78,6 +78,8 @@ A first cryptographic building block now exists in `BedrockServerEncryptionHands
 - Derives the 256-bit session key as SHA-256(salt || ECDH-secret) using P-384 ECDH.
 - Derives 256-bit key material as SHA-256(salt || ECDH-secret), using P-384 ECDH.
 - Includes unit tests for JWT signature, client/server key agreement, and key size.
+
+The protocol-2225 `PlayStatus` values and 4-byte big-endian packet codec are also implemented and covered by tests. The codec is not yet connected to the router's login completion path.
 - Deliberately does **not** select or expose an application cipher. Earlier CFB8 assumptions were removed rather than treating an unverified cipher mode as protocol fact.
 
 **Transport boundary:** NEXORA targets NetherNet. Mojang's onboarding guide specifies WebRTC data channels, which are protected by DTLS. The existence of the legacy Bedrock packet 3/4 schemas does not by itself prove that this extra application-layer handshake is required over NetherNet. NEXORA must follow the NetherNet path and confirm the exact login exchange against an unmodified 1.26.60 client; do not force a legacy cipher onto the DTLS-protected channel.

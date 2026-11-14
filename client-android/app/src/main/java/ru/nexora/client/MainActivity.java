@@ -41,6 +41,8 @@ public final class MainActivity extends Activity {
     private NetherNetAndroidClient netherNetClient;
     private ChunkPreviewView chunkPreview;
     private Button cameraModeButton;
+    private Button skinButton;
+    private int selectedSkin;
     private boolean firstPersonCamera;
     private TextView movementStatus;
     private TextView playersStatus;
@@ -49,6 +51,7 @@ public final class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        selectedSkin = getPreferences(MODE_PRIVATE).getInt("nexora_player_skin", 0);
         setContentView(createScreen());
     }
 
@@ -150,6 +153,12 @@ public final class MainActivity extends Activity {
         addSpace(playersCard, 6);
         playersStatus = text("Других игроков пока нет", 13, TEXT, false);
         playersCard.addView(playersStatus, matchWrap());
+        addSpace(playersCard, 10);
+        skinButton = button("ВНЕШНОСТЬ: НЕОНОВЫЙ ПИЛОТ");
+        playersCard.addView(skinButton, matchWrap());
+        updateSkinButton();
+        skinButton.setOnClickListener(view -> showSkinPicker());
+        chunkPreview.setPlayerSkin(selectedSkin);
         addSpace(page, 8);
         cameraModeButton = button("ВИД: СВОБОДНАЯ КАМЕРА");
         page.addView(cameraModeButton, matchWrap());
@@ -336,6 +345,27 @@ public final class MainActivity extends Activity {
             }
         });
         connectButton.setText("ПОДКЛЮЧАЕМСЯ...");
+    }
+
+    private void showSkinPicker() {
+        String[] names = {"Неоновый пилот", "Лесной исследователь", "Алый страж", "Сумеречный маг", "Песчаный странник"};
+        new AlertDialog.Builder(this)
+                .setTitle("Внешность персонажа NEXORA")
+                .setSingleChoiceItems(names, selectedSkin, (dialog, which) -> {
+                    selectedSkin = which;
+                    getPreferences(MODE_PRIVATE).edit().putInt("nexora_player_skin", which).apply();
+                    chunkPreview.setPlayerSkin(which);
+                    updateSkinButton();
+                    dialog.dismiss();
+                })
+                .setNegativeButton("ЗАКРЫТЬ", null)
+                .show();
+    }
+
+    private void updateSkinButton() {
+        if (skinButton == null) return;
+        String[] names = {"НЕОНОВЫЙ ПИЛОТ", "ЛЕСНОЙ ИССЛЕДОВАТЕЛЬ", "АЛЫЙ СТРАЖ", "СУМЕРЕЧНЫЙ МАГ", "ПЕСЧАНЫЙ СТРАННИК"};
+        skinButton.setText("ВНЕШНОСТЬ: " + names[Math.max(0, Math.min(names.length - 1, selectedSkin))]);
     }
 
     private void refreshRemotePlayers() {

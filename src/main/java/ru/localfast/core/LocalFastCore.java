@@ -4186,6 +4186,19 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void openMagicEquipmentInventory(Player player) {
         initialize(player);
+        // Migrate talismans from the old shared artifact slots without losing player items.
+        for (int oldSlot = 0; oldSlot < 2; oldSlot++) {
+            String oldId = equippedMagicRelic(player, oldSlot);
+            if (oldId != null && !oldId.isEmpty() && magicRelicCategory(oldId).equals("talisman")) {
+                int newSlot = oldSlot == 0 ? 6 : 7;
+                if (equippedMagicRelic(player, newSlot).isEmpty()) {
+                    players.set(magicEquipmentPath(player) + "." + newSlot, oldId);
+                    players.set(magicEquipmentPath(player) + "." + oldSlot, "");
+                    markPlayersDirty();
+                }
+            }
+        }
+        flushPlayers();
         FormWindowSimple form = new FormWindowSimple("§5§lМОЯ ЭКИПИРОВКА",
                 "§7Выбери категорию. В каждой категории по два отдельных слота.\n"
                 + "§8Предметы для установки должны находиться в обычном инвентаре.");
@@ -4251,7 +4264,11 @@ public final class LocalFastCore extends PluginBase implements Listener {
             int selected = form.getResponse().getClickedButtonId();
             if (selected >= 0 && selected < owned.size()) {
                 String id = owned.get(selected);
-                if (findMagicRelicInventorySlot(player, id) < 0 || !removeOneMagicRelic(player, id)) {
+                boolean alreadyEquipped = false;
+                for (int i = 0; i < 8; i++) if (id.equals(equippedMagicRelic(player, i))) alreadyEquipped = true;
+                if (alreadyEquipped) {
+                    player.sendMessage("§cЭтот предмет уже установлен в другом слоте.");
+                } else if (findMagicRelicInventorySlot(player, id) < 0 || !removeOneMagicRelic(player, id)) {
                     player.sendMessage("§cПредмет не найден в инвентаре.");
                 } else {
                     players.set(magicEquipmentPath(player) + "." + slot, id);
@@ -4395,9 +4412,9 @@ public final class LocalFastCore extends PluginBase implements Listener {
                     recalculateStats(player);
                     player.sendMessage("§eСнято: " + magicRelicName(id));
                 }
-                openMagicEquipmentInventory(player);
+                openMagicEquipmentCategory(player, slot < 2 ? "artifact" : slot < 4 ? "amulet" : slot < 6 ? "ring" : "talisman");
             } else {
-                openMagicEquipmentInventory(player);
+                openMagicEquipmentCategory(player, slot < 2 ? "artifact" : slot < 4 ? "amulet" : slot < 6 ? "ring" : "talisman");
             }
         }));
         player.showFormWindow(form);

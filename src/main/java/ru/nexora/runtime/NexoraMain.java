@@ -193,7 +193,7 @@ public final class NexoraMain {
                     peerHost, peerHost, signaling, protocolHandler));
         }
 
-        return new RuntimeHandle(server, worlds, gameLoop);
+        return new RuntimeHandle(server, worlds, gameLoop, options.tickRate());
     }
 
     private static KeyPair createDevelopmentSigningKey() {
@@ -308,17 +308,20 @@ public final class NexoraMain {
         }
     }
 
-    record RuntimeHandle(NexoraServer server, WorldRegistry worlds, GameLoop gameLoop) {
+    record RuntimeHandle(NexoraServer server, WorldRegistry worlds, GameLoop gameLoop, int tickRate) {
         RuntimeHandle {
             Objects.requireNonNull(server, "server");
             Objects.requireNonNull(worlds, "worlds");
             Objects.requireNonNull(gameLoop, "gameLoop");
+            if (tickRate < 1 || tickRate > 120) {
+                throw new IllegalArgumentException("tickRate must be between 1 and 120");
+            }
         }
 
         NexoraWorldInfo worldInfo() {
             World world = worlds.get(DEFAULT_WORLD_ID)
                     .orElseThrow(() -> new IllegalStateException("Default world is not loaded"));
-            return NexoraWorldInfo.from(world, 0, 65, 0, 20);
+            return NexoraWorldInfo.from(world, 0, 65, 0, tickRate);
         }
 
         NexoraPrivateProtocolHandler privateProtocolHandler(

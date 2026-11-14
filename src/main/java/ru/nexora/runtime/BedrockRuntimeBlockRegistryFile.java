@@ -85,6 +85,18 @@ public final class BedrockRuntimeBlockRegistryFile {
      * then rows of identifier, signed int32 ID, and zero or more key=value
      * block-state properties.</p>
      */
+    public static Loaded load(InputStream input, String expectedSha256) throws IOException {
+        Objects.requireNonNull(expectedSha256, "expectedSha256");
+        if (!expectedSha256.matches("(?i)[0-9a-f]{64}")) {
+            throw new IOException("Expected registry SHA-256 must be 64 hexadecimal characters");
+        }
+        Loaded loaded = load(input);
+        if (!loaded.sha256().equalsIgnoreCase(expectedSha256)) {
+            throw new IOException("Bedrock block registry SHA-256 mismatch");
+        }
+        return loaded;
+    }
+
     public static Loaded load(InputStream input) throws IOException {
         Objects.requireNonNull(input, "input");
         byte[] bytes = input.readNBytes(MAX_FILE_BYTES + 1);

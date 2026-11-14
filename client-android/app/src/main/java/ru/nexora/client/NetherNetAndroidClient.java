@@ -79,6 +79,7 @@ public final class NetherNetAndroidClient implements AutoCloseable {
     private long reliableAssemblyStartedNanos;
     private volatile boolean networkSettingsReceived;
     private volatile boolean nexoraProtocolReady;
+    private volatile boolean worldInfoReceived;
 
     public NetherNetAndroidClient(Context context) {
         appContext = context.getApplicationContext();
@@ -502,11 +503,25 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                     return;
                 }
             }
-            if (!networkSettingsReceived) {
-                reportError("Сервер прислал сообщение до реализации следующего этапа NEXORA");
-                return;
+            if (!worldInfoReceived) {
+                try {
+                    NexoraAndroidProtocolCodec.WorldInfo world =
+                            NexoraAndroidProtocolCodec.decodeWorldInfo(complete);
+                    worldInfoReceived = true;
+                    Listener current = listener;
+                    if (current != null) {
+                        mainHandler.post(() -> current.onWorldInfoReceived(world));
+                    }
+                    reportStatus("Мир получен • " + world.worldId() + " • высота "
+                            + world.minY() + ".." + (world.maxYExclusive() - 1));
+                    return;
+                } catch (RuntimeException malformed) {
+                    reportError("Некорректные сведения о мире NEXORA: " + malformed.getMessage());
+                    return;
+                }
             }
-            deliverBedrockBatch(complete, true);
+            reportError("Сообщение игрового протокола NEXORA пока не поддерживается клиентом");
+            return;
         }
     }
 
@@ -778,6 +793,9 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         void onError(String message);
 
         default void onNexoraReady(String serverId, int maxMessageBytes) {
+        }
+
+        default void onWorldInfoReceived(NexoraAndroidProtocolCodec.WorldInfo world) {
         }
 
         default void onNetworkSettingsReceived(BedrockAndroidNetworkSettings settings) {

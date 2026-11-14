@@ -52,12 +52,15 @@ jobs:
           cache: maven
           cache-dependency-path: nexora-core/pom.xml
 
-      - name: Set Maven project version from release tag
-        run: >
-          mvn -B -f nexora-core/pom.xml
-          org.codehaus.mojo:versions-maven-plugin:2.18.0:set
-          -DnewVersion="${{ steps.release.outputs.version }}"
-          -DgenerateBackupPoms=false
+      - name: Set Maven project and plugin metadata versions
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          mvn -B -f nexora-core/pom.xml org.codehaus.mojo:versions-maven-plugin:2.18.0:set \
+            -DnewVersion="$RELEASE_VERSION" -DgenerateBackupPoms=false
+          sed -i "s/^version: \".*\"$/version: \"$RELEASE_VERSION\"/" \
+            nexora-core/src/main/resources/plugin.yml
 
       - name: Build and run tests
         run: mvn -f nexora-core/pom.xml --batch-mode --no-transfer-progress clean verify

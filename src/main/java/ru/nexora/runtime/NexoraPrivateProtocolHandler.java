@@ -103,7 +103,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 connection.close();
                 return;
             }
-            if (worldInfo != null && send(connection,
+            if (worldInfo != null && worldSupplier != null && chunkLoader != null && send(connection,
                     NexoraMovementPacketCodec.encodeServerPosition(
                             new NexoraMovementValidator.Position(
                                     worldInfo.spawnX() + 0.5,

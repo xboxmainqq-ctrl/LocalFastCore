@@ -90,6 +90,16 @@ final class ChunkPreviewView extends GLSurfaceView {
         requestRender();
     }
 
+    void setRemotePlayerState(NexoraAndroidProtocolCodec.RemotePlayerState player) {
+        queueEvent(() -> renderer.setRemotePlayerState(player));
+        requestRender();
+    }
+
+    void removeRemotePlayer(java.util.UUID playerId) {
+        queueEvent(() -> renderer.removeRemotePlayer(playerId));
+        requestRender();
+    }
+
     private void publishPlayerPosition() {
         MovementListener listener = movementListener;
         if (listener == null || !renderer.playerInitialized) return;
@@ -220,6 +230,11 @@ final class ChunkPreviewView extends GLSurfaceView {
         private float verticalVelocity;
         private boolean playerInitialized;
         private Set<BlockPosition> collisionBlocks = Set.of();
+        private final Map<java.util.UUID, NexoraAndroidProtocolCodec.RemotePlayerState> remotePlayers =
+                new HashMap<>();
+        private FloatBuffer remotePlayerBuffer;
+        private int remotePlayerVertexCount;
+        private boolean remotePlayerMeshDirty = true;
         private boolean firstPersonMode;
         private int surfaceWidth = 1;
         private int surfaceHeight = 1;
@@ -238,6 +253,15 @@ final class ChunkPreviewView extends GLSurfaceView {
             playerZ = z;
             verticalVelocity = 0f;
             playerInitialized = true;
+        }
+
+        void setRemotePlayerState(NexoraAndroidProtocolCodec.RemotePlayerState player) {
+            remotePlayers.put(player.playerId(), player);
+            remotePlayerMeshDirty = true;
+        }
+
+        void removeRemotePlayer(java.util.UUID playerId) {
+            if (remotePlayers.remove(playerId) != null) remotePlayerMeshDirty = true;
         }
 
         void movePlayer(float forward, float strafe) {
@@ -378,8 +402,51 @@ final class ChunkPreviewView extends GLSurfaceView {
             GLES20.glVertexAttribPointer(colorHandle, 3, GLES20.GL_FLOAT,
                     false, 6 * 4, vertexBuffer);
             GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, vertexCount);
+            if (remotePlayerMeshDirty) rebuildRemotePlayerMesh();
+            if (remotePlayerBuffer != null && remotePlayerVertexCount > 0) {
+                remotePlayerBuffer.position(0);
+                GLES20.glVertexAttribPointer(positionHandle, 3, GLES20.GL_FLOAT,
+                        false, 6 * 4, remotePlayerBuffer);
+                remotePlayerBuffer.position(3);
+                GLES20.glVertexAttribPointer(colorHandle, 3, GLES20.GL_FLOAT,
+                        false, 6 * 4, remotePlayerBuffer);
+                GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, remotePlayerVertexCount);
+            }
             GLES20.glDisableVertexAttribArray(positionHandle);
             GLES20.glDisableVertexAttribArray(colorHandle);
+        }
+
+        private void rebuildRemotePlayerMesh() {
+            remotePlayerMeshDirty = false;
+            if (remotePlayers.isEmpty()) {
+                remotePlayerBuffer = null;
+                remotePlayerVertexCount = 0;
+                return;
+            }
+            MeshBuilder mesh = new MeshBuilder(120_000);
+            float[] color = {0.18f, 0.62f, 0.96f};
+            for (NexoraAndroidProtocolCodec.RemotePlayerState player : remotePlayers.values()) {
+                float x = (float) (player.x() - centerChunkX * 16 + 16);
+                float y = (float) player.y();
+                float z = (float) (player.z() - centerChunkZ * 16 + 16);
+                float x0 = x - 0.30f, x1 = x + 0.30f;
+                float y0 = y, y1 = y + 1.8f;
+                float z0 = z - 0.30f, z1 = z + 0.30f;
+                mesh.quad(x0,y1,z0, x0,y1,z1, x1,y1,z1, x1,y1,z0, color, 1.0f);
+                mesh.quad(x0,y0,z1, x0,y0,z0, x1,y0,z0, x1,y0,z1, color, 0.5f);
+                mesh.quad(x0,y0,z0, x0,y0,z1, x0,y1,z1, x0,y1,z0, color, 0.72f);
+                mesh.quad(x1,y0,z1, x1,y0,z0, x1,y1,z0, x1,y1,z1, color, 0.82f);
+                mesh.quad(x1,y0,z0, x0,y0,z0, x0,y1,z0, x1,y1,z0, color, 0.62f);
+                mesh.quad(x0,y0,z1, x1,y0,z1, x1,y1,z1, x0,y1,z1, color, 0.68f);
+                if (mesh.full()) break;
+            }
+            float[] values = mesh.values();
+            remotePlayerVertexCount = values.length / 6;
+            ByteBuffer bytes = ByteBuffer.allocateDirect(values.length * 4)
+                    .order(ByteOrder.nativeOrder());
+            remotePlayerBuffer = bytes.asFloatBuffer();
+            remotePlayerBuffer.put(values);
+            remotePlayerBuffer.position(0);
         }
 
         private void rebuildMesh() {

@@ -8,6 +8,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import ru.nexora.core.rpg.RpgClassRegistry;
+import ru.nexora.core.rpg.RpgAbilityRegistry;
 
 /**
  * Platform-neutral RPG progression rules.
@@ -24,14 +25,21 @@ public final class PlayerProgressionService {
 
     private final PlayerProfileRepository profiles;
     private final RpgClassRegistry classes;
+    private final RpgAbilityRegistry abilities;
 
     public PlayerProgressionService(PlayerProfileRepository profiles) {
         this(profiles, null);
     }
 
     public PlayerProgressionService(PlayerProfileRepository profiles, RpgClassRegistry classes) {
+        this(profiles, classes, null);
+    }
+
+    public PlayerProgressionService(PlayerProfileRepository profiles, RpgClassRegistry classes,
+                                    RpgAbilityRegistry abilities) {
         this.profiles = Objects.requireNonNull(profiles, "profiles");
         this.classes = classes;
+        this.abilities = abilities;
     }
 
     public synchronized PlayerProfile loadOrCreate(UUID uniqueId, String currentName)
@@ -97,7 +105,10 @@ public final class PlayerProgressionService {
             throw new IllegalArgumentException("Class id must be a 1-32 character slug");
         }
         if (classes != null) {
-            classes.require(normalized);
+            ru.nexora.core.rpg.RpgClassDefinition definition = classes.require(normalized);
+            if (abilities != null) {
+                definition.abilityIds().forEach(abilities::require);
+            }
         }
         PlayerProfile updated = requireProfile(uniqueId).withClass(normalized);
         profiles.save(updated);

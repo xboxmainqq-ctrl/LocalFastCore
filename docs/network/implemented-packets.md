@@ -73,6 +73,18 @@ These helpers do not create data channels, perform SDP negotiation, gather ICE c
 
 This is deliberately an extraction and structural-boundary helper, not a JSON/JWT/JWS verifier. It does not establish the authenticity of the player or fingerprint signatures, validate the auth-service issuer, or authorize a player. Those checks must be implemented before accepting a peer connection. See the [Mojang NetherNet onboarding guide](https://github.com/Mojang/bedrock-protocol-docs/blob/main/additional_docs/NetherNetOnboardingGuide.md) for the required assertion format and verification procedure.
 
+
+## NetherNet identity assertion structure
+
+`NetherNetIdentityAssertion` parses the decoded `a=identity` envelope and its nested assertion JSON with Jackson Core strict duplicate-key detection and bounded nesting/string/number sizes. It requires:
+
+- `idp.domain` to be non-empty and bounded, and `idp.protocol` to equal `default`.
+- `assertion.token` to have compact three-part JWT shape, valid unpadded Base64URL segments, a JSON protected header with a non-`none` algorithm, and a `cpk` object claim.
+- `assertion.fingerprints` to have detached compact JWS shape `base64url(header)..base64url(signature)`, with a JSON protected header and non-`none` algorithm.
+- Configurable maximum token and JWS lengths.
+
+This stage validates syntax and required fields only. It does **not** verify the GameServerToken signature against the Minecraft authorization service's published keys, validate issuer/audience/expiry, verify the detached fingerprint signature using `cpk`, or authorize a player. No parsed claim is trusted until those cryptographic and policy checks are implemented. The official [Mojang NetherNet onboarding guide](https://mojang.github.io/bedrock-protocol-docs/guides/nether-net-onboarding-guide/) describes the required verification chain and canonical fingerprint payload.
+
 ## Verification boundary
 
 JUnit tests have been authored for the codecs and NetherNet framing helpers. They must be run by Maven or CI before being described as passing. These tests validate serialization, fragment sequencing, and bounds only. They do not establish interoperability with an unmodified Bedrock client.

@@ -367,7 +367,9 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                 }
                 DataChannel current = reliable ? reliableChannel : unreliableChannel;
                 if (current != null && current.state() == DataChannel.State.CLOSED) {
-                    reportError("NetherNet data channel закрыт");
+                    reportError(networkSettingsReceived
+                            ? "Транспорт закрыт: Bedrock Login ещё не реализован в клиенте"
+                            : "NetherNet data channel закрыт");
                     return;
                 }
                 DataChannel a = reliableChannel;

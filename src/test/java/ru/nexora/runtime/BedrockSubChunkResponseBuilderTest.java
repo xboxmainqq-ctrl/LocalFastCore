@@ -49,9 +49,17 @@ class BedrockSubChunkResponseBuilderTest {
         in.get(data);
         ByteBuffer terrain = ByteBuffer.wrap(data);
         assertEquals(9, Byte.toUnsignedInt(terrain.get()));
-        assertEquals(1, Byte.toUnsignedInt(terrain.get()));
+        assertEquals(2, Byte.toUnsignedInt(terrain.get()));
         assertEquals(0, terrain.get());
         assertEquals(3, Byte.toUnsignedInt(terrain.get()));
+        for (int i = 0; i < 128; i++) BedrockBinary.readLittleEndianInt32(terrain);
+        assertEquals(2, BedrockBinary.readVarInt32(terrain));
+        BedrockBinary.readVarInt32(terrain);
+        BedrockBinary.readVarInt32(terrain);
+        assertEquals(1, Byte.toUnsignedInt(terrain.get())); // empty liquid layer
+        assertEquals(0, BedrockBinary.readVarInt32(terrain));
+        assertEquals(0, Byte.toUnsignedInt(terrain.get())); // block actor TAG_End
+        assertFalse(terrain.hasRemaining());
         assertEquals(0, Byte.toUnsignedInt(in.get()));
         assertEquals(0, Byte.toUnsignedInt(in.get()));
 
@@ -63,6 +71,22 @@ class BedrockSubChunkResponseBuilderTest {
         assertEquals(0, Byte.toUnsignedInt(in.get()));
         assertEquals(0, Byte.toUnsignedInt(in.get()));
         assertFalse(in.hasRemaining());
+    }
+
+    @Test
+    void returnsFluidOnlySubchunksAsSuccessfulTerrain() {
+        InMemoryWorld world = new InMemoryWorld("test", new WorldHeight(-64, 320));
+        world.setFluid(new BlockPosition(0, 0, 0), new BlockState("minecraft:water"));
+        var request = new BedrockSubChunkRequestPacketCodec.Request(
+                0, List.of(new BedrockSubChunkRequestPacketCodec.Offset(0, 0, 0)),
+                new BedrockSubChunkRequestPacketCodec.SubChunkPosition(0, 0, 0));
+        var registry = BedrockRuntimeBlockRegistry.of(Map.of(
+                BlockState.AIR, 0,
+                new BlockState("minecraft:water"), 1));
+
+        BedrockGamePacket response = BedrockSubChunkResponseBuilder.buildPackets(
+                world, request, 0, registry).get(0);
+        assertEquals(1, firstResult(response)); // Success, not SuccessAllAir
     }
 
     @Test

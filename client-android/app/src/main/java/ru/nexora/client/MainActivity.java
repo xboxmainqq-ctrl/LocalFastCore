@@ -52,6 +52,7 @@ public final class MainActivity extends Activity {
     private boolean firstPersonCamera;
     private TextView movementStatus;
     private TextView playersStatus;
+    private TextView inventoryStatus;
     private final Map<UUID, String> remotePlayerNames = new LinkedHashMap<>();
 
     @Override
@@ -159,6 +160,12 @@ public final class MainActivity extends Activity {
         addSpace(playersCard, 6);
         playersStatus = text("Других игроков пока нет", 13, TEXT, false);
         playersCard.addView(playersStatus, matchWrap());
+        addSpace(playersCard, 14);
+        playersCard.addView(text("ИНВЕНТАРЬ", 12, MUTED, true), matchWrap());
+        addSpace(playersCard, 6);
+        inventoryStatus = text("Ожидаем данные от сервера...", 14, TEXT, false);
+        inventoryStatus.setLineSpacing(dp(4), 1.0f);
+        playersCard.addView(inventoryStatus, matchWrap());
         addSpace(playersCard, 10);
         skinButton = button("ВНЕШНОСТЬ: НЕОНОВЫЙ ПИЛОТ");
         playersCard.addView(skinButton, matchWrap());
@@ -337,6 +344,11 @@ public final class MainActivity extends Activity {
             }
 
             @Override
+            public void onInventoryReceived(NexoraAndroidProtocolCodec.InventoryState inventory) {
+                refreshInventory(inventory);
+            }
+
+            @Override
             public void onChunkDataReceived(NexoraAndroidProtocolCodec.ChunkData chunk) {
                 chunkPreview.setChunk(chunk);
                 connectionStatus.setText("Получено чанков: "
@@ -428,6 +440,26 @@ public final class MainActivity extends Activity {
         if (skinButton == null) return;
         String[] names = {"НЕОНОВЫЙ ПИЛОТ", "ЛЕСНОЙ ИССЛЕДОВАТЕЛЬ", "АЛЫЙ СТРАЖ", "СУМЕРЕЧНЫЙ МАГ", "ПЕСЧАНЫЙ СТРАННИК"};
         skinButton.setText("ВНЕШНОСТЬ: " + names[Math.max(0, Math.min(names.length - 1, selectedSkin))]);
+    }
+
+    private void refreshInventory(NexoraAndroidProtocolCodec.InventoryState inventory) {
+        if (inventoryStatus == null) return;
+        if (inventory.stacks().isEmpty()) {
+            inventoryStatus.setText("Пока пусто • 36 свободных ячеек");
+            return;
+        }
+        StringBuilder display = new StringBuilder();
+        display.append("Предметов: ").append(inventory.totalItems())
+                .append(" • занято ячеек: ").append(inventory.stacks().size()).append("/36");
+        for (NexoraAndroidProtocolCodec.InventoryStack stack : inventory.stacks()) {
+            String itemName = stack.itemId();
+            int separator = itemName.indexOf(':');
+            if (separator >= 0) itemName = itemName.substring(separator + 1);
+            itemName = itemName.replace('_', ' ');
+            display.append((char) 10).append("• ")
+                    .append(itemName).append(" × ").append(stack.count());
+        }
+        inventoryStatus.setText(display.toString());
     }
 
     private void refreshRemotePlayers() {

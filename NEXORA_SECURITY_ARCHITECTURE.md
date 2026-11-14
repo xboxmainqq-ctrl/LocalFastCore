@@ -44,7 +44,9 @@ Repository owners should configure these settings in GitHub (settings are accoun
 - Run unit tests and compatibility checks before producing release artifacts.
 - Do not publish artifacts from untrusted pull-request code with access to release secrets.
 - Generate SHA-256 checksums for every distributable JAR.
-- Add artifact signing only after a trusted CI identity and verification process are configured. Never store a private signing key in the repository or inside a JAR.
+- Publish NEXORA release JARs only from version tags that point to commits already merged into `nexora/compatibility-edition`.
+- Sign each release JAR and checksum manifest using Sigstore keyless signing with GitHub Actions OIDC; publish the verification bundles with the release assets.
+- Verify the certificate identity, OIDC issuer, Sigstore bundle, and SHA-256 checksum before installation. No private signing key is stored in the repository or embedded in a JAR.
 
 ## Layer 3 — Runtime and server host
 
@@ -79,11 +81,15 @@ Ordinary Bedrock clients must continue to connect through the compatible server 
 
 1. Repository access review, branch protection, secret hygiene, and dependency update automation.
 2. CI hardening, repeatable builds, checksums, and artifact provenance.
-3. Signed release manifests and offline verification.
+3. Keyless-signed release JARs and checksum manifests using Sigstore; verify before installation.
 4. Runtime audit log and non-destructive integrity reporting.
 5. Permission checks and explicit protection for sensitive NEXORA operations.
 6. Backup verification and tested recovery procedures.
 7. Enforcement only after false-positive testing on a copy of the server.
+
+## Release workflow activation
+
+The release workflow is stored at `.github/workflows/release-nexora.yml` on the compatibility branch. GitHub requires a workflow file to exist on the repository's default branch for tag-triggered workflows to run. Merge this workflow to the default branch before creating the first `nexora-vX.Y.Z` tag. The release job independently checks that the tagged commit is already an ancestor of `nexora/compatibility-edition`.
 
 ## Operational rule
 

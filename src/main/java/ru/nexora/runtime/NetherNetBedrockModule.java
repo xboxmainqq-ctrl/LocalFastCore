@@ -29,6 +29,10 @@ public final class NetherNetBedrockModule implements RuntimeModule {
             throw new IllegalArgumentException(
                     "NetherNet peer host and network transport must be the same host instance");
         }
+        if (!this.signalingServer.usesPeerHost(this.peerHost)) {
+            throw new IllegalArgumentException(
+                    "NetherNet signaling server must use the same peer host instance");
+        }
     }
 
     @Override

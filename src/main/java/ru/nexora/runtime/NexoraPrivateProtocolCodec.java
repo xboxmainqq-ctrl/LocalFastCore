@@ -139,9 +139,17 @@ public final class NexoraPrivateProtocolCodec {
     }
 
     private static ByteBuffer checkedHeader(ByteBuffer source, int expectedType) {
-        ByteBuffer input = checkedServerHeader(source);
-        int type = Byte.toUnsignedInt(source.get(source.position() + 6));
-        if (type != expectedType) throw new IllegalArgumentException("Unexpected NEXORA message type");
+        Objects.requireNonNull(source, "source");
+        ByteBuffer input = source.slice().order(ByteOrder.BIG_ENDIAN);
+        if (input.remaining() < 7 || input.remaining() > MAX_MESSAGE_BYTES)
+            throw new IllegalArgumentException("Invalid NEXORA message size");
+        checkMagic(input);
+        input.get();
+        input.get();
+        int type = Byte.toUnsignedInt(input.get());
+        if (type != expectedType)
+            throw new IllegalArgumentException("Unexpected NEXORA message type");
+        input.position(7);
         return input;
     }
 

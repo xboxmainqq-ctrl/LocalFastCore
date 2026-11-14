@@ -37,13 +37,22 @@ public final class SqlitePlayerProfileRepository implements PlayerProfileReposit
             Files.createDirectories(parent);
         }
 
+        Connection opened = null;
         try {
             Class.forName("org.sqlite.JDBC");
-            connection = DriverManager.getConnection("jdbc:sqlite:" + absolute);
+            opened = DriverManager.getConnection("jdbc:sqlite:" + absolute);
+            connection = opened;
             configure();
             migrate();
-        } catch (ClassNotFoundException | SQLException exception) {
-            throw new IOException("Could not open NEXORA profile database", exception);
+        } catch (ClassNotFoundException | SQLException | IOException failure) {
+            if (opened != null) {
+                try {
+                    opened.close();
+                } catch (SQLException closeFailure) {
+                    failure.addSuppressed(closeFailure);
+                }
+            }
+            throw new IOException("Could not open or migrate NEXORA profile database", failure);
         }
     }
 

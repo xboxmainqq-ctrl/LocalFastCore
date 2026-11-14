@@ -358,3 +358,8 @@ No indexed 1.26.60 runtime-ID palette is bundled. The external loader supports t
 BlockState property strings support explicit NBT type prefixes for hash serialization: `s:` string, `b:` byte, `h:` short, `i:` int, `l:` long, `f:` float, and `d:` double. A value without a prefix remains a string for backwards compatibility. Use the prefix matching the exact vanilla block-state NBT type; an incorrect type produces a different hash and therefore a client-visible unknown block.
 
 The same `BedrockRuntimeBlockRegistryProfile` must be passed to both `BedrockWorldStartupHandler` and `BedrockSubChunkRequestHandler`. Startup rejects a StartGame packet whose `BlockNetworkIdsAreHashes` flag differs from the profile. For indexed runtime-ID mode, load the externally sourced table with `BedrockRuntimeBlockRegistryProfile.from(loadedFile)` instead.
+### Network biome palette codec
+
+`BedrockBiomePaletteCodec` now serializes one 16×16×16 biome section using the Bedrock network palette layout: packed little-endian index words, unsigned VarInt biome IDs, and the network palette flag. Uniform sections omit both packed words and the palette-size prefix. Consecutive identical sections can use the `0xff` same-as-previous marker. The codec accepts exactly 4096 non-negative biome IDs per section and caps a sequence at 128 sections.
+
+This is a reusable serialization primitive, not yet wired into `LevelChunk` world data: NEXORA's current `World`/`ChunkSection` model still has no biome storage, and the current skeleton `LevelChunk` payload remains intentionally minimal. Full biome-aware chunk streaming is still pending. Protocol background: https://mojang.github.io/bedrock-protocol-docs/guides/sub-chunk-request-system-v1-18-10/

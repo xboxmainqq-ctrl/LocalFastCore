@@ -1,6 +1,7 @@
 package ru.nexora.runtime;
 
 import java.nio.ByteBuffer;
+import java.util.Optional;
 import java.util.Objects;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
@@ -77,9 +78,10 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
                 return;
             }
 
-            if (result.outboundFrame() != null) {
+            Optional<ByteBuffer> outbound = result.outboundFrame();
+            if (outbound.isPresent()) {
                 TransportSendResult sent = session.connection.send(
-                        result.outboundFrame(), DeliveryMode.RELIABLE_ORDERED);
+                        outbound.get(), DeliveryMode.RELIABLE_ORDERED);
                 if (sent != TransportSendResult.ACCEPTED) {
                     close(session, "Could not enqueue NetworkSettings response");
                     return;
@@ -131,7 +133,6 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
                     close(session, "Could not enter Bedrock play state");
                     return;
                 }
-                session.connection.setMessageListener(message -> receive(session, message));
                 try {
                     playListener.accept(session.connection);
                 } catch (RuntimeException failureToStartPlay) {

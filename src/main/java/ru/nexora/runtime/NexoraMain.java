@@ -49,7 +49,7 @@ public final class NexoraMain {
         System.out.println("World: " + DEFAULT_WORLD_ID
                 + " | spawn chunk: 0,0 | tick rate: 20");
         System.out.println("Network ingress: disabled (development runtime only).");
-        System.out.println("Data directory: " + options.dataDirectory().toAbsolutePath().normalize());
+        System.out.println("Data directory: " + options.dataDirectory());
         System.out.println("Press Ctrl+C to stop and save the world.");
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -106,23 +106,44 @@ public final class NexoraMain {
 
             @Override
             public void stop() {
-                // WorldStorageModule owns persistence and saves after all runtime modules stop.
+                // WorldStorageModule persists the world after the runtime services stop.
             }
         });
 
         TickScheduler scheduler = new TickScheduler();
         int workers = Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() - 1));
-        AsyncChunkGenerationService generation = new AsyncChunkGenerationService(
-                generator, DEFAULT_WORLD_HEIGHT, seed, workers, 256, 256);
-        World worldForGeneration = new WorldReference(worlds, DEFAULT_WORLD_ID).worldAfterLoad();
-        WorldChunkPipeline chunkPipeline = new WorldChunkPipeline(
-                worldForGeneration, scheduler, generation, 4,
-                failure -> log.accept("Chunk generation error: " + failure.getMessage()));
+        server.register(new RuntimeModule() {
+            private WorldChunkPipeline pipeline;
+
+            @Override
+            public String id() {
+                return "chunk-generation";
+            }
+
+            @Override
+            public void start() throws Exception {
+                World world = worlds.get(DEFAULT_WORLD_ID)
+                        .orElseThrow(() -> new IllegalStateException("Default world was not loaded"));
+                AsyncChunkGenerationService generation = new AsyncChunkGenerationService(
+                        generator, world.height(), seed, workers, 256, 256);
+                pipeline = new WorldChunkPipeline(
+                        world, scheduler, generation, 4,
+                        failure -> log.accept("Chunk generation error: " + failure.getMessage()));
+                pipeline.start();
+            }
+
+            @Override
+            public void stop() throws Exception {
+                if (pipeline != null) {
+                    pipeline.stop();
+                    pipeline = null;
+                }
+            }
+        });
+
         GameLoop gameLoop = new GameLoop(
                 20, 3, scheduler,
                 failure -> log.accept("Game tick error: " + failure.getMessage()));
-
-        server.register(chunkPipeline);
         server.register(gameLoop);
         return new RuntimeHandle(server, worlds, gameLoop);
     }
@@ -181,53 +202,5 @@ public final class NexoraMain {
             Objects.requireNonNull(worlds, "worlds");
             Objects.requireNonNull(gameLoop, "gameLoop");
         }
-    }
-
-    /**
-     * Defers the world lookup until after the storage module has been started.
-     * The pipeline only retains the actual world instance once the module
-     * registration order guarantees that it exists.
-     */
-    private record WorldReference(WorldRegistry registry, String worldId) {
-        private World worldAfterLoad() {
-            return new DeferredWorld(registry, worldId);
-        }
-    }
-
-    /**
-     * Resolves world operations lazily so runtime modules can be assembled
-     * before WorldStorageModule starts. This wrapper is intentionally avoided
-     * by the actual pipeline; it exists only to guard construction ordering.
-     */
-    private static final class DeferredWorld implements World {
-        private final WorldRegistry registry;
-        private final String worldId;
-
-        private DeferredWorld(WorldRegistry registry, String worldId) {
-            this.registry = registry;
-            this.worldId = worldId;
-        }
-
-        private World delegate() {
-            return registry.get(worldId)
-                    .orElseThrow(() -> new IllegalStateException("World is not loaded: " + worldId));
-        }
-
-        @Override public String id() { return delegate().id(); }
-        @Override public WorldHeight height() { return delegate().height(); }
-        @Override public BlockState blockAt(BlockPosition position) { return delegate().blockAt(position); }
-        @Override public void setBlock(BlockPosition position, BlockState state) { delegate().setBlock(position, state); }
-        @Override public BlockState fluidAt(BlockPosition position) { return delegate().fluidAt(position); }
-        @Override public void setFluid(BlockPosition position, BlockState state) { delegate().setFluid(position, state); }
-        @Override public java.util.Map<BlockPosition, BlockState> fluidsInChunk(ChunkPosition position) { return delegate().fluidsInChunk(position); }
-        @Override public int biomeAt(BlockPosition position) { return delegate().biomeAt(position); }
-        @Override public void setBiome(BlockPosition position, int biomeId) { delegate().setBiome(position, biomeId); }
-        @Override public int[] biomesInSection(ChunkPosition position, int sectionY) { return delegate().biomesInSection(position, sectionY); }
-        @Override public java.util.List<Integer> biomeSectionsInChunk(ChunkPosition position) { return delegate().biomeSectionsInChunk(position); }
-        @Override public boolean loadChunk(GeneratedChunk chunk) { return delegate().loadChunk(chunk); }
-        @Override public boolean isChunkLoaded(ChunkPosition position) { return delegate().isChunkLoaded(position); }
-        @Override public int loadedChunkCount() { return delegate().loadedChunkCount(); }
-        @Override public java.util.List<ChunkPosition> loadedChunks() { return delegate().loadedChunks(); }
-        @Override public java.util.Map<BlockPosition, BlockState> blocksInChunk(ChunkPosition position) { return delegate().blocksInChunk(position); }
     }
 }

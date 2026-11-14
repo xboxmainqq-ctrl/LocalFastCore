@@ -3,12 +3,15 @@ package ru.nexora.runtime;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import com.sun.net.httpserver.HttpsConfigurator;
+import com.sun.net.httpserver.HttpsServer;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
+import javax.net.ssl.SSLContext;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -37,6 +40,7 @@ public final class NetherNetSignalingServer implements RuntimeModule {
     private final KeyPair operatorKeyPair;
     private final Clock clock;
     private final Duration identityTokenLifetime;
+    private final SSLContext tlsContext;
     private final int maxSdpBytes;
     private final long answerTimeoutMillis;
 
@@ -50,7 +54,7 @@ public final class NetherNetSignalingServer implements RuntimeModule {
                                     String partnerDomain,
                                     KeyPair operatorKeyPair) {
         this(bindAddress, serverInfo, validator, peerHost, partnerDomain, operatorKeyPair,
-                Clock.systemUTC(), Duration.ofDays(30), DEFAULT_MAX_SDP_BYTES, 15_000L);
+                Clock.systemUTC(), Duration.ofDays(30), null, DEFAULT_MAX_SDP_BYTES, 15_000L);
     }
 
     public NetherNetSignalingServer(InetSocketAddress bindAddress,
@@ -63,6 +67,21 @@ public final class NetherNetSignalingServer implements RuntimeModule {
                                     Duration identityTokenLifetime,
                                     int maxSdpBytes,
                                     long answerTimeoutMillis) {
+        this(bindAddress, serverInfo, validator, peerHost, partnerDomain, operatorKeyPair,
+                clock, identityTokenLifetime, null, maxSdpBytes, answerTimeoutMillis);
+    }
+
+    public NetherNetSignalingServer(InetSocketAddress bindAddress,
+                                    NetherNetServerInfo serverInfo,
+                                    NetherNetOfferValidator validator,
+                                    NetherNetPeerHost peerHost,
+                                    String partnerDomain,
+                                    KeyPair operatorKeyPair,
+                                    Clock clock,
+                                    Duration identityTokenLifetime,
+                                    SSLContext tlsContext,
+                                    int maxSdpBytes,
+                                    long answerTimeoutMillis) {
         this.bindAddress = Objects.requireNonNull(bindAddress, "bindAddress");
         this.serverInfo = Objects.requireNonNull(serverInfo, "serverInfo");
         this.validator = Objects.requireNonNull(validator, "validator");
@@ -71,6 +90,7 @@ public final class NetherNetSignalingServer implements RuntimeModule {
         this.operatorKeyPair = Objects.requireNonNull(operatorKeyPair, "operatorKeyPair");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.identityTokenLifetime = Objects.requireNonNull(identityTokenLifetime, "identityTokenLifetime");
+        this.tlsContext = tlsContext;
         if (identityTokenLifetime.isNegative() || identityTokenLifetime.isZero()
                 || identityTokenLifetime.compareTo(Duration.ofDays(3650)) > 0
                 || maxSdpBytes < 1 || answerTimeoutMillis < 1) {
@@ -90,7 +110,14 @@ public final class NetherNetSignalingServer implements RuntimeModule {
         if (server != null) {
             throw new IllegalStateException("NetherNet signaling server is already started");
         }
-        HttpServer created = HttpServer.create(bindAddress, 64);
+        HttpServer created;
+        if (tlsContext == null) {
+            created = HttpServer.create(bindAddress, 64);
+        } else {
+            HttpsServer https = HttpsServer.create(bindAddress, 64);
+            https.setHttpsConfigurator(new HttpsConfigurator(tlsContext));
+            created = https;
+        }
         ThreadPoolExecutor pool = new ThreadPoolExecutor(
                 2, 8, 30L, TimeUnit.SECONDS,
                 new ArrayBlockingQueue<>(128),

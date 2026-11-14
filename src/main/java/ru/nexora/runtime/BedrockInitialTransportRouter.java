@@ -35,7 +35,7 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
     @Override
     public void accept(TransportConnection connection) {
         Objects.requireNonNull(connection, "connection");
-        if (closed.get()) {
+        if (closed.get() || !connection.isOpen()) {
             connection.close();
             return;
         }

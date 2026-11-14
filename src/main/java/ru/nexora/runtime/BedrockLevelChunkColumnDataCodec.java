@@ -61,10 +61,15 @@ public final class BedrockLevelChunkColumnDataCodec {
         int minSectionY = Math.floorDiv(world.height().minY(), 16);
         Map<Integer, ChunkSection> blockSections =
                 BedrockSubChunkResponseBuilder.groupBlocksBySection(world.blocksInChunk(chunkPosition));
+        Map<Integer, ChunkSection> fluidSections =
+                BedrockSubChunkResponseBuilder.groupBlocksBySection(world.fluidsInChunk(chunkPosition));
         List<Integer> biomeSectionYs = world.biomeSectionsInChunk(chunkPosition);
 
         int highestSectionY = minSectionY - 1;
         for (int sectionY : blockSections.keySet()) {
+            highestSectionY = Math.max(highestSectionY, sectionY);
+        }
+        for (int sectionY : fluidSections.keySet()) {
             highestSectionY = Math.max(highestSectionY, sectionY);
         }
         for (int sectionY : biomeSectionYs) {
@@ -93,7 +98,12 @@ public final class BedrockLevelChunkColumnDataCodec {
             if (blocks == null) {
                 blocks = new ChunkSection();
             }
-            ByteBuffer terrain = BedrockSubChunkTerrainCodec.encodeSection(blocks, sectionY, registry);
+            ChunkSection fluids = fluidSections.get(sectionY);
+            if (fluids == null) {
+                fluids = new ChunkSection();
+            }
+            ByteBuffer terrain = BedrockSubChunkTerrainCodec.encodeSection(
+                    blocks, fluids, sectionY, registry);
             encodedTerrain.add(terrain);
             totalBytes = Math.addExact(totalBytes, terrain.remaining());
             biomeSections.add(world.biomesInSection(chunkPosition, sectionY));

@@ -78,7 +78,7 @@ class NexoraPrivateProtocolHandlerTest {
         connection.deliver(new byte[] {1, 2, 3});
 
         NexoraPrivateProtocolCodec.ServerResponse response =
-                NexoraPrivateProtocolCodec.decodeServerResponse(ByteBuffer.wrap(connection.sent));
+                NexoraPrivateProtocolCodec.decodeServerResponse(ByteBuffer.wrap(connection.sentMessages.get(0)));
         assertFalse(response.accepted());
         assertEquals(2, response.rejectionCode());
     }

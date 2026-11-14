@@ -18,7 +18,14 @@ public final class NexoraInventorySyncCodec {
     private NexoraInventorySyncCodec() {
     }
 
-    public record InventoryState(UUID playerId, List<ItemStack> stacks) {
+    public record InventoryEntry(int slot, ItemStack stack) {
+        public InventoryEntry {
+            if (slot < 0 || slot >= MAX_SLOTS) throw new IllegalArgumentException("Invalid inventory slot");
+            Objects.requireNonNull(stack, "stack");
+        }
+    }
+
+    public record InventoryState(UUID playerId, List<InventoryEntry> stacks) {
         public InventoryState {
             Objects.requireNonNull(playerId, "playerId");
             Objects.requireNonNull(stacks, "stacks");
@@ -31,9 +38,14 @@ public final class NexoraInventorySyncCodec {
 
     public static byte[] encode(PlayerInventory inventory) {
         Objects.requireNonNull(inventory, "inventory");
-        List<ItemStack> stacks = inventory.snapshot();
+        List<InventoryEntry> stacks = new ArrayList<>();
+        for (int slot = 0; slot < inventory.slotCount(); slot++) {
+            ItemStack stack = inventory.stackAt(slot);
+            if (stack != null) stacks.add(new InventoryEntry(slot, stack));
+        }
         int size = 7 + 16 + 1;
-        for (ItemStack stack : stacks) {
+        for (InventoryEntry entry : stacks) {
+            ItemStack stack = entry.stack();
             int itemBytes = stack.itemId().getBytes(StandardCharsets.UTF_8).length;
             if (itemBytes > MAX_ITEM_ID_BYTES) {
                 throw new IllegalArgumentException("Item identifier is too long");
@@ -45,9 +57,10 @@ public final class NexoraInventorySyncCodec {
         UUID owner = inventory.ownerId();
         output.putLong(owner.getMostSignificantBits()).putLong(owner.getLeastSignificantBits());
         output.put((byte) stacks.size());
-        for (ItemStack stack : stacks) {
+        for (InventoryEntry entry : stacks) {
+            ItemStack stack = entry.stack();
             byte[] id = stack.itemId().getBytes(StandardCharsets.UTF_8);
-            output.put((byte) id.length).put(id).put((byte) stack.count());
+            output.put((byte) entry.slot()).put((byte) id.length).put(id).put((byte) stack.count());
         }
         return output.array();
     }
@@ -66,18 +79,21 @@ public final class NexoraInventorySyncCodec {
         UUID owner = new UUID(input.getLong(), input.getLong());
         int count = Byte.toUnsignedInt(input.get());
         if (count > MAX_SLOTS) throw new IllegalArgumentException("Too many inventory stacks");
-        List<ItemStack> stacks = new ArrayList<>(count);
+        List<InventoryEntry> stacks = new ArrayList<>(count);
+        boolean[] seenSlots = new boolean[MAX_SLOTS];
         for (int i = 0; i < count; i++) {
             if (!input.hasRemaining()) throw new IllegalArgumentException("Truncated inventory stack");
+            int slot = Byte.toUnsignedInt(input.get());
             int length = Byte.toUnsignedInt(input.get());
-            if (length < 1 || length > MAX_ITEM_ID_BYTES || input.remaining() < length + 1) {
+            if (slot >= MAX_SLOTS || seenSlots[slot] || length < 1 || length > MAX_ITEM_ID_BYTES || input.remaining() < length + 1) {
                 throw new IllegalArgumentException("Invalid inventory item identifier length");
             }
             byte[] id = new byte[length];
             input.get(id);
             String itemId = new String(id, StandardCharsets.UTF_8);
             int stackSize = Byte.toUnsignedInt(input.get());
-            stacks.add(new ItemStack(itemId, stackSize));
+            seenSlots[slot] = true;
+            stacks.add(new InventoryEntry(slot, new ItemStack(itemId, stackSize)));
         }
         if (input.hasRemaining()) throw new IllegalArgumentException("Trailing inventory snapshot bytes");
         return new InventoryState(owner, stacks);

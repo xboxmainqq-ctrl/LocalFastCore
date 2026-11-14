@@ -151,3 +151,20 @@ When targeting a newer Bedrock release:
 7. The metadata endpoint must advertise the exact NEXORA game version and protocol target: **1.26.60 / 2225**. Do not copy illustrative values from onboarding examples.
 
 These are protocol requirements from Mojang documentation, not proof that NEXORA has implemented them. The implementation remains pending.
+
+## Resource-pack negotiation checkpoint — protocol 2225
+
+The standalone runtime now has a deliberately limited empty-pack codec checkpoint:
+
+- `BedrockResourcePackCodec` encodes packet 6 (`ResourcePacksInfo`) for a server that advertises no required packs, no add-ons, no scripts, and no forced Vibrant Visuals disable. It writes a zero world-template UUID with version `1.0.0` and an empty pack list.
+- It encodes packet 7 (`ResourcePackStack`) with an empty texture-pack list, the configured base-game version, zero active experiments, and editor packs disabled.
+- The experiment-toggle collection uses the schema's **uncompressed uint32 collection count** (native Bedrock byte order, little-endian), rather than the ordinary varuint32 collection count.
+- It decodes packet 8 (`ResourcePackClientResponse`) response strings using the protocol-2225 enum names: `Cancel`, `Downloading`, `DownloadingFinished`, and `ResourcePackStackFinished`. The Downloading variant is bounded and parses its pack-ID list.
+
+The official protocol reference identifies packet IDs 6, 7 and 8 and documents the packet fields; the protocol-2225 primitive reference defines native byte order and the no-size-compression annotation. In particular, protocol 1.26.60 changed the resource-pack response enum values from 0–3 to 1–4. Sources:
+- https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/resource-packs-info-packet/
+- https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/resource-pack-stack-packet/
+- https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/resource-pack-client-response-packet/
+- https://mojang.github.io/bedrock-protocol-docs/1.26.60/primitives/
+
+**Scope limitation:** these codecs do not yet form a post-login negotiation coordinator and do not prove that a live client accepts the chosen empty world-template metadata. The server still does not send `StartGame`, chunks, or playable world state. `LOGIN_SUCCESS_SENT` must remain distinct from `PLAY`; only the later completed world-startup path may call `markPlayReady(connection)`. No real Bedrock client compatibility is claimed.

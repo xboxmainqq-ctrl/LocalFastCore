@@ -136,6 +136,41 @@ public class NexoraAndroidProtocolCodecTest {
         assertEquals(135.0, state.yaw(), 0.0001);
     }
 
+    @Test
+    public void decodesServerInventorySnapshot() {
+        UUID playerId = UUID.fromString("c7f9a7c3-18b0-4dc5-a3c2-7b7f10f2f1a1");
+        byte[] apple = "minecraft:apple".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] diamond = "minecraft:diamond".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        ByteBuffer packet = ByteBuffer.allocate(7 + 16 + 1 + 1 + apple.length + 1
+                + 1 + diamond.length + 1);
+        packet.put(new byte[] {'N','X','R','A',1,1,11});
+        packet.putLong(playerId.getMostSignificantBits()).putLong(playerId.getLeastSignificantBits());
+        packet.put((byte) 2);
+        packet.put((byte) apple.length).put(apple).put((byte) 64);
+        packet.put((byte) diamond.length).put(diamond).put((byte) 3);
+
+        NexoraAndroidProtocolCodec.InventoryState inventory =
+                NexoraAndroidProtocolCodec.decodeInventory(packet.array());
+
+        assertEquals(playerId, inventory.playerId());
+        assertEquals(2, inventory.stacks().size());
+        assertEquals("minecraft:apple", inventory.stacks().get(0).itemId());
+        assertEquals(64, inventory.stacks().get(0).count());
+        assertEquals("minecraft:diamond", inventory.stacks().get(1).itemId());
+        assertEquals(3, inventory.stacks().get(1).count());
+        assertEquals(67, inventory.totalItems());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void rejectsInventoryStackLargerThan64() {
+        byte[] id = "minecraft:apple".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        ByteBuffer packet = ByteBuffer.allocate(7 + 16 + 1 + 1 + id.length + 1);
+        packet.put(new byte[] {'N','X','R','A',1,1,11});
+        packet.putLong(1L).putLong(2L).put((byte) 1);
+        packet.put((byte) id.length).put(id).put((byte) 65);
+        NexoraAndroidProtocolCodec.decodeInventory(packet.array());
+    }
+
     @Test(expected = IllegalArgumentException.class)
     public void rejectsWrongMagic() {
         NexoraAndroidProtocolCodec.decodeServerResponse(new byte[] {0,0,0,0,1,0,2});

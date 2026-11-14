@@ -76,6 +76,9 @@ public final class NetherNetFragmentAssembler {
 
         if (assembly == null) {
             if (remaining == 0) {
+                if (payloadBytes > maxMessageBytes) {
+                    throw new IllegalArgumentException("Message exceeds configured byte limit");
+                }
                 return Optional.of(copyPayload(fragment));
             }
             if (remaining + 1 > maxFragments) {

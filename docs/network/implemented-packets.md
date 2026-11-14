@@ -87,14 +87,26 @@ These are source implementations and authored tests; they are not yet a claim of
 
 ## NetherNet identity assertion structure
 
-`NetherNetIdentityAssertion` parses the decoded `a=identity` envelope and its nested assertion JSON with Jackson Core strict duplicate-key detection and bounded nesting/string/number sizes. It requires:
+`NetherNetIdentityAssertion` parses the decoded `a=identity` envelope and nested assertion JSON with Jackson Core strict duplicate-key detection and bounded nesting/string/number sizes. It requires:
 
 - `idp.domain` to be non-empty and bounded, and `idp.protocol` to equal `default`.
-- `assertion.token` to have compact three-part JWT shape, valid unpadded Base64URL segments, a JSON protected header with a non-`none` algorithm, and a `cpk` object claim.
-- `assertion.fingerprints` to have detached compact JWS shape `base64url(header)..base64url(signature)`, with a JSON protected header and non-`none` algorithm.
-- Configurable maximum token and JWS lengths.
+- The client `GameServerToken` to use compact JWT form with RS256 and a `kid`, the franchise authorization issuer, multiplayer audience, expiry, and a Base64 DER SubjectPublicKeyInfo `cpk`.
+- The fingerprint proof to use detached compact JWS form `base64url(header)..base64url(signature)` with ES384.
 
-This stage validates syntax and required fields only. It does **not** verify the GameServerToken signature against the Minecraft authorization service's published keys, validate issuer/audience/expiry, verify the detached fingerprint signature using `cpk`, or authorize a player. No parsed claim is trusted until those cryptographic and policy checks are implemented. The official [Mojang NetherNet onboarding guide](https://mojang.github.io/bedrock-protocol-docs/guides/nether-net-onboarding-guide/) describes the required verification chain and canonical fingerprint payload.
+The client identity verification chain is implemented in these components:
+
+- `NetherNetJwksKeyCache` fetches RSA signing keys over HTTPS from the franchise authorization service's JWKS endpoint, caps response size, validates RSA key sizes, caches keys, and rate-limits refreshes for unknown key IDs.
+- `NetherNetGameServerTokenVerifier` verifies RS256, re-checks that parsed identity fields exactly match the signed JWT, enforces `exp`/`nbf` with bounded clock skew, and decodes the P-384 `cpk` public key.
+- `NetherNetFingerprintPayload` reconstructs canonical JSON from SDP fingerprint attributes.
+- `NetherNetFingerprintJwsVerifier` verifies the detached ES384 signature with the authenticated `cpk`.
+- `NetherNetIdentityValidator` composes both signature checks. `NetherNetAuthenticatedOfferValidator` invokes the server admission policy only after identity verification succeeds.
+
+The server side is also represented:
+
+- `NetherNetServerIdentitySigner` creates the operator JWT and detached ES384 fingerprint JWS for SDP answers, embeds the P-384 public key as a public JWK, and inserts `a=identity` at session level. The private key is supplied by the host and is never written to the repository.
+- `NetherNetServerIdentityVerifier` validates the operator JWT/JWS and calculates the RFC 7638 SHA-256 thumbprint of the public JWK. It returns one of three trust states: TLS-authenticated, already pinned, or first-use confirmation required. It never silently stores a new pin; explicit user approval belongs in the Android UI.
+
+The authorization-service endpoint, RS256 algorithm, issuer, audience, and client `cpk` SPKI representation are cross-checked against [MiNET's current GameServerToken validator](https://github.com/NiclasOlofsson/MiNET/blob/master/src/MiNET/MiNET/Utils/Cryptography/FranchiseTokenValidator.cs). This is an implementation reference, not a substitute for the [Mojang NetherNet onboarding guide](https://mojang.github.io/bedrock-protocol-docs/guides/nether-net-onboarding-guide/).
 
 ## Verification boundary
 

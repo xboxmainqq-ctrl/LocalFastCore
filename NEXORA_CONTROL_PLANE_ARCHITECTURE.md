@@ -134,3 +134,12 @@ Each stage must build and test independently. Do not connect the prototype to a 
 NexoraCore remains the in-game compatibility/runtime module. The control plane and host agent must communicate through versioned external contracts and must not introduce a hard runtime dependency from legacy plugins to the panel. Existing Nukkit-MOT loading behavior and LocalFastCore compatibility identifiers remain intact.
 
 The current NexoraCore backup foundation is a local, explicit directory snapshot API. It is not yet a remote backup service, scheduler, manifest verifier, or restore system. The control plane must not present those capabilities as available until they are implemented and tested.
+
+
+## Android tablet host profile
+
+An Android tablet may be enrolled as a constrained host, but it is not treated as a general Linux VPS. The first target is a manually started, single-server experimental host on Xiaomi Pad 8-class ARM64 hardware. Android background execution, foreground-service type rules, thermal limits, battery policy, and Java runtime compatibility must be validated on the actual device.
+
+The Android host implementation is specified separately in [NEXORA_ANDROID_HOST.md](NEXORA_ANDROID_HOST.md). It must use a visible foreground service, an ARM64 Java runtime proven compatible with Nukkit-MOT, strict heap/storage limits, and a local-first network policy. Android process death, force-stop, reboot, thermal shutdown, and battery exhaustion may stop the game server; the control plane must report these states honestly and must not promise indefinite uptime.
+
+The tablet agent may use the same typed job protocol as other hosts, but only the operations supported by its local supervisor are advertised. It must not expose arbitrary shell access or an unauthenticated management endpoint.

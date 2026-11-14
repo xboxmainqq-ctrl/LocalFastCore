@@ -157,6 +157,17 @@ public final class WebRtcJavaNetherNetPeerHost
         return session.answer;
     }
 
+    @Override
+    public void cancel(String networkId) {
+        if (networkId == null) {
+            return;
+        }
+        PeerSession session = sessionsByNetworkId.get(networkId);
+        if (session != null) {
+            session.close("NetherNet signaling request cancelled", false);
+        }
+    }
+
     private void createLocalAnswer(PeerSession session) {
         if (session.closed.get()) {
             return;

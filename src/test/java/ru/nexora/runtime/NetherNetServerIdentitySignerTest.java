@@ -27,8 +27,8 @@ class NetherNetServerIdentitySignerTest {
         generator.initialize(new ECGenParameterSpec("secp384r1"));
         KeyPair operator = generator.generateKeyPair();
         String answer = "v=0\r\no=- 1 1 IN IP4 0.0.0.0\r\ns=-\r\nt=0 0\r\n"
-                + "a=fingerprint:sha-256 " + FINGERPRINT + "\r\n"
-                + "m=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n";
+                + "m=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n"
+                + "a=fingerprint:sha-256 " + FINGERPRINT + "\r\n";
         String signed = NetherNetServerIdentitySigner.addIdentity(answer, "nexora.example",
                 operator, Instant.ofEpochSecond(1000), Instant.ofEpochSecond(5000));
 

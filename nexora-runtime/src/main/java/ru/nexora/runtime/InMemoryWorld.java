@@ -1,5 +1,8 @@
 package ru.nexora.runtime;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -49,8 +52,6 @@ public final class InMemoryWorld implements World {
         ChunkPosition chunkPosition = position.chunkPosition();
 
         if (state.isAir()) {
-            // computeIfPresent serializes empty-chunk removal with concurrent writes
-            // to the same chunk, preventing a newly written block from being lost.
             chunks.computeIfPresent(chunkPosition, (ignored, chunk) -> {
                 chunk.setBlock(position, BlockState.AIR);
                 return chunk.isEmpty() ? null : chunk;
@@ -73,6 +74,18 @@ public final class InMemoryWorld implements World {
     @Override
     public int loadedChunkCount() {
         return chunks.size();
+    }
+
+    @Override
+    public List<ChunkPosition> loadedChunks() {
+        return List.copyOf(chunks.keySet());
+    }
+
+    @Override
+    public Map<BlockPosition, BlockState> blocksInChunk(ChunkPosition position) {
+        Objects.requireNonNull(position, "position");
+        WorldChunk chunk = chunks.get(position);
+        return chunk == null ? Map.of() : chunk.snapshot(position);
     }
 
     private void validatePosition(BlockPosition position) {
@@ -109,6 +122,21 @@ public final class InMemoryWorld implements World {
 
         private synchronized boolean isEmpty() {
             return blocks.isEmpty();
+        }
+
+        private synchronized Map<BlockPosition, BlockState> snapshot(ChunkPosition chunkPosition) {
+            int baseX = Math.multiplyExact(chunkPosition.x(), 16);
+            int baseZ = Math.multiplyExact(chunkPosition.z(), 16);
+            Map<BlockPosition, BlockState> snapshot = new java.util.HashMap<>();
+            blocks.forEach((local, state) -> snapshot.put(
+                    new BlockPosition(
+                            Math.addExact(baseX, local.x()),
+                            local.y(),
+                            Math.addExact(baseZ, local.z())
+                    ),
+                    state
+            ));
+            return Map.copyOf(snapshot);
         }
     }
 

@@ -42,6 +42,48 @@ class NexoraMainTest {
                 () -> NexoraMain.parseArguments(new String[] {"--seed", "not-a-number"}));
     }
 
+
+    @Test
+    void parsesExplicitDevelopmentNetworkSettings() {
+        NexoraMain.LaunchOptions options = NexoraMain.parseArguments(new String[] {
+                "--enable-development-network",
+                "--bind-address", "127.0.0.1",
+                "--signaling-port", "8181",
+                "--tick-rate", "30"
+        });
+
+        assertTrue(options.developmentNetworkEnabled());
+        assertEquals("127.0.0.1", options.bindAddress());
+        assertEquals(8181, options.signalingPort());
+        assertEquals(30, options.tickRate());
+    }
+
+    @Test
+    void requiresExplicitFlagBeforeOpeningDevelopmentNetwork() {
+        assertThrows(IllegalArgumentException.class,
+                () -> NexoraMain.parseArguments(new String[] {
+                        "--bind-address", "127.0.0.1"
+                }));
+        assertFalse(NexoraMain.parseArguments(new String[0]).developmentNetworkEnabled());
+    }
+
+    @Test
+    void registersPrivateNetherNetModuleOnlyWhenDevelopmentModeIsEnabled() {
+        NexoraMain.LaunchOptions offline = NexoraMain.parseArguments(new String[0]);
+        NexoraMain.RuntimeHandle offlineRuntime =
+                NexoraMain.createRuntime(offline, ignored -> { });
+        assertFalse(offlineRuntime.server().moduleIds().contains("nethernet-nexora-private"));
+
+        NexoraMain.LaunchOptions network = NexoraMain.parseArguments(new String[] {
+                "--enable-development-network",
+                "--bind-address", "127.0.0.1",
+                "--signaling-port", "8181"
+        });
+        NexoraMain.RuntimeHandle networkRuntime =
+                NexoraMain.createRuntime(network, ignored -> { });
+        assertTrue(networkRuntime.server().moduleIds().contains("nethernet-nexora-private"));
+    }
+
     @Test
     void exposesLoadedWorldMetadataForPrivateClientSessions() {
         NexoraMain.RuntimeHandle runtime = NexoraMain.createRuntime(

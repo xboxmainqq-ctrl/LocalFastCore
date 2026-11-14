@@ -83,6 +83,31 @@ class NexoraPrivateProtocolHandlerTest {
         assertEquals(2, response.rejectionCode());
     }
 
+
+    @Test
+    void servesRequestedChunkSurfaceAfterHandshake() {
+        UUID serverId = UUID.randomUUID();
+        InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
+        world.setBlock(new BlockPosition(0, 64, 0), new BlockState("minecraft:grass_block"));
+        world.setBlock(new BlockPosition(1, 63, 0), new BlockState("minecraft:stone"));
+        FakeConnection connection = new FakeConnection();
+        NexoraWorldInfo info = new NexoraWorldInfo("world", 0, 128, 0, 65, 0, 20, 1);
+        new NexoraPrivateProtocolHandler(serverId, 8 * 1024 * 1024, () -> info,
+                () -> world, ignored -> { }).accept(connection);
+
+        connection.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
+        connection.deliver(NexoraChunkDataCodec.encodeChunkRequest(0, 0));
+
+        assertEquals(3, connection.sentMessages.size());
+        NexoraChunkData chunk = NexoraChunkDataCodec.decodeChunkData(
+                ByteBuffer.wrap(connection.sentMessages.get(2)));
+        assertEquals(0, chunk.chunkX());
+        assertEquals(0, chunk.chunkZ());
+        assertEquals(2, chunk.columns().size());
+        assertEquals("minecraft:grass_block", chunk.columns().get(0).blockIdentifier());
+        assertEquals(64, chunk.columns().get(0).y());
+    }
+
     private static final class FakeConnection implements TransportConnection {
         private Consumer<TransportMessage> messageListener;
         private Consumer<TransportCloseEvent> closeListener;

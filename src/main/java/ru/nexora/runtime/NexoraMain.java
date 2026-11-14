@@ -1,6 +1,11 @@
 package ru.nexora.runtime;
 
+import java.net.InetSocketAddress;
 import java.nio.file.Path;
+import java.security.GeneralSecurityException;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.spec.ECGenParameterSpec;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -10,10 +15,9 @@ import java.util.function.Consumer;
 /**
  * Command-line entry point for the standalone NEXORA development runtime.
  *
- * <p>This bootstrap starts world persistence, a generated spawn chunk, bounded
- * asynchronous chunk generation, and the game tick loop. It deliberately does
- * not enable a network listener: authenticated NetherNet/Bedrock composition
- * is not yet a production-ready launch profile.</p>
+ * <p>Network ingress is disabled by default. The explicitly enabled
+ * development network mode accepts unauthenticated offers and must only be
+ * used on a trusted private network.</p>
  */
 public final class NexoraMain {
     private static final String VERSION = "0.1.0-SNAPSHOT";
@@ -43,13 +47,21 @@ public final class NexoraMain {
             return;
         }
 
-        RuntimeHandle runtime = createRuntime(options.dataDirectory(), options.seed(),
-                System.out::println);
+        RuntimeHandle runtime = createRuntime(options, System.out::println);
         runtime.server().start();
         System.out.println("NEXORA Core " + VERSION + " started.");
         System.out.println("World: " + DEFAULT_WORLD_ID
-                + " | spawn chunk: 0,0 | tick rate: 20");
-        System.out.println("Network ingress: disabled (development runtime only).");
+                + " | spawn chunk: 0,0 | tick rate: " + options.tickRate());
+        if (options.developmentNetworkEnabled()) {
+            System.out.println("NEXORA development signaling: http://"
+                    + options.bindAddress() + ":" + options.signalingPort() + "/v1/join");
+            System.out.println("WARNING: unauthenticated development mode is enabled; "
+                    + "use only on a trusted private network.");
+            System.out.println("WebRTC requires reachable UDP host candidates; "
+                    + "STUN/TURN relay is not configured.");
+        } else {
+            System.out.println("Network ingress: disabled (safe offline development mode).");
+        }
         System.out.println("Data directory: " + options.dataDirectory());
         System.out.println("Press Ctrl+C to stop and save the world.");
 
@@ -66,8 +78,15 @@ public final class NexoraMain {
     }
 
     static RuntimeHandle createRuntime(Path dataDirectory, long seed, Consumer<String> log) {
-        Objects.requireNonNull(dataDirectory, "dataDirectory");
+        return createRuntime(new LaunchOptions(dataDirectory.toAbsolutePath().normalize(),
+                seed, false, false, false, "0.0.0.0", 8080, 20), log);
+    }
+
+    static RuntimeHandle createRuntime(LaunchOptions options, Consumer<String> log) {
+        Objects.requireNonNull(options, "options");
         Objects.requireNonNull(log, "log");
+        Path dataDirectory = options.dataDirectory();
+        long seed = options.seed();
 
         WorldRegistry worlds = new WorldRegistry();
         WorldStorageModule storage = new WorldStorageModule(
@@ -107,7 +126,7 @@ public final class NexoraMain {
 
             @Override
             public void stop() {
-                // WorldStorageModule persists the world after the runtime services stop.
+                // WorldStorageModule persists the world after runtime services stop.
             }
         });
 
@@ -143,10 +162,48 @@ public final class NexoraMain {
         });
 
         GameLoop gameLoop = new GameLoop(
-                20, 3, scheduler,
+                options.tickRate(), 3, scheduler,
                 failure -> log.accept("Game tick error: " + failure.getMessage()));
         server.register(gameLoop);
+
+        if (options.developmentNetworkEnabled()) {
+            WebRtcJavaNetherNetPeerHost peerHost = new WebRtcJavaNetherNetPeerHost();
+            KeyPair signingKey = createDevelopmentSigningKey();
+            NetherNetServerInfo serverInfo = new NetherNetServerInfo(
+                    "NEXORA", 0, VERSION, DEFAULT_WORLD_ID, 0,
+                    ServerSettings.DEFAULT_MAX_PLAYERS, 0);
+            NetherNetSignalingServer signaling = new NetherNetSignalingServer(
+                    new InetSocketAddress(options.bindAddress(), options.signalingPort()),
+                    serverInfo,
+                    new NetherNetDevelopmentOfferValidator(true),
+                    peerHost,
+                    "nexora.local",
+                    signingKey);
+            NexoraPrivateProtocolHandler protocolHandler = new NexoraPrivateProtocolHandler(
+                    UUID.randomUUID(),
+                    WebRtcJavaNetherNetPeerHost.MAX_MESSAGE_BYTES,
+                    () -> {
+                        World world = worlds.get(DEFAULT_WORLD_ID)
+                                .orElseThrow(() -> new IllegalStateException("Default world is not loaded"));
+                        return NexoraWorldInfo.from(world, 0, 65, 0, options.tickRate());
+                    },
+                    connection -> log.accept("NEXORA client completed protocol handshake: "
+                            + connection.id()));
+            server.register(new NetherNetPrivateProtocolModule(
+                    peerHost, peerHost, signaling, protocolHandler));
+        }
+
         return new RuntimeHandle(server, worlds, gameLoop);
+    }
+
+    private static KeyPair createDevelopmentSigningKey() {
+        try {
+            KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
+            generator.initialize(new ECGenParameterSpec("secp384r1"));
+            return generator.generateKeyPair();
+        } catch (GeneralSecurityException failure) {
+            throw new IllegalStateException("Could not create temporary NEXORA development identity", failure);
+        }
     }
 
     static LaunchOptions parseArguments(String[] args) {
@@ -155,12 +212,49 @@ public final class NexoraMain {
         long seed = 0L;
         boolean help = false;
         boolean version = false;
+        boolean developmentNetworkEnabled = false;
+        String bindAddress = "0.0.0.0";
+        int signalingPort = 8080;
+        int tickRate = 20;
 
         for (int index = 0; index < args.length; index++) {
             String argument = Objects.requireNonNull(args[index], "argument");
             switch (argument) {
                 case "--help", "-h" -> help = true;
                 case "--version", "-v" -> version = true;
+                case "--enable-development-network" -> developmentNetworkEnabled = true;
+                case "--bind-address" -> {
+                    if (++index >= args.length || args[index].isBlank()) {
+                        throw new IllegalArgumentException("--bind-address requires a host or IP");
+                    }
+                    bindAddress = args[index].trim();
+                }
+                case "--signaling-port" -> {
+                    if (++index >= args.length) {
+                        throw new IllegalArgumentException("--signaling-port requires a port");
+                    }
+                    try {
+                        signalingPort = Integer.parseInt(args[index]);
+                    } catch (NumberFormatException invalidPort) {
+                        throw new IllegalArgumentException("--signaling-port must be an integer", invalidPort);
+                    }
+                    if (signalingPort < 1 || signalingPort > 65535) {
+                        throw new IllegalArgumentException("--signaling-port must be between 1 and 65535");
+                    }
+                }
+                case "--tick-rate" -> {
+                    if (++index >= args.length) {
+                        throw new IllegalArgumentException("--tick-rate requires an integer");
+                    }
+                    try {
+                        tickRate = Integer.parseInt(args[index]);
+                    } catch (NumberFormatException invalidTickRate) {
+                        throw new IllegalArgumentException("--tick-rate must be an integer", invalidTickRate);
+                    }
+                    if (tickRate < 1 || tickRate > 120) {
+                        throw new IllegalArgumentException("--tick-rate must be between 1 and 120");
+                    }
+                }
                 case "--data-dir" -> {
                     if (++index >= args.length || args[index].isBlank()) {
                         throw new IllegalArgumentException("--data-dir requires a non-empty path");
@@ -180,20 +274,37 @@ public final class NexoraMain {
                 default -> throw new IllegalArgumentException("Unknown argument: " + argument);
             }
         }
-        return new LaunchOptions(dataDirectory.toAbsolutePath().normalize(), seed, help, version);
+        if (!developmentNetworkEnabled
+                && (!"0.0.0.0".equals(bindAddress) || signalingPort != 8080)) {
+            throw new IllegalArgumentException(
+                    "--bind-address and --signaling-port require --enable-development-network");
+        }
+        return new LaunchOptions(dataDirectory.toAbsolutePath().normalize(), seed, help, version,
+                developmentNetworkEnabled, bindAddress, signalingPort, tickRate);
     }
 
     private static void printUsage(Consumer<String> output) {
         output.accept("Usage: java -jar nexora-runtime.jar [options]");
-        output.accept("  --data-dir <path>  Directory for world data (default: ./nexora-data)");
-        output.accept("  --seed <number>    World generation seed (default: 0)");
-        output.accept("  --version          Print the NEXORA version");
-        output.accept("  --help             Show this help");
+        output.accept("  --data-dir <path>              Directory for world data (default: ./nexora-data)");
+        output.accept("  --seed <number>                World generation seed (default: 0)");
+        output.accept("  --tick-rate <number>           Game tick rate (default: 20)");
+        output.accept("  --enable-development-network   Enable unauthenticated private-network testing");
+        output.accept("  --bind-address <host>          Signaling bind host (default: 0.0.0.0)");
+        output.accept("  --signaling-port <port>        HTTP signaling port (default: 8080)");
+        output.accept("  --version                      Print the NEXORA version");
+        output.accept("  --help                         Show this help");
     }
 
-    record LaunchOptions(Path dataDirectory, long seed, boolean help, boolean version) {
+    record LaunchOptions(Path dataDirectory, long seed, boolean help, boolean version,
+                         boolean developmentNetworkEnabled, String bindAddress,
+                         int signalingPort, int tickRate) {
         LaunchOptions {
             Objects.requireNonNull(dataDirectory, "dataDirectory");
+            Objects.requireNonNull(bindAddress, "bindAddress");
+            if (bindAddress.isBlank() || signalingPort < 1 || signalingPort > 65535
+                    || tickRate < 1 || tickRate > 120) {
+                throw new IllegalArgumentException("Invalid NEXORA launch configuration");
+            }
         }
     }
 

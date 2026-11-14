@@ -37,10 +37,23 @@ public final class SimpleEventBus implements EventBus {
             return event;
         }
 
+        EventDispatchException dispatchFailure = null;
         for (Consumer<?> rawListener : eventListeners) {
             @SuppressWarnings("unchecked")
             Consumer<E> listener = (Consumer<E>) rawListener;
-            listener.accept(event);
+            try {
+                listener.accept(event);
+            } catch (RuntimeException failure) {
+                if (dispatchFailure == null) {
+                    dispatchFailure = new EventDispatchException(
+                            "One or more listeners failed for " + event.getClass().getName(), failure);
+                } else {
+                    dispatchFailure.addSuppressed(failure);
+                }
+            }
+        }
+        if (dispatchFailure != null) {
+            throw dispatchFailure;
         }
         return event;
     }

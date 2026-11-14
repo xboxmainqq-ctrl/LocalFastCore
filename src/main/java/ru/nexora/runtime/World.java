@@ -13,6 +13,15 @@ public interface World {
 
     void setBlock(BlockPosition position, BlockState state);
 
+    /** Returns the Bedrock biome ID at block resolution; unset cells use plains (ID 1). */
+    int biomeAt(BlockPosition position);
+
+    /** Sets the Bedrock biome ID at block resolution. IDs must be non-negative. */
+    void setBiome(BlockPosition position, int biomeId);
+
+    /** Returns a detached 4096-entry biome array in Bedrock XZY order for a loaded chunk section. */
+    int[] biomesInSection(ChunkPosition position, int sectionY);
+
     /** Atomically adds a generated chunk if it is not already loaded. */
     boolean loadChunk(GeneratedChunk generatedChunk);
 

@@ -27,16 +27,17 @@ public final class SimpleEventBus implements EventBus {
         Objects.requireNonNull(eventType, "eventType");
         Objects.requireNonNull(listener, "listener");
 
-        CopyOnWriteArrayList<Consumer<?>> eventListeners =
-                listeners.computeIfAbsent(eventType, ignored -> new CopyOnWriteArrayList<>());
-        eventListeners.add(listener);
+        listeners.compute(eventType, (ignored, current) -> {
+            CopyOnWriteArrayList<Consumer<?>> eventListeners =
+                    current == null ? new CopyOnWriteArrayList<>() : current;
+            eventListeners.add(listener);
+            return eventListeners;
+        });
 
-        return () -> {
-            eventListeners.remove(listener);
-            if (eventListeners.isEmpty()) {
-                listeners.remove(eventType, eventListeners);
-            }
-        };
+        return () -> listeners.computeIfPresent(eventType, (ignored, current) -> {
+            current.remove(listener);
+            return current.isEmpty() ? null : current;
+        });
     }
 
     @Override

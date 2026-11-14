@@ -174,6 +174,29 @@ class BedrockInitialTransportRouterTest {
     }
 
     @Test
+    void rejectsUnreliableMessagesUntilWorldInitializationCompletes() {
+        BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
+                SETTINGS,
+                (connection, login, request) -> CompletableFuture.completedFuture(authenticatedPlayer()),
+                (connection, player) -> { },
+                (connection, message) -> fail("Unreliable traffic is not allowed before PLAY"));
+        FakeConnection connection = new FakeConnection("peer-post-login-unreliable");
+        router.accept(connection);
+        connection.receive(frame(BedrockRequestNetworkSettingsPacketCodec.PACKET_ID,
+                BedrockRequestNetworkSettingsPacketCodec.encodePayload(
+                        new BedrockRequestNetworkSettingsPacket(2225)), false));
+        connection.receive(frame(BedrockLoginPacketCodec.PACKET_ID,
+                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, LOGIN_JSON)),
+                true));
+
+        assertTrue(connection.isOpen());
+        connection.receive(new TransportMessage(ByteBuffer.wrap(new byte[]{1, 2, 3}),
+                DeliveryMode.UNRELIABLE));
+        assertFalse(connection.isOpen());
+        router.close();
+    }
+
+    @Test
     void closesPeerThatNeverSendsLogin() throws Exception {
         BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
                 SETTINGS,

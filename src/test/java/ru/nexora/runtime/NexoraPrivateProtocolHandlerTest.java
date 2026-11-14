@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
 import java.util.UUID;
+import java.nio.file.Path;
+import org.junit.jupiter.api.io.TempDir;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -12,6 +14,9 @@ import java.util.function.Consumer;
 import static org.junit.jupiter.api.Assertions.*;
 
 class NexoraPrivateProtocolHandlerTest {
+    @TempDir
+    Path temporaryDirectory;
+
     @Test
     void repliesToSupportedClientAndSignalsReady() {
         UUID serverId = UUID.randomUUID();
@@ -276,6 +281,50 @@ class NexoraPrivateProtocolHandlerTest {
                 "Unsupported use must not consume the item");
         assertEquals(3, Byte.toUnsignedInt(connection.sentMessages.get(8)[8]),
                 "Server must report NOT_USABLE until item behavior exists");
+    }
+
+    @Test
+    void restoresInventoryWhenPlayerReconnectsWithSameName() throws Exception {
+        InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
+        FlatChunkGenerator generator = new FlatChunkGenerator(64, 5,
+                new BlockState("minecraft:grass_block"),
+                new BlockState("minecraft:dirt"),
+                new BlockState("minecraft:bedrock"));
+        world.loadChunk(generator.generate(new ChunkPosition(0, 0), world.height(), 9L));
+        EntityRegistry entities = new EntityRegistry();
+        java.util.Map<UUID, PlayerInventory> inventories =
+                new java.util.concurrent.ConcurrentHashMap<>();
+        FilePlayerInventoryStorage storage =
+                new FilePlayerInventoryStorage(temporaryDirectory.resolve("players"));
+        NexoraWorldInfo info = new NexoraWorldInfo("world", 0, 128, 0, 65, 0, 20, 1);
+        NexoraPrivateProtocolHandler handler = new NexoraPrivateProtocolHandler(
+                UUID.randomUUID(), 8 * 1024 * 1024, () -> info,
+                () -> world, ignored -> true, ignored -> { }, entities, inventories, storage);
+
+        FakeConnection firstConnection = new FakeConnection();
+        handler.accept(firstConnection);
+        firstConnection.deliver(NexoraPrivateProtocolCodec.encodeClientHello(
+                "android-dev", "PersistentPlayer", 0));
+        UUID firstPlayerId = entities.snapshot().stream()
+                .filter(entity -> entity.type() == WorldEntity.Type.PLAYER)
+                .findFirst().orElseThrow().id();
+        PlayerInventory firstInventory = handler.inventory(firstPlayerId).orElseThrow();
+        assertTrue(firstInventory.addOne("minecraft:diamond"));
+        firstConnection.close();
+
+        assertTrue(inventories.isEmpty(), "Saved inventory should leave the active-session map");
+
+        FakeConnection secondConnection = new FakeConnection();
+        handler.accept(secondConnection);
+        secondConnection.deliver(NexoraPrivateProtocolCodec.encodeClientHello(
+                "android-dev", "PersistentPlayer", 0));
+        UUID secondPlayerId = entities.snapshot().stream()
+                .filter(entity -> entity.type() == WorldEntity.Type.PLAYER)
+                .findFirst().orElseThrow().id();
+
+        assertEquals(firstPlayerId, secondPlayerId);
+        PlayerInventory restored = handler.inventory(secondPlayerId).orElseThrow();
+        assertEquals(new ItemStack("minecraft:diamond", 1), restored.stackAt(0));
     }
 
     @Test

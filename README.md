@@ -90,7 +90,7 @@ The first launch creates a flat test world and its spawn chunk. Existing `.nxw` 
 
 When the server workflow succeeds, download the `nexora-core-server` artifact from the [NEXORA Server Runtime workflow](https://github.com/aqaqpopa-del/LocalFastCore/actions/workflows/nexora-server.yml) to obtain the executable JAR.
 
-**This is an offline development bootstrap, not a playable multiplayer release.** It starts world storage, chunk-generation workers, and the 20 TPS game loop, but deliberately does not bind a NetherNet signaling endpoint or accept Android clients yet. The production login identity, exact Bedrock block palette, and live client session still need to be completed and tested.
+**This remains a development build, not a playable multiplayer release.** The default launch is offline; the explicit `--enable-development-network` option starts the NetherNet signaling endpoint and accepts the private NEXORA handshake in unauthenticated development mode. The runtime starts world storage, bounded chunk-generation workers, and the configured game tick loop. Production player authentication, secure persistent server identity, chunk streaming, rendering, gameplay, and real Android-device connection tests still need to be completed.
 
 ## Build
 

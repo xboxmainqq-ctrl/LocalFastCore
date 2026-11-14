@@ -130,7 +130,7 @@ final class NexoraAndroidProtocolCodec {
 
     static RemotePlayerState decodeRemotePlayerState(byte[] bytes) {
         ByteBuffer input = checkedHeader(bytes, TYPE_REMOTE_PLAYER_STATE);
-        if (input.remaining() < 42) throw new IllegalArgumentException("Malformed NEXORA remote player state");
+        if (input.remaining() < 50) throw new IllegalArgumentException("Malformed NEXORA remote player state");
         UUID playerId = new UUID(input.getLong(), input.getLong());
         int nameLength = Byte.toUnsignedInt(input.get());
         if (nameLength < 1 || nameLength > 48 || input.remaining() != nameLength + 32) throw new IllegalArgumentException("Invalid remote player name length");
@@ -263,7 +263,13 @@ final class NexoraAndroidProtocolCodec {
     record ChunkData(int chunkX, int chunkZ, java.util.List<ChunkBlock> blocks) {
     }
 
-    record RemotePlayerState(UUID playerId, String playerName, double x, double y, double z, double yaw) {\n    }\n\n    record PlayerPosition(double x, double y, double z) {\n    }\n\n    record WorldInfo(String worldId, int minY, int maxYExclusive,
+    record RemotePlayerState(UUID playerId, String playerName, double x, double y, double z, double yaw) {
+    }
+
+    record PlayerPosition(double x, double y, double z) {
+    }
+
+    record WorldInfo(String worldId, int minY, int maxYExclusive,
                      int spawnX, int spawnY, int spawnZ,
                      int tickRate, int loadedChunks) {
     }

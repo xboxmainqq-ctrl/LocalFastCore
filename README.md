@@ -4,9 +4,9 @@ This module is the beginning of the independent NEXORA server process. It has **
 
 ## Private NEXORA client protocol
 
-The first-party Android client and server now have a versioned private NEXORA v1 handshake over the existing NetherNet reliable channel. The first exchange negotiates protocol version, returns a server identifier and message-size limit, and rejects unsupported versions. This is a NEXORA-only protocol, not Bedrock packet compatibility.
+The first-party Android client and server now have a versioned private NEXORA v1 handshake over the existing NetherNet reliable channel. The first exchange negotiates protocol version, returns a server identifier and message-size limit, and rejects unsupported versions. The server then sends `WorldInfo` (world id, vertical bounds, spawn point, tick rate, and loaded chunk count), which the Android client can decode and display. This is a NEXORA-only protocol, not Bedrock packet compatibility.
 
-The server-side protocol module is implemented but is not yet registered by the offline `NexoraMain` development launcher. Player authentication, world entry, chunk streaming, and gameplay messages are not part of this handshake yet. Protocol tests have been added but have not been confirmed running in CI.
+The server-side protocol module and world metadata supplier are implemented but are not yet registered by the offline `NexoraMain` development launcher. Player authentication, chunk streaming, rendering, and gameplay remain incomplete. Protocol tests have been added but have not been confirmed running in CI.
 
 ## Current implementation
 

@@ -11,11 +11,11 @@ class NexoraPrivateProtocolCodecTest {
     @Test
     void clientHelloMatchesTheSharedAndroidGoldenVector() {
         byte[] expected = new byte[] {
-                'N', 'X', 'R', 'A', 1, 0, 1, 11,
+                'N', 'X', 'R', 'A', 1, 1, 1, 11,
                 'a', 'n', 'd', 'r', 'o', 'i', 'd', '-', 'd', 'e', 'v', 10,
                 (byte) 0xd0, (byte) 0x98, (byte) 0xd0, (byte) 0xb3,
                 (byte) 0xd1, (byte) 0x80, (byte) 0xd0, (byte) 0xbe,
-                (byte) 0xd0, (byte) 0xba
+                (byte) 0xd0, (byte) 0xba, 0
         };
         assertArrayEquals(expected, NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
         NexoraPrivateProtocolCodec.ClientHello hello = NexoraPrivateProtocolCodec.decodeClientHello(ByteBuffer.wrap(expected));
@@ -30,7 +30,7 @@ class NexoraPrivateProtocolCodecTest {
                 NexoraPrivateProtocolCodec.decodeClientHello(ByteBuffer.wrap(encoded));
 
         assertEquals(1, decoded.majorVersion());
-        assertEquals(0, decoded.minorVersion());
+        assertEquals(1, decoded.minorVersion());
         assertEquals("android-dev-7", decoded.clientBuild());
         assertEquals("Игрок", decoded.playerName());
     }
@@ -74,7 +74,7 @@ class NexoraPrivateProtocolCodecTest {
         NexoraWorldInfo world = new NexoraWorldInfo(
                 "world", -64, 320, 0, 65, 0, 20, 1);
         ByteBuffer expected = ByteBuffer.allocate(7 + 1 + 5 + 28);
-        expected.put(new byte[] {'N', 'X', 'R', 'A', 1, 0, 4});
+        expected.put(new byte[] {'N', 'X', 'R', 'A', 1, 1, 4});
         expected.put((byte) 5).put("world".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         expected.putInt(-64).putInt(320);
         expected.putInt(0).putInt(65).putInt(0);

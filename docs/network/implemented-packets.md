@@ -2,7 +2,7 @@
 
 Target: Bedrock 1.26.60, protocol 2225.
 
-The Java runtime contains payload codecs for three packet types, bounded packet-batch framing, a compression envelope, a frame-level coordinator for the initial server-side login handshake, and transport-independent NetherNet message framing and a bounded client identity verification chain. Client and operator NetherNet identity assertions now have bounded parsing and signature-verification components. The runtime now has bounded HTTP/HTTPS signaling and a desktop Java WebRTC peer-host adapter. The Android client has the WebRTC SDK dependency but its end-to-end connection flow is still being integrated. The project does not acquire Microsoft/Xbox credentials or prove live-account interoperability.
+The Java runtime contains payload codecs for three packet types, bounded packet-batch framing, a compression envelope, a frame-level coordinator for the initial server-side login handshake, and transport-independent NetherNet message framing and a bounded client identity verification chain. Client and operator NetherNet identity assertions now have bounded parsing and signature-verification components. The runtime now has bounded HTTP/HTTPS signaling and a desktop Java WebRTC peer-host adapter. The Android client now creates both data channels, gathers full ICE, performs HTTP(S) signaling, verifies the operator assertion, and waits for both channels to open. It still does not acquire Microsoft/Xbox credentials or perform the Bedrock login handshake, and no live device interoperability has been confirmed.
 
 | Packet | ID | Payload implemented | Status |
 |---|---:|---|---|

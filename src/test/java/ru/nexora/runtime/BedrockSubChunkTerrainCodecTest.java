@@ -18,8 +18,7 @@ class BedrockSubChunkTerrainCodecTest {
         assertEquals(1, Byte.toUnsignedInt(in.get()));
         assertEquals(-4, in.get());
         assertEquals(1, Byte.toUnsignedInt(in.get())); // zero-bit runtime palette
-        assertEquals(1, BedrockBinary.readVarInt32(in)); // one palette entry
-        assertEquals(0, BedrockBinary.readVarInt32(in)); // air runtime ID
+        assertEquals(0, BedrockBinary.readVarInt32(in)); // implicit air runtime ID
         assertEquals(0, Byte.toUnsignedInt(in.get())); // empty block-actor TAG_End
         assertFalse(in.hasRemaining());
     }

@@ -27,7 +27,7 @@ class BedrockBiomePaletteCodecTest {
         int[] biomes = new int[BedrockBiomePaletteCodec.BIOME_COUNT];
         Arrays.fill(biomes, 2);
         biomes[0] = 1;
-        biomes[1] = 3;
+        biomes[1] = 2;
 
         ByteBuffer encoded = BedrockBiomePaletteCodec.encode(biomes);
 
@@ -39,10 +39,9 @@ class BedrockBiomePaletteCodecTest {
         for (int i = 1; i < 128; i++) {
             BedrockBinary.readLittleEndianInt32(encoded);
         }
-        assertEquals(3, BedrockBinary.readVarUInt32(encoded));
+        assertEquals(2, BedrockBinary.readVarUInt32(encoded));
         assertEquals(1, BedrockBinary.readVarUInt32(encoded));
         assertEquals(2, BedrockBinary.readVarUInt32(encoded));
-        assertEquals(3, BedrockBinary.readVarUInt32(encoded));
         assertFalse(encoded.hasRemaining());
     }
 

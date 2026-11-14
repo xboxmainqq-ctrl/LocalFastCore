@@ -69,7 +69,7 @@ public record BedrockConnectionRequest(List<String> chain, String clientDataJwt)
                 if (token == null || token != JsonToken.FIELD_NAME) {
                     throw new IllegalArgumentException("Malformed Bedrock connection request object");
                 }
-                if (++tokenCount > MAX_JSON_TOKENS) {
+                if (++topLevelFieldCount > MAX_TOP_LEVEL_FIELDS) {
                     throw new IllegalArgumentException("Bedrock connection request has too many top-level fields");
                 }
                 String field = parser.currentName();

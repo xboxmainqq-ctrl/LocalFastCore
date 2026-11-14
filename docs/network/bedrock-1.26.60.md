@@ -347,7 +347,7 @@ postLogin.attachTo(router);
 ```
 ### Version-pinned external block registry file
 
-`BedrockRuntimeBlockRegistryFile` now loads a strict UTF-8 registry file and rejects a protocol/game-version mismatch. The loader enforces a 32 MiB file limit, 500,000 state limit, unique block states and IDs, valid namespaced identifiers, valid property pairs, and a required `minecraft:air` entry. It computes SHA-256 over the exact file bytes for diagnostics.
+`BedrockRuntimeBlockRegistryFile` now loads a strict UTF-8 registry file and rejects a protocol/game-version mismatch. The loader enforces a 32 MiB file limit, 500,000 state limit, unique block states and IDs, valid namespaced identifiers, valid property pairs, and a required `minecraft:air` entry. It computes SHA-256 over the exact file bytes and can verify an externally pinned expected digest.
 
 Supported file header:
 

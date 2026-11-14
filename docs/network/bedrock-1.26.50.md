@@ -1,28 +1,32 @@
-# NEXORA Bedrock 1.26.50 network target
+# NEXORA Bedrock 1.26.60 network target
 
 Status: protocol target decision and research baseline. This document does not claim that a working Bedrock transport or playable server exists.
 
 ## Target
 
-- Minecraft Bedrock Edition: **1.26.50**.
-- Bedrock protocol version: **2193**.
+- Minecraft Bedrock Edition: **1.26.60**.
+- Bedrock protocol version: **2225**.
 - Primary dedicated-server transport: **NetherNet**.
-- RakNet: not the primary transport for this target. Any future RakNet support must be an explicitly scoped legacy adapter and must not leak into the protocol/gameplay layers.
+- RakNet: deprecated for this target; do not implement it as the primary transport or allow it to leak into protocol/gameplay layers.
 
-The official 1.26.50 changelog states that NetherNet is the default transport used by dedicated servers. The official protocol changelog lists protocol 2193 for 1.26.50 and 1.26.51. The Mojang protocol reference page for 1.26.50 is currently labelled 1.26.50-beta.0 but documents protocol 2193; use the stable changelog as the version/protocol pin and treat the beta-labelled page as schema reference only until its metadata is reconciled.
+The official stable protocol changelog records 1.26.60 as protocol 2225, released 2026-10-27, with 64 packet changes compared with the previous stable release. Stable 1.26.61 and 1.26.62 retain protocol 2225 and have no packet changes. NEXORA's declared target remains 1.26.60; later same-protocol clients still require compatibility testing.
+
+The official 1.26.60 release notes state that the dedicated-server warning about NetherNet was changed to an error when NetherNet is not used, because RakNet is deprecated.
 
 ## Source of truth
 
-1. Mojang official Bedrock 1.26.50 changelog:
-   https://www.minecraft.net/en-us/article/minecraft--bedrock-edition-26-50-changelog
-   - Confirms NetherNet is the default transport for dedicated servers.
-2. Mojang official protocol reference, 1.26.50:
-   https://mojang.github.io/bedrock-protocol-docs/1.26.50/
-   - Packet schemas, supporting types, primitives and protocol version 2193.
-   - Page metadata currently says 1.26.50-beta.0; do not silently treat that label as stable release metadata.
+1. Mojang official Bedrock 1.26.60 changelog:
+   https://www.minecraft.net/en-us/article/minecraft--bedrock-edition-26-60-changelog
+   - Dedicated-server transport deprecation notice and gameplay/client changes.
+2. Mojang official protocol reference, 1.26.60:
+   https://mojang.github.io/bedrock-protocol-docs/1.26.60/
+   - Packet schemas, supporting types, primitives and protocol 2225.
 3. Mojang official protocol changelog:
    https://mojang.github.io/bedrock-protocol-docs/changelog/
-   - Records protocol 2193 for 1.26.50 and 1.26.51, and packet schema changes by release.
+   - Stable release protocol numbers and packet schema changes.
+4. Mojang NetherNet partner onboarding guide:
+   https://github.com/Mojang/bedrock-protocol-docs/blob/main/additional_docs/NetherNetOnboardingGuide.md
+   - Signaling, identity assertions, peer connection and data-channel requirements.
 
 ## Architecture rules
 
@@ -30,36 +34,37 @@ The official 1.26.50 changelog states that NetherNet is the default transport us
 - The game runtime must depend on a transport-neutral connection contract, not on NetherNet implementation classes.
 - The transport adapter owns connection establishment, reliability/ordering semantics exposed by its API, close/error propagation, and transport diagnostics.
 - The Bedrock protocol layer owns packet framing/serialization, compression/encryption negotiation, login/session state, and packet-version selection.
-- Do not assume NetherNet is interchangeable with generic WebRTC. Its exact signaling, channel setup, framing, and platform requirements must be established from authoritative implementation/specification evidence before implementation.
-- Do not copy packet IDs or schemas from a different protocol version. Pin schema inputs to protocol 2193 and add version-specific tests.
-- Keep RakNet-specific code out of shared gameplay and packet model classes.
+- Do not assume NetherNet is interchangeable with generic WebRTC. Its exact signaling, channel setup, framing, and platform requirements must follow the Mojang onboarding guide and be verified against real clients.
+- Do not copy packet IDs or schemas from a different protocol version. Pin schema inputs to protocol 2225 and add version-specific tests.
+- Keep deprecated RakNet-specific code out of shared gameplay and packet model classes.
 
 ## Verified facts vs open questions
 
 ### Verified
 
-- 1.26.50 dedicated servers use NetherNet as their default transport, per Mojang's official release notes.
-- The official protocol changelog assigns protocol 2193 to 1.26.50 and 1.26.51.
-- The official 1.26.50 protocol reference enumerates packet schemas, including Login, NetworkSettings, StartGame, LevelChunk, PlayerAuthInput and related packet types.
+- Stable Bedrock 1.26.60 was released 2026-10-27 and uses protocol 2225.
+- The stable protocol changelog records 64 packet changes for 1.26.60 relative to the previous stable release.
+- Stable 1.26.61 and 1.26.62 also use protocol 2225 and list no packet changes.
+- Mojang's 1.26.60 release notes say the dedicated-server warning about trying NetherNet becomes an error when NetherNet is not used, as RakNet is deprecated.
+- The official 1.26.60 protocol reference enumerates packet schemas, including Login, NetworkSettings, StartGame, LevelChunk, PlayerAuthInput and related packet types.
 
 ### Open questions — must be answered before claiming transport support
 
-- Exact NetherNet wire protocol and server-side implementation contract.
-- Signaling/discovery and connection establishment requirements for a standalone third-party server.
-- Data-channel configuration, message boundaries, reliability and ordering guarantees.
-- How transport identity/session metadata is bound to Bedrock login and encryption.
+- Exact server-side implementation details and operational requirements for NetherNet.
+- Signaling/discovery deployment, TLS, and network reachability requirements for a standalone third-party server.
+- How transport identity/session metadata is bound to Bedrock login and encryption in a real-client exchange.
 - Android client compatibility and any platform-specific constraints.
-- Whether Mojang publishes a stable normative NetherNet specification or whether a compatible implementation must be derived from a maintained reference implementation and tested against real clients.
+- Which packet schema changes among the 64 changes affect the minimum playable login/world/chunk/movement path; these must be audited individually against the 1.26.60 reference before implementing those packet serializers.
 
 No packet bytes, handshake messages, encryption behavior, or transport guarantees are to be invented to fill these gaps.
 
 ## Acceptance gates
 
-A transport implementation is not considered supported until all of these are demonstrated against an unmodified Bedrock 1.26.50 client:
+A transport implementation is not considered supported until all of these are demonstrated against an unmodified Bedrock 1.26.60 client:
 
-1. A standalone NEXORA process binds/listens using the required NetherNet mechanism.
+1. A standalone NEXORA process exposes the required NetherNet signaling/connection mechanism.
 2. A real client establishes a transport connection.
-3. Bedrock protocol negotiation reaches the expected protocol 2193 path.
+3. Bedrock protocol negotiation reaches protocol 2225.
 4. Login/authentication and encryption complete correctly.
 5. The client receives the resource-pack/start-game flow and enters the world.
 6. Chunk streaming, movement input, block updates, disconnect and reconnect work.
@@ -73,14 +78,12 @@ When targeting a newer Bedrock release:
 1. Read its official release notes and protocol changelog.
 2. Record the exact game version and protocol number.
 3. Diff packet schemas and supporting types against the pinned version.
-4. Add/update version-specific serialization tests.
-5. Re-run transport and login integration tests against that exact client version.
-6. Change the supported-version claim only after the acceptance gates pass.
-
+4. Audit changes affecting login, network settings, start game, chunks, movement, inventory and gameplay.
+5. Add/update version-specific serialization tests.
+6. Re-run transport and login integration tests against that exact client version.
+7. Change the supported-version claim only after the acceptance gates pass.
 
 ## NetherNet onboarding details (Mojang partner guide)
-
-Reference: https://github.com/Mojang/bedrock-protocol-docs/blob/main/additional_docs/NetherNetOnboardingGuide.md
 
 ### Signaling
 
@@ -110,11 +113,11 @@ Reference: https://github.com/Mojang/bedrock-protocol-docs/blob/main/additional_
 
 ### Implementation consequences
 
-1. NEXORA needs a signaling HTTP endpoint and a WebRTC host/peer implementation; an abstract UDP socket or generic RakNet listener is not sufficient.
+1. NEXORA needs a signaling HTTP endpoint and a WebRTC host/peer implementation; an abstract UDP socket or deprecated RakNet listener is not sufficient.
 2. Signaling and the game-data transport are separate concerns and should have separate lifecycle/metrics.
 3. Authentication and operator identity are transport-adjacent security requirements. Do not mark a connection authenticated merely because the WebRTC data channel opened.
 4. Reliable and unreliable delivery must remain distinct all the way to packet scheduling; do not silently send latency-sensitive movement traffic through the reliable queue.
 5. Fragment reassembly must be bounded (maximum in-flight messages, maximum assembled bytes, and timeout) to prevent memory exhaustion.
-6. The guide's example metadata contains a sample protocol number that does not match the stable 1.26.50 protocol pin. NEXORA must advertise the pinned stable value **2193**, not copy the illustrative value from the guide.
+6. The metadata endpoint must advertise the exact NEXORA game version and protocol target: **1.26.60 / 2225**. Do not copy illustrative values from onboarding examples.
 
-These are protocol requirements from the Mojang partner onboarding guide, not proof that NEXORA has implemented them. The implementation remains pending.
+These are protocol requirements from Mojang documentation, not proof that NEXORA has implemented them. The implementation remains pending.

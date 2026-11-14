@@ -22,6 +22,15 @@ public record NetherNetIdentityAssertion(
         String identityProviderDomain,
         String identityProviderProtocol,
         String token,
+        String jwtKeyId,
+        String jwtAlgorithm,
+        String clientPublicKeySpkiBase64,
+        String issuer,
+        String audience,
+        long expiresAtEpochSeconds,
+        Long notBeforeEpochSeconds,
+        String xuid,
+        String displayName,
         String detachedFingerprintsJws,
         String jwsAlgorithm
 ) {
@@ -41,6 +50,11 @@ public record NetherNetIdentityAssertion(
         Objects.requireNonNull(identityProviderDomain, "identityProviderDomain");
         Objects.requireNonNull(identityProviderProtocol, "identityProviderProtocol");
         Objects.requireNonNull(token, "token");
+        Objects.requireNonNull(jwtKeyId, "jwtKeyId");
+        Objects.requireNonNull(jwtAlgorithm, "jwtAlgorithm");
+        Objects.requireNonNull(clientPublicKeySpkiBase64, "clientPublicKeySpkiBase64");
+        Objects.requireNonNull(issuer, "issuer");
+        Objects.requireNonNull(audience, "audience");
         Objects.requireNonNull(detachedFingerprintsJws, "detachedFingerprintsJws");
         Objects.requireNonNull(jwsAlgorithm, "jwsAlgorithm");
     }
@@ -84,9 +98,11 @@ public record NetherNetIdentityAssertion(
         if (token.length() > maxTokenChars || jws.length() > maxJwsChars) {
             throw new IllegalArgumentException("Identity token or JWS exceeds configured limit");
         }
-        validateJwtShape(token);
+        JwtShape jwt = validateJwtShape(token);
         String algorithm = validateDetachedJwsShape(jws);
-        return new NetherNetIdentityAssertion(domain, protocol, token, jws, algorithm);
+        return new NetherNetIdentityAssertion(domain, protocol, token, jwt.keyId(),
+                jwt.algorithm(), jwt.cpk(), jwt.issuer(), jwt.audience(), jwt.exp(),
+                jwt.nbf(), jwt.xuid(), jwt.displayName(), jws, algorithm);
     }
 
     private static Map<String, String> readStringObject(String json, String label,
@@ -150,7 +166,7 @@ public record NetherNetIdentityAssertion(
         return values;
     }
 
-    private static void validateJwtShape(String token) {
+    private static JwtShape validateJwtShape(String token) {
         String[] parts = token.split("\\.", -1);
         if (parts.length != 3 || parts[0].isEmpty() || parts[1].isEmpty() || parts[2].isEmpty()) {
             throw new IllegalArgumentException("GameServerToken must use three-part compact JWT form");
@@ -158,17 +174,73 @@ public record NetherNetIdentityAssertion(
         byte[] headerBytes = decodeBase64Url(parts[0], "JWT header");
         byte[] claimsBytes = decodeBase64Url(parts[1], "JWT claims");
         byte[] signatureBytes = decodeBase64Url(parts[2], "JWT signature");
-        String headerJson = decodeUtf8(headerBytes, "JWT header");
-        String claimsJson = decodeUtf8(claimsBytes, "JWT claims");
-        Map<String, String> header = readStringObject(headerJson, "JWT protected header", "alg");
-        String algorithm = required(header, "alg");
-        if ("none".equalsIgnoreCase(algorithm) || algorithm.length() > 32) {
-            throw new IllegalArgumentException("JWT algorithm is not permitted");
-        }
-        requireObjectClaim(claimsJson, "cpk");
         if (signatureBytes.length == 0) {
             throw new IllegalArgumentException("JWT signature must not be empty");
         }
+        String headerJson = decodeUtf8(headerBytes, "JWT header");
+        String claimsJson = decodeUtf8(claimsBytes, "JWT claims");
+        Map<String, String> header = readStringObject(headerJson,
+                "JWT protected header", "alg", "kid");
+        String algorithm = required(header, "alg");
+        String keyId = required(header, "kid");
+        if (!"RS256".equals(algorithm)) {
+            throw new IllegalArgumentException("GameServerToken must use RS256");
+        }
+        Map<String, String> claims = readStringObject(claimsJson, "JWT claims",
+                "iss", "aud", "cpk", "xid", "xname");
+        String issuer = required(claims, "iss");
+        String audience = required(claims, "aud");
+        String cpk = required(claims, "cpk");
+        if (!"https://authorization.franchise.minecraft-services.net/".equals(issuer)) {
+            throw new IllegalArgumentException("GameServerToken issuer is not trusted");
+        }
+        if (!"api://auth-minecraft-services/multiplayer".equals(audience)) {
+            throw new IllegalArgumentException("GameServerToken audience is not multiplayer");
+        }
+        try {
+            byte[] spki = Base64.getDecoder().decode(cpk);
+            if (spki.length < 64 || spki.length > 1024) {
+                throw new IllegalArgumentException("Client public key SPKI length is invalid");
+            }
+        } catch (IllegalArgumentException invalidKey) {
+            throw new IllegalArgumentException("cpk must be a Base64 DER SubjectPublicKeyInfo", invalidKey);
+        }
+        long exp = readLongClaim(claimsJson, "exp", true, 0L);
+        Long nbf = readLongClaim(claimsJson, "nbf", false, 0L);
+        return new JwtShape(keyId, algorithm, cpk, issuer, audience, exp, nbf,
+                claims.get("xid"), claims.get("xname"));
+    }
+
+    private static long readLongClaim(String json, String name, boolean required, long fallback) {
+        try (JsonParser parser = JSON.createParser(json)) {
+            if (parser.nextToken() != JsonToken.START_OBJECT) {
+                throw new IllegalArgumentException("JWT claims must be a JSON object");
+            }
+            Long found = null;
+            while (parser.nextToken() == JsonToken.FIELD_NAME) {
+                String field = parser.currentName();
+                JsonToken value = parser.nextToken();
+                if (name.equals(field)) {
+                    if (value != JsonToken.VALUE_NUMBER_INT) {
+                        throw new IllegalArgumentException("JWT " + name + " claim must be an integer");
+                    }
+                    found = parser.getLongValue();
+                } else {
+                    parser.skipChildren();
+                }
+            }
+            if (required && found == null) {
+                throw new IllegalArgumentException("JWT claims are missing " + name);
+            }
+            return found == null ? fallback : found;
+        } catch (IOException e) {
+            throw invalid("Malformed JWT numeric claim " + name, e);
+        }
+    }
+
+    private record JwtShape(String keyId, String algorithm, String cpk, String issuer,
+                            String audience, long exp, Long nbf,
+                            String xuid, String displayName) {
     }
 
     private static String validateDetachedJwsShape(String jws) {

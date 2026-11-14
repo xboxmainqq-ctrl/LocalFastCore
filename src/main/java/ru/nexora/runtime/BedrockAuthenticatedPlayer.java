@@ -4,21 +4,30 @@ import java.security.interfaces.ECPublicKey;
 import java.util.Objects;
 
 /**
- * Identity returned only after the configured Bedrock Login authenticator has
- * verified the client's credentials and certificate/token chain.
+ * Identity returned only after player token and client-data signature checks
+ * have succeeded. The original client-data JSON is retained for later skin and
+ * device metadata processing.
  */
 public record BedrockAuthenticatedPlayer(
         String identityId,
         String displayName,
-        ECPublicKey clientIdentityPublicKey
+        ECPublicKey clientIdentityPublicKey,
+        String clientDataJson
 ) {
+    public BedrockAuthenticatedPlayer(String identityId, String displayName,
+                                      ECPublicKey clientIdentityPublicKey) {
+        this(identityId, displayName, clientIdentityPublicKey, "{}");
+    }
+
     public BedrockAuthenticatedPlayer {
         Objects.requireNonNull(identityId, "identityId");
         Objects.requireNonNull(displayName, "displayName");
         Objects.requireNonNull(clientIdentityPublicKey, "clientIdentityPublicKey");
+        Objects.requireNonNull(clientDataJson, "clientDataJson");
         if (identityId.isBlank() || identityId.length() > 128
                 || displayName.isBlank() || displayName.length() > 64
-                || containsControl(identityId) || containsControl(displayName)) {
+                || containsControl(identityId) || containsControl(displayName)
+                || clientDataJson.isBlank() || clientDataJson.length() > 1_048_576) {
             throw new IllegalArgumentException("Authenticated Bedrock player identity is invalid");
         }
         if (clientIdentityPublicKey.getParams() == null

@@ -25,6 +25,12 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
     private final Function<ChunkPosition, Boolean> chunkLoader;
     private final Map<TransportConnection, PlayerSession> playerSessions =
             new ConcurrentHashMap<>();
+    private final EntityRegistry entities = new EntityRegistry();
+
+    /** Returns the authoritative entity registry for this server world. */
+    public EntityRegistry entities() {
+        return entities;
+    }
 
     public NexoraPrivateProtocolHandler(UUID serverId, int maxMessageBytes,
                                         Consumer<TransportConnection> readyListener) {
@@ -69,6 +75,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
             completed.set(true);
             PlayerSession session = activeSession.getAndSet(null);
             if (session != null && playerSessions.remove(connection, session)) {
+                entities.remove(session.playerId);
                 broadcastPlayerLeft(connection, session.playerId);
             }
         });
@@ -139,6 +146,9 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 PlayerSession session = new PlayerSession(UUID.randomUUID(), hello.playerName(), hello.skinIndex(), playerPosition);
                 activeSession.set(session);
                 playerSessions.put(connection, session);
+                NexoraMovementValidator.Position spawn = session.position.get();
+                entities.spawn(WorldEntity.player(session.playerId, session.playerName,
+                        spawn.x(), spawn.y(), spawn.z(), session.yaw.get(), session.skinIndex));
                 synchronizeNewPlayer(connection, session);
                 connection.setMessageListener(message -> {
                     if (isMovementPacket(message.payload())) {
@@ -190,6 +200,8 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                     session.yaw.set(Math.toDegrees(Math.atan2(-dz, -dx)));
                 }
                 session.position.set(result.position());
+                entities.updatePosition(session.playerId, result.position().x(),
+                        result.position().y(), result.position().z(), session.yaw.get());
             }
             NexoraMovementValidator.Position authoritative = session.position.get();
             if (send(connection, NexoraMovementPacketCodec.encodeServerPosition(authoritative))

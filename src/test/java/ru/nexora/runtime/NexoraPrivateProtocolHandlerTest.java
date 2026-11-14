@@ -199,6 +199,14 @@ class NexoraPrivateProtocolHandlerTest {
         assertTrue(entities.find(itemId).isEmpty());
         assertEquals(1, handler.inventory(playerId).orElseThrow().count("minecraft:apple"));
         assertEquals(1, inventories.get(playerId).count("minecraft:apple"));
+        NexoraInventorySyncCodec.InventoryState initial =
+                NexoraInventorySyncCodec.decode(ByteBuffer.wrap(connection.sentMessages.get(3)));
+        assertTrue(initial.stacks().isEmpty());
+        NexoraInventorySyncCodec.InventoryState updated =
+                NexoraInventorySyncCodec.decode(ByteBuffer.wrap(connection.sentMessages.get(5)));
+        assertEquals(playerId, updated.playerId());
+        assertEquals(1, updated.stacks().size());
+        assertEquals(new ItemStack("minecraft:apple", 1), updated.stacks().get(0));
     }
 
     @Test
@@ -308,7 +316,7 @@ class NexoraPrivateProtocolHandlerTest {
 
         distant.close();
 
-        assertEquals(3, first.sentMessages.size(),
+        assertEquals(4, first.sentMessages.size(),
                 "A client that never saw the distant player should not receive a leave packet");
         assertEquals(1, handler.entities().size());
     }

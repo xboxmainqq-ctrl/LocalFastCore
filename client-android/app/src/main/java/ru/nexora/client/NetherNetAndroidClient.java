@@ -26,7 +26,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
+import java.security.SecureRandom;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -47,6 +47,7 @@ public final class NetherNetAndroidClient implements AutoCloseable {
     private static final int MAX_FRAGMENTS = 255;
     private static final long MAX_BUFFERED_BYTES = 8L * 1024 * 1024;
     private static final int MAX_SDP_BYTES = 256 * 1024;
+    private static final SecureRandom NETWORK_ID_RANDOM = new SecureRandom();
     private static final Object FACTORY_INIT_LOCK = new Object();
     private static boolean factoryInitialized;
 
@@ -105,7 +106,7 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                 throw new IllegalStateException("SDP offer превышает лимит размера");
             }
 
-            String networkId = UUID.randomUUID().toString();
+            String networkId = Long.toUnsignedString(NETWORK_ID_RANDOM.nextLong());
             reportStatus("Обмениваемся SDP...");
             String answerSdp = httpRequest(baseUri.resolve(
                     "/v1/join/" + networkId), "POST", "application/sdp", offerSdp);

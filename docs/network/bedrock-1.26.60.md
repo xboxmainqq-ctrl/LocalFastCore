@@ -360,6 +360,6 @@ id-mode<TAB>runtime
 <namespaced-block-id><TAB><signed-int32-id>[<TAB><property>=<value>...]
 ```
 
-`id-mode` is either `runtime` or `hash`. The loaded profile exposes `blockNetworkIdsAreHashes()`; the StartGame settings factory must copy this exact flag into `Settings.blockNetworkIdsAreHashes`. Never set the flag independently from the registry source. Rows are data from a trusted, version-matched palette provider; NEXORA does not generate fabricated vanilla IDs.
+`id-mode` is either `runtime` or `hash`. The loaded profile exposes `blockNetworkIdsAreHashes()` and `validateStartGameSettings(settings)`. The StartGame settings factory must copy this exact flag into `Settings.blockNetworkIdsAreHashes` and validate the finished settings before returning them. Never set the flag independently from the registry source. Rows are data from a trusted, version-matched palette provider; NEXORA does not generate fabricated vanilla IDs.
 
 No 1.26.60 palette file is bundled yet. This loader establishes the safe integration point, but a real matching palette export is still required before the terrain response handler can serialize arbitrary world blocks. The registry file is deliberately external so an unverified or stale palette cannot silently become the default.

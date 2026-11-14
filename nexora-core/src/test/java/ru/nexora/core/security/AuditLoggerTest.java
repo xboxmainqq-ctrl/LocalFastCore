@@ -37,7 +37,7 @@ class AuditLoggerTest {
     }
     @Test
     void refusesSymbolicLinkAuditTargetsWhenSupported() throws IOException {
-        Path target = Files.writeString(tempDir.resolve("target.jsonl"), "keep\\n");
+        Path target = Files.writeString(tempDir.resolve("target.jsonl"), "keep\n");
         Path link = tempDir.resolve("audit-link.jsonl");
         try {
             Files.createSymbolicLink(link, target);
@@ -47,7 +47,7 @@ class AuditLoggerTest {
 
         AuditLogger logger = new AuditLogger(link);
         assertThrows(IOException.class, () -> logger.record("security.check", "system", "details"));
-        assertEquals("keep\\n", Files.readString(target));
+        assertEquals("keep\n", Files.readString(target));
     }
 
     @Test

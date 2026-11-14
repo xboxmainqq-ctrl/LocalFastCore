@@ -71,7 +71,18 @@ These helpers do not create data channels, perform SDP negotiation, gather ICE c
 - Produces a separate WebRTC SDP string with only the `a=identity` line removed. The original SDP must be retained for signature verification; the cleaned SDP is only for the WebRTC library.
 - Rejects missing, duplicate, misplaced, malformed, or oversized identity attributes.
 
-This is deliberately an extraction and structural-boundary helper, not a JSON/JWT/JWS verifier. It does not establish the authenticity of the player or fingerprint signatures, validate the auth-service issuer, or authorize a player. Those checks must be implemented before accepting a peer connection. See the [Mojang NetherNet onboarding guide](https://github.com/Mojang/bedrock-protocol-docs/blob/main/additional_docs/NetherNetOnboardingGuide.md) for the required assertion format and verification procedure.
+This parser is the first step only. The following identity components now build on it:
+
+- `NetherNetIdentityAssertion` parses the nested JSON, requires the current GameServerToken RS256 header with `kid`, the franchise authorization issuer and multiplayer audience, a Base64 DER SubjectPublicKeyInfo `cpk`, and the detached ES384 JWS envelope. It applies strict duplicate-key detection and bounded JSON/token sizes.
+- `NetherNetJwksKeyCache` fetches RSA signing keys over HTTPS from the franchise authorization service's JWKS endpoint, caps response size, validates RSA key sizes, caches keys, and rate-limits refreshes for unknown key IDs.
+- `NetherNetGameServerTokenVerifier` verifies RS256, re-checks that the parsed claims exactly match the signed JWT, enforces `exp`/`nbf` with bounded clock skew, and decodes the P-384 `cpk` public key.
+- `NetherNetFingerprintPayload` reconstructs the canonical JSON payload from SDP fingerprint attributes.
+- `NetherNetFingerprintJwsVerifier` verifies the detached ES384 signature with the already-authenticated `cpk`.
+- `NetherNetIdentityValidator` composes both signature checks. `NetherNetAuthenticatedOfferValidator` invokes the server's admission policy only after identity verification succeeds.
+
+The authentication service's signing-key URL, RS256 algorithm, issuer, audience, and the fact that `cpk` is a Base64 DER public-key blob are aligned with the current MiNET validation implementation. That implementation is a cross-check, not a substitute for Mojang's protocol guide. See the [Mojang NetherNet onboarding guide](https://mojang.github.io/bedrock-protocol-docs/guides/nether-net-onboarding-guide/) and [MiNET's current GameServerToken validator](https://github.com/NiclasOlofsson/MiNET/blob/master/src/MiNET/MiNET/Utils/Cryptography/FranchiseTokenValidator.cs).
+
+These are source implementations and authored tests; they are not yet a claim of successful CI, real Xbox authentication, or interoperability with an unmodified Bedrock client.
 
 
 ## NetherNet identity assertion structure
@@ -87,6 +98,6 @@ This stage validates syntax and required fields only. It does **not** verify the
 
 ## Verification boundary
 
-JUnit tests have been authored for the codecs and NetherNet framing helpers. They must be run by Maven or CI before being described as passing. These tests validate serialization, fragment sequencing, and bounds only. They do not establish interoperability with an unmodified Bedrock client.
+JUnit tests have been authored for the codecs, NetherNet framing, identity parsing, canonical fingerprint serialization, RS256 GameServerToken verification, and detached ES384 proof verification. They must be run by Maven or CI before being described as passing. These tests validate serialization, fragment sequencing, and bounds only. They do not establish interoperability with an unmodified Bedrock client.
 
 ## Compression envelope

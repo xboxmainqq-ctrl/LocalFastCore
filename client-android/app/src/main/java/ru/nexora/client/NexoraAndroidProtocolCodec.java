@@ -149,7 +149,7 @@ final class NexoraAndroidProtocolCodec {
         if (input.hasRemaining()) {
             throw new IllegalArgumentException("Trailing bytes in NEXORA chunk data");
         }
-        return new ChunkData(chunkX, chunkZ, java.util.List.copyOf(blocks));
+        return new ChunkData(chunkX, chunkZ, java.util.Collections.unmodifiableList(blocks));
     }
 
     private static ByteBuffer checkedHeader(byte[] bytes, int expectedType) {

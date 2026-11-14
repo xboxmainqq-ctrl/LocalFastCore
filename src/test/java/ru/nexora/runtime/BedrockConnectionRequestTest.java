@@ -20,6 +20,32 @@ class BedrockConnectionRequestTest {
     }
 
     @Test
+    void extractsModernAuthenticationEnvelopeWithoutTrustingIt() {
+        BedrockConnectionRequest request = BedrockConnectionRequest.parse(
+                "{\"AuthenticationType\":0,\"Token\":\"" + JWT
+                        + "\",\"Certificate\":\"opaque-certificate-chain\"}");
+
+        assertTrue(request.isAuthenticationEnvelope());
+        assertEquals(0, request.authenticationType());
+        assertEquals(JWT, request.token());
+        assertEquals("opaque-certificate-chain", request.certificate());
+        assertTrue(request.chain().isEmpty());
+        assertNull(request.clientDataJwt());
+    }
+
+    @Test
+    void rejectsIncompleteOrMixedAuthenticationEnvelopes() {
+        assertThrows(IllegalArgumentException.class, () ->
+                BedrockConnectionRequest.parse(
+                        "{\"AuthenticationType\":0,\"Token\":\"" + JWT + "\"}"));
+        assertThrows(IllegalArgumentException.class, () ->
+                BedrockConnectionRequest.parse(
+                        "{\"chain\":[\"" + JWT + "\"],\"clientData\":\"" + JWT
+                                + "\",\"AuthenticationType\":0,\"Token\":\"" + JWT
+                                + "\",\"Certificate\":\"cert\"}"));
+    }
+
+    @Test
     void acceptsMaximumThreeChainTokens() {
         BedrockConnectionRequest request = BedrockConnectionRequest.parse(
                 "{\"chain\":[\"" + JWT + "\",\"" + JWT + "\",\"" + JWT

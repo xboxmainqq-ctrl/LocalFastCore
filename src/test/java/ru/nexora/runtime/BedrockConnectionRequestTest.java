@@ -23,14 +23,31 @@ class BedrockConnectionRequestTest {
     void extractsModernAuthenticationEnvelopeWithoutTrustingIt() {
         BedrockConnectionRequest request = BedrockConnectionRequest.parse(
                 "{\"AuthenticationType\":0,\"Token\":\"" + JWT
-                        + "\",\"Certificate\":\"opaque-certificate-chain\"}");
+                        + "\",\"Certificate\":\"\"}");
 
         assertTrue(request.isAuthenticationEnvelope());
+        assertTrue(request.isTokenPayload());
+        assertFalse(request.isCertificateChainPayload());
         assertEquals(0, request.authenticationType());
         assertEquals(JWT, request.token());
-        assertEquals("opaque-certificate-chain", request.certificate());
+        assertEquals("", request.certificate());
         assertTrue(request.chain().isEmpty());
         assertNull(request.clientDataJwt());
+    }
+
+
+    @Test
+    void extractsModernCertificateChainPayload() {
+        String certificate = "{\\\"chain\\\":[\\\"" + JWT + "\\"]}";
+        BedrockConnectionRequest request = BedrockConnectionRequest.parse(
+                "{\"AuthenticationType\":2,\"Token\":\"\",\"Certificate\":\""
+                        + certificate + "\"}");
+
+        assertTrue(request.isCertificateChainPayload());
+        assertFalse(request.isTokenPayload());
+        assertEquals(List.of(JWT), request.chain());
+        assertEquals("", request.token());
+        assertEquals(certificate, request.certificate());
     }
 
     @Test
@@ -42,7 +59,14 @@ class BedrockConnectionRequestTest {
                 BedrockConnectionRequest.parse(
                         "{\"chain\":[\"" + JWT + "\"],\"clientData\":\"" + JWT
                                 + "\",\"AuthenticationType\":0,\"Token\":\"" + JWT
-                                + "\",\"Certificate\":\"cert\"}"));
+                                + "\",\"Certificate\":\"\"}"));
+        assertThrows(IllegalArgumentException.class, () ->
+                BedrockConnectionRequest.parse(
+                        "{\"AuthenticationType\":3,\"Token\":\"" + JWT
+                                + "\",\"Certificate\":\"\"}"));
+        assertThrows(IllegalArgumentException.class, () ->
+                BedrockConnectionRequest.parse(
+                        "{\"AuthenticationType\":0,\"Token\":\"\",\"Certificate\":\"\"}"));
     }
 
     @Test

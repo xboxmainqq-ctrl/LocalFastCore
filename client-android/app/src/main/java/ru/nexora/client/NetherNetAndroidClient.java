@@ -492,6 +492,11 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                     nexoraProtocolReady = true;
                     reportStatus("Протокол NEXORA " + NexoraAndroidProtocolCodec.MAJOR_VERSION
                             + "." + NexoraAndroidProtocolCodec.MINOR_VERSION + " согласован");
+                    mainHandler.postDelayed(() -> {
+                        if (!closed.get() && nexoraProtocolReady && !worldInfoReceived) {
+                            reportError("Тайм-аут ожидания сведений о мире NEXORA");
+                        }
+                    }, 15_000L);
                     Listener current = listener;
                     if (current != null) {
                         mainHandler.post(() -> current.onNexoraReady(

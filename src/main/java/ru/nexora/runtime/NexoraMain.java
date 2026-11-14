@@ -187,6 +187,8 @@ public final class NexoraMain {
                                 .orElseThrow(() -> new IllegalStateException("Default world is not loaded"));
                         return NexoraWorldInfo.from(world, 0, 65, 0, options.tickRate());
                     },
+                    () -> worlds.get(DEFAULT_WORLD_ID)
+                            .orElseThrow(() -> new IllegalStateException("Default world is not loaded")),
                     connection -> log.accept("NEXORA client completed protocol handshake: "
                             + connection.id()));
             server.register(new NetherNetPrivateProtocolModule(

@@ -168,6 +168,7 @@ public final class NetherNetSignalingServer implements RuntimeModule {
     }
 
     private void handle(HttpExchange exchange) throws IOException {
+        String networkId = null;
         try (exchange) {
             String method = exchange.getRequestMethod();
             String path = exchange.getRequestURI().getPath();
@@ -185,7 +186,7 @@ public final class NetherNetSignalingServer implements RuntimeModule {
                 sendText(exchange, 404, "Not found");
                 return;
             }
-            String networkId = path.substring(JOIN_PREFIX.length());
+            networkId = path.substring(JOIN_PREFIX.length());
             if (!validNetworkId(networkId)) {
                 sendText(exchange, 400, "Invalid NetworkID");
                 return;
@@ -225,12 +226,26 @@ public final class NetherNetSignalingServer implements RuntimeModule {
                     Math.min(maxSdpBytes, 16 * 1024));
             send(exchange, 200, "application/sdp; charset=utf-8", answerBytes);
         } catch (java.util.concurrent.TimeoutException timeout) {
+            cancelPeer(networkId);
             sendTextIfOpen(exchange, 504, "WebRTC answer timed out");
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
+            cancelPeer(networkId);
             sendTextIfOpen(exchange, 503, "Signaling interrupted");
         } catch (Exception failure) {
+            cancelPeer(networkId);
             sendTextIfOpen(exchange, 401, "Signaling rejected");
+        }
+    }
+
+    private void cancelPeer(String networkId) {
+        if (networkId == null) {
+            return;
+        }
+        try {
+            peerHost.cancel(networkId);
+        } catch (RuntimeException ignored) {
+            // Cancellation is best-effort; peer shutdown remains bounded elsewhere.
         }
     }
 

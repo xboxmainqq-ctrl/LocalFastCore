@@ -64,6 +64,7 @@ public final class NetherNetAndroidClient implements AutoCloseable {
     private final AtomicBoolean closed = new AtomicBoolean();
     private final AtomicBoolean connectedNotified = new AtomicBoolean();
     private final AtomicBoolean loginSent = new AtomicBoolean();
+    private final AtomicBoolean loginSuccessReceived = new AtomicBoolean();
 
     private volatile Listener listener;
     private volatile PeerConnectionFactory factory;
@@ -508,8 +509,10 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                                     BedrockAndroidPacketCodec.decodePlayStatus(packet);
                             current.onPlayStatus(status);
                             if (status == BedrockAndroidPlayStatus.LOGIN_SUCCESS) {
+                                loginSuccessReceived.set(true);
                                 current.onStatus("Bedrock Login подтверждён сервером");
                             } else if (status == BedrockAndroidPlayStatus.PLAYER_SPAWN) {
+                                loginSuccessReceived.set(true);
                                 current.onStatus("Игрок появился в мире");
                             } else {
                                 current.onError("Bedrock Login отклонён: " + status);
@@ -553,6 +556,11 @@ public final class NetherNetAndroidClient implements AutoCloseable {
             loginSent.set(false);
         } else {
             reportStatus("Bedrock Login отправлен, ожидаем ответ сервера");
+            mainHandler.postDelayed(() -> {
+                if (!closed.get() && !loginSuccessReceived.get()) {
+                    reportError("Тайм-аут ожидания ответа Bedrock Login");
+                }
+            }, 20_000L);
         }
         return accepted;
     }

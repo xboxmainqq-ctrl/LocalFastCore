@@ -79,6 +79,31 @@ class BedrockInitialTransportRouterTest {
         router.close();
     }
 
+
+    @Test
+    void rejectsMalformedConnectionRequestBeforeCallingAuthenticator() {
+        BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
+                SETTINGS,
+                (connection, login, request) -> {
+                    fail("Malformed JSON must not reach the authenticator");
+                    return CompletableFuture.completedFuture(false);
+                },
+                connection -> fail("Malformed login must not enter play"),
+                (connection, message) -> fail("Malformed login must not receive play messages"));
+        FakeConnection connection = new FakeConnection("peer-invalid-json");
+        router.accept(connection);
+
+        connection.receive(frame(BedrockRequestNetworkSettingsPacketCodec.PACKET_ID,
+                BedrockRequestNetworkSettingsPacketCodec.encodePayload(
+                        new BedrockRequestNetworkSettingsPacket(2225)), false));
+        connection.receive(frame(BedrockLoginPacketCodec.PACKET_ID,
+                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, "not-json")),
+                true));
+
+        assertFalse(connection.isOpen());
+        router.close();
+    }
+
     @Test
     void rejectsHandshakeFramesOnUnreliableDelivery() {
         BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(

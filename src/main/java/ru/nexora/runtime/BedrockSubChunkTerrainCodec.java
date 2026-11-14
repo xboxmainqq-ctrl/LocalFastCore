@@ -13,11 +13,32 @@ public final class BedrockSubChunkTerrainCodec {
     }
 
     /**
-     * Encodes a single block-storage layer and the empty block-actor NBT terminator.
-     * This initial NEXORA terrain profile has no fluid layer, block actors,
-     * or biome palette inside this blob.
+     * Encodes one subchunk response blob, including its empty block-actor NBT
+     * terminator. The current terrain profile has one block layer and no
+     * waterlogged/fluid layer or block actors.
      */
     public static ByteBuffer encode(
+            ChunkSection section,
+            int absoluteSubChunkY,
+            BedrockRuntimeBlockRegistry registry
+    ) {
+        ByteBuffer terrain = encodeSection(section, absoluteSubChunkY, registry);
+        if (terrain.remaining() + 1 > MAX_SERIALIZED_BYTES) {
+            throw new IllegalArgumentException("Serialized subchunk exceeds the configured limit");
+        }
+        ByteBuffer out = ByteBuffer.allocate(terrain.remaining() + 1);
+        out.put(terrain);
+        out.put((byte) 0); // Empty block-actor NBT sequence (TAG_End).
+        out.flip();
+        return out.asReadOnlyBuffer();
+    }
+
+    /**
+     * Encodes only the version-9 terrain section. Full LevelChunk column
+     * payloads place the block-entity NBT list once after all sections, while
+     * SubChunkPacket response blobs carry their own block-actor terminator.
+     */
+    public static ByteBuffer encodeSection(
             ChunkSection section,
             int absoluteSubChunkY,
             BedrockRuntimeBlockRegistry registry
@@ -29,7 +50,7 @@ public final class BedrockSubChunkTerrainCodec {
         }
 
         ByteBuffer storage = BedrockPalettedStorageCodec.encode(section, registry);
-        int required = 3 + storage.remaining() + 1;
+        int required = 3 + storage.remaining();
         if (required > MAX_SERIALIZED_BYTES) {
             throw new IllegalArgumentException("Serialized subchunk exceeds the configured limit");
         }
@@ -39,7 +60,6 @@ public final class BedrockSubChunkTerrainCodec {
         out.put((byte) BLOCK_STORAGE_LAYERS);
         out.put((byte) absoluteSubChunkY);
         out.put(storage);
-        out.put((byte) 0); // Empty block-actor NBT sequence (TAG_End).
         out.flip();
         return out.asReadOnlyBuffer();
     }

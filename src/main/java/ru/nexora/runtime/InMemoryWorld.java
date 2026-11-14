@@ -70,6 +70,39 @@ public final class InMemoryWorld implements World {
     }
 
     @Override
+    public BlockState fluidAt(BlockPosition position) {
+        validatePosition(position);
+        WorldChunk chunk = chunks.get(position.chunkPosition());
+        return chunk == null ? BlockState.AIR : chunk.fluidAt(position);
+    }
+
+    @Override
+    public void setFluid(BlockPosition position, BlockState fluidState) {
+        validatePosition(position);
+        FluidStates.requireFluidOrAir(fluidState);
+        ChunkPosition chunkPosition = position.chunkPosition();
+        if (fluidState.isAir()) {
+            chunks.computeIfPresent(chunkPosition, (ignored, chunk) -> {
+                chunk.setFluid(position, BlockState.AIR);
+                return chunk.isEmpty() ? null : chunk;
+            });
+            return;
+        }
+        chunks.compute(chunkPosition, (ignored, chunk) -> {
+            WorldChunk target = chunk == null ? new WorldChunk() : chunk;
+            target.setFluid(position, fluidState);
+            return target;
+        });
+    }
+
+    @Override
+    public Map<BlockPosition, BlockState> fluidsInChunk(ChunkPosition position) {
+        Objects.requireNonNull(position, "position");
+        WorldChunk chunk = chunks.get(position);
+        return chunk == null ? Map.of() : chunk.fluidSnapshot(position);
+    }
+
+    @Override
     public int biomeAt(BlockPosition position) {
         validatePosition(position);
         WorldChunk chunk = chunks.get(position.chunkPosition());

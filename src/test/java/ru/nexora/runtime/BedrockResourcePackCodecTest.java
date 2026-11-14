@@ -38,7 +38,7 @@ class BedrockResourcePackCodecTest {
         assertEquals(0, payload.get(12));
         assertEquals(0, payload.get(13)); // experiments ever toggled
         assertEquals(0, payload.get(14)); // include editor packs
-        assertEquals(0, payload.get(15)); // spare allocation is not serialized
+        assertEquals(0, payload.get(15)); // include editor packs
     }
 
     @Test

@@ -17,7 +17,12 @@ import java.util.function.Consumer;
 
 /**
  * Routes newly established transport peers through the initial Bedrock
- * NetworkSettings/Login handshake before handing authenticated peers to play.
+ * NetworkSettings/Login handshake before handing fully initialized peers to play.
+ *
+ * <p>The injected login initializer is responsible for cryptographic player
+ * authentication and the Bedrock encryption handshake. Returning {@code true}
+ * means both are complete; this router does not implement those cryptographic
+ * steps itself.</p>
  */
 public final class BedrockInitialTransportRouter implements Consumer<TransportConnection>, AutoCloseable {
     private final BedrockNetworkSettings networkSettings;

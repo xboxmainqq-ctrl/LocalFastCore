@@ -19,9 +19,9 @@ import android.widget.Toast;
 /**
  * Android entry screen for the NEXORA client.
  *
- * <p>This screen connects the NetherNet transport and completes the initial
- * NetworkSettings exchange. Player authentication and the full Bedrock play
- * session remain separate pending stages.</p>
+ * <p>This screen connects to the first-party NEXORA server and displays its
+ * initial private-protocol world metadata. Authentication, chunk streaming,
+ * and gameplay remain separate pending stages.</p>
  */
 public final class MainActivity extends Activity {
     private static final int BACKGROUND = Color.rgb(12, 16, 25);

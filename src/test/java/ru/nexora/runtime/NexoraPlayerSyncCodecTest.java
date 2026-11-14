@@ -13,7 +13,7 @@ class NexoraPlayerSyncCodecTest {
         NexoraPlayerSyncCodec.PlayerState expected =
                 new NexoraPlayerSyncCodec.PlayerState(
                         UUID.fromString("c7f9a7c3-18b0-4dc5-a3c2-7b7f10f2f1a1"),
-                        12.5, 65.0, -8.25);
+                        "Игрок", 2, 12.5, 65.0, -8.25, 45.0);
 
         NexoraPlayerSyncCodec.PlayerState actual =
                 NexoraPlayerSyncCodec.decodePlayerState(
@@ -25,10 +25,11 @@ class NexoraPlayerSyncCodecTest {
     @Test
     void roundTripsPlayerNickname() {
         NexoraPlayerSyncCodec.PlayerState expected = new NexoraPlayerSyncCodec.PlayerState(
-                UUID.randomUUID(), "ТестовыйИгрок", 1.5, 70.0, -2.5, 135.0);
+                UUID.randomUUID(), "ТестовыйИгрок", 3, 1.5, 70.0, -2.5, 135.0);
         NexoraPlayerSyncCodec.PlayerState actual = NexoraPlayerSyncCodec.decodePlayerState(
                 ByteBuffer.wrap(NexoraPlayerSyncCodec.encodePlayerState(expected)));
         assertEquals(expected, actual);
+        assertEquals(3, actual.skinIndex());
     }
     @Test
     void roundTripsPlayerLeave() {

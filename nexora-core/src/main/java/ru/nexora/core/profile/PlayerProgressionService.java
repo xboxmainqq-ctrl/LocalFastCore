@@ -51,7 +51,13 @@ public final class PlayerProgressionService {
             throw new IllegalArgumentException("Experience amount must be positive");
         }
         PlayerProfile current = requireProfile(uniqueId);
-        long maximumExperience = experienceRequiredForLevel(MAX_LEVEL);
+        int expectedCurrentLevel = levelForExperience(current.experience());
+        if (current.level() != expectedCurrentLevel) {
+            throw new IllegalStateException("Stored player level does not match total experience");
+        }
+
+        // Level 100 is reached at the level-99 threshold; XP beyond that is not banked.
+        long maximumExperience = experienceRequiredForLevel(MAX_LEVEL - 1);
         long updatedExperience;
         try {
             updatedExperience = Math.min(maximumExperience,
@@ -107,9 +113,10 @@ public final class PlayerProgressionService {
         return updated;
     }
 
+    /** XP threshold required to advance from the supplied level to the next one. */
     public static long experienceRequiredForLevel(int level) {
-        if (level < 1 || level > MAX_LEVEL) {
-            throw new IllegalArgumentException("Level must be between 1 and " + MAX_LEVEL);
+        if (level < 1 || level > MAX_LEVEL - 1) {
+            throw new IllegalArgumentException("Level must be between 1 and " + (MAX_LEVEL - 1));
         }
         return 50L * level * (level + 1L);
     }

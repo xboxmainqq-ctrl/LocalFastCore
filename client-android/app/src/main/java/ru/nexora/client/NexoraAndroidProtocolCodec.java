@@ -19,6 +19,7 @@ final class NexoraAndroidProtocolCodec {
     private static final int TYPE_SERVER_POSITION = 8;
     private static final int TYPE_REMOTE_PLAYER_STATE = 9;
     private static final int TYPE_REMOTE_PLAYER_LEFT = 10;
+    private static final int TYPE_INVENTORY = 11;
 
     private NexoraAndroidProtocolCodec() {
     }
@@ -164,6 +165,39 @@ final class NexoraAndroidProtocolCodec {
         return new UUID(input.getLong(), input.getLong());
     }
 
+    static InventoryState decodeInventory(byte[] bytes) {
+        ByteBuffer input = checkedHeader(bytes, TYPE_INVENTORY);
+        if (input.remaining() < 17) {
+            throw new IllegalArgumentException("Truncated NEXORA inventory snapshot");
+        }
+        UUID owner = new UUID(input.getLong(), input.getLong());
+        int count = Byte.toUnsignedInt(input.get());
+        if (count > 36) throw new IllegalArgumentException("Too many NEXORA inventory stacks");
+        java.util.ArrayList<InventoryStack> stacks = new java.util.ArrayList<>(count);
+        int total = 0;
+        for (int i = 0; i < count; i++) {
+            if (!input.hasRemaining()) throw new IllegalArgumentException("Truncated NEXORA inventory stack");
+            int length = Byte.toUnsignedInt(input.get());
+            if (length < 1 || length > 96 || input.remaining() < length + 1) {
+                throw new IllegalArgumentException("Invalid NEXORA item identifier length");
+            }
+            byte[] id = new byte[length];
+            input.get(id);
+            String itemId = decodeUtf8(id);
+            if (!itemId.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")) {
+                throw new IllegalArgumentException("Invalid NEXORA item identifier");
+            }
+            int amount = Byte.toUnsignedInt(input.get());
+            if (amount < 1 || amount > 64) {
+                throw new IllegalArgumentException("Invalid NEXORA item stack size");
+            }
+            total += amount;
+            stacks.add(new InventoryStack(itemId, amount));
+        }
+        if (input.hasRemaining()) throw new IllegalArgumentException("Trailing NEXORA inventory bytes");
+        return new InventoryState(owner, java.util.Collections.unmodifiableList(stacks), total);
+    }
+
     private static byte[] encodePosition(int type, double x, double y, double z) {
         if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
                 || Math.abs(x) > 30_000_000d || Math.abs(y) > 30_000_000d
@@ -271,6 +305,12 @@ final class NexoraAndroidProtocolCodec {
     }
 
     record RemotePlayerState(UUID playerId, String playerName, int skinIndex, double x, double y, double z, double yaw) {
+    }
+
+    record InventoryStack(String itemId, int count) {
+    }
+
+    record InventoryState(UUID playerId, java.util.List<InventoryStack> stacks, int totalItems) {
     }
 
     record PlayerPosition(double x, double y, double z) {

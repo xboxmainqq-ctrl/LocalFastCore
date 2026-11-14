@@ -219,8 +219,10 @@ public final class NetherNetSignalingServer implements RuntimeModule {
                 return;
             }
             String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
-            if (contentType == null || !contentType.toLowerCase(java.util.Locale.ROOT)
-                    .startsWith("application/sdp")) {
+            String normalizedContentType = contentType == null
+                    ? "" : contentType.toLowerCase(java.util.Locale.ROOT).trim();
+            if (!"application/sdp".equals(normalizedContentType)
+                    && !normalizedContentType.startsWith("application/sdp;")) {
                 sendText(exchange, 415, "Content-Type must be application/sdp");
                 return;
             }

@@ -61,6 +61,40 @@ class BedrockPostLoginCoordinatorTest {
         coordinator.close();
     }
 
+
+    @Test
+    void routesSubchunkRequestsWhileWorldStartupIsStillCompleting() throws Exception {
+        CompletableFuture<Void> startup = new CompletableFuture<>();
+        AtomicInteger gameplayMessages = new AtomicInteger();
+        AtomicInteger playReady = new AtomicInteger();
+        BedrockPostLoginCoordinator coordinator = new BedrockPostLoginCoordinator(
+                SETTINGS, "1.26.60",
+                (connection, player) -> startup,
+                (connection, message) -> gameplayMessages.incrementAndGet());
+        coordinator.bindPlayReadyTransition(connection -> {
+            playReady.incrementAndGet();
+            return BedrockHandshakeResult.ACCEPTED;
+        });
+        FakeConnection connection = new FakeConnection();
+        coordinator.accept(connection, player());
+        coordinator.handleMessage(connection, response("DownloadingFinished"));
+        coordinator.handleMessage(connection, response("ResourcePackStackFinished"));
+
+        // This frame represents a client SubChunkRequest received after
+        // StartGame/skeleton chunks were sent but before startup completes.
+        coordinator.handleMessage(connection, new TransportMessage(
+                ByteBuffer.wrap(new byte[] {0x01}), DeliveryMode.RELIABLE_ORDERED));
+
+        assertEquals(1, gameplayMessages.get());
+        assertEquals(0, playReady.get());
+        assertTrue(connection.isOpen());
+
+        startup.complete(null);
+        assertEquals(1, playReady.get());
+        assertTrue(connection.isOpen());
+        coordinator.close();
+    }
+
     @Test
     void permitsEmptyDownloadingProgressButRejectsUnexpectedPackIdentifiers() throws Exception {
         BedrockPostLoginCoordinator coordinator = coordinator(

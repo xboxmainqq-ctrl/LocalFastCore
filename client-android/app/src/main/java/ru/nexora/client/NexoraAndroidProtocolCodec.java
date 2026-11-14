@@ -58,7 +58,7 @@ final class NexoraAndroidProtocolCodec {
         int major = Byte.toUnsignedInt(input.get());
         int minor = Byte.toUnsignedInt(input.get());
         int type = Byte.toUnsignedInt(input.get());
-        if (major != MAJOR_VERSION || minor > MINOR_VERSION) {
+        if (major != MAJOR_VERSION || minor != MINOR_VERSION) {
             throw new IllegalArgumentException("Unsupported NEXORA protocol version "
                     + major + "." + minor);
         }
@@ -299,7 +299,7 @@ final class NexoraAndroidProtocolCodec {
         int major = Byte.toUnsignedInt(input.get());
         int minor = Byte.toUnsignedInt(input.get());
         int type = Byte.toUnsignedInt(input.get());
-        if (major != MAJOR_VERSION || minor > MINOR_VERSION) {
+        if (major != MAJOR_VERSION || minor != MINOR_VERSION) {
             throw new IllegalArgumentException("Unsupported NEXORA protocol version "
                     + major + "." + minor);
         }

@@ -77,7 +77,7 @@ public final class BedrockResourcePackCodec {
      * The world-template UUID is zero and its version is the neutral 1.0.0 value.
      */
     public static ByteBuffer encodeEmptyResourcePacksInfoPayload() {
-        ByteBuffer output = ByteBuffer.allocate(4 + Long.BYTES * 2 + 8);
+        ByteBuffer output = ByteBuffer.allocate(4 + Long.BYTES * 2 + 1 + EMPTY_WORLD_TEMPLATE_VERSION.length() + 1);
         output.put((byte) 0); // Resource Pack Required
         output.put((byte) 0); // Has Addon Packs
         output.put((byte) 0); // Has Scripts
@@ -100,8 +100,9 @@ public final class BedrockResourcePackCodec {
         if (baseGameVersion.isBlank()) {
             throw new IllegalArgumentException("baseGameVersion must not be blank");
         }
-        ByteBuffer output = ByteBuffer.allocate(1 + 5 + 4 + 1 + 1
-                + baseGameVersion.getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
+        ByteBuffer output = ByteBuffer.allocate(1 + 1 + 1
+                + baseGameVersion.getBytes(java.nio.charset.StandardCharsets.UTF_8).length
+                + Integer.BYTES + 1 + 1);
         output.put((byte) 0); // Texture Pack Required
         BedrockBinary.writeVarUInt32(output, 0); // Texture Pack List
         BedrockBinary.writeString(output, baseGameVersion, 64);

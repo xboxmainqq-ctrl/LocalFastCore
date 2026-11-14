@@ -92,6 +92,11 @@ final class ChunkPreviewView extends GLSurfaceView {
         requestRender();
     }
 
+    void setPlayerSkin(int skinIndex) {
+        queueEvent(() -> renderer.setPlayerSkin(skinIndex));
+        requestRender();
+    }
+
     void setRemotePlayerState(NexoraAndroidProtocolCodec.RemotePlayerState player) {
         queueEvent(() -> renderer.setRemotePlayerState(player));
         requestRender();
@@ -252,11 +257,17 @@ final class ChunkPreviewView extends GLSurfaceView {
         private int remotePlayerVertexCount;
         private boolean remotePlayerMeshDirty = true;
         private boolean firstPersonMode;
+        private int playerSkinIndex;
         private int surfaceWidth = 1;
         private int surfaceHeight = 1;
 
         void setFirstPersonMode(boolean enabled) {
             firstPersonMode = enabled;
+        }
+
+        void setPlayerSkin(int skinIndex) {
+            playerSkinIndex = Math.max(0, Math.min(4, skinIndex));
+            remotePlayerMeshDirty = true;
         }
 
         void markMeshDirty() {
@@ -579,9 +590,19 @@ final class ChunkPreviewView extends GLSurfaceView {
             }
             long now = System.nanoTime();
             MeshBuilder mesh = new MeshBuilder(120_000);
-            float[] bodyColor = {0.18f, 0.62f, 0.96f};
-            float[] limbColor = {0.12f, 0.43f, 0.72f};
-            float[] headColor = {0.88f, 0.72f, 0.58f};
+            // Original NEXORA appearance presets; no proprietary game skins are bundled.
+            float[][] palettes = {
+                    {0.18f,0.62f,0.96f, 0.12f,0.43f,0.72f, 0.88f,0.72f,0.58f, 0.12f,0.20f,0.34f},
+                    {0.18f,0.68f,0.48f, 0.10f,0.38f,0.28f, 0.72f,0.48f,0.32f, 0.12f,0.10f,0.08f},
+                    {0.76f,0.34f,0.28f, 0.42f,0.16f,0.18f, 0.94f,0.76f,0.60f, 0.22f,0.12f,0.08f},
+                    {0.48f,0.38f,0.78f, 0.26f,0.20f,0.48f, 0.58f,0.38f,0.24f, 0.08f,0.08f,0.12f},
+                    {0.82f,0.64f,0.22f, 0.46f,0.30f,0.10f, 0.96f,0.82f,0.68f, 0.24f,0.16f,0.08f}
+            };
+            float[] palette = palettes[playerSkinIndex];
+            float[] bodyColor = {palette[0], palette[1], palette[2]};
+            float[] limbColor = {palette[3], palette[4], palette[5]};
+            float[] headColor = {palette[6], palette[7], palette[8]};
+            float[] hairColor = {palette[9], palette[10], palette[11]};
             for (NexoraAndroidProtocolCodec.RemotePlayerState player : remotePlayers.values()) {
                 float x = (float) (player.x() - centerChunkX * 16 + 16);
                 float y = (float) player.y();
@@ -606,6 +627,9 @@ final class ChunkPreviewView extends GLSurfaceView {
                 addPlayerBox(mesh, x, y, z, angle,
                         0f, 1.62f + bob, 0f, 0.18f, 0.18f, 0.18f,
                         0f, 1.62f, 0f, 0f, headColor, 1.0f);
+                addPlayerBox(mesh, x, y, z, angle,
+                        0f, 1.785f + bob, 0f, 0.185f, 0.035f, 0.185f,
+                        0f, 1.785f, 0f, 0f, hairColor, 0.96f);
 
                 addPlayerBox(mesh, x, y, z, angle,
                         -0.30f, 1.16f + bob, 0f, 0.105f, 0.31f, 0.11f,

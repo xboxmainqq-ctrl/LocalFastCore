@@ -41,7 +41,13 @@ public final class NetherNetServerIdentitySigner {
         validateDomain(partnerDomain);
         long iat = issuedAt.getEpochSecond();
         long exp = expiresAt.getEpochSecond();
-        if (exp <= iat || exp - iat > MAX_TOKEN_LIFETIME_SECONDS) {
+        long lifetime;
+        try {
+            lifetime = Math.subtractExact(exp, iat);
+        } catch (ArithmeticException overflow) {
+            throw new IllegalArgumentException("Server identity token lifetime is invalid", overflow);
+        }
+        if (lifetime <= 0 || lifetime > MAX_TOKEN_LIFETIME_SECONDS) {
             throw new IllegalArgumentException("Server identity token lifetime is invalid");
         }
         ECPublicKey publicKey = requireP384PublicKey(operatorKeyPair.getPublic());
@@ -225,9 +231,14 @@ public final class NetherNetServerIdentitySigner {
     }
 
     private static void validateDomain(String domain) {
-        if (domain.isBlank() || domain.length() > 253
-                || !domain.matches("[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?")) {
+        if (domain.isBlank() || domain.length() > 253) {
             throw new IllegalArgumentException("Partner domain must be a valid ASCII domain name");
+        }
+        for (String label : domain.split("\\.", -1)) {
+            if (label.isEmpty() || label.length() > 63
+                    || !label.matches("[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?")) {
+                throw new IllegalArgumentException("Partner domain must be a valid ASCII domain name");
+            }
         }
     }
 

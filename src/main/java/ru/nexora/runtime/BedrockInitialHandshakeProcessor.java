@@ -14,6 +14,7 @@ import java.util.Objects;
 public final class BedrockInitialHandshakeProcessor {
     private final BedrockSessionHandshake handshake;
     private final BedrockNetworkSettings networkSettings;
+    private BedrockLoginPacket pendingLogin;
 
     public BedrockInitialHandshakeProcessor(BedrockNetworkSettings networkSettings) {
         this(new BedrockSessionHandshake(), networkSettings);
@@ -102,6 +103,12 @@ public final class BedrockInitialHandshakeProcessor {
 
     public synchronized void close() {
         handshake.close();
+        pendingLogin = null;
+    }
+
+    /** Returns the decoded Login packet only while authentication is pending. */
+    public synchronized java.util.Optional<BedrockLoginPacket> pendingLogin() {
+        return java.util.Optional.ofNullable(pendingLogin);
     }
 
     public synchronized BedrockHandshakeState state() {
@@ -148,6 +155,7 @@ public final class BedrockInitialHandshakeProcessor {
         if (transition != BedrockHandshakeResult.ACCEPTED) {
             return result(BedrockHandshakeFrameStatus.REJECTED_PACKET, transition, null);
         }
+        pendingLogin = login;
         return result(BedrockHandshakeFrameStatus.AUTHENTICATION_REQUIRED, transition, null);
     }
 

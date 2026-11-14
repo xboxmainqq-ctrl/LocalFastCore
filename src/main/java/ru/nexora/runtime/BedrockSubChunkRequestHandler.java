@@ -24,7 +24,7 @@ public final class BedrockSubChunkRequestHandler
             BedrockNetworkSettings networkSettings,
             World world,
             ToIntFunction<TransportConnection> playerDimension,
-            BedrockRuntimeBlockRegistryFile.Loaded blockProfile,
+            BedrockRuntimeBlockRegistryProfile blockProfile,
             BiConsumer<TransportConnection, TransportMessage> fallback
     ) {
         this(networkSettings, world, playerDimension,

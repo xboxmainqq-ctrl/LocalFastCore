@@ -98,9 +98,9 @@ class NexoraPrivateProtocolHandlerTest {
         connection.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
         connection.deliver(NexoraChunkDataCodec.encodeChunkRequest(0, 0));
 
-        assertEquals(4, connection.sentMessages.size());
+        assertEquals(5, connection.sentMessages.size());
         NexoraChunkData chunk = NexoraChunkDataCodec.decodeChunkData(
-                ByteBuffer.wrap(connection.sentMessages.get(3)));
+                ByteBuffer.wrap(connection.sentMessages.get(4)));
         assertEquals(0, chunk.chunkX());
         assertEquals(0, chunk.chunkZ());
         assertEquals(2, chunk.blocks().size());
@@ -131,7 +131,7 @@ class NexoraPrivateProtocolHandlerTest {
 
         assertTrue(world.isChunkLoaded(new ChunkPosition(1, 1)));
         NexoraChunkData chunk = NexoraChunkDataCodec.decodeChunkData(
-                ByteBuffer.wrap(connection.sentMessages.get(3)));
+                ByteBuffer.wrap(connection.sentMessages.get(4)));
         assertEquals(1536, chunk.blocks().size());
         assertEquals("minecraft:bedrock", chunk.blocks().get(0).blockIdentifier());
         assertEquals("minecraft:grass_block",
@@ -152,7 +152,7 @@ class NexoraPrivateProtocolHandlerTest {
                 () -> world, ignored -> true, ignored -> { }).accept(connection);
         connection.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
 
-        assertEquals(3, connection.sentMessages.size());
+        assertEquals(4, connection.sentMessages.size());
         assertEquals(new NexoraMovementValidator.Position(0.5, 65.0, 0.5),
                 NexoraMovementPacketCodec.decodeServerPosition(
                         ByteBuffer.wrap(connection.sentMessages.get(2))));
@@ -161,9 +161,9 @@ class NexoraPrivateProtocolHandlerTest {
                 new NexoraMovementValidator.Position(0.7, 65.0, 0.5);
         connection.deliver(NexoraMovementPacketCodec.encodeClientMove(proposed));
 
-        assertEquals(4, connection.sentMessages.size());
+        assertEquals(5, connection.sentMessages.size());
         NexoraMovementValidator.Position accepted = NexoraMovementPacketCodec.decodeServerPosition(
-                ByteBuffer.wrap(connection.sentMessages.get(3)));
+                ByteBuffer.wrap(connection.sentMessages.get(4)));
         assertEquals(proposed, accepted);
     }
 
@@ -220,7 +220,7 @@ class NexoraPrivateProtocolHandlerTest {
                 new NexoraMovementValidator.Position(0.7, 65.0, 0.5)));
 
         NexoraMovementValidator.Position corrected = NexoraMovementPacketCodec.decodeServerPosition(
-                ByteBuffer.wrap(connection.sentMessages.get(3)));
+                ByteBuffer.wrap(connection.sentMessages.get(4)));
         assertEquals(new NexoraMovementValidator.Position(0.5, 65.0, 0.5), corrected);
         assertFalse(connection.closed);
     }
@@ -245,13 +245,13 @@ class NexoraPrivateProtocolHandlerTest {
         handler.accept(second);
         second.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev", "Второй", 4));
 
-        assertEquals(4, first.sentMessages.size());
-        assertEquals(4, second.sentMessages.size());
+        assertEquals(5, first.sentMessages.size());
+        assertEquals(5, second.sentMessages.size());
         assertEquals(2, handler.entities().size());
         NexoraPlayerSyncCodec.PlayerState firstSeenBySecond =
                 NexoraPlayerSyncCodec.decodePlayerState(ByteBuffer.wrap(second.sentMessages.get(3)));
         NexoraPlayerSyncCodec.PlayerState secondSeenByFirst =
-                NexoraPlayerSyncCodec.decodePlayerState(ByteBuffer.wrap(first.sentMessages.get(3)));
+                NexoraPlayerSyncCodec.decodePlayerState(ByteBuffer.wrap(first.sentMessages.get(4)));
         assertNotEquals(firstSeenBySecond.playerId(), secondSeenByFirst.playerId());
         assertEquals(2, firstSeenBySecond.skinIndex());
         assertEquals(4, secondSeenByFirst.skinIndex());
@@ -264,18 +264,18 @@ class NexoraPrivateProtocolHandlerTest {
         first.deliver(NexoraMovementPacketCodec.encodeClientMove(
                 new NexoraMovementValidator.Position(0.7, 65.0, 0.5)));
 
-        assertEquals(5, second.sentMessages.size());
+        assertEquals(6, second.sentMessages.size());
         NexoraPlayerSyncCodec.PlayerState moved =
-                NexoraPlayerSyncCodec.decodePlayerState(ByteBuffer.wrap(second.sentMessages.get(4)));
+                NexoraPlayerSyncCodec.decodePlayerState(ByteBuffer.wrap(second.sentMessages.get(5)));
         assertEquals(firstSeenBySecond.playerId(), moved.playerId());
         assertEquals(0.7, moved.x(), 0.0001);
         assertEquals(0.7, handler.entities().find(firstSeenBySecond.playerId()).orElseThrow().x(), 0.0001);
 
         first.close();
 
-        assertEquals(6, second.sentMessages.size());
+        assertEquals(7, second.sentMessages.size());
         assertEquals(firstSeenBySecond.playerId(),
-                NexoraPlayerSyncCodec.decodePlayerLeft(ByteBuffer.wrap(second.sentMessages.get(5))));
+                NexoraPlayerSyncCodec.decodePlayerLeft(ByteBuffer.wrap(second.sentMessages.get(6))));
         assertTrue(handler.entities().find(firstSeenBySecond.playerId()).isEmpty());
         assertEquals(1, handler.entities().size());
     }
@@ -301,9 +301,9 @@ class NexoraPrivateProtocolHandlerTest {
         distant.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev", "Дальний", 1));
 
         assertEquals(2, handler.entities().size());
-        assertEquals(3, first.sentMessages.size(),
+        assertEquals(4, first.sentMessages.size(),
                 "The first client should not receive a distant player's state");
-        assertEquals(3, distant.sentMessages.size(),
+        assertEquals(4, distant.sentMessages.size(),
                 "The distant client should not receive the first player's state");
 
         distant.close();

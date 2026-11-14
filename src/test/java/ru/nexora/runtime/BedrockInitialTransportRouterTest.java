@@ -34,6 +34,7 @@ class BedrockInitialTransportRouterTest {
 
         FakeConnection connection = new FakeConnection("peer-1");
         router.accept(connection);
+        assertEquals(BedrockHandshakeResult.INVALID_STATE, router.markPlayReady(connection));
         connection.receive(frame(BedrockRequestNetworkSettingsPacketCodec.PACKET_ID,
                 BedrockRequestNetworkSettingsPacketCodec.encodePayload(
                         new BedrockRequestNetworkSettingsPacket(2225)), false));
@@ -57,9 +58,16 @@ class BedrockInitialTransportRouterTest {
                 BedrockPlayStatusPacketCodec.decodePayload(loginSuccess.payloadBuffer()));
         assertEquals(1, playStarts.get());
         assertTrue(connection.isOpen());
+
+        // Resource-pack/world-startup responses are handled before PLAY.
+        connection.receive(new TransportMessage(ByteBuffer.wrap(new byte[]{6, 5, 4}),
+                DeliveryMode.RELIABLE_ORDERED));
+        assertEquals(1, playMessages.get());
+        assertEquals(BedrockHandshakeResult.ACCEPTED, router.markPlayReady(connection));
+
         connection.receive(new TransportMessage(ByteBuffer.wrap(new byte[]{9, 8, 7}),
                 DeliveryMode.UNRELIABLE));
-        assertEquals(1, playMessages.get());
+        assertEquals(2, playMessages.get());
 
         router.close();
         assertFalse(connection.isOpen());

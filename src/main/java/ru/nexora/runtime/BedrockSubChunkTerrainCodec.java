@@ -22,7 +22,17 @@ public final class BedrockSubChunkTerrainCodec {
             int absoluteSubChunkY,
             BedrockRuntimeBlockRegistry registry
     ) {
-        ByteBuffer terrain = encodeSection(section, absoluteSubChunkY, registry);
+        return encode(section, new ChunkSection(), absoluteSubChunkY, registry);
+    }
+
+    /** Encodes solid blocks and a separately stored liquid section. */
+    public static ByteBuffer encode(
+            ChunkSection section,
+            ChunkSection fluidSection,
+            int absoluteSubChunkY,
+            BedrockRuntimeBlockRegistry registry
+    ) {
+        ByteBuffer terrain = encodeSection(section, fluidSection, absoluteSubChunkY, registry);
         if (terrain.remaining() + 1 > MAX_SERIALIZED_BYTES) {
             throw new IllegalArgumentException("Serialized subchunk exceeds the configured limit");
         }
@@ -43,14 +53,24 @@ public final class BedrockSubChunkTerrainCodec {
             int absoluteSubChunkY,
             BedrockRuntimeBlockRegistry registry
     ) {
+        return encodeSection(section, new ChunkSection(), absoluteSubChunkY, registry);
+    }
+
+    public static ByteBuffer encodeSection(
+            ChunkSection section,
+            ChunkSection fluidSection,
+            int absoluteSubChunkY,
+            BedrockRuntimeBlockRegistry registry
+    ) {
         Objects.requireNonNull(section, "section");
+        Objects.requireNonNull(fluidSection, "fluidSection");
         Objects.requireNonNull(registry, "registry");
         if (absoluteSubChunkY < Byte.MIN_VALUE || absoluteSubChunkY > Byte.MAX_VALUE) {
             throw new IllegalArgumentException("Subchunk Y index must fit signed int8");
         }
 
         ByteBuffer blockStorage = BedrockPalettedStorageCodec.encode(section, registry);
-        ByteBuffer liquidStorage = BedrockPalettedStorageCodec.encodeEmptyFluidLayer(registry);
+        ByteBuffer liquidStorage = BedrockPalettedStorageCodec.encodeFluidLayer(fluidSection, registry);
         int required = 3 + blockStorage.remaining() + liquidStorage.remaining();
         if (required > MAX_SERIALIZED_BYTES) {
             throw new IllegalArgumentException("Serialized subchunk exceeds the configured limit");

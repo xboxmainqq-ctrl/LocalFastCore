@@ -141,6 +141,10 @@ public final class NetherNetSignalingServer implements RuntimeModule {
         }
     }
 
+    boolean usesPeerHost(NetherNetPeerHost candidate) {
+        return peerHost == candidate;
+    }
+
     public synchronized InetSocketAddress localAddress() {
         if (server == null) {
             throw new IllegalStateException("NetherNet signaling server is not started");

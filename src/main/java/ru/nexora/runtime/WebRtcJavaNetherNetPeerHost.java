@@ -107,8 +107,19 @@ public final class WebRtcJavaNetherNetPeerHost
 
     @Override
     public CompletionStage<String> createAnswer(String networkId, String webRtcOfferSdp) {
+        return createAnswer(networkId, webRtcOfferSdp, null);
+    }
+
+    @Override
+    public CompletionStage<String> createAnswer(
+            String networkId, String webRtcOfferSdp,
+            NetherNetIdentityValidator.VerifiedIdentity authenticatedIdentity) {
         Objects.requireNonNull(networkId, "networkId");
         Objects.requireNonNull(webRtcOfferSdp, "webRtcOfferSdp");
+        if (authenticatedIdentity == null) {
+            return CompletableFuture.failedFuture(
+                    new SecurityException("A verified NetherNet identity is required"));
+        }
         PeerConnectionFactory currentFactory = factory;
         if (closed || currentFactory == null) {
             return CompletableFuture.failedFuture(
@@ -119,7 +130,7 @@ public final class WebRtcJavaNetherNetPeerHost
                     new IllegalStateException("WebRTC peer limit reached"));
         }
 
-        PeerSession session = new PeerSession(UUID.randomUUID().toString(), networkId);
+        PeerSession session = new PeerSession(UUID.randomUUID().toString(), networkId, authenticatedIdentity);
         try {
             RTCConfiguration configuration = createConfiguration();
             RTCPeerConnection peer = currentFactory.createPeerConnection(
@@ -258,6 +269,7 @@ public final class WebRtcJavaNetherNetPeerHost
     private final class PeerSession {
         private final String id;
         private final String networkId;
+        private final NetherNetIdentityValidator.VerifiedIdentity authenticatedIdentity;
         private final CompletableFuture<String> answer = new CompletableFuture<>();
         private final AtomicBoolean closed = new AtomicBoolean();
         private final AtomicBoolean permitReleased = new AtomicBoolean();
@@ -272,9 +284,11 @@ public final class WebRtcJavaNetherNetPeerHost
         private volatile boolean localDescriptionSet;
         private volatile boolean iceGatheringComplete;
 
-        private PeerSession(String id, String networkId) {
+        private PeerSession(String id, String networkId,
+                            NetherNetIdentityValidator.VerifiedIdentity authenticatedIdentity) {
             this.id = id;
             this.networkId = networkId;
+            this.authenticatedIdentity = Objects.requireNonNull(authenticatedIdentity, "authenticatedIdentity");
             this.peerObserver = new PeerConnectionObserver() {
                 @Override
                 public void onIceCandidate(dev.onvoid.webrtc.RTCIceCandidate candidate) {
@@ -478,7 +492,7 @@ public final class WebRtcJavaNetherNetPeerHost
         }
     }
 
-    private static final class WebRtcTransportConnection implements TransportConnection {
+    private static final class WebRtcTransportConnection implements NetherNetAuthenticatedTransportConnection {
         private final PeerSession session;
         private final RTCDataChannel reliable;
         private final RTCDataChannel unreliable;
@@ -492,6 +506,11 @@ public final class WebRtcJavaNetherNetPeerHost
             this.session = session;
             this.reliable = reliable;
             this.unreliable = unreliable;
+        }
+
+        @Override
+        public NetherNetIdentityValidator.VerifiedIdentity authenticatedIdentity() {
+            return session.authenticatedIdentity;
         }
 
         @Override

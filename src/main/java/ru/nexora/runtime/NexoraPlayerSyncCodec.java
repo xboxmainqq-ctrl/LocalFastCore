@@ -4,42 +4,58 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Objects;
 import java.util.UUID;
+import java.nio.charset.StandardCharsets;
 
 /** Encodes player presence and authoritative remote-player positions. */
 public final class NexoraPlayerSyncCodec {
     private static final byte[] MAGIC = {'N', 'X', 'R', 'A'};
     private static final int PLAYER_STATE = 9;
     private static final int PLAYER_LEFT = 10;
-    private static final int STATE_BYTES = 47;
     private static final int LEFT_BYTES = 23;
 
     private NexoraPlayerSyncCodec() {
     }
 
-    public record PlayerState(UUID playerId, double x, double y, double z) {
+    public record PlayerState(UUID playerId, String playerName, double x, double y, double z) {
         public PlayerState {
             Objects.requireNonNull(playerId, "playerId");
+            Objects.requireNonNull(playerName, "playerName");
+            byte[] name = playerName.getBytes(StandardCharsets.UTF_8);
+            if (playerName.isBlank() || playerName.length() > 16 || name.length > 48
+                    || !playerName.equals(playerName.trim())) throw new IllegalArgumentException("Invalid player name");
             if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
                     || Math.abs(x) > 30_000_000d || Math.abs(y) > 30_000_000d
-                    || Math.abs(z) > 30_000_000d) {
-                throw new IllegalArgumentException("Invalid player coordinates");
-            }
+                    || Math.abs(z) > 30_000_000d) throw new IllegalArgumentException("Invalid player coordinates");
         }
     }
 
     public static byte[] encodePlayerState(PlayerState state) {
         Objects.requireNonNull(state, "state");
-        ByteBuffer output = header(STATE_BYTES, PLAYER_STATE);
+        byte[] name = state.playerName().getBytes(StandardCharsets.UTF_8);
+        ByteBuffer output = header(48 + name.length, PLAYER_STATE);
         output.putLong(state.playerId().getMostSignificantBits());
         output.putLong(state.playerId().getLeastSignificantBits());
+        output.put((byte) name.length).put(name);
         output.putDouble(state.x()).putDouble(state.y()).putDouble(state.z());
         return output.array();
     }
 
     public static PlayerState decodePlayerState(ByteBuffer source) {
-        ByteBuffer input = checked(source, STATE_BYTES, PLAYER_STATE);
+        Objects.requireNonNull(source, "source");
+        ByteBuffer input = source.slice().order(ByteOrder.BIG_ENDIAN);
+        if (input.remaining() < 49) throw new IllegalArgumentException("Invalid player state size");
+        for (byte expected : MAGIC) if (input.get() != expected) throw new IllegalArgumentException("Invalid NEXORA packet magic");
+        int major = Byte.toUnsignedInt(input.get());
+        int minor = Byte.toUnsignedInt(input.get());
+        int type = Byte.toUnsignedInt(input.get());
+        if (major != 1 || minor != 0 || type != PLAYER_STATE) throw new IllegalArgumentException("Unexpected NEXORA player state");
         UUID id = new UUID(input.getLong(), input.getLong());
-        return new PlayerState(id, input.getDouble(), input.getDouble(), input.getDouble());
+        int nameLength = Byte.toUnsignedInt(input.get());
+        if (nameLength < 1 || nameLength > 48 || input.remaining() != nameLength + 24) throw new IllegalArgumentException("Invalid player name length");
+        byte[] name = new byte[nameLength];
+        input.get(name);
+        String playerName = StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(name)).toString();
+        return new PlayerState(id, playerName, input.getDouble(), input.getDouble(), input.getDouble());
     }
 
     public static byte[] encodePlayerLeft(UUID playerId) {

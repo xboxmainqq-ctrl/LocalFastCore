@@ -76,3 +76,45 @@ When targeting a newer Bedrock release:
 4. Add/update version-specific serialization tests.
 5. Re-run transport and login integration tests against that exact client version.
 6. Change the supported-version claim only after the acceptance gates pass.
+
+
+## NetherNet onboarding details (Mojang partner guide)
+
+Reference: https://github.com/Mojang/bedrock-protocol-docs/blob/main/additional_docs/NetherNetOnboardingGuide.md
+
+### Signaling
+
+- Client first requests `GET /v1/join`; a successful response identifies NetherNet support and returns server metadata including name, protocol, version, level, player count, maximum players, and game type.
+- Client then sends one complete SDP offer to `POST /v1/join/{networkId}` as `application/sdp`. The `NetworkID` is opaque; do not parse or rely on its current numeric representation.
+- HTTP signaling uses full ICE: the offer and answer contain gathered candidates; trickle ICE is disabled.
+- The host creates the WebRTC answer, gathers its ICE candidates, and returns the SDP answer as `application/sdp`.
+- Signaling is only used to establish the peer connection. Game traffic subsequently flows directly over WebRTC data channels.
+- Mojang's guide says to prefer HTTPS signaling.
+
+### Identity and authentication
+
+- The client's SDP offer contains an `a=identity` assertion with a Minecraft `GameServerToken` JWT and a detached JWS signature over the SDP DTLS fingerprint values.
+- The server must validate the token against the Minecraft authentication service's public keys, reconstruct the canonical fingerprint JSON, verify the detached JWS using the token's `cpk` public key, and authorize the resulting player identity.
+- The server's SDP answer must also contain an `a=identity` assertion. The server identity JWT is self-signed and contains the operator's long-lived `cpk` public key; the detached JWS signs the answer's DTLS fingerprints.
+- The client rejects an answer with a missing or malformed server identity assertion. The operator key is the trust identity; it should be persisted securely and rotated deliberately.
+- Remove the custom `a=identity` SDP attribute before passing the SDP to a generic WebRTC implementation, as described by Mojang.
+
+### Peer connection and data channels
+
+- Client configuration: TCP ICE candidates disabled, max-bundle, full ICE, and no configured STUN/TURN URLs in the documented client setup.
+- The client opens two SCTP data channels:
+  - `ReliableDataChannel`: ordered, reliable, supports fragmentation.
+  - `UnreliableDataChannel`: unordered, zero retransmits, no fragmentation.
+- Every data-channel message begins with a one-byte NetherNet fragment header. `0` means complete/final fragment; positive values count down remaining fragments. Fragmentation is supported only on the reliable channel.
+- The server must be prepared to receive both channels and send/receive on each.
+
+### Implementation consequences
+
+1. NEXORA needs a signaling HTTP endpoint and a WebRTC host/peer implementation; an abstract UDP socket or generic RakNet listener is not sufficient.
+2. Signaling and the game-data transport are separate concerns and should have separate lifecycle/metrics.
+3. Authentication and operator identity are transport-adjacent security requirements. Do not mark a connection authenticated merely because the WebRTC data channel opened.
+4. Reliable and unreliable delivery must remain distinct all the way to packet scheduling; do not silently send latency-sensitive movement traffic through the reliable queue.
+5. Fragment reassembly must be bounded (maximum in-flight messages, maximum assembled bytes, and timeout) to prevent memory exhaustion.
+6. The guide's example metadata contains a sample protocol number that does not match the stable 1.26.50 protocol pin. NEXORA must advertise the pinned stable value **2193**, not copy the illustrative value from the guide.
+
+These are protocol requirements from the Mojang partner onboarding guide, not proof that NEXORA has implemented them. The implementation remains pending.

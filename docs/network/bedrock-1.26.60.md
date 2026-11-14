@@ -191,3 +191,18 @@ postLogin.attachTo(router); // before starting the transport module
 ```
 
 The `WorldStartupHandler` is still an injected boundary. NEXORA does not yet provide the production `StartGame` serializer, initial chunk delivery, or a playable world-startup implementation. The coordinator's unit tests exercise ordering, packet emission, malformed/out-of-order response rejection, world-startup failure, and the explicit PLAY transition; they are not live-client tests.
+### StartGame serializer foundation — protocol 2225
+
+Before writing the complete packet, the runtime now has the missing numeric primitives required by its schema:
+
+- ZigZag `varint64` and base-128 `varuint64`, including ten-byte overflow checks.
+- Explicit little-endian 32-bit and 64-bit values and IEEE-754 float encoding, independent of the caller's `ByteBuffer` byte order.
+- Typed `Vec3`, `Vec2`, signed `BlockPosition`, and `SyncedPlayerMovementSettings` encoders/decoders.
+
+The protocol reference marks StartGame packet 11 as 25 top-level fields. Its nested `LevelSettings` has 51 ordered fields in protocol 2225, and the packet also contains opaque/structured player-property and server-configuration data. The complete packet must serialize all of these in schema order; sending a shortened packet with omitted fields would not be a valid implementation. The current code deliberately stops at the fully specified primitives and does not emit a placeholder StartGame packet.
+
+Tests cover signed/unsigned 64-bit varint boundaries, overflow and truncation, native-order numeric bytes, vectors, signed block positions, and movement settings. These are unit-test additions; execution remains pending a functioning CI runner.
+
+Protocol references:
+- https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/start-game-packet/
+- https://mojang.github.io/bedrock-protocol-docs/1.26.60/primitives/

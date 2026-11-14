@@ -6,6 +6,9 @@ import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.io.ByteArrayOutputStream;
+import java.util.List;
+import java.util.zip.Deflater;
 import java.util.zip.Inflater;
 
 import static org.junit.Assert.*;
@@ -90,6 +93,40 @@ public class BedrockAndroidPacketCodecTest {
         BedrockAndroidPacketCodec.encodeLoginBatch(AUTHENTICATION_PAYLOAD_JSON, CLIENT_DATA_JWT, settings);
     }
 
+
+    @Test
+    public void decodesUncompressedServerPlayStatusBatch() {
+        BedrockAndroidNetworkSettings settings =
+                new BedrockAndroidNetworkSettings(0, 0, false, 0, 0.0f);
+        List<BedrockAndroidServerPacket> packets = BedrockAndroidPacketCodec.decodeServerBatch(
+                playStatusEnvelope(0, false), settings);
+
+        assertEquals(1, packets.size());
+        assertEquals(BedrockAndroidPlayStatus.LOGIN_SUCCESS,
+                BedrockAndroidPacketCodec.decodePlayStatus(packets.get(0)));
+    }
+
+    @Test
+    public void decodesRawDeflateServerPlayStatusBatch() {
+        BedrockAndroidNetworkSettings settings =
+                new BedrockAndroidNetworkSettings(1, 0, false, 0, 0.0f);
+        List<BedrockAndroidServerPacket> packets = BedrockAndroidPacketCodec.decodeServerBatch(
+                playStatusEnvelope(3, true), settings);
+
+        assertEquals(BedrockAndroidPlayStatus.PLAYER_SPAWN,
+                BedrockAndroidPacketCodec.decodePlayStatus(packets.get(0)));
+    }
+
+    @Test
+    public void rejectsSnappyAndUnknownServerCompression() {
+        BedrockAndroidNetworkSettings settings =
+                new BedrockAndroidNetworkSettings(1, 0, false, 0, 0.0f);
+        assertThrows(UnsupportedOperationException.class,
+                () -> BedrockAndroidPacketCodec.decodeServerBatch(new byte[] {1, 0}, settings));
+        assertThrows(IllegalArgumentException.class,
+                () -> BedrockAndroidPacketCodec.decodeServerBatch(new byte[] {2, 0}, settings));
+    }
+
     private static void assertLoginBatch(ByteBuffer batch) {
         int packetLength = readVarUInt32(batch);
         assertEquals(packetLength, batch.remaining());
@@ -107,6 +144,40 @@ public class BedrockAndroidPacketCodecTest {
         assertEquals(AUTHENTICATION_PAYLOAD_JSON, new String(auth, StandardCharsets.UTF_8));
         assertEquals(CLIENT_DATA_JWT, new String(clientData, StandardCharsets.UTF_8));
         assertFalse(batch.hasRemaining());
+    }
+
+
+    private static byte[] playStatusEnvelope(int status, boolean compress) {
+        ByteBuffer batch = ByteBuffer.allocate(6);
+        writeVarUInt32(batch, 5);
+        writeVarUInt32(batch, 2);
+        batch.putInt(status).flip();
+        byte[] raw = new byte[batch.remaining()];
+        batch.get(raw);
+        if (!compress) {
+            byte[] envelope = new byte[raw.length + 1];
+            envelope[0] = (byte) 0xff;
+            System.arraycopy(raw, 0, envelope, 1, raw.length);
+            return envelope;
+        }
+        Deflater deflater = new Deflater(Deflater.DEFAULT_COMPRESSION, true);
+        try {
+            deflater.setInput(raw);
+            deflater.finish();
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            byte[] buffer = new byte[128];
+            while (!deflater.finished()) {
+                int count = deflater.deflate(buffer);
+                output.write(buffer, 0, count);
+            }
+            byte[] compressed = output.toByteArray();
+            byte[] envelope = new byte[compressed.length + 1];
+            envelope[0] = 0;
+            System.arraycopy(compressed, 0, envelope, 1, compressed.length);
+            return envelope;
+        } finally {
+            deflater.end();
+        }
     }
 
     private static int readVarUInt32(ByteBuffer input) {

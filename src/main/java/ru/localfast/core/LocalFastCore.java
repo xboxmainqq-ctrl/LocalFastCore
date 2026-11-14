@@ -3446,7 +3446,6 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (amount <= 0) return;
         int level = Math.max(1, Math.min(MAX_LEVEL, get(player, "level", 1)));
         int intelligenceBonus = intelligenceXpBonusPercent(player);
-        if (getRpgClass(player).equals("mage")) intelligenceBonus += 15;
         intelligenceBonus += guildXpBonusPercent(player);
         long boostedAmount = (long) amount + ((long) amount * intelligenceBonus / 100L);
         long totalXp = (long) Math.max(0, get(player, "xp", 0)) + boostedAmount;
@@ -4118,14 +4117,20 @@ public final class LocalFastCore extends PluginBase implements Listener {
         int maxMana = magicMaxMana(player);
         String progress = level >= MAX_MAGIC_LEVEL ? "§6Максимальный уровень магии достигнут!"
                 : "§7Опыт магии: §b" + xp + "§7/" + magicXpRequired(level);
+        String[] spells = {"arcane_bolt", "fireball", "frost_nova", "healing_light", "arcane_shield", "meteor"};
+        StringBuilder spellGuide = new StringBuilder();
+        for (String spell : spells) {
+            spellGuide.append("\n").append(magicSpellName(spell)).append(" §8— ")
+                    .append(magicSpellDescription(spell)).append(" §8(ур. ")
+                    .append(magicSpellUnlockLevel(spell)).append(")");
+        }
         FormWindowSimple form = new FormWindowSimple("§5§lКНИГА МАГИИ",
                 "§7Уровень магии: §d" + level + "§7/" + MAX_MAGIC_LEVEL
                         + "\n" + progress
                         + "\n§7Мана: §b" + mana + "§7/" + maxMana
                         + "\n§7Восстановление: §a" + (getRpgClass(player).equals("mage") ? "3" : "2") + " §7маны/сек."
                         + (getRpgClass(player).equals("mage") ? "\n§bБонус мага: +25% маны и +10% урона." : "")
-                        + "\n\n§fВыбери заклинание:");
-        String[] spells = {"arcane_bolt", "fireball", "frost_nova", "healing_light", "arcane_shield", "meteor"};
+                        + "\n\n§fЗаклинания:" + spellGuide + "\n\n§fНажми на заклинание, чтобы применить его:");
         for (String spell : spells) {
             int unlock = magicSpellUnlockLevel(spell);
             String state = level < unlock ? "§8Заблокировано: ур. " + unlock
@@ -4152,7 +4157,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         EntityCreature best = null;
         double bestDistance = maxDistance * maxDistance;
         for (Entity entity : player.getLevel().getEntities()) {
-            if (!(entity instanceof EntityCreature) || entity == player || entity.isClosed() || !entity.isAlive()) continue;
+            if (!(entity instanceof EntityCreature) || entity instanceof Player || entity == player || entity.isClosed() || !entity.isAlive()) continue;
             EntityCreature creature = (EntityCreature) entity;
             double dx = creature.getX() - player.getX();
             double dy = (creature.getY() + 0.8) - (player.getY() + 1.4);
@@ -4180,7 +4185,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         int hits = 0;
         double radiusSquared = radius * radius;
         for (Entity entity : player.getLevel().getEntities()) {
-            if (!(entity instanceof EntityCreature) || entity == player || entity.isClosed() || !entity.isAlive()) continue;
+            if (!(entity instanceof EntityCreature) || entity instanceof Player || entity == player || entity.isClosed() || !entity.isAlive()) continue;
             EntityCreature target = (EntityCreature) entity;
             double dx = target.getX() - center.getX();
             double dy = target.getY() - center.getY();

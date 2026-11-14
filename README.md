@@ -19,6 +19,8 @@ This module is the beginning of the independent NEXORA server process. It has **
 - Bounded uncompressed Bedrock packet-batch framing with packet length prefixes, packet ID/sub-client headers, and unit tests.
 - Bedrock batch compression envelope for pre-negotiation batches, raw DEFLATE, and uncompressed frames, with decompression limits; Snappy remains explicitly unsupported.
 - Frame-level Bedrock initial handshake processor joins batch framing, compression, RequestNetworkSettings, NetworkSettings response creation, and compressed Login decoding. The host still owns actual transport delivery and real identity/account authentication.
+- NetherNet message framing helper: bounded reliable-message fragmentation with countdown headers, strict unfragmented-message validation for unreliable delivery, and tests that feed encoded fragments through the reassembler.
+- Existing NetherNet fragment assembler enforces per-message byte, fragment-count, and assembly-time limits.
 - Protocol-independent world foundation: immutable block/chunk coordinates, configurable vertical world bounds, immutable namespaced block states, sparse in-memory chunks, and immutable generated-chunk snapshots.
 - Compact chunk storage: sparse 16x16x16 sections with local block-state palettes; common sections use four bits per block index, widening to one byte and then two bytes only when needed.
 - Chunk reads/writes use packed local coordinates and avoid allocating a coordinate record for each block access.
@@ -46,7 +48,7 @@ The current `.nxw` format is an internal NEXORA development format. It stores wo
 
 ## Important limitation
 
-This is a runtime foundation, not yet a playable Minecraft Bedrock server. It currently contains selected Bedrock 1.26.60 payload codecs, packet-batch framing and compression, and a frame-level initial handshake processor, but does not implement NetherNet/WebRTC, Microsoft/Xbox authentication, Bedrock LevelDB storage, entities, inventory, or gameplay. Basic flat chunk generation, bounded background generation, and in-memory chunk insertion exist, but chunk streaming to clients and a production terrain generator are not implemented. The game loop currently drives the scheduler; full world simulation and network event processing still need to be integrated before NEXORA can accept real Bedrock clients.
+This is a runtime foundation, not yet a playable Minecraft Bedrock server. It currently contains selected Bedrock 1.26.60 payload codecs, packet-batch framing and compression, a frame-level initial handshake processor, and transport-independent NetherNet framing helpers. It still does not implement the WebRTC peer connection, HTTP signaling, server identity assertions, Microsoft/Xbox authentication, Bedrock LevelDB storage, entities, inventory, or gameplay. Basic flat chunk generation, bounded background generation, and in-memory chunk insertion exist, but chunk streaming to clients and a production terrain generator are not implemented. The game loop currently drives the scheduler; full world simulation and network event processing still need to be integrated before NEXORA can accept real Bedrock clients.
 
 ## Build
 

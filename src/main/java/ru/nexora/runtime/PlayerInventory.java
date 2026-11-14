@@ -117,6 +117,14 @@ public final class PlayerInventory {
         return current;
     }
 
+    synchronized void restoreSlot(int slot, ItemStack stack) {
+        checkSlot(slot);
+        if (slots[slot] != null) {
+            throw new IllegalStateException("Inventory slot is already populated");
+        }
+        slots[slot] = stack;
+    }
+
     private boolean validSlot(int slot) {
         return slot >= 0 && slot < slots.length;
     }

@@ -322,10 +322,10 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
     private void spawnDroppedItems(PlayerSession session, ItemStack stack) {
         NexoraMovementValidator.Position position = session.position.get();
         for (int index = 0; index < stack.count(); index++) {
-            double offset = (index % 5) * 0.08;
+            double verticalOffset = (index % 4) * 0.03;
             entities.spawn(new WorldEntity(UUID.randomUUID(), WorldEntity.Type.ITEM,
-                    stack.itemId(), position.x() + 0.25 + offset,
-                    position.y() + 0.35, position.z() + 0.25 + offset, 0.0, -1));
+                    stack.itemId(), position.x(), position.y() + 0.35 + verticalOffset,
+                    position.z(), 0.0, -1));
         }
     }
 

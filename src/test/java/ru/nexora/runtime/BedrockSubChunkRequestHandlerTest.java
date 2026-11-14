@@ -24,7 +24,7 @@ class BedrockSubChunkRequestHandlerTest {
         var registry = BedrockRuntimeBlockRegistry.of(Map.of(BlockState.AIR, 0, STONE, 1));
         AtomicInteger fallbackCalls = new AtomicInteger();
         BedrockSubChunkRequestHandler handler = new BedrockSubChunkRequestHandler(
-                SETTINGS, world, ignored -> 0, registry,
+                SETTINGS, world, ignored -> 0, blockProfile(),
                 (connection, message) -> fallbackCalls.incrementAndGet());
         FakeConnection connection = new FakeConnection();
 
@@ -122,6 +122,13 @@ class BedrockSubChunkRequestHandlerTest {
                 BedrockBatchCompressionCodec.encodeAfterNetworkSettings(malformedBatch, SETTINGS),
                 DeliveryMode.RELIABLE_ORDERED));
         assertFalse(malformed.isOpen());
+    }
+
+
+    private static BedrockRuntimeBlockRegistryFile.Loaded blockProfile() {
+        return new BedrockRuntimeBlockRegistryFile.Loaded(
+                2225, "1.26.60", BedrockRuntimeBlockRegistryFile.IdMode.RUNTIME,
+                "0".repeat(64), Map.of(BlockState.AIR, 0, STONE, 1));
     }
 
     private static TransportMessage subchunkRequest(DeliveryMode mode) {

@@ -14,6 +14,7 @@ public final class BedrockAndroidPacketCodec {
     public static final int LOGIN_PACKET_ID = 1;
     public static final int MAX_CONNECTION_REQUEST_BYTES = 1024 * 1024;
     public static final int MAX_CLIENT_DATA_JWT_BYTES = 1024 * 1024;
+    public static final int MAX_LOGIN_JWT_BLOCK_BYTES = 2 * 1024 * 1024 - 32;
 
     private BedrockAndroidPacketCodec() {
     }
@@ -81,6 +82,9 @@ public final class BedrockAndroidPacketCodec {
         }
 
         int jwtBlockLength = 2 * Integer.BYTES + auth.length + clientData.length;
+        if (jwtBlockLength > MAX_LOGIN_JWT_BLOCK_BYTES) {
+            throw new IllegalArgumentException("Bedrock Login JWT block exceeds the packet limit");
+        }
         ByteBuffer payload = ByteBuffer.allocate(
                 4 + varUInt32Size(jwtBlockLength) + jwtBlockLength);
         payload.putInt(PROTOCOL_VERSION);

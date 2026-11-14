@@ -169,8 +169,6 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                 if (state == PeerConnection.IceConnectionState.FAILED) {
                     failIceGathering("ICE-соединение завершилось ошибкой");
                     reportError("ICE-соединение потеряно: " + state);
-                } else if (state == PeerConnection.IceConnectionState.DISCONNECTED) {
-                    reportError("ICE-соединение временно потеряно");
                 }
             }
 
@@ -356,6 +354,11 @@ public final class NetherNetAndroidClient implements AutoCloseable {
 
             @Override
             public void onStateChange() {
+                DataChannel current = reliable ? reliableChannel : unreliableChannel;
+                if (current != null && current.state() == DataChannel.State.CLOSED) {
+                    reportError("NetherNet data channel закрыт");
+                    return;
+                }
                 DataChannel a = reliableChannel;
                 DataChannel b = unreliableChannel;
                 if (a != null && b != null

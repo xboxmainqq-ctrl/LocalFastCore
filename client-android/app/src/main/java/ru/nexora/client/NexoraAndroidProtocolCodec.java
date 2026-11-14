@@ -24,16 +24,17 @@ final class NexoraAndroidProtocolCodec {
     }
 
     static byte[] encodeClientHello(String build) {
-        if (build == null) {
-            throw new IllegalArgumentException("Client build is required");
-        }
+        return encodeClientHello(build, "Игрок");
+    }
+
+    static byte[] encodeClientHello(String build, String playerName) {
+        if (build == null || playerName == null || playerName.isBlank() || playerName.length() > 16) throw new IllegalArgumentException("Client build and player name are required");
         byte[] text = build.getBytes(StandardCharsets.UTF_8);
-        if (text.length < 1 || text.length > 64) {
-            throw new IllegalArgumentException("Client build must be 1..64 UTF-8 bytes");
-        }
-        ByteBuffer output = ByteBuffer.allocate(8 + text.length).order(ByteOrder.BIG_ENDIAN);
+        byte[] name = playerName.getBytes(StandardCharsets.UTF_8);
+        if (text.length < 1 || text.length > 64 || name.length < 1 || name.length > 48) throw new IllegalArgumentException("Invalid NEXORA hello text length");
+        ByteBuffer output = ByteBuffer.allocate(9 + text.length + name.length).order(ByteOrder.BIG_ENDIAN);
         output.put(MAGIC).put((byte) MAJOR_VERSION).put((byte) MINOR_VERSION)
-                .put((byte) 1).put((byte) text.length).put(text);
+                .put((byte) 1).put((byte) text.length).put(text).put((byte) name.length).put(name);
         return output.array();
     }
 
@@ -128,10 +129,14 @@ final class NexoraAndroidProtocolCodec {
 
     static RemotePlayerState decodeRemotePlayerState(byte[] bytes) {
         ByteBuffer input = checkedHeader(bytes, TYPE_REMOTE_PLAYER_STATE);
-        if (input.remaining() != 40) {
-            throw new IllegalArgumentException("Malformed NEXORA remote player state");
-        }
+        if (input.remaining() < 49) throw new IllegalArgumentException("Malformed NEXORA remote player state");
         UUID playerId = new UUID(input.getLong(), input.getLong());
+        int nameLength = Byte.toUnsignedInt(input.get());
+        if (nameLength < 1 || nameLength > 48 || input.remaining() != nameLength + 24) throw new IllegalArgumentException("Invalid remote player name length");
+        byte[] nameBytes = new byte[nameLength];
+        input.get(nameBytes);
+        String playerName = decodeUtf8(nameBytes);
+        if (playerName.isBlank() || playerName.length() > 16) throw new IllegalArgumentException("Invalid remote player name");
         double x = input.getDouble();
         double y = input.getDouble();
         double z = input.getDouble();
@@ -140,7 +145,7 @@ final class NexoraAndroidProtocolCodec {
                 || Math.abs(z) > 30_000_000d) {
             throw new IllegalArgumentException("Invalid NEXORA remote player coordinates");
         }
-        return new RemotePlayerState(playerId, x, y, z);
+        return new RemotePlayerState(playerId, playerName, x, y, z);
     }
 
     static UUID decodeRemotePlayerLeft(byte[] bytes) {

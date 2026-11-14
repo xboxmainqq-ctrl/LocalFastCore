@@ -55,6 +55,7 @@ public final class MainActivity extends Activity {
     private TextView playersStatus;
     private TextView inventoryStatus;
     private final TextView[] inventorySlotViews = new TextView[36];
+    private int selectedInventorySlot = -1;
     private final Map<UUID, String> remotePlayerNames = new LinkedHashMap<>();
 
     @Override
@@ -186,6 +187,24 @@ public final class MainActivity extends Activity {
             inventorySlotViews[slot] = cell;
         }
         playersCard.addView(inventoryGrid, matchWrap());
+        addSpace(playersCard, 10);
+        LinearLayout inventoryActions = new LinearLayout(this);
+        inventoryActions.setOrientation(LinearLayout.VERTICAL);
+        playersCard.addView(inventoryActions, matchWrap());
+        Button dropOneButton = button("ВЫБРОСИТЬ 1");
+        Button dropStackButton = button("ВЫБРОСИТЬ СТАК");
+        Button useItemButton = button("ИСПОЛЬЗОВАТЬ");
+        inventoryActions.addView(dropOneButton, matchWrap());
+        addSpace(inventoryActions, 6);
+        inventoryActions.addView(dropStackButton, matchWrap());
+        addSpace(inventoryActions, 6);
+        inventoryActions.addView(useItemButton, matchWrap());
+        dropOneButton.setOnClickListener(view -> sendInventoryAction(
+                NexoraAndroidProtocolCodec.InventoryAction.DROP_ONE));
+        dropStackButton.setOnClickListener(view -> sendInventoryAction(
+                NexoraAndroidProtocolCodec.InventoryAction.DROP_STACK));
+        useItemButton.setOnClickListener(view -> sendInventoryAction(
+                NexoraAndroidProtocolCodec.InventoryAction.USE));
         addSpace(playersCard, 10);
         skinButton = button("ВНЕШНОСТЬ: НЕОНОВЫЙ ПИЛОТ");
         playersCard.addView(skinButton, matchWrap());
@@ -369,6 +388,19 @@ public final class MainActivity extends Activity {
             }
 
             @Override
+            public void onInventoryActionResult(
+                    NexoraAndroidProtocolCodec.InventoryActionResult result) {
+                String message = switch (result.status()) {
+                    case OK -> "Действие выполнено";
+                    case INVALID_SLOT -> "Неверная ячейка";
+                    case EMPTY_SLOT -> "Ячейка пуста";
+                    case NOT_USABLE -> "У этого предмета пока нет действия";
+                };
+                inventoryStatus.setText(message + " • предметы: " + result.action());
+                selectedInventorySlot = -1;
+            }
+
+            @Override
             public void onChunkDataReceived(NexoraAndroidProtocolCodec.ChunkData chunk) {
                 chunkPreview.setChunk(chunk);
                 connectionStatus.setText("Получено чанков: "
@@ -465,16 +497,20 @@ public final class MainActivity extends Activity {
     private void refreshInventory(NexoraAndroidProtocolCodec.InventoryState inventory) {
         if (inventoryStatus == null) return;
         inventoryStatus.setText("Предметов: " + inventory.totalItems()
-                + " • занято ячеек: " + inventory.stacks().size() + "/36");
-        for (TextView cell : inventorySlotViews) {
+                + " • занято ячеек: " + inventory.stacks().size() + "/36"
+                + (selectedInventorySlot >= 0 ? " • выбрана ячейка " + (selectedInventorySlot + 1) : ""));
+        for (int index = 0; index < inventorySlotViews.length; index++) {
+            TextView cell = inventorySlotViews[index];
             if (cell != null) {
                 cell.setText("—");
                 cell.setTextColor(MUTED);
+                cell.setBackground(rounded(index == selectedInventorySlot
+                        ? Color.rgb(55, 93, 150) : Color.rgb(14, 20, 31), 8));
             }
         }
-        int slot = 0;
         for (NexoraAndroidProtocolCodec.InventoryStack stack : inventory.stacks()) {
-            if (slot >= inventorySlotViews.length) break;
+            int slot = stack.slotIndex();
+            if (slot < 0 || slot >= inventorySlotViews.length) continue;
             String itemName = stack.itemId();
             int separator = itemName.indexOf(':');
             if (separator >= 0) itemName = itemName.substring(separator + 1);
@@ -482,7 +518,48 @@ public final class MainActivity extends Activity {
             if (itemName.length() > 9) itemName = itemName.substring(0, 8) + "…";
             inventorySlotViews[slot].setText(itemName + (char) 10 + "×" + stack.count());
             inventorySlotViews[slot].setTextColor(TEXT);
-            slot++;
+        }
+        for (int index = 0; index < inventorySlotViews.length; index++) {
+            final int slot = index;
+            inventorySlotViews[index].setOnClickListener(view -> {
+                if (selectedInventorySlot < 0) {
+                    selectedInventorySlot = slot;
+                    inventoryStatus.setText("Выбрана ячейка " + (slot + 1)
+                            + " • нажми другую ячейку для перемещения");
+                    refreshInventorySelection();
+                    return;
+                }
+                int source = selectedInventorySlot;
+                selectedInventorySlot = -1;
+                NetherNetAndroidClient client = netherNetClient;
+                if (client == null || !client.sendInventoryAction(
+                        NexoraAndroidProtocolCodec.InventoryAction.MOVE_OR_SWAP, source, slot)) {
+                    inventoryStatus.setText("Не удалось отправить перемещение");
+                } else {
+                    inventoryStatus.setText("Перемещение отправлено серверу...");
+                }
+                refreshInventorySelection();
+            });
+        }
+    }
+
+    private void refreshInventorySelection() {
+        for (int index = 0; index < inventorySlotViews.length; index++) {
+            inventorySlotViews[index].setBackground(rounded(index == selectedInventorySlot
+                    ? Color.rgb(55, 93, 150) : Color.rgb(14, 20, 31), 8));
+        }
+    }
+
+    private void sendInventoryAction(NexoraAndroidProtocolCodec.InventoryAction action) {
+        if (selectedInventorySlot < 0) {
+            inventoryStatus.setText("Сначала выбери ячейку инвентаря");
+            return;
+        }
+        NetherNetAndroidClient client = netherNetClient;
+        if (client == null || !client.sendInventoryAction(action, selectedInventorySlot, 0)) {
+            inventoryStatus.setText("Не удалось отправить действие серверу");
+        } else {
+            inventoryStatus.setText("Действие отправлено серверу...");
         }
     }
 

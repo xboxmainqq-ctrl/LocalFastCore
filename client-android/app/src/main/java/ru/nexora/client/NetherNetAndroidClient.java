@@ -733,7 +733,7 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         private final int clientThrottleThreshold;
         private final float clientThrottleScalar;
 
-        private NetworkSettings(int compressionThreshold, int compressionAlgorithm,
+        NetworkSettings(int compressionThreshold, int compressionAlgorithm,
                                 boolean clientThrottleEnabled, int clientThrottleThreshold,
                                 float clientThrottleScalar) {
             this.compressionThreshold = compressionThreshold;

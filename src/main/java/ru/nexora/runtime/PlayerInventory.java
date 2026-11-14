@@ -63,6 +63,10 @@ public final class PlayerInventory {
         return List.copyOf(result);
     }
 
+    synchronized ItemStack[] slotSnapshot() {
+        return slots.clone();
+    }
+
     /** Returns the stack in an exact slot, or null when the slot is empty. */
     public synchronized ItemStack stackAt(int slot) {
         checkSlot(slot);

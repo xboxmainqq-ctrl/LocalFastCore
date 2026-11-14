@@ -6,7 +6,7 @@ import java.util.Objects;
 /** Protocol-2225 network serializer for one version-9 Bedrock subchunk. */
 public final class BedrockSubChunkTerrainCodec {
     public static final int FORMAT_VERSION = 9;
-    public static final int BLOCK_STORAGE_LAYERS = 2;
+    public static final int STORAGE_LAYER_COUNT = 2;
     private static final int MAX_SERIALIZED_BYTES = 128 * 1024;
 
     private BedrockSubChunkTerrainCodec() {

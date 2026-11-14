@@ -16,6 +16,7 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.GridLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -53,6 +54,7 @@ public final class MainActivity extends Activity {
     private TextView movementStatus;
     private TextView playersStatus;
     private TextView inventoryStatus;
+    private final TextView[] inventorySlotViews = new TextView[36];
     private final Map<UUID, String> remotePlayerNames = new LinkedHashMap<>();
 
     @Override
@@ -166,6 +168,24 @@ public final class MainActivity extends Activity {
         inventoryStatus = text("Ожидаем данные от сервера...", 14, TEXT, false);
         inventoryStatus.setLineSpacing(dp(4), 1.0f);
         playersCard.addView(inventoryStatus, matchWrap());
+        addSpace(playersCard, 8);
+        GridLayout inventoryGrid = new GridLayout(this);
+        inventoryGrid.setColumnCount(6);
+        inventoryGrid.setRowCount(6);
+        for (int slot = 0; slot < inventorySlotViews.length; slot++) {
+            TextView cell = text("—", 10, MUTED, true);
+            cell.setGravity(Gravity.CENTER);
+            cell.setMinHeight(dp(48));
+            cell.setBackground(rounded(Color.rgb(14, 20, 31), 8));
+            GridLayout.LayoutParams cellParams = new GridLayout.LayoutParams(
+                    GridLayout.spec(slot / 6, 1f), GridLayout.spec(slot % 6, 1f));
+            cellParams.width = 0;
+            cellParams.height = dp(50);
+            cellParams.setMargins(dp(2), dp(2), dp(2), dp(2));
+            inventoryGrid.addView(cell, cellParams);
+            inventorySlotViews[slot] = cell;
+        }
+        playersCard.addView(inventoryGrid, matchWrap());
         addSpace(playersCard, 10);
         skinButton = button("ВНЕШНОСТЬ: НЕОНОВЫЙ ПИЛОТ");
         playersCard.addView(skinButton, matchWrap());
@@ -444,22 +464,26 @@ public final class MainActivity extends Activity {
 
     private void refreshInventory(NexoraAndroidProtocolCodec.InventoryState inventory) {
         if (inventoryStatus == null) return;
-        if (inventory.stacks().isEmpty()) {
-            inventoryStatus.setText("Пока пусто • 36 свободных ячеек");
-            return;
+        inventoryStatus.setText("Предметов: " + inventory.totalItems()
+                + " • занято ячеек: " + inventory.stacks().size() + "/36");
+        for (TextView cell : inventorySlotViews) {
+            if (cell != null) {
+                cell.setText("—");
+                cell.setTextColor(MUTED);
+            }
         }
-        StringBuilder display = new StringBuilder();
-        display.append("Предметов: ").append(inventory.totalItems())
-                .append(" • занято ячеек: ").append(inventory.stacks().size()).append("/36");
+        int slot = 0;
         for (NexoraAndroidProtocolCodec.InventoryStack stack : inventory.stacks()) {
+            if (slot >= inventorySlotViews.length) break;
             String itemName = stack.itemId();
             int separator = itemName.indexOf(':');
             if (separator >= 0) itemName = itemName.substring(separator + 1);
             itemName = itemName.replace('_', ' ');
-            display.append((char) 10).append("• ")
-                    .append(itemName).append(" × ").append(stack.count());
+            if (itemName.length() > 9) itemName = itemName.substring(0, 8) + "…";
+            inventorySlotViews[slot].setText(itemName + (char) 10 + "×" + stack.count());
+            inventorySlotViews[slot].setTextColor(TEXT);
+            slot++;
         }
-        inventoryStatus.setText(display.toString());
     }
 
     private void refreshRemotePlayers() {

@@ -261,6 +261,17 @@ public final class MainActivity extends Activity {
             }
 
             @Override
+            public void onRemotePlayerState(
+                    NexoraAndroidProtocolCodec.RemotePlayerState player) {
+                chunkPreview.setRemotePlayerState(player);
+            }
+
+            @Override
+            public void onRemotePlayerLeft(java.util.UUID playerId) {
+                chunkPreview.removeRemotePlayer(playerId);
+            }
+
+            @Override
             public void onChunkDataReceived(NexoraAndroidProtocolCodec.ChunkData chunk) {
                 chunkPreview.setChunk(chunk);
                 connectionStatus.setText("Получено чанков: "

@@ -80,13 +80,14 @@ class BedrockInitialTransportRouterTest {
     void authenticatesLoginUsingIdentityVerifiedBeforeNetherNetPeerAllocation() throws Exception {
         java.security.KeyPairGenerator generator = java.security.KeyPairGenerator.getInstance("EC");
         generator.initialize(new java.security.spec.ECGenParameterSpec("secp384r1"));
+        java.security.KeyPair clientKeyPair = generator.generateKeyPair();
         java.security.interfaces.ECPublicKey key =
-                (java.security.interfaces.ECPublicKey) generator.generateKeyPair().getPublic();
+                (java.security.interfaces.ECPublicKey) clientKeyPair.getPublic();
         NetherNetIdentityValidator.VerifiedIdentity identity =
                 new NetherNetIdentityValidator.VerifiedIdentity(
                         "minecraft-services.net", "nethernet-xuid", "NetherNetPlayer", key,
                         NetherNetIdentityValidator.tokenSha256(JWT));
-        String signedClientData = signedClientDataJwt(generator.generateKeyPair());
+        String signedClientData = signedClientDataJwt(clientKeyPair);
         AtomicInteger playStarts = new AtomicInteger();
         BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
                 SETTINGS,

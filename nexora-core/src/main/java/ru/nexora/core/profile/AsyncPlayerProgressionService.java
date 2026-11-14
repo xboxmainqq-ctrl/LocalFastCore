@@ -153,7 +153,7 @@ public final class AsyncPlayerProgressionService implements AutoCloseable {
             }
             try {
                 result.complete(operation.call());
-            } catch (Throwable failure) {
+            } catch (Exception failure) {
                 result.completeExceptionally(failure);
             }
         }

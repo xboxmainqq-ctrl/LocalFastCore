@@ -32,6 +32,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.zip.Deflater;
+import java.io.ByteArrayOutputStream;
 import java.util.function.Consumer;
 
 /**
@@ -47,6 +49,7 @@ public final class NetherNetAndroidClient implements AutoCloseable {
     private static final int MAX_FRAGMENTS = 255;
     private static final long MAX_BUFFERED_BYTES = 8L * 1024 * 1024;
     private static final int MAX_SDP_BYTES = 256 * 1024;
+    private static final int MAX_LOGIN_REQUEST_BYTES = 1024 * 1024;
     private static final SecureRandom NETWORK_ID_RANDOM = new SecureRandom();
     private static final Object FACTORY_INIT_LOCK = new Object();
     private static boolean factoryInitialized;
@@ -61,12 +64,14 @@ public final class NetherNetAndroidClient implements AutoCloseable {
     });
     private final AtomicBoolean closed = new AtomicBoolean();
     private final AtomicBoolean connectedNotified = new AtomicBoolean();
+    private final AtomicBoolean loginSent = new AtomicBoolean();
 
     private volatile Listener listener;
     private volatile PeerConnectionFactory factory;
     private volatile PeerConnection peer;
     private volatile DataChannel reliableChannel;
     private volatile DataChannel unreliableChannel;
+    private volatile NetworkSettings networkSettings;
     private volatile CompletableFuture<Boolean> trustDecision;
     private final Object fragmentLock = new Object();
     private ByteArrayOutputStream reliableAssembly;
@@ -473,6 +478,7 @@ public final class NetherNetAndroidClient implements AutoCloseable {
             if (!networkSettingsReceived) {
                 try {
                     NetworkSettings settings = decodeNetworkSettings(complete);
+                    networkSettings = settings;
                     networkSettingsReceived = true;
                     Listener current = listener;
                     if (current != null) {
@@ -559,6 +565,99 @@ public final class NetherNetAndroidClient implements AutoCloseable {
             value >>>= 7;
         }
         output.put((byte) value);
+    }
+
+    /**
+     * Sends the Bedrock Login packet after NetworkSettings has been negotiated.
+     * The caller must supply a complete, authenticated Connection Request JSON
+     * produced by a separate Microsoft/Xbox credential provider.
+     */
+    public boolean sendLogin(String connectionRequestJson) {
+        if (connectionRequestJson == null || !networkSettingsReceived || !isConnected()
+                || !loginSent.compareAndSet(false, true)) {
+            return false;
+        }
+        byte[] request = connectionRequestJson.getBytes(StandardCharsets.UTF_8);
+        if (request.length == 0 || request.length > MAX_LOGIN_REQUEST_BYTES) {
+            loginSent.set(false);
+            throw new IllegalArgumentException("Bedrock Connection Request exceeds the configured limit");
+        }
+
+        ByteBuffer payload = ByteBuffer.allocate(4 + varUInt32Size(request.length) + request.length);
+        payload.putInt(2225);
+        writeVarUInt32(payload, request.length);
+        payload.put(request);
+        payload.flip();
+
+        int packetLength = varUInt32Size(1) + payload.remaining();
+        ByteBuffer batch = ByteBuffer.allocate(varUInt32Size(packetLength) + packetLength);
+        writeVarUInt32(batch, packetLength);
+        writeVarUInt32(batch, 1); // Login packet ID, both sub-client IDs zero
+        batch.put(payload);
+        batch.flip();
+
+        final byte[] framedBatch;
+        try {
+            ByteBuffer compressed = encodeAfterNetworkSettings(batch, networkSettings);
+            framedBatch = new byte[compressed.remaining()];
+            compressed.get(framedBatch);
+        } catch (RuntimeException failure) {
+            loginSent.set(false);
+            throw failure;
+        }
+        boolean accepted = sendReliable(framedBatch);
+        if (!accepted) {
+            loginSent.set(false);
+        }
+        return accepted;
+    }
+
+    private static ByteBuffer encodeAfterNetworkSettings(ByteBuffer batch, NetworkSettings settings) {
+        boolean disabled = settings.compressionThreshold() == 0;
+        boolean belowThreshold = batch.remaining() < settings.compressionThreshold();
+        if (settings.compressionAlgorithm() == 0xffff || disabled || belowThreshold) {
+            ByteBuffer output = ByteBuffer.allocate(batch.remaining() + 1);
+            output.put((byte) 0xff).put(batch.duplicate()).flip();
+            return output.asReadOnlyBuffer();
+        }
+        if (settings.compressionAlgorithm() == 1) {
+            throw new UnsupportedOperationException("Snappy compression is not implemented in Android client");
+        }
+        if (settings.compressionAlgorithm() != 0) {
+            throw new IllegalArgumentException("Unknown Bedrock compression algorithm");
+        }
+
+        byte[] source = new byte[batch.remaining()];
+        batch.duplicate().get(source);
+        Deflater deflater = new Deflater(Deflater.DEFAULT_COMPRESSION, true);
+        try {
+            deflater.setInput(source);
+            deflater.finish();
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            byte[] buffer = new byte[8192];
+            while (!deflater.finished()) {
+                int written = deflater.deflate(buffer);
+                if (written <= 0) {
+                    throw new IllegalStateException("Raw DEFLATE encoder made no progress");
+                }
+                output.write(buffer, 0, written);
+            }
+            byte[] compressed = output.toByteArray();
+            ByteBuffer result = ByteBuffer.allocate(compressed.length + 1);
+            result.put((byte) 0x00).put(compressed).flip();
+            return result.asReadOnlyBuffer();
+        } finally {
+            deflater.end();
+        }
+    }
+
+    private static int varUInt32Size(int value) {
+        int size = 1;
+        while ((value & 0xffffff80) != 0) {
+            value >>>= 7;
+            size++;
+        }
+        return size;
     }
 
     public boolean sendReliable(byte[] payload) {

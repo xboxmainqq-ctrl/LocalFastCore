@@ -11,6 +11,7 @@ import ru.nexora.core.platform.NexoraPlatform;
 import ru.nexora.core.profile.PlayerProgressionService;
 import ru.nexora.core.profile.PlayerProfileRepository;
 import ru.nexora.core.profile.SqlitePlayerProfileRepository;
+import ru.nexora.core.rpg.RpgClassRegistry;
 import ru.nexora.core.security.AuditLogger;
 import ru.nexora.core.security.IntegrityChecker;
 import ru.nexora.core.security.NexoraSecurityManager;
@@ -34,6 +35,7 @@ public final class NexoraCore extends PluginBase {
     private NexoraSecurityManager security;
     private PlayerProfileRepository profileRepository;
     private PlayerProgressionService progression;
+    private RpgClassRegistry classes;
     private NexoraAPI api;
 
     @Override
@@ -53,8 +55,9 @@ public final class NexoraCore extends PluginBase {
 
             profileRepository = new SqlitePlayerProfileRepository(
                     dataFolder.resolve("players.sqlite"));
-            progression = new PlayerProgressionService(profileRepository);
-            api = new NexoraAPI(services, eventBus, storage, platform, security, progression);
+            classes = new RpgClassRegistry();
+            progression = new PlayerProgressionService(profileRepository, classes);
+            api = new NexoraAPI(services, eventBus, storage, platform, security, progression, classes);
 
             services.register(EventBus.class, eventBus);
             services.register(KeyValueStore.class, storage);
@@ -62,6 +65,7 @@ public final class NexoraCore extends PluginBase {
             services.register(NexoraSecurityManager.class, security);
             services.register(PlayerProfileRepository.class, profileRepository);
             services.register(PlayerProgressionService.class, progression);
+            services.register(RpgClassRegistry.class, classes);
             services.register(NexoraAPI.class, api);
 
             getServer().getPluginManager().registerEvents(new NukkitPlayerListener(eventBus), this);
@@ -104,6 +108,7 @@ public final class NexoraCore extends PluginBase {
 
         if (api != null) services.unregister(NexoraAPI.class, api);
         if (progression != null) services.unregister(PlayerProgressionService.class, progression);
+        if (classes != null) services.unregister(RpgClassRegistry.class, classes);
         if (profileRepository != null) services.unregister(PlayerProfileRepository.class, profileRepository);
         if (platform != null) services.unregister(NexoraPlatform.class, platform);
         if (security != null) services.unregister(NexoraSecurityManager.class, security);

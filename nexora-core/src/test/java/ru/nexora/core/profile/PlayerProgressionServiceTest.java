@@ -57,7 +57,7 @@ class PlayerProgressionServiceTest {
     }
 
     @Test
-    void capsAtMaximumLevelAndRejectsInvalidExperience() throws IOException {
+    void capsAtExperienceThresholdForLevel100() throws IOException {
         InMemoryProfiles repository = new InMemoryProfiles();
         PlayerProgressionService service = new PlayerProgressionService(repository);
         UUID id = UUID.randomUUID();
@@ -66,9 +66,20 @@ class PlayerProgressionServiceTest {
         PlayerProgressionService.ProgressResult result = service.addExperience(id, Long.MAX_VALUE);
 
         assertEquals(PlayerProgressionService.MAX_LEVEL, result.profile().level());
-        assertEquals(PlayerProgressionService.experienceRequiredForLevel(100),
+        assertEquals(PlayerProgressionService.experienceRequiredForLevel(99),
                 result.profile().experience());
+        assertEquals(99 * 5, result.unspentAttributePoints());
         assertThrows(IllegalArgumentException.class, () -> service.addExperience(id, 0));
+    }
+
+    @Test
+    void rejectsInconsistentStoredLevelInsteadOfSilentlyRewritingProgress() throws IOException {
+        InMemoryProfiles repository = new InMemoryProfiles();
+        UUID id = UUID.randomUUID();
+        repository.save(new PlayerProfile(id, "Player", Optional.empty(), 8, 0, Map.of()));
+        PlayerProgressionService service = new PlayerProgressionService(repository);
+
+        assertThrows(IllegalStateException.class, () -> service.addExperience(id, 25));
     }
 
     private static final class InMemoryProfiles implements PlayerProfileRepository {

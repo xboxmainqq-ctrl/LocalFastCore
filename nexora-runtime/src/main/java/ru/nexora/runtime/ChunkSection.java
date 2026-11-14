@@ -85,18 +85,23 @@ final class ChunkSection {
     }
 
     private void widenToBytes() {
-        byteIndices = new byte[BLOCK_COUNT];
+        byte[] oldNibbles = nibbleIndices;
+        byte[] widened = new byte[BLOCK_COUNT];
         for (int i = 0; i < BLOCK_COUNT; i++) {
-            byteIndices[i] = (byte) readIndex(i);
+            int packed = Byte.toUnsignedInt(oldNibbles[i >>> 1]);
+            widened[i] = (byte) ((i & 1) == 0 ? packed & 0x0F : packed >>> 4);
         }
+        byteIndices = widened;
         nibbleIndices = null;
     }
 
     private void widenToShorts() {
-        shortIndices = new short[BLOCK_COUNT];
+        byte[] oldBytes = byteIndices;
+        short[] widened = new short[BLOCK_COUNT];
         for (int i = 0; i < BLOCK_COUNT; i++) {
-            shortIndices[i] = (short) readIndex(i);
+            widened[i] = (short) Byte.toUnsignedInt(oldBytes[i]);
         }
+        shortIndices = widened;
         byteIndices = null;
     }
 

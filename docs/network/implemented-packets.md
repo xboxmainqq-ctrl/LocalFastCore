@@ -2,7 +2,7 @@
 
 Target: Bedrock 1.26.60, protocol 2225.
 
-The Java runtime now contains payload codecs for three packet types plus a bounded uncompressed packet-batch codec. This does not implement compression negotiation, NetherNet, authentication, or a complete client session.
+The Java runtime now contains payload codecs for three packet types, bounded packet-batch framing, a compression envelope, and a state model for the initial server-side login handshake. This still does not implement NetherNet transport, identity verification, Microsoft/Xbox authentication, or a complete client session.
 
 | Packet | ID | Payload implemented | Status |
 |---|---:|---|---|
@@ -41,6 +41,19 @@ The batch codec implements the raw, uncompressed Bedrock batch body. It does not
 - Decoder limits default to 8 MiB per batch, 2 MiB per packet, and 1024 packets. Limits can be tightened by callers.
 
 The packet header and batch format are cross-checked against the Bedrock protocol documentation ecosystem and the PocketMine BedrockProtocol batch encoder/decoder implementation. These are framing-level implementation references, not proof of interoperability with protocol 2225 clients.
+
+## Initial server-side handshake state machine
+
+`BedrockSessionHandshake` coordinates decoded `RequestNetworkSettingsPacket` and `LoginPacket` payloads through these states:
+
+1. `AWAITING_NETWORK_SETTINGS_REQUEST`
+2. `NETWORK_SETTINGS_PENDING` after an accepted protocol-2225 request
+3. `AWAITING_LOGIN` only after the host confirms that NetworkSettings was handed to the transport
+4. `AUTHENTICATION_PENDING` after a matching Login packet
+5. `PLAY` only after the host explicitly reports successful authentication
+6. `CLOSED` for unsupported protocol, Login protocol mismatch, or explicit close
+
+Out-of-order and repeated packets are rejected without advancing the state. The handshake is synchronized for safe state transitions across transport/authentication callbacks. It does not send packets, verify JWTs or signatures, contact Microsoft/Xbox services, or authenticate a player. The host must not call `markAuthenticated()` until those checks have genuinely succeeded.
 
 ## Verification boundary
 

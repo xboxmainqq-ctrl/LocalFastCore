@@ -518,13 +518,31 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                     if (current != null) {
                         mainHandler.post(() -> current.onWorldInfoReceived(world));
                     }
+                    int spawnChunkX = Math.floorDiv(world.spawnX(), 16);
+                    int spawnChunkZ = Math.floorDiv(world.spawnZ(), 16);
+                    if (!sendReliable(NexoraAndroidProtocolCodec.encodeChunkRequest(
+                            spawnChunkX, spawnChunkZ))) {
+                        reportError("Не удалось запросить стартовый чанк NEXORA");
+                    } else {
+                        reportStatus("Сведения о мире получены • запрашиваем стартовый чанк...");
+                    }
                     return;
                 } catch (RuntimeException malformed) {
                     reportError("Некорректные сведения о мире NEXORA: " + malformed.getMessage());
                     return;
                 }
             }
-            reportError("Сообщение игрового протокола NEXORA пока не поддерживается клиентом");
+            try {
+                NexoraAndroidProtocolCodec.ChunkData chunk =
+                        NexoraAndroidProtocolCodec.decodeChunkData(complete);
+                Listener current = listener;
+                if (current != null) {
+                    mainHandler.post(() -> current.onChunkDataReceived(chunk));
+                }
+                reportStatus("Стартовый чанк получен • " + chunk.chunkX() + ", " + chunk.chunkZ());
+            } catch (RuntimeException malformed) {
+                reportError("Некорректные данные чанка NEXORA: " + malformed.getMessage());
+            }
             return;
         }
     }
@@ -800,6 +818,9 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         }
 
         default void onWorldInfoReceived(NexoraAndroidProtocolCodec.WorldInfo world) {
+        }
+
+        default void onChunkDataReceived(NexoraAndroidProtocolCodec.ChunkData chunk) {
         }
 
         default void onNetworkSettingsReceived(BedrockAndroidNetworkSettings settings) {

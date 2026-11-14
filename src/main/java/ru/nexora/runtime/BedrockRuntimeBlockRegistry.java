@@ -26,6 +26,10 @@ public interface BedrockRuntimeBlockRegistry {
                 throw new IllegalArgumentException(
                         "Bedrock block-state hash collision between " + previous + " and " + state);
             }
+            if (previous == null && statesByHash.size() > 500_000) {
+                statesByHash.remove(hash, state);
+                throw new IllegalStateException("Hashed block registry exceeds 500,000 unique states");
+            }
             return hash;
         };
     }

@@ -16,18 +16,15 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
- * Routes newly established transport peers through the initial Bedrock
- * NetworkSettings/Login handshake before handing fully initialized peers to play.
- *
- * <p>The injected login initializer is responsible for cryptographic player
- * authentication and the Bedrock encryption handshake. Returning {@code true}
- * means both are complete; this router does not implement those cryptographic
- * steps itself.</p>
+ * Routes NetherNet peers through NetworkSettings and Login, then holds the
+ * authenticated session in LOGIN_SUCCESS_SENT while resource packs and world
+ * startup are completed by the post-login handler. A session enters PLAY only
+ * when the host explicitly calls {@link #markPlayReady(TransportConnection)}.
  */
 public final class BedrockInitialTransportRouter implements Consumer<TransportConnection>, AutoCloseable {
     private final BedrockNetworkSettings networkSettings;
     private final LoginAuthenticator loginAuthenticator;
-    private final java.util.function.BiConsumer<TransportConnection, BedrockAuthenticatedPlayer> playListener;
+    private final java.util.function.BiConsumer<TransportConnection, BedrockAuthenticatedPlayer> loginSuccessListener;
     private final BiConsumer<TransportConnection, TransportMessage> playMessageHandler;
     private final Duration handshakeTimeout;
     private final ScheduledExecutorService timeoutExecutor;
@@ -36,9 +33,9 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
 
     public BedrockInitialTransportRouter(BedrockNetworkSettings networkSettings,
                                          LoginAuthenticator loginAuthenticator,
-                                         java.util.function.BiConsumer<TransportConnection, BedrockAuthenticatedPlayer> playListener,
+                                         java.util.function.BiConsumer<TransportConnection, BedrockAuthenticatedPlayer> loginSuccessListener,
                                          BiConsumer<TransportConnection, TransportMessage> playMessageHandler) {
-        this(networkSettings, loginAuthenticator, playListener, playMessageHandler,
+        this(networkSettings, loginAuthenticator, loginSuccessListener, playMessageHandler,
                 Duration.ofSeconds(60));
     }
 
@@ -49,7 +46,7 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
                                          Duration handshakeTimeout) {
         this.networkSettings = Objects.requireNonNull(networkSettings, "networkSettings");
         this.loginAuthenticator = Objects.requireNonNull(loginAuthenticator, "loginAuthenticator");
-        this.playListener = Objects.requireNonNull(playListener, "playListener");
+        this.loginSuccessListener = Objects.requireNonNull(loginSuccessListener, "loginSuccessListener");
         this.playMessageHandler = Objects.requireNonNull(playMessageHandler, "playMessageHandler");
         this.handshakeTimeout = Objects.requireNonNull(handshakeTimeout, "handshakeTimeout");
         if (handshakeTimeout.isNegative() || handshakeTimeout.isZero()
@@ -89,11 +86,14 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
             if (session.closed.get()) {
                 return;
             }
-            if (session.processor.state() == BedrockHandshakeState.PLAY) {
+            if (session.processor.state() == BedrockHandshakeState.LOGIN_SUCCESS_SENT
+                    || session.processor.state() == BedrockHandshakeState.PLAY) {
                 try {
+                    // Before PLAY this handler owns resource-pack and world-startup
+                    // responses; after markPlayReady it owns normal gameplay packets.
                     playMessageHandler.accept(session.connection, message);
                 } catch (RuntimeException failure) {
-                    close(session, "Play message handler failed");
+                    close(session, "Post-login message handler failed");
                 }
                 return;
             }
@@ -203,16 +203,39 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
                     return;
                 }
                 if (session.processor.markAuthenticated() != BedrockHandshakeResult.ACCEPTED) {
-                    close(session, "Could not enter Bedrock play state");
+                    close(session, "Could not record Bedrock LoginSuccess state");
                     return;
                 }
+                scheduleTimeout(session, "Bedrock resource-pack/world initialization timed out");
                 try {
-                    playListener.accept(session.connection, accepted);
+                    loginSuccessListener.accept(session.connection, accepted);
                 } catch (RuntimeException failureToStartPlay) {
-                    close(session, "Could not initialize Bedrock play session");
+                    close(session, "Could not initialize Bedrock post-login session");
                 }
             }
         });
+    }
+
+    /**
+     * Marks the session playable only after resource-pack negotiation and the
+     * complete StartGame/world initialization sequence have been sent.
+     */
+    public BedrockHandshakeResult markPlayReady(TransportConnection connection) {
+        Objects.requireNonNull(connection, "connection");
+        Session session = sessions.get(connection.id());
+        if (session == null || session.connection != connection) {
+            return BedrockHandshakeResult.INVALID_STATE;
+        }
+        synchronized (session) {
+            if (session.closed.get()) {
+                return BedrockHandshakeResult.SESSION_CLOSED;
+            }
+            BedrockHandshakeResult result = session.processor.markPlayReady();
+            if (result == BedrockHandshakeResult.ACCEPTED) {
+                cancelTimeout(session);
+            }
+            return result;
+        }
     }
 
     private ByteBuffer encodeLoginSuccessFrame() {

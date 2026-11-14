@@ -106,13 +106,16 @@ public final class MainActivity extends Activity {
         ), matchWrap());
 
         addSpace(page, 18);
-        TextView mapTitle = text("ОБЪЁМНЫЙ ПРОСМОТР МИРА • 3×3 ЧАНКА", 12, MUTED, true);
+        TextView mapTitle = text("3D МИР NEXORA • OPENGL ES 2.0", 12, MUTED, true);
         page.addView(mapTitle, matchWrap());
         addSpace(page, 8);
         chunkPreview = new ChunkPreviewView(this);
         chunkPreview.setVisibility(View.GONE);
         page.addView(chunkPreview, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(240)));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(300)));
+        addSpace(page, 6);
+        page.addView(text("Проведи пальцем — повернуть камеру • двумя пальцами — приблизить или отдалить",
+                12, MUTED, false), matchWrap());
 
         addSpace(page, 20);
         LinearLayout infoCard = card();
@@ -123,7 +126,7 @@ public final class MainActivity extends Activity {
         addSpace(infoCard, 8);
         infoCard.addView(text("Внутренний протокол NEXORA v1", 13, MUTED, false), matchWrap());
         addSpace(infoCard, 8);
-        infoCard.addView(text("Режим: просмотр мира 3×3 • разработка", 13, MUTED, false), matchWrap());
+        infoCard.addView(text("Режим: перспективный 3D-просмотр • разработка", 13, MUTED, false), matchWrap());
 
         addSpace(page, 26);
         TextView footer = text("СОЗДАЁМ СВОЙ МИР", 11, MUTED, true);
@@ -230,6 +233,22 @@ public final class MainActivity extends Activity {
             }
         });
         connectButton.setText("ПОДКЛЮЧАЕМСЯ...");
+    }
+
+    @Override
+    protected void onPause() {
+        if (chunkPreview != null) {
+            chunkPreview.onPause();
+        }
+        super.onPause();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (chunkPreview != null) {
+            chunkPreview.onResume();
+        }
     }
 
     @Override

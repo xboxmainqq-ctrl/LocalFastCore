@@ -314,16 +314,23 @@ class NexoraPrivateProtocolHandlerTest {
 
         assertTrue(inventories.isEmpty(), "Saved inventory should leave the active-session map");
 
+        EntityRegistry restartedEntities = new EntityRegistry();
+        java.util.Map<UUID, PlayerInventory> restartedInventories =
+                new java.util.concurrent.ConcurrentHashMap<>();
+        NexoraPrivateProtocolHandler restartedHandler = new NexoraPrivateProtocolHandler(
+                UUID.randomUUID(), 8 * 1024 * 1024, () -> info,
+                () -> world, ignored -> true, ignored -> { },
+                restartedEntities, restartedInventories, storage);
         FakeConnection secondConnection = new FakeConnection();
-        handler.accept(secondConnection);
+        restartedHandler.accept(secondConnection);
         secondConnection.deliver(NexoraPrivateProtocolCodec.encodeClientHello(
                 "android-dev", "PersistentPlayer", 0));
-        UUID secondPlayerId = entities.snapshot().stream()
+        UUID secondPlayerId = restartedEntities.snapshot().stream()
                 .filter(entity -> entity.type() == WorldEntity.Type.PLAYER)
                 .findFirst().orElseThrow().id();
 
         assertEquals(firstPlayerId, secondPlayerId);
-        PlayerInventory restored = handler.inventory(secondPlayerId).orElseThrow();
+        PlayerInventory restored = restartedHandler.inventory(secondPlayerId).orElseThrow();
         assertEquals(new ItemStack("minecraft:diamond", 1), restored.stackAt(0));
     }
 

@@ -152,6 +152,11 @@ class NexoraPrivateProtocolHandlerTest {
                 () -> world, ignored -> true, ignored -> { }).accept(connection);
         connection.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
 
+        assertEquals(3, connection.sentMessages.size());
+        assertEquals(new NexoraMovementValidator.Position(0.5, 65.0, 0.5),
+                NexoraMovementPacketCodec.decodeServerPosition(
+                        ByteBuffer.wrap(connection.sentMessages.get(2))));
+
         NexoraMovementValidator.Position proposed =
                 new NexoraMovementValidator.Position(0.7, 65.0, 0.5);
         connection.deliver(NexoraMovementPacketCodec.encodeClientMove(proposed));

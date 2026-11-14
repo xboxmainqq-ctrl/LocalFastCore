@@ -78,7 +78,8 @@ public final class NetherNetServerIdentitySigner {
                 fingerprints.add(line);
             }
         }
-        if (firstMedia < 0 || fingerprints.isEmpty() || mediaSections != 1) {
+        if (firstMedia < 0 || !lines[firstMedia].startsWith("m=application ")
+                || fingerprints.isEmpty() || mediaSections != 1) {
             throw new IllegalArgumentException(
                     "NetherNet answer requires one application media section and DTLS fingerprints");
         }

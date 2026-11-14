@@ -44,3 +44,7 @@ Output JAR:
 6. Evaluate a maintained server fork only after the compatibility layer is stable.
 
 Do not install this development snapshot on the live server. Back up the server and test on a copy first.
+
+## Platform independence
+
+The ru.nexora.core.platform package defines platform-neutral contracts. New public APIs should use NEXORA-owned immutable models such as PlayerSnapshot, never expose Nukkit classes or live platform objects. The current Nukkit-MOT bootstrap and listener bridge are still the host adapter; the new NexoraPlatform contract is not yet wired to a runtime implementation. See [NEXORA_STANDALONE_ARCHITECTURE.md](../NEXORA_STANDALONE_ARCHITECTURE.md) for the staged migration plan and removal criteria.

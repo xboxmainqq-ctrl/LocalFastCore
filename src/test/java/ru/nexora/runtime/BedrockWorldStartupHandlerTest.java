@@ -45,7 +45,7 @@ class BedrockWorldStartupHandlerTest {
         assertEquals(-1, BedrockBinary.readVarUInt32(firstSkeleton));
         assertEquals(1, Byte.toUnsignedInt(firstSkeleton.get())); // request limit present
         assertEquals(-1, BedrockBinary.readVarInt32(firstSkeleton));
-        assertFalse(firstSkeleton.get() != 0); // cache disabled
+        assertEquals(0, Byte.toUnsignedInt(firstSkeleton.get())); // cache disabled
     }
 
     @Test

@@ -52,7 +52,7 @@ The official 1.26.60 release notes state that the dedicated-server warning about
 
 - Exact server-side implementation details and operational requirements for NetherNet.
 - Signaling/discovery deployment, TLS, and network reachability requirements for a standalone third-party server.
-- How transport identity/session metadata is bound to Bedrock login and encryption in a real-client exchange.
+- Real-client confirmation that the verified NetherNet offer identity is consistently associated with the following Bedrock Login and that the target client accepts the selected NetherNet login sequence.
 - Android client compatibility and any platform-specific constraints.
 - Which packet schema changes among the 64 changes affect the minimum playable login/world/chunk/movement path; these must be audited individually against the 1.26.60 reference before implementing those packet serializers.
 
@@ -62,12 +62,12 @@ No packet bytes, handshake messages, encryption behavior, or transport guarantee
 
 The standalone runtime currently has bounded Login packet decoding and a structural parser for the Connection Request JSON envelope:
 
-- Extracts the `chain` array and `clientData` compact JWT string.
+- Parses both the legacy `chain`/`clientData` object and the newer `AuthenticationType`/`Token`/`Certificate` envelope.
 - Bounds the JSON input, JWT string lengths, chain count, parser nesting depth (64), and rejects duplicate JSON keys and trailing JSON content.
-- Checks only the compact three-segment JWT shape and Base64URL character set.
+- Checks only the compact JWT envelope shape and bounded fields; it does not authenticate those tokens.
 - Exposes the parsed envelope through `BedrockLoginPacket.parseConnectionRequest()`.
 
-**Security boundary:** this is parsing only. It does not verify JWT signatures, certificate-chain trust, issuer/audience/expiry claims, Xbox identity, or player identity. It must never be used as proof that a player is authenticated. Those checks require a separate verifier against the correct Mojang trust material and must be tested with genuine client login exchanges.
+**Security boundary:** the Login JSON parser is structural only. In the production NetherNet path, player authentication is performed earlier from Mojang's SDP `a=identity` assertion: the GameServerToken signature and claims are verified, then the detached fingerprint JWS proves possession of the key bound to the DTLS certificate. The verified identity is now carried from signaling into the WebRTC transport connection and then into the Bedrock router. The Login JSON itself is never treated as the source of trusted player identity.
 
 ### Server encryption handshake primitive
 
@@ -75,18 +75,17 @@ A first cryptographic building block now exists in `BedrockServerEncryptionHands
 
 - Requires an EC server key pair and an authenticated P-384 client identity public key.
 - Creates an ES384 compact JWT with the server public key in `x5u` and a random salt claim.
-- Derives the 256-bit session key as SHA-256(salt || ECDH-secret) using P-384 ECDH.
-- Derives 256-bit key material as SHA-256(salt || ECDH-secret), using P-384 ECDH.
+- Derives 256-bit key material as SHA-256(salt || ECDH-secret) using P-384 ECDH.
 - Includes unit tests for JWT signature, client/server key agreement, and key size.
+- This is an isolated legacy Bedrock key-exchange primitive; it is not wired into the NetherNet data-channel path and does not select an application cipher.
 
-The protocol-2225 `PlayStatus` values and 4-byte big-endian packet codec are also implemented and covered by tests. The codec is not yet connected to the router's login completion path.
-- Deliberately does **not** select or expose an application cipher. Earlier CFB8 assumptions were removed rather than treating an unverified cipher mode as protocol fact.
+The protocol-2225 `PlayStatus` values and 4-byte big-endian packet codec are implemented. The router now sends `PlayStatus(LoginSuccess)` after the signaling-authenticated player identity has been attached to the transport.
 
-**Transport boundary:** NEXORA targets NetherNet. Mojang's onboarding guide specifies WebRTC data channels, which are protected by DTLS. The existence of the legacy Bedrock packet 3/4 schemas does not by itself prove that this extra application-layer handshake is required over NetherNet. NEXORA must follow the NetherNet path and confirm the exact login exchange against an unmodified 1.26.60 client; do not force a legacy cipher onto the DTLS-protected channel.
+**Transport boundary:** Mojang's NetherNet guide defines the game transport as WebRTC data channels protected by DTLS. NEXORA binds the validated SDP identity to the created peer session; it does not infer player identity merely from an open data channel. The isolated legacy Bedrock ECDH primitive is not injected into this transport path. The exact packet 3/4 behavior and whether any additional game-layer encryption applies on NetherNet still require an unmodified 1.26.60 client test.
 
-**Current router checkpoint:** the boolean callback has been replaced with a typed `BedrockAuthenticatedPlayer` result, which must contain a verified identity and its P-384 client key. After the authenticator accepts the Login, the router sends the compressed `PlayStatus(LoginSuccess)` packet and only then transitions to PLAY and notifies the play listener. Tests cover the successful path and rejection path.
+**Current router checkpoint:** the signaling validator now returns its verified player identity. The signaling server passes it to the peer host, the WebRTC session retains it, and the resulting transport connection exposes it as an optional authenticated identity. In the production authenticated path, the Bedrock router converts that trusted XUID, display name and P-384 key into `BedrockAuthenticatedPlayer`; it does not ask a second authenticator to trust the unverified Login JSON. Explicit development mode can still create identity-free sessions, but that mode is unauthenticated and must not be used publicly. The router sends compressed `PlayStatus(LoginSuccess)` and then enters PLAY. Unit tests cover identity propagation and this login route.
 
-**Still not complete:** there is no production Bedrock Login authenticator yet. The router contract is now ready for one, but no certificate/JWT trust chain is accepted by default, and the cryptographic key-derivation primitive is not wired into packet flow. NetherNet DTLS remains the transport security layer; the exact packet 3/4 behavior must be confirmed with an unmodified 1.26.60 client before any application-layer handshake is added. Unit tests do not establish playable compatibility.
+**Still not complete:** no real unmodified 1.26.60 client has been connected to verify that the SDP identity, Login payload and PlayStatus sequence match the live client. The legacy certificate-chain verifier is not used as the production NetherNet trust anchor; the Mojang GameServerToken plus detached fingerprint proof is. World/resource-pack/start-game/chunk streaming remains incomplete. Unit tests do not establish playable compatibility.
 
 ## Acceptance gates
 

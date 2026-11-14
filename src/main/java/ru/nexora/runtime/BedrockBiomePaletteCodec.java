@@ -12,7 +12,8 @@ import java.util.Objects;
  * Bedrock network biome palette storage for one 16x16x16 section.
  *
  * <p>Biome palettes use numeric biome IDs (unsigned VarInt), while sharing
- * the network bit-packed storage layout used by block palettes.</p>
+ * the network bit-packed storage layout used by block palettes. Input values
+ * are expected in Bedrock XZY order (Y is the fastest-changing coordinate).</p>
  */
 public final class BedrockBiomePaletteCodec {
     public static final int BIOME_COUNT = 4096;

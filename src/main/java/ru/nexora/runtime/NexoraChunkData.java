@@ -5,44 +5,43 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-/** Topmost non-air block in each occupied column of one chunk, for the first client preview. */
-public record NexoraChunkData(int chunkX, int chunkZ, List<Column> columns) {
+/** Bounded sparse block snapshot for one NEXORA chunk. */
+public record NexoraChunkData(int chunkX, int chunkZ, List<Block> blocks) {
+    public static final int MAX_BLOCKS = 32768;
+
     public NexoraChunkData {
-        Objects.requireNonNull(columns, "columns");
-        if (columns.size() > 256) throw new IllegalArgumentException("A chunk has at most 256 columns");
-        columns = List.copyOf(columns);
-        Set<Integer> indices = new HashSet<>();
-        for (Column column : columns) {
-            if (!indices.add(column.index())) throw new IllegalArgumentException("Duplicate chunk column");
+        Objects.requireNonNull(blocks, "blocks");
+        if (blocks.size() > MAX_BLOCKS) {
+            throw new IllegalArgumentException("NEXORA chunk contains too many blocks");
+        }
+        blocks = List.copyOf(blocks);
+        Set<Long> positions = new HashSet<>();
+        for (Block block : blocks) {
+            long key = ((long) block.y() << 8) | (block.localZ() << 4) | block.localX();
+            if (!positions.add(key)) throw new IllegalArgumentException("Duplicate NEXORA block position");
         }
     }
 
-    public record Column(int index, int y, String blockIdentifier) {
-        public Column {
+    public record Block(int localX, int y, int localZ, String blockIdentifier) {
+        public Block {
             Objects.requireNonNull(blockIdentifier, "blockIdentifier");
-            if (index < 0 || index >= 256 || blockIdentifier.isBlank()
-                    || blockIdentifier.length() > 128) {
-                throw new IllegalArgumentException("Invalid NEXORA chunk column");
+            if (localX < 0 || localX > 15 || localZ < 0 || localZ > 15
+                    || blockIdentifier.isBlank() || blockIdentifier.length() > 128) {
+                throw new IllegalArgumentException("Invalid NEXORA chunk block");
             }
         }
     }
 
-    public static NexoraChunkData topSurface(World world, int chunkX, int chunkZ) {
+    public static NexoraChunkData volume(World world, int chunkX, int chunkZ) {
         Objects.requireNonNull(world, "world");
         ChunkPosition position = new ChunkPosition(chunkX, chunkZ);
-        java.util.Map<Integer, Column> top = new java.util.HashMap<>();
-        for (java.util.Map.Entry<BlockPosition, BlockState> entry
-                : world.blocksInChunk(position).entrySet()) {
-            BlockPosition block = entry.getKey();
-            BlockState state = entry.getValue();
-            if (state.isAir()) continue;
-            int index = block.localZ() * 16 + block.localX();
-            Column previous = top.get(index);
-            if (previous == null || block.y() > previous.y()) {
-                top.put(index, new Column(index, block.y(), state.identifier()));
-            }
-        }
-        return new NexoraChunkData(chunkX, chunkZ,
-                top.values().stream().sorted(java.util.Comparator.comparingInt(Column::index)).toList());
+        List<Block> blocks = world.blocksInChunk(position).entrySet().stream()
+                .filter(entry -> !entry.getValue().isAir())
+                .map(entry -> new Block(entry.getKey().localX(), entry.getKey().y(),
+                        entry.getKey().localZ(), entry.getValue().identifier()))
+                .sorted(java.util.Comparator.comparingInt(Block::y)
+                        .thenComparingInt(Block::localZ).thenComparingInt(Block::localX))
+                .toList();
+        return new NexoraChunkData(chunkX, chunkZ, blocks);
     }
 }

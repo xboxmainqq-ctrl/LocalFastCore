@@ -71,6 +71,7 @@ public final class NetherNetAndroidClient implements AutoCloseable {
     private ByteArrayOutputStream reliableAssembly;
     private int expectedFragments;
     private long reliableAssemblyStartedNanos;
+    private volatile boolean networkSettingsReceived;
 
     public NetherNetAndroidClient(Context context) {
         appContext = context.getApplicationContext();
@@ -370,6 +371,9 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                         && b.state() == DataChannel.State.OPEN
                         && connectedNotified.compareAndSet(false, true)) {
                     mainHandler.post(() -> listener.onConnected());
+                    if (!sendNetworkSettingsRequest()) {
+                        reportError("Не удалось отправить RequestNetworkSettings");
+                    }
                 }
             }
 
@@ -447,12 +451,94 @@ public final class NetherNetAndroidClient implements AutoCloseable {
             }
         }
         if (complete != null) {
+            if (!networkSettingsReceived) {
+                try {
+                    NetworkSettings settings = decodeNetworkSettings(complete);
+                    networkSettingsReceived = true;
+                    Listener current = listener;
+                    if (current != null) {
+                        mainHandler.post(() -> current.onNetworkSettingsReceived(settings));
+                    }
+                    return;
+                } catch (RuntimeException malformed) {
+                    reportError("Некорректный NetworkSettings пакет: " + malformed.getMessage());
+                    return;
+                }
+            }
             byte[] delivered = complete;
             Listener current = listener;
             if (current != null) {
                 mainHandler.post(() -> current.onMessage(delivered, true));
             }
         }
+    }
+
+    private boolean sendNetworkSettingsRequest() {
+        ByteBuffer batch = ByteBuffer.allocate(16);
+        writeVarUInt32(batch, 6);
+        writeVarUInt32(batch, 193);
+        batch.putInt(2225);
+        batch.flip();
+        byte[] payload = new byte[batch.remaining()];
+        batch.get(payload);
+        return sendReliable(payload);
+    }
+
+    private static NetworkSettings decodeNetworkSettings(byte[] frame) {
+        ByteBuffer batch = ByteBuffer.wrap(frame);
+        int packetLength = readVarUInt32(batch);
+        if (packetLength <= 0 || packetLength != batch.remaining()) {
+            throw new IllegalArgumentException("NetworkSettings batch must contain one complete packet");
+        }
+        int packetStart = batch.position();
+        int header = readVarUInt32(batch);
+        if ((header & 0x3ff) != 143 || (header & 0x3c00) != 0) {
+            throw new IllegalArgumentException("Expected NetworkSettings packet ID 143");
+        }
+        int headerBytes = batch.position() - packetStart;
+        if (packetLength - headerBytes != 10) {
+            throw new IllegalArgumentException("NetworkSettings payload must be 10 bytes");
+        }
+        batch.order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        int threshold = Short.toUnsignedInt(batch.getShort());
+        int algorithm = Short.toUnsignedInt(batch.getShort());
+        boolean throttle = batch.get() != 0;
+        int throttleThreshold = Byte.toUnsignedInt(batch.get());
+        float throttleScalar = batch.getFloat();
+        if (algorithm != 0 && algorithm != 1 && algorithm != 0xffff) {
+            throw new IllegalArgumentException("Unsupported compression algorithm " + algorithm);
+        }
+        if (!Float.isFinite(throttleScalar)) {
+            throw new IllegalArgumentException("Invalid client throttle scalar");
+        }
+        return new NetworkSettings(threshold, algorithm, throttle,
+                throttleThreshold, throttleScalar);
+    }
+
+    private static int readVarUInt32(ByteBuffer input) {
+        int result = 0;
+        for (int index = 0; index < 5; index++) {
+            if (!input.hasRemaining()) {
+                throw new IllegalArgumentException("Truncated Bedrock varuint32");
+            }
+            int current = Byte.toUnsignedInt(input.get());
+            if (index == 4 && (current & 0xf0) != 0) {
+                throw new IllegalArgumentException("Bedrock varuint32 exceeds 32 bits");
+            }
+            result |= (current & 0x7f) << (index * 7);
+            if ((current & 0x80) == 0) {
+                return result;
+            }
+        }
+        throw new IllegalArgumentException("Bedrock varuint32 is too long");
+    }
+
+    private static void writeVarUInt32(ByteBuffer output, int value) {
+        while ((value & 0xffffff80) != 0) {
+            output.put((byte) ((value & 0x7f) | 0x80));
+            value >>>= 7;
+        }
+        output.put((byte) value);
     }
 
     public boolean sendReliable(byte[] payload) {
@@ -642,7 +728,34 @@ public final class NetherNetAndroidClient implements AutoCloseable {
 
         void onError(String message);
 
+        default void onNetworkSettingsReceived(NetworkSettings settings) {
+        }
+
         default void onMessage(byte[] payload, boolean reliable) {
         }
+    }
+
+    public static final class NetworkSettings {
+        private final int compressionThreshold;
+        private final int compressionAlgorithm;
+        private final boolean clientThrottleEnabled;
+        private final int clientThrottleThreshold;
+        private final float clientThrottleScalar;
+
+        private NetworkSettings(int compressionThreshold, int compressionAlgorithm,
+                                boolean clientThrottleEnabled, int clientThrottleThreshold,
+                                float clientThrottleScalar) {
+            this.compressionThreshold = compressionThreshold;
+            this.compressionAlgorithm = compressionAlgorithm;
+            this.clientThrottleEnabled = clientThrottleEnabled;
+            this.clientThrottleThreshold = clientThrottleThreshold;
+            this.clientThrottleScalar = clientThrottleScalar;
+        }
+
+        public int compressionThreshold() { return compressionThreshold; }
+        public int compressionAlgorithm() { return compressionAlgorithm; }
+        public boolean clientThrottleEnabled() { return clientThrottleEnabled; }
+        public int clientThrottleThreshold() { return clientThrottleThreshold; }
+        public float clientThrottleScalar() { return clientThrottleScalar; }
     }
 }

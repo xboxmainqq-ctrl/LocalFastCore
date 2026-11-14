@@ -301,13 +301,16 @@ BedrockSubChunkRequestHandler subchunks = new BedrockSubChunkRequestHandler(
     networkSettings, overworld, connection -> 0, bedrockRuntimeBlockRegistry,
     existingPlayMessageHandler
 );
+BedrockPostLoginCoordinator postLogin = new BedrockPostLoginCoordinator(
+    networkSettings, "1.26.60", worldStartupHandler, subchunks
+);
 BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
     networkSettings, loginAuthenticator, postLogin, subchunks
 );
 postLogin.attachTo(router);
 ```
 
-The example assumes the registry has already been loaded from the matching 1.26.60 runtime palette and that the connection is assigned to the shown dimension/world. The handler is implemented but is not yet installed by a production server composition root. A real Android Bedrock client test remains required.
+The example assumes the registry has already been loaded from the matching 1.26.60 runtime palette and that the connection is assigned to the shown dimension/world. The post-login coordinator now forwards reliable-ordered gameplay requests to this handler while asynchronous world startup is still completing, so a client can request subchunks immediately after receiving StartGame/skeleton chunks. The handler and coordinator composition are implemented as reusable components but are not yet installed by a production server composition root. A real Android Bedrock client test remains required.
 
 Additional reference:
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/sub-chunk-request-packet/

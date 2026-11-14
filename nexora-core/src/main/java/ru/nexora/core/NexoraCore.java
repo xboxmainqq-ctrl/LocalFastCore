@@ -8,6 +8,9 @@ import ru.nexora.core.api.SimpleEventBus;
 import ru.nexora.core.integration.nukkit.NukkitPlatformAdapter;
 import ru.nexora.core.integration.nukkit.NukkitPlayerListener;
 import ru.nexora.core.platform.NexoraPlatform;
+import ru.nexora.core.security.AuditLogger;
+import ru.nexora.core.security.IntegrityChecker;
+import ru.nexora.core.security.NexoraSecurityManager;
 import ru.nexora.core.storage.KeyValueStore;
 
 import java.io.IOException;
@@ -24,6 +27,7 @@ public final class NexoraCore extends PluginBase {
     private SimpleEventBus eventBus;
     private KeyValueStore storage;
     private NexoraPlatform platform;
+    private NexoraSecurityManager security;
     private NexoraAPI api;
 
     @Override
@@ -36,17 +40,22 @@ public final class NexoraCore extends PluginBase {
             storage = new KeyValueStore(dataFile);
             eventBus = new SimpleEventBus();
             platform = new NukkitPlatformAdapter(this);
-            api = new NexoraAPI(services, eventBus, storage, platform);
+
+            AuditLogger auditLogger = new AuditLogger(
+                    getDataFolder().toPath().resolve("security-audit.jsonl"));
+            security = new NexoraSecurityManager(new IntegrityChecker(), auditLogger);
+            api = new NexoraAPI(services, eventBus, storage, platform, security);
 
             services.register(EventBus.class, eventBus);
             services.register(KeyValueStore.class, storage);
             services.register(NexoraPlatform.class, platform);
+            services.register(NexoraSecurityManager.class, security);
             services.register(NexoraAPI.class, api);
 
             getServer().getPluginManager().registerEvents(new NukkitPlayerListener(eventBus), this);
 
             getLogger().info("NexoraCore API 0.1.0 enabled.");
-            getLogger().info("Services ready: event bus, persistent key-value storage, platform adapter.");
+            getLogger().info("Services ready: event bus, persistent key-value storage, platform adapter, security audit and integrity API.");
             getLogger().info("Player lifecycle bridge registered: join, quit.");
             getLogger().info("Platform adapter: " + platform.getPlatformName()
                     + " " + platform.getPlatformVersion());
@@ -78,6 +87,9 @@ public final class NexoraCore extends PluginBase {
         }
         if (platform != null) {
             services.unregister(NexoraPlatform.class, platform);
+        }
+        if (security != null) {
+            services.unregister(NexoraSecurityManager.class, security);
         }
         if (eventBus != null) {
             services.unregister(EventBus.class, eventBus);

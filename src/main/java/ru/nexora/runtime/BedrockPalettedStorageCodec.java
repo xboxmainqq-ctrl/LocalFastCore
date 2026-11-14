@@ -88,6 +88,12 @@ public final class BedrockPalettedStorageCodec {
         return out.asReadOnlyBuffer();
     }
 
+    /** Encodes the currently empty liquid layer as a uniform air palette. */
+    static ByteBuffer encodeEmptyFluidLayer(BedrockRuntimeBlockRegistry registry) {
+        Objects.requireNonNull(registry, "registry");
+        return encode(new ChunkSection(), registry);
+    }
+
     private static int bitsForPalette(int paletteSize) {
         if (paletteSize <= 1) {
             return 0;

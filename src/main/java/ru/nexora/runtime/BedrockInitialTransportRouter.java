@@ -41,7 +41,7 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
 
     public BedrockInitialTransportRouter(BedrockNetworkSettings networkSettings,
                                          LoginAuthenticator loginAuthenticator,
-                                         java.util.function.BiConsumer<TransportConnection, BedrockAuthenticatedPlayer> playListener,
+                                         java.util.function.BiConsumer<TransportConnection, BedrockAuthenticatedPlayer> loginSuccessListener,
                                          BiConsumer<TransportConnection, TransportMessage> playMessageHandler,
                                          Duration handshakeTimeout) {
         this.networkSettings = Objects.requireNonNull(networkSettings, "networkSettings");

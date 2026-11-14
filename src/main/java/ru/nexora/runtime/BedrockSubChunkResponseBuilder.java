@@ -30,8 +30,10 @@ public final class BedrockSubChunkResponseBuilder {
         }
 
         List<BedrockSubChunkPacketCodec.Entry> entries = new ArrayList<>(request.offsets().size());
+        Map<ChunkPosition, Map<BlockPosition, BlockState>> blockSnapshots = new HashMap<>();
         Map<ChunkPosition, Map<Integer, ChunkSection>> sectionSnapshots = new HashMap<>();
         Map<ChunkPosition, Map<Integer, ChunkSection>> fluidSectionSnapshots = new HashMap<>();
+        Map<ChunkPosition, int[]> heightSnapshots = new HashMap<>();
         List<BedrockSubChunkRequestPacketCodec.SubChunkPosition> positions =
                 request.absolutePositions();
 
@@ -62,16 +64,22 @@ public final class BedrockSubChunkResponseBuilder {
                 continue;
             }
 
+            Map<BlockPosition, BlockState> blockSnapshot = blockSnapshots.computeIfAbsent(
+                    chunkPosition, world::blocksInChunk);
             Map<Integer, ChunkSection> sections = sectionSnapshots.computeIfAbsent(
-                    chunkPosition, ignored -> groupBlocksBySection(world.blocksInChunk(chunkPosition)));
+                    chunkPosition, ignored -> groupBlocksBySection(blockSnapshot));
             ChunkSection section = sections.get(position.y());
+            int[] highestSolidY = heightSnapshots.computeIfAbsent(
+                    chunkPosition, ignored -> highestSolidY(blockSnapshot));
+            BedrockSubChunkPacketCodec.HeightmapData heightmaps =
+                    heightmapsForSection(highestSolidY, position.y());
             Map<Integer, ChunkSection> fluidSections = fluidSectionSnapshots.computeIfAbsent(
                     chunkPosition, ignored -> groupBlocksBySection(world.fluidsInChunk(chunkPosition)));
             ChunkSection fluidSection = fluidSections.get(position.y());
 
             if ((section == null || section.isEmpty())
                     && (fluidSection == null || fluidSection.isEmpty())) {
-                entries.add(BedrockSubChunkPacketCodec.Entry.allAir(offset));
+                entries.add(BedrockSubChunkPacketCodec.Entry.allAir(offset, heightmaps));
             } else {
                 if (section == null) {
                     section = new ChunkSection();
@@ -83,7 +91,7 @@ public final class BedrockSubChunkResponseBuilder {
                         section, fluidSection, position.y(), registry);
                 byte[] bytes = new byte[serialized.remaining()];
                 serialized.get(bytes);
-                entries.add(BedrockSubChunkPacketCodec.Entry.success(offset, bytes));
+                entries.add(BedrockSubChunkPacketCodec.Entry.success(offset, bytes, heightmaps));
             }
         }
 
@@ -97,6 +105,66 @@ public final class BedrockSubChunkResponseBuilder {
                     request.dimension(), center, entries.subList(start, end)));
         }
         return List.copyOf(packets);
+    }
+
+    /**
+     * Computes the highest non-air solid block for each local X/Z column.
+     * Index order is z-major, matching the Bedrock heightmap wire layout.
+     */
+    private static int[] highestSolidY(Map<BlockPosition, BlockState> blocks) {
+        int[] highest = new int[256];
+        java.util.Arrays.fill(highest, Integer.MIN_VALUE);
+        for (Map.Entry<BlockPosition, BlockState> entry : blocks.entrySet()) {
+            BlockPosition position = entry.getKey();
+            if (entry.getValue().isAir()) {
+                continue;
+            }
+            int index = position.localZ() * 16 + position.localX();
+            highest[index] = Math.max(highest[index], position.y());
+        }
+        return highest;
+    }
+
+    /**
+     * Encodes this subchunk's contribution to the column heightmap. Values
+     * are -1 below the subchunk, 16 above it, or the local top-block Y.
+     */
+    private static BedrockSubChunkPacketCodec.HeightmapData heightmapsForSection(
+            int[] highestSolidY,
+            int sectionY
+    ) {
+        int sectionMinY = Math.multiplyExact(sectionY, 16);
+        int sectionMaxY = Math.addExact(sectionMinY, 16);
+        byte[] values = new byte[256];
+        boolean allBelow = true;
+        boolean allAbove = true;
+        for (int index = 0; index < values.length; index++) {
+            int topY = highestSolidY[index];
+            int value;
+            if (topY == Integer.MIN_VALUE || topY < sectionMinY) {
+                value = -1;
+            } else if (topY >= sectionMaxY) {
+                value = 16;
+            } else {
+                value = topY - sectionMinY;
+            }
+            values[index] = (byte) value;
+            allBelow &= value == -1;
+            allAbove &= value == 16;
+        }
+
+        int type = allBelow
+                ? BedrockSubChunkPacketCodec.HeightmapData.ALL_TOO_LOW
+                : allAbove
+                    ? BedrockSubChunkPacketCodec.HeightmapData.ALL_TOO_HIGH
+                    : BedrockSubChunkPacketCodec.HeightmapData.HAS_DATA;
+        byte[] payload = type == BedrockSubChunkPacketCodec.HeightmapData.HAS_DATA
+                ? values : new byte[0];
+        // Render-heightmap semantics require block render/occlusion metadata,
+        // which the current protocol-neutral BlockState model does not expose.
+        return new BedrockSubChunkPacketCodec.HeightmapData(
+                type, payload,
+                BedrockSubChunkPacketCodec.HeightmapData.NO_DATA, new byte[0]);
     }
 
     /**

@@ -113,6 +113,12 @@ public final class MainActivity extends Activity {
         page.addView(mapTitle, matchWrap());
         addSpace(page, 8);
         chunkPreview = new ChunkPreviewView(this);
+        chunkPreview.setMovementListener((x, y, z) -> {
+            NetherNetAndroidClient client = netherNetClient;
+            if (client != null && client.isConnected()) {
+                client.sendPlayerMove(x, y, z);
+            }
+        });
         chunkPreview.setVisibility(View.GONE);
         page.addView(chunkPreview, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(300)));
@@ -130,7 +136,7 @@ public final class MainActivity extends Activity {
         page.addView(movementPanel, matchWrap());
         movementPanel.addView(text("УПРАВЛЕНИЕ ПЕРСОНАЖЕМ", 12, MUTED, true), matchWrap());
         addSpace(movementPanel, 8);
-        TextView movementHint = text("Локальное тестовое движение • сервер пока не получает координаты", 12, MUTED, false);
+        TextView movementHint = text("Движение отправляется серверу NEXORA • сервер подтверждает координаты", 12, MUTED, false);
         movementPanel.addView(movementHint, matchWrap());
         addSpace(movementPanel, 10);
         LinearLayout forwardRow = new LinearLayout(this);
@@ -247,6 +253,11 @@ public final class MainActivity extends Activity {
                         + "\nПоявление: " + world.spawnX() + ", " + world.spawnY() + ", " + world.spawnZ()
                         + "\nТиков: " + world.tickRate() + "/с"
                         + "\nЗагружено чанков: " + world.loadedChunks());
+            }
+
+            @Override
+            public void onServerPosition(NexoraAndroidProtocolCodec.PlayerPosition position) {
+                chunkPreview.setServerPosition(position.x(), position.y(), position.z());
             }
 
             @Override

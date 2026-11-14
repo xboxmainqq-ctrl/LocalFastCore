@@ -81,7 +81,7 @@ public final class NexoraCore extends PluginBase {
             services.register(AsyncPlayerProgressionService.class, asyncProgression);
             services.register(NexoraAPI.class, api);
 
-            getServer().getPluginManager().registerEvents(new NukkitPlayerListener(eventBus), this);
+            getServer().getPluginManager().registerEvents(new NukkitPlayerListener(eventBus, cooldowns), this);
 
             getLogger().info("NexoraCore API 0.1.0 enabled.");
             getLogger().info("RPG services ready: UUID profiles, async progression, class and ability registries, cooldown tracking.");

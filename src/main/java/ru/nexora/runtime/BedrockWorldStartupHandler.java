@@ -23,7 +23,7 @@ public final class BedrockWorldStartupHandler
     private final int dimension;
     private final int clientRequestSubChunkLimit;
     private final List<ChunkPosition> initialChunks;
-    private final BedrockRuntimeBlockRegistryFile.Loaded blockRegistryProfile;
+    private final BedrockRuntimeBlockRegistryProfile blockRegistryProfile;
     private final BiFunction<TransportConnection, BedrockAuthenticatedPlayer,
             BedrockStartGamePacketCodec.Settings> settingsFactory;
 
@@ -33,7 +33,7 @@ public final class BedrockWorldStartupHandler
             int dimension,
             int clientRequestSubChunkLimit,
             List<ChunkPosition> initialChunks,
-            BedrockRuntimeBlockRegistryFile.Loaded blockRegistryProfile,
+            BedrockRuntimeBlockRegistryProfile blockRegistryProfile,
             BiFunction<TransportConnection, BedrockAuthenticatedPlayer,
                     BedrockStartGamePacketCodec.Settings> settingsFactory
     ) {

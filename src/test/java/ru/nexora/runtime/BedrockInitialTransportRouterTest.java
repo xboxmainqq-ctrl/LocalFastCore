@@ -121,6 +121,25 @@ class BedrockInitialTransportRouterTest {
         router.close();
     }
 
+    @Test
+    void closesPeerThatNeverSendsLogin() throws Exception {
+        BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
+                SETTINGS,
+                (connection, login, request) -> CompletableFuture.completedFuture(false),
+                connection -> { },
+                (connection, message) -> { },
+                java.time.Duration.ofMillis(40));
+        FakeConnection connection = new FakeConnection("peer-login-timeout");
+        router.accept(connection);
+        connection.receive(frame(BedrockRequestNetworkSettingsPacketCodec.PACKET_ID,
+                BedrockRequestNetworkSettingsPacketCodec.encodePayload(
+                        new BedrockRequestNetworkSettingsPacket(2225)), false));
+
+        assertEquals(1, connection.sent.size());
+        assertTrue(connection.closedLatch.await(2, java.util.concurrent.TimeUnit.SECONDS));
+        router.close();
+    }
+
     private static ByteBuffer frame(int packetId, ByteBuffer payload, boolean compressed) {
         byte[] bytes = new byte[payload.remaining()];
         payload.get(bytes);
@@ -136,6 +155,8 @@ class BedrockInitialTransportRouterTest {
         private Consumer<TransportMessage> messageListener;
         private Consumer<TransportCloseEvent> closeListener;
         private final List<ByteBuffer> sent = new ArrayList<>();
+        private final java.util.concurrent.CountDownLatch closedLatch =
+                new java.util.concurrent.CountDownLatch(1);
         private boolean open = true;
 
         private FakeConnection(String id) { this.id = id; }
@@ -157,6 +178,7 @@ class BedrockInitialTransportRouterTest {
         @Override public void close() {
             if (!open) return;
             open = false;
+            closedLatch.countDown();
             if (closeListener != null) closeListener.accept(
                     new TransportCloseEvent("closed in test", false));
         }

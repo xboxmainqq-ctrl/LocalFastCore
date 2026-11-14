@@ -24,6 +24,15 @@ jobs:
           cache: maven
       - name: Build and verify
         run: mvn --batch-mode --no-transfer-progress clean verify
+      - name: Build NexoraCore compatibility module
+        run: mvn -f nexora-core/pom.xml --batch-mode --no-transfer-progress clean verify
+      - name: Upload NexoraCore JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexora-core-${{ github.sha }}
+          path: nexora-core/target/NexoraCore-*.jar
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload plugin JAR
         uses: actions/upload-artifact@v4
         with:

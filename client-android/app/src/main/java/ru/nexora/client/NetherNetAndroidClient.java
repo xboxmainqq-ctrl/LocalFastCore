@@ -70,6 +70,7 @@ public final class NetherNetAndroidClient implements AutoCloseable {
     private final Object fragmentLock = new Object();
     private ByteArrayOutputStream reliableAssembly;
     private int expectedFragments;
+    private long reliableAssemblyStartedNanos;
 
     public NetherNetAndroidClient(Context context) {
         appContext = context.getApplicationContext();
@@ -418,14 +419,18 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                     }
                     reliableAssembly = new ByteArrayOutputStream(Math.max(32, payload.length));
                     expectedFragments = remaining;
+                    reliableAssemblyStartedNanos = System.nanoTime();
                     reliableAssembly.write(payload, 0, payload.length);
                 }
             } else {
-                if (remaining != expectedFragments - 1
+                if (System.nanoTime() - reliableAssemblyStartedNanos
+                        > TimeUnit.SECONDS.toNanos(10)
+                        || remaining != expectedFragments - 1
                         || reliableAssembly.size() + payload.length > MAX_MESSAGE_BYTES) {
                     reliableAssembly = null;
                     expectedFragments = 0;
-                    reportError("Нарушен порядок NetherNet fragments");
+                    reliableAssemblyStartedNanos = 0;
+                    reportError("Нарушен порядок или превышен тайм-аут NetherNet fragments");
                     return;
                 }
                 reliableAssembly.write(payload, 0, payload.length);
@@ -434,6 +439,7 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                     complete = reliableAssembly.toByteArray();
                     reliableAssembly = null;
                     expectedFragments = 0;
+                    reliableAssemblyStartedNanos = 0;
                 }
             }
         }

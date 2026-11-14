@@ -100,9 +100,10 @@ public final class NetherNetAndroidClient implements AutoCloseable {
             URI baseUri = normalizeServerAddress(address);
             JSONObject serverInfo = new JSONObject(httpRequest(baseUri.resolve("/v1/join"),
                     "GET", null, null));
-            int protocol = serverInfo.getInt("protocol");
-            if (protocol != 2225) {
-                throw new IllegalStateException("Сервер использует другой протокол: " + protocol);
+            int nexoraProtocol = serverInfo.getInt("nexoraProtocol");
+            if (nexoraProtocol != NexoraAndroidProtocolCodec.MAJOR_VERSION) {
+                throw new IllegalStateException("Сервер использует другую версию протокола NEXORA: "
+                        + nexoraProtocol);
             }
 
             initializePeerConnection();

@@ -92,14 +92,18 @@ public record NetherNetSdpDocument(
             }
         }
 
-        if (firstMediaLine < 0 || lastSessionFingerprintLine < 0) {
-            throw new IllegalArgumentException("SDP offer requires a session fingerprint and media section");
+        if (firstMediaLine < 0 || fingerprints.isEmpty()) {
+            throw new IllegalArgumentException("SDP offer requires a DTLS fingerprint and media section");
         }
         if (identityLineIndex < 0) {
             if (requireIdentity) {
                 throw new IllegalArgumentException("SDP offer is missing a=identity");
             }
             return new NetherNetSdpDocument(sdp, sdp, null, null, fingerprints);
+        }
+        if (lastSessionFingerprintLine < 0) {
+            throw new IllegalArgumentException(
+                    "Authenticated SDP identity requires a session-level fingerprint");
         }
         if (encodedIdentity == null || encodedIdentity.isBlank()) {
             throw new IllegalArgumentException("SDP a=identity is empty");

@@ -67,6 +67,10 @@ class BedrockConnectionRequestTest {
         assertThrows(IllegalArgumentException.class, () ->
                 BedrockConnectionRequest.parse(
                         "{\"AuthenticationType\":0,\"Token\":\"\",\"Certificate\":\"\"}"));
+        assertThrows(IllegalArgumentException.class, () ->
+                BedrockConnectionRequest.parse(
+                        "{\"AuthenticationType\":0,\"Token\":\"" + JWT
+                                + "\",\"Certificate\":\"{\\\"chain\\\":[\\\"" + JWT + "\\"]}\"}"));
     }
 
     @Test

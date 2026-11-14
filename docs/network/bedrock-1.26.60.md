@@ -308,7 +308,7 @@ Additional reference:
 4. It sends the ordered packet batch on the reliable channel and completes only when the transport accepts it.
 5. The post-login coordinator then performs the explicit `LOGIN_SUCCESS_SENT` → `PLAY` transition. Requests arriving during the asynchronous startup window are routed to `BedrockSubChunkRequestHandler`.
 
-Spawn chunks must be generated/loaded before this handler starts. The handler deliberately does not fabricate missing chunks or invent a Bedrock runtime palette. The exact 1.26.60 block runtime registry must be supplied to the subchunk request handler; without a version-pinned registry profile or hash-based profile, non-air NEXORA block states cannot be serialized safely.
+Spawn chunks must be generated/loaded before this handler starts. The handler deliberately does not fabricate missing chunks or invent a Bedrock runtime palette. The subchunk request handler and StartGame serializer must share one version-pinned registry profile; without it, non-air NEXORA block states cannot be serialized safely.
 
 Example using the computed hash profile and the new composition helper:
 
@@ -329,6 +329,21 @@ BedrockWorldSessionPipeline pipeline = new BedrockWorldSessionPipeline(
 
 // Register pipeline.router() as the authenticated peer connection callback.
 // Close the pipeline when the server's transport module shuts down.
+```
+
+### Version-pinned external block registry file
+
+`BedrockRuntimeBlockRegistryFile` loads a strict UTF-8 registry file and rejects a protocol/game-version mismatch. It enforces a 32 MiB file limit, 500,000 state limit, unique block states and IDs, valid namespaced identifiers, valid property pairs, and a required `minecraft:air` entry. It computes SHA-256 over the exact file bytes and can verify an externally pinned expected digest.
+
+Supported file header:
+
+```text
+NEXORA-BEDROCK-BLOCK-REGISTRY<TAB>1
+protocol<TAB>2225
+game<TAB>1.26.60
+id-mode<TAB>runtime
+--
+<namespaced-block-id><TAB><signed-int32-id>[<TAB><property>=<value>...]
 ```
 
 `id-mode` is either `runtime` or `hash`. The loaded profile exposes `blockNetworkIdsAreHashes()` and `validateStartGameSettings(settings)`. The StartGame settings factory must copy this exact flag into `Settings.blockNetworkIdsAreHashes` and call `blockProfile.validateStartGameSettings(settings)` before returning them. `BedrockWorldStartupHandler` also requires the unified profile and validates the flag again before sending StartGame. Never set the flag independently from the registry source. Rows are data from a trusted, version-matched palette provider; NEXORA does not generate fabricated vanilla IDs.

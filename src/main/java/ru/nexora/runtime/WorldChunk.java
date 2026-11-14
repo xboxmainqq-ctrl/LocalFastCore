@@ -6,6 +6,7 @@ import java.util.Map;
 /** Mutable, synchronized chunk storage backed by compact palette sections. */
 final class WorldChunk {
     private final Map<Integer, ChunkSection> sections = new HashMap<>();
+    private final Map<Integer, BiomeSection> biomeSections = new HashMap<>();
 
     static WorldChunk from(Map<BlockPosition, BlockState> snapshot) {
         WorldChunk chunk = new WorldChunk();
@@ -37,8 +38,39 @@ final class WorldChunk {
         }
     }
 
+    synchronized int biomeAt(BlockPosition position) {
+        BiomeSection section = biomeSections.get(Math.floorDiv(position.y(), 16));
+        return section == null ? BiomeSection.DEFAULT_BIOME_ID
+                : section.get(position.localX(), Math.floorMod(position.y(), 16), position.localZ());
+    }
+
+    synchronized void setBiome(BlockPosition position, int biomeId) {
+        if (biomeId < 0) {
+            throw new IllegalArgumentException("Biome ID must be non-negative");
+        }
+        int sectionY = Math.floorDiv(position.y(), 16);
+        BiomeSection section = biomeSections.get(sectionY);
+        if (section == null) {
+            if (biomeId == BiomeSection.DEFAULT_BIOME_ID) {
+                return;
+            }
+            section = new BiomeSection();
+            biomeSections.put(sectionY, section);
+        }
+        section.set(position.localX(), Math.floorMod(position.y(), 16), position.localZ(), biomeId);
+        if (section.isDefault()) {
+            biomeSections.remove(sectionY);
+        }
+    }
+
+    synchronized int[] biomesInSection(int sectionY) {
+        BiomeSection section = biomeSections.get(sectionY);
+        return section == null ? defaultBiomes()
+                : section.snapshotXzy();
+    }
+
     synchronized boolean isEmpty() {
-        return sections.isEmpty();
+        return sections.isEmpty() && biomeSections.isEmpty();
     }
 
     synchronized Map<BlockPosition, BlockState> snapshot(ChunkPosition chunkPosition) {
@@ -64,5 +96,11 @@ final class WorldChunk {
             }
         });
         return Map.copyOf(snapshot);
+    }
+
+    private static int[] defaultBiomes() {
+        int[] values = new int[BiomeSection.CELL_COUNT];
+        java.util.Arrays.fill(values, BiomeSection.DEFAULT_BIOME_ID);
+        return values;
     }
 }

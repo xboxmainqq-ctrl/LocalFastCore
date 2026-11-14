@@ -2,6 +2,12 @@
 
 This module is the beginning of the independent NEXORA server process. It has **no Nukkit, Nukkit-MOT, Bukkit, or other game-server API dependency**.
 
+## Private NEXORA client protocol
+
+The first-party Android client and server now have a versioned private NEXORA v1 handshake over the existing NetherNet reliable channel. The first exchange negotiates protocol version, returns a server identifier and message-size limit, and rejects unsupported versions. This is a NEXORA-only protocol, not Bedrock packet compatibility.
+
+The server-side protocol module is implemented but is not yet registered by the offline `NexoraMain` development launcher. Player authentication, world entry, chunk streaming, and gameplay messages are not part of this handshake yet. Protocol tests have been added but have not been confirmed running in CI.
+
 ## Current implementation
 
 - Standalone Java 21 Maven module.

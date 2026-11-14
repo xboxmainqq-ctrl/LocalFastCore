@@ -2,7 +2,7 @@
 
 Target: Bedrock 1.26.60, protocol 2225.
 
-The Java runtime contains payload codecs for three packet types, bounded packet-batch framing, a compression envelope, a frame-level coordinator for the initial server-side login handshake, and a transport-independent NetherNet data-message framing helper. This still does not implement the WebRTC peer connection, HTTP signaling, identity verification, Microsoft/Xbox authentication, or a complete client session.
+The Java runtime contains payload codecs for three packet types, bounded packet-batch framing, a compression envelope, a frame-level coordinator for the initial server-side login handshake, and transport-independent NetherNet message and SDP identity extraction helpers. This still does not implement the WebRTC peer connection, HTTP signaling, cryptographic identity verification, Microsoft/Xbox authentication, or a complete client session.
 
 | Packet | ID | Payload implemented | Status |
 |---|---:|---|---|
@@ -59,6 +59,19 @@ On a valid initial request it creates a NetworkSettings response frame (still un
 - The existing `NetherNetFragmentAssembler` reassembles reliable fragments and applies message-size, fragment-count, and timeout limits.
 
 These helpers do not create data channels, perform SDP negotiation, gather ICE candidates, or authenticate peers. The transport adapter must use one assembler per reliable channel direction, deliver unreliable messages without reassembly, and apply bounded outbound queues. See the [Mojang NetherNet onboarding guide](https://github.com/Mojang/bedrock-protocol-docs/blob/main/additional_docs/NetherNetOnboardingGuide.md) for the signaling and WebRTC requirements.
+
+
+## NetherNet SDP identity extraction
+
+`NetherNetSdpDocument` is a bounded SDP pre-parser for incoming NetherNet offers:
+
+- Enforces configurable UTF-8 SDP and decoded identity-envelope byte limits.
+- Requires exactly one session-level `a=identity` line, placed after session fingerprint attributes and before the first media section.
+- Base64-decodes the identity envelope using strict UTF-8 decoding and preserves the original SDP, encoded identity, decoded envelope text, and fingerprint lines.
+- Produces a separate WebRTC SDP string with only the `a=identity` line removed. The original SDP must be retained for signature verification; the cleaned SDP is only for the WebRTC library.
+- Rejects missing, duplicate, misplaced, malformed, or oversized identity attributes.
+
+This is deliberately an extraction and structural-boundary helper, not a JSON/JWT/JWS verifier. It does not establish the authenticity of the player or fingerprint signatures, validate the auth-service issuer, or authorize a player. Those checks must be implemented before accepting a peer connection. See the [Mojang NetherNet onboarding guide](https://github.com/Mojang/bedrock-protocol-docs/blob/main/additional_docs/NetherNetOnboardingGuide.md) for the required assertion format and verification procedure.
 
 ## Verification boundary
 

@@ -126,6 +126,26 @@ class BedrockInitialHandshakeProcessorTest {
         assertEquals(BedrockHandshakeState.CLOSED, result.state());
     }
 
+    @Test
+    void releasesDecodedLoginRequestAfterSuccessfulAuthentication() {
+        BedrockInitialHandshakeProcessor processor =
+                new BedrockInitialHandshakeProcessor(SETTINGS);
+        processor.receiveFrame(encodePacket(
+                BedrockRequestNetworkSettingsPacketCodec.PACKET_ID,
+                BedrockRequestNetworkSettingsPacketCodec.encodePayload(
+                        new BedrockRequestNetworkSettingsPacket(2225)),
+                false));
+        assertEquals(BedrockHandshakeResult.ACCEPTED, processor.markNetworkSettingsSent());
+        processor.receiveFrame(encodePacket(
+                BedrockLoginPacketCodec.PACKET_ID,
+                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, "sensitive-request")),
+                true));
+
+        assertTrue(processor.pendingLogin().isPresent());
+        assertEquals(BedrockHandshakeResult.ACCEPTED, processor.markAuthenticated());
+        assertTrue(processor.pendingLogin().isEmpty());
+    }
+
     private static ByteBuffer encodePacket(int packetId, ByteBuffer payload, boolean compressed) {
         ByteBuffer batch = BedrockPacketBatchCodec.encodeUncompressed(
                 List.of(packet(packetId, payload))

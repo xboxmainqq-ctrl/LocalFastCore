@@ -50,7 +50,7 @@ public class BedrockAndroidPacketCodecTest {
     public void encodesLoginWithUncompressedEnvelopeWhenThresholdIsZero() {
         BedrockAndroidNetworkSettings settings =
                 new BedrockAndroidNetworkSettings(0, 0, false, 0, 0.0f);
-        byte[] encoded = BedrockAndroidPacketCodec.encodeLoginBatch(CONNECTION_REQUEST, settings);
+        byte[] encoded = BedrockAndroidPacketCodec.encodeLoginBatch(AUTHENTICATION_PAYLOAD_JSON, CLIENT_DATA_JWT, settings);
 
         assertEquals(0xff, Byte.toUnsignedInt(encoded[0]));
         assertLoginBatch(ByteBuffer.wrap(encoded, 1, encoded.length - 1).slice());
@@ -60,7 +60,7 @@ public class BedrockAndroidPacketCodecTest {
     public void encodesLoginWithRawDeflateWhenThresholdIsReached() throws Exception {
         BedrockAndroidNetworkSettings settings =
                 new BedrockAndroidNetworkSettings(1, 0, false, 0, 0.0f);
-        byte[] encoded = BedrockAndroidPacketCodec.encodeLoginBatch(CONNECTION_REQUEST, settings);
+        byte[] encoded = BedrockAndroidPacketCodec.encodeLoginBatch(AUTHENTICATION_PAYLOAD_JSON, CLIENT_DATA_JWT, settings);
 
         assertEquals(0x00, Byte.toUnsignedInt(encoded[0]));
         Inflater inflater = new Inflater(true);
@@ -85,7 +85,7 @@ public class BedrockAndroidPacketCodecTest {
     public void rejectsSnappyWhenCompressionIsRequired() {
         BedrockAndroidNetworkSettings settings =
                 new BedrockAndroidNetworkSettings(1, 1, false, 0, 0.0f);
-        BedrockAndroidPacketCodec.encodeLoginBatch(CONNECTION_REQUEST, settings);
+        BedrockAndroidPacketCodec.encodeLoginBatch(AUTHENTICATION_PAYLOAD_JSON, CLIENT_DATA_JWT, settings);
     }
 
     private static void assertLoginBatch(ByteBuffer batch) {
@@ -93,10 +93,17 @@ public class BedrockAndroidPacketCodecTest {
         assertEquals(packetLength, batch.remaining());
         assertEquals(1, readVarUInt32(batch));
         assertEquals(2225, batch.getInt());
-        int requestLength = readVarUInt32(batch);
-        byte[] request = new byte[requestLength];
-        batch.get(request);
-        assertEquals(CONNECTION_REQUEST, new String(request, StandardCharsets.UTF_8));
+        int jwtBlockLength = readVarUInt32(batch);
+        assertEquals(jwtBlockLength, batch.remaining());
+        batch.order(ByteOrder.LITTLE_ENDIAN);
+        int authLength = batch.getInt();
+        byte[] auth = new byte[authLength];
+        batch.get(auth);
+        int clientDataLength = batch.getInt();
+        byte[] clientData = new byte[clientDataLength];
+        batch.get(clientData);
+        assertEquals(AUTHENTICATION_PAYLOAD_JSON, new String(auth, StandardCharsets.UTF_8));
+        assertEquals(CLIENT_DATA_JWT, new String(clientData, StandardCharsets.UTF_8));
         assertFalse(batch.hasRemaining());
     }
 

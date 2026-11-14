@@ -20,8 +20,8 @@ import android.widget.Toast;
  * Android entry screen for the NEXORA client.
  *
  * <p>This screen connects to the first-party NEXORA server and displays its
- * initial private-protocol world metadata. Authentication, chunk streaming,
- * and gameplay remain separate pending stages.</p>
+ * world metadata and a bounded 3x3 voxel preview. Authentication, dynamic
+ * view-distance streaming, and interactive gameplay remain pending stages.</p>
  */
 public final class MainActivity extends Activity {
     private static final int BACKGROUND = Color.rgb(12, 16, 25);
@@ -123,7 +123,7 @@ public final class MainActivity extends Activity {
         addSpace(infoCard, 8);
         infoCard.addView(text("Внутренний протокол NEXORA v1", 13, MUTED, false), matchWrap());
         addSpace(infoCard, 8);
-        infoCard.addView(text("Режим: рукопожатие клиента и сервера", 13, MUTED, false), matchWrap());
+        infoCard.addView(text("Режим: просмотр мира 3×3 • разработка", 13, MUTED, false), matchWrap());
 
         addSpace(page, 26);
         TextView footer = text("СОЗДАЁМ СВОЙ МИР", 11, MUTED, true);

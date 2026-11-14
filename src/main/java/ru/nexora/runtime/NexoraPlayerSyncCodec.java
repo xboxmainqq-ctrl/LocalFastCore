@@ -4,6 +4,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Objects;
 import java.util.UUID;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 
 /** Encodes player presence and authoritative remote-player positions. */
@@ -17,6 +19,7 @@ public final class NexoraPlayerSyncCodec {
     }
 
     public record PlayerState(UUID playerId, String playerName, double x, double y, double z) {
+        public PlayerState(UUID playerId, double x, double y, double z) { this(playerId, "Игрок", x, y, z); }
         public PlayerState {
             Objects.requireNonNull(playerId, "playerId");
             Objects.requireNonNull(playerName, "playerName");
@@ -54,7 +57,13 @@ public final class NexoraPlayerSyncCodec {
         if (nameLength < 1 || nameLength > 48 || input.remaining() != nameLength + 24) throw new IllegalArgumentException("Invalid player name length");
         byte[] name = new byte[nameLength];
         input.get(name);
-        String playerName = StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(name)).toString();
+        final String playerName;
+        try {
+            playerName = StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(name)).toString();
+        } catch (CharacterCodingException invalidName) {
+            throw new IllegalArgumentException("Player name is not valid UTF-8", invalidName);
+        }
         return new PlayerState(id, playerName, input.getDouble(), input.getDouble(), input.getDouble());
     }
 

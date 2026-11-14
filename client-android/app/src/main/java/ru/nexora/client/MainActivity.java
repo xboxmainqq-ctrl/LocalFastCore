@@ -60,7 +60,7 @@ public final class MainActivity extends Activity {
         logo.setGravity(Gravity.CENTER);
         page.addView(logo, matchWrap());
 
-        TextView subtitle = text("BEDROCK • ANDROID CLIENT", 12, ACCENT, true);
+        TextView subtitle = text("NEXORA • ANDROID CLIENT", 12, ACCENT, true);
         subtitle.setGravity(Gravity.CENTER);
         subtitle.setLetterSpacing(0.10f);
         addSpace(page, 8);
@@ -111,9 +111,9 @@ public final class MainActivity extends Activity {
         addSpace(infoCard, 8);
         infoCard.addView(text("NEXORA Client 0.1.0-dev", 15, TEXT, true), matchWrap());
         addSpace(infoCard, 8);
-        infoCard.addView(text("Цель протокола: Bedrock 1.26.60 • 2225", 13, MUTED, false), matchWrap());
+        infoCard.addView(text("Внутренний протокол NEXORA v1", 13, MUTED, false), matchWrap());
         addSpace(infoCard, 8);
-        infoCard.addView(text("Режим: подключение и тестирование транспорта", 13, MUTED, false), matchWrap());
+        infoCard.addView(text("Режим: рукопожатие клиента и сервера", 13, MUTED, false), matchWrap());
 
         addSpace(page, 26);
         TextView footer = text("СОЗДАЁМ СВОЙ МИР", 11, MUTED, true);

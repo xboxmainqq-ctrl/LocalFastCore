@@ -237,7 +237,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.72.0 включён. Переработанная магия, заклинания, мана, RPG и система персонала загружены.");
+        getLogger().info("LocalFastCore 0.73.0 включён. Единая магия, 10 заклинаний, реликвии и экипировка загружены.");
     }
 
     private void migrateLegacyListingsToFixedAuction() {

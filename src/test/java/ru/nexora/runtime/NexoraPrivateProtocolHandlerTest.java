@@ -85,7 +85,7 @@ class NexoraPrivateProtocolHandlerTest {
 
 
     @Test
-    void servesRequestedChunkSurfaceAfterHandshake() {
+    void servesRequestedChunkVolumeAfterHandshake() {
         UUID serverId = UUID.randomUUID();
         InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
         world.setBlock(new BlockPosition(0, 64, 0), new BlockState("minecraft:grass_block"));
@@ -93,7 +93,7 @@ class NexoraPrivateProtocolHandlerTest {
         FakeConnection connection = new FakeConnection();
         NexoraWorldInfo info = new NexoraWorldInfo("world", 0, 128, 0, 65, 0, 20, 1);
         new NexoraPrivateProtocolHandler(serverId, 8 * 1024 * 1024, () -> info,
-                () -> world, ignored -> { }).accept(connection);
+                () -> world, ignored -> true, ignored -> { }).accept(connection);
 
         connection.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
         connection.deliver(NexoraChunkDataCodec.encodeChunkRequest(0, 0));
@@ -103,9 +103,40 @@ class NexoraPrivateProtocolHandlerTest {
                 ByteBuffer.wrap(connection.sentMessages.get(2)));
         assertEquals(0, chunk.chunkX());
         assertEquals(0, chunk.chunkZ());
-        assertEquals(2, chunk.columns().size());
-        assertEquals("minecraft:grass_block", chunk.columns().get(0).blockIdentifier());
-        assertEquals(64, chunk.columns().get(0).y());
+        assertEquals(2, chunk.blocks().size());
+        assertEquals("minecraft:grass_block", chunk.blocks().get(0).blockIdentifier());
+        assertEquals(64, chunk.blocks().get(0).y());
+    }
+
+
+    @Test
+    void refusesChunkRequestsOutsideSpawnNeighborhood() {
+        InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
+        FakeConnection connection = new FakeConnection();
+        NexoraWorldInfo info = new NexoraWorldInfo("world", 0, 128, 0, 65, 0, 20, 1);
+        new NexoraPrivateProtocolHandler(UUID.randomUUID(), 8 * 1024 * 1024, () -> info,
+                () -> world, ignored -> true, ignored -> { }).accept(connection);
+        connection.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
+
+        connection.deliver(NexoraChunkDataCodec.encodeChunkRequest(2, 0));
+
+        assertTrue(connection.closed);
+    }
+
+    @Test
+    void refusesMoreThanNineChunkRequestsPerConnection() {
+        InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
+        FakeConnection connection = new FakeConnection();
+        NexoraWorldInfo info = new NexoraWorldInfo("world", 0, 128, 0, 65, 0, 20, 1);
+        new NexoraPrivateProtocolHandler(UUID.randomUUID(), 8 * 1024 * 1024, () -> info,
+                () -> world, ignored -> true, ignored -> { }).accept(connection);
+        connection.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
+        for (int i = 0; i < 10; i++) {
+            connection.deliver(NexoraChunkDataCodec.encodeChunkRequest(0, 0));
+            if (connection.closed) break;
+        }
+
+        assertTrue(connection.closed);
     }
 
     private static final class FakeConnection implements TransportConnection {

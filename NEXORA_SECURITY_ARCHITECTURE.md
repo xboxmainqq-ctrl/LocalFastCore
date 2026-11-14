@@ -66,7 +66,9 @@ Implemented runtime security foundation:
 - `NexoraAccessController`: checks module-supplied permission nodes through a neutral `PermissionSubject`, records grant/deny decisions, and propagates audit write failures.
 - `NukkitPlatformAdapter`: adapts Nukkit-MOT `CommandSender.hasPermission(...)` to `PermissionSubject` without caching decisions.
 - `IntegrityChecker`: computes SHA-256 for regular files, rejects symbolic links, and never modifies the checked file.
-- `AuditLogger`: appends escaped JSON-lines events to the security audit log.\n- `BackupManager`: creates explicit directory snapshots, rejects symbolic links and special files, refuses to overwrite existing backups, and records per-file SHA-256 hashes and sizes in a manifest.
+- `AuditLogger`: appends escaped JSON-lines events, rejects symlink targets, and opens the log without following symbolic links.
+- `KeyValueStore`: persists settings through a unique temporary file and atomic replacement where supported; rejects symlink and non-regular store files.
+- `BackupManager`: creates explicit directory snapshots, rejects symbolic links and special files, refuses to overwrite existing backups, records per-file SHA-256 hashes and sizes, and verifies manifest structure, exact file sets, sizes, and hashes.
 
 Still planned:
 

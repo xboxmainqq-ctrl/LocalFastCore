@@ -36,7 +36,7 @@ public class BedrockAndroidPacketCodecTest {
         batch.put((byte) 7);
         batch.putFloat(0.5f);
 
-        NetherNetAndroidClient.NetworkSettings settings =
+        BedrockAndroidNetworkSettings settings =
                 BedrockAndroidPacketCodec.decodeNetworkSettings(batch.array());
 
         assertEquals(256, settings.compressionThreshold());
@@ -48,8 +48,8 @@ public class BedrockAndroidPacketCodecTest {
 
     @Test
     public void encodesLoginWithUncompressedEnvelopeWhenThresholdIsZero() {
-        NetherNetAndroidClient.NetworkSettings settings =
-                new NetherNetAndroidClient.NetworkSettings(0, 0, false, 0, 0.0f);
+        BedrockAndroidNetworkSettings settings =
+                new BedrockAndroidNetworkSettings(0, 0, false, 0, 0.0f);
         byte[] encoded = BedrockAndroidPacketCodec.encodeLoginBatch(CONNECTION_REQUEST, settings);
 
         assertEquals(0xff, Byte.toUnsignedInt(encoded[0]));
@@ -58,8 +58,8 @@ public class BedrockAndroidPacketCodecTest {
 
     @Test
     public void encodesLoginWithRawDeflateWhenThresholdIsReached() throws Exception {
-        NetherNetAndroidClient.NetworkSettings settings =
-                new NetherNetAndroidClient.NetworkSettings(1, 0, false, 0, 0.0f);
+        BedrockAndroidNetworkSettings settings =
+                new BedrockAndroidNetworkSettings(1, 0, false, 0, 0.0f);
         byte[] encoded = BedrockAndroidPacketCodec.encodeLoginBatch(CONNECTION_REQUEST, settings);
 
         assertEquals(0x00, Byte.toUnsignedInt(encoded[0]));
@@ -83,8 +83,8 @@ public class BedrockAndroidPacketCodecTest {
 
     @Test(expected = UnsupportedOperationException.class)
     public void rejectsSnappyWhenCompressionIsRequired() {
-        NetherNetAndroidClient.NetworkSettings settings =
-                new NetherNetAndroidClient.NetworkSettings(1, 1, false, 0, 0.0f);
+        BedrockAndroidNetworkSettings settings =
+                new BedrockAndroidNetworkSettings(1, 1, false, 0, 0.0f);
         BedrockAndroidPacketCodec.encodeLoginBatch(CONNECTION_REQUEST, settings);
     }
 

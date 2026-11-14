@@ -43,6 +43,9 @@ public final class BackupManager {
         Objects.requireNonNull(backupRoot, "backupRoot");
         validateBackupId(backupId);
 
+        if (Files.isSymbolicLink(sourceDirectory)) {
+            throw new IOException("Backup source must not be a symbolic link");
+        }
         Path source = sourceDirectory.toRealPath();
         if (!Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS)) {
             throw new IOException("Backup source must be a real directory");

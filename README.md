@@ -48,6 +48,6 @@ This is a runtime foundation, not yet a playable Minecraft Bedrock server. It do
 
 From the repository root:
 
-    mvn -f nexora-runtime/pom.xml --batch-mode --no-transfer-progress clean verify
+    mvn --batch-mode --no-transfer-progress clean verify
 
 No Nukkit libraries are required to build or run this module.

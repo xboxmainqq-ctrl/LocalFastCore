@@ -27,20 +27,29 @@ public final class NexoraPrivateProtocolCodec {
     }
 
     public static byte[] encodeClientHello(String clientBuild) {
+        return encodeClientHello(clientBuild, "Игрок");
+    }
+
+    public static byte[] encodeClientHello(String clientBuild, String playerName) {
         byte[] build = encodeText(clientBuild, 64, "clientBuild");
-        ByteBuffer output = header(TYPE_CLIENT_HELLO, 1 + build.length);
-        output.put((byte) build.length).put(build);
+        byte[] name = encodeText(playerName, 48, "playerName");
+        if (playerName.length() > 16 || playerName.isBlank()) throw new IllegalArgumentException("Invalid player name");
+        ByteBuffer output = header(TYPE_CLIENT_HELLO, 2 + build.length + name.length);
+        output.put((byte) build.length).put(build).put((byte) name.length).put(name);
         return output.array();
     }
 
     public static ClientHello decodeClientHello(ByteBuffer source) {
         ByteBuffer input = checkedHeader(source, TYPE_CLIENT_HELLO);
         int length = Byte.toUnsignedInt(readByte(input, "client build length"));
-        if (length < 1 || length > 64 || input.remaining() != length) {
-            throw new IllegalArgumentException("Invalid NEXORA client build length");
-        }
+        if (length < 1 || length > 64 || input.remaining() < length + 1) throw new IllegalArgumentException("Invalid NEXORA client build length");
+        String build = decodeText(input, length);
+        int nameLength = Byte.toUnsignedInt(readByte(input, "player name length"));
+        if (nameLength < 1 || nameLength > 48 || input.remaining() != nameLength) throw new IllegalArgumentException("Invalid NEXORA player name length");
+        String playerName = decodeText(input, nameLength);
+        if (playerName.isBlank() || playerName.length() > 16 || !playerName.equals(playerName.trim())) throw new IllegalArgumentException("Invalid NEXORA player name");
         return new ClientHello(Byte.toUnsignedInt(sourceVersionMajor(source)),
-                Byte.toUnsignedInt(sourceVersionMinor(source)), decodeText(input, length));
+                Byte.toUnsignedInt(sourceVersionMinor(source)), build, playerName);
     }
 
     public static byte[] encodeServerHello(UUID serverId, int maxMessageBytes) {
@@ -212,9 +221,10 @@ public final class NexoraPrivateProtocolCodec {
         }
     }
 
-    public record ClientHello(int majorVersion, int minorVersion, String clientBuild) {
+    public record ClientHello(int majorVersion, int minorVersion, String clientBuild, String playerName) {
         public ClientHello {
             Objects.requireNonNull(clientBuild, "clientBuild");
+            Objects.requireNonNull(playerName, "playerName");
         }
     }
 

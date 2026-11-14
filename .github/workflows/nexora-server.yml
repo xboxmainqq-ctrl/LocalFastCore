@@ -31,3 +31,11 @@ jobs:
 
       - name: Verify server runtime and tests
         run: mvn --batch-mode --no-transfer-progress clean verify
+
+      - name: Publish executable server JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexora-core-server
+          path: target/nexora-runtime-0.1.0-SNAPSHOT.jar
+          if-no-files-found: error
+          retention-days: 14

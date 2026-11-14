@@ -37,6 +37,7 @@ public final class MainActivity extends Activity {
     private ChunkPreviewView chunkPreview;
     private Button cameraModeButton;
     private boolean firstPersonCamera;
+    private TextView movementStatus;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -124,6 +125,36 @@ public final class MainActivity extends Activity {
             cameraModeButton.setText(firstPersonCamera
                     ? "ВИД: ОТ ПЕРВОГО ЛИЦА" : "ВИД: СВОБОДНАЯ КАМЕРА");
         });
+        addSpace(page, 8);
+        LinearLayout movementPanel = card();
+        page.addView(movementPanel, matchWrap());
+        movementPanel.addView(text("УПРАВЛЕНИЕ ПЕРСОНАЖЕМ", 12, MUTED, true), matchWrap());
+        addSpace(movementPanel, 8);
+        TextView movementHint = text("Локальное тестовое движение • сервер пока не получает координаты", 12, MUTED, false);
+        movementPanel.addView(movementHint, matchWrap());
+        addSpace(movementPanel, 10);
+        LinearLayout forwardRow = new LinearLayout(this);
+        forwardRow.setGravity(Gravity.CENTER);
+        movementPanel.addView(forwardRow, matchWrap());
+        Button forwardButton = button("ВПЕРЁД");
+        forwardRow.addView(forwardButton, new LinearLayout.LayoutParams(dp(132), dp(48)));
+        forwardButton.setOnClickListener(view -> chunkPreview.movePlayer(1f, 0f));
+        LinearLayout sideRow = new LinearLayout(this);
+        sideRow.setGravity(Gravity.CENTER);
+        movementPanel.addView(sideRow, matchWrap());
+        Button leftButton = button("◀");
+        Button backButton = button("НАЗАД");
+        Button rightButton = button("▶");
+        sideRow.addView(leftButton, new LinearLayout.LayoutParams(dp(64), dp(48)));
+        sideRow.addView(backButton, new LinearLayout.LayoutParams(dp(112), dp(48)));
+        sideRow.addView(rightButton, new LinearLayout.LayoutParams(dp(64), dp(48)));
+        leftButton.setOnClickListener(view -> chunkPreview.movePlayer(0f, -1f));
+        backButton.setOnClickListener(view -> chunkPreview.movePlayer(-1f, 0f));
+        rightButton.setOnClickListener(view -> chunkPreview.movePlayer(0f, 1f));
+        addSpace(movementPanel, 8);
+        Button jumpButton = button("ПРЫЖОК");
+        movementPanel.addView(jumpButton, matchWrap());
+        jumpButton.setOnClickListener(view -> chunkPreview.jumpPlayer());
         addSpace(page, 6);
         page.addView(text("Проведи пальцем — повернуть камеру • двумя пальцами — приблизить или отдалить",
                 12, MUTED, false), matchWrap());
@@ -209,6 +240,7 @@ public final class MainActivity extends Activity {
             public void onWorldInfoReceived(NexoraAndroidProtocolCodec.WorldInfo world) {
                 chunkPreview.setCenter(Math.floorDiv(world.spawnX(), 16),
                         Math.floorDiv(world.spawnZ(), 16));
+                chunkPreview.setPlayerSpawn(world.spawnX(), world.spawnY(), world.spawnZ());
                 chunkPreview.setVisibility(View.VISIBLE);
                 connectionStatus.setText("Мир: " + world.worldId()
                         + "\nВысота: " + world.minY() + ".." + (world.maxYExclusive() - 1)

@@ -426,10 +426,11 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                 reportError("Фрагментация запрещена на UnreliableDataChannel");
                 return;
             }
-            Listener current = listener;
-            if (current != null) {
-                mainHandler.post(() -> current.onMessage(payload, false));
+            if (!networkSettingsReceived) {
+                reportError("Unreliable Bedrock batch arrived before NetworkSettings");
+                return;
             }
+            deliverBedrockBatch(payload, false);
             return;
         }
 
@@ -489,35 +490,38 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                     return;
                 }
             }
-            byte[] delivered = complete;
-            try {
-                List<BedrockAndroidServerPacket> packets =
-                        BedrockAndroidPacketCodec.decodeServerBatch(delivered, networkSettings);
-                Listener current = listener;
-                if (current != null) {
-                    mainHandler.post(() -> {
-                        current.onMessage(delivered, true);
-                        for (BedrockAndroidServerPacket packet : packets) {
-                            if (packet.packetId() == 2) {
-                                BedrockAndroidPlayStatus status =
-                                        BedrockAndroidPacketCodec.decodePlayStatus(packet);
-                                current.onPlayStatus(status);
-                                if (status == BedrockAndroidPlayStatus.LOGIN_SUCCESS) {
-                                    current.onStatus("Bedrock Login подтверждён сервером");
-                                } else if (status == BedrockAndroidPlayStatus.PLAYER_SPAWN) {
-                                    current.onStatus("Игрок появился в мире");
-                                } else {
-                                    current.onError("Bedrock Login отклонён: " + status);
-                                }
+            deliverBedrockBatch(complete, true);
+        }
+    }
+
+    private void deliverBedrockBatch(byte[] delivered, boolean reliable) {
+        try {
+            List<BedrockAndroidServerPacket> packets =
+                    BedrockAndroidPacketCodec.decodeServerBatch(delivered, networkSettings);
+            Listener current = listener;
+            if (current != null) {
+                mainHandler.post(() -> {
+                    current.onMessage(delivered, reliable);
+                    for (BedrockAndroidServerPacket packet : packets) {
+                        if (packet.packetId() == 2) {
+                            BedrockAndroidPlayStatus status =
+                                    BedrockAndroidPacketCodec.decodePlayStatus(packet);
+                            current.onPlayStatus(status);
+                            if (status == BedrockAndroidPlayStatus.LOGIN_SUCCESS) {
+                                current.onStatus("Bedrock Login подтверждён сервером");
+                            } else if (status == BedrockAndroidPlayStatus.PLAYER_SPAWN) {
+                                current.onStatus("Игрок появился в мире");
                             } else {
-                                current.onBedrockPacket(packet);
+                                current.onError("Bedrock Login отклонён: " + status);
                             }
+                        } else {
+                            current.onBedrockPacket(packet);
                         }
-                    });
-                }
-            } catch (RuntimeException malformed) {
-                reportError("Некорректный Bedrock server batch: " + malformed.getMessage());
+                    }
+                });
             }
+        } catch (RuntimeException malformed) {
+            reportError("Некорректный Bedrock server batch: " + malformed.getMessage());
         }
     }
 

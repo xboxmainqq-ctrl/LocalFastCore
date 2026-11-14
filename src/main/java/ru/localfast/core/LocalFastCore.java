@@ -4095,6 +4095,19 @@ public final class LocalFastCore extends PluginBase implements Listener {
         return players.getString(magicEquipmentPath(player) + "." + slot, "");
     }
 
+    private boolean magicRelicFitsSlot(String id, int slot) {
+        if (slot >= 0 && slot <= 1) {
+            return Arrays.asList("mana_heart", "archmage_orb", "phoenix_feather", "chrono_talisman", "rune_focus", "storm_seal").contains(id);
+        }
+        if (slot >= 2 && slot <= 3) {
+            return Arrays.asList("ember_amulet", "frost_amulet", "soul_pendant").contains(id);
+        }
+        if (slot >= 4 && slot <= 5) {
+            return Arrays.asList("void_ring", "guardian_ring", "swift_ring").contains(id);
+        }
+        return false;
+    }
+
     private boolean hasMagicRelic(Player player, String id) {
         for (int slot = 0; slot < MAGIC_EQUIPMENT_SLOTS.length; slot++) {
             if (id.equals(equippedMagicRelic(player, slot))) return true;
@@ -4162,6 +4175,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
         String relicId = magicRelicFromItem(hand);
         if (relicId == null) {
             player.sendMessage("§eВозьми артефакт или амулет в руку, затем нажми на пустой слот.");
+            return;
+        }
+        if (!magicRelicFitsSlot(relicId, slot)) {
+            player.sendMessage("§cЭтот предмет не подходит в выбранную ячейку. Артефакты, амулеты и кольца имеют свои слоты.");
             return;
         }
         for (int i = 0; i < MAGIC_EQUIPMENT_SLOTS.length; i++) {
@@ -4768,6 +4785,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         grantMagicXp(player, 8);
         player.sendMessage("§5§l[МАГИЯ] §f" + result + " §8(-" + cost + " маны)");
         updateSidebar(player);
+        updateMagicHud(player);
         return true;
     }
 

@@ -11,12 +11,14 @@ class BedrockPalettedStorageCodecTest {
     private static final BlockState STONE = new BlockState("minecraft:stone");
 
     @Test
-    void encodesUniformAirPaletteWithoutIndexWordsOrPaletteArray() {
+    void encodesUniformAirPaletteWithItsSingleRuntimeId() {
         ChunkSection section = new ChunkSection();
         var registry = BedrockRuntimeBlockRegistry.of(Map.of(BlockState.AIR, 0));
 
         ByteBuffer encoded = BedrockPalettedStorageCodec.encode(section, registry);
         assertEquals(1, Byte.toUnsignedInt(encoded.get())); // zero bits, runtime flag set
+        assertEquals(1, BedrockBinary.readVarInt32(encoded));
+        assertEquals(0, BedrockBinary.readVarInt32(encoded));
         assertFalse(encoded.hasRemaining());
     }
 
@@ -54,10 +56,31 @@ class BedrockPalettedStorageCodecTest {
     }
 
     @Test
-    void runtimeRegistryRequiresAirAndNonnegativeIds() {
+    void runtimeRegistryRequiresAirAndUniqueIdsButAllowsSignedHashes() {
         assertThrows(IllegalArgumentException.class,
                 () -> BedrockRuntimeBlockRegistry.of(Map.of(STONE, 1)));
         assertThrows(IllegalArgumentException.class,
-                () -> BedrockRuntimeBlockRegistry.of(Map.of(BlockState.AIR, -1)));
+                () -> BedrockRuntimeBlockRegistry.of(Map.of(BlockState.AIR, 0, STONE, 0)));
+        var registry = BedrockRuntimeBlockRegistry.of(Map.of(
+                BlockState.AIR, 0,
+                STONE, -2144268767));
+        assertEquals(-2144268767, registry.runtimeId(STONE));
+    }
+
+    @Test
+    void serializesSignedHashedRuntimeIdsInPalette() {
+        ChunkSection section = new ChunkSection();
+        section.set(0, 0, 0, STONE);
+        var registry = BedrockRuntimeBlockRegistry.of(Map.of(
+                BlockState.AIR, 0,
+                STONE, -2144268767));
+
+        ByteBuffer in = BedrockPalettedStorageCodec.encode(section, registry);
+        assertEquals(3, Byte.toUnsignedInt(in.get()));
+        for (int i = 0; i < 128; i++) BedrockBinary.readLittleEndianInt32(in);
+        assertEquals(2, BedrockBinary.readVarInt32(in));
+        assertEquals(0, BedrockBinary.readVarInt32(in));
+        assertEquals(-2144268767, BedrockBinary.readVarInt32(in));
+        assertFalse(in.hasRemaining());
     }
 }

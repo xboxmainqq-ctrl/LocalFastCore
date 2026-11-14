@@ -41,7 +41,7 @@ class BedrockNetworkSettingsPacketCodecTest {
         assertEquals(BedrockNetworkSettings.CompressionAlgorithm.NONE, decoded.compressionAlgorithm());
         assertTrue(decoded.clientThrottleEnabled());
         assertEquals(254, decoded.clientThrottleThreshold());
-        assertEquals(1.25f, decoded.clientThrottleScalar());
+        assertEquals(1.25f, decoded.clientThrottleScalar(), 0.0001f);
         assertFalse(payload.hasRemaining());
     }
 

@@ -12,6 +12,8 @@ import java.util.function.Consumer;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockInitialTransportRouterTest {
+    private static final String JWT = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.c2ln";
+    private static final String LOGIN_JSON = "{\\"chain\\":[\\"" + JWT + "\\"],\\"clientData\\":\\"" + JWT + "\\"}";
     private static final BedrockNetworkSettings SETTINGS = new BedrockNetworkSettings(
             1, BedrockNetworkSettings.CompressionAlgorithm.ZLIB, false, 0, 0.0f);
 
@@ -21,8 +23,10 @@ class BedrockInitialTransportRouterTest {
         AtomicInteger playMessages = new AtomicInteger();
         BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
                 SETTINGS,
-                (connection, login) -> {
-                    assertEquals("test-login", login.connectionRequest());
+                (connection, login, request) -> {
+                    assertEquals(LOGIN_JSON, login.connectionRequest());
+                    assertEquals(List.of(JWT), request.chain());
+                    assertEquals(JWT, request.clientDataJwt());
                     return CompletableFuture.completedFuture(true);
                 },
                 connection -> playStarts.incrementAndGet(),
@@ -41,7 +45,7 @@ class BedrockInitialTransportRouterTest {
                                 connection.sent.get(0), 1024)).get(0).header().packetId());
 
         connection.receive(frame(BedrockLoginPacketCodec.PACKET_ID,
-                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, "test-login")),
+                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, LOGIN_JSON)),
                 true));
 
         assertEquals(1, playStarts.get());
@@ -58,7 +62,7 @@ class BedrockInitialTransportRouterTest {
     void rejectsLoginWhenAuthenticatorDeniesIt() {
         BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
                 SETTINGS,
-                (connection, login) -> CompletableFuture.completedFuture(false),
+                (connection, login, request) -> CompletableFuture.completedFuture(false),
                 connection -> fail("Rejected login must not enter play"),
                 (connection, message) -> fail("Rejected login must not receive play messages"));
         FakeConnection connection = new FakeConnection("peer-2");
@@ -68,7 +72,7 @@ class BedrockInitialTransportRouterTest {
                 BedrockRequestNetworkSettingsPacketCodec.encodePayload(
                         new BedrockRequestNetworkSettingsPacket(2225)), false));
         connection.receive(frame(BedrockLoginPacketCodec.PACKET_ID,
-                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, "denied")),
+                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, LOGIN_JSON)),
                 true));
 
         assertFalse(connection.isOpen());
@@ -79,7 +83,7 @@ class BedrockInitialTransportRouterTest {
     void rejectsHandshakeFramesOnUnreliableDelivery() {
         BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
                 SETTINGS,
-                (connection, login) -> CompletableFuture.completedFuture(true),
+                (connection, login, request) -> CompletableFuture.completedFuture(true),
                 connection -> fail("Invalid handshake must not enter play"),
                 (connection, message) -> fail("Invalid handshake must not reach play"));
         FakeConnection connection = new FakeConnection("peer-3");

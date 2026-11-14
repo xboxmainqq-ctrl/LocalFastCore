@@ -5,6 +5,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -37,6 +38,8 @@ class FluidWorldStorageTest {
         BlockPosition lavaPosition = new BlockPosition(19, 5, -31);
         BlockState water = new BlockState("minecraft:water");
         BlockState lava = new BlockState("minecraft:lava");
+        original.setBlock(waterPosition, new BlockState("minecraft:oak_stairs", Map.of(
+                "waterlogged", "true")));
         original.setFluid(waterPosition, water);
         original.setFluid(lavaPosition, lava);
 
@@ -45,6 +48,7 @@ class FluidWorldStorageTest {
         InMemoryWorld loaded = storage.load("fluidworld").orElseThrow();
         assertEquals(water, loaded.fluidAt(waterPosition));
         assertEquals(lava, loaded.fluidAt(lavaPosition));
-        assertEquals(BlockState.AIR, loaded.blockAt(waterPosition));
+        assertEquals(new BlockState("minecraft:oak_stairs", Map.of(
+                "waterlogged", "true")), loaded.blockAt(waterPosition));
     }
 }

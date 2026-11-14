@@ -159,13 +159,37 @@ public final class NetherNetSignalingServer implements RuntimeModule {
         ExecutorService currentExecutor = executor;
         server = null;
         executor = null;
+        RuntimeException failure = null;
         if (current != null) {
-            current.stop(1);
+            try {
+                current.stop(1);
+            } catch (RuntimeException stopFailure) {
+                failure = stopFailure;
+            }
         }
         if (currentExecutor != null) {
-            currentExecutor.shutdownNow();
+            try {
+                currentExecutor.shutdownNow();
+            } catch (RuntimeException shutdownFailure) {
+                if (failure == null) {
+                    failure = shutdownFailure;
+                } else {
+                    failure.addSuppressed(shutdownFailure);
+                }
+            }
         }
-        peerHost.close();
+        try {
+            peerHost.close();
+        } catch (RuntimeException closeFailure) {
+            if (failure == null) {
+                failure = closeFailure;
+            } else {
+                failure.addSuppressed(closeFailure);
+            }
+        }
+        if (failure != null) {
+            throw failure;
+        }
     }
 
     private void handle(HttpExchange exchange) throws IOException {

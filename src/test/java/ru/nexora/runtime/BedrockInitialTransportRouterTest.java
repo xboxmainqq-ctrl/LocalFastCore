@@ -13,7 +13,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockInitialTransportRouterTest {
     private static final String JWT = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.c2ln";
-    private static final String LOGIN_JSON = "{\\"chain\\":[\\"" + JWT + "\\"],\\"clientData\\":\\"" + JWT + "\\"}";
+    private static final String LOGIN_JSON =
+            "{\\"AuthenticationType\\":0,\\"Token\\":\\"" + JWT + "\\",\\"Certificate\\":\\"\\"}";
+    private static final String CLIENT_DATA_JWT = JWT;
     private static final BedrockNetworkSettings SETTINGS = new BedrockNetworkSettings(
             1, BedrockNetworkSettings.CompressionAlgorithm.ZLIB, false, 0, 0.0f);
 

@@ -5,11 +5,22 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Consumer;
+import java.util.Objects;
 
 /** Thread-safe event registration with synchronous event delivery. */
 public final class SimpleEventBus implements EventBus {
     private final ConcurrentMap<Class<?>, CopyOnWriteArrayList<Consumer<?>>> listeners =
             new ConcurrentHashMap<>();
+    private final Consumer<EventDispatchException> failureHandler;
+
+    public SimpleEventBus() {
+        this(failure -> System.getLogger(SimpleEventBus.class.getName()).log(
+                System.Logger.Level.ERROR, failure.getMessage(), failure));
+    }
+
+    public SimpleEventBus(Consumer<EventDispatchException> failureHandler) {
+        this.failureHandler = Objects.requireNonNull(failureHandler, "failureHandler");
+    }
 
     @Override
     public <E extends NexoraEvent> Subscription subscribe(
@@ -53,7 +64,15 @@ public final class SimpleEventBus implements EventBus {
             }
         }
         if (dispatchFailure != null) {
-            throw dispatchFailure;
+            try {
+                failureHandler.accept(dispatchFailure);
+            } catch (RuntimeException handlerFailure) {
+                System.getLogger(SimpleEventBus.class.getName()).log(
+                        System.Logger.Level.ERROR,
+                        "NEXORA event failure handler itself failed", handlerFailure);
+                System.getLogger(SimpleEventBus.class.getName()).log(
+                        System.Logger.Level.ERROR, dispatchFailure.getMessage(), dispatchFailure);
+            }
         }
         return event;
     }

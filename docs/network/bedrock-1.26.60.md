@@ -206,3 +206,10 @@ Tests cover signed/unsigned 64-bit varint boundaries, overflow and truncation, n
 Protocol references:
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/start-game-packet/
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/primitives/
+### Complete LevelSettings object serializer
+
+`BedrockLevelSettingsCodec` now writes all 51 `LevelSettings` fields in protocol-2225 order for a minimal survival flat world. It includes the fixed-width empty experiment count, empty game-rule list, optional experimental-gameplay flag encoded as absent, the new editor migration byte, and all trailing policy fields. Seed, dimension, spawn position, difficulty, day-cycle stop time, chunk tick range, and base-game version are supplied explicitly.
+
+A schema-order test reads the serialized result field by field and verifies that no bytes remain after field 50. This is a complete nested `LevelSettings` object, not yet a complete `StartGamePacket`: the top-level player-property payload and server-configuration/telemetry structures still need exact serialization before packet 11 can be emitted.
+
+Reference: https://mojang.github.io/bedrock-protocol-docs/1.26.60/types/level-settings/

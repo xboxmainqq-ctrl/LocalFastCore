@@ -167,7 +167,7 @@ The official protocol reference identifies packet IDs 6, 7 and 8 and documents t
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/resource-pack-client-response-packet/
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/primitives/
 
-**Scope limitation:** these codecs do not yet form a post-login negotiation coordinator and do not prove that a live client accepts the chosen empty world-template metadata. The reusable `BedrockWorldStartupHandler` can send StartGame and skeleton chunks, but the production server composition still does not instantiate and wire it with a verified block registry and loaded spawn chunks. `LOGIN_SUCCESS_SENT` must remain distinct from `PLAY`; only the later completed world-startup path may call `markPlayReady(connection)`. No real Bedrock client compatibility is claimed.
+**Scope limitation:** the post-login negotiation coordinator and startup components exist, but they do not prove that a live client accepts the chosen empty world-template metadata. The reusable `BedrockWorldStartupHandler` can send StartGame and skeleton chunks, but the production server composition still does not instantiate and wire it with a verified block registry and loaded spawn chunks. `LOGIN_SUCCESS_SENT` must remain distinct from `PLAY`; only the later completed world-startup path may call `markPlayReady(connection)`. No real Bedrock client compatibility is claimed.
 ### Post-login negotiation coordinator
 
 `BedrockPostLoginCoordinator` now connects the packet codecs into a bounded state flow:
@@ -273,9 +273,9 @@ The terrain serialization milestone now includes four standalone components:
 
 `BedrockSubChunkResponseBuilder` now resolves request offsets against the center position, checks player dimension, loaded chunk presence, and world section bounds, then serializes the corresponding loaded section. Empty sections return `SuccessAllAir`; missing chunks and invalid section Y values return their protocol result codes. Each request is capped at 64 offsets, each response packet at 64 entries, and each chunk snapshot is reused within the request.
 
-**Remaining integration and protocol limits:** the exact 1.26.60 runtime block-ID table is not yet bundled or loaded; no live request handler currently sends these packets through the authenticated transport; the initial subchunk blob contains one block layer and an empty block-actor terminator only; it does not yet include fluid storage, biome palette data, actual block entities, or computed heightmaps. The packet codec marks both heightmap variants `NoData`, so this is not yet a complete production terrain stream. The LevelChunk skeleton and SubChunk response flow still require a real client test.
+**Remaining integration and protocol limits:** the exact 1.26.60 runtime block-ID table is not yet bundled or loaded; the request handler is implemented but not yet installed by a production server composition root; the initial subchunk blob contains one block layer and an empty block-actor terminator only; it does not yet include fluid storage, biome palette data, actual block entities, or computed heightmaps. The packet codec marks both heightmap variants `NoData`, so this is not yet a complete production terrain stream. The LevelChunk skeleton and SubChunk response flow still require a real client test.
 
-Tests have been added for uniform and multi-entry palettes, XZY index order, missing runtime IDs, version-9 subchunk headers, protocol-2225 result values, world-backed section lookup, missing chunks, wrong dimensions, out-of-range Y, and bounded packet batching. Tests have not been executed: the latest GitHub Actions jobs have been failing before any steps run because no runner is assigned. No live Bedrock client test has been performed.
+Tests have been added for uniform and multi-entry palettes, XZY index order, missing runtime IDs, version-9 subchunk headers and the empty block-actor terminator, protocol-2225 result values, world-backed section lookup, missing chunks, wrong dimensions, out-of-range Y, mixed transport batches, StartGame-before-skeleton ordering, and startup failure/backpressure. Tests have not been executed: the latest GitHub Actions jobs have been failing before any steps run because no runner is assigned. No live Bedrock client test has been performed.
 
 Protocol references:
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/sub-chunk-packet/
@@ -288,8 +288,8 @@ Protocol references:
 `BedrockSubChunkRequestHandler` can now be supplied as the router's post-login/play message handler (or composed ahead of an existing gameplay handler). It:
 
 - Decodes the negotiated Bedrock compression envelope and packet batch.
-- Routes batches containing only packet 175 to the subchunk request parser and world response builder.
-- Delegates unrelated gameplay batches unchanged to the configured fallback handler.
+- Extracts packet 175 requests from incoming batches and routes them to the subchunk request parser and world response builder.
+- Rebuilds and delegates any other gameplay packets in mixed batches to the configured fallback handler; batches without subchunk requests are passed through unchanged.
 - Requires reliable-ordered delivery for subchunk requests and zero sub-client IDs.
 - Sends packet 174 responses as compressed reliable-ordered batches and closes on malformed requests, invalid routing, or transport backpressure.
 - Caps each client request at 64 subchunk offsets and processes at most 16 request packets per inbound message to bound CPU, memory, and outbound queue pressure.

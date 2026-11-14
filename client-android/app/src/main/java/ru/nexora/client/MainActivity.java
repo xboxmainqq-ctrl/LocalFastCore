@@ -34,6 +34,7 @@ public final class MainActivity extends Activity {
     private EditText serverAddress;
     private Button connectButton;
     private NetherNetAndroidClient netherNetClient;
+    private ChunkPreviewView chunkPreview;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -103,6 +104,15 @@ public final class MainActivity extends Activity {
                 "NetherNet: HTTP(S) signaling, WebRTC и проверка ключа сервера.",
                 13, MUTED, false
         ), matchWrap());
+
+        addSpace(page, 18);
+        TextView mapTitle = text("КАРТА ПОВЕРХНОСТИ • 16×16", 12, MUTED, true);
+        page.addView(mapTitle, matchWrap());
+        addSpace(page, 8);
+        chunkPreview = new ChunkPreviewView(this);
+        chunkPreview.setVisibility(View.GONE);
+        page.addView(chunkPreview, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(240)));
 
         addSpace(page, 20);
         LinearLayout infoCard = card();
@@ -188,6 +198,16 @@ public final class MainActivity extends Activity {
                         + "\nПоявление: " + world.spawnX() + ", " + world.spawnY() + ", " + world.spawnZ()
                         + "\nТиков: " + world.tickRate() + "/с"
                         + "\nЗагружено чанков: " + world.loadedChunks());
+            }
+
+            @Override
+            public void onChunkDataReceived(NexoraAndroidProtocolCodec.ChunkData chunk) {
+                chunkPreview.setChunk(chunk);
+                chunkPreview.setVisibility(View.VISIBLE);
+                connectionStatus.setText("Чанк " + chunk.chunkX() + ", " + chunk.chunkZ()
+                        + " • столбцов поверхности: "
+                        + java.util.Arrays.stream(chunk.blockIds()).filter(java.util.Objects::nonNull).count()
+                        + "\nОтображается карта поверхности 16×16");
             }
 
             @Override

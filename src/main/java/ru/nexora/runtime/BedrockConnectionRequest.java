@@ -18,7 +18,22 @@ import java.util.Objects;
  * extracts the certificate-chain tokens and client-data token so a separate
  * cryptographic verifier can validate their signatures and claims.</p>
  */
-public record BedrockConnectionRequest(List<String> chain, String clientDataJwt) {
+public record BedrockConnectionRequest(
+        Format format,
+        List<String> chain,
+        String clientDataJwt,
+        Integer authenticationType,
+        String token,
+        String certificate
+) {
+    public enum Format {
+        LEGACY_CHAIN,
+        AUTHENTICATION_ENVELOPE
+    }
+
+    public BedrockConnectionRequest(List<String> chain, String clientDataJwt) {
+        this(Format.LEGACY_CHAIN, chain, clientDataJwt, null, null, null);
+    }
     public static final int MAX_JSON_BYTES = BedrockLoginPacketCodec.MAX_CONNECTION_REQUEST_BYTES;
     public static final int MAX_CHAIN_TOKENS = 3;
     public static final int MAX_JWT_CHARS = 512 * 1024;
@@ -34,16 +49,39 @@ public record BedrockConnectionRequest(List<String> chain, String clientDataJwt)
             .build();
 
     public BedrockConnectionRequest {
-        Objects.requireNonNull(chain, "chain");
-        Objects.requireNonNull(clientDataJwt, "clientDataJwt");
-        chain = List.copyOf(chain);
-        if (chain.isEmpty() || chain.size() > MAX_CHAIN_TOKENS) {
-            throw new IllegalArgumentException("Bedrock certificate chain must contain 1 to 3 JWTs");
+        Objects.requireNonNull(format, "format");
+        chain = List.copyOf(Objects.requireNonNull(chain, "chain"));
+        if (format == Format.LEGACY_CHAIN) {
+            Objects.requireNonNull(clientDataJwt, "clientDataJwt");
+            if (authenticationType != null || token != null || certificate != null) {
+                throw new IllegalArgumentException("Legacy connection request contains modern envelope fields");
+            }
+            if (chain.isEmpty() || chain.size() > MAX_CHAIN_TOKENS) {
+                throw new IllegalArgumentException("Bedrock certificate chain must contain 1 to 3 JWTs");
+            }
+            for (String jwt : chain) {
+                requireCompactJwt(jwt, "certificate-chain JWT");
+            }
+            requireCompactJwt(clientDataJwt, "client-data JWT");
+        } else {
+            if (!chain.isEmpty() || clientDataJwt != null
+                    || authenticationType == null || token == null || certificate == null) {
+                throw new IllegalArgumentException("Modern authentication envelope is incomplete or mixed");
+            }
+            if (authenticationType < 0 || authenticationType > 255
+                    || token.isBlank() || token.length() > MAX_JWT_CHARS
+                    || certificate.isBlank() || certificate.length() > MAX_JWT_CHARS) {
+                throw new IllegalArgumentException("Modern authentication envelope fields are invalid");
+            }
         }
-        for (String token : chain) {
-            requireCompactJwt(token, "certificate-chain JWT");
-        }
-        requireCompactJwt(clientDataJwt, "client-data JWT");
+    }
+
+    public boolean isLegacyChain() {
+        return format == Format.LEGACY_CHAIN;
+    }
+
+    public boolean isAuthenticationEnvelope() {
+        return format == Format.AUTHENTICATION_ENVELOPE;
     }
 
     /**
@@ -59,6 +97,9 @@ public record BedrockConnectionRequest(List<String> chain, String clientDataJwt)
 
         List<String> chain = null;
         String clientData = null;
+        Integer authenticationType = null;
+        String tokenValue = null;
+        String certificateValue = null;
         int topLevelFieldCount = 0;
         try (JsonParser parser = JSON_FACTORY.createParser(json)) {
             if (parser.nextToken() != JsonToken.START_OBJECT) {
@@ -87,6 +128,22 @@ public record BedrockConnectionRequest(List<String> chain, String clientDataJwt)
                         throw new IllegalArgumentException("Connection request clientData must be a string");
                     }
                     clientData = parser.getText();
+                } else if ("AuthenticationType".equals(field)
+                        || "authenticationType".equals(field)) {
+                    if (value != JsonToken.VALUE_NUMBER_INT || authenticationType != null) {
+                        throw new IllegalArgumentException("AuthenticationType must be a unique integer");
+                    }
+                    authenticationType = parser.getIntValue();
+                } else if ("Token".equals(field) || "token".equals(field)) {
+                    if (value != JsonToken.VALUE_STRING || tokenValue != null) {
+                        throw new IllegalArgumentException("Token must be a unique string");
+                    }
+                    tokenValue = parser.getText();
+                } else if ("Certificate".equals(field) || "certificate".equals(field)) {
+                    if (value != JsonToken.VALUE_STRING || certificateValue != null) {
+                        throw new IllegalArgumentException("Certificate must be a unique string");
+                    }
+                    certificateValue = parser.getText();
                 } else {
                     parser.skipChildren();
                 }
@@ -100,8 +157,20 @@ public record BedrockConnectionRequest(List<String> chain, String clientDataJwt)
             throw new IllegalArgumentException("Invalid Bedrock connection request JSON", failure);
         }
 
+        boolean hasLegacy = chain != null || clientData != null;
+        boolean hasModern = authenticationType != null || tokenValue != null || certificateValue != null;
+        if (hasLegacy && hasModern) {
+            throw new IllegalArgumentException("Connection request mixes legacy and modern authentication formats");
+        }
+        if (hasModern) {
+            if (authenticationType == null || tokenValue == null || certificateValue == null) {
+                throw new IllegalArgumentException("Modern connection request requires AuthenticationType, Token, and Certificate");
+            }
+            return new BedrockConnectionRequest(Format.AUTHENTICATION_ENVELOPE,
+                    List.of(), null, authenticationType, tokenValue, certificateValue);
+        }
         if (chain == null || clientData == null) {
-            throw new IllegalArgumentException("Connection request must contain chain and clientData");
+            throw new IllegalArgumentException("Connection request must contain legacy chain/clientData or modern authentication envelope");
         }
         return new BedrockConnectionRequest(chain, clientData);
     }

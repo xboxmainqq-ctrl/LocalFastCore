@@ -6,6 +6,7 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Objects;
@@ -27,7 +28,13 @@ public final class KeyValueStore implements AutoCloseable {
         if (parent != null) {
             Files.createDirectories(parent);
         }
-        if (Files.exists(file)) {
+        if (Files.isSymbolicLink(file)) {
+            throw new IOException("Persistent store must not be a symbolic link: " + file);
+        }
+        if (Files.exists(file, LinkOption.NOFOLLOW_LINKS)) {
+            if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+                throw new IOException("Persistent store must be a regular file: " + file);
+            }
             try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
                 values.load(reader);
             }
@@ -56,15 +63,27 @@ public final class KeyValueStore implements AutoCloseable {
         if (parent != null) {
             Files.createDirectories(parent);
         }
-        Path temporary = absoluteFile.resolveSibling(absoluteFile.getFileName() + ".tmp");
-        try (Writer writer = Files.newBufferedWriter(temporary, StandardCharsets.UTF_8)) {
-            values.store(writer, "NEXORA Core persistent data");
+        if (Files.isSymbolicLink(absoluteFile)) {
+            throw new IOException("Persistent store must not be a symbolic link: " + absoluteFile);
         }
+        if (Files.exists(absoluteFile, LinkOption.NOFOLLOW_LINKS)
+                && !Files.isRegularFile(absoluteFile, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Persistent store must be a regular file: " + absoluteFile);
+        }
+
+        Path temporary = Files.createTempFile(parent, absoluteFile.getFileName() + ".", ".tmp");
         try {
-            Files.move(temporary, absoluteFile, StandardCopyOption.REPLACE_EXISTING,
-                    StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException ignored) {
-            Files.move(temporary, absoluteFile, StandardCopyOption.REPLACE_EXISTING);
+            try (Writer writer = Files.newBufferedWriter(temporary, StandardCharsets.UTF_8)) {
+                values.store(writer, "NEXORA Core persistent data");
+            }
+            try {
+                Files.move(temporary, absoluteFile, StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException ignored) {
+                Files.move(temporary, absoluteFile, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(temporary);
         }
     }
 

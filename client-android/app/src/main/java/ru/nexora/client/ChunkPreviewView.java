@@ -75,10 +75,7 @@ final class ChunkPreviewView extends GLSurfaceView {
     }
 
     void jumpPlayer() {
-        queueEvent(() -> {
-            renderer.jumpPlayer();
-            publishPlayerPosition();
-        });
+        queueEvent(renderer::jumpPlayer);
         requestRender();
     }
 
@@ -228,6 +225,7 @@ final class ChunkPreviewView extends GLSurfaceView {
         private float playerY = 65f;
         private float playerZ = 24f;
         private float verticalVelocity;
+        private long lastPhysicsTickNanos;
         private boolean playerInitialized;
         private Set<BlockPosition> collisionBlocks = Set.of();
         private final Map<java.util.UUID, NexoraAndroidProtocolCodec.RemotePlayerState> remotePlayers =
@@ -287,6 +285,7 @@ final class ChunkPreviewView extends GLSurfaceView {
         void jumpPlayer() {
             if (playerInitialized && hasGroundBelow()) {
                 verticalVelocity = 0.34f;
+                lastPhysicsTickNanos = System.nanoTime();
             }
         }
 
@@ -356,19 +355,25 @@ final class ChunkPreviewView extends GLSurfaceView {
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
             if (meshDirty) rebuildMesh();
             if (playerInitialized && Math.abs(verticalVelocity) > 0.0001f) {
-                float previousPlayerY = playerY;
-                float nextY = playerY + verticalVelocity;
-                if (canOccupy(playerX, nextY, playerZ)) {
-                    playerY = nextY;
-                    verticalVelocity -= 0.035f;
+                long now = System.nanoTime();
+                if (now - lastPhysicsTickNanos >= 50_000_000L) {
+                    float previousPlayerY = playerY;
+                    float nextY = playerY + verticalVelocity;
+                    if (canOccupy(playerX, nextY, playerZ)) {
+                        playerY = nextY;
+                        verticalVelocity -= 0.035f;
+                    } else {
+                        verticalVelocity = 0f;
+                    }
+                    if (playerY < -64f) verticalVelocity = 0f;
+                    lastPhysicsTickNanos = now;
+                    if (Math.abs(playerY - previousPlayerY) > 0.0001f) {
+                        ChunkPreviewView.this.publishPlayerPosition();
+                    }
+                    if (Math.abs(verticalVelocity) > 0.0001f) {
+                        ChunkPreviewView.this.requestRender();
+                    }
                 } else {
-                    verticalVelocity = 0f;
-                }
-                if (playerY < -64f) verticalVelocity = 0f;
-                if (Math.abs(playerY - previousPlayerY) > 0.0001f) {
-                    ChunkPreviewView.this.publishPlayerPosition();
-                }
-                if (Math.abs(verticalVelocity) > 0.0001f) {
                     ChunkPreviewView.this.requestRender();
                 }
             }

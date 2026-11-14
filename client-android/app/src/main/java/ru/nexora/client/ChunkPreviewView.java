@@ -554,12 +554,13 @@ final class ChunkPreviewView extends GLSurfaceView {
                 float x0 = x - 0.30f, x1 = x + 0.30f;
                 float y0 = y, y1 = y + 1.8f;
                 float z0 = z - 0.30f, z1 = z + 0.30f;
-                mesh.quad(x0,y1,z0, x0,y1,z1, x1,y1,z1, x1,y1,z0, color, 1.0f);
-                mesh.quad(x0,y0,z1, x0,y0,z0, x1,y0,z0, x1,y0,z1, color, 0.5f);
-                mesh.quad(x0,y0,z0, x0,y0,z1, x0,y1,z1, x0,y1,z0, color, 0.72f);
-                mesh.quad(x1,y0,z1, x1,y0,z0, x1,y1,z0, x1,y1,z1, color, 0.82f);
-                mesh.quad(x1,y0,z0, x0,y0,z0, x0,y1,z0, x1,y1,z0, color, 0.62f);
-                mesh.quad(x0,y0,z1, x1,y0,z1, x1,y1,z1, x0,y1,z1, color, 0.68f);
+                float angle = (float) Math.toRadians(player.yaw());
+                playerQuad(mesh, x, z, angle, x0,y1,z0, x0,y1,z1, x1,y1,z1, x1,y1,z0, color, 1.0f);
+                playerQuad(mesh, x, z, angle, x0,y0,z1, x0,y0,z0, x1,y0,z0, x1,y0,z1, color, 0.5f);
+                playerQuad(mesh, x, z, angle, x0,y0,z0, x0,y0,z1, x0,y1,z1, x0,y1,z0, color, 0.72f);
+                playerQuad(mesh, x, z, angle, x1,y0,z1, x1,y0,z0, x1,y1,z0, x1,y1,z1, color, 0.82f);
+                playerQuad(mesh, x, z, angle, x1,y0,z0, x0,y0,z0, x0,y1,z0, x1,y1,z0, color, 0.62f);
+                playerQuad(mesh, x, z, angle, x0,y0,z1, x1,y0,z1, x1,y1,z1, x0,y1,z1, color, 0.68f);
                 if (mesh.full()) break;
             }
             float[] values = mesh.values();
@@ -569,6 +570,23 @@ final class ChunkPreviewView extends GLSurfaceView {
             remotePlayerBuffer = bytes.asFloatBuffer();
             remotePlayerBuffer.put(values);
             remotePlayerBuffer.position(0);
+        }
+
+        private void playerQuad(MeshBuilder mesh, float centerX, float centerZ, float angle,
+                                float ax, float ay, float az, float bx, float by, float bz,
+                                float cx, float cy, float cz, float dx, float dy, float dz,
+                                float[] color, float shade) {
+            float cos = (float) Math.cos(angle);
+            float sin = (float) Math.sin(angle);
+            float rax = centerX + (ax - centerX) * cos + (az - centerZ) * sin;
+            float raz = centerZ - (ax - centerX) * sin + (az - centerZ) * cos;
+            float rbx = centerX + (bx - centerX) * cos + (bz - centerZ) * sin;
+            float rbz = centerZ - (bx - centerX) * sin + (bz - centerZ) * cos;
+            float rcx = centerX + (cx - centerX) * cos + (cz - centerZ) * sin;
+            float rcz = centerZ - (cx - centerX) * sin + (cz - centerZ) * cos;
+            float rdx = centerX + (dx - centerX) * cos + (dz - centerZ) * sin;
+            float rdz = centerZ - (dx - centerX) * sin + (dz - centerZ) * cos;
+            mesh.quad(rax,ay,raz, rbx,by,rbz, rcx,cy,rcz, rdx,dy,rdz, color, shade);
         }
 
         private void rebuildMesh() {

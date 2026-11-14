@@ -104,8 +104,9 @@ class NexoraPrivateProtocolHandlerTest {
         assertEquals(0, chunk.chunkX());
         assertEquals(0, chunk.chunkZ());
         assertEquals(2, chunk.blocks().size());
-        assertEquals("minecraft:grass_block", chunk.blocks().get(0).blockIdentifier());
-        assertEquals(64, chunk.blocks().get(0).y());
+        assertEquals("minecraft:stone", chunk.blocks().get(0).blockIdentifier());
+        assertEquals("minecraft:grass_block", chunk.blocks().get(1).blockIdentifier());
+        assertEquals(64, chunk.blocks().get(1).y());
     }
 
 

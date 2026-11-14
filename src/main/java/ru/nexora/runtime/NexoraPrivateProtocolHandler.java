@@ -182,6 +182,11 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                             spawn.x(), spawn.y(), spawn.z(), session.yaw.get(), session.skinIndex));
                 }
                 synchronizeNewPlayer(connection, session);
+                if (send(connection, NexoraInventorySyncCodec.encode(session.inventory))
+                        != TransportSendResult.ACCEPTED) {
+                    connection.close();
+                    return;
+                }
                 connection.setMessageListener(message -> {
                     if (isMovementPacket(message.payload())) {
                         handleMovement(connection, message, session,
@@ -237,6 +242,12 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 ItemPickupService.PickupResult pickup = new ItemPickupService(entities, world).pickup(
                         session.playerId, result.position().x(), result.position().y(),
                         result.position().z(), session.inventory);
+                if (pickup.collected() > 0 && send(connection,
+                        NexoraInventorySyncCodec.encode(session.inventory))
+                        != TransportSendResult.ACCEPTED) {
+                    connection.close();
+                    return;
+                }
             }
             NexoraMovementValidator.Position authoritative = session.position.get();
             if (send(connection, NexoraMovementPacketCodec.encodeServerPosition(authoritative))

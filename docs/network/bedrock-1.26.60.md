@@ -58,6 +58,17 @@ The official 1.26.60 release notes state that the dedicated-server warning about
 
 No packet bytes, handshake messages, encryption behavior, or transport guarantees are to be invented to fill these gaps.
 
+## Current implementation checkpoint — Login envelope
+
+The standalone runtime currently has bounded Login packet decoding and a structural parser for the Connection Request JSON envelope:
+
+- Extracts the `chain` array and `clientData` compact JWT string.
+- Bounds the JSON input, JWT string lengths, chain count, parser nesting depth (64), and rejects duplicate JSON keys and trailing JSON content.
+- Checks only the compact three-segment JWT shape and Base64URL character set.
+- Exposes the parsed envelope through `BedrockLoginPacket.parseConnectionRequest()`.
+
+**Security boundary:** this is parsing only. It does not verify JWT signatures, certificate-chain trust, issuer/audience/expiry claims, Xbox identity, or player identity. It must never be used as proof that a player is authenticated. Those checks require a separate verifier against the correct Mojang trust material and must be tested with genuine client login exchanges.
+
 ## Acceptance gates
 
 A transport implementation is not considered supported until all of these are demonstrated against an unmodified Bedrock 1.26.60 client:

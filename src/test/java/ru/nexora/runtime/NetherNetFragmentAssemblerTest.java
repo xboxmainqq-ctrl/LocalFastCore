@@ -34,6 +34,19 @@ class NetherNetFragmentAssemblerTest {
     }
 
     @Test
+    void completedPayloadRemainsStableWhenAssemblerIsReused() {
+        NetherNetFragmentAssembler assembler = new NetherNetFragmentAssembler(64, 8, 1000);
+        assembler.accept(frame(1, 1, 2));
+        ByteBuffer completed = assembler.accept(frame(0, 3)).orElseThrow();
+
+        assembler.accept(frame(1, 8, 9));
+        assembler.accept(frame(0, 10));
+
+        assertTrue(completed.isReadOnly());
+        assertArrayEquals(new byte[] {1, 2, 3}, bytes(completed));
+    }
+
+    @Test
     void rejectsOutOfOrderFragmentAndClearsAssembly() {
         NetherNetFragmentAssembler assembler = new NetherNetFragmentAssembler(32, 8, 1000);
         assembler.accept(frame(2, 1));

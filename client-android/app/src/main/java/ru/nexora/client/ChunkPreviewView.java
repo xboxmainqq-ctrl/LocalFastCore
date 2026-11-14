@@ -49,6 +49,24 @@ final class ChunkPreviewView extends GLSurfaceView {
         requestRender();
     }
 
+    void setPlayerSpawn(int worldX, int worldY, int worldZ) {
+        queueEvent(() -> renderer.setPlayerSpawn(
+                worldX - centerChunkX * 16 + 16,
+                worldY,
+                worldZ - centerChunkZ * 16 + 16));
+        requestRender();
+    }
+
+    void movePlayer(float forward, float strafe) {
+        queueEvent(() -> renderer.movePlayer(forward, strafe));
+        requestRender();
+    }
+
+    void jumpPlayer() {
+        queueEvent(renderer::jumpPlayer);
+        requestRender();
+    }
+
     void setCenter(int chunkX, int chunkZ) {
         centerChunkX = chunkX;
         centerChunkZ = chunkZ;
@@ -164,6 +182,12 @@ final class ChunkPreviewView extends GLSurfaceView {
         private float elevation = 32f;
         private float distance = 72f;
         private float targetY = 64f;
+        private float playerX = 24f;
+        private float playerY = 65f;
+        private float playerZ = 24f;
+        private float verticalVelocity;
+        private boolean playerInitialized;
+        private Set<BlockPosition> collisionBlocks = Set.of();
         private boolean firstPersonMode;
         private int surfaceWidth = 1;
         private int surfaceHeight = 1;
@@ -174,6 +198,62 @@ final class ChunkPreviewView extends GLSurfaceView {
 
         void markMeshDirty() {
             meshDirty = true;
+        }
+
+        void setPlayerSpawn(float x, float y, float z) {
+            playerX = x;
+            playerY = y;
+            playerZ = z;
+            verticalVelocity = 0f;
+            playerInitialized = true;
+        }
+
+        void movePlayer(float forward, float strafe) {
+            if (!playerInitialized) return;
+            double angle = Math.toRadians(yaw);
+            float dx = (float) (-Math.cos(angle) * forward + Math.sin(angle) * strafe);
+            float dz = (float) (-Math.sin(angle) * forward - Math.cos(angle) * strafe);
+            float length = (float) Math.sqrt(dx * dx + dz * dz);
+            if (length < 0.001f) return;
+            dx = dx / length * 0.28f;
+            dz = dz / length * 0.28f;
+            if (canOccupy(playerX + dx, playerY, playerZ)) playerX += dx;
+            if (canOccupy(playerX, playerY, playerZ + dz)) playerZ += dz;
+        }
+
+        void jumpPlayer() {
+            if (playerInitialized && hasGroundBelow()) {
+                verticalVelocity = 0.34f;
+            }
+        }
+
+        private boolean canOccupy(float x, float feetY, float z) {
+            int minX = (int) Math.floor(x - 0.29f);
+            int maxX = (int) Math.floor(x + 0.29f);
+            int minY = (int) Math.floor(feetY + 0.05f);
+            int maxY = (int) Math.floor(feetY + 1.75f);
+            int minZ = (int) Math.floor(z - 0.29f);
+            int maxZ = (int) Math.floor(z + 0.29f);
+            for (int bx = minX; bx <= maxX; bx++) {
+                for (int by = minY; by <= maxY; by++) {
+                    for (int bz = minZ; bz <= maxZ; bz++) {
+                        if (collisionBlocks.contains(new BlockPosition(bx, by, bz))) return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        private boolean hasGroundBelow() {
+            int y = (int) Math.floor(playerY - 0.08f);
+            for (int x = (int) Math.floor(playerX - 0.25f);
+                 x <= (int) Math.floor(playerX + 0.25f); x++) {
+                for (int z = (int) Math.floor(playerZ - 0.25f);
+                     z <= (int) Math.floor(playerZ + 0.25f); z++) {
+                    if (collisionBlocks.contains(new BlockPosition(x, y, z))) return true;
+                }
+            }
+            return false;
         }
 
         void orbitBy(float yawDelta, float elevationDelta) {
@@ -212,6 +292,16 @@ final class ChunkPreviewView extends GLSurfaceView {
         public void onDrawFrame(GL10 gl) {
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
             if (meshDirty) rebuildMesh();
+            if (playerInitialized && Math.abs(verticalVelocity) > 0.0001f) {
+                float nextY = playerY + verticalVelocity;
+                if (canOccupy(playerX, nextY, playerZ)) {
+                    playerY = nextY;
+                    verticalVelocity -= 0.035f;
+                } else {
+                    verticalVelocity = 0f;
+                }
+                if (playerY < -64f) verticalVelocity = 0f;
+            }
             if (vertexBuffer == null || vertexCount == 0 || program == 0) return;
 
             float centerX = 24f;
@@ -219,12 +309,14 @@ final class ChunkPreviewView extends GLSurfaceView {
             double yawRadians = Math.toRadians(yaw);
             double elevationRadians = Math.toRadians(elevation);
             if (firstPersonMode) {
-                float eyeY = targetY + 1.6f;
+                float eyeX = playerInitialized ? playerX : centerX;
+                float eyeY = playerInitialized ? playerY + 1.62f : targetY + 1.6f;
+                float eyeZ = playerInitialized ? playerZ : centerZ;
                 float lookX = -(float) Math.cos(yawRadians) * (float) Math.cos(elevationRadians);
                 float lookY = (float) Math.sin(elevationRadians);
                 float lookZ = -(float) Math.sin(yawRadians) * (float) Math.cos(elevationRadians);
-                Matrix.setLookAtM(view, 0, centerX, eyeY, centerZ,
-                        centerX + lookX, eyeY + lookY, centerZ + lookZ, 0f, 1f, 0f);
+                Matrix.setLookAtM(view, 0, eyeX, eyeY, eyeZ,
+                        eyeX + lookX, eyeY + lookY, eyeZ + lookZ, 0f, 1f, 0f);
             } else {
                 float horizontal = (float) (distance * Math.cos(elevationRadians));
                 float eyeX = centerX + (float) Math.cos(yawRadians) * horizontal;
@@ -275,6 +367,7 @@ final class ChunkPreviewView extends GLSurfaceView {
                     maxY = Math.max(maxY, y);
                 }
             }
+            collisionBlocks = java.util.Collections.unmodifiableSet(occupied);
             if (blocks.isEmpty()) {
                 vertexBuffer = null;
                 vertexCount = 0;

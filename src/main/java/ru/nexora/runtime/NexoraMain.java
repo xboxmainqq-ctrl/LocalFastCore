@@ -68,10 +68,13 @@ public final class NexoraMain {
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             try {
-                runtime.server().stop();
-                runtime.saveInventories();
+                try {
+                    runtime.server().stop();
+                } finally {
+                    runtime.saveInventories();
+                }
                 System.out.println("NEXORA Core stopped; world and player inventories saved.");
-            } catch (RuntimeException failure) {
+            } catch (Exception failure) {
                 System.err.println("NEXORA shutdown failed: " + failure.getMessage());
             }
         }, "nexora-shutdown"));
@@ -406,7 +409,7 @@ public final class NexoraMain {
                             .orElseThrow(() -> new IllegalStateException("Default world is not loaded")),
                     position -> worlds.get(DEFAULT_WORLD_ID)
                             .map(world -> world.isChunkLoaded(position)).orElse(false),
-                    readyListener, entities, inventories);
+                    readyListener, entities, inventories, playerInventoryStorage);
         }
     }
 }

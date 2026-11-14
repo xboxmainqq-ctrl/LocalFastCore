@@ -88,6 +88,26 @@ class BedrockRuntimeBlockRegistryFileTest {
                 """)));
     }
 
+
+    @Test
+    void verifiesOptionalExpectedSha256() throws Exception {
+        String file = """
+                NEXORA-BEDROCK-BLOCK-REGISTRY\t1
+                protocol\t2225
+                game\t1.26.60
+                id-mode\truntime
+                --
+                minecraft:air\t0
+                """;
+        String digest = BedrockRuntimeBlockRegistryFile.load(input(file)).sha256();
+
+        assertEquals(digest, BedrockRuntimeBlockRegistryFile.load(input(file), digest).sha256());
+        assertThrows(IOException.class,
+                () -> BedrockRuntimeBlockRegistryFile.load(input(file), "0".repeat(64)));
+        assertThrows(IOException.class,
+                () -> BedrockRuntimeBlockRegistryFile.load(input(file), "not-a-digest"));
+    }
+
     @Test
     void rejectsInvalidUtf8AndOversizedInput() {
         assertThrows(IOException.class, () -> BedrockRuntimeBlockRegistryFile.load(

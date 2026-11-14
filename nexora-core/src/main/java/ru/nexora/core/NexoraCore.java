@@ -8,6 +8,9 @@ import ru.nexora.core.api.SimpleEventBus;
 import ru.nexora.core.integration.nukkit.NukkitPlatformAdapter;
 import ru.nexora.core.integration.nukkit.NukkitPlayerListener;
 import ru.nexora.core.platform.NexoraPlatform;
+import ru.nexora.core.profile.PlayerProgressionService;
+import ru.nexora.core.profile.PlayerProfileRepository;
+import ru.nexora.core.profile.SqlitePlayerProfileRepository;
 import ru.nexora.core.security.AuditLogger;
 import ru.nexora.core.security.IntegrityChecker;
 import ru.nexora.core.security.NexoraSecurityManager;
@@ -29,6 +32,8 @@ public final class NexoraCore extends PluginBase {
     private KeyValueStore storage;
     private NexoraPlatform platform;
     private NexoraSecurityManager security;
+    private PlayerProfileRepository profileRepository;
+    private PlayerProgressionService progression;
     private NexoraAPI api;
 
     @Override
@@ -37,27 +42,33 @@ public final class NexoraCore extends PluginBase {
         saveDefaultConfig();
 
         try {
-            Path dataFile = getDataFolder().toPath().resolve("nexora-data.properties");
-            storage = new KeyValueStore(dataFile);
+            Path dataFolder = getDataFolder().toPath();
+            storage = new KeyValueStore(dataFolder.resolve("nexora-data.properties"));
             eventBus = new SimpleEventBus();
             platform = new NukkitPlatformAdapter(this);
 
-            AuditLogger auditLogger = new AuditLogger(
-                    getDataFolder().toPath().resolve("security-audit.jsonl"));
+            AuditLogger auditLogger = new AuditLogger(dataFolder.resolve("security-audit.jsonl"));
             NexoraAccessController accessController = new NexoraAccessController(auditLogger);
             security = new NexoraSecurityManager(new IntegrityChecker(), auditLogger, accessController);
-            api = new NexoraAPI(services, eventBus, storage, platform, security);
+
+            profileRepository = new SqlitePlayerProfileRepository(
+                    dataFolder.resolve("players.sqlite"));
+            progression = new PlayerProgressionService(profileRepository);
+            api = new NexoraAPI(services, eventBus, storage, platform, security, progression);
 
             services.register(EventBus.class, eventBus);
             services.register(KeyValueStore.class, storage);
             services.register(NexoraPlatform.class, platform);
             services.register(NexoraSecurityManager.class, security);
+            services.register(PlayerProfileRepository.class, profileRepository);
+            services.register(PlayerProgressionService.class, progression);
             services.register(NexoraAPI.class, api);
 
             getServer().getPluginManager().registerEvents(new NukkitPlayerListener(eventBus), this);
 
             getLogger().info("NexoraCore API 0.1.0 enabled.");
-            getLogger().info("Services ready: event bus, persistent key-value storage, platform adapter, security audit, integrity and access APIs.");
+            getLogger().info("RPG profile storage ready: UUID profiles, levels, total XP, classes and attributes.");
+            getLogger().info("Services ready: event bus, persistent storage, platform adapter, security and RPG progression.");
             getLogger().info("Player lifecycle bridge registered: join, quit.");
             getLogger().info("Platform adapter: " + platform.getPlatformName()
                     + " " + platform.getPlatformVersion());
@@ -76,6 +87,13 @@ public final class NexoraCore extends PluginBase {
         if (eventBus != null) {
             eventBus.clear();
         }
+        if (profileRepository != null) {
+            try {
+                profileRepository.close();
+            } catch (IOException exception) {
+                getLogger().error("Could not close RPG profile database: " + exception.getMessage());
+            }
+        }
         if (storage != null) {
             try {
                 storage.close();
@@ -84,41 +102,20 @@ public final class NexoraCore extends PluginBase {
             }
         }
 
-        if (api != null) {
-            services.unregister(NexoraAPI.class, api);
-        }
-        if (platform != null) {
-            services.unregister(NexoraPlatform.class, platform);
-        }
-        if (security != null) {
-            services.unregister(NexoraSecurityManager.class, security);
-        }
-        if (eventBus != null) {
-            services.unregister(EventBus.class, eventBus);
-        }
-        if (storage != null) {
-            services.unregister(KeyValueStore.class, storage);
-        }
+        if (api != null) services.unregister(NexoraAPI.class, api);
+        if (progression != null) services.unregister(PlayerProgressionService.class, progression);
+        if (profileRepository != null) services.unregister(PlayerProfileRepository.class, profileRepository);
+        if (platform != null) services.unregister(NexoraPlatform.class, platform);
+        if (security != null) services.unregister(NexoraSecurityManager.class, security);
+        if (eventBus != null) services.unregister(EventBus.class, eventBus);
+        if (storage != null) services.unregister(KeyValueStore.class, storage);
 
-        if (instance == this) {
-            instance = null;
-        }
+        if (instance == this) instance = null;
         getLogger().info("NexoraCore disabled.");
     }
 
-    public static NexoraCore getInstance() {
-        return instance;
-    }
-
-    public ServiceRegistry getServices() {
-        return services;
-    }
-
-    public NexoraAPI getApi() {
-        return api;
-    }
-
-    public String getApiVersion() {
-        return "0.1.0";
-    }
+    public static NexoraCore getInstance() { return instance; }
+    public ServiceRegistry getServices() { return services; }
+    public NexoraAPI getApi() { return api; }
+    public String getApiVersion() { return "0.1.0"; }
 }

@@ -3,6 +3,7 @@ package ru.nexora.core.security;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
@@ -37,7 +38,8 @@ public final class AuditLogger {
                 + System.lineSeparator();
 
         Files.writeString(logFile, line, StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND);
+                StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND,
+                LinkOption.NOFOLLOW_LINKS);
     }
 
     public Path getLogFile() {

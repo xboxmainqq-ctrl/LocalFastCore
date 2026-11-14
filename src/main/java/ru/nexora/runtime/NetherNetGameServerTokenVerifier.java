@@ -51,20 +51,53 @@ public final class NetherNetGameServerTokenVerifier {
 
     public VerifiedClientIdentity verify(NetherNetIdentityAssertion assertion) throws Exception {
         Objects.requireNonNull(assertion, "assertion");
-        if (!"RS256".equals(assertion.jwtAlgorithm())
-                || !"https://authorization.franchise.minecraft-services.net/".equals(assertion.issuer())
-                || !"api://auth-minecraft-services/multiplayer".equals(assertion.audience())) {
+        VerifiedClientIdentity identity = verifyToken(assertion.token());
+        String[] parts = assertion.token().split("\\.", -1);
+        verifyParsedFieldsMatchSignedToken(parts, assertion);
+        return identity;
+    }
+
+    /**
+     * Verifies a raw modern Bedrock multiplayer token without requiring the
+     * NetherNet SDP fingerprint assertion that carries the same token.
+     * The returned cpk still requires a separate proof-of-possession handshake.
+     */
+    public VerifiedClientIdentity verifyToken(String token) throws Exception {
+        Objects.requireNonNull(token, "token");
+        if (token.isBlank() || token.length() > 16 * 1024) {
+            throw new SecurityException("GameServerToken is empty or exceeds the configured limit");
+        }
+        String[] parts = token.split("\\.", -1);
+        if (parts.length != 3) {
+            throw new SecurityException("Malformed GameServerToken");
+        }
+
+        String headerJson = decodeUtf8(decodeUrl(parts[0]));
+        String claimsJson = decodeUtf8(decodeUrl(parts[1]));
+        Map<String, String> header = readStringFields(headerJson, "alg", "kid");
+        Map<String, String> claims = readStringFields(claimsJson,
+                "iss", "aud", "cpk", "xid", "xname");
+        Long exp = readLong(claimsJson, "exp");
+        Long nbf = readLong(claimsJson, "nbf");
+        String algorithm = header.get("alg");
+        String keyId = header.get("kid");
+        String issuer = claims.get("iss");
+        String audience = claims.get("aud");
+        String cpk = claims.get("cpk");
+        String xuid = claims.get("xid");
+        String displayName = claims.get("xname");
+        if (!"RS256".equals(algorithm)
+                || keyId == null || keyId.isBlank()
+                || !"https://authorization.franchise.minecraft-services.net/".equals(issuer)
+                || !"api://auth-minecraft-services/multiplayer".equals(audience)
+                || cpk == null || xuid == null || xuid.isBlank()
+                || displayName == null || displayName.isBlank() || exp == null) {
             throw new SecurityException("GameServerToken header or claims are not trusted");
         }
 
-        RSAPublicKey signingKey = keyResolver.resolve(assertion.jwtKeyId());
+        RSAPublicKey signingKey = keyResolver.resolve(keyId);
         if (signingKey == null) {
             throw new SecurityException("Unknown GameServerToken signing key");
-        }
-
-        String[] parts = assertion.token().split("\\.", -1);
-        if (parts.length != 3) {
-            throw new SecurityException("Malformed GameServerToken");
         }
         byte[] signatureBytes = decodeUrl(parts[2]);
         Signature verifier = Signature.getInstance("SHA256withRSA");
@@ -73,20 +106,18 @@ public final class NetherNetGameServerTokenVerifier {
         if (!verifier.verify(signatureBytes)) {
             throw new SecurityException("GameServerToken signature verification failed");
         }
-        verifyParsedFieldsMatchSignedToken(parts, assertion);
 
         long now = clock.instant().getEpochSecond();
-        if (assertion.expiresAtEpochSeconds() <= now - clockSkewSeconds) {
+        if (exp <= now - clockSkewSeconds) {
             throw new SecurityException("GameServerToken has expired");
         }
-        Long nbf = assertion.notBeforeEpochSeconds();
         if (nbf != null && nbf > now + clockSkewSeconds) {
             throw new SecurityException("GameServerToken is not yet valid");
         }
 
         byte[] spki;
         try {
-            spki = Base64.getDecoder().decode(assertion.clientPublicKeySpkiBase64());
+            spki = Base64.getDecoder().decode(cpk);
         } catch (IllegalArgumentException e) {
             throw new SecurityException("Invalid cpk SubjectPublicKeyInfo", e);
         }
@@ -96,8 +127,7 @@ public final class NetherNetGameServerTokenVerifier {
                 || clientKey.getParams().getCurve().getField().getFieldSize() != 384) {
             throw new SecurityException("GameServerToken cpk must be a P-384 public key");
         }
-        return new VerifiedClientIdentity(assertion.xuid(), assertion.displayName(), clientKey,
-                assertion.expiresAtEpochSeconds());
+        return new VerifiedClientIdentity(xuid, displayName, clientKey, exp);
     }
 
     private static void verifyParsedFieldsMatchSignedToken(String[] parts,

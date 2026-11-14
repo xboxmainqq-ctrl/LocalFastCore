@@ -1,6 +1,4 @@
 # NEXORA Core settings
 core:
-  # Keep compatibility mode enabled while legacy Nukkit-MOT plugins are in use.
+  # Nukkit-MOT remains the legacy plugin loader; keep this enabled during migration.
   compatibility-mode: true
-  storage:
-    enabled: true

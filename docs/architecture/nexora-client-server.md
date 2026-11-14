@@ -65,6 +65,14 @@ Keep the existing server layering:
 
 The server must remain independent of Android APIs and client rendering libraries.
 
+## Private NEXORA protocol v1 (first handshake)
+
+The first-party Android client now starts its application session with a private NEXORA v1 handshake after both NetherNet data channels open. It does not send Bedrock RequestNetworkSettings as the first application message.
+
+The initial binary envelope uses the `NXRA` magic, a major/minor version, and a message type. ClientHello carries a bounded client build identifier. ServerHello returns a server UUID and a bounded maximum application-message size. A deterministic rejection message reports unsupported protocol versions or malformed ClientHello payloads. Handshake messages are limited to 1 KiB and use reliable ordered delivery.
+
+Server-side pieces are available as `NexoraPrivateProtocolCodec`, `NexoraPrivateProtocolHandler`, and `NetherNetPrivateProtocolModule`. Android has a matching codec and begins the handshake from `NetherNetAndroidClient`. The server's current `NexoraMain` development launcher remains offline and does not register the network module yet. The handshake is protocol negotiation only: it does not authenticate a player, stream a world, or establish Bedrock interoperability.
+
 ## Shared development and test strategy
 
 1. Add protocol golden test vectors: known input bytes and expected decoded values, plus known model values and expected encoded bytes.

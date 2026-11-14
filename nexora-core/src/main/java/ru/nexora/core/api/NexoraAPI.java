@@ -5,6 +5,8 @@ import ru.nexora.core.storage.KeyValueStore;
 import ru.nexora.core.security.NexoraSecurityManager;
 import ru.nexora.core.profile.PlayerProgressionService;
 import ru.nexora.core.rpg.RpgClassRegistry;
+import ru.nexora.core.rpg.RpgAbilityRegistry;
+import ru.nexora.core.rpg.AbilityCooldownService;
 
 import java.util.Objects;
 import java.util.Optional;
@@ -18,20 +20,22 @@ public final class NexoraAPI {
     private final NexoraSecurityManager security;
     private final PlayerProgressionService progression;
     private final RpgClassRegistry classes;
+    private final RpgAbilityRegistry abilities;
+    private final AbilityCooldownService cooldowns;
 
     /** Compatibility constructor retained for modules/tests without a live adapter. */
     public NexoraAPI(ServiceRegistry services, EventBus events, KeyValueStore storage) {
-        this(services, events, storage, null, null, null, null);
+        this(services, events, storage, null, null, null, null, null, null);
     }
 
     public NexoraAPI(ServiceRegistry services, EventBus events, KeyValueStore storage,
                      NexoraPlatform platform) {
-        this(services, events, storage, platform, null, null, null);
+        this(services, events, storage, platform, null, null, null, null, null);
     }
 
     public NexoraAPI(ServiceRegistry services, EventBus events, KeyValueStore storage,
                      NexoraPlatform platform, NexoraSecurityManager security) {
-        this(services, events, storage, platform, security, null, null);
+        this(services, events, storage, platform, security, null, null, null, null);
     }
 
     public NexoraAPI(ServiceRegistry services, EventBus events, KeyValueStore storage,
@@ -43,6 +47,13 @@ public final class NexoraAPI {
     public NexoraAPI(ServiceRegistry services, EventBus events, KeyValueStore storage,
                      NexoraPlatform platform, NexoraSecurityManager security,
                      PlayerProgressionService progression, RpgClassRegistry classes) {
+        this(services, events, storage, platform, security, progression, classes, null, null);
+    }
+
+    public NexoraAPI(ServiceRegistry services, EventBus events, KeyValueStore storage,
+                     NexoraPlatform platform, NexoraSecurityManager security,
+                     PlayerProgressionService progression, RpgClassRegistry classes,
+                     RpgAbilityRegistry abilities, AbilityCooldownService cooldowns) {
         this.services = Objects.requireNonNull(services, "services");
         this.events = Objects.requireNonNull(events, "events");
         this.storage = Objects.requireNonNull(storage, "storage");
@@ -50,6 +61,8 @@ public final class NexoraAPI {
         this.security = security;
         this.progression = progression;
         this.classes = classes;
+        this.abilities = abilities;
+        this.cooldowns = cooldowns;
     }
 
     public ServiceRegistry services() { return services; }
@@ -70,6 +83,14 @@ public final class NexoraAPI {
     /** Empty for compatibility-only API instances without class modules. */
     public Optional<RpgClassRegistry> classes() {
         return Optional.ofNullable(classes);
+    }
+
+    public Optional<RpgAbilityRegistry> abilities() {
+        return Optional.ofNullable(abilities);
+    }
+
+    public Optional<AbilityCooldownService> cooldowns() {
+        return Optional.ofNullable(cooldowns);
     }
 
     public String getVersion() { return "0.1.0"; }

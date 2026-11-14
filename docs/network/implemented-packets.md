@@ -28,7 +28,7 @@ The protocol 2225 NONE enum value is 65535, not the older value 2.
 
 ## LoginPacket
 
-The implemented payload is the big-endian protocol version followed by a varuint32 byte length and UTF-8 connection request bytes. The decoder applies a 1 MiB request limit and rejects malformed UTF-8, truncated input, and trailing bytes. The connection request is opaque data here; this codec does not validate JWTs, signatures, identity claims, or player authentication.
+The implemented payload is the big-endian protocol version followed by a varuint32 byte length and UTF-8 connection request bytes. The decoder applies a 1 MiB request limit and rejects malformed UTF-8, truncated input, and trailing bytes. `BedrockConnectionRequest` structurally extracts either the legacy `chain`/`clientData` fields or the newer `AuthenticationType`/`Token`/`Certificate` envelope. It does not validate JWT signatures, issuers, Xbox claims, certificate chains, or player authentication.
 
 ## Uncompressed packet batches
 
@@ -151,10 +151,10 @@ stack.start();
 
 Configure a directly reachable UDP host candidate. This configuration intentionally does not provide STUN/TURN relay traversal; a host behind NAT may therefore be unreachable without a public address or a future relay-enabled profile.
 
-The desktop native library is not the Android SDK. The Android app now depends on `io.github.webrtc-sdk:android:150.7871.04`; its own PeerConnection, signaling, identity-pinning UI, and Bedrock login flow are still being implemented. The desktop adapter and Android SDK have not yet been proven to interoperate with each other or with an unmodified Minecraft client.
+The desktop native library is not the Android SDK. The Android app depends on `io.github.webrtc-sdk:android:150.7871.04` and now implements its own PeerConnection, full-ICE offer gathering, HTTP(S) signaling, operator JWT/JWS verification, first-use key-pinning UI, and the initial RequestNetworkSettings exchange. It still does not obtain Microsoft/Xbox player credentials or send a valid Bedrock Login packet, so this is a transport/NetworkSettings test client rather than a playable Minecraft client. The desktop adapter and Android SDK have not yet been proven to interoperate with each other or with an unmodified Minecraft client.
 
 ## Verification boundary
 
-JUnit tests have been authored for the codecs, NetherNet framing, identity parsing, canonical fingerprint serialization, RS256 GameServerToken verification, detached ES384 proof verification, and operator identity signing/TOFU verification, and bounded HTTP/HTTPS signaling and a desktop WebRTC peer-host adapter. They must be run by Maven or CI before being described as passing. These tests are authored but have not yet been confirmed by a successful Maven/CI run. Even when they pass, they validate isolated implementation behavior only and do not establish interoperability with an unmodified Bedrock client or a live Microsoft/Xbox account.
+JUnit tests have been authored for the codecs, initial transport handshake routing, NetherNet framing, legacy and modern connection-request parsing, identity parsing, canonical fingerprint serialization, RS256 GameServerToken verification, detached ES384 proof verification, operator identity signing/TOFU verification, bounded HTTP/HTTPS signaling, and the desktop WebRTC configuration. They must be run by Maven or CI before being described as passing. These tests are authored but have not yet been confirmed by a successful Maven/CI run. Even when they pass, they validate isolated implementation behavior only and do not establish interoperability with an unmodified Bedrock client or a live Microsoft/Xbox account.
 
 ## Compression envelope

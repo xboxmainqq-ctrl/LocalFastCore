@@ -158,7 +158,6 @@ public final class MainActivity extends Activity {
         playersCard.addView(skinButton, matchWrap());
         updateSkinButton();
         skinButton.setOnClickListener(view -> showSkinPicker());
-        chunkPreview.setPlayerSkin(selectedSkin);
         addSpace(page, 8);
         cameraModeButton = button("ВИД: СВОБОДНАЯ КАМЕРА");
         page.addView(cameraModeButton, matchWrap());
@@ -249,7 +248,7 @@ public final class MainActivity extends Activity {
             connectButton.setEnabled(true);
             return;
         }
-        netherNetClient.connect(address, nickname, new NetherNetAndroidClient.Listener() {
+        netherNetClient.connect(address, nickname, selectedSkin, new NetherNetAndroidClient.Listener() {
             @Override
             public void onStatus(String status) {
                 connectionStatus.setText(status);
@@ -354,7 +353,6 @@ public final class MainActivity extends Activity {
                 .setSingleChoiceItems(names, selectedSkin, (dialog, which) -> {
                     selectedSkin = which;
                     getPreferences(MODE_PRIVATE).edit().putInt("nexora_player_skin", which).apply();
-                    chunkPreview.setPlayerSkin(which);
                     updateSkinButton();
                     dialog.dismiss();
                 })

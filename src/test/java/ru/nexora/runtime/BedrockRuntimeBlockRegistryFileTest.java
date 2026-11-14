@@ -89,6 +89,15 @@ class BedrockRuntimeBlockRegistryFileTest {
     }
 
 
+
+    @Test
+    void loadedProfileCannotBeConstructedForAnotherProtocol() {
+        assertThrows(IllegalArgumentException.class, () ->
+                new BedrockRuntimeBlockRegistryFile.Loaded(
+                        2224, "1.26.52", BedrockRuntimeBlockRegistryFile.IdMode.RUNTIME,
+                        "0".repeat(64), java.util.Map.of(BlockState.AIR, 0)));
+    }
+
     @Test
     void verifiesOptionalExpectedSha256() throws Exception {
         String file = """

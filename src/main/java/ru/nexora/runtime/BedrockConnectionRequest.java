@@ -22,7 +22,7 @@ public record BedrockConnectionRequest(List<String> chain, String clientDataJwt)
     public static final int MAX_JSON_BYTES = BedrockLoginPacketCodec.MAX_CONNECTION_REQUEST_BYTES;
     public static final int MAX_CHAIN_TOKENS = 3;
     public static final int MAX_JWT_CHARS = 512 * 1024;
-    private static final int MAX_JSON_TOKENS = 4096;
+    private static final int MAX_TOP_LEVEL_FIELDS = 4096;
 
     private static final JsonFactory JSON_FACTORY = JsonFactory.builder()
             .streamReadConstraints(StreamReadConstraints.builder()
@@ -59,7 +59,7 @@ public record BedrockConnectionRequest(List<String> chain, String clientDataJwt)
 
         List<String> chain = null;
         String clientData = null;
-        int tokenCount = 0;
+        int topLevelFieldCount = 0;
         try (JsonParser parser = JSON_FACTORY.createParser(json)) {
             if (parser.nextToken() != JsonToken.START_OBJECT) {
                 throw new IllegalArgumentException("Bedrock connection request must be a JSON object");
@@ -70,7 +70,7 @@ public record BedrockConnectionRequest(List<String> chain, String clientDataJwt)
                     throw new IllegalArgumentException("Malformed Bedrock connection request object");
                 }
                 if (++tokenCount > MAX_JSON_TOKENS) {
-                    throw new IllegalArgumentException("Bedrock connection request has too many JSON tokens");
+                    throw new IllegalArgumentException("Bedrock connection request has too many top-level fields");
                 }
                 String field = parser.currentName();
                 JsonToken value = parser.nextToken();

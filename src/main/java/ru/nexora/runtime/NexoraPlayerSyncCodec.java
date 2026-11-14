@@ -109,7 +109,7 @@ public final class NexoraPlayerSyncCodec {
         int major = Byte.toUnsignedInt(input.get());
         int minor = Byte.toUnsignedInt(input.get());
         int actualType = Byte.toUnsignedInt(input.get());
-        if (major != 1 || minor != 0 || actualType != type) {
+        if (major != 1 || minor != 1 || actualType != type) {
             throw new IllegalArgumentException("Unexpected NEXORA player sync packet");
         }
         return input;

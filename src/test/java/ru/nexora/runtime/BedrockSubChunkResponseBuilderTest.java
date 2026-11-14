@@ -91,6 +91,7 @@ class BedrockSubChunkResponseBuilderTest {
         BedrockGamePacket response = BedrockSubChunkResponseBuilder.buildPackets(
                 world, request, 0, registry).get(0);
         assertEquals(1, firstResult(response)); // Success, not SuccessAllAir
+        assertEquals(1, firstHeightmapType(response)); // Fluid cells contribute to the column surface
     }
 
     @Test
@@ -145,6 +146,19 @@ class BedrockSubChunkResponseBuilderTest {
         in.position(in.position() + 12);
         assertTrue(BedrockBinary.readVarUInt32(in) >= 1);
         in.position(in.position() + 3);
+        return Byte.toUnsignedInt(in.get());
+    }
+
+    private static int firstHeightmapType(BedrockGamePacket packet) {
+        ByteBuffer in = packet.payloadBuffer();
+        readBoolean(in);
+        BedrockBinary.readVarInt32(in);
+        in.position(in.position() + 12);
+        assertTrue(BedrockBinary.readVarUInt32(in) >= 1);
+        in.position(in.position() + 3);
+        in.get(); // result
+        int serializedLength = BedrockBinary.readVarUInt32(in);
+        in.position(in.position() + serializedLength);
         return Byte.toUnsignedInt(in.get());
     }
 

@@ -4391,6 +4391,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
         int intelligence = Math.max(0, get(player, "intelligence", 0));
         int base = 100 + (magicLevel - 1) * 5 + intelligence * 2;
         if (getRpgClass(player).equals("mage")) base = (int) Math.round(base * 1.25);
+        if (hasMagicRelic(player, "mana_heart")) base += 50;
+        if (hasMagicRelic(player, "archmage_orb")) base += 25;
         return Math.max(20, Math.min(5000, base));
     }
 
@@ -4412,6 +4414,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         String key = playerKey(player) + ".magic";
         int level = Math.max(1, Math.min(MAX_MAGIC_LEVEL, players.getInt(key + ".level", 1)));
         if (level >= MAX_MAGIC_LEVEL || amount <= 0) return;
+        if (hasMagicRelic(player, "rune_focus")) amount = (int) Math.ceil(amount * 1.15);
         int xp = Math.max(0, players.getInt(key + ".xp", 0)) + amount;
         boolean leveled = false;
         while (level < MAX_MAGIC_LEVEL && xp >= magicXpRequired(level)) {
@@ -4437,10 +4440,13 @@ public final class LocalFastCore extends PluginBase implements Listener {
             int current = magicMana(player);
             int max = magicMaxMana(player);
             int regen = getRpgClass(player).equals("mage") ? 3 : 2;
+            if (hasMagicRelic(player, "mana_heart")) regen += 2;
+            if (hasMagicRelic(player, "chrono_talisman")) regen += 1;
             if (current < max) {
                 players.set(playerKey(player) + ".magic.mana", Math.min(max, current + regen));
                 changed = true;
             }
+            updateMagicHud(player);
         }
         if (changed) markPlayersDirty();
     }
@@ -10149,41 +10155,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
         if (name.equals("magic")) {
             if (!(sender instanceof Player)) { sender.sendMessage("Магия доступна только игроку."); return true; }
-            openMagicMenu((Player) sender);
-            return true;
-        }
-
-        if (name.equals("ability") || name.equals("abilities")) {
-            if (!(sender instanceof Player)) {
-                sender.sendMessage("Эта команда доступна только игроку.");
-                return true;
-            }
             Player player = (Player) sender;
-            if (name.equals("ability")) activateClassAbility(player);
-            else openAbilitiesMenu(player);
-            return true;
-        }
-
-        if (name.equals("class")) {
-            if (!(sender instanceof Player)) { sender.sendMessage("Эта команда доступна только игроку."); return true; }
-            Player player = (Player) sender;
-            initialize(player);
-            if (args.length == 0 || args[0].equalsIgnoreCase("info")) {
-                player.sendMessage("§6Твой класс: " + rpgClassLabel(getRpgClass(player)));
-                player.sendMessage(rpgClassDescription(getRpgClass(player)));
-                if (getRpgClass(player).equals("none")) openClassMenu(player);
-                return true;
-            }
-            player.sendMessage("§eИспользуй /class для выбора или просмотра класса.");
-            return true;
-        }
-
-        if (name.equals("lfmenu")) {
-            if (!(sender instanceof Player)) {
-                sender.sendMessage("Эта команда доступна только игроку.");
-                return true;
-            }
-            openStatsMenu((Player) sender);
+            if (args.length > 0 && args[0].equalsIgnoreCase("spells")) openMagicSpellsMenu(player);
+            else if (args.length > 0 && args[0].equalsIgnoreCase("artifacts")) openMagicRelicShop(player);
+            else if (args.length > 0 && args[0].equalsIgnoreCase("slots")) openMagicEquipmentInventory(player);
+            else if (args.length > 0 && args[0].equalsIgnoreCase("class")) openClassMenu(player);
+            else openMagicMenu(player);
             return true;
         }
 

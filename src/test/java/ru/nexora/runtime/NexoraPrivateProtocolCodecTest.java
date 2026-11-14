@@ -9,6 +9,17 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class NexoraPrivateProtocolCodecTest {
     @Test
+    void clientHelloMatchesTheSharedAndroidGoldenVector() {
+        byte[] expected = new byte[] {
+                'N', 'X', 'R', 'A', 1, 0, 1, 11,
+                'a', 'n', 'd', 'r', 'o', 'i', 'd', '-', 'd', 'e', 'v'
+        };
+        assertArrayEquals(expected, NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
+        assertEquals("android-dev",
+                NexoraPrivateProtocolCodec.decodeClientHello(ByteBuffer.wrap(expected)).clientBuild());
+    }
+
+    @Test
     void clientHelloRoundTripsWithVersionAndBuild() {
         byte[] encoded = NexoraPrivateProtocolCodec.encodeClientHello("android-dev-7");
         NexoraPrivateProtocolCodec.ClientHello decoded =

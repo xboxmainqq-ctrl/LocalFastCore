@@ -124,7 +124,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 return;
             }
             if (hello.majorVersion() != NexoraPrivateProtocolCodec.MAJOR_VERSION
-                    || hello.minorVersion() > NexoraPrivateProtocolCodec.MINOR_VERSION) {
+                    || hello.minorVersion() != NexoraPrivateProtocolCodec.MINOR_VERSION) {
                 reject(connection, REJECT_UNSUPPORTED_VERSION,
                         "Unsupported NEXORA protocol version");
                 return;

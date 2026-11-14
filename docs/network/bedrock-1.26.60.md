@@ -76,10 +76,13 @@ A first cryptographic building block now exists in `BedrockServerEncryptionHands
 - Requires an EC server key pair and an authenticated P-384 client identity public key.
 - Creates an ES384 compact JWT with the server public key in `x5u` and a random salt claim.
 - Derives the 256-bit session key as SHA-256(salt || ECDH-secret) using P-384 ECDH.
-- Exposes independent streaming AES-256-CFB8 cipher instances for inbound and outbound directions. A session owner must retain each cipher continuously; recreating it per packet is incorrect.
-- Includes unit tests for JWT signature, client/server key agreement, key size, and continuous CFB8 round-trip.
+- Derives 256-bit key material as SHA-256(salt || ECDH-secret), using P-384 ECDH.
+- Includes unit tests for JWT signature, client/server key agreement, and key size.
+- Deliberately does **not** select or expose an application cipher. Earlier CFB8 assumptions were removed rather than treating an unverified cipher mode as protocol fact.
 
-**Not integrated yet:** the transport router still uses the earlier boolean authenticator contract and currently advances directly to PLAY after authentication. This new primitive is not yet wired into Login verification, handshake packet 3/4 exchange, packet stream encryption, or PlayStatus. Therefore it is not yet a working encrypted Bedrock login and must not be advertised as one. The next integration step must change authentication to return a verified player identity plus its trusted P-384 public key, then perform the encryption acknowledgement before entering PLAY.
+**Transport boundary:** NEXORA targets NetherNet. Mojang's onboarding guide specifies WebRTC data channels, which are protected by DTLS. The existence of the legacy Bedrock packet 3/4 schemas does not by itself prove that this extra application-layer handshake is required over NetherNet. NEXORA must follow the NetherNet path and confirm the exact login exchange against an unmodified 1.26.60 client; do not force a legacy cipher onto the DTLS-protected channel.
+
+**Not integrated yet:** the router still uses the earlier boolean authenticator contract and currently advances directly to PLAY after authentication. This key-derivation primitive is not wired into Login verification or packet flow, and it is not proof of an authenticated or playable session. The next step is to replace the boolean callback with a verified Bedrock player identity and implement the correct NetherNet login/PlayStatus sequence before entering PLAY.
 
 ## Acceptance gates
 

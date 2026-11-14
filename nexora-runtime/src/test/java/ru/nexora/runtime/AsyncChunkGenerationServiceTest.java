@@ -114,6 +114,32 @@ class AsyncChunkGenerationServiceTest {
     }
 
     @Test
+    void releasesPendingReservationWhenGeneratorThrowsError() throws Exception {
+        AtomicInteger attempts = new AtomicInteger();
+        AsyncChunkGenerationService service = new AsyncChunkGenerationService(
+                (position, height, seed) -> {
+                    attempts.incrementAndGet();
+                    throw new AssertionError("fatal generator failure");
+                },
+                new WorldHeight(0, 64), 0L, 1, 2, 2
+        );
+        service.start();
+        try {
+            ChunkPosition position = new ChunkPosition(7, -3);
+            assertEquals(AsyncChunkGenerationService.RequestStatus.ACCEPTED, service.request(position));
+            await(() -> service.pendingCount() == 0);
+
+            // The failed task must not poison the in-flight map.
+            assertEquals(AsyncChunkGenerationService.RequestStatus.ACCEPTED, service.request(position));
+            await(() -> service.pendingCount() == 0);
+            assertEquals(2, attempts.get());
+            assertEquals(0, service.completedCount());
+        } finally {
+            service.stop();
+        }
+    }
+
+    @Test
     void rejectsInvalidCapacities() {
         assertThrows(IllegalArgumentException.class, () -> new AsyncChunkGenerationService(
                 generator(), new WorldHeight(0, 64), 0L, 0, 1, 1

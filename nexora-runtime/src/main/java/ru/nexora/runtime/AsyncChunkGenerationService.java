@@ -229,6 +229,11 @@ public final class AsyncChunkGenerationService implements RuntimeModule {
             }
             failedCount.incrementAndGet();
             publish(request, new ChunkGenerationResult(request.position, null, failure));
+        } catch (Error fatal) {
+            // FutureTask captures thrown errors. Release the reservation first so
+            // a broken generator cannot leave this chunk permanently pending.
+            inFlight.remove(request.position, request);
+            throw fatal;
         }
     }
 

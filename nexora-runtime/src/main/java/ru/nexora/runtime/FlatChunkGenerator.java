@@ -9,7 +9,8 @@ import java.util.Objects;
  * playable-world milestone. It creates a foundation layer, filler layers,
  * and a surface layer across all 256 columns in a chunk.
  */
-public final class FlatChunkGenerator implements ChunkGenerator {\n    private static final int MAX_DEPTH = 512;
+public final class FlatChunkGenerator implements ChunkGenerator {
+    private static final int MAX_DEPTH = 512;
     private final int surfaceY;
     private final int depth;
     private final BlockState surface;
@@ -28,8 +29,8 @@ public final class FlatChunkGenerator implements ChunkGenerator {\n    private s
             BlockState filler,
             BlockState foundation
     ) {
-        if (depth < 1) {
-            throw new IllegalArgumentException("Flat terrain depth must be at least one");
+        if (depth < 1 || depth > MAX_DEPTH) {
+            throw new IllegalArgumentException("Flat terrain depth must be between 1 and " + MAX_DEPTH);
         }
         this.surfaceY = surfaceY;
         this.depth = depth;

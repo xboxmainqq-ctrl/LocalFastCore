@@ -424,6 +424,7 @@ public final class WebRtcJavaNetherNetPeerHost
             if (currentPeer != null) {
                 try {
                     currentPeer.close();
+                    currentPeer.dispose();
                 } catch (RuntimeException ignored) {
                     // Native close is idempotent; best-effort cleanup continues.
                 }

@@ -117,6 +117,9 @@ class NexoraMainTest {
             assertEquals(new BlockState("minecraft:grass_block"),
                     world.blockAt(new BlockPosition(0, 64, 0)));
             assertTrue(runtime.gameLoop().isRunning());
+            assertTrue(runtime.server().moduleIds().contains("entity-simulation"));
+            assertNotNull(runtime.entities());
+            assertEquals(0, runtime.entities().size());
             assertEquals(ServerState.RUNNING, runtime.server().state());
         } finally {
             runtime.server().stop();

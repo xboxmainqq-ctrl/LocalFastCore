@@ -66,6 +66,7 @@ public final class NetherNetAndroidClient implements AutoCloseable {
     private final AtomicBoolean loginSuccessReceived = new AtomicBoolean();
 
     private volatile Listener listener;
+    private volatile String playerName = "Игрок";
     private volatile PeerConnectionFactory factory;
     private volatile PeerConnection peer;
     private volatile DataChannel reliableChannel;
@@ -87,9 +88,13 @@ public final class NetherNetAndroidClient implements AutoCloseable {
     }
 
     public void connect(String serverAddress, Listener listener) {
-        if (this.listener != null || closed.get()) {
-            throw new IllegalStateException("This NEXORA client instance has already been used");
-        }
+        connect(serverAddress, "Игрок", listener);
+    }
+
+    public void connect(String serverAddress, String playerName, Listener listener) {
+        if (this.listener != null || closed.get()) throw new IllegalStateException("This NEXORA client instance has already been used");
+        if (playerName == null || playerName.isBlank() || playerName.length() > 16) throw new IllegalArgumentException("Ник должен содержать от 1 до 16 символов");
+        this.playerName = playerName.trim();
         this.listener = listener;
         executor.execute(() -> connectBlocking(serverAddress));
     }
@@ -630,7 +635,7 @@ public final class NetherNetAndroidClient implements AutoCloseable {
     }
 
     private boolean sendNexoraClientHello() {
-        return sendReliable(NexoraAndroidProtocolCodec.encodeClientHello("android-0.1.0-dev"));
+        return sendReliable(NexoraAndroidProtocolCodec.encodeClientHello("android-0.1.0-dev", playerName));
     }
 
     /** Sends a client movement proposal; the server reply is authoritative. */

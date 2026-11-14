@@ -157,12 +157,11 @@ public final class NetherNetSignalingServer implements RuntimeModule {
     public synchronized void stop() {
         HttpServer current = server;
         ExecutorService currentExecutor = executor;
-        server = null;
-        executor = null;
         RuntimeException failure = null;
         if (current != null) {
             try {
                 current.stop(1);
+                server = null;
             } catch (RuntimeException stopFailure) {
                 failure = stopFailure;
             }
@@ -170,6 +169,7 @@ public final class NetherNetSignalingServer implements RuntimeModule {
         if (currentExecutor != null) {
             try {
                 currentExecutor.shutdownNow();
+                executor = null;
             } catch (RuntimeException shutdownFailure) {
                 if (failure == null) {
                     failure = shutdownFailure;

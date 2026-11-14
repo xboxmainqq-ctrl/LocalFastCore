@@ -167,7 +167,7 @@ The official protocol reference identifies packet IDs 6, 7 and 8 and documents t
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/resource-pack-client-response-packet/
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/primitives/
 
-**Scope limitation:** these codecs do not yet form a post-login negotiation coordinator and do not prove that a live client accepts the chosen empty world-template metadata. The server still does not send `StartGame`, chunks, or playable world state. `LOGIN_SUCCESS_SENT` must remain distinct from `PLAY`; only the later completed world-startup path may call `markPlayReady(connection)`. No real Bedrock client compatibility is claimed.
+**Scope limitation:** these codecs do not yet form a post-login negotiation coordinator and do not prove that a live client accepts the chosen empty world-template metadata. The production server composition still does not invoke the `StartGame` serializer or send initial chunks; the packet codecs and startup hooks exist, but no playable world startup is wired. `LOGIN_SUCCESS_SENT` must remain distinct from `PLAY`; only the later completed world-startup path may call `markPlayReady(connection)`. No real Bedrock client compatibility is claimed.
 ### Post-login negotiation coordinator
 
 `BedrockPostLoginCoordinator` now connects the packet codecs into a bounded state flow:
@@ -240,7 +240,7 @@ Protocol references:
 - The codec can emit a skeleton LevelChunk using the `0xffffffff` subchunk-request sentinel, with an empty payload and no block entities.
 - Bounds are applied to subchunk counts, cache metadata, and serialized chunk bytes.
 
-**Important boundary:** this is the outer packet envelope only. It does not yet serialize Bedrock subchunk palettes, block-state runtime IDs/hashes, biome data, heightmaps, or block entities, and it is not yet connected to the world/chunk delivery pipeline. The client subchunk request system and the protocol-2225 SubChunk packet response path still need implementation before terrain can be displayed. No playable-world or live-client compatibility claim is made.
+**Important boundary:** this class is only the outer LevelChunk packet envelope. The later sections document the newly added runtime palette serializer, version-9 subchunk encoder, packet-174 response codec, world-backed response builder, and request handler. Those components still lack the bundled 1.26.60 runtime ID table, biome palettes, fluid storage, block entities, computed heightmaps, and production server composition. No playable-world or live-client compatibility claim is made.
 
 Protocol references:
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/level-chunk-packet/

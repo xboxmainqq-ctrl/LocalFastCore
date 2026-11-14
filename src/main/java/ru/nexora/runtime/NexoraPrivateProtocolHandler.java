@@ -304,7 +304,9 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                         result = NexoraInventoryActionCodec.Result.OK;
                     }
                 }
-                case USE -> result = NexoraInventoryActionCodec.Result.NOT_USABLE;
+                case USE -> result = session.inventory.stackAt(slot) == null
+                        ? NexoraInventoryActionCodec.Result.EMPTY_SLOT
+                        : NexoraInventoryActionCodec.Result.NOT_USABLE;
                 default -> throw new IllegalStateException("Unhandled inventory action");
             }
         } catch (RuntimeException malformed) {

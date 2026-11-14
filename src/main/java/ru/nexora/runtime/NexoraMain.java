@@ -131,6 +131,7 @@ public final class NexoraMain {
         });
 
         TickScheduler scheduler = new TickScheduler();
+        EntityRegistry entities = new EntityRegistry();
         int workers = Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() - 1));
         server.register(new RuntimeModule() {
             private WorldChunkPipeline pipeline;
@@ -165,6 +166,30 @@ public final class NexoraMain {
                 options.tickRate(), 3, scheduler,
                 failure -> log.accept("Game tick error: " + failure.getMessage()));
         server.register(gameLoop);
+        server.register(new RuntimeModule() {
+            private EntitySimulationModule simulation;
+
+            @Override
+            public String id() {
+                return "entity-simulation";
+            }
+
+            @Override
+            public void start() {
+                World world = worlds.get(DEFAULT_WORLD_ID)
+                        .orElseThrow(() -> new IllegalStateException("Default world was not loaded"));
+                simulation = new EntitySimulationModule(scheduler, new EntityTickEngine(entities, world));
+                simulation.start();
+            }
+
+            @Override
+            public void stop() {
+                if (simulation != null) {
+                    simulation.stop();
+                    simulation = null;
+                }
+            }
+        });
 
         if (options.developmentNetworkEnabled()) {
             WebRtcJavaNetherNetPeerHost peerHost = new WebRtcJavaNetherNetPeerHost();
@@ -201,7 +226,7 @@ public final class NexoraMain {
                     peerHost, peerHost, signaling, protocolHandler));
         }
 
-        return new RuntimeHandle(server, worlds, gameLoop, options.tickRate());
+        return new RuntimeHandle(server, worlds, entities, gameLoop, options.tickRate());
     }
 
     private static KeyPair createDevelopmentSigningKey() {
@@ -316,10 +341,11 @@ public final class NexoraMain {
         }
     }
 
-    record RuntimeHandle(NexoraServer server, WorldRegistry worlds, GameLoop gameLoop, int tickRate) {
+    record RuntimeHandle(NexoraServer server, WorldRegistry worlds, EntityRegistry entities, GameLoop gameLoop, int tickRate) {
         RuntimeHandle {
             Objects.requireNonNull(server, "server");
             Objects.requireNonNull(worlds, "worlds");
+            Objects.requireNonNull(entities, "entities");
             Objects.requireNonNull(gameLoop, "gameLoop");
             if (tickRate < 1 || tickRate > 120) {
                 throw new IllegalArgumentException("tickRate must be between 1 and 120");

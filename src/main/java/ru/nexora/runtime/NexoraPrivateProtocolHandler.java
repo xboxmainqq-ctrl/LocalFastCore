@@ -191,6 +191,8 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                     if (isMovementPacket(message.payload())) {
                         handleMovement(connection, message, session,
                                 movementValidator, lastMovementNanos);
+                    } else if (isInventoryActionPacket(message.payload())) {
+                        handleInventoryAction(connection, message, session);
                     } else {
                         handleChunkRequest(connection, message, worldInfo, requestedChunks);
                     }
@@ -260,6 +262,70 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
             }
         } catch (RuntimeException malformedMovement) {
             connection.close();
+        }
+    }
+
+    private void handleInventoryAction(TransportConnection connection,
+                                       TransportMessage message, PlayerSession session) {
+        if (!connection.isOpen()) return;
+        if (message.deliveryMode() != DeliveryMode.RELIABLE_ORDERED
+                || message.sizeBytes() > 32) {
+            connection.close();
+            return;
+        }
+        NexoraInventoryActionCodec.Action action = null;
+        NexoraInventoryActionCodec.Result result;
+        try {
+            NexoraInventoryActionCodec.Request request =
+                    NexoraInventoryActionCodec.decodeRequest(message.payload());
+            action = request.action();
+            int slot = request.sourceSlot();
+            switch (action) {
+                case MOVE_OR_SWAP -> result = session.inventory.moveOrSwap(slot, request.targetSlot())
+                        ? NexoraInventoryActionCodec.Result.OK
+                        : (session.inventory.stackAt(slot) == null
+                            ? NexoraInventoryActionCodec.Result.EMPTY_SLOT
+                            : NexoraInventoryActionCodec.Result.INVALID_SLOT);
+                case DROP_ONE -> {
+                    ItemStack dropped = session.inventory.removeOne(slot);
+                    if (dropped == null) {
+                        result = NexoraInventoryActionCodec.Result.EMPTY_SLOT;
+                    } else {
+                        spawnDroppedItems(session, dropped);
+                        result = NexoraInventoryActionCodec.Result.OK;
+                    }
+                }
+                case DROP_STACK -> {
+                    ItemStack dropped = session.inventory.removeStack(slot);
+                    if (dropped == null) {
+                        result = NexoraInventoryActionCodec.Result.EMPTY_SLOT;
+                    } else {
+                        spawnDroppedItems(session, dropped);
+                        result = NexoraInventoryActionCodec.Result.OK;
+                    }
+                }
+                case USE -> result = NexoraInventoryActionCodec.Result.NOT_USABLE;
+                default -> throw new IllegalStateException("Unhandled inventory action");
+            }
+        } catch (RuntimeException malformed) {
+            connection.close();
+            return;
+        }
+        if (send(connection, NexoraInventoryActionCodec.encodeResult(action, result))
+                != TransportSendResult.ACCEPTED
+                || send(connection, NexoraInventorySyncCodec.encode(session.inventory))
+                != TransportSendResult.ACCEPTED) {
+            connection.close();
+        }
+    }
+
+    private void spawnDroppedItems(PlayerSession session, ItemStack stack) {
+        NexoraMovementValidator.Position position = session.position.get();
+        for (int index = 0; index < stack.count(); index++) {
+            double offset = (index % 5) * 0.08;
+            entities.spawn(new WorldEntity(UUID.randomUUID(), WorldEntity.Type.ITEM,
+                    stack.itemId(), position.x() + 0.25 + offset,
+                    position.y() + 0.35, position.z() + 0.25 + offset, 0.0, -1));
         }
     }
 
@@ -356,6 +422,16 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
             this.position = position;
             this.inventory = inventory;
         }
+    }
+
+    private static boolean isInventoryActionPacket(ByteBuffer payload) {
+        ByteBuffer input = payload.slice();
+        return input.remaining() >= 7
+                && input.get(input.position()) == 'N'
+                && input.get(input.position() + 1) == 'X'
+                && input.get(input.position() + 2) == 'R'
+                && input.get(input.position() + 3) == 'A'
+                && Byte.toUnsignedInt(input.get(input.position() + 6)) == 12;
     }
 
     private static boolean isMovementPacket(ByteBuffer payload) {

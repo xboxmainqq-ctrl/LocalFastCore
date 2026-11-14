@@ -91,12 +91,13 @@ class BedrockWorldStartupHandlerTest {
     }
 
 
-    private static BedrockRuntimeBlockRegistryFile.Loaded registryProfile(boolean hashes) {
-        return new BedrockRuntimeBlockRegistryFile.Loaded(
-                2225, "1.26.60",
-                hashes ? BedrockRuntimeBlockRegistryFile.IdMode.HASH
-                        : BedrockRuntimeBlockRegistryFile.IdMode.RUNTIME,
-                "0".repeat(64), Map.of(BlockState.AIR, 0));
+    private static BedrockRuntimeBlockRegistryProfile registryProfile(boolean hashes) {
+        return BedrockRuntimeBlockRegistryProfile.from(
+                new BedrockRuntimeBlockRegistryFile.Loaded(
+                        2225, "1.26.60",
+                        hashes ? BedrockRuntimeBlockRegistryFile.IdMode.HASH
+                                : BedrockRuntimeBlockRegistryFile.IdMode.RUNTIME,
+                        "0".repeat(64), Map.of(BlockState.AIR, 0)));
     }
 
     private static BedrockStartGamePacketCodec.Settings settings(int dimension, boolean hashes) {

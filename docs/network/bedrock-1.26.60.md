@@ -168,3 +168,26 @@ The official protocol reference identifies packet IDs 6, 7 and 8 and documents t
 - https://mojang.github.io/bedrock-protocol-docs/1.26.60/primitives/
 
 **Scope limitation:** these codecs do not yet form a post-login negotiation coordinator and do not prove that a live client accepts the chosen empty world-template metadata. The server still does not send `StartGame`, chunks, or playable world state. `LOGIN_SUCCESS_SENT` must remain distinct from `PLAY`; only the later completed world-startup path may call `markPlayReady(connection)`. No real Bedrock client compatibility is claimed.
+### Post-login negotiation coordinator
+
+`BedrockPostLoginCoordinator` now connects the packet codecs into a bounded state flow:
+
+1. After the router sends `PlayStatus(LoginSuccess)`, the coordinator sends `ResourcePacksInfo` (packet 6).
+2. It accepts only reliable-ordered packet 8 responses. An optional empty `Downloading` progress response is tolerated; a non-empty download list is rejected because this server advertised no packs.
+3. On `DownloadingFinished`, it sends `ResourcePackStack` (packet 7).
+4. On `ResourcePackStackFinished`, it invokes the injected `WorldStartupHandler`.
+5. Only when that handler's completion stage succeeds does it call the router's `markPlayReady` transition. Startup failure, malformed/out-of-order responses, cancellation, and transport close all fail closed.
+
+Composition is intentionally explicit so the world-startup implementation cannot be mistaken for an existing feature:
+
+```java
+BedrockPostLoginCoordinator postLogin = new BedrockPostLoginCoordinator(
+    networkSettings, "1.26.60", worldStartupHandler, playMessageHandler
+);
+BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
+    networkSettings, loginAuthenticator, postLogin, postLogin::handleMessage
+);
+postLogin.attachTo(router); // before starting the transport module
+```
+
+The `WorldStartupHandler` is still an injected boundary. NEXORA does not yet provide the production `StartGame` serializer, initial chunk delivery, or a playable world-startup implementation. The coordinator's unit tests exercise ordering, packet emission, malformed/out-of-order response rejection, world-startup failure, and the explicit PLAY transition; they are not live-client tests.

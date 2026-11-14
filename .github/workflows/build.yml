@@ -26,17 +26,25 @@ jobs:
         run: mvn --batch-mode --no-transfer-progress clean verify
       - name: Build NexoraCore compatibility module
         run: mvn -f nexora-core/pom.xml --batch-mode --no-transfer-progress clean verify
+      - name: Generate SHA-256 checksums
+        run: |
+          sha256sum nexora-core/target/NexoraCore-*.jar > nexora-core/target/SHA256SUMS.txt
+          sha256sum target/localfast-core-*.jar > target/SHA256SUMS.txt
       - name: Upload NexoraCore JAR
         uses: actions/upload-artifact@v4
         with:
           name: nexora-core-${{ github.sha }}
-          path: nexora-core/target/NexoraCore-*.jar
+          path: |
+            nexora-core/target/NexoraCore-*.jar
+            nexora-core/target/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
       - name: Upload plugin JAR
         uses: actions/upload-artifact@v4
         with:
           name: localfast-core-${{ github.sha }}
-          path: target/localfast-core-*.jar
+          path: |
+            target/localfast-core-*.jar
+            target/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14

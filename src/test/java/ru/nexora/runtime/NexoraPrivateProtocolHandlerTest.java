@@ -252,6 +252,14 @@ class NexoraPrivateProtocolHandlerTest {
                 .filter(entity -> entity.type() == WorldEntity.Type.ITEM
                         && entity.name().equals("minecraft:apple")).count());
         assertEquals(13, Byte.toUnsignedInt(connection.sentMessages.get(6)[6]));
+
+        connection.deliver(NexoraInventoryActionCodec.encodeRequest(
+                NexoraInventoryActionCodec.Action.USE, 5, 0));
+
+        assertEquals(new ItemStack("minecraft:apple", 1), inventory.stackAt(5),
+                "Unsupported use must not consume the item");
+        assertEquals(3, Byte.toUnsignedInt(connection.sentMessages.get(8)[8]),
+                "Server must report NOT_USABLE until item behavior exists");
     }
 
     @Test

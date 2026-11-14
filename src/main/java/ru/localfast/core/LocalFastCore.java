@@ -38,6 +38,7 @@ import cn.nukkit.form.handler.FormResponseHandler;
 import cn.nukkit.form.window.FormWindowSimple;
 import cn.nukkit.form.window.FormWindowCustom;
 import cn.nukkit.scheduler.TaskHandler;
+import cn.nukkit.potion.Effect;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -55,6 +56,7 @@ import java.util.UUID;
 
 public final class LocalFastCore extends PluginBase implements Listener {
     private static final int MAX_LEVEL = 100;
+    private static final int MAX_MAGIC_LEVEL = 30;
     private static final int CURRENT_PLAYER_DATA_VERSION = 1;
     private static final int POINTS_PER_LEVEL = 3;
     private static final int MAX_XP_GRANT = 1_000_000;
@@ -224,13 +226,14 @@ public final class LocalFastCore extends PluginBase implements Listener {
         getServer().getScheduler().scheduleRepeatingTask(this, this::flushPlayers,
                 autosaveSeconds * 20);
         getServer().getScheduler().scheduleRepeatingTask(this, this::tickGuildSieges, 20);
+        getServer().getScheduler().scheduleRepeatingTask(this, this::regenerateMagicMana, 20);
         getServer().getScheduler().scheduleRepeatingTask(this, this::ensureGuildSeason, 20 * 60 * 60);
         int refreshTicks = Math.max(20, Math.min(1200, getConfig().getInt("scoreboard.refresh-ticks", 40)));
         getServer().getScheduler().scheduleRepeatingTask(this, () -> {
             if (!getConfig().getBoolean("scoreboard.enabled", true)) return;
             for (Player online : getServer().getOnlinePlayers().values()) updateSidebar(online);
         }, refreshTicks);
-        getLogger().info("LocalFastCore 0.71.0 включён. Почта, приглашения гильдий, модерация аукциона, RPG и система персонала загружены.");
+        getLogger().info("LocalFastCore 0.72.0 включён. Переработанная магия, заклинания, мана, RPG и система персонала загружены.");
     }
 
     private void migrateLegacyListingsToFixedAuction() {
@@ -462,7 +465,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private String rpgClassDescription(String id) {
         switch (id) {
             case "warrior": return "§7+2 к максимальному здоровью, +1 урон";
-            case "mage": return "§7+15% к получаемому опыту";
+            case "mage": return "§7+25% к максимальной мане, +10% к силе заклинаний";
             case "archer": return "§7+8% к скорости передвижения";
             case "assassin": return "§7+4% к скорости, 15% шанс нанести +3 урона";
             case "tank": return "§7+6 к максимальному здоровью, -5% скорости";
@@ -480,7 +483,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                           + "\n\n§7Класс уже выбран. Для смены обратись к оператору.");
         if (current.equals("none")) {
             form.addButton(new ElementButton("§cВоин\n§7Здоровье и урон"));
-            form.addButton(new ElementButton("§bМаг\n§7Больше опыта"));
+            form.addButton(new ElementButton("§bМаг\n§7Мастер магии и маны"));
             form.addButton(new ElementButton("§aЛучник\n§7Быстрое передвижение"));
             form.addButton(new ElementButton("§dАссасин\n§7Критические удары"));
             form.addButton(new ElementButton("§6Танк\n§7Повышенное здоровье"));
@@ -2982,8 +2985,8 @@ public final class LocalFastCore extends PluginBase implements Listener {
         migrateLegacyPlayerData(player);
         String key = playerKey(player);
         String[] fields = {"level", "xp", "points", "strength", "health", "agility", "intelligence",
-                "quest_kills"};
-        int[] defaults = {1, 0, 0, 0, 0, 0, 0, 0};
+                "quest_kills", "magic.level", "magic.xp", "magic.mana"};
+        int[] defaults = {1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 100};
         boolean changed = false;
         for (int i = 0; i < fields.length; i++) {
             String path = key + "." + fields[i];
@@ -3981,10 +3984,323 @@ public final class LocalFastCore extends PluginBase implements Listener {
         player.sendMessage("§eИспользуй: /quest, /quest zombie, /quest skeleton, /quest spider или /quest claim");
     }
 
+
+    private int magicMaxMana(Player player) {
+        int magicLevel = Math.max(1, Math.min(MAX_MAGIC_LEVEL, players.getInt(playerKey(player) + ".magic.level", 1)));
+        int intelligence = Math.max(0, get(player, "intelligence", 0));
+        int base = 100 + (magicLevel - 1) * 5 + intelligence * 2;
+        if (getRpgClass(player).equals("mage")) base = (int) Math.round(base * 1.25);
+        return Math.max(20, Math.min(5000, base));
+    }
+
+    private int magicMana(Player player) {
+        return Math.max(0, Math.min(magicMaxMana(player),
+                players.getInt(playerKey(player) + ".magic.mana", magicMaxMana(player))));
+    }
+
+    private void setMagicMana(Player player, int amount) {
+        players.set(playerKey(player) + ".magic.mana", Math.max(0, Math.min(magicMaxMana(player), amount)));
+        markPlayersDirty();
+    }
+
+    private int magicXpRequired(int level) {
+        return 100 + Math.max(0, level - 1) * 50;
+    }
+
+    private void grantMagicXp(Player player, int amount) {
+        String key = playerKey(player) + ".magic";
+        int level = Math.max(1, Math.min(MAX_MAGIC_LEVEL, players.getInt(key + ".level", 1)));
+        if (level >= MAX_MAGIC_LEVEL || amount <= 0) return;
+        int xp = Math.max(0, players.getInt(key + ".xp", 0)) + amount;
+        boolean leveled = false;
+        while (level < MAX_MAGIC_LEVEL && xp >= magicXpRequired(level)) {
+            xp -= magicXpRequired(level);
+            level++;
+            leveled = true;
+        }
+        if (level >= MAX_MAGIC_LEVEL) xp = 0;
+        players.set(key + ".level", level);
+        players.set(key + ".xp", xp);
+        markPlayersDirty();
+        if (leveled) {
+            setMagicMana(player, magicMaxMana(player));
+            player.sendTitle("§b§lНОВЫЙ УРОВЕНЬ МАГИИ", "§fУровень " + level, 5, 35, 10);
+            player.sendMessage("§bМагия усилилась! §fМаксимальная мана увеличена.");
+        }
+    }
+
+    private void regenerateMagicMana() {
+        boolean changed = false;
+        for (Player player : getServer().getOnlinePlayers().values()) {
+            if (player == null || !player.isOnline()) continue;
+            int current = magicMana(player);
+            int max = magicMaxMana(player);
+            int regen = getRpgClass(player).equals("mage") ? 3 : 2;
+            if (current < max) {
+                players.set(playerKey(player) + ".magic.mana", Math.min(max, current + regen));
+                changed = true;
+            }
+        }
+        if (changed) markPlayersDirty();
+    }
+
+    private String magicSpellName(String id) {
+        switch (id) {
+            case "arcane_bolt": return "§bЧародейский снаряд";
+            case "fireball": return "§cОгненный шар";
+            case "frost_nova": return "§9Ледяная nova";
+            case "healing_light": return "§aСвет исцеления";
+            case "arcane_shield": return "§dЧародейский щит";
+            case "meteor": return "§6Метеор";
+            default: return "Неизвестное заклинание";
+        }
+    }
+
+    private String magicSpellDescription(String id) {
+        switch (id) {
+            case "arcane_bolt": return "§7Поражает ближайшую цель перед тобой магическим снарядом.";
+            case "fireball": return "§7Взрыв огня наносит урон цели и существам рядом с ней.";
+            case "frost_nova": return "§7Замораживает врагов вокруг тебя, нанося урон и замедляя их.";
+            case "healing_light": return "§7Восстанавливает часть твоего здоровья.";
+            case "arcane_shield": return "§7На 8 секунд снижает входящий урон.";
+            case "meteor": return "§7Мощный удар по области вокруг выбранной цели.";
+            default: return "§7Нет описания.";
+        }
+    }
+
+    private int magicSpellUnlockLevel(String id) {
+        switch (id) {
+            case "arcane_bolt": return 1;
+            case "fireball": return 3;
+            case "frost_nova": return 5;
+            case "healing_light": return 7;
+            case "arcane_shield": return 10;
+            case "meteor": return 15;
+            default: return Integer.MAX_VALUE;
+        }
+    }
+
+    private int magicSpellManaCost(String id) {
+        switch (id) {
+            case "arcane_bolt": return 12;
+            case "fireball": return 25;
+            case "frost_nova": return 30;
+            case "healing_light": return 28;
+            case "arcane_shield": return 35;
+            case "meteor": return 60;
+            default: return Integer.MAX_VALUE;
+        }
+    }
+
+    private long magicSpellCooldown(String id) {
+        switch (id) {
+            case "arcane_bolt": return 2000L;
+            case "fireball": return 6000L;
+            case "frost_nova": return 12000L;
+            case "healing_light": return 15000L;
+            case "arcane_shield": return 25000L;
+            case "meteor": return 35000L;
+            default: return 60000L;
+        }
+    }
+
+    private long magicSpellCooldownRemaining(Player player, String id) {
+        long until = players.getLong(playerKey(player) + ".magic.cooldowns." + id, 0L);
+        return Math.max(0L, until - System.currentTimeMillis());
+    }
+
+    private void openMagicMenu(Player player) {
+        initialize(player);
+        int level = Math.max(1, Math.min(MAX_MAGIC_LEVEL,
+                players.getInt(playerKey(player) + ".magic.level", 1)));
+        int xp = Math.max(0, players.getInt(playerKey(player) + ".magic.xp", 0));
+        int mana = magicMana(player);
+        int maxMana = magicMaxMana(player);
+        String progress = level >= MAX_MAGIC_LEVEL ? "§6Максимальный уровень магии достигнут!"
+                : "§7Опыт магии: §b" + xp + "§7/" + magicXpRequired(level);
+        FormWindowSimple form = new FormWindowSimple("§5§lКНИГА МАГИИ",
+                "§7Уровень магии: §d" + level + "§7/" + MAX_MAGIC_LEVEL
+                        + "\n" + progress
+                        + "\n§7Мана: §b" + mana + "§7/" + maxMana
+                        + "\n§7Восстановление: §a" + (getRpgClass(player).equals("mage") ? "3" : "2") + " §7маны/сек."
+                        + (getRpgClass(player).equals("mage") ? "\n§bБонус мага: +25% маны и +10% урона." : "")
+                        + "\n\n§fВыбери заклинание:");
+        String[] spells = {"arcane_bolt", "fireball", "frost_nova", "healing_light", "arcane_shield", "meteor"};
+        for (String spell : spells) {
+            int unlock = magicSpellUnlockLevel(spell);
+            String state = level < unlock ? "§8Заблокировано: ур. " + unlock
+                    : "§7Мана: " + magicSpellManaCost(spell) + " §8| §aДоступно";
+            form.addButton(new ElementButton(magicSpellName(spell) + "\n" + state));
+        }
+        form.addButton(new ElementButton("§eОбновить книгу"));
+        form.addButton(new ElementButton("§7Закрыть"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int selected = form.getResponse().getClickedButtonId();
+            if (selected >= 0 && selected < spells.length) {
+                castMagicSpell(player, spells[selected]);
+                openMagicMenu(player);
+            } else if (selected == spells.length) {
+                openMagicMenu(player);
+            }
+        }));
+        player.showFormWindow(form);
+    }
+
+    private EntityCreature findMagicTarget(Player player, double maxDistance) {
+        var direction = player.getDirectionVector();
+        EntityCreature best = null;
+        double bestDistance = maxDistance * maxDistance;
+        for (Entity entity : player.getLevel().getEntities()) {
+            if (!(entity instanceof EntityCreature) || entity == player || entity.isClosed() || !entity.isAlive()) continue;
+            EntityCreature creature = (EntityCreature) entity;
+            double dx = creature.getX() - player.getX();
+            double dy = (creature.getY() + 0.8) - (player.getY() + 1.4);
+            double dz = creature.getZ() - player.getZ();
+            double distanceSquared = dx * dx + dy * dy + dz * dz;
+            if (distanceSquared > bestDistance || distanceSquared < 0.01) continue;
+            double distance = Math.sqrt(distanceSquared);
+            double dot = (direction.x * dx + direction.y * dy + direction.z * dz) / distance;
+            if (dot < 0.72) continue;
+            best = creature;
+            bestDistance = distanceSquared;
+        }
+        return best;
+    }
+
+    private int magicDamage(Player player, float base) {
+        int level = Math.max(1, players.getInt(playerKey(player) + ".magic.level", 1));
+        int intelligence = Math.max(0, get(player, "intelligence", 0));
+        double damage = base + level * 0.45 + intelligence * 0.15;
+        if (getRpgClass(player).equals("mage")) damage *= 1.10;
+        return (int) Math.max(1, Math.min(500, Math.round(damage)));
+    }
+
+    private int damageMagicArea(Player player, Entity center, double radius, float baseDamage, boolean slow) {
+        int hits = 0;
+        double radiusSquared = radius * radius;
+        for (Entity entity : player.getLevel().getEntities()) {
+            if (!(entity instanceof EntityCreature) || entity == player || entity.isClosed() || !entity.isAlive()) continue;
+            EntityCreature target = (EntityCreature) entity;
+            double dx = target.getX() - center.getX();
+            double dy = target.getY() - center.getY();
+            double dz = target.getZ() - center.getZ();
+            if (dx * dx + dy * dy + dz * dz > radiusSquared) continue;
+            float damage = magicDamage(player, baseDamage);
+            boolean applied = target.attack(new EntityDamageByEntityEvent(player, target,
+                    EntityDamageEvent.DamageCause.MAGIC, damage));
+            if (applied) {
+                hits++;
+                if (slow && target.isAlive()) {
+                    Effect effect = Effect.getEffect(Effect.SLOWNESS);
+                    if (effect != null) target.addEffect(effect.setDuration(80).setAmplifier(1));
+                }
+            }
+        }
+        return hits;
+    }
+
+    private boolean castMagicSpell(Player player, String id) {
+        initialize(player);
+        int level = Math.max(1, players.getInt(playerKey(player) + ".magic.level", 1));
+        int unlockLevel = magicSpellUnlockLevel(id);
+        if (level < unlockLevel) {
+            player.sendMessage("§cЭто заклинание откроется на " + unlockLevel + " уровне магии.");
+            return false;
+        }
+        long remaining = magicSpellCooldownRemaining(player, id);
+        if (remaining > 0L) {
+            player.sendMessage("§cЗаклинание перезаряжается: §e" + ((remaining + 999L) / 1000L) + " сек.");
+            return false;
+        }
+        int cost = magicSpellManaCost(id);
+        if (magicMana(player) < cost) {
+            player.sendMessage("§cНедостаточно маны. Нужно " + cost + ", у тебя " + magicMana(player) + ".");
+            return false;
+        }
+
+        EntityCreature target = null;
+        if (id.equals("arcane_bolt") || id.equals("fireball") || id.equals("meteor")) {
+            target = findMagicTarget(player, id.equals("meteor") ? 20.0 : 16.0);
+            if (target == null) {
+                player.sendMessage("§cНаведи прицел на существо в пределах досягаемости.");
+                return false;
+            }
+        }
+
+        boolean success = false;
+        String result;
+        switch (id) {
+            case "arcane_bolt":
+                success = target.attack(new EntityDamageByEntityEvent(player, target,
+                        EntityDamageEvent.DamageCause.MAGIC, (float) magicDamage(player, 7)));
+                result = "§bЧародейский снаряд поражает цель!";
+                break;
+            case "fireball": {
+                int hits = damageMagicArea(player, target, 3.5, 10, false);
+                success = hits > 0;
+                result = "§cОгненный взрыв задел существ: " + hits + ".";
+                break;
+            }
+            case "frost_nova": {
+                int hits = damageMagicArea(player, player, 4.5, 5, true);
+                success = true;
+                result = "§9Ледяная nova! §fЗамедлено существ: " + hits + ".";
+                break;
+            }
+            case "healing_light": {
+                float missing = player.getMaxHealth() - player.getHealth();
+                if (missing <= 0.1f) {
+                    player.sendMessage("§cЗдоровье уже полностью восстановлено.");
+                    return false;
+                }
+                float heal = Math.min(missing, (float) magicDamage(player, 8));
+                player.heal(heal);
+                success = true;
+                result = "§aСвет исцеления восстановил " + (int) heal + " здоровья.";
+                break;
+            }
+            case "arcane_shield": {
+                Effect effect = Effect.getEffect(Effect.DAMAGE_RESISTANCE);
+                if (effect == null) {
+                    player.sendMessage("§cНе удалось создать магический эффект.");
+                    return false;
+                }
+                player.addEffect(effect.setDuration(160).setAmplifier(0));
+                success = true;
+                result = "§dЧародейский щит защищает тебя 8 секунд.";
+                break;
+            }
+            case "meteor": {
+                int hits = damageMagicArea(player, target, 4.5, 18, false);
+                success = hits > 0;
+                result = "§6Метеор обрушился на цель! §fЗадето существ: " + hits + ".";
+                break;
+            }
+            default:
+                player.sendMessage("§cНеизвестное заклинание.");
+                return false;
+        }
+
+        if (!success) {
+            player.sendMessage("§cЗаклинание не сработало. Мана не потрачена.");
+            return false;
+        }
+        setMagicMana(player, magicMana(player) - cost);
+        players.set(playerKey(player) + ".magic.cooldowns." + id,
+                System.currentTimeMillis() + magicSpellCooldown(id));
+        markPlayersDirty();
+        flushPlayers();
+        grantMagicXp(player, 8);
+        player.sendMessage("§5§l[МАГИЯ] §f" + result + " §8(-" + cost + " маны)");
+        updateSidebar(player);
+        return true;
+    }
+
     private String abilityName(String playerClass) {
         switch (playerClass) {
             case "warrior": return "Боевой натиск";
-            case "mage": return "Магическое восстановление";
+            case "mage": return "Поток маны";
             case "archer": return "Стремительный шаг";
             case "assassin": return "Смертельный выпад";
             case "tank": return "Железная стойка";
@@ -3995,7 +4311,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
     private String abilityDescription(String playerClass) {
         switch (playerClass) {
             case "warrior": return "§7На 8 секунд увеличивает урон каждого удара на 3.";
-            case "mage": return "§7Мгновенно восстанавливает до 8 единиц здоровья.";
+            case "mage": return "§7Восстанавливает 40 единиц маны. Перезарядка общей способности — 30 секунд.";
             case "archer": return "§7На 8 секунд увеличивает скорость передвижения на 20%.";
             case "assassin": return "§7Следующий удар наносит дополнительно 7 единиц урона.";
             case "tank": return "§7На 8 секунд повышает максимум здоровья на 6 и лечит на 6.";
@@ -4059,9 +4375,15 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 player.sendMessage("§c§l[Способность] §fБоевой натиск! §e+3 урона на 8 секунд.");
                 break;
             case "mage":
-                float healed = Math.min(8.0f, player.getMaxHealth() - player.getHealth());
-                if (healed > 0.0f) player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + healed));
-                player.sendMessage("§b§l[Способность] §fМагическое восстановление! §a+" + (int) healed + " здоровья.");
+                int restoredMana = Math.min(40, magicMaxMana(player) - magicMana(player));
+                if (restoredMana <= 0) {
+                    players.set(playerKey(player) + ".ability_cooldown_until", 0L);
+                    markPlayersDirty();
+                    player.sendMessage("§bУ тебя уже полная мана.");
+                    return;
+                }
+                setMagicMana(player, magicMana(player) + restoredMana);
+                player.sendMessage("§b§l[Способность] §fПоток маны! §a+" + restoredMana + " маны.");
                 break;
             case "archer":
                 player.setMovementSpeed(Math.min(Player.MAXIMUM_SPEED, player.getMovementSpeed() * 1.20f));
@@ -6759,6 +7081,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                 + " §8| §7Монеты: §6" + getBalance(player) + "\n§8Выбери нужный раздел.");
         form.addButton(new ElementButton("§bПерсонаж и характеристики"));
         form.addButton(new ElementButton("§dКласс и способности"));
+        form.addButton(new ElementButton("§dКнига магии и заклинания"));
         form.addButton(new ElementButton("§aПитомцы и их снаряжение"));
         form.addButton(new ElementButton("§6Приключения и подземелья"));
         form.addButton(new ElementButton("§5Разлом Бездны"));
@@ -6774,16 +7097,17 @@ public final class LocalFastCore extends PluginBase implements Listener {
             int id = form.getResponse().getClickedButtonId();
             if (id == 0) openStatsMenu(player);
             else if (id == 1) { if (getRpgClass(player).equals("none")) openClassMenu(player); else openAbilitiesMenu(player); }
-            else if (id == 2) openPetsMenu(player);
-            else if (id == 3) openAdventureMenu(player);
-            else if (id == 4) openPlayerRiftMenu(player);
-            else if (id == 5) openPlayerForgeMenu(player);
-            else if (id == 6) showGearCollection(player);
-            else if (id == 7) openPlayerQuestMenu(player);
-            else if (id == 8) openPlayerEconomyMenu(player);
-            else if (id == 9) openPlayerGuildMenu(player);
-            else if (id == 10) openPlayerTitleCollection(player);
-            else if (id == 11) openPlayerNotifications(player);
+            else if (id == 2) openMagicMenu(player);
+            else if (id == 3) openPetsMenu(player);
+            else if (id == 4) openAdventureMenu(player);
+            else if (id == 5) openPlayerRiftMenu(player);
+            else if (id == 6) openPlayerForgeMenu(player);
+            else if (id == 7) showGearCollection(player);
+            else if (id == 8) openPlayerQuestMenu(player);
+            else if (id == 9) openPlayerEconomyMenu(player);
+            else if (id == 10) openPlayerGuildMenu(player);
+            else if (id == 11) openPlayerTitleCollection(player);
+            else if (id == 12) openPlayerNotifications(player);
         }));
         player.showFormWindow(form);
     }
@@ -9474,6 +9798,12 @@ public final class LocalFastCore extends PluginBase implements Listener {
             recalculateStats(player);
             updateSidebar(player);
             sender.sendMessage("§a[LocalFast] Характеристика " + stat + " увеличена на " + amount + ".");
+            return true;
+        }
+
+        if (name.equals("magic")) {
+            if (!(sender instanceof Player)) { sender.sendMessage("Магия доступна только игроку."); return true; }
+            openMagicMenu((Player) sender);
             return true;
         }
 

@@ -196,7 +196,8 @@ public final class NetherNetSignalingServer implements RuntimeModule {
             byte[] body = readBounded(exchange.getRequestBody(), maxSdpBytes);
             String offerSdp = decodeUtf8(body);
             NetherNetSdpDocument parsedOffer = NetherNetSdpDocument.parseOffer(
-                    offerSdp, maxSdpBytes, Math.min(maxSdpBytes, 16 * 1024));
+                    offerSdp, maxSdpBytes, Math.min(maxSdpBytes, 16 * 1024),
+                    validator.requiresIdentity());
 
             // This is deliberately before WebRTC allocation. The validator is
             // mandatory and must perform cryptographic verification.

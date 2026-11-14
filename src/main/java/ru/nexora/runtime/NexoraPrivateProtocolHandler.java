@@ -103,6 +103,16 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 connection.close();
                 return;
             }
+            if (worldInfo != null && send(connection,
+                    NexoraMovementPacketCodec.encodeServerPosition(
+                            new NexoraMovementValidator.Position(
+                                    worldInfo.spawnX() + 0.5,
+                                    worldInfo.spawnY(),
+                                    worldInfo.spawnZ() + 0.5)))
+                    != TransportSendResult.ACCEPTED) {
+                connection.close();
+                return;
+            }
             if (worldSupplier == null || chunkLoader == null || worldInfo == null) {
                 connection.setMessageListener(ignored -> connection.close());
             } else {

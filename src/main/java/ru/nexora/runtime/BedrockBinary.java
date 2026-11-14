@@ -74,6 +74,93 @@ public final class BedrockBinary {
         output.put((byte) value);
     }
 
+    /** Reads a ZigZag-encoded signed 64-bit Bedrock varint. */
+    public static long readVarInt64(ByteBuffer input) {
+        long encoded = readVarUInt64(input);
+        return (encoded >>> 1) ^ -(encoded & 1L);
+    }
+
+    /** Writes a ZigZag-encoded signed 64-bit Bedrock varint. */
+    public static void writeVarInt64(ByteBuffer output, long value) {
+        writeVarUInt64(output, (value << 1) ^ (value >> 63));
+    }
+
+    /** Reads an unsigned 64-bit base-128 integer as its raw Java long bit pattern. */
+    public static long readVarUInt64(ByteBuffer input) {
+        Objects.requireNonNull(input, "input");
+        long result = 0;
+        for (int index = 0; index < 10; index++) {
+            requireRemaining(input, 1);
+            int current = Byte.toUnsignedInt(input.get());
+            if (index == 9 && (current & 0xFE) != 0) {
+                throw new IllegalArgumentException("varuint64 exceeds 64 bits");
+            }
+            result |= (long) (current & 0x7F) << (index * 7);
+            if ((current & 0x80) == 0) {
+                return result;
+            }
+        }
+        throw new IllegalArgumentException("varuint64 is longer than 10 bytes");
+    }
+
+    /** Writes an unsigned 64-bit base-128 integer from its raw Java long bit pattern. */
+    public static void writeVarUInt64(ByteBuffer output, long value) {
+        Objects.requireNonNull(output, "output");
+        while ((value & ~0x7FL) != 0) {
+            output.put((byte) ((value & 0x7F) | 0x80));
+            value >>>= 7;
+        }
+        output.put((byte) value);
+    }
+
+    /** Reads a schema-native-order signed 32-bit integer (little-endian for Bedrock). */
+    public static int readLittleEndianInt32(ByteBuffer input) {
+        Objects.requireNonNull(input, "input");
+        requireRemaining(input, Integer.BYTES);
+        return Byte.toUnsignedInt(input.get())
+                | (Byte.toUnsignedInt(input.get()) << 8)
+                | (Byte.toUnsignedInt(input.get()) << 16)
+                | (input.get() << 24);
+    }
+
+    /** Writes a schema-native-order signed 32-bit integer (little-endian for Bedrock). */
+    public static void writeLittleEndianInt32(ByteBuffer output, int value) {
+        Objects.requireNonNull(output, "output");
+        output.put((byte) value);
+        output.put((byte) (value >>> 8));
+        output.put((byte) (value >>> 16));
+        output.put((byte) (value >>> 24));
+    }
+
+    /** Reads a schema-native-order 64-bit integer as its raw Java long bit pattern. */
+    public static long readLittleEndianInt64(ByteBuffer input) {
+        Objects.requireNonNull(input, "input");
+        requireRemaining(input, Long.BYTES);
+        long value = 0;
+        for (int index = 0; index < Long.BYTES; index++) {
+            value |= (long) Byte.toUnsignedInt(input.get()) << (index * 8);
+        }
+        return value;
+    }
+
+    /** Writes a schema-native-order 64-bit integer. */
+    public static void writeLittleEndianInt64(ByteBuffer output, long value) {
+        Objects.requireNonNull(output, "output");
+        for (int index = 0; index < Long.BYTES; index++) {
+            output.put((byte) (value >>> (index * 8)));
+        }
+    }
+
+    /** Reads a schema-native-order IEEE-754 float. */
+    public static float readLittleEndianFloat(ByteBuffer input) {
+        return Float.intBitsToFloat(readLittleEndianInt32(input));
+    }
+
+    /** Writes a schema-native-order IEEE-754 float. */
+    public static void writeLittleEndianFloat(ByteBuffer output, float value) {
+        writeLittleEndianInt32(output, Float.floatToRawIntBits(value));
+    }
+
     /**
      * Reads a UTF-8 string whose byte length is a varuint32.
      * Both the declared length and remaining input are checked before allocation.

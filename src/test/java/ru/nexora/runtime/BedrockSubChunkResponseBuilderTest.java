@@ -60,16 +60,20 @@ class BedrockSubChunkResponseBuilderTest {
         assertEquals(0, BedrockBinary.readVarInt32(terrain));
         assertEquals(0, Byte.toUnsignedInt(terrain.get())); // block actor TAG_End
         assertFalse(terrain.hasRemaining());
-        assertEquals(0, Byte.toUnsignedInt(in.get()));
-        assertEquals(0, Byte.toUnsignedInt(in.get()));
+        assertEquals(1, Byte.toUnsignedInt(in.get())); // Heightmap HasData
+        byte[] heightmap = new byte[256];
+        in.get(heightmap);
+        assertEquals(-1, heightmap[0]);
+        assertEquals(0, heightmap[17]); // [z=1][x=1], local Y=0
+        assertEquals(0, Byte.toUnsignedInt(in.get())); // Render heightmap remains NoData
 
         assertEquals(0, in.get());
         assertEquals(1, in.get());
         assertEquals(0, in.get());
         assertEquals(6, Byte.toUnsignedInt(in.get()));
         assertEquals(0, BedrockBinary.readVarUInt32(in));
-        assertEquals(0, Byte.toUnsignedInt(in.get()));
-        assertEquals(0, Byte.toUnsignedInt(in.get()));
+        assertEquals(3, Byte.toUnsignedInt(in.get())); // AllTooLow: surface is below section Y=1
+        assertEquals(0, Byte.toUnsignedInt(in.get())); // Render heightmap remains NoData
         assertFalse(in.hasRemaining());
     }
 

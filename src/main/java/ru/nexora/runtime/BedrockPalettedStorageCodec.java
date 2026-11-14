@@ -26,6 +26,7 @@ public final class BedrockPalettedStorageCodec {
 
         int[] runtimeIds = new int[BLOCK_COUNT];
         Map<Integer, Integer> paletteIndices = new LinkedHashMap<>();
+        Map<Integer, BlockState> statesByRuntimeId = new LinkedHashMap<>();
         List<Integer> palette = new ArrayList<>();
 
         // Bedrock's network storage uses XZY order: Y is the fastest axis.
@@ -33,7 +34,13 @@ public final class BedrockPalettedStorageCodec {
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
                 for (int y = 0; y < 16; y++) {
-                    int runtimeId = registry.runtimeId(section.get(x, y, z));
+                    BlockState state = section.get(x, y, z);
+                    int runtimeId = registry.runtimeId(state);
+                    BlockState previousState = statesByRuntimeId.putIfAbsent(runtimeId, state);
+                    if (previousState != null && !previousState.equals(state)) {
+                        throw new IllegalArgumentException(
+                                "Block runtime ID collision between " + previousState + " and " + state);
+                    }
                     runtimeIds[cursor++] = runtimeId;
                     if (!paletteIndices.containsKey(runtimeId)) {
                         paletteIndices.put(runtimeId, palette.size());

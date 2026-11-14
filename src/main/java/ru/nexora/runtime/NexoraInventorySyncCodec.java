@@ -50,7 +50,7 @@ public final class NexoraInventorySyncCodec {
             if (itemBytes > MAX_ITEM_ID_BYTES) {
                 throw new IllegalArgumentException("Item identifier is too long");
             }
-            size += 2 + itemBytes;
+            size += 3 + itemBytes;
         }
         ByteBuffer output = ByteBuffer.allocate(size).order(ByteOrder.BIG_ENDIAN);
         output.put(MAGIC).put((byte) 1).put((byte) 1).put((byte) MESSAGE_TYPE);

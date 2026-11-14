@@ -7,7 +7,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.nio.file.Files;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -36,4 +35,26 @@ class AuditLoggerTest {
         assertThrows(IllegalArgumentException.class,
                 () -> logger.record("event", "admin", "x".repeat(2049)));
     }
+    @Test
+    void refusesSymbolicLinkAuditTargetsWhenSupported() throws IOException {
+        Path target = Files.writeString(tempDir.resolve("target.jsonl"), "keep\\n");
+        Path link = tempDir.resolve("audit-link.jsonl");
+        try {
+            Files.createSymbolicLink(link, target);
+        } catch (UnsupportedOperationException | SecurityException | IOException unavailable) {
+            return;
+        }
+
+        AuditLogger logger = new AuditLogger(link);
+        assertThrows(IOException.class, () -> logger.record("security.check", "system", "details"));
+        assertEquals("keep\\n", Files.readString(target));
+    }
+
+    @Test
+    void refusesDirectoryAsAuditLogTarget() throws IOException {
+        Path directory = Files.createDirectory(tempDir.resolve("audit-directory"));
+        AuditLogger logger = new AuditLogger(directory);
+        assertThrows(IOException.class, () -> logger.record("security.check", "system", "details"));
+    }
+
 }

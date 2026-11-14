@@ -76,6 +76,31 @@ public class NexoraAndroidProtocolCodecTest {
         assertEquals(20, world.tickRate());
         assertEquals(1, world.loadedChunks());
     }
+
+    @Test
+    public void chunkRequestMatchesServerGoldenVector() {
+        byte[] expected = ByteBuffer.allocate(15)
+                .put(new byte[] {'N','X','R','A',1,0,5})
+                .putInt(-2).putInt(7).array();
+        assertArrayEquals(expected, NexoraAndroidProtocolCodec.encodeChunkRequest(-2, 7));
+    }
+
+    @Test
+    public void decodesChunkDataFromServerGoldenVector() {
+        byte[] id = "minecraft:grass_block".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        ByteBuffer bytes = ByteBuffer.allocate(7 + 10 + 1 + 4 + 1 + id.length);
+        bytes.put(new byte[] {'N','X','R','A',1,0,6});
+        bytes.putInt(2).putInt(-3).putShort((short) 1);
+        bytes.put((byte) 0).putInt(64).put((byte) id.length).put(id);
+        NexoraAndroidProtocolCodec.ChunkData chunk =
+                NexoraAndroidProtocolCodec.decodeChunkData(bytes.array());
+        assertEquals(2, chunk.chunkX());
+        assertEquals(-3, chunk.chunkZ());
+        assertEquals(64, chunk.heights()[0]);
+        assertEquals("minecraft:grass_block", chunk.blockIds()[0]);
+        assertNull(chunk.blockIds()[1]);
+    }
+
     @Test(expected = IllegalArgumentException.class)
     public void rejectsWrongMagic() {
         NexoraAndroidProtocolCodec.decodeServerResponse(new byte[] {0,0,0,0,1,0,2});

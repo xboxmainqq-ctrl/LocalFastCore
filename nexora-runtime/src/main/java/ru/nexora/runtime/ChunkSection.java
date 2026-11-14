@@ -8,16 +8,16 @@ import java.util.Map;
 /**
  * Compact 16x16x16 block section using a local palette.
  *
- * <p>Air is palette entry zero. One byte is used per block until the palette
- * exceeds 256 entries; the backing array is then widened to unsigned shorts.
- * This keeps common sections compact without imposing a fixed block-state cap
- * of 256.</p>
+ * <p>Air is palette entry zero. Four bits are used per block while the
+ * palette has at most 16 entries, widening to one byte and then unsigned
+ * shorts only when required.</p>
  */
 final class ChunkSection {
     private static final int BLOCK_COUNT = 16 * 16 * 16;
     private final List<BlockState> palette = new ArrayList<>();
     private final Map<BlockState, Integer> paletteIndices = new HashMap<>();
-    private byte[] byteIndices = new byte[BLOCK_COUNT];
+    private byte[] nibbleIndices = new byte[BLOCK_COUNT / 2];
+    private byte[] byteIndices;
     private short[] shortIndices;
     private int nonAirCount;
 
@@ -27,18 +27,12 @@ final class ChunkSection {
     }
 
     BlockState get(int localX, int localY, int localZ) {
-        int index = index(localX, localY, localZ);
-        int paletteIndex = shortIndices == null
-                ? Byte.toUnsignedInt(byteIndices[index])
-                : Short.toUnsignedInt(shortIndices[index]);
-        return palette.get(paletteIndex);
+        return palette.get(readIndex(index(localX, localY, localZ)));
     }
 
     void set(int localX, int localY, int localZ, BlockState state) {
         int blockIndex = index(localX, localY, localZ);
-        int oldPaletteIndex = shortIndices == null
-                ? Byte.toUnsignedInt(byteIndices[blockIndex])
-                : Short.toUnsignedInt(shortIndices[blockIndex]);
+        int oldPaletteIndex = readIndex(blockIndex);
         if (oldPaletteIndex == 0 && state.isAir()) {
             return;
         }
@@ -55,8 +49,10 @@ final class ChunkSection {
                 existing = palette.size();
                 palette.add(state);
                 paletteIndices.put(state, existing);
-                if (existing == 256) {
-                    widen();
+                if (existing == 16) {
+                    widenToBytes();
+                } else if (existing == 256) {
+                    widenToShorts();
                 }
             }
             newPaletteIndex = existing;
@@ -77,19 +73,44 @@ final class ChunkSection {
         return nonAirCount == 0;
     }
 
-    private void widen() {
+    private int readIndex(int blockIndex) {
+        if (shortIndices != null) {
+            return Short.toUnsignedInt(shortIndices[blockIndex]);
+        }
+        if (byteIndices != null) {
+            return Byte.toUnsignedInt(byteIndices[blockIndex]);
+        }
+        int packed = Byte.toUnsignedInt(nibbleIndices[blockIndex >>> 1]);
+        return (blockIndex & 1) == 0 ? packed & 0x0F : packed >>> 4;
+    }
+
+    private void widenToBytes() {
+        byteIndices = new byte[BLOCK_COUNT];
+        for (int i = 0; i < BLOCK_COUNT; i++) {
+            byteIndices[i] = (byte) readIndex(i);
+        }
+        nibbleIndices = null;
+    }
+
+    private void widenToShorts() {
         shortIndices = new short[BLOCK_COUNT];
-        for (int i = 0; i < byteIndices.length; i++) {
-            shortIndices[i] = (short) Byte.toUnsignedInt(byteIndices[i]);
+        for (int i = 0; i < BLOCK_COUNT; i++) {
+            shortIndices[i] = (short) readIndex(i);
         }
         byteIndices = null;
     }
 
     private void writeIndex(int blockIndex, int paletteIndex) {
-        if (shortIndices == null) {
+        if (shortIndices != null) {
+            shortIndices[blockIndex] = (short) paletteIndex;
+        } else if (byteIndices != null) {
             byteIndices[blockIndex] = (byte) paletteIndex;
         } else {
-            shortIndices[blockIndex] = (short) paletteIndex;
+            int byteIndex = blockIndex >>> 1;
+            int old = Byte.toUnsignedInt(nibbleIndices[byteIndex]);
+            nibbleIndices[byteIndex] = (byte) ((blockIndex & 1) == 0
+                    ? (old & 0xF0) | paletteIndex
+                    : (old & 0x0F) | (paletteIndex << 4));
         }
     }
 

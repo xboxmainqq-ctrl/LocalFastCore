@@ -30,6 +30,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -53,6 +54,7 @@ public final class WebRtcJavaNetherNetPeerHost
 
     private final int maxPeers;
     private final ConcurrentMap<String, PeerSession> sessions = new ConcurrentHashMap<>();
+    private final Semaphore peerPermits;
     private volatile Consumer<TransportConnection> connectionListener;
     private volatile PeerConnectionFactory factory;
     private volatile boolean closed;
@@ -66,6 +68,7 @@ public final class WebRtcJavaNetherNetPeerHost
             throw new IllegalArgumentException("maxPeers must be between 1 and 10000");
         }
         this.maxPeers = maxPeers;
+        this.peerPermits = new Semaphore(maxPeers);
     }
 
     @Override
@@ -110,7 +113,7 @@ public final class WebRtcJavaNetherNetPeerHost
             return CompletableFuture.failedFuture(
                     new IllegalStateException("WebRTC peer host is not running"));
         }
-        if (sessions.size() >= maxPeers) {
+        if (!peerPermits.tryAcquire()) {
             return CompletableFuture.failedFuture(
                     new IllegalStateException("WebRTC peer limit reached"));
         }
@@ -216,6 +219,7 @@ public final class WebRtcJavaNetherNetPeerHost
         private final String networkId;
         private final CompletableFuture<String> answer = new CompletableFuture<>();
         private final AtomicBoolean closed = new AtomicBoolean();
+        private final AtomicBoolean permitReleased = new AtomicBoolean();
         private final NetherNetFragmentAssembler reliableAssembler =
                 new NetherNetFragmentAssembler(MAX_MESSAGE_BYTES, MAX_FRAGMENTS,
                         FRAGMENT_TIMEOUT_NANOS);
@@ -392,6 +396,9 @@ public final class WebRtcJavaNetherNetPeerHost
             answer.completeExceptionally(new IllegalStateException(description));
             reliableAssembler.reset();
             sessions.remove(id, this);
+            if (permitReleased.compareAndSet(false, true)) {
+                peerPermits.release();
+            }
             RTCDataChannel reliable = reliableChannel;
             RTCDataChannel unreliable = unreliableChannel;
             if (reliable != null) {

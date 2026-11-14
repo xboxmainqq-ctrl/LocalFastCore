@@ -87,7 +87,7 @@ class NexoraPrivateProtocolHandlerTest {
         @Override public void close() {
             if (!closed) {
                 closed = true;
-                if (closeListener != null) closeListener.accept(new TransportCloseEvent("closed"));
+                if (closeListener != null) closeListener.accept(new TransportCloseEvent("closed", false));
             }
         }
     }

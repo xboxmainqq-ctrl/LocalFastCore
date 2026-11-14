@@ -18,7 +18,8 @@ This module is the beginning of the independent NEXORA server process. It has **
 - Bedrock 1.26.60 / protocol 2225 payload codecs for RequestNetworkSettingsPacket, NetworkSettingsPacket, and LoginPacket, with bounded binary primitives and unit tests.
 - Bounded uncompressed Bedrock packet-batch framing with packet length prefixes, packet ID/sub-client headers, and unit tests.
 - Bedrock batch compression envelope for pre-negotiation batches, raw DEFLATE, and uncompressed frames, with decompression limits; Snappy remains explicitly unsupported.
-- Frame-level Bedrock initial handshake processor joins batch framing, compression, RequestNetworkSettings, NetworkSettings response creation, and compressed Login decoding. The host still owns actual transport delivery and real identity/account authentication.
+- Frame-level Bedrock initial handshake processor joins batch framing, compression, RequestNetworkSettings, NetworkSettings response creation, and compressed Login decoding.
+- `BedrockConnectionRouter` connects accepted NetherNet peers to per-connection handshake processors, sends NetworkSettings over the reliable ordered channel, and hands decoded Login requests to an explicit authentication callback. It advances to PLAY only when that callback confirms authentication.
 - NetherNet message framing helper: bounded reliable-message fragmentation with countdown headers, strict unfragmented-message validation for unreliable delivery, and tests that feed encoded fragments through the reassembler.
 - Existing NetherNet fragment assembler enforces per-message byte, fragment-count, and assembly-time limits.
 - Bounded NetherNet SDP parsing preserves the original offer for identity verification and removes the non-standard `a=identity` line only from the SDP passed to WebRTC.

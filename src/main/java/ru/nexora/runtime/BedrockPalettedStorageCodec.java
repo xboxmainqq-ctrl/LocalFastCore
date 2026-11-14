@@ -63,10 +63,12 @@ public final class BedrockPalettedStorageCodec {
                 }
                 BedrockBinary.writeLittleEndianInt32(out, word);
             }
-            BedrockBinary.writeVarInt32(out, palette.size());
-            for (int runtimeId : palette) {
-                BedrockBinary.writeVarInt32(out, runtimeId);
-            }
+        }
+
+        // Even a zero-bit (uniform) storage writes its one-entry palette.
+        BedrockBinary.writeVarInt32(out, palette.size());
+        for (int runtimeId : palette) {
+            BedrockBinary.writeVarInt32(out, runtimeId);
         }
 
         out.flip();

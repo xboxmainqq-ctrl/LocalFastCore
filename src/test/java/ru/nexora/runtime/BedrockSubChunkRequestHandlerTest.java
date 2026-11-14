@@ -125,10 +125,11 @@ class BedrockSubChunkRequestHandlerTest {
     }
 
 
-    private static BedrockRuntimeBlockRegistryFile.Loaded blockProfile() {
-        return new BedrockRuntimeBlockRegistryFile.Loaded(
-                2225, "1.26.60", BedrockRuntimeBlockRegistryFile.IdMode.RUNTIME,
-                "0".repeat(64), Map.of(BlockState.AIR, 0, STONE, 1));
+    private static BedrockRuntimeBlockRegistryProfile blockProfile() {
+        return BedrockRuntimeBlockRegistryProfile.from(
+                new BedrockRuntimeBlockRegistryFile.Loaded(
+                        2225, "1.26.60", BedrockRuntimeBlockRegistryFile.IdMode.RUNTIME,
+                        "0".repeat(64), Map.of(BlockState.AIR, 0, STONE, 1)));
     }
 
     private static TransportMessage subchunkRequest(DeliveryMode mode) {

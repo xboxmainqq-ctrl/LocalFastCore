@@ -72,7 +72,7 @@ Still planned:
 
 - `SignatureVerifier`: local verification of release bundles or trusted manifests where offline verification is required. Release signing currently happens in GitHub Actions through Cosign/Sigstore, not inside the server plugin.
 - Per-module permission-node registration and command/action integration. Each module must call `security().access().authorize(...)` before performing a protected action.
-- Backup verification and restore workflow: the current `BackupManager` creates snapshots only; manifest verification and restore are not implemented yet. Backups are not automatically scheduled or wired to server world folders. The caller must choose a quiesced/consistent source because copying actively changing world files is not guaranteed to produce a consistent snapshot.
+- Restore workflow: `BackupManager.verifyBackup(...)` is implemented, but automatic scheduling, server-world integration, and restore are not. A restore operation must be designed separately with path validation, staging, rollback, and explicit operator approval. The caller must choose a quiesced/consistent source because copying actively changing world files is not guaranteed to produce a consistent snapshot.
 
 The runtime foundation is report-and-audit only. It must not silently delete, rewrite, quarantine files, disable plugins, or stop the server after an integrity mismatch. Any future enforcement mode must be explicitly configured, tested on a separate server copy, and preserve a recovery path.
 
@@ -89,7 +89,7 @@ Ordinary Bedrock clients must continue to connect through the compatible server 
 3. Keyless-signed release JARs and checksum manifests using Sigstore; verify before installation.
 4. Runtime audit log and non-destructive integrity reporting.
 5. Audited permission gate and Nukkit-MOT sender bridge; module-by-module adoption remains required.
-6. Backup verification and tested recovery procedures.
+6. Restore design, staged recovery, and tested rollback procedures.
 7. Enforcement only after false-positive testing on a copy of the server.
 
 ## Release workflow activation

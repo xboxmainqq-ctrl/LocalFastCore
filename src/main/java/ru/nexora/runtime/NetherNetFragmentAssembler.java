@@ -85,7 +85,7 @@ public final class NetherNetFragmentAssembler {
                 throw new IllegalArgumentException("Fragment count exceeds configured limit");
             }
             ensureFits(payloadBytes);
-            assembly = new byte[maxMessageBytes];
+            assembly = new byte[initialCapacity(payloadBytes)];
             assemblySize = 0;
             expectedRemaining = remaining;
             append(fragment);
@@ -136,6 +136,24 @@ public final class NetherNetFragmentAssembler {
             reset();
             throw new IllegalArgumentException("Reassembled message exceeds configured byte limit");
         }
+        if (assembly != null) {
+            ensureCapacity(assemblySize + additionalBytes);
+        }
+    }
+
+    private int initialCapacity(int requiredBytes) {
+        return Math.min(maxMessageBytes, Math.max(32, requiredBytes));
+    }
+
+    private void ensureCapacity(int requiredBytes) {
+        if (requiredBytes <= assembly.length) {
+            return;
+        }
+        long grown = Math.max((long) requiredBytes, (long) assembly.length + assembly.length / 2L + 1L);
+        int newCapacity = (int) Math.min(maxMessageBytes, grown);
+        byte[] expanded = new byte[newCapacity];
+        System.arraycopy(assembly, 0, expanded, 0, assemblySize);
+        assembly = expanded;
     }
 
     private void append(ByteBuffer fragment) {

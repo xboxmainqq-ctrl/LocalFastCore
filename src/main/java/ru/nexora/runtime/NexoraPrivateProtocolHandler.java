@@ -64,23 +64,29 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 return;
             }
 
+            final NexoraWorldInfo worldInfo;
+            try {
+                worldInfo = worldInfoSupplier.get();
+            } catch (RuntimeException unavailableWorld) {
+                connection.close();
+                return;
+            }
             if (send(connection, NexoraPrivateProtocolCodec.encodeServerHello(
                     serverId, maxMessageBytes)) != TransportSendResult.ACCEPTED) {
                 connection.close();
                 return;
             }
+            if (worldInfo != null && send(connection,
+                    NexoraPrivateProtocolCodec.encodeWorldInfo(worldInfo))
+                    != TransportSendResult.ACCEPTED) {
+                connection.close();
+                return;
+            }
+            connection.setMessageListener(ignored -> {
+            });
             try {
-                NexoraWorldInfo worldInfo = worldInfoSupplier.get();
-                if (worldInfo != null && send(connection,
-                        NexoraPrivateProtocolCodec.encodeWorldInfo(worldInfo))
-                        != TransportSendResult.ACCEPTED) {
-                    connection.close();
-                    return;
-                }
-                connection.setMessageListener(ignored -> {
-                });
                 readyListener.accept(connection);
-            } catch (RuntimeException failure) {
+            } catch (RuntimeException listenerFailure) {
                 connection.close();
             }
         });

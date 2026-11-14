@@ -85,7 +85,7 @@ The protocol-2225 `PlayStatus` values and 4-byte big-endian packet codec are imp
 
 **Current router checkpoint:** the signaling validator now returns its verified player identity. The signaling server passes it to the peer host, the WebRTC session retains it, and the resulting transport connection exposes it as an optional authenticated identity. In the production authenticated path, the Bedrock router converts that trusted XUID, display name and P-384 key into `BedrockAuthenticatedPlayer`; it does not ask a second authenticator to trust the unverified Login JSON. Explicit development mode can still create identity-free sessions, but that mode is unauthenticated and must not be used publicly. The router sends compressed `PlayStatus(LoginSuccess)` and enters the distinct `LOGIN_SUCCESS_SENT` phase. It does **not** mark the client as PLAY immediately. The post-login callback is responsible for resource-pack negotiation and world startup; it must call `markPlayReady(connection)` only after the required StartGame/world initialization packets have been sent. A bounded post-login timeout closes sessions that never complete this phase. Unit tests cover identity propagation, the pre-PLAY phase, and the explicit world-ready transition.
 
-**Still not complete:** no real unmodified 1.26.60 client has been connected to verify that the SDP identity, Login payload and PlayStatus sequence match the live client. The legacy certificate-chain verifier is not used as the production NetherNet trust anchor; the Mojang GameServerToken plus detached fingerprint proof is. Resource-pack negotiation, StartGame serialization, chunk streaming, and the callback that advances `LOGIN_SUCCESS_SENT` to `PLAY` are not yet implemented. Unit tests do not establish playable compatibility.
+**Still not complete:** no real unmodified 1.26.60 client has been connected to verify that the SDP identity, Login payload and PlayStatus sequence match the live client. The legacy certificate-chain verifier is not used as the production NetherNet trust anchor; the Mojang GameServerToken plus detached fingerprint proof is. Resource-pack negotiation and the protocol-2225 StartGame packet serializer are now present. Initial chunk streaming and the production world-startup callback that advances `LOGIN_SUCCESS_SENT` to `PLAY` are still not implemented. Unit tests do not establish playable compatibility.
 
 ## Acceptance gates
 
@@ -190,7 +190,7 @@ BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
 postLogin.attachTo(router); // before starting the transport module
 ```
 
-The `WorldStartupHandler` is still an injected boundary. NEXORA does not yet provide the production `StartGame` serializer, initial chunk delivery, or a playable world-startup implementation. The coordinator's unit tests exercise ordering, packet emission, malformed/out-of-order response rejection, world-startup failure, and the explicit PLAY transition; they are not live-client tests.
+The `WorldStartupHandler` is still an injected boundary. NEXORA now provides a protocol-2225 `StartGame` serializer, but initial chunk delivery and a production playable world-startup implementation are still missing. The coordinator's unit tests exercise ordering, packet emission, malformed/out-of-order response rejection, world-startup failure, and the explicit PLAY transition; they are not live-client tests.
 ### StartGame serializer foundation — protocol 2225
 
 Before writing the complete packet, the runtime now has the missing numeric primitives required by its schema:
@@ -199,7 +199,7 @@ Before writing the complete packet, the runtime now has the missing numeric prim
 - Explicit little-endian 32-bit and 64-bit values and IEEE-754 float encoding, independent of the caller's `ByteBuffer` byte order.
 - Typed `Vec3`, `Vec2`, signed `BlockPosition`, and `SyncedPlayerMovementSettings` encoders/decoders.
 
-The protocol reference marks StartGame packet 11 as 25 top-level fields. Its nested `LevelSettings` has 51 ordered fields in protocol 2225, and the packet also contains opaque/structured player-property and server-configuration data. The complete packet must serialize all of these in schema order; sending a shortened packet with omitted fields would not be a valid implementation. The current code deliberately stops at the fully specified primitives and does not emit a placeholder StartGame packet.
+The protocol reference marks StartGame packet 11 as 25 top-level fields. Its nested `LevelSettings` has 51 ordered fields in protocol 2225. The `Player Property Data` field uses the documented `PropertySyncData` structure (integer entries followed by float entries); the minimal NEXORA configuration writes both arrays and currently leaves them empty unless supplied. The optional `server_config` field is explicitly absent, and `ServerTelemetryData` writes its two protocol-2225 strings. The serializer emits every top-level field in schema order rather than truncating the packet.
 
 Tests cover signed/unsigned 64-bit varint boundaries, overflow and truncation, native-order numeric bytes, vectors, signed block positions, and movement settings. These are unit-test additions; execution remains pending a functioning CI runner.
 
@@ -210,6 +210,24 @@ Protocol references:
 
 `BedrockLevelSettingsCodec` now writes all 51 `LevelSettings` fields in protocol-2225 order for a minimal survival flat world. It includes the fixed-width empty experiment count, empty game-rule list, optional experimental-gameplay flag encoded as absent, the new editor migration byte, and all trailing policy fields. Seed, dimension, spawn position, difficulty, day-cycle stop time, chunk tick range, and base-game version are supplied explicitly.
 
-A schema-order test reads the serialized result field by field and verifies that no bytes remain after field 50. This is a complete nested `LevelSettings` object, not yet a complete `StartGamePacket`: the top-level player-property payload and server-configuration/telemetry structures still need exact serialization before packet 11 can be emitted.
+A schema-order test reads the serialized result field by field and verifies that no bytes remain after field 50. `BedrockStartGamePacketCodec` now embeds this object and serializes the complete protocol-2225 StartGame field sequence, including `PropertySyncData`, absent optional server configuration, and telemetry. The supported minimal profile currently emits no server block properties and no server configuration.
 
 Reference: https://mojang.github.io/bedrock-protocol-docs/1.26.60/types/level-settings/
+### StartGame packet serializer — protocol 2225
+
+`BedrockStartGamePacketCodec` now serializes packet 11 in the exact 25-field schema order and can produce a `BedrockGamePacket` ready for the normal packet-batch encoder.
+
+- Encodes the signed actor unique ID, unsigned runtime ID, game type, position, rotation, and the complete 51-field `LevelSettings`.
+- Encodes level metadata, movement settings, current world time, signed enchantment seed, an empty server-block-property list, session correlation ID, and server version.
+- Encodes `Player Property Data` as `PropertySyncData`: a varuint32-counted integer list (`varuint32` index + ZigZag `varint32` value), followed by a varuint32-counted float list (`varuint32` index + little-endian float value).
+- Encodes the block registry checksum and both world-template UUID halves as little-endian uint64 values, followed by the three network flags.
+- Explicitly marks optional `server_config` as absent, then serializes protocol-2225 `ServerTelemetryData` as its two strings (`serverId`, `scenarioId`).
+
+**Current profile limits:** block properties are empty; optional server configuration is absent; player property lists are bounded to 4096 entries each; telemetry and packet strings have explicit byte limits. This is a valid schema-complete minimal profile, not evidence that every optional StartGame configuration is supported.
+
+A new schema-order test reads every top-level field and asserts that no payload bytes remain. A packet-level test checks packet ID 11 and sub-client header values. Tests have been added but have not yet been executed because the GitHub Actions runner allocation has been failing before job steps begin. No live unmodified Bedrock client test has been performed, and chunk streaming/playable world startup are still outstanding.
+
+Protocol references:
+- https://mojang.github.io/bedrock-protocol-docs/1.26.60/packets/start-game-packet/
+- https://mojang.github.io/bedrock-protocol-docs/1.26.60/types/property-sync-data/
+- https://mojang.github.io/bedrock-protocol-docs/1.26.60/types/server-telemetry-data/

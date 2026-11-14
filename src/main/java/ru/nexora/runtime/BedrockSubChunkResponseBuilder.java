@@ -30,7 +30,7 @@ public final class BedrockSubChunkResponseBuilder {
         }
 
         List<BedrockSubChunkPacketCodec.Entry> entries = new ArrayList<>(request.offsets().size());
-        Map<ChunkPosition, Map<BlockPosition, BlockState>> chunkSnapshots = new HashMap<>();
+        Map<ChunkPosition, Map<Integer, ChunkSection>> sectionSnapshots = new HashMap<>();
         List<BedrockSubChunkRequestPacketCodec.SubChunkPosition> positions =
                 request.absolutePositions();
 
@@ -61,18 +61,11 @@ public final class BedrockSubChunkResponseBuilder {
                 continue;
             }
 
-            ChunkSection section = new ChunkSection();
-            Map<BlockPosition, BlockState> blocks = chunkSnapshots.computeIfAbsent(
-                    chunkPosition, world::blocksInChunk);
-            for (Map.Entry<BlockPosition, BlockState> block : blocks.entrySet()) {
-                BlockPosition blockPosition = block.getKey();
-                if (Math.floorDiv(blockPosition.y(), 16) == position.y()) {
-                    section.set(blockPosition.localX(), Math.floorMod(blockPosition.y(), 16),
-                            blockPosition.localZ(), block.getValue());
-                }
-            }
+            Map<Integer, ChunkSection> sections = sectionSnapshots.computeIfAbsent(
+                    chunkPosition, ignored -> groupBlocksBySection(world.blocksInChunk(chunkPosition)));
+            ChunkSection section = sections.get(position.y());
 
-            if (section.isEmpty()) {
+            if (section == null || section.isEmpty()) {
                 entries.add(BedrockSubChunkPacketCodec.Entry.allAir(offset));
             } else {
                 ByteBuffer serialized = BedrockSubChunkTerrainCodec.encode(
@@ -93,5 +86,24 @@ public final class BedrockSubChunkResponseBuilder {
                     request.dimension(), center, entries.subList(start, end)));
         }
         return List.copyOf(packets);
+    }
+
+    /**
+     * Groups one detached chunk snapshot into section-local palettes once.
+     * Multiple requested sections in the same chunk then avoid rescanning
+     * every block for every offset in a SubChunkRequest packet.
+     */
+    static Map<Integer, ChunkSection> groupBlocksBySection(Map<BlockPosition, BlockState> blocks) {
+        Objects.requireNonNull(blocks, "blocks");
+        Map<Integer, ChunkSection> sections = new HashMap<>();
+        for (Map.Entry<BlockPosition, BlockState> block : blocks.entrySet()) {
+            BlockPosition position = block.getKey();
+            BlockState state = block.getValue();
+            int sectionY = Math.floorDiv(position.y(), 16);
+            sections.computeIfAbsent(sectionY, ignored -> new ChunkSection()).set(
+                    position.localX(), Math.floorMod(position.y(), 16),
+                    position.localZ(), state);
+        }
+        return Map.copyOf(sections);
     }
 }

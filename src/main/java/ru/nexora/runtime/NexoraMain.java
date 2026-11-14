@@ -3,6 +3,7 @@ package ru.nexora.runtime;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.Consumer;
 
@@ -201,6 +202,19 @@ public final class NexoraMain {
             Objects.requireNonNull(server, "server");
             Objects.requireNonNull(worlds, "worlds");
             Objects.requireNonNull(gameLoop, "gameLoop");
+        }
+
+        NexoraWorldInfo worldInfo() {
+            World world = worlds.get(DEFAULT_WORLD_ID)
+                    .orElseThrow(() -> new IllegalStateException("Default world is not loaded"));
+            return NexoraWorldInfo.from(world, 0, 65, 0, 20);
+        }
+
+        NexoraPrivateProtocolHandler privateProtocolHandler(
+                UUID serverId, Consumer<TransportConnection> readyListener) {
+            return new NexoraPrivateProtocolHandler(serverId,
+                    WebRtcJavaNetherNetPeerHost.MAX_MESSAGE_BYTES,
+                    this::worldInfo, readyListener);
         }
     }
 }

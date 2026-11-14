@@ -31,7 +31,7 @@ import java.util.zip.CheckedOutputStream;
  */
 public final class FileWorldStorage {
     private static final int MAGIC = 0x4E585752; // NXWR
-    private static final short FORMAT_VERSION = 1;
+    private static final short FORMAT_VERSION = 2;
     private static final int MAX_FILE_BYTES = 128 * 1024 * 1024;
     private static final int MAX_CHUNKS = 100_000;
     private static final int MAX_BLOCKS_PER_CHUNK = 1_000_000;
@@ -125,7 +125,7 @@ public final class FileWorldStorage {
                 throw new IOException("Invalid NEXORA world file signature");
             }
             short version = input.readShort();
-            if (version != FORMAT_VERSION) {
+            if (version < 1 || version > FORMAT_VERSION) {
                 throw new IOException("Unsupported NEXORA world format version: " + version);
             }
             String storedId = input.readUTF();
@@ -186,6 +186,37 @@ public final class FileWorldStorage {
                         throw new IOException("Invalid block data in world file", exception);
                     }
                 }
+                if (version >= 2) {
+                    int biomeSectionCount = input.readInt();
+                    int minSectionY = Math.floorDiv(height.minY(), 16);
+                    int maxSectionY = Math.floorDiv(height.maxYExclusive() - 1, 16);
+                    if (biomeSectionCount < 0 || biomeSectionCount > 128) {
+                        throw new IOException("Invalid biome section count in chunk " + chunk);
+                    }
+                    Set<Integer> seenBiomeSections = new HashSet<>();
+                    for (int biomeSection = 0; biomeSection < biomeSectionCount; biomeSection++) {
+                        int sectionY = input.readInt();
+                        if (sectionY < minSectionY || sectionY > maxSectionY
+                                || !seenBiomeSections.add(sectionY)) {
+                            throw new IOException("Invalid or duplicate biome section in chunk " + chunk);
+                        }
+                        for (int cell = 0; cell < BiomeSection.CELL_COUNT; cell++) {
+                            int biomeId = input.readInt();
+                            if (biomeId < 0) {
+                                throw new IOException("Negative biome ID in chunk " + chunk);
+                            }
+                            if (biomeId != BiomeSection.DEFAULT_BIOME_ID) {
+                                int localX = cell / 256;
+                                int localZ = (cell / 16) & 15;
+                                int localY = cell & 15;
+                                int blockX = Math.addExact(Math.multiplyExact(chunk.x(), 16), localX);
+                                int blockZ = Math.addExact(Math.multiplyExact(chunk.z(), 16), localZ);
+                                int blockY = Math.addExact(Math.multiplyExact(sectionY, 16), localY);
+                                world.setBiome(new BlockPosition(blockX, blockY, blockZ), biomeId);
+                            }
+                        }
+                    }
+                }
             }
 
             long actualChecksum = checked.getChecksum().getValue();
@@ -241,6 +272,29 @@ public final class FileWorldStorage {
                 for (Map.Entry<String, String> property : state.properties().entrySet()) {
                     output.writeUTF(property.getKey());
                     output.writeUTF(property.getValue());
+                }
+            }
+            var biomeSections = world.biomeSectionsInChunk(chunk);
+            if (biomeSections.size() > 128) {
+                throw new IOException("Chunk contains too many biome sections: " + chunk);
+            }
+            output.writeInt(biomeSections.size());
+            int minSectionY = Math.floorDiv(world.height().minY(), 16);
+            int maxSectionY = Math.floorDiv(world.height().maxYExclusive() - 1, 16);
+            for (int sectionY : biomeSections) {
+                if (sectionY < minSectionY || sectionY > maxSectionY) {
+                    throw new IOException("World returned an out-of-range biome section");
+                }
+                int[] biomes = world.biomesInSection(chunk, sectionY);
+                if (biomes.length != BiomeSection.CELL_COUNT) {
+                    throw new IOException("World returned an invalid biome section snapshot");
+                }
+                output.writeInt(sectionY);
+                for (int biomeId : biomes) {
+                    if (biomeId < 0) {
+                        throw new IOException("World returned a negative biome ID");
+                    }
+                    output.writeInt(biomeId);
                 }
             }
         }

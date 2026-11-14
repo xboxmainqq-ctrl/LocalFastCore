@@ -17,17 +17,21 @@ This is a Nukkit-MOT plugin built with Java 17 against Nukkit-MOT 1.26.60-R1. It
 - Nukkit-MOT adapter that provides online-player snapshots and UUID lookup through the platform contract.
 - Namespaced persistent key-value storage, saved atomically to the plugin data folder.
 - Player profile model and repository contract.
-- Non-enforcing security services: SHA-256 file integrity checks, security audit logging, and a coordinator exposed through `NexoraAPI.security()`.
+- Security services exposed through `NexoraAPI.security()`: SHA-256 file integrity checks, JSON-lines audit logging, and an audited NEXORA access controller for sensitive module actions.
+- Nukkit-MOT permission bridge that adapts `CommandSender.hasPermission(...)` into the platform-neutral `PermissionSubject` contract without caching permission decisions.
 - JUnit tests for core utility and security APIs.
 
 ## Security behavior
 
-The initial runtime security layer is deliberately report-only:
+The runtime integrity layer is deliberately report-only. Permission checks are explicit gates that modules must call before sensitive actions:
 
 - `IntegrityChecker` computes SHA-256 digests for regular files and rejects symbolic-link targets.
 - `NexoraSecurityManager` compares a file against an expected digest and records the result.
+- `NexoraAccessController` checks a permission through a supplied `PermissionSubject`, audits both grants and denials, and propagates audit I/O failures so callers can fail closed.
+- `NukkitPlatformAdapter.permissionSubject(sender)` delegates each permission check to Nukkit-MOT; `actorLabel(sender)` supplies a bounded label for audit events.
 - `AuditLogger` appends JSON-lines events to `plugins/NexoraCore/security-audit.jsonl`.
 - Integrity mismatches are audited; files are not deleted, quarantined, or modified, and the server is not stopped automatically.
+- Permission decisions are not a sandbox for third-party plugins. NEXORA modules must call the access controller before each protected operation and must not continue when authorization is denied or audit persistence fails.
 
 The audit log is local operational data. Protect it with operating-system file permissions and include it in a secure backup policy. Callers must not put passwords, access tokens, or other secrets in audit details.
 

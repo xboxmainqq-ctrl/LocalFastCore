@@ -273,7 +273,7 @@ public final class MainActivity extends Activity {
         addSpace(infoCard, 8);
         infoCard.addView(text("NEXORA Client 0.1.0-dev", 15, TEXT, true), matchWrap());
         addSpace(infoCard, 8);
-        infoCard.addView(text("Внутренний протокол NEXORA v1", 13, MUTED, false), matchWrap());
+        infoCard.addView(text("Внутренний протокол NEXORA v1.2", 13, MUTED, false), matchWrap());
         addSpace(infoCard, 8);
         infoCard.addView(text("Режим: перспективный 3D-рендер • прототип камеры", 13, MUTED, false), matchWrap());
 

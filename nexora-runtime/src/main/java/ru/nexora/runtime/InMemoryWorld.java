@@ -9,7 +9,11 @@ import java.util.concurrent.ConcurrentMap;
 /**
  * Sparse in-memory world implementation for simulation and early development.
  *
- * <p>It is intentionally not a persistence implementation: chunks and their
+ * <p>Chunks are split into 16x16x16 sections. Each section stores block states
+ * through a compact local palette instead of allocating a coordinate object
+ * and hash-map entry for every block.</p>
+ *
+ * <p>This is intentionally not a persistence implementation: chunks and their
  * block data are lost when this object is discarded.</p>
  */
 public final class InMemoryWorld implements World {
@@ -105,58 +109,5 @@ public final class InMemoryWorld implements World {
                             + height.minY() + ", " + height.maxYExclusive() + ")"
             );
         }
-    }
-
-    private static final class WorldChunk {
-        private final ConcurrentMap<LocalBlockPosition, BlockState> blocks =
-                new ConcurrentHashMap<>();
-
-        private static WorldChunk from(Map<BlockPosition, BlockState> snapshot) {
-            WorldChunk chunk = new WorldChunk();
-            snapshot.forEach((position, state) -> chunk.blocks.put(
-                    new LocalBlockPosition(position.localX(), position.y(), position.localZ()), state
-            ));
-            return chunk;
-        }
-
-        private synchronized BlockState blockAt(BlockPosition position) {
-            return blocks.getOrDefault(
-                    new LocalBlockPosition(position.localX(), position.y(), position.localZ()),
-                    BlockState.AIR
-            );
-        }
-
-        private synchronized void setBlock(BlockPosition position, BlockState state) {
-            LocalBlockPosition local = new LocalBlockPosition(
-                    position.localX(), position.y(), position.localZ()
-            );
-            if (state.isAir()) {
-                blocks.remove(local);
-            } else {
-                blocks.put(local, state);
-            }
-        }
-
-        private synchronized boolean isEmpty() {
-            return blocks.isEmpty();
-        }
-
-        private synchronized Map<BlockPosition, BlockState> snapshot(ChunkPosition chunkPosition) {
-            int baseX = Math.multiplyExact(chunkPosition.x(), 16);
-            int baseZ = Math.multiplyExact(chunkPosition.z(), 16);
-            Map<BlockPosition, BlockState> snapshot = new java.util.HashMap<>();
-            blocks.forEach((local, state) -> snapshot.put(
-                    new BlockPosition(
-                            Math.addExact(baseX, local.x()),
-                            local.y(),
-                            Math.addExact(baseZ, local.z())
-                    ),
-                    state
-            ));
-            return Map.copyOf(snapshot);
-        }
-    }
-
-    private record LocalBlockPosition(int x, int y, int z) {
     }
 }

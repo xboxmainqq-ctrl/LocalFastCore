@@ -121,4 +121,34 @@ class InMemoryWorldTest {
         assertFalse(world.isChunkLoaded(new ChunkPosition(0, 0)));
     }
 
+    @Test
+    void storesNegativeAndPositiveYInSeparateCompactSections() {
+        InMemoryWorld world = new InMemoryWorld("overworld", new WorldHeight(-64, 320));
+        BlockState stone = new BlockState("minecraft:stone");
+        BlockState dirt = new BlockState("minecraft:dirt");
+        world.setBlock(new BlockPosition(-1, -17, -16), stone);
+        world.setBlock(new BlockPosition(-1, 16, -16), dirt);
+
+        assertEquals(stone, world.blockAt(new BlockPosition(-1, -17, -16)));
+        assertEquals(dirt, world.blockAt(new BlockPosition(-1, 16, -16)));
+        assertEquals(2, world.blocksInChunk(new ChunkPosition(-1, -1)).size());
+    }
+
+    @Test
+    void paletteWidensBeyond256DistinctStatesAndPreservesSnapshots() {
+        InMemoryWorld world = new InMemoryWorld("overworld", new WorldHeight(0, 16));
+        for (int i = 0; i < 300; i++) {
+            world.setBlock(new BlockPosition(i % 16, 0, i / 16),
+                    new BlockState("nexora:test_block_" + i));
+        }
+
+        for (int i = 0; i < 300; i++) {
+            assertEquals(new BlockState("nexora:test_block_" + i),
+                    world.blockAt(new BlockPosition(i % 16, 0, i / 16)));
+        }
+        Map<BlockPosition, BlockState> snapshot = world.blocksInChunk(new ChunkPosition(0, 0));
+        assertEquals(256, snapshot.size());
+        assertThrows(UnsupportedOperationException.class,
+                () -> snapshot.put(new BlockPosition(0, 0, 0), BlockState.AIR));
+    }
 }

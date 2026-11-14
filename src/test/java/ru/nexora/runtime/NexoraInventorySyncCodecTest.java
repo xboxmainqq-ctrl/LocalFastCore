@@ -20,9 +20,12 @@ class NexoraInventorySyncCodecTest {
 
         assertEquals(player, decoded.playerId());
         assertEquals(3, decoded.stacks().size());
-        assertEquals(new ItemStack("minecraft:apple", 64), decoded.stacks().get(0));
-        assertEquals(new ItemStack("minecraft:apple", 1), decoded.stacks().get(1));
-        assertEquals(new ItemStack("minecraft:diamond", 1), decoded.stacks().get(2));
+        assertEquals(new NexoraInventorySyncCodec.InventoryEntry(0,
+                new ItemStack("minecraft:apple", 64)), decoded.stacks().get(0));
+        assertEquals(new NexoraInventorySyncCodec.InventoryEntry(1,
+                new ItemStack("minecraft:apple", 1)), decoded.stacks().get(1));
+        assertEquals(new NexoraInventorySyncCodec.InventoryEntry(2,
+                new ItemStack("minecraft:diamond", 1)), decoded.stacks().get(2));
     }
 
     @Test

@@ -129,7 +129,7 @@ final class NexoraAndroidProtocolCodec {
 
     static RemotePlayerState decodeRemotePlayerState(byte[] bytes) {
         ByteBuffer input = checkedHeader(bytes, TYPE_REMOTE_PLAYER_STATE);
-        if (input.remaining() < 49) throw new IllegalArgumentException("Malformed NEXORA remote player state");
+        if (input.remaining() < 42) throw new IllegalArgumentException("Malformed NEXORA remote player state");
         UUID playerId = new UUID(input.getLong(), input.getLong());
         int nameLength = Byte.toUnsignedInt(input.get());
         if (nameLength < 1 || nameLength > 48 || input.remaining() != nameLength + 24) throw new IllegalArgumentException("Invalid remote player name length");

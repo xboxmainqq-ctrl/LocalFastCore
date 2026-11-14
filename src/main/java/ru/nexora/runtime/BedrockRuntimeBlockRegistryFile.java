@@ -64,6 +64,15 @@ public final class BedrockRuntimeBlockRegistryFile {
         public boolean blockNetworkIdsAreHashes() {
             return idMode.blockNetworkIdsAreHashes();
         }
+
+        /** Fails fast if StartGame advertises an ID scheme different from this registry. */
+        public void validateStartGameSettings(BedrockStartGamePacketCodec.Settings settings) {
+            Objects.requireNonNull(settings, "settings");
+            if (settings.blockNetworkIdsAreHashes() != blockNetworkIdsAreHashes()) {
+                throw new IllegalArgumentException(
+                        "StartGame block-network-ID mode does not match the loaded block registry");
+            }
+        }
     }
 
     private BedrockRuntimeBlockRegistryFile() {

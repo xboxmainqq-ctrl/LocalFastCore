@@ -15,7 +15,7 @@ import java.util.UUID;
  */
 public final class NexoraPrivateProtocolCodec {
     public static final int MAJOR_VERSION = 1;
-    public static final int MINOR_VERSION = 1;
+    public static final int MINOR_VERSION = 2;
     public static final int MAX_MESSAGE_BYTES = 1024;
     private static final byte[] MAGIC = {'N', 'X', 'R', 'A'};
     private static final int TYPE_CLIENT_HELLO = 1;

@@ -54,7 +54,7 @@ Output JAR:
 
 Tagged releases use the Sigstore release workflow at `.github/workflows/release-nexora.yml`. It builds and tests the versioned artifact, creates a SHA-256 manifest, signs both the JAR and manifest using GitHub Actions OIDC, verifies the generated bundles, and publishes them as GitHub release assets.
 
-Before creating the first `nexora-vX.Y.Z` tag, merge the release workflow into the repository's default branch (`main`); GitHub requires tag-triggered workflow files to exist on the default branch. The release job also checks that the tag points to a commit already contained in `nexora/compatibility-edition`.
+The release workflow is also installed on the repository's default branch (`main`), as GitHub requires tag-triggered workflow files to exist there. The release job also checks that the tag points to a commit already contained in `nexora/compatibility-edition`.
 
 See [NEXORA_RELEASE_VERIFICATION.md](../NEXORA_RELEASE_VERIFICATION.md) for installation-side checksum and signature verification commands.
 

@@ -98,9 +98,9 @@ class NexoraPrivateProtocolHandlerTest {
         connection.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
         connection.deliver(NexoraChunkDataCodec.encodeChunkRequest(0, 0));
 
-        assertEquals(3, connection.sentMessages.size());
+        assertEquals(4, connection.sentMessages.size());
         NexoraChunkData chunk = NexoraChunkDataCodec.decodeChunkData(
-                ByteBuffer.wrap(connection.sentMessages.get(2)));
+                ByteBuffer.wrap(connection.sentMessages.get(3)));
         assertEquals(0, chunk.chunkX());
         assertEquals(0, chunk.chunkZ());
         assertEquals(2, chunk.blocks().size());
@@ -131,7 +131,7 @@ class NexoraPrivateProtocolHandlerTest {
 
         assertTrue(world.isChunkLoaded(new ChunkPosition(1, 1)));
         NexoraChunkData chunk = NexoraChunkDataCodec.decodeChunkData(
-                ByteBuffer.wrap(connection.sentMessages.get(2)));
+                ByteBuffer.wrap(connection.sentMessages.get(3)));
         assertEquals(1536, chunk.blocks().size());
         assertEquals("minecraft:bedrock", chunk.blocks().get(0).blockIdentifier());
         assertEquals("minecraft:grass_block",
@@ -156,9 +156,9 @@ class NexoraPrivateProtocolHandlerTest {
                 new NexoraMovementValidator.Position(0.7, 65.0, 0.5);
         connection.deliver(NexoraMovementPacketCodec.encodeClientMove(proposed));
 
-        assertEquals(3, connection.sentMessages.size());
+        assertEquals(4, connection.sentMessages.size());
         NexoraMovementValidator.Position accepted = NexoraMovementPacketCodec.decodeServerPosition(
-                ByteBuffer.wrap(connection.sentMessages.get(2)));
+                ByteBuffer.wrap(connection.sentMessages.get(3)));
         assertEquals(proposed, accepted);
     }
 
@@ -178,10 +178,10 @@ class NexoraPrivateProtocolHandlerTest {
         connection.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
 
         connection.deliver(NexoraMovementPacketCodec.encodeClientMove(
-                new NexoraMovementValidator.Position(1.2, 65.0, 0.5)));
+                new NexoraMovementValidator.Position(0.7, 65.0, 0.5)));
 
         NexoraMovementValidator.Position corrected = NexoraMovementPacketCodec.decodeServerPosition(
-                ByteBuffer.wrap(connection.sentMessages.get(2)));
+                ByteBuffer.wrap(connection.sentMessages.get(3)));
         assertEquals(new NexoraMovementValidator.Position(0.5, 65.0, 0.5), corrected);
         assertFalse(connection.closed);
     }

@@ -34,7 +34,7 @@ public final class FileWorldStorage {
     private static final short FORMAT_VERSION = 1;
     private static final int MAX_FILE_BYTES = 128 * 1024 * 1024;
     private static final int MAX_CHUNKS = 100_000;
-    private static final int MAX_BLOCKS_PER_CHUNK = 65_536;
+    private static final int MAX_BLOCKS_PER_CHUNK = 1_000_000;
     private static final int MAX_PROPERTIES = 256;
     private static final Pattern WORLD_ID = Pattern.compile("[A-Za-z0-9_-]{1,64}");
 
@@ -71,6 +71,9 @@ public final class FileWorldStorage {
                     temporary, StandardOpenOption.WRITE, StandardOpenOption.APPEND))) {
                 trailer.writeInt((int) checksum.getValue());
                 trailer.flush();
+            }
+            if (Files.size(temporary) > MAX_FILE_BYTES) {
+                throw new IOException("Serialized world exceeds the maximum file size");
             }
             try (FileChannel channel = FileChannel.open(temporary, StandardOpenOption.WRITE)) {
                 channel.force(true);
@@ -146,6 +149,7 @@ public final class FileWorldStorage {
                 if (blockCount < 0 || blockCount > MAX_BLOCKS_PER_CHUNK) {
                     throw new IOException("Invalid block count in chunk " + chunk + ": " + blockCount);
                 }
+                Set<BlockPosition> seenBlocks = new HashSet<>();
                 for (int blockIndex = 0; blockIndex < blockCount; blockIndex++) {
                     int localX = input.readUnsignedByte();
                     int y = input.readInt();
@@ -168,22 +172,26 @@ public final class FileWorldStorage {
                     }
                     int blockX = Math.addExact(Math.multiplyExact(chunk.x(), 16), localX);
                     int blockZ = Math.addExact(Math.multiplyExact(chunk.z(), 16), localZ);
-                    BlockState state;
+                    BlockPosition position = new BlockPosition(blockX, y, blockZ);
+                    if (!seenBlocks.add(position)) {
+                        throw new IOException("Duplicate block position in chunk " + chunk);
+                    }
                     try {
-                        state = new BlockState(identifier, properties);
-                        world.setBlock(new BlockPosition(blockX, y, blockZ), state);
-                    } catch (IllegalArgumentException | ArithmeticException exception) {
+                        BlockState state = new BlockState(identifier, properties);
+                        if (state.isAir()) {
+                            throw new IOException("Air blocks must not be stored in chunk data");
+                        }
+                        world.setBlock(position, state);
+                    } catch (IllegalArgumentException exception) {
                         throw new IOException("Invalid block data in world file", exception);
                     }
                 }
             }
 
             long actualChecksum = checked.getChecksum().getValue();
-            int expectedChecksum = raw.read() << 24;
-            expectedChecksum |= raw.read() << 16;
-            expectedChecksum |= raw.read() << 8;
-            expectedChecksum |= raw.read();
-            if (raw.read() != -1) {
+            DataInputStream trailer = new DataInputStream(raw);
+            int expectedChecksum = trailer.readInt();
+            if (trailer.read() != -1) {
                 throw new IOException("Unexpected trailing bytes in world file");
             }
             if (expectedChecksum != (int) actualChecksum) {

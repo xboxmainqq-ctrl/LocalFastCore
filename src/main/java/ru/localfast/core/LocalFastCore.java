@@ -4128,7 +4128,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         int filled = Math.max(0, Math.min(12, (int) Math.round(current * 12.0 / max)));
         String bar = "§bМАНА §3" + "■".repeat(filled) + "§8" + "□".repeat(12 - filled)
                 + " §f" + current + "§7/§f" + max;
-        player.sendTip(bar);
+        player.sendPopup(bar);
     }
 
     private void refreshMagicEquipmentInventory(Player player, MagicEquipmentInventory inventory) {

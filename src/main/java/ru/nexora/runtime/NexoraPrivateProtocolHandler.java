@@ -285,6 +285,10 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 ItemPickupService.PickupResult pickup = new ItemPickupService(entities, world).pickup(
                         session.playerId, result.position().x(), result.position().y(),
                         result.position().z(), session.inventory);
+                if (pickup.collected() > 0 && !persistInventory(session.inventory)) {
+                    connection.close();
+                    return;
+                }
                 if (pickup.collected() > 0 && send(connection,
                         NexoraInventorySyncCodec.encode(session.inventory))
                         != TransportSendResult.ACCEPTED) {
@@ -351,6 +355,10 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 default -> throw new IllegalStateException("Unhandled inventory action");
             }
         } catch (RuntimeException malformed) {
+            connection.close();
+            return;
+        }
+        if (!persistInventory(session.inventory)) {
             connection.close();
             return;
         }

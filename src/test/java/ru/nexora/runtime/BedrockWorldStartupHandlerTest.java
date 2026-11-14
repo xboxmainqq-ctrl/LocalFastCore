@@ -26,7 +26,7 @@ class BedrockWorldStartupHandlerTest {
         BedrockWorldStartupHandler startup = new BedrockWorldStartupHandler(
                 NETWORK, world, 0, -1,
                 List.of(new ChunkPosition(0, 0), new ChunkPosition(1, 0)),
-                (peer, player) -> settings(0));
+                registryProfile(false), (peer, player) -> settings(0, false));
 
         startup.start(connection, player()).toCompletableFuture().join();
 
@@ -54,7 +54,7 @@ class BedrockWorldStartupHandlerTest {
         FakeConnection connection = new FakeConnection(TransportSendResult.ACCEPTED);
         BedrockWorldStartupHandler startup = new BedrockWorldStartupHandler(
                 NETWORK, world, 0, -1, List.of(new ChunkPosition(0, 0)),
-                (peer, player) -> settings(0));
+                registryProfile(false), (peer, player) -> settings(0, false));
 
         assertThrows(java.util.concurrent.CompletionException.class,
                 () -> startup.start(connection, player()).toCompletableFuture().join());
@@ -68,7 +68,7 @@ class BedrockWorldStartupHandlerTest {
         FakeConnection mismatchConnection = new FakeConnection(TransportSendResult.ACCEPTED);
         BedrockWorldStartupHandler mismatch = new BedrockWorldStartupHandler(
                 NETWORK, world, 1, -1, List.of(new ChunkPosition(0, 0)),
-                (peer, player) -> settings(0));
+                registryProfile(false), (peer, player) -> settings(0, false));
         assertThrows(java.util.concurrent.CompletionException.class,
                 () -> mismatch.start(mismatchConnection, player()).toCompletableFuture().join());
         assertTrue(mismatchConnection.sent.isEmpty());
@@ -76,13 +76,22 @@ class BedrockWorldStartupHandlerTest {
         FakeConnection backpressureConnection = new FakeConnection(TransportSendResult.BACKPRESSURE);
         BedrockWorldStartupHandler backpressure = new BedrockWorldStartupHandler(
                 NETWORK, world, 0, -1, List.of(new ChunkPosition(0, 0)),
-                (peer, player) -> settings(0));
+                registryProfile(false), (peer, player) -> settings(0, false));
         assertThrows(java.util.concurrent.CompletionException.class,
                 () -> backpressure.start(backpressureConnection, player()).toCompletableFuture().join());
         assertTrue(backpressureConnection.sent.isEmpty());
     }
 
-    private static BedrockStartGamePacketCodec.Settings settings(int dimension) {
+
+    private static BedrockRuntimeBlockRegistryFile.Loaded registryProfile(boolean hashes) {
+        return new BedrockRuntimeBlockRegistryFile.Loaded(
+                2225, "1.26.60",
+                hashes ? BedrockRuntimeBlockRegistryFile.IdMode.HASH
+                        : BedrockRuntimeBlockRegistryFile.IdMode.RUNTIME,
+                "0".repeat(64), Map.of(BlockState.AIR, 0));
+    }
+
+    private static BedrockStartGamePacketCodec.Settings settings(int dimension, boolean hashes) {
         var level = new BedrockLevelSettingsCodec.Settings(
                 123L, dimension,
                 new BedrockStartGamePrimitivesCodec.BlockPosition(0, 64, 0),
@@ -95,7 +104,7 @@ class BedrockWorldStartupHandlerTest {
                 new BedrockStartGamePrimitivesCodec.SyncedPlayerMovementSettings(0, false),
                 6000L, 0, "test-correlation", false, "NEXORA/0.1",
                 BedrockStartGamePacketCodec.PlayerPropertyData.empty(),
-                0, 0, 0, false, false, false,
+                0, 0, 0, false, hashes, false,
                 BedrockStartGamePacketCodec.Telemetry.empty());
     }
 

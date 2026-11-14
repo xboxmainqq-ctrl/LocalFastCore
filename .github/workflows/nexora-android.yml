@@ -38,7 +38,7 @@ jobs:
           gradle-version: "8.9"
 
       - name: Assemble debug APK
-        run: gradle -p client-android :app:assembleDebug
+        run: gradle -p client-android :app:testDebugUnitTest :app:assembleDebug
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4

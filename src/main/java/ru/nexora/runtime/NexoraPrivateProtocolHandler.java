@@ -16,14 +16,22 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
     private final int maxMessageBytes;
     private final Supplier<NexoraWorldInfo> worldInfoSupplier;
     private final Consumer<TransportConnection> readyListener;
+    private final Supplier<World> worldSupplier;
 
     public NexoraPrivateProtocolHandler(UUID serverId, int maxMessageBytes,
                                         Consumer<TransportConnection> readyListener) {
-        this(serverId, maxMessageBytes, () -> null, readyListener);
+        this(serverId, maxMessageBytes, () -> null, null, readyListener);
     }
 
     public NexoraPrivateProtocolHandler(UUID serverId, int maxMessageBytes,
                                         Supplier<NexoraWorldInfo> worldInfoSupplier,
+                                        Consumer<TransportConnection> readyListener) {
+        this(serverId, maxMessageBytes, worldInfoSupplier, null, readyListener);
+    }
+
+    public NexoraPrivateProtocolHandler(UUID serverId, int maxMessageBytes,
+                                        Supplier<NexoraWorldInfo> worldInfoSupplier,
+                                        Supplier<World> worldSupplier,
                                         Consumer<TransportConnection> readyListener) {
         this.serverId = Objects.requireNonNull(serverId, "serverId");
         if (maxMessageBytes < 1 || maxMessageBytes > 8 * 1024 * 1024) {
@@ -31,6 +39,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
         }
         this.maxMessageBytes = maxMessageBytes;
         this.worldInfoSupplier = Objects.requireNonNull(worldInfoSupplier, "worldInfoSupplier");
+        this.worldSupplier = worldSupplier;
         this.readyListener = Objects.requireNonNull(readyListener, "readyListener");
     }
 
@@ -82,14 +91,39 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 connection.close();
                 return;
             }
-            connection.setMessageListener(ignored -> {
-            });
+            if (worldSupplier == null) {
+                connection.setMessageListener(ignored -> connection.close());
+            } else {
+                connection.setMessageListener(message -> handleChunkRequest(connection, message));
+            }
             try {
                 readyListener.accept(connection);
             } catch (RuntimeException listenerFailure) {
                 connection.close();
             }
         });
+    }
+
+    private void handleChunkRequest(TransportConnection connection, TransportMessage message) {
+        if (!connection.isOpen()) return;
+        if (message.deliveryMode() != DeliveryMode.RELIABLE_ORDERED
+                || message.sizeBytes() > NexoraChunkDataCodec.MAX_MESSAGE_BYTES) {
+            connection.close();
+            return;
+        }
+        try {
+            NexoraChunkDataCodec.ChunkRequest request =
+                    NexoraChunkDataCodec.decodeChunkRequest(message.payload());
+            World world = Objects.requireNonNull(worldSupplier.get(), "world");
+            NexoraChunkData chunk = NexoraChunkData.topSurface(
+                    world, request.chunkX(), request.chunkZ());
+            if (send(connection, NexoraChunkDataCodec.encodeChunkData(chunk))
+                    != TransportSendResult.ACCEPTED) {
+                connection.close();
+            }
+        } catch (RuntimeException invalidRequestOrWorld) {
+            connection.close();
+        }
     }
 
     private static TransportSendResult send(TransportConnection connection, byte[] payload) {

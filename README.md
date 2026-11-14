@@ -28,7 +28,7 @@ This module is the beginning of the independent NEXORA server process. It has **
 - Bounded HTTP/HTTPS signaling implements `GET /v1/join` and `POST /v1/join/{networkId}`, with request limits, worker/queue bounds, timeouts, and complete SDP answers.
 - Desktop Java WebRTC peer host configures full ICE, MAX_BUNDLE, UDP-only candidates, and both NetherNet data channels with bounded queues and fragment reassembly.
 - Android client creates both data channels, gathers full ICE, performs the signaling exchange, verifies the operator identity, applies first-use key confirmation for plaintext HTTP, and waits for both channels to open.
-- Protocol-independent world foundation: immutable block/chunk coordinates, configurable vertical world bounds, immutable namespaced block states, sparse in-memory chunks, immutable generated-chunk snapshots, and block-resolution Bedrock biome storage (4096 biome cells per 16³ section).
+- Protocol-independent world foundation: immutable block/chunk coordinates, configurable vertical world bounds, immutable namespaced block states, sparse in-memory chunks, immutable generated-chunk snapshots, and block-resolution Bedrock biome storage (4096 biome cells per 16³ section), plus separate sparse fluid sections for water/lava block states.
 - Compact chunk storage: sparse 16x16x16 sections with local block-state palettes; common sections use four bits per block index, widening to one byte and then two bytes only when needed.
 - Chunk reads/writes use packed local coordinates and avoid allocating a coordinate record for each block access.
 - Palette-width regression tests cover nibble-to-byte and byte-to-short transitions, all local section coordinates, and clearing blocks back to air.
@@ -39,7 +39,7 @@ This module is the beginning of the independent NEXORA server process. It has **
 - `WorldChunkPipeline` connects generation to `TickScheduler`, commits completed chunks on game ticks, and limits chunk commits per tick.
 - Thread-safe `WorldRegistry` for multiple worlds, with duplicate-ID rejection, normalized lookup/removal, stable registration order, and immutable snapshots.
 - Immutable chunk and block snapshots exposed by the world contract.
-- `FileWorldStorage` saves a world's loaded chunks and non-default biome sections to version-2 `.nxw` files, reads legacy version-1 files, verifies a CRC32C checksum on load, rejects unsafe world IDs and symbolic-link targets, and replaces files atomically when supported.
+- `FileWorldStorage` saves loaded chunks, non-default biome sections and separate fluid cells to version-3 `.nxw` files; it reads legacy v1 (blocks) and v2 (blocks + biomes), verifies CRC32C, rejects unsafe world IDs and symbolic-link targets, and replaces files atomically when supported.
 - `WorldStorageModule` loads configured worlds during runtime startup and saves them during shutdown. It reuses worlds already in the registry, rolls back worlds it registered if startup fails, and keeps failed shutdown saves retryable.
 - Persistence tests cover save/load, replacement, missing worlds, unsafe IDs, checksum corruption, symbolic-link rejection, lifecycle integration, and reload into a fresh registry.
 
@@ -49,13 +49,13 @@ The world data model is being designed to avoid per-block object and hash-map ov
 
 ## World storage format
 
-The current `.nxw` format is an internal NEXORA development format. Version 2 stores world height, chunk coordinates, non-air block identifiers, block properties, sparse 16³ biome sections (Bedrock biome IDs in XZY order), and a checksum. Version 1 files remain readable. Saves are written to a temporary file and then moved into place to reduce the risk of partial files.
+The current `.nxw` format is an internal NEXORA development format. Version 3 stores world height, chunk coordinates, non-air block identifiers and properties, sparse 16³ biome sections (Bedrock biome IDs in XZY order), separate fluid cells and a checksum. Version 1 (blocks only) and version 2 (blocks + biomes) files remain readable. Saves are written to a temporary file and then moved into place to reduce the risk of partial files.
 
 **This is not the Minecraft Bedrock LevelDB world format.** It is a first persistence layer for the independent runtime; Bedrock-compatible world import/export will require a separately researched storage adapter.
 
 ## Important limitation
 
-This is still not a playable or Bedrock-compatible server release. The repository now contains HTTP/HTTPS NetherNet signaling, a desktop Java WebRTC peer-host adapter, Android-side offerer/signaling/data-channel code, and operator identity verification with TOFU for plaintext HTTP. These components have authored tests, but a successful CI/build and real Android-to-server session have not yet been confirmed. The Android client does not yet acquire official Microsoft/Xbox credentials or produce a live authenticated GameServerToken, so real-account interoperability is not established. The Bedrock layer currently handles only selected 1.26.60 packets and the initial handshake; it does not yet implement the full login/authentication flow, StartGame and chunk streaming, Bedrock LevelDB storage, entities, inventory, or gameplay. The server WebRTC profile currently expects a directly reachable UDP host candidate and does not configure STUN/TURN relay traversal.
+This is still not a playable or Bedrock-compatible server release. The repository now contains HTTP/HTTPS NetherNet signaling, a desktop Java WebRTC peer-host adapter, Android-side offerer/signaling/data-channel code, and operator identity verification with TOFU for plaintext HTTP. These components have authored tests, but a successful CI/build and real Android-to-server session have not yet been confirmed. The Android client does not yet acquire official Microsoft/Xbox credentials or produce a live authenticated GameServerToken, so real-account interoperability is not established. The Bedrock layer currently handles selected 1.26.60 packets, post-login resource-pack negotiation, StartGame, experimental full-column LevelChunk serialization, and a SubChunkRequest response path with block/liquid palettes. These pieces are not yet a production-complete or live-client-verified chunk pipeline: biome delivery through the active SubChunk path, computed heightmaps, real block entities, exact client acceptance, production composition, Bedrock LevelDB storage, entities, inventory, and gameplay remain incomplete. The server WebRTC profile currently expects a directly reachable UDP host candidate and does not configure STUN/TURN relay traversal.
 
 ## Build
 

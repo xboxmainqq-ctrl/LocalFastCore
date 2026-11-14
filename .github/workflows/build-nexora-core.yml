@@ -1,0 +1,39 @@
+name: Build NexoraCore
+
+on:
+  push:
+    branches:
+      - "nexora/**"
+    paths:
+      - "nexora-core/**"
+      - ".github/workflows/build-nexora-core.yml"
+  pull_request:
+    paths:
+      - "nexora-core/**"
+      - ".github/workflows/build-nexora-core.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - name: Build and verify NexoraCore
+        run: mvn -f nexora-core/pom.xml --batch-mode --no-transfer-progress clean verify
+      - name: Upload NexoraCore JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexora-core-${{ github.sha }}
+          path: nexora-core/target/NexoraCore-*.jar
+          if-no-files-found: error
+          retention-days: 14

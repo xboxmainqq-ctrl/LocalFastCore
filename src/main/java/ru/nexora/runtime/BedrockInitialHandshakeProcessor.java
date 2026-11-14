@@ -98,7 +98,11 @@ public final class BedrockInitialHandshakeProcessor {
 
     /** Call only after external identity and account authentication succeeds. */
     public synchronized BedrockHandshakeResult markAuthenticated() {
-        return handshake.markAuthenticated();
+        BedrockHandshakeResult result = handshake.markAuthenticated();
+        if (result == BedrockHandshakeResult.ACCEPTED) {
+            pendingLogin = null;
+        }
+        return result;
     }
 
     public synchronized void close() {

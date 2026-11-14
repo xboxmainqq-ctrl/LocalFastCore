@@ -72,11 +72,13 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
         AtomicBoolean completed = new AtomicBoolean();
         AtomicReference<PlayerSession> activeSession = new AtomicReference<>();
         connection.setCloseListener(event -> {
-            completed.set(true);
-            PlayerSession session = activeSession.getAndSet(null);
-            if (session != null && playerSessions.remove(connection, session)) {
-                entities.remove(session.playerId);
-                broadcastPlayerLeft(connection, session.playerId);
+            synchronized (connection) {
+                completed.set(true);
+                PlayerSession session = activeSession.getAndSet(null);
+                if (session != null && playerSessions.remove(connection, session)) {
+                    entities.remove(session.playerId);
+                    broadcastPlayerLeft(connection, session.playerId);
+                }
             }
         });
         connection.setMessageListener(message -> {
@@ -144,11 +146,14 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                                 worldInfo.spawnX() + 0.5, worldInfo.spawnY(),
                                 worldInfo.spawnZ() + 0.5));
                 PlayerSession session = new PlayerSession(UUID.randomUUID(), hello.playerName(), hello.skinIndex(), playerPosition);
-                activeSession.set(session);
-                playerSessions.put(connection, session);
-                NexoraMovementValidator.Position spawn = session.position.get();
-                entities.spawn(WorldEntity.player(session.playerId, session.playerName,
-                        spawn.x(), spawn.y(), spawn.z(), session.yaw.get(), session.skinIndex));
+                synchronized (connection) {
+                    if (!connection.isOpen()) return;
+                    activeSession.set(session);
+                    playerSessions.put(connection, session);
+                    NexoraMovementValidator.Position spawn = session.position.get();
+                    entities.spawn(WorldEntity.player(session.playerId, session.playerName,
+                            spawn.x(), spawn.y(), spawn.z(), session.yaw.get(), session.skinIndex));
+                }
                 synchronizeNewPlayer(connection, session);
                 connection.setMessageListener(message -> {
                     if (isMovementPacket(message.payload())) {

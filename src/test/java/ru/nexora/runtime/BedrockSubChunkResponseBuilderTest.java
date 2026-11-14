@@ -133,4 +133,24 @@ class BedrockSubChunkResponseBuilderTest {
         assertTrue(value <= 1);
         return value != 0;
     }
+    @Test
+    void groupsNegativeAndPositiveWorldCoordinatesIntoCorrectSections() {
+        BlockState dirt = new BlockState("minecraft:dirt");
+        Map<Integer, ChunkSection> sections = BedrockSubChunkResponseBuilder.groupBlocksBySection(
+                Map.of(
+                        new BlockPosition(-1, -1, -17), STONE,
+                        new BlockPosition(16, 16, 16), dirt
+                ));
+
+        assertEquals(2, sections.size());
+        assertEquals(STONE, sections.get(-1).get(15, 15, 15));
+        assertEquals(dirt, sections.get(1).get(0, 0, 0));
+        assertTrue(sections.get(-1).get(0, 0, 0).isAir());
+    }
+
+    @Test
+    void emptyChunkSnapshotProducesNoSectionAllocations() {
+        assertTrue(BedrockSubChunkResponseBuilder.groupBlocksBySection(Map.of()).isEmpty());
+    }
+
 }

@@ -102,8 +102,7 @@ public final class NetherNetServerIdentityVerifier {
             throw new SecurityException("Operator DTLS fingerprint signature is invalid");
         }
 
-        String keyFingerprint = java.util.HexFormat.of().formatHex(
-                MessageDigest.getInstance("SHA-256").digest(operatorKey.getEncoded()));
+        String keyFingerprint = jwkThumbprint(operatorKey);
         TrustStatus trustStatus;
         if (signalingWasTlsAuthenticated) {
             trustStatus = TrustStatus.TLS_AUTHENTICATED;
@@ -114,6 +113,30 @@ public final class NetherNetServerIdentityVerifier {
         }
         return new VerifiedOperatorIdentity(domain, claims.issuer(), operatorKey,
                 keyFingerprint, trustStatus);
+    }
+
+    private static String jwkThumbprint(ECPublicKey key) throws Exception {
+        String x = Base64.getUrlEncoder().withoutPadding().encodeToString(
+                unsignedFixed(key.getW().getAffineX(), 48));
+        String y = Base64.getUrlEncoder().withoutPadding().encodeToString(
+                unsignedFixed(key.getW().getAffineY(), 48));
+        String canonicalJwk = "{\"crv\":\"P-384\",\"kty\":\"EC\",\"x\":\""
+                + x + "\",\"y\":\"" + y + "\"}";
+        byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(canonicalJwk.getBytes(StandardCharsets.UTF_8));
+        return java.util.HexFormat.of().formatHex(digest);
+    }
+
+    private static byte[] unsignedFixed(BigInteger value, int length) {
+        byte[] encoded = value.toByteArray();
+        int start = encoded.length > 1 && encoded[0] == 0 ? 1 : 0;
+        int count = encoded.length - start;
+        if (count > length) {
+            throw new IllegalArgumentException("EC coordinate exceeds P-384 width");
+        }
+        byte[] result = new byte[length];
+        System.arraycopy(encoded, start, result, length - count, count);
+        return result;
     }
 
     private static ServerClaims readServerClaims(String json) throws IOException {

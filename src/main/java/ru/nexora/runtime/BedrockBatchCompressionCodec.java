@@ -76,7 +76,8 @@ public final class BedrockBatchCompressionCodec {
     ) {
         Objects.requireNonNull(frame, "frame");
         Objects.requireNonNull(settings, "settings");
-        if (maxDecompressedBytes <= 0 || !frame.hasRemaining()\n                || frame.remaining() - 1 > DEFAULT_MAX_DECOMPRESSED_BYTES) {
+        if (maxDecompressedBytes <= 0 || !frame.hasRemaining()
+                || frame.remaining() - 1 > DEFAULT_MAX_DECOMPRESSED_BYTES) {
             throw new IllegalArgumentException("Compressed batch frame is empty or limit is invalid");
         }
 

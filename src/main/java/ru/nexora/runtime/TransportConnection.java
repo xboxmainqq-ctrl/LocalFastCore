@@ -29,10 +29,25 @@ public interface TransportConnection extends AutoCloseable {
     void setCloseListener(Consumer<TransportCloseEvent> listener);
 
     /**
-     * Sends an application payload using the selected delivery semantics.
-     * The buffer is read-only from the implementation's perspective.
+     * Attempts to enqueue an application payload using the selected delivery
+     * semantics. The implementation must apply bounded outbound buffering.
+     *
+     * <p>{@link TransportSendResult#ACCEPTED} means the transport accepted the
+     * message for asynchronous delivery, not that the peer received it.
+     * {@link TransportSendResult#BACKPRESSURE} means the message was not
+     * queued; callers should avoid busy-loop retries and apply their own
+     * scheduling/drop policy. {@link TransportSendResult#CLOSED} means the
+     * connection no longer accepts messages.</p>
+     *
+     * <p>The implementation must not modify the caller's buffer position or
+     * contents. It must take ownership of the bytes needed for asynchronous
+     * delivery before returning {@code ACCEPTED}.</p>
+     *
+     * @throws NullPointerException if payload or deliveryMode is null
+     * @throws IllegalArgumentException if the payload exceeds the transport's
+     *         documented per-message limit
      */
-    void send(ByteBuffer payload, DeliveryMode deliveryMode);
+    TransportSendResult send(ByteBuffer payload, DeliveryMode deliveryMode);
 
     /** Closes the peer connection and releases transport resources. */
     @Override

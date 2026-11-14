@@ -247,6 +247,7 @@ final class ChunkPreviewView extends GLSurfaceView {
         private Set<BlockPosition> collisionBlocks = Set.of();
         private final Map<java.util.UUID, NexoraAndroidProtocolCodec.RemotePlayerState> remotePlayers =
                 new HashMap<>();
+        private final Map<java.util.UUID, RemoteAnimation> remoteAnimations = new HashMap<>();
         private FloatBuffer remotePlayerBuffer;
         private int remotePlayerVertexCount;
         private boolean remotePlayerMeshDirty = true;
@@ -278,15 +279,43 @@ final class ChunkPreviewView extends GLSurfaceView {
         }
 
         void setRemotePlayerState(NexoraAndroidProtocolCodec.RemotePlayerState player) {
+            long now = System.nanoTime();
             NexoraAndroidProtocolCodec.RemotePlayerState previous = remotePlayers.put(player.playerId(), player);
+            RemoteAnimation animation = remoteAnimations.computeIfAbsent(
+                    player.playerId(), ignored -> new RemoteAnimation(now));
+            if (previous != null) {
+                double dx = player.x() - previous.x();
+                double dz = player.z() - previous.z();
+                double distance = Math.sqrt(dx * dx + dz * dz);
+                if (distance > 0.012) {
+                    if (animation.lastMoveNanos != 0L) {
+                        long elapsed = Math.max(0L, now - animation.lastMoveNanos);
+                        if (elapsed < 350_000_000L) {
+                            animation.phase += elapsed * 0.000000012;
+                        }
+                    }
+                    animation.phase += distance * 9.0;
+                    animation.lastMoveNanos = now;
+                }
+            }
             remotePlayerMeshDirty = true;
             if (previous == null || !previous.playerName().equals(player.playerName())) playerLabelsDirty = true;
         }
 
         void removeRemotePlayer(java.util.UUID playerId) {
+            remoteAnimations.remove(playerId);
             if (remotePlayers.remove(playerId) != null) {
                 remotePlayerMeshDirty = true;
                 playerLabelsDirty = true;
+            }
+        }
+
+        private static final class RemoteAnimation {
+            private double phase;
+            private long lastMoveNanos;
+
+            private RemoteAnimation(long createdAtNanos) {
+                lastMoveNanos = 0L;
             }
         }
 
@@ -440,6 +469,10 @@ final class ChunkPreviewView extends GLSurfaceView {
             GLES20.glVertexAttribPointer(colorHandle, 3, GLES20.GL_FLOAT,
                     false, 6 * 4, vertexBuffer);
             GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, vertexCount);
+            if (!remotePlayers.isEmpty()) {
+                remotePlayerMeshDirty = true;
+                ChunkPreviewView.this.postDelayed(ChunkPreviewView.this::requestRender, 80L);
+            }
             if (remotePlayerMeshDirty) rebuildRemotePlayerMesh();
             if (remotePlayerBuffer != null && remotePlayerVertexCount > 0) {
                 remotePlayerBuffer.position(0);
@@ -545,22 +578,55 @@ final class ChunkPreviewView extends GLSurfaceView {
                 remotePlayerVertexCount = 0;
                 return;
             }
+            long now = System.nanoTime();
             MeshBuilder mesh = new MeshBuilder(120_000);
-            float[] color = {0.18f, 0.62f, 0.96f};
+            float[] bodyColor = {0.18f, 0.62f, 0.96f};
+            float[] limbColor = {0.12f, 0.43f, 0.72f};
+            float[] headColor = {0.88f, 0.72f, 0.58f};
             for (NexoraAndroidProtocolCodec.RemotePlayerState player : remotePlayers.values()) {
                 float x = (float) (player.x() - centerChunkX * 16 + 16);
                 float y = (float) player.y();
                 float z = (float) (player.z() - centerChunkZ * 16 + 16);
-                float x0 = x - 0.30f, x1 = x + 0.30f;
-                float y0 = y, y1 = y + 1.8f;
-                float z0 = z - 0.30f, z1 = z + 0.30f;
                 float angle = (float) Math.toRadians(player.yaw());
-                playerQuad(mesh, x, z, angle, x0,y1,z0, x0,y1,z1, x1,y1,z1, x1,y1,z0, color, 1.0f);
-                playerQuad(mesh, x, z, angle, x0,y0,z1, x0,y0,z0, x1,y0,z0, x1,y0,z1, color, 0.5f);
-                playerQuad(mesh, x, z, angle, x0,y0,z0, x0,y0,z1, x0,y1,z1, x0,y1,z0, color, 0.72f);
-                playerQuad(mesh, x, z, angle, x1,y0,z1, x1,y0,z0, x1,y1,z0, x1,y1,z1, color, 0.82f);
-                playerQuad(mesh, x, z, angle, x1,y0,z0, x0,y0,z0, x0,y1,z0, x1,y1,z0, color, 0.62f);
-                playerQuad(mesh, x, z, angle, x0,y0,z1, x1,y0,z1, x1,y1,z1, x0,y1,z1, color, 0.68f);
+                RemoteAnimation animation = remoteAnimations.computeIfAbsent(
+                        player.playerId(), ignored -> new RemoteAnimation(now));
+                long moveAge = animation.lastMoveNanos == 0L
+                        ? Long.MAX_VALUE : Math.max(0L, now - animation.lastMoveNanos);
+                float walkBlend = moveAge >= 350_000_000L ? 0f
+                        : 1f - (float) moveAge / 350_000_000L;
+                float phase = (float) (animation.phase
+                        + (moveAge == Long.MAX_VALUE ? 0.0 : moveAge * 0.000000012));
+                float swing = (float) Math.sin(phase) * 0.58f * walkBlend;
+                float idle = (float) Math.sin(now * 0.000000002) * 0.012f;
+                float bob = idle + Math.abs((float) Math.sin(phase * 2f)) * 0.035f * walkBlend;
+
+                // Torso, head, arms and legs are separate articulated cuboids.
+                addPlayerBox(mesh, x, y, z, angle,
+                        0f, 1.13f + bob, 0f, 0.22f, 0.36f, 0.13f,
+                        0f, 1.13f, 0f, 0f, bodyColor, 1.0f);
+                addPlayerBox(mesh, x, y, z, angle,
+                        0f, 1.62f + bob, 0f, 0.18f, 0.18f, 0.18f,
+                        0f, 1.62f, 0f, 0f, headColor, 1.0f);
+
+                addPlayerBox(mesh, x, y, z, angle,
+                        -0.30f, 1.16f + bob, 0f, 0.105f, 0.31f, 0.11f,
+                        -0.30f, 1.44f + bob, 0f, swing, limbColor, 0.92f);
+                addPlayerBox(mesh, x, y, z, angle,
+                        0.30f, 1.16f + bob, 0f, 0.105f, 0.31f, 0.11f,
+                        0.30f, 1.44f + bob, 0f, -swing, limbColor, 0.92f);
+
+                addPlayerBox(mesh, x, y, z, angle,
+                        -0.12f, 0.43f + bob, 0f, 0.12f, 0.37f, 0.13f,
+                        -0.12f, 0.78f + bob, 0f, -swing, limbColor, 0.82f);
+                addPlayerBox(mesh, x, y, z, angle,
+                        0.12f, 0.43f + bob, 0f, 0.12f, 0.37f, 0.13f,
+                        0.12f, 0.78f + bob, 0f, swing, limbColor, 0.82f);
+                addPlayerBox(mesh, x, y, z, angle,
+                        -0.12f, 0.10f + bob, -0.045f, 0.13f, 0.10f, 0.20f,
+                        -0.12f, 0.18f + bob, 0f, -swing * 0.22f, limbColor, 0.78f);
+                addPlayerBox(mesh, x, y, z, angle,
+                        0.12f, 0.10f + bob, -0.045f, 0.13f, 0.10f, 0.20f,
+                        0.12f, 0.18f + bob, 0f, swing * 0.22f, limbColor, 0.78f);
                 if (mesh.full()) break;
             }
             float[] values = mesh.values();
@@ -572,21 +638,55 @@ final class ChunkPreviewView extends GLSurfaceView {
             remotePlayerBuffer.position(0);
         }
 
-        private void playerQuad(MeshBuilder mesh, float centerX, float centerZ, float angle,
-                                float ax, float ay, float az, float bx, float by, float bz,
-                                float cx, float cy, float cz, float dx, float dy, float dz,
-                                float[] color, float shade) {
-            float cos = (float) Math.cos(angle);
-            float sin = (float) Math.sin(angle);
-            float rax = centerX + (ax - centerX) * cos + (az - centerZ) * sin;
-            float raz = centerZ - (ax - centerX) * sin + (az - centerZ) * cos;
-            float rbx = centerX + (bx - centerX) * cos + (bz - centerZ) * sin;
-            float rbz = centerZ - (bx - centerX) * sin + (bz - centerZ) * cos;
-            float rcx = centerX + (cx - centerX) * cos + (cz - centerZ) * sin;
-            float rcz = centerZ - (cx - centerX) * sin + (cz - centerZ) * cos;
-            float rdx = centerX + (dx - centerX) * cos + (dz - centerZ) * sin;
-            float rdz = centerZ - (dx - centerX) * sin + (dz - centerZ) * cos;
-            mesh.quad(rax,ay,raz, rbx,by,rbz, rcx,cy,rcz, rdx,dy,rdz, color, shade);
+        private void addPlayerBox(MeshBuilder mesh, float baseX, float baseY, float baseZ,
+                                  float yawRadians,
+                                  float centerX, float centerY, float centerZ,
+                                  float halfX, float halfY, float halfZ,
+                                  float pivotX, float pivotY, float pivotZ, float pitch,
+                                  float[] color, float shade) {
+            float x0 = centerX - halfX, x1 = centerX + halfX;
+            float y0 = centerY - halfY, y1 = centerY + halfY;
+            float z0 = centerZ - halfZ, z1 = centerZ + halfZ;
+            float[][] p = {
+                    playerPoint(baseX, baseY, baseZ, yawRadians, x0,y0,z0,pivotX,pivotY,pivotZ,pitch),
+                    playerPoint(baseX, baseY, baseZ, yawRadians, x0,y0,z1,pivotX,pivotY,pivotZ,pitch),
+                    playerPoint(baseX, baseY, baseZ, yawRadians, x0,y1,z0,pivotX,pivotY,pivotZ,pitch),
+                    playerPoint(baseX, baseY, baseZ, yawRadians, x0,y1,z1,pivotX,pivotY,pivotZ,pitch),
+                    playerPoint(baseX, baseY, baseZ, yawRadians, x1,y0,z0,pivotX,pivotY,pivotZ,pitch),
+                    playerPoint(baseX, baseY, baseZ, yawRadians, x1,y0,z1,pivotX,pivotY,pivotZ,pitch),
+                    playerPoint(baseX, baseY, baseZ, yawRadians, x1,y1,z0,pivotX,pivotY,pivotZ,pitch),
+                    playerPoint(baseX, baseY, baseZ, yawRadians, x1,y1,z1,pivotX,pivotY,pivotZ,pitch)
+            };
+            mesh.quad(p[2][0],p[2][1],p[2][2], p[3][0],p[3][1],p[3][2],
+                    p[7][0],p[7][1],p[7][2], p[6][0],p[6][1],p[6][2], color, shade);
+            mesh.quad(p[1][0],p[1][1],p[1][2], p[0][0],p[0][1],p[0][2],
+                    p[4][0],p[4][1],p[4][2], p[5][0],p[5][1],p[5][2], color, shade * 0.5f);
+            mesh.quad(p[0][0],p[0][1],p[0][2], p[1][0],p[1][1],p[1][2],
+                    p[3][0],p[3][1],p[3][2], p[2][0],p[2][1],p[2][2], color, shade * 0.72f);
+            mesh.quad(p[5][0],p[5][1],p[5][2], p[4][0],p[4][1],p[4][2],
+                    p[6][0],p[6][1],p[6][2], p[7][0],p[7][1],p[7][2], color, shade * 0.82f);
+            mesh.quad(p[4][0],p[4][1],p[4][2], p[0][0],p[0][1],p[0][2],
+                    p[2][0],p[2][1],p[2][2], p[6][0],p[6][1],p[6][2], color, shade * 0.62f);
+            mesh.quad(p[1][0],p[1][1],p[1][2], p[5][0],p[5][1],p[5][2],
+                    p[7][0],p[7][1],p[7][2], p[3][0],p[3][1],p[3][2], color, shade * 0.68f);
+        }
+
+        private float[] playerPoint(float baseX, float baseY, float baseZ, float yawRadians,
+                                    float x, float y, float z,
+                                    float pivotX, float pivotY, float pivotZ, float pitch) {
+            float localY = y - pivotY;
+            float localZ = z - pivotZ;
+            float rotatedY = localY * (float) Math.cos(pitch) - localZ * (float) Math.sin(pitch);
+            float rotatedZ = localY * (float) Math.sin(pitch) + localZ * (float) Math.cos(pitch);
+            float localX = x - pivotX;
+            float rotatedX = pivotX + localX;
+            rotatedY += pivotY;
+            rotatedZ += pivotZ;
+            float worldX = baseX + rotatedX * (float) Math.cos(yawRadians)
+                    + rotatedZ * (float) Math.sin(yawRadians);
+            float worldZ = baseZ - rotatedX * (float) Math.sin(yawRadians)
+                    + rotatedZ * (float) Math.cos(yawRadians);
+            return new float[]{worldX, baseY + rotatedY, worldZ};
         }
 
         private void rebuildMesh() {

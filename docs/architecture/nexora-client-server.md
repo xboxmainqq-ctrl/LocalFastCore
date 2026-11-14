@@ -115,8 +115,10 @@ The client must not bundle proprietary Minecraft code, textures, sounds, fonts, 
 
 The Android client is a substantial separate engineering effort. Performance must be measured on actual devices; high FPS cannot be guaranteed from server-side optimization alone.
 
-### Player inventory synchronization (private NEXORA v1.1)
+### Player inventory and item actions (private NEXORA v1.2)
 
-The private protocol currently uses message type 11 for a server-authoritative inventory snapshot. The server sends the joining player an initial snapshot and sends a new snapshot after one or more dropped items are collected. The packet identifies the owning player UUID and contains up to 36 occupied stacks; each item identifier is UTF-8 and each stack count is bounded to 1–64. Empty slots are omitted from this compact display snapshot. Android validates the packet bounds and item identifiers before rendering a compact inventory list with item names and stack counts.
+Protocol v1.2 uses message type 11 for a server-authoritative inventory snapshot. The packet identifies the owning player UUID and carries up to 36 occupied stacks. Each stack includes its exact zero-based slot index, a bounded UTF-8 namespaced item identifier, and a count from 1 to 64. Empty slots remain empty on the Android 6×6 inventory grid rather than shifting later items into earlier cells.
 
-Inventory mutations remain server-side. This message is a read-only snapshot; the client cannot grant itself items or submit inventory changes. Slot selection, item movement, use/drop actions, persistence across reconnects, and full item metadata are not yet implemented.
+Client message type 12 requests one of four operations: move/merge/swap a stack between slots, drop one item, drop an entire stack, or use an item. The server resolves the player session from the connection, validates the action and slot bounds, mutates only that player's inventory, and returns type 13 with the action result followed by a fresh type 11 snapshot. Dropped items become server-owned world item entities and can be collected again. The Android UI supports tap-to-select and tap-to-move, plus buttons to drop one item, drop a stack, or request item use.
+
+Item use is deliberately reported as NOT_USABLE for now: the runtime does not yet define item behavior, player health, or consumable effects, so the client cannot pretend an item was used. Inventory data is still session-only and is removed on disconnect; persistence, item metadata/icons, and actual item-use behavior remain future work.

@@ -18,8 +18,9 @@ public record WorldEntity(
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(type, "type");
         Objects.requireNonNull(name, "name");
-        if (name.isBlank() || name.length() > 64 || !name.equals(name.trim())) {
-            throw new IllegalArgumentException("Entity name must contain 1 to 64 trimmed characters");
+        int maxNameLength = type == Type.ITEM ? 96 : 64;
+        if (name.isBlank() || name.length() > maxNameLength || !name.equals(name.trim())) {
+            throw new IllegalArgumentException("Entity name exceeds the limit for its type");
         }
         if (!finiteCoordinate(x) || !finiteCoordinate(y) || !finiteCoordinate(z)) {
             throw new IllegalArgumentException("Entity coordinates must be finite and within world bounds");

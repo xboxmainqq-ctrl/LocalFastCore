@@ -59,6 +59,49 @@ class BedrockSubChunkRequestHandlerTest {
         assertTrue(connection.sent.isEmpty());
     }
 
+
+    @Test
+    void splitsMixedBatchesAndForwardsNonSubchunkPackets() {
+        InMemoryWorld world = new InMemoryWorld("test", new WorldHeight(-64, 320));
+        world.loadChunk(new GeneratedChunk(new ChunkPosition(0, 0),
+                Map.of(new BlockPosition(0, 0, 0), STONE)));
+        var registry = BedrockRuntimeBlockRegistry.of(Map.of(BlockState.AIR, 0, STONE, 1));
+        AtomicInteger fallbackCalls = new AtomicInteger();
+        AtomicInteger forwardedPacketId = new AtomicInteger(-1);
+        BedrockSubChunkRequestHandler handler = new BedrockSubChunkRequestHandler(
+                SETTINGS, world, ignored -> 0, registry, (connection, message) -> {
+                    fallbackCalls.incrementAndGet();
+                    ByteBuffer decoded = BedrockBatchCompressionCodec.decodeAfterNetworkSettings(
+                            message.payload(), SETTINGS);
+                    List<BedrockGamePacket> forwarded = BedrockPacketBatchCodec.decodeUncompressed(decoded);
+                    assertEquals(1, forwarded.size());
+                    forwardedPacketId.set(forwarded.get(0).header().packetId());
+                });
+        FakeConnection connection = new FakeConnection();
+
+        ByteBuffer requestPayload = ByteBuffer.allocate(32);
+        BedrockBinary.writeVarInt32(requestPayload, 0);
+        BedrockBinary.writeVarUInt32(requestPayload, 1);
+        requestPayload.put((byte) 0).put((byte) 0).put((byte) 0);
+        BedrockBinary.writeLittleEndianInt32(requestPayload, 0);
+        BedrockBinary.writeLittleEndianInt32(requestPayload, 0);
+        BedrockBinary.writeLittleEndianInt32(requestPayload, 0);
+        requestPayload.flip();
+        ByteBuffer batch = BedrockPacketBatchCodec.encodeUncompressed(List.of(
+                new BedrockGamePacket(new BedrockPacketHeader(175, 0, 0), bytes(requestPayload)),
+                new BedrockGamePacket(new BedrockPacketHeader(1, 0, 0), new byte[] {9})
+        ));
+
+        handler.accept(connection, new TransportMessage(
+                BedrockBatchCompressionCodec.encodeAfterNetworkSettings(batch, SETTINGS),
+                DeliveryMode.RELIABLE_ORDERED));
+
+        assertTrue(connection.isOpen());
+        assertEquals(1, connection.sent.size());
+        assertEquals(1, fallbackCalls.get());
+        assertEquals(1, forwardedPacketId.get());
+    }
+
     @Test
     void closesOnUnreliableOrMalformedSubchunkRequests() {
         InMemoryWorld world = new InMemoryWorld("test", new WorldHeight(-64, 320));

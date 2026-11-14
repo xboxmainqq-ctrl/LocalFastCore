@@ -548,7 +548,6 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                 if (current != null) {
                     mainHandler.post(() -> current.onChunkDataReceived(chunk));
                 }
-                reportStatus("Стартовый чанк получен • " + chunk.chunkX() + ", " + chunk.chunkZ());
             } catch (RuntimeException malformed) {
                 reportError("Некорректные данные чанка NEXORA: " + malformed.getMessage());
             }

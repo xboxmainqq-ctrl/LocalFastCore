@@ -61,28 +61,32 @@ public final class NetherNetServerIdentitySigner {
         String newline = answerSdp.contains("\r\n") ? "\r\n" : "\n";
         String[] lines = answerSdp.split("\\r?\\n", -1);
         int firstMedia = -1;
-        int lastSessionFingerprint = -1;
         List<String> fingerprints = new ArrayList<>();
+        int mediaSections = 0;
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i];
             if (line.startsWith("a=identity:")) {
                 throw new IllegalArgumentException("SDP answer already contains a=identity");
             }
-            if (line.startsWith("m=") && firstMedia < 0) {
-                firstMedia = i;
+            if (line.startsWith("m=")) {
+                mediaSections++;
+                if (firstMedia < 0) {
+                    firstMedia = i;
+                }
             }
             if (line.startsWith("a=fingerprint:")) {
                 fingerprints.add(line);
-                if (firstMedia < 0) {
-                    lastSessionFingerprint = i;
-                }
             }
         }
-        if (firstMedia < 0 || lastSessionFingerprint < 0) {
+        if (firstMedia < 0 || fingerprints.isEmpty() || mediaSections != 1) {
             throw new IllegalArgumentException(
-                    "SDP answer requires a session fingerprint before its first media section");
+                    "NetherNet answer requires one application media section and DTLS fingerprints");
         }
 
+        // WebRTC libraries commonly emit a=fingerprint at media level. NetherNet
+        // requires the identity attribute at session level, after fingerprints
+        // and before the first m= line. Promote every fingerprint line without
+        // changing its order or multiplicity, so the signed payload stays exact.
         NetherNetFingerprintPayload payload =
                 NetherNetFingerprintPayload.fromFingerprintLines(fingerprints);
         String canonicalJwk = publicJwk(publicKey);
@@ -95,8 +99,22 @@ public final class NetherNetServerIdentitySigner {
         String identityLine = "a=identity:"
                 + Base64.getEncoder().encodeToString(envelope.getBytes(StandardCharsets.UTF_8));
 
-        List<String> output = new ArrayList<>(List.of(lines));
-        output.add(lastSessionFingerprint + 1, identityLine);
+        List<String> output = new ArrayList<>(lines.length + fingerprints.size() + 1);
+        boolean inserted = false;
+        for (String line : lines) {
+            if (line.startsWith("a=fingerprint:")) {
+                continue;
+            }
+            if (line.startsWith("m=") && !inserted) {
+                output.addAll(fingerprints);
+                output.add(identityLine);
+                inserted = true;
+            }
+            output.add(line);
+        }
+        if (!inserted) {
+            throw new IllegalArgumentException("SDP answer has no media section");
+        }
         String result = String.join(newline, output);
         if (result.getBytes(StandardCharsets.UTF_8).length > MAX_SDP_BYTES) {
             throw new IllegalArgumentException("SDP answer with identity exceeds configured limit");

@@ -17,6 +17,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -169,6 +170,8 @@ public final class NetherNetSignalingServer implements RuntimeModule {
 
     private void handle(HttpExchange exchange) throws IOException {
         String networkId = null;
+        boolean peerNegotiationStarted = false;
+        boolean peerAnswerCompleted = false;
         try (exchange) {
             String method = exchange.getRequestMethod();
             String path = exchange.getRequestURI().getPath();
@@ -208,8 +211,12 @@ public final class NetherNetSignalingServer implements RuntimeModule {
             // mandatory and must perform cryptographic verification.
             validator.validate(networkId, parsedOffer);
 
-            String answer = peerHost.createAnswer(networkId, parsedOffer.webRtcSdp())
-                    .toCompletableFuture().get(answerTimeoutMillis, TimeUnit.MILLISECONDS);
+            CompletionStage<String> answerStage =
+                    peerHost.createAnswer(networkId, parsedOffer.webRtcSdp());
+            peerNegotiationStarted = true;
+            String answer = answerStage.toCompletableFuture()
+                    .get(answerTimeoutMillis, TimeUnit.MILLISECONDS);
+            peerAnswerCompleted = true;
             if (answer == null || answer.isBlank()) {
                 throw new IllegalStateException("WebRTC host returned an empty SDP answer");
             }
@@ -226,14 +233,20 @@ public final class NetherNetSignalingServer implements RuntimeModule {
                     Math.min(maxSdpBytes, 16 * 1024));
             send(exchange, 200, "application/sdp; charset=utf-8", answerBytes);
         } catch (java.util.concurrent.TimeoutException timeout) {
-            cancelPeer(networkId);
+            if (peerNegotiationStarted) {
+                cancelPeer(networkId);
+            }
             sendTextIfOpen(exchange, 504, "WebRTC answer timed out");
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
-            cancelPeer(networkId);
+            if (peerNegotiationStarted) {
+                cancelPeer(networkId);
+            }
             sendTextIfOpen(exchange, 503, "Signaling interrupted");
         } catch (Exception failure) {
-            cancelPeer(networkId);
+            if (peerAnswerCompleted) {
+                cancelPeer(networkId);
+            }
             sendTextIfOpen(exchange, 401, "Signaling rejected");
         }
     }

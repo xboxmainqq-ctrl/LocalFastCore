@@ -29,8 +29,9 @@ public record NetherNetSdpDocument(
     public NetherNetSdpDocument {
         Objects.requireNonNull(originalSdp, "originalSdp");
         Objects.requireNonNull(webRtcSdp, "webRtcSdp");
-        Objects.requireNonNull(encodedIdentity, "encodedIdentity");
-        Objects.requireNonNull(identityEnvelopeJson, "identityEnvelopeJson");
+        if ((encodedIdentity == null) != (identityEnvelopeJson == null)) {
+            throw new IllegalArgumentException("Encoded identity and envelope must both be present or absent");
+        }
         fingerprintLines = List.copyOf(Objects.requireNonNull(fingerprintLines, "fingerprintLines"));
     }
 
@@ -40,6 +41,16 @@ public record NetherNetSdpDocument(
 
     public static NetherNetSdpDocument parseOffer(String sdp, int maxSdpBytes,
                                                    int maxIdentityBytes) {
+        return parseOffer(sdp, maxSdpBytes, maxIdentityBytes, true);
+    }
+
+    /**
+     * Parses a full-ICE SDP offer. Missing identity is permitted only for an
+     * explicitly configured unauthenticated development admission policy.
+     */
+    public static NetherNetSdpDocument parseOffer(String sdp, int maxSdpBytes,
+                                                   int maxIdentityBytes,
+                                                   boolean requireIdentity) {
         Objects.requireNonNull(sdp, "sdp");
         if (maxSdpBytes < 1 || maxIdentityBytes < 1) {
             throw new IllegalArgumentException("SDP and identity limits must be positive");
@@ -70,24 +81,33 @@ public record NetherNetSdpDocument(
                 }
             }
             if (line.startsWith("a=identity:")) {
-                if (encodedIdentity != null) {
+                if (identityLineIndex >= 0) {
                     throw new IllegalArgumentException("SDP contains multiple a=identity attributes");
                 }
                 if (i == 0 || firstMediaLine >= 0) {
                     throw new IllegalArgumentException("a=identity must be a session-level SDP attribute");
                 }
-                encodedIdentity = line.substring("a=identity:".length());
+                encodedIdentity = line.substring("a=identity:".length()).trim();
                 identityLineIndex = i;
             }
         }
 
-        if (encodedIdentity == null || encodedIdentity.isBlank()) {
-            throw new IllegalArgumentException("SDP offer is missing a=identity");
+        if (firstMediaLine < 0 || lastSessionFingerprintLine < 0) {
+            throw new IllegalArgumentException("SDP offer requires a session fingerprint and media section");
         }
-        if (lastFingerprintLine < 0 || identityLineIndex <= lastSessionFingerprintLine) {
+        if (identityLineIndex < 0) {
+            if (requireIdentity) {
+                throw new IllegalArgumentException("SDP offer is missing a=identity");
+            }
+            return new NetherNetSdpDocument(sdp, sdp, null, null, fingerprints);
+        }
+        if (encodedIdentity == null || encodedIdentity.isBlank()) {
+            throw new IllegalArgumentException("SDP a=identity is empty");
+        }
+        if (identityLineIndex <= lastSessionFingerprintLine) {
             throw new IllegalArgumentException("a=identity must follow session fingerprint attributes");
         }
-        if (firstMediaLine >= 0 && identityLineIndex >= firstMediaLine) {
+        if (identityLineIndex >= firstMediaLine) {
             throw new IllegalArgumentException("a=identity must precede the first media section");
         }
         if (encodedIdentity.length() > maxIdentityBytes * 2L) {
@@ -124,7 +144,6 @@ public record NetherNetSdpDocument(
                 continue;
             }
             if (i > 0) {
-                // Preserve the source's newline convention as closely as possible.
                 cleaned.append(sdp.contains("\r\n") ? "\r\n" : "\n");
             }
             cleaned.append(lines[i]);

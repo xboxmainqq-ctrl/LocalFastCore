@@ -47,6 +47,7 @@ class BedrockConnectionRouterTest {
 
         assertEquals(BedrockHandshakeResult.ACCEPTED, login.markAuthenticated());
         assertEquals(BedrockHandshakeState.PLAY, login.state());
+        assertEquals(BedrockHandshakeState.PLAY, login.state());
 
         router.stop();
         assertFalse(connection.isOpen());

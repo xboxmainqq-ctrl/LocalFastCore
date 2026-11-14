@@ -13,6 +13,7 @@ final class NexoraAndroidProtocolCodec {
     static final int MINOR_VERSION = 0;
     static final int MAX_MESSAGE_BYTES = 1024;
     private static final byte[] MAGIC = {'N', 'X', 'R', 'A'};
+    private static final int TYPE_WORLD_INFO = 4;
 
     private NexoraAndroidProtocolCodec() {
     }
@@ -75,6 +76,53 @@ final class NexoraAndroidProtocolCodec {
         throw new IllegalArgumentException("Unexpected NEXORA server message type");
     }
 
+    static WorldInfo decodeWorldInfo(byte[] bytes) {
+        ByteBuffer input = checkedHeader(bytes, TYPE_WORLD_INFO);
+        int idLength = Byte.toUnsignedInt(input.get());
+        if (idLength < 1 || idLength > 64 || input.remaining() != idLength + 28) {
+            throw new IllegalArgumentException("Malformed NEXORA WorldInfo");
+        }
+        byte[] idBytes = new byte[idLength];
+        input.get(idBytes);
+        String worldId = decodeUtf8(idBytes);
+        int minY = input.getInt();
+        int maxYExclusive = input.getInt();
+        int spawnX = input.getInt();
+        int spawnY = input.getInt();
+        int spawnZ = input.getInt();
+        int tickRate = input.getInt();
+        int loadedChunks = input.getInt();
+        if (worldId.isBlank() || maxYExclusive <= minY || spawnY < minY
+                || spawnY >= maxYExclusive || tickRate < 1 || tickRate > 120 || loadedChunks < 0) {
+            throw new IllegalArgumentException("Invalid NEXORA world information");
+        }
+        return new WorldInfo(worldId, minY, maxYExclusive, spawnX, spawnY, spawnZ,
+                tickRate, loadedChunks);
+    }
+
+    private static ByteBuffer checkedHeader(byte[] bytes, int expectedType) {
+        if (bytes == null || bytes.length < 7 || bytes.length > MAX_MESSAGE_BYTES) {
+            throw new IllegalArgumentException("Invalid NEXORA message size");
+        }
+        ByteBuffer input = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN);
+        for (byte expected : MAGIC) {
+            if (input.get() != expected) {
+                throw new IllegalArgumentException("Invalid NEXORA protocol magic");
+            }
+        }
+        int major = Byte.toUnsignedInt(input.get());
+        int minor = Byte.toUnsignedInt(input.get());
+        int type = Byte.toUnsignedInt(input.get());
+        if (major != MAJOR_VERSION || minor > MINOR_VERSION) {
+            throw new IllegalArgumentException("Unsupported NEXORA protocol version "
+                    + major + "." + minor);
+        }
+        if (type != expectedType) {
+            throw new IllegalArgumentException("Unexpected NEXORA message type");
+        }
+        return input;
+    }
+
     private static String decodeUtf8(byte[] bytes) {
         try {
             return StandardCharsets.UTF_8.newDecoder()
@@ -88,5 +136,10 @@ final class NexoraAndroidProtocolCodec {
 
     record ServerResponse(boolean accepted, String serverId, int maxMessageBytes,
                           int rejectionCode, String rejectionReason) {
+    }
+
+    record WorldInfo(String worldId, int minY, int maxYExclusive,
+                     int spawnX, int spawnY, int spawnZ,
+                     int tickRate, int loadedChunks) {
     }
 }

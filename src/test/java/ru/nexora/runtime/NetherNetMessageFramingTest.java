@@ -74,6 +74,20 @@ class NetherNetMessageFramingTest {
                 () -> NetherNetMessageFraming.decodeUnreliable(ByteBuffer.wrap(new byte[] {0, 1, 2}), 2));
     }
 
+    @Test
+    void framesUnreliableMessageWithoutFragmentation() {
+        ByteBuffer payload = ByteBuffer.wrap(new byte[] {9, 1, 2, 8});
+        payload.position(1);
+        payload.limit(3);
+        ByteBuffer framed = NetherNetMessageFraming.frameUnreliable(payload, 8);
+
+        assertArrayEquals(new byte[] {0, 1, 2}, bytes(framed));
+        assertEquals(1, payload.position());
+        assertEquals(3, payload.limit());
+        assertThrows(IllegalArgumentException.class, () ->
+                NetherNetMessageFraming.frameUnreliable(ByteBuffer.allocate(8), 8));
+    }
+
     private static byte[] bytes(ByteBuffer buffer) {
         byte[] result = new byte[buffer.remaining()];
         buffer.get(result);

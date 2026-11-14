@@ -282,7 +282,7 @@ final class ChunkPreviewView extends GLSurfaceView {
             long now = System.nanoTime();
             NexoraAndroidProtocolCodec.RemotePlayerState previous = remotePlayers.put(player.playerId(), player);
             RemoteAnimation animation = remoteAnimations.computeIfAbsent(
-                    player.playerId(), ignored -> new RemoteAnimation(now));
+                    player.playerId(), ignored -> new RemoteAnimation());
             if (previous != null) {
                 double dx = player.x() - previous.x();
                 double dz = player.z() - previous.z();
@@ -291,10 +291,10 @@ final class ChunkPreviewView extends GLSurfaceView {
                     if (animation.lastMoveNanos != 0L) {
                         long elapsed = Math.max(0L, now - animation.lastMoveNanos);
                         if (elapsed < 350_000_000L) {
-                            animation.phase += elapsed * 0.000000012;
+                            animation.phase += elapsed * 0.000000006;
                         }
                     }
-                    animation.phase += distance * 9.0;
+                    animation.phase += distance * 2.2;
                     animation.lastMoveNanos = now;
                 }
             }
@@ -314,8 +314,7 @@ final class ChunkPreviewView extends GLSurfaceView {
             private double phase;
             private long lastMoveNanos;
 
-            private RemoteAnimation(long createdAtNanos) {
-                lastMoveNanos = 0L;
+            private RemoteAnimation() {
             }
         }
 
@@ -589,13 +588,13 @@ final class ChunkPreviewView extends GLSurfaceView {
                 float z = (float) (player.z() - centerChunkZ * 16 + 16);
                 float angle = (float) Math.toRadians(player.yaw());
                 RemoteAnimation animation = remoteAnimations.computeIfAbsent(
-                        player.playerId(), ignored -> new RemoteAnimation(now));
+                        player.playerId(), ignored -> new RemoteAnimation());
                 long moveAge = animation.lastMoveNanos == 0L
                         ? Long.MAX_VALUE : Math.max(0L, now - animation.lastMoveNanos);
                 float walkBlend = moveAge >= 350_000_000L ? 0f
                         : 1f - (float) moveAge / 350_000_000L;
                 float phase = (float) (animation.phase
-                        + (moveAge == Long.MAX_VALUE ? 0.0 : moveAge * 0.000000012));
+                        + (moveAge == Long.MAX_VALUE ? 0.0 : moveAge * 0.000000006));
                 float swing = (float) Math.sin(phase) * 0.58f * walkBlend;
                 float idle = (float) Math.sin(now * 0.000000002) * 0.012f;
                 float bob = idle + Math.abs((float) Math.sin(phase * 2f)) * 0.035f * walkBlend;

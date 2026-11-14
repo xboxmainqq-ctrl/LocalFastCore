@@ -174,13 +174,21 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
                             : java.util.Optional.empty();
             if (netherNetIdentity.isPresent()) {
                 NetherNetIdentityValidator.VerifiedIdentity identity = netherNetIdentity.get();
+                if (!connectionRequest.isTokenPayload()
+                        || !identity.gameServerTokenSha256().equals(
+                                NetherNetIdentityValidator.tokenSha256(connectionRequest.token()))) {
+                    throw new SecurityException(
+                            "Bedrock Login token does not match the authenticated NetherNet offer");
+                }
                 if (identity.xuid() == null || identity.xuid().isBlank()
                         || identity.displayName() == null || identity.displayName().isBlank()) {
                     throw new SecurityException("Verified NetherNet identity is missing player claims");
                 }
+                String clientDataJson = BedrockClientDataJwtVerifier.verifyAndReadPayload(
+                        login.clientDataJwt(), identity.clientPublicKey());
                 authentication = java.util.concurrent.CompletableFuture.completedFuture(
                         new BedrockAuthenticatedPlayer(identity.xuid(), identity.displayName(),
-                                identity.clientPublicKey()));
+                                identity.clientPublicKey(), clientDataJson));
             } else {
                 authentication = loginAuthenticator.authenticate(
                         session.connection, login, connectionRequest);

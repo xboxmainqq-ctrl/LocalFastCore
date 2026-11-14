@@ -66,6 +66,27 @@ class BedrockPalettedStorageCodecTest {
         assertEquals(-2144268767, registry.runtimeId(STONE));
     }
 
+
+    @Test
+    void writesSignedHashDirectlyForUniformSection() {
+        ChunkSection section = new ChunkSection();
+        for (int x = 0; x < 16; x++) {
+            for (int y = 0; y < 16; y++) {
+                for (int z = 0; z < 16; z++) {
+                    section.set(x, y, z, STONE);
+                }
+            }
+        }
+        var registry = BedrockRuntimeBlockRegistry.of(Map.of(
+                BlockState.AIR, 0,
+                STONE, -2144268767));
+
+        ByteBuffer in = BedrockPalettedStorageCodec.encode(section, registry);
+        assertEquals(1, Byte.toUnsignedInt(in.get())); // zero-bit runtime palette
+        assertEquals(-2144268767, BedrockBinary.readVarInt32(in));
+        assertFalse(in.hasRemaining());
+    }
+
     @Test
     void serializesSignedHashedRuntimeIdsInPalette() {
         ChunkSection section = new ChunkSection();

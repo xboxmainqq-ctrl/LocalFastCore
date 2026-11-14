@@ -281,7 +281,34 @@ public final class AndroidNetherNetServerIdentityVerifier {
         FIRST_USE_CONFIRMATION_REQUIRED
     }
 
-    public record VerificationResult(String displayDomain, String keyFingerprint,
-                                     String cleanedSdp, TrustStatus trustStatus) {
+    public static final class VerificationResult {
+        private final String displayDomain;
+        private final String keyFingerprint;
+        private final String cleanedSdp;
+        private final TrustStatus trustStatus;
+
+        public VerificationResult(String displayDomain, String keyFingerprint,
+                                  String cleanedSdp, TrustStatus trustStatus) {
+            this.displayDomain = displayDomain;
+            this.keyFingerprint = keyFingerprint;
+            this.cleanedSdp = cleanedSdp;
+            this.trustStatus = trustStatus;
+        }
+
+        public String displayDomain() {
+            return displayDomain;
+        }
+
+        public String keyFingerprint() {
+            return keyFingerprint;
+        }
+
+        public String cleanedSdp() {
+            return cleanedSdp;
+        }
+
+        public TrustStatus trustStatus() {
+            return trustStatus;
+        }
     }
 }

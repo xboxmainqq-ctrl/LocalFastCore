@@ -65,14 +65,28 @@ public record BedrockConnectionRequest(
             }
             requireCompactJwt(clientDataJwt, "client-data JWT");
         } else {
-            if (!chain.isEmpty() || clientDataJwt != null
-                    || authenticationType == null || token == null || certificate == null) {
+            if (clientDataJwt != null || authenticationType == null
+                    || token == null || certificate == null) {
                 throw new IllegalArgumentException("Modern authentication envelope is incomplete or mixed");
             }
-            if (authenticationType < 0 || authenticationType > 255
-                    || token.isBlank() || token.length() > MAX_JWT_CHARS
-                    || certificate.isBlank() || certificate.length() > MAX_JWT_CHARS) {
+            if (authenticationType < 0 || authenticationType > 2
+                    || token.length() > MAX_JWT_CHARS
+                    || certificate.length() > MAX_JWT_CHARS
+                    || token.isEmpty() == certificate.isEmpty()) {
                 throw new IllegalArgumentException("Modern authentication envelope fields are invalid");
+            }
+            if (!token.isEmpty()) {
+                if (!chain.isEmpty()) {
+                    throw new IllegalArgumentException("Token authentication must not contain a certificate chain");
+                }
+                requireCompactJwt(token, "authentication token");
+            } else {
+                if (chain.isEmpty() || chain.size() > MAX_CHAIN_TOKENS) {
+                    throw new IllegalArgumentException("Certificate authentication requires 1 to 3 chain JWTs");
+                }
+                for (String jwt : chain) {
+                    requireCompactJwt(jwt, "certificate-chain JWT");
+                }
             }
         }
     }
@@ -83,6 +97,14 @@ public record BedrockConnectionRequest(
 
     public boolean isAuthenticationEnvelope() {
         return format == Format.AUTHENTICATION_ENVELOPE;
+    }
+
+    public boolean isTokenPayload() {
+        return isAuthenticationEnvelope() && !token.isEmpty();
+    }
+
+    public boolean isCertificateChainPayload() {
+        return isAuthenticationEnvelope() && !certificate.isEmpty();
     }
 
     /**
@@ -167,6 +189,11 @@ public record BedrockConnectionRequest(
             if (authenticationType == null || tokenValue == null || certificateValue == null) {
                 throw new IllegalArgumentException("Modern connection request requires AuthenticationType, Token, and Certificate");
             }
+            if (tokenValue.isEmpty() && !certificateValue.isEmpty()) {
+                List<String> certificateChain = parseCertificateChain(certificateValue);
+                return new BedrockConnectionRequest(Format.AUTHENTICATION_ENVELOPE,
+                        certificateChain, null, authenticationType, tokenValue, certificateValue);
+            }
             return new BedrockConnectionRequest(Format.AUTHENTICATION_ENVELOPE,
                     List.of(), null, authenticationType, tokenValue, certificateValue);
         }
@@ -189,6 +216,38 @@ public record BedrockConnectionRequest(
             values.add(parser.getText());
         }
         return values;
+    }
+
+    private static List<String> parseCertificateChain(String certificateJson) {
+        if (certificateJson.length() > MAX_JSON_BYTES) {
+            throw new IllegalArgumentException("Certificate JSON exceeds the configured limit");
+        }
+        try (JsonParser parser = JSON_FACTORY.createParser(certificateJson)) {
+            if (parser.nextToken() != JsonToken.START_OBJECT) {
+                throw new IllegalArgumentException("Certificate must be a JSON object");
+            }
+            List<String> chain = null;
+            while (parser.nextToken() == JsonToken.FIELD_NAME) {
+                String field = parser.currentName();
+                JsonToken value = parser.nextToken();
+                if ("chain".equals(field)) {
+                    if (chain != null || value != JsonToken.START_ARRAY) {
+                        throw new IllegalArgumentException("Certificate chain must be one JSON array");
+                    }
+                    chain = readChain(parser);
+                } else {
+                    parser.skipChildren();
+                }
+            }
+            if (parser.nextToken() != null || chain == null || chain.isEmpty()) {
+                throw new IllegalArgumentException("Certificate JSON is missing a valid chain");
+            }
+            return List.copyOf(chain);
+        } catch (IllegalArgumentException failure) {
+            throw failure;
+        } catch (Exception failure) {
+            throw new IllegalArgumentException("Malformed Certificate JSON", failure);
+        }
     }
 
     private static void requireCompactJwt(String jwt, String field) {

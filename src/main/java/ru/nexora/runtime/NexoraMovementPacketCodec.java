@@ -37,7 +37,8 @@ public final class NexoraMovementPacketCodec {
             throw new IllegalArgumentException("Movement coordinates must be finite");
         }
         ByteBuffer output = ByteBuffer.allocate(PACKET_BYTES).order(ByteOrder.BIG_ENDIAN);
-        output.put(MAGIC).put((byte) 1).put((byte) 0).put((byte) type);
+        output.put(MAGIC).put((byte) NexoraPrivateProtocolCodec.MAJOR_VERSION)
+                .put((byte) NexoraPrivateProtocolCodec.MINOR_VERSION).put((byte) type);
         output.putDouble(position.x()).putDouble(position.y()).putDouble(position.z());
         return output.array();
     }
@@ -54,7 +55,8 @@ public final class NexoraMovementPacketCodec {
         int major = Byte.toUnsignedInt(input.get());
         int minor = Byte.toUnsignedInt(input.get());
         int type = Byte.toUnsignedInt(input.get());
-        if (major != 1 || minor != 0 || type != expectedType) {
+        if (major != NexoraPrivateProtocolCodec.MAJOR_VERSION
+                || minor > NexoraPrivateProtocolCodec.MINOR_VERSION || type != expectedType) {
             throw new IllegalArgumentException("Unexpected NEXORA movement packet");
         }
         double x = input.getDouble();

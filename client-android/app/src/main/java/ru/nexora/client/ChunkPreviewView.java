@@ -14,8 +14,6 @@ import java.util.Map;
 
 /** Lightweight isometric voxel preview for a 3x3 NEXORA chunk area. */
 final class ChunkPreviewView extends View {
-    private static final int AREA_CHUNKS = 3;
-    private static final int AREA_BLOCKS = AREA_CHUNKS * 16;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Map<Long, NexoraAndroidProtocolCodec.ChunkData> chunks = new HashMap<>();
     private int centerChunkX;

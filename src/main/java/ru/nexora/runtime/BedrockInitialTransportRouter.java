@@ -48,6 +48,7 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
         this.playMessageHandler = Objects.requireNonNull(playMessageHandler, "playMessageHandler");
         this.handshakeTimeout = Objects.requireNonNull(handshakeTimeout, "handshakeTimeout");
         if (handshakeTimeout.isNegative() || handshakeTimeout.isZero()
+                || handshakeTimeout.toMillis() < 1
                 || handshakeTimeout.compareTo(Duration.ofMinutes(10)) > 0) {
             throw new IllegalArgumentException("Handshake timeout must be between 1 ms and 10 minutes");
         }
@@ -218,9 +219,13 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
             return;
         }
         cancelTimeout(session);
-        session.timeoutFuture = timeoutExecutor.schedule(
-                () -> close(session, reason),
-                handshakeTimeout.toMillis(), TimeUnit.MILLISECONDS);
+        try {
+            session.timeoutFuture = timeoutExecutor.schedule(
+                    () -> close(session, reason),
+                    handshakeTimeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.RejectedExecutionException stopping) {
+            close(session, "Bedrock transport router stopped");
+        }
     }
 
     private static void cancelTimeout(Session session) {

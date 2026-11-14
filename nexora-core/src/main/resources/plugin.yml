@@ -1,7 +1,0 @@
-name: NexoraCore
-main: ru.nexora.core.NexoraCore
-version: "0.1.0-SNAPSHOT"
-api: ["1.0.0"]
-author: NEXORA
-description: Compatibility-first foundation and API for the NEXORA server
-load: POSTWORLD

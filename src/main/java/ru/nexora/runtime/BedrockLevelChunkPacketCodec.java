@@ -128,6 +128,30 @@ public final class BedrockLevelChunkPacketCodec {
         ));
     }
 
+    /**
+     * Wraps an experimental full-column payload in a normal LevelChunk packet.
+     * The biome-update flag is enabled so the server-provided biome palettes
+     * take precedence over client biome data. This helper does not enable
+     * client blob caching or the SubChunkRequest skeleton mode.
+     */
+    public static BedrockGamePacket encodeFullColumnPacket(
+            ChunkPosition position,
+            int dimension,
+            BedrockLevelChunkColumnDataCodec.EncodedColumn column
+    ) {
+        Objects.requireNonNull(column, "column");
+        return encodePacket(new Settings(
+                position,
+                dimension,
+                column.subChunkCount(),
+                null,
+                false,
+                List.of(),
+                column.serializedData(),
+                true
+        ));
+    }
+
     private static void writeBoolean(ByteBuffer out, boolean value) {
         out.put((byte) (value ? 1 : 0));
     }

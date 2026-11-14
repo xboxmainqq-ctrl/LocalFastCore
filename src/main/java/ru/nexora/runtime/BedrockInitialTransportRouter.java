@@ -152,7 +152,23 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
         }
         final CompletionStage<BedrockAuthenticatedPlayer> authentication;
         try {
-            authentication = loginAuthenticator.authenticate(session.connection, login, connectionRequest);
+            java.util.Optional<NetherNetIdentityValidator.VerifiedIdentity> netherNetIdentity =
+                    session.connection instanceof NetherNetAuthenticatedTransportConnection authenticated
+                            ? authenticated.authenticatedIdentity()
+                            : java.util.Optional.empty();
+            if (netherNetIdentity.isPresent()) {
+                NetherNetIdentityValidator.VerifiedIdentity identity = netherNetIdentity.get();
+                if (identity.xuid() == null || identity.xuid().isBlank()
+                        || identity.displayName() == null || identity.displayName().isBlank()) {
+                    throw new SecurityException("Verified NetherNet identity is missing player claims");
+                }
+                authentication = java.util.concurrent.CompletableFuture.completedFuture(
+                        new BedrockAuthenticatedPlayer(identity.xuid(), identity.displayName(),
+                                identity.clientPublicKey()));
+            } else {
+                authentication = loginAuthenticator.authenticate(
+                        session.connection, login, connectionRequest);
+            }
             if (authentication == null) {
                 close(session, "Login authenticator returned no result");
                 return;

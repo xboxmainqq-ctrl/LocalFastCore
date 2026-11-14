@@ -65,6 +65,20 @@ class NexoraPrivateProtocolCodecTest {
     }
 
     @Test
+    void worldInfoMatchesTheAndroidWireVector() {
+        NexoraWorldInfo world = new NexoraWorldInfo(
+                "world", -64, 320, 0, 65, 0, 20, 1);
+        ByteBuffer expected = ByteBuffer.allocate(7 + 1 + 5 + 28);
+        expected.put(new byte[] {'N', 'X', 'R', 'A', 1, 0, 4});
+        expected.put((byte) 5).put("world".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        expected.putInt(-64).putInt(320);
+        expected.putInt(0).putInt(65).putInt(0);
+        expected.putInt(20).putInt(1);
+
+        assertArrayEquals(expected.array(), NexoraPrivateProtocolCodec.encodeWorldInfo(world));
+    }
+
+    @Test
     void rejectsTruncatedAndOversizedMessages() {
         assertThrows(IllegalArgumentException.class,
                 () -> NexoraPrivateProtocolCodec.decodeClientHello(ByteBuffer.wrap(new byte[] {1, 2})));

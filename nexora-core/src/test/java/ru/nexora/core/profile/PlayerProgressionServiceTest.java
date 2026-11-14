@@ -68,6 +68,8 @@ class PlayerProgressionServiceTest {
         assertEquals(PlayerProgressionService.MAX_LEVEL, result.profile().level());
         assertEquals(PlayerProgressionService.experienceRequiredForLevel(99),
                 result.profile().experience());
+        assertEquals(PlayerProgressionService.experienceRequiredForLevel(99),
+                result.awardedExperience());
         assertEquals(99 * 5, result.unspentAttributePoints());
         assertThrows(IllegalArgumentException.class, () -> service.addExperience(id, 0));
     }

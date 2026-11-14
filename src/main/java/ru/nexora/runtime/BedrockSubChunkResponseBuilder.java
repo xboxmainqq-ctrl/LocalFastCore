@@ -65,13 +65,17 @@ public final class BedrockSubChunkResponseBuilder {
             Map<Integer, ChunkSection> sections = sectionSnapshots.computeIfAbsent(
                     chunkPosition, ignored -> groupBlocksBySection(world.blocksInChunk(chunkPosition)));
             ChunkSection section = sections.get(position.y());
+            Map<Integer, ChunkSection> fluidSections = fluidSectionSnapshots.computeIfAbsent(
+                    chunkPosition, ignored -> groupBlocksBySection(world.fluidsInChunk(chunkPosition)));
+            ChunkSection fluidSection = fluidSections.get(position.y());
 
-            if (section == null || section.isEmpty()) {
+            if ((section == null || section.isEmpty())
+                    && (fluidSection == null || fluidSection.isEmpty())) {
                 entries.add(BedrockSubChunkPacketCodec.Entry.allAir(offset));
             } else {
-                Map<Integer, ChunkSection> fluidSections = fluidSectionSnapshots.computeIfAbsent(
-                        chunkPosition, ignored -> groupBlocksBySection(world.fluidsInChunk(chunkPosition)));
-                ChunkSection fluidSection = fluidSections.get(position.y());
+                if (section == null) {
+                    section = new ChunkSection();
+                }
                 if (fluidSection == null) {
                     fluidSection = new ChunkSection();
                 }

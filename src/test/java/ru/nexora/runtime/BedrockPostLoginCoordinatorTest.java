@@ -43,19 +43,19 @@ class BedrockPostLoginCoordinatorTest {
         assertEquals(BedrockResourcePackCodec.RESOURCE_PACKS_INFO_PACKET_ID,
                 decodeSentPacket(connection.sent.get(0)).header().packetId());
 
-        coordinator.accept(connection, response("DownloadingFinished"));
+        coordinator.handleMessage(connection, response("DownloadingFinished"));
         assertEquals(2, connection.sent.size());
         assertEquals(BedrockResourcePackCodec.RESOURCE_PACK_STACK_PACKET_ID,
                 decodeSentPacket(connection.sent.get(1)).header().packetId());
         assertEquals(0, worldStarts.get());
         assertEquals(0, playReady.get());
 
-        coordinator.accept(connection, response("ResourcePackStackFinished"));
+        coordinator.handleMessage(connection, response("ResourcePackStackFinished"));
         assertEquals(1, worldStarts.get());
         assertEquals(1, playReady.get());
         assertTrue(connection.isOpen());
 
-        coordinator.accept(connection, new TransportMessage(ByteBuffer.wrap(new byte[]{1}),
+        coordinator.handleMessage(connection, new TransportMessage(ByteBuffer.wrap(new byte[]{1}),
                 DeliveryMode.UNRELIABLE));
         assertEquals(1, playMessages.get());
         coordinator.close();
@@ -69,11 +69,11 @@ class BedrockPostLoginCoordinatorTest {
         FakeConnection connection = new FakeConnection();
         coordinator.accept(connection, player());
 
-        coordinator.accept(connection, response("Downloading", List.of()));
+        coordinator.handleMessage(connection, response("Downloading", List.of()));
         assertTrue(connection.isOpen());
         assertEquals(1, connection.sent.size());
 
-        coordinator.accept(connection, response("Downloading", List.of("unexpected-pack")));
+        coordinator.handleMessage(connection, response("Downloading", List.of("unexpected-pack")));
         assertFalse(connection.isOpen());
         coordinator.close();
     }
@@ -86,7 +86,7 @@ class BedrockPostLoginCoordinatorTest {
         FakeConnection connection = new FakeConnection();
         coordinator.accept(connection, player());
 
-        coordinator.accept(connection, response("ResourcePackStackFinished"));
+        coordinator.handleMessage(connection, response("ResourcePackStackFinished"));
         assertFalse(connection.isOpen());
         coordinator.close();
     }
@@ -99,8 +99,8 @@ class BedrockPostLoginCoordinatorTest {
                 connection -> BedrockHandshakeResult.ACCEPTED);
         FakeConnection first = new FakeConnection();
         startupFailure.accept(first, player());
-        startupFailure.accept(first, response("DownloadingFinished"));
-        startupFailure.accept(first, response("ResourcePackStackFinished"));
+        startupFailure.handleMessage(first, response("DownloadingFinished"));
+        startupFailure.handleMessage(first, response("ResourcePackStackFinished"));
         assertFalse(first.isOpen());
         startupFailure.close();
 
@@ -109,8 +109,8 @@ class BedrockPostLoginCoordinatorTest {
                 connection -> BedrockHandshakeResult.INVALID_STATE);
         FakeConnection second = new FakeConnection();
         transitionFailure.accept(second, player());
-        transitionFailure.accept(second, response("DownloadingFinished"));
-        transitionFailure.accept(second, response("ResourcePackStackFinished"));
+        transitionFailure.handleMessage(second, response("DownloadingFinished"));
+        transitionFailure.handleMessage(second, response("ResourcePackStackFinished"));
         assertFalse(second.isOpen());
         transitionFailure.close();
     }

@@ -901,6 +901,10 @@ public final class LocalFastCore extends PluginBase implements Listener {
         if (event.getEntity() instanceof Player && event.getDamager() instanceof EntityCreature) {
             Player victim = (Player) event.getEntity();
             String victimPath = playerKey(victim);
+            if (hasMagicRelic(victim, "guardian_ring")) {
+                float incoming = event.getDamage(EntityDamageEvent.DamageModifier.BASE);
+                event.setDamage(incoming * 0.90f, EntityDamageEvent.DamageModifier.BASE);
+            }
             int legendaryArmorLevel = Math.max(0, Math.min(5,
                     players.getInt(victimPath + ".forge.armor-level", 0)));
             long armorReadyAt = legendaryArmorCooldowns.getOrDefault(victim.getUniqueId(), 0L);

@@ -54,21 +54,21 @@ final class NexoraSkinAtlas {
                 case BOTTOM -> new UvRect(28, 16, 36, 20);
             };
             case RIGHT_LEG -> limbRect(face, 0, 4, 8, 12, 16, 20, 32);
-            case RIGHT_ARM -> limbRect(face, 40, 44, 48, 52, 44, 48, 52);
-            case LEFT_LEG -> limbRect(face, 16, 20, 24, 28, 20, 24, 28);
-            case LEFT_ARM -> limbRect(face, 32, 36, 40, 44, 36, 40, 44);
+            case RIGHT_ARM -> limbRect(face, 40, 44, 48, 52, 44, 48, 20);
+            case LEFT_LEG -> limbRect(face, 16, 20, 24, 28, 20, 24, 52);
+            case LEFT_ARM -> limbRect(face, 32, 36, 40, 44, 36, 40, 52);
         };
     }
 
     private static UvRect limbRect(Face face, int right, int front, int left,
-                                   int back, int top, int bottom, int unused) {
+                                   int back, int top, int bottom, int rowY) {
         return switch (face) {
-            case RIGHT -> new UvRect(right, 20, front, 32);
-            case FRONT -> new UvRect(front, 20, left, 32);
-            case LEFT -> new UvRect(left, 20, back, 32);
-            case BACK -> new UvRect(back, 20, back + (front - right), 32);
-            case TOP -> new UvRect(top, 16, bottom, 20);
-            case BOTTOM -> new UvRect(bottom, 16, bottom + (front - right), 20);
+            case RIGHT -> new UvRect(right, rowY, front, rowY + 12);
+            case FRONT -> new UvRect(front, rowY, left, rowY + 12);
+            case LEFT -> new UvRect(left, rowY, back, rowY + 12);
+            case BACK -> new UvRect(back, rowY, back + (front - right), rowY + 12);
+            case TOP -> new UvRect(top, rowY - 4, bottom, rowY);
+            case BOTTOM -> new UvRect(bottom, rowY - 4, bottom + (front - right), rowY);
         };
     }
 }

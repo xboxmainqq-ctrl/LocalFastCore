@@ -28,7 +28,7 @@ public final class BedrockAndroidPacketCodec {
     }
 
     /** Decodes the single, uncompressed NetworkSettings response packet. */
-    public static NetherNetAndroidClient.NetworkSettings decodeNetworkSettings(byte[] batchBytes) {
+    public static BedrockAndroidNetworkSettings decodeNetworkSettings(byte[] batchBytes) {
         if (batchBytes == null || batchBytes.length == 0 || batchBytes.length > 1024) {
             throw new IllegalArgumentException("NetworkSettings batch size is invalid");
         }
@@ -59,13 +59,13 @@ public final class BedrockAndroidPacketCodec {
         if (!Float.isFinite(throttleScalar)) {
             throw new IllegalArgumentException("Invalid client throttle scalar");
         }
-        return new NetherNetAndroidClient.NetworkSettings(
+        return new BedrockAndroidNetworkSettings(
                 threshold, algorithm, throttle, throttleThreshold, throttleScalar);
     }
 
     /** Encodes LoginPacket, packet-batch framing, and negotiated compression envelope. */
     public static byte[] encodeLoginBatch(String connectionRequestJson,
-                                          NetherNetAndroidClient.NetworkSettings settings) {
+                                          BedrockAndroidNetworkSettings settings) {
         if (connectionRequestJson == null || settings == null) {
             throw new IllegalArgumentException("Connection Request and NetworkSettings are required");
         }
@@ -91,7 +91,7 @@ public final class BedrockAndroidPacketCodec {
     }
 
     private static ByteBuffer encodeAfterNetworkSettings(
-            ByteBuffer batch, NetherNetAndroidClient.NetworkSettings settings) {
+            ByteBuffer batch, BedrockAndroidNetworkSettings settings) {
         boolean disabled = settings.compressionThreshold() == 0;
         boolean belowThreshold = batch.remaining() < settings.compressionThreshold();
         if (settings.compressionAlgorithm() == 0xffff || disabled || belowThreshold) {

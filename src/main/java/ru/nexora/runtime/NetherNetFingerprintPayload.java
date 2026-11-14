@@ -22,8 +22,28 @@ public record NetherNetFingerprintPayload(List<Fingerprint> fingerprints) {
 
     public static NetherNetFingerprintPayload fromSdp(NetherNetSdpDocument document) {
         Objects.requireNonNull(document, "document");
+        return fromFingerprintLines(document.fingerprintLines());
+    }
+
+    public static NetherNetFingerprintPayload fromSdpText(String sdp) {
+        Objects.requireNonNull(sdp, "sdp");
+        if (sdp.getBytes(java.nio.charset.StandardCharsets.UTF_8).length
+                > NetherNetSdpDocument.DEFAULT_MAX_SDP_BYTES || sdp.indexOf('\\0') >= 0) {
+            throw new IllegalArgumentException("SDP is invalid or exceeds the configured limit");
+        }
+        List<String> lines = List.of(sdp.split("\\r?\\n", -1));
+        List<String> fingerprintLines = lines.stream()
+                .filter(line -> line.startsWith("a=fingerprint:")).toList();
+        return fromFingerprintLines(fingerprintLines);
+    }
+
+    public static NetherNetFingerprintPayload fromFingerprintLines(List<String> lines) {
+        Objects.requireNonNull(lines, "lines");
         List<Fingerprint> parsed = new ArrayList<>();
-        for (String line : document.fingerprintLines()) {
+        for (String line : lines) {
+            if (line == null || !line.startsWith("a=fingerprint:")) {
+                throw new IllegalArgumentException("Expected SDP a=fingerprint attribute");
+            }
             String value = line.substring("a=fingerprint:".length()).trim();
             int separator = value.indexOf(' ');
             if (separator <= 0 || separator == value.length() - 1) {

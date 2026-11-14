@@ -15,8 +15,9 @@ import java.util.Objects;
 /**
  * Parses the public structure of a NetherNet identity assertion.
  *
- * <p>This class only validates encoding and shape. It does not validate the
- * GameServerToken issuer/signature, trust claims, or verify the detached JWS.</p>
+ * <p>This class validates bounded JSON/JWT/JWS structure and expected token
+ * issuer/audience fields. It does not verify the GameServerToken signature,
+ * expiry, or detached fingerprint signature.</p>
  */
 public record NetherNetIdentityAssertion(
         String identityProviderDomain,
@@ -206,12 +207,12 @@ public record NetherNetIdentityAssertion(
             throw new IllegalArgumentException("cpk must be a Base64 DER SubjectPublicKeyInfo", invalidKey);
         }
         long exp = readLongClaim(claimsJson, "exp", true, 0L);
-        Long nbf = readLongClaim(claimsJson, "nbf", false, 0L);
+        Long nbf = readLongClaim(claimsJson, "nbf", false, null);
         return new JwtShape(keyId, algorithm, cpk, issuer, audience, exp, nbf,
                 claims.get("xid"), claims.get("xname"));
     }
 
-    private static long readLongClaim(String json, String name, boolean required, long fallback) {
+    private static Long readLongClaim(String json, String name, boolean required, Long fallback) {
         try (JsonParser parser = JSON.createParser(json)) {
             if (parser.nextToken() != JsonToken.START_OBJECT) {
                 throw new IllegalArgumentException("JWT claims must be a JSON object");
@@ -249,44 +250,17 @@ public record NetherNetIdentityAssertion(
             throw new IllegalArgumentException("Fingerprints must be a detached compact JWS");
         }
         byte[] headerBytes = decodeBase64Url(parts[0], "JWS header");
-        decodeBase64Url(parts[2], "JWS signature");
+        byte[] signatureBytes = decodeBase64Url(parts[2], "JWS signature");
+        if (signatureBytes.length == 0) {
+            throw new IllegalArgumentException("Detached JWS signature must not be empty");
+        }
         String headerJson = decodeUtf8(headerBytes, "JWS protected header");
         Map<String, String> header = readStringObject(headerJson, "JWS protected header", "alg");
         String algorithm = required(header, "alg");
-        if ("none".equalsIgnoreCase(algorithm) || algorithm.length() > 32) {
-            throw new IllegalArgumentException("JWS algorithm is not permitted");
+        if (!"ES384".equals(algorithm)) {
+            throw new IllegalArgumentException("NetherNet client fingerprint JWS must use ES384");
         }
         return algorithm;
-    }
-
-    private static void requireObjectClaim(String json, String claimName) {
-        try (JsonParser parser = JSON.createParser(json)) {
-            if (parser.nextToken() != JsonToken.START_OBJECT) {
-                throw new IllegalArgumentException("JWT claims must be a JSON object");
-            }
-            boolean found = false;
-            while (parser.nextToken() == JsonToken.FIELD_NAME) {
-                String name = parser.currentName();
-                JsonToken value = parser.nextToken();
-                if (claimName.equals(name)) {
-                    if (value != JsonToken.START_OBJECT) {
-                        throw new IllegalArgumentException("JWT " + claimName + " claim must be a JWK object");
-                    }
-                    found = true;
-                    parser.skipChildren();
-                } else {
-                    parser.skipChildren();
-                }
-            }
-            if (parser.nextToken() != null) {
-                throw new IllegalArgumentException("JWT claims contain trailing JSON data");
-            }
-            if (!found) {
-                throw new IllegalArgumentException("JWT claims are missing " + claimName);
-            }
-        } catch (IOException e) {
-            throw invalid("Malformed JWT claims JSON", e);
-        }
     }
 
     private static String decodeUtf8(byte[] bytes, String label) {

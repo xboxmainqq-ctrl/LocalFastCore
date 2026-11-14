@@ -55,7 +55,19 @@ The current `.nxw` format is an internal NEXORA development format. Version 3 st
 
 ## Important limitation
 
-This is still not a playable or Bedrock-compatible server release. The repository now contains HTTP/HTTPS NetherNet signaling, a desktop Java WebRTC peer-host adapter, Android-side offerer/signaling/data-channel code, and operator identity verification with TOFU for plaintext HTTP. These components have authored tests, but a successful CI/build and real Android-to-server session have not yet been confirmed. The Android client does not yet acquire official Microsoft/Xbox credentials or produce a live authenticated GameServerToken, so real-account interoperability is not established. The Bedrock layer currently handles selected 1.26.60 packets, post-login resource-pack negotiation, StartGame, experimental full-column LevelChunk serialization, and a SubChunkRequest response path with block/liquid palettes. These pieces are not yet a production-complete or live-client-verified chunk pipeline: biome delivery through the active SubChunk path, computed heightmaps, real block entities, exact client acceptance, production composition, Bedrock LevelDB storage, entities, inventory, and gameplay remain incomplete. The server WebRTC profile currently expects a directly reachable UDP host candidate and does not configure STUN/TURN relay traversal.
+This is still not a playable or Bedrock-compatible server release. The repository now contains HTTP/HTTPS NetherNet signaling, a desktop Java WebRTC peer-host adapter, Android-side offerer/signaling/data-channel code, and operator identity verification with TOFU for plaintext HTTP. These components have authored tests, but a successful CI/build and real Android-to-server session have not yet been confirmed. The Android client does not yet acquire official Microsoft/Xbox credentials or produce a live authenticated GameServerToken, so real-account interoperability is not established. The Bedrock layer currently handles selected 1.26.60 packets, post-login resource-pack negotiation, StartGame, experimental full-column LevelChunk serialization, and a SubChunkRequest response path with block/liquid palettes and primary heightmap data. These pieces are not yet a production-complete or live-client-verified chunk pipeline: biome delivery through the active SubChunk path, render-heightmap computation, real block entities, exact client acceptance, production network composition, Bedrock LevelDB storage, entities, inventory, and gameplay remain incomplete. The server WebRTC profile currently expects a directly reachable UDP host candidate and does not configure STUN/TURN relay traversal.
+
+## Launch the development runtime
+
+The Maven package phase creates an executable shaded JAR with the runtime dependencies:
+
+    mvn --batch-mode --no-transfer-progress clean verify
+    java -jar target/nexora-runtime-0.1.0-SNAPSHOT.jar --help
+    java -jar target/nexora-runtime-0.1.0-SNAPSHOT.jar --data-dir ./nexora-data --seed 0
+
+The first launch creates a flat test world and its spawn chunk. Existing `.nxw` world data is loaded on later launches and saved again during graceful shutdown (Ctrl+C). The default data directory is `./nexora-data`.
+
+**This is an offline development bootstrap, not a playable multiplayer release.** It starts world storage, chunk-generation workers, and the 20 TPS game loop, but deliberately does not bind a NetherNet signaling endpoint or accept Android clients yet. The production login identity, exact Bedrock block palette, and live client session still need to be completed and tested.
 
 ## Build
 

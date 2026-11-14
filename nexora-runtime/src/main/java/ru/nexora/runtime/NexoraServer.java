@@ -13,6 +13,7 @@ import java.util.Objects;
  */
 public final class NexoraServer implements AutoCloseable {
     private final List<RuntimeModule> modules = new ArrayList<>();
+    private final List<String> registeredModuleIds = new ArrayList<>();
     private final List<RuntimeModule> activeModules = new ArrayList<>();
     private ServerState state = ServerState.STOPPED;
 
@@ -25,10 +26,11 @@ public final class NexoraServer implements AutoCloseable {
         if (id.isBlank()) {
             throw new IllegalArgumentException("Module id must not be blank");
         }
-        if (modules.stream().anyMatch(existing -> existing.id().equals(id))) {
+        if (registeredModuleIds.contains(id)) {
             throw new IllegalArgumentException("Duplicate runtime module id: " + id);
         }
         modules.add(module);
+        registeredModuleIds.add(id);
     }
 
     public synchronized ServerState state() {
@@ -36,7 +38,7 @@ public final class NexoraServer implements AutoCloseable {
     }
 
     public synchronized List<String> moduleIds() {
-        return modules.stream().map(RuntimeModule::id).toList();
+        return List.copyOf(registeredModuleIds);
     }
 
     public synchronized void start() {

@@ -32,6 +32,7 @@ public record NetherNetServerInfo(
         return "{"
                 + "\"name\":" + quote(name) + ","
                 + "\"protocol\":" + protocol + ","
+                + "\"nexoraProtocol\":" + NexoraPrivateProtocolCodec.MAJOR_VERSION + ","
                 + "\"version\":" + quote(version) + ","
                 + "\"level\":" + quote(level) + ","
                 + "\"players\":" + players + ","

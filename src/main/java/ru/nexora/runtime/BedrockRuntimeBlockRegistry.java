@@ -16,7 +16,18 @@ public interface BedrockRuntimeBlockRegistry {
 
     /** Computes hashed block IDs from the NBT representation of each state. */
     static BedrockRuntimeBlockRegistry hashing() {
-        return BedrockBlockStateHash::hash;
+        java.util.concurrent.ConcurrentMap<Integer, BlockState> statesByHash =
+                new java.util.concurrent.ConcurrentHashMap<>();
+        return state -> {
+            Objects.requireNonNull(state, "state");
+            int hash = BedrockBlockStateHash.hash(state);
+            BlockState previous = statesByHash.putIfAbsent(hash, state);
+            if (previous != null && !previous.equals(state)) {
+                throw new IllegalArgumentException(
+                        "Bedrock block-state hash collision between " + previous + " and " + state);
+            }
+            return hash;
+        };
     }
 
     static BedrockRuntimeBlockRegistry of(Map<BlockState, Integer> entries) {

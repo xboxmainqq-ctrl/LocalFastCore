@@ -56,7 +56,7 @@ public record NetherNetSdpDocument(
         String encodedIdentity = null;
         int identityLineIndex = -1;
         int firstMediaLine = -1;
-        int lastFingerprintLine = -1;
+        int lastSessionFingerprintLine = -1;
 
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i];
@@ -65,7 +65,9 @@ public record NetherNetSdpDocument(
             }
             if (line.startsWith("a=fingerprint:")) {
                 fingerprints.add(line);
-                lastFingerprintLine = i;
+                if (firstMediaLine < 0) {
+                    lastSessionFingerprintLine = i;
+                }
             }
             if (line.startsWith("a=identity:")) {
                 if (encodedIdentity != null) {
@@ -82,7 +84,7 @@ public record NetherNetSdpDocument(
         if (encodedIdentity == null || encodedIdentity.isBlank()) {
             throw new IllegalArgumentException("SDP offer is missing a=identity");
         }
-        if (lastFingerprintLine < 0 || identityLineIndex <= lastFingerprintLine) {
+        if (lastFingerprintLine < 0 || identityLineIndex <= lastSessionFingerprintLine) {
             throw new IllegalArgumentException("a=identity must follow session fingerprint attributes");
         }
         if (firstMediaLine >= 0 && identityLineIndex >= firstMediaLine) {

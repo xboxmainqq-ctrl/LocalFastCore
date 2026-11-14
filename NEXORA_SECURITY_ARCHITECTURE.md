@@ -60,16 +60,19 @@ Repository owners should configure these settings in GitHub (settings are accoun
 
 ## Layer 4 — NEXORA runtime security
 
-Planned components:
+Implemented runtime security foundation:
 
-- `SecurityManager`: coordinates checks and exposes a stable API.
-- `IntegrityChecker`: verifies configured files and release manifests; reports unexpected changes.
-- `SignatureVerifier`: verifies signed manifests using a public key shipped with the verifier.
+- `NexoraSecurityManager`: coordinates integrity checks and audit events; registered as a NEXORA service.
+- `IntegrityChecker`: computes SHA-256 for regular files, rejects symbolic links, and never modifies the checked file.
+- `AuditLogger`: appends escaped JSON-lines events to the security audit log.
+
+Still planned:
+
+- `SignatureVerifier`: local verification of release bundles or trusted manifests where offline verification is required. Release signing currently happens in GitHub Actions through Cosign/Sigstore, not inside the server plugin.
 - `AccessController`: checks NEXORA-owned permissions for sensitive administrative actions.
-- `AuditLogger`: records security-relevant operator actions and integrity events.
 - `BackupManager`: coordinates safe backup/restore workflows with explicit operator approval.
 
-These components must be introduced incrementally with tests. The first runtime implementation should report and audit; it must not silently delete, rewrite, or quarantine files. Any enforcement mode must be explicitly configured and must preserve a recovery path.
+The runtime foundation is report-and-audit only. It must not silently delete, rewrite, quarantine files, disable plugins, or stop the server after an integrity mismatch. Any future enforcement mode must be explicitly configured, tested on a separate server copy, and preserve a recovery path.
 
 ## Compatibility and trust boundaries
 

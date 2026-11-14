@@ -48,6 +48,23 @@ class BedrockWorldStartupHandlerTest {
         assertEquals(0, Byte.toUnsignedInt(firstSkeleton.get())); // cache disabled
     }
 
+
+    @Test
+    void startsWithComputedHashProfileWhenStartGameAdvertisesHashes() throws Exception {
+        InMemoryWorld world = new InMemoryWorld("overworld", new WorldHeight(-64, 320));
+        world.loadChunk(new GeneratedChunk(new ChunkPosition(0, 0), Map.of()));
+        FakeConnection connection = new FakeConnection(TransportSendResult.ACCEPTED);
+        BedrockWorldStartupHandler startup = new BedrockWorldStartupHandler(
+                NETWORK, world, 0, -1, List.of(new ChunkPosition(0, 0)),
+                BedrockRuntimeBlockRegistryProfile.hashing(),
+                (peer, player) -> settings(0, true));
+
+        startup.start(connection, player()).toCompletableFuture().join();
+
+        assertEquals(1, connection.sent.size());
+        assertTrue(connection.isOpen());
+    }
+
     @Test
     void refusesToStartBeforeSpawnChunksAreLoaded() throws Exception {
         InMemoryWorld world = new InMemoryWorld("overworld", new WorldHeight(-64, 320));

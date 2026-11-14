@@ -55,6 +55,15 @@ class NetherNetSdpDocumentTest {
     }
 
     @Test
+    void permitsMediaLevelFingerprintsAfterSessionIdentity() {
+        String sdp = "v=0\na=fingerprint:sha-256 AA:BB\na=identity:" + IDENTITY
+                + "\nm=application 9 x\na=fingerprint:sha-256 CC:DD";
+        NetherNetSdpDocument parsed = NetherNetSdpDocument.parseOffer(sdp);
+        assertEquals(2, parsed.fingerprintLines().size());
+        assertTrue(parsed.webRtcSdp().contains("a=fingerprint:sha-256 CC:DD"));
+    }
+
+    @Test
     void rejectsIdentityWithoutFingerprint() {
         assertThrows(IllegalArgumentException.class, () ->
                 NetherNetSdpDocument.parseOffer("v=0\na=identity:" + IDENTITY));

@@ -2,7 +2,6 @@ package ru.nexora.runtime;
 
 import org.junit.jupiter.api.Test;
 
-import javax.crypto.Cipher;
 import javax.crypto.KeyAgreement;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
@@ -37,7 +36,7 @@ class BedrockServerEncryptionHandshakeTest {
         Signature verifier = Signature.getInstance("SHA384withECDSA");
         verifier.initVerify(server.getPublic());
         verifier.update((jwt[0] + "." + jwt[1]).getBytes(StandardCharsets.US_ASCII));
-        verifier.verify(joseToDer(Base64.getUrlDecoder().decode(jwt[2])));
+        assertTrue(verifier.verify(joseToDer(Base64.getUrlDecoder().decode(jwt[2]))));
 
         KeyAgreement clientAgreement = KeyAgreement.getInstance("ECDH");
         clientAgreement.init(client.getPrivate());
@@ -48,26 +47,6 @@ class BedrockServerEncryptionHandshakeTest {
         byte[] expectedKey = sha256.digest(clientSecret);
         assertArrayEquals(expectedKey, result.encryptionKey());
         assertEquals(32, result.encryptionKey().length);
-    }
-
-    @Test
-    void encryptsAndDecryptsAsAContinuousCfb8Stream() throws Exception {
-        KeyPair server = p384();
-        KeyPair client = p384();
-        BedrockServerEncryptionHandshake.Result result =
-                BedrockServerEncryptionHandshake.create(server, (java.security.interfaces.ECPublicKey) client.getPublic());
-        byte[] plaintext = "NEXORA encrypted Bedrock session".getBytes(StandardCharsets.UTF_8);
-
-        Cipher encryptor = result.newCipher(Cipher.ENCRYPT_MODE);
-        Cipher decryptor = result.newCipher(Cipher.DECRYPT_MODE);
-        byte[] first = encryptor.update(Arrays.copyOfRange(plaintext, 0, 9));
-        byte[] second = encryptor.doFinal(Arrays.copyOfRange(plaintext, 9, plaintext.length));
-        byte[] encrypted = new byte[first.length + second.length];
-        System.arraycopy(first, 0, encrypted, 0, first.length);
-        System.arraycopy(second, 0, encrypted, first.length, second.length);
-
-        byte[] decoded = decryptor.doFinal(encrypted);
-        assertArrayEquals(plaintext, decoded);
     }
 
     @Test

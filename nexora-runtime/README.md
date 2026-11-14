@@ -7,12 +7,13 @@ This module is the beginning of the independent NEXORA server process. It has **
 - Standalone Java 21 Maven module.
 - Explicit server lifecycle states.
 - Runtime module registration with unique identifiers.
+- Immutable, validated standalone server settings (Bedrock UDP default port, player cap, tick rate, view distance, online-mode flag, and normalized data directory).
 - Deterministic startup order and reverse shutdown order.
 - Startup rollback: modules already started are stopped if a later module fails.
 - Shutdown failure reporting preserves the original cause and suppressed failures.
 - Failed shutdown modules remain available for a later retry; modules that stopped successfully are not stopped twice.
 - Runtime module contract documents cleanup requirements for partial startup and retryable shutdown.
-- Unit tests cover lifecycle ordering, rollback, duplicate/late registration, idempotent stop, and shutdown retry.
+- Unit tests cover lifecycle ordering, rollback, duplicate/late registration, idempotent stop, shutdown retry, and server-settings validation.
 
 ## Important limitation
 

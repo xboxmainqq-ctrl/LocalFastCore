@@ -17,6 +17,9 @@ public final class NetherNetIdentityValidator {
 
     public VerifiedIdentity validate(NetherNetSdpDocument offer) throws Exception {
         Objects.requireNonNull(offer, "offer");
+        if (offer.identityEnvelopeJson() == null) {
+            throw new SecurityException("Authenticated client identity is required");
+        }
         NetherNetIdentityAssertion assertion = NetherNetIdentityAssertion.parse(offer);
         NetherNetGameServerTokenVerifier.VerifiedClientIdentity tokenIdentity =
                 tokenVerifier.verify(assertion);

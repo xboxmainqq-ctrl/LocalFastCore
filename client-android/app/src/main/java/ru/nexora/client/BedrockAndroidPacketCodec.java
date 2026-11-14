@@ -165,8 +165,9 @@ public final class BedrockAndroidPacketCodec {
     }
 
     public static BedrockAndroidPlayStatus decodePlayStatus(BedrockAndroidServerPacket packet) {
-        if (packet == null || packet.packetId() != 2) {
-            throw new IllegalArgumentException("Expected Bedrock PlayStatus packet ID 2");
+        if (packet == null || packet.packetId() != 2
+                || packet.senderSubClientId() != 0 || packet.targetSubClientId() != 0) {
+            throw new IllegalArgumentException("Expected un-routed Bedrock PlayStatus packet ID 2");
         }
         byte[] payload = packet.payload();
         if (payload.length != Integer.BYTES) {

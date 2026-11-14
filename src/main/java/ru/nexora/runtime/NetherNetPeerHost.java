@@ -25,6 +25,16 @@ public interface NetherNetPeerHost extends AutoCloseable {
      */
     CompletionStage<String> createAnswer(String networkId, String webRtcOfferSdp);
 
+    /**
+     * Accepts an offer whose identity was already verified by the signaling
+     * validator and binds that identity to the resulting DTLS data channels.
+     */
+    default CompletionStage<String> createAnswer(
+            String networkId, String webRtcOfferSdp,
+            NetherNetIdentityValidator.VerifiedIdentity identity) {
+        return createAnswer(networkId, webRtcOfferSdp);
+    }
+
     /** Cancels and releases a peer whose signaling request did not complete. */
     default void cancel(String networkId) {
     }

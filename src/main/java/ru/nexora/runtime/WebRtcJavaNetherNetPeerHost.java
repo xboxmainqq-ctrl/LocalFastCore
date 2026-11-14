@@ -116,10 +116,6 @@ public final class WebRtcJavaNetherNetPeerHost
             NetherNetIdentityValidator.VerifiedIdentity authenticatedIdentity) {
         Objects.requireNonNull(networkId, "networkId");
         Objects.requireNonNull(webRtcOfferSdp, "webRtcOfferSdp");
-        if (authenticatedIdentity == null) {
-            return CompletableFuture.failedFuture(
-                    new SecurityException("A verified NetherNet identity is required"));
-        }
         PeerConnectionFactory currentFactory = factory;
         if (closed || currentFactory == null) {
             return CompletableFuture.failedFuture(
@@ -509,8 +505,8 @@ public final class WebRtcJavaNetherNetPeerHost
         }
 
         @Override
-        public NetherNetIdentityValidator.VerifiedIdentity authenticatedIdentity() {
-            return session.authenticatedIdentity;
+        public java.util.Optional<NetherNetIdentityValidator.VerifiedIdentity> authenticatedIdentity() {
+            return java.util.Optional.ofNullable(session.authenticatedIdentity);
         }
 
         @Override

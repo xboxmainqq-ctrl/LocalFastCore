@@ -503,18 +503,19 @@ public final class NetherNetAndroidClient implements AutoCloseable {
 
     /**
      * Sends the Bedrock Login packet after NetworkSettings has been negotiated.
-     * The caller must supply a complete Connection Request JSON produced by a
-     * separate Microsoft/Xbox credential provider.
+     * The caller must supply both the authenticated auth-payload JSON and the
+     * client-data JWT produced by a separate Microsoft/Xbox credential provider.
      */
-    public boolean sendLogin(String connectionRequestJson) {
-        if (connectionRequestJson == null || !networkSettingsReceived || !isConnected()
+    public boolean sendLogin(String authenticationPayloadJson, String clientDataJwt) {
+        if (authenticationPayloadJson == null || clientDataJwt == null
+                || !networkSettingsReceived || !isConnected()
                 || !loginSent.compareAndSet(false, true)) {
             return false;
         }
         final byte[] framedBatch;
         try {
             framedBatch = BedrockAndroidPacketCodec.encodeLoginBatch(
-                    connectionRequestJson, networkSettings);
+                    authenticationPayloadJson, clientDataJwt, networkSettings);
         } catch (RuntimeException failure) {
             loginSent.set(false);
             throw failure;

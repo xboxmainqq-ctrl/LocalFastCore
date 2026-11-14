@@ -27,6 +27,10 @@ final class NexoraSkinFile {
     private NexoraSkinFile() {
     }
 
+    static File storedFile(Context context) {
+        return new File(new File(context.getFilesDir(), "nexora-skins"), "player.png");
+    }
+
     static File importPng(Context context, Uri source) throws Exception {
         if (context == null || source == null) {
             throw new IllegalArgumentException("Файл не выбран");

@@ -21,6 +21,7 @@ public final class NexoraPrivateProtocolCodec {
     private static final int TYPE_CLIENT_HELLO = 1;
     private static final int TYPE_SERVER_HELLO = 2;
     private static final int TYPE_REJECT = 3;
+    private static final int TYPE_WORLD_INFO = 4;
 
     private NexoraPrivateProtocolCodec() {
     }
@@ -64,6 +65,29 @@ public final class NexoraPrivateProtocolCodec {
         return output.array();
     }
 
+    public static byte[] encodeWorldInfo(NexoraWorldInfo world) {
+        Objects.requireNonNull(world, "world");
+        byte[] worldId = encodeText(world.worldId(), 64, "worldId");
+        ByteBuffer output = header(TYPE_WORLD_INFO, 1 + worldId.length + 7 * Integer.BYTES);
+        output.put((byte) worldId.length).put(worldId);
+        output.putInt(world.minY()).putInt(world.maxYExclusive());
+        output.putInt(world.spawnX()).putInt(world.spawnY()).putInt(world.spawnZ());
+        output.putInt(world.tickRate()).putInt(world.loadedChunks());
+        return output.array();
+    }
+
+    public static NexoraWorldInfo decodeWorldInfo(ByteBuffer source) {
+        ByteBuffer input = checkedServerHeader(source);
+        int type = Byte.toUnsignedInt(source.get(source.position() + 6));
+        if (type != TYPE_WORLD_INFO) throw new IllegalArgumentException("Expected NEXORA WorldInfo");
+        int idLength = Byte.toUnsignedInt(readByte(input, "world id length"));
+        if (idLength < 1 || idLength > 64 || input.remaining() != idLength + 7 * Integer.BYTES)
+            throw new IllegalArgumentException("Malformed NEXORA WorldInfo");
+        String worldId = decodeText(input, idLength);
+        return new NexoraWorldInfo(worldId, input.getInt(), input.getInt(), input.getInt(),
+                input.getInt(), input.getInt(), input.getInt(), input.getInt());
+    }
+
     public static ServerResponse decodeServerResponse(ByteBuffer source) {
         Objects.requireNonNull(source, "source");
         ByteBuffer original = source.slice();
@@ -101,7 +125,7 @@ public final class NexoraPrivateProtocolCodec {
             }
             return new ServerResponse(false, null, 0, code, decodeText(input, length));
         }
-        throw new IllegalArgumentException("Unexpected NEXORA server message type");
+        throw new IllegalArgumentException("Unexpected NEXORA server response type");
     }
 
     private static ByteBuffer header(int type, int payloadLength) {
@@ -115,24 +139,26 @@ public final class NexoraPrivateProtocolCodec {
     }
 
     private static ByteBuffer checkedHeader(ByteBuffer source, int expectedType) {
-        Objects.requireNonNull(source, "source");
-        ByteBuffer input = source.slice().order(ByteOrder.BIG_ENDIAN);
-        if (input.remaining() < 8 || input.remaining() > MAX_MESSAGE_BYTES) {
-            throw new IllegalArgumentException("Invalid NEXORA message size");
-        }
-        checkMagic(input);
-        int major = Byte.toUnsignedInt(input.get());
-        int minor = Byte.toUnsignedInt(input.get());
-        int type = Byte.toUnsignedInt(input.get());
-        if (type != expectedType) {
-            throw new IllegalArgumentException("Unexpected NEXORA message type");
-        }
-        // Version is returned to the caller for deterministic negotiation/rejection.
-        input.position(0);
-        input.position(7);
+        ByteBuffer input = checkedServerHeader(source);
+        int type = Byte.toUnsignedInt(source.get(source.position() + 6));
+        if (type != expectedType) throw new IllegalArgumentException("Unexpected NEXORA message type");
         return input;
     }
 
+    private static ByteBuffer checkedServerHeader(ByteBuffer source) {
+        Objects.requireNonNull(source, "source");
+        ByteBuffer input = source.slice().order(ByteOrder.BIG_ENDIAN);
+        if (input.remaining() < 7 || input.remaining() > MAX_MESSAGE_BYTES)
+            throw new IllegalArgumentException("Invalid NEXORA message size");
+        checkMagic(input);
+        int major = Byte.toUnsignedInt(input.get());
+        int minor = Byte.toUnsignedInt(input.get());
+        input.get();
+        if (major != MAJOR_VERSION || minor > MINOR_VERSION)
+            throw new IllegalArgumentException("Unsupported NEXORA protocol version " + major + "." + minor);
+        input.position(7);
+        return input;
+    }
     private static void checkMagic(ByteBuffer input) {
         for (byte expected : MAGIC) {
             if (!input.hasRemaining() || input.get() != expected) {

@@ -149,6 +149,10 @@ public final class AndroidNetherNetServerIdentityVerifier {
         if (!approved) {
             return;
         }
+        if (trustStore == null || fingerprint == null
+                || !fingerprint.matches("[0-9a-f]{64}")) {
+            throw new IllegalArgumentException("Invalid operator key fingerprint");
+        }
         trustStore.edit().putBoolean("operator:" + fingerprint, true).apply();
     }
 

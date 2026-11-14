@@ -79,6 +79,11 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
             }
 
             Optional<ByteBuffer> outbound = result.outboundFrame();
+            if (result.status() == BedrockHandshakeFrameStatus.NETWORK_SETTINGS_RESPONSE_READY
+                    && outbound.isEmpty()) {
+                close(session, "NetworkSettings response frame is missing");
+                return;
+            }
             if (outbound.isPresent()) {
                 TransportSendResult sent = session.connection.send(
                         outbound.get(), DeliveryMode.RELIABLE_ORDERED);

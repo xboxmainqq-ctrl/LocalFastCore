@@ -22,7 +22,7 @@ import java.util.function.Consumer;
 public final class BedrockInitialTransportRouter implements Consumer<TransportConnection>, AutoCloseable {
     private final BedrockNetworkSettings networkSettings;
     private final LoginAuthenticator loginAuthenticator;
-    private final Consumer<TransportConnection> playListener;
+    private final java.util.function.BiConsumer<TransportConnection, BedrockAuthenticatedPlayer> playListener;
     private final BiConsumer<TransportConnection, TransportMessage> playMessageHandler;
     private final Duration handshakeTimeout;
     private final ScheduledExecutorService timeoutExecutor;
@@ -31,7 +31,7 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
 
     public BedrockInitialTransportRouter(BedrockNetworkSettings networkSettings,
                                          LoginAuthenticator loginAuthenticator,
-                                         Consumer<TransportConnection> playListener,
+                                         java.util.function.BiConsumer<TransportConnection, BedrockAuthenticatedPlayer> playListener,
                                          BiConsumer<TransportConnection, TransportMessage> playMessageHandler) {
         this(networkSettings, loginAuthenticator, playListener, playMessageHandler,
                 Duration.ofSeconds(60));
@@ -39,7 +39,7 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
 
     public BedrockInitialTransportRouter(BedrockNetworkSettings networkSettings,
                                          LoginAuthenticator loginAuthenticator,
-                                         Consumer<TransportConnection> playListener,
+                                         java.util.function.BiConsumer<TransportConnection, BedrockAuthenticatedPlayer> playListener,
                                          BiConsumer<TransportConnection, TransportMessage> playMessageHandler,
                                          Duration handshakeTimeout) {
         this.networkSettings = Objects.requireNonNull(networkSettings, "networkSettings");
@@ -150,7 +150,7 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
             close(session, "Bedrock Connection Request JSON is invalid");
             return;
         }
-        final CompletionStage<Boolean> authentication;
+        final CompletionStage<BedrockAuthenticatedPlayer> authentication;
         try {
             authentication = loginAuthenticator.authenticate(session.connection, login, connectionRequest);
             if (authentication == null) {
@@ -165,24 +165,47 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
             if (session.closed.get()) {
                 return;
             }
-            if (failure != null || !Boolean.TRUE.equals(accepted)) {
+            if (failure != null || accepted == null) {
                 close(session, "Login authentication was rejected");
                 return;
             }
             synchronized (session) {
                 cancelTimeout(session);
-                if (session.closed.get()
-                        || session.processor.markAuthenticated() != BedrockHandshakeResult.ACCEPTED) {
+                if (session.closed.get()) {
+                    return;
+                }
+                ByteBuffer loginSuccess = encodeLoginSuccessFrame();
+                TransportSendResult sent = session.connection.send(
+                        loginSuccess, DeliveryMode.RELIABLE_ORDERED);
+                if (sent != TransportSendResult.ACCEPTED) {
+                    close(session, "Could not send Bedrock LoginSuccess status");
+                    return;
+                }
+                if (session.processor.markAuthenticated() != BedrockHandshakeResult.ACCEPTED) {
                     close(session, "Could not enter Bedrock play state");
                     return;
                 }
                 try {
-                    playListener.accept(session.connection);
+                    playListener.accept(session.connection, accepted);
                 } catch (RuntimeException failureToStartPlay) {
                     close(session, "Could not initialize Bedrock play session");
                 }
             }
         });
+    }
+
+    private ByteBuffer encodeLoginSuccessFrame() {
+        BedrockGamePacket packet = new BedrockGamePacket(
+                new BedrockPacketHeader(BedrockPlayStatusPacketCodec.PACKET_ID, 0, 0),
+                bytes(BedrockPlayStatusPacketCodec.encodePayload(BedrockPlayStatus.LOGIN_SUCCESS)));
+        ByteBuffer batch = BedrockPacketBatchCodec.encodeUncompressed(java.util.List.of(packet));
+        return BedrockBatchCompressionCodec.encodeAfterNetworkSettings(batch, networkSettings);
+    }
+
+    private static byte[] bytes(ByteBuffer source) {
+        byte[] value = new byte[source.remaining()];
+        source.get(value);
+        return value;
     }
 
     private void remove(Session session) {
@@ -238,7 +261,7 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
 
     @FunctionalInterface
     public interface LoginAuthenticator {
-        CompletionStage<Boolean> authenticate(TransportConnection connection,
+        CompletionStage<BedrockAuthenticatedPlayer> authenticate(TransportConnection connection,
                                               BedrockLoginPacket login,
                                               BedrockConnectionRequest connectionRequest);
     }

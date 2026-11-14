@@ -8,6 +8,9 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.function.Function;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
 
 /** Negotiates the private NEXORA protocol and sends initial world metadata. */
 public final class NexoraPrivateProtocolHandler implements Consumer<TransportConnection> {
@@ -20,6 +23,8 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
     private final Consumer<TransportConnection> readyListener;
     private final Supplier<World> worldSupplier;
     private final Function<ChunkPosition, Boolean> chunkLoader;
+    private final Map<TransportConnection, PlayerSession> playerSessions =
+            new ConcurrentHashMap<>();
 
     public NexoraPrivateProtocolHandler(UUID serverId, int maxMessageBytes,
                                         Consumer<TransportConnection> readyListener) {
@@ -59,7 +64,14 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
     public void accept(TransportConnection connection) {
         Objects.requireNonNull(connection, "connection");
         AtomicBoolean completed = new AtomicBoolean();
-        connection.setCloseListener(event -> completed.set(true));
+        AtomicReference<PlayerSession> activeSession = new AtomicReference<>();
+        connection.setCloseListener(event -> {
+            completed.set(true);
+            PlayerSession session = activeSession.getAndSet(null);
+            if (session != null && playerSessions.remove(connection, session)) {
+                broadcastPlayerLeft(connection, session.playerId);
+            }
+        });
         connection.setMessageListener(message -> {
             if (completed.get() || !completed.compareAndSet(false, true)) {
                 connection.close();
@@ -120,14 +132,17 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 java.util.concurrent.atomic.AtomicLong lastMovementNanos =
                         new java.util.concurrent.atomic.AtomicLong();
                 NexoraMovementValidator movementValidator = new NexoraMovementValidator();
-                java.util.concurrent.atomic.AtomicReference<NexoraMovementValidator.Position> playerPosition =
-                        new java.util.concurrent.atomic.AtomicReference<>(
-                                new NexoraMovementValidator.Position(
-                                        worldInfo.spawnX() + 0.5, worldInfo.spawnY(),
-                                        worldInfo.spawnZ() + 0.5));
+                AtomicReference<NexoraMovementValidator.Position> playerPosition =
+                        new AtomicReference<>(new NexoraMovementValidator.Position(
+                                worldInfo.spawnX() + 0.5, worldInfo.spawnY(),
+                                worldInfo.spawnZ() + 0.5));
+                PlayerSession session = new PlayerSession(UUID.randomUUID(), playerPosition);
+                activeSession.set(session);
+                playerSessions.put(connection, session);
+                synchronizeNewPlayer(connection, session);
                 connection.setMessageListener(message -> {
                     if (isMovementPacket(message.payload())) {
-                        handleMovement(connection, message, playerPosition,
+                        handleMovement(connection, message, session,
                                 movementValidator, lastMovementNanos);
                     } else {
                         handleChunkRequest(connection, message, worldInfo, requestedChunks);
@@ -144,7 +159,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
 
     private void handleMovement(
             TransportConnection connection, TransportMessage message,
-            java.util.concurrent.atomic.AtomicReference<NexoraMovementValidator.Position> playerPosition,
+            PlayerSession session,
             NexoraMovementValidator validator,
             java.util.concurrent.atomic.AtomicLong lastMovementNanos) {
         if (!connection.isOpen()) return;
@@ -166,17 +181,70 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                     NexoraMovementPacketCodec.decodeClientMove(message.payload());
             World world = Objects.requireNonNull(worldSupplier.get(), "world");
             NexoraMovementValidator.Result result =
-                    validator.validate(world, playerPosition.get(), requested);
+                    validator.validate(world, session.position.get(), requested);
             if (result.accepted()) {
-                playerPosition.set(result.position());
+                session.position.set(result.position());
             }
-            NexoraMovementValidator.Position authoritative = playerPosition.get();
+            NexoraMovementValidator.Position authoritative = session.position.get();
             if (send(connection, NexoraMovementPacketCodec.encodeServerPosition(authoritative))
                     != TransportSendResult.ACCEPTED) {
                 connection.close();
+                return;
+            }
+            if (result.accepted()) {
+                broadcastPlayerState(connection, session);
             }
         } catch (RuntimeException malformedMovement) {
             connection.close();
+        }
+    }
+
+    private void synchronizeNewPlayer(TransportConnection newcomer, PlayerSession joining) {
+        for (Map.Entry<TransportConnection, PlayerSession> entry : playerSessions.entrySet()) {
+            TransportConnection peer = entry.getKey();
+            PlayerSession session = entry.getValue();
+            if (peer == newcomer || !peer.isOpen()) continue;
+            if (send(newcomer, encodePlayerState(session)) != TransportSendResult.ACCEPTED) {
+                newcomer.close();
+                return;
+            }
+            if (send(peer, encodePlayerState(joining)) != TransportSendResult.ACCEPTED) {
+                peer.close();
+            }
+        }
+    }
+
+    private void broadcastPlayerState(TransportConnection sender, PlayerSession session) {
+        byte[] packet = encodePlayerState(session);
+        for (TransportConnection peer : playerSessions.keySet()) {
+            if (peer == sender || !peer.isOpen()) continue;
+            if (send(peer, packet) != TransportSendResult.ACCEPTED) peer.close();
+        }
+    }
+
+    private void broadcastPlayerLeft(TransportConnection leaver, UUID playerId) {
+        byte[] packet = NexoraPlayerSyncCodec.encodePlayerLeft(playerId);
+        for (TransportConnection peer : playerSessions.keySet()) {
+            if (peer == leaver || !peer.isOpen()) continue;
+            if (send(peer, packet) != TransportSendResult.ACCEPTED) peer.close();
+        }
+    }
+
+    private static byte[] encodePlayerState(PlayerSession session) {
+        NexoraMovementValidator.Position position = session.position.get();
+        return NexoraPlayerSyncCodec.encodePlayerState(
+                new NexoraPlayerSyncCodec.PlayerState(
+                        session.playerId, position.x(), position.y(), position.z()));
+    }
+
+    private static final class PlayerSession {
+        private final UUID playerId;
+        private final AtomicReference<NexoraMovementValidator.Position> position;
+
+        private PlayerSession(UUID playerId,
+                              AtomicReference<NexoraMovementValidator.Position> position) {
+            this.playerId = playerId;
+            this.position = position;
         }
     }
 

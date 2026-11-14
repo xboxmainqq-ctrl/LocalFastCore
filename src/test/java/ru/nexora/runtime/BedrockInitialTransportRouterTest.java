@@ -66,6 +66,43 @@ class BedrockInitialTransportRouterTest {
     }
 
     @Test
+    void authenticatesLoginUsingIdentityVerifiedBeforeNetherNetPeerAllocation() throws Exception {
+        java.security.KeyPairGenerator generator = java.security.KeyPairGenerator.getInstance("EC");
+        generator.initialize(new java.security.spec.ECGenParameterSpec("secp384r1"));
+        java.security.interfaces.ECPublicKey key =
+                (java.security.interfaces.ECPublicKey) generator.generateKeyPair().getPublic();
+        NetherNetIdentityValidator.VerifiedIdentity identity =
+                new NetherNetIdentityValidator.VerifiedIdentity(
+                        "minecraft-services.net", "nethernet-xuid", "NetherNetPlayer", key);
+        AtomicInteger playStarts = new AtomicInteger();
+        BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
+                SETTINGS,
+                (connection, login, request) -> {
+                    fail("A verified NetherNet identity must not require a second login-token verifier");
+                    return CompletableFuture.completedFuture(null);
+                },
+                (connection, player) -> {
+                    assertEquals("nethernet-xuid", player.identityId());
+                    assertEquals("NetherNetPlayer", player.displayName());
+                    assertSame(key, player.clientIdentityPublicKey());
+                    playStarts.incrementAndGet();
+                },
+                (connection, message) -> { });
+        FakeConnection connection = new FakeConnection("peer-nethernet-auth", identity);
+        router.accept(connection);
+        connection.receive(frame(BedrockRequestNetworkSettingsPacketCodec.PACKET_ID,
+                BedrockRequestNetworkSettingsPacketCodec.encodePayload(
+                        new BedrockRequestNetworkSettingsPacket(2225)), false));
+        connection.receive(frame(BedrockLoginPacketCodec.PACKET_ID,
+                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, LOGIN_JSON)),
+                true));
+
+        assertTrue(connection.isOpen());
+        assertEquals(1, playStarts.get());
+        router.close();
+    }
+
+    @Test
     void rejectsLoginWhenAuthenticatorDeniesIt() {
         BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
                 SETTINGS,
@@ -169,8 +206,9 @@ class BedrockInitialTransportRouterTest {
                 : BedrockBatchCompressionCodec.encodeBeforeNetworkSettings(batch);
     }
 
-    private static final class FakeConnection implements TransportConnection {
+    private static final class FakeConnection implements NetherNetAuthenticatedTransportConnection {
         private final String id;
+        private final java.util.Optional<NetherNetIdentityValidator.VerifiedIdentity> authenticatedIdentity;
         private Consumer<TransportMessage> messageListener;
         private Consumer<TransportCloseEvent> closeListener;
         private final List<ByteBuffer> sent = new ArrayList<>();
@@ -178,7 +216,14 @@ class BedrockInitialTransportRouterTest {
                 new java.util.concurrent.CountDownLatch(1);
         private boolean open = true;
 
-        private FakeConnection(String id) { this.id = id; }
+        private FakeConnection(String id) { this(id, null); }
+        private FakeConnection(String id, NetherNetIdentityValidator.VerifiedIdentity identity) {
+            this.id = id;
+            this.authenticatedIdentity = java.util.Optional.ofNullable(identity);
+        }
+        @Override public java.util.Optional<NetherNetIdentityValidator.VerifiedIdentity> authenticatedIdentity() {
+            return authenticatedIdentity;
+        }
         @Override public String id() { return id; }
         @Override public boolean isOpen() { return open; }
         @Override public void setMessageListener(Consumer<TransportMessage> listener) {

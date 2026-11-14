@@ -6,7 +6,22 @@ This module is the beginning of the independent NEXORA server process. It has **
 
 The first-party Android client and server now have a versioned private NEXORA v1 handshake over the existing NetherNet reliable channel. The first exchange negotiates protocol version, returns a server identifier and message-size limit, and rejects unsupported versions. The server then sends `WorldInfo` (world id, vertical bounds, spawn point, tick rate, and loaded chunk count), which the Android client can decode and display. This is a NEXORA-only protocol, not Bedrock packet compatibility.
 
-The server-side protocol module and world metadata supplier are implemented but are not yet registered by the offline `NexoraMain` development launcher. Player authentication, chunk streaming, rendering, and gameplay remain incomplete. Protocol tests have been added but have not been confirmed running in CI.
+The server-side protocol module is now registered by `NexoraMain` only when `--enable-development-network` is explicitly supplied. The default launch remains offline. This flag enables unauthenticated development admission and is only for a trusted private network; do not expose it to the public internet. The temporary P-384 server identity key is regenerated at each restart. WebRTC currently requires reachable UDP host candidates (no STUN/TURN relay). Player authentication, chunk streaming, rendering, and gameplay remain incomplete. Protocol tests have been added but have not been confirmed running in CI.
+
+
+### Start the server for a private Android-client test
+
+The safe default is still offline. To enable the current unauthenticated development handshake on a trusted LAN:
+
+```bash
+java -jar target/nexora-runtime-0.1.0-SNAPSHOT.jar \
+  --data-dir ./nexora-data \
+  --enable-development-network \
+  --bind-address 0.0.0.0 \
+  --signaling-port 8080
+```
+
+In the NEXORA Android client, enter `http://<server-LAN-IP>:8080`. Confirm the server identity fingerprint only after checking it with the server owner. Do not port-forward this development endpoint or use it on an untrusted network. The WebRTC peer connection also needs a reachable UDP host candidate; a successful HTTP signaling response alone does not guarantee that the data channels can connect.
 
 ## Current implementation
 

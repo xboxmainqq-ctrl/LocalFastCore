@@ -80,6 +80,14 @@ class BedrockWorldStartupHandlerTest {
         assertThrows(java.util.concurrent.CompletionException.class,
                 () -> backpressure.start(backpressureConnection, player()).toCompletableFuture().join());
         assertTrue(backpressureConnection.sent.isEmpty());
+
+        FakeConnection modeMismatchConnection = new FakeConnection(TransportSendResult.ACCEPTED);
+        BedrockWorldStartupHandler modeMismatch = new BedrockWorldStartupHandler(
+                NETWORK, world, 0, -1, List.of(new ChunkPosition(0, 0)),
+                registryProfile(true), (peer, player) -> settings(0, false));
+        assertThrows(java.util.concurrent.CompletionException.class,
+                () -> modeMismatch.start(modeMismatchConnection, player()).toCompletableFuture().join());
+        assertTrue(modeMismatchConnection.sent.isEmpty());
     }
 
 

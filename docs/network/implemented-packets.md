@@ -1,8 +1,8 @@
-# Implemented Bedrock payload codecs
+# Implemented Bedrock protocol codecs
 
 Target: Bedrock 1.26.60, protocol 2225.
 
-This document records payload codecs present in the Java runtime. A payload codec does not implement the outer packet batch, compression envelope, NetherNet connection, authentication, or a complete client session.
+The Java runtime now contains payload codecs for three packet types plus a bounded uncompressed packet-batch codec. This does not implement compression negotiation, NetherNet, authentication, or a complete client session.
 
 | Packet | ID | Payload implemented | Status |
 |---|---:|---|---|
@@ -30,8 +30,20 @@ The protocol 2225 NONE enum value is 65535, not the older value 2.
 
 The implemented payload is the big-endian protocol version followed by a varuint32 byte length and UTF-8 connection request bytes. The decoder applies a 1 MiB request limit and rejects malformed UTF-8, truncated input, and trailing bytes. The connection request is opaque data here; this codec does not validate JWTs, signatures, identity claims, or player authentication.
 
+## Uncompressed packet batches
+
+The batch codec implements the raw, uncompressed Bedrock batch body. It does not add a RakNet 0xFE marker and does not implement the post-NetworkSettings compression algorithm byte.
+
+- A batch is a sequence of packets until the batch buffer is exhausted.
+- Each packet is prefixed by its byte length as varuint32. The length includes the packet header and payload, but not the length prefix.
+- Each packet begins with a varuint32 header. Bits 0-9 are the packet ID, bits 10-11 are sender sub-client ID, and bits 12-13 are target sub-client ID.
+- Remaining packet bytes are exposed as an immutable payload view or defensive byte-array copy.
+- Decoder limits default to 8 MiB per batch, 2 MiB per packet, and 1024 packets. Limits can be tightened by callers.
+
+The packet header and batch format are cross-checked against the Bedrock protocol documentation ecosystem and the PocketMine BedrockProtocol batch encoder/decoder implementation. These are framing-level implementation references, not proof of interoperability with protocol 2225 clients.
+
 ## Verification boundary
 
-JUnit tests have been authored for the codecs. They must be run by Maven or CI before being described as passing. These tests validate payload serialization only. They do not establish interoperability with an unmodified Bedrock client.
+JUnit tests have been authored for the codecs. They must be run by Maven or CI before being described as passing. These tests validate serialization and bounds only. They do not establish interoperability with an unmodified Bedrock client.
 
-Before the next networking layer is implemented, packet-batch framing and compression framing must be verified independently against the protocol reference and a trusted implementation. Do not infer these envelopes from the payload schemas.
+The next separate layer is the negotiated compression envelope. Keep it separate from raw packet batching: before NetworkSettings and after NetworkSettings are different framing states, and NetherNet does not use the RakNet 0xFE marker. Do not mark compression or transport support as implemented until verified independently.

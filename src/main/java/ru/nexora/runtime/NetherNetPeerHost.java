@@ -25,6 +25,10 @@ public interface NetherNetPeerHost extends AutoCloseable {
      */
     CompletionStage<String> createAnswer(String networkId, String webRtcOfferSdp);
 
+    /** Cancels and releases a peer whose signaling request did not complete. */
+    default void cancel(String networkId) {
+    }
+
     /** Releases all peer connections and native WebRTC resources. */
     @Override
     void close();

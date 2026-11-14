@@ -28,7 +28,7 @@ The protocol 2225 NONE enum value is 65535, not the older value 2.
 
 ## LoginPacket
 
-The implemented payload is the big-endian protocol version followed by a varuint32 byte length and UTF-8 connection request bytes. The decoder applies a 1 MiB request limit and rejects malformed UTF-8, truncated input, and trailing bytes. `BedrockConnectionRequest` structurally extracts either the legacy `chain`/`clientData` fields or the newer `AuthenticationType`/`Token`/`Certificate` envelope. It does not validate JWT signatures, issuers, Xbox claims, certificate chains, or player authentication.
+The implemented payload is the big-endian protocol version followed by a varuint32 byte length and UTF-8 connection request bytes. The decoder applies a 1 MiB request limit and rejects malformed UTF-8, truncated input, and trailing bytes. `BedrockConnectionRequest` structurally extracts either the legacy `chain`/`clientData` fields or the newer `AuthenticationType`/`Token`/`Certificate` envelope, including token-only and JSON-encoded certificate-chain variants. It validates compact JWT shape and field combinations, but does not validate JWT signatures, issuers, Xbox claims, certificate-chain trust, or player authentication.
 
 ## Uncompressed packet batches
 

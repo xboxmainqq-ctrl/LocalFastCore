@@ -43,10 +43,10 @@ class EntityRegistryTest {
         assertTrue(registry.updatePosition(id, 4.5, 70, -2, -45));
 
         WorldEntity updated = registry.find(id).orElseThrow();
-        assertEquals(4.5, updated.x());
-        assertEquals(70, updated.y());
-        assertEquals(-2, updated.z());
-        assertEquals(-45, updated.yaw());
+        assertEquals(4.5, updated.x(), 0.0001);
+        assertEquals(70, updated.y(), 0.0001);
+        assertEquals(-2, updated.z(), 0.0001);
+        assertEquals(-45, updated.yaw(), 0.0001);
         assertEquals("Player", updated.name());
         assertEquals(4, updated.skinIndex());
         assertFalse(registry.updatePosition(UUID.randomUUID(), 0, 0, 0, 0));

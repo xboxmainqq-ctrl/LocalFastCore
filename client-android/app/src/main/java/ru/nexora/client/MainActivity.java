@@ -1,6 +1,7 @@
 package ru.nexora.client;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -30,6 +31,8 @@ public final class MainActivity extends Activity {
 
     private TextView connectionStatus;
     private EditText serverAddress;
+    private Button connectButton;
+    private NetherNetAndroidClient netherNetClient;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -82,9 +85,9 @@ public final class MainActivity extends Activity {
         serverCard.addView(serverAddress, matchWrap());
 
         addSpace(serverCard, 12);
-        Button connect = button("ПОДКЛЮЧИТЬСЯ");
-        serverCard.addView(connect, matchWrap());
-        connect.setOnClickListener(view -> showTransportNotReady());
+        connectButton = button("ПОДКЛЮЧИТЬСЯ");
+        serverCard.addView(connectButton, matchWrap());
+        connectButton.setOnClickListener(view -> toggleConnection());
 
         addSpace(page, 20);
         LinearLayout statusCard = card();
@@ -96,7 +99,7 @@ public final class MainActivity extends Activity {
         statusCard.addView(connectionStatus, matchWrap());
         addSpace(statusCard, 6);
         statusCard.addView(text(
-                "Сетевой модуль NetherNet ещё разрабатывается.",
+                "NetherNet: HTTP(S) signaling, WebRTC и проверка ключа сервера.",
                 13, MUTED, false
         ), matchWrap());
 
@@ -109,7 +112,7 @@ public final class MainActivity extends Activity {
         addSpace(infoCard, 8);
         infoCard.addView(text("Цель протокола: Bedrock 1.26.60 • 2225", 13, MUTED, false), matchWrap());
         addSpace(infoCard, 8);
-        infoCard.addView(text("Режим: разработка интерфейса", 13, MUTED, false), matchWrap());
+        infoCard.addView(text("Режим: подключение и тестирование транспорта", 13, MUTED, false), matchWrap());
 
         addSpace(page, 26);
         TextView footer = text("СОЗДАЁМ СВОЙ МИР", 11, MUTED, true);
@@ -120,18 +123,78 @@ public final class MainActivity extends Activity {
         return scroll;
     }
 
-    private void showTransportNotReady() {
+    private void toggleConnection() {
+        if (netherNetClient != null && netherNetClient.isConnected()) {
+            netherNetClient.close();
+            netherNetClient = null;
+            connectionStatus.setText("Отключён");
+            connectButton.setText("ПОДКЛЮЧИТЬСЯ");
+            connectButton.setEnabled(true);
+            return;
+        }
+        if (netherNetClient != null) {
+            return;
+        }
         String address = serverAddress.getText().toString().trim();
         if (address.isEmpty()) {
             serverAddress.setError("Введи адрес сервера");
             return;
         }
-        connectionStatus.setText("Транспорт пока не подключён");
-        Toast.makeText(
-                this,
-                "Адрес сохранён на экране. Подключение NetherNet появится на следующем этапе.",
-                Toast.LENGTH_LONG
-        ).show();
+
+        connectButton.setEnabled(false);
+        connectionStatus.setText("Запуск NetherNet...");
+        netherNetClient = new NetherNetAndroidClient(this);
+        netherNetClient.connect(address, new NetherNetAndroidClient.Listener() {
+            @Override
+            public void onStatus(String status) {
+                connectionStatus.setText(status);
+            }
+
+            @Override
+            public void onTrustConfirmationRequired(String domain, String fingerprint,
+                                                    java.util.function.Consumer<Boolean> decision) {
+                new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("Подтвердить ключ сервера?")
+                        .setMessage("Домен (не проверен): " + domain
+                                + "\n\nSHA-256 отпечаток ключа:\n" + fingerprint
+                                + "\n\nЭто первое подключение по HTTP. Доверяй ключу только если можешь сверить отпечаток с владельцем сервера.")
+                        .setPositiveButton("ДОВЕРЯТЬ КЛЮЧУ",
+                                (dialog, which) -> decision.accept(true))
+                        .setNegativeButton("ОТКЛОНИТЬ",
+                                (dialog, which) -> decision.accept(false))
+                        .setOnCancelListener(dialog -> decision.accept(false))
+                        .setCancelable(false)
+                        .show();
+            }
+
+            @Override
+            public void onConnected() {
+                connectionStatus.setText("WebRTC подключён • оба канала открыты");
+                connectButton.setText("ОТКЛЮЧИТЬСЯ");
+                connectButton.setEnabled(true);
+            }
+
+            @Override
+            public void onError(String message) {
+                connectionStatus.setText("Ошибка: " + message);
+                if (netherNetClient != null) {
+                    netherNetClient.close();
+                    netherNetClient = null;
+                }
+                connectButton.setText("ПОВТОРИТЬ");
+                connectButton.setEnabled(true);
+            }
+        });
+        connectButton.setText("ПОДКЛЮЧАЕМСЯ...");
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (netherNetClient != null) {
+            netherNetClient.close();
+            netherNetClient = null;
+        }
+        super.onDestroy();
     }
 
     private LinearLayout card() {

@@ -106,4 +106,54 @@ class WorldStorageModuleTest {
                 new WorldRegistry(), new FileWorldStorage(temporaryDirectory), definitions
         ));
     }
+
+    @Test
+    void rollsBackWorldsRegisteredBeforeAnotherWorldFailsToLoad() throws IOException {
+        Path worldsDirectory = temporaryDirectory.resolve("worlds");
+        FileWorldStorage storage = new FileWorldStorage(worldsDirectory);
+        storage.save(new InMemoryWorld("broken", new WorldHeight(0, 256)));
+
+        Path brokenFile = worldsDirectory.resolve("broken.nxw");
+        byte[] corrupted = Files.readAllBytes(brokenFile);
+        corrupted[0] ^= 0x7F;
+        Files.write(brokenFile, corrupted);
+
+        WorldRegistry registry = new WorldRegistry();
+        Map<String, WorldHeight> definitions = new LinkedHashMap<>();
+        definitions.put("first", new WorldHeight(0, 256));
+        definitions.put("broken", new WorldHeight(0, 256));
+        WorldStorageModule module = new WorldStorageModule(registry, storage, definitions);
+
+        assertThrows(IOException.class, module::start);
+        assertTrue(registry.get("first").isEmpty(),
+                "worlds registered earlier in startup must be rolled back");
+        assertTrue(registry.get("broken").isEmpty());
+        assertTrue(module.managedWorldIds().isEmpty());
+    }
+
+    @Test
+    void keepsFailedShutdownSaveRetryable() throws IOException {
+        Path worldsDirectory = temporaryDirectory.resolve("worlds");
+        WorldRegistry registry = new WorldRegistry();
+        FileWorldStorage storage = new FileWorldStorage(worldsDirectory);
+        WorldStorageModule module = new WorldStorageModule(
+                registry, storage, Map.of("overworld", new WorldHeight(0, 256))
+        );
+        module.start();
+
+        Files.createDirectories(worldsDirectory);
+        Path conflictingTarget = worldsDirectory.resolve("overworld.nxw");
+        Files.createDirectory(conflictingTarget);
+        assertThrows(IOException.class, module::stop);
+        assertEquals(java.util.List.of("overworld"), module.managedWorldIds(),
+                "module must retain ownership after a failed save so shutdown can be retried");
+        assertTrue(registry.get("overworld").isPresent());
+
+        Files.delete(conflictingTarget);
+        module.stop();
+
+        assertTrue(module.managedWorldIds().isEmpty());
+        assertTrue(storage.load("overworld").isPresent());
+    }
+
 }

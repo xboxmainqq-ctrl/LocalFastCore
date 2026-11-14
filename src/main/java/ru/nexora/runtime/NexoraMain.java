@@ -9,6 +9,7 @@ import java.security.spec.ECGenParameterSpec;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.Consumer;
 
@@ -226,7 +227,7 @@ public final class NexoraMain {
                     peerHost, peerHost, signaling, protocolHandler));
         }
 
-        return new RuntimeHandle(server, worlds, entities, gameLoop, options.tickRate());
+        return new RuntimeHandle(server, worlds, entities, new ConcurrentHashMap<>(), gameLoop, options.tickRate());
     }
 
     private static KeyPair createDevelopmentSigningKey() {
@@ -341,15 +342,28 @@ public final class NexoraMain {
         }
     }
 
-    record RuntimeHandle(NexoraServer server, WorldRegistry worlds, EntityRegistry entities, GameLoop gameLoop, int tickRate) {
+    record RuntimeHandle(NexoraServer server, WorldRegistry worlds, EntityRegistry entities, Map<UUID, PlayerInventory> inventories, GameLoop gameLoop, int tickRate) {
         RuntimeHandle {
             Objects.requireNonNull(server, "server");
             Objects.requireNonNull(worlds, "worlds");
             Objects.requireNonNull(entities, "entities");
+            Objects.requireNonNull(inventories, "inventories");
             Objects.requireNonNull(gameLoop, "gameLoop");
             if (tickRate < 1 || tickRate > 120) {
                 throw new IllegalArgumentException("tickRate must be between 1 and 120");
             }
+        }
+
+
+        PlayerInventory inventory(UUID playerId) {
+            Objects.requireNonNull(playerId, "playerId");
+            return inventories.computeIfAbsent(playerId, PlayerInventory::new);
+        }
+
+        ItemPickupService.PickupResult pickupItems(UUID playerId, double x, double y, double z) {
+            World world = worlds.get(DEFAULT_WORLD_ID)
+                    .orElseThrow(() -> new IllegalStateException("Default world is not loaded"));
+            return new ItemPickupService(entities, world).pickup(playerId, x, y, z, inventory(playerId));
         }
 
         NexoraWorldInfo worldInfo() {

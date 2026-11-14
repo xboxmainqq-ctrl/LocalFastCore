@@ -155,9 +155,20 @@ public record NetherNetIdentityAssertion(
         if (parts.length != 3 || parts[0].isEmpty() || parts[1].isEmpty() || parts[2].isEmpty()) {
             throw new IllegalArgumentException("GameServerToken must use three-part compact JWT form");
         }
-        decodeBase64Url(parts[0], "JWT header");
-        decodeBase64Url(parts[1], "JWT claims");
-        decodeBase64Url(parts[2], "JWT signature");
+        byte[] headerBytes = decodeBase64Url(parts[0], "JWT header");
+        byte[] claimsBytes = decodeBase64Url(parts[1], "JWT claims");
+        byte[] signatureBytes = decodeBase64Url(parts[2], "JWT signature");
+        String headerJson = decodeUtf8(headerBytes, "JWT header");
+        String claimsJson = decodeUtf8(claimsBytes, "JWT claims");
+        Map<String, String> header = readStringObject(headerJson, "JWT protected header", "alg");
+        String algorithm = required(header, "alg");
+        if ("none".equalsIgnoreCase(algorithm) || algorithm.length() > 32) {
+            throw new IllegalArgumentException("JWT algorithm is not permitted");
+        }
+        requireObjectClaim(claimsJson, "cpk");
+        if (signatureBytes.length == 0) {
+            throw new IllegalArgumentException("JWT signature must not be empty");
+        }
     }
 
     private static String validateDetachedJwsShape(String jws) {
@@ -167,13 +178,54 @@ public record NetherNetIdentityAssertion(
         }
         byte[] headerBytes = decodeBase64Url(parts[0], "JWS header");
         decodeBase64Url(parts[2], "JWS signature");
-        String headerJson = new String(headerBytes, java.nio.charset.StandardCharsets.UTF_8);
+        String headerJson = decodeUtf8(headerBytes, "JWS protected header");
         Map<String, String> header = readStringObject(headerJson, "JWS protected header", "alg");
         String algorithm = required(header, "alg");
         if ("none".equalsIgnoreCase(algorithm) || algorithm.length() > 32) {
             throw new IllegalArgumentException("JWS algorithm is not permitted");
         }
         return algorithm;
+    }
+
+    private static void requireObjectClaim(String json, String claimName) {
+        try (JsonParser parser = JSON.createParser(json)) {
+            if (parser.nextToken() != JsonToken.START_OBJECT) {
+                throw new IllegalArgumentException("JWT claims must be a JSON object");
+            }
+            boolean found = false;
+            while (parser.nextToken() == JsonToken.FIELD_NAME) {
+                String name = parser.currentName();
+                JsonToken value = parser.nextToken();
+                if (claimName.equals(name)) {
+                    if (value != JsonToken.START_OBJECT) {
+                        throw new IllegalArgumentException("JWT " + claimName + " claim must be a JWK object");
+                    }
+                    found = true;
+                    parser.skipChildren();
+                } else {
+                    parser.skipChildren();
+                }
+            }
+            if (parser.nextToken() != null) {
+                throw new IllegalArgumentException("JWT claims contain trailing JSON data");
+            }
+            if (!found) {
+                throw new IllegalArgumentException("JWT claims are missing " + claimName);
+            }
+        } catch (IOException e) {
+            throw invalid("Malformed JWT claims JSON", e);
+        }
+    }
+
+    private static String decodeUtf8(byte[] bytes, String label) {
+        try {
+            return java.nio.charset.StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                    .decode(java.nio.ByteBuffer.wrap(bytes)).toString();
+        } catch (java.nio.charset.CharacterCodingException e) {
+            throw invalid(label + " is not valid UTF-8", e);
+        }
     }
 
     private static byte[] decodeBase64Url(String value, String label) {

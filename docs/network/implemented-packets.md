@@ -2,7 +2,7 @@
 
 Target: Bedrock 1.26.60, protocol 2225.
 
-The Java runtime contains payload codecs for three packet types, bounded packet-batch framing, a compression envelope, a frame-level coordinator for the initial server-side login handshake, and transport-independent NetherNet message and SDP identity extraction helpers. This still does not implement the WebRTC peer connection, HTTP signaling, cryptographic identity verification, Microsoft/Xbox authentication, or a complete client session.
+The Java runtime contains payload codecs for three packet types, bounded packet-batch framing, a compression envelope, a frame-level coordinator for the initial server-side login handshake, and transport-independent NetherNet message framing and a bounded client identity verification chain. This still does not implement the WebRTC peer connection, HTTP signaling, cryptographic identity verification, Microsoft/Xbox authentication, or a complete client session.
 
 | Packet | ID | Payload implemented | Status |
 |---|---:|---|---|
@@ -98,6 +98,6 @@ This stage validates syntax and required fields only. It does **not** verify the
 
 ## Verification boundary
 
-JUnit tests have been authored for the codecs, NetherNet framing, identity parsing, canonical fingerprint serialization, RS256 GameServerToken verification, and detached ES384 proof verification. They must be run by Maven or CI before being described as passing. These tests validate serialization, fragment sequencing, and bounds only. They do not establish interoperability with an unmodified Bedrock client.
+JUnit tests have been authored for the codecs, NetherNet framing, identity parsing, canonical fingerprint serialization, RS256 GameServerToken verification, and detached ES384 proof verification. They must be run by Maven or CI before being described as passing. These tests are authored but have not yet been confirmed by a successful Maven/CI run. Even when they pass, they validate isolated implementation behavior only and do not establish interoperability with an unmodified Bedrock client or a live Microsoft/Xbox account.
 
 ## Compression envelope

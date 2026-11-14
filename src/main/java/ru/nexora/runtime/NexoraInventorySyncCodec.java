@@ -53,7 +53,7 @@ public final class NexoraInventorySyncCodec {
             size += 3 + itemBytes;
         }
         ByteBuffer output = ByteBuffer.allocate(size).order(ByteOrder.BIG_ENDIAN);
-        output.put(MAGIC).put((byte) 1).put((byte) 1).put((byte) MESSAGE_TYPE);
+        output.put(MAGIC).put((byte) NexoraPrivateProtocolCodec.MAJOR_VERSION).put((byte) NexoraPrivateProtocolCodec.MINOR_VERSION).put((byte) MESSAGE_TYPE);
         UUID owner = inventory.ownerId();
         output.putLong(owner.getMostSignificantBits()).putLong(owner.getLeastSignificantBits());
         output.put((byte) stacks.size());
@@ -72,7 +72,8 @@ public final class NexoraInventorySyncCodec {
         for (byte expected : MAGIC) {
             if (input.get() != expected) throw new IllegalArgumentException("Invalid NEXORA packet magic");
         }
-        if (Byte.toUnsignedInt(input.get()) != 1 || Byte.toUnsignedInt(input.get()) != 1
+        if (Byte.toUnsignedInt(input.get()) != NexoraPrivateProtocolCodec.MAJOR_VERSION
+                || Byte.toUnsignedInt(input.get()) != NexoraPrivateProtocolCodec.MINOR_VERSION
                 || Byte.toUnsignedInt(input.get()) != MESSAGE_TYPE) {
             throw new IllegalArgumentException("Unexpected NEXORA inventory snapshot");
         }

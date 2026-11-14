@@ -133,7 +133,7 @@ class BedrockInitialTransportRouterTest {
         BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
                 SETTINGS,
                 (connection, login, request) -> CompletableFuture.completedFuture(null),
-                connection -> { },
+                (connection, player) -> { },
                 (connection, message) -> { },
                 java.time.Duration.ofMillis(40));
         FakeConnection connection = new FakeConnection("peer-login-timeout");

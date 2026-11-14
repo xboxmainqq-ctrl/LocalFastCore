@@ -35,6 +35,27 @@ class FileWorldStorageTest {
         assertEquals(2, loaded.loadedChunkCount());
     }
 
+
+    @Test
+    void savesAndRestoresBiomeSections() throws IOException {
+        FileWorldStorage storage = new FileWorldStorage(temporaryDirectory.resolve("biome-worlds"));
+        InMemoryWorld original = new InMemoryWorld("biomes", new WorldHeight(-64, 320));
+        BlockPosition first = new BlockPosition(-1, -17, -16);
+        BlockPosition second = new BlockPosition(3, 70, 9);
+        original.setBiome(first, 42);
+        original.setBiome(second, 7);
+        original.setBlock(new BlockPosition(0, 64, 0), new BlockState("minecraft:stone"));
+
+        storage.save(original);
+
+        InMemoryWorld loaded = storage.load("biomes").orElseThrow();
+        assertEquals(42, loaded.biomeAt(first));
+        assertEquals(7, loaded.biomeAt(second));
+        assertEquals(BiomeSection.DEFAULT_BIOME_ID, loaded.biomeAt(new BlockPosition(1, 64, 1)));
+        assertEquals(new BlockState("minecraft:stone"),
+                loaded.blockAt(new BlockPosition(0, 64, 0)));
+    }
+
     @Test
     void savingAgainReplacesPreviousSnapshot() throws IOException {
         FileWorldStorage storage = new FileWorldStorage(temporaryDirectory);

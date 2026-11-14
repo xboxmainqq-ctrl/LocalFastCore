@@ -329,12 +329,14 @@ Spawn chunks must be generated/loaded before this handler starts. The handler de
 Example:
 
 ```java
+BedrockRuntimeBlockRegistryFile.Loaded blockProfile =
+    BedrockRuntimeBlockRegistryFile.load(blockRegistryInput, expectedSha256);
 BedrockWorldStartupHandler worldStartup = new BedrockWorldStartupHandler(
     networkSettings, overworld, 0, -1, List.of(new ChunkPosition(0, 0)),
-    startGameSettingsFactory
+    blockProfile, startGameSettingsFactory
 );
 BedrockSubChunkRequestHandler subchunks = new BedrockSubChunkRequestHandler(
-    networkSettings, overworld, connection -> 0, bedrockRuntimeBlockRegistry,
+    networkSettings, overworld, connection -> 0, blockProfile.registry(),
     existingPlayMessageHandler
 );
 BedrockPostLoginCoordinator postLogin = new BedrockPostLoginCoordinator(
@@ -360,6 +362,6 @@ id-mode<TAB>runtime
 <namespaced-block-id><TAB><signed-int32-id>[<TAB><property>=<value>...]
 ```
 
-`id-mode` is either `runtime` or `hash`. The loaded profile exposes `blockNetworkIdsAreHashes()` and `validateStartGameSettings(settings)`. The StartGame settings factory must copy this exact flag into `Settings.blockNetworkIdsAreHashes` and validate the finished settings before returning them. Never set the flag independently from the registry source. Rows are data from a trusted, version-matched palette provider; NEXORA does not generate fabricated vanilla IDs.
+`id-mode` is either `runtime` or `hash`. The loaded profile exposes `blockNetworkIdsAreHashes()` and `validateStartGameSettings(settings)`. The StartGame settings factory must copy this exact flag into `Settings.blockNetworkIdsAreHashes` and call `blockProfile.validateStartGameSettings(settings)` before returning them. `BedrockWorldStartupHandler` also requires the loaded profile and validates the flag again before sending StartGame. Never set the flag independently from the registry source. Rows are data from a trusted, version-matched palette provider; NEXORA does not generate fabricated vanilla IDs.
 
 No 1.26.60 palette file is bundled yet. This loader establishes the safe integration point, but a real matching palette export is still required before the terrain response handler can serialize arbitrary world blocks. The registry file is deliberately external so an unverified or stale palette cannot silently become the default.

@@ -21,6 +21,11 @@ This module is the beginning of the independent NEXORA server process. It has **
 - Frame-level Bedrock initial handshake processor joins batch framing, compression, RequestNetworkSettings, NetworkSettings response creation, and compressed Login decoding. The host still owns actual transport delivery and real identity/account authentication.
 - NetherNet message framing helper: bounded reliable-message fragmentation with countdown headers, strict unfragmented-message validation for unreliable delivery, and tests that feed encoded fragments through the reassembler.
 - Existing NetherNet fragment assembler enforces per-message byte, fragment-count, and assembly-time limits.
+- Bounded NetherNet SDP parsing preserves the original offer for identity verification and removes the non-standard `a=identity` line only from the SDP passed to WebRTC.
+- Client GameServerToken and detached fingerprint signatures are verified before admission; operator identity assertions are signed into every server answer and checked by the Android client.
+- Bounded HTTP/HTTPS signaling implements `GET /v1/join` and `POST /v1/join/{networkId}`, with request limits, worker/queue bounds, timeouts, and complete SDP answers.
+- Desktop Java WebRTC peer host configures full ICE, MAX_BUNDLE, UDP-only candidates, and both NetherNet data channels with bounded queues and fragment reassembly.
+- Android client creates both data channels, gathers full ICE, performs the signaling exchange, verifies the operator identity, applies first-use key confirmation for plaintext HTTP, and waits for both channels to open.
 - Protocol-independent world foundation: immutable block/chunk coordinates, configurable vertical world bounds, immutable namespaced block states, sparse in-memory chunks, and immutable generated-chunk snapshots.
 - Compact chunk storage: sparse 16x16x16 sections with local block-state palettes; common sections use four bits per block index, widening to one byte and then two bytes only when needed.
 - Chunk reads/writes use packed local coordinates and avoid allocating a coordinate record for each block access.
@@ -48,7 +53,7 @@ The current `.nxw` format is an internal NEXORA development format. It stores wo
 
 ## Important limitation
 
-This is a runtime foundation, not yet a playable Minecraft Bedrock server. It currently contains selected Bedrock 1.26.60 payload codecs, packet-batch framing and compression, a frame-level initial handshake processor, and transport-independent NetherNet framing helpers. It still does not implement the WebRTC peer connection, HTTP signaling, server identity assertions, Microsoft/Xbox authentication, Bedrock LevelDB storage, entities, inventory, or gameplay. Basic flat chunk generation, bounded background generation, and in-memory chunk insertion exist, but chunk streaming to clients and a production terrain generator are not implemented. The game loop currently drives the scheduler; full world simulation and network event processing still need to be integrated before NEXORA can accept real Bedrock clients.
+This is still not a playable or Bedrock-compatible server release. The repository now contains HTTP/HTTPS NetherNet signaling, a desktop Java WebRTC peer-host adapter, Android-side offerer/signaling/data-channel code, and operator identity verification with TOFU for plaintext HTTP. These components have authored tests, but a successful CI/build and real Android-to-server session have not yet been confirmed. The Android client does not yet acquire official Microsoft/Xbox credentials or produce a live authenticated GameServerToken, so real-account interoperability is not established. The Bedrock layer currently handles only selected 1.26.60 packets and the initial handshake; it does not yet implement the full login/authentication flow, StartGame and chunk streaming, Bedrock LevelDB storage, entities, inventory, or gameplay. The server WebRTC profile currently expects a directly reachable UDP host candidate and does not configure STUN/TURN relay traversal.
 
 ## Build
 

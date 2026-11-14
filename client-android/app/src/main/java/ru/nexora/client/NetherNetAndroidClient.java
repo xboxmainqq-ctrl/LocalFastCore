@@ -67,6 +67,7 @@ public final class NetherNetAndroidClient implements AutoCloseable {
 
     private volatile Listener listener;
     private volatile String playerName = "Игрок";
+    private volatile int playerSkinIndex;
     private volatile PeerConnectionFactory factory;
     private volatile PeerConnection peer;
     private volatile DataChannel reliableChannel;
@@ -88,13 +89,19 @@ public final class NetherNetAndroidClient implements AutoCloseable {
     }
 
     public void connect(String serverAddress, Listener listener) {
-        connect(serverAddress, "Игрок", listener);
+        connect(serverAddress, "Игрок", 0, listener);
     }
 
     public void connect(String serverAddress, String playerName, Listener listener) {
+        connect(serverAddress, playerName, 0, listener);
+    }
+
+    public void connect(String serverAddress, String playerName, int playerSkinIndex, Listener listener) {
         if (this.listener != null || closed.get()) throw new IllegalStateException("This NEXORA client instance has already been used");
         if (playerName == null || playerName.isBlank() || playerName.length() > 16) throw new IllegalArgumentException("Ник должен содержать от 1 до 16 символов");
+        if (playerSkinIndex < 0 || playerSkinIndex > 4) throw new IllegalArgumentException("Invalid player skin");
         this.playerName = playerName.trim();
+        this.playerSkinIndex = playerSkinIndex;
         this.listener = listener;
         executor.execute(() -> connectBlocking(serverAddress));
     }
@@ -635,7 +642,7 @@ public final class NetherNetAndroidClient implements AutoCloseable {
     }
 
     private boolean sendNexoraClientHello() {
-        return sendReliable(NexoraAndroidProtocolCodec.encodeClientHello("android-0.1.0-dev", playerName));
+        return sendReliable(NexoraAndroidProtocolCodec.encodeClientHello("android-0.1.0-dev", playerName, playerSkinIndex));
     }
 
     /** Sends a client movement proposal; the server reply is authoritative. */

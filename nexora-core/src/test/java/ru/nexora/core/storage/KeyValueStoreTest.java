@@ -54,7 +54,7 @@ class KeyValueStoreTest {
 
     @Test
     void refusesSymbolicLinkStoreFilesWhenSupported() throws Exception {
-        Path target = Files.writeString(temporaryDirectory.resolve("target.properties"), "safe:key=value\\n");
+        Path target = Files.writeString(temporaryDirectory.resolve("target.properties"), "safe:key=value\n");
         Path link = temporaryDirectory.resolve("linked.properties");
         try {
             Files.createSymbolicLink(link, target);
@@ -63,7 +63,7 @@ class KeyValueStoreTest {
         }
 
         assertThrows(IOException.class, () -> new KeyValueStore(link));
-        assertEquals("safe:key=value\\n", Files.readString(target));
+        assertEquals("safe:key=value\n", Files.readString(target));
     }
 
     @Test

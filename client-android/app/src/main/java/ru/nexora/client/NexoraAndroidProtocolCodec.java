@@ -190,7 +190,13 @@ final class NexoraAndroidProtocolCodec {
                           int rejectionCode, String rejectionReason) {
     }
 
-    record ChunkBlock(int localX, int y, int localZ, String blockId) {\n    }\n\n    record ChunkData(int chunkX, int chunkZ, java.util.List<ChunkBlock> blocks) {\n    }\n\n    record WorldInfo(String worldId, int minY, int maxYExclusive,
+    record ChunkBlock(int localX, int y, int localZ, String blockId) {
+    }
+
+    record ChunkData(int chunkX, int chunkZ, java.util.List<ChunkBlock> blocks) {
+    }
+
+    record WorldInfo(String worldId, int minY, int maxYExclusive,
                      int spawnX, int spawnY, int spawnZ,
                      int tickRate, int loadedChunks) {
     }

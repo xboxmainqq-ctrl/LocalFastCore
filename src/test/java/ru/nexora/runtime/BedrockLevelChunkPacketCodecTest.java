@@ -33,6 +33,31 @@ class BedrockLevelChunkPacketCodecTest {
     }
 
     @Test
+    void wrapsFullColumnAndEnablesServerBiomeUpdate() {
+        byte[] serializedColumn = new byte[] {9, 1, 0, 3, 1, 0};
+        var column = new BedrockLevelChunkColumnDataCodec.EncodedColumn(2, serializedColumn);
+        BedrockGamePacket packet = BedrockLevelChunkPacketCodec.encodeFullColumnPacket(
+                new BedrockLevelChunkPacketCodec.ChunkPosition(-4, 6), 0, column);
+
+        assertEquals(58, packet.header().packetId());
+        ByteBuffer in = packet.payloadBuffer();
+        assertEquals(-4, BedrockBinary.readVarInt32(in));
+        assertEquals(6, BedrockBinary.readVarInt32(in));
+        assertEquals(0, BedrockBinary.readVarInt32(in));
+        assertEquals(2, BedrockBinary.readVarUInt32(in));
+        assertFalse(readBoolean(in)); // not a skeleton/request-mode chunk
+        assertFalse(readBoolean(in)); // client blob cache disabled
+        assertEquals(0, BedrockBinary.readVarUInt32(in)); // no cache metadata
+        int length = BedrockBinary.readVarUInt32(in);
+        assertEquals(serializedColumn.length, length);
+        byte[] decoded = new byte[length];
+        in.get(decoded);
+        assertArrayEquals(serializedColumn, decoded);
+        assertTrue(readBoolean(in)); // server biome data overrides client biome data
+        assertFalse(in.hasRemaining());
+    }
+
+    @Test
     void emitsSkeletonChunkWithRequestModeSentinelAndLimit() {
         BedrockGamePacket packet = BedrockLevelChunkPacketCodec.encodeSkeletonPacket(
                 new BedrockLevelChunkPacketCodec.ChunkPosition(3, -5), 0, -1);

@@ -177,7 +177,7 @@ public final class MainActivity extends Activity {
             }
 
             @Override
-            public void onNetworkSettingsReceived(NetherNetAndroidClient.NetworkSettings settings) {
+            public void onNetworkSettingsReceived(BedrockAndroidNetworkSettings settings) {
                 connectionStatus.setText("NetworkSettings получены • вход игрока ещё не подключён");
             }
 

@@ -9,6 +9,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import ru.nexora.core.rpg.RpgClassDefinition;
+import ru.nexora.core.rpg.RpgClassRegistry;
 
 class PlayerProgressionServiceTest {
     @Test
@@ -82,6 +84,20 @@ class PlayerProgressionServiceTest {
         PlayerProgressionService service = new PlayerProgressionService(repository);
 
         assertThrows(IllegalStateException.class, () -> service.addExperience(id, 25));
+    }
+
+    @Test
+    void classSelectionRequiresARegisteredClassWhenRegistryIsConfigured() throws IOException {
+        InMemoryProfiles repository = new InMemoryProfiles();
+        RpgClassRegistry classes = new RpgClassRegistry();
+        classes.register(new RpgClassDefinition("mage", "Mage",
+                "Spellcaster", Map.of("intelligence", 8), java.util.List.of("fire_bolt")));
+        PlayerProgressionService service = new PlayerProgressionService(repository, classes);
+        UUID id = UUID.randomUUID();
+        service.loadOrCreate(id, "Player");
+
+        assertThrows(IllegalArgumentException.class, () -> service.chooseClass(id, "warrior"));
+        assertEquals("mage", service.chooseClass(id, "MAGE").classId().orElseThrow());
     }
 
     private static final class InMemoryProfiles implements PlayerProfileRepository {

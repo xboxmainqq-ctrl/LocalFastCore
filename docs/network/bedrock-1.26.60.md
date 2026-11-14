@@ -199,7 +199,7 @@ Before writing the complete packet, the runtime now has the missing numeric prim
 - Explicit little-endian 32-bit and 64-bit values and IEEE-754 float encoding, independent of the caller's `ByteBuffer` byte order.
 - Typed `Vec3`, `Vec2`, signed `BlockPosition`, and `SyncedPlayerMovementSettings` encoders/decoders.
 
-The protocol reference marks StartGame packet 11 as 25 top-level fields. Its nested `LevelSettings` has 51 ordered fields in protocol 2225. The `Player Property Data` field uses the documented `PropertySyncData` structure (integer entries followed by float entries); the minimal NEXORA configuration writes both arrays and currently leaves them empty unless supplied. The optional `server_config` field is explicitly absent, and `ServerTelemetryData` writes its two protocol-2225 strings. The serializer emits every top-level field in schema order rather than truncating the packet.
+The protocol reference marks StartGame packet 11 as 25 top-level fields. Its nested `LevelSettings` has 51 ordered fields in protocol 2225. The `Player Property Data` field uses the documented `PropertySyncData` structure (integer entries followed by float entries); the minimal NEXORA configuration writes both arrays and currently leaves them empty unless supplied. The optional `server_config` field is explicitly absent, and `ServerTelemetryData` writes its four protocol-2225 strings. The serializer emits every top-level field in schema order rather than truncating the packet.
 
 Tests cover signed/unsigned 64-bit varint boundaries, overflow and truncation, native-order numeric bytes, vectors, signed block positions, and movement settings. These are unit-test additions; execution remains pending a functioning CI runner.
 
@@ -221,7 +221,7 @@ Reference: https://mojang.github.io/bedrock-protocol-docs/1.26.60/types/level-se
 - Encodes level metadata, movement settings, current world time, signed enchantment seed, an empty server-block-property list, session correlation ID, and server version.
 - Encodes `Player Property Data` as `PropertySyncData`: a varuint32-counted integer list (`varuint32` index + ZigZag `varint32` value), followed by a varuint32-counted float list (`varuint32` index + little-endian float value).
 - Encodes the block registry checksum and both world-template UUID halves as little-endian uint64 values, followed by the three network flags.
-- Explicitly marks optional `server_config` as absent, then serializes protocol-2225 `ServerTelemetryData` as its two strings (`serverId`, `scenarioId`).
+- Explicitly marks optional `server_config` as absent, then serializes protocol-2225 `ServerTelemetryData` as four strings (`serverId`, `scenarioId`, `worldId`, `ownerId`).
 
 **Current profile limits:** block properties are empty; optional server configuration is absent; player property lists are bounded to 4096 entries each; telemetry and packet strings have explicit byte limits. This is a valid schema-complete minimal profile, not evidence that every optional StartGame configuration is supported.
 

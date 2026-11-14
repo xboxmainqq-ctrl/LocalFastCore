@@ -4,7 +4,7 @@ NexoraCore is the first isolated foundation module for the NEXORA server project
 
 ## Current stage
 
-This is a Nukkit-MOT plugin built with Java 17 against Nukkit-MOT 1.26.60-R1. It is not yet a standalone server fork. Nukkit-MOT continues to load legacy plugins while NEXORA APIs are introduced additively.
+This is a Nukkit-MOT plugin targeting Java 17 bytecode and built in CI with JDK 21 against Nukkit-MOT 1.26.60-R1. Current Nukkit-MOT setup documentation recommends Java 21 or newer for the server runtime. It is not yet a standalone server fork. Nukkit-MOT continues to load legacy plugins while NEXORA APIs are introduced additively.
 
 ## Included foundation
 

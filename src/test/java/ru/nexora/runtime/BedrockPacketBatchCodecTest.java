@@ -36,7 +36,7 @@ class BedrockPacketBatchCodecTest {
                         new byte[] {0, 0, 8, (byte) 0xB1})
         ));
 
-        assertEquals(6, encoded.remaining());
+        assertEquals(7, encoded.remaining());
         assertEquals(5, Byte.toUnsignedInt(encoded.get(0)));
         assertEquals(0xC1, Byte.toUnsignedInt(encoded.get(1)));
         assertEquals(0x01, Byte.toUnsignedInt(encoded.get(2)));

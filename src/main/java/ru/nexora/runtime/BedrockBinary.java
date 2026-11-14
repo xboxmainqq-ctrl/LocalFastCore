@@ -59,13 +59,19 @@ public final class BedrockBinary {
     public static int readBigEndianInt32(ByteBuffer input) {
         Objects.requireNonNull(input, "input");
         requireRemaining(input, Integer.BYTES);
-        return input.getInt();
+        return (Byte.toUnsignedInt(input.get()) << 24)
+                | (Byte.toUnsignedInt(input.get()) << 16)
+                | (Byte.toUnsignedInt(input.get()) << 8)
+                | Byte.toUnsignedInt(input.get());
     }
 
     /** Writes a schema-marked big-endian signed 32-bit integer. */
     public static void writeBigEndianInt32(ByteBuffer output, int value) {
         Objects.requireNonNull(output, "output");
-        output.putInt(value);
+        output.put((byte) (value >>> 24));
+        output.put((byte) (value >>> 16));
+        output.put((byte) (value >>> 8));
+        output.put((byte) value);
     }
 
     /**

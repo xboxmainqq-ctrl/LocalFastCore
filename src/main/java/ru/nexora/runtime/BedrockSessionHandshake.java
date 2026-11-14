@@ -9,7 +9,7 @@ import java.util.Objects;
  * socket, send NetworkSettings, verify identity JWTs, or authenticate users.
  * The transport/session owner must call {@link #markNetworkSettingsSent()}
  * only after the NetworkSettings response has actually been handed off, and
- * call {@link #markAuthenticated()} only after authentication has succeeded.</p>
+ * call {@link #markAuthenticated()} only after authentication succeeds and LoginSuccess has been accepted by the transport.</p>
  *
  * <p>All methods are synchronized so a transport callback and an authentication
  * callback cannot race state transitions.</p>

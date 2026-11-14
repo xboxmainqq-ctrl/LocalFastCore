@@ -42,7 +42,7 @@ class NexoraChunkDataCodecTest {
         assertEquals(new NexoraChunkData.Block(0, 60, 0, "minecraft:bedrock"),
                 chunk.blocks().get(0));
         assertEquals(new NexoraChunkData.Block(0, 64, 0, "minecraft:grass_block"),
-                chunk.blocks().get(2));
+                chunk.blocks().get(3));
     }
 
     @Test

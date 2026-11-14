@@ -34,6 +34,15 @@ final class ChunkPreviewView extends GLSurfaceView {
     private float previousY;
     private float previousSpan;
     private boolean scaling;
+    private volatile MovementListener movementListener;
+
+    interface MovementListener {
+        void onPositionChanged(double worldX, double worldY, double worldZ);
+    }
+
+    void setMovementListener(MovementListener listener) {
+        movementListener = listener;
+    }
 
     ChunkPreviewView(Context context) {
         super(context);
@@ -58,13 +67,36 @@ final class ChunkPreviewView extends GLSurfaceView {
     }
 
     void movePlayer(float forward, float strafe) {
-        queueEvent(() -> renderer.movePlayer(forward, strafe));
+        queueEvent(() -> {
+            renderer.movePlayer(forward, strafe);
+            publishPlayerPosition();
+        });
         requestRender();
     }
 
     void jumpPlayer() {
-        queueEvent(renderer::jumpPlayer);
+        queueEvent(() -> {
+            renderer.jumpPlayer();
+            publishPlayerPosition();
+        });
         requestRender();
+    }
+
+    void setServerPosition(double worldX, double worldY, double worldZ) {
+        queueEvent(() -> renderer.setPlayerSpawn(
+                (float) (worldX - centerChunkX * 16 + 16),
+                (float) worldY,
+                (float) (worldZ - centerChunkZ * 16 + 16)));
+        requestRender();
+    }
+
+    private void publishPlayerPosition() {
+        MovementListener listener = movementListener;
+        if (listener == null || !renderer.playerInitialized) return;
+        listener.onPositionChanged(
+                renderer.playerX + centerChunkX * 16 - 16,
+                renderer.playerY,
+                renderer.playerZ + centerChunkZ * 16 - 16);
     }
 
     void setCenter(int chunkX, int chunkZ) {
@@ -293,6 +325,7 @@ final class ChunkPreviewView extends GLSurfaceView {
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
             if (meshDirty) rebuildMesh();
             if (playerInitialized && Math.abs(verticalVelocity) > 0.0001f) {
+                float previousPlayerY = playerY;
                 float nextY = playerY + verticalVelocity;
                 if (canOccupy(playerX, nextY, playerZ)) {
                     playerY = nextY;
@@ -301,6 +334,9 @@ final class ChunkPreviewView extends GLSurfaceView {
                     verticalVelocity = 0f;
                 }
                 if (playerY < -64f) verticalVelocity = 0f;
+                if (Math.abs(playerY - previousPlayerY) > 0.0001f) {
+                    ChunkPreviewView.this.publishPlayerPosition();
+                }
                 if (Math.abs(verticalVelocity) > 0.0001f) {
                     ChunkPreviewView.this.requestRender();
                 }

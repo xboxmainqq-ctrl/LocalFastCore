@@ -508,12 +508,12 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                     NexoraAndroidProtocolCodec.WorldInfo world =
                             NexoraAndroidProtocolCodec.decodeWorldInfo(complete);
                     worldInfoReceived = true;
+                    reportStatus("Мир получен • " + world.worldId() + " • высота "
+                            + world.minY() + ".." + (world.maxYExclusive() - 1));
                     Listener current = listener;
                     if (current != null) {
                         mainHandler.post(() -> current.onWorldInfoReceived(world));
                     }
-                    reportStatus("Мир получен • " + world.worldId() + " • высота "
-                            + world.minY() + ".." + (world.maxYExclusive() - 1));
                     return;
                 } catch (RuntimeException malformed) {
                     reportError("Некорректные сведения о мире NEXORA: " + malformed.getMessage());

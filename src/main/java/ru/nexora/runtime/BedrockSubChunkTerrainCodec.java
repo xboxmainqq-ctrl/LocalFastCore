@@ -6,7 +6,7 @@ import java.util.Objects;
 /** Protocol-2225 network serializer for one version-9 Bedrock subchunk. */
 public final class BedrockSubChunkTerrainCodec {
     public static final int FORMAT_VERSION = 9;
-    public static final int BLOCK_STORAGE_LAYERS = 1;
+    public static final int BLOCK_STORAGE_LAYERS = 2;
     private static final int MAX_SERIALIZED_BYTES = 128 * 1024;
 
     private BedrockSubChunkTerrainCodec() {
@@ -14,8 +14,8 @@ public final class BedrockSubChunkTerrainCodec {
 
     /**
      * Encodes one subchunk response blob, including its empty block-actor NBT
-     * terminator. The current terrain profile has one block layer and no
-     * waterlogged/fluid layer or block actors.
+     * terminator. The current terrain profile writes the block layer and an explicit empty
+     * liquid layer; fluid-bearing states are rejected until world fluid storage exists.
      */
     public static ByteBuffer encode(
             ChunkSection section,
@@ -49,8 +49,9 @@ public final class BedrockSubChunkTerrainCodec {
             throw new IllegalArgumentException("Subchunk Y index must fit signed int8");
         }
 
-        ByteBuffer storage = BedrockPalettedStorageCodec.encode(section, registry);
-        int required = 3 + storage.remaining();
+        ByteBuffer blockStorage = BedrockPalettedStorageCodec.encode(section, registry);
+        ByteBuffer liquidStorage = BedrockPalettedStorageCodec.encodeEmptyFluidLayer(registry);
+        int required = 3 + blockStorage.remaining() + liquidStorage.remaining();
         if (required > MAX_SERIALIZED_BYTES) {
             throw new IllegalArgumentException("Serialized subchunk exceeds the configured limit");
         }
@@ -59,7 +60,8 @@ public final class BedrockSubChunkTerrainCodec {
         out.put((byte) FORMAT_VERSION);
         out.put((byte) BLOCK_STORAGE_LAYERS);
         out.put((byte) absoluteSubChunkY);
-        out.put(storage);
+        out.put(blockStorage);
+        out.put(liquidStorage);
         out.flip();
         return out.asReadOnlyBuffer();
     }

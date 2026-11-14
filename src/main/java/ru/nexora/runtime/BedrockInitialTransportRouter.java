@@ -30,6 +30,7 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
     private final ScheduledExecutorService timeoutExecutor;
     private final ConcurrentMap<String, Session> sessions = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
+    private volatile Consumer<TransportConnection> connectionCloseListener = ignored -> { };
 
     public BedrockInitialTransportRouter(BedrockNetworkSettings networkSettings,
                                          LoginAuthenticator loginAuthenticator,
@@ -59,6 +60,23 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
             thread.setDaemon(true);
             return thread;
         });
+    }
+
+    /** Installs a lifecycle observer before the router accepts connections. */
+    public synchronized void setConnectionCloseListener(Consumer<TransportConnection> listener) {
+        Objects.requireNonNull(listener, "listener");
+        if (!sessions.isEmpty()) {
+            throw new IllegalStateException("Connection close listener must be installed before accepting peers");
+        }
+        this.connectionCloseListener = listener;
+    }
+
+    private void notifyConnectionClosed(TransportConnection connection) {
+        try {
+            connectionCloseListener.accept(connection);
+        } catch (RuntimeException ignored) {
+            // Lifecycle observers must not prevent transport/session cleanup.
+        }
     }
 
     @Override
@@ -276,6 +294,7 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
             cancelTimeout(session);
             sessions.remove(session.connection.id(), session);
             session.processor.close();
+            notifyConnectionClosed(session.connection);
         }
     }
 
@@ -284,6 +303,7 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
             cancelTimeout(session);
             sessions.remove(session.connection.id(), session);
             session.processor.close();
+            notifyConnectionClosed(session.connection);
             session.connection.close();
         }
     }

@@ -70,6 +70,22 @@ class NexoraPrivateProtocolHandlerTest {
     }
 
     @Test
+    void rejectsOlderMinorVersionWhenInventoryWireFormatChanges() {
+        FakeConnection connection = new FakeConnection();
+        new NexoraPrivateProtocolHandler(UUID.randomUUID(), 1024,
+                ignored -> fail("old protocol must not become ready")).accept(connection);
+        byte[] hello = NexoraPrivateProtocolCodec.encodeClientHello("android-dev");
+        hello[5] = 1;
+
+        connection.deliver(hello);
+
+        NexoraPrivateProtocolCodec.ServerResponse response =
+                NexoraPrivateProtocolCodec.decodeServerResponse(ByteBuffer.wrap(connection.sentMessages.get(0)));
+        assertFalse(response.accepted());
+        assertEquals(1, response.rejectionCode());
+    }
+
+    @Test
     void rejectsMalformedHelloWithoutPromotingConnection() {
         FakeConnection connection = new FakeConnection();
         new NexoraPrivateProtocolHandler(UUID.randomUUID(), 1024, ignored -> fail("must not become ready"))

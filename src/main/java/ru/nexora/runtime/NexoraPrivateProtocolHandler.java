@@ -48,6 +48,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                         NexoraPrivateProtocolCodec.decodeClientHello(message.payload());
                 if (hello.majorVersion() != NexoraPrivateProtocolCodec.MAJOR_VERSION
                         || hello.minorVersion() > NexoraPrivateProtocolCodec.MINOR_VERSION) {
+                    connection.setMessageListener(ignored -> connection.close());
                     sendReject(connection, REJECT_UNSUPPORTED_VERSION,
                             "Unsupported NEXORA protocol version");
                     return;
@@ -60,8 +61,12 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                     connection.close();
                     return;
                 }
+                connection.setMessageListener(ignored -> {
+                    // The next application protocol layer will replace this listener.
+                });
                 readyListener.accept(connection);
             } catch (RuntimeException malformed) {
+                connection.setMessageListener(ignored -> connection.close());
                 sendReject(connection, REJECT_INVALID_HELLO, "Invalid NEXORA client hello");
             }
         });

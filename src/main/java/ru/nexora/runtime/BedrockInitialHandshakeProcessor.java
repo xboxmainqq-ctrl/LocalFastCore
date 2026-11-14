@@ -25,6 +25,12 @@ public final class BedrockInitialHandshakeProcessor {
     ) {
         this.handshake = Objects.requireNonNull(handshake, "handshake");
         this.networkSettings = Objects.requireNonNull(networkSettings, "networkSettings");
+        if (networkSettings.compressionAlgorithm()
+                == BedrockNetworkSettings.CompressionAlgorithm.SNAPPY) {
+            throw new IllegalArgumentException(
+                    "NEXORA cannot negotiate Snappy until its codec is implemented"
+            );
+        }
     }
 
     public synchronized BedrockHandshakeFrameResult receiveFrame(ByteBuffer frame) {

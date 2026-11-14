@@ -44,6 +44,38 @@ class BedrockLevelChunkColumnDataCodecTest {
     }
 
     @Test
+    void includesFluidOnlySectionsInTheFullColumn() {
+        InMemoryWorld world = new InMemoryWorld("overworld", new WorldHeight(0, 16));
+        ChunkPosition chunk = new ChunkPosition(1, -2);
+        BlockState water = new BlockState("minecraft:water");
+        world.setFluid(new BlockPosition(18, 4, -31), water);
+        BedrockRuntimeBlockRegistry registry = BedrockRuntimeBlockRegistry.of(Map.of(
+                BlockState.AIR, 0,
+                water, 2));
+
+        BedrockLevelChunkColumnDataCodec.EncodedColumn encoded =
+                BedrockLevelChunkColumnDataCodec.encode(world, chunk, registry);
+
+        assertEquals(1, encoded.subChunkCount());
+        ByteBuffer in = ByteBuffer.wrap(encoded.serializedData());
+        assertEquals(9, Byte.toUnsignedInt(in.get()));
+        assertEquals(2, Byte.toUnsignedInt(in.get()));
+        assertEquals(0, in.get());
+        assertEquals(1, Byte.toUnsignedInt(in.get())); // block layer: uniform air
+        assertEquals(0, BedrockBinary.readVarInt32(in));
+        assertEquals(3, Byte.toUnsignedInt(in.get())); // liquid layer: water + air
+        for (int i = 0; i < 128; i++) BedrockBinary.readLittleEndianInt32(in);
+        assertEquals(2, BedrockBinary.readVarInt32(in));
+        assertEquals(0, BedrockBinary.readVarInt32(in)); // air first
+        assertEquals(2, BedrockBinary.readVarInt32(in)); // water
+        assertEquals(1, Byte.toUnsignedInt(in.get())); // uniform plains biome
+        assertEquals(1, BedrockBinary.readVarUInt32(in));
+        assertEquals(0, Byte.toUnsignedInt(in.get())); // no border blocks
+        assertEquals(0, Byte.toUnsignedInt(in.get())); // no block entities
+        assertFalse(in.hasRemaining());
+    }
+
+    @Test
     void rejectsUnloadedChunksAndKeepsEmptyLoadedChunkPayloadMinimal() {
         InMemoryWorld world = new InMemoryWorld("overworld", new WorldHeight(0, 16));
         BedrockRuntimeBlockRegistry registry = BedrockRuntimeBlockRegistry.of(Map.of(BlockState.AIR, 0));

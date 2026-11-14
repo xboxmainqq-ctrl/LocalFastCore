@@ -1,0 +1,187 @@
+package ru.nexora.runtime;
+
+import java.nio.ByteBuffer;
+import java.util.Objects;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+
+/**
+ * Routes newly established transport peers through the initial Bedrock
+ * NetworkSettings/Login handshake before handing authenticated peers to play.
+ */
+public final class BedrockInitialTransportRouter implements Consumer<TransportConnection>, AutoCloseable {
+    private final BedrockNetworkSettings networkSettings;
+    private final LoginAuthenticator loginAuthenticator;
+    private final Consumer<TransportConnection> playListener;
+    private final BiConsumer<TransportConnection, TransportMessage> playMessageHandler;
+    private final ConcurrentMap<String, Session> sessions = new ConcurrentHashMap<>();
+    private final AtomicBoolean closed = new AtomicBoolean();
+
+    public BedrockInitialTransportRouter(BedrockNetworkSettings networkSettings,
+                                         LoginAuthenticator loginAuthenticator,
+                                         Consumer<TransportConnection> playListener,
+                                         BiConsumer<TransportConnection, TransportMessage> playMessageHandler) {
+        this.networkSettings = Objects.requireNonNull(networkSettings, "networkSettings");
+        this.loginAuthenticator = Objects.requireNonNull(loginAuthenticator, "loginAuthenticator");
+        this.playListener = Objects.requireNonNull(playListener, "playListener");
+        this.playMessageHandler = Objects.requireNonNull(playMessageHandler, "playMessageHandler");
+    }
+
+    @Override
+    public void accept(TransportConnection connection) {
+        Objects.requireNonNull(connection, "connection");
+        if (closed.get()) {
+            connection.close();
+            return;
+        }
+        Session session = new Session(connection,
+                new BedrockInitialHandshakeProcessor(networkSettings));
+        if (sessions.putIfAbsent(connection.id(), session) != null) {
+            connection.close();
+            return;
+        }
+        connection.setCloseListener(event -> remove(session));
+        connection.setMessageListener(message -> receive(session, message));
+    }
+
+    private void receive(Session session, TransportMessage message) {
+        if (session.closed.get()) {
+            return;
+        }
+        synchronized (session) {
+            if (session.closed.get()) {
+                return;
+            }
+            if (session.processor.state() == BedrockHandshakeState.PLAY) {
+                try {
+                    playMessageHandler.accept(session.connection, message);
+                } catch (RuntimeException failure) {
+                    close(session, "Play message handler failed");
+                }
+                return;
+            }
+            if (message.deliveryMode() != DeliveryMode.RELIABLE_ORDERED) {
+                close(session, "Bedrock handshake packet arrived on unreliable channel");
+                return;
+            }
+
+            BedrockHandshakeFrameResult result;
+            try {
+                result = session.processor.receiveFrame(message.payload());
+            } catch (RuntimeException malformed) {
+                close(session, "Bedrock handshake processing failed");
+                return;
+            }
+
+            if (result.outboundFrame() != null) {
+                TransportSendResult sent = session.connection.send(
+                        result.outboundFrame(), DeliveryMode.RELIABLE_ORDERED);
+                if (sent != TransportSendResult.ACCEPTED) {
+                    close(session, "Could not enqueue NetworkSettings response");
+                    return;
+                }
+                if (result.status() == BedrockHandshakeFrameStatus.NETWORK_SETTINGS_RESPONSE_READY
+                        && session.processor.markNetworkSettingsSent()
+                        != BedrockHandshakeResult.ACCEPTED) {
+                    close(session, "NetworkSettings state transition failed");
+                    return;
+                }
+            }
+
+            if (result.status() == BedrockHandshakeFrameStatus.AUTHENTICATION_REQUIRED) {
+                authenticate(session);
+            } else if (result.status() != BedrockHandshakeFrameStatus.NETWORK_SETTINGS_RESPONSE_READY) {
+                close(session, "Bedrock initial handshake rejected: " + result.status());
+            }
+        }
+    }
+
+    private void authenticate(Session session) {
+        BedrockLoginPacket login = session.processor.pendingLogin().orElse(null);
+        if (login == null) {
+            close(session, "Login packet was not retained for authentication");
+            return;
+        }
+        final CompletionStage<Boolean> authentication;
+        try {
+            authentication = loginAuthenticator.authenticate(session.connection, login);
+            if (authentication == null) {
+                close(session, "Login authenticator returned no result");
+                return;
+            }
+        } catch (Exception failure) {
+            close(session, "Login authentication failed");
+            return;
+        }
+        authentication.whenComplete((accepted, failure) -> {
+            if (session.closed.get()) {
+                return;
+            }
+            if (failure != null || !Boolean.TRUE.equals(accepted)) {
+                close(session, "Login authentication was rejected");
+                return;
+            }
+            synchronized (session) {
+                if (session.closed.get()
+                        || session.processor.markAuthenticated() != BedrockHandshakeResult.ACCEPTED) {
+                    close(session, "Could not enter Bedrock play state");
+                    return;
+                }
+                session.connection.setMessageListener(message -> receive(session, message));
+                try {
+                    playListener.accept(session.connection);
+                } catch (RuntimeException failureToStartPlay) {
+                    close(session, "Could not initialize Bedrock play session");
+                }
+            }
+        });
+    }
+
+    private void remove(Session session) {
+        if (session.closed.compareAndSet(false, true)) {
+            sessions.remove(session.connection.id(), session);
+            session.processor.close();
+        }
+    }
+
+    private void close(Session session, String reason) {
+        if (session.closed.compareAndSet(false, true)) {
+            sessions.remove(session.connection.id(), session);
+            session.processor.close();
+            session.connection.close();
+        }
+    }
+
+    @Override
+    public void close() {
+        if (!closed.compareAndSet(false, true)) {
+            return;
+        }
+        for (Session session : sessions.values()) {
+            close(session, "Bedrock transport router stopped");
+        }
+        sessions.clear();
+    }
+
+    @FunctionalInterface
+    public interface LoginAuthenticator {
+        CompletionStage<Boolean> authenticate(TransportConnection connection,
+                                              BedrockLoginPacket login);
+    }
+
+    private static final class Session {
+        private final TransportConnection connection;
+        private final BedrockInitialHandshakeProcessor processor;
+        private final AtomicBoolean closed = new AtomicBoolean();
+
+        private Session(TransportConnection connection,
+                        BedrockInitialHandshakeProcessor processor) {
+            this.connection = connection;
+            this.processor = processor;
+        }
+    }
+}

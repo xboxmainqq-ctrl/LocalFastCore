@@ -17,6 +17,8 @@ final class NexoraAndroidProtocolCodec {
     private static final int TYPE_CHUNK_DATA = 6;
     private static final int TYPE_CLIENT_MOVE = 7;
     private static final int TYPE_SERVER_POSITION = 8;
+    private static final int TYPE_REMOTE_PLAYER_STATE = 9;
+    private static final int TYPE_REMOTE_PLAYER_LEFT = 10;
 
     private NexoraAndroidProtocolCodec() {
     }
@@ -122,6 +124,31 @@ final class NexoraAndroidProtocolCodec {
             throw new IllegalArgumentException("Invalid NEXORA server position");
         }
         return new PlayerPosition(x, y, z);
+    }
+
+    static RemotePlayerState decodeRemotePlayerState(byte[] bytes) {
+        ByteBuffer input = checkedHeader(bytes, TYPE_REMOTE_PLAYER_STATE);
+        if (input.remaining() != 40) {
+            throw new IllegalArgumentException("Malformed NEXORA remote player state");
+        }
+        UUID playerId = new UUID(input.getLong(), input.getLong());
+        double x = input.getDouble();
+        double y = input.getDouble();
+        double z = input.getDouble();
+        if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
+                || Math.abs(x) > 30_000_000d || Math.abs(y) > 30_000_000d
+                || Math.abs(z) > 30_000_000d) {
+            throw new IllegalArgumentException("Invalid NEXORA remote player coordinates");
+        }
+        return new RemotePlayerState(playerId, x, y, z);
+    }
+
+    static UUID decodeRemotePlayerLeft(byte[] bytes) {
+        ByteBuffer input = checkedHeader(bytes, TYPE_REMOTE_PLAYER_LEFT);
+        if (input.remaining() != 16) {
+            throw new IllegalArgumentException("Malformed NEXORA remote player leave");
+        }
+        return new UUID(input.getLong(), input.getLong());
     }
 
     private static byte[] encodePosition(int type, double x, double y, double z) {

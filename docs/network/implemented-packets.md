@@ -119,7 +119,9 @@ The authorization-service endpoint, RS256 algorithm, issuer, audience, and clien
 - The returned SDP answer is signed with the configured operator P-384 key using `NetherNetServerIdentitySigner`; the response is checked for a valid session-level identity attribute before being returned.
 - HTTP worker count, queue depth, request size, and answer timeout are bounded.
 
-The current signaling listener is plain HTTP. For non-TLS connections, clients must apply the TOFU confirmation returned by `NetherNetServerIdentityVerifier`. HTTPS termination and certificate management are not implemented in this listener. `NetherNetPeerHost` is still an adapter interface: no WebRTC implementation, ICE gathering, SCTP data channels, or live peer transport is included yet.
+The listener can bind plain HTTP or HTTPS when the host supplies an `SSLContext`; certificate loading and lifecycle remain the host application's responsibility. Plain HTTP clients must complete the TOFU confirmation returned by `NetherNetServerIdentityVerifier`.
+
+Authenticated deployments must use `NetherNetAuthenticatedOfferValidator`. For local transport development only, `NetherNetDevelopmentOfferValidator(true)` explicitly permits identity-free offers so the Android client can exercise WebRTC before Microsoft/Xbox GameServerToken acquisition exists. This mode provides no player authentication or authorization and must not be exposed on a public or production server.
 
 ## WebRTC peer host and data channels
 

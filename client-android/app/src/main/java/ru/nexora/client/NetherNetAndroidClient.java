@@ -594,6 +594,19 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                 }
                 return;
             }
+            if (complete.length >= 7 && complete[6] == 11) {
+                try {
+                    NexoraAndroidProtocolCodec.InventoryState inventory =
+                            NexoraAndroidProtocolCodec.decodeInventory(complete);
+                    Listener current = listener;
+                    if (current != null) {
+                        mainHandler.post(() -> current.onInventoryReceived(inventory));
+                    }
+                } catch (RuntimeException malformed) {
+                    reportError("Некорректный инвентарь NEXORA: " + malformed.getMessage());
+                }
+                return;
+            }
             try {
                 NexoraAndroidProtocolCodec.ChunkData chunk =
                         NexoraAndroidProtocolCodec.decodeChunkData(complete);
@@ -901,6 +914,9 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         }
 
         default void onRemotePlayerLeft(java.util.UUID playerId) {
+        }
+
+        default void onInventoryReceived(NexoraAndroidProtocolCodec.InventoryState inventory) {
         }
 
         default void onNetworkSettingsReceived(BedrockAndroidNetworkSettings settings) {

@@ -15,6 +15,8 @@ final class NexoraAndroidProtocolCodec {
     private static final byte[] MAGIC = {'N', 'X', 'R', 'A'};
     private static final int TYPE_WORLD_INFO = 4;
     private static final int TYPE_CHUNK_DATA = 6;
+    private static final int TYPE_CLIENT_MOVE = 7;
+    private static final int TYPE_SERVER_POSITION = 8;
 
     private NexoraAndroidProtocolCodec() {
     }
@@ -101,6 +103,38 @@ final class NexoraAndroidProtocolCodec {
                 tickRate, loadedChunks);
     }
 
+
+    static byte[] encodePlayerMove(double x, double y, double z) {
+        return encodePosition(TYPE_CLIENT_MOVE, x, y, z);
+    }
+
+    static PlayerPosition decodeServerPosition(byte[] bytes) {
+        ByteBuffer input = checkedHeader(bytes, TYPE_SERVER_POSITION);
+        if (input.remaining() != 24) {
+            throw new IllegalArgumentException("Malformed NEXORA server position");
+        }
+        double x = input.getDouble();
+        double y = input.getDouble();
+        double z = input.getDouble();
+        if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
+                || Math.abs(x) > 30_000_000d || Math.abs(y) > 30_000_000d
+                || Math.abs(z) > 30_000_000d) {
+            throw new IllegalArgumentException("Invalid NEXORA server position");
+        }
+        return new PlayerPosition(x, y, z);
+    }
+
+    private static byte[] encodePosition(int type, double x, double y, double z) {
+        if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
+                || Math.abs(x) > 30_000_000d || Math.abs(y) > 30_000_000d
+                || Math.abs(z) > 30_000_000d) {
+            throw new IllegalArgumentException("Invalid NEXORA movement coordinates");
+        }
+        ByteBuffer output = ByteBuffer.allocate(31).order(ByteOrder.BIG_ENDIAN);
+        output.put(MAGIC).put((byte) MAJOR_VERSION).put((byte) MINOR_VERSION)
+                .put((byte) type).putDouble(x).putDouble(y).putDouble(z);
+        return output.array();
+    }
 
     static byte[] encodeChunkRequest(int chunkX, int chunkZ) {
         ByteBuffer output = ByteBuffer.allocate(15).order(ByteOrder.BIG_ENDIAN);
@@ -196,7 +230,7 @@ final class NexoraAndroidProtocolCodec {
     record ChunkData(int chunkX, int chunkZ, java.util.List<ChunkBlock> blocks) {
     }
 
-    record WorldInfo(String worldId, int minY, int maxYExclusive,
+    record PlayerPosition(double x, double y, double z) {\n    }\n\n    record WorldInfo(String worldId, int minY, int maxYExclusive,
                      int spawnX, int spawnY, int spawnZ,
                      int tickRate, int loadedChunks) {
     }

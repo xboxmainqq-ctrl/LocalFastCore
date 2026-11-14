@@ -58,6 +58,24 @@ public class NexoraAndroidProtocolCodecTest {
         assertEquals("Unsupported version", response.rejectionReason());
     }
 
+    @Test
+    public void decodesWorldInfoFromServer() {
+        byte[] worldId = "world".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        ByteBuffer bytes = ByteBuffer.allocate(7 + 1 + worldId.length + 28);
+        bytes.put(new byte[] {'N','X','R','A',1,0,4});
+        bytes.put((byte) worldId.length).put(worldId);
+        bytes.putInt(-64).putInt(320);
+        bytes.putInt(0).putInt(65).putInt(0);
+        bytes.putInt(20).putInt(1);
+        NexoraAndroidProtocolCodec.WorldInfo world =
+                NexoraAndroidProtocolCodec.decodeWorldInfo(bytes.array());
+        assertEquals("world", world.worldId());
+        assertEquals(-64, world.minY());
+        assertEquals(320, world.maxYExclusive());
+        assertEquals(65, world.spawnY());
+        assertEquals(20, world.tickRate());
+        assertEquals(1, world.loadedChunks());
+    }
     @Test(expected = IllegalArgumentException.class)
     public void rejectsWrongMagic() {
         NexoraAndroidProtocolCodec.decodeServerResponse(new byte[] {0,0,0,0,1,0,2});

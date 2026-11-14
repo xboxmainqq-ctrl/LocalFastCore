@@ -120,8 +120,8 @@ public final class BedrockBatchCompressionCodec {
             byte[] buffer = new byte[BUFFER_BYTES];
             while (!deflater.finished()) {
                 int written = deflater.deflate(buffer);
-                if (written == 0 && deflater.needsInput()) {
-                    throw new IllegalStateException("Raw DEFLATE ended before finishing the batch");
+                if (written == 0) {
+                    throw new IllegalStateException("Raw DEFLATE encoder made no progress before finishing the batch");
                 }
                 output.write(buffer, 0, written);
             }

@@ -19,7 +19,7 @@ This is a Nukkit-MOT plugin targeting Java 17 bytecode and built in CI with JDK 
 - Player profile model and repository contract.
 - Security services exposed through `NexoraAPI.security()`: SHA-256 file integrity checks, JSON-lines audit logging, and an audited NEXORA access controller for sensitive module actions.
 - Nukkit-MOT permission bridge that adapts `CommandSender.hasPermission(...)` into the platform-neutral `PermissionSubject` contract without caching permission decisions.
-- JUnit tests for core utility and security APIs.
+- Non-destructive `BackupManager` for explicit directory snapshots with symbolic-link rejection, SHA-256 file manifests, and no-overwrite behavior. It does not stop the server, schedule backups, verify manifests, or restore files.\n- JUnit tests for core utility, backup, and security APIs.
 
 ## Security behavior
 

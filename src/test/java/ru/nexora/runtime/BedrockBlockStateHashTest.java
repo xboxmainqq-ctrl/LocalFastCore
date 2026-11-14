@@ -34,6 +34,9 @@ class BedrockBlockStateHashTest {
         assertThrows(IllegalArgumentException.class, () ->
                 BedrockBlockStateHash.hash(new BlockState("minecraft:test_block",
                         Map.of("enabled", "x:1"))));
+        assertThrows(IllegalArgumentException.class, () ->
+                BedrockBlockStateHash.hash(new BlockState("minecraft:test_block",
+                        Map.of("enabled", "b:"))));
     }
 
     @Test

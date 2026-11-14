@@ -1,9 +1,9 @@
 name: LocalFastCore
 main: ru.localfast.core.LocalFastCore
-version: "0.73.0"
+version: "0.74.0"
 api: ["1.0.0"]
 author: LocalFast
-description: LocalFastCore 0.73.0 unified magic, spells, relics and RPG systems
+description: LocalFastCore 0.74.0 grouped magic relics and equipment
 commands:
   spawn:
     description: Телепорт на отдельный спавн

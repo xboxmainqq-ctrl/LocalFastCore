@@ -129,6 +129,8 @@ public final class WebRtcJavaNetherNetPeerHost
                 return session.answer;
             }
             session.peer = peer;
+            peer.setAudioPlayout(false);
+            peer.setAudioRecording(false);
             sessions.put(session.id, session);
             peer.setRemoteDescription(
                     new RTCSessionDescription(RTCSdpType.OFFER, webRtcOfferSdp),

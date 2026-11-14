@@ -24,6 +24,8 @@ class BedrockSessionHandshakeTest {
         assertEquals(BedrockHandshakeState.AUTHENTICATION_PENDING, handshake.state());
 
         assertEquals(BedrockHandshakeResult.ACCEPTED, handshake.markAuthenticated());
+        assertEquals(BedrockHandshakeState.LOGIN_SUCCESS_SENT, handshake.state());
+        assertEquals(BedrockHandshakeResult.ACCEPTED, handshake.markPlayReady());
         assertEquals(BedrockHandshakeState.PLAY, handshake.state());
     }
 
@@ -47,6 +49,7 @@ class BedrockSessionHandshakeTest {
         assertEquals(BedrockHandshakeResult.INVALID_STATE,
                 handshake.receiveLogin(new BedrockLoginPacket(2225, "opaque-request")));
         assertEquals(BedrockHandshakeResult.INVALID_STATE, handshake.markAuthenticated());
+        assertEquals(BedrockHandshakeResult.INVALID_STATE, handshake.markPlayReady());
         assertEquals(BedrockHandshakeState.AWAITING_NETWORK_SETTINGS_REQUEST, handshake.state());
     }
 
@@ -83,6 +86,7 @@ class BedrockSessionHandshakeTest {
                 handshake.receiveLogin(new BedrockLoginPacket(2225, "opaque-request")));
 
         assertEquals(BedrockHandshakeResult.ACCEPTED, handshake.markAuthenticated());
+        assertEquals(BedrockHandshakeState.LOGIN_SUCCESS_SENT, handshake.state());
         handshake.close();
 
         assertEquals(BedrockHandshakeState.CLOSED, handshake.state());

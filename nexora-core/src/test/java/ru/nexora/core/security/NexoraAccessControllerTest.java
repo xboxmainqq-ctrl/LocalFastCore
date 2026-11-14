@@ -49,6 +49,16 @@ class NexoraAccessControllerTest {
     }
 
     @Test
+    void propagatesAuditFailureSoCallersCanFailClosed() throws IOException {
+        Path auditPath = tempDir.resolve("audit-is-a-directory");
+        Files.createDirectory(auditPath);
+        NexoraAccessController access = new NexoraAccessController(new AuditLogger(auditPath));
+
+        assertThrows(IOException.class,
+                () -> access.authorize(permission -> true, "operator", "nexora.admin.reload"));
+    }
+
+    @Test
     void rejectsInvalidActorLabels() {
         NexoraAccessController access = new NexoraAccessController(
                 new AuditLogger(tempDir.resolve("security-audit.jsonl")));

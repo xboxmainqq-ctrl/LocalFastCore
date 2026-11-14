@@ -43,6 +43,27 @@ class NexoraMainTest {
     }
 
     @Test
+    void exposesLoadedWorldMetadataForPrivateClientSessions() {
+        NexoraMain.RuntimeHandle runtime = NexoraMain.createRuntime(
+                temporaryDirectory.resolve("world-info"), 7L, ignored -> { });
+        runtime.server().start();
+        try {
+            NexoraWorldInfo info = runtime.worldInfo();
+            assertEquals("world", info.worldId());
+            assertEquals(-64, info.minY());
+            assertEquals(320, info.maxYExclusive());
+            assertEquals(0, info.spawnX());
+            assertEquals(65, info.spawnY());
+            assertEquals(0, info.spawnZ());
+            assertEquals(20, info.tickRate());
+            assertEquals(1, info.loadedChunks());
+            assertNotNull(runtime.privateProtocolHandler(java.util.UUID.randomUUID(), ignored -> { }));
+        } finally {
+            runtime.server().stop();
+        }
+    }
+
+    @Test
     void startsWorldAndTickLoopThenPersistsWorldOnStop() {
         Path dataDirectory = temporaryDirectory.resolve("nexora");
         NexoraMain.RuntimeHandle runtime = NexoraMain.createRuntime(dataDirectory, 42L, ignored -> { });

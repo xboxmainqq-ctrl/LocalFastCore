@@ -31,6 +31,7 @@ public final class BedrockSubChunkResponseBuilder {
 
         List<BedrockSubChunkPacketCodec.Entry> entries = new ArrayList<>(request.offsets().size());
         Map<ChunkPosition, Map<Integer, ChunkSection>> sectionSnapshots = new HashMap<>();
+        Map<ChunkPosition, Map<Integer, ChunkSection>> fluidSectionSnapshots = new HashMap<>();
         List<BedrockSubChunkRequestPacketCodec.SubChunkPosition> positions =
                 request.absolutePositions();
 
@@ -68,8 +69,14 @@ public final class BedrockSubChunkResponseBuilder {
             if (section == null || section.isEmpty()) {
                 entries.add(BedrockSubChunkPacketCodec.Entry.allAir(offset));
             } else {
+                Map<Integer, ChunkSection> fluidSections = fluidSectionSnapshots.computeIfAbsent(
+                        chunkPosition, ignored -> groupBlocksBySection(world.fluidsInChunk(chunkPosition)));
+                ChunkSection fluidSection = fluidSections.get(position.y());
+                if (fluidSection == null) {
+                    fluidSection = new ChunkSection();
+                }
                 ByteBuffer serialized = BedrockSubChunkTerrainCodec.encode(
-                        section, position.y(), registry);
+                        section, fluidSection, position.y(), registry);
                 byte[] bytes = new byte[serialized.remaining()];
                 serialized.get(bytes);
                 entries.add(BedrockSubChunkPacketCodec.Entry.success(offset, bytes));

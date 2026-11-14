@@ -554,6 +554,34 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                 }
                 return;
             }
+            if (complete.length >= 7 && complete[6] == 9) {
+                try {
+                    NexoraAndroidProtocolCodec.RemotePlayerState player =
+                            NexoraAndroidProtocolCodec.decodeRemotePlayerState(complete);
+                    Listener current = listener;
+                    if (current != null) {
+                        mainHandler.post(() -> current.onRemotePlayerState(player));
+                    }
+                } catch (RuntimeException malformed) {
+                    reportError("Некорректная позиция другого игрока NEXORA: "
+                            + malformed.getMessage());
+                }
+                return;
+            }
+            if (complete.length >= 7 && complete[6] == 10) {
+                try {
+                    java.util.UUID playerId =
+                            NexoraAndroidProtocolCodec.decodeRemotePlayerLeft(complete);
+                    Listener current = listener;
+                    if (current != null) {
+                        mainHandler.post(() -> current.onRemotePlayerLeft(playerId));
+                    }
+                } catch (RuntimeException malformed) {
+                    reportError("Некорректное отключение игрока NEXORA: "
+                            + malformed.getMessage());
+                }
+                return;
+            }
             try {
                 NexoraAndroidProtocolCodec.ChunkData chunk =
                         NexoraAndroidProtocolCodec.decodeChunkData(complete);
@@ -855,6 +883,12 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         }
 
         default void onServerPosition(NexoraAndroidProtocolCodec.PlayerPosition position) {
+        }
+
+        default void onRemotePlayerState(NexoraAndroidProtocolCodec.RemotePlayerState player) {
+        }
+
+        default void onRemotePlayerLeft(java.util.UUID playerId) {
         }
 
         default void onNetworkSettingsReceived(BedrockAndroidNetworkSettings settings) {

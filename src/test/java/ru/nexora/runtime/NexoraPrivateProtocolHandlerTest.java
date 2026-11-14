@@ -248,7 +248,7 @@ class NexoraPrivateProtocolHandlerTest {
                 NexoraInventoryActionCodec.Action.DROP_ONE, 5, 0));
 
         assertEquals(new ItemStack("minecraft:apple", 1), inventory.stackAt(5));
-        assertEquals(1, entities.snapshot().stream()
+        assertEquals(1L, entities.snapshot().stream()
                 .filter(entity -> entity.type() == WorldEntity.Type.ITEM
                         && entity.name().equals("minecraft:apple")).count());
         assertEquals(13, Byte.toUnsignedInt(connection.sentMessages.get(6)[6]));

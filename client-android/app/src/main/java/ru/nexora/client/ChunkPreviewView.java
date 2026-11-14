@@ -247,8 +247,8 @@ final class ChunkPreviewView extends GLSurfaceView {
             float dz = (float) (-Math.sin(angle) * forward - Math.cos(angle) * strafe);
             float length = (float) Math.sqrt(dx * dx + dz * dz);
             if (length < 0.001f) return;
-            dx = dx / length * 0.28f;
-            dz = dz / length * 0.28f;
+            dx = dx / length * 0.20f;
+            dz = dz / length * 0.20f;
             if (canOccupy(playerX + dx, playerY, playerZ)) playerX += dx;
             if (canOccupy(playerX, playerY, playerZ + dz)) playerZ += dz;
         }

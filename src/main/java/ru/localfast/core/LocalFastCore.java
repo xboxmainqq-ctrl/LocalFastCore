@@ -61,7 +61,7 @@ import java.util.UUID;
 public final class LocalFastCore extends PluginBase implements Listener {
     private static final int MAX_LEVEL = 100;
     private static final int MAX_MAGIC_LEVEL = 30;
-    private static final int[] MAGIC_EQUIPMENT_SLOTS = {10, 12, 14, 16, 20, 22};
+    private static final int[] MAGIC_EQUIPMENT_SLOTS = {10, 12, 14, 16, 20, 22, 24, 26};
     private static final int CURRENT_PLAYER_DATA_VERSION = 1;
     private static final int POINTS_PER_LEVEL = 3;
     private static final int MAX_XP_GRANT = 1_000_000;
@@ -4077,7 +4077,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
         Item item = Item.get(magicRelicItemId(id), 0, 1);
         item.setCustomName(magicRelicName(id));
         item.setLore(new String[]{"§7Магическая экипировка LocalFast", magicRelicDescription(id),
-                "§8Помести в специальный слот через /magic"});
+                "§8Установи через /magic → Экипировка"});
         return item;
     }
 
@@ -4095,17 +4095,52 @@ public final class LocalFastCore extends PluginBase implements Listener {
         return players.getString(magicEquipmentPath(player) + "." + slot, "");
     }
 
+    private String magicRelicCategory(String id) {
+        if (Arrays.asList("mana_heart", "archmage_orb", "phoenix_feather").contains(id)) return "artifact";
+        if (Arrays.asList("ember_amulet", "frost_amulet", "soul_pendant").contains(id)) return "amulet";
+        if (Arrays.asList("void_ring", "guardian_ring", "swift_ring").contains(id)) return "ring";
+        return "talisman";
+    }
+
+    private String magicCategoryLabel(String category) {
+        switch (category) {
+            case "artifact": return "§6Артефакты";
+            case "amulet": return "§dАмулеты";
+            case "ring": return "§eКольца";
+            default: return "§bТалисманы и руны";
+        }
+    }
+
+    private String[] magicCategoryRelics(String category) {
+        List<String> result = new ArrayList<>();
+        for (String id : magicRelicIds()) if (magicRelicCategory(id).equals(category)) result.add(id);
+        return result.toArray(new String[0]);
+    }
+
     private boolean magicRelicFitsSlot(String id, int slot) {
-        if (slot >= 0 && slot <= 1) {
-            return Arrays.asList("mana_heart", "archmage_orb", "phoenix_feather", "chrono_talisman", "rune_focus", "storm_seal").contains(id);
+        String category = slot < 2 ? "artifact" : slot < 4 ? "amulet" : slot < 6 ? "ring" : "talisman";
+        return slot >= 0 && slot < 8 && magicRelicCategory(id).equals(category);
+    }
+
+    private int findMagicRelicInventorySlot(Player player, String id) {
+        String name = magicRelicName(id);
+        for (int i = 0; i < player.getInventory().getSize(); i++) {
+            Item item = player.getInventory().getItem(i);
+            if (item != null && item.getId() > 0 && name.equals(item.getCustomName())) return i;
         }
-        if (slot >= 2 && slot <= 3) {
-            return Arrays.asList("ember_amulet", "frost_amulet", "soul_pendant").contains(id);
+        return -1;
+    }
+
+    private boolean removeOneMagicRelic(Player player, String id) {
+        int inventorySlot = findMagicRelicInventorySlot(player, id);
+        if (inventorySlot < 0) return false;
+        Item item = player.getInventory().getItem(inventorySlot);
+        if (item.getCount() <= 1) player.getInventory().setItem(inventorySlot, Item.get(0, 0, 0));
+        else {
+            item.setCount(item.getCount() - 1);
+            player.getInventory().setItem(inventorySlot, item);
         }
-        if (slot >= 4 && slot <= 5) {
-            return Arrays.asList("void_ring", "guardian_ring", "swift_ring").contains(id);
-        }
-        return false;
+        return true;
     }
 
     private boolean hasMagicRelic(Player player, String id) {
@@ -4151,11 +4186,84 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void openMagicEquipmentInventory(Player player) {
         initialize(player);
-        MagicEquipmentInventory inventory = new MagicEquipmentInventory(player);
-        magicEquipmentInventories.put(player.getUniqueId(), inventory);
-        refreshMagicEquipmentInventory(player, inventory);
-        player.addWindow(inventory);
+        FormWindowSimple form = new FormWindowSimple("§5§lМОЯ ЭКИПИРОВКА",
+                "§7Выбери категорию. В каждой категории по два отдельных слота.\n"
+                + "§8Предметы для установки должны находиться в обычном инвентаре.");
+        String[] categories = {"artifact", "amulet", "ring", "talisman"};
+        for (String category : categories) {
+            int equipped = 0;
+            for (int slot = 0; slot < 8; slot++) {
+                String slotCategory = slot < 2 ? "artifact" : slot < 4 ? "amulet" : slot < 6 ? "ring" : "talisman";
+                if (category.equals(slotCategory) && !equippedMagicRelic(player, slot).isEmpty()) equipped++;
+            }
+            form.addButton(new ElementButton(magicCategoryLabel(category) + "\n§7Занято слотов: §f" + equipped + "/2"));
+        }
+        form.addButton(new ElementButton("§7Назад в магию"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int selected = form.getResponse().getClickedButtonId();
+            if (selected >= 0 && selected < categories.length) openMagicEquipmentCategory(player, categories[selected]);
+            else openMagicMenu(player);
+        }));
+        player.showFormWindow(form);
         updateMagicHud(player);
+    }
+
+    private void openMagicEquipmentCategory(Player player, String category) {
+        FormWindowSimple form = new FormWindowSimple(magicCategoryLabel(category),
+                "§7Выбери слот для просмотра, установки или снятия предмета.");
+        int first = category.equals("artifact") ? 0 : category.equals("amulet") ? 2 : category.equals("ring") ? 4 : 6;
+        for (int i = 0; i < 2; i++) {
+            int slot = first + i;
+            String id = equippedMagicRelic(player, slot);
+            String slotName = category.equals("artifact") ? "Артефакт" : category.equals("amulet") ? "Амулет"
+                    : category.equals("ring") ? "Кольцо" : "Талисман / руна";
+            form.addButton(new ElementButton("§f" + slotName + " " + (i + 1) + "\n"
+                    + (id.isEmpty() ? "§7Пусто — нажми для установки" : magicRelicName(id) + "\n§aУстановлено")));
+        }
+        form.addButton(new ElementButton("§7Назад к категориям"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int selected = form.getResponse().getClickedButtonId();
+            if (selected >= 0 && selected < 2) openMagicEquipmentSlot(player, first + selected);
+            else openMagicEquipmentInventory(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openMagicEquipmentSlot(Player player, int slot) {
+        String current = equippedMagicRelic(player, slot);
+        if (current != null && !current.isEmpty()) {
+            openMagicRelicDetails(player, slot);
+            return;
+        }
+        String category = slot < 2 ? "artifact" : slot < 4 ? "amulet" : slot < 6 ? "ring" : "talisman";
+        String[] relics = magicCategoryRelics(category);
+        List<String> owned = new ArrayList<>();
+        for (String id : relics) if (findMagicRelicInventorySlot(player, id) >= 0) owned.add(id);
+        FormWindowSimple form = new FormWindowSimple("§5§lУСТАНОВИТЬ ПРЕДМЕТ",
+                owned.isEmpty() ? "§7В этой категории у тебя пока нет предметов. Купи их в магазине артефактов."
+                        : "§7Выбери предмет из своего инвентаря:");
+        for (String id : owned) form.addButton(new ElementButton(magicRelicName(id) + "\n" + magicRelicDescription(id)));
+        form.addButton(new ElementButton("§7Назад"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int selected = form.getResponse().getClickedButtonId();
+            if (selected >= 0 && selected < owned.size()) {
+                String id = owned.get(selected);
+                if (findMagicRelicInventorySlot(player, id) < 0 || !removeOneMagicRelic(player, id)) {
+                    player.sendMessage("§cПредмет не найден в инвентаре.");
+                } else {
+                    players.set(magicEquipmentPath(player) + "." + slot, id);
+                    markPlayersDirty();
+                    flushPlayers();
+                    recalculateStats(player);
+                    player.sendMessage("§aУстановлено: " + magicRelicName(id));
+                }
+                openMagicEquipmentCategory(player, category);
+            } else openMagicEquipmentCategory(player, category);
+        }));
+        player.showFormWindow(form);
     }
 
     @EventHandler
@@ -4214,41 +4322,57 @@ public final class LocalFastCore extends PluginBase implements Listener {
 
     private void openMagicRelicShop(Player player) {
         initialize(player);
-        String[] relics = magicRelicIds();
-        FormWindowSimple form = new FormWindowSimple("§5§lРЕЛИКВИИ И АМУЛЕТЫ",
-                "§7Монеты: §6" + getBalance(player) + "\n§7Всего предметов: 12. Выбери реликвию для покупки.");
-        for (String id : relics) {
-            form.addButton(new ElementButton(magicRelicName(id) + "\n§7Цена: §6" + magicRelicPrice(id) + " " + currencyName()));
-        }
+        FormWindowSimple form = new FormWindowSimple("§5§lМАГАЗИН РЕЛИКВИЙ",
+                "§7Монеты: §6" + getBalance(player) + "\n§7Выбери группу предметов.");
+        String[] categories = {"artifact", "amulet", "ring", "talisman"};
+        for (String category : categories) form.addButton(new ElementButton(magicCategoryLabel(category)));
         form.addButton(new ElementButton("§7Назад"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
             if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
             int selected = form.getResponse().getClickedButtonId();
-            if (selected < 0 || selected >= relics.length) { openMagicMenu(player); return; }
+            if (selected >= 0 && selected < categories.length) openMagicRelicShopCategory(player, categories[selected]);
+            else openMagicMenu(player);
+        }));
+        player.showFormWindow(form);
+    }
+
+    private void openMagicRelicShopCategory(Player player, String category) {
+        String[] relics = magicCategoryRelics(category);
+        FormWindowSimple form = new FormWindowSimple(magicCategoryLabel(category),
+                "§7Монеты: §6" + getBalance(player) + "\n§7Выбери предмет для покупки.");
+        for (String id : relics) {
+            form.addButton(new ElementButton(magicRelicName(id) + "\n§7Цена: §6" + magicRelicPrice(id)
+                    + " " + currencyName() + "\n" + magicRelicDescription(id)));
+        }
+        form.addButton(new ElementButton("§7Назад к группам"));
+        form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {
+            if (form.wasClosed() || form.getResponse() == null || !player.isOnline()) return;
+            int selected = form.getResponse().getClickedButtonId();
+            if (selected < 0 || selected >= relics.length) { openMagicRelicShop(player); return; }
             String id = relics[selected];
             long price = magicRelicPrice(id);
             if (getBalance(player) < price) {
                 player.sendMessage("§cНедостаточно монет для покупки " + magicRelicName(id) + ".");
-                openMagicRelicShop(player);
+                openMagicRelicShopCategory(player, category);
                 return;
             }
             Item[] leftovers = player.getInventory().addItem(createMagicRelicItem(id));
             if (leftovers != null && leftovers.length > 0) {
                 player.sendMessage("§cОсвободи место в инвентаре. Покупка отменена.");
-                openMagicRelicShop(player);
+                openMagicRelicShopCategory(player, category);
                 return;
             }
             setBalance(player, getBalance(player) - price);
             flushPlayers();
-            player.sendMessage("§aКуплено: " + magicRelicName(id) + "§a. Установи предмет в отдельный слот через /magic.");
-            openMagicRelicShop(player);
+            player.sendMessage("§aКуплено: " + magicRelicName(id) + "§a. Открой /magic → Экипировка, чтобы установить предмет.");
+            openMagicRelicShopCategory(player, category);
         }));
         player.showFormWindow(form);
     }
 
     private void openMagicRelicDetails(Player player, int slot) {
         String id = equippedMagicRelic(player, slot);
-        if (id == null || id.isEmpty()) { openMagicEquipmentInventory(player); return; }
+        if (id == null || id.isEmpty()) { openMagicEquipmentSlot(player, slot); return; }
         FormWindowSimple form = new FormWindowSimple(magicRelicName(id),
                 magicRelicDescription(id) + "\n\n§7Перезарядка активного эффекта: 60 секунд.");
         form.addButton(new ElementButton("§aИспользовать способность"));
@@ -4395,7 +4519,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
                         + "\n\n§fВсе заклинания, классы и реликвии собраны здесь.");
         form.addButton(new ElementButton("§bКнига заклинаний"));
         form.addButton(new ElementButton("§6Магазин артефактов и амулетов"));
-        form.addButton(new ElementButton("§dМои слоты экипировки"));
+        form.addButton(new ElementButton("§dЭкипировка по группам"));
         form.addButton(new ElementButton("§eВыбрать класс"));
         form.addButton(new ElementButton("§7Назад в главное меню"));
         form.addHandler(FormResponseHandler.withoutPlayer(ignored -> {

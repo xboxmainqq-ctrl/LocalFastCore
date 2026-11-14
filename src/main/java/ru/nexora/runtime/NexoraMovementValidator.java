@@ -12,8 +12,8 @@ import java.util.Objects;
 public final class NexoraMovementValidator {
     private static final double PLAYER_HALF_WIDTH = 0.30;
     private static final double PLAYER_HEIGHT = 1.80;
-    private static final double MAX_HORIZONTAL_PER_TICK = 0.80;
-    private static final double MAX_VERTICAL_PER_TICK = 0.80;
+    private static final double MAX_HORIZONTAL_PER_UPDATE = 0.25;
+    private static final double MAX_VERTICAL_PER_UPDATE = 0.36;
 
     public Result validate(World world, Position current, Position requested) {
         Objects.requireNonNull(world, "world");
@@ -31,7 +31,7 @@ public final class NexoraMovementValidator {
         double dx = requested.x() - current.x();
         double dy = requested.y() - current.y();
         double dz = requested.z() - current.z();
-        if (Math.hypot(dx, dz) > MAX_HORIZONTAL_PER_TICK || Math.abs(dy) > MAX_VERTICAL_PER_TICK) {
+        if (Math.hypot(dx, dz) > MAX_HORIZONTAL_PER_UPDATE || Math.abs(dy) > MAX_VERTICAL_PER_UPDATE) {
             return Result.rejected(Reason.MOVEMENT_TOO_FAST);
         }
         if (!canOccupy(world, requested)) {

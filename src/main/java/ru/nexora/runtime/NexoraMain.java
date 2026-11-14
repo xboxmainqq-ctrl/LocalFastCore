@@ -189,6 +189,12 @@ public final class NexoraMain {
                     },
                     () -> worlds.get(DEFAULT_WORLD_ID)
                             .orElseThrow(() -> new IllegalStateException("Default world is not loaded")),
+                    position -> {
+                        World world = worlds.get(DEFAULT_WORLD_ID)
+                                .orElseThrow(() -> new IllegalStateException("Default world is not loaded"));
+                        if (world.isChunkLoaded(position)) return true;
+                        return world.loadChunk(generator.generate(position, world.height(), seed));
+                    },
                     connection -> log.accept("NEXORA client completed protocol handshake: "
                             + connection.id()));
             server.register(new NetherNetPrivateProtocolModule(

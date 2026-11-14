@@ -36,6 +36,7 @@ public final class BedrockPalettedStorageCodec {
             for (int z = 0; z < 16; z++) {
                 for (int y = 0; y < 16; y++) {
                     BlockState state = section.get(x, y, z);
+                    rejectUnsupportedFluidState(state);
                     int runtimeId = registry.runtimeId(state);
                     BlockState previousState = statesByRuntimeId.putIfAbsent(runtimeId, state);
                     if (previousState != null && !previousState.equals(state)) {
@@ -86,6 +87,27 @@ public final class BedrockPalettedStorageCodec {
 
         out.flip();
         return out.asReadOnlyBuffer();
+    }
+
+    private static void rejectUnsupportedFluidState(BlockState state) {
+        String identifier = state.identifier();
+        if (identifier.equals("minecraft:water")
+                || identifier.equals("minecraft:flowing_water")
+                || identifier.equals("minecraft:lava")
+                || identifier.equals("minecraft:flowing_lava")) {
+            throw new IllegalArgumentException(
+                    "Fluid block states require explicit NEXORA fluid-layer storage: " + state);
+        }
+        for (Map.Entry<String, String> property : state.properties().entrySet()) {
+            String key = property.getKey();
+            String value = property.getValue();
+            if ((key.equals("waterlogged") || key.equals("waterlogged_bit"))
+                    && (value.equalsIgnoreCase("true") || value.equals("1")
+                    || value.equalsIgnoreCase("b:1"))) {
+                throw new IllegalArgumentException(
+                        "Waterlogged block states require explicit NEXORA fluid-layer storage: " + state);
+            }
+        }
     }
 
     /** Encodes the currently empty liquid layer as a uniform air palette. */

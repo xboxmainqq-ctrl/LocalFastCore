@@ -28,7 +28,7 @@ This module is the beginning of the independent NEXORA server process. It has **
 - Bounded HTTP/HTTPS signaling implements `GET /v1/join` and `POST /v1/join/{networkId}`, with request limits, worker/queue bounds, timeouts, and complete SDP answers.
 - Desktop Java WebRTC peer host configures full ICE, MAX_BUNDLE, UDP-only candidates, and both NetherNet data channels with bounded queues and fragment reassembly.
 - Android client creates both data channels, gathers full ICE, performs the signaling exchange, verifies the operator identity, applies first-use key confirmation for plaintext HTTP, and waits for both channels to open.
-- Protocol-independent world foundation: immutable block/chunk coordinates, configurable vertical world bounds, immutable namespaced block states, sparse in-memory chunks, and immutable generated-chunk snapshots.
+- Protocol-independent world foundation: immutable block/chunk coordinates, configurable vertical world bounds, immutable namespaced block states, sparse in-memory chunks, immutable generated-chunk snapshots, and block-resolution Bedrock biome storage (4096 biome cells per 16³ section).
 - Compact chunk storage: sparse 16x16x16 sections with local block-state palettes; common sections use four bits per block index, widening to one byte and then two bytes only when needed.
 - Chunk reads/writes use packed local coordinates and avoid allocating a coordinate record for each block access.
 - Palette-width regression tests cover nibble-to-byte and byte-to-short transitions, all local section coordinates, and clearing blocks back to air.
@@ -39,7 +39,7 @@ This module is the beginning of the independent NEXORA server process. It has **
 - `WorldChunkPipeline` connects generation to `TickScheduler`, commits completed chunks on game ticks, and limits chunk commits per tick.
 - Thread-safe `WorldRegistry` for multiple worlds, with duplicate-ID rejection, normalized lookup/removal, stable registration order, and immutable snapshots.
 - Immutable chunk and block snapshots exposed by the world contract.
-- `FileWorldStorage` saves a world's loaded chunks to a versioned `.nxw` file, verifies a CRC32C checksum on load, rejects unsafe world IDs and symbolic-link targets, and replaces files atomically when supported.
+- `FileWorldStorage` saves a world's loaded chunks and non-default biome sections to version-2 `.nxw` files, reads legacy version-1 files, verifies a CRC32C checksum on load, rejects unsafe world IDs and symbolic-link targets, and replaces files atomically when supported.
 - `WorldStorageModule` loads configured worlds during runtime startup and saves them during shutdown. It reuses worlds already in the registry, rolls back worlds it registered if startup fails, and keeps failed shutdown saves retryable.
 - Persistence tests cover save/load, replacement, missing worlds, unsafe IDs, checksum corruption, symbolic-link rejection, lifecycle integration, and reload into a fresh registry.
 
@@ -49,7 +49,7 @@ The world data model is being designed to avoid per-block object and hash-map ov
 
 ## World storage format
 
-The current `.nxw` format is an internal NEXORA development format. It stores world height, chunk coordinates, non-air block identifiers, block properties, and a checksum. Saves are written to a temporary file and then moved into place to reduce the risk of partial files.
+The current `.nxw` format is an internal NEXORA development format. Version 2 stores world height, chunk coordinates, non-air block identifiers, block properties, sparse 16³ biome sections (Bedrock biome IDs in XZY order), and a checksum. Version 1 files remain readable. Saves are written to a temporary file and then moved into place to reduce the risk of partial files.
 
 **This is not the Minecraft Bedrock LevelDB world format.** It is a first persistence layer for the independent runtime; Bedrock-compatible world import/export will require a separately researched storage adapter.
 

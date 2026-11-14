@@ -63,13 +63,15 @@ Repository owners should configure these settings in GitHub (settings are accoun
 Implemented runtime security foundation:
 
 - `NexoraSecurityManager`: coordinates integrity checks and audit events; registered as a NEXORA service.
+- `NexoraAccessController`: checks module-supplied permission nodes through a neutral `PermissionSubject`, records grant/deny decisions, and propagates audit write failures.
+- `NukkitPlatformAdapter`: adapts Nukkit-MOT `CommandSender.hasPermission(...)` to `PermissionSubject` without caching decisions.
 - `IntegrityChecker`: computes SHA-256 for regular files, rejects symbolic links, and never modifies the checked file.
 - `AuditLogger`: appends escaped JSON-lines events to the security audit log.
 
 Still planned:
 
 - `SignatureVerifier`: local verification of release bundles or trusted manifests where offline verification is required. Release signing currently happens in GitHub Actions through Cosign/Sigstore, not inside the server plugin.
-- `AccessController`: checks NEXORA-owned permissions for sensitive administrative actions.
+- Per-module permission-node registration and command/action integration. Each module must call `security().access().authorize(...)` before performing a protected action.
 - `BackupManager`: coordinates safe backup/restore workflows with explicit operator approval.
 
 The runtime foundation is report-and-audit only. It must not silently delete, rewrite, quarantine files, disable plugins, or stop the server after an integrity mismatch. Any future enforcement mode must be explicitly configured, tested on a separate server copy, and preserve a recovery path.
@@ -86,7 +88,7 @@ Ordinary Bedrock clients must continue to connect through the compatible server 
 2. CI hardening, repeatable builds, checksums, and artifact provenance.
 3. Keyless-signed release JARs and checksum manifests using Sigstore; verify before installation.
 4. Runtime audit log and non-destructive integrity reporting.
-5. Permission checks and explicit protection for sensitive NEXORA operations.
+5. Audited permission gate and Nukkit-MOT sender bridge; module-by-module adoption remains required.
 6. Backup verification and tested recovery procedures.
 7. Enforcement only after false-positive testing on a copy of the server.
 

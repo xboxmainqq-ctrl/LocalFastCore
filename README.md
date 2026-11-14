@@ -14,7 +14,9 @@ This module is the beginning of the independent NEXORA server process. It has **
 - Failed shutdown modules remain available for a later retry; modules that stopped successfully are not stopped twice.
 - Runtime module contract documents cleanup requirements for partial startup and retryable shutdown.
 - Deterministic tick scheduler with delayed and repeating tasks, cancellation, stable execution order, and task-failure isolation.
-- Dedicated game loop driven by `System.nanoTime()`, with configurable tick rate, bounded catch-up, backlog dropping, clean thread shutdown, and failure reporting.\n- Bedrock 1.26.60 / protocol 2225 payload codecs for RequestNetworkSettingsPacket, NetworkSettingsPacket, and LoginPacket, with bounded binary primitives and unit tests.\n- Bounded uncompressed Bedrock packet-batch framing with packet length prefixes, packet ID/sub-client headers, and unit tests.\n- Bedrock batch compression envelope for pre-negotiation batches, raw DEFLATE, and uncompressed frames, with decompression limits; Snappy remains explicitly unsupported.
+- Dedicated game loop driven by `System.nanoTime()`, with configurable tick rate, bounded catch-up, backlog dropping, clean thread shutdown, and failure reporting.
+- Bedrock 1.26.60 / protocol 2225 payload codecs for RequestNetworkSettingsPacket, NetworkSettingsPacket, and LoginPacket, with bounded binary primitives and unit tests.\n- Bounded uncompressed Bedrock packet-batch framing with packet length prefixes, packet ID/sub-client headers, and unit tests.
+- Bedrock batch compression envelope for pre-negotiation batches, raw DEFLATE, and uncompressed frames, with decompression limits; Snappy remains explicitly unsupported.
 - Initial Bedrock server-side handshake state machine: protocol check, NetworkSettings handoff gate, Login protocol match, explicit authentication-pending and authenticated states, and terminal close handling. Authentication and packet transport remain host responsibilities.
 - Protocol-independent world foundation: immutable block/chunk coordinates, configurable vertical world bounds, immutable namespaced block states, sparse in-memory chunks, and immutable generated-chunk snapshots.
 - Compact chunk storage: sparse 16x16x16 sections with local block-state palettes; common sections use four bits per block index, widening to one byte and then two bytes only when needed.
@@ -43,7 +45,7 @@ The current `.nxw` format is an internal NEXORA development format. It stores wo
 
 ## Important limitation
 
-This is a runtime foundation, not yet a playable Minecraft Bedrock server. It currently contains selected Bedrock 1.26.60 payload codecs and an uncompressed packet-batch codec, but does not implement NetherNet/WebRTC, Microsoft/Xbox authentication, Bedrock LevelDB storage, entities, inventory, or gameplay. Basic flat chunk generation, bounded background generation, and in-memory chunk insertion exist, but chunk streaming to clients and a production terrain generator are not implemented. The game loop currently drives the scheduler; full world simulation and network event processing still need to be integrated before NEXORA can accept real Bedrock clients.
+This is a runtime foundation, not yet a playable Minecraft Bedrock server. It currently contains selected Bedrock 1.26.60 payload codecs, packet-batch framing and compression, and an initial handshake state machine, but does not implement NetherNet/WebRTC, Microsoft/Xbox authentication, Bedrock LevelDB storage, entities, inventory, or gameplay. Basic flat chunk generation, bounded background generation, and in-memory chunk insertion exist, but chunk streaming to clients and a production terrain generator are not implemented. The game loop currently drives the scheduler; full world simulation and network event processing still need to be integrated before NEXORA can accept real Bedrock clients.
 
 ## Build
 

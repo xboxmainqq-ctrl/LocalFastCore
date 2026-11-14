@@ -14,11 +14,12 @@ This module is the beginning of the independent NEXORA server process. It has **
 - Failed shutdown modules remain available for a later retry; modules that stopped successfully are not stopped twice.
 - Runtime module contract documents cleanup requirements for partial startup and retryable shutdown.
 - Deterministic tick scheduler with delayed and repeating tasks, cancellation, stable execution order, and task-failure isolation.
-- Unit tests cover lifecycle ordering, rollback, duplicate/late registration, idempotent stop, shutdown retry, server-settings validation, and tick-scheduler behavior.
+- Dedicated game loop driven by `System.nanoTime()`, with configurable tick rate, bounded catch-up, backlog dropping, clean thread shutdown, and failure reporting.
+- Unit tests cover lifecycle ordering, rollback, duplicate/late registration, idempotent stop, shutdown retry, settings validation, scheduler behavior, and game-loop lifecycle/error handling.
 
 ## Important limitation
 
-This is a runtime foundation, not yet a playable Minecraft Bedrock server. It does not currently implement RakNet/Bedrock networking, Microsoft/Xbox authentication, packet codecs, worlds, chunks, entities, inventory, or gameplay. The tick scheduler is a deterministic component; a production game loop still needs to drive it using a monotonic clock and a bounded catch-up policy. Those systems must be implemented and integration-tested before NEXORA can accept real Bedrock clients.
+This is a runtime foundation, not yet a playable Minecraft Bedrock server. It does not currently implement RakNet/Bedrock networking, Microsoft/Xbox authentication, packet codecs, worlds, chunks, entities, inventory, or gameplay. The game loop currently drives the scheduler; world simulation and network event processing still need to be implemented and integrated before NEXORA can accept real Bedrock clients.
 
 ## Build
 

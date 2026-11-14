@@ -106,10 +106,13 @@ public final class NetherNetFragmentAssembler {
             return Optional.empty();
         }
 
-        ByteBuffer complete = ByteBuffer.allocate(assemblySize);
-        complete.put(assembly, 0, assemblySize).flip();
+        // Transfer ownership of the completed backing array to the read-only
+        // result instead of allocating and copying a second full-size buffer.
+        ByteBuffer complete = ByteBuffer.wrap(assembly, 0, assemblySize)
+                .slice()
+                .asReadOnlyBuffer();
         reset();
-        return Optional.of(complete.asReadOnlyBuffer());
+        return Optional.of(complete);
     }
 
     /** Discards any incomplete message, for example when the channel closes. */

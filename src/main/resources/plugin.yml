@@ -75,18 +75,9 @@ commands:
     description: Главное меню игрока LocalFastCore
     usage: "/menu"
     aliases: [lfmenu]
-  class:
-    description: Выбрать или посмотреть класс персонажа
-    usage: "/class [info]"
   magic:
-    description: Открыть книгу магии и заклинаний
+    description: Единое меню магии, заклинаний, классов и артефактов
     usage: "/magic"
-  ability:
-    description: Использовать активную способность класса
-    usage: "/ability"
-  abilities:
-    description: Открыть меню способностей класса
-    usage: "/abilities"
   lfadmin:
     description: Операторская панель LocalFastCore
     usage: "/lfadmin"

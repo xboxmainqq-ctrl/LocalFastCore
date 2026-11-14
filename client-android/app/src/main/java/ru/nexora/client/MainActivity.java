@@ -178,8 +178,16 @@ public final class MainActivity extends Activity {
 
             @Override
             public void onNexoraReady(String serverId, int maxMessageBytes) {
-                connectionStatus.setText("NEXORA подключён • сервер " + serverId
-                        + " • лимит " + (maxMessageBytes / 1024) + " КБ");
+                connectionStatus.setText("Протокол согласован • сервер " + serverId);
+            }
+
+            @Override
+            public void onWorldInfoReceived(NexoraAndroidProtocolCodec.WorldInfo world) {
+                connectionStatus.setText("Мир: " + world.worldId()
+                        + "\\nВысота: " + world.minY() + ".." + (world.maxYExclusive() - 1)
+                        + "\\nПоявление: " + world.spawnX() + ", " + world.spawnY() + ", " + world.spawnZ()
+                        + "\\nТиков: " + world.tickRate() + "/с"
+                        + "\\nЗагружено чанков: " + world.loadedChunks());
             }
 
             @Override

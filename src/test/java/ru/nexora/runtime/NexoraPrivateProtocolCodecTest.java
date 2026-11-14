@@ -14,7 +14,8 @@ class NexoraPrivateProtocolCodecTest {
                 'N', 'X', 'R', 'A', 1, 0, 1, 11,
                 'a', 'n', 'd', 'r', 'o', 'i', 'd', '-', 'd', 'e', 'v', 10,
                 (byte) 0xd0, (byte) 0x98, (byte) 0xd0, (byte) 0xb3,
-                (byte) 0xd0, (byte) 0xb8, (byte) 0xd0, (byte) 0xba
+                (byte) 0xd1, (byte) 0x80, (byte) 0xd0, (byte) 0xbe,
+                (byte) 0xd0, (byte) 0xba
         };
         assertArrayEquals(expected, NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
         NexoraPrivateProtocolCodec.ClientHello hello = NexoraPrivateProtocolCodec.decodeClientHello(ByteBuffer.wrap(expected));

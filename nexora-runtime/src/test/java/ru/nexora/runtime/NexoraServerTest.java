@@ -40,6 +40,47 @@ class NexoraServerTest {
     }
 
     @Test
+    void retainsShutdownFailureAndRetriesOnlyFailedModule() {
+        NexoraServer server = new NexoraServer();
+        List<String> calls = new ArrayList<>();
+        RuntimeModule unstable = new RuntimeModule() {
+            private boolean fail = true;
+            @Override public String id() { return "unstable"; }
+            @Override public void start() { calls.add("start:unstable"); }
+            @Override public void stop() {
+                calls.add("stop:unstable");
+                if (fail) {
+                    fail = false;
+                    throw new IllegalStateException("temporary shutdown failure");
+                }
+            }
+        };
+        server.register(module("stable", calls));
+        server.register(unstable);
+        server.start();
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class, server::stop);
+        assertEquals("temporary shutdown failure", failure.getCause().getMessage());
+        assertEquals(ServerState.FAILED, server.state());
+
+        server.stop();
+        assertEquals(ServerState.STOPPED, server.state());
+        assertEquals(List.of(
+                "start:stable", "start:unstable",
+                "stop:unstable", "stop:stable", "stop:unstable"), calls);
+    }
+
+    @Test
+    void stopIsIdempotentWhenNoModulesAreActive() {
+        NexoraServer server = new NexoraServer();
+        assertDoesNotThrow(server::stop);
+        server.start();
+        server.stop();
+        assertDoesNotThrow(server::stop);
+        assertEquals(ServerState.STOPPED, server.state());
+    }
+
+    @Test
     void rejectsDuplicateIdsAndRegistrationAfterStart() {
         NexoraServer server = new NexoraServer();
         List<String> calls = new ArrayList<>();

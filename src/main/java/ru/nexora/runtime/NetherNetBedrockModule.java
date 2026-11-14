@@ -13,6 +13,7 @@ public final class NetherNetBedrockModule implements RuntimeModule {
     private final NetherNetSignalingServer signalingServer;
     private final BedrockInitialTransportRouter router;
     private boolean started;
+    private boolean closed;
 
     public NetherNetBedrockModule(
             NetherNetPeerHost peerHost,
@@ -37,6 +38,9 @@ public final class NetherNetBedrockModule implements RuntimeModule {
 
     @Override
     public synchronized void start() throws Exception {
+        if (closed) {
+            throw new IllegalStateException("NetherNet Bedrock module cannot be restarted after close");
+        }
         if (started) {
             throw new IllegalStateException("NetherNet Bedrock module is already started");
         }
@@ -46,6 +50,7 @@ public final class NetherNetBedrockModule implements RuntimeModule {
             signalingServer.start();
             started = true;
         } catch (Exception failure) {
+            closed = true;
             router.close();
             try {
                 transport.stop();
@@ -62,6 +67,7 @@ public final class NetherNetBedrockModule implements RuntimeModule {
             return;
         }
         started = false;
+        closed = true;
         signalingServer.stop();
         router.close();
         transport.stop();

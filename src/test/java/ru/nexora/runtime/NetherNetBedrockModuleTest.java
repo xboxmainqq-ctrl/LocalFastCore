@@ -18,8 +18,8 @@ class NetherNetBedrockModuleTest {
         BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
                 new BedrockNetworkSettings(0, BedrockNetworkSettings.CompressionAlgorithm.NONE,
                         false, 0, 0.0f),
-                (connection, login) -> CompletableFuture.completedFuture(false),
-                connection -> fail("No peer should enter play in this lifecycle test"),
+                (connection, login, request) -> CompletableFuture.completedFuture(null),
+                (connection, player) -> fail("No peer should enter play in this lifecycle test"),
                 (connection, message) -> fail("No play message expected"));
 
         KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");

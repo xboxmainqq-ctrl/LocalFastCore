@@ -3,12 +3,17 @@ package ru.nexora.runtime;
 import java.util.Objects;
 
 /** Decoded fields of a Bedrock LoginPacket payload. */
-public record BedrockLoginPacket(int protocolVersion, String connectionRequest) {
+public record BedrockLoginPacket(
+        int protocolVersion,
+        String connectionRequest,
+        String clientDataJwt
+) {
     public BedrockLoginPacket {
         Objects.requireNonNull(connectionRequest, "connectionRequest");
+        Objects.requireNonNull(clientDataJwt, "clientDataJwt");
     }
 
-    /** Parses the signed JWT envelope without treating its contents as authenticated. */
+    /** Parses the authentication payload without treating its contents as authenticated. */
     public BedrockConnectionRequest parseConnectionRequest() {
         return BedrockConnectionRequest.parse(connectionRequest);
     }

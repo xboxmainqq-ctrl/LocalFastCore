@@ -12,11 +12,14 @@ class NexoraPrivateProtocolCodecTest {
     void clientHelloMatchesTheSharedAndroidGoldenVector() {
         byte[] expected = new byte[] {
                 'N', 'X', 'R', 'A', 1, 0, 1, 11,
-                'a', 'n', 'd', 'r', 'o', 'i', 'd', '-', 'd', 'e', 'v'
+                'a', 'n', 'd', 'r', 'o', 'i', 'd', '-', 'd', 'e', 'v', 10,
+                (byte) 0xd0, (byte) 0x98, (byte) 0xd0, (byte) 0xb3,
+                (byte) 0xd0, (byte) 0xb8, (byte) 0xd0, (byte) 0xba
         };
         assertArrayEquals(expected, NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
-        assertEquals("android-dev",
-                NexoraPrivateProtocolCodec.decodeClientHello(ByteBuffer.wrap(expected)).clientBuild());
+        NexoraPrivateProtocolCodec.ClientHello hello = NexoraPrivateProtocolCodec.decodeClientHello(ByteBuffer.wrap(expected));
+        assertEquals("android-dev", hello.clientBuild());
+        assertEquals("Игрок", hello.playerName());
     }
 
     @Test
@@ -28,6 +31,7 @@ class NexoraPrivateProtocolCodecTest {
         assertEquals(1, decoded.majorVersion());
         assertEquals(0, decoded.minorVersion());
         assertEquals("android-dev-7", decoded.clientBuild());
+        assertEquals("Игрок", decoded.playerName());
     }
 
     @Test

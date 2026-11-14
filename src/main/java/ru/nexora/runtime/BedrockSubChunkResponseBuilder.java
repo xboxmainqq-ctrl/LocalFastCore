@@ -31,6 +31,7 @@ public final class BedrockSubChunkResponseBuilder {
 
         List<BedrockSubChunkPacketCodec.Entry> entries = new ArrayList<>(request.offsets().size());
         Map<ChunkPosition, Map<BlockPosition, BlockState>> blockSnapshots = new HashMap<>();
+        Map<ChunkPosition, Map<BlockPosition, BlockState>> fluidSnapshots = new HashMap<>();
         Map<ChunkPosition, Map<Integer, ChunkSection>> sectionSnapshots = new HashMap<>();
         Map<ChunkPosition, Map<Integer, ChunkSection>> fluidSectionSnapshots = new HashMap<>();
         Map<ChunkPosition, int[]> heightSnapshots = new HashMap<>();
@@ -69,12 +70,14 @@ public final class BedrockSubChunkResponseBuilder {
             Map<Integer, ChunkSection> sections = sectionSnapshots.computeIfAbsent(
                     chunkPosition, ignored -> groupBlocksBySection(blockSnapshot));
             ChunkSection section = sections.get(position.y());
-            int[] highestSolidY = heightSnapshots.computeIfAbsent(
-                    chunkPosition, ignored -> highestSolidY(blockSnapshot));
+            Map<BlockPosition, BlockState> fluidSnapshot = fluidSnapshots.computeIfAbsent(
+                    chunkPosition, world::fluidsInChunk);
+            int[] highestNonAirY = heightSnapshots.computeIfAbsent(
+                    chunkPosition, ignored -> highestNonAirY(blockSnapshot, fluidSnapshot));
             BedrockSubChunkPacketCodec.HeightmapData heightmaps =
-                    heightmapsForSection(highestSolidY, position.y());
+                    heightmapsForSection(highestNonAirY, position.y());
             Map<Integer, ChunkSection> fluidSections = fluidSectionSnapshots.computeIfAbsent(
-                    chunkPosition, ignored -> groupBlocksBySection(world.fluidsInChunk(chunkPosition)));
+                    chunkPosition, ignored -> groupBlocksBySection(fluidSnapshot));
             ChunkSection fluidSection = fluidSections.get(position.y());
 
             if ((section == null || section.isEmpty())
@@ -108,13 +111,25 @@ public final class BedrockSubChunkResponseBuilder {
     }
 
     /**
-     * Computes the highest non-air solid block for each local X/Z column.
+     * Computes the highest non-air block or fluid for each local X/Z column.
      * Index order is z-major, matching the Bedrock heightmap wire layout.
      */
-    private static int[] highestSolidY(Map<BlockPosition, BlockState> blocks) {
+    private static int[] highestNonAirY(
+            Map<BlockPosition, BlockState> blocks,
+            Map<BlockPosition, BlockState> fluids
+    ) {
         int[] highest = new int[256];
         java.util.Arrays.fill(highest, Integer.MIN_VALUE);
-        for (Map.Entry<BlockPosition, BlockState> entry : blocks.entrySet()) {
+        includeHighestY(highest, blocks);
+        includeHighestY(highest, fluids);
+        return highest;
+    }
+
+    private static void includeHighestY(
+            int[] highest,
+            Map<BlockPosition, BlockState> states
+    ) {
+        for (Map.Entry<BlockPosition, BlockState> entry : states.entrySet()) {
             BlockPosition position = entry.getKey();
             if (entry.getValue().isAir()) {
                 continue;
@@ -122,7 +137,6 @@ public final class BedrockSubChunkResponseBuilder {
             int index = position.localZ() * 16 + position.localX();
             highest[index] = Math.max(highest[index], position.y());
         }
-        return highest;
     }
 
     /**
@@ -130,7 +144,7 @@ public final class BedrockSubChunkResponseBuilder {
      * are -1 below the subchunk, 16 above it, or the local top-block Y.
      */
     private static BedrockSubChunkPacketCodec.HeightmapData heightmapsForSection(
-            int[] highestSolidY,
+            int[] highestNonAirY,
             int sectionY
     ) {
         int sectionMinY = Math.multiplyExact(sectionY, 16);
@@ -139,7 +153,7 @@ public final class BedrockSubChunkResponseBuilder {
         boolean allBelow = true;
         boolean allAbove = true;
         for (int index = 0; index < values.length; index++) {
-            int topY = highestSolidY[index];
+            int topY = highestNonAirY[index];
             int value;
             if (topY == Integer.MIN_VALUE || topY < sectionMinY) {
                 value = -1;

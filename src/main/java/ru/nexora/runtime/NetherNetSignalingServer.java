@@ -114,6 +114,13 @@ public final class NetherNetSignalingServer implements RuntimeModule {
         }
     }
 
+    public synchronized InetSocketAddress localAddress() {
+        if (server == null) {
+            throw new IllegalStateException("NetherNet signaling server is not started");
+        }
+        return server.getAddress();
+    }
+
     @Override
     public synchronized void stop() {
         HttpServer current = server;

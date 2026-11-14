@@ -15,7 +15,12 @@ public record GeneratedChunk(ChunkPosition position, Map<BlockPosition, BlockSta
     public GeneratedChunk {
         Objects.requireNonNull(position, "position");
         Objects.requireNonNull(blocks, "blocks");
-        Map<BlockPosition, BlockState> copy = new HashMap<>();
+
+        // Validate and copy in one pass. Avoid an intermediate mutable HashMap:
+        // generated chunks can contain many thousands of entries, and retaining
+        // both a validation copy and Map.copyOf's immutable copy needlessly
+        // increases peak allocation during chunk generation.
+        Map<BlockPosition, BlockState> copy = new HashMap<>(capacityFor(blocks.size()));
         blocks.forEach((blockPosition, state) -> {
             Objects.requireNonNull(blockPosition, "block position");
             Objects.requireNonNull(state, "block state");
@@ -30,5 +35,15 @@ public record GeneratedChunk(ChunkPosition position, Map<BlockPosition, BlockSta
             copy.put(blockPosition, state);
         });
         blocks = Map.copyOf(copy);
+    }
+
+    private static int capacityFor(int expectedSize) {
+        if (expectedSize < 3) {
+            return expectedSize + 1;
+        }
+        if (expectedSize >= 1 << 29) {
+            return Integer.MAX_VALUE;
+        }
+        return (int) (expectedSize / 0.75f) + 1;
     }
 }

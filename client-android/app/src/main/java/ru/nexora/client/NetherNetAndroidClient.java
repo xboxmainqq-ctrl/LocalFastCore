@@ -70,7 +70,7 @@ public final class NetherNetAndroidClient implements AutoCloseable {
     private volatile PeerConnection peer;
     private volatile DataChannel reliableChannel;
     private volatile DataChannel unreliableChannel;
-    private volatile NetworkSettings networkSettings;
+    private volatile BedrockAndroidNetworkSettings networkSettings;
     private volatile CompletableFuture<Boolean> trustDecision;
     private final Object fragmentLock = new Object();
     private ByteArrayOutputStream reliableAssembly;

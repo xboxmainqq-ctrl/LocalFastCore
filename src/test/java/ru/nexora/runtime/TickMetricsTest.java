@@ -30,8 +30,17 @@ class TickMetricsTest {
     }
 
     @Test
-    void rejectsImpossibleSnapshots() {
+    void rejectsNegativeSnapshotCounters() {
         assertThrows(IllegalArgumentException.class,
-                () -> new TickMetrics.Snapshot(1, 0, 0, 0, 2));
+                () -> new TickMetrics.Snapshot(-1, 0, 0, 0, 0));
+        assertThrows(IllegalArgumentException.class,
+                () -> new TickMetrics.Snapshot(1, 0, 0, 0, -1));
+    }
+
+    @Test
+    void allowsTemporarilyInconsistentConcurrentCounterReads() {
+        // A snapshot is intentionally weakly consistent: its atomic fields
+        // may be read on opposite sides of an in-progress tick.
+        assertDoesNotThrow(() -> new TickMetrics.Snapshot(1, 0, 0, 0, 2));
     }
 }

@@ -7,7 +7,9 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p>Writers update atomic counters; readers allocate only when requesting a
  * snapshot. Durations are measured with the monotonic {@link System#nanoTime()}
- * clock. This class deliberately keeps no unbounded history.</p>
+ * clock. This class deliberately keeps no unbounded history. Snapshot fields
+ * are individually consistent atomic reads, not one globally synchronized
+ * point-in-time view.</p>
  */
 public final class TickMetrics {
     private final AtomicLong tickCount = new AtomicLong();
@@ -57,8 +59,7 @@ public final class TickMetrics {
     ) {
         public Snapshot {
             if (tickCount < 0 || totalDurationNanos < 0 || lastDurationNanos < 0
-                    || maxDurationNanos < 0 || overBudgetTicks < 0
-                    || overBudgetTicks > tickCount) {
+                    || maxDurationNanos < 0 || overBudgetTicks < 0) {
                 throw new IllegalArgumentException("Invalid tick metrics snapshot");
             }
         }

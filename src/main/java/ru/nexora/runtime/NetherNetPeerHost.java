@@ -7,9 +7,10 @@ import java.util.function.Consumer;
  * WebRTC host adapter used by the HTTP signaling endpoint.
  *
  * <p>The implementation owns the actual PeerConnection, ICE gathering and
- * SCTP data channels. It must return a complete SDP answer, including the
- * server a=identity assertion. It must also publish the established channels
- * as a {@link TransportConnection} to the runtime's NetworkTransport.</p>
+ * SCTP data channels. It returns a complete WebRTC SDP answer with all ICE
+ * candidates; the HTTP signaling layer adds the signed server a=identity
+ * assertion before returning the answer to the client. The implementation
+ * publishes established channels as a {@link TransportConnection}.</p>
  */
 public interface NetherNetPeerHost extends AutoCloseable {
     /**

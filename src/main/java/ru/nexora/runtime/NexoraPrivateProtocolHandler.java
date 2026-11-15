@@ -212,6 +212,10 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 connection.setMessageListener(ignored -> connection.close());
             } else {
                 java.util.Set<ChunkPosition> requestedChunks = ConcurrentHashMap.newKeySet();
+                AtomicBoolean resourcePackReady = new AtomicBoolean(resourcePacks.isEmpty());
+                java.util.concurrent.atomic.AtomicInteger nextResourcePackChunk =
+                        new java.util.concurrent.atomic.AtomicInteger();
+                List<TransportMessage> pendingChunkRequests = new ArrayList<>();
                 java.util.concurrent.atomic.AtomicLong lastMovementNanos =
                         new java.util.concurrent.atomic.AtomicLong();
                 NexoraMovementValidator movementValidator = new NexoraMovementValidator();
@@ -259,17 +263,61 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                     return;
                 }
                 connection.setMessageListener(inboundMessage -> {
-                    if (isMovementPacket(inboundMessage.payload())) {
+                    ByteBuffer payload = inboundMessage.payload();
+                    if (isMovementPacket(payload)) {
                         handleMovement(connection, inboundMessage, session,
                                 movementValidator, lastMovementNanos);
-                    } else if (isInventoryActionPacket(inboundMessage.payload())) {
+                    } else if (isInventoryActionPacket(payload)) {
                         handleInventoryAction(connection, inboundMessage, session);
-                    } else if (isBlockActionPacket(inboundMessage.payload())) {
+                    } else if (isBlockActionPacket(payload)) {
                         handleBlockAction(connection, inboundMessage, session);
+                    } else if (isProtocolPacketType(payload, 17)) {
+                        handleResourcePackChunkRequest(connection, inboundMessage,
+                                resourcePacks, nextResourcePackChunk);
+                    } else if (isProtocolPacketType(payload, 19)) {
+                        try {
+                            NexoraPrivateProtocolCodec.decodeResourcePackReady(payload);
+                            int expectedChunks = resourcePacks.isEmpty() ? 0
+                                    : (resourcePacks.get(0).archiveSize()
+                                            + NexoraPrivateProtocolCodec.RESOURCE_PACK_CHUNK_BYTES - 1)
+                                            / NexoraPrivateProtocolCodec.RESOURCE_PACK_CHUNK_BYTES;
+                            if (resourcePacks.isEmpty()
+                                    || nextResourcePackChunk.get() != expectedChunks
+                                    || !resourcePackReady.compareAndSet(false, true)) {
+                                connection.close();
+                                return;
+                            }
+                            List<TransportMessage> queued;
+                            synchronized (pendingChunkRequests) {
+                                queued = List.copyOf(pendingChunkRequests);
+                                pendingChunkRequests.clear();
+                            }
+                            for (TransportMessage request : queued) {
+                                handleChunkRequest(connection, request, session, requestedChunks);
+                                if (!connection.isOpen()) return;
+                            }
+                        } catch (RuntimeException invalidReady) {
+                            connection.close();
+                        }
+                    } else if (!resourcePackReady.get()) {
+                        synchronized (pendingChunkRequests) {
+                            if (pendingChunkRequests.size() >= 9) {
+                                connection.close();
+                            } else {
+                                pendingChunkRequests.add(inboundMessage);
+                            }
+                        }
                     } else {
                         handleChunkRequest(connection, inboundMessage, session, requestedChunks);
                     }
                 });
+            }
+            if (!resourcePacks.isEmpty()) {
+                if (send(connection, NexoraPrivateProtocolCodec.encodeResourcePackInfo(
+                        resourcePacks.get(0))) != TransportSendResult.ACCEPTED) {
+                    connection.close();
+                    return;
+                }
             }
             try {
                 readyListener.accept(connection);
@@ -277,6 +325,48 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 connection.close();
             }
         });
+    }
+
+    private void handleResourcePackChunkRequest(
+            TransportConnection connection,
+            TransportMessage message,
+            List<BedrockResourcePackTransferCodec.Pack> packs,
+            java.util.concurrent.atomic.AtomicInteger nextChunk) {
+        if (!connection.isOpen() || message.deliveryMode() != DeliveryMode.RELIABLE_ORDERED
+                || message.sizeBytes() > NexoraPrivateProtocolCodec.MAX_MESSAGE_BYTES
+                || packs.isEmpty()) {
+            connection.close();
+            return;
+        }
+        try {
+            NexoraPrivateProtocolCodec.ResourcePackChunkRequest request =
+                    NexoraPrivateProtocolCodec.decodeResourcePackChunkRequest(message.payload());
+            BedrockResourcePackTransferCodec.Pack pack = packs.get(0);
+            int expected = nextChunk.get();
+            if (!request.resourceName().equals(pack.resourceName())
+                    || request.chunkIndex() != expected) {
+                connection.close();
+                return;
+            }
+            byte[] chunk = NexoraPrivateProtocolCodec.encodeResourcePackChunk(pack, expected);
+            if (send(connection, chunk) != TransportSendResult.ACCEPTED) {
+                connection.close();
+                return;
+            }
+            nextChunk.incrementAndGet();
+        } catch (RuntimeException invalidRequest) {
+            connection.close();
+        }
+    }
+
+    private static boolean isProtocolPacketType(ByteBuffer payload, int type) {
+        ByteBuffer input = payload.slice();
+        return input.remaining() >= 7
+                && input.get(input.position()) == 'N'
+                && input.get(input.position() + 1) == 'X'
+                && input.get(input.position() + 2) == 'R'
+                && input.get(input.position() + 3) == 'A'
+                && Byte.toUnsignedInt(input.get(input.position() + 6)) == type;
     }
 
     private void handleMovement(

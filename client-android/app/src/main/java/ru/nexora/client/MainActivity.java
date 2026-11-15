@@ -526,8 +526,18 @@ public final class MainActivity extends Activity {
         });
     }
 
-    private boolean addLocalItem(String itemId, int amount) {
+    private boolean canAddLocalItem(String itemId, int amount) {
         if (itemId == null || itemId.isEmpty() || amount <= 0) return false;
+        int capacity = 0;
+        for (int slot = 0; slot < 9; slot++) {
+            if (itemId.equals(localHotbarItems[slot])) capacity += Math.max(0, 64 - localHotbarCounts[slot]);
+            else if (localHotbarCounts[slot] == 0) capacity += 64;
+        }
+        return capacity >= amount;
+    }
+
+    private boolean addLocalItem(String itemId, int amount) {
+        if (!canAddLocalItem(itemId, amount)) return false;
         for (int slot = 0; slot < 9; slot++) {
             if (itemId.equals(localHotbarItems[slot]) && localHotbarCounts[slot] < 64) {
                 int accepted = Math.min(amount, 64 - localHotbarCounts[slot]);
@@ -575,7 +585,7 @@ public final class MainActivity extends Activity {
                             Toast.makeText(this, "Здесь нет блока", Toast.LENGTH_SHORT).show();
                             return;
                         }
-                        if (!addLocalItem(minedBlock, 1)) {
+                        if (!canAddLocalItem(minedBlock, 1)) {
                             Toast.makeText(this, "Нет места в панели предметов", Toast.LENGTH_SHORT).show();
                             return;
                         }
@@ -589,19 +599,22 @@ public final class MainActivity extends Activity {
                             Toast.makeText(this, "Выбери блок в панели предметов", Toast.LENGTH_SHORT).show();
                             return;
                         }
-                        localHotbarCounts[selectedLocalHotbarSlot]--;
-                        if (localHotbarCounts[selectedLocalHotbarSlot] == 0) {
-                            localHotbarItems[selectedLocalHotbarSlot] = "";
-                        }
-                    }
+                     }
                     NexoraAndroidProtocolCodec.ChunkData updated =
                             preview.updateLocalBlock(targetX, targetY, targetZ, blockId);
                     if (updated == null) {
                         Toast.makeText(this, "Этот чанк ещё не загружен", Toast.LENGTH_SHORT).show();
                         return;
                     }
+                    if (which == 0) {
+                        addLocalItem(preview.localBlockIdAt(x, y, z), 1);
+                    } else {
+                        localHotbarCounts[selectedLocalHotbarSlot]--;
+                        if (localHotbarCounts[selectedLocalHotbarSlot] == 0) {
+                            localHotbarItems[selectedLocalHotbarSlot] = "";
+                        }
+                    }
                     refreshLocalHotbar();
-                    persistLocalInventory(worldId);
                     ExecutorService executor = previewGenerationExecutor;
                     if (executor == null || executor.isShutdown()) {
                         Toast.makeText(this, "Не удалось сохранить изменение", Toast.LENGTH_SHORT).show();
@@ -610,6 +623,13 @@ public final class MainActivity extends Activity {
                     executor.execute(() -> {
                         try {
                             localWorldStore.saveChunk(worldId, updated);
+                            List<LocalWorldStore.InventorySlot> inventorySnapshot = new ArrayList<>(9);
+                            for (int slot = 0; slot < 9; slot++) {
+                                String item = localHotbarItems[slot] == null ? "" : localHotbarItems[slot];
+                                inventorySnapshot.add(new LocalWorldStore.InventorySlot(
+                                        item, localHotbarCounts[slot]));
+                            }
+                            localWorldStore.saveInventory(worldId, inventorySnapshot);
                             runOnUiThread(() -> Toast.makeText(this,
                                     which == 0 ? "Блок добыт и сохранён" : "Блок установлен и сохранён",
                                     Toast.LENGTH_SHORT).show());

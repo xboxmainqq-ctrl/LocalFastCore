@@ -68,7 +68,7 @@ class BedrockResourcePackPacketCodecTest {
     private static BedrockResourcePackClientResponse decodeResponse(int status, String name) {
         ByteBuffer payload = ByteBuffer.allocate(64);
         BedrockBinary.writeVarUInt32(payload, status);
-        BedrockBinary.writeString(payload, name);
+        BedrockBinary.writeString(payload, name, 64);
         payload.flip();
         return BedrockResourcePackClientResponsePacketCodec.decodePayload(payload);
     }

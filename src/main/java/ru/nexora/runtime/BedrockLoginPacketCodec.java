@@ -15,6 +15,7 @@ import java.util.Objects;
  * authentication JSON and client-data JWT strings.</p>
  */
 public final class BedrockLoginPacketCodec {
+    public static final int PACKET_ID = 1;
     public static final int MAX_CONNECTION_REQUEST_BYTES = 1_048_576;
     public static final int MAX_CLIENT_DATA_JWT_BYTES = 1_048_576;
     public static final int MAX_JWT_BLOCK_BYTES =

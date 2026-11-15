@@ -11,6 +11,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.Consumer;
 
@@ -137,6 +139,7 @@ public final class NexoraMain {
         FilePlayerInventoryStorage playerInventoryStorage =
                 new FilePlayerInventoryStorage(dataDirectory.resolve("players"));
         int workers = Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() - 1));
+        AtomicReference<WorldChunkPipeline> activeChunkPipeline = new AtomicReference<>();
         server.register(new RuntimeModule() {
             private WorldChunkPipeline pipeline;
 
@@ -155,12 +158,14 @@ public final class NexoraMain {
                         world, scheduler, generation, 4,
                         failure -> log.accept("Chunk generation error: " + failure.getMessage()));
                 pipeline.start();
+                activeChunkPipeline.set(pipeline);
             }
 
             @Override
             public void stop() throws Exception {
                 if (pipeline != null) {
                     pipeline.stop();
+                    activeChunkPipeline.compareAndSet(pipeline, null);
                     pipeline = null;
                 }
             }
@@ -230,15 +235,16 @@ public final class NexoraMain {
                     },
                     () -> worlds.get(DEFAULT_WORLD_ID)
                             .orElseThrow(() -> new IllegalStateException("Default world is not loaded")),
-                    position -> {
-                        World world = worlds.get(DEFAULT_WORLD_ID)
-                                .orElseThrow(() -> new IllegalStateException("Default world is not loaded"));
-                        if (world.isChunkLoaded(position)) return true;
-                        return world.loadChunk(generator.generate(position, world.height(), seed));
-                    },
+                    null,
                     connection -> log.accept("NEXORA client completed protocol handshake: "
                             + connection.id()),
-                    entities, inventories, playerInventoryStorage, serverResourcePacks);
+                    entities, inventories, playerInventoryStorage, serverResourcePacks,
+                    position -> {
+                        WorldChunkPipeline active = activeChunkPipeline.get();
+                        return active == null
+                                ? CompletableFuture.completedFuture(false)
+                                : active.requestAsync(position);
+                    });
             server.register(new NetherNetPrivateProtocolModule(
                     peerHost, peerHost, signaling, protocolHandler));
         }

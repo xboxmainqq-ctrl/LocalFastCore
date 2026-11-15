@@ -59,6 +59,22 @@ class NexoraPrivateProtocolHandlerTest {
     }
 
     @Test
+    void rejectsClientsOutsideTheNexoraAndroidBuildNamespace() {
+        FakeConnection connection = new FakeConnection();
+        new NexoraPrivateProtocolHandler(UUID.randomUUID(), 1024,
+                ignored -> fail("non-NEXORA client must not become ready")).accept(connection);
+
+        connection.deliver(NexoraPrivateProtocolCodec.encodeClientHello("minecraft-bedrock"));
+
+        NexoraPrivateProtocolCodec.ServerResponse response =
+                NexoraPrivateProtocolCodec.decodeServerResponse(ByteBuffer.wrap(connection.sentMessages.get(0)));
+        assertFalse(response.accepted());
+        assertEquals(3, response.rejectionCode());
+        assertEquals("This server requires the NEXORA client", response.rejectionReason());
+        assertFalse(connection.closed);
+    }
+
+    @Test
     void rejectsUnsupportedMajorVersionDeterministically() {
         FakeConnection connection = new FakeConnection();
         new NexoraPrivateProtocolHandler(UUID.randomUUID(), 1024, ignored -> fail("must not become ready"))

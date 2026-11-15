@@ -19,6 +19,8 @@ import java.util.Map;
 public final class NexoraPrivateProtocolHandler implements Consumer<TransportConnection> {
     private static final int REJECT_UNSUPPORTED_VERSION = 1;
     private static final int REJECT_INVALID_HELLO = 2;
+    private static final int REJECT_UNSUPPORTED_CLIENT = 3;
+    private static final String SUPPORTED_CLIENT_BUILD_PREFIX = "android-";
     private static final double PLAYER_VISIBILITY_RADIUS = 128.0;
 
     private final UUID serverId;
@@ -147,6 +149,14 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                     || hello.minorVersion() != NexoraPrivateProtocolCodec.MINOR_VERSION) {
                 reject(connection, REJECT_UNSUPPORTED_VERSION,
                         "Unsupported NEXORA protocol version");
+                return;
+            }
+
+            // Bedrock/vanilla clients do not implement the private NEXORA hello.
+            // Require the first-party Android build namespace before admitting a session.
+            if (!hello.clientBuild().startsWith(SUPPORTED_CLIENT_BUILD_PREFIX)) {
+                reject(connection, REJECT_UNSUPPORTED_CLIENT,
+                        "This server requires the NEXORA client");
                 return;
             }
 

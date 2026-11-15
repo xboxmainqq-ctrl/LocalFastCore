@@ -108,7 +108,7 @@ class BedrockResourcePackTransferCodecTest {
 
         BedrockResourcePackTransferCodec.Pack pack = pack("tiny");
         assertThrows(IllegalArgumentException.class,
-                () -> BedrockResourcePackTransferCodec.encodeChunkDataPayload(pack, 1, 2));
+                () -> BedrockResourcePackTransferCodec.encodeChunkDataPayload(pack, 2, 2));
         assertThrows(IllegalArgumentException.class,
                 () -> new BedrockResourcePackTransferCodec.Pack(UUID_VALUE, "not-a-version", new byte[]{1}));
     }

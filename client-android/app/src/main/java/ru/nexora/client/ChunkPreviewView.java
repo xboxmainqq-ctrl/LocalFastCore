@@ -896,7 +896,7 @@ final class ChunkPreviewView extends GLSurfaceView {
                 return;
             }
             targetY = (minY + maxY) * 0.5f;
-            MeshBuilder mesh = new MeshBuilder(MAX_FLOATS);
+            TextureMeshBuilder mesh = new TextureMeshBuilder(MAX_FLOATS);
             for (WorldBlock block : blocks) {
                 float x0 = block.x() - 0.5f;
                 float x1 = block.x() + 0.5f;
@@ -994,6 +994,52 @@ final class ChunkPreviewView extends GLSurfaceView {
         private int size;
 
         MeshBuilder(int maxFloats) {
+            this.maxFloats = maxFloats;
+        }
+
+        boolean full() {
+            return size + 36 > maxFloats;
+        }
+
+        void quad(float ax, float ay, float az, float bx, float by, float bz,
+                  float cx, float cy, float cz, float dx, float dy, float dz,
+                  float[] color, float shade) {
+            if (full()) return;
+            ensureCapacity(size + 36);
+            vertex(ax,ay,az,color,shade);
+            vertex(bx,by,bz,color,shade);
+            vertex(cx,cy,cz,color,shade);
+            vertex(ax,ay,az,color,shade);
+            vertex(cx,cy,cz,color,shade);
+            vertex(dx,dy,dz,color,shade);
+        }
+
+        private void ensureCapacity(int required) {
+            if (required <= data.length) return;
+            int next = Math.min(maxFloats, Math.max(required, data.length * 2));
+            data = java.util.Arrays.copyOf(data, next);
+        }
+
+        private void vertex(float x, float y, float z, float[] color, float shade) {
+            data[size++] = x;
+            data[size++] = y;
+            data[size++] = z;
+            data[size++] = color[0] * shade;
+            data[size++] = color[1] * shade;
+            data[size++] = color[2] * shade;
+        }
+
+        float[] values() {
+            return java.util.Arrays.copyOf(data, size);
+        }
+    }
+
+    private static final class TextureMeshBuilder {
+        private final int maxFloats;
+        private float[] data = new float[65_536];
+        private int size;
+
+        TextureMeshBuilder(int maxFloats) {
             this.maxFloats = maxFloats;
         }
 

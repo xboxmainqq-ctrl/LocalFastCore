@@ -40,6 +40,19 @@ jobs:
       - name: Verify server runtime and tests
         run: mvn --batch-mode --no-transfer-progress clean verify
 
+      - name: Render deterministic world preview from generated chunks
+        if: success()
+        run: java -cp target/nexora-runtime-0.1.0-SNAPSHOT.jar ru.nexora.runtime.WorldPreviewRenderer 12345 4 target/nexora-world-preview.png
+
+      - name: Upload generated world preview
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexora-world-preview-seed-12345
+          path: target/nexora-world-preview.png
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4

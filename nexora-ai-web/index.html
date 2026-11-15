@@ -10,8 +10,9 @@
 <div class="github-grid">
 <label>Папка проекта<input id="workspace-folder" value="" placeholder="Например: src/main/java"></label>
 <button id="workspace-load">Загрузить файлы папки</button>
-<label>Файлы репозитория<select id="workspace-files"><option value="">Сначала загрузи папку</option></select></label>
-<button id="workspace-open">Открыть файл</button>
+<label>Файлы репозитория<select id="workspace-files" multiple size="5"><option value="">Сначала загрузи папку</option></select></label>
+<button id="workspace-open">Открыть первый выбранный файл</button>
+<button id="workspace-load-context" class="secondary">Загрузить выбранные файлы в контекст ИИ</button>
 </div>
 <div class="workspace-file-head"><b id="workspace-current">Файл не открыт</b><small id="workspace-file-meta">Выбери файл из списка</small></div>
 <label>Содержимое файла<textarea id="workspace-content" rows="16" spellcheck="false" placeholder="Содержимое выбранного файла появится здесь…"></textarea></label>
@@ -19,6 +20,10 @@
 <button id="workspace-stage">Добавить изменения в список</button>
 <button id="workspace-ai" class="secondary">Попросить ИИ изменить файл</button>
 <button id="workspace-use-ai" class="secondary">Применить ответ ИИ к файлу</button>
+<button id="workspace-ai-project" class="secondary">ИИ: изменить несколько файлов</button>
+<button id="workspace-apply-plan">Проверить и применить план</button>
+<button id="workspace-delete-current" class="secondary">Пометить открытый файл на удаление</button>
+<small id="workspace-context-status">Контекст проекта не загружен.</small>
 </div>
 <div class="workspace-staged"><b>Подготовленные файлы</b><div id="workspace-staged-list">Пока нет изменений.</div></div>
 <label>Сообщение коммита<input id="workspace-commit-message" value="Update project with NEXORA AI"></label>

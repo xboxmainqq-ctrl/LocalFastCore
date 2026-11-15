@@ -17,12 +17,13 @@ import java.util.zip.ZipInputStream;
 
 /**
  * Installs a small, texture-only NEXORA resource pack from a user-selected ZIP.
- * Only known texture filenames are extracted; all other archive paths are ignored.
+ * Only known texture filenames are extracted; every ZIP entry is still bounded and validated.
  */
 final class NexoraResourcePackInstaller {
     private static final long MAX_FILE_BYTES = 4L * 1024L * 1024L;
-    private static final long MAX_TOTAL_BYTES = 32L * 1024L * 1024L;
-    private static final int MAX_ENTRIES = 128;
+    private static final long MAX_PACK_EXPANDED_BYTES = 128L * 1024L * 1024L;
+    private static final long MAX_ENTRY_EXPANDED_BYTES = 16L * 1024L * 1024L;
+    private static final int MAX_ENTRIES = 4096;
     private static final int MAX_DIMENSION = 1024;
     private static final Set<String> ALLOWED = Set.of(
             "grass_top.png", "grass_side.png", "dirt.png", "stone.png",
@@ -53,35 +54,55 @@ final class NexoraResourcePackInstaller {
                 int entryCount = 0;
                 byte[] buffer = new byte[8192];
                 while ((entry = zip.getNextEntry()) != null) {
-                    if (++entryCount > MAX_ENTRIES) throw new IllegalArgumentException("Слишком много файлов в ZIP");
-                    if (entry.isDirectory()) continue;
-                    String name = entry.getName();
-                    validateArchivePath(name);
-                    String textureName = supportedTextureName(name);
-                    if (textureName == null) continue;
-                    // Several Java texture variants can map to one NEXORA atlas tile.
-                    // Keep the first matching file to avoid ambiguous overwrites.
-                    if (!names.add(textureName)) continue;
-
-                    File output = new File(new File(staging, "textures/blocks"), textureName);
-                    File parent = output.getParentFile();
-                    if (!parent.isDirectory() && !parent.mkdirs()) {
-                        throw new IllegalStateException("Не удалось создать папку текстур");
+                    if (++entryCount > MAX_ENTRIES) {
+                        throw new IllegalArgumentException("Слишком много файлов в ZIP");
                     }
-                    long fileBytes = 0L;
-                    try (FileOutputStream out = new FileOutputStream(output)) {
+                    String name = entry.getName();
+                    validateArchivePath(name, entry.isDirectory());
+                    if (entry.isDirectory()) continue;
+
+                    String textureName = supportedTextureName(name);
+                    boolean extract = textureName != null && !names.contains(textureName);
+                    File output = null;
+                    FileOutputStream out = null;
+                    if (extract) {
+                        output = new File(new File(staging, "textures/blocks"), textureName);
+                        File parent = output.getParentFile();
+                        if (!parent.isDirectory() && !parent.mkdirs()) {
+                            throw new IllegalStateException("Не удалось создать папку текстур");
+                        }
+                        out = new FileOutputStream(output);
+                    }
+
+                    long entryBytes = 0L;
+                    try {
                         int read;
                         while ((read = zip.read(buffer)) != -1) {
-                            fileBytes += read;
+                            entryBytes += read;
                             totalBytes += read;
-                            if (fileBytes > MAX_FILE_BYTES || totalBytes > MAX_TOTAL_BYTES) {
-                                throw new IllegalArgumentException("Ресурс-пак превышает лимит размера");
+                            if (entryBytes > MAX_ENTRY_EXPANDED_BYTES
+                                    || totalBytes > MAX_PACK_EXPANDED_BYTES) {
+                                throw new IllegalArgumentException("Ресурс-пак превышает лимит распакованного размера");
                             }
-                            out.write(buffer, 0, read);
+                            if (out != null) {
+                                if (entryBytes > MAX_FILE_BYTES) {
+                                    throw new IllegalArgumentException("Текстура превышает лимит 4 МиБ: "
+                                            + textureName);
+                                }
+                                out.write(buffer, 0, read);
+                            }
                         }
+                    } finally {
+                        if (out != null) out.close();
                     }
-                    if (!isValidPng(output)) throw new IllegalArgumentException("Повреждённая PNG: " + textureName);
-                    installed++;
+
+                    if (extract) {
+                        if (!isValidPng(output)) {
+                            throw new IllegalArgumentException("Повреждённая PNG: " + textureName);
+                        }
+                        names.add(textureName);
+                        installed++;
+                    }
                 }
             }
             if (installed == 0) throw new IllegalArgumentException(
@@ -165,15 +186,25 @@ final class NexoraResourcePackInstaller {
         }
     }
 
-    private static void validateArchivePath(String path) {
+    private static void validateArchivePath(String path, boolean directory) {
         if (path == null || path.isEmpty() || path.startsWith("/")
-                || path.indexOf('\\') >= 0 || path.indexOf('\0') >= 0) {
+                || path.matches("^[A-Za-z]:.*")
+                || path.indexOf('\\\\') >= 0 || path.indexOf('\0') >= 0) {
             throw new IllegalArgumentException("Недопустимый путь в ZIP");
         }
-        String[] parts = path.split("/");
+        String checked = directory && path.endsWith("/")
+                ? path.substring(0, path.length() - 1) : path;
+        if (checked.isEmpty()) throw new IllegalArgumentException("Пустой путь в ZIP");
+        String[] parts = checked.split("/", -1);
         for (String part : parts) {
-            if (part.equals("..") || part.equals(".")) {
+            if (part.isEmpty() || part.equals("..") || part.equals(".")) {
                 throw new IllegalArgumentException("Путь за пределами ресурс-пака запрещён");
+            }
+            for (int i = 0; i < part.length(); i++) {
+                char ch = part.charAt(i);
+                if (ch < 0x20 || ch == 0x7f || ch == ':') {
+                    throw new IllegalArgumentException("Недопустимый символ в пути ZIP");
+                }
             }
         }
     }

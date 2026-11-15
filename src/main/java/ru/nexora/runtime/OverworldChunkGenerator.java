@@ -49,7 +49,7 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
         int seaLevel = clamp(DEFAULT_SEA_LEVEL, height.minY() + 3, height.maxYExclusive() - 2);
         Map<BlockPosition, BlockState> blocks = new HashMap<>(12_000);
         Map<BlockPosition, BlockState> fluids = new HashMap<>(2_000);
-        Map<BlockPosition, Integer> biomes = new HashMap<>(256);
+        Map<BiomeColumnPosition, Integer> biomeColumns = new HashMap<>(256);
         BiomeDefinition[][] columnBiomes = new BiomeDefinition[16][16];
         BiomeRegistry biomeRegistry = BiomeRegistry.builtIn();
 
@@ -65,7 +65,7 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
                 columnBiomes[localX][localZ] = biome;
                 surfaceHeights[localX][localZ] = surfaceY;
                 BlockPosition surfacePosition = new BlockPosition(x, surfaceY, z);
-                biomes.put(surfacePosition, biome.id());
+                biomeColumns.put(new BiomeColumnPosition(x, z), biome.id());
 
                 blocks.put(new BlockPosition(x, height.minY(), z), BEDROCK);
                 for (int y = height.minY() + 1; y < surfaceY - 3; y++) {
@@ -83,7 +83,7 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
         }
 
         placeTrees(position, baseX, baseZ, height, seed, surfaceHeights, columnBiomes, blocks);
-        return new GeneratedChunk(position, blocks, biomes, fluids);
+        return new GeneratedChunk(position, blocks, Map.of(), fluids, biomeColumns, height);
     }
 
     private static int terrainHeight(int x, int z, long seed, WorldHeight worldHeight) {

@@ -18,6 +18,10 @@ final class WorldChunk {
     static WorldChunk from(GeneratedChunk generated) {
         WorldChunk chunk = from(generated.blocks());
         generated.biomes().forEach(chunk::setBiome);
+        if (!generated.biomeColumns().isEmpty()) {
+            generated.biomeColumns().forEach((column, biomeId) ->
+                    chunk.setBiomeColumn(column, biomeId, generated.biomeWorldHeight()));
+        }
         generated.fluids().forEach(chunk::setFluid);
         return chunk;
     }
@@ -91,6 +95,27 @@ final class WorldChunk {
         section.set(position.localX(), Math.floorMod(position.y(), 16), position.localZ(), biomeId);
         if (section.isDefault()) {
             biomeSections.remove(sectionY);
+        }
+    }
+
+    synchronized void setBiomeColumn(BiomeColumnPosition column, int biomeId, WorldHeight height) {
+        if (biomeId < 0) throw new IllegalArgumentException("Biome ID must be non-negative");
+        if (height == null) throw new NullPointerException("height");
+        int sectionMin = Math.floorDiv(height.minY(), 16);
+        int sectionMax = Math.floorDiv(height.maxYExclusive() - 1, 16);
+        for (int sectionY = sectionMin; sectionY <= sectionMax; sectionY++) {
+            int baseY = Math.multiplyExact(sectionY, 16);
+            int minLocalY = Math.max(0, height.minY() - baseY);
+            int maxLocalY = Math.min(16, height.maxYExclusive() - baseY);
+            BiomeSection section = biomeSections.get(sectionY);
+            if (section == null) {
+                if (biomeId == BiomeSection.DEFAULT_BIOME_ID) continue;
+                section = new BiomeSection();
+                biomeSections.put(sectionY, section);
+            }
+            section.setColumn(Math.floorMod(column.x(), 16), Math.floorMod(column.z(), 16),
+                    minLocalY, maxLocalY, biomeId);
+            if (section.isDefault()) biomeSections.remove(sectionY);
         }
     }
 

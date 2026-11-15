@@ -5,15 +5,26 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
-/** Immutable result of chunk generation, including blocks, biome cells and fluids. */
+/** Immutable result of chunk generation, including blocks, biome cells, biome columns and fluids. */
 public record GeneratedChunk(
         ChunkPosition position,
         Map<BlockPosition, BlockState> blocks,
         Map<BlockPosition, Integer> biomes,
-        Map<BlockPosition, BlockState> fluids
+        Map<BlockPosition, BlockState> fluids,
+        Map<BiomeColumnPosition, Integer> biomeColumns,
+        WorldHeight biomeWorldHeight
 ) {
     public GeneratedChunk(ChunkPosition position, Map<BlockPosition, BlockState> blocks) {
-        this(position, blocks, Map.of(), Map.of());
+        this(position, blocks, Map.of(), Map.of(), Map.of(), null);
+    }
+
+    public GeneratedChunk(
+            ChunkPosition position,
+            Map<BlockPosition, BlockState> blocks,
+            Map<BlockPosition, Integer> biomes,
+            Map<BlockPosition, BlockState> fluids
+    ) {
+        this(position, blocks, biomes, fluids, Map.of(), null);
     }
 
     public GeneratedChunk {
@@ -21,6 +32,8 @@ public record GeneratedChunk(
         Objects.requireNonNull(blocks, "blocks");
         Objects.requireNonNull(biomes, "biomes");
         Objects.requireNonNull(fluids, "fluids");
+        Objects.requireNonNull(biomeColumns, "biomeColumns");
+        if (!biomeColumns.isEmpty()) Objects.requireNonNull(biomeWorldHeight, "biomeWorldHeight");
 
         Map<BlockPosition, BlockState> blockCopy = new HashMap<>();
         blocks.forEach((blockPosition, state) -> {
@@ -36,13 +49,8 @@ public record GeneratedChunk(
         Map<BlockPosition, Integer> biomeCopy = new HashMap<>();
         biomes.forEach((blockPosition, biomeId) -> {
             requireChunkPosition(position, blockPosition);
-            Objects.requireNonNull(biomeId, "biome ID");
-            if (biomeId < 0) {
-                throw new IllegalArgumentException("Biome ID must be non-negative");
-            }
-            if (biomeId != BiomeSection.DEFAULT_BIOME_ID) {
-                biomeCopy.put(blockPosition, biomeId);
-            }
+            requireBiomeId(biomeId);
+            if (biomeId != BiomeSection.DEFAULT_BIOME_ID) biomeCopy.put(blockPosition, biomeId);
         });
         biomes = Collections.unmodifiableMap(biomeCopy);
 
@@ -50,19 +58,31 @@ public record GeneratedChunk(
         fluids.forEach((blockPosition, state) -> {
             requireChunkPosition(position, blockPosition);
             FluidStates.requireFluidOrAir(state);
-            if (!state.isAir()) {
-                fluidCopy.put(blockPosition, state);
-            }
+            if (!state.isAir()) fluidCopy.put(blockPosition, state);
         });
         fluids = Collections.unmodifiableMap(fluidCopy);
+
+        Map<BiomeColumnPosition, Integer> columnCopy = new HashMap<>();
+        biomeColumns.forEach((column, biomeId) -> {
+            Objects.requireNonNull(column, "biome column");
+            if (!column.chunkPosition().equals(position)) {
+                throw new IllegalArgumentException("Biome column does not belong to chunk " + position + ": " + column);
+            }
+            requireBiomeId(biomeId);
+            if (biomeId != BiomeSection.DEFAULT_BIOME_ID) columnCopy.put(column, biomeId);
+        });
+        biomeColumns = Collections.unmodifiableMap(columnCopy);
+    }
+
+    private static void requireBiomeId(Integer biomeId) {
+        Objects.requireNonNull(biomeId, "biome ID");
+        if (biomeId < 0) throw new IllegalArgumentException("Biome ID must be non-negative");
     }
 
     private static void requireChunkPosition(ChunkPosition chunk, BlockPosition block) {
         Objects.requireNonNull(block, "block position");
         if (!block.chunkPosition().equals(chunk)) {
-            throw new IllegalArgumentException(
-                    "Generated data does not belong to chunk " + chunk + ": " + block
-            );
+            throw new IllegalArgumentException("Generated data does not belong to chunk " + chunk + ": " + block);
         }
     }
 }

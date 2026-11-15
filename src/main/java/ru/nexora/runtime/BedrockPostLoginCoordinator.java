@@ -12,7 +12,7 @@ import java.util.function.Function;
 /**
  * Coordinates the protocol-2225 post-LoginSuccess exchange.
  *
- * <p>It sends the empty ResourcePacksInfo and ResourcePackStack packets,
+ * <p>It sends ResourcePacksInfo and ResourcePackStack packets,
  * validates the corresponding client responses, then delegates StartGame and
  * initial world delivery to a world-startup implementation. PLAY is entered
  * only after that implementation completes successfully.</p>
@@ -146,17 +146,18 @@ public final class BedrockPostLoginCoordinator implements
                 return;
             }
             switch (response.type()) {
-                case CANCEL -> fail(session);
-                case DOWNLOADING -> {
-                    // This server advertised an empty pack list. A non-empty
-                    // download list cannot be valid for this negotiation.
-                    if (!response.downloadingPackIds().isEmpty()
+                case REFUSED -> fail(session);
+                case SEND_PACKS -> {
+                    // Until a server pack set is configured, no pack identifiers
+                    // can be requested by the client.
+                    if (!response.packIds().isEmpty()
                             || session.phase != Phase.WAITING_FOR_PACK_RESPONSE) {
                         fail(session);
                     }
                 }
-                case DOWNLOADING_FINISHED -> {
-                    if (session.phase != Phase.WAITING_FOR_PACK_RESPONSE) {
+                case HAVE_ALL_PACKS -> {
+                    if (session.phase != Phase.WAITING_FOR_PACK_RESPONSE
+                            || !response.packIds().isEmpty()) {
                         fail(session);
                         return;
                     }
@@ -166,8 +167,9 @@ public final class BedrockPostLoginCoordinator implements
                         fail(session);
                     }
                 }
-                case RESOURCE_PACK_STACK_FINISHED -> {
-                    if (session.phase != Phase.WAITING_FOR_STACK_RESPONSE) {
+                case COMPLETED -> {
+                    if (session.phase != Phase.WAITING_FOR_STACK_RESPONSE
+                            || !response.packIds().isEmpty()) {
                         fail(session);
                         return;
                     }
@@ -240,7 +242,7 @@ public final class BedrockPostLoginCoordinator implements
         });
     }
 
-    private BedrockResourcePackCodec.ClientResponse decodeResponse(ByteBuffer frame) {
+    private BedrockResourcePackClientResponse decodeResponse(ByteBuffer frame) {
         ByteBuffer batch = BedrockBatchCompressionCodec.decodeAfterNetworkSettings(
                 frame, networkSettings, BedrockPacketBatchCodec.DEFAULT_MAX_BATCH_BYTES);
         List<BedrockGamePacket> packets = BedrockPacketBatchCodec.decodeUncompressed(batch);
@@ -253,7 +255,7 @@ public final class BedrockPostLoginCoordinator implements
                 || packet.header().targetSubClientId() != 0) {
             throw new IllegalArgumentException("Unexpected Bedrock packet during resource-pack negotiation");
         }
-        return BedrockResourcePackCodec.decodeClientResponsePayload(packet.payloadBuffer());
+        return BedrockResourcePackClientResponsePacketCodec.decodePayload(packet.payloadBuffer());
     }
 
     private boolean sendPacket(

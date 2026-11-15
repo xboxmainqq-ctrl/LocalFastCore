@@ -43,14 +43,14 @@ class BedrockPostLoginCoordinatorTest {
         assertEquals(BedrockResourcePackCodec.RESOURCE_PACKS_INFO_PACKET_ID,
                 decodeSentPacket(connection.sent.get(0)).header().packetId());
 
-        coordinator.handleMessage(connection, response("DownloadingFinished"));
+        coordinator.handleMessage(connection, response("downloadingfinished"));
         assertEquals(2, connection.sent.size());
         assertEquals(BedrockResourcePackCodec.RESOURCE_PACK_STACK_PACKET_ID,
                 decodeSentPacket(connection.sent.get(1)).header().packetId());
         assertEquals(0, worldStarts.get());
         assertEquals(0, playReady.get());
 
-        coordinator.handleMessage(connection, response("ResourcePackStackFinished"));
+        coordinator.handleMessage(connection, response("resourcepackstackfinished"));
         assertEquals(1, worldStarts.get());
         assertEquals(1, playReady.get());
         assertTrue(connection.isOpen());
@@ -103,11 +103,11 @@ class BedrockPostLoginCoordinatorTest {
         FakeConnection connection = new FakeConnection();
         coordinator.accept(connection, player());
 
-        coordinator.handleMessage(connection, response("Downloading", List.of()));
+        coordinator.handleMessage(connection, response("downloading", List.of()));
         assertTrue(connection.isOpen());
         assertEquals(1, connection.sent.size());
 
-        coordinator.handleMessage(connection, response("Downloading", List.of("unexpected-pack")));
+        coordinator.handleMessage(connection, response("downloading", List.of("unexpected-pack")));
         assertFalse(connection.isOpen());
         coordinator.close();
     }
@@ -172,8 +172,16 @@ class BedrockPostLoginCoordinatorTest {
 
     private static TransportMessage response(String name, List<String> packIds) {
         ByteBuffer payload = ByteBuffer.allocate(256);
+        int status = switch (name) {
+            case "cancel" -> 0;
+            case "downloading" -> 1;
+            case "downloadingfinished" -> 2;
+            case "resourcepackstackfinished" -> 3;
+            default -> throw new IllegalArgumentException("Unknown test status: " + name);
+        };
+        BedrockBinary.writeVarUInt32(payload, status);
         BedrockBinary.writeString(payload, name, 64);
-        if ("Downloading".equals(name)) {
+        if ("downloading".equals(name)) {
             BedrockBinary.writeVarUInt32(payload, packIds.size());
             for (String id : packIds) {
                 BedrockBinary.writeString(payload, id, 128);

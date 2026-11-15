@@ -6,7 +6,7 @@ on:
       - nexora/compatibility-edition
     paths:
       - "client-android/**"
-      - ".github/workflows/nexora-android.yml"
+      - ".github/workflows/**"
   pull_request:
     paths:
       - "client-android/**"

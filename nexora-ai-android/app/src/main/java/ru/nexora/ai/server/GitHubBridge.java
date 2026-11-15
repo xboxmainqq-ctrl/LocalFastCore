@@ -2,6 +2,8 @@ package ru.nexora.ai.server;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
 import android.content.SharedPreferences;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
@@ -157,6 +159,12 @@ public final class GitHubBridge {
         JSONObject result = new JSONObject();
         try { result.put("ok", false); result.put("error", message); } catch (Exception ignored) {}
         return result;
+    }
+
+    @JavascriptInterface
+    public void openDeviceVerification() {
+        activity.runOnUiThread(() -> activity.startActivity(
+                new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/login/device"))));
     }
 
     @JavascriptInterface

@@ -15,7 +15,7 @@ import static org.junit.Assert.*;
 
 public class BedrockAndroidPacketCodecTest {
     private static final String AUTHENTICATION_PAYLOAD_JSON =
-            "{\\"AuthenticationType\\":0,\\"Token\\":\\"a.b.c\\",\\"Certificate\\":\\"\\"}";
+            "{\"AuthenticationType\":0,\"Token\":\"a.b.c\",\"Certificate\":\"\"}";
     private static final String CLIENT_DATA_JWT =
             "eyJhbGciOiJFUzM4NCJ9.eyJjbGllbnQiOiJ0ZXN0In0.c2ln";
 

@@ -103,8 +103,12 @@ public final class NetherNetGameServerTokenVerifier {
         Signature verifier = Signature.getInstance("SHA256withRSA");
         verifier.initVerify(signingKey);
         verifier.update((parts[0] + "." + parts[1]).getBytes(StandardCharsets.US_ASCII));
-        if (!verifier.verify(signatureBytes)) {
-            throw new SecurityException("GameServerToken signature verification failed");
+        try {
+            if (!verifier.verify(signatureBytes)) {
+                throw new SecurityException("GameServerToken signature verification failed");
+            }
+        } catch (java.security.SignatureException malformedSignature) {
+            throw new SecurityException("GameServerToken signature is malformed", malformedSignature);
         }
 
         long now = clock.instant().getEpochSecond();

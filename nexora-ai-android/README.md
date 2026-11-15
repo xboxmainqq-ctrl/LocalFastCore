@@ -15,12 +15,13 @@ Prototype target: Android 8.0+ (API 26), compile/target SDK 35, Java 17.
 - GitHub App Device Flow sign-in with encrypted access/refresh token storage and automatic token refresh.
 - Fine-grained personal access token remains available as a manual fallback.
 - GitHub repository and branch listing, branch creation, repository folder browsing, UTF-8 file reading, and atomic multi-file commits.
-- Workspace editor with staged file changes and a confirmation step before writing commits.
-- AI-assisted editing of the currently opened file: the file content is sent as task context to the free-only model; the proposed complete file is reviewed and staged by the user before commit.
+- Workspace editor with multi-file project context, per-file blob SHA capture, staged updates/creates/deletes, per-file previews, and confirmation before commits.
+- Multi-file AI project planner: the model returns a validated JSON change plan; the user reviews and stages it before GitHub writes.
+- Branch-head snapshot guard: workspace commits abort if the selected branch changed since the project folder was loaded.
 - GitHub token encrypted at rest with Android Keystore (AES-GCM).
 - GitHub writes require a user confirmation in the dashboard.
-- GitHub commit API currently supports up to 50 text files and 1 MiB total per commit.
-- The GitHub workspace can browse folders, read text files, and stage AI-assisted edits for review. It is not yet a full local Git clone or an autonomous terminal/build agent.
+- GitHub commit API supports up to 50 text-file operations and 1 MiB total new text per commit; the AI planner limits each plan to 20 files.
+- The GitHub workspace is not yet a full local Git clone or an autonomous terminal/build agent. AI can only reliably edit files loaded into its bounded context.
 - No remote-network access to the local API, no public website deployment, and no full autonomous build agent yet.
 
 ## GitHub setup

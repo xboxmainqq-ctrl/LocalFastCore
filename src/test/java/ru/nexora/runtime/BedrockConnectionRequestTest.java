@@ -52,6 +52,7 @@ class BedrockConnectionRequestTest {
 
     @Test
     void rejectsIncompleteOrMixedAuthenticationEnvelopes() {
+        String nestedCertificate = "{\"chain\":[\"" + JWT + "\"]}";
         assertThrows(IllegalArgumentException.class, () ->
                 BedrockConnectionRequest.parse(
                         "{\"AuthenticationType\":0,\"Token\":\"" + JWT + "\"}"));
@@ -70,7 +71,7 @@ class BedrockConnectionRequestTest {
         assertThrows(IllegalArgumentException.class, () ->
                 BedrockConnectionRequest.parse(
                         "{\"AuthenticationType\":0,\"Token\":\"" + JWT
-                                + "\",\"Certificate\":\"{\\\"chain\\\":[\\\"" + JWT + "\\"]}\"}"));
+                                + "\",\"Certificate\":\"" + nestedCertificate.replace("\"", "\\\"") + "\"}"));
     }
 
     @Test

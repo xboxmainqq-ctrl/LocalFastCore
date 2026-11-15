@@ -615,6 +615,7 @@ public final class MainActivity extends Activity {
                 if (localHotbarCounts[index] == 0) { destination = index; break; }
             }
         }
+        final int targetSlot = destination;
         String item = occupied ? localHotbarItems[slot] : "Пустая ячейка";
         String[] actions;
         if (!occupied) {
@@ -628,9 +629,9 @@ public final class MainActivity extends Activity {
                 .setTitle("СЛОТ " + (slot + 1))
                 .setMessage(item + (occupied ? " ×" + localHotbarCounts[slot] : ""))
                 .setItems(actions, (dialog, which) -> {
-                    if (!occupied || destination < 0) return;
-                    localHotbarItems[destination] = localHotbarItems[slot];
-                    localHotbarCounts[destination] = localHotbarCounts[slot];
+                    if (!occupied || targetSlot < 0) return;
+                    localHotbarItems[targetSlot] = localHotbarItems[slot];
+                    localHotbarCounts[targetSlot] = localHotbarCounts[slot];
                     localHotbarItems[slot] = "";
                     localHotbarCounts[slot] = 0;
                     refreshLocalHotbar();
@@ -667,7 +668,7 @@ public final class MainActivity extends Activity {
                             return;
                         }
                         if (!canAddLocalItem(minedBlock, 1)) {
-                            Toast.makeText(this, "Нет места в панели предметов", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(this, "Инвентарь заполнен", Toast.LENGTH_SHORT).show();
                             return;
                         }
                     } else {

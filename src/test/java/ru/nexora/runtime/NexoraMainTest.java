@@ -107,6 +107,36 @@ class NexoraMainTest {
     }
 
     @Test
+    void runtimeUsesServerPropertiesForWorldGeneratorHeightAndTickRate() throws Exception {
+        Path dataDirectory = temporaryDirectory.resolve("configured-server");
+        Files.createDirectories(dataDirectory);
+        Files.writeString(dataDirectory.resolve("server.properties"), """
+                world.id=adventure
+                world.generator=overworld
+                world.seed=12345
+                world.min-y=-32
+                world.max-y-exclusive=256
+                server.tick-rate=30
+                """);
+
+        NexoraMain.LaunchOptions options = NexoraMain.parseArguments(new String[] {
+                "--data-dir", dataDirectory.toString()
+        });
+        NexoraMain.RuntimeHandle runtime = NexoraMain.createRuntime(options, ignored -> { });
+        runtime.server().start();
+        try {
+            World world = runtime.worlds().get("adventure").orElseThrow();
+            assertEquals(new WorldHeight(-32, 256), world.height());
+            assertEquals("adventure", runtime.worldId());
+            assertEquals(30, runtime.tickRate());
+            assertTrue(world.isChunkLoaded(new ChunkPosition(0, 0)));
+        } finally {
+            runtime.server().stop();
+        }
+        assertTrue(Files.isRegularFile(dataDirectory.resolve("worlds").resolve("adventure.nxw")));
+    }
+
+    @Test
     void runtimeOwnsPlayerInventoriesAndCanCollectDroppedItems() {
         NexoraMain.RuntimeHandle runtime = NexoraMain.createRuntime(
                 temporaryDirectory.resolve("inventory-runtime"), 42L, ignored -> { });

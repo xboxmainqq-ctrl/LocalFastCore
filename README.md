@@ -1,5 +1,12 @@
 # NEXORA Standalone Runtime
 
+## Target Minecraft version
+
+**The target game version for NEXORA development is Minecraft Bedrock Edition 1.26.60 (protocol 2225).** New protocol work, packet codecs, and compatibility tests should use this version as the baseline unless the project explicitly changes its target.
+
+NEXORA is still developed as an independent runtime with its own Android client and private NEXORA connection handshake. Targeting Bedrock 1.26.60 does not mean that an unmodified/vanilla Minecraft client can currently connect; Bedrock compatibility is being implemented and verified in stages.
+
+
 This module is the beginning of the independent NEXORA server process. It has **no Nukkit, Nukkit-MOT, Bukkit, or other game-server API dependency**.
 
 ## Private NEXORA client protocol

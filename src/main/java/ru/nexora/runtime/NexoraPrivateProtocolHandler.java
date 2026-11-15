@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.function.Function;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map;
@@ -30,6 +31,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
     private final Consumer<TransportConnection> readyListener;
     private final Supplier<World> worldSupplier;
     private final Function<ChunkPosition, Boolean> chunkLoader;
+    private final AsyncChunkLoader asyncChunkLoader;
     private final Map<TransportConnection, PlayerSession> playerSessions =
             new ConcurrentHashMap<>();
     private final EntityRegistry entities;
@@ -109,6 +111,20 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                                         Map<UUID, PlayerInventory> inventories,
                                         FilePlayerInventoryStorage inventoryStorage,
                                         List<BedrockResourcePackTransferCodec.Pack> resourcePacks) {
+        this(serverId, maxMessageBytes, worldInfoSupplier, worldSupplier, chunkLoader,
+                readyListener, entities, inventories, inventoryStorage, resourcePacks, null);
+    }
+
+    public NexoraPrivateProtocolHandler(UUID serverId, int maxMessageBytes,
+                                        Supplier<NexoraWorldInfo> worldInfoSupplier,
+                                        Supplier<World> worldSupplier,
+                                        Function<ChunkPosition, Boolean> chunkLoader,
+                                        Consumer<TransportConnection> readyListener,
+                                        EntityRegistry entities,
+                                        Map<UUID, PlayerInventory> inventories,
+                                        FilePlayerInventoryStorage inventoryStorage,
+                                        List<BedrockResourcePackTransferCodec.Pack> resourcePacks,
+                                        AsyncChunkLoader asyncChunkLoader) {
         this.serverId = Objects.requireNonNull(serverId, "serverId");
         if (maxMessageBytes < 1 || maxMessageBytes > 8 * 1024 * 1024) {
             throw new IllegalArgumentException("maxMessageBytes is outside the supported range");
@@ -117,6 +133,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
         this.worldInfoSupplier = Objects.requireNonNull(worldInfoSupplier, "worldInfoSupplier");
         this.worldSupplier = worldSupplier;
         this.chunkLoader = chunkLoader;
+        this.asyncChunkLoader = asyncChunkLoader;
         this.readyListener = Objects.requireNonNull(readyListener, "readyListener");
         this.entities = Objects.requireNonNull(entities, "entities");
         this.inventories = Objects.requireNonNull(inventories, "inventories");
@@ -125,7 +142,8 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
         if (resourcePacks.size() > 1) {
             throw new IllegalArgumentException("The Android client currently supports one resource pack");
         }
-        if (!resourcePacks.isEmpty() && (worldSupplier == null || chunkLoader == null)) {
+        if (!resourcePacks.isEmpty() && (worldSupplier == null
+                || (chunkLoader == null && asyncChunkLoader == null))) {
             throw new IllegalArgumentException(
                     "Server resource packs require an active world and chunk loader");
         }
@@ -762,7 +780,28 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 return;
             }
             requestedChunks.add(position);
-            if (!Boolean.TRUE.equals(chunkLoader.apply(position))) {
+            if (asyncChunkLoader != null) {
+                asyncChunkLoader.request(position).whenComplete((available, failure) -> {
+                    if (!connection.isOpen()) return;
+                    if (failure != null || !Boolean.TRUE.equals(available)) {
+                        connection.close();
+                        return;
+                    }
+                    try {
+                        World world = Objects.requireNonNull(worldSupplier.get(), "world");
+                        NexoraChunkData chunk = NexoraChunkData.volume(
+                                world, request.chunkX(), request.chunkZ());
+                        if (send(connection, NexoraChunkDataCodec.encodeChunkData(chunk))
+                                != TransportSendResult.ACCEPTED) {
+                            connection.close();
+                        }
+                    } catch (RuntimeException unavailableWorld) {
+                        connection.close();
+                    }
+                });
+                return;
+            }
+            if (chunkLoader == null || !Boolean.TRUE.equals(chunkLoader.apply(position))) {
                 connection.close();
                 return;
             }

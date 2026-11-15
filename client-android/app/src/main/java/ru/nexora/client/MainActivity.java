@@ -29,6 +29,7 @@ import java.util.UUID;
 import java.security.SecureRandom;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.io.File;
 
 /**
  * Android entry screen for the NEXORA client.
@@ -64,6 +65,10 @@ public final class MainActivity extends Activity {
     private int selectedInventorySlot = -1;
     private final Map<UUID, String> remotePlayerNames = new LinkedHashMap<>();
     private ExecutorService previewGenerationExecutor;
+    private LocalWorldStore localWorldStore;
+    private volatile double localPlayerX;
+    private volatile double localPlayerY;
+    private volatile double localPlayerZ;
     private int streamingCenterChunkX = Integer.MIN_VALUE;
     private int streamingCenterChunkZ = Integer.MIN_VALUE;
 
@@ -71,6 +76,7 @@ public final class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         selectedSkin = getPreferences(MODE_PRIVATE).getInt("nexora_player_skin", 0);
+        localWorldStore = new LocalWorldStore(new File(getFilesDir(), "worlds"));
         setContentView(createHomeScreen());
     }
 
@@ -219,6 +225,7 @@ public final class MainActivity extends Activity {
             for (int i = count - 1; i >= 0; i--) {
                 final String worldName = prefs.getString("nexora_world_name_" + i, "Мир " + (i + 1));
                 final long worldSeed = prefs.getLong("nexora_world_seed_" + i, 0L);
+                final String worldId = prefs.getString("nexora_world_id_" + i, "legacy_world_" + i);
                 LinearLayout worldCard = card();
                 page.addView(worldCard, matchWrap());
                 worldCard.addView(text(worldName, 17, TEXT, true), matchWrap());
@@ -227,7 +234,7 @@ public final class MainActivity extends Activity {
                 addSpace(worldCard, 10);
                 Button play = button("ИГРАТЬ");
                 worldCard.addView(play, matchWrap());
-                play.setOnClickListener(v -> launchWorldPreview(worldName, worldSeed));
+                play.setOnClickListener(v -> launchWorldPreview(worldId, worldName, worldSeed));
                 addSpace(page, 12);
             }
         }
@@ -278,20 +285,22 @@ public final class MainActivity extends Activity {
                     }
                     android.content.SharedPreferences prefs = getPreferences(MODE_PRIVATE);
                     int index = prefs.getInt("nexora_world_count", 0);
+                    String worldId = UUID.randomUUID().toString();
                     prefs.edit()
                             .putString("nexora_world_name_" + index, name)
                             .putLong("nexora_world_seed_" + index, seed)
+                            .putString("nexora_world_id_" + index, worldId)
                             .putInt("nexora_world_count", index + 1)
                             .putString("nexora_last_world_name", name)
                             .putLong("nexora_last_world_seed", seed)
                             .apply();
-                    launchWorldPreview(name, seed);
+                    launchWorldPreview(worldId, name, seed);
                 })
                 .setNegativeButton("ОТМЕНА", null)
                 .show();
     }
 
-    private void launchWorldPreview(String worldName, long seed) {
+    private void launchWorldPreview(String worldId, String worldName, long seed) {
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setPadding(dp(16), dp(20), dp(16), dp(20));
@@ -301,7 +310,7 @@ public final class MainActivity extends Activity {
         title.setGravity(Gravity.CENTER);
         page.addView(title, matchWrap());
         addSpace(page, 6);
-        TextView state = text("МИР NEXORA • SEED: " + seed, 11, ACCENT, true);
+        TextView state = text("ЛОКАЛЬНЫЙ МИР • SEED: " + seed, 11, ACCENT, true);
         state.setGravity(Gravity.CENTER);
         page.addView(state, matchWrap());
         addSpace(page, 10);
@@ -311,6 +320,19 @@ public final class MainActivity extends Activity {
         localPreview.setCenter(0, 0);
         page.addView(localPreview, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        localPreview.setMovementListener((x, y, z) -> {
+            localPlayerX = x;
+            localPlayerY = y;
+            localPlayerZ = z;
+            try {
+                localWorldStore.savePlayerPosition(worldId,
+                        new LocalWorldStore.PlayerPosition(x, y, z));
+            } catch (java.io.IOException failure) {
+                runOnUiThread(() -> Toast.makeText(this,
+                        "Не удалось сохранить позицию игрока", Toast.LENGTH_SHORT).show());
+            }
+        });
 
         addSpace(page, 10);
         Button camera = button("ВИД: ОТ ТРЕТЬЕГО ЛИЦА");
@@ -345,15 +367,13 @@ public final class MainActivity extends Activity {
         page.addView(jump, matchWrap());
         jump.setOnClickListener(v -> localPreview.jumpPlayer());
         addSpace(page, 6);
-        page.addView(text("Проведи пальцем по миру — повернуть камеру; двумя пальцами — изменить масштаб.",
+        page.addView(text("Мир хранится на устройстве. После выхода твоя позиция и созданные чанки останутся сохранены.",
                 11, MUTED, false), matchWrap());
         addSpace(page, 8);
-        page.addView(text("Используется настоящий генератор ядра: рельеф, 6 биомов, деревья, реки и озёра. Генерация выполняется в фоне.",
-                12, MUTED, false), matchWrap());
-        addSpace(page, 8);
-        Button exit = button("В МЕНЮ");
+        Button exit = button("СОХРАНИТЬ И ВЫЙТИ");
         page.addView(exit, matchWrap());
         exit.setOnClickListener(v -> {
+            saveLocalPlayerPosition(worldId);
             if (previewGenerationExecutor != null) {
                 previewGenerationExecutor.shutdownNow();
                 previewGenerationExecutor = null;
@@ -368,26 +388,60 @@ public final class MainActivity extends Activity {
 
         if (previewGenerationExecutor != null) previewGenerationExecutor.shutdownNow();
         previewGenerationExecutor = Executors.newSingleThreadExecutor();
-        state.setText("ГЕНЕРАЦИЯ МИРА • SEED: " + seed);
+        state.setText("ЗАГРУЗКА МИРА • SEED: " + seed);
         previewGenerationExecutor.execute(() -> {
             try {
-                NexoraWorldPreviewGenerator.PreviewData generated =
-                        NexoraWorldPreviewGenerator.generate(seed);
+                List<NexoraAndroidProtocolCodec.ChunkData> chunks = localWorldStore.loadChunks(worldId);
+                boolean generated = chunks.isEmpty();
+                int spawnY = 64;
+                if (generated) {
+                    NexoraWorldPreviewGenerator.PreviewData data =
+                            NexoraWorldPreviewGenerator.generate(seed);
+                    chunks = data.chunks();
+                    spawnY = data.spawnY();
+                    for (NexoraAndroidProtocolCodec.ChunkData chunk : chunks) {
+                        localWorldStore.saveChunk(worldId, chunk);
+                    }
+                }
+                LocalWorldStore.PlayerPosition savedPosition = localWorldStore.loadPlayerPosition(worldId);
+                final int initialSpawnY = spawnY;
+                final boolean wasGenerated = generated;
+                final List<NexoraAndroidProtocolCodec.ChunkData> loadedChunks = List.copyOf(chunks);
                 runOnUiThread(() -> {
                     if (localPreview == null || previewGenerationExecutor == null
                             || previewGenerationExecutor.isShutdown()) return;
-                    for (NexoraAndroidProtocolCodec.ChunkData chunk : generated.chunks()) {
+                    for (NexoraAndroidProtocolCodec.ChunkData chunk : loadedChunks) {
                         localPreview.setChunk(chunk);
                     }
-                    localPreview.setPlayerSpawn(0, generated.spawnY(), 0);
-                    state.setText("МИР ГОТОВ • SEED: " + seed
-                            + " • ЧАНКОВ: " + generated.chunks().size());
+                    if (savedPosition != null) {
+                        localPlayerX = savedPosition.x();
+                        localPlayerY = savedPosition.y();
+                        localPlayerZ = savedPosition.z();
+                        localPreview.setPlayerPosition(savedPosition.x(), savedPosition.y(), savedPosition.z());
+                    } else {
+                        localPlayerX = 0.5;
+                        localPlayerY = initialSpawnY;
+                        localPlayerZ = 0.5;
+                        localPreview.setPlayerSpawn(0, initialSpawnY, 0);
+                        saveLocalPlayerPosition(worldId);
+                    }
+                    state.setText((wasGenerated ? "МИР СОЗДАН" : "МИР ЗАГРУЖЕН")
+                            + " • ЧАНКОВ: " + loadedChunks.size());
                 });
-            } catch (RuntimeException failure) {
-                runOnUiThread(() -> state.setText("ОШИБКА ГЕНЕРАЦИИ: "
+            } catch (Exception failure) {
+                runOnUiThread(() -> state.setText("ОШИБКА МИРА: "
                         + failure.getClass().getSimpleName()));
             }
         });
+    }
+
+    private void saveLocalPlayerPosition(String worldId) {
+        try {
+            localWorldStore.savePlayerPosition(worldId,
+                    new LocalWorldStore.PlayerPosition(localPlayerX, localPlayerY, localPlayerZ));
+        } catch (java.io.IOException failure) {
+            Toast.makeText(this, "Ошибка сохранения мира", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private View createWorldClientScreen() {

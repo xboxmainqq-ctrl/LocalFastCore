@@ -51,7 +51,9 @@ class ResourcePackAssetReaderTest {
             assertEquals(List.of("manifest.json", "texts/welcome.txt", "textures/stone.bin"),
                     reader.entries());
         }
-        assertEquals(2, Files.list(tempDir).count(), "reader must not extract pack entries");
+        try (var files = Files.list(tempDir)) {
+            assertEquals(1, files.count(), "reader must not extract pack entries");
+        }
     }
 
     @Test

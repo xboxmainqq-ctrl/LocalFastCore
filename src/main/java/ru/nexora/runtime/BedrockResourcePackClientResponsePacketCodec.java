@@ -9,22 +9,19 @@ import java.util.Objects;
 public final class BedrockResourcePackClientResponsePacketCodec {
     public static final int PACKET_ID = 8;
 
-    private static final String[] STATUS_NAMES = {
-            null, "cancel", "downloading", "downloadingfinished", "resourcepackstackfinished"
-    };
-
     private BedrockResourcePackClientResponsePacketCodec() {
     }
 
     public static BedrockResourcePackClientResponse decodePayload(ByteBuffer payload) {
         Objects.requireNonNull(payload, "payload");
-        int wireStatus = BedrockBinary.readVarUInt32(payload);
-        BedrockResourcePackClientResponse.Status status =
-                BedrockResourcePackClientResponse.Status.fromWireValue(wireStatus);
         String statusName = BedrockBinary.readString(payload, 64);
-        if (!STATUS_NAMES[wireStatus].equals(statusName)) {
-            throw new IllegalArgumentException("Resource pack response status name does not match its code");
-        }
+        BedrockResourcePackClientResponse.Status status = switch (statusName) {
+            case "cancel" -> BedrockResourcePackClientResponse.Status.REFUSED;
+            case "downloading" -> BedrockResourcePackClientResponse.Status.SEND_PACKS;
+            case "downloadingfinished" -> BedrockResourcePackClientResponse.Status.HAVE_ALL_PACKS;
+            case "resourcepackstackfinished" -> BedrockResourcePackClientResponse.Status.COMPLETED;
+            default -> throw new IllegalArgumentException("Unknown resource pack response status: " + statusName);
+        };
         List<String> packIds = new ArrayList<>();
         if (status == BedrockResourcePackClientResponse.Status.SEND_PACKS) {
             int count = BedrockBinary.readVarUInt32(payload);

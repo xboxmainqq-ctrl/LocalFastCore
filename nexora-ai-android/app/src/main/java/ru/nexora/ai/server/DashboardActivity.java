@@ -1,13 +1,17 @@
 package ru.nexora.ai.server;
 
 import android.app.Activity;
+import android.net.Uri;
 import android.os.Bundle;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
 public class DashboardActivity extends Activity {
+    private DashboardBridge bridge;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -16,9 +20,29 @@ public class DashboardActivity extends Activity {
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setAllowFileAccess(true);
-        webView.setWebViewClient(new WebViewClient());
+        settings.setAllowFileAccessFromFileURLs(false);
+        settings.setAllowUniversalAccessFromFileURLs(false);
+        bridge = new DashboardBridge(this, webView);
+        webView.addJavascriptInterface(bridge, "NexoraHost");
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                Uri uri = request.getUrl();
+                return !"file".equals(uri.getScheme())
+                        || !uri.toString().startsWith("file:///android_asset/web/");
+            }
+        });
         webView.setWebChromeClient(new WebChromeClient());
         webView.loadUrl("file:///android_asset/web/index.html");
         setContentView(webView);
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (bridge != null) {
+            bridge.shutdown();
+            bridge = null;
+        }
+        super.onDestroy();
     }
 }

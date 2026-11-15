@@ -38,7 +38,7 @@ public final class LocalPlayerController {
     public synchronized State tick(Input input) {
         Objects.requireNonNull(input, "input");
         State current = state;
-        double yaw = normalizeYaw(current.yaw() + input.lookYaw());
+        float yaw = normalizeYaw(current.yaw() + input.lookYaw());
         double forward = clamp(input.forward(), -1.0, 1.0);
         double strafe = clamp(input.strafe(), -1.0, 1.0);
         double inputLength = Math.sqrt(forward * forward + strafe * strafe);

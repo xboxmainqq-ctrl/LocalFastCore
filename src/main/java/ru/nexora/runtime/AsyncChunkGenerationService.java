@@ -261,10 +261,21 @@ public final class AsyncChunkGenerationService implements RuntimeModule {
     }
 
     private void publish(Request request, ChunkGenerationResult result) {
-        if (!completed.offer(new Completed(request, result))) {
-            droppedResults.incrementAndGet();
-            inFlight.remove(request.position, request);
+        Completed item = new Completed(request, result);
+        try {
+            // Keep the completion channel bounded without silently losing a
+            // generated chunk. Workers apply backpressure until the game thread
+            // drains a slot, or the request/service is cancelled or stopped.
+            while (running && !request.cancelled
+                    && inFlight.get(request.position) == request) {
+                if (completed.offer(item, 100L, TimeUnit.MILLISECONDS)) {
+                    return;
+                }
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
         }
+        inFlight.remove(request.position, request);
     }
 
     public record Metrics(

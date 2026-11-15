@@ -4,9 +4,11 @@ Status: product architecture decision. This document defines the intended runtim
 
 ## Product baseline
 
-NEXORA is a standalone fantasy MMORPG with its own Android client, network protocol, visual identity and gameplay rules. The primary experience is an original RPG world with character classes, attributes, abilities, equipment, quests, dungeons, bosses, loot, guilds and persistent progression. Minecraft/Bedrock compatibility is optional future work, not a requirement for the initial release.
+NEXORA is a Minecraft-style multiplayer platform with its own server core, Android client and in-client creator tools. RPG is the first flagship mode on a shared block-world foundation; other modes such as survival, BedWars, SkyWars and parkour can be added as separate gameplay modules.
 
-The client and server must remain independently owned and extensible. Do not copy Minecraft source code or redistribute proprietary assets. Use original or appropriately licensed content. Visual style, HUD, controls and resource definitions are NEXORA-owned rather than a Minecraft clone profile.
+The server owns world simulation and authoritative gameplay. The NEXORA Client owns the advanced presentation layer and creator experience: custom HUDs, gradients, images, fonts, button geometry, animations, layouts and visual editing. A Bedrock compatibility adapter is a planned route for supported standard Minecraft clients, while NEXORA-specific UI and authoring capabilities require the NEXORA Client.
+
+The client and server remain independently owned and extensible. Do not copy Minecraft source code or redistribute proprietary assets. Use clean-room protocol implementations and original or appropriately licensed content.
 
 ## Runtime layers
 

@@ -39,6 +39,7 @@ public final class WorldPreviewRenderer {
         int[][] surfaceY = new int[size][size];
         String[][] surfaceBlock = new String[size][size];
         boolean[][] water = new boolean[size][size];
+        int[][] biomeIds = new int[size][size];
         for (int[] row : surfaceY) {
             Arrays.fill(row, DEFAULT_HEIGHT.minY() - 1);
         }
@@ -60,6 +61,12 @@ public final class WorldPreviewRenderer {
                         surfaceBlock[x][z] = entry.getValue().identifier();
                     }
                 }
+                for (Map.Entry<BiomeColumnPosition, Integer> entry : chunk.biomeColumns().entrySet()) {
+                    BiomeColumnPosition position = entry.getKey();
+                    int x = offsetX + Math.floorMod(position.x(), 16);
+                    int z = offsetZ + Math.floorMod(position.z(), 16);
+                    biomeIds[x][z] = entry.getValue();
+                }
                 for (BlockPosition position : chunk.fluids().keySet()) {
                     int x = offsetX + Math.floorMod(position.x(), 16);
                     int z = offsetZ + Math.floorMod(position.z(), 16);
@@ -75,7 +82,7 @@ public final class WorldPreviewRenderer {
             for (int x = 0; x < size; x++) {
                 int elevation = surfaceY[x][z];
                 String block = surfaceBlock[x][z] == null ? "" : surfaceBlock[x][z];
-                int rgb = water[x][z] ? waterColor(elevation) : terrainColor(block, elevation);
+                int rgb = water[x][z] ? waterColor(elevation) : biomeColor(biomeIds[x][z], block, elevation);
                 int west = surfaceY[Math.max(0, x - 1)][z];
                 int east = surfaceY[Math.min(size - 1, x + 1)][z];
                 int north = surfaceY[x][Math.max(0, z - 1)];
@@ -94,6 +101,18 @@ public final class WorldPreviewRenderer {
             throw new IOException("No PNG image writer is available");
         }
         return absolute;
+    }
+
+    private static int biomeColor(int biomeId, String block, int elevation) {
+        return switch (biomeId) {
+            case BiomeRegistry.MISTWOOD_ID -> block.contains("leaves") ? 0x286B38 : 0x56864B;
+            case BiomeRegistry.GLASSGRASS_STEPPE_ID -> 0xA5A65A;
+            case BiomeRegistry.EMBERFEN_ID -> 0x526D43;
+            case BiomeRegistry.FROSTVEIL_ID -> 0xC6D7D4;
+            case BiomeRegistry.SKYGLASS_HIGHLANDS_ID -> elevation > 100 ? 0x858C91 : 0x777C80;
+            case BiomeRegistry.SALTWIND_BASIN_ID -> 0xD8C27A;
+            default -> terrainColor(block, elevation);
+        };
     }
 
     private static int terrainColor(String block, int elevation) {

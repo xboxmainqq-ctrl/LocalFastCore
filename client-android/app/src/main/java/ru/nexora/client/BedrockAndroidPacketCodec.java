@@ -308,6 +308,18 @@ public final class BedrockAndroidPacketCodec {
         return bytes(encodeAfterNetworkSettings(batch, settings));
     }
 
+    /** Encodes ResourcePacksReadyForValidation (packet 203), sent after the stack is applied. */
+    public static byte[] encodeResourcePacksReadyForValidation(
+            BedrockAndroidNetworkSettings settings) {
+        if (settings == null) throw new IllegalArgumentException("Network settings are required");
+        int packetLength = varUInt32Size(203);
+        ByteBuffer batch = ByteBuffer.allocate(varUInt32Size(packetLength) + packetLength);
+        writeVarUInt32(batch, packetLength);
+        writeVarUInt32(batch, 203);
+        batch.flip();
+        return bytes(encodeAfterNetworkSettings(batch, settings));
+    }
+
     private static int readLittleEndianInt32(ByteBuffer input) {
         if (input.remaining() < Integer.BYTES) {
             throw new IllegalArgumentException("Truncated little-endian int32");

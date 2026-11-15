@@ -46,6 +46,17 @@ public final class BedrockResourcePackTransferCodec {
             return archive.clone();
         }
 
+        public int archiveSize() {
+            return archive.length;
+        }
+
+        public byte[] archiveChunk(int offset, int length) {
+            if (offset < 0 || length < 1 || offset > archive.length - length) {
+                throw new IllegalArgumentException("Resource-pack archive range is invalid");
+            }
+            return java.util.Arrays.copyOfRange(archive, offset, offset + length);
+        }
+
         public String resourceName() {
             return uuid + "_" + version;
         }

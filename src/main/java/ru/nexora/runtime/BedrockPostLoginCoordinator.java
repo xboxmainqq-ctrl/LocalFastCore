@@ -191,7 +191,7 @@ public final class BedrockPostLoginCoordinator implements
                 handleChunkRequest(session, inbound.payloadBuffer());
                 return;
             }
-            if (inbound.header().packetId() == 203) {
+            if (inbound.header().packetId() == 340) {
                 if (session.phase != Phase.WAITING_FOR_STACK_RESPONSE
                         || session.resourcePacksReadyForValidation
                         || inbound.payloadBuffer().hasRemaining()) {

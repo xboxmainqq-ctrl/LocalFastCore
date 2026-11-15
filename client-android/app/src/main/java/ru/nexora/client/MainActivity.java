@@ -502,8 +502,8 @@ public final class MainActivity extends Activity {
             String itemId = localHotbarItems[slot];
             String label = itemId == null || itemId.isEmpty() ? "—" : itemId.substring(itemId.indexOf(':') + 1);
             if (label.length() > 5) label = label.substring(0, 5);
-            cell.setText((slot + 1) + "\\n" + label + (localHotbarCounts[slot] > 0
-                    ? "\\n×" + localHotbarCounts[slot] : ""));
+            cell.setText((slot + 1) + "\n" + label + (localHotbarCounts[slot] > 0
+                    ? "\n×" + localHotbarCounts[slot] : ""));
             cell.setBackground(rounded(slot == selectedLocalHotbarSlot ? ACCENT : PANEL, 6));
         }
     }
@@ -566,12 +566,13 @@ public final class MainActivity extends Activity {
         new AlertDialog.Builder(this)
                 .setTitle("БЛОК В МИРЕ")
                 .setMessage("X: " + x + "   Y: " + y + "   Z: " + z
-                        + "\\nВ руке: " + (localHotbarItems[selectedLocalHotbarSlot] == null
+                        + "\nВ руке: " + (localHotbarItems[selectedLocalHotbarSlot] == null
                         ? "пусто" : localHotbarItems[selectedLocalHotbarSlot]))
                 .setItems(new String[]{"СЛОМАТЬ БЛОК", "ПОСТАВИТЬ ВЫБРАННЫЙ ПРЕДМЕТ"}, (dialog, which) -> {
                     ChunkPreviewView preview = localPreview;
                     if (preview == null) return;
                     String blockId;
+                    String minedBlock = null;
                     int targetX;
                     int targetY;
                     int targetZ;
@@ -580,7 +581,7 @@ public final class MainActivity extends Activity {
                         targetY = y;
                         targetZ = z;
                         blockId = "minecraft:air";
-                        String minedBlock = preview.localBlockIdAt(x, y, z);
+                        minedBlock = preview.localBlockIdAt(x, y, z);
                         if (minedBlock == null) {
                             Toast.makeText(this, "Здесь нет блока", Toast.LENGTH_SHORT).show();
                             return;
@@ -607,7 +608,7 @@ public final class MainActivity extends Activity {
                         return;
                     }
                     if (which == 0) {
-                        addLocalItem(preview.localBlockIdAt(x, y, z), 1);
+                        addLocalItem(minedBlock, 1);
                     } else {
                         localHotbarCounts[selectedLocalHotbarSlot]--;
                         if (localHotbarCounts[selectedLocalHotbarSlot] == 0) {
@@ -615,6 +616,12 @@ public final class MainActivity extends Activity {
                         }
                     }
                     refreshLocalHotbar();
+                    List<LocalWorldStore.InventorySlot> inventorySnapshot = new ArrayList<>(9);
+                    for (int slot = 0; slot < 9; slot++) {
+                        String item = localHotbarItems[slot] == null ? "" : localHotbarItems[slot];
+                        inventorySnapshot.add(new LocalWorldStore.InventorySlot(
+                                item, localHotbarCounts[slot]));
+                    }
                     ExecutorService executor = previewGenerationExecutor;
                     if (executor == null || executor.isShutdown()) {
                         Toast.makeText(this, "Не удалось сохранить изменение", Toast.LENGTH_SHORT).show();
@@ -623,12 +630,6 @@ public final class MainActivity extends Activity {
                     executor.execute(() -> {
                         try {
                             localWorldStore.saveChunk(worldId, updated);
-                            List<LocalWorldStore.InventorySlot> inventorySnapshot = new ArrayList<>(9);
-                            for (int slot = 0; slot < 9; slot++) {
-                                String item = localHotbarItems[slot] == null ? "" : localHotbarItems[slot];
-                                inventorySnapshot.add(new LocalWorldStore.InventorySlot(
-                                        item, localHotbarCounts[slot]));
-                            }
                             localWorldStore.saveInventory(worldId, inventorySnapshot);
                             runOnUiThread(() -> Toast.makeText(this,
                                     which == 0 ? "Блок добыт и сохранён" : "Блок установлен и сохранён",
@@ -924,7 +925,7 @@ public final class MainActivity extends Activity {
         new AlertDialog.Builder(this)
                 .setTitle("Блок выбран")
                 .setMessage("Координаты: " + x + ", " + y + ", " + z
-                        + "\\nВыбери действие с блоком.")
+                        + "\nВыбери действие с блоком.")
                 .setItems(new String[]{"СЛОМАТЬ БЛОК", "ПОСТАВИТЬ РЯДОМ"}, (dialog, which) -> {
                     boolean place = which == 1;
                     NetherNetAndroidClient client = netherNetClient;

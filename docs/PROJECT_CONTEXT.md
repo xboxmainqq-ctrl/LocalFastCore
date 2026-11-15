@@ -29,13 +29,13 @@ Build a Minecraft-style block-world server platform with an original NEXORA serv
 6. **Extension and Content System** — versioned server plugins/modules, data-driven definitions, scripts/configs, resource packs, schema validation, permissions, safe reload/migration and rollback.
 7. **Creator tools** — World Studio, Model/Block Studio, RPG Studio, Server Studio, UI/HUD/Visual Studio and resource-pack tools. Editors generate validated data/content packages; server validates every state-changing action.
 
-## Luanti evaluation boundary
+## Engine and Minecraft compatibility boundary
 
-The repository has a pinned Luanti source submodule and an Android proof workflow. Treat Luanti as a **candidate source of reusable rendering, input and Android build technology**, not as an automatic replacement for NEXORA Core.
+Do not use Luanti or another unrelated game as the product engine. The user explicitly rejected Luanti and wants a Minecraft-style platform with an original NEXORA core and a separate Android client.
 
-Luanti's built-in server, protocol and world-save format are not automatically compatible with the NEXORA Core/protocol. Do not silently switch the project to a Luanti server or claim that a Luanti APK is already the NEXORA client. First prove whether its Android renderer/input can be integrated behind NEXORA's client networking and world interfaces. If the integration requires adopting Luanti's server/protocol as the product authority, stop and document the trade-off instead of making that architectural change without an explicit user decision.
+Use Minecraft Bedrock as the gameplay and compatibility reference: study public protocol specifications, documented formats and observable client behavior; implement clean-room server/client code. Do not copy proprietary Minecraft source, decompile or redistribute game code, or bundle copyrighted Minecraft assets. Use original or properly licensed textures, sounds, models and UI.
 
-The first Luanti CI attempt failed before compilation because the Android SDK setup action passed the multiline package list as one invalid package name. Fix the workflow package argument and rerun. This failure does **not** establish that Luanti itself fails to compile.
+The first-party NEXORA Client is a separate Android app. The standalone NEXORA Dedicated Server runs headlessly. The embedded single-player host runs the same NEXORA Core in-process. An optional Bedrock adapter may later allow unmodified Bedrock clients to connect, but compatibility must be proven against a pinned real client version and is not a substitute for the NEXORA Client.
 
 ## Existing repository foundations (verify before relying on them)
 
@@ -80,3 +80,7 @@ Then connect the same Android client to a separately running dedicated NEXORA se
 - Keep docs and status current. Record what is implemented, what is only planned, blockers, commit SHA and next concrete task.
 - For user-facing progress, distinguish implemented, building, tested on emulator/device, and not yet implemented.
 - User primarily works from an Android phone and does not have a computer available. Prefer GitHub Actions artifacts and phone-installable APKs for testing.
+
+## Latest project direction update
+
+User explicitly rejected Luanti on 2026-11-15. Do not continue Luanti integration or build its APK. Keep the existing NEXORA code and move forward with the Bedrock-inspired, clean-room NEXORA server/client architecture. The first Luanti workflow failure occurred in Android SDK setup before compilation and is now obsolete as a project goal.

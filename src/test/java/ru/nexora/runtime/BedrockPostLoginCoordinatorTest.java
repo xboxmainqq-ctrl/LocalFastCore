@@ -43,14 +43,14 @@ class BedrockPostLoginCoordinatorTest {
         assertEquals(BedrockResourcePackCodec.RESOURCE_PACKS_INFO_PACKET_ID,
                 decodeSentPacket(connection.sent.get(0)).header().packetId());
 
-        coordinator.handleMessage(connection, response("downloadingfinished"));
+        coordinator.handleMessage(connection, response("DownloadingFinished"));
         assertEquals(2, connection.sent.size());
         assertEquals(BedrockResourcePackCodec.RESOURCE_PACK_STACK_PACKET_ID,
                 decodeSentPacket(connection.sent.get(1)).header().packetId());
         assertEquals(0, worldStarts.get());
         assertEquals(0, playReady.get());
 
-        coordinator.handleMessage(connection, response("resourcepackstackfinished"));
+        coordinator.handleMessage(connection, response("ResourcePackStackFinished"));
         coordinator.handleMessage(connection, resourcePacksReadyForValidation());
         assertEquals(1, worldStarts.get());
         assertEquals(1, playReady.get());
@@ -84,7 +84,7 @@ class BedrockPostLoginCoordinatorTest {
         coordinator.accept(connection, player());
         assertEquals(6, decodeSentPacket(connection.sent.get(0)).header().packetId());
 
-        coordinator.handleMessage(connection, response("downloading", List.of(pack.resourceName())));
+        coordinator.handleMessage(connection, response("Downloading", List.of(pack.resourceName())));
         assertEquals(2, connection.sent.size());
         BedrockGamePacket info = decodeSentPacket(connection.sent.get(1));
         assertEquals(BedrockResourcePackTransferCodec.DATA_INFO_PACKET_ID, info.header().packetId());
@@ -99,11 +99,11 @@ class BedrockPostLoginCoordinatorTest {
         assertEquals(BedrockResourcePackTransferCodec.CHUNK_DATA_PACKET_ID,
                 secondChunk.header().packetId());
 
-        coordinator.handleMessage(connection, response("downloadingfinished"));
+        coordinator.handleMessage(connection, response("DownloadingFinished"));
         assertEquals(5, connection.sent.size());
         assertEquals(BedrockResourcePackCodec.RESOURCE_PACK_STACK_PACKET_ID,
                 decodeSentPacket(connection.sent.get(4)).header().packetId());
-        coordinator.handleMessage(connection, response("resourcepackstackfinished"));
+        coordinator.handleMessage(connection, response("ResourcePackStackFinished"));
         coordinator.handleMessage(connection, resourcePacksReadyForValidation());
         assertEquals(1, worldStarts.get());
         assertTrue(connection.isOpen());
@@ -125,8 +125,8 @@ class BedrockPostLoginCoordinatorTest {
         });
         FakeConnection connection = new FakeConnection();
         coordinator.accept(connection, player());
-        coordinator.handleMessage(connection, response("downloadingfinished"));
-        coordinator.handleMessage(connection, response("resourcepackstackfinished"));
+        coordinator.handleMessage(connection, response("DownloadingFinished"));
+        coordinator.handleMessage(connection, response("ResourcePackStackFinished"));
         coordinator.handleMessage(connection, resourcePacksReadyForValidation());
 
         // This frame represents a client SubChunkRequest received after
@@ -152,11 +152,11 @@ class BedrockPostLoginCoordinatorTest {
         FakeConnection connection = new FakeConnection();
         coordinator.accept(connection, player());
 
-        coordinator.handleMessage(connection, response("downloading", List.of()));
+        coordinator.handleMessage(connection, response("Downloading", List.of()));
         assertTrue(connection.isOpen());
         assertEquals(1, connection.sent.size());
 
-        coordinator.handleMessage(connection, response("downloading", List.of("unexpected-pack")));
+        coordinator.handleMessage(connection, response("Downloading", List.of("unexpected-pack")));
         assertFalse(connection.isOpen());
         coordinator.close();
     }
@@ -169,7 +169,7 @@ class BedrockPostLoginCoordinatorTest {
         FakeConnection connection = new FakeConnection();
         coordinator.accept(connection, player());
 
-        coordinator.handleMessage(connection, response("resourcepackstackfinished"));
+        coordinator.handleMessage(connection, response("ResourcePackStackFinished"));
         assertFalse(connection.isOpen());
         coordinator.close();
     }
@@ -182,8 +182,8 @@ class BedrockPostLoginCoordinatorTest {
                 connection -> BedrockHandshakeResult.ACCEPTED);
         FakeConnection first = new FakeConnection();
         startupFailure.accept(first, player());
-        startupFailure.handleMessage(first, response("downloadingfinished"));
-        startupFailure.handleMessage(first, response("resourcepackstackfinished"));
+        startupFailure.handleMessage(first, response("DownloadingFinished"));
+        startupFailure.handleMessage(first, response("ResourcePackStackFinished"));
         assertFalse(first.isOpen());
         startupFailure.close();
 
@@ -192,8 +192,8 @@ class BedrockPostLoginCoordinatorTest {
                 connection -> BedrockHandshakeResult.INVALID_STATE);
         FakeConnection second = new FakeConnection();
         transitionFailure.accept(second, player());
-        transitionFailure.handleMessage(second, response("downloadingfinished"));
-        transitionFailure.handleMessage(second, response("resourcepackstackfinished"));
+        transitionFailure.handleMessage(second, response("DownloadingFinished"));
+        transitionFailure.handleMessage(second, response("ResourcePackStackFinished"));
         assertFalse(second.isOpen());
         transitionFailure.close();
     }
@@ -222,8 +222,8 @@ class BedrockPostLoginCoordinatorTest {
                 connection -> BedrockHandshakeResult.ACCEPTED);
         FakeConnection connection = new FakeConnection();
         coordinator.accept(connection, player());
-        coordinator.handleMessage(connection, response("downloadingfinished"));
-        coordinator.handleMessage(connection, response("resourcepackstackfinished"));
+        coordinator.handleMessage(connection, response("DownloadingFinished"));
+        coordinator.handleMessage(connection, response("ResourcePackStackFinished"));
         assertFalse(connection.isOpen());
         coordinator.close();
     }
@@ -235,7 +235,7 @@ class BedrockPostLoginCoordinatorTest {
                 connection -> BedrockHandshakeResult.ACCEPTED);
         FakeConnection connection = new FakeConnection();
         coordinator.accept(connection, player());
-        coordinator.handleMessage(connection, response("downloadingfinished"));
+        coordinator.handleMessage(connection, response("DownloadingFinished"));
         coordinator.handleMessage(connection, resourcePacksReadyForValidation());
         assertTrue(connection.isOpen());
         coordinator.handleMessage(connection, resourcePacksReadyForValidation());
@@ -247,7 +247,7 @@ class BedrockPostLoginCoordinatorTest {
                 peer -> BedrockHandshakeResult.ACCEPTED);
         FakeConnection invalidConnection = new FakeConnection();
         invalid.accept(invalidConnection, player());
-        invalid.handleMessage(invalidConnection, response("downloadingfinished"));
+        invalid.handleMessage(invalidConnection, response("DownloadingFinished"));
         invalid.handleMessage(invalidConnection, resourcePacksReadyForValidation(new byte[] {1}));
         assertFalse(invalidConnection.isOpen());
         invalid.close();
@@ -271,12 +271,12 @@ class BedrockPostLoginCoordinatorTest {
 
     private static TransportMessage response(String name, List<String> packIds) {
         ByteBuffer payload = ByteBuffer.allocate(256);
-        if (!List.of("cancel", "downloading", "downloadingfinished",
-                "resourcepackstackfinished").contains(name)) {
+        if (!List.of("Cancel", "Downloading", "DownloadingFinished",
+                "ResourcePackStackFinished").contains(name)) {
             throw new IllegalArgumentException("Unknown test status: " + name);
         }
         BedrockBinary.writeString(payload, name, 64);
-        if ("downloading".equals(name)) {
+        if ("Downloading".equals(name)) {
             BedrockBinary.writeVarUInt32(payload, packIds.size());
             for (String id : packIds) {
                 BedrockBinary.writeString(payload, id, 128);

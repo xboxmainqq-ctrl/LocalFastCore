@@ -15,12 +15,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockResourcePackArchiveLoaderTest {
     @Test
-    void loadsResourcePacksInDependencyFirstOrderWithStableIds() throws Exception {
+    void loadsSingleResourcePackWithStableId() throws Exception {
         Path root = Files.createTempDirectory("nexora-bedrock-packs");
-        writePack(root.resolve("z-addon.zip"), """
-                {"id":"nexora:addon","version":"1.0.0","api_version":"1.0.0",
-                 "type":"resource","dependencies":[{"id":"nexora:core","version":"1.0.0"}]}
-                """);
         writePack(root.resolve("a-core.zip"), """
                 {"id":"nexora:core","version":"1.0.0","api_version":"1.0.0","type":"resource"}
                 """);
@@ -28,12 +24,23 @@ class BedrockResourcePackArchiveLoaderTest {
         List<BedrockResourcePackTransferCodec.Pack> packs =
                 new BedrockResourcePackArchiveLoader().load(root, "1.0.0");
 
-        assertEquals(2, packs.size());
+        assertEquals(1, packs.size());
         UUID coreId = UUID.nameUUIDFromBytes("nexora:core".getBytes(StandardCharsets.UTF_8));
-        UUID addonId = UUID.nameUUIDFromBytes("nexora:addon".getBytes(StandardCharsets.UTF_8));
         assertEquals(coreId + "_1.0.0", packs.get(0).resourceName());
-        assertEquals(addonId + "_1.0.0", packs.get(1).resourceName());
         assertArrayEquals(Files.readAllBytes(root.resolve("a-core.zip")), packs.get(0).archive());
+    }
+
+    @Test
+    void rejectsMultiplePacksUntilAndroidStackingIsImplemented() throws Exception {
+        Path root = Files.createTempDirectory("nexora-multiple-packs");
+        writePack(root.resolve("one.zip"), """
+                {"id":"nexora:one","version":"1.0.0","api_version":"1.0.0","type":"resource"}
+                """);
+        writePack(root.resolve("two.zip"), """
+                {"id":"nexora:two","version":"1.0.0","api_version":"1.0.0","type":"resource"}
+                """);
+        assertThrows(java.io.IOException.class,
+                () -> new BedrockResourcePackArchiveLoader().load(root, "1.0.0"));
     }
 
     @Test

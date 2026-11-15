@@ -137,9 +137,12 @@ public final class WorldChunkPipeline implements RuntimeModule {
             drainTask = null;
         }
         started = false;
-        generation.stop();
-        asyncWaiters.forEach((position, future) -> future.complete(false));
-        asyncWaiters.clear();
+        try {
+            generation.stop();
+        } finally {
+            asyncWaiters.forEach((position, future) -> future.complete(false));
+            asyncWaiters.clear();
+        }
     }
 
     private void drainTick() {
@@ -152,8 +155,9 @@ public final class WorldChunkPipeline implements RuntimeModule {
                 failureHandler.accept(result.failure());
             } else {
                 try {
-                    available = world.isChunkLoaded(result.position()) || world.loadChunk(result.chunk());
-                    if (available) loadedChunks.incrementAndGet();
+                    boolean alreadyLoaded = world.isChunkLoaded(result.position());
+                    available = alreadyLoaded || world.loadChunk(result.chunk());
+                    if (available && !alreadyLoaded) loadedChunks.incrementAndGet();
                 } catch (RuntimeException failure) {
                     failureHandler.accept(failure);
                 }

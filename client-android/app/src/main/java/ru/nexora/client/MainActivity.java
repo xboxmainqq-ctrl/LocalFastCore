@@ -764,6 +764,15 @@ public final class MainActivity extends Activity {
             }
 
             @Override
+            public void onResourcePackInstalled() {
+                ChunkPreviewView preview = chunkPreview;
+                if (preview != null) {
+                    preview.reloadResourcePackTextures();
+                    connectionStatus.setText("Ресурс-пак сервера установлен • текстуры обновлены");
+                }
+            }
+
+            @Override
             public void onWorldInfoReceived(NexoraAndroidProtocolCodec.WorldInfo world) {
                 streamingCenterChunkX = Math.floorDiv(world.spawnX(), 16);
                 streamingCenterChunkZ = Math.floorDiv(world.spawnZ(), 16);

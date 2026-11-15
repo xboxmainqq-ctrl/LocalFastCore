@@ -280,6 +280,11 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                                 resourcePacks, nextResourcePackChunk);
                     } else if (isProtocolPacketType(payload, 19)) {
                         try {
+                            if (inboundMessage.deliveryMode() != DeliveryMode.RELIABLE_ORDERED
+                                    || inboundMessage.sizeBytes() > NexoraPrivateProtocolCodec.MAX_MESSAGE_BYTES) {
+                                connection.close();
+                                return;
+                            }
                             NexoraPrivateProtocolCodec.decodeResourcePackReady(payload);
                             int expectedChunks = resourcePacks.isEmpty() ? 0
                                     : (resourcePacks.get(0).archiveSize()
@@ -304,6 +309,11 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                             connection.close();
                         }
                     } else if (!resourcePackReady.get()) {
+                        if (inboundMessage.deliveryMode() != DeliveryMode.RELIABLE_ORDERED
+                                || inboundMessage.sizeBytes() > NexoraChunkDataCodec.MAX_MESSAGE_BYTES) {
+                            connection.close();
+                            return;
+                        }
                         synchronized (pendingChunkRequests) {
                             if (pendingChunkRequests.size() >= 9) {
                                 connection.close();

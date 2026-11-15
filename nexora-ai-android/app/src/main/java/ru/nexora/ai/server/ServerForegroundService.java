@@ -31,10 +31,30 @@ public class ServerForegroundService extends Service {
         SharedPreferences prefs = getSharedPreferences("nexora_host", MODE_PRIVATE);
         String token = prefs.getString("api_token", "");
         if (apiServer == null) {
-            apiServer = new LocalApiServer(token);
+            prefs.edit().putString("server_status", "starting")
+                    .remove("server_error").apply();
+            apiServer = new LocalApiServer(token, new LocalApiServer.Listener() {
+                @Override
+                public void onStarted() {
+                    prefs.edit().putString("server_status", "running")
+                            .remove("server_error").apply();
+                }
+
+                @Override
+                public void onFailed(String message) {
+                    prefs.edit().putString("server_status", "error")
+                            .putString("server_error", message).apply();
+                    stopSelf();
+                }
+
+                @Override
+                public void onStopped() {
+                    prefs.edit().putString("server_status", "stopped").apply();
+                }
+            });
             apiServer.start();
         }
-        return START_STICKY;
+        return START_NOT_STICKY;
     }
 
     @Override
@@ -43,6 +63,8 @@ public class ServerForegroundService extends Service {
             apiServer.stop();
             apiServer = null;
         }
+        getSharedPreferences("nexora_host", MODE_PRIVATE).edit()
+                .putString("server_status", "stopped").apply();
         super.onDestroy();
     }
 
@@ -66,8 +88,8 @@ public class ServerForegroundService extends Service {
                 ? new Notification.Builder(this, CHANNEL_ID)
                 : new Notification.Builder(this);
         return builder
-                .setContentTitle("NEXORA AI Host is running")
-                .setContentText("Local development server · 127.0.0.1:8765")
+                .setContentTitle("NEXORA AI Host")
+                .setContentText("Local server · 127.0.0.1:8765")
                 .setSmallIcon(android.R.drawable.stat_notify_sync)
                 .setOngoing(true)
                 .build();

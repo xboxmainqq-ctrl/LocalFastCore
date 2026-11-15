@@ -262,6 +262,13 @@ final class ChunkPreviewView extends GLSurfaceView {
         private static final String FRAGMENT_SHADER =
                 "precision mediump float; varying vec3 vColor;"
                 + " void main(){ gl_FragColor=vec4(vColor,1.0); }";
+        private static final String TEXTURE_VERTEX_SHADER =
+                "attribute vec3 aPosition; attribute vec2 aTexCoord; uniform mat4 uMvp;"
+                + " varying vec2 vTexCoord; void main(){ gl_Position=uMvp*vec4(aPosition,1.0);"
+                + " vTexCoord=aTexCoord; }";
+        private static final String TEXTURE_FRAGMENT_SHADER =
+                "precision mediump float; uniform sampler2D uAtlas; varying vec2 vTexCoord;"
+                + " void main(){ gl_FragColor=texture2D(uAtlas,vTexCoord); }";
         private static final String LABEL_VERTEX_SHADER =
                 "attribute vec2 aPosition; attribute vec2 aTexCoord; varying vec2 vTexCoord;"
                 + " void main(){ gl_Position=vec4(aPosition,0.0,1.0); vTexCoord=aTexCoord; }";
@@ -277,6 +284,12 @@ final class ChunkPreviewView extends GLSurfaceView {
         private FloatBuffer vertexBuffer;
         private int vertexCount;
         private int program;
+        private int textureProgram;
+        private int texturePositionHandle;
+        private int textureUvHandle;
+        private int textureMatrixHandle;
+        private int atlasTexture;
+        private int atlasSamplerHandle;
         private int positionHandle;
         private int colorHandle;
         private int matrixHandle;
@@ -435,6 +448,12 @@ final class ChunkPreviewView extends GLSurfaceView {
             GLES20.glDepthFunc(GLES20.GL_LEQUAL);
             GLES20.glDisable(GLES20.GL_CULL_FACE);
             program = createProgram(VERTEX_SHADER, FRAGMENT_SHADER);
+            textureProgram = createProgram(TEXTURE_VERTEX_SHADER, TEXTURE_FRAGMENT_SHADER);
+            texturePositionHandle = GLES20.glGetAttribLocation(textureProgram, "aPosition");
+            textureUvHandle = GLES20.glGetAttribLocation(textureProgram, "aTexCoord");
+            textureMatrixHandle = GLES20.glGetUniformLocation(textureProgram, "uMvp");
+            atlasSamplerHandle = GLES20.glGetUniformLocation(textureProgram, "uAtlas");
+            atlasTexture = createAtlasTexture();
             positionHandle = GLES20.glGetAttribLocation(program, "aPosition");
             colorHandle = GLES20.glGetAttribLocation(program, "aColor");
             matrixHandle = GLES20.glGetUniformLocation(program, "uMvp");
@@ -483,7 +502,7 @@ final class ChunkPreviewView extends GLSurfaceView {
                     ChunkPreviewView.this.requestRender();
                 }
             }
-            if (vertexBuffer == null || vertexCount == 0 || program == 0) return;
+            if (vertexBuffer == null || vertexCount == 0 || program == 0 || textureProgram == 0) return;
 
             float centerX = playerInitialized ? playerX : 24f;
             float centerZ = playerInitialized ? playerZ : 24f;
@@ -508,24 +527,32 @@ final class ChunkPreviewView extends GLSurfaceView {
             }
             Matrix.multiplyMM(mvp, 0, projection, 0, view, 0);
 
-            GLES20.glUseProgram(program);
-            GLES20.glUniformMatrix4fv(matrixHandle, 1, false, mvp, 0);
+            GLES20.glUseProgram(textureProgram);
+            GLES20.glUniformMatrix4fv(textureMatrixHandle, 1, false, mvp, 0);
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, atlasTexture);
+            GLES20.glUniform1i(atlasSamplerHandle, 0);
             vertexBuffer.position(0);
-            GLES20.glEnableVertexAttribArray(positionHandle);
-            GLES20.glEnableVertexAttribArray(colorHandle);
-            vertexBuffer.position(0);
-            GLES20.glVertexAttribPointer(positionHandle, 3, GLES20.GL_FLOAT,
-                    false, 6 * 4, vertexBuffer);
+            GLES20.glEnableVertexAttribArray(texturePositionHandle);
+            GLES20.glEnableVertexAttribArray(textureUvHandle);
+            GLES20.glVertexAttribPointer(texturePositionHandle, 3, GLES20.GL_FLOAT,
+                    false, 5 * 4, vertexBuffer);
             vertexBuffer.position(3);
-            GLES20.glVertexAttribPointer(colorHandle, 3, GLES20.GL_FLOAT,
-                    false, 6 * 4, vertexBuffer);
+            GLES20.glVertexAttribPointer(textureUvHandle, 2, GLES20.GL_FLOAT,
+                    false, 5 * 4, vertexBuffer);
             GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, vertexCount);
+            GLES20.glDisableVertexAttribArray(texturePositionHandle);
+            GLES20.glDisableVertexAttribArray(textureUvHandle);
             if (!remotePlayers.isEmpty()) {
                 remotePlayerMeshDirty = true;
                 ChunkPreviewView.this.postDelayed(ChunkPreviewView.this::requestRender, 80L);
             }
             if (remotePlayerMeshDirty) rebuildRemotePlayerMesh();
+            GLES20.glUseProgram(program);
             if (remotePlayerBuffer != null && remotePlayerVertexCount > 0) {
+                GLES20.glUniformMatrix4fv(matrixHandle, 1, false, mvp, 0);
+                GLES20.glEnableVertexAttribArray(positionHandle);
+                GLES20.glEnableVertexAttribArray(colorHandle);
                 remotePlayerBuffer.position(0);
                 GLES20.glVertexAttribPointer(positionHandle, 3, GLES20.GL_FLOAT,
                         false, 6 * 4, remotePlayerBuffer);
@@ -877,36 +904,54 @@ final class ChunkPreviewView extends GLSurfaceView {
                 float y1 = block.y() + 0.5f;
                 float z0 = block.z() - 0.5f;
                 float z1 = block.z() + 0.5f;
-                float[] topColor = colorFor(block.blockId(), 0);
-                float[] sideColor = colorFor(block.blockId(), 1);
-                float[] bottomColor = colorFor(block.blockId(), 2);
+                int topTile = BlockTextureAtlas.tileFor(block.blockId(), 0);
+                int sideTile = BlockTextureAtlas.tileFor(block.blockId(), 1);
+                int bottomTile = BlockTextureAtlas.tileFor(block.blockId(), 2);
                 if (!occupied.contains(new BlockPosition(block.x(), block.y() + 1, block.z()))) {
-                    mesh.texturedQuad(x0,y1,z0, x0,y1,z1, x1,y1,z1, x1,y1,z0, topColor, 1.00f, block.blockId().hashCode() ^ 0x13579bdf);
+                    mesh.quad(x0,y1,z0, x0,y1,z1, x1,y1,z1, x1,y1,z0, topTile);
                 }
                 if (!occupied.contains(new BlockPosition(block.x(), block.y() - 1, block.z()))) {
-                    mesh.quad(x0,y0,z1, x0,y0,z0, x1,y0,z0, x1,y0,z1, bottomColor, 0.48f, block.blockId().hashCode() ^ 0x2468ace0);
+                    mesh.quad(x0,y0,z1, x0,y0,z0, x1,y0,z0, x1,y0,z1, bottomTile);
                 }
                 if (!occupied.contains(new BlockPosition(block.x() - 1, block.y(), block.z()))) {
-                    mesh.quad(x0,y0,z0, x0,y0,z1, x0,y1,z1, x0,y1,z0, sideColor, 0.72f, block.blockId().hashCode() ^ 0x10203040);
+                    mesh.quad(x0,y0,z0, x0,y0,z1, x0,y1,z1, x0,y1,z0, sideTile);
                 }
                 if (!occupied.contains(new BlockPosition(block.x() + 1, block.y(), block.z()))) {
-                    mesh.quad(x1,y0,z1, x1,y0,z0, x1,y1,z0, x1,y1,z1, sideColor, 0.82f, block.blockId().hashCode() ^ 0x50607080);
+                    mesh.quad(x1,y0,z1, x1,y0,z0, x1,y1,z0, x1,y1,z1, sideTile);
                 }
                 if (!occupied.contains(new BlockPosition(block.x(), block.y(), block.z() - 1))) {
-                    mesh.quad(x1,y0,z0, x0,y0,z0, x0,y1,z0, x1,y1,z0, sideColor, 0.62f, block.blockId().hashCode() ^ 0x31415926);
+                    mesh.quad(x1,y0,z0, x0,y0,z0, x0,y1,z0, x1,y1,z0, sideTile);
                 }
                 if (!occupied.contains(new BlockPosition(block.x(), block.y(), block.z() + 1))) {
-                    mesh.quad(x0,y0,z1, x1,y0,z1, x1,y1,z1, x0,y1,z1, sideColor, 0.68f, block.blockId().hashCode() ^ 0x27182818);
+                    mesh.quad(x0,y0,z1, x1,y0,z1, x1,y1,z1, x0,y1,z1, sideTile);
                 }
                 if (mesh.full()) break;
             }
             float[] values = mesh.values();
-            vertexCount = values.length / 6;
+            vertexCount = values.length / 5;
             ByteBuffer bytes = ByteBuffer.allocateDirect(values.length * 4)
                     .order(ByteOrder.nativeOrder());
             vertexBuffer = bytes.asFloatBuffer();
             vertexBuffer.put(values);
             vertexBuffer.position(0);
+        }
+
+        private int createAtlasTexture() {
+            int[] textures = new int[1];
+            GLES20.glGenTextures(1, textures, 0);
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textures[0]);
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST);
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_NEAREST);
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
+            Bitmap bitmap = BlockTextureAtlas.createBitmap();
+            try {
+                GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0);
+            } finally {
+                bitmap.recycle();
+            }
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
+            return textures[0];
         }
 
         private int createProgram(String vertexSource, String fragmentSource) {
@@ -953,71 +998,20 @@ final class ChunkPreviewView extends GLSurfaceView {
         }
 
         boolean full() {
-            return size + 36 > maxFloats;
+            return size + 30 > maxFloats;
         }
 
         void quad(float ax, float ay, float az, float bx, float by, float bz,
-                  float cx, float cy, float cz, float dx, float dy, float dz,
-                  float[] color, float shade) {
+                  float cx, float cy, float cz, float dx, float dy, float dz, int tile) {
             if (full()) return;
-            ensureCapacity(size + 36);
-            vertex(ax,ay,az,color,shade);
-            vertex(bx,by,bz,color,shade);
-            vertex(cx,cy,cz,color,shade);
-            vertex(ax,ay,az,color,shade);
-            vertex(cx,cy,cz,color,shade);
-            vertex(dx,dy,dz,color,shade);
-        }
-
-        /**
-         * Emits a coarse, deterministic pixel-art surface by splitting a face
-         * into small tiles with subtle per-tile material variation. This keeps
-         * the renderer self-contained until external resource-pack textures
-         * and atlas UVs are wired into the client.
-         */
-        void texturedQuad(float ax, float ay, float az, float bx, float by, float bz,
-                          float cx, float cy, float cz, float dx, float dy, float dz,
-                          float[] color, float shade, int seed) {
-            final int tiles = 2;
-            for (int v = 0; v < tiles; v++) {
-                for (int u = 0; u < tiles; u++) {
-                    if (full()) return;
-                    float u0 = u / (float) tiles;
-                    float u1 = (u + 1) / (float) tiles;
-                    float v0 = v / (float) tiles;
-                    float v1 = (v + 1) / (float) tiles;
-                    float[] p00 = bilerp(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz, u0, v0);
-                    float[] p10 = bilerp(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz, u1, v0);
-                    float[] p11 = bilerp(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz, u1, v1);
-                    float[] p01 = bilerp(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz, u0, v1);
-                    int noise = seed ^ (u * 0x45d9f3b) ^ (v * 0x119de1f3);
-                    noise ^= noise >>> 16;
-                    noise *= 0x7feb352d;
-                    noise ^= noise >>> 15;
-                    float variation = 0.92f + ((noise & 255) / 255f) * 0.16f;
-                    float[] tileColor = new float[]{
-                            Math.min(1f, color[0] * variation),
-                            Math.min(1f, color[1] * variation),
-                            Math.min(1f, color[2] * variation)};
-                    quad(p00[0],p00[1],p00[2], p10[0],p10[1],p10[2],
-                            p11[0],p11[1],p11[2], p01[0],p01[1],p01[2],
-                            tileColor, shade);
-                }
-            }
-        }
-
-        private static float[] bilerp(float ax, float ay, float az, float bx, float by, float bz,
-                                      float cx, float cy, float cz, float dx, float dy, float dz,
-                                      float u, float v) {
-            float bottomX = ax + (bx - ax) * u;
-            float bottomY = ay + (by - ay) * u;
-            float bottomZ = az + (bz - az) * u;
-            float topX = dx + (cx - dx) * u;
-            float topY = dy + (cy - dy) * u;
-            float topZ = dz + (cz - dz) * u;
-            return new float[]{bottomX + (topX - bottomX) * v,
-                    bottomY + (topY - bottomY) * v,
-                    bottomZ + (topZ - bottomZ) * v};
+            float[] uv = BlockTextureAtlas.uvForTile(tile);
+            ensureCapacity(size + 30);
+            vertex(ax,ay,az,uv[0],uv[1]);
+            vertex(bx,by,bz,uv[2],uv[1]);
+            vertex(cx,cy,cz,uv[2],uv[3]);
+            vertex(ax,ay,az,uv[0],uv[1]);
+            vertex(cx,cy,cz,uv[2],uv[3]);
+            vertex(dx,dy,dz,uv[0],uv[3]);
         }
 
         private void ensureCapacity(int required) {
@@ -1026,63 +1020,17 @@ final class ChunkPreviewView extends GLSurfaceView {
             data = java.util.Arrays.copyOf(data, next);
         }
 
-        private void vertex(float x, float y, float z, float[] color, float shade) {
+        private void vertex(float x, float y, float z, float u, float v) {
             data[size++] = x;
             data[size++] = y;
             data[size++] = z;
-            data[size++] = color[0] * shade;
-            data[size++] = color[1] * shade;
-            data[size++] = color[2] * shade;
+            data[size++] = u;
+            data[size++] = v;
         }
 
         float[] values() {
             return java.util.Arrays.copyOf(data, size);
         }
-    }
-
-    /**
-     * Temporary built-in material palette. The face split mirrors the material
-     * model used by voxel texture atlases, so top/side/bottom textures can be
-     * introduced without changing chunk decoding or collision geometry.
-     */
-    private static float[] colorFor(String id, int face) {
-        int color;
-        boolean top = face == 0;
-        boolean bottom = face == 2;
-        if (id.contains("grass_block") || id.endsWith(":grass")) {
-            color = top ? 0xff78b957 : bottom ? 0xff76513a : 0xff806044;
-        } else if (id.contains("podzol") || id.contains("mycelium")) {
-            color = top ? (id.contains("mycelium") ? 0xffa58b9d : 0xff76543b) : 0xff76513a;
-        } else if (id.contains("leaves") || id.contains("moss")) {
-            color = top ? 0xff57994d : 0xff477f43;
-        } else if (id.contains("water")) {
-            color = 0xff438fc8;
-        } else if (id.contains("sand")) {
-            color = top ? 0xffe2ce8d : 0xffc7ae70;
-        } else if (id.contains("gravel")) {
-            color = 0xff99958b;
-        } else if (id.contains("dirt") || id.contains("mud") || id.contains("clay")) {
-            color = id.contains("clay") ? 0xff9a9690 : 0xff98704e;
-        } else if (id.contains("bedrock")) {
-            color = 0xff34383f;
-        } else if (id.contains("oak_log") || id.contains("spruce_log")
-                || id.contains("birch_log") || id.contains("log")) {
-            color = top ? 0xffb18a58 : 0xff795334;
-        } else if (id.contains("planks")) {
-            color = 0xffad8455;
-        } else if (id.contains("stone") || id.contains("cobble") || id.contains("deepslate")) {
-            color = id.contains("deepslate") ? 0xff555b65 : 0xff9299a3;
-        } else if (id.contains("snow") || id.contains("ice")) {
-            color = top ? 0xffedf7fb : 0xffcbdde8;
-        } else if (id.contains("ore")) {
-            color = 0xff888d91;
-        } else {
-            int hash = id.hashCode();
-            color = 0xff000000 | (96 + ((hash >>> 16) & 0x7f)) << 16
-                    | (96 + ((hash >>> 8) & 0x7f)) << 8 | (96 + (hash & 0x7f));
-        }
-        return new float[]{((color >>> 16) & 0xff) / 255f,
-                ((color >>> 8) & 0xff) / 255f, (color & 0xff) / 255f};
     }
 
     private static float clamp(float value, float min, float max) {

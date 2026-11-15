@@ -578,7 +578,7 @@ public final class MainActivity extends Activity {
             final int slotIndex = slot;
             TextView cell = text("", 10, TEXT, true);
             cell.setGravity(Gravity.CENTER);
-            cell.setBackground(rounded(slot < 9 ? PANEL : CARD, 6));
+            cell.setBackground(rounded(slot < 9 ? PANEL : BACKGROUND, 6));
             GridLayout.LayoutParams params = new GridLayout.LayoutParams(
                     GridLayout.spec(slot / 9, 1f), GridLayout.spec(slot % 9, 1f));
             params.width = 0;
@@ -600,7 +600,7 @@ public final class MainActivity extends Activity {
         if (label.length() > 7) label = label.substring(0, 7);
         cell.setText((slot + 1) + "\\n" + label
                 + (localHotbarCounts[slot] > 0 ? "\\n×" + localHotbarCounts[slot] : ""));
-        cell.setBackground(rounded(slot < 9 ? PANEL : CARD, 6));
+        cell.setBackground(rounded(slot < 9 ? PANEL : BACKGROUND, 6));
     }
 
     private void showLocalInventorySlotActions(String worldId, int slot) {

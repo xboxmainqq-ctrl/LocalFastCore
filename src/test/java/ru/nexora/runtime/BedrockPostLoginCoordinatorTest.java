@@ -271,14 +271,10 @@ class BedrockPostLoginCoordinatorTest {
 
     private static TransportMessage response(String name, List<String> packIds) {
         ByteBuffer payload = ByteBuffer.allocate(256);
-        int status = switch (name) {
-            case "cancel" -> 1;
-            case "downloading" -> 2;
-            case "downloadingfinished" -> 3;
-            case "resourcepackstackfinished" -> 4;
-            default -> throw new IllegalArgumentException("Unknown test status: " + name);
-        };
-        BedrockBinary.writeVarUInt32(payload, status);
+        if (!List.of("cancel", "downloading", "downloadingfinished",
+                "resourcepackstackfinished").contains(name)) {
+            throw new IllegalArgumentException("Unknown test status: " + name);
+        }
         BedrockBinary.writeString(payload, name, 64);
         if ("downloading".equals(name)) {
             BedrockBinary.writeVarUInt32(payload, packIds.size());

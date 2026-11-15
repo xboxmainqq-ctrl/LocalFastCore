@@ -153,6 +153,7 @@ public final class PlayerChunkStreamingManager {
             tickets.put(position, count - 1);
         } else {
             tickets.remove(position);
+            inFlight.remove(position);
             if (!world.isChunkLoaded(position)) pipeline.cancel(position);
         }
     }

@@ -637,6 +637,26 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         try {
             List<BedrockAndroidServerPacket> packets =
                     BedrockAndroidPacketCodec.decodeServerBatch(delivered, networkSettings);
+            // The current Android renderer accepts only empty server pack sets.
+            // Complete that protocol exchange automatically; non-empty packs
+            // are handled by the dedicated downloader added in a later step.
+            for (BedrockAndroidServerPacket packet : packets) {
+                if (packet.packetId() == 6) {
+                    BedrockAndroidPacketCodec.decodeEmptyResourcePacksInfo(packet.payload());
+                    if (!sendReliable(BedrockAndroidPacketCodec.encodeResourcePackClientResponse(
+                            BedrockAndroidResourcePackStatus.HAVE_ALL_PACKS, networkSettings))) {
+                        reportError("Не удалось подтвердить ResourcePacksInfo");
+                        return;
+                    }
+                } else if (packet.packetId() == 7) {
+                    BedrockAndroidPacketCodec.decodeEmptyResourcePackStack(packet.payload());
+                    if (!sendReliable(BedrockAndroidPacketCodec.encodeResourcePackClientResponse(
+                            BedrockAndroidResourcePackStatus.COMPLETED, networkSettings))) {
+                        reportError("Не удалось подтвердить ResourcePackStack");
+                        return;
+                    }
+                }
+            }
             Listener current = listener;
             if (current != null) {
                 mainHandler.post(() -> {

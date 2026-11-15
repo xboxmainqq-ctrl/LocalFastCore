@@ -10,7 +10,7 @@
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <junit.version>5.10.2</junit.version>
-    <bedrock.protocol.version>1.26.60-R1-SNAPSHOT</bedrock.protocol.version>
+    <bedrock.protocol.version>1.26.60-R1</bedrock.protocol.version>
     <nethernet.version>2.0.0.CR6-SNAPSHOT</nethernet.version>
     <libdatachannel.version>0.24.6.0-20261029.091642-10</libdatachannel.version>
   </properties>
@@ -40,8 +40,8 @@
       <version>${bedrock.protocol.version}</version>
     </dependency>
     <dependency>
-      <groupId>org.cloudburstmc.netty</groupId><artifactId>netty-transport-nethernet</artifactId>
-      <version>${nethernet.version}</version>
+      <groupId>io.github.ryzemcbe</groupId><artifactId>ryze-netty-transport-nethernet</artifactId>
+      <version>2.0.0.CR6-ryze.1</version>
     </dependency>
     <dependency>
       <groupId>dev.opencollab</groupId><artifactId>libdatachannel-java-arch-detect</artifactId>

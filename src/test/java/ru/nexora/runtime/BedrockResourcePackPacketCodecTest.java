@@ -32,12 +32,12 @@ class BedrockResourcePackPacketCodecTest {
 
     @Test
     void decodesHaveAllPacksAndCompletedResponses() {
-        BedrockResourcePackClientResponse haveAll = decodeResponse("downloadingfinished");
+        BedrockResourcePackClientResponse haveAll = decodeResponse("DownloadingFinished");
         assertEquals(BedrockResourcePackClientResponse.Status.HAVE_ALL_PACKS, haveAll.status());
         assertTrue(haveAll.packIds().isEmpty());
 
         BedrockResourcePackClientResponse completed =
-                decodeResponse("resourcepackstackfinished");
+                decodeResponse("ResourcePackStackFinished");
         assertEquals(BedrockResourcePackClientResponse.Status.COMPLETED, completed.status());
         assertTrue(completed.packIds().isEmpty());
     }
@@ -45,7 +45,7 @@ class BedrockResourcePackPacketCodecTest {
     @Test
     void decodesRequestedPackIdsAndRejectsMismatchedStatusName() {
         ByteBuffer payload = ByteBuffer.allocate(64);
-        BedrockBinary.writeString(payload, "downloading", 64);
+        BedrockBinary.writeString(payload, "Downloading", 64);
         BedrockBinary.writeVarUInt32(payload, 2);
         BedrockBinary.writeString(payload, "pack-one", 64);
         BedrockBinary.writeString(payload, "pack-two", 64);

@@ -25,6 +25,9 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
     private static final BlockState GLOW_LICHEN = new BlockState("minecraft:glow_lichen");
     private static final BlockState SPORE_BLOSSOM = new BlockState("minecraft:spore_blossom");
     private static final BlockState HANGING_ROOTS = new BlockState("minecraft:hanging_roots");
+    private static final BlockState CALCITE = new BlockState("minecraft:calcite");
+    private static final BlockState AMETHYST_BLOCK = new BlockState("minecraft:amethyst_block");
+    private static final BlockState AMETHYST_CLUSTER = new BlockState("minecraft:amethyst_cluster", Map.of("facing", "up", "waterlogged", "false"));
     private static final OreVein[] ORE_VEINS = {
             new OreVein("minecraft:coal_ore", -16, 192, 3, 4, 0x1a2b3c4dL),
             new OreVein("minecraft:iron_ore", -56, 72, 3, 3, 0x2b3c4d5eL),
@@ -107,6 +110,8 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
 
         carveCaves(baseX, baseZ, height, seed, surfaceHeights, fluids, blocks);
         decorateLushCaves(baseX, baseZ, height, seed, blocks, fluids);
+        generateUndergroundWater(baseX, baseZ, height, seed, blocks, fluids);
+        decorateCrystalGeodes(baseX, baseZ, height, seed, blocks, fluids);
         placeTrees(position, baseX, baseZ, height, seed, surfaceHeights, columnBiomes, waterColumns, blocks);
         return new GeneratedChunk(position, blocks, Map.of(), fluids, biomeColumns, height);
     }
@@ -277,6 +282,67 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
                             || isSolidNaturalCaveSurface(blocks.get(new BlockPosition(x, y, z + 1)));
                     if (besideWall && Long.remainderUnsigned(roll >>> 17, 4) == 0) {
                         blocks.put(air, GLOW_LICHEN);
+                    }
+                }
+            }
+        }
+    }
+
+
+    private static void generateUndergroundWater(
+            int baseX, int baseZ, WorldHeight height, long seed,
+            Map<BlockPosition, BlockState> blocks, Map<BlockPosition, BlockState> fluids) {
+        int minY = Math.max(height.minY() + 2, -50);
+        int maxY = Math.min(height.maxYExclusive() - 2, -8);
+        for (int localX = 0; localX < 16; localX++) {
+            for (int localZ = 0; localZ < 16; localZ++) {
+                int x = baseX + localX;
+                int z = baseZ + localZ;
+                double basin = valueNoise(x, z, seed, 88, 0x7a4d93c1L);
+                if (basin > -0.22) continue;
+                int waterline = -30 + (int) Math.round(valueNoise(
+                        x, z, seed, 42, 0x19c6e2a7L) * 4.0);
+                for (int y = minY; y <= Math.min(maxY, waterline); y++) {
+                    BlockPosition position = new BlockPosition(x, y, z);
+                    if (!blocks.containsKey(position) && !fluids.containsKey(position)
+                            && isCave(x, y, z, seed)) {
+                        fluids.put(position, WATER);
+                    }
+                }
+            }
+        }
+    }
+
+    private static void decorateCrystalGeodes(
+            int baseX, int baseZ, WorldHeight height, long seed,
+            Map<BlockPosition, BlockState> blocks, Map<BlockPosition, BlockState> fluids) {
+        int minY = Math.max(height.minY() + 4, -48);
+        int maxY = Math.min(height.maxYExclusive() - 4, 24);
+        for (int localX = 0; localX < 16; localX++) {
+            for (int localZ = 0; localZ < 16; localZ++) {
+                int x = baseX + localX;
+                int z = baseZ + localZ;
+                for (int y = minY; y <= maxY; y++) {
+                    BlockPosition air = new BlockPosition(x, y, z);
+                    if (blocks.containsKey(air) || fluids.containsKey(air)
+                            || !isCave(x, y, z, seed)) continue;
+                    long hash = featureHash(seed ^ 0x5be0cd19137e2179L,
+                            Math.floorDiv(x, 24), Math.floorDiv(y, 20), Math.floorDiv(z, 24));
+                    if (Long.remainderUnsigned(hash, 97) != 0) continue;
+                    BlockPosition[] neighbors = {
+                            new BlockPosition(x - 1, y, z), new BlockPosition(x + 1, y, z),
+                            new BlockPosition(x, y - 1, z), new BlockPosition(x, y + 1, z),
+                            new BlockPosition(x, y, z - 1), new BlockPosition(x, y, z + 1)
+                    };
+                    for (BlockPosition neighbor : neighbors) {
+                        BlockState wall = blocks.get(neighbor);
+                        if (wall != null && wall.identifier().equals("minecraft:stone")) {
+                            blocks.put(neighbor, Long.remainderUnsigned(hash >>> 9, 3) == 0
+                                    ? AMETHYST_BLOCK : CALCITE);
+                        }
+                    }
+                    if (Long.remainderUnsigned(hash >>> 17, 3) == 0) {
+                        blocks.put(air, AMETHYST_CLUSTER);
                     }
                 }
             }

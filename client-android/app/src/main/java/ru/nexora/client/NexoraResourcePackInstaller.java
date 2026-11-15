@@ -104,72 +104,63 @@ final class NexoraResourcePackInstaller {
     }
 
     /**
-     * Accepts NEXORA aliases, Bedrock-style textures/blocks and standard
-     * Java assets/minecraft/textures/block paths, optionally inside one ZIP root folder.
+     * Accepts Bedrock-style textures/blocks paths, optionally inside a ZIP root folder.
+     * Java Edition assets/minecraft paths are intentionally not supported.
      */
     static String supportedTextureName(String path) {
-        String normalized = path;
-        String[] markers = {
-                "assets/minecraft/textures/block/",
-                "assets/minecraft/textures/blocks/",
-                "textures/block/",
-                "textures/blocks/"
-        };
-        int start = -1;
-        for (String marker : markers) {
-            int index = normalized.lastIndexOf(marker);
-            if (index >= 0 && (start < 0 || index > start)) start = index + marker.length();
-        }
-        if (start < 0 || start >= normalized.length()) return null;
-        String file = normalized.substring(start);
+        String marker = "textures/blocks/";
+        int start = path == null ? -1 : path.lastIndexOf(marker);
+        if (start < 0) return null;
+        String file = path.substring(start + marker.length());
         if (file.indexOf('/') >= 0) return null;
         file = file.toLowerCase(java.util.Locale.ROOT);
         if (ALLOWED.contains(file)) return file;
 
         switch (file) {
-            case "grass_block_top.png": return "grass_top.png";
-            case "grass_block_side.png": return "grass_side.png";
-            case "grass_block_bottom.png": return "dirt.png";
-            case "oak_log.png":
-            case "spruce_log.png":
-            case "birch_log.png":
-            case "jungle_log.png":
-            case "acacia_log.png":
-            case "dark_oak_log.png":
-            case "mangrove_log.png":
-            case "cherry_log.png":
+            case "log_oak.png":
+            case "log_spruce.png":
+            case "log_birch.png":
+            case "log_jungle.png":
+            case "log_acacia.png":
+            case "log_big_oak.png":
+            case "log_dark_oak.png":
+            case "log_mangrove.png":
+            case "log_cherry.png":
             case "crimson_stem.png":
             case "warped_stem.png": return "log_side.png";
-            case "oak_log_top.png":
-            case "spruce_log_top.png":
-            case "birch_log_top.png":
-            case "jungle_log_top.png":
-            case "acacia_log_top.png":
-            case "dark_oak_log_top.png":
-            case "mangrove_log_top.png":
-            case "cherry_log_top.png":
+            case "log_oak_top.png":
+            case "log_spruce_top.png":
+            case "log_birch_top.png":
+            case "log_jungle_top.png":
+            case "log_acacia_top.png":
+            case "log_big_oak_top.png":
+            case "log_dark_oak_top.png":
+            case "log_mangrove_top.png":
+            case "log_cherry_top.png":
             case "crimson_stem_top.png":
             case "warped_stem_top.png": return "log_top.png";
-            case "oak_leaves.png":
-            case "spruce_leaves.png":
-            case "birch_leaves.png":
-            case "jungle_leaves.png":
-            case "acacia_leaves.png":
-            case "dark_oak_leaves.png":
-            case "mangrove_leaves.png":
-            case "cherry_leaves.png": return "leaves.png";
+            case "leaves_oak.png":
+            case "leaves_spruce.png":
+            case "leaves_birch.png":
+            case "leaves_jungle.png":
+            case "leaves_acacia.png":
+            case "leaves_big_oak.png":
+            case "leaves_dark_oak.png":
+            case "leaves_mangrove.png":
+            case "leaves_cherry.png": return "leaves.png";
             case "water_still.png":
             case "water_flow.png": return "water.png";
             case "snow.png":
-            case "snow_block.png": return "snow.png";
-            case "oak_planks.png":
-            case "spruce_planks.png":
-            case "birch_planks.png":
-            case "jungle_planks.png":
-            case "acacia_planks.png":
-            case "dark_oak_planks.png":
-            case "mangrove_planks.png":
-            case "cherry_planks.png": return "planks.png";
+            case "snow_side.png": return "snow.png";
+            case "planks_oak.png":
+            case "planks_spruce.png":
+            case "planks_birch.png":
+            case "planks_jungle.png":
+            case "planks_acacia.png":
+            case "planks_big_oak.png":
+            case "planks_dark_oak.png":
+            case "planks_mangrove.png":
+            case "planks_cherry.png": return "planks.png";
             default: return null;
         }
     }

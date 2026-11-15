@@ -36,7 +36,7 @@ android {
     )
 
     tasks.withType<org.gradle.api.tasks.compile.JavaCompile>().configureEach {
-        options.compilerArgs.addAll(listOf("-sourcepath", "${project.projectDir}/src/main/java"))
+        options.sourcepath = files("${project.projectDir}/src/main/java")
     }
 
     compileOptions {

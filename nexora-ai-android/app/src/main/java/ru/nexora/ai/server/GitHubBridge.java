@@ -44,7 +44,7 @@ public final class GitHubBridge {
     @JavascriptInterface
     public void beginDeviceLogin(String clientId) {
         final String id = clientId == null ? "" : clientId.trim();
-        if (!id.matches("[A-Za-z0-9_]{10,80}")) {
+        if (!id.matches("[A-Za-z0-9_.-]{10,80}")) {
             deliver("device_code", errorResult("Укажи корректный Client ID зарегистрированного GitHub App."));
             return;
         }
@@ -73,7 +73,7 @@ public final class GitHubBridge {
         final String code = deviceCode == null ? "" : deviceCode.trim();
         final int interval = Math.max(5, Math.min(intervalSeconds, 30));
         final int expires = Math.max(60, Math.min(expiresInSeconds, 900));
-        if (!id.matches("[A-Za-z0-9_]{10,80}") || code.length() < 20 || code.length() > 200) {
+        if (!id.matches("[A-Za-z0-9_.-]{10,80}") || code.length() < 20 || code.length() > 200) {
             deliver("device_login", errorResult("Данные авторизации некорректны. Запроси новый код."));
             return;
         }
@@ -103,7 +103,14 @@ public final class GitHubBridge {
                     result.put("ok", true);
                     result.put("token_saved", true);
                     result.put("expires_in", response.optLong("expires_in", 0));
-                    result.put("refresh_token_available", !response.optString("refresh_token", "").isEmpty());
+                    String refreshToken = response.optString("refresh_token", "");
+                    if (!refreshToken.isEmpty()) saveRefreshToken(refreshToken);
+                    activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                            .putString("client_id", id)
+                            .putLong("expires_at", System.currentTimeMillis()
+                                    + response.optLong("expires_in", 28800) * 1000L)
+                            .apply();
+                    result.put("refresh_token_available", !refreshToken.isEmpty());
                     deliver("device_login", result);
                     return;
                 }
@@ -397,6 +404,7 @@ public final class GitHubBridge {
     }
 
     private JSONArray requestArray(String path) throws Exception {
+        refreshAccessTokenIfNeeded();
         HttpURLConnection c = null;
         try {
             c = (HttpURLConnection) new URL(API + path).openConnection();
@@ -423,6 +431,7 @@ public final class GitHubBridge {
     }
 
     private JSONObject request(String method, String path, JSONObject body) throws Exception {
+        refreshAccessTokenIfNeeded();
         String token = readToken();
         if (token.isEmpty()) throw new IllegalStateException("GitHub не подключён.");
         HttpURLConnection c = null;
@@ -458,6 +467,51 @@ public final class GitHubBridge {
         } finally {
             if (c != null) c.disconnect();
         }
+    }
+
+    private void saveRefreshToken(String token) {
+        try {
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.ENCRYPT_MODE, getSecretKey());
+            byte[] encrypted = cipher.doFinal(token.getBytes(StandardCharsets.UTF_8));
+            activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                    .putString("refresh_iv", Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP))
+                    .putString("refresh_data", Base64.encodeToString(encrypted, Base64.NO_WRAP))
+                    .commit();
+        } catch (Exception ignored) {}
+    }
+
+    private String readRefreshToken() {
+        try {
+            SharedPreferences p = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            String ivText = p.getString("refresh_iv", "");
+            String dataText = p.getString("refresh_data", "");
+            if (ivText.isEmpty() || dataText.isEmpty()) return "";
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.DECRYPT_MODE, getSecretKey(),
+                    new GCMParameterSpec(128, Base64.decode(ivText, Base64.NO_WRAP)));
+            return new String(cipher.doFinal(Base64.decode(dataText, Base64.NO_WRAP)), StandardCharsets.UTF_8);
+        } catch (Exception ignored) { return ""; }
+    }
+
+    private void refreshAccessTokenIfNeeded() throws Exception {
+        SharedPreferences p = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        long expiresAt = p.getLong("expires_at", 0L);
+        if (expiresAt == 0L || System.currentTimeMillis() < expiresAt - 60000L) return;
+        String refresh = readRefreshToken();
+        String clientId = p.getString("client_id", "");
+        if (refresh.isEmpty() || clientId.isEmpty())
+            throw new IllegalStateException("GitHub-сессия истекла. Подключи GitHub заново.");
+        JSONObject response = postForm("https://github.com/login/oauth/access_token",
+                "client_id=" + formEncode(clientId)
+                        + "&grant_type=refresh_token&refresh_token=" + formEncode(refresh));
+        String access = response.optString("access_token", "");
+        String nextRefresh = response.optString("refresh_token", "");
+        if (access.isEmpty() || !saveToken(access))
+            throw new IllegalStateException("Не удалось обновить GitHub-сессию. Войди снова.");
+        if (!nextRefresh.isEmpty()) saveRefreshToken(nextRefresh);
+        p.edit().putLong("expires_at", System.currentTimeMillis()
+                + response.optLong("expires_in", 28800) * 1000L).apply();
     }
 
     private String readToken() {

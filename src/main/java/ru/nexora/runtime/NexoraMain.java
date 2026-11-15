@@ -85,7 +85,7 @@ public final class NexoraMain {
 
     static RuntimeHandle createRuntime(Path dataDirectory, long seed, Consumer<String> log) {
         return createRuntime(new LaunchOptions(dataDirectory.toAbsolutePath().normalize(),
-                seed, false, false, false, "0.0.0.0", 8080, 20), log);
+                seed, false, false, false, "0.0.0.0", 8080, 0), log);
     }
 
     static RuntimeHandle createRuntime(LaunchOptions options, Consumer<String> log) {
@@ -100,6 +100,7 @@ public final class NexoraMain {
         }
         String worldId = configuration.worldId();
         long seed = options.seed() == Long.MIN_VALUE ? configuration.seed() : options.seed();
+        int tickRate = options.tickRate() == 0 ? configuration.tickRate() : options.tickRate();
         WorldHeight worldHeight = configuration.worldHeight();
 
         WorldRegistry worlds = new WorldRegistry();
@@ -214,7 +215,7 @@ public final class NexoraMain {
         });
 
         GameLoop gameLoop = new GameLoop(
-                configuration.tickRate(), 3, scheduler,
+                tickRate, 3, scheduler,
                 failure -> log.accept("Game tick error: " + failure.getMessage()));
         server.register(gameLoop);
         server.register(new RuntimeModule() {
@@ -273,7 +274,7 @@ public final class NexoraMain {
                     () -> {
                         World world = worlds.get(worldId)
                                 .orElseThrow(() -> new IllegalStateException("Default world is not loaded"));
-                        return NexoraWorldInfo.from(world, 0, findSpawnY(world), 0, configuration.tickRate());
+                        return NexoraWorldInfo.from(world, 0, findSpawnY(world), 0, tickRate);
                     },
                     () -> worlds.get(worldId)
                             .orElseThrow(() -> new IllegalStateException("Default world is not loaded")),
@@ -293,7 +294,7 @@ public final class NexoraMain {
         }
 
         return new RuntimeHandle(server, worlds, entities, inventories,
-                playerInventoryStorage, gameLoop, configuration.tickRate(), worldId);
+                playerInventoryStorage, gameLoop, tickRate, worldId);
     }
 
     /**
@@ -332,7 +333,7 @@ public final class NexoraMain {
         boolean developmentNetworkEnabled = false;
         String bindAddress = "0.0.0.0";
         int signalingPort = 8080;
-        int tickRate = 20;
+        int tickRate = 0;
 
         for (int index = 0; index < args.length; index++) {
             String argument = Objects.requireNonNull(args[index], "argument");
@@ -404,7 +405,7 @@ public final class NexoraMain {
         output.accept("Usage: java -jar nexora-runtime.jar [options]");
         output.accept("  --data-dir <path>              Directory for world data (default: ./nexora-data)");
         output.accept("  --seed <number>                World generation seed (default: 0)");
-        output.accept("  --tick-rate <number>           Game tick rate (default: 20)");
+        output.accept("  --tick-rate <number>           Override server.properties tick rate");
         output.accept("  --enable-development-network   Enable unauthenticated private-network testing");
         output.accept("  --bind-address <host>          Signaling bind host (default: 0.0.0.0)");
         output.accept("  --signaling-port <port>        HTTP signaling port (default: 8080)");
@@ -419,7 +420,7 @@ public final class NexoraMain {
             Objects.requireNonNull(dataDirectory, "dataDirectory");
             Objects.requireNonNull(bindAddress, "bindAddress");
             if (bindAddress.isBlank() || signalingPort < 1 || signalingPort > 65535
-                    || tickRate < 1 || tickRate > 120) {
+                    || tickRate < 0 || tickRate > 120) {
                 throw new IllegalArgumentException("Invalid NEXORA launch configuration");
             }
         }

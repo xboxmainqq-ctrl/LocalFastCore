@@ -775,6 +775,9 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         if (stack.required() && expected.isEmpty()) {
             throw new IllegalArgumentException("Сервер требует отсутствующий ресурс-пак");
         }
+        if (!sendReliable(BedrockAndroidPacketCodec.encodeResourcePacksReadyForValidation(networkSettings))) {
+            throw new IllegalStateException("Не удалось подтвердить готовность ресурс-паков");
+        }
         sendPackResponse(BedrockAndroidResourcePackStatus.COMPLETED, List.of());
         pendingResourcePackInfo = null;
         pendingResourcePack = null;

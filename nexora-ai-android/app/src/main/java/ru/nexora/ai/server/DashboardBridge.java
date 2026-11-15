@@ -116,6 +116,7 @@ public final class DashboardBridge {
                 connection.setRequestMethod("POST");
                 connection.setConnectTimeout(15000);
                 connection.setReadTimeout(90000);
+                connection.setUseCaches(false);
                 connection.setDoOutput(true);
                 connection.setRequestProperty("Authorization", "Bearer " + apiKey);
                 connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");

@@ -307,10 +307,10 @@ public final class MainActivity extends Activity {
     private void launchWorldPreview(String worldId, String worldName, long seed) {
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(dp(16), dp(20), dp(16), dp(20));
+        page.setPadding(dp(10), dp(10), dp(10), dp(10));
         page.setBackgroundColor(BACKGROUND);
 
-        TextView title = text(worldName, 24, TEXT, true);
+        TextView title = text(worldName, 20, TEXT, true);
         title.setGravity(Gravity.CENTER);
         page.addView(title, matchWrap());
         addSpace(page, 6);
@@ -368,24 +368,26 @@ public final class MainActivity extends Activity {
             });
         }
         refreshLocalHotbar();
-        Button inventoryButton = button("ИНВЕНТАРЬ • 36 СЛОТОВ");
-        page.addView(inventoryButton, matchWrap());
+        Button inventoryButton = gameButton("ИНВЕНТАРЬ");
+        page.addView(inventoryButton, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(42)));
         inventoryButton.setOnClickListener(view -> showLocalInventoryDialog(worldId));
 
         addSpace(page, 10);
-        Button camera = button("ВИД: ОТ ПЕРВОГО ЛИЦА");
-        page.addView(camera, matchWrap());
+        Button camera = gameButton("КАМЕРА: 1-Е ЛИЦО");
+        page.addView(camera, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(42)));
         camera.setOnClickListener(v -> {
             boolean firstPerson = !camera.getText().toString().contains("ПЕРВОГО");
             localPreview.setFirstPersonMode(firstPerson);
-            camera.setText(firstPerson ? "ВИД: ОТ ПЕРВОГО ЛИЦА" : "ВИД: ОТ ТРЕТЬЕГО ЛИЦА");
+            camera.setText(firstPerson ? "КАМЕРА: 1-Е ЛИЦО" : "КАМЕРА: 3-Е ЛИЦО");
         });
 
         LinearLayout forward = new LinearLayout(this);
         forward.setGravity(Gravity.CENTER);
         page.addView(forward, matchWrap());
-        Button forwardButton = button("ВПЕРЁД  ▲");
-        forward.addView(forwardButton, new LinearLayout.LayoutParams(dp(160), dp(52)));
+        Button forwardButton = gameButton("▲");
+        forward.addView(forwardButton, new LinearLayout.LayoutParams(dp(76), dp(42)));
         bindHoldMovement(forwardButton, () -> {
             if (localPreview != null) localPreview.movePlayer(1f, 0f);
         });
@@ -393,12 +395,12 @@ public final class MainActivity extends Activity {
         LinearLayout directions = new LinearLayout(this);
         directions.setGravity(Gravity.CENTER);
         page.addView(directions, matchWrap());
-        Button left = button("◀");
-        Button backStep = button("НАЗАД  ▼");
-        Button right = button("▶");
-        directions.addView(left, new LinearLayout.LayoutParams(dp(72), dp(52)));
-        directions.addView(backStep, new LinearLayout.LayoutParams(dp(116), dp(52)));
-        directions.addView(right, new LinearLayout.LayoutParams(dp(72), dp(52)));
+        Button left = gameButton("◀");
+        Button backStep = gameButton("▼");
+        Button right = gameButton("▶");
+        directions.addView(left, new LinearLayout.LayoutParams(dp(58), dp(42)));
+        directions.addView(backStep, new LinearLayout.LayoutParams(dp(76), dp(42)));
+        directions.addView(right, new LinearLayout.LayoutParams(dp(58), dp(42)));
         bindHoldMovement(left, () -> {
             if (localPreview != null) localPreview.movePlayer(0f, -1f);
         });
@@ -409,15 +411,17 @@ public final class MainActivity extends Activity {
             if (localPreview != null) localPreview.movePlayer(0f, 1f);
         });
         addSpace(page, 6);
-        Button jump = button("ПРЫЖОК");
-        page.addView(jump, matchWrap());
+        Button jump = gameButton("ПРЫЖОК");
+        page.addView(jump, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(42)));
         jump.setOnClickListener(v -> localPreview.jumpPlayer());
         addSpace(page, 6);
         page.addView(text("Мир хранится на устройстве. После выхода твоя позиция и созданные чанки останутся сохранены.",
                 11, MUTED, false), matchWrap());
         addSpace(page, 8);
-        Button exit = button("СОХРАНИТЬ И ВЫЙТИ");
-        page.addView(exit, matchWrap());
+        Button exit = gameButton("СОХРАНИТЬ И ВЫЙТИ");
+        page.addView(exit, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(42)));
         exit.setOnClickListener(v -> {
             saveLocalPlayerPosition(worldId);
             if (previewGenerationExecutor != null) {
@@ -1545,7 +1549,7 @@ public final class MainActivity extends Activity {
         return button;
     }
 
-    private TextView text(String value, int size, int color, boolean bold) {
+    private Button gameButton(String label) {\n        Button button = new Button(this);\n        button.setText(label);\n        button.setTextColor(TEXT);\n        button.setTextSize(13);\n        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);\n        button.setAllCaps(false);\n        button.setMinHeight(0);\n        button.setMinimumHeight(0);\n        button.setPadding(dp(6), 0, dp(6), 0);\n        GradientDrawable shape = rounded(PANEL, 9);\n        shape.setStroke(dp(1), Color.rgb(67, 83, 105));\n        button.setBackground(shape);\n        return button;\n    }\n\n    private TextView text(String value, int size, int color, boolean bold) {
         TextView view = new TextView(this);
         view.setText(value);
         view.setTextSize(size);

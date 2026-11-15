@@ -19,6 +19,8 @@ import dev.onvoid.webrtc.RTCSdpType;
 import dev.onvoid.webrtc.RTCSessionDescription;
 import dev.onvoid.webrtc.RTCTcpCandidatePolicy;
 import dev.onvoid.webrtc.SetSessionDescriptionObserver;
+import dev.onvoid.webrtc.media.audio.AudioDeviceModule;
+import dev.onvoid.webrtc.media.audio.AudioLayer;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -102,7 +104,9 @@ public final class WebRtcJavaNetherNetPeerHost
         if (connectionListener == null) {
             throw new IllegalStateException("Connection listener must be configured before start");
         }
-        factory = new PeerConnectionFactory();
+        // A dedicated game server has no microphone or speakers. The dummy audio
+        // backend keeps native WebRTC initialization working on headless Linux hosts.
+        factory = new PeerConnectionFactory(new AudioDeviceModule(AudioLayer.kDummyAudio));
     }
 
     @Override

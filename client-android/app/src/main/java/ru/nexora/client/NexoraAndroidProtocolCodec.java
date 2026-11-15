@@ -22,6 +22,8 @@ final class NexoraAndroidProtocolCodec {
     private static final int TYPE_INVENTORY = 11;
     private static final int TYPE_INVENTORY_ACTION = 12;
     private static final int TYPE_INVENTORY_ACTION_RESULT = 13;
+    private static final int TYPE_BLOCK_ACTION = 14;
+    private static final int TYPE_BLOCK_UPDATE = 15;
 
     private NexoraAndroidProtocolCodec() {
     }
@@ -243,6 +245,30 @@ final class NexoraAndroidProtocolCodec {
         return output.array();
     }
 
+    static byte[] encodeBlockAction(boolean place, int x, int y, int z, String blockId) {
+        byte[] id = place ? blockId.getBytes(StandardCharsets.UTF_8) : new byte[0];
+        if (place && (id.length < 1 || id.length > 128)) {
+            throw new IllegalArgumentException("Invalid block identifier");
+        }
+        ByteBuffer out = ByteBuffer.allocate(21 + id.length).order(ByteOrder.BIG_ENDIAN);
+        out.put(MAGIC).put((byte) MAJOR_VERSION).put((byte) MINOR_VERSION)
+                .put((byte) TYPE_BLOCK_ACTION).put((byte) (place ? 2 : 1))
+                .putInt(x).putInt(y).putInt(z).put((byte) id.length).put(id);
+        return out.array();
+    }
+
+    static BlockUpdate decodeBlockUpdate(byte[] bytes) {
+        ByteBuffer input = checkedHeader(bytes, TYPE_BLOCK_UPDATE);
+        if (input.remaining() < 13) throw new IllegalArgumentException("Truncated block update");
+        int x = input.getInt(), y = input.getInt(), z = input.getInt();
+        int length = Byte.toUnsignedInt(input.get());
+        if (length > 128 || input.remaining() != length)
+            throw new IllegalArgumentException("Malformed block update");
+        byte[] id = new byte[length];
+        input.get(id);
+        return new BlockUpdate(x, y, z, decodeUtf8(id));
+    }
+
     static ChunkData decodeChunkData(byte[] bytes) {
         ByteBuffer input = checkedHeader(bytes, TYPE_CHUNK_DATA);
         if (input.remaining() < 12) {
@@ -322,6 +348,9 @@ final class NexoraAndroidProtocolCodec {
 
     record ServerResponse(boolean accepted, String serverId, int maxMessageBytes,
                           int rejectionCode, String rejectionReason) {
+    }
+
+    record BlockUpdate(int x, int y, int z, String blockId) {
     }
 
     record ChunkBlock(int localX, int y, int localZ, String blockId) {

@@ -16,10 +16,10 @@ public final class BedrockResourcePackClientResponsePacketCodec {
         Objects.requireNonNull(payload, "payload");
         String statusName = BedrockBinary.readString(payload, 64);
         BedrockResourcePackClientResponse.Status status = switch (statusName) {
-            case "cancel" -> BedrockResourcePackClientResponse.Status.REFUSED;
-            case "downloading" -> BedrockResourcePackClientResponse.Status.SEND_PACKS;
-            case "downloadingfinished" -> BedrockResourcePackClientResponse.Status.HAVE_ALL_PACKS;
-            case "resourcepackstackfinished" -> BedrockResourcePackClientResponse.Status.COMPLETED;
+            case "Cancel" -> BedrockResourcePackClientResponse.Status.REFUSED;
+            case "Downloading" -> BedrockResourcePackClientResponse.Status.SEND_PACKS;
+            case "DownloadingFinished" -> BedrockResourcePackClientResponse.Status.HAVE_ALL_PACKS;
+            case "ResourcePackStackFinished" -> BedrockResourcePackClientResponse.Status.COMPLETED;
             default -> throw new IllegalArgumentException("Unknown resource pack response status: " + statusName);
         };
         List<String> packIds = new ArrayList<>();

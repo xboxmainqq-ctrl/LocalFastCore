@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -215,6 +216,37 @@ class NexoraPrivateProtocolHandlerTest {
         assertEquals("minecraft:bedrock", chunk.blocks().get(0).blockIdentifier());
         assertEquals("minecraft:grass_block",
                 chunk.blocks().get(chunk.blocks().size() - 1).blockIdentifier());
+    }
+
+    @Test
+    void asyncChunkLoaderDoesNotSendUntilChunkBecomesAvailable() {
+        InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
+        FlatChunkGenerator generator = new FlatChunkGenerator(64, 5,
+                new BlockState("minecraft:grass_block"),
+                new BlockState("minecraft:dirt"),
+                new BlockState("minecraft:bedrock"));
+        CompletableFuture<Boolean> chunkReady = new CompletableFuture<>();
+        FakeConnection connection = new FakeConnection();
+        NexoraWorldInfo info = new NexoraWorldInfo("world", 0, 128, 0, 65, 0, 20, 1);
+        new NexoraPrivateProtocolHandler(UUID.randomUUID(), 8 * 1024 * 1024,
+                () -> info, () -> world, null, ignored -> { },
+                new EntityRegistry(), new java.util.concurrent.ConcurrentHashMap<>(),
+                null, List.of(), ignored -> chunkReady).accept(connection);
+
+        connection.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
+        connection.deliver(NexoraChunkDataCodec.encodeChunkRequest(1, 1));
+
+        assertEquals(4, connection.sentMessages.size(),
+                "the network callback must not block or send an unavailable chunk");
+
+        world.loadChunk(generator.generate(new ChunkPosition(1, 1), world.height(), 42L));
+        chunkReady.complete(true);
+
+        assertEquals(5, connection.sentMessages.size());
+        NexoraChunkData chunk = NexoraChunkDataCodec.decodeChunkData(
+                ByteBuffer.wrap(connection.sentMessages.get(4)));
+        assertEquals(1, chunk.chunkX());
+        assertEquals(1, chunk.chunkZ());
     }
 
     @Test

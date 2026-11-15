@@ -549,7 +549,7 @@ class NexoraPrivateProtocolHandlerTest {
     @Test
     void refusesBreakingBlocksOutsideReach() {
         InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
-        world.setBlock(new BlockPosition(5, 64, 0), new BlockState("minecraft:stone"));
+        world.setBlock(new BlockPosition(6, 64, 0), new BlockState("minecraft:stone"));
         FakeConnection connection = new FakeConnection();
         NexoraPrivateProtocolHandler handler = new NexoraPrivateProtocolHandler(
                 UUID.randomUUID(), 8 * 1024 * 1024,
@@ -558,9 +558,9 @@ class NexoraPrivateProtocolHandlerTest {
         handler.accept(connection);
         connection.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
         connection.deliver(NexoraBlockActionCodec.encodeRequest(new NexoraBlockActionCodec.Request(
-                NexoraBlockActionCodec.Action.BREAK, 5, 64, 0, "")));
+                NexoraBlockActionCodec.Action.BREAK, 6, 64, 0, "")));
 
-        assertEquals("minecraft:stone", world.blockAt(new BlockPosition(5, 64, 0)).identifier());
+        assertEquals("minecraft:stone", world.blockAt(new BlockPosition(6, 64, 0)).identifier());
         assertFalse(connection.closed);
     }
 

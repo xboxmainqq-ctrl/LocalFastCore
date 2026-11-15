@@ -47,6 +47,8 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
         Map<BiomeColumnPosition, Integer> biomeColumns = new HashMap<>(256);
         BiomeDefinition[][] columnBiomes = new BiomeDefinition[16][16];
         BiomeRegistry biomeRegistry = BiomeRegistry.builtIn();
+        HydrologyField hydrology = HydrologyField.forChunk(position, height, seed);
+        boolean[][] waterColumns = new boolean[16][16];
 
         int[][] surfaceHeights = new int[16][16];
         for (int localX = 0; localX < 16; localX++) {
@@ -58,6 +60,16 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
                 BiomeDefinition biome = biomeRegistry.select(climate);
                 surfaceY = terrainHeight(x, z, seed, height,
                         biomeRegistry.blendedReliefMultiplier(climate));
+                HydrologyField.Sample drainage = hydrology.sample(x, z, surfaceY);
+                int waterSurfaceY = Integer.MIN_VALUE;
+                if (drainage.kind() == HydrologyField.Kind.RIVER) {
+                    waterSurfaceY = drainage.waterSurfaceY();
+                    surfaceY = Math.max(height.minY() + 2, surfaceY - drainage.depth());
+                    waterColumns[localX][localZ] = true;
+                } else if (drainage.kind() == HydrologyField.Kind.LAKE) {
+                    waterSurfaceY = drainage.waterSurfaceY();
+                    waterColumns[localX][localZ] = true;
+                }
                 columnBiomes[localX][localZ] = biome;
                 surfaceHeights[localX][localZ] = surfaceY;
                 BlockPosition surfacePosition = new BlockPosition(x, surfaceY, z);
@@ -72,13 +84,14 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
                 }
                 blocks.put(surfacePosition, biome.surfaceBlock());
 
-                for (int y = surfaceY + 1; y <= seaLevel; y++) {
+                int fluidTop = Math.max(seaLevel, waterSurfaceY);
+                for (int y = surfaceY + 1; y <= fluidTop && y < height.maxYExclusive(); y++) {
                     fluids.put(new BlockPosition(x, y, z), WATER);
                 }
             }
         }
 
-        placeTrees(position, baseX, baseZ, height, seed, surfaceHeights, columnBiomes, blocks);
+        placeTrees(position, baseX, baseZ, height, seed, surfaceHeights, columnBiomes, waterColumns, blocks);
         return new GeneratedChunk(position, blocks, Map.of(), fluids, biomeColumns, height);
     }
 
@@ -99,6 +112,7 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
             long seed,
             int[][] surfaceHeights,
             BiomeDefinition[][] columnBiomes,
+            boolean[][] waterColumns,
             Map<BlockPosition, BlockState> blocks
     ) {
         for (int localX = 2; localX <= 13; localX++) {
@@ -106,7 +120,7 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
                 int x = baseX + localX;
                 int z = baseZ + localZ;
                 BiomeDefinition biome = columnBiomes[localX][localZ];
-                if (biome.treeChance() <= 0.0) {
+                if (waterColumns[localX][localZ] || biome.treeChance() <= 0.0) {
                     continue;
                 }
                 long featureHash = coordinateHash(seed ^ 0x2d358dccaa6c78a5L, x, z);

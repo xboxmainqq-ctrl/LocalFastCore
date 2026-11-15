@@ -350,22 +350,30 @@ public final class MainActivity extends Activity {
         LinearLayout forward = new LinearLayout(this);
         forward.setGravity(Gravity.CENTER);
         page.addView(forward, matchWrap());
-        Button forwardButton = button("ВПЕРЁД");
-        forward.addView(forwardButton, new LinearLayout.LayoutParams(dp(140), dp(48)));
-        forwardButton.setOnClickListener(v -> localPreview.movePlayer(1f, 0f));
+        Button forwardButton = button("ВПЕРЁД  ▲");
+        forward.addView(forwardButton, new LinearLayout.LayoutParams(dp(160), dp(52)));
+        bindHoldMovement(forwardButton, () -> {
+            if (localPreview != null) localPreview.movePlayer(1f, 0f);
+        });
 
         LinearLayout directions = new LinearLayout(this);
         directions.setGravity(Gravity.CENTER);
         page.addView(directions, matchWrap());
         Button left = button("◀");
-        Button backStep = button("НАЗАД");
+        Button backStep = button("НАЗАД  ▼");
         Button right = button("▶");
-        directions.addView(left, new LinearLayout.LayoutParams(dp(72), dp(48)));
-        directions.addView(backStep, new LinearLayout.LayoutParams(dp(112), dp(48)));
-        directions.addView(right, new LinearLayout.LayoutParams(dp(72), dp(48)));
-        left.setOnClickListener(v -> localPreview.movePlayer(0f, -1f));
-        backStep.setOnClickListener(v -> localPreview.movePlayer(-1f, 0f));
-        right.setOnClickListener(v -> localPreview.movePlayer(0f, 1f));
+        directions.addView(left, new LinearLayout.LayoutParams(dp(72), dp(52)));
+        directions.addView(backStep, new LinearLayout.LayoutParams(dp(116), dp(52)));
+        directions.addView(right, new LinearLayout.LayoutParams(dp(72), dp(52)));
+        bindHoldMovement(left, () -> {
+            if (localPreview != null) localPreview.movePlayer(0f, -1f);
+        });
+        bindHoldMovement(backStep, () -> {
+            if (localPreview != null) localPreview.movePlayer(-1f, 0f);
+        });
+        bindHoldMovement(right, () -> {
+            if (localPreview != null) localPreview.movePlayer(0f, 1f);
+        });
         addSpace(page, 6);
         Button jump = button("ПРЫЖОК");
         page.addView(jump, matchWrap());
@@ -476,6 +484,38 @@ public final class MainActivity extends Activity {
                 })
                 .setNegativeButton("ОТМЕНА", null)
                 .show();
+    }
+
+    private void bindHoldMovement(Button button, Runnable movement) {
+        android.os.Handler handler = new android.os.Handler(getMainLooper());
+        boolean[] held = {false};
+        Runnable repeat = new Runnable() {
+            @Override
+            public void run() {
+                if (!held[0]) return;
+                movement.run();
+                handler.postDelayed(this, 90L);
+            }
+        };
+        button.setOnTouchListener((view, event) -> {
+            int action = event.getActionMasked();
+            if (action == android.view.MotionEvent.ACTION_DOWN) {
+                held[0] = true;
+                movement.run();
+                handler.postDelayed(repeat, 90L);
+                view.setPressed(true);
+                return true;
+            }
+            if (action == android.view.MotionEvent.ACTION_UP
+                    || action == android.view.MotionEvent.ACTION_CANCEL
+                    || action == android.view.MotionEvent.ACTION_OUTSIDE) {
+                held[0] = false;
+                handler.removeCallbacks(repeat);
+                view.setPressed(false);
+                return true;
+            }
+            return true;
+        });
     }
 
     private void saveLocalPlayerPosition(String worldId) {

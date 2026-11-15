@@ -78,7 +78,7 @@ public final class LocalPlayerController {
         if (canOccupy(x, nextY, z)) {
             y = nextY;
         } else if (velocityY > 0.0) {
-            y = Math.floor(y + HEIGHT) - HEIGHT;
+            y = Math.ceil(y + HEIGHT - EPSILON) - HEIGHT;
             velocityY = 0.0;
         } else {
             y = Math.floor(y + EPSILON);

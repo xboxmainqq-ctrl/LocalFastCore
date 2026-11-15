@@ -1,6 +1,7 @@
 package ru.nexora.runtime;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -86,8 +87,21 @@ public final class BedrockResourcePackArchiveLoader {
             if (size < 1 || size > BedrockResourcePackTransferCodec.MAX_PACK_BYTES) {
                 throw new IOException("Bedrock resource pack exceeds transfer size limit: " + manifest.id());
             }
-            byte[] bytes = Files.readAllBytes(validated.archive());
-            if (bytes.length != size) throw new IOException("Resource pack changed while being loaded: " + manifest.id());
+            byte[] bytes = new byte[Math.toIntExact(size)];
+            try (InputStream input = Files.newInputStream(validated.archive())) {
+                int offset = 0;
+                while (offset < bytes.length) {
+                    int count = input.read(bytes, offset, bytes.length - offset);
+                    if (count < 0) {
+                        throw new IOException("Resource pack changed while being loaded: " + manifest.id());
+                    }
+                    if (count == 0) continue;
+                    offset += count;
+                }
+                if (input.read() != -1) {
+                    throw new IOException("Resource pack grew while being loaded: " + manifest.id());
+                }
+            }
             UUID uuid = UUID.nameUUIDFromBytes(manifest.id().getBytes(java.nio.charset.StandardCharsets.UTF_8));
             try {
                 result.add(new BedrockResourcePackTransferCodec.Pack(uuid, manifest.version(), bytes));

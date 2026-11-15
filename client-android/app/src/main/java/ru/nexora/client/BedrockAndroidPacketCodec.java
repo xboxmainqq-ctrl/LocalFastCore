@@ -255,7 +255,7 @@ public final class BedrockAndroidPacketCodec {
             throw new IllegalArgumentException("Resource-pack response arguments are invalid");
         }
         String statusName = switch (status) {
-            case REFUSED -> "refused";
+            case REFUSED -> "cancel";
             case SEND_PACKS -> "downloading";
             case HAVE_ALL_PACKS -> "downloadingfinished";
             case COMPLETED -> "resourcepackstackfinished";

@@ -16,7 +16,7 @@ class BiomeRegistryTest {
         assertEquals("glassgrass_steppe", registry.get("glassgrass_steppe").key());
         assertEquals("emberfen", registry.get(BiomeRegistry.EMBERFEN_ID).key());
         assertEquals("frostveil", registry.get(BiomeRegistry.FROSTVEIL_ID).key());
-        assertEquals("skyglass_highlands", registry.get(BiomeRegistry.SKyGLASS_HIGHLANDS_ID).key());
+        assertEquals("skyglass_highlands", registry.get(BiomeRegistry.SKYGLASS_HIGHLANDS_ID).key());
         assertEquals("saltwind_basin", registry.get(BiomeRegistry.SALTWIND_BASIN_ID).key());
     }
 
@@ -24,6 +24,16 @@ class BiomeRegistryTest {
     void selectionPrefersClosestClimateDefinition() {
         BiomeDefinition selected = registry.select(new ClimateSample(0.58, 0.80, 0.43));
         assertEquals(BiomeRegistry.MISTWOOD_ID, selected.id());
+    }
+
+    @Test
+    void terrainReliefBlendsSmoothlyAcrossNearbyClimateSamples() {
+        ClimateSample first = new ClimateSample(0.58, 0.80, 0.43);
+        ClimateSample nearby = new ClimateSample(0.59, 0.80, 0.43);
+        double firstRelief = registry.blendedReliefMultiplier(first);
+        double nearbyRelief = registry.blendedReliefMultiplier(nearby);
+        assertTrue(firstRelief >= 0.25 && firstRelief <= 2.5);
+        assertTrue(Math.abs(firstRelief - nearbyRelief) < 0.08);
     }
 
     @Test

@@ -11,7 +11,7 @@ public final class BiomeRegistry {
     public static final int GLASSGRASS_STEPPE_ID = 1002;
     public static final int EMBERFEN_ID = 1003;
     public static final int FROSTVEIL_ID = 1004;
-    public static final int SKyGLASS_HIGHLANDS_ID = 1005;
+    public static final int SKYGLASS_HIGHLANDS_ID = 1005;
     public static final int SALTWIND_BASIN_ID = 1006;
 
     private final Map<Integer, BiomeDefinition> byId;
@@ -53,7 +53,7 @@ public final class BiomeRegistry {
                         0.15, 0.57, 0.57, 1.18, 0.012,
                         state("minecraft:snow_block"), state("minecraft:dirt"),
                         state("minecraft:spruce_log"), state("minecraft:spruce_leaves"), 4, 7),
-                new BiomeDefinition(SKyGLASS_HIGHLANDS_ID, "skyglass_highlands", "Skyglass Highlands",
+                new BiomeDefinition(SKYGLASS_HIGHLANDS_ID, "skyglass_highlands", "Skyglass Highlands",
                         0.31, 0.43, 0.82, 1.55, 0.014,
                         state("minecraft:stone"), state("minecraft:stone"),
                         state("minecraft:spruce_log"), state("minecraft:spruce_leaves"), 3, 5),
@@ -93,6 +93,30 @@ public final class BiomeRegistry {
             }
         }
         return best;
+    }
+
+    /**
+     * Smoothly blends the terrain influence of nearby biome climates. Biome
+     * labels remain discrete, but the underlying landform does not jump at
+     * biome borders.
+     */
+    public double blendedReliefMultiplier(ClimateSample climate) {
+        Objects.requireNonNull(climate, "climate");
+        double weightedRelief = 0.0;
+        double totalWeight = 0.0;
+        for (BiomeDefinition candidate : byId.values().stream()
+                .sorted(java.util.Comparator.comparingInt(BiomeDefinition::id)).toList()) {
+            double temperature = climate.temperature() - candidate.targetTemperature();
+            double moisture = climate.moisture() - candidate.targetMoisture();
+            double elevation = climate.elevation() - candidate.targetElevation();
+            double score = temperature * temperature * 1.35
+                    + moisture * moisture
+                    + elevation * elevation * 1.15;
+            double weight = 1.0 / ((score + 0.035) * (score + 0.035));
+            weightedRelief += candidate.reliefMultiplier() * weight;
+            totalWeight += weight;
+        }
+        return weightedRelief / totalWeight;
     }
 
     private static BlockState state(String identifier) {

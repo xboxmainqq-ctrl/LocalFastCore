@@ -15,11 +15,6 @@ import java.util.Objects;
 public final class OverworldChunkGenerator implements ChunkGenerator {
     public static final int DEFAULT_SEA_LEVEL = 62;
 
-    private static final int BROAD_SCALE = 112;
-    private static final int DETAIL_SCALE = 37;
-    private static final int BASE_HEIGHT = 68;
-    private static final int HEIGHT_AMPLITUDE = 19;
-
     private static final BlockState BEDROCK = new BlockState("minecraft:bedrock");
     private static final BlockState STONE = new BlockState("minecraft:stone");
     private static final BlockState DIRT = new BlockState("minecraft:dirt");
@@ -61,7 +56,8 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
                 int surfaceY = terrainHeight(x, z, seed, height);
                 ClimateSample climate = BiomeClimateSampler.sample(x, z, seed, surfaceY);
                 BiomeDefinition biome = biomeRegistry.select(climate);
-                surfaceY = terrainHeight(x, z, seed, height, biome.reliefMultiplier());
+                surfaceY = terrainHeight(x, z, seed, height,
+                        biomeRegistry.blendedReliefMultiplier(climate));
                 columnBiomes[localX][localZ] = biome;
                 surfaceHeights[localX][localZ] = surfaceY;
                 BlockPosition surfacePosition = new BlockPosition(x, surfaceY, z);
@@ -87,14 +83,12 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
     }
 
     private static int terrainHeight(int x, int z, long seed, WorldHeight worldHeight) {
-        return terrainHeight(x, z, seed, worldHeight, 1.0);
+        return TerrainHeightSampler.sample(x, z, seed, worldHeight, 1.0);
     }
 
-    private static int terrainHeight(int x, int z, long seed, WorldHeight worldHeight, double reliefMultiplier) {
-        double broad = valueNoise(x, z, seed, BROAD_SCALE, 0x4f1bbcdcL);
-        double detail = valueNoise(x, z, seed, DETAIL_SCALE, 0x632be59bL);
-        int raw = (int) Math.round(BASE_HEIGHT + broad * HEIGHT_AMPLITUDE * reliefMultiplier + detail * 4.0 * reliefMultiplier);
-        return clamp(raw, worldHeight.minY() + 2, worldHeight.maxYExclusive() - 2);
+    private static int terrainHeight(
+            int x, int z, long seed, WorldHeight worldHeight, double reliefMultiplier) {
+        return TerrainHeightSampler.sample(x, z, seed, worldHeight, reliefMultiplier);
     }
 
     private static void placeTrees(

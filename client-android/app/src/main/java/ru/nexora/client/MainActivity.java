@@ -477,6 +477,17 @@ public final class MainActivity extends Activity {
         page.addView(chunkPreview, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(300)));
         addSpace(page, 8);
+        LinearLayout blockActions = new LinearLayout(this);
+        blockActions.setOrientation(LinearLayout.HORIZONTAL);
+        blockActions.setGravity(Gravity.CENTER);
+        Button breakBlock = button("СЛОМАТЬ БЛОК");
+        Button placeBlock = button("ПОСТАВИТЬ БЛОК");
+        blockActions.addView(breakBlock, new LinearLayout.LayoutParams(0, dp(48), 1f));
+        blockActions.addView(placeBlock, new LinearLayout.LayoutParams(0, dp(48), 1f));
+        breakBlock.setOnClickListener(v -> showBlockActionDialog(false));
+        placeBlock.setOnClickListener(v -> showBlockActionDialog(true));
+        page.addView(blockActions, matchWrap());
+        addSpace(page, 8);
         LinearLayout playersCard = card();
         page.addView(playersCard, matchWrap());
         playersCard.addView(text("ИГРОКИ В МИРЕ", 12, MUTED, true), matchWrap());
@@ -604,6 +615,55 @@ public final class MainActivity extends Activity {
         page.addView(footer, matchWrap());
 
         return scroll;
+    }
+
+    private void showBlockActionDialog(boolean place) {
+        LinearLayout fields = new LinearLayout(this);
+        fields.setOrientation(LinearLayout.VERTICAL);
+        fields.setPadding(dp(20), dp(8), dp(20), dp(4));
+        EditText x = new EditText(this);
+        EditText y = new EditText(this);
+        EditText z = new EditText(this);
+        x.setHint("X"); y.setHint("Y"); z.setHint("Z");
+        x.setInputType(android.text.InputType.TYPE_CLASS_NUMBER
+                | android.text.InputType.TYPE_NUMBER_FLAG_SIGNED);
+        y.setInputType(android.text.InputType.TYPE_CLASS_NUMBER
+                | android.text.InputType.TYPE_NUMBER_FLAG_SIGNED);
+        z.setInputType(android.text.InputType.TYPE_CLASS_NUMBER
+                | android.text.InputType.TYPE_NUMBER_FLAG_SIGNED);
+        fields.addView(x, matchWrap());
+        fields.addView(y, matchWrap());
+        fields.addView(z, matchWrap());
+        EditText blockId = null;
+        if (place) {
+            blockId = new EditText(this);
+            blockId.setSingleLine(true);
+            blockId.setText("minecraft:dirt");
+            blockId.setHint("ID блока");
+            fields.addView(blockId, matchWrap());
+        }
+        EditText selectedBlockId = blockId;
+        new AlertDialog.Builder(this)
+                .setTitle(place ? "Поставить блок" : "Сломать блок")
+                .setMessage("Введи координаты блока в мире. Сервер проверит дистанцию и инвентарь.")
+                .setView(fields)
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton(place ? "Поставить" : "Сломать", (dialog, which) -> {
+                    try {
+                        int blockX = Integer.parseInt(x.getText().toString().trim());
+                        int blockY = Integer.parseInt(y.getText().toString().trim());
+                        int blockZ = Integer.parseInt(z.getText().toString().trim());
+                        String id = selectedBlockId == null ? "" : selectedBlockId.getText().toString().trim();
+                        NetherNetAndroidClient client = netherNetClient;
+                        if (client == null || !client.sendBlockAction(place, blockX, blockY, blockZ, id)) {
+                            Toast.makeText(this, "Не удалось отправить действие блоку", Toast.LENGTH_SHORT).show();
+                        } else {
+                            Toast.makeText(this, "Действие отправлено серверу", Toast.LENGTH_SHORT).show();
+                        }
+                    } catch (NumberFormatException invalid) {
+                        Toast.makeText(this, "Координаты должны быть целыми числами", Toast.LENGTH_SHORT).show();
+                    }
+                }).show();
     }
 
     private void toggleConnection() {

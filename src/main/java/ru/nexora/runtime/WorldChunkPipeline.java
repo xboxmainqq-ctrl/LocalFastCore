@@ -86,7 +86,10 @@ public final class WorldChunkPipeline implements RuntimeModule {
 
     public synchronized boolean cancel(ChunkPosition position) {
         Objects.requireNonNull(position, "position");
-        return started && generation.cancel(position);
+        if (!started || !generation.cancel(position)) return false;
+        CompletableFuture<Boolean> waiter = asyncWaiters.remove(position);
+        if (waiter != null) waiter.complete(false);
+        return true;
     }
 
     /**

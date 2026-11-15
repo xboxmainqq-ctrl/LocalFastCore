@@ -138,8 +138,9 @@ class BedrockBatchCompressionCodecTest {
     }
 
     private static byte[] bytes(ByteBuffer buffer) {
-        byte[] result = new byte[buffer.remaining()];
-        buffer.get(result);
+        ByteBuffer copy = buffer.duplicate();
+        byte[] result = new byte[copy.remaining()];
+        copy.get(result);
         return result;
     }
 }

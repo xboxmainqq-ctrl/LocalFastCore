@@ -56,6 +56,7 @@ class BedrockRequestNetworkSettingsPacketCodecTest {
         input.put((byte) 0x66);
         input.flip();
         input.position(1);
+        input.limit(5);
 
         BedrockRequestNetworkSettingsPacket decoded =
                 BedrockRequestNetworkSettingsPacketCodec.decodePayload(input);

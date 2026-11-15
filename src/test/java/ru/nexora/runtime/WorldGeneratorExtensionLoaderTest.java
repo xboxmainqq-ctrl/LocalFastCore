@@ -11,7 +11,7 @@ import java.util.jar.JarOutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class WorldGeneratorExtensionLoaderTest {
+public class WorldGeneratorExtensionLoaderTest {
     @TempDir
     Path temporaryDirectory;
 

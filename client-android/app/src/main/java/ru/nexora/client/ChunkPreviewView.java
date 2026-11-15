@@ -38,7 +38,19 @@ final class ChunkPreviewView extends GLSurfaceView {
     private float previousX;
     private float previousY;
     private float previousSpan;
+    private float touchDownX;
+    private float touchDownY;
+    private boolean dragged;
     private boolean scaling;
+    private volatile BlockTargetListener blockTargetListener;
+
+    interface BlockTargetListener {
+        void onBlockTarget(int x, int y, int z, int placeX, int placeY, int placeZ);
+    }
+
+    void setBlockTargetListener(BlockTargetListener listener) {
+        blockTargetListener = listener;
+    }
     private volatile MovementListener movementListener;
 
     interface MovementListener {
@@ -195,6 +207,9 @@ final class ChunkPreviewView extends GLSurfaceView {
                 if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
                 previousX = event.getX();
                 previousY = event.getY();
+                touchDownX = previousX;
+                touchDownY = previousY;
+                dragged = false;
                 previousSpan = 0f;
                 scaling = false;
                 return true;
@@ -202,6 +217,7 @@ final class ChunkPreviewView extends GLSurfaceView {
                 if (!scaling && event.getPointerCount() == 1) {
                     float dx = event.getX() - previousX;
                     float dy = event.getY() - previousY;
+                    if (Math.hypot(event.getX() - touchDownX, event.getY() - touchDownY) > 18f) dragged = true;
                     renderer.orbitBy(dx * 0.45f, -dy * 0.35f);
                     requestRender();
                 }
@@ -209,6 +225,14 @@ final class ChunkPreviewView extends GLSurfaceView {
                 previousY = event.getY();
                 return true;
             case MotionEvent.ACTION_UP:
+                if (!scaling && !dragged && Math.hypot(event.getX() - touchDownX, event.getY() - touchDownY) <= 18f) {
+                    float tapX = event.getX();
+                    float tapY = event.getY();
+                    queueEvent(() -> renderer.pickBlock(tapX, tapY));
+                }
+                previousSpan = 0f;
+                scaling = false;
+                return true;
             case MotionEvent.ACTION_CANCEL:
                 previousSpan = 0f;
                 scaling = false;
@@ -513,6 +537,49 @@ final class ChunkPreviewView extends GLSurfaceView {
             drawRemotePlayerLabels();
             GLES20.glDisableVertexAttribArray(positionHandle);
             GLES20.glDisableVertexAttribArray(colorHandle);
+        }
+
+
+        private void pickBlock(float screenX, float screenY) {
+            if (surfaceWidth <= 0 || surfaceHeight <= 0) return;
+            float[] inverse = new float[16];
+            if (!Matrix.invertM(inverse, 0, mvp, 0)) return;
+            float ndcX = 2f * screenX / surfaceWidth - 1f;
+            float ndcY = 1f - 2f * screenY / surfaceHeight;
+            float[] near = unproject(inverse, ndcX, ndcY, -1f);
+            float[] far = unproject(inverse, ndcX, ndcY, 1f);
+            if (near == null || far == null) return;
+            float dx = far[0] - near[0], dy = far[1] - near[1], dz = far[2] - near[2];
+            float length = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+            if (length < 0.0001f) return;
+            dx /= length; dy /= length; dz /= length;
+            int lastX = Integer.MIN_VALUE, lastY = Integer.MIN_VALUE, lastZ = Integer.MIN_VALUE;
+            int emptyX = lastX, emptyY = lastY, emptyZ = lastZ;
+            for (float t = 0.08f; t <= 6f; t += 0.035f) {
+                int bx = Math.round(near[0] + dx * t);
+                int by = Math.round(near[1] + dy * t);
+                int bz = Math.round(near[2] + dz * t);
+                if (bx == lastX && by == lastY && bz == lastZ) continue;
+                lastX = bx; lastY = by; lastZ = bz;
+                if (collisionBlocks.contains(new BlockPosition(bx, by, bz))) {
+                    BlockTargetListener listener = blockTargetListener;
+                    if (listener != null && emptyX != Integer.MIN_VALUE) {
+                        listener.onBlockTarget(bx + centerChunkX * 16 - 16, by,
+                                bz + centerChunkZ * 16 - 16,
+                                emptyX + centerChunkX * 16 - 16, emptyY,
+                                emptyZ + centerChunkZ * 16 - 16);
+                    }
+                    return;
+                }
+                emptyX = bx; emptyY = by; emptyZ = bz;
+            }
+        }
+
+        private float[] unproject(float[] inverse, float x, float y, float z) {
+            float[] point = new float[4];
+            Matrix.multiplyMV(point, 0, inverse, 0, new float[]{x, y, z, 1f}, 0);
+            if (Math.abs(point[3]) < 0.00001f) return null;
+            return new float[]{point[0] / point[3], point[1] / point[3], point[2] / point[3]};
         }
 
         private void drawRemotePlayerLabels() {

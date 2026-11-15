@@ -146,11 +146,14 @@ The user clarified on 2026-11-15 that the main product must be a server platform
 - Keep the Bedrock adapter isolated from the canonical NEXORA Core and prove each supported client version on real devices.
 - Never copy Minecraft source code or proprietary assets; use clean-room protocol work and original or properly licensed content.
 
-### Delivery sequence for this platform model
+### Delivery sequence — server first (confirmed 2026-11-15)
 
-1. Finish the playable Android client and the shared NEXORA Core foundations.
-2. Package and test an independently installable dedicated server.
-3. Stabilize the versioned Extension API and data/content package formats.
-4. Build the client-side visual/content editors and resource-pack pipeline.
-5. Add server management UI, package installation/validation and safe update/rollback workflows.
-6. Add the optional Bedrock compatibility gateway after the NEXORA client/server path is reliable.
+The user explicitly changed the immediate priority: **finish the independently installable dedicated server before continuing client development.** Do not switch back to client-first work unless the user changes this decision.
+
+1. Make the dedicated server independently installable and runnable on hosting, with a clear distribution, startup instructions, configuration and clean shutdown.
+2. Implement server configuration and persistent world management (world list, seed, height, ruleset and per-world settings).
+3. Implement a generator registry with selectable built-in presets and a documented extension point for custom generators. Generator settings must cover seed, terrain/biomes, world height, resources/ores and structures as those systems become available.
+4. Stabilize the versioned server Extension API and data/content package formats; validate dependencies, permissions, compatibility and safe failure/rollback.
+5. Verify the server artifact and acceptance tests on CI, including fresh install, startup, world generation, save/restart and configuration validation.
+6. Only after the server milestone is verified, resume NEXORA Client work: connect to the dedicated server, then build visual/content editors and resource-pack workflows.
+7. Add the optional Bedrock compatibility gateway after the NEXORA client/server path is reliable.

@@ -8,6 +8,32 @@ import java.util.UUID;
 import static org.junit.Assert.*;
 
 public class NexoraAndroidProtocolCodecTest {
+
+    @Test
+    public void encodesBlockActionsAndDecodesAuthoritativeBlockUpdates() {
+        byte[] request = NexoraAndroidProtocolCodec.encodeBlockAction(
+                false, -2, 64, 3, "");
+        assertEquals(21, request.length);
+        assertEquals(14, Byte.toUnsignedInt(request[6]));
+        assertEquals(1, Byte.toUnsignedInt(request[7]));
+        ByteBuffer requestValues = ByteBuffer.wrap(request);
+        requestValues.position(8);
+        assertEquals(-2, requestValues.getInt());
+        assertEquals(64, requestValues.getInt());
+        assertEquals(3, requestValues.getInt());
+
+        byte[] blockId = "minecraft:stone".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        ByteBuffer update = ByteBuffer.allocate(20 + blockId.length);
+        update.put(new byte[] {'N','X','R','A',1,2,15});
+        update.putInt(-2).putInt(64).putInt(3).put((byte) blockId.length).put(blockId);
+        NexoraAndroidProtocolCodec.BlockUpdate decoded =
+                NexoraAndroidProtocolCodec.decodeBlockUpdate(update.array());
+        assertEquals(-2, decoded.x());
+        assertEquals(64, decoded.y());
+        assertEquals(3, decoded.z());
+        assertEquals("minecraft:stone", decoded.blockId());
+    }
+
     @Test
     public void clientHelloMatchesTheServerGoldenVector() {
         byte[] expected = new byte[] {

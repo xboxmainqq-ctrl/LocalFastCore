@@ -128,23 +128,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                                         AsyncChunkLoader asyncChunkLoader) {
         this(serverId, maxMessageBytes, worldInfoSupplier, worldSupplier, chunkLoader,
                 readyListener, entities, inventories, inventoryStorage, resourcePacks,
-                asyncChunkLoader, (PlayerChunkStreamingManager) null);
-    }
-
-    public NexoraPrivateProtocolHandler(UUID serverId, int maxMessageBytes,
-                                        Supplier<NexoraWorldInfo> worldInfoSupplier,
-                                        Supplier<World> worldSupplier,
-                                        Function<ChunkPosition, Boolean> chunkLoader,
-                                        Consumer<TransportConnection> readyListener,
-                                        EntityRegistry entities,
-                                        Map<UUID, PlayerInventory> inventories,
-                                        FilePlayerInventoryStorage inventoryStorage,
-                                        List<BedrockResourcePackTransferCodec.Pack> resourcePacks,
-                                        AsyncChunkLoader asyncChunkLoader,
-                                        PlayerChunkStreamingManager chunkStreamingManager) {
-        this(serverId, maxMessageBytes, worldInfoSupplier, worldSupplier, chunkLoader,
-                readyListener, entities, inventories, inventoryStorage, resourcePacks,
-                asyncChunkLoader, () -> chunkStreamingManager);
+                asyncChunkLoader, () -> null);
     }
 
     public NexoraPrivateProtocolHandler(UUID serverId, int maxMessageBytes,

@@ -250,6 +250,25 @@ class NexoraPrivateProtocolHandlerTest {
     }
 
     @Test
+    void cancelledAsyncChunkRequestDoesNotDisconnectPlayer() {
+        InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
+        CompletableFuture<Boolean> chunkReady = new CompletableFuture<>();
+        FakeConnection connection = new FakeConnection();
+        NexoraWorldInfo info = new NexoraWorldInfo("world", 0, 128, 0, 65, 0, 20, 1);
+        new NexoraPrivateProtocolHandler(UUID.randomUUID(), 8 * 1024 * 1024,
+                () -> info, () -> world, null, ignored -> { },
+                new EntityRegistry(), new java.util.concurrent.ConcurrentHashMap<>(),
+                null, List.of(), ignored -> chunkReady).accept(connection);
+
+        connection.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
+        connection.deliver(NexoraChunkDataCodec.encodeChunkRequest(1, 1));
+        chunkReady.complete(false);
+
+        assertFalse(connection.closed,
+                "a stale or cancelled chunk request must not terminate the player session");
+    }
+
+    @Test
     void validatesMovementAndReturnsAuthoritativePosition() {
         InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
         FlatChunkGenerator generator = new FlatChunkGenerator(64, 5,

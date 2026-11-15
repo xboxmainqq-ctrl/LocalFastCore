@@ -318,6 +318,17 @@ public final class BedrockAndroidPacketCodec {
                 | (input.get() << 24);
     }
 
+    private static long readLittleEndianInt64(ByteBuffer input) {
+        if (input.remaining() < Long.BYTES) {
+            throw new IllegalArgumentException("Truncated little-endian int64");
+        }
+        long value = 0L;
+        for (int i = 0; i < Long.BYTES; i++) {
+            value |= (long) Byte.toUnsignedInt(input.get()) << (i * 8);
+        }
+        return value;
+    }
+
     private static boolean readBoolean(ByteBuffer input) {
         if (!input.hasRemaining()) {
             throw new IllegalArgumentException("Truncated Bedrock boolean");

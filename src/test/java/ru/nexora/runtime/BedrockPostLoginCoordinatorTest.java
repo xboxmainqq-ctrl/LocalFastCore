@@ -50,8 +50,8 @@ class BedrockPostLoginCoordinatorTest {
         assertEquals(0, worldStarts.get());
         assertEquals(0, playReady.get());
 
-        coordinator.handleMessage(connection, response("ResourcePackStackFinished"));
         coordinator.handleMessage(connection, resourcePacksReadyForValidation());
+        coordinator.handleMessage(connection, response("ResourcePackStackFinished"));
         assertEquals(1, worldStarts.get());
         assertEquals(1, playReady.get());
         assertTrue(connection.isOpen());
@@ -103,8 +103,8 @@ class BedrockPostLoginCoordinatorTest {
         assertEquals(5, connection.sent.size());
         assertEquals(BedrockResourcePackCodec.RESOURCE_PACK_STACK_PACKET_ID,
                 decodeSentPacket(connection.sent.get(4)).header().packetId());
-        coordinator.handleMessage(connection, response("ResourcePackStackFinished"));
         coordinator.handleMessage(connection, resourcePacksReadyForValidation());
+        coordinator.handleMessage(connection, response("ResourcePackStackFinished"));
         assertEquals(1, worldStarts.get());
         assertTrue(connection.isOpen());
         coordinator.close();
@@ -126,8 +126,8 @@ class BedrockPostLoginCoordinatorTest {
         FakeConnection connection = new FakeConnection();
         coordinator.accept(connection, player());
         coordinator.handleMessage(connection, response("DownloadingFinished"));
-        coordinator.handleMessage(connection, response("ResourcePackStackFinished"));
         coordinator.handleMessage(connection, resourcePacksReadyForValidation());
+        coordinator.handleMessage(connection, response("ResourcePackStackFinished"));
 
         // This frame represents a client SubChunkRequest received after
         // StartGame/skeleton chunks were sent but before startup completes.

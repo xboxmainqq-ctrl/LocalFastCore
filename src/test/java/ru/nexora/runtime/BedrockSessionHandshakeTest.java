@@ -20,7 +20,7 @@ class BedrockSessionHandshakeTest {
         assertEquals(BedrockHandshakeState.AWAITING_LOGIN, handshake.state());
 
         assertEquals(BedrockHandshakeResult.ACCEPTED,
-                handshake.receiveLogin(new BedrockLoginPacket(2225, "opaque-request")));
+                handshake.receiveLogin(new BedrockLoginPacket(2225, "opaque-request", "")));
         assertEquals(BedrockHandshakeState.AUTHENTICATION_PENDING, handshake.state());
 
         assertEquals(BedrockHandshakeResult.ACCEPTED, handshake.markAuthenticated());
@@ -47,7 +47,7 @@ class BedrockSessionHandshakeTest {
 
         assertEquals(BedrockHandshakeResult.INVALID_STATE, handshake.markNetworkSettingsSent());
         assertEquals(BedrockHandshakeResult.INVALID_STATE,
-                handshake.receiveLogin(new BedrockLoginPacket(2225, "opaque-request")));
+                handshake.receiveLogin(new BedrockLoginPacket(2225, "opaque-request", "")));
         assertEquals(BedrockHandshakeResult.INVALID_STATE, handshake.markAuthenticated());
         assertEquals(BedrockHandshakeResult.INVALID_STATE, handshake.markPlayReady());
         assertEquals(BedrockHandshakeState.AWAITING_NETWORK_SETTINGS_REQUEST, handshake.state());
@@ -57,12 +57,12 @@ class BedrockSessionHandshakeTest {
     void rejectsLoginWithDifferentOrUnsupportedProtocol() {
         BedrockSessionHandshake mismatch = acceptedThroughSettings();
         assertEquals(BedrockHandshakeResult.LOGIN_PROTOCOL_MISMATCH,
-                mismatch.receiveLogin(new BedrockLoginPacket(2224, "opaque-request")));
+                mismatch.receiveLogin(new BedrockLoginPacket(2224, "opaque-request", "")));
         assertEquals(BedrockHandshakeState.CLOSED, mismatch.state());
 
         BedrockSessionHandshake unsupported = acceptedThroughSettings();
         assertEquals(BedrockHandshakeResult.LOGIN_PROTOCOL_MISMATCH,
-                unsupported.receiveLogin(new BedrockLoginPacket(2226, "opaque-request")));
+                unsupported.receiveLogin(new BedrockLoginPacket(2226, "opaque-request", "")));
         assertEquals(BedrockHandshakeState.CLOSED, unsupported.state());
     }
 
@@ -83,7 +83,7 @@ class BedrockSessionHandshakeTest {
     void authenticationCannotBeSkippedAndCloseIsTerminal() {
         BedrockSessionHandshake handshake = acceptedThroughSettings();
         assertEquals(BedrockHandshakeResult.ACCEPTED,
-                handshake.receiveLogin(new BedrockLoginPacket(2225, "opaque-request")));
+                handshake.receiveLogin(new BedrockLoginPacket(2225, "opaque-request", "")));
 
         assertEquals(BedrockHandshakeResult.ACCEPTED, handshake.markAuthenticated());
         assertEquals(BedrockHandshakeState.LOGIN_SUCCESS_SENT, handshake.state());
@@ -91,7 +91,7 @@ class BedrockSessionHandshakeTest {
 
         assertEquals(BedrockHandshakeState.CLOSED, handshake.state());
         assertEquals(BedrockHandshakeResult.SESSION_CLOSED,
-                handshake.receiveLogin(new BedrockLoginPacket(2225, "another-request")));
+                handshake.receiveLogin(new BedrockLoginPacket(2225, "another-request", "")));
     }
 
     private static BedrockSessionHandshake acceptedThroughSettings() {

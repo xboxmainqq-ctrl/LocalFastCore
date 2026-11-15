@@ -4,7 +4,7 @@ Status: initial RPG domain foundation implemented; multiplayer gameplay integrat
 
 ## Product direction
 
-NEXORA is a standalone fantasy MMORPG with its own Android client and its own versioned client/server protocol. Minecraft/Bedrock is not a required client platform. Do not add a dependency on Bukkit, Nukkit, or a Minecraft server API to the game domain.
+NEXORA is a Minecraft-style multiplayer platform with its own server core and Android client. RPG is the flagship game mode within the block-world platform, not a separate standalone MMORPG. Keep RPG rules modular and server-authoritative, but integrate them with shared world, block, entity, inventory and session systems. Minecraft Bedrock interoperability is a target for a dedicated compatibility adapter; do not claim compatibility until real-client tests pass.
 
 ## Server-authoritative layers
 

@@ -220,7 +220,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 connection.close();
                 return;
             }
-            if (worldInfo != null && worldSupplier != null && chunkLoader != null && send(connection,
+            if (worldInfo != null && worldSupplier != null && (chunkLoader != null || asyncChunkLoader != null) && send(connection,
                     NexoraMovementPacketCodec.encodeServerPosition(
                             new NexoraMovementValidator.Position(
                                     worldInfo.spawnX() + 0.5,
@@ -230,7 +230,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 connection.close();
                 return;
             }
-            if (worldSupplier == null || chunkLoader == null || worldInfo == null) {
+            if (worldSupplier == null || (chunkLoader == null && asyncChunkLoader == null) || worldInfo == null) {
                 connection.setMessageListener(ignored -> connection.close());
             } else {
                 java.util.Set<ChunkPosition> requestedChunks = ConcurrentHashMap.newKeySet();

@@ -254,6 +254,18 @@ public class BedrockAndroidPacketCodecTest {
     }
 
     @Test
+    public void encodesResourcePacksReadyForValidationPacket() {
+        BedrockAndroidNetworkSettings settings =
+                new BedrockAndroidNetworkSettings(0, 0xffff, false, 0, 0.0f);
+        byte[] encoded = BedrockAndroidPacketCodec.encodeResourcePacksReadyForValidation(settings);
+        List<BedrockAndroidServerPacket> packets =
+                BedrockAndroidPacketCodec.decodeServerBatch(encoded, settings);
+        assertEquals(1, packets.size());
+        assertEquals(340, packets.get(0).packetId());
+        assertEquals(0, packets.get(0).payload().length);
+    }
+
+    @Test
     public void encodesChunkRequestsAndSendPacksResponse() {
         BedrockAndroidNetworkSettings settings =
                 new BedrockAndroidNetworkSettings(0, 0xffff, false, 0, 0.0f);

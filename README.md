@@ -1,10 +1,10 @@
 # NEXORA Standalone Runtime
 
-## Target Minecraft version
+## Product direction
 
-**The target game version for NEXORA development is Minecraft Bedrock Edition 1.26.60 (protocol 2225).** New protocol work, packet codecs, and compatibility tests should use this version as the baseline unless the project explicitly changes its target.
+**NEXORA is a standalone fantasy MMORPG with its own Android client and its own versioned network protocol.** Minecraft Bedrock is not a required client platform. The initial product focus is the NEXORA client ↔ NEXORA server experience: original worlds, classes, skills, combat, quests, dungeons, bosses, items and progression.
 
-NEXORA is still developed as an independent runtime with its own Android client and private NEXORA connection handshake. Targeting Bedrock 1.26.60 does not mean that an unmodified/vanilla Minecraft client can currently connect; Bedrock compatibility is being implemented and verified in stages.
+Bedrock protocol code already present in the repository is retained as an optional compatibility research path, but it is not the product baseline and must not delay the standalone RPG.
 
 
 This module is the beginning of the independent NEXORA server process. It has **no Nukkit, Nukkit-MOT, Bukkit, or other game-server API dependency**.
@@ -32,7 +32,9 @@ In the NEXORA Android client, enter `http://<server-LAN-IP>:8080`. Confirm the s
 
 ## Current implementation
 
-- Standalone Java 21 Maven module.
+- Standalone Java 21 Maven module with no Nukkit, Bukkit, or Minecraft server API dependency.
+- Initial RPG domain foundation: four namespaced classes (Warrior, Mage, Ranger, Guardian), immutable base attributes, and deterministic class registration.
+- Server-side XP progression up to level 100, with five attribute points per level and bounded validation; see [NEXORA RPG architecture](docs/architecture/nexora-rpg.md).
 - Explicit server lifecycle states.
 - Runtime module registration with unique identifiers.
 - Immutable, validated standalone server settings (Bedrock UDP default port, player cap, tick rate, view distance, online-mode flag, and normalized data directory).

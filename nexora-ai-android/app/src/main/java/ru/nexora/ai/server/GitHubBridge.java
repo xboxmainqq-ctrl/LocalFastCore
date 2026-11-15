@@ -247,6 +247,8 @@ public final class GitHubBridge {
             String repo = safeRepo(repoInput);
             String branch = safeBranch(branchInput);
             String folder = folderInput.isEmpty() ? "" : safeFilePath(folderInput);
+            JSONObject branchRef = request("GET", "/repos/" + repo + "/git/ref/heads/" + encodePath(branch), null);
+            String headSha = branchRef.getJSONObject("object").getString("sha");
             String path = "/repos/" + repo + "/contents" + (folder.isEmpty() ? "" : "/" + encodeContentPath(folder)) + "?ref=" + encodeQuery(branch);
             JSONArray raw = requestArray(path);
             JSONArray resultFiles = new JSONArray();
@@ -267,6 +269,7 @@ public final class GitHubBridge {
             result.put("files", resultFiles);
             result.put("folder", folder);
             result.put("branch", branch);
+            result.put("head_sha", headSha);
             return result;
         });
     }
@@ -337,6 +340,10 @@ public final class GitHubBridge {
 
             JSONObject ref = request("GET", "/repos/" + repo + "/git/ref/heads/" + encodePath(branch), null);
             String parentSha = ref.getJSONObject("object").getString("sha");
+            String expectedHead = files.optJSONObject(0) == null ? "" : files.optJSONObject(0).optString("expected_head_sha", "");
+            if (!expectedHead.isEmpty() && !expectedHead.equals(parentSha)) {
+                throw new IllegalStateException("Ветка изменилась после загрузки проекта. Обнови файлы и повтори проверку; конфликтующие изменения не перезаписаны.");
+            }
             JSONObject parentCommit = request("GET", "/repos/" + repo + "/git/commits/" + parentSha, null);
             String baseTree = parentCommit.getJSONObject("tree").getString("sha");
 
@@ -345,21 +352,33 @@ public final class GitHubBridge {
             for (int i = 0; i < files.length(); i++) {
                 JSONObject file = files.getJSONObject(i);
                 String path = safeFilePath(file.optString("path", ""));
-                String content = file.optString("content", "");
-                byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
-                totalBytes += bytes.length;
-                if (totalBytes > 1024L * 1024L) {
-                    throw new IllegalArgumentException("Общий размер файлов в одном коммите ограничен 1 МБ.");
+                for (int j = 0; j < i; j++) {
+                    if (path.equals(safeFilePath(files.getJSONObject(j).optString("path", "")))) {
+                        throw new IllegalArgumentException("Путь файла указан дважды: " + path);
+                    }
                 }
-                JSONObject blobBody = new JSONObject();
-                blobBody.put("content", content);
-                blobBody.put("encoding", "utf-8");
-                JSONObject blob = request("POST", "/repos/" + repo + "/git/blobs", blobBody);
+                String action = file.optString("action", "upsert");
                 JSONObject entry = new JSONObject();
                 entry.put("path", path);
                 entry.put("mode", "100644");
                 entry.put("type", "blob");
-                entry.put("sha", blob.getString("sha"));
+                if ("delete".equals(action)) {
+                    entry.put("sha", JSONObject.NULL);
+                } else if ("upsert".equals(action) || "create".equals(action) || "update".equals(action)) {
+                    String content = file.optString("content", "");
+                    byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
+                    totalBytes += bytes.length;
+                    if (totalBytes > 1024L * 1024L) {
+                        throw new IllegalArgumentException("Общий размер файлов в одном коммите ограничен 1 МБ.");
+                    }
+                    JSONObject blobBody = new JSONObject();
+                    blobBody.put("content", content);
+                    blobBody.put("encoding", "utf-8");
+                    JSONObject blob = request("POST", "/repos/" + repo + "/git/blobs", blobBody);
+                    entry.put("sha", blob.getString("sha"));
+                } else {
+                    throw new IllegalArgumentException("Неизвестная операция для файла: " + action);
+                }
                 tree.put(entry);
             }
 

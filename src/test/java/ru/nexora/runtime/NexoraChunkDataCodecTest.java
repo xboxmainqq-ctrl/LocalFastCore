@@ -48,8 +48,8 @@ class NexoraChunkDataCodecTest {
     @Test
     void rejectsDuplicateBlocksAndTrailingBytes() {
         assertThrows(IllegalArgumentException.class, () -> new NexoraChunkData(0, 0, List.of(
-                new NexoraChunkData.Block(1, 2, 3, "minecraft:stone"),
-                new NexoraChunkData.Block(1, 2, 3, "minecraft:dirt"))));
+                new NexoraChunkData.Block(1, 3, 3, "minecraft:stone"),
+                new NexoraChunkData.Block(1, 3, 3, "minecraft:dirt"))));
         byte[] encoded = NexoraChunkDataCodec.encodeChunkData(new NexoraChunkData(0, 0, List.of()));
         byte[] trailing = java.util.Arrays.copyOf(encoded, encoded.length + 1);
         assertThrows(IllegalArgumentException.class,

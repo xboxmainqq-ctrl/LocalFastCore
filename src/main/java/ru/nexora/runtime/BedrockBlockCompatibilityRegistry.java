@@ -50,6 +50,21 @@ public final class BedrockBlockCompatibilityRegistry {
                 new IllegalArgumentException("No Bedrock block mapping registered for: " + worldIdentifier));
     }
 
+    /**
+     * Creates the adapter consumed by the existing Bedrock palette serializer.
+     * NEXORA identifiers are translated before the version-specific runtime ID
+     * lookup; block properties are preserved and must be valid for the target state.
+     */
+    public BedrockRuntimeBlockRegistry adapt(BedrockRuntimeBlockRegistry runtimeRegistry) {
+        Objects.requireNonNull(runtimeRegistry, "runtimeRegistry");
+        return state -> {
+            Objects.requireNonNull(state, "state");
+            BedrockBlockMapping mapping = require(state.identifier());
+            BlockState bedrockState = new BlockState(mapping.bedrockIdentifier(), state.properties());
+            return runtimeRegistry.runtimeId(bedrockState);
+        };
+    }
+
     public boolean supports(String worldIdentifier) { return mappings.containsKey(worldIdentifier); }
     public int size() { return mappings.size(); }
     public Collection<BedrockBlockMapping> mappings() { return mappings.values(); }

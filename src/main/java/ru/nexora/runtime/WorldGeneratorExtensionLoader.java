@@ -69,8 +69,9 @@ public final class WorldGeneratorExtensionLoader implements AutoCloseable {
                     }
                     String id = Objects.requireNonNull(extension.id(),
                             "Generator extension id is null in " + jar);
-                    ChunkGenerator probe = Objects.requireNonNull(extension.createGenerator(),
-                            "Generator extension '" + id + "' returned null in " + jar);
+                    if (id.isBlank()) {
+                        throw new IllegalArgumentException("Generator extension id is blank in " + jar);
+                    }
                     registry.register(id, () -> Objects.requireNonNull(extension.createGenerator(),
                             "Generator extension '" + id + "' returned null"));
                 }

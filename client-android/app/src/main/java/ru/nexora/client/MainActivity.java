@@ -189,7 +189,7 @@ public final class MainActivity extends Activity {
         localPreview = new ChunkPreviewView(this);
         localPreview.setFirstPersonMode(false);
         localPreview.setCenter(0, 0);
-        localPreview.setPlayerSpawn(0, 64, 0);
+        localPreview.setPlayerSpawn(0, terrainHeight(0, 0) + 1, 0);
         for (int chunkX = -1; chunkX <= 1; chunkX++) {
             for (int chunkZ = -1; chunkZ <= 1; chunkZ++) {
                 localPreview.setChunk(createLocalChunk(chunkX, chunkZ));
@@ -253,16 +253,66 @@ public final class MainActivity extends Activity {
     }
 
     private NexoraAndroidProtocolCodec.ChunkData createLocalChunk(int chunkX, int chunkZ) {
-        List<NexoraAndroidProtocolCodec.ChunkBlock> blocks = new ArrayList<>(16 * 16 * 4);
+        List<NexoraAndroidProtocolCodec.ChunkBlock> blocks = new ArrayList<>(16 * 16 * 12);
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
-                blocks.add(new NexoraAndroidProtocolCodec.ChunkBlock(x, 60, z, "minecraft:bedrock"));
-                blocks.add(new NexoraAndroidProtocolCodec.ChunkBlock(x, 61, z, "minecraft:dirt"));
-                blocks.add(new NexoraAndroidProtocolCodec.ChunkBlock(x, 62, z, "minecraft:dirt"));
-                blocks.add(new NexoraAndroidProtocolCodec.ChunkBlock(x, 63, z, "minecraft:grass_block"));
+                int worldX = chunkX * 16 + x;
+                int worldZ = chunkZ * 16 + z;
+                int surface = terrainHeight(worldX, worldZ);
+                for (int y = 48; y <= surface; y++) {
+                    String id = y == surface ? "minecraft:grass_block"
+                            : y >= surface - 3 ? "minecraft:dirt" : "minecraft:stone";
+                    if (y == 48) id = "minecraft:bedrock";
+                    blocks.add(new NexoraAndroidProtocolCodec.ChunkBlock(x, y, z, id));
+                }
+                if (isTreeTrunk(worldX, worldZ)) {
+                    for (int y = surface + 1; y <= surface + 4; y++) {
+                        blocks.add(new NexoraAndroidProtocolCodec.ChunkBlock(
+                                x, y, z, "minecraft:oak_log"));
+                    }
+                    for (int ox = -2; ox <= 2; ox++) {
+                        for (int oz = -2; oz <= 2; oz++) {
+                            for (int oy = 2; oy <= 5; oy++) {
+                                int distance = Math.abs(ox) + Math.abs(oz);
+                                if (distance <= 3 && !(ox == 0 && oz == 0 && oy < 5)) {
+                                    int leafX = worldX + ox - chunkX * 16;
+                                    int leafZ = worldZ + oz - chunkZ * 16;
+                                    // Keep each chunk self-contained; edge foliage appears
+                                    // when the neighboring chunk is generated as well.
+                                    if (leafX >= 0 && leafX < 16 && leafZ >= 0 && leafZ < 16) {
+                                        blocks.add(new NexoraAndroidProtocolCodec.ChunkBlock(
+                                                leafX, surface + oy, leafZ, "minecraft:oak_leaves"));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
         return new NexoraAndroidProtocolCodec.ChunkData(chunkX, chunkZ, blocks);
+    }
+
+    private int terrainHeight(int x, int z) {
+        double broad = Math.sin(x * 0.105) * 2.2 + Math.cos(z * 0.092) * 2.0;
+        double detail = Math.sin((x + z) * 0.24) * 0.9
+                + Math.cos((x - z) * 0.19) * 0.7;
+        return 63 + (int) Math.round(broad + detail);
+    }
+
+    private boolean isTreeTrunk(int x, int z) {
+        int cellX = Math.floorDiv(x + 7, 9);
+        int cellZ = Math.floorDiv(z + 11, 9);
+        long hash = (long) cellX * 341873128712L ^ (long) cellZ * 132897987541L;
+        hash ^= hash >>> 33;
+        hash *= 0xff51afd7ed558ccdL;
+        hash ^= hash >>> 33;
+        int offsetX = Math.floorMod((int) (hash >>> 8), 7) - 3;
+        int offsetZ = Math.floorMod((int) (hash >>> 16), 7) - 3;
+        int treeX = cellX * 9 + offsetX;
+        int treeZ = cellZ * 9 + offsetZ;
+        return x == treeX && z == treeZ
+                && terrainHeight(x, z) >= 61 && terrainHeight(x, z) <= 66;
     }
 
     private View createWorldClientScreen() {

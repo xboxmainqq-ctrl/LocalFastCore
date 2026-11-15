@@ -316,7 +316,7 @@ public final class MainActivity extends Activity {
         addSpace(page, 10);
 
         localPreview = new ChunkPreviewView(this);
-        localPreview.setFirstPersonMode(false);
+        localPreview.setFirstPersonMode(true);
         localPreview.setCenter(0, 0);
         page.addView(localPreview, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
@@ -339,7 +339,7 @@ public final class MainActivity extends Activity {
                         worldId, x, y, z, placeX, placeY, placeZ)));
 
         addSpace(page, 10);
-        Button camera = button("ВИД: ОТ ТРЕТЬЕГО ЛИЦА");
+        Button camera = button("ВИД: ОТ ПЕРВОГО ЛИЦА");
         page.addView(camera, matchWrap());
         camera.setOnClickListener(v -> {
             boolean firstPerson = !camera.getText().toString().contains("ПЕРВОГО");

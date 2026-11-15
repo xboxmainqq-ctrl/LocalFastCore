@@ -135,7 +135,7 @@ public final class NetherNetSignalingServer implements RuntimeModule {
             created.start();
             this.executor = pool;
             this.server = created;
-        } catch (RuntimeException | IOException failure) {
+        } catch (RuntimeException failure) {
             created.stop(0);
             pool.shutdownNow();
             throw failure;

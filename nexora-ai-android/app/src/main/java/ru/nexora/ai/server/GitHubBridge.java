@@ -113,6 +113,67 @@ public final class GitHubBridge {
     }
 
     @JavascriptInterface
+    public void listFiles(String fullName, String branchName, String folderPath) {
+        final String repoInput = fullName == null ? "" : fullName;
+        final String branchInput = branchName == null ? "" : branchName;
+        final String folderInput = folderPath == null ? "" : folderPath.trim();
+        run("workspace_files", () -> {
+            String repo = safeRepo(repoInput);
+            String branch = safeBranch(branchInput);
+            String folder = folderInput.isEmpty() ? "" : safeFilePath(folderInput);
+            String path = "/repos/" + repo + "/contents" + (folder.isEmpty() ? "" : "/" + encodeContentPath(folder)) + "?ref=" + encodeQuery(branch);
+            JSONArray raw = requestArray(path);
+            JSONArray resultFiles = new JSONArray();
+            for (int i = 0; i < raw.length(); i++) {
+                JSONObject entry = raw.optJSONObject(i);
+                if (entry == null) continue;
+                String type = entry.optString("type", "");
+                if (!"file".equals(type) && !"dir".equals(type)) continue;
+                JSONObject item = new JSONObject();
+                item.put("name", entry.optString("name"));
+                item.put("path", entry.optString("path"));
+                item.put("type", type);
+                item.put("size", entry.optLong("size"));
+                item.put("sha", entry.optString("sha"));
+                resultFiles.put(item);
+            }
+            JSONObject result = new JSONObject();
+            result.put("files", resultFiles);
+            result.put("folder", folder);
+            result.put("branch", branch);
+            return result;
+        });
+    }
+
+    @JavascriptInterface
+    public void readFile(String fullName, String branchName, String filePath) {
+        final String repoInput = fullName == null ? "" : fullName;
+        final String branchInput = branchName == null ? "" : branchName;
+        final String fileInput = filePath == null ? "" : filePath;
+        run("workspace_file", () -> {
+            String repo = safeRepo(repoInput);
+            String branch = safeBranch(branchInput);
+            String path = safeFilePath(fileInput);
+            JSONObject file = request("GET", "/repos/" + repo + "/contents/" + encodeContentPath(path)
+                    + "?ref=" + encodeQuery(branch), null);
+            if (!"file".equals(file.optString("type")))
+                throw new IllegalArgumentException("Выбери обычный текстовый файл, а не папку или бинарный объект.");
+            String encoded = file.optString("content", "").replace("\n", "").trim();
+            if (encoded.isEmpty()) throw new IllegalStateException("GitHub не вернул содержимое файла.");
+            byte[] bytes = Base64.decode(encoded, Base64.DEFAULT);
+            if (bytes.length > 512 * 1024)
+                throw new IllegalArgumentException("Редактор пока поддерживает текстовые файлы до 512 КБ.");
+            String content = new String(bytes, StandardCharsets.UTF_8);
+            JSONObject result = new JSONObject();
+            result.put("path", path);
+            result.put("content", content);
+            result.put("sha", file.optString("sha"));
+            result.put("size", bytes.length);
+            return result;
+        });
+    }
+
+    @JavascriptInterface
     public void createBranch(String fullName, String newBranch, String baseBranch) {
         run("create_branch", () -> {
             String repo = safeRepo(fullName);

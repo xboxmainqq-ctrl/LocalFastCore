@@ -89,6 +89,9 @@ public final class NetherNetAndroidClient implements AutoCloseable {
     private volatile BedrockAndroidResourcePackInfo.Pack pendingResourcePack;
     private volatile BedrockAndroidResourcePackDataInfo currentResourcePackDataInfo;
     private volatile BedrockAndroidResourcePackDownload resourcePackDownload;
+    private volatile BedrockAndroidResourcePackDownload nexoraResourcePackDownload;
+    private volatile String nexoraResourcePackName;
+    private volatile BedrockAndroidResourcePackDataInfo nexoraResourcePackDataInfo;
 
     public NetherNetAndroidClient(Context context) {
         appContext = context.getApplicationContext();
@@ -546,6 +549,16 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                     return;
                 }
             }
+            if (complete.length >= 7 && complete[6] == 16) {
+                byte[] packInfo = complete.clone();
+                if (!closed.get()) executor.execute(() -> handleNexoraResourcePackInfo(packInfo));
+                return;
+            }
+            if (complete.length >= 7 && complete[6] == 18) {
+                byte[] packChunk = complete.clone();
+                if (!closed.get()) executor.execute(() -> handleNexoraResourcePackChunk(packChunk));
+                return;
+            }
             if (complete.length >= 7 && complete[6] == 15) {
                 try {
                     NexoraAndroidProtocolCodec.BlockUpdate update =
@@ -807,6 +820,83 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         resourcePackDownload = null;
         currentResourcePackDataInfo = null;
         if (download != null) download.close();
+    }
+
+    private void handleNexoraResourcePackInfo(byte[] payload) {
+        try {
+            if (nexoraResourcePackDownload != null) {
+                throw new IllegalStateException("Повторное объявление ресурс-пака");
+            }
+            NexoraAndroidProtocolCodec.ResourcePackInfo info =
+                    NexoraAndroidProtocolCodec.decodeResourcePackInfo(payload);
+            nexoraResourcePackName = info.resourceName();
+            nexoraResourcePackDataInfo = info.downloadInfo();
+            nexoraResourcePackDownload = new BedrockAndroidResourcePackDownload(
+                    appContext.getCacheDir(), info.downloadInfo());
+            reportStatus("Серверный ресурс-пак • " + info.version() + " • "
+                    + info.downloadInfo().fileSize() / (1024 * 1024) + " МиБ");
+            requestNextNexoraResourcePackChunk();
+        } catch (Exception failure) {
+            reportError("Не удалось подготовить серверный ресурс-пак: "
+                    + (failure.getMessage() == null ? failure.getClass().getSimpleName()
+                    : failure.getMessage()));
+            close();
+        }
+    }
+
+    private void handleNexoraResourcePackChunk(byte[] payload) {
+        BedrockAndroidResourcePackDownload download = nexoraResourcePackDownload;
+        BedrockAndroidResourcePackDataInfo info = nexoraResourcePackDataInfo;
+        String resourceName = nexoraResourcePackName;
+        try {
+            if (download == null || info == null || resourceName == null) {
+                throw new IllegalStateException("Фрагмент получен до объявления ресурс-пака");
+            }
+            BedrockAndroidResourcePackChunk chunk =
+                    NexoraAndroidProtocolCodec.decodeResourcePackChunk(payload);
+            if (!resourceName.equals(chunk.resourceName())) {
+                throw new IllegalArgumentException("Имя ресурс-пака не совпадает");
+            }
+            download.accept(chunk);
+            if (!download.isComplete()) {
+                requestNextNexoraResourcePackChunk();
+                return;
+            }
+
+            File archive = download.finishAndVerify();
+            try {
+                int installed = NexoraResourcePackInstaller.install(appContext, archive);
+                if (installed < 1) {
+                    throw new IllegalStateException("В серверном паке нет поддерживаемых текстур");
+                }
+                NexoraResourcePackLibrary.registerImportedActive(appContext, resourceName);
+                reportStatus("Серверный ресурс-пак установлен • текстур: " + installed);
+            } finally {
+                archive.delete();
+                download.close();
+                nexoraResourcePackDownload = null;
+                nexoraResourcePackDataInfo = null;
+                nexoraResourcePackName = null;
+            }
+            if (!sendReliable(NexoraAndroidProtocolCodec.encodeResourcePackReady())) {
+                throw new IllegalStateException("Не удалось подтвердить установку серверного ресурс-пака");
+            }
+        } catch (Exception failure) {
+            reportError("Ошибка установки серверного ресурс-пака: "
+                    + (failure.getMessage() == null ? failure.getClass().getSimpleName()
+                    : failure.getMessage()));
+            close();
+        }
+    }
+
+    private void requestNextNexoraResourcePackChunk() {
+        BedrockAndroidResourcePackDownload download = nexoraResourcePackDownload;
+        String resourceName = nexoraResourcePackName;
+        if (download == null || resourceName == null
+                || !sendReliable(NexoraAndroidProtocolCodec.encodeResourcePackChunkRequest(
+                        resourceName, download.nextChunkIndex()))) {
+            throw new IllegalStateException("Не удалось запросить следующую часть ресурс-пака");
+        }
     }
 
     private boolean sendNexoraClientHello() {
@@ -1080,6 +1170,11 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         }
         failIceGathering("NEXORA client was closed");
         closeResourcePackDownload();
+        BedrockAndroidResourcePackDownload nexoraDownload = nexoraResourcePackDownload;
+        nexoraResourcePackDownload = null;
+        if (nexoraDownload != null) nexoraDownload.close();
+        nexoraResourcePackDataInfo = null;
+        nexoraResourcePackName = null;
         pendingResourcePackInfo = null;
         pendingResourcePack = null;
         executor.execute(this::closePeerConnection);

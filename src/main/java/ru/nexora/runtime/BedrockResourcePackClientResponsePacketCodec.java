@@ -10,7 +10,7 @@ public final class BedrockResourcePackClientResponsePacketCodec {
     public static final int PACKET_ID = 8;
 
     private static final String[] STATUS_NAMES = {
-            "cancel", "downloading", "downloadingfinished", "resourcepackstackfinished"
+            null, "cancel", "downloading", "downloadingfinished", "resourcepackstackfinished"
     };
 
     private BedrockResourcePackClientResponsePacketCodec() {

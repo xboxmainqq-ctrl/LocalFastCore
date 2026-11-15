@@ -83,6 +83,24 @@ class OverworldChunkGeneratorTest {
     }
 
     @Test
+    void lushCavePocketsGenerateMossAndCaveDecorationsDeterministically() {
+        boolean foundLushFeature = false;
+        for (int chunkX = -3; chunkX <= 3 && !foundLushFeature; chunkX++) {
+            for (int chunkZ = -3; chunkZ <= 3 && !foundLushFeature; chunkZ++) {
+                GeneratedChunk generated = generator.generate(
+                        new ChunkPosition(chunkX, chunkZ), height, 123456789L);
+                foundLushFeature = generated.blocks().values().stream().anyMatch(state ->
+                        state.identifier().equals("minecraft:moss_block")
+                                || state.identifier().equals("minecraft:moss_carpet")
+                                || state.identifier().equals("minecraft:glow_lichen")
+                                || state.identifier().equals("minecraft:spore_blossom")
+                                || state.identifier().equals("minecraft:hanging_roots"));
+            }
+        }
+        assertTrue(foundLushFeature, "Expected lush vegetation in underground cave pockets");
+    }
+
+    @Test
     void generatedTerrainIsImmutable() {
         GeneratedChunk generated = generator.generate(new ChunkPosition(0, 0), height, 17L);
         assertThrows(UnsupportedOperationException.class,

@@ -64,8 +64,8 @@ public final class MainActivity extends Activity {
     private final TextView[] inventorySlotViews = new TextView[36];
     private int selectedInventorySlot = -1;
     private final TextView[] localHotbarViews = new TextView[9];
-    private final String[] localHotbarItems = new String[9];
-    private final int[] localHotbarCounts = new int[9];
+    private final String[] localHotbarItems = new String[36];
+    private final int[] localHotbarCounts = new int[36];
     private int selectedLocalHotbarSlot = 0;
     private final Map<UUID, String> remotePlayerNames = new LinkedHashMap<>();
     private ExecutorService previewGenerationExecutor;
@@ -368,6 +368,9 @@ public final class MainActivity extends Activity {
             });
         }
         refreshLocalHotbar();
+        Button inventoryButton = button("ИНВЕНТАРЬ • 36 СЛОТОВ");
+        page.addView(inventoryButton, matchWrap());
+        inventoryButton.setOnClickListener(view -> showLocalInventoryDialog(worldId));
 
         addSpace(page, 10);
         Button camera = button("ВИД: ОТ ПЕРВОГО ЛИЦА");
@@ -465,7 +468,7 @@ public final class MainActivity extends Activity {
                         localHotbarCounts[0] = 32;
                         selectedLocalHotbarSlot = 0;
                     } else {
-                        for (int slot = 0; slot < 9; slot++) {
+                        for (int slot = 0; slot < 36; slot++) {
                             LocalWorldStore.InventorySlot saved = initialInventory.get(slot);
                             localHotbarItems[slot] = saved.itemId();
                             localHotbarCounts[slot] = saved.count();
@@ -511,8 +514,8 @@ public final class MainActivity extends Activity {
     private void persistLocalInventory(String worldId) {
         ExecutorService executor = previewGenerationExecutor;
         if (executor == null || executor.isShutdown()) return;
-        List<LocalWorldStore.InventorySlot> snapshot = new ArrayList<>(9);
-        for (int slot = 0; slot < 9; slot++) {
+        List<LocalWorldStore.InventorySlot> snapshot = new ArrayList<>(36);
+        for (int slot = 0; slot < 36; slot++) {
             String item = localHotbarItems[slot] == null ? "" : localHotbarItems[slot];
             snapshot.add(new LocalWorldStore.InventorySlot(item, localHotbarCounts[slot]));
         }
@@ -529,7 +532,7 @@ public final class MainActivity extends Activity {
     private boolean canAddLocalItem(String itemId, int amount) {
         if (itemId == null || itemId.isEmpty() || amount <= 0) return false;
         int capacity = 0;
-        for (int slot = 0; slot < 9; slot++) {
+        for (int slot = 0; slot < 36; slot++) {
             if (itemId.equals(localHotbarItems[slot])) capacity += Math.max(0, 64 - localHotbarCounts[slot]);
             else if (localHotbarCounts[slot] == 0) capacity += 64;
         }
@@ -538,7 +541,7 @@ public final class MainActivity extends Activity {
 
     private boolean addLocalItem(String itemId, int amount) {
         if (!canAddLocalItem(itemId, amount)) return false;
-        for (int slot = 0; slot < 9; slot++) {
+        for (int slot = 0; slot < 36; slot++) {
             if (itemId.equals(localHotbarItems[slot]) && localHotbarCounts[slot] < 64) {
                 int accepted = Math.min(amount, 64 - localHotbarCounts[slot]);
                 localHotbarCounts[slot] += accepted;
@@ -549,7 +552,7 @@ public final class MainActivity extends Activity {
                 }
             }
         }
-        for (int slot = 0; slot < 9 && amount > 0; slot++) {
+        for (int slot = 0; slot < 36 && amount > 0; slot++) {
             if (localHotbarCounts[slot] == 0) {
                 int accepted = Math.min(amount, 64);
                 localHotbarItems[slot] = itemId;
@@ -559,6 +562,83 @@ public final class MainActivity extends Activity {
         }
         refreshLocalHotbar();
         return amount == 0;
+    }
+
+    private void showLocalInventoryDialog(String worldId) {
+        GridLayout grid = new GridLayout(this);
+        grid.setColumnCount(9);
+        grid.setRowCount(4);
+        grid.setPadding(dp(8), dp(8), dp(8), dp(8));
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("ИНВЕНТАРЬ • 36 СЛОТОВ")
+                .setView(grid)
+                .setNegativeButton("ЗАКРЫТЬ", null)
+                .create();
+        for (int slot = 0; slot < 36; slot++) {
+            final int slotIndex = slot;
+            TextView cell = text("", 10, TEXT, true);
+            cell.setGravity(Gravity.CENTER);
+            cell.setBackground(rounded(slot < 9 ? PANEL : CARD, 6));
+            GridLayout.LayoutParams params = new GridLayout.LayoutParams(
+                    GridLayout.spec(slot / 9, 1f), GridLayout.spec(slot % 9, 1f));
+            params.width = 0;
+            params.height = dp(54);
+            params.setMargins(dp(2), dp(2), dp(2), dp(2));
+            grid.addView(cell, params);
+            refreshLocalInventoryCell(cell, slotIndex);
+            cell.setOnClickListener(view -> {
+                dialog.dismiss();
+                showLocalInventorySlotActions(worldId, slotIndex);
+            });
+        }
+        dialog.show();
+    }
+
+    private void refreshLocalInventoryCell(TextView cell, int slot) {
+        String item = localHotbarItems[slot];
+        String label = item == null || item.isEmpty() ? "—" : item.substring(item.indexOf(':') + 1);
+        if (label.length() > 7) label = label.substring(0, 7);
+        cell.setText((slot + 1) + "\\n" + label
+                + (localHotbarCounts[slot] > 0 ? "\\n×" + localHotbarCounts[slot] : ""));
+        cell.setBackground(rounded(slot < 9 ? PANEL : CARD, 6));
+    }
+
+    private void showLocalInventorySlotActions(String worldId, int slot) {
+        boolean occupied = localHotbarCounts[slot] > 0;
+        int destination = -1;
+        if (slot < 9) {
+            for (int index = 9; index < 36; index++) {
+                if (localHotbarCounts[index] == 0) { destination = index; break; }
+            }
+        } else {
+            for (int index = 0; index < 9; index++) {
+                if (localHotbarCounts[index] == 0) { destination = index; break; }
+            }
+        }
+        String item = occupied ? localHotbarItems[slot] : "Пустая ячейка";
+        String[] actions;
+        if (!occupied) {
+            actions = new String[]{"Закрыть"};
+        } else if (destination >= 0) {
+            actions = new String[]{slot < 9 ? "Переместить в рюкзак" : "Переместить на панель"};
+        } else {
+            actions = new String[]{"Нет свободной ячейки для переноса"};
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("СЛОТ " + (slot + 1))
+                .setMessage(item + (occupied ? " ×" + localHotbarCounts[slot] : ""))
+                .setItems(actions, (dialog, which) -> {
+                    if (!occupied || destination < 0) return;
+                    localHotbarItems[destination] = localHotbarItems[slot];
+                    localHotbarCounts[destination] = localHotbarCounts[slot];
+                    localHotbarItems[slot] = "";
+                    localHotbarCounts[slot] = 0;
+                    refreshLocalHotbar();
+                    persistLocalInventory(worldId);
+                    showLocalInventoryDialog(worldId);
+                })
+                .setNegativeButton("ОТМЕНА", null)
+                .show();
     }
 
     private void showLocalBlockActionDialog(String worldId, int x, int y, int z,
@@ -616,8 +696,8 @@ public final class MainActivity extends Activity {
                         }
                     }
                     refreshLocalHotbar();
-                    List<LocalWorldStore.InventorySlot> inventorySnapshot = new ArrayList<>(9);
-                    for (int slot = 0; slot < 9; slot++) {
+                    List<LocalWorldStore.InventorySlot> inventorySnapshot = new ArrayList<>(36);
+                    for (int slot = 0; slot < 36; slot++) {
                         String item = localHotbarItems[slot] == null ? "" : localHotbarItems[slot];
                         inventorySnapshot.add(new LocalWorldStore.InventorySlot(
                                 item, localHotbarCounts[slot]));

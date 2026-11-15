@@ -107,7 +107,7 @@ final class NexoraResourcePackInstaller {
      * Accepts NEXORA aliases, Bedrock-style textures/blocks and standard
      * Java assets/minecraft/textures/block paths, optionally inside one ZIP root folder.
      */
-    private static String supportedTextureName(String path) {
+    static String supportedTextureName(String path) {
         String normalized = path;
         String[] markers = {
                 "assets/minecraft/textures/block/",

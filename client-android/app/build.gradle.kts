@@ -14,23 +14,25 @@ android {
         versionName = "0.1.0-dev"
     }
 
-    sourceSets["main"].java.srcFiles(
-        "../../src/main/java/ru/nexora/runtime/OverworldChunkGenerator.java",
-        "../../src/main/java/ru/nexora/runtime/ChunkGenerator.java",
-        "../../src/main/java/ru/nexora/runtime/GeneratedChunk.java",
-        "../../src/main/java/ru/nexora/runtime/ChunkPosition.java",
-        "../../src/main/java/ru/nexora/runtime/WorldHeight.java",
-        "../../src/main/java/ru/nexora/runtime/BlockState.java",
-        "../../src/main/java/ru/nexora/runtime/BlockPosition.java",
-        "../../src/main/java/ru/nexora/runtime/BiomeColumnPosition.java",
-        "../../src/main/java/ru/nexora/runtime/BiomeDefinition.java",
-        "../../src/main/java/ru/nexora/runtime/BiomeRegistry.java",
-        "../../src/main/java/ru/nexora/runtime/BiomeClimateSampler.java",
-        "../../src/main/java/ru/nexora/runtime/ClimateSample.java",
-        "../../src/main/java/ru/nexora/runtime/TerrainHeightSampler.java",
-        "../../src/main/java/ru/nexora/runtime/HydrologyField.java",
-        "../../src/main/java/ru/nexora/runtime/BiomeSection.java",
-        "../../src/main/java/ru/nexora/runtime/FluidStates.java"
+    sourceSets["main"].java.srcDir("../../src/main/java")
+    sourceSets["main"].java.include(
+        "ru/nexora/client/**",
+        "ru/nexora/runtime/OverworldChunkGenerator.java",
+        "ru/nexora/runtime/ChunkGenerator.java",
+        "ru/nexora/runtime/GeneratedChunk.java",
+        "ru/nexora/runtime/ChunkPosition.java",
+        "ru/nexora/runtime/WorldHeight.java",
+        "ru/nexora/runtime/BlockState.java",
+        "ru/nexora/runtime/BlockPosition.java",
+        "ru/nexora/runtime/BiomeColumnPosition.java",
+        "ru/nexora/runtime/BiomeDefinition.java",
+        "ru/nexora/runtime/BiomeRegistry.java",
+        "ru/nexora/runtime/BiomeClimateSampler.java",
+        "ru/nexora/runtime/ClimateSample.java",
+        "ru/nexora/runtime/TerrainHeightSampler.java",
+        "ru/nexora/runtime/HydrologyField.java",
+        "ru/nexora/runtime/BiomeSection.java",
+        "ru/nexora/runtime/FluidStates.java"
     )
 
     compileOptions {

@@ -12,6 +12,10 @@ The project must not copy proprietary Minecraft code or redistribute Minecraft a
 
 Architecture decisions: [NEXORA platform direction](docs/architecture/nexora-platform-direction.md) · [Minecraft compatibility and client audit](docs/architecture/minecraft-compatibility-audit.md).
 
+## Bedrock block compatibility
+
+The world model keeps stable block names and now has an explicit compatibility registry for translating them to Bedrock block names. The initial registry covers the blocks emitted by the current overworld generator and allows custom NEXORA blocks to map to vanilla Bedrock blocks. This is only the name-translation foundation: per-session Bedrock runtime palette resolution and actual chunk-packet integration are still required. See [Bedrock block compatibility](docs/architecture/bedrock-block-compatibility.md).
+
 ## Private NEXORA client protocol
 
 The first-party Android client and server now have a versioned private NEXORA v1 handshake over the existing NetherNet reliable channel. The first exchange negotiates protocol version, returns a server identifier and message-size limit, and rejects unsupported versions. The server then sends `WorldInfo` (world id, vertical bounds, spawn point, tick rate, and loaded chunk count). The Android client requests a 3×3 area around spawn. The server generates missing chunks in that bounded neighborhood and returns sparse block-volume snapshots (up to 32,768 non-air blocks per chunk). The Android client builds a perspective voxel mesh with OpenGL ES 2.0, omits faces hidden by neighboring blocks, and supports orbit-camera drag plus pinch zoom. It is an interactive 3D world viewer, not yet a playable first-person client. Chunk requests are restricted to the 3×3 spawn neighborhood and nine requests per connection. This is a NEXORA-only protocol, not Bedrock packet compatibility.

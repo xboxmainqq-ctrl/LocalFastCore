@@ -187,7 +187,7 @@ public final class MainActivity extends Activity {
         addSpace(page, 14);
 
         localPreview = new ChunkPreviewView(this);
-        localPreview.setFirstPersonMode(false);
+        localPreview.setFirstPersonMode(true);
         localPreview.setCenter(0, 0);
         localPreview.setPlayerSpawn(0, terrainHeight(0, 0) + 1, 0);
         for (int chunkX = -1; chunkX <= 1; chunkX++) {
@@ -202,10 +202,10 @@ public final class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         addSpace(page, 10);
-        Button camera = button("ВИД: ОТ ТРЕТЬЕГО ЛИЦА");
+        Button camera = button("ВИД: ОТ ПЕРВОГО ЛИЦА");
         page.addView(camera, matchWrap());
         camera.setOnClickListener(v -> {
-            boolean firstPerson = camera.getText().toString().contains("ТРЕТЬЕГО");
+            boolean firstPerson = !camera.getText().toString().contains("ПЕРВОГО");
             localPreview.setFirstPersonMode(firstPerson);
             camera.setText(firstPerson ? "ВИД: ОТ ПЕРВОГО ЛИЦА" : "ВИД: ОТ ТРЕТЬЕГО ЛИЦА");
         });
@@ -237,7 +237,7 @@ public final class MainActivity extends Activity {
         page.addView(text("Проведи пальцем по миру — повернуть камеру; двумя пальцами — изменить масштаб.",
                 11, MUTED, false), matchWrap());
         addSpace(page, 8);
-        page.addView(text("Сейчас доступен тестовый плоский мир 3×3 чанка. Сохранение, выбор генерации и полноценная загрузка мира ещё впереди.",
+        page.addView(text("Тестовый мир с холмами и деревьями. Сохранение, полноценная генерация и расширение мира ещё впереди.",
                 12, MUTED, false), matchWrap());
         addSpace(page, 8);
         Button exit = button("В МЕНЮ");

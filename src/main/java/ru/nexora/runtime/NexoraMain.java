@@ -109,9 +109,44 @@ public final class NexoraMain {
                 new FileWorldStorage(dataDirectory.resolve("worlds")),
                 Map.of(worldId, worldHeight));
 
-        ChunkGenerator generator = WorldGeneratorRegistry.builtIn().create(configuration.generatorId());
+        WorldGeneratorRegistry generatorRegistry = WorldGeneratorRegistry.builtIn();
+        WorldGeneratorExtensionLoader extensionLoader;
+        try {
+            extensionLoader = WorldGeneratorExtensionLoader.load(
+                    dataDirectory.resolve("extensions").resolve("generators"), generatorRegistry);
+        } catch (java.io.IOException failure) {
+            throw new IllegalStateException("Could not load world generator extensions", failure);
+        }
+
+        final ChunkGenerator generator;
+        try {
+            generator = generatorRegistry.create(configuration.generatorId());
+        } catch (RuntimeException failure) {
+            try {
+                extensionLoader.close();
+            } catch (java.io.IOException closeFailure) {
+                failure.addSuppressed(closeFailure);
+            }
+            throw failure;
+        }
 
         NexoraServer server = new NexoraServer();
+        server.register(new RuntimeModule() {
+            @Override
+            public String id() {
+                return "world-generator-extensions";
+            }
+
+            @Override
+            public void start() {
+                // Extension class loaders are opened before runtime startup.
+            }
+
+            @Override
+            public void stop() throws java.io.IOException {
+                extensionLoader.close();
+            }
+        });
         server.register(storage);
         server.register(new RuntimeModule() {
             @Override

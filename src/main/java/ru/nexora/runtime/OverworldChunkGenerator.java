@@ -19,7 +19,6 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
     private static final int DETAIL_SCALE = 37;
     private static final int BASE_HEIGHT = 68;
     private static final int HEIGHT_AMPLITUDE = 19;
-    private static final int TREE_ROLL = 137;
 
     private static final BlockState BEDROCK = new BlockState("minecraft:bedrock");
     private static final BlockState STONE = new BlockState("minecraft:stone");
@@ -50,6 +49,9 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
         int seaLevel = clamp(DEFAULT_SEA_LEVEL, height.minY() + 3, height.maxYExclusive() - 2);
         Map<BlockPosition, BlockState> blocks = new HashMap<>(12_000);
         Map<BlockPosition, BlockState> fluids = new HashMap<>(2_000);
+        Map<BlockPosition, Integer> biomes = new HashMap<>(256);
+        BiomeDefinition[][] columnBiomes = new BiomeDefinition[16][16];
+        BiomeRegistry biomeRegistry = BiomeRegistry.builtIn();
 
         int[][] surfaceHeights = new int[16][16];
         for (int localX = 0; localX < 16; localX++) {
@@ -57,16 +59,22 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
                 int x = Math.addExact(baseX, localX);
                 int z = Math.addExact(baseZ, localZ);
                 int surfaceY = terrainHeight(x, z, seed, height);
+                ClimateSample climate = BiomeClimateSampler.sample(x, z, seed, surfaceY);
+                BiomeDefinition biome = biomeRegistry.select(climate);
+                surfaceY = terrainHeight(x, z, seed, height, biome.reliefMultiplier());
+                columnBiomes[localX][localZ] = biome;
                 surfaceHeights[localX][localZ] = surfaceY;
+                BlockPosition surfacePosition = new BlockPosition(x, surfaceY, z);
+                biomes.put(surfacePosition, biome.id());
 
                 blocks.put(new BlockPosition(x, height.minY(), z), BEDROCK);
                 for (int y = height.minY() + 1; y < surfaceY - 3; y++) {
                     blocks.put(new BlockPosition(x, y, z), STONE);
                 }
                 for (int y = Math.max(height.minY() + 1, surfaceY - 3); y < surfaceY; y++) {
-                    blocks.put(new BlockPosition(x, y, z), DIRT);
+                    blocks.put(new BlockPosition(x, y, z), biome.subsurfaceBlock());
                 }
-                blocks.put(new BlockPosition(x, surfaceY, z), GRASS);
+                blocks.put(surfacePosition, biome.surfaceBlock());
 
                 for (int y = surfaceY + 1; y <= seaLevel; y++) {
                     fluids.put(new BlockPosition(x, y, z), WATER);
@@ -74,14 +82,18 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
             }
         }
 
-        placeTrees(position, baseX, baseZ, height, seed, surfaceHeights, blocks);
-        return new GeneratedChunk(position, blocks, Map.of(), fluids);
+        placeTrees(position, baseX, baseZ, height, seed, surfaceHeights, columnBiomes, blocks);
+        return new GeneratedChunk(position, blocks, biomes, fluids);
     }
 
     private static int terrainHeight(int x, int z, long seed, WorldHeight worldHeight) {
+        return terrainHeight(x, z, seed, worldHeight, 1.0);
+    }
+
+    private static int terrainHeight(int x, int z, long seed, WorldHeight worldHeight, double reliefMultiplier) {
         double broad = valueNoise(x, z, seed, BROAD_SCALE, 0x4f1bbcdcL);
         double detail = valueNoise(x, z, seed, DETAIL_SCALE, 0x632be59bL);
-        int raw = (int) Math.round(BASE_HEIGHT + broad * HEIGHT_AMPLITUDE + detail * 4.0);
+        int raw = (int) Math.round(BASE_HEIGHT + broad * HEIGHT_AMPLITUDE * reliefMultiplier + detail * 4.0 * reliefMultiplier);
         return clamp(raw, worldHeight.minY() + 2, worldHeight.maxYExclusive() - 2);
     }
 
@@ -92,25 +104,33 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
             WorldHeight height,
             long seed,
             int[][] surfaceHeights,
+            BiomeDefinition[][] columnBiomes,
             Map<BlockPosition, BlockState> blocks
     ) {
         for (int localX = 2; localX <= 13; localX++) {
             for (int localZ = 2; localZ <= 13; localZ++) {
                 int x = baseX + localX;
                 int z = baseZ + localZ;
+                BiomeDefinition biome = columnBiomes[localX][localZ];
+                if (biome.treeChance() <= 0.0) {
+                    continue;
+                }
                 long featureHash = coordinateHash(seed ^ 0x2d358dccaa6c78a5L, x, z);
-                if (Long.remainderUnsigned(featureHash, TREE_ROLL) != 0) {
+                double roll = Long.remainderUnsigned(featureHash, 1_000_000L) / 1_000_000.0;
+                if (roll >= biome.treeChance()) {
                     continue;
                 }
 
                 int groundY = surfaceHeights[localX][localZ];
-                int trunkHeight = 4 + (int) Long.remainderUnsigned(featureHash >>> 8, 2);
+                int treeRange = biome.maxTreeHeight() - biome.minTreeHeight() + 1;
+                int trunkHeight = biome.minTreeHeight()
+                        + (int) Long.remainderUnsigned(featureHash >>> 8, treeRange);
                 if (groundY + trunkHeight + 2 >= height.maxYExclusive()) {
                     continue;
                 }
 
                 for (int y = 1; y <= trunkHeight; y++) {
-                    blocks.put(new BlockPosition(x, groundY + y, z), LOG);
+                    blocks.put(new BlockPosition(x, groundY + y, z), biome.trunkBlock());
                 }
                 for (int dy = -2; dy <= 2; dy++) {
                     int radius = dy == 2 ? 1 : 2;
@@ -122,7 +142,7 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
                             }
                             BlockPosition leaf = new BlockPosition(
                                     x + dx, groundY + trunkHeight - 1 + dy, z + dz);
-                            blocks.putIfAbsent(leaf, LEAVES);
+                            blocks.putIfAbsent(leaf, biome.foliageBlock());
                         }
                     }
                 }

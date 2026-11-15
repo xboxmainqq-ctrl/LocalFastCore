@@ -1,0 +1,48 @@
+package ru.nexora.runtime;
+
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class BiomeRegistryTest {
+    private final BiomeRegistry registry = BiomeRegistry.builtIn();
+
+    @Test
+    void builtInRegistryContainsOriginalBiomeSet() {
+        assertEquals(6, registry.definitions().size());
+        assertEquals("mistwood", registry.get(BiomeRegistry.MISTWOOD_ID).key());
+        assertEquals("glassgrass_steppe", registry.get("glassgrass_steppe").key());
+        assertEquals("emberfen", registry.get(BiomeRegistry.EMBERFEN_ID).key());
+        assertEquals("frostveil", registry.get(BiomeRegistry.FROSTVEIL_ID).key());
+        assertEquals("skyglass_highlands", registry.get(BiomeRegistry.SKyGLASS_HIGHLANDS_ID).key());
+        assertEquals("saltwind_basin", registry.get(BiomeRegistry.SALTWIND_BASIN_ID).key());
+    }
+
+    @Test
+    void selectionPrefersClosestClimateDefinition() {
+        BiomeDefinition selected = registry.select(new ClimateSample(0.58, 0.80, 0.43));
+        assertEquals(BiomeRegistry.MISTWOOD_ID, selected.id());
+    }
+
+    @Test
+    void rejectsDuplicateIdsAndInvalidClimateValues() {
+        BiomeDefinition biome = registry.get(BiomeRegistry.MISTWOOD_ID);
+        assertThrows(IllegalArgumentException.class,
+                () -> new BiomeRegistry(List.of(biome, biome)));
+        assertThrows(IllegalArgumentException.class,
+                () -> new ClimateSample(1.1, 0.5, 0.5));
+    }
+
+    @Test
+    void climateSamplingIsDeterministicAndBounded() {
+        ClimateSample first = BiomeClimateSampler.sample(-812, 4096, 1234L, 72);
+        ClimateSample second = BiomeClimateSampler.sample(-812, 4096, 1234L, 72);
+        assertEquals(first, second);
+        assertTrue(first.temperature() >= 0.0 && first.temperature() <= 1.0);
+        assertTrue(first.moisture() >= 0.0 && first.moisture() <= 1.0);
+        assertTrue(first.elevation() >= 0.0 && first.elevation() <= 1.0);
+        assertNotEquals(first, BiomeClimateSampler.sample(-812, 4096, 9876L, 72));
+    }
+}

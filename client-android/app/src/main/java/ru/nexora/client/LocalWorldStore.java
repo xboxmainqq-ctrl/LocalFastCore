@@ -131,7 +131,8 @@ final class LocalWorldStore {
             output.writeInt(INVENTORY_MAGIC);
             output.writeInt(FORMAT_VERSION);
             output.writeInt(INVENTORY_SLOTS);
-            for (InventorySlot slot : slots) {
+            for (int index = 0; index < INVENTORY_SLOTS; index++) {
+                InventorySlot slot = index < slots.size() ? slots.get(index) : null;
                 String itemId = slot == null ? "" : slot.itemId();
                 int count = slot == null ? 0 : slot.count();
                 if (count < 0 || count > 999 || (count == 0) != itemId.isEmpty()

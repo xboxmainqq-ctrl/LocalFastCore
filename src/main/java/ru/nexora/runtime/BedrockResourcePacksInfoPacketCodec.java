@@ -21,7 +21,7 @@ public final class BedrockResourcePacksInfoPacketCodec {
         payload.put((byte) 0); // scriptingEnabled
         payload.put((byte) 0); // vibrantVisualsForceDisabled
         payload.putLong(0L).putLong(0L); // world template UUID
-        BedrockBinary.writeString(payload, "");
+        BedrockBinary.writeString(payload, "", 0);
         BedrockBinary.writeVarUInt32(payload, 0); // resource pack count
         payload.flip();
         return payload.asReadOnlyBuffer();

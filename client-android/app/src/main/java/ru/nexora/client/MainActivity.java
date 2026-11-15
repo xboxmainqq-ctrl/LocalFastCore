@@ -62,10 +62,132 @@ public final class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         selectedSkin = getPreferences(MODE_PRIVATE).getInt("nexora_player_skin", 0);
-        setContentView(createScreen());
+        setContentView(createHomeScreen());
     }
 
-    private View createScreen() {
+    private View createHomeScreen() {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setGravity(Gravity.CENTER_HORIZONTAL);
+        page.setPadding(dp(24), dp(48), dp(24), dp(32));
+        page.setBackgroundColor(BACKGROUND);
+
+        TextView logo = text("NEXORA", 36, TEXT, true);
+        logo.setGravity(Gravity.CENTER);
+        logo.setLetterSpacing(0.16f);
+        page.addView(logo, matchWrap());
+
+        TextView subtitle = text("ТВОЙ МИР. ТВОЯ ИГРА.", 12, ACCENT, true);
+        subtitle.setGravity(Gravity.CENTER);
+        subtitle.setLetterSpacing(0.12f);
+        addSpace(page, 10);
+        page.addView(subtitle, matchWrap());
+        addSpace(page, 42);
+
+        Button profile = menuButton("ПРОФИЛЬ", "Игровой ник и внешность");
+        page.addView(profile, matchWrap());
+        addSpace(page, 14);
+        Button servers = menuButton("СЕРВЕРА NEXORA", "Официальные миры NEXORA");
+        page.addView(servers, matchWrap());
+        addSpace(page, 14);
+        Button singlePlayer = menuButton("ОДИНОЧНЫЙ МИР", "Играть без подключения к серверу");
+        page.addView(singlePlayer, matchWrap());
+
+        profile.setOnClickListener(v -> showProfileDialog());
+        servers.setOnClickListener(v -> showServersScreen());
+        singlePlayer.setOnClickListener(v -> showSinglePlayerScreen());
+
+        addSpace(page, 34);
+        TextView footer = text("NEXORA • ANDROID", 11, MUTED, true);
+        footer.setGravity(Gravity.CENTER);
+        footer.setLetterSpacing(0.12f);
+        page.addView(footer, matchWrap());
+        return page;
+    }
+
+    private Button menuButton(String title, String subtitle) {
+        Button button = new Button(this);
+        button.setText(title + "\\n" + subtitle);
+        button.setTextColor(TEXT);
+        button.setTextSize(16);
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setAllCaps(false);
+        button.setGravity(Gravity.CENTER);
+        button.setMinHeight(dp(82));
+        GradientDrawable shape = rounded(PANEL, 18);
+        shape.setStroke(dp(1), ACCENT);
+        button.setBackground(shape);
+        return button;
+    }
+
+    private void showProfileDialog() {
+        EditText nickname = new EditText(this);
+        nickname.setSingleLine(true);
+        nickname.setText(getPreferences(MODE_PRIVATE).getString("nexora_player_nickname", "Игрок"));
+        nickname.setHint("Игровой ник");
+        nickname.setTextColor(TEXT);
+        nickname.setHintTextColor(MUTED);
+        new AlertDialog.Builder(this)
+                .setTitle("ПРОФИЛЬ NEXORA")
+                .setMessage("Настрой свой игровой профиль")
+                .setView(nickname)
+                .setPositiveButton("СОХРАНИТЬ", (dialog, which) -> {
+                    String value = nickname.getText().toString().trim();
+                    if (value.isEmpty() || value.length() > 16) {
+                        Toast.makeText(this, "Ник должен содержать от 1 до 16 символов", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    getPreferences(MODE_PRIVATE).edit()
+                            .putString("nexora_player_nickname", value).apply();
+                    Toast.makeText(this, "Профиль сохранён", Toast.LENGTH_SHORT).show();
+                })
+                .setNeutralButton("ВЫБРАТЬ СКИН", (dialog, which) -> showSkinPicker())
+                .setNegativeButton("НАЗАД", null)
+                .show();
+    }
+
+    private void showServersScreen() {
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(22), dp(28), dp(22), dp(22));
+        content.setBackgroundColor(BACKGROUND);
+        TextView title = text("СЕРВЕРА NEXORA", 26, TEXT, true);
+        content.addView(title, matchWrap());
+        addSpace(content, 12);
+        LinearLayout card = card();
+        content.addView(card, matchWrap());
+        card.addView(text("ОФИЦИАЛЬНЫЕ СЕРВЕРА", 13, ACCENT, true), matchWrap());
+        addSpace(card, 10);
+        card.addView(text("Здесь будут отображаться сервера NEXORA, размещённые на хостингах. Выберешь сервер и нажмёшь «Подключиться» — вводить адрес вручную не придётся.", 14, TEXT, false), matchWrap());
+        addSpace(card, 12);
+        card.addView(text("Список пока пуст. Сервера добавим сюда после их запуска на хостингах.", 13, MUTED, false), matchWrap());
+        addSpace(content, 20);
+        Button back = button("НАЗАД");
+        content.addView(back, matchWrap());
+        back.setOnClickListener(v -> setContentView(createHomeScreen()));
+        setContentView(content);
+    }
+
+    private void showSinglePlayerScreen() {
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(22), dp(28), dp(22), dp(22));
+        content.setBackgroundColor(BACKGROUND);
+        content.addView(text("ОДИНОЧНЫЙ МИР", 26, TEXT, true), matchWrap());
+        addSpace(content, 14);
+        LinearLayout card = card();
+        content.addView(card, matchWrap());
+        card.addView(text("ЛОКАЛЬНАЯ ИГРА", 13, ACCENT, true), matchWrap());
+        addSpace(card, 10);
+        card.addView(text("Создание и сохранение одиночных миров ещё разрабатываются. Когда локальный движок будет готов, здесь появятся кнопки «Создать мир» и «Продолжить».", 14, TEXT, false), matchWrap());
+        addSpace(content, 20);
+        Button back = button("НАЗАД");
+        content.addView(back, matchWrap());
+        back.setOnClickListener(v -> setContentView(createHomeScreen()));
+        setContentView(content);
+    }
+
+    private View createWorldClientScreen() {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.setBackgroundColor(BACKGROUND);

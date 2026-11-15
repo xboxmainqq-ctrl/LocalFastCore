@@ -105,6 +105,36 @@ class PlayerChunkStreamingManagerTest {
     }
 
     @Test
+    void movingPlayerKeepsRequestsForChunksThatRemainInTheView() throws Exception {
+        InMemoryWorld world = new InMemoryWorld("overworld", new WorldHeight(0, 64));
+        TickScheduler scheduler = new TickScheduler();
+        AsyncChunkGenerationService generation = new AsyncChunkGenerationService(
+                generator(), world.height(), 11L, 1, 8, 8
+        );
+        WorldChunkPipeline pipeline = new WorldChunkPipeline(
+                world, scheduler, generation, 2, failure -> fail(failure)
+        );
+        PlayerChunkStreamingManager streaming =
+                new PlayerChunkStreamingManager(world, pipeline, 1, 1);
+        UUID player = UUID.randomUUID();
+        ChunkPosition overlap = new ChunkPosition(0, 0);
+        pipeline.start();
+        try {
+            streaming.updatePlayer(player, 0, 0);
+            assertEquals(1, streaming.tick());
+            assertTrue(pipeline.isPending(overlap));
+
+            // Moving one chunk east still leaves (0,0) inside the circular view.
+            streaming.updatePlayer(player, 16, 0);
+            assertEquals(1, streaming.ticketCount(overlap));
+            assertTrue(pipeline.isPending(overlap),
+                    "overlapping chunks must not be cancelled and regenerated");
+        } finally {
+            pipeline.stop();
+        }
+    }
+
+    @Test
     void rejectsUnsafeConfiguration() {
         InMemoryWorld world = new InMemoryWorld("overworld", new WorldHeight(0, 64));
         TickScheduler scheduler = new TickScheduler();

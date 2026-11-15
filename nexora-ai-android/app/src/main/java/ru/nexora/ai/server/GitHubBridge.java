@@ -42,6 +42,117 @@ public final class GitHubBridge {
     }
 
     @JavascriptInterface
+    public void beginDeviceLogin(String clientId) {
+        final String id = clientId == null ? "" : clientId.trim();
+        if (!id.matches("[A-Za-z0-9_]{10,80}")) {
+            deliver("device_code", errorResult("Укажи корректный Client ID зарегистрированного GitHub App."));
+            return;
+        }
+        executor.execute(() -> {
+            try {
+                JSONObject response = postForm("https://github.com/login/device/code",
+                        "client_id=" + formEncode(id) + "&scope=offline_access");
+                JSONObject result = new JSONObject();
+                result.put("ok", true);
+                result.put("user_code", response.optString("user_code"));
+                result.put("verification_uri", response.optString("verification_uri", "https://github.com/login/device"));
+                result.put("device_code", response.optString("device_code"));
+                result.put("interval", response.optInt("interval", 5));
+                result.put("expires_in", response.optInt("expires_in", 900));
+                result.put("client_id", id);
+                deliver("device_code", result);
+            } catch (Exception e) {
+                deliver("device_code", errorResult(safeError(e)));
+            }
+        });
+    }
+
+    @JavascriptInterface
+    public void completeDeviceLogin(String clientId, String deviceCode, int intervalSeconds, int expiresInSeconds) {
+        final String id = clientId == null ? "" : clientId.trim();
+        final String code = deviceCode == null ? "" : deviceCode.trim();
+        final int interval = Math.max(5, Math.min(intervalSeconds, 30));
+        final int expires = Math.max(60, Math.min(expiresInSeconds, 900));
+        if (!id.matches("[A-Za-z0-9_]{10,80}") || code.length() < 20 || code.length() > 200) {
+            deliver("device_login", errorResult("Данные авторизации некорректны. Запроси новый код."));
+            return;
+        }
+        executor.execute(() -> {
+            int waitSeconds = interval;
+            long deadline = System.currentTimeMillis() + expires * 1000L;
+            try {
+                while (System.currentTimeMillis() < deadline && !Thread.currentThread().isInterrupted()) {
+                    Thread.sleep(waitSeconds * 1000L);
+                    JSONObject response = postForm("https://github.com/login/oauth/access_token",
+                            "client_id=" + formEncode(id)
+                                    + "&device_code=" + formEncode(code)
+                                    + "&grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code");
+                    String error = response.optString("error", "");
+                    if ("authorization_pending".equals(error)) continue;
+                    if ("slow_down".equals(error)) { waitSeconds += 5; continue; }
+                    if (!error.isEmpty()) {
+                        deliver("device_login", errorResult("GitHub не завершил вход: " + error));
+                        return;
+                    }
+                    String token = response.optString("access_token", "");
+                    if (token.isEmpty() || !saveToken(token)) {
+                        deliver("device_login", errorResult("GitHub не вернул токен или его не удалось сохранить."));
+                        return;
+                    }
+                    JSONObject result = new JSONObject();
+                    result.put("ok", true);
+                    result.put("token_saved", true);
+                    result.put("expires_in", response.optLong("expires_in", 0));
+                    result.put("refresh_token_available", !response.optString("refresh_token", "").isEmpty());
+                    deliver("device_login", result);
+                    return;
+                }
+                deliver("device_login", errorResult("Код авторизации истёк. Начни подключение заново."));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                deliver("device_login", errorResult("Авторизация остановлена."));
+            } catch (Exception e) {
+                deliver("device_login", errorResult(safeError(e)));
+            }
+        });
+    }
+
+    private JSONObject postForm(String endpoint, String form) throws Exception {
+        HttpURLConnection c = null;
+        try {
+            c = (HttpURLConnection) new URL(endpoint).openConnection();
+            c.setRequestMethod("POST");
+            c.setConnectTimeout(15000);
+            c.setReadTimeout(30000);
+            c.setUseCaches(false);
+            c.setDoOutput(true);
+            c.setRequestProperty("Accept", "application/json");
+            c.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=utf-8");
+            c.setRequestProperty("User-Agent", "NEXORA-AI-Android");
+            byte[] bytes = form.getBytes(StandardCharsets.UTF_8);
+            c.setFixedLengthStreamingMode(bytes.length);
+            try (OutputStream out = c.getOutputStream()) { out.write(bytes); }
+            int status = c.getResponseCode();
+            String body = readAll(status >= 200 && status < 300 ? c.getInputStream() : c.getErrorStream());
+            if (status < 200 || status >= 300)
+                throw new IllegalStateException("GitHub OAuth вернул HTTP " + status + ".");
+            return new JSONObject(body);
+        } finally {
+            if (c != null) c.disconnect();
+        }
+    }
+
+    private String formEncode(String value) {
+        return java.net.URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
+    private JSONObject errorResult(String message) {
+        JSONObject result = new JSONObject();
+        try { result.put("ok", false); result.put("error", message); } catch (Exception ignored) {}
+        return result;
+    }
+
+    @JavascriptInterface
     public boolean hasToken() {
         return !readToken().isEmpty();
     }

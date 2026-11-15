@@ -378,7 +378,7 @@ public final class MainActivity extends Activity {
         page.addView(camera, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(42)));
         camera.setOnClickListener(v -> {
-            boolean firstPerson = !camera.getText().toString().contains("ПЕРВОГО");
+            boolean firstPerson = camera.getText().toString().contains("3-Е");
             localPreview.setFirstPersonMode(firstPerson);
             camera.setText(firstPerson ? "КАМЕРА: 1-Е ЛИЦО" : "КАМЕРА: 3-Е ЛИЦО");
         });

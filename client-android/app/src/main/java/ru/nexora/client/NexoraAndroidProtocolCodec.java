@@ -10,7 +10,7 @@ import java.util.UUID;
 /** Wire codec matching the server's private NEXORA protocol v1. */
 final class NexoraAndroidProtocolCodec {
     static final int MAJOR_VERSION = 1;
-    static final int MINOR_VERSION = 2;
+    static final int MINOR_VERSION = 3;
     static final int MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
     private static final byte[] MAGIC = {'N', 'X', 'R', 'A'};
     private static final int TYPE_WORLD_INFO = 4;
@@ -24,6 +24,10 @@ final class NexoraAndroidProtocolCodec {
     private static final int TYPE_INVENTORY_ACTION_RESULT = 13;
     private static final int TYPE_BLOCK_ACTION = 14;
     private static final int TYPE_BLOCK_UPDATE = 15;
+    private static final int TYPE_RESOURCE_PACK_INFO = 16;
+    private static final int TYPE_RESOURCE_PACK_CHUNK_REQUEST = 17;
+    private static final int TYPE_RESOURCE_PACK_CHUNK_DATA = 18;
+    private static final int TYPE_RESOURCE_PACK_READY = 19;
 
     private NexoraAndroidProtocolCodec() {
     }
@@ -310,6 +314,79 @@ final class NexoraAndroidProtocolCodec {
             throw new IllegalArgumentException("Trailing bytes in NEXORA chunk data");
         }
         return new ChunkData(chunkX, chunkZ, java.util.Collections.unmodifiableList(blocks));
+    }
+
+    static ResourcePackInfo decodeResourcePackInfo(byte[] bytes) {
+        ByteBuffer input = checkedHeader(bytes, TYPE_RESOURCE_PACK_INFO);
+        String resourceName = readProtocolString(input, 128);
+        String version = readProtocolString(input, 64);
+        if (input.remaining() != 8 + 4 + 4 + 1 + 64) {
+            throw new IllegalArgumentException("Malformed NEXORA resource-pack metadata");
+        }
+        long fileSize = input.getLong();
+        int chunkSize = input.getInt();
+        int chunkCount = input.getInt();
+        String hash = readProtocolString(input, 64);
+        if (fileSize < 1 || fileSize > 64L * 1024L * 1024L
+                || chunkSize != 1024 * 1024
+                || chunkCount != (fileSize + chunkSize - 1) / chunkSize
+                || !hash.matches("[0-9a-f]{64}")) {
+            throw new IllegalArgumentException("Invalid NEXORA resource-pack metadata");
+        }
+        BedrockAndroidResourcePackDataInfo downloadInfo =
+                new BedrockAndroidResourcePackDataInfo(
+                        resourceName, chunkSize, chunkCount, fileSize, hash, 6);
+        return new ResourcePackInfo(resourceName, version, downloadInfo);
+    }
+
+    static byte[] encodeResourcePackChunkRequest(String resourceName, int chunkIndex) {
+        if (resourceName == null || resourceName.isBlank()
+                || resourceName.getBytes(StandardCharsets.UTF_8).length > 128 || chunkIndex < 0) {
+            throw new IllegalArgumentException("Invalid NEXORA resource-pack chunk request");
+        }
+        byte[] name = resourceName.getBytes(StandardCharsets.UTF_8);
+        ByteBuffer output = ByteBuffer.allocate(7 + 1 + name.length + 4).order(ByteOrder.BIG_ENDIAN);
+        output.put(MAGIC).put((byte) MAJOR_VERSION).put((byte) MINOR_VERSION)
+                .put((byte) TYPE_RESOURCE_PACK_CHUNK_REQUEST)
+                .put((byte) name.length).put(name).putInt(chunkIndex);
+        return output.array();
+    }
+
+    static BedrockAndroidResourcePackChunk decodeResourcePackChunk(byte[] bytes) {
+        ByteBuffer input = checkedHeader(bytes, TYPE_RESOURCE_PACK_CHUNK_DATA);
+        String resourceName = readProtocolString(input, 128);
+        if (input.remaining() < 4 + 8 + 4) {
+            throw new IllegalArgumentException("Truncated NEXORA resource-pack chunk");
+        }
+        int index = input.getInt();
+        long offset = input.getLong();
+        int length = input.getInt();
+        if (length < 1 || length > 1024 * 1024 || input.remaining() != length) {
+            throw new IllegalArgumentException("Invalid NEXORA resource-pack chunk length");
+        }
+        byte[] data = new byte[length];
+        input.get(data);
+        return new BedrockAndroidResourcePackChunk(resourceName, index, offset, data);
+    }
+
+    static byte[] encodeResourcePackReady() {
+        return new byte[] {'N','X','R','A', (byte) MAJOR_VERSION,
+                (byte) MINOR_VERSION, (byte) TYPE_RESOURCE_PACK_READY};
+    }
+
+    private static String readProtocolString(ByteBuffer input, int maxBytes) {
+        if (!input.hasRemaining()) throw new IllegalArgumentException("Missing protocol string length");
+        int length = Byte.toUnsignedInt(input.get());
+        if (length < 1 || length > maxBytes || input.remaining() < length) {
+            throw new IllegalArgumentException("Invalid protocol string length");
+        }
+        byte[] bytes = new byte[length];
+        input.get(bytes);
+        return decodeUtf8(bytes);
+    }
+
+    record ResourcePackInfo(String resourceName, String version,
+                            BedrockAndroidResourcePackDataInfo downloadInfo) {
     }
 
     private static ByteBuffer checkedHeader(byte[] bytes, int expectedType) {

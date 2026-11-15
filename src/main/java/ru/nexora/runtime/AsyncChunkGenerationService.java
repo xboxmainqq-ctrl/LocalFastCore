@@ -184,6 +184,11 @@ public final class AsyncChunkGenerationService implements RuntimeModule {
         return inFlight.size();
     }
 
+    /** Returns whether this exact chunk still has a queued, running, or completed request. */
+    public boolean isPending(ChunkPosition position) {
+        return inFlight.containsKey(Objects.requireNonNull(position, "position"));
+    }
+
     public int queuedWorkerCount() {
         ThreadPoolExecutor current = executor;
         return current == null ? 0 : current.getQueue().size();

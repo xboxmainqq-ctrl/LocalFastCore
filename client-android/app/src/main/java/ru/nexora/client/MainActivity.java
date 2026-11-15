@@ -176,6 +176,63 @@ public final class MainActivity extends Activity {
     }
 
     private void showSinglePlayerScreen() {
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setBackgroundColor(BACKGROUND);
+
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setPadding(dp(20), dp(24), dp(20), dp(24));
+        scroll.addView(page, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        TextView title = text("ОДИНОЧНЫЕ МИРЫ", 25, TEXT, true);
+        title.setGravity(Gravity.CENTER);
+        page.addView(title, matchWrap());
+        addSpace(page, 8);
+        TextView subtitle = text("Создавай миры и возвращайся к ним позже", 13, MUTED, false);
+        subtitle.setGravity(Gravity.CENTER);
+        page.addView(subtitle, matchWrap());
+        addSpace(page, 20);
+
+        Button create = button("＋  СОЗДАТЬ НОВЫЙ МИР");
+        page.addView(create, matchWrap());
+        create.setOnClickListener(v -> showCreateWorldDialog());
+        addSpace(page, 18);
+
+        android.content.SharedPreferences prefs = getPreferences(MODE_PRIVATE);
+        int count = prefs.getInt("nexora_world_count", 0);
+        if (count == 0) {
+            LinearLayout empty = card();
+            page.addView(empty, matchWrap());
+            empty.addView(text("ПОКА НЕТ МИРОВ", 14, ACCENT, true), matchWrap());
+            addSpace(empty, 8);
+            empty.addView(text("Нажми «Создать новый мир». Название и seed сохранятся в списке на этом устройстве.", 13, MUTED, false), matchWrap());
+        } else {
+            for (int i = count - 1; i >= 0; i--) {
+                final String worldName = prefs.getString("nexora_world_name_" + i, "Мир " + (i + 1));
+                final long worldSeed = prefs.getLong("nexora_world_seed_" + i, 0L);
+                LinearLayout worldCard = card();
+                page.addView(worldCard, matchWrap());
+                worldCard.addView(text(worldName, 17, TEXT, true), matchWrap());
+                addSpace(worldCard, 5);
+                worldCard.addView(text("SEED: " + worldSeed, 11, ACCENT, true), matchWrap());
+                addSpace(worldCard, 10);
+                Button play = button("ИГРАТЬ");
+                worldCard.addView(play, matchWrap());
+                play.setOnClickListener(v -> launchWorldPreview(worldName, worldSeed));
+                addSpace(page, 12);
+            }
+        }
+
+        addSpace(page, 14);
+        Button back = button("В МЕНЮ");
+        page.addView(back, matchWrap());
+        back.setOnClickListener(v -> setContentView(createHomeScreen()));
+        setContentView(scroll);
+    }
+
+    private void showCreateWorldDialog() {
         LinearLayout form = new LinearLayout(this);
         form.setOrientation(LinearLayout.VERTICAL);
         form.setPadding(dp(20), dp(12), dp(20), dp(4));
@@ -212,7 +269,12 @@ public final class MainActivity extends Activity {
                     } catch (NumberFormatException invalidSeed) {
                         seed = new SecureRandom().nextLong();
                     }
-                    getPreferences(MODE_PRIVATE).edit()
+                    android.content.SharedPreferences prefs = getPreferences(MODE_PRIVATE);
+                    int index = prefs.getInt("nexora_world_count", 0);
+                    prefs.edit()
+                            .putString("nexora_world_name_" + index, name)
+                            .putLong("nexora_world_seed_" + index, seed)
+                            .putInt("nexora_world_count", index + 1)
                             .putString("nexora_last_world_name", name)
                             .putLong("nexora_last_world_seed", seed)
                             .apply();

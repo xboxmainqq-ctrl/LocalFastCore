@@ -35,6 +35,10 @@ android {
         "ru/nexora/runtime/FluidStates.java"
     )
 
+    tasks.withType<org.gradle.api.tasks.compile.JavaCompile>().configureEach {
+        options.compilerArgs.addAll(listOf("-sourcepath", "${project.projectDir}/src/main/java"))
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

@@ -62,15 +62,15 @@ class BedrockResourcePackArchiveLoaderTest {
     }
 
     private static void writePack(Path destination, String manifest) throws Exception {
-        try (ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-             ZipOutputStream zip = new ZipOutputStream(bytes)) {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
             zip.putNextEntry(new ZipEntry("manifest.json"));
             zip.write(manifest.getBytes(StandardCharsets.UTF_8));
             zip.closeEntry();
             zip.putNextEntry(new ZipEntry("textures/blocks/stone.png"));
             zip.write(new byte[] {1, 2, 3, 4});
             zip.closeEntry();
-            Files.write(destination, bytes.toByteArray());
         }
+        Files.write(destination, bytes.toByteArray());
     }
 }

@@ -57,10 +57,16 @@ public final class PlayerChunkStreamingManager {
 
         Set<ChunkPosition> next = desiredChunks(center);
         if (previous != null) {
-            for (ChunkPosition position : previous.chunks) removeTicket(position);
+            for (ChunkPosition position : previous.chunks) {
+                if (!next.contains(position)) removeTicket(position);
+            }
         }
         players.put(playerId, new PlayerView(center, next));
-        for (ChunkPosition position : next) tickets.merge(position, 1, Integer::sum);
+        for (ChunkPosition position : next) {
+            if (previous == null || !previous.chunks.contains(position)) {
+                tickets.merge(position, 1, Integer::sum);
+            }
+        }
     }
 
     /** Releases every chunk ticket held by a player who left the world. */

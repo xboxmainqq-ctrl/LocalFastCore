@@ -164,7 +164,7 @@ public class BedrockAndroidPacketCodecTest {
         assertEquals(1, packets.size());
         assertEquals(8, packets.get(0).packetId());
         ByteBuffer payload = ByteBuffer.wrap(packets.get(0).payload());
-        assertEquals(2, readVarUInt32(payload));
+        assertEquals(3, readVarUInt32(payload));
         assertEquals("downloadingfinished", readTestString(payload));
         assertFalse(payload.hasRemaining());
 
@@ -172,7 +172,7 @@ public class BedrockAndroidPacketCodecTest {
                 BedrockAndroidResourcePackStatus.COMPLETED, settings);
         ByteBuffer completedPayload = ByteBuffer.wrap(
                 BedrockAndroidPacketCodec.decodeServerBatch(completed, settings).get(0).payload());
-        assertEquals(3, readVarUInt32(completedPayload));
+        assertEquals(4, readVarUInt32(completedPayload));
         assertEquals("resourcepackstackfinished", readTestString(completedPayload));
         assertFalse(completedPayload.hasRemaining());
     }
@@ -272,7 +272,7 @@ public class BedrockAndroidPacketCodecTest {
                 BedrockAndroidPacketCodec.decodeServerBatch(response, settings).get(0);
         assertEquals(8, responsePacket.packetId());
         ByteBuffer responsePayload = ByteBuffer.wrap(responsePacket.payload());
-        assertEquals(1, readVarUInt32(responsePayload));
+        assertEquals(2, readVarUInt32(responsePayload));
         assertEquals("downloading", readTestString(responsePayload));
         assertEquals(1, readVarUInt32(responsePayload));
         assertEquals(packId, readTestString(responsePayload));

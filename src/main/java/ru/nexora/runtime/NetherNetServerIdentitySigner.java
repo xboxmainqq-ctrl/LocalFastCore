@@ -40,7 +40,7 @@ public final class NetherNetServerIdentitySigner {
 
         validateDomain(partnerDomain);
         if (answerSdp.getBytes(StandardCharsets.UTF_8).length > MAX_SDP_BYTES
-                || answerSdp.indexOf('\\0') >= 0) {
+                || answerSdp.indexOf('\0') >= 0) {
             throw new IllegalArgumentException("SDP answer is invalid or exceeds configured limit");
         }
         long iat = issuedAt.getEpochSecond();

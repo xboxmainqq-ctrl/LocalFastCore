@@ -149,8 +149,8 @@ public final class GitHubBridge {
         }
     }
 
-    private String formEncode(String value) {
-        return java.net.URLEncoder.encode(value, StandardCharsets.UTF_8);
+    private String formEncode(String value) throws Exception {
+        return java.net.URLEncoder.encode(value, "UTF-8");
     }
 
     private JSONObject errorResult(String message) {
@@ -564,17 +564,17 @@ public final class GitHubBridge {
         return value;
     }
 
-    private String encodeContentPath(String value) {
+    private String encodeContentPath(String value) throws Exception {
         String[] parts = value.split("/");
         StringBuilder out = new StringBuilder();
         for (String part : parts) {
             if (out.length() > 0) out.append("/");
-            out.append(java.net.URLEncoder.encode(part, StandardCharsets.UTF_8).replace("+", "%20"));
+            out.append(java.net.URLEncoder.encode(part, "UTF-8").replace("+", "%20"));
         }
         return out.toString();
     }
 
-    private String encodeQuery(String value) {
+    private String encodeQuery(String value) throws Exception {
         return java.net.URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
     }
 

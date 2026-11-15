@@ -7,6 +7,7 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.spec.ECGenParameterSpec;
 import java.util.Map;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -207,6 +208,18 @@ public final class NexoraMain {
                     peerHost,
                     "nexora.local",
                     signingKey);
+            final List<BedrockResourcePackTransferCodec.Pack> serverResourcePacks;
+            try {
+                serverResourcePacks = new BedrockResourcePackArchiveLoader().load(
+                        dataDirectory.resolve("resource-packs"), "1.0.0");
+            } catch (java.io.IOException invalidResourcePacks) {
+                throw new IllegalStateException(
+                        "Could not load server resource packs from "
+                                + dataDirectory.resolve("resource-packs"),
+                        invalidResourcePacks);
+            }
+            log.accept("Loaded " + serverResourcePacks.size()
+                    + " server resource pack(s) from " + dataDirectory.resolve("resource-packs"));
             NexoraPrivateProtocolHandler protocolHandler = new NexoraPrivateProtocolHandler(
                     UUID.randomUUID(),
                     WebRtcJavaNetherNetPeerHost.MAX_MESSAGE_BYTES,
@@ -225,7 +238,7 @@ public final class NexoraMain {
                     },
                     connection -> log.accept("NEXORA client completed protocol handshake: "
                             + connection.id()),
-                    entities, inventories, playerInventoryStorage);
+                    entities, inventories, playerInventoryStorage, serverResourcePacks);
             server.register(new NetherNetPrivateProtocolModule(
                     peerHost, peerHost, signaling, protocolHandler));
         }

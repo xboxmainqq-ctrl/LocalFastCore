@@ -99,6 +99,11 @@ public final class MainActivity extends Activity {
         Button servers = menuButton("СЕРВЕРА NEXORA", "Официальные миры NEXORA");
         page.addView(servers, matchWrap());
         addSpace(page, 14);
+        Button resourcePacks = menuButton("РЕСУРС-ПАКИ", "Импортировать и менять текстуры мира");
+        page.addView(resourcePacks, matchWrap());
+        addSpace(page, 14);
+        resourcePacks.setOnClickListener(v -> openResourcePackPicker());
+
         Button singlePlayer = menuButton("ОДИНОЧНЫЙ МИР", "Играть без подключения к серверу");
         page.addView(singlePlayer, matchWrap());
 
@@ -854,6 +859,14 @@ public final class MainActivity extends Activity {
 
 
     private static final int REQUEST_CUSTOM_SKIN = 4107;
+    private static final int REQUEST_RESOURCE_PACK = 4108;
+
+    private void openResourcePackPicker() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("application/zip");
+        startActivityForResult(intent, REQUEST_RESOURCE_PACK);
+    }
 
     private void openCustomSkinPicker() {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -865,17 +878,29 @@ public final class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQUEST_CUSTOM_SKIN || resultCode != RESULT_OK
-                || data == null || data.getData() == null) return;
-        try {
-            NexoraSkinFile.importPng(this, data.getData());
-            refreshCustomSkinButton();
-            Toast.makeText(this,
-                    "PNG проверен и сохранён. Ниже доступен предпросмотр; 3D-текстура будет следующим этапом.",
-                    Toast.LENGTH_LONG).show();
-        } catch (Exception invalid) {
-            Toast.makeText(this, "Не удалось загрузить скин: " + invalid.getMessage(),
-                    Toast.LENGTH_LONG).show();
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        if (requestCode == REQUEST_RESOURCE_PACK) {
+            try {
+                int imported = NexoraResourcePackInstaller.install(this, data.getData());
+                Toast.makeText(this, "Ресурс-пак установлен. Текстур заменено: " + imported
+                        + ". Открой мир заново, чтобы применить изменения.", Toast.LENGTH_LONG).show();
+            } catch (Exception invalid) {
+                Toast.makeText(this, "Не удалось установить ресурс-пак: "
+                        + invalid.getMessage(), Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
+        if (requestCode == REQUEST_CUSTOM_SKIN) {
+            try {
+                NexoraSkinFile.importPng(this, data.getData());
+                refreshCustomSkinButton();
+                Toast.makeText(this,
+                        "PNG проверен и сохранён. Ниже доступен предпросмотр; 3D-текстура будет следующим этапом.",
+                        Toast.LENGTH_LONG).show();
+            } catch (Exception invalid) {
+                Toast.makeText(this, "Не удалось загрузить скин: " + invalid.getMessage(),
+                        Toast.LENGTH_LONG).show();
+            }
         }
     }
 

@@ -541,6 +541,17 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                     return;
                 }
             }
+            if (complete.length >= 7 && complete[6] == 15) {
+                try {
+                    NexoraAndroidProtocolCodec.BlockUpdate update =
+                            NexoraAndroidProtocolCodec.decodeBlockUpdate(complete);
+                    Listener current = listener;
+                    if (current != null) mainHandler.post(() -> current.onBlockUpdate(update));
+                } catch (RuntimeException malformed) {
+                    reportError("Некорректное обновление блока NEXORA: " + malformed.getMessage());
+                }
+                return;
+            }
             if (complete.length >= 7 && complete[6] == 8) {
                 try {
                     NexoraAndroidProtocolCodec.PlayerPosition position =
@@ -688,6 +699,16 @@ public final class NetherNetAndroidClient implements AutoCloseable {
     }
 
     /** Sends a server-authoritative inventory operation. */
+    public boolean sendBlockAction(boolean place, int x, int y, int z, String blockId) {
+        if (!nexoraProtocolReady || !worldInfoReceived || !isConnected()) return false;
+        try {
+            return sendReliable(NexoraAndroidProtocolCodec.encodeBlockAction(
+                    place, x, y, z, blockId == null ? "" : blockId));
+        } catch (RuntimeException invalid) {
+            return false;
+        }
+    }
+
     public boolean sendInventoryAction(NexoraAndroidProtocolCodec.InventoryAction action,
                                        int sourceSlot, int targetSlot) {
         if (!nexoraProtocolReady || !worldInfoReceived || !isConnected()) return false;
@@ -936,6 +957,9 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         }
 
         default void onChunkDataReceived(NexoraAndroidProtocolCodec.ChunkData chunk) {
+        }
+
+        default void onBlockUpdate(NexoraAndroidProtocolCodec.BlockUpdate update) {
         }
 
         default void onServerPosition(NexoraAndroidProtocolCodec.PlayerPosition position) {

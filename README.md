@@ -2,7 +2,7 @@
 
 ## Product direction
 
-**NEXORA is an Android-first RPG game network with its own block-world server core, dedicated RPG servers, separate Android client, network/lobby services and creator tools.** Its platform structure is inspired by large Minecraft server networks, but NEXORA is an independent product with original code, identity and content. The focus is persistent RPG gameplay—not a general minigame network.
+**NEXORA is an Android-first block-world game platform with two experiences: classic offline survival single-player and customizable online RPG servers.** Both use the same original NEXORA Core with different rulesets. The platform has dedicated servers, a separate Android client, network/lobby services and creator tools. Its network structure is inspired by large Minecraft server networks, but NEXORA is an independent product with original code, identity and content.
 
 The NEXORA Dedicated Server runs headlessly and owns authoritative worlds, chunks, blocks, entities, players, inventories, permissions, commands, events and gameplay. The separate NEXORA Android Client provides rendering, touch controls, UI/HUD, resource packs, server connection and creator tools. Single-player starts an embedded instance of the same NEXORA Core and works offline.
 
@@ -10,16 +10,18 @@ The target is Bedrock-style mobile gameplay; Java Edition is out of scope. An op
 
 Do not use Luanti or copy proprietary Minecraft source code/assets. Use public protocol documentation, clean-room implementations and original or properly licensed content.
 
-Product brief: [NEXORA Android RPG network vision](docs/PRODUCT_VISION_RPG_NETWORK.md) · Architecture decisions: [NEXORA platform direction](docs/architecture/nexora-platform-direction.md) · [Minecraft compatibility and client audit](docs/architecture/minecraft-compatibility-audit.md).
+Product briefs: [Survival single-player vs RPG servers](docs/SINGLEPLAYER_AND_SERVER_MODES.md) · [NEXORA RPG network vision](docs/PRODUCT_VISION_RPG_NETWORK.md) · Architecture decisions: [NEXORA platform direction](docs/architecture/nexora-platform-direction.md) · [Minecraft compatibility and client audit](docs/architecture/minecraft-compatibility-audit.md).
 
-### RPG-only, Android-first direction
+### Android-first game modes
 
 - Launch target: Android phones/tablets with touch-first controls and installable APK builds.
-- Product scope: RPG worlds, persistent characters, classes, stats, abilities, equipment, quests, mobs, bosses, dungeons, loot and economy.
+- Single Player is a familiar survival sandbox: gather resources, mine/place blocks, craft, build, explore, survive, fight basic mobs and save/reload local worlds.
+- Online dedicated servers provide the customizable RPG experience: characters, classes, stats, magic, abilities, equipment, mobs, bosses, quests, dungeons, economy and social systems.
+- Both modes use the exact same NEXORA Core, but load different explicit rulesets: Survival locally, configurable RPG on servers.
 - Network model: central lobby/player profiles, then multiple RPG worlds or instances on authoritative NEXORA dedicated servers as the platform grows.
-- Offline single-player uses the exact same NEXORA Core as online dedicated servers.
-- Unrelated minigames such as BedWars and SkyWars are out of scope unless the product direction is explicitly changed.
-- Delivery order: playable offline RPG world → one online RPG server tested with two Android clients → lobby and multi-world network services.
+- Unrelated standalone minigame modes such as BedWars and SkyWars are out of scope unless the product direction is explicitly changed.
+- Design the client for easy, polished and efficient customization through data-driven content, resource packs, configurable HUD/UI, reusable components and creator tools rather than hardcoding each server's content into the app.
+- Delivery order: playable offline Survival → one online RPG server tested with two Android clients → RPG systems and creator/customization tools → lobby and multi-world network services.
 
 ## Bedrock block compatibility
 

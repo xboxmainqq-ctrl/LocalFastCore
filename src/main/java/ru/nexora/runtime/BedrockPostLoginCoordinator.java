@@ -305,6 +305,14 @@ public final class BedrockPostLoginCoordinator implements
     }
 
     private void handleSendPacks(Session session, List<String> requestedIds) {
+        if (session.phase == Phase.WAITING_FOR_PACK_RESPONSE
+                && requestedIds.isEmpty() && resourcePacks.isEmpty()) {
+            return;
+        }
+        if (session.phase == Phase.DOWNLOADING_PACKS
+                && session.downloadingPacks.keySet().equals(new java.util.HashSet<>(requestedIds))) {
+            return; // Repeated Downloading progress notification.
+        }
         if (session.phase != Phase.WAITING_FOR_PACK_RESPONSE || requestedIds.isEmpty()
                 || requestedIds.size() > resourcePacks.size()) {
             fail(session);

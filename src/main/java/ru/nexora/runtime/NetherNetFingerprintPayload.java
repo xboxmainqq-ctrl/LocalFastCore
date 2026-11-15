@@ -28,7 +28,7 @@ public record NetherNetFingerprintPayload(List<Fingerprint> fingerprints) {
     public static NetherNetFingerprintPayload fromSdpText(String sdp) {
         Objects.requireNonNull(sdp, "sdp");
         if (sdp.getBytes(java.nio.charset.StandardCharsets.UTF_8).length
-                > NetherNetSdpDocument.DEFAULT_MAX_SDP_BYTES || sdp.indexOf('\\0') >= 0) {
+                > NetherNetSdpDocument.DEFAULT_MAX_SDP_BYTES || sdp.indexOf('\0') >= 0) {
             throw new IllegalArgumentException("SDP is invalid or exceeds the configured limit");
         }
         List<String> lines = List.of(sdp.split("\\r?\\n", -1));

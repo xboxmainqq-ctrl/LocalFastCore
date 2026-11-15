@@ -46,10 +46,10 @@ class BedrockResourcePackPacketCodecTest {
     void decodesRequestedPackIdsAndRejectsMismatchedStatusName() {
         ByteBuffer payload = ByteBuffer.allocate(64);
         BedrockBinary.writeVarUInt32(payload, 1);
-        BedrockBinary.writeString(payload, "downloading");
+        BedrockBinary.writeString(payload, "downloading", 64);
         BedrockBinary.writeVarUInt32(payload, 2);
-        BedrockBinary.writeString(payload, "pack-one");
-        BedrockBinary.writeString(payload, "pack-two");
+        BedrockBinary.writeString(payload, "pack-one", 64);
+        BedrockBinary.writeString(payload, "pack-two", 64);
         payload.flip();
 
         BedrockResourcePackClientResponse response =
@@ -59,7 +59,7 @@ class BedrockResourcePackPacketCodecTest {
 
         ByteBuffer invalid = ByteBuffer.allocate(32);
         BedrockBinary.writeVarUInt32(invalid, 2);
-        BedrockBinary.writeString(invalid, "downloading");
+        BedrockBinary.writeString(invalid, "downloading", 64);
         invalid.flip();
         assertThrows(IllegalArgumentException.class,
                 () -> BedrockResourcePackClientResponsePacketCodec.decodePayload(invalid));

@@ -191,6 +191,16 @@ public final class BedrockPostLoginCoordinator implements
                 handleChunkRequest(session, inbound.payloadBuffer());
                 return;
             }
+            if (inbound.header().packetId() == 203) {
+                if (session.phase != Phase.WAITING_FOR_STACK_RESPONSE
+                        || session.resourcePacksReadyForValidation
+                        || inbound.payloadBuffer().hasRemaining()) {
+                    fail(session);
+                    return;
+                }
+                session.resourcePacksReadyForValidation = true;
+                return;
+            }
             if (inbound.header().packetId() != BedrockResourcePackCodec.RESOURCE_PACK_CLIENT_RESPONSE_PACKET_ID) {
                 fail(session);
                 return;
@@ -217,6 +227,7 @@ public final class BedrockPostLoginCoordinator implements
                 }
                 case COMPLETED -> {
                     if (session.phase != Phase.WAITING_FOR_STACK_RESPONSE
+                            || !session.resourcePacksReadyForValidation
                             || !response.packIds().isEmpty()) {
                         fail(session);
                         return;
@@ -427,6 +438,7 @@ public final class BedrockPostLoginCoordinator implements
         private final BedrockAuthenticatedPlayer player;
         private final Map<String, PackProgress> downloadingPacks = new HashMap<>();
         private Phase phase = Phase.WAITING_FOR_PACK_RESPONSE;
+        private boolean resourcePacksReadyForValidation;
         private boolean closed;
 
         private Session(TransportConnection connection, BedrockAuthenticatedPlayer player) {

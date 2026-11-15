@@ -19,7 +19,7 @@ Supported names:
 - `planks.png`, `clay.png`, `deepslate.png`
 
 The importer maps common Java names (grass block top/side, wood logs, leaves, planks and water) to NEXORA atlas slots, and extracts only supported PNGs. It rejects traversal paths,
-duplicate texture names, invalid PNG files, images larger than 1024x1024,
+unsupported paths are ignored, repeated atlas aliases keep the first ZIP entry, invalid PNG files, images larger than 1024x1024,
 individual files over 4 MiB, archives with more than 128 entries, and total
 extracted texture data over 32 MiB. Installation is staged before replacing
 the active pack. If a texture is missing, the generated built-in atlas tile

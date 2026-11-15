@@ -125,6 +125,10 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
         if (resourcePacks.size() > 1) {
             throw new IllegalArgumentException("The Android client currently supports one resource pack");
         }
+        if (!resourcePacks.isEmpty() && (worldSupplier == null || chunkLoader == null)) {
+            throw new IllegalArgumentException(
+                    "Server resource packs require an active world and chunk loader");
+        }
         this.resourcePacks = List.copyOf(resourcePacks);
     }
 

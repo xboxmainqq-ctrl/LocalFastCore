@@ -60,6 +60,42 @@ Design for:
 
 The goal is a beautiful, polished mobile client that is economical to develop and maintain: build reusable systems once, configure content through tools/data, and avoid hardcoding each server's unique interface and mechanics into the Android app.
 
+## Performance and chunk streaming requirements
+
+Performance is a core engine requirement for both offline Survival and online RPG servers. Do not treat chunk generation, loading, meshing or saving as unlimited work.
+
+### Android client
+
+- Keep the render/gameplay thread free of terrain generation, disk I/O, chunk decoding and mesh building.
+- Use bounded worker pools and bounded queues. Never create an unbounded task per requested chunk.
+- Prioritize chunks by distance and view direction; load the spawn/nearby area first, then expand gradually.
+- Cancel or deprioritize stale requests when the player moves, and reject results for chunks that are no longer needed.
+- Maintain configurable view distance and hard memory budgets. Evict distant chunk data and GPU meshes safely; keep dirty chunks persisted before eviction.
+- Generate and decode chunks incrementally so a large batch cannot cause a long frame hitch.
+- Build chunk meshes off the render thread using immutable snapshots; upload completed meshes to the GPU in a small per-frame budget.
+- Cull hidden block faces, batch geometry by material/texture, use texture atlases, frustum/distance culling and appropriate LOD.
+- Avoid rebuilding neighboring chunk meshes for unrelated changes; update only affected sections and required borders.
+- Use compact chunk/block representations and avoid large per-block object graphs in hot paths where practical.
+- Save changed chunks asynchronously with bounded write queues, batching and crash-safe ordering.
+- Adapt view distance, generation concurrency and mesh upload budget to device memory/thermal/performance conditions, while keeping user-configurable quality limits.
+
+### Dedicated server
+
+- Use a bounded generation scheduler shared across players; prioritize chunks requested by nearby active players and their movement direction.
+- Deduplicate concurrent requests for the same chunk so one chunk is generated/loaded only once.
+- Apply per-player and global limits for requested, queued, loaded and in-flight chunks to prevent request floods.
+- Keep disk reads/writes and expensive generation off the authoritative tick thread.
+- Persist chunks asynchronously and safely; never acknowledge durable world changes before the storage policy allows it.
+- Track loaded-chunk ownership/reference counts so chunks are unloaded only when no player, entity, ticket or world process needs them.
+- Apply backpressure when storage or generation falls behind instead of allowing queues and memory usage to grow without bound.
+- Keep server simulation authoritative; send clients only the chunk data and updates needed for their subscribed area.
+
+### Shared observability and acceptance checks
+
+Measure client FPS/frame time, memory use, chunk generation time, queue depth, mesh build/upload time, disk I/O latency, server tick duration and per-player chunk counts. Add stress tests for multiple players moving into unexplored terrain, rapid direction changes, repeated chunk requests, world reloads and low-memory conditions.
+
+Do not claim performance is optimized based on architecture or code review alone. Verify with repeatable benchmarks on a low-end Android device and with server load tests. Set explicit budgets from measured target hardware; do not invent universal FPS or memory guarantees before profiling.
+
 ## Architecture guardrails
 
 - Keep the Core independent from Android UI, rendering and transport.

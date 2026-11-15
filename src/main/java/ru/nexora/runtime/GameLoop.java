@@ -102,6 +102,11 @@ public final class GameLoop implements RuntimeModule {
         return running.get();
     }
 
+    /** Configured target tick rate. */
+    public int tickRate() {
+        return (int) (NANOS_PER_SECOND / tickPeriodNanos);
+    }
+
     public long executedTicks() {
         return executedTicks.get();
     }

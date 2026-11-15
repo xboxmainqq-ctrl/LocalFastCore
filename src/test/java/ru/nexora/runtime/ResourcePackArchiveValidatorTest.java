@@ -75,14 +75,14 @@ class ResourcePackArchiveValidatorTest {
 
     @Test
     void enforcesExpandedEntryAndTotalLimits() throws Exception {
-        Path path = archive("large.zip", "manifest.json", manifest(), "large.bin", "0123456789");
+        Path path = archive("large.zip", "manifest.json", manifest(), "large.bin", "x".repeat(128));
         ResourcePackArchiveValidator.Limits perEntry = new ResourcePackArchiveValidator.Limits(
-                1024 * 1024, 10, 8, 1024, 256);
+                1024 * 1024, 10, 100, 1024, 256);
         assertThrows(IOException.class,
                 () -> new ResourcePackArchiveValidator(perEntry).validate(path));
 
         ResourcePackArchiveValidator.Limits total = new ResourcePackArchiveValidator.Limits(
-                1024 * 1024, 10, 1024, 16, 256);
+                1024 * 1024, 10, 1024, 100, 256);
         assertThrows(IOException.class,
                 () -> new ResourcePackArchiveValidator(total).validate(path));
     }

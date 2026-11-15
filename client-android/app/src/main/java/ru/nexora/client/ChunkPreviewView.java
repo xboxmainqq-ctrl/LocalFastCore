@@ -182,6 +182,34 @@ final class ChunkPreviewView extends GLSurfaceView {
         requestRender();
     }
 
+    NexoraAndroidProtocolCodec.ChunkData updateLocalBlock(
+            int worldX, int worldY, int worldZ, String blockId) {
+        int chunkX = Math.floorDiv(worldX, 16);
+        int chunkZ = Math.floorDiv(worldZ, 16);
+        int localX = Math.floorMod(worldX, 16);
+        int localZ = Math.floorMod(worldZ, 16);
+        long chunkKey = key(chunkX, chunkZ);
+        NexoraAndroidProtocolCodec.ChunkData updated;
+        synchronized (chunks) {
+            NexoraAndroidProtocolCodec.ChunkData current = chunks.get(chunkKey);
+            if (current == null) return null;
+            ArrayList<NexoraAndroidProtocolCodec.ChunkBlock> blocks =
+                    new ArrayList<>(current.blocks());
+            blocks.removeIf(block -> block.localX() == localX && block.y() == worldY
+                    && block.localZ() == localZ);
+            if (blockId != null && !blockId.isEmpty() && !"minecraft:air".equals(blockId)) {
+                blocks.add(new NexoraAndroidProtocolCodec.ChunkBlock(
+                        localX, worldY, localZ, blockId));
+            }
+            updated = new NexoraAndroidProtocolCodec.ChunkData(
+                    chunkX, chunkZ, List.copyOf(blocks));
+            chunks.put(chunkKey, updated);
+        }
+        queueEvent(renderer::markMeshDirty);
+        requestRender();
+        return updated;
+    }
+
     void reloadResourcePackTextures() {
         queueEvent(() -> renderer.reloadAtlasTexture(getContext()));
         requestRender();

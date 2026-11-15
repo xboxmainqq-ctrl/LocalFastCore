@@ -7,10 +7,10 @@ import java.util.Objects;
 /**
  * Seeded, protocol-independent overworld terrain generator.
  *
- * <p>Uses smooth, multi-scale value noise for rolling terrain, fills low areas
- * to a sea level, and places small oak trees. Feature placement is deliberately
- * chunk-local in this first implementation: every generated result is complete
- * and immutable without requiring neighboring chunks or mutable world access.</p>
+ * <p>Uses seeded macro-landforms, climate-selected biome surfaces and a
+ * world-aligned watershed field for river channels and closed-basin lakes.
+ * Drainage tiles are shared by all chunks within a fixed macro region, so
+ * independently generated neighboring chunks agree on the same watercourse.</p>
  */
 public final class OverworldChunkGenerator implements ChunkGenerator {
     public static final int DEFAULT_SEA_LEVEL = 62;

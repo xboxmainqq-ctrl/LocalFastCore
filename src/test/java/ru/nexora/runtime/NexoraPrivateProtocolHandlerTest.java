@@ -493,6 +493,77 @@ class NexoraPrivateProtocolHandlerTest {
         assertEquals(14, connection.sentMessages.size());
     }
 
+
+    @Test
+    void breaksBlocksOnlyAfterServerValidationAndAddsDropToInventory() {
+        InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
+        BlockPosition target = new BlockPosition(0, 64, 0);
+        world.setBlock(target, new BlockState("minecraft:stone"));
+        FakeConnection connection = new FakeConnection();
+        UUID playerId = UUID.nameUUIDFromBytes(
+                "nexora-player:игрок".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        java.util.Map<UUID, PlayerInventory> inventories = new java.util.concurrent.ConcurrentHashMap<>();
+        NexoraPrivateProtocolHandler handler = new NexoraPrivateProtocolHandler(
+                UUID.randomUUID(), 8 * 1024 * 1024,
+                () -> new NexoraWorldInfo("world", 0, 128, 0, 65, 0, 20, 1),
+                () -> world, ignored -> true, ignored -> { },
+                new EntityRegistry(), inventories);
+        handler.accept(connection);
+        connection.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
+        connection.deliver(NexoraBlockActionCodec.encodeRequest(new NexoraBlockActionCodec.Request(
+                NexoraBlockActionCodec.Action.BREAK, 0, 64, 0, "")));
+
+        assertTrue(world.blockAt(target).isAir());
+        assertEquals(1, handler.inventory(playerId).orElseThrow().count("minecraft:stone"));
+        assertFalse(connection.closed);
+        assertTrue(connection.sentMessages.stream().anyMatch(packet ->
+                Byte.toUnsignedInt(packet[6]) == 15));
+    }
+
+    @Test
+    void placesOnlyBlocksPresentInInventoryAndOutsidePlayerCollision() {
+        InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
+        world.setBlock(new BlockPosition(0, 64, 0), new BlockState("minecraft:grass_block"));
+        UUID playerId = UUID.nameUUIDFromBytes(
+                "nexora-player:игрок".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        PlayerInventory inventory = new PlayerInventory(playerId);
+        inventory.addOne("minecraft:dirt");
+        java.util.Map<UUID, PlayerInventory> inventories = new java.util.concurrent.ConcurrentHashMap<>();
+        inventories.put(playerId, inventory);
+        FakeConnection connection = new FakeConnection();
+        NexoraPrivateProtocolHandler handler = new NexoraPrivateProtocolHandler(
+                UUID.randomUUID(), 8 * 1024 * 1024,
+                () -> new NexoraWorldInfo("world", 0, 128, 0, 65, 0, 20, 1),
+                () -> world, ignored -> true, ignored -> { },
+                new EntityRegistry(), inventories);
+        handler.accept(connection);
+        connection.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
+        connection.deliver(NexoraBlockActionCodec.encodeRequest(new NexoraBlockActionCodec.Request(
+                NexoraBlockActionCodec.Action.PLACE, 1, 64, 0, "minecraft:dirt")));
+
+        assertEquals("minecraft:dirt", world.blockAt(new BlockPosition(1, 64, 0)).identifier());
+        assertEquals(0, inventory.count("minecraft:dirt"));
+        assertFalse(connection.closed);
+    }
+
+    @Test
+    void refusesBreakingBlocksOutsideReach() {
+        InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
+        world.setBlock(new BlockPosition(5, 64, 0), new BlockState("minecraft:stone"));
+        FakeConnection connection = new FakeConnection();
+        NexoraPrivateProtocolHandler handler = new NexoraPrivateProtocolHandler(
+                UUID.randomUUID(), 8 * 1024 * 1024,
+                () -> new NexoraWorldInfo("world", 0, 128, 0, 65, 0, 20, 1),
+                () -> world, ignored -> true, ignored -> { });
+        handler.accept(connection);
+        connection.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
+        connection.deliver(NexoraBlockActionCodec.encodeRequest(new NexoraBlockActionCodec.Request(
+                NexoraBlockActionCodec.Action.BREAK, 5, 64, 0, "")));
+
+        assertEquals("minecraft:stone", world.blockAt(new BlockPosition(5, 64, 0)).identifier());
+        assertFalse(connection.closed);
+    }
+
     private static final class FakeConnection implements TransportConnection {
         private Consumer<TransportMessage> messageListener;
         private Consumer<TransportCloseEvent> closeListener;

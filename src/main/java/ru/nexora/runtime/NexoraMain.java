@@ -214,7 +214,7 @@ public final class NexoraMain {
         });
 
         GameLoop gameLoop = new GameLoop(
-                options.tickRate(), 3, scheduler,
+                configuration.tickRate(), 3, scheduler,
                 failure -> log.accept("Game tick error: " + failure.getMessage()));
         server.register(gameLoop);
         server.register(new RuntimeModule() {
@@ -273,7 +273,7 @@ public final class NexoraMain {
                     () -> {
                         World world = worlds.get(worldId)
                                 .orElseThrow(() -> new IllegalStateException("Default world is not loaded"));
-                        return NexoraWorldInfo.from(world, 0, findSpawnY(world), 0, options.tickRate());
+                        return NexoraWorldInfo.from(world, 0, findSpawnY(world), 0, configuration.tickRate());
                     },
                     () -> worlds.get(worldId)
                             .orElseThrow(() -> new IllegalStateException("Default world is not loaded")),

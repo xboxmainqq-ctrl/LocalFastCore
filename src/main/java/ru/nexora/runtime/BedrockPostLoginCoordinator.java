@@ -3,6 +3,10 @@ package ru.nexora.runtime;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Objects;
+import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -34,12 +38,16 @@ public final class BedrockPostLoginCoordinator implements
 
     private enum Phase {
         WAITING_FOR_PACK_RESPONSE,
+        DOWNLOADING_PACKS,
         WAITING_FOR_STACK_RESPONSE,
         STARTING_WORLD
     }
 
     private final BedrockNetworkSettings networkSettings;
     private final String baseGameVersion;
+    private final List<BedrockResourcePackTransferCodec.Pack> resourcePacks;
+    private final Map<String, BedrockResourcePackTransferCodec.Pack> packsByResourceName;
+    private final boolean resourcePacksRequired;
     private final WorldStartupHandler worldStartupHandler;
     private final BiConsumer<TransportConnection, TransportMessage> playMessageHandler;
     private final ConcurrentMap<String, Session> sessions = new ConcurrentHashMap<>();
@@ -52,12 +60,39 @@ public final class BedrockPostLoginCoordinator implements
             WorldStartupHandler worldStartupHandler,
             BiConsumer<TransportConnection, TransportMessage> playMessageHandler
     ) {
+        this(networkSettings, baseGameVersion, List.of(), false,
+                worldStartupHandler, playMessageHandler);
+    }
+
+    /** Creates a coordinator that advertises and serves immutable resource-pack archives. */
+    public BedrockPostLoginCoordinator(
+            BedrockNetworkSettings networkSettings,
+            String baseGameVersion,
+            List<BedrockResourcePackTransferCodec.Pack> resourcePacks,
+            boolean resourcePacksRequired,
+            WorldStartupHandler worldStartupHandler,
+            BiConsumer<TransportConnection, TransportMessage> playMessageHandler
+    ) {
         this.networkSettings = Objects.requireNonNull(networkSettings, "networkSettings");
         this.baseGameVersion = Objects.requireNonNull(baseGameVersion, "baseGameVersion");
         if (baseGameVersion.isBlank()
                 || baseGameVersion.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 64) {
             throw new IllegalArgumentException("baseGameVersion must be nonblank and at most 64 UTF-8 bytes");
         }
+        Objects.requireNonNull(resourcePacks, "resourcePacks");
+        if (resourcePacks.size() > 64) throw new IllegalArgumentException("Too many resource packs");
+        List<BedrockResourcePackTransferCodec.Pack> checked = new ArrayList<>(resourcePacks.size());
+        Map<String, BedrockResourcePackTransferCodec.Pack> byName = new HashMap<>();
+        for (BedrockResourcePackTransferCodec.Pack pack : resourcePacks) {
+            BedrockResourcePackTransferCodec.Pack value = Objects.requireNonNull(pack, "resource pack");
+            if (byName.putIfAbsent(value.resourceName(), value) != null) {
+                throw new IllegalArgumentException("Duplicate resource pack: " + value.resourceName());
+            }
+            checked.add(value);
+        }
+        this.resourcePacks = List.copyOf(checked);
+        this.packsByResourceName = Map.copyOf(byName);
+        this.resourcePacksRequired = resourcePacksRequired && !checked.isEmpty();
         this.worldStartupHandler = Objects.requireNonNull(worldStartupHandler, "worldStartupHandler");
         this.playMessageHandler = Objects.requireNonNull(playMessageHandler, "playMessageHandler");
     }
@@ -100,8 +135,11 @@ public final class BedrockPostLoginCoordinator implements
             return;
         }
         synchronized (session) {
-            if (!sendPacket(connection, BedrockResourcePackCodec.RESOURCE_PACKS_INFO_PACKET_ID,
-                    BedrockResourcePackCodec.encodeEmptyResourcePacksInfoPayload())) {
+            ByteBuffer info = resourcePacks.isEmpty()
+                    ? BedrockResourcePackCodec.encodeEmptyResourcePacksInfoPayload()
+                    : BedrockResourcePackTransferCodec.encodeResourcePacksInfoPayload(
+                            resourcePacks, resourcePacksRequired);
+            if (!sendPacket(connection, BedrockResourcePackCodec.RESOURCE_PACKS_INFO_PACKET_ID, info)) {
                 fail(session);
             }
         }
@@ -138,34 +176,44 @@ public final class BedrockPostLoginCoordinator implements
                 }
                 return;
             }
-            final BedrockResourcePackCodec.ClientResponse response;
+            final BedrockGamePacket inbound;
             try {
-                response = decodeResponse(message.payload());
+                inbound = decodePacket(message.payload());
             } catch (RuntimeException malformed) {
                 fail(session);
                 return;
             }
-            switch (response.type()) {
-                case REFUSED -> fail(session);
-                case SEND_PACKS -> {
-                    // Until a server pack set is configured, no pack identifiers
-                    // can be requested by the client.
-                    if (!response.packIds().isEmpty()
-                            || session.phase != Phase.WAITING_FOR_PACK_RESPONSE) {
-                        fail(session);
-                    }
+            if (inbound.header().packetId() == BedrockResourcePackTransferCodec.CHUNK_REQUEST_PACKET_ID) {
+                if (session.phase != Phase.DOWNLOADING_PACKS) {
+                    fail(session);
+                    return;
                 }
+                handleChunkRequest(session, inbound.payloadBuffer());
+                return;
+            }
+            if (inbound.header().packetId() != BedrockResourcePackCodec.RESOURCE_PACK_CLIENT_RESPONSE_PACKET_ID) {
+                fail(session);
+                return;
+            }
+            final BedrockResourcePackClientResponse response;
+            try {
+                response = BedrockResourcePackClientResponsePacketCodec.decodePayload(inbound.payloadBuffer());
+            } catch (RuntimeException malformed) {
+                fail(session);
+                return;
+            }
+            switch (response.status()) {
+                case REFUSED -> fail(session);
+                case SEND_PACKS -> handleSendPacks(session, response.packIds());
                 case HAVE_ALL_PACKS -> {
-                    if (session.phase != Phase.WAITING_FOR_PACK_RESPONSE
-                            || !response.packIds().isEmpty()) {
+                    if (!response.packIds().isEmpty()
+                            || (session.phase != Phase.WAITING_FOR_PACK_RESPONSE
+                            && session.phase != Phase.DOWNLOADING_PACKS)
+                            || !allRequestedChunksDelivered(session)) {
                         fail(session);
                         return;
                     }
-                    session.phase = Phase.WAITING_FOR_STACK_RESPONSE;
-                    if (!sendPacket(connection, BedrockResourcePackCodec.RESOURCE_PACK_STACK_PACKET_ID,
-                            BedrockResourcePackCodec.encodeEmptyResourcePackStackPayload(baseGameVersion))) {
-                        fail(session);
-                    }
+                    sendResourcePackStack(session);
                 }
                 case COMPLETED -> {
                     if (session.phase != Phase.WAITING_FOR_STACK_RESPONSE
@@ -176,6 +224,7 @@ public final class BedrockPostLoginCoordinator implements
                     session.phase = Phase.STARTING_WORLD;
                     startWorld(session);
                 }
+            }
             }
         }
     }
@@ -242,20 +291,89 @@ public final class BedrockPostLoginCoordinator implements
         });
     }
 
-    private BedrockResourcePackClientResponse decodeResponse(ByteBuffer frame) {
+    private BedrockGamePacket decodePacket(ByteBuffer frame) {
         ByteBuffer batch = BedrockBatchCompressionCodec.decodeAfterNetworkSettings(
                 frame, networkSettings, BedrockPacketBatchCodec.DEFAULT_MAX_BATCH_BYTES);
         List<BedrockGamePacket> packets = BedrockPacketBatchCodec.decodeUncompressed(batch);
         if (packets.size() != 1) {
-            throw new IllegalArgumentException("Expected exactly one resource-pack response packet");
+            throw new IllegalArgumentException("Expected exactly one Bedrock packet during resource-pack negotiation");
         }
         BedrockGamePacket packet = packets.get(0);
-        if (packet.header().packetId() != BedrockResourcePackCodec.RESOURCE_PACK_CLIENT_RESPONSE_PACKET_ID
-                || packet.header().senderSubClientId() != 0
-                || packet.header().targetSubClientId() != 0) {
-            throw new IllegalArgumentException("Unexpected Bedrock packet during resource-pack negotiation");
+        if (packet.header().senderSubClientId() != 0 || packet.header().targetSubClientId() != 0) {
+            throw new IllegalArgumentException("Routed Bedrock packets are not accepted during resource-pack negotiation");
         }
-        return BedrockResourcePackClientResponsePacketCodec.decodePayload(packet.payloadBuffer());
+        return packet;
+    }
+
+    private void handleSendPacks(Session session, List<String> requestedIds) {
+        if (session.phase != Phase.WAITING_FOR_PACK_RESPONSE || requestedIds.isEmpty()
+                || requestedIds.size() > resourcePacks.size()) {
+            fail(session);
+            return;
+        }
+        Map<String, PackProgress> requested = new HashMap<>();
+        for (String name : requestedIds) {
+            BedrockResourcePackTransferCodec.Pack pack = packsByResourceName.get(name);
+            if (pack == null || requested.containsKey(name)) {
+                fail(session);
+                return;
+            }
+            int chunks = (pack.archive().length
+                    + BedrockResourcePackTransferCodec.DEFAULT_CHUNK_BYTES - 1)
+                    / BedrockResourcePackTransferCodec.DEFAULT_CHUNK_BYTES;
+            requested.put(name, new PackProgress(pack, chunks));
+        }
+        session.downloadingPacks.putAll(requested);
+        session.phase = Phase.DOWNLOADING_PACKS;
+        for (PackProgress progress : requested.values()) {
+            if (!sendPacket(session.connection, BedrockResourcePackTransferCodec.DATA_INFO_PACKET_ID,
+                    BedrockResourcePackTransferCodec.encodeDataInfoPayload(
+                            progress.pack, BedrockResourcePackTransferCodec.DEFAULT_CHUNK_BYTES))) {
+                fail(session);
+                return;
+            }
+        }
+    }
+
+    private void handleChunkRequest(Session session, ByteBuffer payload) {
+        final BedrockResourcePackTransferCodec.ChunkRequest request;
+        try {
+            request = BedrockResourcePackTransferCodec.decodeChunkRequestPayload(payload);
+        } catch (RuntimeException malformed) {
+            fail(session);
+            return;
+        }
+        PackProgress progress = session.downloadingPacks.get(request.resourceName());
+        if (progress == null || request.chunkIndex() >= progress.chunkCount) {
+            fail(session);
+            return;
+        }
+        if (!sendPacket(session.connection, BedrockResourcePackTransferCodec.CHUNK_DATA_PACKET_ID,
+                BedrockResourcePackTransferCodec.encodeChunkDataPayload(
+                        progress.pack, request.chunkIndex(),
+                        BedrockResourcePackTransferCodec.DEFAULT_CHUNK_BYTES))) {
+            fail(session);
+            return;
+        }
+        progress.deliveredChunks.set(request.chunkIndex());
+    }
+
+    private boolean allRequestedChunksDelivered(Session session) {
+        for (PackProgress progress : session.downloadingPacks.values()) {
+            if (progress.deliveredChunks.cardinality() != progress.chunkCount) return false;
+        }
+        return true;
+    }
+
+    private void sendResourcePackStack(Session session) {
+        session.phase = Phase.WAITING_FOR_STACK_RESPONSE;
+        ByteBuffer stack = resourcePacks.isEmpty()
+                ? BedrockResourcePackCodec.encodeEmptyResourcePackStackPayload(baseGameVersion)
+                : BedrockResourcePackTransferCodec.encodeResourcePackStackPayload(
+                        resourcePacks, baseGameVersion, resourcePacksRequired);
+        if (!sendPacket(session.connection, BedrockResourcePackCodec.RESOURCE_PACK_STACK_PACKET_ID, stack)) {
+            fail(session);
+        }
     }
 
     private boolean sendPacket(
@@ -300,12 +418,24 @@ public final class BedrockPostLoginCoordinator implements
     private static final class Session {
         private final TransportConnection connection;
         private final BedrockAuthenticatedPlayer player;
+        private final Map<String, PackProgress> downloadingPacks = new HashMap<>();
         private Phase phase = Phase.WAITING_FOR_PACK_RESPONSE;
         private boolean closed;
 
         private Session(TransportConnection connection, BedrockAuthenticatedPlayer player) {
             this.connection = connection;
             this.player = player;
+        }
+    }
+
+    private static final class PackProgress {
+        private final BedrockResourcePackTransferCodec.Pack pack;
+        private final int chunkCount;
+        private final BitSet deliveredChunks = new BitSet();
+
+        private PackProgress(BedrockResourcePackTransferCodec.Pack pack, int chunkCount) {
+            this.pack = pack;
+            this.chunkCount = chunkCount;
         }
     }
 }

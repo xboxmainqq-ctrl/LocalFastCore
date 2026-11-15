@@ -51,7 +51,13 @@ jobs:
       - name: Validate dashboard JavaScript and agent controls
         run: |
           node --check nexora-ai-web/app.js
-          node -e 'const fs=require("fs"); const html=fs.readFileSync("nexora-ai-web/index.html","utf8"); for (const id of ["workspace-load-context","workspace-ai-project","workspace-apply-plan","workspace-delete-current"]) { if (!html.includes('"' + 'id="' + id + '"')) throw new Error("Missing dashboard control: " + id); }'
+          node <<'NODE'
+          const fs = require("fs");
+          const html = fs.readFileSync("nexora-ai-web/index.html", "utf8");
+          for (const id of ["workspace-load-context", "workspace-ai-project", "workspace-apply-plan", "workspace-delete-current"]) {
+            if (!html.includes(`id="${id}"`)) throw new Error("Missing dashboard control: " + id);
+          }
+          NODE
       - name: Build debug APK
         working-directory: nexora-ai-android
         run: gradle --no-daemon assembleDebug

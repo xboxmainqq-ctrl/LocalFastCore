@@ -10,7 +10,8 @@ Prototype target: Android 8.0+ (API 26), compile/target SDK 35, Java 17.
 - GET /health and GET /v1/capabilities.
 - Embedded WebView dashboard and six early-stage creation tools.
 - Free-only OpenRouter text chat bridge using `openrouter/free`; no paid fallback.
-- GitHub repository connection using a fine-grained personal access token.
+- GitHub App Device Flow sign-in with encrypted access/refresh token storage and automatic token refresh.
+- Fine-grained personal access token remains available as a manual fallback.
 - GitHub repository and branch listing, branch creation, repository folder browsing, UTF-8 file reading, and atomic multi-file commits.
 - Workspace editor with staged file changes and a confirmation step before writing commits.
 - AI-assisted editing of the currently opened file: the file content is sent as task context to the free-only model; the proposed complete file is reviewed and staged by the user before commit.
@@ -22,12 +23,15 @@ Prototype target: Android 8.0+ (API 26), compile/target SDK 35, Java 17.
 
 ## GitHub setup
 
-1. In GitHub, create a fine-grained personal access token restricted to the exact repository you want NEXORA to access.
-2. Grant repository permissions: **Metadata: Read-only** and **Contents: Read and write**.
-3. Open the Android Host → Dashboard → GitHub.
-4. Paste the token and connect. The token is encrypted with Android Keystore and is not returned to the web UI.
-5. Load repositories, choose a repository and branch, then enter a file path, commit message, and file content.
-6. Review the confirmation dialog before the commit is sent.
+Preferred sign-in is GitHub App Device Flow:
+1. Register a GitHub App in GitHub Developer Settings. Enable **Device Flow**.
+2. Give the app repository permissions **Metadata: Read-only** and **Contents: Read and write**. Install the app only on repositories you want NEXORA to access.
+3. Open Android Host → Dashboard → GitHub and enter the app's **Client ID** (not App ID and never a client secret).
+4. Tap **Войти через GitHub**, open the displayed verification URL, enter the one-time code, and approve access.
+5. NEXORA stores access/refresh tokens encrypted with Android Keystore and refreshes expiring access tokens automatically.
+6. Load repositories, choose a repository and branch, browse files, ask AI to rewrite the opened file, review/stage changes, then confirm a multi-file commit.
+
+A fine-grained personal access token can still be used as a manual fallback. Restrict it to the exact repository and grant Metadata: Read-only plus Contents: Read and write. Never paste credentials into the AI chat or source files.
 
 Prefer a dedicated working branch such as `nexora-ai/my-feature`. Avoid committing directly to `main`. Never paste the token into the AI chat, project files, or a public repository. You can revoke the token in GitHub settings at any time; use the Disconnect button to erase its local copy.
 
@@ -63,6 +67,6 @@ The app displays the local API token. Keep it private.
 
 The local API deliberately binds to loopback only. It is not reachable over Wi-Fi or mobile data. Do not expose this prototype to the public internet. Remote pairing, TLS, user authentication, and a private-network tunnel must be designed and reviewed before remote access is enabled.
 
-GitHub access is limited by the permissions and repository selection of the fine-grained token. GitHub Apps with short-lived tokens and installation-level repository restrictions are a planned upgrade over manually supplied tokens.
+GitHub access is limited by the permissions and repository selection of the fine-grained token. GitHub App Device Flow is the preferred login path. The app's installation selection and repository permissions constrain access; device authorization codes are one-time and expire.
 
 Android may restrict foreground services and background execution. The service is user-started and displays a persistent notification. Play Store distribution requires a separate policy review, especially for the special-use foreground service type.

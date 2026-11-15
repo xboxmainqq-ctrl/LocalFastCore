@@ -7,7 +7,7 @@ on:
     paths:
       - "src/**"
       - "pom.xml"
-      - ".github/workflows/nexora-server.yml"
+      - ".github/workflows/**"
   pull_request:
     paths:
       - "src/**"

@@ -126,6 +126,11 @@ public final class WorldChunkPipeline implements RuntimeModule {
         return generation.pendingCount();
     }
 
+    /** Returns whether a request for this position is still awaiting delivery. */
+    public boolean isPending(ChunkPosition position) {
+        return generation.isPending(Objects.requireNonNull(position, "position"));
+    }
+
     public int completedCount() {
         return generation.completedCount();
     }

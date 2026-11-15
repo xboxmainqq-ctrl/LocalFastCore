@@ -281,7 +281,7 @@ public final class NexoraMain {
                                 ? CompletableFuture.completedFuture(false)
                                 : active.requestAsync(position);
                     },
-                    activeChunkStreaming.get());
+                    activeChunkStreaming::get);
             server.register(new NetherNetPrivateProtocolModule(
                     peerHost, peerHost, signaling, protocolHandler));
         }

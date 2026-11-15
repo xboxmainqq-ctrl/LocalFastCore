@@ -20,7 +20,6 @@ import java.util.zip.ZipInputStream;
  * Only known texture filenames are extracted; all other archive paths are ignored.
  */
 final class NexoraResourcePackInstaller {
-    private static final String TEXTURE_PREFIX = "textures/blocks/";
     private static final long MAX_FILE_BYTES = 4L * 1024L * 1024L;
     private static final long MAX_TOTAL_BYTES = 32L * 1024L * 1024L;
     private static final int MAX_ENTRIES = 128;
@@ -58,10 +57,9 @@ final class NexoraResourcePackInstaller {
                     if (entry.isDirectory()) continue;
                     String name = entry.getName();
                     validateArchivePath(name);
-                    if (!name.startsWith(TEXTURE_PREFIX)) continue;
-                    String textureName = name.substring(TEXTURE_PREFIX.length());
-                    if (!ALLOWED.contains(textureName)) continue;
-                    if (!names.add(textureName)) throw new IllegalArgumentException("Повтор текстуры: " + textureName);
+                    String textureName = supportedTextureName(name);
+                    if (textureName == null) continue;
+                    // Java packs often include both still and flowing water; keep still when present.\n                    if (!names.add(textureName)) {\n                        if (textureName.equals("water.png") && name.endsWith("water_still.png")) {\n                            // Replace a previously imported flowing-water fallback with still water.\n                        } else {\n                            continue;\n                        }\n                    }
 
                     File output = new File(new File(staging, "textures/blocks"), textureName);
                     File parent = output.getParentFile();
@@ -100,6 +98,77 @@ final class NexoraResourcePackInstaller {
         } catch (Exception failure) {
             deleteRecursively(staging);
             throw failure;
+        }
+    }
+
+    /**
+     * Accepts NEXORA aliases, Bedrock-style textures/blocks and standard
+     * Java assets/minecraft/textures/block paths, optionally inside one ZIP root folder.
+     */
+    private static String supportedTextureName(String path) {
+        String normalized = path;
+        String[] markers = {
+                "assets/minecraft/textures/block/",
+                "assets/minecraft/textures/blocks/",
+                "textures/block/",
+                "textures/blocks/"
+        };
+        int start = -1;
+        for (String marker : markers) {
+            int index = normalized.lastIndexOf(marker);
+            if (index >= 0 && (start < 0 || index > start)) start = index + marker.length();
+        }
+        if (start < 0 || start >= normalized.length()) return null;
+        String file = normalized.substring(start);
+        if (file.indexOf('/') >= 0) return null;
+        file = file.toLowerCase(java.util.Locale.ROOT);
+        if (ALLOWED.contains(file)) return file;
+
+        switch (file) {
+            case "grass_block_top.png": return "grass_top.png";
+            case "grass_block_side.png": return "grass_side.png";
+            case "grass_block_bottom.png": return "dirt.png";
+            case "oak_log.png":
+            case "spruce_log.png":
+            case "birch_log.png":
+            case "jungle_log.png":
+            case "acacia_log.png":
+            case "dark_oak_log.png":
+            case "mangrove_log.png":
+            case "cherry_log.png":
+            case "crimson_stem.png":
+            case "warped_stem.png": return "log_side.png";
+            case "oak_log_top.png":
+            case "spruce_log_top.png":
+            case "birch_log_top.png":
+            case "jungle_log_top.png":
+            case "acacia_log_top.png":
+            case "dark_oak_log_top.png":
+            case "mangrove_log_top.png":
+            case "cherry_log_top.png":
+            case "crimson_stem_top.png":
+            case "warped_stem_top.png": return "log_top.png";
+            case "oak_leaves.png":
+            case "spruce_leaves.png":
+            case "birch_leaves.png":
+            case "jungle_leaves.png":
+            case "acacia_leaves.png":
+            case "dark_oak_leaves.png":
+            case "mangrove_leaves.png":
+            case "cherry_leaves.png": return "leaves.png";
+            case "water_still.png":
+            case "water_flow.png": return "water.png";
+            case "snow.png":
+            case "snow_block.png": return "snow.png";
+            case "oak_planks.png":
+            case "spruce_planks.png":
+            case "birch_planks.png":
+            case "jungle_planks.png":
+            case "acacia_planks.png":
+            case "dark_oak_planks.png":
+            case "mangrove_planks.png":
+            case "cherry_planks.png": return "planks.png";
+            default: return null;
         }
     }
 

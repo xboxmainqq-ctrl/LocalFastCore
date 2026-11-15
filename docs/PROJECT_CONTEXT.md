@@ -4,7 +4,7 @@ This is the canonical hand-off context for every coding session and automated co
 
 ## One-sentence goal
 
-Build NEXORA as an Android-first RPG game network: an original block-world Core and dedicated RPG server platform, a separate first-party Android client, network/lobby services, persistent RPG gameplay and creator tools. The product direction is inspired by the structure of large Minecraft server networks, not a copy of any one network.
+Build NEXORA as an Android-first block-world game platform with two distinct experiences: familiar offline survival single-player and customizable online RPG servers. Both run on the same original NEXORA Core, with explicit mode-specific rulesets. The platform also includes a separate Android client, network/lobby services and creator tools.
 
 ## Non-negotiable product decisions
 
@@ -101,3 +101,15 @@ The user confirmed on 2026-11-15 that NEXORA is intended to become a mobile RPG 
 - **RPG scope:** character creation, classes, stats, levels, skills/abilities, equipment, mobs, bosses, quests, dungeons, loot, economy, parties/social features and optional PvP integrated into the RPG experience.
 - **Build order:** finish one genuinely playable offline Android RPG world first; then prove one online dedicated server with two Android clients; then expand to lobby, multiple worlds/instances and network services. Do not prematurely build a distributed cluster.
 - Detailed product brief: [PRODUCT_VISION_RPG_NETWORK.md](PRODUCT_VISION_RPG_NETWORK.md).
+
+
+## Confirmed gameplay split — survival single-player vs RPG servers
+
+The user clarified on 2026-11-15 that the game modes must be distinct:
+
+- **Single Player:** make it feel like ordinary Minecraft-style survival: create a local world, spawn into a block world, gather/mine/place resources, craft, build, explore, survive day/night, fight basic mobs, manage health/hunger/inventory, save and continue later. Do not force RPG classes, magic, server quests or network economy into this mode.
+- **Online dedicated servers:** this is where NEXORA's custom RPG systems live: character creation, classes, stats, levels, magic, abilities, combat, custom equipment/items, mobs/bosses, NPCs, quests, dungeons, economy, parties/guilds and staff/admin systems.
+- **Same Core, different rulesets:** embedded single-player and dedicated servers must run the same NEXORA Core. Single Player loads the built-in Survival ruleset; online servers load configured RPG rulesets/modules. Reuse world, chunk, block, entity, inventory and other common foundations, but do not force the same mode-specific rules onto both.
+- **Android client and creator direction:** design the client so future customization is attractive, efficient and low-cost: data-driven content, resource packs, configurable HUD/menus, reusable UI components, creator studios, validation/versioning/rollback, safe reload, asset caching and mobile performance budgets. Avoid hardcoding every server's unique RPG content or UI into the app.
+- **Priority order:** (1) playable offline Survival on Android; (2) same Core as dedicated server and two-client connection; (3) RPG ruleset for online servers; (4) customization/resource-pack/creator tools; (5) lobby and multi-world network.
+- Canonical detail: [SINGLEPLAYER_AND_SERVER_MODES.md](SINGLEPLAYER_AND_SERVER_MODES.md).

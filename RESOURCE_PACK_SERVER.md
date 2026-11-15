@@ -1,7 +1,7 @@
 # NEXORA Bedrock resource-pack delivery
 
 The Bedrock login pipeline can advertise and transfer validated NEXORA
-resource-pack ZIP archives before StartGame. Archives are loaded from a
+resource-pack ZIP archives before StartGame. The single supported archive is loaded from a
 server-selected directory; the default convention is `resource-packs/`.
 
 ## Archive layout
@@ -20,11 +20,12 @@ Each ZIP must contain a root `manifest.json` using the NEXORA pack schema:
 Place supported Bedrock block PNG files under `textures/blocks/`, for example
 `textures/blocks/grass_top.png` and `textures/blocks/stone.png`.
 
-Only `RESOURCE` packs are delivered by this path. Manifests, dependencies,
-ZIP paths, entry counts, compressed size, and expanded size are validated
-before the archive is retained for transfer. Dependencies are resolved
-dependency-first and pack UUIDs are derived deterministically from the
-namespaced manifest IDs.
+Only one `RESOURCE` pack is currently delivered per world because the Android
+client does not yet support stacked packs. Keep exactly one ZIP in the
+configured directory. Manifests, dependencies, ZIP paths, entry counts,
+compressed size, and expanded size are validated before the archive is
+retained for transfer. Pack UUIDs are derived deterministically from the
+namespaced manifest ID.
 
 ## Wiring the pack set
 
@@ -50,6 +51,7 @@ startup; restart/rebuild the pipeline after changing archives.
 The Android client downloads the advertised archive in 1 MiB chunks, verifies
 the SHA-256 digest, and installs its supported block textures before accepting
 the pack stack. The current renderer supports one ordinary, unencrypted
-resource pack at a time. Script packs, add-on packs, ray-tracing packs,
+resource pack at a time; the server loader rejects directories containing
+more than one pack rather than advertising a stack the client cannot install. Script packs, add-on packs, ray-tracing packs,
 subpacks, CDN delivery, and multiple stacked packs are not supported yet.
 Unsupported pack metadata is rejected rather than silently ignored.

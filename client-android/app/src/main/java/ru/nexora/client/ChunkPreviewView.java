@@ -174,6 +174,11 @@ final class ChunkPreviewView extends GLSurfaceView {
         requestRender();
     }
 
+    void reloadResourcePackTextures() {
+        queueEvent(() -> renderer.reloadAtlasTexture(getContext()));
+        requestRender();
+    }
+
     int receivedChunkCount() {
         synchronized (chunks) {
             return chunks.size();
@@ -934,6 +939,15 @@ final class ChunkPreviewView extends GLSurfaceView {
             vertexBuffer = bytes.asFloatBuffer();
             vertexBuffer.put(values);
             vertexBuffer.position(0);
+        }
+
+        void reloadAtlasTexture(Context context) {
+            int replacement = createAtlasTexture(context);
+            if (atlasTexture != 0) {
+                GLES20.glDeleteTextures(1, new int[] {atlasTexture}, 0);
+            }
+            atlasTexture = replacement;
+            markMeshDirty();
         }
 
         private int createAtlasTexture(Context context) {

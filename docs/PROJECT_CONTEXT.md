@@ -113,3 +113,44 @@ The user clarified on 2026-11-15 that the game modes must be distinct:
 - **Android client and creator direction:** design the client so future customization is attractive, efficient and low-cost: data-driven content, resource packs, configurable HUD/menus, reusable UI components, creator studios, validation/versioning/rollback, safe reload, asset caching and mobile performance budgets. Avoid hardcoding every server's unique RPG content or UI into the app.
 - **Priority order:** (1) playable offline Survival on Android; (2) same Core as dedicated server and two-client connection; (3) RPG ruleset for online servers; (4) customization/resource-pack/creator tools; (5) lobby and multi-world network.
 - Canonical detail: [SINGLEPLAYER_AND_SERVER_MODES.md](SINGLEPLAYER_AND_SERVER_MODES.md).
+
+
+## Confirmed server-owner platform model — installable Core and creator client
+
+The user clarified on 2026-11-15 that the main product must be a server platform owners can install on their own host and customize deeply, paired with a separate NEXORA Client that exposes creation and customization tools.
+
+### Dedicated server must be independently installable and extensible
+
+- Ship NEXORA Core as a standalone headless dedicated-server distribution, installable without the Android client.
+- A server owner must be able to configure the server from files and tools: server identity/settings, worlds, rulesets, permissions, commands, gameplay systems, content packs and enabled extensions.
+- Provide a stable, documented, versioned server Extension API. Extensions/modules must register through lifecycle-managed APIs and have declared dependencies, compatibility ranges, permissions and resource limits.
+- Prefer data-driven definitions and declarative configuration for blocks, items, recipes, entities, biomes, loot, classes, stats, abilities, quests, NPCs, UI metadata and world settings. Use code extensions only when configuration/data cannot express the mechanic.
+- Support extension/content package install, enable/disable, dependency validation, schema validation, backups, migration, rollback and safe reload where supported. Never promise hot reload for state that cannot be safely replaced.
+- Keep server-authoritative mechanics on the server: combat, movement validation, inventory, item effects, abilities, rewards, quests, progression, economy, permissions and persistence.
+- Server distribution must include a clear config directory, plugins/extensions directory, content/resource-pack directory, logs, world data and versioned upgrade/migration tooling.
+
+### NEXORA Client is the visual editor and player runtime
+
+- The first-party Android client is separate from the dedicated server and is the main rich customization environment.
+- Build in-client editors for HUD/layouts, buttons/touch controls, menus, inventory screens, fonts/icons, themes, textures, block/item models, sounds, particles and visual effects.
+- Include creator workflows for custom blocks/items, recipes, mobs, biomes, classes, abilities, quests, NPCs and other mechanics. Editors should produce versioned content packages and/or validated server extension projects.
+- Include live preview, device preview, import/export, package validation, compatibility checks, version history, backup and rollback.
+- Visual customizations (HUD, textures, buttons, UI themes and models) should be data/resource-pack driven so owners do not need a new client APK for every server change.
+- New gameplay mechanics require server-side implementation or a supported declarative mechanic system; client-side visuals alone must never grant authority over multiplayer state.
+- The client must sandbox and validate downloaded content, enforce size/memory limits and avoid executing arbitrary server-provided code.
+
+### Compatibility boundary
+
+- The NEXORA Client is the full-featured client for custom HUDs, controls, visuals and creator tools.
+- An optional adapter may let unmodified Minecraft Bedrock clients join NEXORA servers using only capabilities Bedrock actually exposes (protocol-compatible blocks/items/forms/resource packs and supported behavior). Do not promise arbitrary custom buttons, HUD widgets or client mechanics in an unmodified Minecraft app.
+- Keep the Bedrock adapter isolated from the canonical NEXORA Core and prove each supported client version on real devices.
+- Never copy Minecraft source code or proprietary assets; use clean-room protocol work and original or properly licensed content.
+
+### Delivery sequence for this platform model
+
+1. Finish the playable Android client and the shared NEXORA Core foundations.
+2. Package and test an independently installable dedicated server.
+3. Stabilize the versioned Extension API and data/content package formats.
+4. Build the client-side visual/content editors and resource-pack pipeline.
+5. Add server management UI, package installation/validation and safe update/rollback workflows.
+6. Add the optional Bedrock compatibility gateway after the NEXORA client/server path is reliable.

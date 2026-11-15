@@ -113,6 +113,8 @@ public class MainActivity extends Activity {
         setContentView(root);
         refreshStatus();
         requestNotificationPermissionIfNeeded();
+        // Open the actual AI workspace immediately; the host controls remain behind it.
+        startActivity(new Intent(this, DashboardActivity.class));
     }
 
     @Override

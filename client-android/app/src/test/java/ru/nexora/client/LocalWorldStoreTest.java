@@ -33,6 +33,26 @@ public final class LocalWorldStoreTest {
     }
 
     @Test
+    public void savesAndReloadsLocalHotbar() throws Exception {
+        LocalWorldStore store = new LocalWorldStore(
+                Files.createTempDirectory("nexora-local-hotbar").toFile());
+        List<LocalWorldStore.InventorySlot> inventory = List.of(
+                new LocalWorldStore.InventorySlot("minecraft:dirt", 32),
+                new LocalWorldStore.InventorySlot("minecraft:stone", 7),
+                new LocalWorldStore.InventorySlot("", 0),
+                new LocalWorldStore.InventorySlot("", 0),
+                new LocalWorldStore.InventorySlot("", 0),
+                new LocalWorldStore.InventorySlot("", 0),
+                new LocalWorldStore.InventorySlot("", 0),
+                new LocalWorldStore.InventorySlot("", 0),
+                new LocalWorldStore.InventorySlot("", 0));
+
+        assertNull(store.loadInventory("test_world"));
+        store.saveInventory("test_world", inventory);
+        assertEquals(inventory, store.loadInventory("test_world"));
+    }
+
+    @Test
     public void missingWorldReturnsEmptyState() throws Exception {
         LocalWorldStore store = new LocalWorldStore(
                 Files.createTempDirectory("nexora-empty-world").toFile());

@@ -10,6 +10,8 @@ Prototype target: Android 8.0+ (API 26), compile/target SDK 35, Java 17.
 - GET /health and GET /v1/capabilities.
 - Embedded WebView dashboard and six early-stage creation tools.
 - Free-only OpenRouter text chat bridge using `openrouter/free`; no paid fallback.
+- Persistent engineering system instructions loaded from `app/src/main/assets/nexora-system-prompt.md` for every chat request.
+- Curated engineering knowledge base and staged capability roadmap in `docs/nexora-ai/knowledge-base/` and `docs/nexora-ai/agent-capability-roadmap.md`.
 - GitHub App Device Flow sign-in with encrypted access/refresh token storage and automatic token refresh.
 - Fine-grained personal access token remains available as a manual fallback.
 - GitHub repository and branch listing, branch creation, repository folder browsing, UTF-8 file reading, and atomic multi-file commits.

@@ -36,6 +36,20 @@ final class NexoraResourcePackInstaller {
 
     static int install(Context context, Uri source) throws Exception {
         if (context == null || source == null) throw new IllegalArgumentException("Файл не выбран");
+        InputStream input = context.getContentResolver().openInputStream(source);
+        if (input == null) throw new IllegalArgumentException("Не удалось открыть ZIP");
+        return install(context, input);
+    }
+
+    static int install(Context context, File source) throws Exception {
+        if (context == null || source == null || !source.isFile()) {
+            throw new IllegalArgumentException("ZIP-файл не найден");
+        }
+        return install(context, new FileInputStream(source));
+    }
+
+    private static int install(Context context, InputStream source) throws Exception {
+        if (context == null || source == null) throw new IllegalArgumentException("Не удалось открыть ZIP");
         File root = new File(context.getFilesDir(), "resourcepacks");
         if (!root.exists() && !root.mkdirs()) throw new IllegalStateException("Не удалось создать папку паков");
 
@@ -47,8 +61,7 @@ final class NexoraResourcePackInstaller {
         int installed = 0;
         long totalBytes = 0L;
         Set<String> names = new HashSet<>();
-        try (InputStream raw = context.getContentResolver().openInputStream(source)) {
-            if (raw == null) throw new IllegalArgumentException("Не удалось открыть ZIP");
+        try (InputStream raw = source) {
             try (ZipInputStream zip = new ZipInputStream(new BufferedInputStream(raw))) {
                 ZipEntry entry;
                 int entryCount = 0;

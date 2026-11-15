@@ -37,7 +37,7 @@ public class NexoraAndroidProtocolCodecTest {
     @Test
     public void clientHelloMatchesTheServerGoldenVector() {
         byte[] expected = new byte[] {
-                'N', 'X', 'R', 'A', 1, 2, 1, 11,
+                'N', 'X', 'R', 'A', 1, 3, 1, 11,
                 'a', 'n', 'd', 'r', 'o', 'i', 'd', '-', 'd', 'e', 'v',
                 10, (byte) 0xd0, (byte) 0x98, (byte) 0xd0, (byte) 0xb3,
                 (byte) 0xd1, (byte) 0x80, (byte) 0xd0, (byte) 0xbe,
@@ -106,7 +106,7 @@ public class NexoraAndroidProtocolCodecTest {
         byte[] packet = NexoraAndroidProtocolCodec.encodePlayerMove(1.25, 65.0, -2.5);
         assertEquals(31, packet.length);
         assertEquals(1, Byte.toUnsignedInt(packet[4]));
-        assertEquals(2, Byte.toUnsignedInt(packet[5]));
+        assertEquals(3, Byte.toUnsignedInt(packet[5]));
         assertEquals(7, Byte.toUnsignedInt(packet[6]));
         ByteBuffer values = ByteBuffer.wrap(packet);
         values.position(7);
@@ -246,7 +246,7 @@ public class NexoraAndroidProtocolCodecTest {
     public void encodesInventoryMoveAction() {
         byte[] packet = NexoraAndroidProtocolCodec.encodeInventoryAction(
                 NexoraAndroidProtocolCodec.InventoryAction.MOVE_OR_SWAP, 2, 17);
-        assertArrayEquals(new byte[] {'N','X','R','A',1,3,12,1,3,17}, packet);
+        assertArrayEquals(new byte[] {'N','X','R','A',1,3,12,1,2,17}, packet);
     }
 
     @Test

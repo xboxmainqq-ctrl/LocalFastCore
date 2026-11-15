@@ -881,6 +881,8 @@ public final class NetherNetAndroidClient implements AutoCloseable {
             if (!sendReliable(NexoraAndroidProtocolCodec.encodeResourcePackReady())) {
                 throw new IllegalStateException("Не удалось подтвердить установку серверного ресурс-пака");
             }
+            Listener current = listener;
+            if (current != null) mainHandler.post(current::onResourcePackInstalled);
         } catch (Exception failure) {
             reportError("Ошибка установки серверного ресурс-пака: "
                     + (failure.getMessage() == null ? failure.getClass().getSimpleName()
@@ -1217,6 +1219,9 @@ public final class NetherNetAndroidClient implements AutoCloseable {
 
         default void onInventoryActionResult(
                 NexoraAndroidProtocolCodec.InventoryActionResult result) {
+        }
+
+        default void onResourcePackInstalled() {
         }
 
         default void onNetworkSettingsReceived(BedrockAndroidNetworkSettings settings) {

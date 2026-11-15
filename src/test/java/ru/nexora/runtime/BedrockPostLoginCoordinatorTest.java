@@ -51,6 +51,7 @@ class BedrockPostLoginCoordinatorTest {
         assertEquals(0, playReady.get());
 
         coordinator.handleMessage(connection, response("resourcepackstackfinished"));
+        coordinator.handleMessage(connection, resourcePacksReadyForValidation());
         assertEquals(1, worldStarts.get());
         assertEquals(1, playReady.get());
         assertTrue(connection.isOpen());
@@ -103,6 +104,7 @@ class BedrockPostLoginCoordinatorTest {
         assertEquals(BedrockResourcePackCodec.RESOURCE_PACK_STACK_PACKET_ID,
                 decodeSentPacket(connection.sent.get(4)).header().packetId());
         coordinator.handleMessage(connection, response("resourcepackstackfinished"));
+        coordinator.handleMessage(connection, resourcePacksReadyForValidation());
         assertEquals(1, worldStarts.get());
         assertTrue(connection.isOpen());
         coordinator.close();
@@ -125,6 +127,7 @@ class BedrockPostLoginCoordinatorTest {
         coordinator.accept(connection, player());
         coordinator.handleMessage(connection, response("downloadingfinished"));
         coordinator.handleMessage(connection, response("resourcepackstackfinished"));
+        coordinator.handleMessage(connection, resourcePacksReadyForValidation());
 
         // This frame represents a client SubChunkRequest received after
         // StartGame/skeleton chunks were sent but before startup completes.
@@ -210,6 +213,14 @@ class BedrockPostLoginCoordinatorTest {
         generator.initialize(new ECGenParameterSpec("secp384r1"));
         ECPublicKey key = (ECPublicKey) generator.generateKeyPair().getPublic();
         return new BedrockAuthenticatedPlayer("test-xuid", "NEXORA", key);
+    }
+
+    private static TransportMessage resourcePacksReadyForValidation() {
+        ByteBuffer batch = BedrockPacketBatchCodec.encodeUncompressed(List.of(
+                new BedrockGamePacket(new BedrockPacketHeader(203, 0, 0), new byte[0])));
+        return new TransportMessage(
+                BedrockBatchCompressionCodec.encodeAfterNetworkSettings(batch, SETTINGS),
+                DeliveryMode.RELIABLE_ORDERED);
     }
 
     private static TransportMessage response(String name) {

@@ -7,18 +7,30 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.security.SecureRandom;
 
 public class MainActivity extends Activity {
     private static final String PREFS = "nexora_host";
     private static final String TOKEN_KEY = "api_token";
+    private final Handler handler = new Handler(Looper.getMainLooper());
     private TextView status;
     private TextView tokenView;
+
+    private final Runnable statusPoll = new Runnable() {
+        @Override
+        public void run() {
+            refreshStatus();
+            handler.postDelayed(this, 500);
+        }
+    };
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -43,7 +55,7 @@ public class MainActivity extends Activity {
         root.addView(title, matchWrap());
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("Android Host · Prototype 0.1.0");
+        subtitle.setText("Android Host · Prototype 0.1.1");
         subtitle.setTextSize(14);
         subtitle.setTextColor(0xFFB7A8D8);
         root.addView(subtitle, matchWrap());
@@ -69,9 +81,16 @@ public class MainActivity extends Activity {
         stop.setText("Stop server");
         stop.setOnClickListener(v -> {
             stopService(new Intent(this, ServerForegroundService.class));
-            status.setText("Server stopped");
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                    .putString("server_status", "stopped").apply();
+            refreshStatus();
         });
         root.addView(stop, matchWrap());
+
+        Button rotateToken = new Button(this);
+        rotateToken.setText("Regenerate API token");
+        rotateToken.setOnClickListener(v -> regenerateToken());
+        root.addView(rotateToken, matchWrap());
 
         TextView endpoint = new TextView(this);
         endpoint.setText("Local endpoint: http://127.0.0.1:8765/health");
@@ -92,7 +111,41 @@ public class MainActivity extends Activity {
         root.addView(note, matchWrap());
 
         setContentView(root);
+        refreshStatus();
         requestNotificationPermissionIfNeeded();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        handler.removeCallbacks(statusPoll);
+        handler.post(statusPoll);
+    }
+
+    @Override
+    protected void onPause() {
+        handler.removeCallbacks(statusPoll);
+        super.onPause();
+    }
+
+    private void refreshStatus() {
+        if (status == null) return;
+        SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        String state = prefs.getString("server_status", "stopped");
+        if ("running".equals(state)) {
+            status.setText("Server running · http://127.0.0.1:8765/health");
+            status.setTextColor(0xFF80CBC4);
+        } else if ("starting".equals(state)) {
+            status.setText("Starting local server…");
+            status.setTextColor(0xFFFFCC80);
+        } else if ("error".equals(state)) {
+            String error = prefs.getString("server_error", "Unknown startup error");
+            status.setText("Server failed: " + error);
+            status.setTextColor(0xFFFF8A80);
+        } else {
+            status.setText("Server stopped");
+            status.setTextColor(0xFFFFCC80);
+        }
     }
 
     private LinearLayout.LayoutParams matchWrap() {
@@ -113,14 +166,37 @@ public class MainActivity extends Activity {
     }
 
     private void startServer() {
-        Intent intent = new Intent(this, ServerForegroundService.class);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent);
-        } else {
-            startService(intent);
+        SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        prefs.edit().putString("server_status", "starting")
+                .remove("server_error").apply();
+        try {
+            Intent intent = new Intent(this, ServerForegroundService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent);
+            } else {
+                startService(intent);
+            }
+            refreshStatus();
+        } catch (RuntimeException error) {
+            String message = error.getMessage();
+            prefs.edit().putString("server_status", "error")
+                    .putString("server_error", message == null
+                            ? error.getClass().getSimpleName() : message).apply();
+            refreshStatus();
         }
-        status.setText("Starting local server…");
-        status.setTextColor(0xFF80CBC4);
+    }
+
+    private void regenerateToken() {
+        SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        if ("running".equals(prefs.getString("server_status", "stopped"))
+                || "starting".equals(prefs.getString("server_status", "stopped"))) {
+            Toast.makeText(this, "Stop the server before regenerating its token", Toast.LENGTH_LONG).show();
+            return;
+        }
+        String token = createToken();
+        prefs.edit().putString(TOKEN_KEY, token).apply();
+        tokenView.setText("Local API token (keep private):\n" + token);
+        Toast.makeText(this, "New API token created", Toast.LENGTH_SHORT).show();
     }
 
     private void requestNotificationPermissionIfNeeded() {

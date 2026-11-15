@@ -63,6 +63,10 @@ public final class MainActivity extends Activity {
     private TextView inventoryStatus;
     private final TextView[] inventorySlotViews = new TextView[36];
     private int selectedInventorySlot = -1;
+    private final TextView[] localHotbarViews = new TextView[9];
+    private final String[] localHotbarItems = new String[9];
+    private final int[] localHotbarCounts = new int[9];
+    private int selectedLocalHotbarSlot = 0;
     private final Map<UUID, String> remotePlayerNames = new LinkedHashMap<>();
     private ExecutorService previewGenerationExecutor;
     private LocalWorldStore localWorldStore;
@@ -338,6 +342,33 @@ public final class MainActivity extends Activity {
                 runOnUiThread(() -> showLocalBlockActionDialog(
                         worldId, x, y, z, placeX, placeY, placeZ)));
 
+        TextView hotbarTitle = text("ПАНЕЛЬ ПРЕДМЕТОВ", 11, MUTED, true);
+        page.addView(hotbarTitle, matchWrap());
+        GridLayout localHotbar = new GridLayout(this);
+        localHotbar.setColumnCount(9);
+        localHotbar.setRowCount(1);
+        page.addView(localHotbar, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
+        for (int slot = 0; slot < localHotbarViews.length; slot++) {
+            final int slotIndex = slot;
+            TextView cell = text("", 9, TEXT, true);
+            cell.setGravity(Gravity.CENTER);
+            cell.setPadding(dp(1), dp(2), dp(1), dp(2));
+            cell.setBackground(rounded(slot == selectedLocalHotbarSlot ? ACCENT : PANEL, 6));
+            GridLayout.LayoutParams cellParams = new GridLayout.LayoutParams(
+                    GridLayout.spec(0, 1f), GridLayout.spec(slot, 1f));
+            cellParams.width = 0;
+            cellParams.height = dp(46);
+            cellParams.setMargins(dp(1), dp(1), dp(1), dp(1));
+            localHotbar.addView(cell, cellParams);
+            localHotbarViews[slot] = cell;
+            cell.setOnClickListener(view -> {
+                selectedLocalHotbarSlot = slotIndex;
+                refreshLocalHotbar();
+            });
+        }
+        refreshLocalHotbar();
+
         addSpace(page, 10);
         Button camera = button("ВИД: ОТ ПЕРВОГО ЛИЦА");
         page.addView(camera, matchWrap());
@@ -416,6 +447,8 @@ public final class MainActivity extends Activity {
                     }
                 }
                 LocalWorldStore.PlayerPosition savedPosition = localWorldStore.loadPlayerPosition(worldId);
+                List<LocalWorldStore.InventorySlot> savedInventory = localWorldStore.loadInventory(worldId);
+                final List<LocalWorldStore.InventorySlot> initialInventory = savedInventory;
                 final int initialSpawnY = spawnY;
                 final boolean wasGenerated = generated;
                 final List<NexoraAndroidProtocolCodec.ChunkData> loadedChunks = List.copyOf(chunks);
@@ -425,6 +458,21 @@ public final class MainActivity extends Activity {
                     for (NexoraAndroidProtocolCodec.ChunkData chunk : loadedChunks) {
                         localPreview.setChunk(chunk);
                     }
+                    if (initialInventory == null) {
+                        java.util.Arrays.fill(localHotbarItems, "");
+                        java.util.Arrays.fill(localHotbarCounts, 0);
+                        localHotbarItems[0] = "minecraft:dirt";
+                        localHotbarCounts[0] = 32;
+                        selectedLocalHotbarSlot = 0;
+                    } else {
+                        for (int slot = 0; slot < 9; slot++) {
+                            LocalWorldStore.InventorySlot saved = initialInventory.get(slot);
+                            localHotbarItems[slot] = saved.itemId();
+                            localHotbarCounts[slot] = saved.count();
+                        }
+                    }
+                    refreshLocalHotbar();
+                    persistLocalInventory(worldId);
                     if (savedPosition != null) {
                         localPlayerX = savedPosition.x();
                         localPlayerY = savedPosition.y();
@@ -447,24 +495,113 @@ public final class MainActivity extends Activity {
         });
     }
 
+    private void refreshLocalHotbar() {
+        for (int slot = 0; slot < localHotbarViews.length; slot++) {
+            TextView cell = localHotbarViews[slot];
+            if (cell == null) continue;
+            String itemId = localHotbarItems[slot];
+            String label = itemId == null || itemId.isEmpty() ? "—" : itemId.substring(itemId.indexOf(':') + 1);
+            if (label.length() > 5) label = label.substring(0, 5);
+            cell.setText((slot + 1) + "\\n" + label + (localHotbarCounts[slot] > 0
+                    ? "\\n×" + localHotbarCounts[slot] : ""));
+            cell.setBackground(rounded(slot == selectedLocalHotbarSlot ? ACCENT : PANEL, 6));
+        }
+    }
+
+    private void persistLocalInventory(String worldId) {
+        ExecutorService executor = previewGenerationExecutor;
+        if (executor == null || executor.isShutdown()) return;
+        List<LocalWorldStore.InventorySlot> snapshot = new ArrayList<>(9);
+        for (int slot = 0; slot < 9; slot++) {
+            String item = localHotbarItems[slot] == null ? "" : localHotbarItems[slot];
+            snapshot.add(new LocalWorldStore.InventorySlot(item, localHotbarCounts[slot]));
+        }
+        executor.execute(() -> {
+            try {
+                localWorldStore.saveInventory(worldId, snapshot);
+            } catch (java.io.IOException failure) {
+                runOnUiThread(() -> Toast.makeText(this,
+                        "Не удалось сохранить инвентарь", Toast.LENGTH_SHORT).show());
+            }
+        });
+    }
+
+    private boolean addLocalItem(String itemId, int amount) {
+        if (itemId == null || itemId.isEmpty() || amount <= 0) return false;
+        for (int slot = 0; slot < 9; slot++) {
+            if (itemId.equals(localHotbarItems[slot]) && localHotbarCounts[slot] < 64) {
+                int accepted = Math.min(amount, 64 - localHotbarCounts[slot]);
+                localHotbarCounts[slot] += accepted;
+                amount -= accepted;
+                if (amount == 0) {
+                    refreshLocalHotbar();
+                    return true;
+                }
+            }
+        }
+        for (int slot = 0; slot < 9 && amount > 0; slot++) {
+            if (localHotbarCounts[slot] == 0) {
+                int accepted = Math.min(amount, 64);
+                localHotbarItems[slot] = itemId;
+                localHotbarCounts[slot] = accepted;
+                amount -= accepted;
+            }
+        }
+        refreshLocalHotbar();
+        return amount == 0;
+    }
+
     private void showLocalBlockActionDialog(String worldId, int x, int y, int z,
                                                 int placeX, int placeY, int placeZ) {
         new AlertDialog.Builder(this)
                 .setTitle("БЛОК В МИРЕ")
-                .setMessage("X: " + x + "   Y: " + y + "   Z: " + z)
-                .setItems(new String[]{"СЛОМАТЬ БЛОК", "ПОСТАВИТЬ ЗЕМЛЮ РЯДОМ"}, (dialog, which) -> {
-                    int targetX = which == 0 ? x : placeX;
-                    int targetY = which == 0 ? y : placeY;
-                    int targetZ = which == 0 ? z : placeZ;
-                    String blockId = which == 0 ? "minecraft:air" : "minecraft:dirt";
+                .setMessage("X: " + x + "   Y: " + y + "   Z: " + z
+                        + "\\nВ руке: " + (localHotbarItems[selectedLocalHotbarSlot] == null
+                        ? "пусто" : localHotbarItems[selectedLocalHotbarSlot]))
+                .setItems(new String[]{"СЛОМАТЬ БЛОК", "ПОСТАВИТЬ ВЫБРАННЫЙ ПРЕДМЕТ"}, (dialog, which) -> {
                     ChunkPreviewView preview = localPreview;
                     if (preview == null) return;
+                    String blockId;
+                    int targetX;
+                    int targetY;
+                    int targetZ;
+                    if (which == 0) {
+                        targetX = x;
+                        targetY = y;
+                        targetZ = z;
+                        blockId = "minecraft:air";
+                        String minedBlock = preview.localBlockIdAt(x, y, z);
+                        if (minedBlock == null) {
+                            Toast.makeText(this, "Здесь нет блока", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        if (!addLocalItem(minedBlock, 1)) {
+                            Toast.makeText(this, "Нет места в панели предметов", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                    } else {
+                        targetX = placeX;
+                        targetY = placeY;
+                        targetZ = placeZ;
+                        blockId = localHotbarItems[selectedLocalHotbarSlot];
+                        if (blockId == null || blockId.isEmpty()
+                                || localHotbarCounts[selectedLocalHotbarSlot] <= 0) {
+                            Toast.makeText(this, "Выбери блок в панели предметов", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        localHotbarCounts[selectedLocalHotbarSlot]--;
+                        if (localHotbarCounts[selectedLocalHotbarSlot] == 0) {
+                            localHotbarItems[selectedLocalHotbarSlot] = "";
+                        }
+                    }
                     NexoraAndroidProtocolCodec.ChunkData updated =
                             preview.updateLocalBlock(targetX, targetY, targetZ, blockId);
                     if (updated == null) {
                         Toast.makeText(this, "Этот чанк ещё не загружен", Toast.LENGTH_SHORT).show();
                         return;
                     }
+                    refreshLocalHotbar();
+                    persistLocalInventory(worldId);
                     ExecutorService executor = previewGenerationExecutor;
                     if (executor == null || executor.isShutdown()) {
                         Toast.makeText(this, "Не удалось сохранить изменение", Toast.LENGTH_SHORT).show();
@@ -474,7 +611,7 @@ public final class MainActivity extends Activity {
                         try {
                             localWorldStore.saveChunk(worldId, updated);
                             runOnUiThread(() -> Toast.makeText(this,
-                                    which == 0 ? "Блок сломан и сохранён" : "Блок поставлен и сохранён",
+                                    which == 0 ? "Блок добыт и сохранён" : "Блок установлен и сохранён",
                                     Toast.LENGTH_SHORT).show());
                         } catch (java.io.IOException failure) {
                             runOnUiThread(() -> Toast.makeText(this,

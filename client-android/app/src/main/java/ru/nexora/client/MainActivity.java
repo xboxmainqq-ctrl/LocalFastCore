@@ -685,7 +685,6 @@ public final class MainActivity extends Activity {
 
             @Override
             public void onServerPosition(NexoraAndroidProtocolCodec.PlayerPosition position) {
-                chunkPreview.setServerPosition(position.x(), position.y(), position.z());
                 int chunkX = Math.floorDiv((int) Math.floor(position.x()), 16);
                 int chunkZ = Math.floorDiv((int) Math.floor(position.z()), 16);
                 if (chunkX != streamingCenterChunkX || chunkZ != streamingCenterChunkZ) {
@@ -695,6 +694,7 @@ public final class MainActivity extends Activity {
                     NetherNetAndroidClient client = netherNetClient;
                     if (client != null) client.requestChunksAround(chunkX, chunkZ);
                 }
+                chunkPreview.setServerPosition(position.x(), position.y(), position.z());
             }
 
             @Override
@@ -734,7 +734,7 @@ public final class MainActivity extends Activity {
             public void onChunkDataReceived(NexoraAndroidProtocolCodec.ChunkData chunk) {
                 chunkPreview.setChunk(chunk);
                 connectionStatus.setText("Получено чанков: "
-                        + chunkPreview.receivedChunkCount() + "/9"
+                        + chunkPreview.receivedChunkCount() + " чанков в окне 3×3"
                         + "\nПоследний чанк: " + chunk.chunkX() + ", " + chunk.chunkZ()
                         + "\nБлоков в нём: " + chunk.blocks().size()
                         + "\nИзометрический объёмный просмотр");

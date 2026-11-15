@@ -453,7 +453,7 @@ final class ChunkPreviewView extends GLSurfaceView {
             textureUvHandle = GLES20.glGetAttribLocation(textureProgram, "aTexCoord");
             textureMatrixHandle = GLES20.glGetUniformLocation(textureProgram, "uMvp");
             atlasSamplerHandle = GLES20.glGetUniformLocation(textureProgram, "uAtlas");
-            atlasTexture = createAtlasTexture();
+            atlasTexture = createAtlasTexture(ChunkPreviewView.this.getContext());
             positionHandle = GLES20.glGetAttribLocation(program, "aPosition");
             colorHandle = GLES20.glGetAttribLocation(program, "aColor");
             matrixHandle = GLES20.glGetUniformLocation(program, "uMvp");
@@ -936,7 +936,7 @@ final class ChunkPreviewView extends GLSurfaceView {
             vertexBuffer.position(0);
         }
 
-        private int createAtlasTexture() {
+        private int createAtlasTexture(Context context) {
             int[] textures = new int[1];
             GLES20.glGenTextures(1, textures, 0);
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textures[0]);
@@ -944,7 +944,7 @@ final class ChunkPreviewView extends GLSurfaceView {
             GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_NEAREST);
             GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
             GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
-            Bitmap bitmap = BlockTextureAtlas.createBitmap();
+            Bitmap bitmap = BlockTextureAtlas.createBitmap(context);
             try {
                 GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0);
             } finally {

@@ -4,9 +4,9 @@ Status: product architecture decision. This document defines the intended runtim
 
 ## Product baseline
 
-The default NEXORA experience should feel familiar to a vanilla Bedrock player: survival world, block interaction, inventory, crafting, HUD, touch controls and first-/third-person camera. The implementation must remain independently owned and extensible. Minecraft source code and proprietary game assets are not copied or redistributed; compatibility work uses clean-room implementations and original or properly licensed content.
+NEXORA is a standalone fantasy MMORPG with its own Android client, network protocol, visual identity and gameplay rules. The primary experience is an original RPG world with character classes, attributes, abilities, equipment, quests, dungeons, bosses, loot, guilds and persistent progression. Minecraft/Bedrock compatibility is optional future work, not a requirement for the initial release.
 
-The baseline is a configurable profile, not a hard-coded UI or asset set. A clean installation loads the NEXORA vanilla-style profile. A user or server can replace supported resources and UI definitions without forking gameplay code.
+The client and server must remain independently owned and extensible. Do not copy Minecraft source code or redistribute proprietary assets. Use original or appropriately licensed content. Visual style, HUD, controls and resource definitions are NEXORA-owned rather than a Minecraft clone profile.
 
 ## Runtime layers
 
@@ -17,7 +17,7 @@ The game runtime is split into contracts with one-way dependencies:
 3. **content** — registries for blocks, items, entities, recipes, effects and tags. Content definitions refer to stable namespaced identifiers, never renderer-specific numeric IDs.
 4. **resources** — resource-pack discovery, manifests, dependency resolution, priority/overrides, validation, asset handles and cache invalidation. Supports textures, models, sounds, fonts, localization and UI assets.
 5. **presentation** — renderer-facing models, materials, animation and camera. Reads world/content/resource snapshots; it must not own authoritative gameplay state.
-6. **ui** — screen navigation, widgets, HUD layout, input mapping and accessibility. UI definitions are data-driven and themeable; gameplay actions go through typed commands.
+6. **ui** — screen navigation, widgets, RPG HUD, character sheet, skill bar, inventory, input mapping and accessibility. UI definitions are data-driven and themeable; gameplay actions go through typed commands.
 7. **client** — Android lifecycle, touch input, local session, rendering orchestration and connection UX. Adapts platform APIs to the runtime contracts.
 8. **network** — versioned transport, packet codecs, authentication and replication. Converts validated network messages into world/session commands.
 9. **server** — headless host for the same world/content contracts. Must not depend on Android, UI or graphics APIs.

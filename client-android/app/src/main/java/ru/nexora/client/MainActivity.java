@@ -960,15 +960,26 @@ public final class MainActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
         if (requestCode == REQUEST_RESOURCE_PACK) {
-            try {
-                int imported = NexoraResourcePackInstaller.install(this, data.getData());
-                NexoraResourcePackLibrary.registerImportedActive(this, resourcePackDisplayName(data.getData()));
-                Toast.makeText(this, "Ресурс-пак добавлен в библиотеку. Текстур: " + imported
-                        + ". Он активен; открой мир заново для применения.", Toast.LENGTH_LONG).show();
-            } catch (Exception invalid) {
-                Toast.makeText(this, "Не удалось установить ресурс-пак: "
-                        + invalid.getMessage(), Toast.LENGTH_LONG).show();
-            }
+            final android.net.Uri selectedPack = data.getData();
+            final String displayName = resourcePackDisplayName(selectedPack);
+            final android.content.Context appContext = getApplicationContext();
+            Toast.makeText(this, "Импорт ресурс-пака…", Toast.LENGTH_SHORT).show();
+            new Thread(() -> {
+                try {
+                    int imported = NexoraResourcePackInstaller.install(appContext, selectedPack);
+                    NexoraResourcePackLibrary.registerImportedActive(appContext, displayName);
+                    runOnUiThread(() -> Toast.makeText(this,
+                            "Ресурс-пак добавлен в библиотеку. Текстур: " + imported
+                                    + ". Он активен; открой мир заново для применения.",
+                            Toast.LENGTH_LONG).show());
+                } catch (Exception invalid) {
+                    final String reason = invalid.getMessage() == null
+                            ? "неизвестная ошибка" : invalid.getMessage();
+                    runOnUiThread(() -> Toast.makeText(this,
+                            "Не удалось установить ресурс-пак: " + reason,
+                            Toast.LENGTH_LONG).show());
+                }
+            }, "NEXORA-ResourcePackImport").start();
             return;
         }
         if (requestCode == REQUEST_CUSTOM_SKIN) {

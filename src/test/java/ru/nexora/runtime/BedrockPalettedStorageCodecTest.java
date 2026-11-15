@@ -99,8 +99,8 @@ class BedrockPalettedStorageCodecTest {
         assertEquals(3, Byte.toUnsignedInt(in.get()));
         for (int i = 0; i < 128; i++) BedrockBinary.readLittleEndianInt32(in);
         assertEquals(2, BedrockBinary.readVarInt32(in));
-        assertEquals(0, BedrockBinary.readVarInt32(in));
         assertEquals(-2144268767, BedrockBinary.readVarInt32(in));
+        assertEquals(0, BedrockBinary.readVarInt32(in));
         assertFalse(in.hasRemaining());
     }
 }

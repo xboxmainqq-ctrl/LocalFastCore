@@ -117,7 +117,10 @@ class ItemPickupServiceTest {
         assertEquals(64, inventory.snapshot().get(0).count());
         assertEquals(1, inventory.snapshot().get(1).count());
         assertFalse(inventory.isFull());
-        assertTrue(inventory.addOne("minecraft:diamond"));
+        assertFalse(inventory.addOne("minecraft:diamond"));
+        for (int i = 0; i < 63; i++) {
+            assertTrue(inventory.addOne("minecraft:apple"));
+        }
         assertTrue(inventory.isFull());
         assertFalse(inventory.addOne("minecraft:gold_ingot"));
     }

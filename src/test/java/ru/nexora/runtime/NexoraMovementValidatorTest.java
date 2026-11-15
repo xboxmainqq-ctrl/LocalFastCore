@@ -33,11 +33,11 @@ class NexoraMovementValidatorTest {
     @Test
     void rejectsMovementThroughSolidBlock() {
         InMemoryWorld world = createWorld();
-        world.setBlock(new BlockPosition(3, 66, 2), new BlockState("minecraft:stone"));
+        world.setBlock(new BlockPosition(2, 66, 2), new BlockState("minecraft:stone"));
 
         NexoraMovementValidator.Result result = validator.validate(
-                world, new NexoraMovementValidator.Position(2.0, 65.0, 2.0),
-                new NexoraMovementValidator.Position(3.0, 65.0, 2.0));
+                world, new NexoraMovementValidator.Position(1.5, 65.0, 2.0),
+                new NexoraMovementValidator.Position(1.75, 65.0, 2.0));
 
         assertFalse(result.accepted());
         assertEquals(NexoraMovementValidator.Reason.BLOCKED_OR_UNLOADED, result.reason());

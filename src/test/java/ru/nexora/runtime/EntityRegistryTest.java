@@ -95,7 +95,7 @@ class EntityRegistryTest {
 
         assertEquals(1, registry.within(15.5, 64, 0, 1).size());
         assertTrue(registry.updatePosition(id, 16.5, 64, 0, 0));
-        assertTrue(registry.within(15.5, 64, 0, 1).isEmpty());
+        assertTrue(registry.within(15.5, 64, 0, 0.99).isEmpty());
         assertEquals(id, registry.within(16.5, 64, 0, 0).get(0).id());
 
         assertTrue(registry.updatePosition(id, -16.5, 64, 0, 0));

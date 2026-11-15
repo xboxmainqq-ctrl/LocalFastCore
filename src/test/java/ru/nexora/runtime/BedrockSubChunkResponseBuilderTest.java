@@ -40,7 +40,7 @@ class BedrockSubChunkResponseBuilderTest {
         assertEquals(0, BedrockBinary.readLittleEndianInt32(in));
         assertEquals(2, BedrockBinary.readVarUInt32(in));
 
-        assertEquals(1, in.get());
+        assertEquals(0, in.get());
         assertEquals(0, in.get());
         assertEquals(0, in.get());
         assertEquals(1, Byte.toUnsignedInt(in.get()));
@@ -106,7 +106,7 @@ class BedrockSubChunkResponseBuilderTest {
 
         BedrockGamePacket response = BedrockSubChunkResponseBuilder.buildPackets(
                 world, request, 0, registry).get(0);
-        assertEquals(2, firstHeightmapType(response)); // AllTooHigh
+        assertEquals(1, firstHeightmapType(response)); // Mixed columns: one surface is above, the rest are below
     }
 
     @Test

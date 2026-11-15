@@ -143,7 +143,10 @@ public final class BedrockAndroidPacketCodec {
             throw new UnsupportedOperationException("This client build only supports an empty resource-pack stack");
         }
         readUtf8String(payload, 32); // game version
-        int experimentCount = readVarUInt32(payload);
+        int experimentCount = readLittleEndianInt32(payload);
+        if (experimentCount < 0 || experimentCount > 1024) {
+            throw new IllegalArgumentException("Bedrock experiment count is outside the allowed range");
+        }
         if (experimentCount != 0) {
             throw new UnsupportedOperationException("Experiments are not implemented in the Android client");
         }
@@ -175,6 +178,16 @@ public final class BedrockAndroidPacketCodec {
         batch.put(payload);
         batch.flip();
         return bytes(encodeAfterNetworkSettings(batch, settings));
+    }
+
+    private static int readLittleEndianInt32(ByteBuffer input) {
+        if (input.remaining() < Integer.BYTES) {
+            throw new IllegalArgumentException("Truncated little-endian int32");
+        }
+        return Byte.toUnsignedInt(input.get())
+                | (Byte.toUnsignedInt(input.get()) << 8)
+                | (Byte.toUnsignedInt(input.get()) << 16)
+                | (input.get() << 24);
     }
 
     private static boolean readBoolean(ByteBuffer input) {

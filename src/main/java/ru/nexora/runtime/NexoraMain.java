@@ -140,6 +140,7 @@ public final class NexoraMain {
                 new FilePlayerInventoryStorage(dataDirectory.resolve("players"));
         int workers = Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() - 1));
         AtomicReference<WorldChunkPipeline> activeChunkPipeline = new AtomicReference<>();
+        AtomicReference<PlayerChunkStreamingManager> activeChunkStreaming = new AtomicReference<>();
         server.register(new RuntimeModule() {
             private WorldChunkPipeline pipeline;
 
@@ -167,6 +168,41 @@ public final class NexoraMain {
                     pipeline.stop();
                     activeChunkPipeline.compareAndSet(pipeline, null);
                     pipeline = null;
+                }
+            }
+        });
+
+        server.register(new RuntimeModule() {
+            private PlayerChunkStreamingManager streaming;
+            private TickScheduler.TaskHandle streamingTask;
+
+            @Override
+            public String id() {
+                return "player-chunk-streaming";
+            }
+
+            @Override
+            public void start() {
+                World world = worlds.get(DEFAULT_WORLD_ID)
+                        .orElseThrow(() -> new IllegalStateException("Default world was not loaded"));
+                WorldChunkPipeline pipeline = activeChunkPipeline.get();
+                if (pipeline == null) {
+                    throw new IllegalStateException("Chunk generation pipeline is not active");
+                }
+                streaming = new PlayerChunkStreamingManager(world, pipeline, 1, 4);
+                streamingTask = scheduler.scheduleRepeating(1, 1, streaming::tick);
+                activeChunkStreaming.set(streaming);
+            }
+
+            @Override
+            public void stop() {
+                if (streamingTask != null) {
+                    streamingTask.cancel();
+                    streamingTask = null;
+                }
+                if (streaming != null) {
+                    activeChunkStreaming.compareAndSet(streaming, null);
+                    streaming = null;
                 }
             }
         });
@@ -244,7 +280,8 @@ public final class NexoraMain {
                         return active == null
                                 ? CompletableFuture.completedFuture(false)
                                 : active.requestAsync(position);
-                    });
+                    },
+                    activeChunkStreaming.get());
             server.register(new NetherNetPrivateProtocolModule(
                     peerHost, peerHost, signaling, protocolHandler));
         }

@@ -59,7 +59,9 @@ final class NexoraResourcePackInstaller {
                     validateArchivePath(name);
                     String textureName = supportedTextureName(name);
                     if (textureName == null) continue;
-                    // Java packs often include both still and flowing water; keep still when present.\n                    if (!names.add(textureName)) {\n                        if (textureName.equals("water.png") && name.endsWith("water_still.png")) {\n                            // Replace a previously imported flowing-water fallback with still water.\n                        } else {\n                            continue;\n                        }\n                    }
+                    // Several Java texture variants can map to one NEXORA atlas tile.
+                    // Keep the first matching file to avoid ambiguous overwrites.
+                    if (!names.add(textureName)) continue;
 
                     File output = new File(new File(staging, "textures/blocks"), textureName);
                     File parent = output.getParentFile();

@@ -196,7 +196,7 @@ public final class NetherNetSignalingServer implements RuntimeModule {
         String networkId = null;
         boolean peerNegotiationStarted = false;
         boolean peerAnswerCompleted = false;
-        try (exchange) {
+        try {
             String method = exchange.getRequestMethod();
             String path = exchange.getRequestURI().getPath();
             if ("GET".equals(method) && "/v1/join".equals(path)) {
@@ -278,6 +278,8 @@ public final class NetherNetSignalingServer implements RuntimeModule {
                 cancelPeer(networkId);
             }
             sendTextIfOpen(exchange, 401, "Signaling rejected");
+        } finally {
+            exchange.close();
         }
     }
 

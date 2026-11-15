@@ -91,6 +91,7 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
             }
         }
 
+        carveCaves(baseX, baseZ, height, seed, surfaceHeights, fluids, blocks);
         placeTrees(position, baseX, baseZ, height, seed, surfaceHeights, columnBiomes, waterColumns, blocks);
         return new GeneratedChunk(position, blocks, Map.of(), fluids, biomeColumns, height);
     }
@@ -102,6 +103,78 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
     private static int terrainHeight(
             int x, int z, long seed, WorldHeight worldHeight, double reliefMultiplier) {
         return TerrainHeightSampler.sample(x, z, seed, worldHeight, reliefMultiplier);
+    }
+
+    /**
+     * Carves connected, seed-stable cave systems in the deep stone layers.
+     * Samples absolute coordinates so caves continue cleanly across chunk edges.
+     */
+    private static void carveCaves(
+            int baseX, int baseZ, WorldHeight height, long seed,
+            int[][] surfaceHeights, Map<BlockPosition, BlockState> fluids,
+            Map<BlockPosition, BlockState> blocks) {
+        int caveMinY = Math.max(height.minY() + 2, -54);
+        for (int localX = 0; localX < 16; localX++) {
+            for (int localZ = 0; localZ < 16; localZ++) {
+                int x = baseX + localX;
+                int z = baseZ + localZ;
+                int caveMaxY = Math.min(Math.min(surfaceHeights[localX][localZ] - 5, 48),
+                        height.maxYExclusive() - 2);
+                for (int y = caveMinY; y <= caveMaxY; y++) {
+                    BlockPosition position = new BlockPosition(x, y, z);
+                    if (!fluids.containsKey(position) && isCave(x, y, z, seed)) {
+                        BlockState existing = blocks.get(position);
+                        if (existing != null && existing.identifier().equals("minecraft:stone")) {
+                            blocks.remove(position);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    static boolean isCave(int x, int y, int z, long seed) {
+        // Broad chambers intersect thin, winding tunnels to form connected systems.
+        double chambers = noise3d(x, y, z, seed, 38, 0x51a7c3d9L);
+        double tunnels = noise3d(x, y, z, seed, 19, 0x2c6e8b41L);
+        double vertical = noise3d(x, y, z, seed, 57, 0x7d319fa5L);
+        boolean chamber = Math.abs(chambers) < 0.115 && Math.abs(vertical) < 0.72;
+        boolean tunnel = Math.abs(tunnels) < 0.052 && Math.abs(chambers) < 0.34;
+        return chamber || tunnel;
+    }
+
+    private static double noise3d(int x, int y, int z, long seed, int scale, long salt) {
+        double sx = (double) x / scale;
+        double sy = (double) y / scale;
+        double sz = (double) z / scale;
+        int x0 = (int) Math.floor(sx);
+        int y0 = (int) Math.floor(sy);
+        int z0 = (int) Math.floor(sz);
+        double tx = smooth(sx - x0);
+        double ty = smooth(sy - y0);
+        double tz = smooth(sz - z0);
+        double c00 = lerp(lattice3d(seed, salt, x0, y0, z0),
+                lattice3d(seed, salt, x0 + 1, y0, z0), tx);
+        double c10 = lerp(lattice3d(seed, salt, x0, y0 + 1, z0),
+                lattice3d(seed, salt, x0 + 1, y0 + 1, z0), tx);
+        double c01 = lerp(lattice3d(seed, salt, x0, y0, z0 + 1),
+                lattice3d(seed, salt, x0 + 1, y0, z0 + 1), tx);
+        double c11 = lerp(lattice3d(seed, salt, x0, y0 + 1, z0 + 1),
+                lattice3d(seed, salt, x0 + 1, y0 + 1, z0 + 1), tx);
+        return lerp(lerp(c00, c10, ty), lerp(c01, c11, ty), tz);
+    }
+
+    private static double lattice3d(long seed, long salt, int x, int y, int z) {
+        long value = seed ^ salt
+                ^ ((long) x * 0x9e3779b97f4a7c15L)
+                ^ ((long) y * 0xc2b2ae3d27d4eb4fL)
+                ^ ((long) z * 0x165667b19e3779f9L);
+        value ^= value >>> 30;
+        value *= 0xbf58476d1ce4e5b9L;
+        value ^= value >>> 27;
+        value *= 0x94d049bb133111ebL;
+        value ^= value >>> 31;
+        return ((value >>> 11) * 0x1.0p-52) - 1.0;
     }
 
     private static void placeTrees(

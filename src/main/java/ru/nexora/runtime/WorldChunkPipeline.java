@@ -1,6 +1,9 @@
 package ru.nexora.runtime;
 
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
@@ -18,6 +21,8 @@ public final class WorldChunkPipeline implements RuntimeModule {
     private final int maximumLoadsPerTick;
     private final Consumer<RuntimeException> failureHandler;
     private final AtomicLong loadedChunks = new AtomicLong();
+    private final ConcurrentMap<ChunkPosition, CompletableFuture<Boolean>> asyncWaiters =
+            new ConcurrentHashMap<>();
     private volatile boolean started;
     private TickScheduler.TaskHandle drainTask;
 
@@ -84,6 +89,32 @@ public final class WorldChunkPipeline implements RuntimeModule {
         return started && generation.cancel(position);
     }
 
+    /**
+     * Requests a chunk and completes when the game tick has committed it to
+     * the world. Repeated callers share one future and never trigger duplicate
+     * generation. This API is safe to call from network callbacks.
+     */
+    public synchronized CompletableFuture<Boolean> requestAsync(ChunkPosition position) {
+        Objects.requireNonNull(position, "position");
+        if (!started) return CompletableFuture.completedFuture(false);
+        if (world.isChunkLoaded(position)) return CompletableFuture.completedFuture(true);
+
+        CompletableFuture<Boolean> existing = asyncWaiters.get(position);
+        if (existing != null) return existing;
+
+        CompletableFuture<Boolean> future = new CompletableFuture<>();
+        asyncWaiters.put(position, future);
+        RequestStatus status = request(position);
+        if (status == RequestStatus.ALREADY_LOADED) {
+            asyncWaiters.remove(position, future);
+            future.complete(true);
+        } else if (status != RequestStatus.ACCEPTED && status != RequestStatus.ALREADY_PENDING) {
+            asyncWaiters.remove(position, future);
+            future.complete(false);
+        }
+        return future;
+    }
+
     public long loadedChunkCount() {
         return loadedChunks.get();
     }
@@ -104,6 +135,8 @@ public final class WorldChunkPipeline implements RuntimeModule {
         }
         started = false;
         generation.stop();
+        asyncWaiters.forEach((position, future) -> future.complete(false));
+        asyncWaiters.clear();
     }
 
     private void drainTick() {
@@ -111,17 +144,19 @@ public final class WorldChunkPipeline implements RuntimeModule {
             return;
         }
         generation.drainCompleted(maximumLoadsPerTick, result -> {
+            boolean available = false;
             if (!result.succeeded()) {
                 failureHandler.accept(result.failure());
-                return;
-            }
-            try {
-                if (world.loadChunk(result.chunk())) {
-                    loadedChunks.incrementAndGet();
+            } else {
+                try {
+                    available = world.isChunkLoaded(result.position()) || world.loadChunk(result.chunk());
+                    if (available) loadedChunks.incrementAndGet();
+                } catch (RuntimeException failure) {
+                    failureHandler.accept(failure);
                 }
-            } catch (RuntimeException failure) {
-                failureHandler.accept(failure);
             }
+            CompletableFuture<Boolean> waiter = asyncWaiters.remove(result.position());
+            if (waiter != null) waiter.complete(available);
         });
     }
 

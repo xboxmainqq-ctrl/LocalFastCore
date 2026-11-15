@@ -58,6 +58,30 @@ class OverworldChunkGeneratorTest {
                 new ChunkPosition(Integer.MAX_VALUE, 0), height, 0L));
     }
 
+
+    @Test
+    void generatesUndergroundCavesWithoutBreakingChunkBounds() {
+        ChunkPosition chunk = new ChunkPosition(0, 0);
+        long seed = 123456789L;
+        GeneratedChunk generated = generator.generate(chunk, height, seed);
+        boolean foundCarvedCave = false;
+        for (int x = 0; x < 16 && !foundCarvedCave; x++) {
+            for (int z = 0; z < 16 && !foundCarvedCave; z++) {
+                for (int y = -54; y <= 48; y++) {
+                    BlockPosition position = new BlockPosition(x, y, z);
+                    if (OverworldChunkGenerator.isCave(x, y, z, seed)
+                            && !generated.blocks().containsKey(position)) {
+                        foundCarvedCave = true;
+                        break;
+                    }
+                }
+            }
+        }
+        assertTrue(foundCarvedCave, "Expected at least one carved underground cave cell");
+        assertTrue(generated.blocks().keySet().stream()
+                .allMatch(position -> position.chunkPosition().equals(chunk)));
+    }
+
     @Test
     void generatedTerrainIsImmutable() {
         GeneratedChunk generated = generator.generate(new ChunkPosition(0, 0), height, 17L);

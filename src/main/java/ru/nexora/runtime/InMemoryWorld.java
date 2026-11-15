@@ -160,7 +160,13 @@ public final class InMemoryWorld implements World {
         for (BlockPosition position : generatedChunk.blocks().keySet()) {
             validatePosition(position);
         }
-        WorldChunk chunk = WorldChunk.from(generatedChunk.blocks());
+        for (BlockPosition position : generatedChunk.biomes().keySet()) {
+            validatePosition(position);
+        }
+        for (BlockPosition position : generatedChunk.fluids().keySet()) {
+            validatePosition(position);
+        }
+        WorldChunk chunk = WorldChunk.from(generatedChunk);
         return chunks.putIfAbsent(generatedChunk.position(), chunk) == null;
     }
 

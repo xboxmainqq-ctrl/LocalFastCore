@@ -15,6 +15,13 @@ final class WorldChunk {
         return chunk;
     }
 
+    static WorldChunk from(GeneratedChunk generated) {
+        WorldChunk chunk = from(generated.blocks());
+        generated.biomes().forEach(chunk::setBiome);
+        generated.fluids().forEach(chunk::setFluid);
+        return chunk;
+    }
+
     synchronized BlockState blockAt(BlockPosition position) {
         int sectionY = Math.floorDiv(position.y(), 16);
         ChunkSection section = sections.get(sectionY);

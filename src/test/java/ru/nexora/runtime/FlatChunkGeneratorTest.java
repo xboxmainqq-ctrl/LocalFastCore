@@ -56,6 +56,26 @@ class FlatChunkGeneratorTest {
     }
 
     @Test
+    void commitsGeneratedBlocksBiomesAndFluidsTogether() {
+        InMemoryWorld world = new InMemoryWorld("generated", new WorldHeight(0, 64));
+        BlockPosition block = new BlockPosition(1, 5, 1);
+        BlockPosition biomeCell = new BlockPosition(2, 5, 2);
+        BlockPosition fluidCell = new BlockPosition(3, 5, 3);
+        GeneratedChunk generated = new GeneratedChunk(
+                new ChunkPosition(0, 0),
+                Map.of(block, DIRT),
+                Map.of(biomeCell, 2),
+                Map.of(fluidCell, new BlockState("minecraft:water"))
+        );
+
+        assertTrue(world.loadChunk(generated));
+        assertEquals(DIRT, world.blockAt(block));
+        assertEquals(2, world.biomeAt(biomeCell));
+        assertEquals(new BlockState("minecraft:water"), world.fluidAt(fluidCell));
+        assertFalse(world.loadChunk(generated), "an existing chunk must not be replaced");
+    }
+
+    @Test
     void rejectsTerrainOutsideWorldHeight() {
         FlatChunkGenerator generator = new FlatChunkGenerator(10, 4, GRASS, DIRT, BEDROCK);
         assertThrows(IllegalArgumentException.class,

@@ -5,45 +5,64 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
-/**
- * Immutable result of chunk generation.
- *
- * <p>Only non-air blocks are stored. Every block must belong to the supplied
- * chunk; vertical bounds are checked by the generation request and again when
- * the generated data is committed to a world.</p>
- */
-public record GeneratedChunk(ChunkPosition position, Map<BlockPosition, BlockState> blocks) {
+/** Immutable result of chunk generation, including blocks, biome cells and fluids. */
+public record GeneratedChunk(
+        ChunkPosition position,
+        Map<BlockPosition, BlockState> blocks,
+        Map<BlockPosition, Integer> biomes,
+        Map<BlockPosition, BlockState> fluids
+) {
+    public GeneratedChunk(ChunkPosition position, Map<BlockPosition, BlockState> blocks) {
+        this(position, blocks, Map.of(), Map.of());
+    }
+
     public GeneratedChunk {
         Objects.requireNonNull(position, "position");
         Objects.requireNonNull(blocks, "blocks");
+        Objects.requireNonNull(biomes, "biomes");
+        Objects.requireNonNull(fluids, "fluids");
 
-        // Copy and validate once, then expose only an unmodifiable view of our
-        // private copy. Unlike Map.copyOf(copy), this avoids allocating a second
-        // full map for chunks that may contain many thousands of blocks.
-        Map<BlockPosition, BlockState> copy = new HashMap<>(capacityFor(blocks.size()));
+        Map<BlockPosition, BlockState> blockCopy = new HashMap<>();
         blocks.forEach((blockPosition, state) -> {
-            Objects.requireNonNull(blockPosition, "block position");
+            requireChunkPosition(position, blockPosition);
             Objects.requireNonNull(state, "block state");
-            if (!blockPosition.chunkPosition().equals(position)) {
-                throw new IllegalArgumentException(
-                        "Generated block does not belong to chunk " + position + ": " + blockPosition
-                );
-            }
             if (state.isAir()) {
                 throw new IllegalArgumentException("Generated chunk snapshots must omit air blocks");
             }
-            copy.put(blockPosition, state);
+            blockCopy.put(blockPosition, state);
         });
-        blocks = Collections.unmodifiableMap(copy);
+        blocks = Collections.unmodifiableMap(blockCopy);
+
+        Map<BlockPosition, Integer> biomeCopy = new HashMap<>();
+        biomes.forEach((blockPosition, biomeId) -> {
+            requireChunkPosition(position, blockPosition);
+            Objects.requireNonNull(biomeId, "biome ID");
+            if (biomeId < 0) {
+                throw new IllegalArgumentException("Biome ID must be non-negative");
+            }
+            if (biomeId != BiomeSection.DEFAULT_BIOME_ID) {
+                biomeCopy.put(blockPosition, biomeId);
+            }
+        });
+        biomes = Collections.unmodifiableMap(biomeCopy);
+
+        Map<BlockPosition, BlockState> fluidCopy = new HashMap<>();
+        fluids.forEach((blockPosition, state) -> {
+            requireChunkPosition(position, blockPosition);
+            FluidStates.requireFluidOrAir(state);
+            if (!state.isAir()) {
+                fluidCopy.put(blockPosition, state);
+            }
+        });
+        fluids = Collections.unmodifiableMap(fluidCopy);
     }
 
-    private static int capacityFor(int expectedSize) {
-        if (expectedSize < 3) {
-            return expectedSize + 1;
+    private static void requireChunkPosition(ChunkPosition chunk, BlockPosition block) {
+        Objects.requireNonNull(block, "block position");
+        if (!block.chunkPosition().equals(chunk)) {
+            throw new IllegalArgumentException(
+                    "Generated data does not belong to chunk " + chunk + ": " + block
+            );
         }
-        if (expectedSize >= 1 << 29) {
-            return Integer.MAX_VALUE;
-        }
-        return (int) (expectedSize / 0.75f) + 1;
     }
 }

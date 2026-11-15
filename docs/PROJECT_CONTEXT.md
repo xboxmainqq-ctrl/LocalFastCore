@@ -4,7 +4,7 @@ This is the canonical hand-off context for every coding session and automated co
 
 ## One-sentence goal
 
-Build a Minecraft-style block-world server platform with an original NEXORA server core, a separate first-party Android client, and creator tools that make server customization easy without editing code for every change.
+Build NEXORA as an Android-first RPG game network: an original block-world Core and dedicated RPG server platform, a separate first-party Android client, network/lobby services, persistent RPG gameplay and creator tools. The product direction is inspired by the structure of large Minecraft server networks, not a copy of any one network.
 
 ## Non-negotiable product decisions
 
@@ -15,7 +15,9 @@ Build a Minecraft-style block-world server platform with an original NEXORA serv
 - Provide a separate NEXORA Android client that can connect to NEXORA servers.
 - Single-player must work offline: the Android client starts an embedded instance of the **same NEXORA authoritative server core** and connects locally. Do not create a separate simplified single-player ruleset.
 - Multiplayer and single-player must share the same world/gameplay authority, block definitions, entity rules, inventory, persistence and gameplay logic.
-- Customization is a first-class feature: server owners should be able to create/configure blocks, items, recipes, mobs, biomes, commands, permissions, game modes, RPG classes/abilities, quests, economy, maps, UI/HUD and resource packs through configuration, extensions and in-client studios.
+- RPG is the product focus. Build persistent characters, classes, stats, levels, abilities, equipment, mobs, bosses, quests, dungeons, economy, parties/social systems and RPG worlds. Do not expand into unrelated minigame modes such as BedWars or SkyWars unless the user explicitly changes this direction.
+- NEXORA should grow into a network with a lobby, player profiles, multiple RPG worlds/instances, server routing and network operations. Build this incrementally: prove one playable RPG world and one dedicated server before adding distributed infrastructure.
+- Customization is a first-class feature: server owners should be able to create/configure blocks, items, recipes, mobs, biomes, commands, permissions, RPG classes/abilities, quests, economy, maps, UI/HUD and resource packs through configuration, extensions and in-client studios.
 - Do not promise unmodified Bedrock client compatibility until a pinned client version completes real-device integration tests. NEXORA-only rich UI/editor features belong to the NEXORA Client.
 - Do not delete or replace useful existing NEXORA code until an alternative is built, tested and explicitly migrated.
 
@@ -68,7 +70,8 @@ Then connect the same Android client to a separately running dedicated NEXORA se
 - Playable 0.1: offline single-player, embedded same core, 3D world, movement/physics, chunk streaming, break/place, persistence.
 - Multiplayer 0.2: dedicated server, authentication/session lifecycle, client-server protocol, chunk streaming, player sync, permissions and safe networking.
 - Customization 0.3: data-driven blocks/items/recipes/entities/biomes, resource packs, extension API, reload/versioning.
-- RPG and modes: classes, stats, abilities, mobs, quests, economy, survival, PvP, BedWars, SkyWars, parkour and custom modes.
+- RPG gameplay: persistent characters, classes, stats, abilities, mobs, quests, dungeons, bosses, equipment, economy, parties/social features and optional RPG PvP.
+- NEXORA network: Android lobby, player profiles, server registry/routing and multiple RPG worlds/instances.
 - Creator platform: World Studio, RPG Studio, Server Studio, Model/Block Studio and UI/HUD/Visual Studio.
 
 ## Working rules for future sessions
@@ -84,3 +87,17 @@ Then connect the same Android client to a separately running dedicated NEXORA se
 ## Latest project direction update
 
 User explicitly rejected Luanti on 2026-11-15. Do not continue Luanti integration or build its APK. Keep the existing NEXORA code and move forward with the Bedrock-inspired, clean-room NEXORA server/client architecture. The first Luanti workflow failure occurred in Android SDK setup before compilation and is now obsolete as a project goal.
+
+
+## Latest product direction — Android RPG network
+
+The user confirmed on 2026-11-15 that NEXORA is intended to become a mobile RPG game network inspired by the network model of large Minecraft servers such as Cristalix. This is inspiration for the platform structure only; do not clone another network's code, branding, maps, assets or proprietary content.
+
+- **RPG only:** NEXORA is not intended to become a general minigame network. Unrelated modes such as BedWars, SkyWars and parkour are out of scope unless the user explicitly changes the product direction.
+- **Android-first:** the first player-facing client is an installable Android app designed for phones/tablets, touch controls and real-device performance. The user primarily works from an Android phone and has no PC.
+- **Network model:** a central lobby and player identity/profile experience, persistent characters and progression, and eventually multiple RPG worlds/instances managed by NEXORA network services.
+- **Game servers:** each RPG world/instance is authoritative on a dedicated NEXORA server. Keep real-time simulation in NEXORA Core and account/routing/orchestration services separate.
+- **Single-player:** offline mode must start the exact same NEXORA Core used by the dedicated RPG server, not a separate simplified game implementation.
+- **RPG scope:** character creation, classes, stats, levels, skills/abilities, equipment, mobs, bosses, quests, dungeons, loot, economy, parties/social features and optional PvP integrated into the RPG experience.
+- **Build order:** finish one genuinely playable offline Android RPG world first; then prove one online dedicated server with two Android clients; then expand to lobby, multiple worlds/instances and network services. Do not prematurely build a distributed cluster.
+- Detailed product brief: [PRODUCT_VISION_RPG_NETWORK.md](PRODUCT_VISION_RPG_NETWORK.md).

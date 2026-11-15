@@ -473,6 +473,8 @@ public final class MainActivity extends Activity {
                 client.sendPlayerMove(x, y, z);
             }
         });
+        chunkPreview.setBlockTargetListener((x, y, z, placeX, placeY, placeZ) ->
+                runOnUiThread(() -> showTargetActionDialog(x, y, z, placeX, placeY, placeZ)));
         chunkPreview.setVisibility(View.GONE);
         page.addView(chunkPreview, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(300)));
@@ -615,6 +617,33 @@ public final class MainActivity extends Activity {
         page.addView(footer, matchWrap());
 
         return scroll;
+    }
+
+
+    private void showTargetActionDialog(int x, int y, int z,
+                                        int placeX, int placeY, int placeZ) {
+        new AlertDialog.Builder(this)
+                .setTitle("Блок выбран")
+                .setMessage("Координаты: " + x + ", " + y + ", " + z
+                        + "\\nВыбери действие с блоком.")
+                .setItems(new String[]{"СЛОМАТЬ БЛОК", "ПОСТАВИТЬ РЯДОМ"}, (dialog, which) -> {
+                    boolean place = which == 1;
+                    NetherNetAndroidClient client = netherNetClient;
+                    int targetX = place ? placeX : x;
+                    int targetY = place ? placeY : y;
+                    int targetZ = place ? placeZ : z;
+                    String blockId = place ? "minecraft:dirt" : "";
+                    if (client == null || !client.sendBlockAction(place,
+                            targetX, targetY, targetZ, blockId)) {
+                        Toast.makeText(this, "Не удалось отправить действие серверу",
+                                Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(this, place ? "Запрошена установка блока"
+                                : "Запрошено разрушение блока", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("ОТМЕНА", null)
+                .show();
     }
 
     private void showBlockActionDialog(boolean place) {

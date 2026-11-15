@@ -1,7 +1,7 @@
 NEXORA DEDICATED SERVER — PREVIEW
 
 Requirements:
-- Java 21 (64-bit)
+- Java 25 (64-bit)
 - 2 GB RAM recommended for this preview
 
 Start:

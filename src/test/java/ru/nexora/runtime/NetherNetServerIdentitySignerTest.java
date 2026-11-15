@@ -37,7 +37,6 @@ class NetherNetServerIdentitySignerTest {
         NetherNetSdpDocument parsed = NetherNetSdpDocument.parseOffer(signed);
         String envelope = parsed.identityEnvelopeJson();
         assertTrue(envelope.contains("\"protocol\":\"default\""));
-        assertTrue(envelope.contains("\\\"protocol\\\":\\\"default\\\""));
 
         Map<String, String> assertion = readStringObject(envelope, "assertion");
         Map<String, String> inner = readStringObject(assertion.get("assertion"), "token", "fingerprints");

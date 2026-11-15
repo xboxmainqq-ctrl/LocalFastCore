@@ -24,7 +24,7 @@ public class NexoraAndroidProtocolCodecTest {
 
         byte[] blockId = "minecraft:stone".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         ByteBuffer update = ByteBuffer.allocate(20 + blockId.length);
-        update.put(new byte[] {'N','X','R','A',1,2,15});
+        update.put(new byte[] {'N','X','R','A',1,3,15});
         update.putInt(-2).putInt(64).putInt(3).put((byte) blockId.length).put(blockId);
         NexoraAndroidProtocolCodec.BlockUpdate decoded =
                 NexoraAndroidProtocolCodec.decodeBlockUpdate(update.array());
@@ -54,7 +54,7 @@ public class NexoraAndroidProtocolCodecTest {
         assertEquals(82, Byte.toUnsignedInt(encoded[2]));
         assertEquals(65, Byte.toUnsignedInt(encoded[3]));
         assertEquals(1, Byte.toUnsignedInt(encoded[4]));
-        assertEquals(2, Byte.toUnsignedInt(encoded[5]));
+        assertEquals(3, Byte.toUnsignedInt(encoded[5]));
         assertEquals(1, Byte.toUnsignedInt(encoded[6]));
     }
 
@@ -76,7 +76,7 @@ public class NexoraAndroidProtocolCodecTest {
     public void decodesServerHello() {
         UUID id = UUID.fromString("f8d2c8e0-a2c4-4a87-a69d-02e7d8dff921");
         ByteBuffer bytes = ByteBuffer.allocate(27);
-        bytes.put(new byte[] {'N','X','R','A',1,2,2});
+        bytes.put(new byte[] {'N','X','R','A',1,3,2});
         bytes.putLong(id.getMostSignificantBits());
         bytes.putLong(id.getLeastSignificantBits());
         bytes.putInt(1024 * 1024);
@@ -92,7 +92,7 @@ public class NexoraAndroidProtocolCodecTest {
     public void decodesServerRejection() {
         byte[] reason = "Unsupported version".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         ByteBuffer bytes = ByteBuffer.allocate(9 + reason.length);
-        bytes.put(new byte[] {'N','X','R','A',1,2,3,1,(byte) reason.length});
+        bytes.put(new byte[] {'N','X','R','A',1,3,3,1,(byte) reason.length});
         bytes.put(reason);
         NexoraAndroidProtocolCodec.ServerResponse response =
                 NexoraAndroidProtocolCodec.decodeServerResponse(bytes.array());
@@ -105,7 +105,7 @@ public class NexoraAndroidProtocolCodecTest {
     public void decodesWorldInfoFromServer() {
         byte[] worldId = "world".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         ByteBuffer bytes = ByteBuffer.allocate(7 + 1 + worldId.length + 28);
-        bytes.put(new byte[] {'N','X','R','A',1,2,4});
+        bytes.put(new byte[] {'N','X','R','A',1,3,4});
         bytes.put((byte) worldId.length).put(worldId);
         bytes.putInt(-64).putInt(320);
         bytes.putInt(0).putInt(65).putInt(0);
@@ -123,7 +123,7 @@ public class NexoraAndroidProtocolCodecTest {
     @Test
     public void chunkRequestMatchesServerGoldenVector() {
         byte[] expected = ByteBuffer.allocate(15)
-                .put(new byte[] {'N','X','R','A',1,2,5})
+                .put(new byte[] {'N','X','R','A',1,3,5})
                 .putInt(-2).putInt(7).array();
         assertArrayEquals(expected, NexoraAndroidProtocolCodec.encodeChunkRequest(-2, 7));
     }
@@ -132,7 +132,7 @@ public class NexoraAndroidProtocolCodecTest {
     public void decodesChunkVolumeFromServerGoldenVector() {
         byte[] id = "minecraft:grass_block".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         ByteBuffer bytes = ByteBuffer.allocate(7 + 12 + 1 + 4 + 1 + 1 + id.length);
-        bytes.put(new byte[] {'N','X','R','A',1,2,6});
+        bytes.put(new byte[] {'N','X','R','A',1,3,6});
         bytes.putInt(2).putInt(-3).putInt(1);
         bytes.put((byte) 0).putInt(64).put((byte) 0).put((byte) id.length).put(id);
         NexoraAndroidProtocolCodec.ChunkData chunk =
@@ -150,7 +150,7 @@ public class NexoraAndroidProtocolCodecTest {
         UUID id = UUID.fromString("c7f9a7c3-18b0-4dc5-a3c2-7b7f10f2f1a1");
         byte[] name = "Тест".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         ByteBuffer packet = ByteBuffer.allocate(7 + 16 + 1 + name.length + 1 + 32);
-        packet.put(new byte[] {'N','X','R','A',1,2,9});
+        packet.put(new byte[] {'N','X','R','A',1,3,9});
         packet.putLong(id.getMostSignificantBits()).putLong(id.getLeastSignificantBits());
         packet.put((byte) name.length).put(name).put((byte) 4);
         packet.putDouble(12.5).putDouble(65.0).putDouble(-8.25).putDouble(135.0);
@@ -169,7 +169,7 @@ public class NexoraAndroidProtocolCodecTest {
         byte[] diamond = "minecraft:diamond".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         ByteBuffer packet = ByteBuffer.allocate(7 + 16 + 1 + 2 + apple.length + 1
                 + 2 + diamond.length + 1);
-        packet.put(new byte[] {'N','X','R','A',1,2,11});
+        packet.put(new byte[] {'N','X','R','A',1,3,11});
         packet.putLong(playerId.getMostSignificantBits()).putLong(playerId.getLeastSignificantBits());
         packet.put((byte) 2);
         packet.put((byte) 0).put((byte) apple.length).put(apple).put((byte) 64);
@@ -193,7 +193,7 @@ public class NexoraAndroidProtocolCodecTest {
     public void rejectsInventoryStackLargerThan64() {
         byte[] id = "minecraft:apple".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         ByteBuffer packet = ByteBuffer.allocate(7 + 16 + 1 + 2 + id.length + 1);
-        packet.put(new byte[] {'N','X','R','A',1,2,11});
+        packet.put(new byte[] {'N','X','R','A',1,3,11});
         packet.putLong(1L).putLong(2L).put((byte) 1);
         packet.put((byte) 0).put((byte) id.length).put(id).put((byte) 65);
         NexoraAndroidProtocolCodec.decodeInventory(packet.array());
@@ -203,12 +203,12 @@ public class NexoraAndroidProtocolCodecTest {
     public void encodesInventoryMoveAction() {
         byte[] packet = NexoraAndroidProtocolCodec.encodeInventoryAction(
                 NexoraAndroidProtocolCodec.InventoryAction.MOVE_OR_SWAP, 2, 17);
-        assertArrayEquals(new byte[] {'N','X','R','A',1,2,12,1,2,17}, packet);
+        assertArrayEquals(new byte[] {'N','X','R','A',1,3,12,1,3,17}, packet);
     }
 
     @Test
     public void decodesInventoryActionResult() {
-        byte[] packet = new byte[] {'N','X','R','A',1,2,13,3,0};
+        byte[] packet = new byte[] {'N','X','R','A',1,3,13,3,0};
         NexoraAndroidProtocolCodec.InventoryActionResult result =
                 NexoraAndroidProtocolCodec.decodeInventoryActionResult(packet);
         assertEquals(NexoraAndroidProtocolCodec.InventoryAction.DROP_STACK, result.action());

@@ -120,3 +120,16 @@ Do not jump directly to a large distributed network. First finish **M1: a genuin
 - NEXORA is an independent implementation. Use original or properly licensed assets and clean-room code.
 - Minecraft Bedrock may be used as a gameplay/protocol reference, but unmodified Bedrock-client compatibility is optional future work and must be verified against real pinned client versions before being claimed.
 - Luanti is not the product engine and must not be introduced as a substitute.
+
+
+## Important clarification: two gameplay modes
+
+NEXORA has two different experiences on the same Core:
+
+- **Single Player is classic survival**, not the network RPG mode. It should provide the familiar survival loop: gather/mine/place, craft, build, explore, survive, fight basic mobs, manage health/hunger/inventory, and save/reload a local world. No mandatory classes, magic, server quests or network economy.
+- **Online dedicated servers are RPG-focused.** This is where server owners configure classes, stats, magic, abilities, combat, custom items/equipment, mobs, bosses, NPCs, quests, dungeons, economy and social systems.
+- The same NEXORA Core powers both. Single Player selects the built-in Survival ruleset; online servers select their configured RPG ruleset/modules. Share engine and common gameplay foundations, not necessarily mode-specific rules.
+- The Android client must make future customization easy, beautiful and cost-efficient: data-driven content, resource packs, configurable HUD/menus, reusable UI components, creator studios, validation/versioning, safe reload, caching and mobile performance budgets.
+- First complete the offline Survival experience, then a dedicated online server, then the RPG feature set and creator/customization pipeline.
+
+See [SINGLEPLAYER_AND_SERVER_MODES.md](SINGLEPLAYER_AND_SERVER_MODES.md) for the canonical mode and client architecture details.

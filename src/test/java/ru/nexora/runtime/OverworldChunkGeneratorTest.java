@@ -101,6 +101,26 @@ class OverworldChunkGeneratorTest {
     }
 
     @Test
+    void undergroundLakesAndCrystalGeodesAreGenerated() {
+        boolean foundUndergroundLake = false;
+        boolean foundCrystal = false;
+        for (int chunkX = -8; chunkX <= 8 && !(foundUndergroundLake && foundCrystal); chunkX++) {
+            for (int chunkZ = -8; chunkZ <= 8 && !(foundUndergroundLake && foundCrystal); chunkZ++) {
+                GeneratedChunk generated = generator.generate(
+                        new ChunkPosition(chunkX, chunkZ), height, 123456789L);
+                foundUndergroundLake |= generated.fluids().keySet().stream()
+                        .anyMatch(position -> position.y() < 0);
+                foundCrystal |= generated.blocks().values().stream().anyMatch(state ->
+                        state.identifier().equals("minecraft:amethyst_block")
+                                || state.identifier().equals("minecraft:amethyst_cluster")
+                                || state.identifier().equals("minecraft:calcite"));
+            }
+        }
+        assertTrue(foundUndergroundLake, "Expected a naturally generated underground water pool");
+        assertTrue(foundCrystal, "Expected at least one amethyst geode feature");
+    }
+
+    @Test
     void generatedTerrainIsImmutable() {
         GeneratedChunk generated = generator.generate(new ChunkPosition(0, 0), height, 17L);
         assertThrows(UnsupportedOperationException.class,

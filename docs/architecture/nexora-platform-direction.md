@@ -25,6 +25,10 @@ The server owns authoritative state and game rules. The client owns presentation
 
 Vanilla Bedrock clients can only display features supported by the Bedrock client protocol. Fully custom buttons, gradients, arbitrary images, layouts and HUD widgets require the NEXORA Client (or a separately supported resource-pack/UI mechanism with its own limitations). Do not promise identical custom UI on unmodified clients.
 
+## Engine decision
+
+Luanti was considered and explicitly rejected by the user on 2026-11-15. Do not base the NEXORA product on Luanti or replace NEXORA's server core with it. Use Minecraft Bedrock as a gameplay and protocol reference, implementing NEXORA independently with clean-room code and original/licensed assets.
+
 ## Compatibility strategy
 
 - Keep the game domain independent of any one network transport.

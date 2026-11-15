@@ -13,6 +13,8 @@ import java.util.function.Function;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map;
+import java.util.List;
+import java.util.ArrayList;
 
 /** Negotiates the private NEXORA protocol and sends initial world metadata. */
 public final class NexoraPrivateProtocolHandler implements Consumer<TransportConnection> {
@@ -33,6 +35,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
     private final EntityRegistry entities;
     private final Map<UUID, PlayerInventory> inventories;
     private final FilePlayerInventoryStorage inventoryStorage;
+    private final List<BedrockResourcePackTransferCodec.Pack> resourcePacks;
 
     /** Returns the authoritative entity registry for this server world. */
     public EntityRegistry entities() {
@@ -93,6 +96,19 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                                         EntityRegistry entities,
                                         Map<UUID, PlayerInventory> inventories,
                                         FilePlayerInventoryStorage inventoryStorage) {
+        this(serverId, maxMessageBytes, worldInfoSupplier, worldSupplier, chunkLoader,
+                readyListener, entities, inventories, inventoryStorage, List.of());
+    }
+
+    public NexoraPrivateProtocolHandler(UUID serverId, int maxMessageBytes,
+                                        Supplier<NexoraWorldInfo> worldInfoSupplier,
+                                        Supplier<World> worldSupplier,
+                                        Function<ChunkPosition, Boolean> chunkLoader,
+                                        Consumer<TransportConnection> readyListener,
+                                        EntityRegistry entities,
+                                        Map<UUID, PlayerInventory> inventories,
+                                        FilePlayerInventoryStorage inventoryStorage,
+                                        List<BedrockResourcePackTransferCodec.Pack> resourcePacks) {
         this.serverId = Objects.requireNonNull(serverId, "serverId");
         if (maxMessageBytes < 1 || maxMessageBytes > 8 * 1024 * 1024) {
             throw new IllegalArgumentException("maxMessageBytes is outside the supported range");
@@ -105,6 +121,11 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
         this.entities = Objects.requireNonNull(entities, "entities");
         this.inventories = Objects.requireNonNull(inventories, "inventories");
         this.inventoryStorage = inventoryStorage;
+        Objects.requireNonNull(resourcePacks, "resourcePacks");
+        if (resourcePacks.size() > 1) {
+            throw new IllegalArgumentException("The Android client currently supports one resource pack");
+        }
+        this.resourcePacks = List.copyOf(resourcePacks);
     }
 
     @Override

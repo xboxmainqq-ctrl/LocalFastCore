@@ -18,7 +18,7 @@ import java.util.HexFormat;
  */
 public final class NexoraPrivateProtocolCodec {
     public static final int MAJOR_VERSION = 1;
-    public static final int MINOR_VERSION = 2;
+    public static final int MINOR_VERSION = 3;
     public static final int MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
     public static final int RESOURCE_PACK_CHUNK_BYTES = 1024 * 1024;
     private static final int TYPE_RESOURCE_PACK_INFO = 16;

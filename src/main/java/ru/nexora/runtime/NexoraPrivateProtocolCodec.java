@@ -8,6 +8,9 @@ import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.UUID;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 
 /**
  * Bounded, versioned wire codec for the first-party NEXORA client/server protocol.
@@ -16,7 +19,12 @@ import java.util.UUID;
 public final class NexoraPrivateProtocolCodec {
     public static final int MAJOR_VERSION = 1;
     public static final int MINOR_VERSION = 2;
-    public static final int MAX_MESSAGE_BYTES = 1024;
+    public static final int MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
+    public static final int RESOURCE_PACK_CHUNK_BYTES = 1024 * 1024;
+    private static final int TYPE_RESOURCE_PACK_INFO = 16;
+    private static final int TYPE_RESOURCE_PACK_CHUNK_REQUEST = 17;
+    private static final int TYPE_RESOURCE_PACK_CHUNK_DATA = 18;
+    private static final int TYPE_RESOURCE_PACK_READY = 19;
     private static final byte[] MAGIC = {'N', 'X', 'R', 'A'};
     private static final int TYPE_CLIENT_HELLO = 1;
     private static final int TYPE_SERVER_HELLO = 2;
@@ -142,6 +150,95 @@ public final class NexoraPrivateProtocolCodec {
             return new ServerResponse(false, null, 0, code, decodeText(input, length));
         }
         throw new IllegalArgumentException("Unexpected NEXORA server response type");
+    }
+
+    /** Announces one Bedrock-style ZIP resource pack to the first-party Android client. */
+    public static byte[] encodeResourcePackInfo(BedrockResourcePackTransferCodec.Pack pack) {
+        Objects.requireNonNull(pack, "pack");
+        int size = pack.archiveSize();
+        int chunks = (size + RESOURCE_PACK_CHUNK_BYTES - 1) / RESOURCE_PACK_CHUNK_BYTES;
+        ByteBuffer output = ByteBuffer.allocate(512).order(ByteOrder.BIG_ENDIAN);
+        writeProtocolString(output, pack.resourceName(), 128);
+        writeProtocolString(output, pack.version(), 64);
+        output.putLong(size).putInt(RESOURCE_PACK_CHUNK_BYTES).putInt(chunks);
+        writeProtocolString(output, sha256Hex(pack.archive()), 64);
+        return packet(TYPE_RESOURCE_PACK_INFO, output);
+    }
+
+    /** Decodes the next sequential resource-pack chunk requested by Android. */
+    public static ResourcePackChunkRequest decodeResourcePackChunkRequest(ByteBuffer source) {
+        ByteBuffer input = checkedHeader(source, TYPE_RESOURCE_PACK_CHUNK_REQUEST);
+        String resourceName = readProtocolString(input, 128);
+        if (input.remaining() != Integer.BYTES) {
+            throw new IllegalArgumentException("Malformed resource-pack chunk request");
+        }
+        int index = input.getInt();
+        if (index < 0) throw new IllegalArgumentException("Invalid resource-pack chunk index");
+        return new ResourcePackChunkRequest(resourceName, index);
+    }
+
+    /** Encodes one bounded archive slice; the transport fragments messages above frame size. */
+    public static byte[] encodeResourcePackChunk(
+            BedrockResourcePackTransferCodec.Pack pack, int chunkIndex) {
+        Objects.requireNonNull(pack, "pack");
+        int count = (pack.archiveSize() + RESOURCE_PACK_CHUNK_BYTES - 1) / RESOURCE_PACK_CHUNK_BYTES;
+        if (chunkIndex < 0 || chunkIndex >= count) {
+            throw new IllegalArgumentException("Resource-pack chunk index is outside the archive");
+        }
+        int offset = Math.multiplyExact(chunkIndex, RESOURCE_PACK_CHUNK_BYTES);
+        int length = Math.min(RESOURCE_PACK_CHUNK_BYTES, pack.archiveSize() - offset);
+        ByteBuffer output = ByteBuffer.allocate(256 + length).order(ByteOrder.BIG_ENDIAN);
+        writeProtocolString(output, pack.resourceName(), 128);
+        output.putInt(chunkIndex).putLong(offset).putInt(length);
+        output.put(pack.archiveChunk(offset, length));
+        return packet(TYPE_RESOURCE_PACK_CHUNK_DATA, output);
+    }
+
+    public static void decodeResourcePackReady(ByteBuffer source) {
+        ByteBuffer input = checkedHeader(source, TYPE_RESOURCE_PACK_READY);
+        if (input.hasRemaining()) throw new IllegalArgumentException("Trailing resource-pack ready bytes");
+    }
+
+    public static byte[] encodeResourcePackReady() {
+        return header(TYPE_RESOURCE_PACK_READY, 0).array();
+    }
+
+    private static byte[] packet(int type, ByteBuffer payload) {
+        payload.flip();
+        ByteBuffer output = header(type, payload.remaining());
+        output.put(payload);
+        return output.array();
+    }
+
+    private static void writeProtocolString(ByteBuffer output, String value, int maxBytes) {
+        byte[] bytes = encodeText(value, maxBytes, "resource-pack text");
+        if (bytes.length > 255) throw new IllegalArgumentException("Resource-pack text is too long");
+        output.put((byte) bytes.length).put(bytes);
+    }
+
+    private static String readProtocolString(ByteBuffer input, int maxBytes) {
+        int length = Byte.toUnsignedInt(readByte(input, "resource-pack text length"));
+        if (length < 1 || length > maxBytes || input.remaining() < length) {
+            throw new IllegalArgumentException("Invalid resource-pack text length");
+        }
+        return decodeText(input, length);
+    }
+
+    private static String sha256Hex(byte[] bytes) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 is unavailable", impossible);
+        }
+    }
+
+    public record ResourcePackChunkRequest(String resourceName, int chunkIndex) {
+        public ResourcePackChunkRequest {
+            Objects.requireNonNull(resourceName, "resourceName");
+            if (resourceName.isBlank() || chunkIndex < 0) {
+                throw new IllegalArgumentException("Invalid resource-pack chunk request");
+            }
+        }
     }
 
     private static ByteBuffer header(int type, int payloadLength) {

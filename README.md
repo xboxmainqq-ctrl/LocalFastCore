@@ -2,7 +2,7 @@
 
 ## Product direction
 
-**NEXORA is a Minecraft Bedrock-style server platform with its own server core, dedicated server executable, separate Android client and creator tools.** The goal is the flexibility of a custom Minecraft server network while making custom content and interfaces easier to build.
+**NEXORA is an Android-first RPG game network with its own block-world server core, dedicated RPG servers, separate Android client, network/lobby services and creator tools.** Its platform structure is inspired by large Minecraft server networks, but NEXORA is an independent product with original code, identity and content. The focus is persistent RPG gameplay—not a general minigame network.
 
 The NEXORA Dedicated Server runs headlessly and owns authoritative worlds, chunks, blocks, entities, players, inventories, permissions, commands, events and gameplay. The separate NEXORA Android Client provides rendering, touch controls, UI/HUD, resource packs, server connection and creator tools. Single-player starts an embedded instance of the same NEXORA Core and works offline.
 
@@ -10,7 +10,16 @@ The target is Bedrock-style mobile gameplay; Java Edition is out of scope. An op
 
 Do not use Luanti or copy proprietary Minecraft source code/assets. Use public protocol documentation, clean-room implementations and original or properly licensed content.
 
-Architecture decisions: [NEXORA platform direction](docs/architecture/nexora-platform-direction.md) · [Minecraft compatibility and client audit](docs/architecture/minecraft-compatibility-audit.md).
+Product brief: [NEXORA Android RPG network vision](docs/PRODUCT_VISION_RPG_NETWORK.md) · Architecture decisions: [NEXORA platform direction](docs/architecture/nexora-platform-direction.md) · [Minecraft compatibility and client audit](docs/architecture/minecraft-compatibility-audit.md).
+
+### RPG-only, Android-first direction
+
+- Launch target: Android phones/tablets with touch-first controls and installable APK builds.
+- Product scope: RPG worlds, persistent characters, classes, stats, abilities, equipment, quests, mobs, bosses, dungeons, loot and economy.
+- Network model: central lobby/player profiles, then multiple RPG worlds or instances on authoritative NEXORA dedicated servers as the platform grows.
+- Offline single-player uses the exact same NEXORA Core as online dedicated servers.
+- Unrelated minigames such as BedWars and SkyWars are out of scope unless the product direction is explicitly changed.
+- Delivery order: playable offline RPG world → one online RPG server tested with two Android clients → lobby and multi-world network services.
 
 ## Bedrock block compatibility
 

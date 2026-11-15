@@ -933,6 +933,21 @@ public final class MainActivity extends Activity {
                 .show();
     }
 
+    private String resourcePackDisplayName(android.net.Uri uri) {
+        if (uri == null) return "";
+        try (android.database.Cursor cursor = getContentResolver().query(uri,
+                new String[]{android.provider.OpenableColumns.DISPLAY_NAME},
+                null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int column = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+                if (column >= 0) return cursor.getString(column);
+            }
+        } catch (Exception ignored) {
+            // The library will use a generated name when the provider hides filenames.
+        }
+        return "";
+    }
+
     private void openCustomSkinPicker() {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -947,7 +962,7 @@ public final class MainActivity extends Activity {
         if (requestCode == REQUEST_RESOURCE_PACK) {
             try {
                 int imported = NexoraResourcePackInstaller.install(this, data.getData());
-                NexoraResourcePackLibrary.registerImportedActive(this);
+                NexoraResourcePackLibrary.registerImportedActive(this, resourcePackDisplayName(data.getData()));
                 Toast.makeText(this, "Ресурс-пак добавлен в библиотеку. Текстур: " + imported
                         + ". Он активен; открой мир заново для применения.", Toast.LENGTH_LONG).show();
             } catch (Exception invalid) {

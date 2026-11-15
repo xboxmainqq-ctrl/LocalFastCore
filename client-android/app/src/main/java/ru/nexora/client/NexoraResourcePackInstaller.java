@@ -186,10 +186,10 @@ final class NexoraResourcePackInstaller {
         }
     }
 
-    private static void validateArchivePath(String path, boolean directory) {
+    static void validateArchivePath(String path, boolean directory) {
         if (path == null || path.isEmpty() || path.startsWith("/")
                 || path.matches("^[A-Za-z]:.*")
-                || path.indexOf('\\\\') >= 0 || path.indexOf('\0') >= 0) {
+                || path.indexOf('\\') >= 0 || path.indexOf('\0') >= 0) {
             throw new IllegalArgumentException("Недопустимый путь в ZIP");
         }
         String checked = directory && path.endsWith("/")

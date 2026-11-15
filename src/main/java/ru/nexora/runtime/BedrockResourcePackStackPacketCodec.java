@@ -21,7 +21,7 @@ public final class BedrockResourcePackStackPacketCodec {
         ByteBuffer payload = ByteBuffer.allocate(1 + 1 + 1 + version.length + 1 + 2);
         payload.put((byte) 0); // forcedToAccept
         BedrockBinary.writeVarUInt32(payload, 0); // resource packs
-        BedrockBinary.writeString(payload, gameVersion);
+        BedrockBinary.writeString(payload, gameVersion, 32);
         BedrockBinary.writeVarUInt32(payload, 0); // experiments
         payload.put((byte) 0); // experimentsPreviouslyToggled
         payload.put((byte) 0); // hasEditorPacks

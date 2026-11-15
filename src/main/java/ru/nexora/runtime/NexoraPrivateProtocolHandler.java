@@ -814,10 +814,9 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
             if (asyncChunkLoader != null) {
                 asyncChunkLoader.request(position).whenComplete((available, failure) -> {
                     if (!connection.isOpen()) return;
-                    if (failure != null || !Boolean.TRUE.equals(available)) {
-                        connection.close();
-                        return;
-                    }
+                    // A player may have moved away while this request was pending.
+                    // Cancellation and transient generation failure must not drop the session.
+                    if (failure != null || !Boolean.TRUE.equals(available)) return;
                     try {
                         World world = Objects.requireNonNull(worldSupplier.get(), "world");
                         NexoraChunkData chunk = NexoraChunkData.volume(

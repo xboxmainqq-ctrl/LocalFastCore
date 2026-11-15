@@ -14,31 +14,9 @@ android {
         versionName = "0.1.0-dev"
     }
 
-    sourceSets["main"].java.srcDir("../../src/main/java")
-    sourceSets["main"].java.include(
-        "ru/nexora/client/**",
-        "ru/nexora/runtime/OverworldChunkGenerator.java",
-        "ru/nexora/runtime/ChunkGenerator.java",
-        "ru/nexora/runtime/GeneratedChunk.java",
-        "ru/nexora/runtime/ChunkPosition.java",
-        "ru/nexora/runtime/WorldHeight.java",
-        "ru/nexora/runtime/BlockState.java",
-        "ru/nexora/runtime/BlockPosition.java",
-        "ru/nexora/runtime/BiomeColumnPosition.java",
-        "ru/nexora/runtime/BiomeDefinition.java",
-        "ru/nexora/runtime/BiomeRegistry.java",
-        "ru/nexora/runtime/BiomeClimateSampler.java",
-        "ru/nexora/runtime/ClimateSample.java",
-        "ru/nexora/runtime/TerrainHeightSampler.java",
-        "ru/nexora/runtime/HydrologyField.java",
-        "ru/nexora/runtime/BiomeSection.java",
-        "ru/nexora/runtime/FluidStates.java"
-    )
-
-    tasks.withType<org.gradle.api.tasks.compile.JavaCompile>().configureEach {
-        options.sourcepath = files(layout.buildDirectory.dir("empty-java-sourcepath"))
-    }
-
+    // The Android app is a separate Bedrock-facing client. Do not add the
+    // server's Java source tree here: its JDK-only networking and server
+    // transport implementations must never enter the Android compilation.
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

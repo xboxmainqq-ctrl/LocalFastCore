@@ -877,24 +877,26 @@ final class ChunkPreviewView extends GLSurfaceView {
                 float y1 = block.y() + 0.5f;
                 float z0 = block.z() - 0.5f;
                 float z1 = block.z() + 0.5f;
-                float[] color = colorFor(block.blockId());
+                float[] topColor = colorFor(block.blockId(), 0);
+                float[] sideColor = colorFor(block.blockId(), 1);
+                float[] bottomColor = colorFor(block.blockId(), 2);
                 if (!occupied.contains(new BlockPosition(block.x(), block.y() + 1, block.z()))) {
-                    mesh.quad(x0,y1,z0, x0,y1,z1, x1,y1,z1, x1,y1,z0, color, 1.00f);
+                    mesh.quad(x0,y1,z0, x0,y1,z1, x1,y1,z1, x1,y1,z0, topColor, 1.00f);
                 }
                 if (!occupied.contains(new BlockPosition(block.x(), block.y() - 1, block.z()))) {
-                    mesh.quad(x0,y0,z1, x0,y0,z0, x1,y0,z0, x1,y0,z1, color, 0.48f);
+                    mesh.quad(x0,y0,z1, x0,y0,z0, x1,y0,z0, x1,y0,z1, bottomColor, 0.48f);
                 }
                 if (!occupied.contains(new BlockPosition(block.x() - 1, block.y(), block.z()))) {
-                    mesh.quad(x0,y0,z0, x0,y0,z1, x0,y1,z1, x0,y1,z0, color, 0.72f);
+                    mesh.quad(x0,y0,z0, x0,y0,z1, x0,y1,z1, x0,y1,z0, sideColor, 0.72f);
                 }
                 if (!occupied.contains(new BlockPosition(block.x() + 1, block.y(), block.z()))) {
-                    mesh.quad(x1,y0,z1, x1,y0,z0, x1,y1,z0, x1,y1,z1, color, 0.82f);
+                    mesh.quad(x1,y0,z1, x1,y0,z0, x1,y1,z0, x1,y1,z1, sideColor, 0.82f);
                 }
                 if (!occupied.contains(new BlockPosition(block.x(), block.y(), block.z() - 1))) {
-                    mesh.quad(x1,y0,z0, x0,y0,z0, x0,y1,z0, x1,y1,z0, color, 0.62f);
+                    mesh.quad(x1,y0,z0, x0,y0,z0, x0,y1,z0, x1,y1,z0, sideColor, 0.62f);
                 }
                 if (!occupied.contains(new BlockPosition(block.x(), block.y(), block.z() + 1))) {
-                    mesh.quad(x0,y0,z1, x1,y0,z1, x1,y1,z1, x0,y1,z1, color, 0.68f);
+                    mesh.quad(x0,y0,z1, x1,y0,z1, x1,y1,z1, x0,y1,z1, sideColor, 0.68f);
                 }
                 if (mesh.full()) break;
             }
@@ -987,17 +989,43 @@ final class ChunkPreviewView extends GLSurfaceView {
         }
     }
 
-    private static float[] colorFor(String id) {
+    /**
+     * Temporary built-in material palette. The face split mirrors the material
+     * model used by voxel texture atlases, so top/side/bottom textures can be
+     * introduced without changing chunk decoding or collision geometry.
+     */
+    private static float[] colorFor(String id, int face) {
         int color;
-        if (id.contains("grass") || id.contains("leaves") || id.contains("moss")) color = 0xff70b85f;
-        else if (id.contains("water")) color = 0xff438fc8;
-        else if (id.contains("sand")) color = 0xffd8c27b;
-        else if (id.contains("dirt") || id.contains("mud")) color = 0xff98704e;
-        else if (id.contains("bedrock")) color = 0xff34383f;
-        else if (id.contains("oak_log") || id.contains("log")) color = 0xff795334;
-        else if (id.contains("stone") || id.contains("cobble")) color = 0xff9299a3;
-        else if (id.contains("snow") || id.contains("ice")) color = 0xffdceaf2;
-        else {
+        boolean top = face == 0;
+        boolean bottom = face == 2;
+        if (id.contains("grass_block") || id.endsWith(":grass")) {
+            color = top ? 0xff78b957 : bottom ? 0xff76513a : 0xff806044;
+        } else if (id.contains("podzol") || id.contains("mycelium")) {
+            color = top ? (id.contains("mycelium") ? 0xffa58b9d : 0xff76543b) : 0xff76513a;
+        } else if (id.contains("leaves") || id.contains("moss")) {
+            color = top ? 0xff57994d : 0xff477f43;
+        } else if (id.contains("water")) {
+            color = 0xff438fc8;
+        } else if (id.contains("sand")) {
+            color = top ? 0xffe2ce8d : 0xffc7ae70;
+        } else if (id.contains("gravel")) {
+            color = 0xff99958b;
+        } else if (id.contains("dirt") || id.contains("mud") || id.contains("clay")) {
+            color = id.contains("clay") ? 0xff9a9690 : 0xff98704e;
+        } else if (id.contains("bedrock")) {
+            color = 0xff34383f;
+        } else if (id.contains("oak_log") || id.contains("spruce_log")
+                || id.contains("birch_log") || id.contains("log")) {
+            color = top ? 0xffb18a58 : 0xff795334;
+        } else if (id.contains("planks")) {
+            color = 0xffad8455;
+        } else if (id.contains("stone") || id.contains("cobble") || id.contains("deepslate")) {
+            color = id.contains("deepslate") ? 0xff555b65 : 0xff9299a3;
+        } else if (id.contains("snow") || id.contains("ice")) {
+            color = top ? 0xffedf7fb : 0xffcbdde8;
+        } else if (id.contains("ore")) {
+            color = 0xff888d91;
+        } else {
             int hash = id.hashCode();
             color = 0xff000000 | (96 + ((hash >>> 16) & 0x7f)) << 16
                     | (96 + ((hash >>> 8) & 0x7f)) << 8 | (96 + (hash & 0x7f));

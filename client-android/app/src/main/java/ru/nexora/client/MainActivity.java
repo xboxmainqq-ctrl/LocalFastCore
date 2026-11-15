@@ -34,8 +34,8 @@ import java.util.concurrent.Executors;
  * Android entry screen for the NEXORA client.
  *
  * <p>This screen connects to the first-party NEXORA server and displays its
- * world metadata and a bounded 3x3 voxel preview. Authentication, dynamic
- * view-distance streaming, and interactive gameplay remain pending stages.</p>
+ * world metadata, authoritative movement, and a streamed 3x3 voxel view.
+ * Interactive block editing remains a later gameplay stage.</p>
  */
 public final class MainActivity extends Activity {
     private static final int BACKGROUND = Color.rgb(12, 16, 25);
@@ -64,6 +64,8 @@ public final class MainActivity extends Activity {
     private int selectedInventorySlot = -1;
     private final Map<UUID, String> remotePlayerNames = new LinkedHashMap<>();
     private ExecutorService previewGenerationExecutor;
+    private int streamingCenterChunkX = Integer.MIN_VALUE;
+    private int streamingCenterChunkZ = Integer.MIN_VALUE;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -669,8 +671,9 @@ public final class MainActivity extends Activity {
 
             @Override
             public void onWorldInfoReceived(NexoraAndroidProtocolCodec.WorldInfo world) {
-                chunkPreview.setCenter(Math.floorDiv(world.spawnX(), 16),
-                        Math.floorDiv(world.spawnZ(), 16));
+                streamingCenterChunkX = Math.floorDiv(world.spawnX(), 16);
+                streamingCenterChunkZ = Math.floorDiv(world.spawnZ(), 16);
+                chunkPreview.setCenter(streamingCenterChunkX, streamingCenterChunkZ);
                 chunkPreview.setPlayerSpawn(world.spawnX(), world.spawnY(), world.spawnZ());
                 chunkPreview.setVisibility(View.VISIBLE);
                 connectionStatus.setText("Мир: " + world.worldId()
@@ -683,6 +686,15 @@ public final class MainActivity extends Activity {
             @Override
             public void onServerPosition(NexoraAndroidProtocolCodec.PlayerPosition position) {
                 chunkPreview.setServerPosition(position.x(), position.y(), position.z());
+                int chunkX = Math.floorDiv((int) Math.floor(position.x()), 16);
+                int chunkZ = Math.floorDiv((int) Math.floor(position.z()), 16);
+                if (chunkX != streamingCenterChunkX || chunkZ != streamingCenterChunkZ) {
+                    streamingCenterChunkX = chunkX;
+                    streamingCenterChunkZ = chunkZ;
+                    chunkPreview.setCenter(chunkX, chunkZ);
+                    NetherNetAndroidClient client = netherNetClient;
+                    if (client != null) client.requestChunksAround(chunkX, chunkZ);
+                }
             }
 
             @Override

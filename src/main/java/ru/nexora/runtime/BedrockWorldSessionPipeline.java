@@ -44,7 +44,8 @@ public final class BedrockWorldSessionPipeline implements AutoCloseable {
         BedrockInitialTransportRouter initialRouter = null;
         try {
             subChunks = new BedrockSubChunkRequestHandler(
-                    networkSettings, world, ignored -> dimension, blockProfile,
+                    networkSettings, world, ignored -> dimension,
+                    BedrockBlockCompatibilityRegistry.builtIn().adapt(blockProfile.registry()),
                     otherPlayMessageHandler);
             startup = new BedrockWorldStartupHandler(
                     networkSettings, world, dimension, clientRequestSubChunkLimit,

@@ -78,8 +78,8 @@ class NexoraPrivateProtocolHandlerTest {
         assertEquals(16, Byte.toUnsignedInt(connection.sentMessages.get(4)[6]));
 
         connection.deliver(NexoraChunkDataCodec.encodeChunkRequest(0, 0));
-        assertEquals("Chunk request must wait for the server pack",
-                5, connection.sentMessages.size());
+        assertEquals(5, connection.sentMessages.size(),
+                "Chunk request must wait for the server pack");
 
         byte[] resourceName = pack.resourceName().getBytes(java.nio.charset.StandardCharsets.UTF_8);
         ByteBuffer chunkRequest = ByteBuffer.allocate(7 + 1 + resourceName.length + 4);

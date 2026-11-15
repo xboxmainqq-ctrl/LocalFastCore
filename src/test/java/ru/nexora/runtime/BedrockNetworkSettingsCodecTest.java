@@ -44,7 +44,7 @@ class BedrockNetworkSettingsCodecTest {
 
     @Test
     void readsBooleanAsAnyNonZeroByteAndAdvancesInput() {
-        ByteBuffer encoded = ByteBuffer.allocate(11).order(ByteOrder.BIG_ENDIAN);
+        ByteBuffer encoded = ByteBuffer.allocate(11).order(ByteOrder.LITTLE_ENDIAN);
         encoded.put((byte) 0x55);
         encoded.putShort((short) 256);
         encoded.putShort((short) 0);

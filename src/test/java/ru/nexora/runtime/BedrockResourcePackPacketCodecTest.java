@@ -32,12 +32,12 @@ class BedrockResourcePackPacketCodecTest {
 
     @Test
     void decodesHaveAllPacksAndCompletedResponses() {
-        BedrockResourcePackClientResponse haveAll = decodeResponse(3, "downloadingfinished");
+        BedrockResourcePackClientResponse haveAll = decodeResponse("downloadingfinished");
         assertEquals(BedrockResourcePackClientResponse.Status.HAVE_ALL_PACKS, haveAll.status());
         assertTrue(haveAll.packIds().isEmpty());
 
         BedrockResourcePackClientResponse completed =
-                decodeResponse(4, "resourcepackstackfinished");
+                decodeResponse("resourcepackstackfinished");
         assertEquals(BedrockResourcePackClientResponse.Status.COMPLETED, completed.status());
         assertTrue(completed.packIds().isEmpty());
     }
@@ -45,7 +45,6 @@ class BedrockResourcePackPacketCodecTest {
     @Test
     void decodesRequestedPackIdsAndRejectsMismatchedStatusName() {
         ByteBuffer payload = ByteBuffer.allocate(64);
-        BedrockBinary.writeVarUInt32(payload, 2);
         BedrockBinary.writeString(payload, "downloading", 64);
         BedrockBinary.writeVarUInt32(payload, 2);
         BedrockBinary.writeString(payload, "pack-one", 64);
@@ -58,16 +57,14 @@ class BedrockResourcePackPacketCodecTest {
         assertEquals(java.util.List.of("pack-one", "pack-two"), response.packIds());
 
         ByteBuffer invalid = ByteBuffer.allocate(32);
-        BedrockBinary.writeVarUInt32(invalid, 3);
-        BedrockBinary.writeString(invalid, "downloading", 64);
+        BedrockBinary.writeString(invalid, "unknown-status", 64);
         invalid.flip();
         assertThrows(IllegalArgumentException.class,
                 () -> BedrockResourcePackClientResponsePacketCodec.decodePayload(invalid));
     }
 
-    private static BedrockResourcePackClientResponse decodeResponse(int status, String name) {
+    private static BedrockResourcePackClientResponse decodeResponse(String name) {
         ByteBuffer payload = ByteBuffer.allocate(64);
-        BedrockBinary.writeVarUInt32(payload, status);
         BedrockBinary.writeString(payload, name, 64);
         payload.flip();
         return BedrockResourcePackClientResponsePacketCodec.decodePayload(payload);

@@ -59,6 +59,48 @@ class NexoraPrivateProtocolHandlerTest {
     }
 
     @Test
+    void streamsConfiguredResourcePackAndHoldsChunksUntilClientConfirmsInstallation() {
+        InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
+        world.setBlock(new BlockPosition(0, 64, 0), new BlockState("minecraft:grass_block"));
+        NexoraWorldInfo info = new NexoraWorldInfo("world", 0, 128, 0, 65, 0, 20, 1);
+        byte[] archive = new byte[] {9, 8, 7, 6, 5, 4, 3};
+        BedrockResourcePackTransferCodec.Pack pack =
+                new BedrockResourcePackTransferCodec.Pack(UUID.randomUUID(), "1.0.0", archive);
+        FakeConnection connection = new FakeConnection();
+        NexoraPrivateProtocolHandler handler = new NexoraPrivateProtocolHandler(
+                UUID.randomUUID(), 8 * 1024 * 1024, () -> info, () -> world,
+                ignored -> true, ignored -> { }, new EntityRegistry(),
+                new java.util.concurrent.ConcurrentHashMap<>(), null, List.of(pack));
+
+        handler.accept(connection);
+        connection.deliver(NexoraPrivateProtocolCodec.encodeClientHello("android-dev"));
+        assertFalse(connection.closed);
+        assertEquals(16, Byte.toUnsignedInt(connection.sentMessages.get(4)[6]));
+
+        connection.deliver(NexoraChunkDataCodec.encodeChunkRequest(0, 0));
+        assertEquals("Chunk request must wait for the server pack",
+                5, connection.sentMessages.size());
+
+        byte[] resourceName = pack.resourceName().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        ByteBuffer chunkRequest = ByteBuffer.allocate(7 + 1 + resourceName.length + 4);
+        chunkRequest.put(new byte[] {'N','X','R','A',1,3,17});
+        chunkRequest.put((byte) resourceName.length).put(resourceName).putInt(0);
+        connection.deliver(chunkRequest.array());
+        assertEquals(6, connection.sentMessages.size());
+        byte[] chunk = connection.sentMessages.get(5);
+        assertEquals(18, Byte.toUnsignedInt(chunk[6]));
+
+        connection.deliver(NexoraPrivateProtocolCodec.encodeResourcePackReady());
+        assertEquals(7, connection.sentMessages.size());
+        NexoraChunkData streamed = NexoraChunkDataCodec.decodeChunkData(
+                ByteBuffer.wrap(connection.sentMessages.get(6)));
+        assertEquals(0, streamed.chunkX());
+        assertEquals(0, streamed.chunkZ());
+        assertFalse(connection.closed);
+        connection.close();
+    }
+
+    @Test
     void rejectsClientsOutsideTheNexoraAndroidBuildNamespace() {
         FakeConnection connection = new FakeConnection();
         new NexoraPrivateProtocolHandler(UUID.randomUUID(), 1024,

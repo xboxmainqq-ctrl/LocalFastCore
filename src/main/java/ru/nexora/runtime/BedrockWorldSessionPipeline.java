@@ -31,9 +31,28 @@ public final class BedrockWorldSessionPipeline implements AutoCloseable {
             BedrockInitialTransportRouter.LoginAuthenticator loginAuthenticator,
             BiConsumer<TransportConnection, TransportMessage> otherPlayMessageHandler
     ) {
+        this(networkSettings, world, dimension, clientRequestSubChunkLimit, initialChunks,
+                blockProfile, BedrockBlockCompatibilityRegistry.builtIn(), settingsFactory,
+                loginAuthenticator, otherPlayMessageHandler);
+    }
+
+    public BedrockWorldSessionPipeline(
+            BedrockNetworkSettings networkSettings,
+            World world,
+            int dimension,
+            int clientRequestSubChunkLimit,
+            List<ChunkPosition> initialChunks,
+            BedrockRuntimeBlockRegistryProfile blockProfile,
+            BedrockBlockCompatibilityRegistry blockMappings,
+            BiFunction<TransportConnection, BedrockAuthenticatedPlayer,
+                    BedrockStartGamePacketCodec.Settings> settingsFactory,
+            BedrockInitialTransportRouter.LoginAuthenticator loginAuthenticator,
+            BiConsumer<TransportConnection, TransportMessage> otherPlayMessageHandler
+    ) {
         Objects.requireNonNull(networkSettings, "networkSettings");
         Objects.requireNonNull(world, "world");
         this.blockProfile = Objects.requireNonNull(blockProfile, "blockProfile");
+        Objects.requireNonNull(blockMappings, "blockMappings");
         Objects.requireNonNull(settingsFactory, "settingsFactory");
         Objects.requireNonNull(loginAuthenticator, "loginAuthenticator");
         Objects.requireNonNull(otherPlayMessageHandler, "otherPlayMessageHandler");
@@ -45,7 +64,7 @@ public final class BedrockWorldSessionPipeline implements AutoCloseable {
         try {
             subChunks = new BedrockSubChunkRequestHandler(
                     networkSettings, world, ignored -> dimension,
-                    BedrockBlockCompatibilityRegistry.builtIn().adapt(blockProfile.registry()),
+                    blockMappings.adapt(blockProfile.registry()),
                     otherPlayMessageHandler);
             startup = new BedrockWorldStartupHandler(
                     networkSettings, world, dimension, clientRequestSubChunkLimit,

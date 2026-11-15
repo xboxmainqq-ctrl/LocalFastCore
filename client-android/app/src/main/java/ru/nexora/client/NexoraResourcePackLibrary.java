@@ -60,7 +60,9 @@ final class NexoraResourcePackLibrary {
         String id = "pack-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         File destination = new File(packs, id);
         copyDirectory(active, destination);
-        String cleanName = cleanDisplayName(displayName);\n        writeName(destination, cleanName.isEmpty()\n                ? "Ресурс-пак " + (list(context).size() + 1) : cleanName);
+        String cleanName = cleanDisplayName(displayName);
+        writeName(destination, cleanName.isEmpty()
+                ? "Ресурс-пак " + (list(context).size() + 1) : cleanName);
         writeCurrent(root, id);
     }
 
@@ -105,13 +107,13 @@ final class NexoraResourcePackLibrary {
 
     private static String cleanDisplayName(String value) {
         if (value == null) return "";
-        String name = value.replace('\\\\', '/');
+        String name = value.replace('\\', '/');
         int slash = name.lastIndexOf('/');
         if (slash >= 0) name = name.substring(slash + 1);
         if (name.toLowerCase(java.util.Locale.ROOT).endsWith(".zip")) {
             name = name.substring(0, name.length() - 4);
         }
-        name = name.replaceAll("[\\\\p{Cntrl}]", "").trim();
+        name = name.replaceAll("[\\p{Cntrl}]", "").trim();
         if (name.length() > 48) name = name.substring(0, 48).trim();
         return name;
     }

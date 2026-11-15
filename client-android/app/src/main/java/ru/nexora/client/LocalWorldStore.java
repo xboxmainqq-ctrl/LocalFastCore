@@ -135,7 +135,7 @@ final class LocalWorldStore {
                 InventorySlot slot = index < slots.size() ? slots.get(index) : null;
                 String itemId = slot == null ? "" : slot.itemId();
                 int count = slot == null ? 0 : slot.count();
-                if (count < 0 || count > 999 || (count == 0) != itemId.isEmpty()
+                if (itemId == null || count < 0 || count > 999 || (count == 0) != itemId.isEmpty()
                         || itemId.length() > 256
                         || (!itemId.isEmpty() && !itemId.matches("[a-z0-9_.-]+:[a-z0-9_./-]+"))) {
                     throw new IOException("Local inventory contains an invalid slot");
@@ -154,7 +154,7 @@ final class LocalWorldStore {
     List<InventorySlot> loadInventory(String worldId) throws IOException {
         File file = new File(worldDirectory(worldId), "inventory.nxwi");
         if (!file.exists()) return null;
-        if (file.length() < 12 || file.length() > 8192) {
+        if (file.length() < 12 || file.length() > 16384) {
             throw new IOException("Saved local inventory has an invalid size");
         }
         try (DataInputStream input = new DataInputStream(

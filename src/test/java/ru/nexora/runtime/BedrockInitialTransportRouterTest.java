@@ -317,6 +317,10 @@ class BedrockInitialTransportRouterTest {
             if (closeListener != null) closeListener.accept(
                     new TransportCloseEvent("closed in test", false));
         }
+        private void receive(ByteBuffer payload) {
+            receive(new TransportMessage(payload, DeliveryMode.RELIABLE_ORDERED));
+        }
+
         private void receive(TransportMessage message) {
             assertNotNull(messageListener);
             messageListener.accept(message);

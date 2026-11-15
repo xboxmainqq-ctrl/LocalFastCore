@@ -40,6 +40,24 @@ jobs:
       - name: Verify server runtime and tests
         run: mvn --batch-mode --no-transfer-progress clean verify
 
+      - name: Assemble standalone server distribution
+        if: success()
+        run: |
+          mkdir -p target/nexora-dedicated-server
+          cp target/nexora-runtime-0.1.0-SNAPSHOT.jar target/nexora-dedicated-server/nexora-server.jar
+          cp distribution/server.properties distribution/start.sh distribution/start.bat distribution/README.txt target/nexora-dedicated-server/
+          cd target
+          zip -r nexora-dedicated-server-preview.zip nexora-dedicated-server
+
+      - name: Upload standalone server package
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexora-dedicated-server-preview
+          path: target/nexora-dedicated-server-preview.zip
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Render deterministic world preview from generated chunks
         if: success()
         run: java -cp target/nexora-runtime-0.1.0-SNAPSHOT.jar ru.nexora.runtime.WorldPreviewRenderer 103 12 target/nexora-world-preview.png

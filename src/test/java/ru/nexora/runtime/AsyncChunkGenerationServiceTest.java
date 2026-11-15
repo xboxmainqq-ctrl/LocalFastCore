@@ -100,6 +100,41 @@ class AsyncChunkGenerationServiceTest {
     }
 
     @Test
+    void appliesBackpressureInsteadOfDroppingWhenCompletionQueueIsFull() throws Exception {
+        AtomicInteger generated = new AtomicInteger();
+        AsyncChunkGenerationService service = new AsyncChunkGenerationService(
+                (position, height, seed) -> {
+                    generated.incrementAndGet();
+                    return generator().generate(position, height, seed);
+                },
+                new WorldHeight(0, 64), 0L, 1, 4, 1
+        );
+        service.start();
+        try {
+            ChunkPosition first = new ChunkPosition(0, 0);
+            ChunkPosition second = new ChunkPosition(1, 0);
+            assertEquals(AsyncChunkGenerationService.RequestStatus.ACCEPTED, service.request(first));
+            await(() -> service.completedCount() == 1);
+
+            assertEquals(AsyncChunkGenerationService.RequestStatus.ACCEPTED, service.request(second));
+            await(() -> generated.get() == 2);
+            // The second worker result must wait for queue capacity rather than
+            // being discarded while the first result occupies the only slot.
+            assertEquals(0L, service.droppedResults());
+            assertEquals(2, service.pendingCount());
+            assertEquals(1, service.completedCount());
+
+            assertEquals(1, service.drainCompleted(1, ignored -> { }));
+            await(() -> service.completedCount() == 1);
+            assertEquals(1, service.drainCompleted(1, ignored -> { }));
+            assertEquals(0, service.pendingCount());
+            assertEquals(0L, service.droppedResults());
+        } finally {
+            service.stop();
+        }
+    }
+
+    @Test
     void publishesGeneratorFailuresAsResults() throws Exception {
         AsyncChunkGenerationService service = new AsyncChunkGenerationService(
                 (position, height, seed) -> { throw new IllegalStateException("bad terrain"); },

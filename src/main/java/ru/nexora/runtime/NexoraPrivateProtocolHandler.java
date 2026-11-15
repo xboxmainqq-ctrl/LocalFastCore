@@ -32,7 +32,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
     private final Supplier<World> worldSupplier;
     private final Function<ChunkPosition, Boolean> chunkLoader;
     private final AsyncChunkLoader asyncChunkLoader;
-    private final PlayerChunkStreamingManager chunkStreamingManager;
+    private final Supplier<PlayerChunkStreamingManager> chunkStreamingManagerSupplier;
     private final Map<TransportConnection, PlayerSession> playerSessions =
             new ConcurrentHashMap<>();
     private final EntityRegistry entities;
@@ -142,6 +142,22 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                                         List<BedrockResourcePackTransferCodec.Pack> resourcePacks,
                                         AsyncChunkLoader asyncChunkLoader,
                                         PlayerChunkStreamingManager chunkStreamingManager) {
+        this(serverId, maxMessageBytes, worldInfoSupplier, worldSupplier, chunkLoader,
+                readyListener, entities, inventories, inventoryStorage, resourcePacks,
+                asyncChunkLoader, () -> chunkStreamingManager);
+    }
+
+    public NexoraPrivateProtocolHandler(UUID serverId, int maxMessageBytes,
+                                        Supplier<NexoraWorldInfo> worldInfoSupplier,
+                                        Supplier<World> worldSupplier,
+                                        Function<ChunkPosition, Boolean> chunkLoader,
+                                        Consumer<TransportConnection> readyListener,
+                                        EntityRegistry entities,
+                                        Map<UUID, PlayerInventory> inventories,
+                                        FilePlayerInventoryStorage inventoryStorage,
+                                        List<BedrockResourcePackTransferCodec.Pack> resourcePacks,
+                                        AsyncChunkLoader asyncChunkLoader,
+                                        Supplier<PlayerChunkStreamingManager> chunkStreamingManagerSupplier) {
         this.serverId = Objects.requireNonNull(serverId, "serverId");
         if (maxMessageBytes < 1 || maxMessageBytes > 8 * 1024 * 1024) {
             throw new IllegalArgumentException("maxMessageBytes is outside the supported range");
@@ -151,7 +167,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
         this.worldSupplier = worldSupplier;
         this.chunkLoader = chunkLoader;
         this.asyncChunkLoader = asyncChunkLoader;
-        this.chunkStreamingManager = chunkStreamingManager;
+        this.chunkStreamingManagerSupplier = Objects.requireNonNull(chunkStreamingManagerSupplier, "chunkStreamingManagerSupplier");
         this.readyListener = Objects.requireNonNull(readyListener, "readyListener");
         this.entities = Objects.requireNonNull(entities, "entities");
         this.inventories = Objects.requireNonNull(inventories, "inventories");
@@ -179,7 +195,8 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 PlayerSession session = activeSession.getAndSet(null);
                 if (session != null && playerSessions.remove(connection, session)) {
                     entities.remove(session.playerId);
-                    if (chunkStreamingManager != null) chunkStreamingManager.removePlayer(session.playerId);
+                    PlayerChunkStreamingManager streaming = chunkStreamingManagerSupplier.get();
+                    if (streaming != null) streaming.removePlayer(session.playerId);
                     boolean persisted = persistInventory(session.inventory);
                     if (persisted || inventoryStorage == null) {
                         inventories.remove(session.playerId, session.inventory);
@@ -296,8 +313,9 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                     NexoraMovementValidator.Position spawn = session.position.get();
                     entities.spawn(WorldEntity.player(session.playerId, session.playerName,
                             spawn.x(), spawn.y(), spawn.z(), session.yaw.get(), session.skinIndex));
-                    if (chunkStreamingManager != null) {
-                        chunkStreamingManager.updatePlayer(session.playerId,
+                    PlayerChunkStreamingManager streaming = chunkStreamingManagerSupplier.get();
+                    if (streaming != null) {
+                        streaming.updatePlayer(session.playerId,
                                 (int) Math.floor(spawn.x()), (int) Math.floor(spawn.z()));
                     }
                 }
@@ -457,8 +475,9 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                     session.yaw.set(Math.toDegrees(Math.atan2(-dz, -dx)));
                 }
                 session.position.set(result.position());
-                if (chunkStreamingManager != null) {
-                    chunkStreamingManager.updatePlayer(session.playerId,
+                PlayerChunkStreamingManager streaming = chunkStreamingManagerSupplier.get();
+                if (streaming != null) {
+                    streaming.updatePlayer(session.playerId,
                             (int) Math.floor(result.position().x()),
                             (int) Math.floor(result.position().z()));
                 }

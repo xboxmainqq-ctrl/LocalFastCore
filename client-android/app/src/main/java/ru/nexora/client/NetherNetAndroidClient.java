@@ -84,6 +84,10 @@ public final class NetherNetAndroidClient implements AutoCloseable {
     private volatile boolean networkSettingsReceived;
     private volatile boolean nexoraProtocolReady;
     private volatile boolean worldInfoReceived;
+    private volatile BedrockAndroidResourcePackInfo pendingResourcePackInfo;
+    private volatile BedrockAndroidResourcePackInfo.Pack pendingResourcePack;
+    private volatile BedrockAndroidResourcePackDataInfo currentResourcePackDataInfo;
+    private volatile BedrockAndroidResourcePackDownload resourcePackDownload;
 
     public NetherNetAndroidClient(Context context) {
         appContext = context.getApplicationContext();
@@ -637,24 +641,10 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         try {
             List<BedrockAndroidServerPacket> packets =
                     BedrockAndroidPacketCodec.decodeServerBatch(delivered, networkSettings);
-            // The current Android renderer accepts only empty server pack sets.
-            // Complete that protocol exchange automatically; non-empty packs
-            // are handled by the dedicated downloader added in a later step.
             for (BedrockAndroidServerPacket packet : packets) {
-                if (packet.packetId() == 6) {
-                    BedrockAndroidPacketCodec.decodeEmptyResourcePacksInfo(packet.payload());
-                    if (!sendReliable(BedrockAndroidPacketCodec.encodeResourcePackClientResponse(
-                            BedrockAndroidResourcePackStatus.HAVE_ALL_PACKS, networkSettings))) {
-                        reportError("Не удалось подтвердить ResourcePacksInfo");
-                        return;
-                    }
-                } else if (packet.packetId() == 7) {
-                    BedrockAndroidPacketCodec.decodeEmptyResourcePackStack(packet.payload());
-                    if (!sendReliable(BedrockAndroidPacketCodec.encodeResourcePackClientResponse(
-                            BedrockAndroidResourcePackStatus.COMPLETED, networkSettings))) {
-                        reportError("Не удалось подтвердить ResourcePackStack");
-                        return;
-                    }
+                int packetId = packet.packetId();
+                if (packetId == 6 || packetId == 7 || packetId == 82 || packetId == 83) {
+                    if (!closed.get()) executor.execute(() -> handleResourcePackPacket(packet));
                 }
             }
             Listener current = listener;
@@ -684,6 +674,135 @@ public final class NetherNetAndroidClient implements AutoCloseable {
         } catch (RuntimeException malformed) {
             reportError("Некорректный Bedrock server batch: " + malformed.getMessage());
         }
+    }
+
+    private void handleResourcePackPacket(BedrockAndroidServerPacket packet) {
+        if (closed.get()) return;
+        try {
+            switch (packet.packetId()) {
+                case 6 -> handleResourcePacksInfo(packet.payload());
+                case 82 -> handleResourcePackDataInfo(packet.payload());
+                case 83 -> handleResourcePackChunkData(packet.payload());
+                case 7 -> handleResourcePackStack(packet.payload());
+                default -> { }
+            }
+        } catch (Exception failure) {
+            reportError("Не удалось загрузить ресурс-пак сервера: "
+                    + (failure.getMessage() == null ? failure.getClass().getSimpleName()
+                    : failure.getMessage()));
+            close();
+        }
+    }
+
+    private void handleResourcePacksInfo(byte[] payload) {
+        BedrockAndroidResourcePackInfo info =
+                BedrockAndroidPacketCodec.decodeResourcePacksInfo(payload);
+        closeResourcePackDownload();
+        pendingResourcePackInfo = info;
+        pendingResourcePack = null;
+        if (info.packs().isEmpty()) {
+            sendPackResponse(BedrockAndroidResourcePackStatus.HAVE_ALL_PACKS, List.of());
+            return;
+        }
+        if (info.packs().size() != 1 || info.hasAddonPacks() || info.hasScripts()
+                || info.forceDisableVibrantVisuals()) {
+            throw new UnsupportedOperationException(
+                    "Клиент пока поддерживает один обычный ресурс-пак без скриптов");
+        }
+        BedrockAndroidResourcePackInfo.Pack pack = info.packs().get(0);
+        if (!pack.contentKey().isEmpty() || !pack.subpackName().isEmpty()
+                || !pack.contentIdentity().isEmpty() || pack.hasScripts()
+                || pack.addon() || pack.rayTracing() || !pack.cdnUrl().isEmpty()) {
+            throw new UnsupportedOperationException(
+                    "Зашифрованные, дополнительные и CDN-паки пока не поддерживаются");
+        }
+        pendingResourcePack = pack;
+        sendPackResponse(BedrockAndroidResourcePackStatus.SEND_PACKS,
+                List.of(pack.resourceName()));
+        reportStatus("Сервер предлагает ресурс-пак • запрашиваем загрузку...");
+    }
+
+    private void handleResourcePackDataInfo(byte[] payload) throws Exception {
+        BedrockAndroidResourcePackDataInfo info =
+                BedrockAndroidPacketCodec.decodeResourcePackDataInfo(payload);
+        BedrockAndroidResourcePackInfo.Pack pack = pendingResourcePack;
+        if (pack == null || !pack.resourceName().equals(info.resourceName())
+                || pack.size() != info.fileSize() || resourcePackDownload != null) {
+            throw new IllegalArgumentException("ResourcePackDataInfo не совпадает с объявленным паком");
+        }
+        currentResourcePackDataInfo = info;
+        resourcePackDownload = new BedrockAndroidResourcePackDownload(appContext.getCacheDir(), info);
+        requestNextResourcePackChunk();
+    }
+
+    private void handleResourcePackChunkData(byte[] payload) throws Exception {
+        BedrockAndroidResourcePackDownload download = resourcePackDownload;
+        BedrockAndroidResourcePackDataInfo info = currentResourcePackDataInfo;
+        if (download == null || info == null) {
+            throw new IllegalArgumentException("Получены данные до ResourcePackDataInfo");
+        }
+        download.accept(BedrockAndroidPacketCodec.decodeResourcePackChunkData(payload));
+        if (!download.isComplete()) {
+            requestNextResourcePackChunk();
+            return;
+        }
+
+        File archive = download.finishAndVerify();
+        try {
+            int installed = NexoraResourcePackInstaller.install(appContext, archive);
+            if (installed < 1) throw new IllegalStateException("В паке нет поддерживаемых текстур");
+            NexoraResourcePackLibrary.registerImportedActive(appContext, info.resourceName());
+            reportStatus("Ресурс-пак сервера загружен • текстур: " + installed);
+        } finally {
+            archive.delete();
+            download.close();
+            resourcePackDownload = null;
+            currentResourcePackDataInfo = null;
+        }
+        sendPackResponse(BedrockAndroidResourcePackStatus.HAVE_ALL_PACKS, List.of());
+    }
+
+    private void handleResourcePackStack(byte[] payload) {
+        BedrockAndroidResourcePackStack stack =
+                BedrockAndroidPacketCodec.decodeResourcePackStack(payload);
+        BedrockAndroidResourcePackInfo info = pendingResourcePackInfo;
+        List<String> expected = info == null ? List.of()
+                : info.packs().stream().map(BedrockAndroidResourcePackInfo.Pack::resourceName).toList();
+        if (!stack.resourceNames().equals(expected)) {
+            throw new IllegalArgumentException("ResourcePackStack не совпадает со скачанными пакетами");
+        }
+        if (stack.required() && expected.isEmpty()) {
+            throw new IllegalArgumentException("Сервер требует отсутствующий ресурс-пак");
+        }
+        sendPackResponse(BedrockAndroidResourcePackStatus.COMPLETED, List.of());
+        pendingResourcePackInfo = null;
+        pendingResourcePack = null;
+        reportStatus("Ресурс-паки сервера применены к сессии");
+    }
+
+    private void requestNextResourcePackChunk() {
+        BedrockAndroidResourcePackDownload download = resourcePackDownload;
+        BedrockAndroidResourcePackDataInfo info = currentResourcePackDataInfo;
+        if (download == null || info == null) throw new IllegalStateException("Загрузка ресурс-пака не подготовлена");
+        int index = download.nextChunkIndex();
+        if (!sendReliable(BedrockAndroidPacketCodec.encodeResourcePackChunkRequest(
+                info.resourceName(), index, networkSettings))) {
+            throw new IllegalStateException("Не удалось запросить часть ресурс-пака");
+        }
+    }
+
+    private void sendPackResponse(BedrockAndroidResourcePackStatus status, List<String> ids) {
+        if (!sendReliable(BedrockAndroidPacketCodec.encodeResourcePackClientResponse(
+                status, ids, networkSettings))) {
+            throw new IllegalStateException("Не удалось отправить ответ о ресурс-паке");
+        }
+    }
+
+    private void closeResourcePackDownload() {
+        BedrockAndroidResourcePackDownload download = resourcePackDownload;
+        resourcePackDownload = null;
+        currentResourcePackDataInfo = null;
+        if (download != null) download.close();
     }
 
     private boolean sendNexoraClientHello() {

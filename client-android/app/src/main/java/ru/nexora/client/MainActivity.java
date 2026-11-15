@@ -99,10 +99,10 @@ public final class MainActivity extends Activity {
         Button servers = menuButton("СЕРВЕРА NEXORA", "Официальные миры NEXORA");
         page.addView(servers, matchWrap());
         addSpace(page, 14);
-        Button resourcePacks = menuButton("РЕСУРС-ПАКИ", "Импортировать и менять текстуры мира");
+        Button resourcePacks = menuButton("РЕСУРС-ПАКИ", "Импорт, выбор и удаление текстур");
         page.addView(resourcePacks, matchWrap());
         addSpace(page, 14);
-        resourcePacks.setOnClickListener(v -> openResourcePackPicker());
+        resourcePacks.setOnClickListener(v -> showResourcePackManager());
 
         Button singlePlayer = menuButton("ОДИНОЧНЫЙ МИР", "Играть без подключения к серверу");
         page.addView(singlePlayer, matchWrap());
@@ -868,6 +868,71 @@ public final class MainActivity extends Activity {
         startActivityForResult(intent, REQUEST_RESOURCE_PACK);
     }
 
+    private void showResourcePackManager() {
+        java.util.List<NexoraResourcePackLibrary.Pack> packs =
+                NexoraResourcePackLibrary.list(this);
+        String active = NexoraResourcePackLibrary.activeId(this);
+        if (packs.isEmpty()) {
+            new AlertDialog.Builder(this)
+                    .setTitle("РЕСУРС-ПАКИ")
+                    .setMessage("Пока нет установленных пакетов. Импортируй ZIP с папкой textures/blocks.")
+                    .setPositiveButton("ИМПОРТИРОВАТЬ", (dialog, which) -> openResourcePackPicker())
+                    .setNegativeButton("ЗАКРЫТЬ", null)
+                    .show();
+            return;
+        }
+        String[] labels = new String[packs.size()];
+        for (int i = 0; i < packs.size(); i++) {
+            NexoraResourcePackLibrary.Pack pack = packs.get(i);
+            labels[i] = (pack.id.equals(active) ? "✓ " : "") + pack.name;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("РЕСУРС-ПАКИ • " + packs.size())
+                .setItems(labels, (dialog, index) -> showResourcePackActions(packs.get(index)))
+                .setPositiveButton("ИМПОРТИРОВАТЬ", (dialog, which) -> openResourcePackPicker())
+                .setNegativeButton("ЗАКРЫТЬ", null)
+                .show();
+    }
+
+    private void showResourcePackActions(NexoraResourcePackLibrary.Pack pack) {
+        boolean isActive = pack.id.equals(NexoraResourcePackLibrary.activeId(this));
+        String[] actions = isActive
+                ? new String[]{"АКТИВЕН", "УДАЛИТЬ"}
+                : new String[]{"СДЕЛАТЬ АКТИВНЫМ", "УДАЛИТЬ"};
+        new AlertDialog.Builder(this)
+                .setTitle(pack.name)
+                .setItems(actions, (dialog, which) -> {
+                    if (which == 0 && !isActive) {
+                        try {
+                            NexoraResourcePackLibrary.activate(this, pack.id);
+                            Toast.makeText(this, "Пакет активирован. Перезапусти мир для применения.",
+                                    Toast.LENGTH_LONG).show();
+                        } catch (Exception failure) {
+                            Toast.makeText(this, "Не удалось включить пакет: " + failure.getMessage(),
+                                    Toast.LENGTH_LONG).show();
+                        }
+                    } else if (which == 1) {
+                        new AlertDialog.Builder(this)
+                                .setTitle("Удалить ресурс-пак?")
+                                .setMessage("Пакет «" + pack.name + "» будет удалён из библиотеки.")
+                                .setPositiveButton("УДАЛИТЬ", (confirm, selected) -> {
+                                    try {
+                                        NexoraResourcePackLibrary.delete(this, pack.id);
+                                        Toast.makeText(this, "Ресурс-пак удалён", Toast.LENGTH_SHORT).show();
+                                    } catch (Exception failure) {
+                                        Toast.makeText(this, "Ошибка удаления: " + failure.getMessage(),
+                                                Toast.LENGTH_LONG).show();
+                                    }
+                                    showResourcePackManager();
+                                })
+                                .setNegativeButton("ОТМЕНА", null)
+                                .show();
+                    }
+                })
+                .setNegativeButton("НАЗАД", (dialog, which) -> showResourcePackManager())
+                .show();
+    }
+
     private void openCustomSkinPicker() {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -882,8 +947,9 @@ public final class MainActivity extends Activity {
         if (requestCode == REQUEST_RESOURCE_PACK) {
             try {
                 int imported = NexoraResourcePackInstaller.install(this, data.getData());
-                Toast.makeText(this, "Ресурс-пак установлен. Текстур заменено: " + imported
-                        + ". Открой мир заново, чтобы применить изменения.", Toast.LENGTH_LONG).show();
+                NexoraResourcePackLibrary.registerImportedActive(this);
+                Toast.makeText(this, "Ресурс-пак добавлен в библиотеку. Текстур: " + imported
+                        + ". Он активен; открой мир заново для применения.", Toast.LENGTH_LONG).show();
             } catch (Exception invalid) {
                 Toast.makeText(this, "Не удалось установить ресурс-пак: "
                         + invalid.getMessage(), Toast.LENGTH_LONG).show();

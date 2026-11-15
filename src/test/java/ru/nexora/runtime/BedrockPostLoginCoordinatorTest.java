@@ -77,8 +77,8 @@ class BedrockPostLoginCoordinatorTest {
         });
         FakeConnection connection = new FakeConnection();
         coordinator.accept(connection, player());
-        coordinator.handleMessage(connection, response("DownloadingFinished"));
-        coordinator.handleMessage(connection, response("ResourcePackStackFinished"));
+        coordinator.handleMessage(connection, response("downloadingfinished"));
+        coordinator.handleMessage(connection, response("resourcepackstackfinished"));
 
         // This frame represents a client SubChunkRequest received after
         // StartGame/skeleton chunks were sent but before startup completes.
@@ -120,7 +120,7 @@ class BedrockPostLoginCoordinatorTest {
         FakeConnection connection = new FakeConnection();
         coordinator.accept(connection, player());
 
-        coordinator.handleMessage(connection, response("ResourcePackStackFinished"));
+        coordinator.handleMessage(connection, response("resourcepackstackfinished"));
         assertFalse(connection.isOpen());
         coordinator.close();
     }
@@ -133,8 +133,8 @@ class BedrockPostLoginCoordinatorTest {
                 connection -> BedrockHandshakeResult.ACCEPTED);
         FakeConnection first = new FakeConnection();
         startupFailure.accept(first, player());
-        startupFailure.handleMessage(first, response("DownloadingFinished"));
-        startupFailure.handleMessage(first, response("ResourcePackStackFinished"));
+        startupFailure.handleMessage(first, response("downloadingfinished"));
+        startupFailure.handleMessage(first, response("resourcepackstackfinished"));
         assertFalse(first.isOpen());
         startupFailure.close();
 
@@ -143,8 +143,8 @@ class BedrockPostLoginCoordinatorTest {
                 connection -> BedrockHandshakeResult.INVALID_STATE);
         FakeConnection second = new FakeConnection();
         transitionFailure.accept(second, player());
-        transitionFailure.handleMessage(second, response("DownloadingFinished"));
-        transitionFailure.handleMessage(second, response("ResourcePackStackFinished"));
+        transitionFailure.handleMessage(second, response("downloadingfinished"));
+        transitionFailure.handleMessage(second, response("resourcepackstackfinished"));
         assertFalse(second.isOpen());
         transitionFailure.close();
     }

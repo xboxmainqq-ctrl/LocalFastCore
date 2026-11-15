@@ -99,7 +99,7 @@ public final class NexoraMain {
             throw new IllegalStateException("Could not load server.properties", failure);
         }
         String worldId = configuration.worldId();
-        long seed = configuration.seed();
+        long seed = options.seed() == Long.MIN_VALUE ? configuration.seed() : options.seed();
         WorldHeight worldHeight = configuration.worldHeight();
 
         WorldRegistry worlds = new WorldRegistry();
@@ -326,7 +326,7 @@ public final class NexoraMain {
     static LaunchOptions parseArguments(String[] args) {
         Objects.requireNonNull(args, "args");
         Path dataDirectory = Path.of("nexora-data");
-        long seed = 0L;
+        long seed = Long.MIN_VALUE;
         boolean help = false;
         boolean version = false;
         boolean developmentNetworkEnabled = false;

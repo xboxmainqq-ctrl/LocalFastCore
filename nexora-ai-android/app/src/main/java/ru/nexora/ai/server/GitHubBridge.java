@@ -77,7 +77,7 @@ public final class GitHubBridge {
     @JavascriptInterface
     public void listRepositories() {
         run("repositories", () -> {
-            JSONArray raw = request("GET", "/user/repos?visibility=all&affiliation=owner,collaborator,organization_member&sort=updated&per_page=50", null).optJSONArray("items");
+            JSONArray raw = requestArray("/user/repos?visibility=all&affiliation=owner,collaborator,organization_member&sort=updated&per_page=50");
             JSONArray repos = new JSONArray();
             if (raw != null) for (int i = 0; i < raw.length(); i++) {
                 JSONObject r = raw.optJSONObject(i);
@@ -100,7 +100,7 @@ public final class GitHubBridge {
     public void listBranches(String fullName) {
         run("branches", () -> {
             String repo = safeRepo(fullName);
-            JSONArray raw = request("GET", "/repos/" + repo + "/branches?per_page=100", null).optJSONArray("items");
+            JSONArray raw = requestArray("/repos/" + repo + "/branches?per_page=100");
             JSONArray branches = new JSONArray();
             if (raw != null) for (int i = 0; i < raw.length(); i++) {
                 JSONObject b = raw.optJSONObject(i);
@@ -222,6 +222,32 @@ public final class GitHubBridge {
             }
             deliver(action, result);
         });
+    }
+
+    private JSONArray requestArray(String path) throws Exception {
+        HttpURLConnection c = null;
+        try {
+            c = (HttpURLConnection) new URL(API + path).openConnection();
+            c.setRequestMethod("GET");
+            c.setConnectTimeout(15000);
+            c.setReadTimeout(45000);
+            c.setUseCaches(false);
+            c.setRequestProperty("Accept", "application/vnd.github+json");
+            c.setRequestProperty("Authorization", "Bearer " + readToken());
+            c.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+            c.setRequestProperty("User-Agent", "NEXORA-AI-Android");
+            int status = c.getResponseCode();
+            InputStream stream = status >= 200 && status < 300 ? c.getInputStream() : c.getErrorStream();
+            String text = readAll(stream);
+            if (status < 200 || status >= 300) {
+                if (status == 401) throw new IllegalStateException("GitHub token недействителен или истёк (401).");
+                if (status == 403) throw new IllegalStateException("GitHub запретил действие. Проверь Metadata: Read и доступ к репозиторию (403).");
+                throw new IllegalStateException("GitHub API вернул HTTP " + status + ".");
+            }
+            return new JSONArray(text);
+        } finally {
+            if (c != null) c.disconnect();
+        }
     }
 
     private JSONObject request(String method, String path, JSONObject body) throws Exception {

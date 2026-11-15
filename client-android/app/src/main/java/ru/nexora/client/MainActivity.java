@@ -731,6 +731,10 @@ public final class MainActivity extends Activity {
             }
 
             @Override
+            public void onBlockUpdate(NexoraAndroidProtocolCodec.BlockUpdate update) {
+                chunkPreview.setBlockUpdate(update);
+            }
+
             public void onChunkDataReceived(NexoraAndroidProtocolCodec.ChunkData chunk) {
                 chunkPreview.setChunk(chunk);
                 connectionStatus.setText("Получено чанков: "

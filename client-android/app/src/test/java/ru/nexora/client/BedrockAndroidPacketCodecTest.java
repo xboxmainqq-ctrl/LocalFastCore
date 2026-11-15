@@ -127,6 +127,59 @@ public class BedrockAndroidPacketCodecTest {
                 () -> BedrockAndroidPacketCodec.decodeServerBatch(new byte[] {2, 0}, settings));
     }
 
+    @Test
+    public void decodesEmptyBedrockResourcePackInfoAndStack() {
+        ByteBuffer info = ByteBuffer.allocate(64);
+        info.put(new byte[] {0, 0, 0, 0});
+        info.put(new byte[16]);
+        writeVarUInt32(info, 5);
+        info.put("1.0.0".getBytes(StandardCharsets.UTF_8));
+        writeVarUInt32(info, 0);
+        BedrockAndroidPacketCodec.decodeEmptyResourcePacksInfo(
+                java.util.Arrays.copyOf(info.array(), info.position()));
+
+        ByteBuffer stack = ByteBuffer.allocate(64);
+        stack.put((byte) 0);
+        writeVarUInt32(stack, 0);
+        writeVarUInt32(stack, 7);
+        stack.put("1.26.60".getBytes(StandardCharsets.UTF_8));
+        stack.order(ByteOrder.LITTLE_ENDIAN).putInt(0);
+        stack.put((byte) 0).put((byte) 0);
+        BedrockAndroidPacketCodec.decodeEmptyResourcePackStack(
+                java.util.Arrays.copyOf(stack.array(), stack.position()));
+    }
+
+    @Test
+    public void encodesNumericBedrockResourcePackResponseStatuses() {
+        BedrockAndroidNetworkSettings settings =
+                new BedrockAndroidNetworkSettings(0, 0xffff, false, 0, 0.0f);
+        byte[] encoded = BedrockAndroidPacketCodec.encodeResourcePackClientResponse(
+                BedrockAndroidResourcePackStatus.HAVE_ALL_PACKS, settings);
+        List<BedrockAndroidServerPacket> packets =
+                BedrockAndroidPacketCodec.decodeServerBatch(encoded, settings);
+        assertEquals(1, packets.size());
+        assertEquals(8, packets.get(0).packetId());
+        ByteBuffer payload = ByteBuffer.wrap(packets.get(0).payload());
+        assertEquals(2, readVarUInt32(payload));
+        assertEquals("downloadingfinished", readTestString(payload));
+        assertFalse(payload.hasRemaining());
+
+        byte[] completed = BedrockAndroidPacketCodec.encodeResourcePackClientResponse(
+                BedrockAndroidResourcePackStatus.COMPLETED, settings);
+        ByteBuffer completedPayload = ByteBuffer.wrap(
+                BedrockAndroidPacketCodec.decodeServerBatch(completed, settings).get(0).payload());
+        assertEquals(3, readVarUInt32(completedPayload));
+        assertEquals("resourcepackstackfinished", readTestString(completedPayload));
+        assertFalse(completedPayload.hasRemaining());
+    }
+
+    private static String readTestString(ByteBuffer input) {
+        int length = readVarUInt32(input);
+        byte[] bytes = new byte[length];
+        input.get(bytes);
+        return new String(bytes, StandardCharsets.UTF_8);
+    }
+
     private static void assertLoginBatch(ByteBuffer batch) {
         int packetLength = readVarUInt32(batch);
         assertEquals(packetLength, batch.remaining());

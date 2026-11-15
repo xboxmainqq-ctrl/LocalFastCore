@@ -96,8 +96,7 @@ public final class BedrockResourcePackCodec {
      * Experiment toggle count uses the schema's fixed-width (uncompressed) uint32.
      */
     public static ByteBuffer encodeEmptyResourcePackStackPayload(String baseGameVersion) {
-        Objects.requireNonNull(baseGameVersion, "baseGameVersion");
-        if (baseGameVersion.isBlank()) {
+        if (baseGameVersion == null || baseGameVersion.isBlank()) {
             throw new IllegalArgumentException("baseGameVersion must not be blank");
         }
         ByteBuffer output = ByteBuffer.allocate(1 + 1 + 1

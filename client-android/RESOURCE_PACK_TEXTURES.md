@@ -31,6 +31,6 @@ new active pack.
 
 ## Current scope
 
-This client stage supports manual ZIP import and local texture replacement.
-Server delivery, automatic pack negotiation, pack selection/history, and
-live reload while a world is already open are not implemented yet.
+The Android client keeps each imported pack in a private local library. Open **РЕСУРС-ПАКИ** to import another ZIP, choose an installed pack as active, or delete a pack. The active pack is copied into the renderer's active texture folder; reopen the world preview after switching or importing. Deleting the active pack returns the renderer to its generated built-in textures.
+
+Server delivery, automatic pack negotiation, and live reload while a world is already open are not implemented yet.

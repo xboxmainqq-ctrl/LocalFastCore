@@ -33,22 +33,19 @@ public final class LocalWorldStoreTest {
     }
 
     @Test
-    public void savesAndReloadsLocalHotbar() throws Exception {
+    public void savesAndReloadsThirtySixSlotInventory() throws Exception {
         LocalWorldStore store = new LocalWorldStore(
-                Files.createTempDirectory("nexora-local-hotbar").toFile());
-        List<LocalWorldStore.InventorySlot> inventory = List.of(
-                new LocalWorldStore.InventorySlot("minecraft:dirt", 32),
-                new LocalWorldStore.InventorySlot("minecraft:stone", 7),
-                new LocalWorldStore.InventorySlot("", 0),
-                new LocalWorldStore.InventorySlot("", 0),
-                new LocalWorldStore.InventorySlot("", 0),
-                new LocalWorldStore.InventorySlot("", 0),
-                new LocalWorldStore.InventorySlot("", 0),
-                new LocalWorldStore.InventorySlot("", 0),
-                new LocalWorldStore.InventorySlot("", 0));
+                Files.createTempDirectory("nexora-local-inventory").toFile());
+        java.util.ArrayList<LocalWorldStore.InventorySlot> inventory = new java.util.ArrayList<>();
+        inventory.add(new LocalWorldStore.InventorySlot("minecraft:dirt", 32));
+        inventory.add(new LocalWorldStore.InventorySlot("minecraft:stone", 7));
+        for (int slot = 2; slot < 36; slot++) {
+            inventory.add(new LocalWorldStore.InventorySlot("", 0));
+        }
 
         assertNull(store.loadInventory("test_world"));
         store.saveInventory("test_world", inventory);
+        assertEquals(36, store.loadInventory("test_world").size());
         assertEquals(inventory, store.loadInventory("test_world"));
     }
 

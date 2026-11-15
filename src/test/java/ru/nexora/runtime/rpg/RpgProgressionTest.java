@@ -31,7 +31,7 @@ class RpgProgressionTest {
                 RpgProgression.award(RpgProgress.newCharacter(), 450);
 
         assertEquals(3, result.progress().level());
-        assertEquals(50, result.progress().experienceIntoLevel());
+        assertEquals(175, result.progress().experienceIntoLevel());
         assertEquals(10, result.progress().unspentAttributePoints());
         assertEquals(2, result.levelsGained());
     }

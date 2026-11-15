@@ -28,6 +28,7 @@ public final class PlayerChunkStreamingManager {
     private final int maximumRequestsPerTick;
     private final Map<UUID, PlayerView> players = new HashMap<>();
     private final Map<ChunkPosition, Integer> tickets = new HashMap<>();
+    private final Set<ChunkPosition> inFlight = new HashSet<>();
 
     public PlayerChunkStreamingManager(
             World world,
@@ -96,7 +97,15 @@ public final class PlayerChunkStreamingManager {
 
         int scheduled = 0;
         for (ChunkPosition position : ordered) {
-            if (world.isChunkLoaded(position)) continue;
+            if (world.isChunkLoaded(position)) {
+                inFlight.remove(position);
+                continue;
+            }
+            if (inFlight.contains(position)) {
+                if (pipeline.isPending(position)) continue;
+                // A failed generation result was consumed; allow a fresh attempt.
+                inFlight.remove(position);
+            }
             if (scheduled >= maximumRequestsPerTick) break;
             WorldChunkPipeline.RequestStatus status = pipeline.request(position);
             if (status == WorldChunkPipeline.RequestStatus.QUEUE_FULL
@@ -105,6 +114,7 @@ public final class PlayerChunkStreamingManager {
             }
             if (status == WorldChunkPipeline.RequestStatus.ACCEPTED
                     || status == WorldChunkPipeline.RequestStatus.ALREADY_PENDING) {
+                inFlight.add(position);
                 scheduled++;
             }
         }

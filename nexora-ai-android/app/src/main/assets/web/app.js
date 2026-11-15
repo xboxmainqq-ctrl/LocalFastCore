@@ -1,0 +1,33 @@
+(function(){
+"use strict";
+const $=id=>document.getElementById(id), views=["home","projects","assistant","world","model","biome","texture","structure","live"];
+const names={home:"Рабочая область",projects:"Проекты",assistant:"ИИ-разработчик",world:"World Studio",model:"Model Studio",biome:"Biome Studio",texture:"Texture Studio",structure:"Structure Studio",live:"Live Generation"};
+let projects=JSON.parse(localStorage.getItem("nexora.projects")||"[]"),world=null;
+function show(v){views.forEach(x=>$(x).classList.toggle("active",x===v));document.querySelectorAll("[data-view]").forEach(b=>b.classList.toggle("active",b.dataset.view===v));$("title").textContent=names[v]}
+document.querySelectorAll("[data-view]").forEach(b=>b.onclick=()=>show(b.dataset.view));document.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>show(b.dataset.open));
+function download(name,data,type){let blob=new Blob([type==="png"?data:JSON.stringify(data,null,2)],{type:type==="png"?"image/png":"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click();URL.revokeObjectURL(a.href)}
+function renderProjects(){ $("count").textContent=projects.length;let root=$("project-list");root.innerHTML=projects.length?projects.map((p,i)=>'<div class="project-row"><b>'+esc(p.name)+'</b> · '+esc(p.kind)+' <button data-del="'+i+'">Удалить</button></div>').join(""):"Пока нет проектов.";root.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{projects.splice(+b.dataset.del,1);save()})}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function save(){localStorage.setItem("nexora.projects",JSON.stringify(projects));renderProjects()}
+$("new-project").onclick=()=>{let n=prompt("Название проекта");if(n){projects.push({name:n,kind:"Game project"});save()}};
+$("save-task").onclick=()=>{let t=$("task").value.trim();if(!t)return alert("Напиши задачу");projects.push({name:t.slice(0,60),kind:"AI task saved locally",task:t});save();alert("Задача сохранена. ИИ пока не подключён.")};
+function rng(seed){let x=Number(seed)>>>0;return()=>{x=(x+0x6D2B79F5)|0;let t=Math.imul(x^(x>>>15),1|x);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296}}
+function event(s){let e=document.createElement("div");e.textContent=new Date().toLocaleTimeString()+" · "+s;$("events").prepend(e);while($("events").children.length>30)$("events").lastChild.remove()}
+const wait=()=>new Promise(r=>requestAnimationFrame(r));
+async function generate(){let seed=$("seed").value||"1",w=+$("size").value,h=Math.round(w*.61),random=rng(seed),heights=new Float32Array(w*h),biomes=new Uint8Array(w*h),cx=random(),cy=random();
+function stage(s,p){$("stage").textContent=s;$("pct").textContent=p+"%";$("bar").style.width=p+"%";$("log").textContent+=s+" — "+p+"%\n";event(s+" — "+p+"%")}
+$("log").textContent="";$("events").innerHTML="";$("export-world").disabled=true;stage("Подготовка seed и сетки",8);await wait();
+for(let y=0;y<h;y++)for(let x=0;x<w;x++){let nx=x/w,ny=y/h,d=Math.sqrt(((nx-cx)*1.15)**2+((ny-cy)*1.25)**2),continental=1-Math.min(1,d*1.4),wave=Math.sin(nx*7*Math.PI)*.07+Math.cos(ny*9*Math.PI)*.06;heights[y*w+x]=Math.max(0,Math.min(1,.25+continental*.55+wave+(random()-.5)*.16+Math.sin((nx+ny)*3.2)*.04))}
+stage("Формирование рельефа",38);await wait();
+for(let i=0;i<heights.length;i++){let v=heights[i];biomes[i]=v<.27?0:v<.38?1:v<.65?2:v<.82?3:4}
+stage("Распределение биомов",68);await wait();
+let c=$("map"),ctx=c.getContext("2d"),im=ctx.createImageData(w,h),counts=[0,0,0,0,0],colors=[[32,76,111],[190,173,115],[57,125,79],[112,115,108],[218,224,230]];
+for(let i=0;i<heights.length;i++){let k=biomes[i],co=colors[k];counts[k]++;im.data[i*4]=co[0];im.data[i*4+1]=co[1];im.data[i*4+2]=co[2];im.data[i*4+3]=255}c.width=w;c.height=h;ctx.putImageData(im,0,0);stage("Подсчёт биомов и подготовка экспорта",88);await wait();
+world={format:"nexora-world-preview",version:1,seed:String(seed),width:w,height:h,heights:Array.from(heights),biomes:Array.from(biomes),biomeCounts:counts};stage("Превью готово",100);event("Готово: "+w+" × "+h+" ячеек; seed "+seed);$("export-world").disabled=false}
+$("generate").onclick=generate;$("export-world").onclick=()=>world&&download("nexora-world-"+world.seed+".json",world);
+$("export-model").onclick=()=>download("nexora-model.json",{format:"nexora-model-descriptor",version:1,name:$("m-name").value,type:$("m-type").value,size:{x:+$("mx").value,y:+$("my").value,z:+$("mz").value},geometry:"cuboid-descriptor",note:"Mesh editor and GLB export are not implemented yet."});
+$("export-biome").onclick=()=>download("nexora-biome.json",{format:"nexora-biome",version:1,name:$("b-name").value,temperature:+$("temp").value,humidity:+$("humidity").value,height:{min:+$("bmin").value,max:+$("bmax").value},surface:$("surface").value});
+let tc=$("texture-canvas"),tx=tc.getContext("2d"),paint=false;function paintAt(e){let r=tc.getBoundingClientRect(),x=Math.floor((e.clientX-r.left)/r.width*16),y=Math.floor((e.clientY-r.top)/r.height*16);tx.fillStyle=$("color").value;tx.fillRect(x*16,y*16,16,16)}tc.onpointerdown=e=>{paint=true;tc.setPointerCapture(e.pointerId);paintAt(e)};tc.onpointermove=e=>{if(paint)paintAt(e)};tc.onpointerup=()=>paint=false;$("clear-texture").onclick=()=>tx.clearRect(0,0,256,256);$("png").onclick=()=>{let a=document.createElement("a");a.download="nexora-texture.png";a.href=tc.toDataURL("image/png");a.click()};
+let sc=$("structure-canvas"),sx=sc.getContext("2d"),blocks=new Set();function draw(){sx.fillStyle="#171522";sx.fillRect(0,0,512,512);for(let y=0;y<16;y++)for(let x=0;x<16;x++){sx.fillStyle=blocks.has(x+","+y)?"#9b79dc":"#29243a";sx.fillRect(x*32+1,y*32+1,30,30);sx.strokeStyle="#51476a";sx.strokeRect(x*32,y*32,32,32)}}sc.onclick=e=>{let r=sc.getBoundingClientRect(),x=Math.floor((e.clientX-r.left)/r.width*16),y=Math.floor((e.clientY-r.top)/r.height*16),k=x+","+y;blocks.has(k)?blocks.delete(k):blocks.add(k);draw()};$("export-structure").onclick=()=>download("nexora-structure.json",{format:"nexora-structure",version:1,size:{x:16,y:1,z:16},blocks:Array.from(blocks).map(k=>{let p=k.split(",");return{x:+p[0],y:0,z:+p[1],id:"nexora:stone"}})});
+renderProjects();draw();event("Ожидание запуска генератора.");show("home");
+})();

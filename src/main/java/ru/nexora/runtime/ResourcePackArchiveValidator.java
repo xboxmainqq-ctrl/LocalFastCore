@@ -156,8 +156,8 @@ public final class ResourcePackArchiveValidator {
     }
 
     private static String validateEntryName(String rawName, boolean directory) throws IOException {
-        if (rawName == null || rawName.isEmpty() || rawName.indexOf('\\\\') >= 0
-                || rawName.startsWith("/") || rawName.startsWith("\\\\")
+        if (rawName == null || rawName.isEmpty() || rawName.indexOf('\\') >= 0
+                || rawName.startsWith("/")
                 || rawName.matches("^[A-Za-z]:.*")) {
             throw new IOException("Unsafe resource pack ZIP path: " + rawName);
         }

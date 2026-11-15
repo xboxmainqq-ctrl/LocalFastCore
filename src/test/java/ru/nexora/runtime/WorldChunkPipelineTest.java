@@ -68,6 +68,69 @@ class WorldChunkPipelineTest {
     }
 
     @Test
+    void asyncChunkRequestCompletesOnlyAfterGameTickCommitAndDeduplicatesWaiters() throws Exception {
+        InMemoryWorld world = new InMemoryWorld("overworld", new WorldHeight(0, 64));
+        TickScheduler scheduler = new TickScheduler();
+        AsyncChunkGenerationService generation = new AsyncChunkGenerationService(
+                generator(), world.height(), 123L, 1, 4, 4
+        );
+        WorldChunkPipeline pipeline = new WorldChunkPipeline(
+                world, scheduler, generation, 2, failure -> fail(failure)
+        );
+        pipeline.start();
+        try {
+            ChunkPosition position = new ChunkPosition(2, -3);
+            java.util.concurrent.CompletableFuture<Boolean> first = pipeline.requestAsync(position);
+            java.util.concurrent.CompletableFuture<Boolean> second = pipeline.requestAsync(position);
+            assertSame(first, second);
+            await(() -> pipeline.completedCount() == 1);
+            assertFalse(first.isDone(), "worker completion must wait for the game-thread commit");
+
+            scheduler.tick();
+            assertTrue(first.get(1, java.util.concurrent.TimeUnit.SECONDS));
+            assertTrue(world.isChunkLoaded(position));
+            assertTrue(pipeline.requestAsync(position).get(1, java.util.concurrent.TimeUnit.SECONDS));
+        } finally {
+            pipeline.stop();
+        }
+    }
+
+    @Test
+    void asyncChunkRequestCompletesFalseWhenCancelledOrStopped() throws Exception {
+        InMemoryWorld world = new InMemoryWorld("overworld", new WorldHeight(0, 64));
+        TickScheduler scheduler = new TickScheduler();
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch started = new java.util.concurrent.CountDownLatch(1);
+        ChunkGenerator blocked = (position, height, seed) -> {
+            started.countDown();
+            try {
+                release.await(2, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("interrupted", interrupted);
+            }
+            return generator().generate(position, height, seed);
+        };
+        AsyncChunkGenerationService generation = new AsyncChunkGenerationService(
+                blocked, world.height(), 0L, 1, 2, 2
+        );
+        WorldChunkPipeline pipeline = new WorldChunkPipeline(
+                world, scheduler, generation, 1, failure -> fail(failure)
+        );
+        pipeline.start();
+        try {
+            ChunkPosition position = new ChunkPosition(0, 0);
+            java.util.concurrent.CompletableFuture<Boolean> future = pipeline.requestAsync(position);
+            assertTrue(started.await(2, java.util.concurrent.TimeUnit.SECONDS));
+            assertTrue(pipeline.cancel(position));
+            assertFalse(future.get(1, java.util.concurrent.TimeUnit.SECONDS));
+        } finally {
+            release.countDown();
+            pipeline.stop();
+        }
+    }
+
+    @Test
     void reportsGenerationFailuresWithoutStoppingThePipeline() throws Exception {
         InMemoryWorld world = new InMemoryWorld("overworld", new WorldHeight(0, 64));
         TickScheduler scheduler = new TickScheduler();

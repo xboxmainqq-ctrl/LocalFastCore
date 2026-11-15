@@ -334,6 +334,10 @@ public final class MainActivity extends Activity {
             }
         });
 
+        localPreview.setBlockTargetListener((x, y, z, placeX, placeY, placeZ) ->
+                runOnUiThread(() -> showLocalBlockActionDialog(
+                        worldId, x, y, z, placeX, placeY, placeZ)));
+
         addSpace(page, 10);
         Button camera = button("ВИД: ОТ ТРЕТЬЕГО ЛИЦА");
         page.addView(camera, matchWrap());
@@ -433,6 +437,45 @@ public final class MainActivity extends Activity {
                         + failure.getClass().getSimpleName()));
             }
         });
+    }
+
+    private void showLocalBlockActionDialog(String worldId, int x, int y, int z,
+                                                int placeX, int placeY, int placeZ) {
+        new AlertDialog.Builder(this)
+                .setTitle("БЛОК В МИРЕ")
+                .setMessage("X: " + x + "   Y: " + y + "   Z: " + z)
+                .setItems(new String[]{"СЛОМАТЬ БЛОК", "ПОСТАВИТЬ ЗЕМЛЮ РЯДОМ"}, (dialog, which) -> {
+                    int targetX = which == 0 ? x : placeX;
+                    int targetY = which == 0 ? y : placeY;
+                    int targetZ = which == 0 ? z : placeZ;
+                    String blockId = which == 0 ? "minecraft:air" : "minecraft:dirt";
+                    ChunkPreviewView preview = localPreview;
+                    if (preview == null) return;
+                    NexoraAndroidProtocolCodec.ChunkData updated =
+                            preview.updateLocalBlock(targetX, targetY, targetZ, blockId);
+                    if (updated == null) {
+                        Toast.makeText(this, "Этот чанк ещё не загружен", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    ExecutorService executor = previewGenerationExecutor;
+                    if (executor == null || executor.isShutdown()) {
+                        Toast.makeText(this, "Не удалось сохранить изменение", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    executor.execute(() -> {
+                        try {
+                            localWorldStore.saveChunk(worldId, updated);
+                            runOnUiThread(() -> Toast.makeText(this,
+                                    which == 0 ? "Блок сломан и сохранён" : "Блок поставлен и сохранён",
+                                    Toast.LENGTH_SHORT).show());
+                        } catch (java.io.IOException failure) {
+                            runOnUiThread(() -> Toast.makeText(this,
+                                    "Ошибка сохранения блока", Toast.LENGTH_SHORT).show());
+                        }
+                    });
+                })
+                .setNegativeButton("ОТМЕНА", null)
+                .show();
     }
 
     private void saveLocalPlayerPosition(String worldId) {

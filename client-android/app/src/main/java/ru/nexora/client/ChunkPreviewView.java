@@ -540,8 +540,14 @@ final class ChunkPreviewView extends GLSurfaceView {
         }
 
 
+        /**
+         * Picks the first occupied voxel along the camera ray using a 3D DDA.
+         * Unlike fixed-step sampling this visits every crossed voxel exactly once,
+         * including edge and corner crossings, so thin targets cannot be skipped.
+         * Block centers are integer coordinates and voxel boundaries are at n +/- 0.5.
+         */
         private void pickBlock(float screenX, float screenY) {
-            if (surfaceWidth <= 0 || surfaceHeight <= 0) return;
+            if (surfaceWidth <= 0 || surfaceHeight <= 0 || collisionBlocks.isEmpty()) return;
             float[] inverse = new float[16];
             if (!Matrix.invertM(inverse, 0, mvp, 0)) return;
             float ndcX = 2f * screenX / surfaceWidth - 1f;
@@ -549,29 +555,64 @@ final class ChunkPreviewView extends GLSurfaceView {
             float[] near = unproject(inverse, ndcX, ndcY, -1f);
             float[] far = unproject(inverse, ndcX, ndcY, 1f);
             if (near == null || far == null) return;
-            float dx = far[0] - near[0], dy = far[1] - near[1], dz = far[2] - near[2];
+
+            float dx = far[0] - near[0];
+            float dy = far[1] - near[1];
+            float dz = far[2] - near[2];
             float length = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
             if (length < 0.0001f) return;
-            dx /= length; dy /= length; dz /= length;
-            int lastX = Integer.MIN_VALUE, lastY = Integer.MIN_VALUE, lastZ = Integer.MIN_VALUE;
-            int emptyX = lastX, emptyY = lastY, emptyZ = lastZ;
-            for (float t = 0.08f; t <= 6f; t += 0.035f) {
-                int bx = Math.round(near[0] + dx * t);
-                int by = Math.round(near[1] + dy * t);
-                int bz = Math.round(near[2] + dz * t);
-                if (bx == lastX && by == lastY && bz == lastZ) continue;
-                lastX = bx; lastY = by; lastZ = bz;
-                if (collisionBlocks.contains(new BlockPosition(bx, by, bz))) {
+            dx /= length;
+            dy /= length;
+            dz /= length;
+
+            int x = (int) Math.floor(near[0] + 0.5f);
+            int y = (int) Math.floor(near[1] + 0.5f);
+            int z = (int) Math.floor(near[2] + 0.5f);
+            int stepX = dx > 0f ? 1 : dx < 0f ? -1 : 0;
+            int stepY = dy > 0f ? 1 : dy < 0f ? -1 : 0;
+            int stepZ = dz > 0f ? 1 : dz < 0f ? -1 : 0;
+            float deltaX = stepX == 0 ? Float.POSITIVE_INFINITY : Math.abs(1f / dx);
+            float deltaY = stepY == 0 ? Float.POSITIVE_INFINITY : Math.abs(1f / dy);
+            float deltaZ = stepZ == 0 ? Float.POSITIVE_INFINITY : Math.abs(1f / dz);
+            float maxX = stepX > 0 ? ((x + 0.5f - near[0]) / dx)
+                    : stepX < 0 ? ((x - 0.5f - near[0]) / dx) : Float.POSITIVE_INFINITY;
+            float maxY = stepY > 0 ? ((y + 0.5f - near[1]) / dy)
+                    : stepY < 0 ? ((y - 0.5f - near[1]) / dy) : Float.POSITIVE_INFINITY;
+            float maxZ = stepZ > 0 ? ((z + 0.5f - near[2]) / dz)
+                    : stepZ < 0 ? ((z - 0.5f - near[2]) / dz) : Float.POSITIVE_INFINITY;
+
+            int previousX = Integer.MIN_VALUE;
+            int previousY = Integer.MIN_VALUE;
+            int previousZ = Integer.MIN_VALUE;
+            float travelled = 0f;
+            while (travelled <= 6f) {
+                if (collisionBlocks.contains(new BlockPosition(x, y, z))) {
                     BlockTargetListener listener = blockTargetListener;
-                    if (listener != null && emptyX != Integer.MIN_VALUE) {
-                        listener.onBlockTarget(bx + centerChunkX * 16 - 16, by,
-                                bz + centerChunkZ * 16 - 16,
-                                emptyX + centerChunkX * 16 - 16, emptyY,
-                                emptyZ + centerChunkZ * 16 - 16);
+                    if (listener != null && previousX != Integer.MIN_VALUE) {
+                        listener.onBlockTarget(
+                                x + centerChunkX * 16 - 16, y, z + centerChunkZ * 16 - 16,
+                                previousX + centerChunkX * 16 - 16, previousY,
+                                previousZ + centerChunkZ * 16 - 16);
                     }
                     return;
                 }
-                emptyX = bx; emptyY = by; emptyZ = bz;
+                previousX = x;
+                previousY = y;
+                previousZ = z;
+
+                if (maxX <= maxY && maxX <= maxZ) {
+                    travelled = maxX;
+                    maxX += deltaX;
+                    x += stepX;
+                } else if (maxY <= maxZ) {
+                    travelled = maxY;
+                    maxY += deltaY;
+                    y += stepY;
+                } else {
+                    travelled = maxZ;
+                    maxZ += deltaZ;
+                    z += stepZ;
+                }
             }
         }
 

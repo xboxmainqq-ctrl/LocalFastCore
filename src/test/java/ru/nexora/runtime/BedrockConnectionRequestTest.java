@@ -38,10 +38,10 @@ class BedrockConnectionRequestTest {
 
     @Test
     void extractsModernCertificateChainPayload() {
-        String certificate = "{\\\"chain\\\":[\\\"" + JWT + "\\"]}";
+        String certificate = "{\"chain\":[\"" + JWT + "\"]}";
         BedrockConnectionRequest request = BedrockConnectionRequest.parse(
                 "{\"AuthenticationType\":2,\"Token\":\"\",\"Certificate\":\""
-                        + certificate + "\"}");
+                        + certificate.replace("\"", "\\\"") + "\"}");
 
         assertTrue(request.isCertificateChainPayload());
         assertFalse(request.isTokenPayload());

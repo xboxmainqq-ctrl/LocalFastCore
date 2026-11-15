@@ -88,7 +88,7 @@ public final class DashboardBridge {
             try {
                 JSONObject request = new JSONObject();
                 request.put("model", MODEL);
-                request.put("max_tokens", 1800);
+                request.put("max_tokens", 5000);
                 JSONArray messages = new JSONArray();
                 messages.put(new JSONObject()
                         .put("role", "system")

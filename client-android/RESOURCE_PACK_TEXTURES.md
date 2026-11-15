@@ -27,11 +27,13 @@ Supported NEXORA atlas slots:
 Common Bedrock names such as `log_oak.png`, `log_oak_top.png`,
 `leaves_oak.png`, `water_still.png` and `planks_oak.png` are mapped to
 the matching NEXORA atlas slots. Only allow-listed PNG textures are extracted.
-The importer rejects traversal paths, invalid PNG files, images larger than
-1024x1024, individual files over 4 MiB, archives with more than 128 entries,
-and total extracted texture data over 32 MiB. Unsupported paths are ignored;
-if multiple files map to one atlas slot, the first ZIP entry is kept.
-Installation is staged before replacing the active pack.
+The importer rejects traversal and unsafe paths, invalid PNG files, images larger
+than 1024x1024, selected textures over 4 MiB, individual ZIP entries over
+16 MiB, archives with more than 4096 entries, and total expanded archive data
+over 128 MiB. Every entry is streamed through the limits, including files not
+used by the renderer. Unsupported paths are ignored; if multiple files map to
+one atlas slot, the first ZIP entry is kept. Installation is staged before
+replacing the active pack.
 
 Textures are scaled to 16x16 with nearest-neighbour filtering. Reopen the
 world preview after importing so the renderer creates its atlas from the

@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class BedrockInitialTransportRouterTest {
     private static final String JWT = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.c2ln";
     private static final String LOGIN_JSON =
-            "{\\"AuthenticationType\\":0,\\"Token\\":\\"" + JWT + "\\",\\"Certificate\\":\\"\\"}";
+            "{\"AuthenticationType\":0,\"Token\":\"" + JWT + "\",\"Certificate\":\"\"}";
     private static final String CLIENT_DATA_JWT = JWT;
     private static final BedrockNetworkSettings SETTINGS = new BedrockNetworkSettings(
             1, BedrockNetworkSettings.CompressionAlgorithm.ZLIB, false, 0, 0.0f);
@@ -99,7 +99,7 @@ class BedrockInitialTransportRouterTest {
                     assertEquals("nethernet-xuid", player.identityId());
                     assertEquals("NetherNetPlayer", player.displayName());
                     assertSame(key, player.clientIdentityPublicKey());
-                    assertTrue(player.clientDataJson().contains("\\"ClientRandomId\\":123"));
+                    assertTrue(player.clientDataJson().contains("\"ClientRandomId\":123"));
                     playStarts.incrementAndGet();
                 },
                 (connection, message) -> { });
@@ -225,8 +225,8 @@ class BedrockInitialTransportRouterTest {
 
     private static String signedClientDataJwt(java.security.KeyPair clientKey) throws Exception {
         java.util.Base64.Encoder encoder = java.util.Base64.getUrlEncoder().withoutPadding();
-        String header = encoder.encodeToString("{\\"alg\\":\\"ES384\\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        String payload = encoder.encodeToString("{\\"ClientRandomId\\":123,\\"DeviceOS\\":7}"
+        String header = encoder.encodeToString("{\"alg\":\"ES384\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        String payload = encoder.encodeToString("{\"ClientRandomId\":123,\"DeviceOS\":7}"
                 .getBytes(java.nio.charset.StandardCharsets.UTF_8));
         String signingInput = header + "." + payload;
         java.security.Signature signer = java.security.Signature.getInstance("SHA384withECDSA");

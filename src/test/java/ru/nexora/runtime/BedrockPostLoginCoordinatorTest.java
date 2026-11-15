@@ -215,9 +215,51 @@ class BedrockPostLoginCoordinatorTest {
         return new BedrockAuthenticatedPlayer("test-xuid", "NEXORA", key);
     }
 
+    @Test
+    void rejectsCompletedResponseUntilValidationReadyPacketArrives() throws Exception {
+        BedrockPostLoginCoordinator coordinator = coordinator(
+                (connection, player) -> CompletableFuture.completedFuture(null),
+                connection -> BedrockHandshakeResult.ACCEPTED);
+        FakeConnection connection = new FakeConnection();
+        coordinator.accept(connection, player());
+        coordinator.handleMessage(connection, response("downloadingfinished"));
+        coordinator.handleMessage(connection, response("resourcepackstackfinished"));
+        assertFalse(connection.isOpen());
+        coordinator.close();
+    }
+
+    @Test
+    void rejectsDuplicateOrNonEmptyValidationReadyPacket() throws Exception {
+        BedrockPostLoginCoordinator coordinator = coordinator(
+                (connection, player) -> CompletableFuture.completedFuture(null),
+                connection -> BedrockHandshakeResult.ACCEPTED);
+        FakeConnection connection = new FakeConnection();
+        coordinator.accept(connection, player());
+        coordinator.handleMessage(connection, response("downloadingfinished"));
+        coordinator.handleMessage(connection, resourcePacksReadyForValidation());
+        assertTrue(connection.isOpen());
+        coordinator.handleMessage(connection, resourcePacksReadyForValidation());
+        assertFalse(connection.isOpen());
+        coordinator.close();
+
+        BedrockPostLoginCoordinator invalid = coordinator(
+                (peer, player) -> CompletableFuture.completedFuture(null),
+                peer -> BedrockHandshakeResult.ACCEPTED);
+        FakeConnection invalidConnection = new FakeConnection();
+        invalid.accept(invalidConnection, player());
+        invalid.handleMessage(invalidConnection, response("downloadingfinished"));
+        invalid.handleMessage(invalidConnection, resourcePacksReadyForValidation(new byte[] {1}));
+        assertFalse(invalidConnection.isOpen());
+        invalid.close();
+    }
+
     private static TransportMessage resourcePacksReadyForValidation() {
+        return resourcePacksReadyForValidation(new byte[0]);
+    }
+
+    private static TransportMessage resourcePacksReadyForValidation(byte[] payload) {
         ByteBuffer batch = BedrockPacketBatchCodec.encodeUncompressed(List.of(
-                new BedrockGamePacket(new BedrockPacketHeader(203, 0, 0), new byte[0])));
+                new BedrockGamePacket(new BedrockPacketHeader(203, 0, 0), payload)));
         return new TransportMessage(
                 BedrockBatchCompressionCodec.encodeAfterNetworkSettings(batch, SETTINGS),
                 DeliveryMode.RELIABLE_ORDERED);

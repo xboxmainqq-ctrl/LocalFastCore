@@ -53,7 +53,7 @@ public class NexoraResourcePackInstallerTest {
         assertInvalidPath("../escape.png", false);
         assertInvalidPath("/absolute.png", false);
         assertInvalidPath("C:/absolute.png", false);
-        assertInvalidPath("textures\\\\blocks\\\\stone.png", false);
+        assertInvalidPath("textures\\blocks\\stone.png", false);
         assertInvalidPath("textures//blocks/stone.png", false);
         assertInvalidPath("textures/../stone.png", false);
     }
@@ -66,4 +66,4 @@ public class NexoraResourcePackInstallerTest {
             // Expected.
         }
     }
-}\n
+}

@@ -34,8 +34,7 @@ class OverworldChunkGeneratorTest {
 
         assertEquals(256, generated.blocks().values().stream()
                 .filter(state -> state.identifier().equals("minecraft:bedrock")).count());
-        assertTrue(generated.blocks().values().stream()
-                .anyMatch(state -> state.identifier().equals("minecraft:grass_block")));
+        assertEquals(256, generated.biomeColumns().size());
         assertTrue(generated.blocks().values().stream()
                 .anyMatch(state -> state.identifier().equals("minecraft:stone")));
         assertTrue(generated.fluids().values().stream()

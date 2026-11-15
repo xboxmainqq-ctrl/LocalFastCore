@@ -32,13 +32,13 @@ Preferred sign-in is GitHub App Device Flow:
 3. Open Android Host → Dashboard → GitHub and enter the app's **Client ID** (not App ID and never a client secret).
 4. Tap **Войти через GitHub**, open the displayed verification URL, enter the one-time code, and approve access.
 5. NEXORA stores access/refresh tokens encrypted with Android Keystore and refreshes expiring access tokens automatically.
-6. Load repositories, choose a repository and branch, browse files, ask AI to rewrite the opened file, review/stage changes, then confirm a multi-file commit.
+6. Load a project folder, select several text files, load them into AI context, request a multi-file JSON change plan, inspect each staged file, then confirm the commit.
 
 A fine-grained personal access token can still be used as a manual fallback. Restrict it to the exact repository and grant Metadata: Read-only plus Contents: Read and write. Never paste credentials into the AI chat or source files.
 
 Prefer a dedicated working branch such as `nexora-ai/my-feature`. Avoid committing directly to `main`. Never paste the token into the AI chat, project files, or a public repository. You can revoke the token in GitHub settings at any time; use the Disconnect button to erase its local copy.
 
-The workspace editor can read files from a selected repository branch, request an AI rewrite of the opened file using the current file as context, stage the returned content, and commit up to 50 staged text files together (maximum 1 MiB total). Review every generated change before committing. The AI response is not proof that code compiles; no build is run on the tablet by this editor.
+The workspace editor can load up to 20 selected text files into bounded AI context, request a structured multi-file plan, validate update/create/delete operations, preview staged changes, and commit up to 50 file operations together (maximum 1 MiB total). A branch-head snapshot check aborts the write if the branch changed since the workspace folder was loaded. New files are only accepted when their parent folder was loaded and the path was absent from that folder listing. Review every generated change before committing. The AI response is not proof that code compiles; no build is run on the tablet by this editor.
 
 ## AI provider
 

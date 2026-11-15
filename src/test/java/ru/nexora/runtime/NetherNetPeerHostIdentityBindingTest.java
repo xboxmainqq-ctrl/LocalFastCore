@@ -33,7 +33,8 @@ class NetherNetPeerHostIdentityBindingTest {
                 (java.security.interfaces.ECPublicKey) generator.generateKeyPair().getPublic();
         NetherNetIdentityValidator.VerifiedIdentity identity =
                 new NetherNetIdentityValidator.VerifiedIdentity(
-                        "minecraft-services.net", "xuid-test", "TestPlayer", key);
+                        "minecraft-services.net", "xuid-test", "TestPlayer", key,
+                        NetherNetIdentityValidator.tokenSha256("test-game-server-token"));
 
         CompletionException failure = assertThrows(CompletionException.class,
                 () -> host.createAnswer("network-id", "v=0", identity)

@@ -225,7 +225,6 @@ public final class BedrockPostLoginCoordinator implements
                     startWorld(session);
                 }
             }
-            }
         }
     }
 

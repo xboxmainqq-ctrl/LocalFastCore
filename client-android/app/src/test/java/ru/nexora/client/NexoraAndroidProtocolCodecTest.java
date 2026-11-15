@@ -59,7 +59,50 @@ public class NexoraAndroidProtocolCodecTest {
     }
 
     @Test
-    public void encodesMovementWithProtocolOnePointTwo() {
+    public void decodesNexoraResourcePackInfoAndSequentialChunks() {
+        String name = "f8d2c8e0-a2c4-4a87-a69d-02e7d8dff921_1.0.0";
+        String version = "1.0.0";
+        String hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        byte[] nameBytes = name.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] versionBytes = version.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] hashBytes = hash.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        ByteBuffer info = ByteBuffer.allocate(7 + 1 + nameBytes.length + 1 + versionBytes.length
+                + 8 + 4 + 4 + 1 + hashBytes.length);
+        info.put(new byte[] {'N','X','R','A',1,3,16});
+        info.put((byte) nameBytes.length).put(nameBytes);
+        info.put((byte) versionBytes.length).put(versionBytes);
+        info.putLong(1024 * 1024L + 3).putInt(1024 * 1024).putInt(2);
+        info.put((byte) hashBytes.length).put(hashBytes);
+        NexoraAndroidProtocolCodec.ResourcePackInfo decoded =
+                NexoraAndroidProtocolCodec.decodeResourcePackInfo(info.array());
+        assertEquals(name, decoded.resourceName());
+        assertEquals(version, decoded.version());
+        assertEquals(2, decoded.downloadInfo().chunkCount());
+        assertEquals(1024 * 1024L + 3, decoded.downloadInfo().fileSize());
+        assertEquals(hash, decoded.downloadInfo().fileHash());
+
+        byte[] request = NexoraAndroidProtocolCodec.encodeResourcePackChunkRequest(name, 1);
+        assertEquals(17, Byte.toUnsignedInt(request[6]));
+        assertEquals(1, ByteBuffer.wrap(request, request.length - 4, 4).getInt());
+
+        byte[] data = new byte[] {4, 5, 6};
+        ByteBuffer chunk = ByteBuffer.allocate(7 + 1 + nameBytes.length + 4 + 8 + 4 + data.length);
+        chunk.put(new byte[] {'N','X','R','A',1,3,18});
+        chunk.put((byte) nameBytes.length).put(nameBytes);
+        chunk.putInt(1).putLong(1024 * 1024L).putInt(data.length).put(data);
+        BedrockAndroidResourcePackChunk decodedChunk =
+                NexoraAndroidProtocolCodec.decodeResourcePackChunk(chunk.array());
+        assertEquals(name, decodedChunk.resourceName());
+        assertEquals(1, decodedChunk.chunkIndex());
+        assertEquals(1024 * 1024L, decodedChunk.offset());
+        assertArrayEquals(data, decodedChunk.data());
+
+        byte[] ready = NexoraAndroidProtocolCodec.encodeResourcePackReady();
+        assertEquals(19, Byte.toUnsignedInt(ready[6]));
+    }
+
+    @Test
+    public void encodesMovementWithProtocolOnePointThree() {
         byte[] packet = NexoraAndroidProtocolCodec.encodePlayerMove(1.25, 65.0, -2.5);
         assertEquals(31, packet.length);
         assertEquals(1, Byte.toUnsignedInt(packet[4]));

@@ -312,10 +312,10 @@ public final class BedrockAndroidPacketCodec {
     public static byte[] encodeResourcePacksReadyForValidation(
             BedrockAndroidNetworkSettings settings) {
         if (settings == null) throw new IllegalArgumentException("Network settings are required");
-        int packetLength = varUInt32Size(203);
+        int packetLength = varUInt32Size(340);
         ByteBuffer batch = ByteBuffer.allocate(varUInt32Size(packetLength) + packetLength);
         writeVarUInt32(batch, packetLength);
-        writeVarUInt32(batch, 203);
+        writeVarUInt32(batch, 340);
         batch.flip();
         return bytes(encodeAfterNetworkSettings(batch, settings));
     }

@@ -60,7 +60,12 @@ public class MainActivity extends Activity {
         start.setOnClickListener(v -> startServer());
         root.addView(start, matchWrap());
 
-        Button dashboard = new Button(this);\n        dashboard.setText("Open NEXORA dashboard");\n        dashboard.setOnClickListener(v -> startActivity(new Intent(this, DashboardActivity.class)));\n        root.addView(dashboard, matchWrap());\n\n        Button stop = new Button(this);
+        Button dashboard = new Button(this);
+        dashboard.setText("Open NEXORA dashboard");
+        dashboard.setOnClickListener(v -> startActivity(new Intent(this, DashboardActivity.class)));
+        root.addView(dashboard, matchWrap());
+
+        Button stop = new Button(this);
         stop.setText("Stop server");
         stop.setOnClickListener(v -> {
             stopService(new Intent(this, ServerForegroundService.class));

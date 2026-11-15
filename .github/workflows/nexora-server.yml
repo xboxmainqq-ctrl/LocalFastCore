@@ -42,13 +42,13 @@ jobs:
 
       - name: Render deterministic world preview from generated chunks
         if: success()
-        run: java -cp target/nexora-runtime-0.1.0-SNAPSHOT.jar ru.nexora.runtime.WorldPreviewRenderer 12345 12 target/nexora-world-preview.png
+        run: java -cp target/nexora-runtime-0.1.0-SNAPSHOT.jar ru.nexora.runtime.WorldPreviewRenderer 103 12 target/nexora-world-preview.png
 
       - name: Upload generated world preview
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: nexora-world-preview-seed-12345-region-25x25
+          name: nexora-world-preview-seed-103-region-25x25
           path: target/nexora-world-preview.png
           if-no-files-found: error
           retention-days: 14

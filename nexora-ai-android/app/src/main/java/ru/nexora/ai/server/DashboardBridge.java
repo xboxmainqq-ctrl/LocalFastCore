@@ -72,10 +72,10 @@ public final class DashboardBridge {
     }
 
     @JavascriptInterface
-    public void sendChat(String prompt) {
-        final String safePrompt = prompt == null ? "" : prompt.trim();
-        if (safePrompt.isEmpty() || safePrompt.length() > 12000) {
-            deliver(error("INVALID_INPUT", "Сообщение пустое или слишком длинное."));
+    public void sendChat(String conversationJson) {
+        final String safeConversation = conversationJson == null ? "" : conversationJson;
+        if (safeConversation.isEmpty() || safeConversation.length() > 32000) {
+            deliver(error("INVALID_INPUT", "История чата пуста или слишком длинная."));
             return;
         }
         executor.execute(() -> {
@@ -92,8 +92,24 @@ public final class DashboardBridge {
                 JSONArray messages = new JSONArray();
                 messages.put(new JSONObject()
                         .put("role", "system")
-                        .put("content", "Ты — NEXORA AI, помощник по разработке игр, серверов, программ и инструментов. Отвечай на русском, если пользователь пишет по-русски. Не утверждай, что запускал код или изменял файлы, если этого не было."));
-                messages.put(new JSONObject().put("role", "user").put("content", safePrompt));
+                        .put("content", "Ты — NEXORA AI, помощник по разработке игр, серверов, программ и инструментов. Отвечай на русском, если пользователь пишет по-русски. Не утверждай, что запускал код или изменял файлы, если этого не было. Если задача требует доступа к файлам или терминалу, честно сообщай, что доступ должен быть предоставлен через инструменты хоста."));
+                JSONArray history = new JSONArray(safeConversation);
+                int start = Math.max(0, history.length() - 12);
+                int totalChars = 0;
+                for (int i = start; i < history.length(); i++) {
+                    JSONObject item = history.optJSONObject(i);
+                    if (item == null) continue;
+                    String role = item.optString("role", "");
+                    String content = item.optString("text", "");
+                    if (!("user".equals(role) || "assistant".equals(role)) || content.isEmpty()) continue;
+                    totalChars += content.length();
+                    if (totalChars > 24000) break;
+                    messages.put(new JSONObject().put("role", role).put("content", content));
+                }
+                if (messages.length() < 2) {
+                    deliver(error("INVALID_INPUT", "Добавь текстовое сообщение в чат."));
+                    return;
+                }
                 request.put("messages", messages);
 
                 connection = (HttpURLConnection) new URL(ENDPOINT).openConnection();

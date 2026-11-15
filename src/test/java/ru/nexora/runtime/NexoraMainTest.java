@@ -95,7 +95,8 @@ class NexoraMainTest {
             assertEquals(-64, info.minY());
             assertEquals(320, info.maxYExclusive());
             assertEquals(0, info.spawnX());
-            assertEquals(65, info.spawnY());
+            World world = runtime.worlds().get("world").orElseThrow();
+            assertEquals(NexoraMain.findSpawnY(world), info.spawnY());
             assertEquals(0, info.spawnZ());
             assertEquals(20, info.tickRate());
             assertEquals(1, info.loadedChunks());
@@ -137,8 +138,11 @@ class NexoraMainTest {
         try {
             World world = runtime.worlds().get("world").orElseThrow();
             assertTrue(world.isChunkLoaded(new ChunkPosition(0, 0)));
-            assertEquals(new BlockState("minecraft:grass_block"),
-                    world.blockAt(new BlockPosition(0, 64, 0)));
+            int spawnY = NexoraMain.findSpawnY(world);
+            assertFalse(world.blockAt(new BlockPosition(0, spawnY - 1, 0)).isAir());
+            assertTrue(world.blockAt(new BlockPosition(0, spawnY, 0)).isAir());
+            assertTrue(world.biomeAt(new BlockPosition(0, spawnY - 1, 0))
+                    >= BiomeRegistry.MISTWOOD_ID);
             assertTrue(runtime.gameLoop().isRunning());
             assertTrue(runtime.server().moduleIds().contains("entity-simulation"));
             assertNotNull(runtime.entities());

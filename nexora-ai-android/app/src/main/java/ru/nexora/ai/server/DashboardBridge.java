@@ -92,7 +92,7 @@ public final class DashboardBridge {
                 JSONArray messages = new JSONArray();
                 messages.put(new JSONObject()
                         .put("role", "system")
-                        .put("content", "Ты — NEXORA AI, помощник по разработке игр, серверов, программ и инструментов. Отвечай на русском, если пользователь пишет по-русски. Не утверждай, что запускал код или изменял файлы, если этого не было. Если задача требует доступа к файлам или терминалу, честно сообщай, что доступ должен быть предоставлен через инструменты хоста."));
+                        .put("content", loadSystemPrompt()));
                 JSONArray history = new JSONArray(safeConversation);
                 int start = Math.max(0, history.length() - 12);
                 int totalChars = 0;
@@ -189,6 +189,19 @@ public final class DashboardBridge {
         String script = "window.nexoraChatResult && window.nexoraChatResult("
                 + result.toString() + ");";
         activity.runOnUiThread(() -> webView.evaluateJavascript(script, null));
+    }
+
+    private String loadSystemPrompt() {
+        try {
+            return readAll(activity.getAssets().open("nexora-system-prompt.md"));
+        } catch (Exception ignored) {
+            return "Ты — NEXORA AI, инженерный помощник. Отвечай на языке пользователя. "
+                    + "Изучай проект перед изменениями, пиши проверяемый код и честно сообщай, "
+                    + "какие инструменты и проверки реально выполнены. Не утверждай, что "
+                    + "запускал сборку или менял файлы без подтверждения. Не используй платные "
+                    + "AI-маршруты и не раскрывай секреты. Не изменяй main и не публикуй "
+                    + "изменения без разрешения пользователя.";
+        }
     }
 
     private String readKey() {

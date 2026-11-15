@@ -6,6 +6,10 @@ import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.io.File;
+import java.nio.file.Files;
+import java.security.MessageDigest;
+import java.util.UUID;
 import java.io.ByteArrayOutputStream;
 import java.util.List;
 import java.util.zip.Deflater;
@@ -178,6 +182,152 @@ public class BedrockAndroidPacketCodecTest {
         byte[] bytes = new byte[length];
         input.get(bytes);
         return new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    @Test
+    public void decodesBedrockResourcePackInfoDataChunkAndStack() throws Exception {
+        UUID uuid = UUID.fromString("12345678-1234-5678-9abc-def012345678");
+        ByteBuffer info = ByteBuffer.allocate(512);
+        info.put(new byte[] {1, 0, 0, 0});
+        writeLittleEndianLong(info, 0L);
+        writeLittleEndianLong(info, 0L);
+        writeTestString(info, "1.0.0");
+        writeVarUInt32(info, 1);
+        writeLittleEndianLong(info, uuid.getMostSignificantBits());
+        writeLittleEndianLong(info, uuid.getLeastSignificantBits());
+        writeTestString(info, "1.2.3");
+        writeLittleEndianLong(info, 8L);
+        writeTestString(info, "");
+        writeTestString(info, "");
+        writeTestString(info, "");
+        info.put(new byte[] {0, 0, 0});
+        writeTestString(info, "");
+        BedrockAndroidResourcePackInfo decodedInfo =
+                BedrockAndroidPacketCodec.decodeResourcePacksInfo(
+                        java.util.Arrays.copyOf(info.array(), info.position()));
+        assertTrue(decodedInfo.required());
+        assertEquals(1, decodedInfo.packs().size());
+        assertEquals(uuid + "_1.2.3", decodedInfo.packs().get(0).resourceName());
+
+        String hash = "ab".repeat(32);
+        ByteBuffer dataInfo = ByteBuffer.allocate(256);
+        writeTestString(dataInfo, uuid + "_1.2.3");
+        writeLittleEndianInt(dataInfo, 4);
+        writeLittleEndianInt(dataInfo, 2);
+        writeLittleEndianLong(dataInfo, 8L);
+        writeTestString(dataInfo, hash);
+        dataInfo.put((byte) 0).put((byte) 6);
+        BedrockAndroidResourcePackDataInfo decodedDataInfo =
+                BedrockAndroidPacketCodec.decodeResourcePackDataInfo(
+                        java.util.Arrays.copyOf(dataInfo.array(), dataInfo.position()));
+        assertEquals(4, decodedDataInfo.chunkSize());
+        assertEquals(2, decodedDataInfo.chunkCount());
+        assertEquals(hash, decodedDataInfo.fileHash());
+
+        ByteBuffer chunk = ByteBuffer.allocate(256);
+        writeTestString(chunk, uuid + "_1.2.3");
+        writeLittleEndianInt(chunk, 1);
+        writeLittleEndianLong(chunk, 4L);
+        writeVarUInt32(chunk, 4);
+        chunk.put(new byte[] {4, 5, 6, 7});
+        BedrockAndroidResourcePackChunk decodedChunk =
+                BedrockAndroidPacketCodec.decodeResourcePackChunkData(
+                        java.util.Arrays.copyOf(chunk.array(), chunk.position()));
+        assertEquals(1, decodedChunk.chunkIndex());
+        assertEquals(4L, decodedChunk.offset());
+        assertArrayEquals(new byte[] {4, 5, 6, 7}, decodedChunk.data());
+
+        ByteBuffer stack = ByteBuffer.allocate(256);
+        stack.put((byte) 1);
+        writeVarUInt32(stack, 1);
+        writeTestString(stack, uuid.toString());
+        writeTestString(stack, "1.2.3");
+        writeTestString(stack, "");
+        writeTestString(stack, "1.26.60");
+        writeLittleEndianInt(stack, 0);
+        stack.put(new byte[] {0, 0});
+        BedrockAndroidResourcePackStack decodedStack =
+                BedrockAndroidPacketCodec.decodeResourcePackStack(
+                        java.util.Arrays.copyOf(stack.array(), stack.position()));
+        assertTrue(decodedStack.required());
+        assertEquals(List.of(uuid + "_1.2.3"), decodedStack.resourceNames());
+    }
+
+    @Test
+    public void encodesChunkRequestsAndSendPacksResponse() {
+        BedrockAndroidNetworkSettings settings =
+                new BedrockAndroidNetworkSettings(0, 0xffff, false, 0, 0.0f);
+        String packId = "12345678-1234-5678-9abc-def012345678_1.2.3";
+        byte[] request = BedrockAndroidPacketCodec.encodeResourcePackChunkRequest(packId, 3, settings);
+        BedrockAndroidServerPacket requestPacket =
+                BedrockAndroidPacketCodec.decodeServerBatch(request, settings).get(0);
+        assertEquals(84, requestPacket.packetId());
+        ByteBuffer requestPayload = ByteBuffer.wrap(requestPacket.payload());
+        assertEquals(packId, readTestString(requestPayload));
+        assertEquals(3, readLittleEndianInt(requestPayload));
+
+        byte[] response = BedrockAndroidPacketCodec.encodeResourcePackClientResponse(
+                BedrockAndroidResourcePackStatus.SEND_PACKS, List.of(packId), settings);
+        BedrockAndroidServerPacket responsePacket =
+                BedrockAndroidPacketCodec.decodeServerBatch(response, settings).get(0);
+        assertEquals(8, responsePacket.packetId());
+        ByteBuffer responsePayload = ByteBuffer.wrap(responsePacket.payload());
+        assertEquals(1, readVarUInt32(responsePayload));
+        assertEquals("downloading", readTestString(responsePayload));
+        assertEquals(1, readVarUInt32(responsePayload));
+        assertEquals(packId, readTestString(responsePayload));
+    }
+
+    @Test
+    public void assemblesAndVerifiesDownloadedResourcePack() throws Exception {
+        byte[] bytes = new byte[] {0, 1, 2, 3, 4, 5, 6, 7, 8};
+        String hash = java.util.HexFormat.of().formatHex(
+                MessageDigest.getInstance("SHA-256").digest(bytes));
+        BedrockAndroidResourcePackDataInfo info =
+                new BedrockAndroidResourcePackDataInfo("pack_1.0.0", 4, 3,
+                        bytes.length, hash, 6);
+        File directory = Files.createTempDirectory("nexora-pack-test").toFile();
+        BedrockAndroidResourcePackDownload download =
+                new BedrockAndroidResourcePackDownload(directory, info);
+        download.accept(new BedrockAndroidResourcePackChunk("pack_1.0.0", 0, 0,
+                new byte[] {0, 1, 2, 3}));
+        download.accept(new BedrockAndroidResourcePackChunk("pack_1.0.0", 1, 4,
+                new byte[] {4, 5, 6, 7}));
+        download.accept(new BedrockAndroidResourcePackChunk("pack_1.0.0", 2, 8,
+                new byte[] {8}));
+        assertTrue(download.isComplete());
+        File result = download.finishAndVerify();
+        assertArrayEquals(bytes, Files.readAllBytes(result.toPath()));
+        download.close();
+        result.delete();
+        directory.delete();
+    }
+
+    private static void writeTestString(ByteBuffer output, String value) {
+        byte[] encoded = value.getBytes(StandardCharsets.UTF_8);
+        writeVarUInt32(output, encoded.length);
+        output.put(encoded);
+    }
+
+    private static String readTestString(ByteBuffer input) {
+        int length = readVarUInt32(input);
+        byte[] encoded = new byte[length];
+        input.get(encoded);
+        return new String(encoded, StandardCharsets.UTF_8);
+    }
+
+    private static void writeLittleEndianInt(ByteBuffer output, int value) {
+        output.put((byte) value).put((byte) (value >>> 8))
+                .put((byte) (value >>> 16)).put((byte) (value >>> 24));
+    }
+
+    private static int readLittleEndianInt(ByteBuffer input) {
+        return Byte.toUnsignedInt(input.get()) | (Byte.toUnsignedInt(input.get()) << 8)
+                | (Byte.toUnsignedInt(input.get()) << 16) | (input.get() << 24);
+    }
+
+    private static void writeLittleEndianLong(ByteBuffer output, long value) {
+        for (int i = 0; i < 8; i++) output.put((byte) (value >>> (8 * i)));
     }
 
     private static void assertLoginBatch(ByteBuffer batch) {

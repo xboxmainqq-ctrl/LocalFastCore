@@ -116,7 +116,11 @@ final class ChunkPreviewView extends GLSurfaceView {
         centerChunkZ = chunkZ;
         centerSet = true;
         synchronized (chunks) {
-            chunks.clear();
+            chunks.entrySet().removeIf(entry -> {
+                int x = (int) (entry.getKey() >> 32);
+                int z = (int) (long) entry.getKey();
+                return Math.abs((long) x - chunkX) > 1 || Math.abs((long) z - chunkZ) > 1;
+            });
         }
         queueEvent(renderer::markMeshDirty);
         requestRender();

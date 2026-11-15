@@ -309,13 +309,6 @@ public class BedrockAndroidPacketCodecTest {
         output.put(encoded);
     }
 
-    private static String readTestString(ByteBuffer input) {
-        int length = readVarUInt32(input);
-        byte[] encoded = new byte[length];
-        input.get(encoded);
-        return new String(encoded, StandardCharsets.UTF_8);
-    }
-
     private static void writeLittleEndianInt(ByteBuffer output, int value) {
         output.put((byte) value).put((byte) (value >>> 8))
                 .put((byte) (value >>> 16)).put((byte) (value >>> 24));

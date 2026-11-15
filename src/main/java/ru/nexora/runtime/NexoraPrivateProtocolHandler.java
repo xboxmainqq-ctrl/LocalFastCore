@@ -128,7 +128,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                                         AsyncChunkLoader asyncChunkLoader) {
         this(serverId, maxMessageBytes, worldInfoSupplier, worldSupplier, chunkLoader,
                 readyListener, entities, inventories, inventoryStorage, resourcePacks,
-                asyncChunkLoader, null);
+                asyncChunkLoader, (PlayerChunkStreamingManager) null);
     }
 
     public NexoraPrivateProtocolHandler(UUID serverId, int maxMessageBytes,

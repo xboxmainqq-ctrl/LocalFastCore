@@ -259,7 +259,7 @@ class BedrockPostLoginCoordinatorTest {
 
     private static TransportMessage resourcePacksReadyForValidation(byte[] payload) {
         ByteBuffer batch = BedrockPacketBatchCodec.encodeUncompressed(List.of(
-                new BedrockGamePacket(new BedrockPacketHeader(203, 0, 0), payload)));
+                new BedrockGamePacket(new BedrockPacketHeader(340, 0, 0), payload)));
         return new TransportMessage(
                 BedrockBatchCompressionCodec.encodeAfterNetworkSettings(batch, SETTINGS),
                 DeliveryMode.RELIABLE_ORDERED);

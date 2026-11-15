@@ -14,10 +14,10 @@ public record BedrockResourcePackClientResponse(Status status, List<String> pack
     }
 
     public enum Status {
-        REFUSED(0),
-        SEND_PACKS(1),
-        HAVE_ALL_PACKS(2),
-        COMPLETED(3);
+        REFUSED(1),
+        SEND_PACKS(2),
+        HAVE_ALL_PACKS(3),
+        COMPLETED(4);
 
         private final int wireValue;
 

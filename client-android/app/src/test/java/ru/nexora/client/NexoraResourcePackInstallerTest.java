@@ -46,4 +46,24 @@ public class NexoraResourcePackInstallerTest {
         assertNull(NexoraResourcePackInstaller.supportedTextureName(
                 "textures/blocks/not-a-supported-texture.png"));
     }
-}
+
+    @Test
+    public void validatesAllZipEntryPathsIncludingDirectories() {
+        NexoraResourcePackInstaller.validateArchivePath("textures/blocks/", true);
+        assertInvalidPath("../escape.png", false);
+        assertInvalidPath("/absolute.png", false);
+        assertInvalidPath("C:/absolute.png", false);
+        assertInvalidPath("textures\\\\blocks\\\\stone.png", false);
+        assertInvalidPath("textures//blocks/stone.png", false);
+        assertInvalidPath("textures/../stone.png", false);
+    }
+
+    private static void assertInvalidPath(String path, boolean directory) {
+        try {
+            NexoraResourcePackInstaller.validateArchivePath(path, directory);
+            fail("Expected unsafe path to be rejected: " + path);
+        } catch (IllegalArgumentException expected) {
+            // Expected.
+        }
+    }
+}\n

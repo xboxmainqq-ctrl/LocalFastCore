@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "NEXORA-Client"
 include(":app")
+include(":world-core")

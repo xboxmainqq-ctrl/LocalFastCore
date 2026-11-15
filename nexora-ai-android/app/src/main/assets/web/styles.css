@@ -100,3 +100,5 @@ button:not(.side button):hover{filter:brightness(1.14);transform:translateY(-1px
  #assistant .chat-log{min-height:34vh;max-height:44vh}
  #assistant #send-chat{width:100%}
 }
+
+@media(max-width:850px){.side{overflow-x:auto;scrollbar-width:thin}.side button{flex:0 0 auto}.side button[data-view="home"]{display:none}}

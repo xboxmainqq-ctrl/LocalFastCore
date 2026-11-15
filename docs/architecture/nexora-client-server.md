@@ -11,17 +11,13 @@ NEXORA is developed as one coordinated product with two independently buildable 
 
 The client is the primary first-party test client for the server. Server and client changes must be reviewed together whenever they affect protocol messages, authentication, world state, chunk data, movement, or gameplay.
 
-## Compatibility target
+## Platform decision
 
-The initial compatibility target remains Minecraft Bedrock 1.26.60, protocol 2225, with NetherNet as the required transport direction.
+NEXORA is a standalone fantasy MMORPG with its own Android client and its own versioned NEXORA protocol. Ordinary Minecraft/Bedrock clients are not required and are not the target for the first playable release.
 
-There are two distinct compatibility goals; they must not be confused:
+The private NEXORA protocol is the primary client/server contract. It must remain explicitly versioned and must never be advertised as Bedrock-compatible. Existing Bedrock packet codecs are isolated optional compatibility work; they must not become a dependency of RPG gameplay or block the standalone NEXORA release.
 
-1. **NEXORA client ↔ NEXORA server:** both applications can be developed and tested together. A private development protocol is possible for early local tests, but it must be explicitly versioned and must not be advertised as Bedrock-compatible.
-2. **Unmodified Bedrock client ↔ NEXORA server:** requires correct Bedrock protocol 2225, NetherNet signaling and identity, authentication, encryption, packet sequencing, and real-client integration tests.
-3. **NEXORA client ↔ other Bedrock servers:** requires the NEXORA client to implement the relevant Bedrock client protocol and authentication/transport behavior. This is a separate compatibility milestone, not an automatic result of building a custom client.
-
-The preferred long-term design is a shared, versioned Bedrock-compatible protocol implementation where practical, while keeping client and server responsibilities separate. Do not create an undocumented private wire format and later call it Bedrock protocol.
+The first-party client and server are developed together. Their shared contracts cover identity, world state, chunks, character state, inventory, abilities, combat and replication. The server remains authoritative for every persistent or competitive gameplay result.
 
 ## Repository layout direction
 
@@ -43,7 +39,7 @@ Keep these client subsystems separate:
 - Android application lifecycle, permissions, settings and navigation.
 - Server discovery and connection management.
 - NetherNet/WebRTC transport and identity/authentication.
-- Bedrock packet framing, compression, encryption and session state.
+- NEXORA packet framing, authentication and session state; optional Bedrock packet handling is separate.
 - World/chunk decoding and client-side world representation.
 - Renderer and resource pipeline.
 - Touch controls, camera, interaction and UI overlays.
@@ -58,7 +54,7 @@ Keep the existing server layering:
 - Runtime lifecycle and tick loop.
 - Transport-neutral connection/session contracts.
 - NetherNet transport adapter.
-- Bedrock 1.26.60 protocol/session layer.
+- Versioned NEXORA protocol/session layer (primary); optional Bedrock adapter remains isolated.
 - Authentication and player session state.
 - World, chunks, entities and gameplay.
 - Persistence and server administration.

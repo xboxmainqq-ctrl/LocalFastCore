@@ -16,6 +16,8 @@ import java.util.Objects;
 public final class BedrockPacketBatchCodec {
     public static final int DEFAULT_MAX_BATCH_BYTES = 8 * 1024 * 1024;
     public static final int DEFAULT_MAX_PACKET_BYTES = 2 * 1024 * 1024;
+    /** Backwards-compatible alias used by packet-specific size limits. */
+    public static final int MAX_PACKET_BYTES = DEFAULT_MAX_PACKET_BYTES;
     public static final int DEFAULT_MAX_PACKETS = 1024;
 
     private BedrockPacketBatchCodec() {
@@ -69,6 +71,11 @@ public final class BedrockPacketBatchCodec {
                 DEFAULT_MAX_PACKET_BYTES,
                 DEFAULT_MAX_PACKETS
         );
+    }
+
+    /** Decodes one bounded uncompressed packet batch. */
+    public static List<BedrockGamePacket> decode(ByteBuffer batch) {
+        return decodeUncompressed(batch);
     }
 
     public static ByteBuffer encodeUncompressed(List<BedrockGamePacket> packets) {

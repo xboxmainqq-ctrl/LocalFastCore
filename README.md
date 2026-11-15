@@ -1,13 +1,14 @@
-# NEXORA Standalone Runtime
+# NEXORA — Minecraft-style game platform
 
 ## Product direction
 
-**NEXORA is a standalone fantasy MMORPG with its own Android client and its own versioned network protocol.** Minecraft Bedrock is not a required client platform. The initial product focus is the NEXORA client ↔ NEXORA server experience: original worlds, classes, skills, combat, quests, dungeons, bosses, items and progression.
+**NEXORA is a Minecraft-based multiplayer platform with its own server core, Android client and in-client creation tools.** The first flagship experience is an RPG server, with room for minigames, survival and custom modes. The goal is the flexibility of a large custom Minecraft network, while making worlds, gameplay, resources and interfaces configurable through NEXORA Studio tools instead of requiring manual code edits for every change.
 
-Bedrock protocol code already present in the repository is retained as an optional compatibility research path, but it is not the product baseline and must not delay the standalone RPG.
+The server core owns authoritative worlds, chunks, blocks, entities, players, inventories, permissions and gameplay. The first-party NEXORA Client provides the custom visual layer: gradients, images, fonts, button shapes, animations, HUD layouts and editor screens. A compatibility adapter is planned so ordinary Minecraft Bedrock clients can join supported gameplay where feasible; advanced NEXORA-only presentation and creator tools require the NEXORA Client.
 
+The repository currently contains a standalone Java runtime and an experimental private client protocol. These are useful engineering foundations, **not yet a Minecraft-compatible playable server**. The platform direction is changing now; compatibility, login, movement, block interaction and real-client testing must be completed before claiming Minecraft interoperability.
 
-This module is the beginning of the independent NEXORA server process. It has **no Nukkit, Nukkit-MOT, Bukkit, or other game-server API dependency**.
+The project must not copy proprietary Minecraft code or redistribute Minecraft assets. Use clean-room protocol implementations and original or appropriately licensed content.
 
 ## Private NEXORA client protocol
 

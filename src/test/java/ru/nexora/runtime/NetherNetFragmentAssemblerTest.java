@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class NetherNetFragmentAssemblerTest {
     @Test
     void returnsUnfragmentedPayloadWithoutHeader() {
-        NetherNetFragmentAssembler assembler = new NetherNetFragmentAssembler(32, 8, 1000);
+        NetherNetFragmentAssembler assembler = new NetherNetFragmentAssembler(32, 8, 1_000_000_000L);
 
         Optional<ByteBuffer> result = assembler.accept(frame(0, 10, 20));
 
@@ -22,7 +22,7 @@ class NetherNetFragmentAssemblerTest {
 
     @Test
     void reassemblesCountdownFragmentsInOrder() {
-        NetherNetFragmentAssembler assembler = new NetherNetFragmentAssembler(32, 8, 1000);
+        NetherNetFragmentAssembler assembler = new NetherNetFragmentAssembler(32, 8, 1_000_000_000L);
 
         assertTrue(assembler.accept(frame(2, 1, 2)).isEmpty());
         assertTrue(assembler.accept(frame(1, 3)).isEmpty());
@@ -35,7 +35,7 @@ class NetherNetFragmentAssemblerTest {
 
     @Test
     void completedPayloadRemainsStableWhenAssemblerIsReused() {
-        NetherNetFragmentAssembler assembler = new NetherNetFragmentAssembler(64, 8, 1000);
+        NetherNetFragmentAssembler assembler = new NetherNetFragmentAssembler(64, 8, 1_000_000_000L);
         assembler.accept(frame(1, 1, 2));
         ByteBuffer completed = assembler.accept(frame(0, 3)).orElseThrow();
 
@@ -48,7 +48,7 @@ class NetherNetFragmentAssemblerTest {
 
     @Test
     void rejectsOutOfOrderFragmentAndClearsAssembly() {
-        NetherNetFragmentAssembler assembler = new NetherNetFragmentAssembler(32, 8, 1000);
+        NetherNetFragmentAssembler assembler = new NetherNetFragmentAssembler(32, 8, 1_000_000_000L);
         assembler.accept(frame(2, 1));
 
         assertThrows(IllegalArgumentException.class, () -> assembler.accept(frame(0, 2)));
@@ -78,7 +78,7 @@ class NetherNetFragmentAssemblerTest {
 
     @Test
     void rejectsMissingHeaderAndExcessiveFragmentCount() {
-        NetherNetFragmentAssembler assembler = new NetherNetFragmentAssembler(32, 2, 1000);
+        NetherNetFragmentAssembler assembler = new NetherNetFragmentAssembler(32, 2, 1_000_000_000L);
 
         assertThrows(IllegalArgumentException.class,
                 () -> assembler.accept(ByteBuffer.allocate(0)));

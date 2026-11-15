@@ -10,36 +10,38 @@ public class NexoraResourcePackInstallerTest {
     public void acceptsBedrockTexturePath() {
         assertEquals("grass_top.png", NexoraResourcePackInstaller.supportedTextureName(
                 "textures/blocks/grass_top.png"));
+        assertEquals("stone.png", NexoraResourcePackInstaller.supportedTextureName(
+                "MyBedrockPack/textures/blocks/stone.png"));
     }
 
     @Test
-    public void acceptsJavaPackWithRootFolderAndMapsGrassNames() {
-        assertEquals("grass_top.png", NexoraResourcePackInstaller.supportedTextureName(
-                "MyPack/assets/minecraft/textures/block/grass_block_top.png"));
-        assertEquals("grass_side.png", NexoraResourcePackInstaller.supportedTextureName(
-                "assets/minecraft/textures/block/grass_block_side.png"));
-    }
-
-    @Test
-    public void mapsJavaWoodAndWaterTextures() {
+    public void mapsBedrockWoodAndWaterTextureNames() {
         assertEquals("log_side.png", NexoraResourcePackInstaller.supportedTextureName(
-                "assets/minecraft/textures/block/oak_log.png"));
+                "textures/blocks/log_oak.png"));
         assertEquals("log_top.png", NexoraResourcePackInstaller.supportedTextureName(
-                "assets/minecraft/textures/block/spruce_log_top.png"));
+                "textures/blocks/log_spruce_top.png"));
         assertEquals("leaves.png", NexoraResourcePackInstaller.supportedTextureName(
-                "assets/minecraft/textures/block/cherry_leaves.png"));
+                "textures/blocks/leaves_oak.png"));
         assertEquals("water.png", NexoraResourcePackInstaller.supportedTextureName(
-                "assets/minecraft/textures/block/water_still.png"));
+                "textures/blocks/water_still.png"));
         assertEquals("planks.png", NexoraResourcePackInstaller.supportedTextureName(
-                "assets/minecraft/textures/block/oak_planks.png"));
+                "textures/blocks/planks_oak.png"));
+    }
+
+    @Test
+    public void rejectsJavaEditionPaths() {
+        assertNull(NexoraResourcePackInstaller.supportedTextureName(
+                "assets/minecraft/textures/block/grass_block_top.png"));
+        assertNull(NexoraResourcePackInstaller.supportedTextureName(
+                "MyPack/assets/minecraft/textures/block/stone.png"));
     }
 
     @Test
     public void ignoresUnknownOrNestedFiles() {
         assertNull(NexoraResourcePackInstaller.supportedTextureName(
-                "assets/minecraft/textures/item/diamond.png"));
+                "textures/items/diamond.png"));
         assertNull(NexoraResourcePackInstaller.supportedTextureName(
-                "assets/minecraft/textures/block/subfolder/stone.png"));
+                "textures/blocks/subfolder/stone.png"));
         assertNull(NexoraResourcePackInstaller.supportedTextureName(
                 "textures/blocks/not-a-supported-texture.png"));
     }

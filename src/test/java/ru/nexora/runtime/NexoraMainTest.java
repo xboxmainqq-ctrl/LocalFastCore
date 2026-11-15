@@ -129,11 +129,30 @@ class NexoraMainTest {
             assertEquals(new WorldHeight(-32, 256), world.height());
             assertEquals("adventure", runtime.worldId());
             assertEquals(30, runtime.tickRate());
+            assertEquals(30, runtime.gameLoop().tickRate());
             assertTrue(world.isChunkLoaded(new ChunkPosition(0, 0)));
         } finally {
             runtime.server().stop();
         }
         assertTrue(Files.isRegularFile(dataDirectory.resolve("worlds").resolve("adventure.nxw")));
+    }
+
+
+    @Test
+    void explicitTickRateArgumentOverridesServerProperties() throws Exception {
+        Path dataDirectory = temporaryDirectory.resolve("tick-override");
+        Files.createDirectories(dataDirectory);
+        Files.writeString(dataDirectory.resolve("server.properties"), """
+                server.tick-rate=30
+                """);
+
+        NexoraMain.LaunchOptions options = NexoraMain.parseArguments(new String[] {
+                "--data-dir", dataDirectory.toString(),
+                "--tick-rate", "40"
+        });
+        NexoraMain.RuntimeHandle runtime = NexoraMain.createRuntime(options, ignored -> { });
+        assertEquals(40, runtime.tickRate());
+        assertEquals(40, runtime.gameLoop().tickRate());
     }
 
     @Test

@@ -29,13 +29,13 @@ class LocalWorldSessionTest {
         try (LocalWorldSession session = LocalWorldSession.open(
                 storage, "singleplayer", new WorldHeight(-64, 320), generator(), 1234L
         )) {
-            assertEquals(1, session.ensureChunkLoaded(new ChunkPosition(0, 0)));
+            assertTrue(session.ensureChunkLoaded(new ChunkPosition(0, 0)));
             assertEquals(new BlockState("minecraft:grass_block"), session.world().blockAt(surface));
             session.world().setBlock(surface, new BlockState("minecraft:diamond_block"));
             session.save();
         }
 
-        assertTrue(sessionClosedAfterClose(storage));
+        assertTrue(storage.load("singleplayer").isPresent());
         try (LocalWorldSession restored = LocalWorldSession.open(
                 storage, "singleplayer", new WorldHeight(0, 128), generator(), 999L
         )) {
@@ -75,7 +75,4 @@ class LocalWorldSessionTest {
                 () -> session.ensureChunkLoaded(new ChunkPosition(0, 0)));
     }
 
-    private boolean sessionClosedAfterClose(FileWorldStorage storage) throws IOException {
-        return storage.load("singleplayer").isPresent();
-    }
 }

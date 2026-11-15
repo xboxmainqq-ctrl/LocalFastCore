@@ -120,6 +120,7 @@ public final class LocalWorldRuntime implements AutoCloseable {
 
         LocalPlayerController.State current = player.state();
         ChunkPosition center = current.chunkPosition();
+        chunkRequests:
         for (int dx = -viewDistance; dx <= viewDistance; dx++) {
             for (int dz = -viewDistance; dz <= viewDistance; dz++) {
                 ChunkPosition position = new ChunkPosition(
@@ -130,8 +131,9 @@ public final class LocalWorldRuntime implements AutoCloseable {
                     AsyncChunkGenerationService.RequestStatus status =
                             chunkGeneration.request(position);
                     if (status == AsyncChunkGenerationService.RequestStatus.QUEUE_FULL) {
-                        // Bounded queue is full; the next tick retries this chunk.
-                        return;
+                        // Stop requesting this view's remaining chunks for now, but
+                        // always advance player physics. The next tick retries them.
+                        break chunkRequests;
                     }
                 }
             }

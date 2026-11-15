@@ -881,22 +881,22 @@ final class ChunkPreviewView extends GLSurfaceView {
                 float[] sideColor = colorFor(block.blockId(), 1);
                 float[] bottomColor = colorFor(block.blockId(), 2);
                 if (!occupied.contains(new BlockPosition(block.x(), block.y() + 1, block.z()))) {
-                    mesh.quad(x0,y1,z0, x0,y1,z1, x1,y1,z1, x1,y1,z0, topColor, 1.00f);
+                    mesh.texturedQuad(x0,y1,z0, x0,y1,z1, x1,y1,z1, x1,y1,z0, topColor, 1.00f, block.blockId().hashCode() ^ 0x13579bdf);
                 }
                 if (!occupied.contains(new BlockPosition(block.x(), block.y() - 1, block.z()))) {
-                    mesh.quad(x0,y0,z1, x0,y0,z0, x1,y0,z0, x1,y0,z1, bottomColor, 0.48f);
+                    mesh.quad(x0,y0,z1, x0,y0,z0, x1,y0,z0, x1,y0,z1, bottomColor, 0.48f, block.blockId().hashCode() ^ 0x2468ace0);
                 }
                 if (!occupied.contains(new BlockPosition(block.x() - 1, block.y(), block.z()))) {
-                    mesh.quad(x0,y0,z0, x0,y0,z1, x0,y1,z1, x0,y1,z0, sideColor, 0.72f);
+                    mesh.quad(x0,y0,z0, x0,y0,z1, x0,y1,z1, x0,y1,z0, sideColor, 0.72f, block.blockId().hashCode() ^ 0x10203040);
                 }
                 if (!occupied.contains(new BlockPosition(block.x() + 1, block.y(), block.z()))) {
-                    mesh.quad(x1,y0,z1, x1,y0,z0, x1,y1,z0, x1,y1,z1, sideColor, 0.82f);
+                    mesh.quad(x1,y0,z1, x1,y0,z0, x1,y1,z0, x1,y1,z1, sideColor, 0.82f, block.blockId().hashCode() ^ 0x50607080);
                 }
                 if (!occupied.contains(new BlockPosition(block.x(), block.y(), block.z() - 1))) {
-                    mesh.quad(x1,y0,z0, x0,y0,z0, x0,y1,z0, x1,y1,z0, sideColor, 0.62f);
+                    mesh.quad(x1,y0,z0, x0,y0,z0, x0,y1,z0, x1,y1,z0, sideColor, 0.62f, block.blockId().hashCode() ^ 0x31415926);
                 }
                 if (!occupied.contains(new BlockPosition(block.x(), block.y(), block.z() + 1))) {
-                    mesh.quad(x0,y0,z1, x1,y0,z1, x1,y1,z1, x0,y1,z1, sideColor, 0.68f);
+                    mesh.quad(x0,y0,z1, x1,y0,z1, x1,y1,z1, x0,y1,z1, sideColor, 0.68f, block.blockId().hashCode() ^ 0x27182818);
                 }
                 if (mesh.full()) break;
             }
@@ -967,6 +967,57 @@ final class ChunkPreviewView extends GLSurfaceView {
             vertex(ax,ay,az,color,shade);
             vertex(cx,cy,cz,color,shade);
             vertex(dx,dy,dz,color,shade);
+        }
+
+        /**
+         * Emits a coarse, deterministic pixel-art surface by splitting a face
+         * into small tiles with subtle per-tile material variation. This keeps
+         * the renderer self-contained until external resource-pack textures
+         * and atlas UVs are wired into the client.
+         */
+        void texturedQuad(float ax, float ay, float az, float bx, float by, float bz,
+                          float cx, float cy, float cz, float dx, float dy, float dz,
+                          float[] color, float shade, int seed) {
+            final int tiles = 2;
+            for (int v = 0; v < tiles; v++) {
+                for (int u = 0; u < tiles; u++) {
+                    if (full()) return;
+                    float u0 = u / (float) tiles;
+                    float u1 = (u + 1) / (float) tiles;
+                    float v0 = v / (float) tiles;
+                    float v1 = (v + 1) / (float) tiles;
+                    float[] p00 = bilerp(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz, u0, v0);
+                    float[] p10 = bilerp(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz, u1, v0);
+                    float[] p11 = bilerp(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz, u1, v1);
+                    float[] p01 = bilerp(ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz, u0, v1);
+                    int noise = seed ^ (u * 0x45d9f3b) ^ (v * 0x119de1f3);
+                    noise ^= noise >>> 16;
+                    noise *= 0x7feb352d;
+                    noise ^= noise >>> 15;
+                    float variation = 0.92f + ((noise & 255) / 255f) * 0.16f;
+                    float[] tileColor = new float[]{
+                            Math.min(1f, color[0] * variation),
+                            Math.min(1f, color[1] * variation),
+                            Math.min(1f, color[2] * variation)};
+                    quad(p00[0],p00[1],p00[2], p10[0],p10[1],p10[2],
+                            p11[0],p11[1],p11[2], p01[0],p01[1],p01[2],
+                            tileColor, shade);
+                }
+            }
+        }
+
+        private static float[] bilerp(float ax, float ay, float az, float bx, float by, float bz,
+                                      float cx, float cy, float cz, float dx, float dy, float dz,
+                                      float u, float v) {
+            float bottomX = ax + (bx - ax) * u;
+            float bottomY = ay + (by - ay) * u;
+            float bottomZ = az + (bz - az) * u;
+            float topX = dx + (cx - dx) * u;
+            float topY = dy + (cy - dy) * u;
+            float topZ = dz + (cz - dz) * u;
+            return new float[]{bottomX + (topX - bottomX) * v,
+                    bottomY + (topY - bottomY) * v,
+                    bottomZ + (topZ - bottomZ) * v};
         }
 
         private void ensureCapacity(int required) {

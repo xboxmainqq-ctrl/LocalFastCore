@@ -11,11 +11,13 @@ Prototype target: Android 8.0+ (API 26), compile/target SDK 35, Java 17.
 - Embedded WebView dashboard and six early-stage creation tools.
 - Free-only OpenRouter text chat bridge using `openrouter/free`; no paid fallback.
 - GitHub repository connection using a fine-grained personal access token.
-- GitHub repository and branch listing, branch creation, and atomic multi-file commits.
+- GitHub repository and branch listing, branch creation, repository folder browsing, UTF-8 file reading, and atomic multi-file commits.
+- Workspace editor with staged file changes and a confirmation step before writing commits.
+- AI-assisted editing of the currently opened file: the file content is sent as task context to the free-only model; the proposed complete file is reviewed and staged by the user before commit.
 - GitHub token encrypted at rest with Android Keystore (AES-GCM).
 - GitHub writes require a user confirmation in the dashboard.
 - GitHub commit API currently supports up to 50 text files and 1 MiB total per commit.
-- Project workspace is still browser-local; a full project file manager and direct AI-to-workspace editing are not yet implemented.
+- The GitHub workspace can browse folders, read text files, and stage AI-assisted edits for review. It is not yet a full local Git clone or an autonomous terminal/build agent.
 - No remote-network access to the local API, no public website deployment, and no full autonomous build agent yet.
 
 ## GitHub setup
@@ -29,7 +31,7 @@ Prototype target: Android 8.0+ (API 26), compile/target SDK 35, Java 17.
 
 Prefer a dedicated working branch such as `nexora-ai/my-feature`. Avoid committing directly to `main`. Never paste the token into the AI chat, project files, or a public repository. You can revoke the token in GitHub settings at any time; use the Disconnect button to erase its local copy.
 
-The current UI saves a text file per commit. The next planned step is connecting the GitHub workspace to the project file manager so AI-generated changes can be reviewed as a diff and saved together.
+The workspace editor can read files from a selected repository branch, request an AI rewrite of the opened file using the current file as context, stage the returned content, and commit up to 50 staged text files together (maximum 1 MiB total). Review every generated change before committing. The AI response is not proof that code compiles; no build is run on the tablet by this editor.
 
 ## AI provider
 

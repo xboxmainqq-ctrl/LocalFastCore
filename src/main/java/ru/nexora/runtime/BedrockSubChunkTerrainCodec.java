@@ -77,7 +77,7 @@ public final class BedrockSubChunkTerrainCodec {
 
         ByteBuffer out = ByteBuffer.allocate(required);
         out.put((byte) FORMAT_VERSION);
-        out.put((byte) BLOCK_STORAGE_LAYERS);
+        out.put((byte) STORAGE_LAYER_COUNT);
         out.put((byte) absoluteSubChunkY);
         out.put(blockStorage);
         out.put(liquidStorage);

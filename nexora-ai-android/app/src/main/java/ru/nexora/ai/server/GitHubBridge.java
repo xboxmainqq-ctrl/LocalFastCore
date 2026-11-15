@@ -338,6 +338,20 @@ public final class GitHubBridge {
         return value;
     }
 
+    private String encodeContentPath(String value) {
+        String[] parts = value.split("/");
+        StringBuilder out = new StringBuilder();
+        for (String part : parts) {
+            if (out.length() > 0) out.append("/");
+            out.append(java.net.URLEncoder.encode(part, StandardCharsets.UTF_8).replace("+", "%20"));
+        }
+        return out.toString();
+    }
+
+    private String encodeQuery(String value) {
+        return java.net.URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
+    }
+
     private String encodePath(String value) {
         return value.replace("%", "%25").replace("/", "%2F").replace(" ", "%20");
     }

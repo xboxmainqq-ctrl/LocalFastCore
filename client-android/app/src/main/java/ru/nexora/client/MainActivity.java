@@ -21,7 +21,9 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -45,6 +47,7 @@ public final class MainActivity extends Activity {
     private Button connectButton;
     private NetherNetAndroidClient netherNetClient;
     private ChunkPreviewView chunkPreview;
+    private ChunkPreviewView localPreview;
     private Button cameraModeButton;
     private Button skinButton;
     private Button customSkinButton;
@@ -169,22 +172,97 @@ public final class MainActivity extends Activity {
     }
 
     private void showSinglePlayerScreen() {
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(22), dp(28), dp(22), dp(22));
-        content.setBackgroundColor(BACKGROUND);
-        content.addView(text("ОДИНОЧНЫЙ МИР", 26, TEXT, true), matchWrap());
-        addSpace(content, 14);
-        LinearLayout card = card();
-        content.addView(card, matchWrap());
-        card.addView(text("ЛОКАЛЬНАЯ ИГРА", 13, ACCENT, true), matchWrap());
-        addSpace(card, 10);
-        card.addView(text("Создание и сохранение одиночных миров ещё разрабатываются. Когда локальный движок будет готов, здесь появятся кнопки «Создать мир» и «Продолжить».", 14, TEXT, false), matchWrap());
-        addSpace(content, 20);
-        Button back = button("НАЗАД");
-        content.addView(back, matchWrap());
-        back.setOnClickListener(v -> setContentView(createHomeScreen()));
-        setContentView(content);
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setPadding(dp(16), dp(20), dp(16), dp(20));
+        page.setBackgroundColor(BACKGROUND);
+
+        TextView title = text("ОДИНОЧНЫЙ МИР", 24, TEXT, true);
+        title.setGravity(Gravity.CENTER);
+        page.addView(title, matchWrap());
+        addSpace(page, 8);
+        TextView state = text("ЛОКАЛЬНЫЙ ПРОТОТИП • БЕЗ СЕТИ", 12, ACCENT, true);
+        state.setGravity(Gravity.CENTER);
+        page.addView(state, matchWrap());
+        addSpace(page, 14);
+
+        localPreview = new ChunkPreviewView(this);
+        localPreview.setFirstPersonMode(false);
+        localPreview.setCenter(0, 0);
+        localPreview.setPlayerSpawn(0, 64, 0);
+        for (int chunkX = -1; chunkX <= 1; chunkX++) {
+            for (int chunkZ = -1; chunkZ <= 1; chunkZ++) {
+                localPreview.setChunk(createLocalChunk(chunkX, chunkZ));
+            }
+        }
+        localPreview.setMovementListener((x, y, z) -> runOnUiThread(() ->
+                state.setText(String.format(java.util.Locale.ROOT,
+                        "ЛОКАЛЬНЫЙ МИР • X %.1f  Y %.1f  Z %.1f", x, y, z))));
+        page.addView(localPreview, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        addSpace(page, 10);
+        Button camera = button("ВИД: ОТ ТРЕТЬЕГО ЛИЦА");
+        page.addView(camera, matchWrap());
+        camera.setOnClickListener(v -> {
+            boolean firstPerson = camera.getText().toString().contains("ТРЕТЬЕГО");
+            localPreview.setFirstPersonMode(firstPerson);
+            camera.setText(firstPerson ? "ВИД: ОТ ПЕРВОГО ЛИЦА" : "ВИД: ОТ ТРЕТЬЕГО ЛИЦА");
+        });
+
+        LinearLayout forward = new LinearLayout(this);
+        forward.setGravity(Gravity.CENTER);
+        page.addView(forward, matchWrap());
+        Button forwardButton = button("ВПЕРЁД");
+        forward.addView(forwardButton, new LinearLayout.LayoutParams(dp(140), dp(48)));
+        forwardButton.setOnClickListener(v -> localPreview.movePlayer(1f, 0f));
+
+        LinearLayout directions = new LinearLayout(this);
+        directions.setGravity(Gravity.CENTER);
+        page.addView(directions, matchWrap());
+        Button left = button("◀");
+        Button backStep = button("НАЗАД");
+        Button right = button("▶");
+        directions.addView(left, new LinearLayout.LayoutParams(dp(72), dp(48)));
+        directions.addView(backStep, new LinearLayout.LayoutParams(dp(112), dp(48)));
+        directions.addView(right, new LinearLayout.LayoutParams(dp(72), dp(48)));
+        left.setOnClickListener(v -> localPreview.movePlayer(0f, -1f));
+        backStep.setOnClickListener(v -> localPreview.movePlayer(-1f, 0f));
+        right.setOnClickListener(v -> localPreview.movePlayer(0f, 1f));
+        addSpace(page, 6);
+        Button jump = button("ПРЫЖОК");
+        page.addView(jump, matchWrap());
+        jump.setOnClickListener(v -> localPreview.jumpPlayer());
+        addSpace(page, 6);
+        page.addView(text("Проведи пальцем по миру — повернуть камеру; двумя пальцами — изменить масштаб.",
+                11, MUTED, false), matchWrap());
+        addSpace(page, 8);
+        page.addView(text("Сейчас доступен тестовый плоский мир 3×3 чанка. Сохранение, выбор генерации и полноценная загрузка мира ещё впереди.",
+                12, MUTED, false), matchWrap());
+        addSpace(page, 8);
+        Button exit = button("В МЕНЮ");
+        page.addView(exit, matchWrap());
+        exit.setOnClickListener(v -> {
+            if (localPreview != null) {
+                localPreview.onPause();
+                localPreview = null;
+            }
+            setContentView(createHomeScreen());
+        });
+        setContentView(page);
+    }
+
+    private NexoraAndroidProtocolCodec.ChunkData createLocalChunk(int chunkX, int chunkZ) {
+        List<NexoraAndroidProtocolCodec.ChunkBlock> blocks = new ArrayList<>(16 * 16 * 4);
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                blocks.add(new NexoraAndroidProtocolCodec.ChunkBlock(x, 60, z, "minecraft:bedrock"));
+                blocks.add(new NexoraAndroidProtocolCodec.ChunkBlock(x, 61, z, "minecraft:dirt"));
+                blocks.add(new NexoraAndroidProtocolCodec.ChunkBlock(x, 62, z, "minecraft:dirt"));
+                blocks.add(new NexoraAndroidProtocolCodec.ChunkBlock(x, 63, z, "minecraft:grass_block"));
+            }
+        }
+        return new NexoraAndroidProtocolCodec.ChunkData(chunkX, chunkZ, blocks);
     }
 
     private View createWorldClientScreen() {
@@ -701,18 +779,16 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onPause() {
-        if (chunkPreview != null) {
-            chunkPreview.onPause();
-        }
+        if (chunkPreview != null) chunkPreview.onPause();
+        if (localPreview != null) localPreview.onPause();
         super.onPause();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        if (chunkPreview != null) {
-            chunkPreview.onResume();
-        }
+        if (chunkPreview != null) chunkPreview.onResume();
+        if (localPreview != null) localPreview.onResume();
     }
 
     @Override

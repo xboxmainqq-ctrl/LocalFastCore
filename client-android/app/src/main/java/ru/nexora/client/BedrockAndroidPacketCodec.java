@@ -110,39 +110,121 @@ public final class BedrockAndroidPacketCodec {
         return bytes(encodeAfterNetworkSettings(batch, settings));
     }
 
-    /** Validates the empty-pack ResourcePacksInfo variant used by NEXORA. */
-    public static void decodeEmptyResourcePacksInfo(byte[] payloadBytes) {
+    /** Decodes Bedrock ResourcePacksInfo, including the advertised resource-pack metadata. */
+    public static BedrockAndroidResourcePackInfo decodeResourcePacksInfo(byte[] payloadBytes) {
         ByteBuffer payload = ByteBuffer.wrap(payloadBytes);
-        boolean forced = readBoolean(payload);
+        boolean required = readBoolean(payload);
         boolean hasAddonPacks = readBoolean(payload);
-        boolean scriptingEnabled = readBoolean(payload);
-        boolean vibrantVisualsForceDisabled = readBoolean(payload);
-        if (forced || hasAddonPacks || scriptingEnabled || vibrantVisualsForceDisabled) {
-            throw new UnsupportedOperationException("This client build only negotiates empty vanilla resource packs");
-        }
+        boolean hasScripts = readBoolean(payload);
+        boolean forceDisableVibrantVisuals = readBoolean(payload);
         if (payload.remaining() < 16) {
             throw new IllegalArgumentException("Truncated ResourcePacksInfo world-template UUID");
         }
-        payload.position(payload.position() + 16);
-        readUtf8String(payload, 32); // world template version
+        readLittleEndianInt64(payload);
+        readLittleEndianInt64(payload);
+        readUtf8String(payload, 32); // world-template version
         int packCount = readVarUInt32(payload);
-        if (packCount != 0) {
-            throw new UnsupportedOperationException("Non-empty resource packs are not implemented yet");
+        if (packCount < 0 || packCount > 64) {
+            throw new IllegalArgumentException("ResourcePacksInfo pack count is outside the allowed range");
+        }
+        java.util.ArrayList<BedrockAndroidResourcePackInfo.Pack> packs =
+                new java.util.ArrayList<>(packCount);
+        java.util.HashSet<String> identities = new java.util.HashSet<>();
+        for (int i = 0; i < packCount; i++) {
+            java.util.UUID uuid = new java.util.UUID(
+                    readLittleEndianInt64(payload), readLittleEndianInt64(payload));
+            String version = readUtf8String(payload, 64);
+            long size = readLittleEndianInt64(payload);
+            String contentKey = readUtf8String(payload, 256);
+            String subpack = readUtf8String(payload, 256);
+            String identity = readUtf8String(payload, 256);
+            boolean scripts = readBoolean(payload);
+            boolean addon = readBoolean(payload);
+            boolean rayTracing = readBoolean(payload);
+            String cdnUrl = readUtf8String(payload, 2048);
+            BedrockAndroidResourcePackInfo.Pack pack =
+                    new BedrockAndroidResourcePackInfo.Pack(uuid, version, size,
+                            contentKey, subpack, identity, scripts, addon, rayTracing, cdnUrl);
+            if (!identities.add(pack.resourceName())) {
+                throw new IllegalArgumentException("Duplicate Bedrock resource-pack identity");
+            }
+            packs.add(pack);
         }
         if (payload.hasRemaining()) {
             throw new IllegalArgumentException("Trailing ResourcePacksInfo payload bytes");
         }
+        return new BedrockAndroidResourcePackInfo(required, hasAddonPacks,
+                hasScripts, forceDisableVibrantVisuals, packs);
     }
 
-    /** Validates the empty-pack ResourcePackStack variant used by NEXORA. */
-    public static void decodeEmptyResourcePackStack(byte[] payloadBytes) {
-        ByteBuffer payload = ByteBuffer.wrap(payloadBytes);
-        boolean forced = readBoolean(payload);
-        int packCount = readVarUInt32(payload);
-        if (forced || packCount != 0) {
-            throw new UnsupportedOperationException("This client build only supports an empty resource-pack stack");
+    /** Validates the empty-pack ResourcePacksInfo variant used by older UI paths. */
+    public static void decodeEmptyResourcePacksInfo(byte[] payloadBytes) {
+        BedrockAndroidResourcePackInfo info = decodeResourcePacksInfo(payloadBytes);
+        if (info.required() || info.hasAddonPacks() || info.hasScripts()
+                || info.packs().size() != 0) {
+            throw new UnsupportedOperationException("Non-empty or forced resource packs require the pack downloader");
         }
-        readUtf8String(payload, 32); // game version
+    }
+
+    /** Decodes ResourcePackDataInfo for one unencrypted resource archive. */
+    public static BedrockAndroidResourcePackDataInfo decodeResourcePackDataInfo(byte[] payloadBytes) {
+        ByteBuffer payload = ByteBuffer.wrap(payloadBytes);
+        String resourceName = readUtf8String(payload, 128);
+        int chunkSize = readLittleEndianInt32(payload);
+        int chunkCount = readLittleEndianInt32(payload);
+        long fileSize = readLittleEndianInt64(payload);
+        String hash = readUtf8String(payload, 64);
+        boolean premium = readBoolean(payload);
+        if (!payload.hasRemaining()) throw new IllegalArgumentException("Missing resource-pack type");
+        int packType = Byte.toUnsignedInt(payload.get());
+        if (payload.hasRemaining() || resourceName.isBlank()
+                || chunkSize < 1 || chunkSize > 1024 * 1024
+                || chunkCount < 1 || chunkCount > 64
+                || fileSize < 1 || fileSize > 64L * 1024L * 1024L
+                || chunkCount != (fileSize + chunkSize - 1) / chunkSize
+                || !hash.matches("[0-9a-fA-F]{64}") || premium || packType != 6) {
+            throw new IllegalArgumentException("Unsupported or invalid Bedrock resource-pack data info");
+        }
+        return new BedrockAndroidResourcePackDataInfo(resourceName, chunkSize,
+                chunkCount, fileSize, hash.toLowerCase(java.util.Locale.ROOT), packType);
+    }
+
+    /** Decodes one ResourcePackChunkData payload. */
+    public static BedrockAndroidResourcePackChunk decodeResourcePackChunkData(byte[] payloadBytes) {
+        ByteBuffer payload = ByteBuffer.wrap(payloadBytes);
+        String resourceName = readUtf8String(payload, 128);
+        int chunkIndex = readLittleEndianInt32(payload);
+        long offset = readLittleEndianInt64(payload);
+        int length = readVarUInt32(payload);
+        if (chunkIndex < 0 || offset < 0 || length < 1 || length > 1024 * 1024
+                || length != payload.remaining()) {
+            throw new IllegalArgumentException("Invalid Bedrock resource-pack chunk data");
+        }
+        byte[] data = new byte[length];
+        payload.get(data);
+        return new BedrockAndroidResourcePackChunk(resourceName, chunkIndex, offset, data);
+    }
+
+    /** Decodes ResourcePackStack and returns the ordered pack IDs. */
+    public static BedrockAndroidResourcePackStack decodeResourcePackStack(byte[] payloadBytes) {
+        ByteBuffer payload = ByteBuffer.wrap(payloadBytes);
+        boolean required = readBoolean(payload);
+        int packCount = readVarUInt32(payload);
+        if (packCount < 0 || packCount > 64) {
+            throw new IllegalArgumentException("ResourcePackStack pack count is outside the allowed range");
+        }
+        java.util.ArrayList<String> resourceNames = new java.util.ArrayList<>(packCount);
+        for (int i = 0; i < packCount; i++) {
+            String uuid = readUtf8String(payload, 64);
+            String version = readUtf8String(payload, 64);
+            readUtf8String(payload, 256); // subpack name
+            java.util.UUID.fromString(uuid);
+            if (!version.matches("(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?")) {
+                throw new IllegalArgumentException("Invalid resource-pack stack version");
+            }
+            resourceNames.add(uuid + "_" + version);
+        }
+        String gameVersion = readUtf8String(payload, 64);
         int experimentCount = readLittleEndianInt32(payload);
         if (experimentCount < 0 || experimentCount > 1024) {
             throw new IllegalArgumentException("Bedrock experiment count is outside the allowed range");
@@ -155,26 +237,72 @@ public final class BedrockAndroidPacketCodec {
         if (experimentsPreviouslyToggled || hasEditorPacks || payload.hasRemaining()) {
             throw new IllegalArgumentException("Unsupported or trailing ResourcePackStack fields");
         }
+        return new BedrockAndroidResourcePackStack(required, gameVersion, resourceNames);
     }
 
-    /** Encodes HAVE_ALL_PACKS or COMPLETED response for an empty server pack set. */
-    public static byte[] encodeResourcePackClientResponse(
-            BedrockAndroidResourcePackStatus status, BedrockAndroidNetworkSettings settings) {
-        if (status != BedrockAndroidResourcePackStatus.HAVE_ALL_PACKS
-                && status != BedrockAndroidResourcePackStatus.COMPLETED) {
-            throw new IllegalArgumentException("Only empty-pack HAVE_ALL_PACKS and COMPLETED responses are supported");
+    /** Validates the empty-pack ResourcePackStack variant used by NEXORA. */
+    public static void decodeEmptyResourcePackStack(byte[] payloadBytes) {
+        if (!decodeResourcePackStack(payloadBytes).resourceNames().isEmpty()) {
+            throw new UnsupportedOperationException("Non-empty resource-pack stacks require the pack downloader");
         }
-        String statusName = status == BedrockAndroidResourcePackStatus.HAVE_ALL_PACKS
-                ? "downloadingfinished" : "resourcepackstackfinished";
-        ByteBuffer payload = ByteBuffer.allocate(64);
+    }
+
+    /** Encodes the client response with optional requested pack IDs. */
+    public static byte[] encodeResourcePackClientResponse(
+            BedrockAndroidResourcePackStatus status, List<String> packIds,
+            BedrockAndroidNetworkSettings settings) {
+        if (status == null || packIds == null || settings == null || packIds.size() > 64) {
+            throw new IllegalArgumentException("Resource-pack response arguments are invalid");
+        }
+        String statusName = switch (status) {
+            case REFUSED -> "refused";
+            case SEND_PACKS -> "downloading";
+            case HAVE_ALL_PACKS -> "downloadingfinished";
+            case COMPLETED -> "resourcepackstackfinished";
+        };
+        if (status != BedrockAndroidResourcePackStatus.SEND_PACKS && !packIds.isEmpty()) {
+            throw new IllegalArgumentException("Only SEND_PACKS may include pack identifiers");
+        }
+        int capacity = 128;
+        for (String id : packIds) capacity += id.getBytes(StandardCharsets.UTF_8).length + 5;
+        ByteBuffer payload = ByteBuffer.allocate(capacity);
         writeVarUInt32(payload, status.wireValue());
         writeUtf8String(payload, statusName);
+        if (status == BedrockAndroidResourcePackStatus.SEND_PACKS) {
+            writeVarUInt32(payload, packIds.size());
+            for (String id : packIds) writeUtf8String(payload, id);
+        }
         payload.flip();
 
         int packetLength = varUInt32Size(8) + payload.remaining();
         ByteBuffer batch = ByteBuffer.allocate(varUInt32Size(packetLength) + packetLength);
         writeVarUInt32(batch, packetLength);
-        writeVarUInt32(batch, 8); // ResourcePackClientResponse packet ID
+        writeVarUInt32(batch, 8);
+        batch.put(payload);
+        batch.flip();
+        return bytes(encodeAfterNetworkSettings(batch, settings));
+    }
+
+    public static byte[] encodeResourcePackClientResponse(
+            BedrockAndroidResourcePackStatus status, BedrockAndroidNetworkSettings settings) {
+        return encodeResourcePackClientResponse(status, List.of(), settings);
+    }
+
+    /** Encodes a serverbound ResourcePackChunkRequest packet. */
+    public static byte[] encodeResourcePackChunkRequest(
+            String resourceName, int chunkIndex, BedrockAndroidNetworkSettings settings) {
+        if (resourceName == null || resourceName.isBlank() || chunkIndex < 0 || settings == null) {
+            throw new IllegalArgumentException("Resource-pack chunk request is invalid");
+        }
+        ByteBuffer payload = ByteBuffer.allocate(160);
+        writeUtf8String(payload, resourceName);
+        payload.put((byte) chunkIndex).put((byte) (chunkIndex >>> 8))
+                .put((byte) (chunkIndex >>> 16)).put((byte) (chunkIndex >>> 24));
+        payload.flip();
+        int packetLength = varUInt32Size(84) + payload.remaining();
+        ByteBuffer batch = ByteBuffer.allocate(varUInt32Size(packetLength) + packetLength);
+        writeVarUInt32(batch, packetLength);
+        writeVarUInt32(batch, 84);
         batch.put(payload);
         batch.flip();
         return bytes(encodeAfterNetworkSettings(batch, settings));

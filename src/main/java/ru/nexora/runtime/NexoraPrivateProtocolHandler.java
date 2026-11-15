@@ -191,7 +191,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
             if (worldSupplier == null || chunkLoader == null || worldInfo == null) {
                 connection.setMessageListener(ignored -> connection.close());
             } else {
-                AtomicInteger requestedChunks = new AtomicInteger();
+                java.util.Set<ChunkPosition> requestedChunks = ConcurrentHashMap.newKeySet();
                 java.util.concurrent.atomic.AtomicLong lastMovementNanos =
                         new java.util.concurrent.atomic.AtomicLong();
                 NexoraMovementValidator movementValidator = new NexoraMovementValidator();
@@ -245,7 +245,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                     } else if (isInventoryActionPacket(inboundMessage.payload())) {
                         handleInventoryAction(connection, inboundMessage, session);
                     } else {
-                        handleChunkRequest(connection, inboundMessage, worldInfo, requestedChunks);
+                        handleChunkRequest(connection, inboundMessage, session, requestedChunks);
                     }
                 });
             }
@@ -516,7 +516,7 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
     }
 
     private void handleChunkRequest(TransportConnection connection, TransportMessage message,
-                                    NexoraWorldInfo worldInfo, AtomicInteger requestedChunks) {
+                                    PlayerSession session, java.util.Set<ChunkPosition> requestedChunks) {
         if (!connection.isOpen()) return;
         if (message.deliveryMode() != DeliveryMode.RELIABLE_ORDERED
                 || message.sizeBytes() > NexoraChunkDataCodec.MAX_MESSAGE_BYTES) {
@@ -526,18 +526,20 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
         try {
             NexoraChunkDataCodec.ChunkRequest request =
                     NexoraChunkDataCodec.decodeChunkRequest(message.payload());
-            if (requestedChunks.incrementAndGet() > 9) {
-                connection.close();
-                return;
-            }
-            int spawnChunkX = Math.floorDiv(worldInfo.spawnX(), 16);
-            int spawnChunkZ = Math.floorDiv(worldInfo.spawnZ(), 16);
-            if (Math.abs((long) request.chunkX() - spawnChunkX) > 1
-                    || Math.abs((long) request.chunkZ() - spawnChunkZ) > 1) {
-                connection.close();
-                return;
-            }
             ChunkPosition position = new ChunkPosition(request.chunkX(), request.chunkZ());
+            NexoraMovementValidator.Position player = session.position.get();
+            int playerChunkX = Math.floorDiv((int) Math.floor(player.x()), 16);
+            int playerChunkZ = Math.floorDiv((int) Math.floor(player.z()), 16);
+            if (Math.abs((long) request.chunkX() - playerChunkX) > 1
+                    || Math.abs((long) request.chunkZ() - playerChunkZ) > 1) {
+                connection.close();
+                return;
+            }
+            if (!requestedChunks.contains(position) && requestedChunks.size() >= 512) {
+                connection.close();
+                return;
+            }
+            requestedChunks.add(position);
             if (!Boolean.TRUE.equals(chunkLoader.apply(position))) {
                 connection.close();
                 return;

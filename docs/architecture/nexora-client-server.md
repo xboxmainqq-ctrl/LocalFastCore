@@ -13,9 +13,9 @@ The client is the primary first-party test client for the server. Server and cli
 
 ## Platform decision
 
-NEXORA is a standalone fantasy MMORPG with its own Android client and its own versioned NEXORA protocol. Ordinary Minecraft/Bedrock clients are not required and are not the target for the first playable release.
+NEXORA is a Minecraft-style multiplayer platform: a custom server core, a first-party Android client, and creator tools for worlds, gameplay content and interfaces. RPG is the first flagship mode; minigames, survival and other modes can share the same world and session foundation.
 
-The private NEXORA protocol is the primary client/server contract. It must remain explicitly versioned and must never be advertised as Bedrock-compatible. Existing Bedrock packet codecs are isolated optional compatibility work; they must not become a dependency of RPG gameplay or block the standalone NEXORA release.
+The server's compatibility boundary must be explicit. A Bedrock protocol adapter is the path for supported ordinary Minecraft Bedrock clients; a versioned NEXORA extension protocol may carry custom-client features such as richer UI metadata, creator tools and platform-specific capabilities. Do not describe the existing private NEXORA protocol as Bedrock-compatible, and do not claim vanilla-client support until login, encryption, movement, chunk streaming and gameplay have passed real-client tests. Advanced custom HUD and Visual Studio features are first-party-client features, not something an unmodified Minecraft client can render.
 
 The first-party client and server are developed together. Their shared contracts cover identity, world state, chunks, character state, inventory, abilities, combat and replication. The server remains authoritative for every persistent or competitive gameplay result.
 

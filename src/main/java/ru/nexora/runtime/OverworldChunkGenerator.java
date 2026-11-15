@@ -20,6 +20,11 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
     private static final BlockState DIRT = new BlockState("minecraft:dirt");
     private static final BlockState GRASS = new BlockState("minecraft:grass_block");
     private static final BlockState WATER = new BlockState("minecraft:water");
+    private static final BlockState MOSS_BLOCK = new BlockState("minecraft:moss_block");
+    private static final BlockState MOSS_CARPET = new BlockState("minecraft:moss_carpet");
+    private static final BlockState GLOW_LICHEN = new BlockState("minecraft:glow_lichen");
+    private static final BlockState SPORE_BLOSSOM = new BlockState("minecraft:spore_blossom");
+    private static final BlockState HANGING_ROOTS = new BlockState("minecraft:hanging_roots");
     private static final OreVein[] ORE_VEINS = {
             new OreVein("minecraft:coal_ore", -16, 192, 3, 4, 0x1a2b3c4dL),
             new OreVein("minecraft:iron_ore", -56, 72, 3, 3, 0x2b3c4d5eL),
@@ -101,6 +106,7 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
         }
 
         carveCaves(baseX, baseZ, height, seed, surfaceHeights, fluids, blocks);
+        decorateLushCaves(baseX, baseZ, height, seed, blocks, fluids);
         placeTrees(position, baseX, baseZ, height, seed, surfaceHeights, columnBiomes, waterColumns, blocks);
         return new GeneratedChunk(position, blocks, Map.of(), fluids, biomeColumns, height);
     }
@@ -213,9 +219,81 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
         double chambers = noise3d(x, y, z, seed, 38, 0x51a7c3d9L);
         double tunnels = noise3d(x, y, z, seed, 19, 0x2c6e8b41L);
         double vertical = noise3d(x, y, z, seed, 57, 0x7d319fa5L);
+        double giantRooms = noise3d(x, y, z, seed, 76, 0x3e91b6d2L);
         boolean chamber = Math.abs(chambers) < 0.115 && Math.abs(vertical) < 0.72;
+        boolean giantChamber = Math.abs(giantRooms) < 0.075 && Math.abs(vertical) < 0.84;
         boolean tunnel = Math.abs(tunnels) < 0.052 && Math.abs(chambers) < 0.34;
-        return chamber || tunnel;
+        return chamber || giantChamber || tunnel;
+    }
+
+    /**
+     * Adds vegetation only inside naturally carved cave air and only in
+     * world-aligned lush pockets. All placement decisions use absolute
+     * coordinates so neighboring chunks produce matching cave biomes.
+     */
+    private static void decorateLushCaves(
+            int baseX, int baseZ, WorldHeight height, long seed,
+            Map<BlockPosition, BlockState> blocks, Map<BlockPosition, BlockState> fluids) {
+        int minY = Math.max(height.minY() + 2, -52);
+        int maxY = Math.min(height.maxYExclusive() - 2, 44);
+        for (int localX = 0; localX < 16; localX++) {
+            for (int localZ = 0; localZ < 16; localZ++) {
+                int x = baseX + localX;
+                int z = baseZ + localZ;
+                for (int y = minY; y <= maxY; y++) {
+                    BlockPosition air = new BlockPosition(x, y, z);
+                    if (blocks.containsKey(air) || fluids.containsKey(air)
+                            || !isCave(x, y, z, seed) || !isLushCave(x, y, z, seed)) {
+                        continue;
+                    }
+
+                    BlockPosition floor = new BlockPosition(x, y - 1, z);
+                    BlockPosition ceiling = new BlockPosition(x, y + 1, z);
+                    BlockState floorState = blocks.get(floor);
+                    BlockState ceilingState = blocks.get(ceiling);
+                    long roll = coordinateHash(seed ^ 0x6a09e667f3bcc909L, x, z)
+                            ^ ((long) y * 0x9e3779b97f4a7c15L);
+
+                    if (floorState != null && isSolidNaturalCaveSurface(floorState)) {
+                        if (Long.remainderUnsigned(roll, 5) == 0) {
+                            blocks.put(floor, MOSS_BLOCK);
+                        } else if (Long.remainderUnsigned(roll >>> 3, 3) == 0) {
+                            blocks.put(air, MOSS_CARPET);
+                        }
+                    }
+
+                    if (ceilingState != null && isSolidNaturalCaveSurface(ceilingState)) {
+                        if (Long.remainderUnsigned(roll >>> 7, 83) == 0) {
+                            blocks.put(air, SPORE_BLOSSOM);
+                        } else if (Long.remainderUnsigned(roll >>> 11, 13) == 0) {
+                            blocks.put(air, HANGING_ROOTS);
+                        }
+                    }
+
+                    boolean besideWall = isSolidNaturalCaveSurface(
+                            blocks.get(new BlockPosition(x - 1, y, z)))
+                            || isSolidNaturalCaveSurface(blocks.get(new BlockPosition(x + 1, y, z)))
+                            || isSolidNaturalCaveSurface(blocks.get(new BlockPosition(x, y, z - 1)))
+                            || isSolidNaturalCaveSurface(blocks.get(new BlockPosition(x, y, z + 1)));
+                    if (besideWall && Long.remainderUnsigned(roll >>> 17, 4) == 0) {
+                        blocks.put(air, GLOW_LICHEN);
+                    }
+                }
+            }
+        }
+    }
+
+    private static boolean isLushCave(int x, int y, int z, long seed) {
+        double pocket = noise3d(x, y, z, seed, 64, 0x4f1bbcdcL);
+        double moisture = noise3d(x, y, z, seed, 31, 0x91e10da5L);
+        return pocket < -0.12 && moisture > -0.25;
+    }
+
+    private static boolean isSolidNaturalCaveSurface(BlockState state) {
+        if (state == null) return false;
+        String id = state.identifier();
+        return id.equals("minecraft:stone") || id.equals("minecraft:dirt")
+                || id.equals("minecraft:clay") || id.equals("minecraft:deepslate");
     }
 
     private static double noise3d(int x, int y, int z, long seed, int scale, long salt) {

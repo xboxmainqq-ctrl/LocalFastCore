@@ -1,0 +1,3 @@
+[submodule "third_party/luanti"]
+	path = third_party/luanti
+	url = https://github.com/luanti-org/luanti.git

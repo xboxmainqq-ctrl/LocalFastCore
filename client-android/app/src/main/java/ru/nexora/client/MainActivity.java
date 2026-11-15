@@ -107,7 +107,7 @@ public final class MainActivity extends Activity {
 
     private Button menuButton(String title, String subtitle) {
         Button button = new Button(this);
-        button.setText(title + "\\n" + subtitle);
+        button.setText(title + "\n" + subtitle);
         button.setTextColor(TEXT);
         button.setTextSize(16);
         button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);

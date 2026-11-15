@@ -1,6 +1,13 @@
 package ru.nexora.client;
 
+import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Rect;
+
+import java.io.File;
 
 /**
  * Built-in 16x16 pixel texture atlas used as the fallback material source.
@@ -50,6 +57,15 @@ final class BlockTextureAtlas {
             {0xff414751,0xff555b65,0xff666d78,0xff343a43},
             {0xff76543b,0xff896344,0xff98704e,0xff68472f}
     };
+
+    private static final String[] TEXTURE_PATHS = {
+            "grass_top.png", "grass_side.png", "dirt.png", "stone.png",
+            "sand.png", "gravel.png", "log_side.png", "log_top.png",
+            "leaves.png", "water.png", "snow.png", "bedrock.png",
+            "planks.png", "clay.png", "deepslate.png", "dirt.png"
+    };
+    private static final long MAX_TEXTURE_FILE_BYTES = 4L * 1024L * 1024L;
+    private static final int MAX_TEXTURE_DIMENSION = 1024;
 
     private BlockTextureAtlas() {
     }
@@ -113,6 +129,53 @@ final class BlockTextureAtlas {
         Bitmap bitmap = Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888);
         bitmap.setPixels(pixels, 0, WIDTH, 0, 0, WIDTH, HEIGHT);
         return bitmap;
+    }
+
+    /**
+     * Loads fixed-name PNG overrides from the active private resource-pack folder.
+     * Missing or invalid files retain the generated built-in tile.
+     */
+    static Bitmap createBitmap(Context context) {
+        Bitmap atlas = createBitmap();
+        if (context == null) return atlas;
+
+        File textureDirectory = new File(
+                new File(new File(context.getFilesDir(), "resourcepacks"), "active"),
+                "textures/blocks");
+        if (!textureDirectory.isDirectory()) return atlas;
+
+        Canvas canvas = new Canvas(atlas);
+        Paint paint = new Paint();
+        paint.setFilterBitmap(false);
+        paint.setAntiAlias(false);
+        for (int tile = 0; tile < TILE_COUNT; tile++) {
+            Bitmap replacement = decodeReplacement(new File(textureDirectory, TEXTURE_PATHS[tile]));
+            if (replacement == null) continue;
+            int left = (tile % COLUMNS) * TILE_SIZE;
+            int top = (tile / COLUMNS) * TILE_SIZE;
+            canvas.drawBitmap(replacement, null,
+                    new Rect(left, top, left + TILE_SIZE, top + TILE_SIZE), paint);
+            replacement.recycle();
+        }
+        return atlas;
+    }
+
+    private static Bitmap decodeReplacement(File file) {
+        try {
+            if (!file.isFile() || file.length() <= 0L
+                    || file.length() > MAX_TEXTURE_FILE_BYTES) return null;
+            BitmapFactory.Options bounds = new BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            BitmapFactory.decodeFile(file.getAbsolutePath(), bounds);
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0
+                    || bounds.outWidth > MAX_TEXTURE_DIMENSION
+                    || bounds.outHeight > MAX_TEXTURE_DIMENSION) return null;
+            BitmapFactory.Options options = new BitmapFactory.Options();
+            options.inPreferredConfig = Bitmap.Config.ARGB_8888;
+            return BitmapFactory.decodeFile(file.getAbsolutePath(), options);
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     private static int mix(int value) {

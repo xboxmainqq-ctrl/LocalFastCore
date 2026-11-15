@@ -26,6 +26,8 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.security.SecureRandom;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -64,6 +66,7 @@ public final class NetherNetAndroidClient implements AutoCloseable {
     private final AtomicBoolean connectedNotified = new AtomicBoolean();
     private final AtomicBoolean loginSent = new AtomicBoolean();
     private final AtomicBoolean loginSuccessReceived = new AtomicBoolean();
+    private final Set<Long> requestedChunkKeys = ConcurrentHashMap.newKeySet();
 
     private volatile Listener listener;
     private volatile String playerName = "Игрок";
@@ -530,23 +533,8 @@ public final class NetherNetAndroidClient implements AutoCloseable {
                     if (current != null) {
                         mainHandler.post(() -> current.onWorldInfoReceived(world));
                     }
-                    int spawnChunkX = Math.floorDiv(world.spawnX(), 16);
-                    int spawnChunkZ = Math.floorDiv(world.spawnZ(), 16);
-                    int requested = 0;
-                    for (int radius = 0; radius <= 1; radius++) {
-                        for (int dz = -radius; dz <= radius; dz++) {
-                            for (int dx = -radius; dx <= radius; dx++) {
-                                if (radius == 1 && Math.abs(dx) != 1 && Math.abs(dz) != 1) continue;
-                                if (!sendReliable(NexoraAndroidProtocolCodec.encodeChunkRequest(
-                                        spawnChunkX + dx, spawnChunkZ + dz))) {
-                                    reportError("Не удалось запросить соседние чанки NEXORA");
-                                    return;
-                                }
-                                requested++;
-                            }
-                        }
-                    }
-                    reportStatus("Мир получен • запрошено чанков: " + requested);
+                    requestChunksAround(Math.floorDiv(world.spawnX(), 16),
+                            Math.floorDiv(world.spawnZ(), 16));
                     return;
                 } catch (RuntimeException malformed) {
                     reportError("Некорректные сведения о мире NEXORA: " + malformed.getMessage());
@@ -669,6 +657,24 @@ public final class NetherNetAndroidClient implements AutoCloseable {
 
     private boolean sendNexoraClientHello() {
         return sendReliable(NexoraAndroidProtocolCodec.encodeClientHello("android-0.1.0-dev", playerName, playerSkinIndex));
+    }
+
+    /** Requests the 3x3 chunk area around the authoritative player location. */
+    public void requestChunksAround(int centerChunkX, int centerChunkZ) {
+        if (!nexoraProtocolReady || !worldInfoReceived || !isConnected()) return;
+        for (int dz = -1; dz <= 1; dz++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                int chunkX = centerChunkX + dx;
+                int chunkZ = centerChunkZ + dz;
+                long key = ((long) chunkX << 32) ^ (chunkZ & 0xffffffffL);
+                if (!requestedChunkKeys.add(key)) continue;
+                if (!sendReliable(NexoraAndroidProtocolCodec.encodeChunkRequest(chunkX, chunkZ))) {
+                    requestedChunkKeys.remove(key);
+                    reportError("Не удалось запросить чанк " + chunkX + ", " + chunkZ);
+                    return;
+                }
+            }
+        }
     }
 
     /** Sends a client movement proposal; the server reply is authoritative. */

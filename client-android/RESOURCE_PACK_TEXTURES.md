@@ -3,12 +3,12 @@
 ## Importing a texture pack
 
 In the Android client, open **РЕСУРС-ПАКИ** and choose a ZIP file. The ZIP
-must contain the supported PNG files directly under:
+can use NEXORA/Bedrock-style paths or standard Java resource-pack paths.
+A ZIP root folder is also accepted. Examples:
 
-`textures/blocks/`
-
-Example:
-`textures/blocks/grass_top.png`
+- `textures/blocks/grass_top.png`
+- `MyPack/assets/minecraft/textures/block/grass_block_top.png`
+- `assets/minecraft/textures/block/oak_log.png`
 
 Supported names:
 

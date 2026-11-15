@@ -116,11 +116,11 @@ final class LocalWorldStore {
     }
 
     private static final int INVENTORY_MAGIC = 0x4E585749; // NXWI
-    private static final int HOTBAR_SLOTS = 9;
+    private static final int INVENTORY_SLOTS = 36;
 
     void saveInventory(String worldId, List<InventorySlot> slots) throws IOException {
-        if (slots == null || slots.size() != HOTBAR_SLOTS) {
-            throw new IOException("Local hotbar must contain exactly nine slots");
+        if (slots == null || (slots.size() != 9 && slots.size() != INVENTORY_SLOTS)) {
+            throw new IOException("Local inventory must contain nine or thirty-six slots");
         }
         File directory = worldDirectory(worldId);
         ensureDirectory(directory);
@@ -130,7 +130,7 @@ final class LocalWorldStore {
                 new BufferedOutputStream(new FileOutputStream(temporary)))) {
             output.writeInt(INVENTORY_MAGIC);
             output.writeInt(FORMAT_VERSION);
-            output.writeInt(HOTBAR_SLOTS);
+            output.writeInt(INVENTORY_SLOTS);
             for (InventorySlot slot : slots) {
                 String itemId = slot == null ? "" : slot.itemId();
                 int count = slot == null ? 0 : slot.count();
@@ -158,12 +158,15 @@ final class LocalWorldStore {
         }
         try (DataInputStream input = new DataInputStream(
                 new BufferedInputStream(new FileInputStream(file)))) {
-            if (input.readInt() != INVENTORY_MAGIC || input.readInt() != FORMAT_VERSION
-                    || input.readInt() != HOTBAR_SLOTS) {
+            if (input.readInt() != INVENTORY_MAGIC || input.readInt() != FORMAT_VERSION) {
                 throw new IOException("Unsupported local inventory format");
             }
-            List<InventorySlot> slots = new ArrayList<>(HOTBAR_SLOTS);
-            for (int index = 0; index < HOTBAR_SLOTS; index++) {
+            int savedSlots = input.readInt();
+            if (savedSlots != 9 && savedSlots != INVENTORY_SLOTS) {
+                throw new IOException("Unsupported local inventory slot count");
+            }
+            List<InventorySlot> slots = new ArrayList<>(INVENTORY_SLOTS);
+            for (int index = 0; index < savedSlots; index++) {
                 String itemId = input.readUTF();
                 int count = input.readInt();
                 if (count < 0 || count > 999 || (count == 0) != itemId.isEmpty()
@@ -174,6 +177,7 @@ final class LocalWorldStore {
                 slots.add(new InventorySlot(itemId, count));
             }
             if (input.read() != -1) throw new IOException("Saved local inventory has trailing data");
+            while (slots.size() < INVENTORY_SLOTS) slots.add(new InventorySlot("", 0));
             return List.copyOf(slots);
         }
     }

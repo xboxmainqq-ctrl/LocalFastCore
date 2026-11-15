@@ -115,6 +115,71 @@ final class LocalWorldStore {
         return List.copyOf(chunks);
     }
 
+    private static final int INVENTORY_MAGIC = 0x4E585749; // NXWI
+    private static final int HOTBAR_SLOTS = 9;
+
+    void saveInventory(String worldId, List<InventorySlot> slots) throws IOException {
+        if (slots == null || slots.size() != HOTBAR_SLOTS) {
+            throw new IOException("Local hotbar must contain exactly nine slots");
+        }
+        File directory = worldDirectory(worldId);
+        ensureDirectory(directory);
+        File destination = new File(directory, "inventory.nxwi");
+        File temporary = new File(directory, "inventory.nxwi.tmp");
+        try (DataOutputStream output = new DataOutputStream(
+                new BufferedOutputStream(new FileOutputStream(temporary)))) {
+            output.writeInt(INVENTORY_MAGIC);
+            output.writeInt(FORMAT_VERSION);
+            output.writeInt(HOTBAR_SLOTS);
+            for (InventorySlot slot : slots) {
+                String itemId = slot == null ? "" : slot.itemId();
+                int count = slot == null ? 0 : slot.count();
+                if (count < 0 || count > 999 || (count == 0) != itemId.isEmpty()
+                        || itemId.length() > 256
+                        || (!itemId.isEmpty() && !itemId.matches("[a-z0-9_.-]+:[a-z0-9_./-]+"))) {
+                    throw new IOException("Local inventory contains an invalid slot");
+                }
+                output.writeUTF(itemId);
+                output.writeInt(count);
+            }
+            output.flush();
+        } catch (IOException failure) {
+            temporary.delete();
+            throw failure;
+        }
+        replaceFile(temporary, destination);
+    }
+
+    List<InventorySlot> loadInventory(String worldId) throws IOException {
+        File file = new File(worldDirectory(worldId), "inventory.nxwi");
+        if (!file.exists()) return null;
+        if (file.length() < 12 || file.length() > 8192) {
+            throw new IOException("Saved local inventory has an invalid size");
+        }
+        try (DataInputStream input = new DataInputStream(
+                new BufferedInputStream(new FileInputStream(file)))) {
+            if (input.readInt() != INVENTORY_MAGIC || input.readInt() != FORMAT_VERSION
+                    || input.readInt() != HOTBAR_SLOTS) {
+                throw new IOException("Unsupported local inventory format");
+            }
+            List<InventorySlot> slots = new ArrayList<>(HOTBAR_SLOTS);
+            for (int index = 0; index < HOTBAR_SLOTS; index++) {
+                String itemId = input.readUTF();
+                int count = input.readInt();
+                if (count < 0 || count > 999 || (count == 0) != itemId.isEmpty()
+                        || itemId.length() > 256
+                        || (!itemId.isEmpty() && !itemId.matches("[a-z0-9_.-]+:[a-z0-9_./-]+"))) {
+                    throw new IOException("Saved local inventory contains an invalid slot");
+                }
+                slots.add(new InventorySlot(itemId, count));
+            }
+            if (input.read() != -1) throw new IOException("Saved local inventory has trailing data");
+            return List.copyOf(slots);
+        }
+    }
+
+    record InventorySlot(String itemId, int count) { }
+
     void savePlayerPosition(String worldId, PlayerPosition position) throws IOException {
         if (position == null || !Double.isFinite(position.x())
                 || !Double.isFinite(position.y()) || !Double.isFinite(position.z())

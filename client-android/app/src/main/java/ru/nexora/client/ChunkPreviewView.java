@@ -433,8 +433,8 @@ final class ChunkPreviewView extends GLSurfaceView {
             }
             if (vertexBuffer == null || vertexCount == 0 || program == 0) return;
 
-            float centerX = 24f;
-            float centerZ = 24f;
+            float centerX = playerInitialized ? playerX : 24f;
+            float centerZ = playerInitialized ? playerZ : 24f;
             double yawRadians = Math.toRadians(yaw);
             double elevationRadians = Math.toRadians(elevation);
             if (firstPersonMode) {
@@ -449,10 +449,10 @@ final class ChunkPreviewView extends GLSurfaceView {
             } else {
                 float horizontal = (float) (distance * Math.cos(elevationRadians));
                 float eyeX = centerX + (float) Math.cos(yawRadians) * horizontal;
-                float eyeY = targetY + (float) Math.sin(elevationRadians) * distance;
+                float eyeY = (playerInitialized ? playerY : targetY) + (float) Math.sin(elevationRadians) * distance;
                 float eyeZ = centerZ + (float) Math.sin(yawRadians) * horizontal;
                 Matrix.setLookAtM(view, 0, eyeX, eyeY, eyeZ,
-                        centerX, targetY, centerZ, 0f, 1f, 0f);
+                        centerX, playerInitialized ? playerY + 0.8f : targetY, centerZ, 0f, 1f, 0f);
             }
             Matrix.multiplyMM(mvp, 0, projection, 0, view, 0);
 
@@ -858,6 +858,7 @@ final class ChunkPreviewView extends GLSurfaceView {
         else if (id.contains("sand")) color = 0xffd8c27b;
         else if (id.contains("dirt") || id.contains("mud")) color = 0xff98704e;
         else if (id.contains("bedrock")) color = 0xff34383f;
+        else if (id.contains("oak_log") || id.contains("log")) color = 0xff795334;
         else if (id.contains("stone") || id.contains("cobble")) color = 0xff9299a3;
         else if (id.contains("snow") || id.contains("ice")) color = 0xffdceaf2;
         else {

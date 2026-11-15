@@ -26,6 +26,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.security.SecureRandom;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Android entry screen for the NEXORA client.
@@ -60,6 +63,7 @@ public final class MainActivity extends Activity {
     private final TextView[] inventorySlotViews = new TextView[36];
     private int selectedInventorySlot = -1;
     private final Map<UUID, String> remotePlayerNames = new LinkedHashMap<>();
+    private ExecutorService previewGenerationExecutor;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -172,37 +176,75 @@ public final class MainActivity extends Activity {
     }
 
     private void showSinglePlayerScreen() {
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(20), dp(12), dp(20), dp(4));
+
+        EditText worldName = new EditText(this);
+        worldName.setSingleLine(true);
+        worldName.setHint("Название мира");
+        worldName.setText("Мой мир");
+        form.addView(worldName, matchWrap());
+
+        EditText seedInput = new EditText(this);
+        seedInput.setSingleLine(true);
+        seedInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER
+                | android.text.InputType.TYPE_NUMBER_FLAG_SIGNED);
+        seedInput.setHint("Seed мира");
+        seedInput.setText(Long.toString(new SecureRandom().nextLong()));
+        form.addView(seedInput, matchWrap());
+
+        Button randomSeed = button("СЛУЧАЙНЫЙ СИД");
+        form.addView(randomSeed, matchWrap());
+        randomSeed.setOnClickListener(v ->
+                seedInput.setText(Long.toString(new SecureRandom().nextLong())));
+
+        new AlertDialog.Builder(this)
+                .setTitle("СОЗДАНИЕ МИРА")
+                .setMessage("Для нового мира автоматически создан случайный seed. Можешь оставить его или задать свой.")
+                .setView(form)
+                .setPositiveButton("СОЗДАТЬ МИР", (dialog, which) -> {
+                    String name = worldName.getText().toString().trim();
+                    if (name.isEmpty()) name = "Мой мир";
+                    long seed;
+                    try {
+                        seed = Long.parseLong(seedInput.getText().toString().trim());
+                    } catch (NumberFormatException invalidSeed) {
+                        seed = new SecureRandom().nextLong();
+                    }
+                    getPreferences(MODE_PRIVATE).edit()
+                            .putString("nexora_last_world_name", name)
+                            .putLong("nexora_last_world_seed", seed)
+                            .apply();
+                    launchWorldPreview(name, seed);
+                })
+                .setNegativeButton("ОТМЕНА", null)
+                .show();
+    }
+
+    private void launchWorldPreview(String worldName, long seed) {
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setPadding(dp(16), dp(20), dp(16), dp(20));
         page.setBackgroundColor(BACKGROUND);
 
-        TextView title = text("ОДИНОЧНЫЙ МИР", 24, TEXT, true);
+        TextView title = text(worldName, 24, TEXT, true);
         title.setGravity(Gravity.CENTER);
         page.addView(title, matchWrap());
-        addSpace(page, 8);
-        TextView state = text("ЛОКАЛЬНЫЙ ПРОТОТИП • БЕЗ СЕТИ", 12, ACCENT, true);
+        addSpace(page, 6);
+        TextView state = text("МИР NEXORA • SEED: " + seed, 11, ACCENT, true);
         state.setGravity(Gravity.CENTER);
         page.addView(state, matchWrap());
-        addSpace(page, 14);
+        addSpace(page, 10);
 
         localPreview = new ChunkPreviewView(this);
-        localPreview.setFirstPersonMode(true);
+        localPreview.setFirstPersonMode(false);
         localPreview.setCenter(0, 0);
-        localPreview.setPlayerSpawn(0, terrainHeight(0, 0) + 1, 0);
-        for (int chunkX = -1; chunkX <= 1; chunkX++) {
-            for (int chunkZ = -1; chunkZ <= 1; chunkZ++) {
-                localPreview.setChunk(createLocalChunk(chunkX, chunkZ));
-            }
-        }
-        localPreview.setMovementListener((x, y, z) -> runOnUiThread(() ->
-                state.setText(String.format(java.util.Locale.ROOT,
-                        "ЛОКАЛЬНЫЙ МИР • X %.1f  Y %.1f  Z %.1f", x, y, z))));
         page.addView(localPreview, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         addSpace(page, 10);
-        Button camera = button("ВИД: ОТ ПЕРВОГО ЛИЦА");
+        Button camera = button("ВИД: ОТ ТРЕТЬЕГО ЛИЦА");
         page.addView(camera, matchWrap());
         camera.setOnClickListener(v -> {
             boolean firstPerson = !camera.getText().toString().contains("ПЕРВОГО");
@@ -237,12 +279,16 @@ public final class MainActivity extends Activity {
         page.addView(text("Проведи пальцем по миру — повернуть камеру; двумя пальцами — изменить масштаб.",
                 11, MUTED, false), matchWrap());
         addSpace(page, 8);
-        page.addView(text("Тестовый мир с холмами и деревьями. Сохранение, полноценная генерация и расширение мира ещё впереди.",
+        page.addView(text("Используется настоящий генератор ядра: рельеф, 6 биомов, деревья, реки и озёра. Генерация выполняется в фоне.",
                 12, MUTED, false), matchWrap());
         addSpace(page, 8);
         Button exit = button("В МЕНЮ");
         page.addView(exit, matchWrap());
         exit.setOnClickListener(v -> {
+            if (previewGenerationExecutor != null) {
+                previewGenerationExecutor.shutdownNow();
+                previewGenerationExecutor = null;
+            }
             if (localPreview != null) {
                 localPreview.onPause();
                 localPreview = null;
@@ -250,69 +296,29 @@ public final class MainActivity extends Activity {
             setContentView(createHomeScreen());
         });
         setContentView(page);
-    }
 
-    private NexoraAndroidProtocolCodec.ChunkData createLocalChunk(int chunkX, int chunkZ) {
-        List<NexoraAndroidProtocolCodec.ChunkBlock> blocks = new ArrayList<>(16 * 16 * 12);
-        for (int x = 0; x < 16; x++) {
-            for (int z = 0; z < 16; z++) {
-                int worldX = chunkX * 16 + x;
-                int worldZ = chunkZ * 16 + z;
-                int surface = terrainHeight(worldX, worldZ);
-                for (int y = 48; y <= surface; y++) {
-                    String id = y == surface ? "minecraft:grass_block"
-                            : y >= surface - 3 ? "minecraft:dirt" : "minecraft:stone";
-                    if (y == 48) id = "minecraft:bedrock";
-                    blocks.add(new NexoraAndroidProtocolCodec.ChunkBlock(x, y, z, id));
-                }
-                if (isTreeTrunk(worldX, worldZ)) {
-                    for (int y = surface + 1; y <= surface + 4; y++) {
-                        blocks.add(new NexoraAndroidProtocolCodec.ChunkBlock(
-                                x, y, z, "minecraft:oak_log"));
+        if (previewGenerationExecutor != null) previewGenerationExecutor.shutdownNow();
+        previewGenerationExecutor = Executors.newSingleThreadExecutor();
+        state.setText("ГЕНЕРАЦИЯ МИРА • SEED: " + seed);
+        previewGenerationExecutor.execute(() -> {
+            try {
+                NexoraWorldPreviewGenerator.PreviewData generated =
+                        NexoraWorldPreviewGenerator.generate(seed);
+                runOnUiThread(() -> {
+                    if (localPreview == null || previewGenerationExecutor == null
+                            || previewGenerationExecutor.isShutdown()) return;
+                    for (NexoraAndroidProtocolCodec.ChunkData chunk : generated.chunks()) {
+                        localPreview.setChunk(chunk);
                     }
-                    for (int ox = -2; ox <= 2; ox++) {
-                        for (int oz = -2; oz <= 2; oz++) {
-                            for (int oy = 2; oy <= 5; oy++) {
-                                int distance = Math.abs(ox) + Math.abs(oz);
-                                if (distance <= 3 && !(ox == 0 && oz == 0 && oy < 5)) {
-                                    int leafX = worldX + ox - chunkX * 16;
-                                    int leafZ = worldZ + oz - chunkZ * 16;
-                                    // Keep each chunk self-contained; edge foliage appears
-                                    // when the neighboring chunk is generated as well.
-                                    if (leafX >= 0 && leafX < 16 && leafZ >= 0 && leafZ < 16) {
-                                        blocks.add(new NexoraAndroidProtocolCodec.ChunkBlock(
-                                                leafX, surface + oy, leafZ, "minecraft:oak_leaves"));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                    localPreview.setPlayerSpawn(0, generated.spawnY(), 0);
+                    state.setText("МИР ГОТОВ • SEED: " + seed
+                            + " • ЧАНКОВ: " + generated.chunks().size());
+                });
+            } catch (RuntimeException failure) {
+                runOnUiThread(() -> state.setText("ОШИБКА ГЕНЕРАЦИИ: "
+                        + failure.getClass().getSimpleName()));
             }
-        }
-        return new NexoraAndroidProtocolCodec.ChunkData(chunkX, chunkZ, blocks);
-    }
-
-    private int terrainHeight(int x, int z) {
-        double broad = Math.sin(x * 0.105) * 2.2 + Math.cos(z * 0.092) * 2.0;
-        double detail = Math.sin((x + z) * 0.24) * 0.9
-                + Math.cos((x - z) * 0.19) * 0.7;
-        return 63 + (int) Math.round(broad + detail);
-    }
-
-    private boolean isTreeTrunk(int x, int z) {
-        int cellX = Math.floorDiv(x + 7, 9);
-        int cellZ = Math.floorDiv(z + 11, 9);
-        long hash = (long) cellX * 341873128712L ^ (long) cellZ * 132897987541L;
-        hash ^= hash >>> 33;
-        hash *= 0xff51afd7ed558ccdL;
-        hash ^= hash >>> 33;
-        int offsetX = Math.floorMod((int) (hash >>> 8), 7) - 3;
-        int offsetZ = Math.floorMod((int) (hash >>> 16), 7) - 3;
-        int treeX = cellX * 9 + offsetX;
-        int treeZ = cellZ * 9 + offsetZ;
-        return x == treeX && z == treeZ
-                && terrainHeight(x, z) >= 61 && terrainHeight(x, z) <= 66;
+        });
     }
 
     private View createWorldClientScreen() {

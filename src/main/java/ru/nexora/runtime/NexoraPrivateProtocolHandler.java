@@ -243,6 +243,8 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                                 movementValidator, lastMovementNanos);
                     } else if (isInventoryActionPacket(inboundMessage.payload())) {
                         handleInventoryAction(connection, inboundMessage, session);
+                    } else if (isBlockActionPacket(inboundMessage.payload())) {
+                        handleBlockAction(connection, inboundMessage, session);
                     } else {
                         handleChunkRequest(connection, inboundMessage, session, requestedChunks);
                     }
@@ -512,6 +514,102 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                 && input.get(input.position() + 2) == 'R'
                 && input.get(input.position() + 3) == 'A'
                 && Byte.toUnsignedInt(input.get(input.position() + 6)) == 7;
+    }
+
+
+    private void handleBlockAction(TransportConnection connection,
+                                   TransportMessage message, PlayerSession session) {
+        if (!connection.isOpen()) return;
+        if (message.deliveryMode() != DeliveryMode.RELIABLE_ORDERED || message.sizeBytes() > 256) {
+            connection.close();
+            return;
+        }
+        try {
+            NexoraBlockActionCodec.Request request =
+                    NexoraBlockActionCodec.decodeRequest(message.payload());
+            World world = Objects.requireNonNull(worldSupplier.get(), "world");
+            BlockPosition target = new BlockPosition(request.x(), request.y(), request.z());
+            if (!world.height().contains(request.y())
+                    || !world.isChunkLoaded(target.chunkPosition())) return;
+            NexoraMovementValidator.Position player = session.position.get();
+            double dx = request.x() + 0.5 - player.x();
+            double dy = request.y() + 0.5 - (player.y() + 1.0);
+            double dz = request.z() + 0.5 - player.z();
+            if (dx * dx + dy * dy + dz * dz > 36.0) return;
+
+            BlockState before = world.blockAt(target);
+            BlockState after;
+            if (request.action() == NexoraBlockActionCodec.Action.BREAK) {
+                if (before.isAir() || "minecraft:bedrock".equals(before.identifier())
+                        || !session.inventory.addOne(before.identifier())) return;
+                after = BlockState.AIR;
+                world.setBlock(target, after);
+                if (!persistInventory(session.inventory)) {
+                    world.setBlock(target, before);
+                    session.inventory.removeOne(findInventorySlot(session.inventory, before.identifier()));
+                    connection.close();
+                    return;
+                }
+            } else {
+                if (!before.isAir() || request.blockIdentifier().equals("minecraft:air")
+                        || !isSafePlacement(target, player)) return;
+                int slot = findInventorySlot(session.inventory, request.blockIdentifier());
+                if (slot < 0) return;
+                ItemStack removed = session.inventory.removeOne(slot);
+                after = new BlockState(request.blockIdentifier());
+                world.setBlock(target, after);
+                if (!persistInventory(session.inventory)) {
+                    world.setBlock(target, BlockState.AIR);
+                    session.inventory.addOne(removed.itemId());
+                    connection.close();
+                    return;
+                }
+            }
+            byte[] update = NexoraBlockActionCodec.encodeUpdate(
+                    new NexoraBlockActionCodec.Update(request.x(), request.y(), request.z(),
+                            after.identifier()));
+            for (Map.Entry<TransportConnection, PlayerSession> entry : playerSessions.entrySet()) {
+                TransportConnection peer = entry.getKey();
+                if (peer.isOpen() && send(peer, update) != TransportSendResult.ACCEPTED) {
+                    peer.close();
+                }
+            }
+            if (send(connection, NexoraInventorySyncCodec.encode(session.inventory))
+                    != TransportSendResult.ACCEPTED) connection.close();
+        } catch (RuntimeException malformed) {
+            connection.close();
+        }
+    }
+
+    private static boolean isSafePlacement(BlockPosition target,
+                                           NexoraMovementValidator.Position player) {
+        double minX = Math.floor(player.x() - 0.3);
+        double maxX = Math.floor(player.x() + 0.3);
+        double minY = Math.floor(player.y());
+        double maxY = Math.floor(player.y() + 1.7);
+        double minZ = Math.floor(player.z() - 0.3);
+        double maxZ = Math.floor(player.z() + 0.3);
+        return target.x() < minX || target.x() > maxX
+                || target.y() < minY || target.y() > maxY
+                || target.z() < minZ || target.z() > maxZ;
+    }
+
+    private static int findInventorySlot(PlayerInventory inventory, String itemId) {
+        ItemStack[] slots = inventory.slotSnapshot();
+        for (int i = 0; i < slots.length; i++) {
+            if (slots[i] != null && slots[i].itemId().equals(itemId)) return i;
+        }
+        return -1;
+    }
+
+    private static boolean isBlockActionPacket(ByteBuffer payload) {
+        ByteBuffer input = payload.slice();
+        return input.remaining() >= 7
+                && input.get(input.position()) == 'N'
+                && input.get(input.position() + 1) == 'X'
+                && input.get(input.position() + 2) == 'R'
+                && input.get(input.position() + 3) == 'A'
+                && Byte.toUnsignedInt(input.get(input.position() + 6)) == 14;
     }
 
     private void handleChunkRequest(TransportConnection connection, TransportMessage message,

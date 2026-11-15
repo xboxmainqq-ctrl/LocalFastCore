@@ -266,7 +266,6 @@ public final class BedrockAndroidPacketCodec {
         int capacity = 128;
         for (String id : packIds) capacity += id.getBytes(StandardCharsets.UTF_8).length + 5;
         ByteBuffer payload = ByteBuffer.allocate(capacity);
-        writeVarUInt32(payload, status.wireValue());
         writeUtf8String(payload, statusName);
         if (status == BedrockAndroidResourcePackStatus.SEND_PACKS) {
             writeVarUInt32(payload, packIds.size());

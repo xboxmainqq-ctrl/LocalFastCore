@@ -182,6 +182,23 @@ final class ChunkPreviewView extends GLSurfaceView {
         requestRender();
     }
 
+    String localBlockIdAt(int worldX, int worldY, int worldZ) {
+        int chunkX = Math.floorDiv(worldX, 16);
+        int chunkZ = Math.floorDiv(worldZ, 16);
+        int localX = Math.floorMod(worldX, 16);
+        int localZ = Math.floorMod(worldZ, 16);
+        synchronized (chunks) {
+            NexoraAndroidProtocolCodec.ChunkData current = chunks.get(key(chunkX, chunkZ));
+            if (current == null) return null;
+            for (NexoraAndroidProtocolCodec.ChunkBlock block : current.blocks()) {
+                if (block.localX() == localX && block.y() == worldY && block.localZ() == localZ) {
+                    return block.blockId();
+                }
+            }
+        }
+        return null;
+    }
+
     NexoraAndroidProtocolCodec.ChunkData updateLocalBlock(
             int worldX, int worldY, int worldZ, String blockId) {
         int chunkX = Math.floorDiv(worldX, 16);

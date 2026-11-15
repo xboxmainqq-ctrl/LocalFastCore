@@ -20,9 +20,13 @@ class ResourcePackAssetCatalogTest {
     @TempDir Path tempDir;
 
     private Path pack(String file, String id, String body) throws IOException {
+        return pack(file, id, body, "");
+    }
+
+    private Path pack(String file, String id, String body, String extraManifestFields) throws IOException {
         Path path = tempDir.resolve(file);
         String manifest = "{\"id\":\"" + id + "\",\"version\":\"1.0.0\","
-                + "\"api_version\":\"1.0.0\",\"type\":\"resource\"}";
+                + "\"api_version\":\"1.0.0\",\"type\":\"resource\"" + extraManifestFields + "}";
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(path))) {
             zip.putNextEntry(new ZipEntry("manifest.json"));
             zip.write(manifest.getBytes(StandardCharsets.UTF_8));
@@ -43,7 +47,8 @@ class ResourcePackAssetCatalogTest {
     void resolvesDependentPackOverridesAndReadsNamedPack() throws Exception {
         var validator = new ResourcePackArchiveValidator();
         var base = validator.validate(pack("base.zip", "nexora:base", "base-texture"));
-        var theme = validator.validate(pack("theme.zip", "nexora:theme", "theme-texture"));
+        var theme = validator.validate(pack("theme.zip", "nexora:theme", "theme-texture",
+                ",\"dependencies\":[{\"id\":\"nexora:base\",\"version\":\"1.0.0\"}]"));
 
         ResourcePackManager manager = new ResourcePackManager("1.0.0");
         manager.add(manifest("nexora:theme",

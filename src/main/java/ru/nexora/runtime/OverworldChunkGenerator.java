@@ -20,6 +20,15 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
     private static final BlockState DIRT = new BlockState("minecraft:dirt");
     private static final BlockState GRASS = new BlockState("minecraft:grass_block");
     private static final BlockState WATER = new BlockState("minecraft:water");
+    private static final OreVein[] ORE_VEINS = {
+            new OreVein("minecraft:coal_ore", -16, 192, 3, 4, 0x1a2b3c4dL),
+            new OreVein("minecraft:iron_ore", -56, 72, 3, 3, 0x2b3c4d5eL),
+            new OreVein("minecraft:copper_ore", -16, 112, 4, 3, 0x3c4d5e6fL),
+            new OreVein("minecraft:gold_ore", -56, 32, 2, 2, 0x4d5e6f70L),
+            new OreVein("minecraft:redstone_ore", -64, 16, 2, 2, 0x5e6f7081L),
+            new OreVein("minecraft:diamond_ore", -64, 16, 2, 2, 0x6f708192L),
+            new OreVein("minecraft:lapis_ore", -32, 64, 2, 2, 0x708192a3L)
+    };
     private static final BlockState LOG = new BlockState("minecraft:oak_log");
     private static final BlockState LEAVES = new BlockState(
             "minecraft:oak_leaves", Map.of("persistent", "false", "update_bit", "false"));
@@ -132,6 +141,72 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
             }
         }
     }
+
+    /**
+     * Places compact, irregular ore veins from world-aligned 3D cells.
+     * A vein has the same center and shape regardless of which chunk is generated.
+     */
+    private static void placeOreVeins(
+            int baseX, int baseZ, WorldHeight height, long seed,
+            Map<BlockPosition, BlockState> blocks) {
+        for (OreVein ore : ORE_VEINS) {
+            int minY = Math.max(height.minY() + 1, ore.minY());
+            int maxY = Math.min(height.maxYExclusive() - 1, ore.maxY());
+            if (minY > maxY) continue;
+            int minCellX = Math.floorDiv(baseX - ore.radius(), 16);
+            int maxCellX = Math.floorDiv(baseX + 15 + ore.radius(), 16);
+            int minCellZ = Math.floorDiv(baseZ - ore.radius(), 16);
+            int maxCellZ = Math.floorDiv(baseZ + 15 + ore.radius(), 16);
+            int minCellY = Math.floorDiv(minY - ore.radiusY(), 12);
+            int maxCellY = Math.floorDiv(maxY + ore.radiusY(), 12);
+            BlockState oreState = new BlockState(ore.identifier());
+            for (int cellX = minCellX; cellX <= maxCellX; cellX++) {
+                for (int cellZ = minCellZ; cellZ <= maxCellZ; cellZ++) {
+                    for (int cellY = minCellY; cellY <= maxCellY; cellY++) {
+                        long hash = featureHash(seed ^ ore.salt(), cellX, cellY, cellZ);
+                        int centerX = cellX * 16 + 3 + (int) Long.remainderUnsigned(hash, 10);
+                        int centerY = cellY * 12 + 2 + (int) Long.remainderUnsigned(hash >>> 9, 8);
+                        int centerZ = cellZ * 16 + 3 + (int) Long.remainderUnsigned(hash >>> 17, 10);
+                        int radius = Math.max(1, ore.radius()
+                                - (int) Long.remainderUnsigned(hash >>> 25, 2));
+                        for (int dx = -radius; dx <= radius; dx++) {
+                            for (int dy = -ore.radiusY(); dy <= ore.radiusY(); dy++) {
+                                for (int dz = -radius; dz <= radius; dz++) {
+                                    double shape = (double) (dx * dx + dz * dz) / (radius * radius)
+                                            + (double) (dy * dy) / (ore.radiusY() * ore.radiusY());
+                                    if (shape > 1.0) continue;
+                                    int x = centerX + dx;
+                                    int y = centerY + dy;
+                                    int z = centerZ + dz;
+                                    if (x < baseX || x >= baseX + 16 || z < baseZ || z >= baseZ + 16
+                                            || y < minY || y > maxY) continue;
+                                    BlockPosition position = new BlockPosition(x, y, z);
+                                    BlockState existing = blocks.get(position);
+                                    if (existing != null && existing.identifier().equals("minecraft:stone")) {
+                                        blocks.put(position, oreState);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static long featureHash(long seed, int x, int y, int z) {
+        long value = seed ^ ((long) x * 0x9e3779b97f4a7c15L)
+                ^ ((long) y * 0xc2b2ae3d27d4eb4fL)
+                ^ ((long) z * 0x165667b19e3779f9L);
+        value ^= value >>> 30;
+        value *= 0xbf58476d1ce4e5b9L;
+        value ^= value >>> 27;
+        value *= 0x94d049bb133111ebL;
+        return value ^ (value >>> 31);
+    }
+
+    private record OreVein(
+            String identifier, int minY, int maxY, int radius, int radiusY, long salt) { }
 
     static boolean isCave(int x, int y, int z, long seed) {
         // Broad chambers intersect thin, winding tunnels to form connected systems.

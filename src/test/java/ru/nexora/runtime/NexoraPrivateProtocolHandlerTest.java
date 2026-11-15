@@ -477,7 +477,7 @@ class NexoraPrivateProtocolHandlerTest {
     }
 
     @Test
-    void refusesMoreThanNineChunkRequestsPerConnection() {
+    void allowsRepeatedChunkRequestsWithoutClosingConnection() {
         InMemoryWorld world = new InMemoryWorld("world", new WorldHeight(0, 128));
         FakeConnection connection = new FakeConnection();
         NexoraWorldInfo info = new NexoraWorldInfo("world", 0, 128, 0, 65, 0, 20, 1);
@@ -489,7 +489,8 @@ class NexoraPrivateProtocolHandlerTest {
             if (connection.closed) break;
         }
 
-        assertTrue(connection.closed);
+        assertFalse(connection.closed);
+        assertEquals(14, connection.sentMessages.size());
     }
 
     private static final class FakeConnection implements TransportConnection {

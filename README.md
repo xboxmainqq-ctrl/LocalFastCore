@@ -124,7 +124,9 @@ On first launch, the server creates `./nexora-data/server.properties`. Edit this
     server.tick-rate=20
     server.network.enabled=false
 
-The current built-in generator ID is `overworld`. The generator registry is the extension point for additional server-side generator implementations; extra built-in terrain presets are not yet implemented. Unknown generator IDs and invalid settings stop startup with a clear error. The server loads existing `.nxw` world data on later launches and saves it during graceful shutdown (Ctrl+C). Configuration is stored separately from world data, under the selected data directory.
+The current built-in generator ID is `overworld`. Additional trusted generator extensions can be installed as JAR files in `./nexora-data/extensions/generators/`. Each JAR must provide a Java service descriptor at `META-INF/services/ru.nexora.runtime.WorldGeneratorExtension` containing the fully qualified provider class name. The provider implements `WorldGeneratorExtension`, returns a stable ID from `id()`, and creates a `ChunkGenerator` from `createGenerator()`. Select it with `world.generator=<extension-id>` in `server.properties`. JARs are loaded in filename order; duplicate or invalid IDs and broken providers stop startup with a clear error. Extension class loaders are closed during server shutdown.
+
+**Security:** generator extensions are trusted Java code, not sandboxed plugins. They execute inside the server process with the server's operating-system permissions. Install only JARs from sources you trust. The server loads existing `.nxw` world data on later launches and saves it during graceful shutdown (Ctrl+C). Configuration is stored separately from world data, under the selected data directory.
 
 When the server workflow succeeds, download the `nexora-core-server` artifact from the [NEXORA Server Runtime workflow](https://github.com/aqaqpopa-del/LocalFastCore/actions/workflows/nexora-server.yml) to obtain the executable JAR.
 

@@ -78,7 +78,8 @@ class NetherNetSignalingServerTest {
                 validate(networkId, document);
                 return new NetherNetIdentityValidator.VerifiedIdentity(
                         "minecraft-services.net", "verified-xuid", "VerifiedPlayer",
-                        (java.security.interfaces.ECPublicKey) operator.getPublic());
+                        (java.security.interfaces.ECPublicKey) operator.getPublic(),
+                        NetherNetIdentityValidator.tokenSha256("test-game-server-token"));
             }
         };
         NetherNetServerInfo info = new NetherNetServerInfo(

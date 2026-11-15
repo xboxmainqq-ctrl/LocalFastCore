@@ -99,12 +99,7 @@ public final class NexoraMain {
                 new FileWorldStorage(dataDirectory.resolve("worlds")),
                 Map.of(DEFAULT_WORLD_ID, DEFAULT_WORLD_HEIGHT));
 
-        FlatChunkGenerator generator = new FlatChunkGenerator(
-                64,
-                5,
-                new BlockState("minecraft:grass_block"),
-                new BlockState("minecraft:dirt"),
-                new BlockState("minecraft:bedrock"));
+        ChunkGenerator generator = new OverworldChunkGenerator();
 
         NexoraServer server = new NexoraServer();
         server.register(storage);
@@ -123,7 +118,7 @@ public final class NexoraMain {
                     if (!world.loadChunk(generator.generate(spawnChunk, world.height(), seed))) {
                         throw new IllegalStateException("Could not create the initial spawn chunk");
                     }
-                    log.accept("Generated initial flat spawn chunk at 0,0.");
+                    log.accept("Generated initial procedural spawn chunk at 0,0.");
                 } else {
                     log.accept("Loaded existing spawn chunk at 0,0.");
                 }
@@ -218,7 +213,7 @@ public final class NexoraMain {
                     () -> {
                         World world = worlds.get(DEFAULT_WORLD_ID)
                                 .orElseThrow(() -> new IllegalStateException("Default world is not loaded"));
-                        return NexoraWorldInfo.from(world, 0, 65, 0, options.tickRate());
+                        return NexoraWorldInfo.from(world, 0, findSpawnY(world), 0, options.tickRate());
                     },
                     () -> worlds.get(DEFAULT_WORLD_ID)
                             .orElseThrow(() -> new IllegalStateException("Default world is not loaded")),
@@ -237,6 +232,23 @@ public final class NexoraMain {
 
         return new RuntimeHandle(server, worlds, entities, inventories,
                 playerInventoryStorage, gameLoop, options.tickRate());
+    }
+
+    /**
+     * Finds a safe vertical spawn coordinate above the highest solid block at
+     * the default world spawn column. The spawn chunk must already be loaded.
+     */
+    static int findSpawnY(World world) {
+        Objects.requireNonNull(world, "world");
+        if (!world.isChunkLoaded(new ChunkPosition(0, 0))) {
+            throw new IllegalStateException("Spawn chunk is not loaded");
+        }
+        for (int y = world.height().maxYExclusive() - 2; y >= world.height().minY(); y--) {
+            if (!world.blockAt(new BlockPosition(0, y, 0)).isAir()) {
+                return y + 1;
+            }
+        }
+        throw new IllegalStateException("No solid spawn surface exists at 0,0");
     }
 
     private static KeyPair createDevelopmentSigningKey() {
@@ -397,7 +409,7 @@ public final class NexoraMain {
         NexoraWorldInfo worldInfo() {
             World world = worlds.get(DEFAULT_WORLD_ID)
                     .orElseThrow(() -> new IllegalStateException("Default world is not loaded"));
-            return NexoraWorldInfo.from(world, 0, 65, 0, tickRate);
+            return NexoraWorldInfo.from(world, 0, NexoraMain.findSpawnY(world), 0, tickRate);
         }
 
         NexoraPrivateProtocolHandler privateProtocolHandler(

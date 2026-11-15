@@ -18,6 +18,7 @@ import livekit.org.webrtc.SdpObserver;
 import livekit.org.webrtc.SessionDescription;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
@@ -1075,6 +1076,9 @@ public final class NetherNetAndroidClient implements AutoCloseable {
             pending.complete(false);
         }
         failIceGathering("NEXORA client was closed");
+        closeResourcePackDownload();
+        pendingResourcePackInfo = null;
+        pendingResourcePack = null;
         executor.execute(this::closePeerConnection);
         executor.shutdown();
     }

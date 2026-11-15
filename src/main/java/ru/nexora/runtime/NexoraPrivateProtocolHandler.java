@@ -238,14 +238,14 @@ public final class NexoraPrivateProtocolHandler implements Consumer<TransportCon
                     connection.close();
                     return;
                 }
-                connection.setMessageListener(message -> {
-                    if (isMovementPacket(message.payload())) {
-                        handleMovement(connection, message, session,
+                connection.setMessageListener(inboundMessage -> {
+                    if (isMovementPacket(inboundMessage.payload())) {
+                        handleMovement(connection, inboundMessage, session,
                                 movementValidator, lastMovementNanos);
-                    } else if (isInventoryActionPacket(message.payload())) {
-                        handleInventoryAction(connection, message, session);
+                    } else if (isInventoryActionPacket(inboundMessage.payload())) {
+                        handleInventoryAction(connection, inboundMessage, session);
                     } else {
-                        handleChunkRequest(connection, message, worldInfo, requestedChunks);
+                        handleChunkRequest(connection, inboundMessage, worldInfo, requestedChunks);
                     }
                 });
             }

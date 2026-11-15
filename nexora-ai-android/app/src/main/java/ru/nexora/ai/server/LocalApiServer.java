@@ -11,13 +11,21 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 
 public final class LocalApiServer {
+    public interface Listener {
+        void onStarted();
+        void onFailed(String message);
+        void onStopped();
+    }
+
     private final String token;
+    private final Listener listener;
     private volatile boolean running;
     private volatile ServerSocket serverSocket;
     private Thread serverThread;
 
-    public LocalApiServer(String token) {
+    public LocalApiServer(String token, Listener listener) {
         this.token = token == null ? "" : token;
+        this.listener = listener;
     }
 
     public synchronized void start() {
@@ -28,6 +36,7 @@ public final class LocalApiServer {
     }
 
     public synchronized void stop() {
+        boolean wasRunning = running;
         running = false;
         ServerSocket current = serverSocket;
         if (current != null) {
@@ -38,22 +47,29 @@ public final class LocalApiServer {
         }
         serverSocket = null;
         serverThread = null;
+        if (wasRunning && listener != null) listener.onStopped();
     }
 
     private void serve() {
         try (ServerSocket socket = new ServerSocket(
                 8765, 16, InetAddress.getByName("127.0.0.1"))) {
             serverSocket = socket;
+            if (listener != null) listener.onStarted();
             while (running) {
                 try (Socket client = socket.accept()) {
                     client.setSoTimeout(5000);
                     handle(client);
-                } catch (IOException ignored) {
+                } catch (IOException error) {
                     if (!running) break;
                 }
             }
-        } catch (IOException ignored) {
+        } catch (IOException error) {
             running = false;
+            if (listener != null) {
+                String message = error.getMessage();
+                listener.onFailed(message == null ? error.getClass().getSimpleName() : message);
+            }
+            return;
         } finally {
             serverSocket = null;
         }

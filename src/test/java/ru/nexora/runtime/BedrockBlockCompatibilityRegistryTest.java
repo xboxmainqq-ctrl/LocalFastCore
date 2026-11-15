@@ -21,6 +21,16 @@ class BedrockBlockCompatibilityRegistryTest {
                 new BedrockBlockMapping("nexora:mistwood_soil", "minecraft:podzol", false)));
         assertEquals("minecraft:podzol", registry.require("nexora:mistwood_soil").bedrockIdentifier());
     }
+    @Test void adapterTranslatesWorldStateBeforeRuntimePaletteLookup() {
+        var mappings = new BedrockBlockCompatibilityRegistry(List.of(
+                new BedrockBlockMapping("nexora:mistwood_soil", "minecraft:podzol", false)));
+        var palette = BedrockRuntimeBlockRegistry.of(java.util.Map.of(
+                BlockState.AIR, 0,
+                new BlockState("minecraft:podzol"), 42));
+        var adapted = mappings.adapt(palette);
+        assertEquals(42, adapted.runtimeId(new BlockState("nexora:mistwood_soil")));
+    }
+
     @Test void unknownBlocksAreRejectedExplicitly() {
         var registry = BedrockBlockCompatibilityRegistry.builtIn();
         assertFalse(registry.supports("nexora:crystal_stone"));

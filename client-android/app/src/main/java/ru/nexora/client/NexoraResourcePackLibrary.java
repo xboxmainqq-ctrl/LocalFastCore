@@ -49,7 +49,7 @@ final class NexoraResourcePackLibrary {
         } catch (IOException ignored) { return ""; }
     }
 
-    static void registerImportedActive(Context context) throws IOException {
+    static void registerImportedActive(Context context, String displayName) throws IOException {
         File root = root(context);
         File active = new File(root, "active");
         if (!new File(active, "textures/blocks").isDirectory()) {
@@ -60,7 +60,7 @@ final class NexoraResourcePackLibrary {
         String id = "pack-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         File destination = new File(packs, id);
         copyDirectory(active, destination);
-        writeName(destination, "Ресурс-пак " + (list(context).size() + 1));
+        String cleanName = cleanDisplayName(displayName);\n        writeName(destination, cleanName.isEmpty()\n                ? "Ресурс-пак " + (list(context).size() + 1) : cleanName);
         writeCurrent(root, id);
     }
 
@@ -102,6 +102,19 @@ final class NexoraResourcePackLibrary {
 
     private static File root(Context c) { return new File(c.getFilesDir(), "resourcepacks"); }
     private static File packsDirectory(Context c) { return new File(root(c), "packs"); }
+
+    private static String cleanDisplayName(String value) {
+        if (value == null) return "";
+        String name = value.replace('\\\\', '/');
+        int slash = name.lastIndexOf('/');
+        if (slash >= 0) name = name.substring(slash + 1);
+        if (name.toLowerCase(java.util.Locale.ROOT).endsWith(".zip")) {
+            name = name.substring(0, name.length() - 4);
+        }
+        name = name.replaceAll("[\\\\p{Cntrl}]", "").trim();
+        if (name.length() > 48) name = name.substring(0, 48).trim();
+        return name;
+    }
 
     private static boolean safeId(String id) {
         return id != null && id.matches("pack-[a-f0-9]{12}");

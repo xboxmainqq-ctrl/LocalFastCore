@@ -48,6 +48,26 @@ public final class BedrockWorldSessionPipeline implements AutoCloseable {
                     BedrockStartGamePacketCodec.Settings> settingsFactory,
             BedrockInitialTransportRouter.LoginAuthenticator loginAuthenticator,
             BiConsumer<TransportConnection, TransportMessage> otherPlayMessageHandler
+    ) { 
+        this(networkSettings, world, dimension, clientRequestSubChunkLimit, initialChunks,
+                blockProfile, blockMappings, List.of(), false, settingsFactory,
+                loginAuthenticator, otherPlayMessageHandler);
+    }
+
+    public BedrockWorldSessionPipeline(
+            BedrockNetworkSettings networkSettings,
+            World world,
+            int dimension,
+            int clientRequestSubChunkLimit,
+            List<ChunkPosition> initialChunks,
+            BedrockRuntimeBlockRegistryProfile blockProfile,
+            BedrockBlockCompatibilityRegistry blockMappings,
+            List<BedrockResourcePackTransferCodec.Pack> resourcePacks,
+            boolean resourcePacksRequired,
+            BiFunction<TransportConnection, BedrockAuthenticatedPlayer,
+                    BedrockStartGamePacketCodec.Settings> settingsFactory,
+            BedrockInitialTransportRouter.LoginAuthenticator loginAuthenticator,
+            BiConsumer<TransportConnection, TransportMessage> otherPlayMessageHandler
     ) {
         Objects.requireNonNull(networkSettings, "networkSettings");
         Objects.requireNonNull(world, "world");
@@ -71,7 +91,7 @@ public final class BedrockWorldSessionPipeline implements AutoCloseable {
                     initialChunks, blockProfile, settingsFactory);
             postLogin = new BedrockPostLoginCoordinator(
                     networkSettings, BedrockRuntimeBlockRegistryFile.GAME_VERSION,
-                    startup, subChunks);
+                    resourcePacks, resourcePacksRequired, startup, subChunks);
             initialRouter = new BedrockInitialTransportRouter(
                     networkSettings, loginAuthenticator, postLogin, subChunks);
             postLogin.attachTo(initialRouter);

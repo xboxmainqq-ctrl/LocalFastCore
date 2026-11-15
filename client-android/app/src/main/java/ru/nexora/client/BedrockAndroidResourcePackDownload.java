@@ -6,7 +6,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 
 /** Sequential, bounded, SHA-256 verified receiver for one Bedrock resource-pack ZIP. */
 final class BedrockAndroidResourcePackDownload implements AutoCloseable {
@@ -83,7 +82,13 @@ final class BedrockAndroidResourcePackDownload implements AutoCloseable {
                 int count;
                 while ((count = input.read(buffer)) != -1) digest.update(buffer, 0, count);
             }
-            return HexFormat.of().formatHex(digest.digest());
+            byte[] hash = digest.digest();
+            StringBuilder hex = new StringBuilder(hash.length * 2);
+            for (byte value : hash) {
+                hex.append(Character.forDigit((value >>> 4) & 0x0f, 16));
+                hex.append(Character.forDigit(value & 0x0f, 16));
+            }
+            return hex.toString();
         } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException("SHA-256 недоступен", impossible);
         }

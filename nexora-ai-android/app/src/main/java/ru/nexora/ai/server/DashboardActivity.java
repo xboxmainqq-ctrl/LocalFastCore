@@ -11,6 +11,7 @@ import android.webkit.WebViewClient;
 
 public class DashboardActivity extends Activity {
     private DashboardBridge bridge;
+    private GitHubBridge gitHubBridge;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -24,6 +25,8 @@ public class DashboardActivity extends Activity {
         settings.setAllowUniversalAccessFromFileURLs(false);
         bridge = new DashboardBridge(this, webView);
         webView.addJavascriptInterface(bridge, "NexoraHost");
+        gitHubBridge = new GitHubBridge(this, webView);
+        webView.addJavascriptInterface(gitHubBridge, "NexoraGitHub");
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -42,6 +45,10 @@ public class DashboardActivity extends Activity {
         if (bridge != null) {
             bridge.shutdown();
             bridge = null;
+        }
+        if (gitHubBridge != null) {
+            gitHubBridge.shutdown();
+            gitHubBridge = null;
         }
         super.onDestroy();
     }

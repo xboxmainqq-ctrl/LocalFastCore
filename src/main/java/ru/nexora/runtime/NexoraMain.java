@@ -25,8 +25,6 @@ import java.util.function.Consumer;
  */
 public final class NexoraMain {
     private static final String VERSION = "0.1.0-SNAPSHOT";
-    private static final String DEFAULT_WORLD_ID = "world";
-    private static final WorldHeight DEFAULT_WORLD_HEIGHT = new WorldHeight(-64, 320);
 
     private NexoraMain() {
     }
@@ -54,8 +52,8 @@ public final class NexoraMain {
         RuntimeHandle runtime = createRuntime(options, System.out::println);
         runtime.server().start();
         System.out.println("NEXORA Core " + VERSION + " started.");
-        System.out.println("World: " + DEFAULT_WORLD_ID
-                + " | spawn chunk: 0,0 | tick rate: " + options.tickRate());
+        System.out.println("World: " + runtime.worldId()
+                + " | spawn chunk: 0,0 | tick rate: " + runtime.tickRate());
         if (options.developmentNetworkEnabled()) {
             System.out.println("NEXORA development signaling: http://"
                     + options.bindAddress() + ":" + options.signalingPort() + "/v1/join");
@@ -94,15 +92,23 @@ public final class NexoraMain {
         Objects.requireNonNull(options, "options");
         Objects.requireNonNull(log, "log");
         Path dataDirectory = options.dataDirectory();
-        long seed = options.seed();
+        ServerConfiguration configuration;
+        try {
+            configuration = ServerConfiguration.loadOrCreate(dataDirectory.resolve("server.properties"));
+        } catch (java.io.IOException failure) {
+            throw new IllegalStateException("Could not load server.properties", failure);
+        }
+        String worldId = configuration.worldId();
+        long seed = configuration.seed();
+        WorldHeight worldHeight = configuration.worldHeight();
 
         WorldRegistry worlds = new WorldRegistry();
         WorldStorageModule storage = new WorldStorageModule(
                 worlds,
                 new FileWorldStorage(dataDirectory.resolve("worlds")),
-                Map.of(DEFAULT_WORLD_ID, DEFAULT_WORLD_HEIGHT));
+                Map.of(worldId, worldHeight));
 
-        ChunkGenerator generator = new OverworldChunkGenerator();
+        ChunkGenerator generator = WorldGeneratorRegistry.builtIn().create(configuration.generatorId());
 
         NexoraServer server = new NexoraServer();
         server.register(storage);
@@ -114,7 +120,7 @@ public final class NexoraMain {
 
             @Override
             public void start() {
-                World world = worlds.get(DEFAULT_WORLD_ID)
+                World world = worlds.get(worldId)
                         .orElseThrow(() -> new IllegalStateException("Default world was not loaded"));
                 ChunkPosition spawnChunk = new ChunkPosition(0, 0);
                 if (!world.isChunkLoaded(spawnChunk)) {
@@ -151,7 +157,7 @@ public final class NexoraMain {
 
             @Override
             public void start() throws Exception {
-                World world = worlds.get(DEFAULT_WORLD_ID)
+                World world = worlds.get(worldId)
                         .orElseThrow(() -> new IllegalStateException("Default world was not loaded"));
                 AsyncChunkGenerationService generation = new AsyncChunkGenerationService(
                         generator, world.height(), seed, workers, 256, 256);
@@ -183,7 +189,7 @@ public final class NexoraMain {
 
             @Override
             public void start() {
-                World world = worlds.get(DEFAULT_WORLD_ID)
+                World world = worlds.get(worldId)
                         .orElseThrow(() -> new IllegalStateException("Default world was not loaded"));
                 WorldChunkPipeline pipeline = activeChunkPipeline.get();
                 if (pipeline == null) {
@@ -221,7 +227,7 @@ public final class NexoraMain {
 
             @Override
             public void start() {
-                World world = worlds.get(DEFAULT_WORLD_ID)
+                World world = worlds.get(worldId)
                         .orElseThrow(() -> new IllegalStateException("Default world was not loaded"));
                 simulation = new EntitySimulationModule(scheduler, new EntityTickEngine(entities, world));
                 simulation.start();
@@ -240,7 +246,7 @@ public final class NexoraMain {
             WebRtcJavaNetherNetPeerHost peerHost = new WebRtcJavaNetherNetPeerHost();
             KeyPair signingKey = createDevelopmentSigningKey();
             NetherNetServerInfo serverInfo = new NetherNetServerInfo(
-                    "NEXORA", 0, VERSION, DEFAULT_WORLD_ID, 0,
+                    "NEXORA", 0, VERSION, worldId, 0,
                     ServerSettings.DEFAULT_MAX_PLAYERS, 0);
             NetherNetSignalingServer signaling = new NetherNetSignalingServer(
                     new InetSocketAddress(options.bindAddress(), options.signalingPort()),
@@ -265,11 +271,11 @@ public final class NexoraMain {
                     UUID.randomUUID(),
                     WebRtcJavaNetherNetPeerHost.MAX_MESSAGE_BYTES,
                     () -> {
-                        World world = worlds.get(DEFAULT_WORLD_ID)
+                        World world = worlds.get(worldId)
                                 .orElseThrow(() -> new IllegalStateException("Default world is not loaded"));
                         return NexoraWorldInfo.from(world, 0, findSpawnY(world), 0, options.tickRate());
                     },
-                    () -> worlds.get(DEFAULT_WORLD_ID)
+                    () -> worlds.get(worldId)
                             .orElseThrow(() -> new IllegalStateException("Default world is not loaded")),
                     null,
                     connection -> log.accept("NEXORA client completed protocol handshake: "
@@ -287,7 +293,7 @@ public final class NexoraMain {
         }
 
         return new RuntimeHandle(server, worlds, entities, inventories,
-                playerInventoryStorage, gameLoop, options.tickRate());
+                playerInventoryStorage, gameLoop, configuration.tickRate(), worldId);
     }
 
     /**
@@ -422,7 +428,7 @@ public final class NexoraMain {
     record RuntimeHandle(NexoraServer server, WorldRegistry worlds, EntityRegistry entities,
                     Map<UUID, PlayerInventory> inventories,
                     FilePlayerInventoryStorage playerInventoryStorage,
-                    GameLoop gameLoop, int tickRate) {
+                    GameLoop gameLoop, int tickRate, String worldId) {
         RuntimeHandle {
             Objects.requireNonNull(server, "server");
             Objects.requireNonNull(worlds, "worlds");
@@ -430,6 +436,7 @@ public final class NexoraMain {
             Objects.requireNonNull(inventories, "inventories");
             Objects.requireNonNull(playerInventoryStorage, "playerInventoryStorage");
             Objects.requireNonNull(gameLoop, "gameLoop");
+            Objects.requireNonNull(worldId, "worldId");
             if (tickRate < 1 || tickRate > 120) {
                 throw new IllegalArgumentException("tickRate must be between 1 and 120");
             }
@@ -457,13 +464,13 @@ public final class NexoraMain {
         }
 
         ItemPickupService.PickupResult pickupItems(UUID playerId, double x, double y, double z) {
-            World world = worlds.get(DEFAULT_WORLD_ID)
+            World world = worlds.get(worldId)
                     .orElseThrow(() -> new IllegalStateException("Default world is not loaded"));
             return new ItemPickupService(entities, world).pickup(playerId, x, y, z, inventory(playerId));
         }
 
         NexoraWorldInfo worldInfo() {
-            World world = worlds.get(DEFAULT_WORLD_ID)
+            World world = worlds.get(worldId)
                     .orElseThrow(() -> new IllegalStateException("Default world is not loaded"));
             return NexoraWorldInfo.from(world, 0, NexoraMain.findSpawnY(world), 0, tickRate);
         }
@@ -473,9 +480,9 @@ public final class NexoraMain {
             return new NexoraPrivateProtocolHandler(serverId,
                     WebRtcJavaNetherNetPeerHost.MAX_MESSAGE_BYTES,
                     this::worldInfo,
-                    () -> worlds.get(DEFAULT_WORLD_ID)
+                    () -> worlds.get(worldId)
                             .orElseThrow(() -> new IllegalStateException("Default world is not loaded")),
-                    position -> worlds.get(DEFAULT_WORLD_ID)
+                    position -> worlds.get(worldId)
                             .map(world -> world.isChunkLoaded(position)).orElse(false),
                     readyListener, entities, inventories, playerInventoryStorage);
         }

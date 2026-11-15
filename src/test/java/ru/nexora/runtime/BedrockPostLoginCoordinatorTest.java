@@ -63,6 +63,52 @@ class BedrockPostLoginCoordinatorTest {
 
 
     @Test
+    void downloadsRequestedResourcePackChunksBeforeSendingStack() throws Exception {
+        byte[] archive = new byte[BedrockResourcePackTransferCodec.DEFAULT_CHUNK_BYTES + 13];
+        for (int i = 0; i < archive.length; i++) archive[i] = (byte) (i * 17);
+        BedrockResourcePackTransferCodec.Pack pack =
+                new BedrockResourcePackTransferCodec.Pack(
+                        java.util.UUID.fromString("12345678-1234-5678-9abc-def012345678"),
+                        "1.0.0", archive);
+        AtomicInteger worldStarts = new AtomicInteger();
+        BedrockPostLoginCoordinator coordinator = new BedrockPostLoginCoordinator(
+                SETTINGS, "1.26.60", List.of(pack), true,
+                (connection, authenticated) -> {
+                    worldStarts.incrementAndGet();
+                    return CompletableFuture.completedFuture(null);
+                }, (connection, message) -> { });
+        coordinator.bindPlayReadyTransition(connection -> BedrockHandshakeResult.ACCEPTED);
+
+        FakeConnection connection = new FakeConnection();
+        coordinator.accept(connection, player());
+        assertEquals(6, decodeSentPacket(connection.sent.get(0)).header().packetId());
+
+        coordinator.handleMessage(connection, response("downloading", List.of(pack.resourceName())));
+        assertEquals(2, connection.sent.size());
+        BedrockGamePacket info = decodeSentPacket(connection.sent.get(1));
+        assertEquals(BedrockResourcePackTransferCodec.DATA_INFO_PACKET_ID, info.header().packetId());
+
+        coordinator.handleMessage(connection, chunkRequest(pack.resourceName(), 0));
+        coordinator.handleMessage(connection, chunkRequest(pack.resourceName(), 1));
+        assertEquals(4, connection.sent.size());
+        BedrockGamePacket firstChunk = decodeSentPacket(connection.sent.get(2));
+        BedrockGamePacket secondChunk = decodeSentPacket(connection.sent.get(3));
+        assertEquals(BedrockResourcePackTransferCodec.CHUNK_DATA_PACKET_ID,
+                firstChunk.header().packetId());
+        assertEquals(BedrockResourcePackTransferCodec.CHUNK_DATA_PACKET_ID,
+                secondChunk.header().packetId());
+
+        coordinator.handleMessage(connection, response("downloadingfinished"));
+        assertEquals(5, connection.sent.size());
+        assertEquals(BedrockResourcePackCodec.RESOURCE_PACK_STACK_PACKET_ID,
+                decodeSentPacket(connection.sent.get(4)).header().packetId());
+        coordinator.handleMessage(connection, response("resourcepackstackfinished"));
+        assertEquals(1, worldStarts.get());
+        assertTrue(connection.isOpen());
+        coordinator.close();
+    }
+
+    @Test
     void routesSubchunkRequestsWhileWorldStartupIsStillCompleting() throws Exception {
         CompletableFuture<Void> startup = new CompletableFuture<>();
         AtomicInteger gameplayMessages = new AtomicInteger();
@@ -191,6 +237,19 @@ class BedrockPostLoginCoordinatorTest {
         ByteBuffer batch = BedrockPacketBatchCodec.encodeUncompressed(List.of(
                 new BedrockGamePacket(new BedrockPacketHeader(
                         BedrockResourcePackCodec.RESOURCE_PACK_CLIENT_RESPONSE_PACKET_ID, 0, 0),
+                        bytes(payload))));
+        return new TransportMessage(BedrockBatchCompressionCodec.encodeAfterNetworkSettings(batch, SETTINGS),
+                DeliveryMode.RELIABLE_ORDERED);
+    }
+
+    private static TransportMessage chunkRequest(String resourceName, int chunkIndex) {
+        ByteBuffer payload = ByteBuffer.allocate(256);
+        BedrockBinary.writeString(payload, resourceName, 128);
+        BedrockBinary.writeLittleEndianInt32(payload, chunkIndex);
+        payload.flip();
+        ByteBuffer batch = BedrockPacketBatchCodec.encodeUncompressed(List.of(
+                new BedrockGamePacket(new BedrockPacketHeader(
+                        BedrockResourcePackTransferCodec.CHUNK_REQUEST_PACKET_ID, 0, 0),
                         bytes(payload))));
         return new TransportMessage(BedrockBatchCompressionCodec.encodeAfterNetworkSettings(batch, SETTINGS),
                 DeliveryMode.RELIABLE_ORDERED);

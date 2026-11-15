@@ -45,7 +45,7 @@ class NetherNetServerIdentitySignerTest {
         String[] jwt = token.split("\\.", -1);
         assertEquals(3, jwt.length);
         String jwtClaims = new String(Base64.getUrlDecoder().decode(jwt[1]), StandardCharsets.UTF_8);
-        assertTrue(jwtClaims.contains("\\\"crv\\\":\\\"P-384\\\""));
+        assertTrue(jwtClaims.contains("\"crv\":\"P-384\""));
         Signature jwtVerifier = Signature.getInstance("SHA384withECDSA");
         jwtVerifier.initVerify(operator.getPublic());
         jwtVerifier.update((jwt[0] + "." + jwt[1]).getBytes(StandardCharsets.US_ASCII));

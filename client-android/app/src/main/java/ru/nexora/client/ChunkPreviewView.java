@@ -358,7 +358,7 @@ final class ChunkPreviewView extends GLSurfaceView {
         private final Map<java.util.UUID, PlayerLabelTexture> playerLabelTextures = new HashMap<>();
         private boolean playerLabelsDirty = true;
         private float yaw = 42f;
-        private float elevation = 32f;
+        private float elevation = -6f;
         private float distance = 72f;
         private float targetY = 64f;
         private float playerX = 24f;
@@ -501,7 +501,7 @@ final class ChunkPreviewView extends GLSurfaceView {
 
         @Override
         public void onSurfaceCreated(GL10 gl, EGLConfig config) {
-            GLES20.glClearColor(0.055f, 0.075f, 0.11f, 1f);
+            GLES20.glClearColor(0.43f, 0.68f, 0.91f, 1f);
             GLES20.glEnable(GLES20.GL_DEPTH_TEST);
             GLES20.glDepthFunc(GLES20.GL_LEQUAL);
             GLES20.glDisable(GLES20.GL_CULL_FACE);

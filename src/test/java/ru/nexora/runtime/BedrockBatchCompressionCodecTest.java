@@ -35,9 +35,9 @@ class BedrockBatchCompressionCodecTest {
                 ByteBuffer.wrap(BATCH), settings
         );
 
-        assertEquals(0xFF, Byte.toUnsignedInt(encoded.get()));
+        assertEquals(0xFF, Byte.toUnsignedInt(encoded.get(0)));
         assertArrayEquals(BATCH, bytes(
-                BedrockBatchCompressionCodec.decodeAfterNetworkSettings(encoded, settings)
+                BedrockBatchCompressionCodec.decodeAfterNetworkSettings(encoded.duplicate(), settings)
         ));
     }
 

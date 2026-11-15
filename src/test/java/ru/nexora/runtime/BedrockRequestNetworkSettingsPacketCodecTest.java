@@ -52,7 +52,10 @@ class BedrockRequestNetworkSettingsPacketCodecTest {
     void ignoresCallerByteOrderAndAdvancesInputByFourBytes() {
         ByteBuffer input = ByteBuffer.allocate(6).order(ByteOrder.LITTLE_ENDIAN);
         input.put((byte) 0x55);
-        input.putInt(2225);
+        input.put((byte) 0x00);
+        input.put((byte) 0x00);
+        input.put((byte) 0x08);
+        input.put((byte) 0xB1);
         input.put((byte) 0x66);
         input.flip();
         input.position(1);

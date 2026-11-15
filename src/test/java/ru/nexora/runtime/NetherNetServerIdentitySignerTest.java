@@ -37,13 +37,15 @@ class NetherNetServerIdentitySignerTest {
         NetherNetSdpDocument parsed = NetherNetSdpDocument.parseOffer(signed);
         String envelope = parsed.identityEnvelopeJson();
         assertTrue(envelope.contains("\"protocol\":\"default\""));
-        assertTrue(envelope.contains("\"cpk\":{\"kty\":\"EC\",\"crv\":\"P-384\""));
+        assertTrue(envelope.contains("\\\"protocol\\\":\\\"default\\\""));
 
         Map<String, String> assertion = readStringObject(envelope, "assertion");
         Map<String, String> inner = readStringObject(assertion.get("assertion"), "token", "fingerprints");
         String token = inner.get("token");
         String[] jwt = token.split("\\.", -1);
         assertEquals(3, jwt.length);
+        String jwtClaims = new String(Base64.getUrlDecoder().decode(jwt[1]), StandardCharsets.UTF_8);
+        assertTrue(jwtClaims.contains("\\\"crv\\\":\\\"P-384\\\""));
         Signature jwtVerifier = Signature.getInstance("SHA384withECDSA");
         jwtVerifier.initVerify(operator.getPublic());
         jwtVerifier.update((jwt[0] + "." + jwt[1]).getBytes(StandardCharsets.US_ASCII));

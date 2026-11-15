@@ -14,9 +14,8 @@ android {
         versionName = "0.1.0-dev"
     }
 
-    // The Android app is a separate Bedrock-facing client. Do not add the
-    // server's Java source tree here: its JDK-only networking and server
-    // transport implementations must never enter the Android compilation.
+    // The Android app is a separate Bedrock-facing client. World generation
+    // is imported from the shared, protocol-independent NEXORA Core module.
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -30,6 +29,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":world-core"))
     implementation("io.github.webrtc-sdk:android-prefixed-stripped:150.7871.04")
     testImplementation("junit:junit:4.13.2")
 }

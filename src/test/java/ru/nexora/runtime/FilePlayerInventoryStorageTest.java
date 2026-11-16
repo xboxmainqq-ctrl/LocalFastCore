@@ -20,7 +20,7 @@ class FilePlayerInventoryStorageTest {
         FilePlayerInventoryStorage storage =
                 new FilePlayerInventoryStorage(temporaryDirectory.resolve("players"));
         PlayerInventory inventory = new PlayerInventory(playerId);
-        for (int i = 0; i < 65; i++) assertTrue(inventory.addOne("minecraft:apple"));
+        for (int i = 0; i < 100; i++) assertTrue(inventory.addOne("minecraft:apple"));
         assertTrue(inventory.addOne("minecraft:diamond"));
         assertNotNull(inventory.removeStack(0));
 

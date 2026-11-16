@@ -10,16 +10,20 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class WebRtcJavaNetherNetPeerHostTest {
     @Test
-    void configuresNetherNetFullIceHostOnlyMaxBundleTransport() {
+    void configuresNetherNetStunAndUdpOnlyMaxBundleTransport() {
         var configuration = WebRtcJavaNetherNetPeerHost.createConfiguration();
 
-        assertTrue(configuration.iceServers.isEmpty());
+        assertEquals(2, configuration.iceServers.size());
+        assertTrue(configuration.iceServers.stream()
+                .anyMatch(server -> server.urls.contains("stun:stun.cloudflare.com:3478")));
+        assertTrue(configuration.iceServers.stream()
+                .anyMatch(server -> server.urls.contains("stun:stun.l.google.com:19302")));
         assertEquals(RTCIceTransportPolicy.ALL, configuration.iceTransportPolicy);
         assertEquals(RTCBundlePolicy.MAX_BUNDLE, configuration.bundlePolicy);
         assertEquals(RTCTcpCandidatePolicy.DISABLED, configuration.tcpCandidatePolicy);
         assertEquals(RTCContinualGatheringPolicy.GATHER_ONCE,
                 configuration.continualGatheringPolicy);
-        assertTrue(configuration.portAllocatorConfig.isStunDisabled());
+        assertFalse(configuration.portAllocatorConfig.isStunDisabled());
         assertTrue(configuration.portAllocatorConfig.isRelayDisabled());
         assertTrue(configuration.portAllocatorConfig.isTcpDisabled());
     }

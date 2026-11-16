@@ -56,8 +56,8 @@ class NetherNetMessageFramerTest {
         assertThrows(IllegalArgumentException.class,
                 () -> reassembler.accept(new byte[] {0, 20}, true));
 
-        assertEquals(Optional.of(new byte[] {7}),
-                reassembler.accept(new byte[] {0, 7}, true));
+        assertArrayEquals(new byte[] {7},
+                reassembler.accept(new byte[] {0, 7}, true).orElseThrow());
     }
 
     @Test

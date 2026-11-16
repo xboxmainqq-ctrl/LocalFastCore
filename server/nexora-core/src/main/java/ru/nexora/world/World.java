@@ -92,11 +92,16 @@ public final class World {
         int chunkZ = Math.floorDiv(blockZ, 16);
         int localX = Math.floorMod(blockX, 16);
         int localZ = Math.floorMod(blockZ, 16);
-        BlockType previous = getChunk(chunkX, chunkZ).setBlockAndGetPrevious(localX, y, localZ, type);
-        if (previous == type) return;
-        BlockChange change = new BlockChange(blockX, y, blockZ, previous, type);
-        for (WorldBlockChangeListener listener : blockChangeListeners) {
-            listener.onBlockChanged(change);
+        WorldChunk chunk = getChunk(chunkX, chunkZ);
+        // Keep each chunk's mutation and corresponding event publication ordered,
+        // without serialising independent chunks against one another.
+        synchronized (chunk) {
+            BlockType previous = chunk.setBlockAndGetPrevious(localX, y, localZ, type);
+            if (previous == type) return;
+            BlockChange change = new BlockChange(blockX, y, blockZ, previous, type);
+            for (WorldBlockChangeListener listener : blockChangeListeners) {
+                listener.onBlockChanged(change);
+            }
         }
     }
 

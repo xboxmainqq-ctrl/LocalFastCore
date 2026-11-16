@@ -42,7 +42,7 @@ The runtime includes a persistent P-384 operator identity. Preserve `nethernet-i
 5. The router compares the Bedrock Login identity (XUID, gamertag and P-384 key) with the identity authenticated by NetherNet. A mismatch closes the connection.
 6. The protocol-2225 pipeline sends NetworkSettings, LoginSuccess, resource-pack negotiation, StartGame and initial spawn chunks. SubChunkRequest responses use the current block compatibility registry.
 
-The transport adapter preserves reliable-ordered versus unreliable message delivery. Basic PlayerAuthInput movement tracking, bounded movement correction, player entity registration and radius-based chunk streaming are now wired. Server-side collision/physics, block breaking/placing, inventory, entity replication and the remaining gameplay packet families are still in progress; the server is not yet a complete playable Bedrock server.
+The transport adapter preserves reliable-ordered versus unreliable message delivery. Basic PlayerAuthInput movement tracking, bounded movement correction, player entity registration and radius-based chunk streaming are wired. Movement now passes through a conservative swept player AABB resolver: non-air blocks are treated as full solid cubes, unloaded chunks are solid boundaries, horizontal motion can slide along walls, and floor/ceiling collisions produce position corrections. This is deliberately an early collision layer, not full physics: gravity, jumping, step-up, block-specific collision shapes, block breaking/placing, inventory and entity replication remain incomplete. The server is not yet a complete playable Bedrock server.
 
 ## Verification gates
 

@@ -52,6 +52,22 @@ public final class WorldChunk {
         return sections[index];
     }
 
+    public byte[] copySectionRaw(int index) {
+        if (index < 0 || index >= SECTION_COUNT) throw new IndexOutOfBoundsException("Invalid section index");
+        return sections[index] == null ? null : sections[index].copyRawBlocks();
+    }
+
+    public void loadSectionRaw(int index, byte[] raw) {
+        if (index < 0 || index >= SECTION_COUNT) throw new IndexOutOfBoundsException("Invalid section index");
+        if (raw == null) {
+            sections[index] = null;
+            return;
+        }
+        ChunkSection section = new ChunkSection();
+        section.loadRawBlocks(raw);
+        sections[index] = section.isEmpty() ? null : section;
+    }
+
     public int highestNonEmptySectionCount() {
         for (int i = sections.length - 1; i >= 0; i--) {
             if (sections[i] != null && !sections[i].isEmpty()) return i + 1;

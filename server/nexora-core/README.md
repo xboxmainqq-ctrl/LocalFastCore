@@ -29,7 +29,7 @@ Official Mojang onboarding guide: https://mojang.github.io/bedrock-protocol-docs
 - WebRTC SDP answerer using webrtc-java, with full ICE gathering and peer-session limits.
 - NetherNet identity implementation:
   - Verifies client GameServerToken RS256 signatures against a configurable Minecraft auth JWKS endpoint.
-  - Checks issuer, audience, expiry and not-before claims.
+  - Checks the configured issuer and validates expiry/not-before when those claims are present; audience validation can be enabled through the identity-service constructor.
   - Verifies the client's ES384 detached DTLS-fingerprint assertion.
   - Creates a persistent P-384 server identity keypair, self-signed server JWT and signed fingerprint assertion.
 - NetherNet message framing and reliable-channel fragmentation/reassembly with size limits.

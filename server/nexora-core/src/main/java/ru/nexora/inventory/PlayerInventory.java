@@ -148,6 +148,52 @@ public final class PlayerInventory {
         return moved;
     }
 
+    /**
+     * Applies a set of client-proposed slot changes atomically.
+     *
+     * Every source value must exactly match the current server slot. Item counts
+     * are conserved per namespaced item ID across the changed slots, so a normal
+     * inventory transaction cannot create or destroy items. Duplicate slot
+     * references and stale client snapshots are rejected without mutation.
+     */
+    public synchronized boolean applySlotChanges(List<SlotChange> changes) {
+        Objects.requireNonNull(changes, "changes");
+        if (changes.isEmpty() || changes.size() > 64) return false;
+
+        boolean[] touched = new boolean[slots.length];
+        java.util.Map<String, Integer> itemDeltas = new java.util.HashMap<>();
+        for (SlotChange change : changes) {
+            if (change == null) return false;
+            int slot = change.slot();
+            if (slot < 0 || slot >= slots.length || touched[slot]) return false;
+            touched[slot] = true;
+
+            ItemStack current = slots[slot];
+            ItemStack expected = change.from().orElse(null);
+            if (!Objects.equals(current, expected)) return false;
+
+            ItemStack replacement = change.to().orElse(null);
+            if (current != null) itemDeltas.merge(current.itemId(), -current.count(), Integer::sum);
+            if (replacement != null) itemDeltas.merge(replacement.itemId(), replacement.count(), Integer::sum);
+        }
+
+        // The supported player-inventory transaction subset is transfer-only:
+        // it may rearrange/split/merge stacks but cannot spawn or delete items.
+        if (itemDeltas.values().stream().anyMatch(delta -> delta != 0)) return false;
+
+        for (SlotChange change : changes) {
+            slots[change.slot()] = change.to().orElse(null);
+        }
+        return true;
+    }
+
+    public record SlotChange(int slot, Optional<ItemStack> from, Optional<ItemStack> to) {
+        public SlotChange {
+            Objects.requireNonNull(from, "from");
+            Objects.requireNonNull(to, "to");
+        }
+    }
+
     /** Swaps two slots atomically without dropping or merging either stack. */
     public synchronized void swapSlots(int firstSlot, int secondSlot) {
         checkSlot(firstSlot);

@@ -40,7 +40,8 @@ class BedrockStartGameCodecTest {
         int versionOffset = lastIndexOf(payload, serverVersion);
 
         assertTrue(versionOffset >= 0);
-        assertEquals(0, Byte.toUnsignedInt(payload[versionOffset + serverVersion.length]));
+        assertTrue(versionOffset >= 2);
+        assertEquals(0, Byte.toUnsignedInt(payload[versionOffset - 2]));
     }
 
     @Test

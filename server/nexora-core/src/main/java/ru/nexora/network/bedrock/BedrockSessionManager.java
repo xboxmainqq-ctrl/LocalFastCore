@@ -26,6 +26,7 @@ import ru.nexora.world.WorldCollision;
 import ru.nexora.world.WorldRaycast;
 import ru.nexora.world.PlayerData;
 import ru.nexora.world.PlayerDataStorage;
+import ru.nexora.world.PlayerPhysics;
 
 import java.security.KeyFactory;
 import java.security.MessageDigest;
@@ -79,6 +80,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final Map<String, SessionState> sessions = new ConcurrentHashMap<>();
     private final AtomicLong nextEntityId = new AtomicLong(1);
     private final AtomicLong nextFormId = new AtomicLong(1);
+    private volatile boolean serverAuthoritativeMovement;
     private final NetherNetInboundPipeline inbound;
 
     public BedrockSessionManager(
@@ -310,6 +312,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private void saveEquipment(SessionState state) throws IOException {
         if (equipmentStorage == null || !state.loginAuthenticated || state.identity == null) return;
         equipmentStorage.save(state.identity.xuid(), state.equipment);
+    }
+
+    /** Enables server-side movement simulation before any Bedrock session is created. */
+    public synchronized void enableServerAuthoritativeMovement() {
+        if (!sessions.isEmpty()) {
+            throw new IllegalStateException("Movement authority must be configured before sessions are created");
+        }
+        this.serverAuthoritativeMovement = true;
     }
 
     public int activeSessionCount() {
@@ -945,6 +955,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         }
                         state.positionInitialized = true;
                     }
+                    if (serverAuthoritativeMovement) {
+                        state.physicsState = PlayerPhysics.spawn(
+                                world, state.positionX, state.positionY, state.positionZ);
+                    }
                     state.lastMovementNanos = nanoTime.getAsLong();
                     state.movementBudget = 2.0;
                     for (BedrockPacket worldPacket : BedrockStartGameCodec.createInitialWorldPackets(
@@ -987,6 +1001,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         BedrockPlayerAuthInputCodec.PlayerInput input = BedrockPlayerAuthInputCodec.decode(packet);
         if (state.hasReceivedInput && input.tick() <= state.lastInputTick) return;
 
+        if (serverAuthoritativeMovement) {
+            handleServerAuthoritativeMovement(networkId, state, input);
+            return;
+        }
+
         if (Math.abs(input.x()) > 30_000_000 || Math.abs(input.z()) > 30_000_000
                 || input.y() < WorldChunk.MIN_Y - 16 || input.y() > WorldChunk.MAX_Y + 16) {
             return;
@@ -1028,6 +1047,81 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     (int) Math.floor(input.x()), (int) Math.floor(input.y()), (int) Math.floor(input.z())), true);
             sendChunkArea(networkId, state, chunkX, chunkZ);
         }
+    }
+
+    private void handleServerAuthoritativeMovement(
+            String networkId, SessionState state, BedrockPlayerAuthInputCodec.PlayerInput input
+    ) {
+        if (Math.abs(input.x()) > 30_000_000 || Math.abs(input.z()) > 30_000_000
+                || input.y() < WorldChunk.MIN_Y - 16 || input.y() > WorldChunk.MAX_Y + 16
+                || Math.abs(input.motionX()) > 1.05f || Math.abs(input.motionZ()) > 1.05f) {
+            sendMovementCorrection(networkId, state, input.tick());
+            return;
+        }
+        if (state.physicsState == null) {
+            try {
+                state.physicsState = PlayerPhysics.spawn(
+                        world, state.positionX, state.positionY, state.positionZ);
+            } catch (IllegalArgumentException exception) {
+                throw new IllegalStateException("Authenticated player has no valid physics state", exception);
+            }
+        }
+
+        long tickDelta = state.hasReceivedInput ? input.tick() - state.lastInputTick : 1L;
+        if (tickDelta < 1) return;
+        double deltaSeconds = Math.min(PlayerPhysics.MAX_TICK_SECONDS, tickDelta / 20.0);
+        boolean jumping = input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.START_JUMPING)
+                || input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.JUMP_PRESSED_RAW)
+                || input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.JUMPING);
+        PlayerPhysics.State next;
+        try {
+            next = PlayerPhysics.tick(world, state.physicsState,
+                    new PlayerPhysics.Input(input.motionX(), input.motionZ(), input.yaw(),
+                            input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.SPRINTING),
+                            jumping),
+                    deltaSeconds);
+        } catch (IllegalArgumentException exception) {
+            sendMovementCorrection(networkId, state, input.tick());
+            return;
+        }
+
+        double errorX = input.x() - next.x();
+        double errorY = input.y() - next.y();
+        double errorZ = input.z() - next.z();
+        boolean correctionNeeded = errorX * errorX + errorY * errorY + errorZ * errorZ > 0.0625;
+        state.physicsState = next;
+        state.positionX = (float) next.x();
+        state.positionY = (float) next.y();
+        state.positionZ = (float) next.z();
+        state.yaw = input.yaw();
+        state.pitch = input.pitch();
+        state.lastInputTick = input.tick();
+        state.lastMovementNanos = nanoTime.getAsLong();
+        state.hasReceivedInput = true;
+
+        if (correctionNeeded) sendMovementCorrection(networkId, state, input.tick());
+
+        for (BedrockPlayerAuthInputCodec.BlockAction action : input.blockActions()) {
+            handleBlockAction(networkId, state, action);
+        }
+
+        int chunkX = Math.floorDiv((int) Math.floor(state.positionX), 16);
+        int chunkZ = Math.floorDiv((int) Math.floor(state.positionZ), 16);
+        if (chunkX != state.lastChunkX || chunkZ != state.lastChunkZ) {
+            sendPacket(networkId, BedrockStartGameCodec.createChunkPublisherUpdate(
+                    (int) Math.floor(state.positionX), (int) Math.floor(state.positionY),
+                    (int) Math.floor(state.positionZ)), true);
+            sendChunkArea(networkId, state, chunkX, chunkZ);
+        }
+    }
+
+    private void sendMovementCorrection(String networkId, SessionState state, long tick) {
+        if (state.physicsState == null) return;
+        PlayerPhysics.State physics = state.physicsState;
+        sendPacket(networkId, BedrockMovementCorrectionCodec.createPlayerCorrection(
+                physics.x(), physics.y(), physics.z(),
+                physics.velocityX(), physics.velocityY(), physics.velocityZ(),
+                physics.onGround(), Math.max(0, tick)), true);
     }
 
     private void handleBlockAction(
@@ -1519,6 +1613,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private float positionZ;
         private float yaw;
         private float pitch;
+        private PlayerPhysics.State physicsState;
         private long lastInputTick;
         private boolean hasReceivedInput;
         private long lastMovementNanos;

@@ -30,6 +30,34 @@ class WorldTest {
     }
 
     @Test
+    void publishesOnlyRealRuntimeBlockChangesAndCanUnregisterListeners() throws Exception {
+        World world = new World("NEXORA", 1L, new FlatWorldGenerator());
+        java.util.List<World.BlockChange> changes = new java.util.ArrayList<>();
+        AutoCloseable subscription = world.addBlockChangeListener(changes::add);
+
+        world.setBlock(-1, 70, -17, BlockType.STONE);
+        world.setBlock(-1, 70, -17, BlockType.STONE);
+        world.setBlock(-1, 70, -17, BlockType.DIRT);
+
+        assertEquals(2, changes.size());
+        assertEquals(new World.BlockChange(-1, 70, -17, BlockType.AIR, BlockType.STONE), changes.get(0));
+        assertEquals(new World.BlockChange(-1, 70, -17, BlockType.STONE, BlockType.DIRT), changes.get(1));
+
+        subscription.close();
+        world.setBlock(-1, 70, -17, BlockType.AIR);
+        assertEquals(2, changes.size());
+    }
+
+    @Test
+    void chunkReturnsPreviousBlockFromAtomicMutation() {
+        WorldChunk chunk = new WorldChunk(0, 0);
+
+        assertEquals(BlockType.AIR, chunk.setBlockAndGetPrevious(1, 64, 1, BlockType.STONE));
+        assertEquals(BlockType.STONE, chunk.setBlockAndGetPrevious(1, 64, 1, BlockType.DIRT));
+        assertEquals(BlockType.DIRT, chunk.getBlock(1, 64, 1));
+    }
+
+    @Test
     void allocatesOnlySectionsContainingNonAirBlocks() {
         WorldChunk chunk = new WorldChunk(0, 0);
 

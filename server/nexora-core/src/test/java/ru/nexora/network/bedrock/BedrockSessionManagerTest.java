@@ -244,6 +244,16 @@ class BedrockSessionManagerTest {
         }
         assertTrue(manager.playerPosition("physics-client").orElseThrow().y() < 65.0f);
         assertEquals(16.0f, manager.playerVitals("physics-client").orElseThrow().health());
+        world.setBlock(0, 60, 0, ru.nexora.world.BlockType.BEDROCK);
+        world.setBlock(0, 61, 0, ru.nexora.world.BlockType.STONE);
+        world.setBlock(0, 62, 0, ru.nexora.world.BlockType.DIRT);
+        world.setBlock(0, 63, 0, ru.nexora.world.BlockType.DIRT);
+        world.setBlock(0, 64, 0, ru.nexora.world.BlockType.GRASS_BLOCK);
+        world.setBlock(0, 60, 1, ru.nexora.world.BlockType.BEDROCK);
+        world.setBlock(0, 61, 1, ru.nexora.world.BlockType.STONE);
+        world.setBlock(0, 62, 1, ru.nexora.world.BlockType.DIRT);
+        world.setBlock(0, 63, 1, ru.nexora.world.BlockType.DIRT);
+        world.setBlock(0, 64, 1, ru.nexora.world.BlockType.GRASS_BLOCK);
 
         int beforeDeath = outboundFrames.size();
         assertTrue(manager.damagePlayer("physics-client", 100.0f));

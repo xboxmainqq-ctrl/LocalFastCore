@@ -6,6 +6,8 @@ import ru.nexora.network.nethernet.NetherNetClientIdentity;
 import ru.nexora.network.nethernet.NetherNetDataChannelListener;
 import ru.nexora.network.nethernet.NetherNetInboundPipeline;
 import ru.nexora.network.nethernet.NetherNetMessageFramer;
+import ru.nexora.world.FlatWorldGenerator;
+import ru.nexora.world.World;
 
 import java.security.KeyFactory;
 import java.security.MessageDigest;
@@ -38,6 +40,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final int serverProtocol;
     private final String serverVersion;
     private final int compressionThreshold;
+    private final World world;
     private final OutboundFrameSender outbound;
     private final Consumer<PacketEvent> packetSink;
     private final Map<String, SessionState> sessions = new ConcurrentHashMap<>();
@@ -68,6 +71,18 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             OutboundFrameSender outbound,
             Consumer<PacketEvent> packetSink
     ) {
+        this(serverProtocol, serverVersion, compressionThreshold,
+                new World("NEXORA World", 0L, new FlatWorldGenerator()), outbound, packetSink);
+    }
+
+    public BedrockSessionManager(
+            int serverProtocol,
+            String serverVersion,
+            int compressionThreshold,
+            World world,
+            OutboundFrameSender outbound,
+            Consumer<PacketEvent> packetSink
+    ) {
         if (serverProtocol < 1) throw new IllegalArgumentException("serverProtocol must be positive");
         if (serverVersion == null || serverVersion.isBlank()) {
             throw new IllegalArgumentException("serverVersion must not be blank");
@@ -78,6 +93,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         this.serverProtocol = serverProtocol;
         this.serverVersion = serverVersion;
         this.compressionThreshold = compressionThreshold;
+        this.world = Objects.requireNonNull(world, "world");
         this.outbound = Objects.requireNonNull(outbound, "outbound");
         this.packetSink = Objects.requireNonNull(packetSink, "packetSink");
         this.inbound = new NetherNetInboundPipeline(this::handleCompleteMessage);
@@ -253,12 +269,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     state.gameStarted = true;
                     for (BedrockPacket worldPacket : BedrockStartGameCodec.createInitialWorldPackets(
                             state.entityId,
-                            "NEXORA World",
+                            world.name(),
                             serverVersion,
                             serverVersion,
-                            0.5f,
-                            65.0f,
-                            0.5f
+                            world.seed(),
+                            world.spawnX(),
+                            world.spawnY() - 1,
+                            world.spawnZ(),
+                            world.spawnX() + 0.5f,
+                            world.spawnY(),
+                            world.spawnZ() + 0.5f
                     )) {
                         sendPacket(networkId, worldPacket, true);
                     }

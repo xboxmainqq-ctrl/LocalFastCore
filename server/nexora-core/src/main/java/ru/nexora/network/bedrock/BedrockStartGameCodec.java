@@ -133,7 +133,7 @@ public final class BedrockStartGameCodec {
         out.string(worldName);              // WorldName
         out.string("");                     // TemplateContentIdentity
         out.bool(false);                    // Trial
-        out.varInt32(0);                    // PlayerMovementSettings.RewindHistorySize
+        out.varInt32(20);                   // Client prediction rewind history for server corrections
         out.bool(false);                    // ServerAuthoritativeBlockBreaking
         out.int64(0);                       // Time
         out.varInt32(0);                    // EnchantmentSeed

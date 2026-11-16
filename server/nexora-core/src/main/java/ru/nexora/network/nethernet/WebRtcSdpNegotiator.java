@@ -27,6 +27,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * WebRTC answerer for NetherNet HTTP signaling.
@@ -44,6 +46,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
     private final long timeoutMillis;
     private final Map<String, PeerSession> sessions = new ConcurrentHashMap<>();
     private final Semaphore sessionPermits;
+    private final ScheduledExecutorService sessionReaper;
     private final AtomicBoolean closed = new AtomicBoolean();
 
     public WebRtcSdpNegotiator(
@@ -68,6 +71,12 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         this.sessionPermits = new Semaphore(maxSessions);
         this.timeoutMillis = timeoutMillis;
         this.factory = new PeerConnectionFactory();
+        this.sessionReaper = Executors.newSingleThreadScheduledExecutor(task -> {
+            Thread thread = new Thread(task, "nexora-nethernet-session-reaper");
+            thread.setDaemon(true);
+            return thread;
+        });
+        this.sessionReaper.scheduleAtFixedRate(this::reapIdleSessions, 10, 10, TimeUnit.SECONDS);
     }
 
     @Override
@@ -164,6 +173,17 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         channel.send(new RTCDataChannelBuffer(ByteBuffer.wrap(frame), true));
     }
 
+    private void reapIdleSessions() {
+        long now = System.nanoTime();
+        sessions.values().forEach(session -> {
+            long idleNanos = now - session.lastActivityNanos;
+            long limitNanos = TimeUnit.SECONDS.toNanos(session.connected ? 300 : 30);
+            if (idleNanos > limitNanos && sessions.remove(session.networkId, session)) {
+                session.close();
+            }
+        });
+    }
+
     private static CompletableFuture<Void> setRemoteDescription(
             RTCPeerConnection peer,
             String offer
@@ -228,6 +248,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
     @Override
     public void close() {
         if (!closed.compareAndSet(false, true)) return;
+        sessionReaper.shutdownNow();
         sessions.values().forEach(PeerSession::close);
         sessions.clear();
         factory.dispose();
@@ -238,6 +259,8 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         private final CompletableFuture<Void> iceGatheringComplete = new CompletableFuture<>();
         private final Map<String, RTCDataChannel> channels = new ConcurrentHashMap<>();
         private final AtomicBoolean sessionClosed = new AtomicBoolean();
+        private volatile long lastActivityNanos = System.nanoTime();
+        private volatile boolean connected;
         private volatile RTCPeerConnection peer;
 
         private PeerSession(String networkId) {
@@ -258,6 +281,10 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
 
         @Override
         public void onConnectionChange(RTCPeerConnectionState state) {
+            if (state == RTCPeerConnectionState.CONNECTED) {
+                connected = true;
+                lastActivityNanos = System.nanoTime();
+            }
             if (state == RTCPeerConnectionState.FAILED || state == RTCPeerConnectionState.CLOSED) {
                 sessions.remove(networkId, this);
                 close();
@@ -266,6 +293,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
 
         @Override
         public void onDataChannel(RTCDataChannel channel) {
+            lastActivityNanos = System.nanoTime();
             String label = channel.getLabel();
             boolean reliableLabel = "ReliableDataChannel".equals(label);
             boolean unreliableLabel = "UnreliableDataChannel".equals(label);
@@ -301,6 +329,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
 
                 @Override
                 public void onMessage(RTCDataChannelBuffer buffer) {
+                    lastActivityNanos = System.nanoTime();
                     if (!buffer.binary) {
                         closeForProtocolError("NetherNet game data channel sent a text message");
                         return;

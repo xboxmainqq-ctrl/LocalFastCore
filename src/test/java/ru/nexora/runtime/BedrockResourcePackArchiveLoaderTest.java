@@ -31,16 +31,24 @@ class BedrockResourcePackArchiveLoaderTest {
     }
 
     @Test
-    void rejectsMultiplePacksUntilAndroidStackingIsImplemented() throws Exception {
+    void loadsMultiplePacksInDependencyFirstOrder() throws Exception {
         Path root = Files.createTempDirectory("nexora-multiple-packs");
-        writePack(root.resolve("one.zip"), """
-                {"id":"nexora:one","version":"1.0.0","api_version":"1.0.0","type":"resource"}
+        writePack(root.resolve("a-base.zip"), """
+                {"id":"nexora:base","version":"1.0.0","api_version":"1.0.0","type":"resource"}
                 """);
-        writePack(root.resolve("two.zip"), """
-                {"id":"nexora:two","version":"1.0.0","api_version":"1.0.0","type":"resource"}
+        writePack(root.resolve("b-addon.zip"), """
+                {"id":"nexora:addon","version":"1.0.0","api_version":"1.0.0","type":"resource",
+                 "dependencies":[{"id":"nexora:base","version":"1.0.0"}]}
                 """);
-        assertThrows(java.io.IOException.class,
-                () -> new BedrockResourcePackArchiveLoader().load(root, "1.0.0"));
+
+        List<BedrockResourcePackTransferCodec.Pack> packs =
+                new BedrockResourcePackArchiveLoader().load(root, "1.0.0");
+
+        assertEquals(2, packs.size());
+        assertEquals(UUID.nameUUIDFromBytes("nexora:base".getBytes(StandardCharsets.UTF_8)),
+                packs.get(0).uuid());
+        assertEquals(UUID.nameUUIDFromBytes("nexora:addon".getBytes(StandardCharsets.UTF_8)),
+                packs.get(1).uuid());
     }
 
     @Test

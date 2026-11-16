@@ -130,3 +130,8 @@ Players can open the Bedrock modal-form equipment interface with `/equipment` (o
 
 
 Dropped-item actors are now represented in the world item manager and synchronized with protocol-2225 AddItemActor/RemoveActor packets. Server-side inventory drops require an exact registered Bedrock item definition and persist the inventory change before broadcasting. Client TakeItemActor requests are validated against the authenticated player's runtime ID, owner lock, pickup delay, distance and available inventory capacity; the whole stack is accepted or nothing changes. The current actor manager is in-memory only and does not yet simulate gravity/merging or persist ground items across restart; client-originated drop actions are also not yet decoded.
+
+
+## Player movement simulation
+
+The world module now includes a deterministic server-side movement simulator (`PlayerPhysics`) with bounded tick duration, walking/sprinting, jump impulse, gravity, ground contact, axis-separated wall collision and safe spawn validation. It is intentionally separated from packet handling so its behaviour can be tested before enabling authoritative movement reconciliation for real Bedrock clients. Protocol-side movement is still currently accepted through the existing bounded movement validator; wiring prediction reconciliation into live sessions and validating it against Android/Windows clients remain follow-up work.

@@ -25,8 +25,8 @@ class BedrockPlayerEquipmentCodecTest {
         assertEquals(50, payload[3] & 0xff);
         assertEquals(1, payload[4] & 0xff); // runtime ID 306
         assertEquals(6, payload[payload.length - 14] & 0xff); // ARMOR full container name
-        assertEquals(1, payload[payload.length - 12] & 0xff); // dynamic ID present
-        assertEquals(120, payload[payload.length - 13] & 0xff);
+        assertEquals(1, payload[payload.length - 13] & 0xff); // dynamic ID present
+        assertEquals(120, payload[payload.length - 12] & 0xff);
     }
 
     @Test

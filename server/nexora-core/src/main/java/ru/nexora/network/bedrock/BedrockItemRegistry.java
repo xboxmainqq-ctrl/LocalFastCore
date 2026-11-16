@@ -18,13 +18,13 @@ import java.util.Objects;
  */
 public final class BedrockItemRegistry implements BedrockInventoryContentCodec.ItemDefinitionResolver {
     private final Map<String, Entry> byIdentifier;
-    private final Map<Integer, Entry> byLegacyId;
+    private final Map<Integer, Entry> byRuntimeId;
     private final List<Entry> entries;
 
     public BedrockItemRegistry(Collection<Entry> entries) {
         Objects.requireNonNull(entries, "entries");
         Map<String, Entry> identifiers = new LinkedHashMap<>();
-        Map<Integer, Entry> legacyIds = new LinkedHashMap<>();
+        Map<Integer, Entry> runtimeIds = new LinkedHashMap<>();
         List<Entry> ordered = new ArrayList<>(entries.size());
 
         for (Entry entry : entries) {
@@ -32,15 +32,15 @@ public final class BedrockItemRegistry implements BedrockInventoryContentCodec.I
             if (identifiers.putIfAbsent(entry.namespacedId(), entry) != null) {
                 throw new IllegalArgumentException("Duplicate item identifier: " + entry.namespacedId());
             }
-            int legacyId = entry.networkDefinition().legacyItemId();
-            if (legacyIds.putIfAbsent(legacyId, entry) != null) {
-                throw new IllegalArgumentException("Duplicate Bedrock legacy item ID: " + legacyId);
+            int runtimeId = entry.networkDefinition().runtimeItemId();
+            if (runtimeIds.putIfAbsent(runtimeId, entry) != null) {
+                throw new IllegalArgumentException("Duplicate Bedrock runtime item ID: " + runtimeId);
             }
             ordered.add(entry);
         }
 
         this.byIdentifier = Collections.unmodifiableMap(identifiers);
-        this.byLegacyId = Collections.unmodifiableMap(legacyIds);
+        this.byRuntimeId = Collections.unmodifiableMap(runtimeIds);
         this.entries = List.copyOf(ordered);
     }
 
@@ -58,8 +58,8 @@ public final class BedrockItemRegistry implements BedrockInventoryContentCodec.I
         return byIdentifier.get(Objects.requireNonNull(namespacedItemId, "namespacedItemId"));
     }
 
-    public Entry findByLegacyId(int legacyItemId) {
-        return byLegacyId.get(legacyItemId);
+    public Entry findByRuntimeItemId(int runtimeItemId) {
+        return byRuntimeId.get(runtimeItemId);
     }
 
     /** Entries retain registration order, which is useful for deterministic packet construction. */
@@ -73,14 +73,21 @@ public final class BedrockItemRegistry implements BedrockInventoryContentCodec.I
 
     public record Entry(
             String namespacedId,
-            BedrockInventoryContentCodec.ItemDefinition networkDefinition
+            BedrockInventoryContentCodec.ItemDefinition networkDefinition,
+            int maxStackSize
     ) {
+        public Entry(String namespacedId, BedrockInventoryContentCodec.ItemDefinition networkDefinition) {
+            this(namespacedId, networkDefinition, 64);
+        }
         public Entry {
             Objects.requireNonNull(namespacedId, "namespacedId");
             if (!namespacedId.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")) {
                 throw new IllegalArgumentException("namespacedId must be a namespaced identifier");
             }
             Objects.requireNonNull(networkDefinition, "networkDefinition");
+            if (maxStackSize < 1 || maxStackSize > 99) {
+                throw new IllegalArgumentException("maxStackSize must be 1..99");
+            }
         }
     }
 }

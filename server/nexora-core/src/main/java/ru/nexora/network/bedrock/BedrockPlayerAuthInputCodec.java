@@ -198,19 +198,19 @@ public final class BedrockPlayerAuthInputCodec {
         float clickX = in.float32();
         float clickY = in.float32();
         float clickZ = in.float32();
-        long targetBlockId = in.varUInt32Long();
+        long targetBlockId = Integer.toUnsignedLong(in.varInt32());
         int clientPrediction = in.uint8();
         int cooldownState = in.uint8();
-        if (triggerType > 2 || face > 5 || hand > 1
+        if (triggerType > 2 || (actionType != 1 && face > 5) || hand > 1
                 || clientPrediction > 1 || cooldownState > 1) {
             throw new IllegalArgumentException("Invalid item-use transaction enum value");
         }
         if (slot < 0 || slot >= 36 || y < WorldChunk.MIN_Y || y > WorldChunk.MAX_Y) {
             throw new IllegalArgumentException("Item-use target or slot is outside supported bounds");
         }
-        if (clickX < -0.001f || clickX > 1.001f
+        if (actionType != 1 && (clickX < -0.001f || clickX > 1.001f
                 || clickY < -0.001f || clickY > 1.001f
-                || clickZ < -0.001f || clickZ > 1.001f) {
+                || clickZ < -0.001f || clickZ > 1.001f)) {
             throw new IllegalArgumentException("Item-use click position is outside target block bounds");
         }
         return new ItemUseTransaction(actions, actionType, triggerType, x, y, z, face, slot, hand,

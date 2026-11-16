@@ -151,6 +151,7 @@ public final class NexoraServer {
         System.out.println("Bedrock NetworkSettings, authenticated Login and StartGame bootstrap are active.");
         System.out.println("World chunks use versioned, checksummed files under " + Path.of(dataDirectory, "worlds").toAbsolutePath());
         System.out.println("Player profiles use versioned, checksummed files under " + Path.of(dataDirectory, "players").toAbsolutePath());
+        System.out.println("Player profiles use versioned, checksummed files under " + Path.of(dataDirectory, "players").toAbsolutePath());
         System.out.printf("World autosave interval: %d seconds%n", autosaveSeconds);
         System.out.println("Saved player positions and rotations are restored on re-login.");
         System.out.println("Next gameplay stages: block placement, movement physics and entity replication.");

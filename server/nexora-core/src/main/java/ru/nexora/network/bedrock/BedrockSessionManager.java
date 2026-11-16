@@ -28,6 +28,7 @@ import ru.nexora.world.WorldRaycast;
 import ru.nexora.world.PlayerData;
 import ru.nexora.world.PlayerDataStorage;
 import ru.nexora.world.PlayerPhysics;
+import ru.nexora.world.PlayerVitals;
 
 import java.security.KeyFactory;
 import java.security.MessageDigest;
@@ -299,7 +300,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             playerStorage.save(new PlayerData(
                     state.identity.xuid(), displayName, world.name(),
                     state.positionX, state.positionY, state.positionZ,
-                    state.yaw, state.pitch, System.currentTimeMillis()));
+                    state.yaw, state.pitch, System.currentTimeMillis(), state.vitals));
         } catch (IllegalArgumentException exception) {
             throw new IOException("Authenticated player data cannot be persisted", exception);
         }
@@ -880,7 +881,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 Optional<PlayerData> saved = playerStorage.load(state.identity.xuid());
                 if (saved.isPresent() && saved.get().worldName().equals(world.name())) {
                     PlayerData player = saved.get();
-                    if (WorldCollision.canOccupy(world, player.x(), player.y(), player.z())) {
+                    state.vitals = player.vitals();
+                    if (player.worldName().equals(world.name())
+                            && WorldCollision.canOccupy(world, player.x(), player.y(), player.z())) {
                         state.positionX = player.x();
                         state.positionY = player.y();
                         state.positionZ = player.z();
@@ -1091,6 +1094,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         double errorY = input.y() - next.y();
         double errorZ = input.z() - next.z();
         boolean correctionNeeded = errorX * errorX + errorY * errorY + errorZ * errorZ > 0.0625;
+        double previousX = state.positionX;
+        double previousZ = state.positionZ;
+        boolean sprinting = input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.SPRINTING);
+        boolean jumpStarted = input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.START_JUMPING)
+                || input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.JUMP_PRESSED_RAW);
         state.physicsState = next;
         state.positionX = (float) next.x();
         state.positionY = (float) next.y();
@@ -1100,6 +1108,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.lastInputTick = input.tick();
         state.lastMovementNanos = nanoTime.getAsLong();
         state.hasReceivedInput = true;
+        double horizontalDistance = Math.hypot(state.positionX - previousX, state.positionZ - previousZ);
+        updateSurvivalVitals(networkId, state, input.tick(), horizontalDistance, sprinting, jumpStarted);
 
         if (correctionNeeded) sendMovementCorrection(networkId, state, input.tick());
 
@@ -1253,6 +1263,51 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             if (recipient.clientInitialized && recipient.sentChunkKeys.contains(changedChunkKey)) {
                 sendPacket(entry.getKey(), update, true);
             }
+        }
+    }
+
+    private void updateSurvivalVitals(
+            String networkId, SessionState state, long tick,
+            double horizontalDistance, boolean sprinting, boolean jumpStarted
+    ) {
+        PlayerVitals before = state.vitals;
+        float exhaustion = (float) (horizontalDistance * (sprinting ? 0.1 : 0.01));
+        if (jumpStarted) exhaustion += 0.2f;
+        PlayerVitals updated = before.addExhaustion(exhaustion);
+        if (tick >= state.nextNaturalVitalsTick) {
+            if (updated.hunger() >= 18 && updated.health() < PlayerVitals.MAX_HEALTH) {
+                updated = updated.heal(1.0f).addExhaustion(6.0f);
+            } else if (updated.hunger() == 0 && updated.health() > 1.0f) {
+                updated = updated.damage(1.0f);
+            }
+            state.nextNaturalVitalsTick = tick + 80;
+        }
+        if (updated.equals(before)) return;
+        state.vitals = updated;
+        boolean healthChanged = updated.health() != before.health();
+        List<BedrockPacket> packets = new java.util.ArrayList<>();
+        if (healthChanged) packets.add(BedrockVitalsCodec.createSetHealth(updated));
+        packets.add(BedrockVitalsCodec.createUpdateAttributes(
+                state.entityId, updated, Math.max(0, tick)));
+        sendPackets(networkId, packets, true);
+    }
+
+    /** Applies a server-originated damage event, for later fall, combat and hazard systems. */
+    public boolean damagePlayer(String networkId, float amount) {
+        SessionState state = sessions.get(networkId);
+        if (state == null) return false;
+        synchronized (state) {
+            if (!state.loginAuthenticated || !state.clientInitialized || state.vitals.dead()) return false;
+            PlayerVitals before = state.vitals;
+            state.vitals = before.damage(amount);
+            List<BedrockPacket> packets = new java.util.ArrayList<>();
+            if (state.vitals.health() != before.health()) {
+                packets.add(BedrockVitalsCodec.createSetHealth(state.vitals));
+            }
+            packets.add(BedrockVitalsCodec.createUpdateAttributes(
+                    state.entityId, state.vitals, Math.max(0, state.lastInputTick)));
+            sendPackets(networkId, packets, true);
+            return true;
         }
     }
 
@@ -1423,7 +1478,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             initialPackets.add(BedrockMobEquipmentCodec.createPlayerEquipment(state.entityId, state.inventory, itemRegistry));
             initialPackets.addAll(BedrockPlayerEquipmentCodec.createInitialEquipment(state.equipment, itemRegistry));
             initialPackets.add(BedrockAvailableCommandsCodec.createEquipmentCommands());
+            initialPackets.add(BedrockVitalsCodec.createSetHealth(state.vitals));
+            initialPackets.add(BedrockVitalsCodec.createUpdateAttributes(
+                    state.entityId, state.vitals, Math.max(0, state.lastInputTick)));
             sendPackets(networkId, initialPackets, true);
+            state.nextNaturalVitalsTick = Math.max(0, state.lastInputTick) + 80;
         } catch (IllegalArgumentException exception) {
             System.err.println("NEXORA: initial inventory sync deferred because a stored item has no Bedrock definition");
         }
@@ -1740,6 +1799,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private static final class SessionState {
         private PlayerInventory inventory = new PlayerInventory();
         private PlayerEquipment equipment = new PlayerEquipment();
+        private PlayerVitals vitals = PlayerVitals.DEFAULT;
+        private long nextNaturalVitalsTick = 80;
         private boolean compressionNegotiated;
         private volatile boolean loginAuthenticated;
         private boolean clientHandshakeReceived;

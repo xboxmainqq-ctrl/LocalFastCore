@@ -16,8 +16,8 @@ Before enabling NetherNet on MCPEHost, confirm:
 1. The allocated port number.
 2. Whether the panel forwards both TCP and UDP on that same port.
 3. Whether outbound DNS/HTTPS and UDP traffic are allowed from the container.
-4. If outbound STUN is blocked, the provider's public UDP endpoint and whether it forwards to the allocated game port (configure it with `bedrock.advertised-addresses`).
 4. Whether the runtime is Linux glibc or Linux musl (Alpine), and its CPU architecture.
+5. If outbound STUN is blocked, the provider's public UDP endpoint and whether it forwards to the allocated game port (configure it with `bedrock.advertised-addresses`).
 
 Do not hardcode 19132: the host-assigned port must be configurable. Do not advertise a private container address as a public ICE candidate. A stable server identity PEM must be preserved between restarts because clients can pin its public key.
 
@@ -32,7 +32,7 @@ Do not hardcode 19132: the host-assigned port must be configurable. Do not adver
 
 ## Current implementation status
 
-NEXORA currently has the 1.26.60 codec target and the NetherNet transport/native dependencies. It does **not** yet have the signaling listener, WebRTC session adapter, retail identity binding, Bedrock login flow, or playable packet pipeline. The Java 25 server CI run verifies compilation/tests and JAR assembly only; it is not a Bedrock client-connect test.
+NEXORA now has the Cloudburst NetherNet signaling/media listener, persistent operator identity, retail Minecraft identity validation, Bedrock login verification, and the initial session/chunk pipeline. The listener binds TCP signaling and UDP ICE on the configured port, tries Cloudflare and Google STUN, and supports explicit public ICE endpoints through `bedrock.advertised-addresses` when outbound STUN is unavailable. This is still an early playable implementation: inventory, full survival systems and complete block interaction are not finished. Java 25 CI verifies compilation/tests and JAR assembly only; it is not a real-client connectivity test.
 
 ## Upstream API reference
 

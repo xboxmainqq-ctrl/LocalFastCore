@@ -1,0 +1,120 @@
+{
+  "namespace": "hud",
+  "nexora_health_bar": {
+    "type": "image",
+    "texture": "textures/ui/Black",
+    "color": [0.055, 0.055, 0.07],
+    "alpha": 0.88,
+    "size": [148, 22],
+    "anchor_from": "top_left",
+    "anchor_to": "top_left",
+    "offset": [8, 8],
+    "layer": 40,
+    "controls": [
+      {
+        "health_fill": {
+          "type": "image",
+          "texture": "textures/ui/Black",
+          "color": [0.86, 0.08, 0.16],
+          "size": ["100%", "100%"],
+          "clip_direction": "left",
+          "clip_pixelperfect": false,
+          "layer": 1,
+          "bindings": [
+            {
+              "binding_name": "#player_health",
+              "binding_type": "global"
+            },
+            {
+              "binding_name": "#player_max_health",
+              "binding_type": "global"
+            },
+            {
+              "binding_type": "view",
+              "source_property_name": "(#player_health / #player_max_health)",
+              "target_property_name": "#clip_ratio"
+            }
+          ]
+        }
+      },
+      {
+        "health_text": {
+          "type": "stack_panel",
+          "orientation": "horizontal",
+          "size": ["100%", "100%"],
+          "anchor_from": "center",
+          "anchor_to": "center",
+          "layer": 2,
+          "controls": [
+            {
+              "current_health": {
+                "type": "label",
+                "text": "#player_health",
+                "color": [1, 1, 1],
+                "font_size": "small",
+                "shadow": true,
+                "bindings": [
+                  {
+                    "binding_name": "#player_health",
+                    "binding_name_override": "#text",
+                    "binding_type": "global"
+                  }
+                ]
+              }
+            },
+            {
+              "health_separator": {
+                "type": "label",
+                "text": " / ",
+                "color": [1, 1, 1],
+                "font_size": "small",
+                "shadow": true
+              }
+            },
+            {
+              "maximum_health": {
+                "type": "label",
+                "text": "#player_max_health",
+                "color": [1, 1, 1],
+                "font_size": "small",
+                "shadow": true,
+                "bindings": [
+                  {
+                    "binding_name": "#player_max_health",
+                    "binding_name_override": "#text",
+                    "binding_type": "global"
+                  }
+                ]
+              }
+            },
+            {
+              "health_suffix": {
+                "type": "label",
+                "text": " HP",
+                "color": [1, 1, 1],
+                "font_size": "small",
+                "shadow": true
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "heart_renderer": {
+    "visible": false
+  },
+  "root_panel": {
+    "modifications": [
+      {
+        "array_name": "controls",
+        "operation": "insert_front",
+        "value": [
+          {
+            "nexora_health_bar@hud.nexora_health_bar": {}
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -325,7 +325,7 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
         UpdateAttributesPacket packet = new UpdateAttributesPacket();
         packet.setRuntimeEntityId(playerRuntimeEntityId(session));
         packet.setAttributes(List.of(
-                new AttributeData("minecraft:health", 0.0f, 1024.0f,
+                new AttributeData("minecraft:health", 0.0f, (float) maxHealth,
                         (float) health, (float) maxHealth),
                 new AttributeData("minecraft:player.hunger", 0.0f, 20.0f,
                         (float) hunger, 20.0f)

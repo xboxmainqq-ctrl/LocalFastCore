@@ -1,0 +1,41 @@
+package ru.nexora.runtime;
+
+import org.junit.jupiter.api.Test;
+
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class BedrockHudResourcePackTest {
+    @Test
+    void buildsBedrockPackWithCustomHealthBarAndVanillaHeartsDisabled() throws Exception {
+        BedrockResourcePackTransferCodec.Pack pack = BedrockHudResourcePack.create();
+        assertEquals("1.0.0", pack.version());
+        assertTrue(pack.archiveSize() > 0);
+
+        Map<String, String> entries = new HashMap<>();
+        try (ZipInputStream zip = new ZipInputStream(
+                new ByteArrayInputStream(pack.archive()), StandardCharsets.UTF_8)) {
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                entries.put(entry.getName(), new String(zip.readAllBytes(), StandardCharsets.UTF_8));
+            }
+        }
+
+        assertTrue(entries.containsKey("manifest.json"));
+        assertTrue(entries.containsKey("ui/hud_screen.json"));
+        String manifest = entries.get("manifest.json");
+        assertTrue(manifest.contains("\"type\": \"resources\""));
+        String hud = entries.get("ui/hud_screen.json");
+        assertTrue(hud.contains("\"heart_renderer\": {"));
+        assertTrue(hud.contains("\"visible\": false"));
+        assertTrue(hud.contains("#player_health"));
+        assertTrue(hud.contains("#player_max_health"));
+        assertTrue(hud.contains("#clip_ratio"));
+    }
+}

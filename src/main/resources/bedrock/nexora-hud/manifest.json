@@ -1,0 +1,17 @@
+{
+  "format_version": 2,
+  "header": {
+    "name": "NEXORA Survival HUD",
+    "description": "Custom red health bar for NEXORA survival",
+    "uuid": "4a0a3b92-2e6d-4c1d-9f6c-2e77bca5f201",
+    "version": [1, 0, 0],
+    "min_engine_version": [1, 26, 0]
+  },
+  "modules": [
+    {
+      "type": "resources",
+      "uuid": "ab91c4e8-6f25-47a1-b9e0-5f31d9c7a602",
+      "version": [1, 0, 0]
+    }
+  ]
+}

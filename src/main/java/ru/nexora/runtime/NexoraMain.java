@@ -361,7 +361,8 @@ public final class NexoraMain {
 
                     BedrockWorldSessionPipeline sessions = new BedrockWorldSessionPipeline(
                             bedrockNetwork, world, 0, -1, initialChunks,
-                            blockProfile,
+                            blockProfile, BedrockBlockCompatibilityRegistry.builtIn(),
+                            List.of(BedrockHudResourcePack.create()), true,
                             (connection, player) -> {
                                 playerSessions.onAuthenticated(connection, player);
                                 return createBedrockStartGameSettings(world, player, seed, worldId);

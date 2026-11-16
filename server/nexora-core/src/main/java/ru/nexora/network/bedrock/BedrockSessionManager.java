@@ -203,10 +203,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (playerStorage == null || !state.loginAuthenticated || !state.positionInitialized
                 || state.identity == null) return;
         String displayName = state.identity.displayName() == null ? "unknown" : state.identity.displayName();
-        playerStorage.save(new PlayerData(
-                state.identity.xuid(), displayName, world.name(),
-                state.positionX, state.positionY, state.positionZ,
-                state.yaw, state.pitch, System.currentTimeMillis()));
+        try {
+            playerStorage.save(new PlayerData(
+                    state.identity.xuid(), displayName, world.name(),
+                    state.positionX, state.positionY, state.positionZ,
+                    state.yaw, state.pitch, System.currentTimeMillis()));
+        } catch (IllegalArgumentException exception) {
+            throw new IOException("Authenticated player data cannot be persisted", exception);
+        }
     }
 
     public int activeSessionCount() {

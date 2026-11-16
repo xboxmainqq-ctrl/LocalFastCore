@@ -32,6 +32,21 @@ class BedrockPlayerAuthInputCodecTest {
     }
 
     @Test
+    void decodesProtocol2225BlockActionsInWireOrder() {
+        BedrockPlayerAuthInputCodec.PlayerInput input =
+                BedrockPlayerAuthInputCodec.decode(new BedrockPacket(0x90, 0, 0,
+                        blockActionPayload(26, -2, 64, 3, 1, 15L)));
+
+        assertEquals(1, input.blockActions().size());
+        BedrockPlayerAuthInputCodec.BlockAction action = input.blockActions().getFirst();
+        assertEquals(26, action.action());
+        assertEquals(-2, action.x());
+        assertEquals(64, action.y());
+        assertEquals(3, action.z());
+        assertEquals(1, action.face());
+    }
+
+    @Test
     void rejectsWrongPacketIdTruncationAndNonFiniteCoordinates() {
         assertThrows(IllegalArgumentException.class,
                 () -> BedrockPlayerAuthInputCodec.decode(new BedrockPacket(1, 0, 0, new byte[0])));
@@ -85,6 +100,26 @@ class BedrockPlayerAuthInputCodecTest {
         } else {
             output.write(0x7f); // ignored optional-section payload
         }
+        return output.toByteArray();
+    }
+
+    static byte[] blockActionPayload(int action, int x, int y, int z, int face, long tick) {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        writeFloat(output, 0); writeFloat(output, 0); // pitch/yaw
+        writeFloat(output, 0.5f); writeFloat(output, 65); writeFloat(output, 0.5f);
+        writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0);
+        writeVarUInt(output, 0); // input actions
+        writeVarUInt(output, 2); writeVarUInt(output, 0); writeVarInt(output, 0);
+        writeFloat(output, 0); writeFloat(output, 0);
+        writeVarULong(output, tick);
+        writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0);
+        output.write(0); output.write(0); output.write(1); output.write(0); output.write(0);
+        writeVarUInt(output, 1);
+        writeVarInt(output, action);
+        writeVarInt(output, x); writeVarInt(output, y); writeVarInt(output, z); writeVarInt(output, face);
+        writeFloat(output, 0); writeFloat(output, 0);
+        writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0);
+        writeFloat(output, 0); writeFloat(output, 0);
         return output.toByteArray();
     }
 

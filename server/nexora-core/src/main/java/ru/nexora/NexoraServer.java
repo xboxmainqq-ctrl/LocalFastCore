@@ -167,10 +167,10 @@ public final class NexoraServer {
         System.out.println("Player inventories use versioned, checksummed files under " + Path.of(dataDirectory, "inventories").toAbsolutePath());
         System.out.println("Player armor, offhand, cursor and magical equipment use checksummed files under " + Path.of(dataDirectory, "equipment").toAbsolutePath());
         System.out.println("Dropped world items use checksummed storage under " + Path.of(dataDirectory, "worlds", "NEXORA World", "items").toAbsolutePath());
-        System.out.println("Server-authoritative movement, basic block placement, fall damage and persisted survival vitals are enabled.");
+        System.out.println("Server-authoritative movement, block placement, fall damage, death/respawn and persisted survival vitals are enabled.");
         System.out.println("Players can open the magical equipment interface with /equipment.");
         System.out.printf("World autosave interval: %d seconds%n", autosaveSeconds);
         System.out.println("Saved player positions and rotations are restored on re-login.");
-        System.out.println("Next gameplay stages: death/respawn, food item use, expanded block catalog and entity replication.");
+        System.out.println("Next gameplay stages: food item use, expanded block catalog, entity replication and real-client validation.");
     }
 }

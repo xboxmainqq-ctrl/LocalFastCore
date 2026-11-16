@@ -16,7 +16,7 @@ class BedrockInventoryContentCodecTest {
 
         assertEquals(0x31, packet.packetId());
         byte[] payload = packet.payload();
-        assertEquals(327, payload.length);
+        assertEquals(341, payload.length);
         assertEquals(0, Byte.toUnsignedInt(payload[0])); // Inventory container ID
         assertEquals(36, Byte.toUnsignedInt(payload[1]));
 
@@ -25,7 +25,10 @@ class BedrockInventoryContentCodecTest {
             assertArrayEquals(new byte[9], Arrays.copyOfRange(payload, offset, offset + 9),
                     "slot " + slot + " must be encoded as empty with net ID zero");
         }
-        assertEquals(29, Byte.toUnsignedInt(payload[payload.length - 1]));
+        assertEquals(12, Byte.toUnsignedInt(payload[payload.length - 15])); // HOTBAR_AND_INVENTORY
+        assertEquals(1, Byte.toUnsignedInt(payload[payload.length - 14])); // dynamic ID present
+        assertEquals(0, Byte.toUnsignedInt(payload[payload.length - 13])); // dynamic ID = 0
+        assertArrayEquals(new byte[9], Arrays.copyOfRange(payload, payload.length - 9, payload.length)); // empty storage item
     }
 
     @Test
@@ -81,8 +84,8 @@ class BedrockInventoryContentCodecTest {
 
         assertEquals(0x32, packet.packetId());
         assertArrayEquals(new byte[] {
-                0, 0, 29, // player container, slot zero, InventoryContainer
-                0, 0, 0, 0, 0, 0, 0, 0, 0 // empty net ID and empty stack descriptor
+                0, 0, 0, 0, // container, slot, no optional FullContainerName, no StorageItem
+                0, 0, 0, 0, 0, 0, 0, 0, 0 // empty item descriptor
         }, packet.payload());
     }
 
@@ -97,13 +100,12 @@ class BedrockInventoryContentCodecTest {
 
         assertEquals(0x32, packet.packetId());
         assertArrayEquals(new byte[] {
-                0, 5, 29, // player container, slot five, InventoryContainer
-                2,         // VarInt32(1): non-empty ItemStackNetId
-                1, 1,      // runtime item ID 257
-                3, 0,      // stack size
-                0,         // aux
-                0,         // has StackNetId = false
-                0, 0       // block runtime ID, empty user data
+                0, 5, 0, 0, // container, slot, optional FullContainerName absent, StorageItem absent
+                1, 1,       // runtime item ID 257
+                3, 0,       // stack size
+                0,          // aux
+                0,          // has StackNetId = false
+                0, 0        // block runtime ID, empty user data
         }, packet.payload());
     }
 

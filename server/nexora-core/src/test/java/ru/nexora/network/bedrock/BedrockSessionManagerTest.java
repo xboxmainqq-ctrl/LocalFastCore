@@ -433,6 +433,9 @@ class BedrockSessionManagerTest {
                 manager.playerEquipment("authenticated-client").orElseThrow()
                         .magicSlot(ru.nexora.inventory.EquipmentSlot.RING_LEFT).orElseThrow());
         assertTrue(inventory.getSlot(4).isEmpty());
+        var updatedEquipmentStats = manager.playerEquipmentStats("authenticated-client").orElseThrow();
+        assertEquals(16.0, updatedEquipmentStats.value(ru.nexora.inventory.EquipmentAttribute.MAGIC_POWER), 0.0001);
+        assertEquals(25.0, updatedEquipmentStats.value(ru.nexora.inventory.EquipmentAttribute.MAX_MANA), 0.0001);
         assertEquals(BedrockModalFormCodec.MODAL_FORM_REQUEST_PACKET_ID,
                 decodeOutbound(outboundFrames.getLast(), true).packetId());
 

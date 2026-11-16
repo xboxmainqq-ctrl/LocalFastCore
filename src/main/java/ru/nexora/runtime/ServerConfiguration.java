@@ -32,7 +32,7 @@ public record ServerConfiguration(
     }
 
     public static ServerConfiguration defaults() {
-        return new ServerConfiguration("world", "overworld", 0L,
+        return new ServerConfiguration("nexora_rpg", "overworld", 20261116L,
                 new WorldHeight(-64, 320), 20);
     }
 

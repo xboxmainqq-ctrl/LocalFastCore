@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -17,6 +18,7 @@ public final class World {
     private final int spawnZ;
     private final WorldStorage storage;
     private final ConcurrentMap<Long, WorldChunk> chunks = new ConcurrentHashMap<>();
+    private final CopyOnWriteArrayList<WorldBlockChangeListener> blockChangeListeners = new CopyOnWriteArrayList<>();
 
     public World(String name, long seed, WorldGenerator generator) {
         this(name, seed, generator, 0, 65, 0, null);
@@ -80,12 +82,36 @@ public final class World {
         return getChunk(chunkX, chunkZ).getBlock(localX, y, localZ);
     }
 
+    /**
+     * Changes one block atomically within its chunk and publishes a runtime change event.
+     * Generator and storage loading paths intentionally bypass this runtime event stream.
+     */
     public void setBlock(int blockX, int y, int blockZ, BlockType type) {
+        Objects.requireNonNull(type, "type");
         int chunkX = Math.floorDiv(blockX, 16);
         int chunkZ = Math.floorDiv(blockZ, 16);
         int localX = Math.floorMod(blockX, 16);
         int localZ = Math.floorMod(blockZ, 16);
-        getChunk(chunkX, chunkZ).setBlock(localX, y, localZ, type);
+        BlockType previous = getChunk(chunkX, chunkZ).setBlockAndGetPrevious(localX, y, localZ, type);
+        if (previous == type) return;
+        BlockChange change = new BlockChange(blockX, y, blockZ, previous, type);
+        for (WorldBlockChangeListener listener : blockChangeListeners) {
+            listener.onBlockChanged(change);
+        }
+    }
+
+    /** Registers a runtime block-change listener and returns a handle that unregisters it. */
+    public AutoCloseable addBlockChangeListener(WorldBlockChangeListener listener) {
+        Objects.requireNonNull(listener, "listener");
+        blockChangeListeners.add(listener);
+        return () -> blockChangeListeners.remove(listener);
+    }
+
+    public record BlockChange(int x, int y, int z, BlockType previous, BlockType current) {
+        public BlockChange {
+            Objects.requireNonNull(previous, "previous");
+            Objects.requireNonNull(current, "current");
+        }
     }
 
     public int loadedChunkCount() {

@@ -111,6 +111,9 @@ public final class WorldPreviewRenderer {
             case BiomeRegistry.FROSTVEIL_ID -> 0xC6D7D4;
             case BiomeRegistry.SKYGLASS_HIGHLANDS_ID -> elevation > 100 ? 0x858C91 : 0x777C80;
             case BiomeRegistry.SALTWIND_BASIN_ID -> 0xD8C27A;
+            case BiomeRegistry.BLOOMVEIL_GROVE_ID -> 0x5E9B79;
+            case BiomeRegistry.ASHEN_WASTES_ID -> 0x625B58;
+            case BiomeRegistry.MOONFROST_TUNDRA_ID -> 0xB7D9E8;
             default -> terrainColor(block, elevation);
         };
     }

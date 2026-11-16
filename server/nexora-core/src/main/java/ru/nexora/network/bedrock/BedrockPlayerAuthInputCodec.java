@@ -42,18 +42,19 @@ public final class BedrockPlayerAuthInputCodec {
         float deltaY = in.float32();
         float deltaZ = in.float32();
 
-        boolean hasItemUse = in.bool();
-        boolean hasItemStackRequest = in.bool();
-        boolean hasBlockActions = in.bool();
-        boolean hasVehicleRotation = in.bool();
-        boolean hasPredictedVehicle = in.bool();
-        boolean optionalSectionsPresent = hasItemUse || hasItemStackRequest || hasBlockActions
-                || hasVehicleRotation || hasPredictedVehicle;
+        boolean hasItemUse = inputActions.contains(InputAction.PERFORM_ITEM_INTERACTION);
+        boolean hasItemStackRequest = inputActions.contains(InputAction.PERFORM_ITEM_STACK_REQUEST);
+        boolean hasBlockActions = inputActions.contains(InputAction.PERFORM_BLOCK_ACTIONS);
+        boolean inPredictedVehicle = inputActions.contains(InputAction.IS_IN_CLIENT_PREDICTED_VEHICLE);
+        boolean optionalSectionsPresent = hasItemUse || hasItemStackRequest
+                || hasBlockActions || inPredictedVehicle;
 
-        // Item-use and item-stack-request structures are handled by their own later protocol stages.
+        // The item-use and item-stack-request payloads are intentionally opaque until
+        // their inventory codecs are implemented. Preserve the movement snapshot but
+        // never pretend that trailing interaction data was decoded.
         if (hasItemUse || hasItemStackRequest) {
             return new PlayerInput(pitch, yaw, x, y, z, motionX, motionZ, headYaw,
-                    tick, true, inputMode, playMode, interactionModel,
+                    tick, true, true, inputMode, playMode, interactionModel,
                     interactYaw, interactPitch, deltaX, deltaY, deltaZ,
                     java.util.List.copyOf(inputActions), java.util.List.of());
         }
@@ -69,10 +70,10 @@ public final class BedrockPlayerAuthInputCodec {
                         in.varInt32(), in.varInt32(), in.varInt32()));
             }
         }
-        if (hasVehicleRotation) {
-            in.float32(); in.float32();
+        if (inPredictedVehicle) {
+            in.float32(); in.float32(); // vehicle rotation
+            in.varInt64(); // client-predicted vehicle unique ID
         }
-        if (hasPredictedVehicle) in.varInt64();
 
         in.float32(); in.float32(); // analog move vector
         in.float32(); in.float32(); in.float32(); // camera orientation
@@ -80,7 +81,7 @@ public final class BedrockPlayerAuthInputCodec {
         in.requireExhausted();
 
         return new PlayerInput(pitch, yaw, x, y, z, motionX, motionZ, headYaw,
-                tick, optionalSectionsPresent, inputMode, playMode, interactionModel,
+                tick, optionalSectionsPresent, false, inputMode, playMode, interactionModel,
                 interactYaw, interactPitch, deltaX, deltaY, deltaZ,
                 java.util.List.copyOf(inputActions), java.util.List.copyOf(blockActions));
     }
@@ -89,7 +90,7 @@ public final class BedrockPlayerAuthInputCodec {
             float pitch, float yaw,
             float x, float y, float z,
             float motionX, float motionZ, float headYaw,
-            long tick, boolean optionalSectionsPresent,
+            long tick, boolean optionalSectionsPresent, boolean interactionPayloadUnparsed,
             int inputMode, int playMode, int interactionModel,
             float interactYaw, float interactPitch,
             float deltaX, float deltaY, float deltaZ,
@@ -105,6 +106,10 @@ public final class BedrockPlayerAuthInputCodec {
     public static final class InputAction {
         public static final int SPRINTING = 20;
         public static final int JUMPING = 6;
+        public static final int PERFORM_ITEM_INTERACTION = 34;
+        public static final int PERFORM_BLOCK_ACTIONS = 35;
+        public static final int PERFORM_ITEM_STACK_REQUEST = 36;
+        public static final int IS_IN_CLIENT_PREDICTED_VEHICLE = 45;
         public static final int START_JUMPING = 31;
         public static final int JUMP_PRESSED_RAW = 60;
         public static final int JUMP_CURRENT_RAW = 61;

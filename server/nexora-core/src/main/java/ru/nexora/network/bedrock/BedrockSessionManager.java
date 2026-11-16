@@ -565,6 +565,25 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         if (action.action() == BedrockPlayerActionCodec.ACTION_RESPAWN && state.dead) {
             respawnPlayer(message.networkId(), state);
+            return;
+        }
+        if (action.action() == BedrockPlayerActionCodec.ACTION_DROP_ITEM && !state.dead) {
+            // The protocol-2225 PlayerAction DROP_ITEM action drops one item from
+            // the selected hotbar slot. The client never chooses the item/count:
+            // both are resolved from the authenticated server inventory.
+            int selectedSlot = state.inventory.selectedHotbarSlot();
+            double yaw = Math.toRadians(state.yaw);
+            double velocityX = -Math.sin(yaw) * 0.2;
+            double velocityZ = Math.cos(yaw) * 0.2;
+            try {
+                dropPlayerItem(message.networkId(), selectedSlot, 1,
+                        velocityX, 0.2, velocityZ);
+            } catch (IOException | RuntimeException exception) {
+                // Restore the authoritative slot/equipment view if persistence or
+                // world-actor creation failed after the client's local prediction.
+                sendInventoryAndEquipmentState(message.networkId(), state);
+                System.err.println("NEXORA: client item drop rejected: " + exception.getMessage());
+            }
         }
     }
 

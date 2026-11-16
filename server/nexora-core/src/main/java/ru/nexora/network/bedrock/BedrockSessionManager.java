@@ -356,6 +356,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
+    /** Returns the server runtime entity ID for an authenticated player. */
+    public Optional<Long> playerRuntimeId(String networkId) {
+        SessionState state = sessions.get(networkId);
+        if (state == null) return Optional.empty();
+        synchronized (state) {
+            if (!state.loginAuthenticated) return Optional.empty();
+            return Optional.of(state.entityId);
+        }
+    }
+
     /** Returns authoritative health and hunger state for an authenticated player. */
     public Optional<PlayerVitals> playerVitals(String networkId) {
         SessionState state = sessions.get(networkId);
@@ -518,6 +528,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     case 0x71 -> handleClientInitialized(message, state, packet);
                     case BedrockPlayerAuthInputCodec.PLAYER_AUTH_INPUT_PACKET_ID ->
                             handlePlayerAuthInput(message.networkId(), state, packet);
+                    case BedrockPlayerActionCodec.PLAYER_ACTION_PACKET_ID ->
+                            handlePlayerAction(message, state, packet);
                     case BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID ->
                             handleInventoryTransaction(message, state, packet);
                     case BedrockMobEquipmentCodec.MOB_EQUIPMENT_PACKET_ID ->
@@ -533,6 +545,64 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 }
             }
         }
+    }
+
+    private void handlePlayerAction(
+            NetherNetInboundPipeline.InboundMessage message, SessionState state, BedrockPacket packet
+    ) {
+        if (!message.reliable()) throw new SecurityException("PlayerAction must arrive on ReliableDataChannel");
+        if (!state.loginAuthenticated || !state.clientInitialized) {
+            throw new SecurityException("PlayerAction arrived before player initialization");
+        }
+        BedrockPlayerActionCodec.PlayerAction action;
+        try {
+            action = BedrockPlayerActionCodec.decode(packet);
+        } catch (IllegalArgumentException exception) {
+            throw new SecurityException("Malformed Bedrock PlayerAction", exception);
+        }
+        if (action.runtimeEntityId() != state.entityId) {
+            throw new SecurityException("PlayerAction runtime ID does not match authenticated player");
+        }
+        if (action.action() == BedrockPlayerActionCodec.ACTION_RESPAWN && state.dead) {
+            respawnPlayer(message.networkId(), state);
+        }
+    }
+
+    private void handleDeath(String networkId, SessionState state, String deathCause) {
+        if (state.dead && state.deathPacketsSent) return;
+        state.dead = true;
+        state.deathPacketsSent = true;
+        sendPackets(networkId, List.of(
+                BedrockRespawnCodec.createDeathInfo(deathCause),
+                BedrockRespawnCodec.createSearchingForSpawn(
+                        world.spawnX() + 0.5, world.spawnY(), world.spawnZ() + 0.5, state.entityId)
+        ), true);
+    }
+
+    private void respawnPlayer(String networkId, SessionState state) {
+        double x = world.spawnX() + 0.5;
+        double y = world.spawnY();
+        double z = world.spawnZ() + 0.5;
+        PlayerPhysics.State physics = PlayerPhysics.spawn(world, x, y, z);
+        state.positionX = (float) x;
+        state.positionY = (float) y;
+        state.positionZ = (float) z;
+        state.yaw = 0;
+        state.pitch = 0;
+        state.physicsState = physics;
+        state.vitals = PlayerVitals.DEFAULT;
+        state.dead = false;
+        state.deathPacketsSent = false;
+        state.lastMovementNanos = nanoTime.getAsLong();
+        sendPacket(networkId, BedrockRespawnCodec.createRespawnMove(
+                state.entityId, x, y, z, state.pitch, state.yaw,
+                physics.onGround(), Math.max(0, state.lastInputTick)), true);
+        sendInitialPlayerInventory(networkId, state);
+        int chunkX = Math.floorDiv((int) Math.floor(x), 16);
+        int chunkZ = Math.floorDiv((int) Math.floor(z), 16);
+        sendPacket(networkId, BedrockStartGameCodec.createChunkPublisherUpdate(
+                (int) Math.floor(x), (int) Math.floor(y), (int) Math.floor(z)), true);
+        sendChunkArea(networkId, state, chunkX, chunkZ);
     }
 
     private void handleCommandRequest(
@@ -892,6 +962,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 if (saved.isPresent()) {
                     PlayerData player = saved.get();
                     state.vitals = player.vitals();
+                    state.dead = state.vitals.dead();
                     if (player.worldName().equals(world.name())
                             && WorldCollision.canOccupy(world, player.x(), player.y(), player.z())) {
                         state.positionX = player.x();
@@ -1121,7 +1192,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         double horizontalDistance = Math.hypot(state.positionX - previousX, state.positionZ - previousZ);
         updateSurvivalVitals(networkId, state, input.tick(), horizontalDistance, sprinting, jumpStarted);
         if (next.landedDistance() > 3.0) {
-            applyDamage(networkId, state, (float) Math.ceil(next.landedDistance() - 3.0), input.tick());
+            applyDamage(networkId, state, (float) Math.ceil(next.landedDistance() - 3.0),
+                    input.tick(), "death.attack.fall");
         }
 
         if (correctionNeeded) sendMovementCorrection(networkId, state, input.tick());
@@ -1316,12 +1388,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (state == null) return false;
         synchronized (state) {
             if (!state.loginAuthenticated || !state.clientInitialized || state.vitals.dead()) return false;
-            applyDamage(networkId, state, amount, state.lastInputTick);
+            applyDamage(networkId, state, amount, state.lastInputTick, "death.attack.generic");
             return true;
         }
     }
 
-    private void applyDamage(String networkId, SessionState state, float amount, long tick) {
+    private void applyDamage(
+            String networkId, SessionState state, float amount, long tick, String deathCause
+    ) {
         PlayerVitals before = state.vitals;
         state.vitals = before.damage(amount);
         List<BedrockPacket> packets = new java.util.ArrayList<>();
@@ -1485,6 +1559,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.clientInitialized = true;
         sendPacket(message.networkId(), BedrockBatchCodec.createPlayStatus(3), true);
         sendInitialPlayerInventory(message.networkId(), state);
+        if (state.dead) handleDeath(message.networkId(), state, "death.attack.generic");
     }
 
     /**
@@ -1823,6 +1898,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private PlayerInventory inventory = new PlayerInventory();
         private PlayerEquipment equipment = new PlayerEquipment();
         private PlayerVitals vitals = PlayerVitals.DEFAULT;
+        private boolean dead;
+        private boolean deathPacketsSent;
         private long nextNaturalVitalsNanos;
         private boolean compressionNegotiated;
         private volatile boolean loginAuthenticated;

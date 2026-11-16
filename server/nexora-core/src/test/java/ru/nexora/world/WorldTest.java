@@ -25,6 +25,7 @@ class WorldTest {
         assertEquals(BlockType.GRASS_BLOCK, world.getBlock(-1, 64, -17));
         assertEquals(-1, world.getChunk(-1, -2).chunkX());
         assertEquals(-2, world.getChunk(-1, -2).chunkZ());
+        assertEquals(BlockType.GRASS_BLOCK, world.getBlock(16, 64, 16));
         assertEquals(2, world.loadedChunkCount());
     }
 

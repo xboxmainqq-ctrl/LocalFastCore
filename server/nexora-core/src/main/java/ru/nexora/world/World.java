@@ -9,13 +9,26 @@ public final class World {
     private final String name;
     private final long seed;
     private final WorldGenerator generator;
+    private final int spawnX;
+    private final int spawnY;
+    private final int spawnZ;
     private final ConcurrentMap<Long, WorldChunk> chunks = new ConcurrentHashMap<>();
 
     public World(String name, long seed, WorldGenerator generator) {
+        this(name, seed, generator, 0, 65, 0);
+    }
+
+    public World(String name, long seed, WorldGenerator generator, int spawnX, int spawnY, int spawnZ) {
         if (name == null || name.isBlank()) throw new IllegalArgumentException("World name must not be blank");
+        if (spawnY <= WorldChunk.MIN_Y || spawnY > WorldChunk.MAX_Y) {
+            throw new IllegalArgumentException("Spawn Y must be inside the Overworld build height");
+        }
         this.name = name;
         this.seed = seed;
         this.generator = Objects.requireNonNull(generator, "generator");
+        this.spawnX = spawnX;
+        this.spawnY = spawnY;
+        this.spawnZ = spawnZ;
     }
 
     public String name() {
@@ -25,6 +38,10 @@ public final class World {
     public long seed() {
         return seed;
     }
+
+    public int spawnX() { return spawnX; }
+    public int spawnY() { return spawnY; }
+    public int spawnZ() { return spawnZ; }
 
     public WorldChunk getChunk(int chunkX, int chunkZ) {
         long key = chunkKey(chunkX, chunkZ);

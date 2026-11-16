@@ -8,6 +8,9 @@ import org.cloudburstmc.protocol.bedrock.codec.v2225.Bedrock_v2225;
 import org.cloudburstmc.protocol.bedrock.data.PacketRecipient;
 import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket;
 import org.cloudburstmc.protocol.bedrock.packet.ChunkRadiusUpdatedPacket;
+import org.cloudburstmc.protocol.bedrock.packet.AddItemEntityPacket;
+import org.cloudburstmc.protocol.bedrock.packet.RemoveEntityPacket;
+import org.cloudburstmc.protocol.bedrock.packet.TakeItemEntityPacket;
 import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerId;
 import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerSlotType;
 import org.cloudburstmc.protocol.bedrock.data.inventory.FullContainerName;
@@ -37,6 +40,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -74,6 +78,8 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
     private final ConcurrentMap<String, PlayerSession> byConnection = new ConcurrentHashMap<>();
     private final ConcurrentMap<UUID, PlayerSession> byPlayer = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
+    private final AtomicLong nextRuntimeEntityId = new AtomicLong(1L);
+    private final ConcurrentMap<UUID, Long> runtimeEntityIds = new ConcurrentHashMap<>();
 
     public BedrockPlayerSessionManager(
             World world,
@@ -240,6 +246,7 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
                         session.inventorySynced = sendInventory(session, true);
                     }
                     if (session.inventorySynced) {
+                        syncVisibleItemEntities(session);
                         collectNearbyItems(session);
                     }
                     publishChunkCenter(session);
@@ -366,9 +373,17 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
     private void collectNearbyItems(PlayerSession session) {
         PlayerInventory inventory = inventories.get(session.playerId);
         if (inventory == null) return;
+        List<WorldEntity> nearbyBeforePickup = entities.within(
+                session.x, session.y, session.z, ItemPickupService.DEFAULT_PICKUP_RADIUS);
         ItemPickupService.PickupResult result = itemPickupService.pickup(
                 session.playerId, session.x, session.y, session.z, inventory);
         if (result.collected() > 0) {
+            for (WorldEntity candidate : nearbyBeforePickup) {
+                if (candidate.type() == WorldEntity.Type.ITEM
+                        && entities.find(candidate.id()).isEmpty()) {
+                    broadcastItemTaken(candidate, session);
+                }
+            }
             sendInventory(session, false);
         }
         if (result.collected() > 0 && inventoryStorage != null) {
@@ -378,6 +393,74 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
                 throw new IllegalStateException("Could not save inventory for " + session.playerId, failure);
             }
         }
+    }
+
+    /**
+     * Mirrors nearby authoritative item entities to each Bedrock client.
+     * A session tracks its own visible set so late joiners and moving players
+     * receive spawns/despawns without duplicate entity packets.
+     */
+    private void syncVisibleItemEntities(PlayerSession session) {
+        Set<UUID> desired = new HashSet<>();
+        for (WorldEntity entity : entities.within(session.x, session.y, session.z, 32.0d)) {
+            if (entity.type() != WorldEntity.Type.ITEM || !isEntityChunkLoaded(entity)) continue;
+            desired.add(entity.id());
+            if (session.visibleItemEntities.contains(entity.id())) continue;
+
+            AddItemEntityPacket spawn = new AddItemEntityPacket();
+            long runtimeId = runtimeEntityId(entity.id());
+            spawn.setUniqueEntityId(runtimeId);
+            spawn.setRuntimeEntityId(runtimeId);
+            spawn.setItemInHand(itemRegistry.itemData(entity.name(), 1));
+            spawn.setPosition(Vector3f.from((float) entity.x(), (float) entity.y(), (float) entity.z()));
+            spawn.setMotion(Vector3f.from(0.0f, 0.08f, 0.0f));
+            if (sendProtocolPacket(session.connection, spawn)) {
+                session.visibleItemEntities.add(entity.id());
+            }
+        }
+
+        for (UUID previouslyVisible : new HashSet<>(session.visibleItemEntities)) {
+            if (desired.contains(previouslyVisible)) continue;
+            Long runtimeId = runtimeEntityIds.get(previouslyVisible);
+            if (runtimeId != null) {
+                RemoveEntityPacket remove = new RemoveEntityPacket();
+                remove.setUniqueEntityId(runtimeId);
+                sendProtocolPacket(session.connection, remove);
+            }
+            session.visibleItemEntities.remove(previouslyVisible);
+        }
+    }
+
+    private boolean isEntityChunkLoaded(WorldEntity entity) {
+        int blockX = floorToInt(entity.x());
+        int blockZ = floorToInt(entity.z());
+        return world.isChunkLoaded(new ChunkPosition(Math.floorDiv(blockX, CHUNK_SIZE),
+                Math.floorDiv(blockZ, CHUNK_SIZE)));
+    }
+
+    private long runtimeEntityId(UUID entityId) {
+        return runtimeEntityIds.computeIfAbsent(entityId, ignored -> {
+            long value = nextRuntimeEntityId.getAndIncrement();
+            if (value <= 0L) {
+                throw new IllegalStateException("Bedrock runtime entity ID space exhausted");
+            }
+            return value;
+        });
+    }
+
+    private void broadcastItemTaken(WorldEntity item, PlayerSession collector) {
+        Long itemRuntimeId = runtimeEntityIds.get(item.id());
+        if (itemRuntimeId == null) return;
+        long collectorRuntimeId = runtimeEntityId(collector.playerId);
+        for (PlayerSession viewer : new ArrayList<>(byConnection.values())) {
+            if (viewer.closed.get() || !viewer.connection.isOpen()
+                    || !viewer.visibleItemEntities.remove(item.id())) continue;
+            TakeItemEntityPacket taken = new TakeItemEntityPacket();
+            taken.setItemRuntimeEntityId(itemRuntimeId);
+            taken.setRuntimeEntityId(collectorRuntimeId);
+            sendProtocolPacket(viewer.connection, taken);
+        }
+        runtimeEntityIds.remove(item.id(), itemRuntimeId);
     }
 
     /** Sends the authoritative 36-slot Bedrock player inventory and, on spawn, selects hotbar slot zero. */
@@ -515,6 +598,7 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
     private void removeSession(PlayerSession session) {
         if (!byConnection.remove(session.connection.id(), session)) return;
         byPlayer.remove(session.playerId, session);
+        session.visibleItemEntities.clear();
         if (session.entitySpawned) {
             entities.remove(session.playerId);
             chunkStreaming.removePlayer(session.playerId);
@@ -555,6 +639,7 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
         private final AtomicInteger requestedRadius = new AtomicInteger(-1);
         private BlockPosition breakingBlock;
         private final Set<ChunkPosition> sentChunks = new HashSet<>();
+        private final Set<UUID> visibleItemEntities = new HashSet<>();
         private double x;
         private double y;
         private double z;

@@ -97,7 +97,7 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
     }
 
     @Override
-    public String validateClientOfferAndStripIdentity(String networkId, String offerSdp) throws Exception {
+    public ValidatedClientOffer validateClientOfferAndStripIdentity(String networkId, String offerSdp) throws Exception {
         if (networkId == null || networkId.isBlank()) {
             throw new SecurityException("Missing NetherNet NetworkID");
         }
@@ -153,7 +153,17 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
         }
 
         verifyDetachedFingerprintSignature(detachedFingerprints, fingerprints, clientKey);
-        return removeIdentityLine(lines);
+        String xuid = requiredText(tokenClaims, "xid");
+        NetherNetClientIdentity identity = new NetherNetClientIdentity(
+                token,
+                clientKeyDer,
+                xuid,
+                optionalText(tokenClaims, "xname"),
+                optionalText(tokenClaims, "mid"),
+                optionalText(tokenClaims, "tid"),
+                optionalText(tokenClaims, "leguuid")
+        );
+        return new ValidatedClientOffer(removeIdentityLine(lines), identity);
     }
 
     @Override

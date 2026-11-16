@@ -18,7 +18,7 @@ public final class World {
     private final int spawnZ;
     private final WorldStorage storage;
     private final ConcurrentMap<Long, WorldChunk> chunks = new ConcurrentHashMap<>();
-    private final WorldItemEntityManager itemEntities = new WorldItemEntityManager();
+    private final WorldItemEntityManager itemEntities;
     private final CopyOnWriteArrayList<WorldBlockChangeListener> blockChangeListeners = new CopyOnWriteArrayList<>();
 
     public World(String name, long seed, WorldGenerator generator) {
@@ -44,6 +44,29 @@ public final class World {
         this.spawnY = spawnY;
         this.spawnZ = spawnZ;
         this.storage = storage;
+        this.itemEntities = new WorldItemEntityManager();
+    }
+
+    /** Creates a world with durable dropped-item actor storage loaded before play begins. */
+    public World(
+            String name, long seed, WorldGenerator generator,
+            int spawnX, int spawnY, int spawnZ,
+            WorldStorage storage, WorldItemEntityStorage itemStorage
+    ) throws IOException {
+        if (name == null || name.isBlank()) throw new IllegalArgumentException("World name must not be blank");
+        if (spawnY <= WorldChunk.MIN_Y || spawnY > WorldChunk.MAX_Y) {
+            throw new IllegalArgumentException("Spawn Y must be inside the Overworld build height");
+        }
+        this.name = name;
+        this.seed = seed;
+        this.generator = Objects.requireNonNull(generator, "generator");
+        this.spawnX = spawnX;
+        this.spawnY = spawnY;
+        this.spawnZ = spawnZ;
+        this.storage = storage;
+        this.itemEntities = itemStorage == null
+                ? new WorldItemEntityManager()
+                : new WorldItemEntityManager(itemStorage);
     }
 
     public String name() {
@@ -130,8 +153,10 @@ public final class World {
     }
 
     public void saveAll() throws IOException {
-        if (storage == null) return;
-        for (WorldChunk chunk : chunks.values()) storage.saveChunk(chunk);
+        if (storage != null) {
+            for (WorldChunk chunk : chunks.values()) storage.saveChunk(chunk);
+        }
+        itemEntities.save();
     }
 
     private static long chunkKey(int x, int z) {

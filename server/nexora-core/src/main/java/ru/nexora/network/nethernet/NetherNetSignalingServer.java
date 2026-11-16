@@ -8,6 +8,7 @@ import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
+import java.util.function.Supplier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -23,7 +24,7 @@ public final class NetherNetSignalingServer implements AutoCloseable {
     public static final int MAX_SDP_BYTES = 1_048_576;
 
     private final InetSocketAddress bindAddress;
-    private final NetherNetServerMetadata metadata;
+    private final Supplier<NetherNetServerMetadata> metadataSupplier;
     private final SdpNegotiator negotiator;
     private HttpServer server;
     private ExecutorService executor;
@@ -33,8 +34,16 @@ public final class NetherNetSignalingServer implements AutoCloseable {
             NetherNetServerMetadata metadata,
             SdpNegotiator negotiator
     ) {
+        this(bindAddress, () -> Objects.requireNonNull(metadata, "metadata"), negotiator);
+    }
+
+    public NetherNetSignalingServer(
+            InetSocketAddress bindAddress,
+            Supplier<NetherNetServerMetadata> metadataSupplier,
+            SdpNegotiator negotiator
+    ) {
         this.bindAddress = Objects.requireNonNull(bindAddress, "bindAddress");
-        this.metadata = Objects.requireNonNull(metadata, "metadata");
+        this.metadataSupplier = Objects.requireNonNull(metadataSupplier, "metadataSupplier");
         this.negotiator = Objects.requireNonNull(negotiator, "negotiator");
     }
 
@@ -67,6 +76,8 @@ public final class NetherNetSignalingServer implements AutoCloseable {
             String rawPath = exchange.getRequestURI().getRawPath();
 
             if ("GET".equals(method) && "/v1/join".equals(rawPath)) {
+                NetherNetServerMetadata metadata = Objects.requireNonNull(
+                        metadataSupplier.get(), "metadataSupplier returned null");
                 send(exchange, 200, "application/json; charset=utf-8",
                         metadata.toJson().getBytes(StandardCharsets.UTF_8));
                 return;

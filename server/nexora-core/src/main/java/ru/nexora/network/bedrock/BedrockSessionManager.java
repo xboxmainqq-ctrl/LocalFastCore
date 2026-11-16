@@ -134,20 +134,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             Consumer<PacketEvent> packetSink,
             LongSupplier nanoTime
     ) {
-        this(serverProtocol, serverVersion, compressionThreshold, world, playerStorage,
-                outbound, packetSink, nanoTime);
-    }
-
-    BedrockSessionManager(
-            int serverProtocol,
-            String serverVersion,
-            int compressionThreshold,
-            World world,
-            PlayerDataStorage playerStorage,
-            OutboundFrameSender outbound,
-            Consumer<PacketEvent> packetSink,
-            LongSupplier nanoTime
-    ) {
         if (serverProtocol < 1) throw new IllegalArgumentException("serverProtocol must be positive");
         if (serverVersion == null || serverVersion.isBlank()) {
             throw new IllegalArgumentException("serverVersion must not be blank");

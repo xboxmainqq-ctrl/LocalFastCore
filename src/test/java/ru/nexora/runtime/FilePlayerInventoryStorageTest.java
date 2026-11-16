@@ -35,6 +35,24 @@ class FilePlayerInventoryStorageTest {
     }
 
     @Test
+    void persistsAndRestoresNinetyNineItemStacks() throws IOException {
+        UUID playerId = UUID.randomUUID();
+        FilePlayerInventoryStorage storage =
+                new FilePlayerInventoryStorage(temporaryDirectory.resolve("large-stacks"));
+        PlayerInventory inventory = new PlayerInventory(playerId);
+
+        for (int i = 0; i < 99; i++) {
+            assertTrue(inventory.addOne("minecraft:apple"));
+        }
+        assertEquals(99, inventory.stackAt(0).count());
+        assertFalse(inventory.addOne("minecraft:apple"));
+
+        storage.save(inventory);
+        PlayerInventory loaded = storage.load(playerId);
+        assertEquals(99, loaded.stackAt(0).count());
+    }
+
+    @Test
     void returnsAnEmptyInventoryWhenNoSaveExists() throws IOException {
         PlayerInventory loaded = new FilePlayerInventoryStorage(
                 temporaryDirectory.resolve("players")).load(UUID.randomUUID());

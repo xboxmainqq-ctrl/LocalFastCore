@@ -342,7 +342,7 @@ public final class NexoraMain {
                             BedrockBlockCompatibilityRegistry.builtIn().adapt(blockProfile.registry());
                     playerSessions = new BedrockPlayerSessionManager(
                             world, entities, streaming, bedrockNetwork, initialChunks,
-                            findSpawnY(world), blockRegistry, log);
+                            findSpawnY(world), blockRegistry, log, inventories, playerInventoryStorage);
                     playerSessionTask = scheduler.scheduleRepeating(1, 1, playerSessions::tick);
                     BedrockLoginIdentityVerifier loginVerifier = new BedrockLoginIdentityVerifier(
                             new NetherNetGameServerTokenVerifier(new NetherNetJwksKeyCache()));

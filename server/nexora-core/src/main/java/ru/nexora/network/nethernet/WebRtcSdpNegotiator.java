@@ -1,6 +1,7 @@
 package ru.nexora.network.nethernet;
 
 import dev.onvoid.webrtc.PeerConnectionFactory;
+import dev.onvoid.webrtc.PortAllocatorConfig;
 import dev.onvoid.webrtc.PeerConnectionObserver;
 import dev.onvoid.webrtc.RTCAnswerOptions;
 import dev.onvoid.webrtc.RTCConfiguration;
@@ -47,6 +48,8 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
     private final int maxSessions;
     private final long timeoutMillis;
     private final List<String> iceServerUrls;
+    private final int minUdpPort;
+    private final int maxUdpPort;
     private final Map<String, PeerSession> sessions = new ConcurrentHashMap<>();
     private final Semaphore sessionPermits;
     private final ScheduledExecutorService sessionReaper;
@@ -57,7 +60,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
             NetherNetDataChannelListener dataChannelListener,
             int maxSessions
     ) {
-        this(identityService, dataChannelListener, maxSessions, List.of(), DEFAULT_TIMEOUT_MILLIS);
+        this(identityService, dataChannelListener, maxSessions, List.of(), 0, 0, DEFAULT_TIMEOUT_MILLIS);
     }
 
     public WebRtcSdpNegotiator(
@@ -66,7 +69,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
             int maxSessions,
             long timeoutMillis
     ) {
-        this(identityService, dataChannelListener, maxSessions, List.of(), timeoutMillis);
+        this(identityService, dataChannelListener, maxSessions, List.of(), 0, 0, timeoutMillis);
     }
 
     public WebRtcSdpNegotiator(
@@ -75,7 +78,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
             int maxSessions,
             List<String> iceServerUrls
     ) {
-        this(identityService, dataChannelListener, maxSessions, iceServerUrls, DEFAULT_TIMEOUT_MILLIS);
+        this(identityService, dataChannelListener, maxSessions, iceServerUrls, 0, 0, DEFAULT_TIMEOUT_MILLIS);
     }
 
     public WebRtcSdpNegotiator(
@@ -83,6 +86,20 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
             NetherNetDataChannelListener dataChannelListener,
             int maxSessions,
             List<String> iceServerUrls,
+            int minUdpPort,
+            int maxUdpPort
+    ) {
+        this(identityService, dataChannelListener, maxSessions, iceServerUrls,
+                minUdpPort, maxUdpPort, DEFAULT_TIMEOUT_MILLIS);
+    }
+
+    public WebRtcSdpNegotiator(
+            NetherNetIdentityService identityService,
+            NetherNetDataChannelListener dataChannelListener,
+            int maxSessions,
+            List<String> iceServerUrls,
+            int minUdpPort,
+            int maxUdpPort,
             long timeoutMillis
     ) {
         this.identityService = Objects.requireNonNull(identityService, "identityService");
@@ -95,6 +112,13 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         if (this.iceServerUrls.stream().anyMatch(url -> url == null || !url.startsWith("stun:"))) {
             throw new IllegalArgumentException("Only STUN URLs are supported by this configuration");
         }
+        if ((minUdpPort == 0) != (maxUdpPort == 0)
+                || minUdpPort < 0 || maxUdpPort < 0
+                || minUdpPort > 0 && (minUdpPort < 1024 || maxUdpPort > 65535 || minUdpPort > maxUdpPort)) {
+            throw new IllegalArgumentException("UDP port range must be 0/0 or 1024 <= min <= max <= 65535");
+        }
+        this.minUdpPort = minUdpPort;
+        this.maxUdpPort = maxUdpPort;
         this.timeoutMillis = timeoutMillis;
         this.factory = new PeerConnectionFactory();
         this.sessionReaper = Executors.newSingleThreadScheduledExecutor(task -> {
@@ -136,6 +160,10 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
             RTCIceServer iceServer = new RTCIceServer();
             iceServer.urls.addAll(iceServerUrls);
             configuration.iceServers.add(iceServer);
+        }
+        if (minUdpPort > 0) {
+            configuration.portAllocatorConfig = new PortAllocatorConfig(
+                    minUdpPort, maxUdpPort, PortAllocatorConfig.PORTALLOCATOR_DISABLE_TCP);
         }
         configuration.bundlePolicy = dev.onvoid.webrtc.RTCBundlePolicy.MAX_BUNDLE;
         configuration.tcpCandidatePolicy = dev.onvoid.webrtc.RTCTcpCandidatePolicy.DISABLED;

@@ -8,6 +8,12 @@ import org.cloudburstmc.protocol.bedrock.codec.v2225.Bedrock_v2225;
 import org.cloudburstmc.protocol.bedrock.data.PacketRecipient;
 import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket;
 import org.cloudburstmc.protocol.bedrock.packet.ChunkRadiusUpdatedPacket;
+import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerId;
+import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerSlotType;
+import org.cloudburstmc.protocol.bedrock.data.inventory.FullContainerName;
+import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData;
+import org.cloudburstmc.protocol.bedrock.packet.InventoryContentPacket;
+import org.cloudburstmc.protocol.bedrock.packet.PlayerHotbarPacket;
 import org.cloudburstmc.protocol.bedrock.packet.CorrectPlayerMovePredictionPacket;
 import org.cloudburstmc.protocol.bedrock.packet.NetworkChunkPublisherUpdatePacket;
 import org.cloudburstmc.protocol.bedrock.data.PlayerActionType;
@@ -64,6 +70,7 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
     private final Map<UUID, PlayerInventory> inventories;
     private final FilePlayerInventoryStorage inventoryStorage;
     private final ItemPickupService itemPickupService;
+    private final BedrockItemRegistry itemRegistry;
     private final ConcurrentMap<String, PlayerSession> byConnection = new ConcurrentHashMap<>();
     private final ConcurrentMap<UUID, PlayerSession> byPlayer = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
@@ -118,6 +125,7 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
         this.inventories = Objects.requireNonNull(inventories, "inventories");
         this.inventoryStorage = inventoryStorage;
         this.itemPickupService = new ItemPickupService(this.entities, this.world);
+        this.itemRegistry = BedrockItemRegistry.loadBundled();
         if (this.initialChunks.isEmpty() || this.initialChunks.size() > 128) {
             throw new IllegalArgumentException("Initial Bedrock chunk set must contain 1 to 128 chunks");
         }
@@ -257,6 +265,9 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
         chunkStreaming.updatePlayer(session.playerId, floorToInt(session.x), floorToInt(session.z));
         session.sentChunks.addAll(initialChunks);
         session.entitySpawned = true;
+        if (!session.inventorySynced) {
+            session.inventorySynced = sendInventory(session, true);
+        }
     }
 
     private void applyPendingInput(PlayerSession session) {
@@ -355,6 +366,9 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
         if (inventory == null) return;
         ItemPickupService.PickupResult result = itemPickupService.pickup(
                 session.playerId, session.x, session.y, session.z, inventory);
+        if (result.collected() > 0) {
+            sendInventory(session, false);
+        }
         if (result.collected() > 0 && inventoryStorage != null) {
             try {
                 inventoryStorage.save(inventory);
@@ -362,6 +376,37 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
                 throw new IllegalStateException("Could not save inventory for " + session.playerId, failure);
             }
         }
+    }
+
+    /** Sends the authoritative 36-slot Bedrock player inventory and, on spawn, selects hotbar slot zero. */
+    private boolean sendInventory(PlayerSession session, boolean includeHotbarSelection) {
+        PlayerInventory inventory = inventories.get(session.playerId);
+        if (inventory == null || inventory.slotCount() != PlayerInventory.DEFAULT_SLOTS) {
+            throw new IllegalStateException("Bedrock player inventory must contain exactly 36 slots");
+        }
+        List<ItemData> contents = new ArrayList<>(PlayerInventory.DEFAULT_SLOTS);
+        for (int slot = 0; slot < PlayerInventory.DEFAULT_SLOTS; slot++) {
+            ItemStack stack = inventory.stackAt(slot);
+            contents.add(stack == null ? ItemData.AIR
+                    : itemRegistry.itemData(stack.itemId(), stack.count()));
+        }
+
+        InventoryContentPacket content = new InventoryContentPacket();
+        content.setContainerId(ContainerId.INVENTORY);
+        content.setContents(contents);
+        content.setContainerNameData(new FullContainerName(
+                ContainerSlotType.HOTBAR_AND_INVENTORY, null));
+        if (!sendProtocolPacket(session.connection, content)) {
+            return false;
+        }
+        if (includeHotbarSelection) {
+            PlayerHotbarPacket hotbar = new PlayerHotbarPacket();
+            hotbar.setSelectedHotbarSlot(0);
+            hotbar.setContainerId(ContainerId.INVENTORY);
+            hotbar.setSelectHotbarSlot(true);
+            return sendProtocolPacket(session.connection, hotbar);
+        }
+        return true;
     }
 
     private void broadcastBlockUpdate(BlockPosition position, BlockState state) {
@@ -514,6 +559,7 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
         private double yaw;
         private boolean onGround = true;
         private boolean entitySpawned;
+        private boolean inventorySynced;
         private boolean playReady;
         private long lastInputTick = -1;
         private int acknowledgedRadius = -1;

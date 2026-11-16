@@ -49,16 +49,37 @@ public final class BedrockPlayerAuthInputCodec {
         boolean optionalSectionsPresent = hasItemUse || hasItemStackRequest || hasBlockActions
                 || hasVehicleRotation || hasPredictedVehicle;
 
-        if (!optionalSectionsPresent) {
-            in.float32(); in.float32(); // analog move vector
-            in.float32(); in.float32(); in.float32(); // camera orientation
-            in.float32(); in.float32(); // raw move vector
-            in.requireExhausted();
+        // Item-use and item-stack-request structures are handled by their own later protocol stages.
+        if (hasItemUse || hasItemStackRequest) {
+            return new PlayerInput(pitch, yaw, x, y, z, motionX, motionZ, headYaw,
+                    tick, true, inputMode, playMode, interactionModel,
+                    interactYaw, interactPitch, deltaX, deltaY, deltaZ, java.util.List.of());
         }
+
+        java.util.List<BlockAction> blockActions = new java.util.ArrayList<>();
+        if (hasBlockActions) {
+            int blockActionCount = in.varUInt32();
+            if (blockActionCount > MAX_INPUT_ACTIONS) {
+                throw new IllegalArgumentException("PlayerAuthInput has too many block actions");
+            }
+            for (int i = 0; i < blockActionCount; i++) {
+                blockActions.add(new BlockAction(in.varInt32(), in.varInt32(),
+                        in.varInt32(), in.varInt32(), in.varInt32()));
+            }
+        }
+        if (hasVehicleRotation) {
+            in.float32(); in.float32();
+        }
+        if (hasPredictedVehicle) in.varInt64();
+
+        in.float32(); in.float32(); // analog move vector
+        in.float32(); in.float32(); in.float32(); // camera orientation
+        in.float32(); in.float32(); // raw move vector
+        in.requireExhausted();
 
         return new PlayerInput(pitch, yaw, x, y, z, motionX, motionZ, headYaw,
                 tick, optionalSectionsPresent, inputMode, playMode, interactionModel,
-                interactYaw, interactPitch, deltaX, deltaY, deltaZ);
+                interactYaw, interactPitch, deltaX, deltaY, deltaZ, java.util.List.copyOf(blockActions));
     }
 
     public record PlayerInput(
@@ -68,8 +89,12 @@ public final class BedrockPlayerAuthInputCodec {
             long tick, boolean optionalSectionsPresent,
             int inputMode, int playMode, int interactionModel,
             float interactYaw, float interactPitch,
-            float deltaX, float deltaY, float deltaZ
+            float deltaX, float deltaY, float deltaZ,
+            java.util.List<BlockAction> blockActions
     ) {
+    }
+
+    public record BlockAction(int action, int x, int y, int z, int face) {
     }
 
     private static final class Reader {
@@ -130,6 +155,11 @@ public final class BedrockPlayerAuthInputCodec {
                 }
             }
             throw new IllegalArgumentException("VarUInt64 is too long");
+        }
+
+        long varInt64() {
+            long value = varUInt64();
+            return (value >>> 1) ^ -(value & 1);
         }
 
         void requireExhausted() {

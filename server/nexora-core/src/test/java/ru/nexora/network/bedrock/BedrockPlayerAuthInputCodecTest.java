@@ -73,6 +73,31 @@ class BedrockPlayerAuthInputCodecTest {
     }
 
     @Test
+    void decodesPackedItemUseTransactionForBlockPlacement() {
+        byte[] payload = itemUseMovementPayload(
+                0.5f, 65.0f, 0.5f, 0.0f, 20L,
+                0, 64, 0, 5, 0, 1, 2,
+                Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.STONE)),
+                0.5f, 65.0f, 0.5f);
+        BedrockPlayerAuthInputCodec.PlayerInput input =
+                BedrockPlayerAuthInputCodec.decode(new BedrockPacket(0x90, 0, 0, payload));
+
+        var use = input.itemUseTransaction();
+        assertNotNull(use);
+        assertEquals(0, use.actionType());
+        assertEquals(1, use.triggerType());
+        assertEquals(0, use.x());
+        assertEquals(64, use.y());
+        assertEquals(0, use.z());
+        assertEquals(5, use.face());
+        assertEquals(0, use.slot());
+        assertEquals(1, use.item().runtimeItemId());
+        assertEquals(2, use.item().count());
+        assertEquals(20L, input.tick());
+        assertFalse(input.interactionPayloadUnparsed());
+    }
+
+    @Test
     void decodesProtocol2225BlockActionsInWireOrder() {
         BedrockPlayerAuthInputCodec.PlayerInput input =
                 BedrockPlayerAuthInputCodec.decode(new BedrockPacket(0x90, 0, 0,
@@ -213,6 +238,48 @@ class BedrockPlayerAuthInputCodecTest {
         writeFloat(output, 0); writeFloat(output, 0);
         writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0);
         writeFloat(output, 0); writeFloat(output, 0);
+        return output.toByteArray();
+    }
+
+    static byte[] itemUseMovementPayload(
+            float playerX, float playerY, float playerZ, float yaw, long tick,
+            int blockX, int blockY, int blockZ, int face, int slot,
+            int runtimeItemId, int count, long blockRuntimeId,
+            float fromX, float fromY, float fromZ
+    ) {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        writeFloat(output, 0); writeFloat(output, yaw);
+        writeFloat(output, playerX); writeFloat(output, playerY); writeFloat(output, playerZ);
+        writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, yaw);
+        writeVarUInt(output, 1);
+        writeVarInt(output, BedrockPlayerAuthInputCodec.InputAction.PERFORM_ITEM_INTERACTION);
+        writeVarUInt(output, 2); writeVarUInt(output, 0); writeVarInt(output, 0);
+        writeFloat(output, 0); writeFloat(output, 0);
+        writeVarULong(output, tick);
+        writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0);
+        writeVarInt(output, 0); // legacy request ID
+        writeVarUInt(output, 0); // inventory actions
+        writeVarInt(output, 0); // ItemUseActionType.Place
+        output.write(1); // ItemUseTriggerType.PlayerInput
+        writeVarInt(output, blockX); writeVarInt(output, blockY); writeVarInt(output, blockZ);
+        output.write(face);
+        writeVarInt(output, slot);
+        output.write(0); // HandSlot.Mainhand
+        writeShort(output, runtimeItemId);
+        writeShort(output, count);
+        writeVarUInt(output, 0); // aux value
+        output.write(0); // has StackNetId
+        writeVarUInt(output, blockRuntimeId);
+        writeVarUInt(output, 0); // user data
+        writeFloat(output, fromX); writeFloat(output, fromY); writeFloat(output, fromZ);
+        writeFloat(output, 0.5f); writeFloat(output, 0.5f); writeFloat(output, 0.5f);
+        writeVarUInt(output, Integer.toUnsignedLong(
+                BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.GRASS_BLOCK)));
+        output.write(1); // ClientInteractPrediction.Success
+        output.write(0); // ClientCooldownState.Off
+        writeFloat(output, 0); writeFloat(output, 0); // analog move
+        writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0); // camera
+        writeFloat(output, 0); writeFloat(output, 0); // raw move
         return output.toByteArray();
     }
 

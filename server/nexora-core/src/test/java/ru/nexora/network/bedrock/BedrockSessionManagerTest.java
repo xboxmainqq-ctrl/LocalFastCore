@@ -191,6 +191,14 @@ class BedrockSessionManagerTest {
         assertEquals(30.0f, moved.yaw());
         assertEquals(1L, moved.tick());
 
+        // A second position update with the same client tick is a replay and must be ignored.
+        BedrockPacket replayedMovement = new BedrockPacket(0x90, 0, 0,
+                BedrockPlayerAuthInputCodecTest.movementPayload(2.0f, 65.0f, 1.0f, 30.0f, 1L, false));
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(replayedMovement), true, 256));
+        assertEquals(1.0f, manager.playerPosition("authenticated-client").orElseThrow().x());
+        assertEquals(22, outboundFrames.size());
+
         monotonicClock.set(200_000_000L);
         BedrockPacket implausibleTeleport = new BedrockPacket(0x90, 0, 0,
                 BedrockPlayerAuthInputCodecTest.movementPayload(100.0f, 65.0f, 100.0f, 90.0f, 2L, false));

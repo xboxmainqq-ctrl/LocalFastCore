@@ -62,6 +62,19 @@ class BedrockPlayerAuthInputCodecTest {
     }
 
     @Test
+    void parsesVehicleRotationAndPredictedVehicleOnlyWhenFlagged() {
+        byte[] payload = vehiclePayload();
+        BedrockPlayerAuthInputCodec.PlayerInput input =
+                BedrockPlayerAuthInputCodec.decode(new BedrockPacket(0x90, 0, 0, payload));
+
+        assertTrue(input.optionalSectionsPresent());
+        assertFalse(input.interactionPayloadUnparsed());
+        assertTrue(input.blockActions().isEmpty());
+        assertTrue(input.hasInputAction(
+                BedrockPlayerAuthInputCodec.InputAction.IS_IN_CLIENT_PREDICTED_VEHICLE));
+    }
+
+    @Test
     void rejectsWrongPacketIdTruncationAndNonFiniteCoordinates() {
         assertThrows(IllegalArgumentException.class,
                 () -> BedrockPlayerAuthInputCodec.decode(new BedrockPacket(1, 0, 0, new byte[0])));
@@ -118,6 +131,23 @@ class BedrockPlayerAuthInputCodecTest {
             output.write(0x7f);
             return output.toByteArray();
         }
+        writeFloat(output, 0); writeFloat(output, 0); // analog move
+        writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0); // camera orientation
+        writeFloat(output, 0); writeFloat(output, 0); // raw move
+        return output.toByteArray();
+    }
+
+    private static byte[] vehiclePayload() {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        for (int i = 0; i < 8; i++) writeFloat(output, 0);
+        writeVarUInt(output, 1);
+        writeVarInt(output, BedrockPlayerAuthInputCodec.InputAction.IS_IN_CLIENT_PREDICTED_VEHICLE);
+        writeVarUInt(output, 2); writeVarUInt(output, 0); writeVarInt(output, 0);
+        writeFloat(output, 0); writeFloat(output, 0);
+        writeVarULong(output, 1);
+        writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0);
+        writeFloat(output, 0); writeFloat(output, 0); // vehicle rotation
+        writeVarULong(output, 0); // predicted vehicle unique ID
         writeFloat(output, 0); writeFloat(output, 0); // analog move
         writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0); // camera orientation
         writeFloat(output, 0); writeFloat(output, 0); // raw move

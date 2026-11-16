@@ -7,7 +7,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 
 /**
- * NEXORA Core bootstrap. Current milestone: Bedrock server-list discovery only.
+ * NEXORA Core bootstrap. Legacy RakNet discovery is retained for protocol experiments only.
  */
 public final class NexoraServer {
     private NexoraServer() {
@@ -40,8 +40,9 @@ public final class NexoraServer {
 
         Runtime.getRuntime().addShutdownHook(new Thread(discovery::close, "nexora-shutdown"));
         discovery.start();
-        System.out.printf("NEXORA Core discovery listening on %s:%d (Bedrock 1.26.62 / protocol 2225)%n",
+        System.out.printf("NEXORA legacy RakNet discovery listening on %s:%d%n",
                 bindHost, port);
-        System.out.println("Discovery only: gameplay login and RakNet sessions are not implemented yet.");
+        System.out.println("Legacy discovery only. Modern Bedrock clients require the NetherNet WebRTC transport.");
+        System.out.println("NetherNet signaling and gameplay sessions are not wired into the bootstrap yet.");
     }
 }

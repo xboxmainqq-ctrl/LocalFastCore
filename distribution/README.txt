@@ -1,30 +1,27 @@
-NEXORA DEDICATED SERVER — PREVIEW
+NEXORA DEDICATED SERVER — BEDROCK TEST PREVIEW
 
 Requirements:
 - Java 25 (64-bit)
-- 2 GB RAM recommended for this preview
+- 2 GB RAM recommended
+- A host allocation that exposes BOTH TCP and UDP on the configured Bedrock port
 
 Start:
 - Windows: double-click start.bat
 - Linux: chmod +x start.sh && ./start.sh
 
-The first start creates nexora-data/server.properties if it does not exist and generates the spawn chunk. World data is saved under nexora-data/worlds when the server shuts down. Stop with Ctrl+C (Linux) or close the console after shutdown begins.
+The first start copies the packaged server.properties into nexora-data/server.properties.
+The packaged test profile enables authenticated Bedrock 1.26.60 NetherNet ingress on port 19132.
+IMPORTANT: On a game host, replace bedrock.port in nexora-data/server.properties with the exact allocated port.
+The same port is used for TCP signaling and UDP media when bedrock.ice-port=0. The host must expose both protocols.
+If the host assigns a separate UDP media port, set bedrock.ice-port to that allocated UDP port.
+Restart after changing settings.
 
-Configuration:
-Edit server.properties before starting. world.generator=overworld selects the built-in terrain generator. The seed and vertical world limits are also configurable. Unknown generator IDs stop startup with an error.
+The server creates nexora-data/nethernet-identity.pem on first enabled start. Keep this file between restarts and deployments; it is the server's persistent cryptographic identity.
 
-Optional Bedrock 1.26.60 networking:
-- Network ingress is disabled by default. This is intentional; the server remains in safe offline mode until explicitly configured.
-- To enable the authenticated NetherNet listener, add these entries to nexora-data/server.properties:
-  bedrock.network.enabled=true
-  bedrock.bind-address=0.0.0.0
-  bedrock.port=19132
-  bedrock.ice-port=0
-  bedrock.identity-file=nethernet-identity.pem
-- Replace 19132 with the TCP signaling port assigned by your host. If your host assigns a separate UDP media port, set bedrock.ice-port to that UDP port. The signaling TCP port and media UDP port must both be reachable from clients.
-- On MCPEHost, create/enable the required additional UDP port in the hosting panel and confirm that the signaling TCP port is also exposed. Do not assume that an assigned TCP-only port can carry NetherNet gameplay.
-- Restart the server after changing these settings. The first enabled start creates the persistent operator identity file; keep it private and do not delete it between restarts.
-- Do not enable the listener until the host's TCP/UDP port allocation is confirmed. Public deployment still needs external connection testing and operational security review.
+Authentication:
+- Retail Bedrock login with Microsoft/Xbox authentication is required.
+- This is not an offline/cracked login mode.
+- No client resource-pack prompt or UI result should be assumed until verified in-game.
 
 IMPORTANT LIMITATIONS:
-This is an early NEXORA server runtime preview, not a finished public multiplayer server. The Bedrock 1.26.60 authenticated NetherNet listener and post-login gameplay pipeline are implemented and covered by automated tests, but successful connection from a real external Bedrock client and host-specific TCP/UDP routing have not yet been verified. Movement physics, inventory presentation, resource-pack HUD rendering, and full survival gameplay still require in-game validation.
+This is an early NEXORA server runtime preview, not a finished public multiplayer server. The authenticated Bedrock listener and post-login pipeline have automated tests, but a retail 1.26.60 client and host-specific TCP/UDP routing still need end-to-end testing. Movement physics, inventory presentation, resource-pack HUD rendering, and full survival gameplay remain incomplete.

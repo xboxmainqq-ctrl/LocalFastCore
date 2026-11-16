@@ -1,12 +1,19 @@
 package ru.nexora.world;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.IOException;
+import java.nio.file.Path;
 import ru.nexora.inventory.ItemStack;
 import ru.nexora.inventory.PlayerInventory;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class WorldItemEntityManagerTest {
+    @TempDir
+    Path temporaryDirectory;
+
     @Test
     void spawnsAndPicksUpWholeStackWithinRadius() {
         WorldItemEntityManager manager = new WorldItemEntityManager();
@@ -52,6 +59,30 @@ class WorldItemEntityManagerTest {
         assertFalse(manager.pickup(entity.runtimeId(), inventory, "player-xuid", 0, 65, 0, 1001));
         assertEquals(63, inventory.count("minecraft:diamond"));
         assertEquals(2, manager.find(entity.runtimeId()).orElseThrow().stack().count());
+    }
+
+    @Test
+    void persistsDroppedItemsAcrossRestartAndPersistsPickup() throws IOException {
+        WorldItemEntityStorage storage = new WorldItemEntityStorage(temporaryDirectory, "test-world");
+        WorldItemEntityManager first = new WorldItemEntityManager(storage);
+        WorldItemEntity dropped = first.spawn(new ItemStack("minecraft:diamond", 4, 64),
+                2.5, 65.0, -1.5, 0.1, 0.2, -0.1, 10_000, 500, "owner-xuid");
+
+        WorldItemEntityManager afterRestart = new WorldItemEntityManager(storage);
+        WorldItemEntity restored = afterRestart.find(dropped.runtimeId()).orElseThrow();
+        assertEquals(dropped, restored);
+        WorldItemEntity next = afterRestart.spawn(new ItemStack("minecraft:iron_ingot", 2, 64),
+                0, 65, 0, 0, 0, 0, 10_000, 0, null);
+        assertTrue(next.runtimeId() > dropped.runtimeId());
+
+        PlayerInventory inventory = new PlayerInventory();
+        assertTrue(afterRestart.pickup(next.runtimeId(), inventory, "another-player",
+                0, 65, 0, 10_001));
+        assertEquals(2, inventory.count("minecraft:iron_ingot"));
+
+        WorldItemEntityManager afterPickupRestart = new WorldItemEntityManager(storage);
+        assertTrue(afterPickupRestart.find(next.runtimeId()).isEmpty());
+        assertEquals(dropped, afterPickupRestart.find(dropped.runtimeId()).orElseThrow());
     }
 
     @Test

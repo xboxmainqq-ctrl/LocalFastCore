@@ -92,8 +92,8 @@ public final class WorldStorage {
 
     public Optional<WorldChunk> loadChunk(int chunkX, int chunkZ) throws IOException {
         Path file = chunkPath(chunkX, chunkZ);
-        if (!Files.exists(file)) return Optional.empty();
         rejectSymlink(file, "chunk file");
+        if (!Files.exists(file)) return Optional.empty();
 
         long fileSize = Files.size(file);
         if (fileSize < HEADER_BYTES + Integer.BYTES || fileSize > MAX_FILE_BYTES) {

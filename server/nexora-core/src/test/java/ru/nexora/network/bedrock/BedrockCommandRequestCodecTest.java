@@ -31,7 +31,7 @@ class BedrockCommandRequestCodecTest {
                 BedrockCommandRequestCodec.decode(new BedrockPacket(0x4d, 0, 0,
                         command("/equipment", "Unknown", "r", 1, false, "Latest"))));
         byte[] invalidBoolean = command("/equipment", "Player", "r", 1, false, "Latest");
-        invalidBoolean[invalidBoolean.length - 7] = 2;
+        invalidBoolean[invalidBoolean.length - 8] = 2;
         assertThrows(IllegalArgumentException.class, () ->
                 BedrockCommandRequestCodec.decode(new BedrockPacket(0x4d, 0, 0, invalidBoolean)));
         byte[] trailing = java.util.Arrays.copyOf(

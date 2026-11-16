@@ -41,6 +41,69 @@ public final class InventoryTransactionService {
         return inventory.applySlotChanges(changes) ? Result.APPLIED : Result.REJECTED_STALE_OR_UNSAFE;
     }
 
+    /**
+     * Applies transfers between the main inventory, offhand and cursor as one
+     * atomic, item-conserving transaction. Armor remains gated until the item
+     * registry carries authoritative armor-slot compatibility metadata.
+     */
+    public Result applyPlayerInventoryAndUiTransaction(
+            PlayerInventory inventory, PlayerEquipment equipment, List<Action> actions
+    ) {
+        Objects.requireNonNull(inventory, "inventory");
+        Objects.requireNonNull(equipment, "equipment");
+        Objects.requireNonNull(actions, "actions");
+        if (actions.isEmpty() || actions.size() > MAX_ACTIONS) return Result.INVALID_ACTION_COUNT;
+
+        synchronized (inventory) {
+            synchronized (equipment) {
+                java.util.Set<String> touched = new java.util.HashSet<>();
+                java.util.Map<String, Integer> itemDeltas = new java.util.HashMap<>();
+                List<PendingChange> pending = new ArrayList<>(actions.size());
+
+                for (Action action : actions) {
+                    if (action == null) return Result.INVALID_ACTION;
+                    if (action.sourceType() != CONTAINER_INVENTORY_SOURCE) return Result.UNSUPPORTED_CONTAINER;
+                    int container = action.containerId();
+                    int slot = action.slot();
+                    if (container == 120) return Result.UNSUPPORTED_CONTAINER; // armor slot policy not registered yet
+                    if (container != 0 && container != 119 && container != 124) return Result.UNSUPPORTED_CONTAINER;
+                    if ((container == 119 || container == 124) && slot != 0) return Result.INVALID_SLOT;
+                    if (container == 0 && (slot < 0 || slot >= inventory.size())) return Result.INVALID_SLOT;
+                    if (!touched.add(container + ":" + slot)) return Result.INVALID_ACTION;
+
+                    Optional<ItemStack> current = switch (container) {
+                        case 0 -> inventory.getSlot(slot);
+                        case 119 -> equipment.offhand();
+                        case 124 -> equipment.cursor();
+                        default -> throw new IllegalStateException("Validated container became unsupported");
+                    };
+                    if (!current.equals(action.from())) return Result.REJECTED_STALE_OR_UNSAFE;
+
+                    Optional<ItemStack> replacement = action.to();
+                    current.ifPresent(stack -> itemDeltas.merge(stack.itemId(), -stack.count(), Integer::sum));
+                    replacement.ifPresent(stack -> itemDeltas.merge(stack.itemId(), stack.count(), Integer::sum));
+                    pending.add(new PendingChange(container, slot, replacement));
+                }
+
+                if (itemDeltas.values().stream().anyMatch(delta -> delta != 0)) {
+                    return Result.REJECTED_STALE_OR_UNSAFE;
+                }
+                for (PendingChange change : pending) {
+                    switch (change.containerId()) {
+                        case 0 -> inventory.setSlot(change.slot(), change.replacement().orElse(null));
+                        case 119 -> equipment.setOffhand(change.replacement().orElse(null));
+                        case 124 -> equipment.setCursor(change.replacement().orElse(null));
+                        default -> throw new IllegalStateException("Validated container became unsupported");
+                    }
+                }
+                return Result.APPLIED;
+            }
+        }
+    }
+
+    private record PendingChange(int containerId, int slot, Optional<ItemStack> replacement) {
+    }
+
     public enum Result {
         APPLIED,
         INVALID_ACTION_COUNT,

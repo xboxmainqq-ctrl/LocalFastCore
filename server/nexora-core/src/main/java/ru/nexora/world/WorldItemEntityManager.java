@@ -15,8 +15,8 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * In-memory dropped-item actor manager. Physics and persistence are deliberately
- * separate follow-up systems; pickup and inventory conservation are authoritative here.
+ * Server-authoritative dropped-item actor manager. Durable storage is optional
+ * for tests and embedded worlds; production worlds persist each actor mutation.
  */
 public final class WorldItemEntityManager {
     public static final double DEFAULT_PICKUP_RADIUS = 1.5;
@@ -51,7 +51,9 @@ public final class WorldItemEntityManager {
             throw new IllegalArgumentException("Invalid item actor timing");
         }
         long runtimeId = nextRuntimeId.getAndIncrement();
-        if (runtimeId <= 0) throw new IllegalStateException("Item actor runtime ID space exhausted");
+        if (runtimeId <= 0 || runtimeId == Long.MAX_VALUE) {
+            throw new IllegalStateException("Item actor runtime ID space exhausted");
+        }
         WorldItemEntity entity = new WorldItemEntity(-runtimeId, runtimeId, stack,
                 x, y, z, velocityX, velocityY, velocityZ,
                 nowMillis + pickupDelayMillis, ownerXuid);
@@ -93,9 +95,13 @@ public final class WorldItemEntityManager {
     /** Restores a previously removed immutable actor after a failed durable inventory update. */
     public void restore(WorldItemEntity entity) {
         Objects.requireNonNull(entity, "entity");
+        if (entity.runtimeId() == Long.MAX_VALUE) {
+            throw new IllegalArgumentException("Item actor runtime ID space exhausted");
+        }
         if (entities.putIfAbsent(entity.runtimeId(), entity) != null) {
             throw new IllegalStateException("Item actor runtime ID is already present");
         }
+        nextRuntimeId.accumulateAndGet(entity.runtimeId() + 1, Math::max);
         try {
             persist();
         } catch (RuntimeException exception) {

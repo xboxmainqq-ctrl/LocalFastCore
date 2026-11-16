@@ -1120,6 +1120,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.hasReceivedInput = true;
         double horizontalDistance = Math.hypot(state.positionX - previousX, state.positionZ - previousZ);
         updateSurvivalVitals(networkId, state, input.tick(), horizontalDistance, sprinting, jumpStarted);
+        if (next.landedDistance() > 3.0) {
+            applyDamage(networkId, state, (float) Math.ceil(next.landedDistance() - 3.0), input.tick());
+        }
 
         if (correctionNeeded) sendMovementCorrection(networkId, state, input.tick());
 
@@ -1313,17 +1316,21 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (state == null) return false;
         synchronized (state) {
             if (!state.loginAuthenticated || !state.clientInitialized || state.vitals.dead()) return false;
-            PlayerVitals before = state.vitals;
-            state.vitals = before.damage(amount);
-            List<BedrockPacket> packets = new java.util.ArrayList<>();
-            if (state.vitals.health() != before.health()) {
-                packets.add(BedrockVitalsCodec.createSetHealth(state.vitals));
-            }
-            packets.add(BedrockVitalsCodec.createUpdateAttributes(
-                    state.entityId, state.vitals, Math.max(0, state.lastInputTick)));
-            sendPackets(networkId, packets, true);
+            applyDamage(networkId, state, amount, state.lastInputTick);
             return true;
         }
+    }
+
+    private void applyDamage(String networkId, SessionState state, float amount, long tick) {
+        PlayerVitals before = state.vitals;
+        state.vitals = before.damage(amount);
+        List<BedrockPacket> packets = new java.util.ArrayList<>();
+        if (state.vitals.health() != before.health()) {
+            packets.add(BedrockVitalsCodec.createSetHealth(state.vitals));
+        }
+        packets.add(BedrockVitalsCodec.createUpdateAttributes(
+                state.entityId, state.vitals, Math.max(0, tick)));
+        sendPackets(networkId, packets, true);
     }
 
     private void sendMovementCorrection(String networkId, SessionState state, long tick) {

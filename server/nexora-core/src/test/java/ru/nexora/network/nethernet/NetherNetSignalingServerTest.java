@@ -10,6 +10,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -30,6 +31,22 @@ class NetherNetSignalingServerTest {
             assertTrue(response.body().contains("\"name\":\"NEXORA \\\"RPG\\\"\""));
             assertTrue(response.body().contains("\"protocol\":2225"));
             assertTrue(response.body().contains("\"maxPlayers\":20"));
+        }
+    }
+
+    @Test
+    void getJoinReflectsLivePlayerCount() throws Exception {
+        AtomicInteger players = new AtomicInteger();
+        try (NetherNetSignalingServer server = new NetherNetSignalingServer(
+                new InetSocketAddress("127.0.0.1", 0),
+                () -> new NetherNetServerMetadata("NEXORA", 2225, "1.26.62",
+                        "NEXORA World", players.get(), 20, 0),
+                (id, offer) -> ANSWER)) {
+            server.start();
+            assertTrue(get(server, "/v1/join").body().contains("\"players\":0"));
+
+            players.set(3);
+            assertTrue(get(server, "/v1/join").body().contains("\"players\":3"));
         }
     }
 

@@ -117,16 +117,19 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
             throw new IllegalStateException("NetworkID is already connected");
         }
 
-        String verifiedOffer = identityService.validateClientOfferAndStripIdentity(networkId, sdpOffer);
-        if (verifiedOffer == null || !verifiedOffer.startsWith("v=0")
-                || verifiedOffer.contains("a=identity:")) {
+        ValidatedClientOffer validatedOffer =
+                identityService.validateClientOfferAndStripIdentity(networkId, sdpOffer);
+        if (validatedOffer == null || validatedOffer.sanitizedSdp() == null
+                || !validatedOffer.sanitizedSdp().startsWith("v=0")
+                || validatedOffer.sanitizedSdp().contains("a=identity:")) {
             throw new SecurityException("Client identity service returned an invalid sanitized SDP offer");
         }
+        String verifiedOffer = validatedOffer.sanitizedSdp();
         if (!sessionPermits.tryAcquire()) {
             throw new IllegalStateException("Server is full");
         }
 
-        PeerSession session = new PeerSession(networkId);
+        PeerSession session = new PeerSession(networkId, validatedOffer.identity());
         RTCConfiguration configuration = new RTCConfiguration();
         configuration.iceServers.clear();
         if (!iceServerUrls.isEmpty()) {
@@ -165,6 +168,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         }
 
         try {
+            dataChannelListener.onIdentity(networkId, validatedOffer.identity());
             await(setRemoteDescription(peer, verifiedOffer), "setting remote SDP offer");
 
             RTCSessionDescription answer = await(createAnswer(peer), "creating SDP answer");
@@ -292,6 +296,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
 
     private final class PeerSession implements PeerConnectionObserver {
         private final String networkId;
+        private final NetherNetClientIdentity identity;
         private final CompletableFuture<Void> iceGatheringComplete = new CompletableFuture<>();
         private final Map<String, RTCDataChannel> channels = new ConcurrentHashMap<>();
         private final AtomicBoolean sessionClosed = new AtomicBoolean();
@@ -299,8 +304,9 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         private volatile boolean connected;
         private volatile RTCPeerConnection peer;
 
-        private PeerSession(String networkId) {
+        private PeerSession(String networkId, NetherNetClientIdentity identity) {
             this.networkId = networkId;
+            this.identity = identity;
         }
 
         @Override

@@ -45,18 +45,14 @@ public final class WorldAutosave implements AutoCloseable {
     public void saveNow() throws IOException {
         if (closed.get()) throw new IllegalStateException("World autosave is closed");
         synchronized (saveLock) {
-            world.saveAll();
-            additionalSave.save();
+            flushAll();
         }
     }
 
     private void saveSafely() {
         try {
             synchronized (saveLock) {
-                if (!closed.get()) {
-                    world.saveAll();
-                    additionalSave.save();
-                }
+                if (!closed.get()) flushAll();
             }
         } catch (IOException | RuntimeException exception) {
             IOException failure = exception instanceof IOException io
@@ -86,9 +82,27 @@ public final class WorldAutosave implements AutoCloseable {
             throw new IOException("Interrupted while stopping NEXORA autosave", exception);
         }
         synchronized (saveLock) {
-            world.saveAll();
-            additionalSave.save();
+            flushAll();
         }
+    }
+
+    private void flushAll() throws IOException {
+        IOException failure = null;
+        try {
+            world.saveAll();
+        } catch (IOException | RuntimeException exception) {
+            failure = exception instanceof IOException io
+                    ? io : new IOException("Unexpected world save failure", exception);
+        }
+        try {
+            additionalSave.save();
+        } catch (IOException | RuntimeException exception) {
+            IOException playerFailure = exception instanceof IOException io
+                    ? io : new IOException("Unexpected additional save failure", exception);
+            if (failure == null) failure = playerFailure;
+            else failure.addSuppressed(playerFailure);
+        }
+        if (failure != null) throw failure;
     }
 
     @FunctionalInterface

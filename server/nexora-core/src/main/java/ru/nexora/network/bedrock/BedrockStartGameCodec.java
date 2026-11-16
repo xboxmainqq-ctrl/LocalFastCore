@@ -126,7 +126,7 @@ public final class BedrockStartGameCodec {
         out.uint64(0);                      // ServerBlockStateChecksum
         out.bytes(new byte[16]);            // Empty WorldTemplateID
         out.bool(false);                    // ClientSideGeneration
-        out.bool(false);                    // UseBlockNetworkIDHashes
+        out.bool(true);                     // UseBlockNetworkIDHashes: block IDs are FNV-1a state hashes
         out.bool(false);                    // ServerAuthoritativeSound
         out.bool(false);                    // ServerJoinInformation absent
         out.string("");                     // ServerID

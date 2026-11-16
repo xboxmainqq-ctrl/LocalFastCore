@@ -502,6 +502,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
+    public record PlayerPosition(float x, float y, float z, float yaw, float pitch, long tick) {
+    }
+
     private static final class SessionState {
         private boolean compressionNegotiated;
         private volatile boolean loginAuthenticated;

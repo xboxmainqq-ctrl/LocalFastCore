@@ -27,6 +27,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 
 /**
  * Bedrock login stages above NetherNet:
@@ -48,6 +49,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final World world;
     private final OutboundFrameSender outbound;
     private final Consumer<PacketEvent> packetSink;
+    private final LongSupplier nanoTime;
     private final Map<String, SessionState> sessions = new ConcurrentHashMap<>();
     private final AtomicLong nextEntityId = new AtomicLong(1);
     private final NetherNetInboundPipeline inbound;
@@ -88,6 +90,18 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             OutboundFrameSender outbound,
             Consumer<PacketEvent> packetSink
     ) {
+        this(serverProtocol, serverVersion, compressionThreshold, world, outbound, packetSink, System::nanoTime);
+    }
+
+    BedrockSessionManager(
+            int serverProtocol,
+            String serverVersion,
+            int compressionThreshold,
+            World world,
+            OutboundFrameSender outbound,
+            Consumer<PacketEvent> packetSink,
+            LongSupplier nanoTime
+    ) {
         if (serverProtocol < 1) throw new IllegalArgumentException("serverProtocol must be positive");
         if (serverVersion == null || serverVersion.isBlank()) {
             throw new IllegalArgumentException("serverVersion must not be blank");
@@ -101,6 +115,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         this.world = Objects.requireNonNull(world, "world");
         this.outbound = Objects.requireNonNull(outbound, "outbound");
         this.packetSink = Objects.requireNonNull(packetSink, "packetSink");
+        this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime");
         this.inbound = new NetherNetInboundPipeline(this::handleCompleteMessage);
     }
 
@@ -339,7 +354,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.lastInputTick = input.tick();
 
         for (BedrockPlayerAuthInputCodec.BlockAction action : input.blockActions()) {
-            handleBlockAction(networkId, state, action, input.tick());
+            handleBlockAction(networkId, state, action);
         }
 
         int chunkX = Math.floorDiv((int) Math.floor(input.x()), 16);
@@ -354,14 +369,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private void handleBlockAction(
             String networkId,
             SessionState state,
-            BedrockPlayerAuthInputCodec.BlockAction action,
-            long tick
+            BedrockPlayerAuthInputCodec.BlockAction action
     ) {
         if (action.action() == 0) { // START_DESTROY_BLOCK
             if (!isWithinBlockReach(state, action.x(), action.y(), action.z())) return;
             BlockType type = world.getBlock(action.x(), action.y(), action.z());
             if (type == BlockType.AIR || type == BlockType.BEDROCK) return;
-            state.breakTarget = new BreakTarget(action.x(), action.y(), action.z(), tick);
+            if (!matchesBreakTarget(state.breakTarget, action)) {
+                state.breakTarget = new BreakTarget(action.x(), action.y(), action.z(), nanoTime.getAsLong());
+            }
             return;
         }
 
@@ -370,10 +386,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             return;
         }
 
-        if (action.action() != 2 && action.action() != 26) return; // STOP / PREDICT_DESTROY_BLOCK
+        if (action.action() != 2 && action.action() != 26 && action.action() != 27) return;
+        // STOP / PREDICT / CONTINUE_DESTROY_BLOCK
         BreakTarget target = state.breakTarget;
         if (target == null || !matchesBreakTarget(target, action)) return;
-        if (tick < target.startedAtTick()) return;
 
         if (!isWithinBlockReach(state, target.x(), target.y(), target.z())) {
             state.breakTarget = null;
@@ -384,8 +400,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             state.breakTarget = null;
             return;
         }
-        int requiredTicks = requiredBreakTicks(current);
-        if (requiredTicks == Integer.MAX_VALUE || tick - target.startedAtTick() < requiredTicks) return;
+        long requiredNanos = requiredBreakNanos(current);
+        if (requiredNanos == Long.MAX_VALUE
+                || nanoTime.getAsLong() - target.startedAtNanos() < requiredNanos) return;
 
         world.setBlock(target.x(), target.y(), target.z(), BlockType.AIR);
         state.breakTarget = null;
@@ -412,11 +429,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return dx * dx + dy * dy + dz * dz <= 36.0;
     }
 
-    private static int requiredBreakTicks(BlockType type) {
+    private static long requiredBreakNanos(BlockType type) {
         return switch (type) {
-            case AIR, BEDROCK -> Integer.MAX_VALUE;
-            case DIRT, GRASS_BLOCK -> 12;
-            case STONE -> 150;
+            case AIR, BEDROCK -> Long.MAX_VALUE;
+            case DIRT, GRASS_BLOCK -> 600_000_000L; // 0.6 seconds
+            case STONE -> 7_500_000_000L; // 7.5 seconds without a tool
         };
     }
 
@@ -602,7 +619,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     public record PlayerPosition(float x, float y, float z, float yaw, float pitch, long tick) {
     }
 
-    private record BreakTarget(int x, int y, int z, long startedAtTick) {
+    private record BreakTarget(int x, int y, int z, long startedAtNanos) {
     }
 
     private static final class SessionState {

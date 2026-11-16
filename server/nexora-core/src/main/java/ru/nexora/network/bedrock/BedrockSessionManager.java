@@ -10,6 +10,9 @@ import ru.nexora.inventory.PlayerInventory;
 import ru.nexora.inventory.PlayerInventoryStorage;
 import ru.nexora.inventory.PlayerEquipment;
 import ru.nexora.inventory.PlayerEquipmentStorage;
+import ru.nexora.inventory.EquipmentSlot;
+import ru.nexora.inventory.EquipmentSlotRegistry;
+import ru.nexora.inventory.PlayerEquipmentService;
 import ru.nexora.inventory.ArmorSlotRegistry;
 import ru.nexora.inventory.InventoryTransactionService;
 import ru.nexora.world.FlatWorldGenerator;
@@ -64,6 +67,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private volatile BedrockItemRegistry itemRegistry = BedrockItemRegistry.empty();
     private volatile ArmorSlotRegistry armorSlotRegistry = ArmorSlotRegistry.empty();
     private final InventoryTransactionService inventoryTransactionService = new InventoryTransactionService();
+    private final PlayerEquipmentService playerEquipmentService = new PlayerEquipmentService();
+    private volatile EquipmentSlotRegistry equipmentSlotRegistry = EquipmentSlotRegistry.builder().build();
     private final OutboundFrameSender outbound;
     private final Consumer<PacketEvent> packetSink;
     private final LongSupplier nanoTime;
@@ -332,6 +337,86 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             if (!state.loginAuthenticated) return Optional.empty();
             return Optional.of(state.equipment);
         }
+    }
+
+    /**
+     * Installs the server-authoritative magical equipment compatibility registry.
+     * It must be configured before the first player session is created.
+     */
+    public synchronized void setEquipmentSlotRegistry(EquipmentSlotRegistry registry) {
+        if (!sessions.isEmpty()) {
+            throw new IllegalStateException("The equipment slot registry must be installed before sessions are created");
+        }
+        this.equipmentSlotRegistry = Objects.requireNonNull(registry, "registry");
+    }
+
+    /**
+     * Equips one registered magical item from the player's inventory.
+     * Successful mutations are persisted before authoritative inventory state is sent.
+     */
+    public PlayerEquipmentService.Result equipMagicItem(
+            String networkId, EquipmentSlot slot, int inventorySlot
+    ) throws IOException {
+        SessionState state = sessions.get(networkId);
+        if (state == null) return PlayerEquipmentService.Result.EMPTY_INVENTORY_SLOT;
+        synchronized (state) {
+            if (!state.loginAuthenticated || !state.clientInitialized) {
+                return PlayerEquipmentService.Result.EMPTY_INVENTORY_SLOT;
+            }
+            List<Optional<ru.nexora.inventory.ItemStack>> previousInventory = state.inventory.snapshot();
+            int previousSelectedSlot = state.inventory.selectedHotbarSlot();
+            PlayerEquipment.Snapshot previousEquipment = state.equipment.snapshot();
+            PlayerEquipmentService.Result result = playerEquipmentService.equipFromInventory(
+                    state.inventory, state.equipment, slot, inventorySlot, equipmentSlotRegistry);
+            if (result != PlayerEquipmentService.Result.EQUIPPED) return result;
+            try {
+                saveInventory(state);
+                saveEquipment(state);
+                sendInventoryAndEquipmentState(networkId, state);
+                return result;
+            } catch (IOException | RuntimeException exception) {
+                state.inventory.restore(previousInventory, previousSelectedSlot);
+                state.equipment.restore(previousEquipment);
+                if (exception instanceof IOException ioException) throw ioException;
+                throw exception;
+            }
+        }
+    }
+
+    /** Unequips a magical item back into the player's inventory without losing it if full. */
+    public PlayerEquipmentService.Result unequipMagicItem(String networkId, EquipmentSlot slot)
+            throws IOException {
+        SessionState state = sessions.get(networkId);
+        if (state == null) return PlayerEquipmentService.Result.EMPTY_EQUIPMENT_SLOT;
+        synchronized (state) {
+            if (!state.loginAuthenticated || !state.clientInitialized) {
+                return PlayerEquipmentService.Result.EMPTY_EQUIPMENT_SLOT;
+            }
+            List<Optional<ru.nexora.inventory.ItemStack>> previousInventory = state.inventory.snapshot();
+            int previousSelectedSlot = state.inventory.selectedHotbarSlot();
+            PlayerEquipment.Snapshot previousEquipment = state.equipment.snapshot();
+            PlayerEquipmentService.Result result = playerEquipmentService.unequipToInventory(
+                    state.inventory, state.equipment, slot);
+            if (result != PlayerEquipmentService.Result.UNEQUIPPED) return result;
+            try {
+                saveInventory(state);
+                saveEquipment(state);
+                sendInventoryAndEquipmentState(networkId, state);
+                return result;
+            } catch (IOException | RuntimeException exception) {
+                state.inventory.restore(previousInventory, previousSelectedSlot);
+                state.equipment.restore(previousEquipment);
+                if (exception instanceof IOException ioException) throw ioException;
+                throw exception;
+            }
+        }
+    }
+
+    private void sendInventoryAndEquipmentState(String networkId, SessionState state) {
+        List<BedrockPacket> packets = new java.util.ArrayList<>();
+        packets.add(BedrockInventoryContentCodec.createPlayerInventory(state.inventory, itemRegistry));
+        packets.addAll(createEquipmentReconciliationPackets(state));
+        sendPackets(networkId, packets, true);
     }
 
     /**

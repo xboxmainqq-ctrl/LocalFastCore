@@ -11,6 +11,8 @@ import ru.nexora.network.raknet.RakNetDiscoveryServer;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * NEXORA Core bootstrap. Modern Bedrock transport is NetherNet over WebRTC.
@@ -51,8 +53,15 @@ public final class NexoraServer {
         NetherNetInboundPipeline inboundPipeline = new NetherNetInboundPipeline(message ->
                 System.out.printf("NEXORA: received %s payload from %s (%d bytes); Bedrock batch decoding is next%n",
                         message.channelLabel(), message.networkId(), message.payload().length));
+        String stunEnvironment = System.getenv("NEXORA_STUN_URLS");
+        List<String> stunUrls = stunEnvironment == null || stunEnvironment.isBlank()
+                ? List.of()
+                : Arrays.stream(stunEnvironment.split(";"))
+                        .map(String::trim)
+                        .filter(value -> !value.isEmpty())
+                        .toList();
         WebRtcSdpNegotiator negotiator = new WebRtcSdpNegotiator(
-                identityService, inboundPipeline, maxPlayers);
+                identityService, inboundPipeline, maxPlayers, stunUrls);
         NetherNetServerMetadata metadata = new NetherNetServerMetadata(
                 motd,
                 2225,
@@ -85,6 +94,9 @@ public final class NexoraServer {
         System.out.printf("NEXORA legacy RakNet discovery listening on UDP %s:%d%n", bindHost, port);
         System.out.println("WebRTC sessions use the persistent operator identity in data/identity/.");
         System.out.println("Plain HTTP signaling is enabled; use HTTPS in production.");
+        if (!stunUrls.isEmpty()) {
+            System.out.println("Configured STUN endpoints: " + String.join(", ", stunUrls));
+        }
         System.out.println("Transport is not yet a playable server: Bedrock batch decoding, login and world simulation are next.");
     }
 }

@@ -180,6 +180,7 @@ class BedrockSessionManagerTest {
         assertEquals(0.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
         assertEquals(65.0f, manager.playerPosition("authenticated-client").orElseThrow().y());
 
+        monotonicClock.set(100_000_000L);
         BedrockPacket movement = new BedrockPacket(0x90, 0, 0,
                 BedrockPlayerAuthInputCodecTest.movementPayload(1.0f, 65.0f, 1.0f, 30.0f, 1L, false));
         sendClientBatch(manager, "authenticated-client",
@@ -190,6 +191,7 @@ class BedrockSessionManagerTest {
         assertEquals(30.0f, moved.yaw());
         assertEquals(1L, moved.tick());
 
+        monotonicClock.set(200_000_000L);
         BedrockPacket implausibleTeleport = new BedrockPacket(0x90, 0, 0,
                 BedrockPlayerAuthInputCodecTest.movementPayload(100.0f, 65.0f, 100.0f, 90.0f, 2L, false));
         sendClientBatch(manager, "authenticated-client",
@@ -197,12 +199,14 @@ class BedrockSessionManagerTest {
         assertEquals(1.0f, manager.playerPosition("authenticated-client").orElseThrow().x());
         assertEquals(22, outboundFrames.size());
 
+        monotonicClock.set(2_000_000_000L);
         BedrockPacket approachChunkEdge = new BedrockPacket(0x90, 0, 0,
                 BedrockPlayerAuthInputCodecTest.movementPayload(10.0f, 65.0f, 1.0f, 30.0f, 3L, false));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(approachChunkEdge), true, 256));
         assertEquals(22, outboundFrames.size()); // same chunk: no redundant stream
 
+        monotonicClock.set(3_000_000_000L);
         BedrockPacket crossChunkBoundary = new BedrockPacket(0x90, 0, 0,
                 BedrockPlayerAuthInputCodecTest.movementPayload(16.5f, 65.0f, 1.0f, 30.0f, 4L, false));
         sendClientBatch(manager, "authenticated-client",
@@ -214,6 +218,15 @@ class BedrockSessionManagerTest {
         }
         assertEquals(16.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
 
+        monotonicClock.set(3_010_000_000L);
+        BedrockPacket speedHack = new BedrockPacket(0x90, 0, 0,
+                BedrockPlayerAuthInputCodecTest.movementPayload(26.5f, 65.0f, 1.0f, 30.0f, 5L, false));
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(speedHack), true, 256));
+        assertEquals(16.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
+        assertEquals(26, outboundFrames.size());
+
+        monotonicClock.set(3_100_000_000L);
         BedrockPacket startBreak = new BedrockPacket(0x90, 0, 0,
                 BedrockPlayerAuthInputCodecTest.blockActionPayload(
                         16.5f, 65.0f, 1.0f, 0, 16, 64, 1, 1, 5L));
@@ -221,7 +234,7 @@ class BedrockSessionManagerTest {
                 BedrockBatchCodec.encode(List.of(startBreak), true, 256));
         assertEquals(26, outboundFrames.size());
 
-        monotonicClock.set(500_000_000L);
+        monotonicClock.set(3_600_000_000L);
         BedrockPacket prematureBreak = new BedrockPacket(0x90, 0, 0,
                 BedrockPlayerAuthInputCodecTest.blockActionPayload(
                         16.5f, 65.0f, 1.0f, 26, 16, 64, 1, 1, 5_000L));
@@ -229,7 +242,7 @@ class BedrockSessionManagerTest {
                 BedrockBatchCodec.encode(List.of(prematureBreak), true, 256));
         assertEquals(26, outboundFrames.size()); // too little break time has elapsed
 
-        monotonicClock.set(700_000_000L);
+        monotonicClock.set(3_800_000_000L);
         BedrockPacket finishBreak = new BedrockPacket(0x90, 0, 0,
                 BedrockPlayerAuthInputCodecTest.blockActionPayload(
                         16.5f, 65.0f, 1.0f, 26, 16, 64, 1, 1, 5_001L));

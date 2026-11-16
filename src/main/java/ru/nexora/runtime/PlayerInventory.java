@@ -113,6 +113,16 @@ public final class PlayerInventory {
         return new ItemStack(current.itemId(), 1);
     }
 
+    /** Removes one item only when the exact slot still contains the expected item. */
+    public synchronized boolean consumeOneMatching(int slot, String expectedItemId) {
+        Objects.requireNonNull(expectedItemId, "expectedItemId");
+        if (!validSlot(slot)) return false;
+        ItemStack current = slots[slot];
+        if (current == null || !current.itemId().equals(expectedItemId)) return false;
+        removeOne(slot);
+        return true;
+    }
+
     /** Removes and returns the entire stack in an exact slot. */
     public synchronized ItemStack removeStack(int slot) {
         checkSlot(slot);

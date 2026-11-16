@@ -173,12 +173,15 @@ public final class BedrockPlayerAuthInputCodec {
         if (actionCount > 64) throw new IllegalArgumentException("Item-use transaction has too many inventory actions");
         java.util.List<RawInventoryAction> actions = new java.util.ArrayList<>(actionCount);
         for (int i = 0; i < actionCount; i++) {
-            int sourceType = in.varUInt32();
+            int sourceType = in.varInt32();
             int containerId = -1;
             long sourceFlags = 0;
             if (sourceType == 0) containerId = in.int8();
-            else if (sourceType == 2) sourceFlags = in.varUInt32Long();
-            int slot = in.varUInt32();
+            else if (sourceType == 2) sourceFlags = in.varInt32();
+            else if (sourceType != 1 && sourceType != 3) {
+                throw new UnsupportedOperationException("Unsupported item-use inventory source type");
+            }
+            int slot = in.varInt32();
             RawItemStack from = readRawItemStack(in);
             RawItemStack to = readRawItemStack(in);
             actions.add(new RawInventoryAction(sourceType, containerId, sourceFlags, slot, from, to));

@@ -103,7 +103,7 @@ public final class BedrockPlayerAuthInputCodec {
                 int current = Byte.toUnsignedInt(buffer.get());
                 value |= (long) (current & 0x7f) << (7 * i);
                 if ((current & 0x80) == 0) {
-                    if (value > 0xffff_ffffL) throw new IllegalArgumentException("VarUInt32 overflow");
+                    if (value > Integer.MAX_VALUE) throw new IllegalArgumentException("VarUInt32 exceeds supported integer range");
                     return (int) value;
                 }
             }

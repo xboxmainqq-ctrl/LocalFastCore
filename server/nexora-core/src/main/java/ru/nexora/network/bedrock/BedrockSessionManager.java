@@ -7,6 +7,7 @@ import ru.nexora.network.nethernet.NetherNetDataChannelListener;
 import ru.nexora.network.nethernet.NetherNetInboundPipeline;
 import ru.nexora.network.nethernet.NetherNetMessageFramer;
 import ru.nexora.inventory.PlayerInventory;
+import ru.nexora.inventory.PlayerInventoryStorage;
 import ru.nexora.world.FlatWorldGenerator;
 import ru.nexora.world.BlockType;
 import ru.nexora.world.World;
@@ -54,6 +55,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final int compressionThreshold;
     private final World world;
     private final PlayerDataStorage playerStorage;
+    private final PlayerInventoryStorage inventoryStorage;
     private final OutboundFrameSender outbound;
     private final Consumer<PacketEvent> packetSink;
     private final LongSupplier nanoTime;
@@ -110,7 +112,21 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             OutboundFrameSender outbound,
             Consumer<PacketEvent> packetSink
     ) {
-        this(serverProtocol, serverVersion, compressionThreshold, world, playerStorage,
+        this(serverProtocol, serverVersion, compressionThreshold, world, playerStorage, null,
+                outbound, packetSink, System::nanoTime);
+    }
+
+    public BedrockSessionManager(
+            int serverProtocol,
+            String serverVersion,
+            int compressionThreshold,
+            World world,
+            PlayerDataStorage playerStorage,
+            PlayerInventoryStorage inventoryStorage,
+            OutboundFrameSender outbound,
+            Consumer<PacketEvent> packetSink
+    ) {
+        this(serverProtocol, serverVersion, compressionThreshold, world, playerStorage, inventoryStorage,
                 outbound, packetSink, System::nanoTime);
     }
 
@@ -137,6 +153,21 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             Consumer<PacketEvent> packetSink,
             LongSupplier nanoTime
     ) {
+        this(serverProtocol, serverVersion, compressionThreshold, world, playerStorage, null,
+                outbound, packetSink, nanoTime);
+    }
+
+    BedrockSessionManager(
+            int serverProtocol,
+            String serverVersion,
+            int compressionThreshold,
+            World world,
+            PlayerDataStorage playerStorage,
+            PlayerInventoryStorage inventoryStorage,
+            OutboundFrameSender outbound,
+            Consumer<PacketEvent> packetSink,
+            LongSupplier nanoTime
+    ) {
         if (serverProtocol < 1) throw new IllegalArgumentException("serverProtocol must be positive");
         if (serverVersion == null || serverVersion.isBlank()) {
             throw new IllegalArgumentException("serverVersion must not be blank");
@@ -149,6 +180,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         this.compressionThreshold = compressionThreshold;
         this.world = Objects.requireNonNull(world, "world");
         this.playerStorage = playerStorage;
+        this.inventoryStorage = inventoryStorage;
         this.outbound = Objects.requireNonNull(outbound, "outbound");
         this.packetSink = Objects.requireNonNull(packetSink, "packetSink");
         this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime");
@@ -178,6 +210,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             synchronized (state) {
                 try {
                     savePlayer(state);
+                    saveInventory(state);
                 } catch (IOException exception) {
                     System.err.println("NEXORA: unable to save disconnected player: " + exception.getMessage());
                 }
@@ -193,6 +226,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             synchronized (state) {
                 try {
                     savePlayer(state);
+                    saveInventory(state);
                 } catch (IOException exception) {
                     if (failure == null) failure = exception;
                     else failure.addSuppressed(exception);
@@ -214,6 +248,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         } catch (IllegalArgumentException exception) {
             throw new IOException("Authenticated player data cannot be persisted", exception);
         }
+    }
+
+    private void saveInventory(SessionState state) throws IOException {
+        if (inventoryStorage == null || !state.loginAuthenticated || state.identity == null) return;
+        inventoryStorage.save(state.identity.xuid(), state.inventory);
     }
 
     public int activeSessionCount() {
@@ -328,6 +367,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         verifyClientDataToken(login.rawClientDataToken(), state.identity);
         state.loginAuthenticated = true;
+        if (inventoryStorage != null) {
+            try {
+                state.inventory = inventoryStorage.load(state.identity.xuid()).orElseGet(PlayerInventory::new);
+            } catch (IOException | RuntimeException exception) {
+                System.err.println("NEXORA: unable to load player inventory for "
+                        + state.identity.displayName() + ": " + exception.getMessage());
+            }
+        }
         state.entityId = nextEntityId.getAndIncrement();
         if (state.entityId < 1) {
             throw new IllegalStateException("NEXORA entity ID space exhausted");
@@ -779,7 +826,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private static final class SessionState {
-        private final PlayerInventory inventory = new PlayerInventory();
+        private PlayerInventory inventory = new PlayerInventory();
         private boolean compressionNegotiated;
         private volatile boolean loginAuthenticated;
         private boolean clientHandshakeReceived;

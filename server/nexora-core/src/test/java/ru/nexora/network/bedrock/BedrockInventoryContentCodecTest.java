@@ -16,13 +16,13 @@ class BedrockInventoryContentCodecTest {
 
         assertEquals(0x31, packet.packetId());
         byte[] payload = packet.payload();
-        assertEquals(291, payload.length);
+        assertEquals(327, payload.length);
         assertEquals(0, Byte.toUnsignedInt(payload[0])); // Inventory container ID
         assertEquals(36, Byte.toUnsignedInt(payload[1]));
 
         for (int slot = 0; slot < 36; slot++) {
-            int offset = 2 + slot * 8;
-            assertArrayEquals(new byte[8], Arrays.copyOfRange(payload, offset, offset + 8),
+            int offset = 2 + slot * 9;
+            assertArrayEquals(new byte[9], Arrays.copyOfRange(payload, offset, offset + 9),
                     "slot " + slot + " must be encoded as empty with net ID zero");
         }
         assertEquals(29, Byte.toUnsignedInt(payload[payload.length - 1]));
@@ -45,10 +45,11 @@ class BedrockInventoryContentCodecTest {
                 1, 1,    // legacy item ID 257
                 3, 0,    // stack size 3
                 0,       // aux value
+                0,       // has StackNetId = false
                 0,       // block runtime ID
                 0        // empty user data buffer
-        }, Arrays.copyOfRange(payload, 2, 10));
-        assertArrayEquals(new byte[8], Arrays.copyOfRange(payload, 10, 18));
+        }, Arrays.copyOfRange(payload, 2, 11));
+        assertArrayEquals(new byte[9], Arrays.copyOfRange(payload, 11, 20));
     }
 
     @Test
@@ -64,12 +65,13 @@ class BedrockInventoryContentCodecTest {
         userData[0] = 99; // ItemDefinition must own a defensive copy.
         assertArrayEquals(new byte[] {
                 2,             // ItemStackNetId = 1
-                2, 1,          // legacy item ID 258
+                2, 1,          // runtime item ID 258
                 2, 0,          // stack size
                 2,             // aux value
+                0,             // has StackNetId = false
                 (byte) 0xd2, 9,// block runtime ID 1234
                 2, 1, 2        // user data string
-        }, Arrays.copyOfRange(packet.payload(), 2, 13));
+        }, Arrays.copyOfRange(packet.payload(), 2, 14));
     }
 
     @Test
@@ -80,7 +82,7 @@ class BedrockInventoryContentCodecTest {
         assertEquals(0x32, packet.packetId());
         assertArrayEquals(new byte[] {
                 0, 0, 29, // player container, slot zero, InventoryContainer
-                0, 0, 0, 0, 0, 0, 0, 0 // empty net ID and empty stack descriptor
+                0, 0, 0, 0, 0, 0, 0, 0, 0 // empty net ID and empty stack descriptor
         }, packet.payload());
     }
 
@@ -97,9 +99,11 @@ class BedrockInventoryContentCodecTest {
         assertArrayEquals(new byte[] {
                 0, 5, 29, // player container, slot five, InventoryContainer
                 2,         // VarInt32(1): non-empty ItemStackNetId
-                1, 1,      // legacy item ID 257
+                1, 1,      // runtime item ID 257
                 3, 0,      // stack size
-                0, 0, 0    // aux, block runtime ID, empty user data
+                0,         // aux
+                0,         // has StackNetId = false
+                0, 0       // block runtime ID, empty user data
         }, packet.payload());
     }
 

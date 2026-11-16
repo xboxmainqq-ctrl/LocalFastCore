@@ -1,8 +1,12 @@
 package ru.nexora.network.bedrock;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import ru.nexora.network.nethernet.NetherNetClientIdentity;
 import ru.nexora.network.nethernet.NetherNetMessageFramer;
+import ru.nexora.world.PlayerDataStorage;
+
+import java.nio.file.Path;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
@@ -21,6 +25,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockSessionManagerTest {
+    @TempDir
+    Path temporaryDirectory;
     @Test
     void negotiatesNetworkSettingsThenDecodesCompressedGameBatch() {
         List<byte[]> outboundFrames = new ArrayList<>();
@@ -91,11 +97,13 @@ class BedrockSessionManagerTest {
 
         List<byte[]> outboundFrames = new ArrayList<>();
         AtomicLong monotonicClock = new AtomicLong();
+        PlayerDataStorage playerStorage = new PlayerDataStorage(temporaryDirectory);
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225,
                 "1.26.62",
                 BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
                 new ru.nexora.world.World("NEXORA World", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                playerStorage,
                 (networkId, label, frame) -> outboundFrames.add(frame),
                 event -> {},
                 monotonicClock::get);
@@ -231,6 +239,13 @@ class BedrockSessionManagerTest {
 
         assertThrows(SecurityException.class, () -> sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256)));
+
+        manager.onDisconnected("authenticated-client");
+        var savedPlayer = playerStorage.load("123456789").orElseThrow();
+        assertEquals(16.5f, savedPlayer.x());
+        assertEquals(65.0f, savedPlayer.y());
+        assertEquals(1.0f, savedPlayer.z());
+        assertEquals(30.0f, savedPlayer.yaw());
     }
 
     private static BedrockPacket decodeOutbound(byte[] frame, boolean compressed) {

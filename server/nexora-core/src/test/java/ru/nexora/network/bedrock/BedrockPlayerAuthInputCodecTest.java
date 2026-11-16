@@ -102,29 +102,25 @@ class BedrockPlayerAuthInputCodecTest {
         writeFloat(output, 0); // motion X
         writeFloat(output, 0); // motion Z
         writeFloat(output, yaw); // head yaw
-        writeVarUInt(output, inputActions.length);
-        for (int action : inputActions) writeVarInt(output, action);
+        int[] encodedActions = optional && inputActions.length == 0
+                ? new int[] {BedrockPlayerAuthInputCodec.InputAction.PERFORM_ITEM_INTERACTION}
+                : inputActions;
+        writeVarUInt(output, encodedActions.length);
+        for (int action : encodedActions) writeVarInt(output, action);
         writeVarUInt(output, 2); // input mode
         writeVarUInt(output, 0); // play mode
         writeVarInt(output, 0); // interaction model
         writeFloat(output, 0); writeFloat(output, 0); // interact rotation
         writeVarULong(output, tick);
         writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0); // delta
-        if (optional && inputActions.length == 0) {
-            // The item-use payload remains opaque until the inventory codec is implemented.
-            writeVarUInt(output, 1);
-            writeVarInt(output, BedrockPlayerAuthInputCodec.InputAction.PERFORM_ITEM_INTERACTION);
+        if (optional) {
+            // Opaque item-use payload: the decoder must stop after the movement snapshot.
             output.write(0x7f);
-        } else if (inputActions.length > 0) {
-            // Caller-supplied flags are encoded above; optional payloads are added by dedicated helpers.
+            return output.toByteArray();
         }
-        if (!optional) {
-            writeFloat(output, 0); writeFloat(output, 0); // analog move
-            writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0); // camera orientation
-            writeFloat(output, 0); writeFloat(output, 0); // raw move
-        } else {
-            output.write(0x7f); // ignored optional-section payload
-        }
+        writeFloat(output, 0); writeFloat(output, 0); // analog move
+        writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0); // camera orientation
+        writeFloat(output, 0); writeFloat(output, 0); // raw move
         return output.toByteArray();
     }
 

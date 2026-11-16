@@ -163,10 +163,10 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(List.of(settings), false, 256));
 
         String rawClientDataToken = signClientDataToken(clientKey);
-        String certificate = "{\\"chain\\":[]}";
-        String chainJson = "{\\"Certificate\\":\\"" + certificate.replace("\\", "\\\\")
-                .replace("\\"", "\\\\"")
-                + "\\",\\"AuthenticationType\\":0,\\"Token\\":\\"physics-game-token\\"}";
+        String certificate = "{\"chain\":[]}";
+        String chainJson = "{\"Certificate\":\"" + certificate.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                + "\",\"AuthenticationType\":0,\"Token\":\"physics-game-token\"}";
         BedrockPacket login = new BedrockPacket(1, 0, 0,
                 loginPayload(2225, connectionRequest(chainJson, rawClientDataToken)));
         sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(List.of(login), true, 256));

@@ -436,6 +436,26 @@ class BedrockSessionManagerTest {
         assertEquals(BedrockModalFormCodec.MODAL_FORM_REQUEST_PACKET_ID,
                 decodeOutbound(outboundFrames.getLast(), true).packetId());
 
+        // The same form flow safely removes the item back into the main inventory.
+        BedrockPacket removeRing = new BedrockPacket(0x65, 0, 0,
+                modalFormResponsePayload(3, "0"));
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(removeRing), true, 256));
+        assertTrue(manager.playerEquipment("authenticated-client").orElseThrow()
+                .magicSlot(ru.nexora.inventory.EquipmentSlot.RING_LEFT).isEmpty());
+        assertEquals(1, inventory.count("minecraft:gold_nugget"));
+        assertEquals(BedrockModalFormCodec.MODAL_FORM_REQUEST_PACKET_ID,
+                decodeOutbound(outboundFrames.getLast(), true).packetId());
+
+        BedrockPacket reEquipRing = new BedrockPacket(0x65, 0, 0,
+                modalFormResponsePayload(4, "0"));
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(reEquipRing), true, 256));
+        assertEquals(new ItemStack("minecraft:gold_nugget", 1, 64),
+                manager.playerEquipment("authenticated-client").orElseThrow()
+                        .magicSlot(ru.nexora.inventory.EquipmentSlot.RING_LEFT).orElseThrow());
+        assertEquals(0, inventory.count("minecraft:gold_nugget"));
+
         assertThrows(SecurityException.class, () -> sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256)));
 

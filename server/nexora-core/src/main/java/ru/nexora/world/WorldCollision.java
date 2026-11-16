@@ -9,6 +9,7 @@ public final class WorldCollision {
     private static final double PLAYER_HALF_WIDTH = 0.3;
     private static final double PLAYER_HEIGHT = 1.8;
     private static final double SAMPLE_SPACING = 0.2;
+    private static final int MAX_SWEEP_SAMPLES = 512;
     private static final double EDGE_EPSILON = 1.0e-5;
 
     private WorldCollision() {
@@ -30,7 +31,9 @@ public final class WorldCollision {
         double dz = toZ - fromZ;
         double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
         if (!Double.isFinite(distance)) return false;
-        int samples = Math.max(1, (int) Math.ceil(distance / SAMPLE_SPACING));
+        double requiredSamples = Math.ceil(distance / SAMPLE_SPACING);
+        if (requiredSamples > MAX_SWEEP_SAMPLES) return false;
+        int samples = Math.max(1, (int) requiredSamples);
         for (int step = 1; step <= samples; step++) {
             double fraction = (double) step / samples;
             if (!canOccupy(world,

@@ -613,7 +613,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         form.put("title", "NEXORA — Экипировка");
         StringBuilder description = new StringBuilder("Магическая экипировка персонажа.");
         if (status != null && !status.isBlank()) description.append("\n").append(status);
-        description.append("\\nВыбери слот:");
+        description.append("\nВыбери слот:");
         form.put("content", description.toString());
         com.fasterxml.jackson.databind.node.ArrayNode buttons = form.putArray("buttons");
         for (EquipmentSlot slot : EquipmentSlot.values()) {
@@ -647,8 +647,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 .map(ru.nexora.inventory.ItemStack::itemId).orElse("пусто");
         StringBuilder description = new StringBuilder("Сейчас: ").append(current);
         if (status != null && !status.isBlank()) description.append("\n").append(status);
-        if (labels.isEmpty()) description.append("\\nВ инвентаре нет подходящих предметов.");
-        else description.append("\\nВыбери предмет для этого слота:");
+        if (labels.isEmpty()) description.append("\nВ инвентаре нет подходящих предметов.");
+        else description.append("\nВыбери предмет для этого слота:");
         form.put("content", description.toString());
 
         com.fasterxml.jackson.databind.node.ArrayNode buttons = form.putArray("buttons");

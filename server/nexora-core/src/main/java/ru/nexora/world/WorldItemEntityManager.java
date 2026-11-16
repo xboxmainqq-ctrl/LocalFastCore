@@ -49,7 +49,11 @@ public final class WorldItemEntityManager {
     }
 
     public boolean remove(long runtimeId) {
-        return entities.remove(runtimeId) != null;
+        WorldItemEntity entity = entities.get(runtimeId);
+        if (entity == null) return false;
+        synchronized (entity) {
+            return entities.remove(runtimeId, entity);
+        }
     }
 
     /**

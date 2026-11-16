@@ -155,7 +155,7 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
         if (fingerprints.isEmpty()) throw new SecurityException("WebRTC answer has no DTLS fingerprint");
 
         String fingerprintPayload = canonicalFingerprintPayload(fingerprints);
-        String jwsHeader = base64Url("{\\"alg\\":\\"ES384\\"}");
+        String jwsHeader = base64Url("{\"alg\":\"ES384\"}");
         byte[] signingInput = (jwsHeader + "." + base64Url(fingerprintPayload))
                 .getBytes(StandardCharsets.US_ASCII);
         byte[] signature = signEs384(serverKeyPair.getPrivate(), signingInput);
@@ -177,7 +177,7 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
     }
 
     private void verifyClientTokenSignature(String token, String keyId) throws Exception {
-        String[] parts = token.split("\\\\.", -1);
+        String[] parts = token.split("\\.", -1);
         if (parts.length != 3 || parts[2].isEmpty()) {
             throw new SecurityException("Malformed client GameServerToken");
         }
@@ -261,7 +261,7 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
             List<Fingerprint> fingerprints,
             PublicKey clientKey
     ) throws Exception {
-        String[] parts = detached.split("\\\\.", -1);
+        String[] parts = detached.split("\\.", -1);
         if (parts.length != 3 || !parts[1].isEmpty()) {
             throw new SecurityException("Malformed detached fingerprint JWS");
         }
@@ -367,12 +367,12 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
     }
 
     private static String canonicalFingerprintPayload(List<Fingerprint> fingerprints) {
-        StringBuilder json = new StringBuilder("{\\"fingerprint\\":[");
+        StringBuilder json = new StringBuilder("{\"fingerprint\":[");
         for (int i = 0; i < fingerprints.size(); i++) {
             if (i > 0) json.append(',');
             Fingerprint fingerprint = fingerprints.get(i);
-            json.append("{\\"algorithm\\":\\"").append(jsonEscape(fingerprint.algorithm()))
-                    .append("\\",\\"digest\\":\\"").append(jsonEscape(fingerprint.digest())).append("\\"}");
+            json.append("{\"algorithm\":\"").append(jsonEscape(fingerprint.algorithm()))
+                    .append("\",\"digest\":\"").append(jsonEscape(fingerprint.digest())).append("\"}");
         }
         return json.append("]}").toString();
     }

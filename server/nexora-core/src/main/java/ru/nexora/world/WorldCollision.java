@@ -44,6 +44,32 @@ public final class WorldCollision {
         return true;
     }
 
+    /**
+     * Checks whether the player's feet are supported by a solid block within a
+     * small contact tolerance. This is a geometry query, not a jump/gravity simulation.
+     */
+    public static boolean isOnGround(World world, double x, double feetY, double z) {
+        if (world == null || !finite(x, feetY, z)
+                || feetY <= WorldChunk.MIN_Y || feetY > WorldChunk.MAX_Y + 1.0) return false;
+        double probeY = feetY - 0.05;
+        int supportY = (int) Math.floor(probeY);
+        if (supportY < WorldChunk.MIN_Y || supportY > WorldChunk.MAX_Y) return false;
+
+        double minX = x - PLAYER_HALF_WIDTH + EDGE_EPSILON;
+        double maxX = x + PLAYER_HALF_WIDTH - EDGE_EPSILON;
+        double minZ = z - PLAYER_HALF_WIDTH + EDGE_EPSILON;
+        double maxZ = z + PLAYER_HALF_WIDTH - EDGE_EPSILON;
+        if (minX < -30_000_000 || maxX > 30_000_000
+                || minZ < -30_000_000 || maxZ > 30_000_000) return false;
+
+        for (int blockX = (int) Math.floor(minX); blockX <= (int) Math.floor(maxX); blockX++) {
+            for (int blockZ = (int) Math.floor(minZ); blockZ <= (int) Math.floor(maxZ); blockZ++) {
+                if (world.getBlock(blockX, supportY, blockZ) != BlockType.AIR) return true;
+            }
+        }
+        return false;
+    }
+
     public static boolean canOccupy(World world, double x, double feetY, double z) {
         if (world == null || !finite(x, feetY, z)) return false;
         double minX = x - PLAYER_HALF_WIDTH + EDGE_EPSILON;

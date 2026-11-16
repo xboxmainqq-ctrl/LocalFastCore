@@ -15,7 +15,7 @@ class PlayerCollisionResolverTest {
         for (int y = 1; y <= 3; y++) {
             blocks.put(new BlockPosition(2, y, 0), new BlockState("minecraft:stone"));
         }
-        world.loadChunk(new GeneratedChunk(new ChunkPosition(0, 0), blocks));
+        blocks.forEach(world::setBlock);
 
         PlayerCollisionResolver.Resolution result = PlayerCollisionResolver.resolve(
                 world, 1.5, 1.0, 0.5, 4.0, 1.0, 0.5);
@@ -33,7 +33,7 @@ class PlayerCollisionResolverTest {
         for (int y = 1; y <= 3; y++) {
             blocks.put(new BlockPosition(2, y, 0), new BlockState("minecraft:stone"));
         }
-        world.loadChunk(new GeneratedChunk(new ChunkPosition(0, 0), blocks));
+        blocks.forEach(world::setBlock);
 
         PlayerCollisionResolver.Resolution result = PlayerCollisionResolver.resolve(
                 world, 1.5, 1.0, 0.5, 4.0, 1.0, 3.0);

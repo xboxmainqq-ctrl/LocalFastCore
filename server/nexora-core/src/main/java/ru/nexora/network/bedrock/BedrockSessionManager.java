@@ -432,7 +432,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
 
         InventoryTransactionService.Result result =
-                inventoryTransactionService.applyPlayerInventoryTransaction(state.inventory, decoded.actions());
+                inventoryTransactionService.applyPlayerInventoryAndUiTransaction(
+                        state.inventory, state.equipment, decoded.actions());
         if (result == InventoryTransactionService.Result.APPLIED) {
             authoritativeContent = BedrockInventoryContentCodec.createPlayerInventory(state.inventory, registry);
         }

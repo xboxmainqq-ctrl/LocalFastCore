@@ -3,6 +3,7 @@ package ru.nexora.network.bedrock;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -122,6 +123,53 @@ public final class BedrockStartGameCodec {
         out.string("");                     // OwnerID
 
         return new BedrockPacket(START_GAME_PACKET_ID, 0, 0, out.toByteArray());
+    }
+
+    /** Builds initial world metadata after StartGame; chunk data is sent by a later stage. */
+    public static List<BedrockPacket> createInitialWorldPackets(
+            long entityId, String worldName, String gameVersion, String baseGameVersion,
+            float spawnX, float spawnY, float spawnZ
+    ) {
+        return List.of(
+                create(entityId, worldName, gameVersion, baseGameVersion, spawnX, spawnY, spawnZ),
+                packet(0x0a, varIntPayload(0)),
+                packet(0x3c, varUIntPayload(1)),
+                packet(0x3b, new byte[] {1}),
+                packet(0x2b, setSpawnPositionPayload()),
+                packet(0x3e, varIntPayload(0)),
+                packet(0x79, chunkPublisherPayload())
+        );
+    }
+
+    private static BedrockPacket packet(int id, byte[] payload) {
+        return new BedrockPacket(id, 0, 0, payload);
+    }
+
+    private static byte[] varIntPayload(int value) {
+        Writer out = new Writer(); out.varInt32(value); return out.toByteArray();
+    }
+
+    private static byte[] varUIntPayload(long value) {
+        Writer out = new Writer(); out.varUInt32(value); return out.toByteArray();
+    }
+
+    private static byte[] setSpawnPositionPayload() {
+        Writer out = new Writer();
+        out.varInt32(1);
+        out.varInt32(0); out.varInt32(64); out.varInt32(0);
+        out.varInt32(0);
+        out.varInt32(Integer.MIN_VALUE);
+        out.varInt32(Integer.MIN_VALUE);
+        out.varInt32(Integer.MIN_VALUE);
+        return out.toByteArray();
+    }
+
+    private static byte[] chunkPublisherPayload() {
+        Writer out = new Writer();
+        out.varInt32(0); out.varInt32(65); out.varInt32(0);
+        out.varUInt32(128);
+        out.uint32(0);
+        return out.toByteArray();
     }
 
     private static void requireText(String value, String name) {

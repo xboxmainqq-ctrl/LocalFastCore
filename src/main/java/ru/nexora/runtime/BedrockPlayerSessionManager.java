@@ -230,14 +230,19 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
             return;
         }
 
-        session.x = x;
-        session.y = y;
-        session.z = z;
+        PlayerCollisionResolver.Resolution resolved = PlayerCollisionResolver.resolve(
+                world, session.x, session.y, session.z, x, y, z);
+        session.x = resolved.x();
+        session.y = resolved.y();
+        session.z = resolved.z();
         session.yaw = normalizeYaw(input.yaw());
-        session.onGround = input.onGround();
+        session.onGround = resolved.onGround();
         session.playReady = true;
-        entities.updatePosition(session.playerId, x, y, z, session.yaw);
-        chunkStreaming.updatePlayer(session.playerId, floorToInt(x), floorToInt(z));
+        entities.updatePosition(session.playerId, session.x, session.y, session.z, session.yaw);
+        chunkStreaming.updatePlayer(session.playerId, floorToInt(session.x), floorToInt(session.z));
+        if (resolved.collided()) {
+            sendCorrection(session, input.tick());
+        }
     }
 
     private void sendCorrection(PlayerSession session, long tick) {

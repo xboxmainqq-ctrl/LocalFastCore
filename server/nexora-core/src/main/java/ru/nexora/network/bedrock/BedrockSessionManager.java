@@ -571,6 +571,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private void handleDeath(String networkId, SessionState state, String deathCause) {
         if (state.dead && state.deathPacketsSent) return;
         state.dead = true;
+        clearUsingItem(state);
         state.deathPacketsSent = true;
         sendPackets(networkId, List.of(
                 BedrockRespawnCodec.createDeathInfo(deathCause),
@@ -591,6 +592,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.pitch = 0;
         state.physicsState = physics;
         state.vitals = PlayerVitals.DEFAULT;
+        clearUsingItem(state);
         state.dead = false;
         state.deathPacketsSent = false;
         state.lastMovementNanos = nanoTime.getAsLong();

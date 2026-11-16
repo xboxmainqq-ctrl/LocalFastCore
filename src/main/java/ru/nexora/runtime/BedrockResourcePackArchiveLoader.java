@@ -76,9 +76,6 @@ public final class BedrockResourcePackArchiveLoader {
                     + invalid.getMessage(), invalid);
         }
 
-        if (ordered.size() > 1) {
-            throw new IOException("The Android Bedrock client currently supports one ordinary resource pack per world");
-        }
         List<BedrockResourcePackTransferCodec.Pack> result = new ArrayList<>(ordered.size());
         for (ResourcePackManifest manifest : ordered) {
             ResourcePackArchiveValidator.ValidatedArchive validated = byId.get(manifest.id());

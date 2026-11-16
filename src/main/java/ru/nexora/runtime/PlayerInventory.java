@@ -74,7 +74,7 @@ public final class PlayerInventory {
     }
 
     /**
-     * Moves a stack, merges compatible stacks up to 64, or swaps incompatible stacks.
+     * Moves a stack, merges compatible stacks up to the configured maximum, or swaps incompatible stacks.
      * Returns false for an empty source or an invalid slot.
      */
     public synchronized boolean moveOrSwap(int from, int to) {

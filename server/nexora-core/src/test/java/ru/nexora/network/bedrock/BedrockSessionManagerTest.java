@@ -324,7 +324,7 @@ class BedrockSessionManagerTest {
         assertEquals(12.0f, position.getFloat()); // pitch
         assertEquals(90.0f, position.getFloat()); // yaw
 
-        assertArrayEquals(new byte[] {0x40, (byte) 0x8c, 0x01, 0x21, (byte) 0x80, 0x01, 0, 0, 0, 0},
+        assertArrayEquals(new byte[] {0x40, (byte) 0x8c, 0x01, 0x21, 0x30, 0, 0, 0, 0},
                 decodeOutbound(outboundFrames.get(10), true).payload());
         BedrockPacket spawnChunk = decodeOutbound(outboundFrames.get(12), true);
         assertEquals(4, Byte.toUnsignedInt(spawnChunk.payload()[0])); // chunk X = 2

@@ -151,11 +151,13 @@ class BedrockSessionManagerTest {
         PlayerDataStorage playerStorage = new PlayerDataStorage(temporaryDirectory.resolve("players"));
         PlayerInventoryStorage inventoryStorage = new PlayerInventoryStorage(temporaryDirectory.resolve("inventories"));
         PlayerEquipmentStorage equipmentStorage = new PlayerEquipmentStorage(temporaryDirectory.resolve("equipment"));
+        ru.nexora.world.World testWorld = new ru.nexora.world.World(
+                "NEXORA World", 0L, new ru.nexora.world.FlatWorldGenerator());
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225,
                 "1.26.62",
                 BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
-                new ru.nexora.world.World("NEXORA World", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                testWorld,
                 playerStorage,
                 inventoryStorage,
                 equipmentStorage,
@@ -462,6 +464,29 @@ class BedrockSessionManagerTest {
                         .magicSlot(ru.nexora.inventory.EquipmentSlot.RING_LEFT).orElseThrow());
         assertEquals(0, inventory.count("minecraft:gold_nugget"));
 
+        // Server-side drop removes the item from inventory and spawns an authoritative item actor.
+        int framesBeforeDrop = outboundFrames.size();
+        ru.nexora.world.WorldItemEntity dropped = manager.dropPlayerItem(
+                "authenticated-client", 0, 1, 0.0, 0.1, 0.0).orElseThrow();
+        assertEquals(2, inventory.count("nexora:arcane_shard"));
+        assertEquals(dropped.runtimeId(), testWorld.itemEntities().find(dropped.runtimeId()).orElseThrow().runtimeId());
+        assertEquals(framesBeforeDrop + 2, outboundFrames.size()); // inventory state + AddItemActor
+
+        // A valid client TakeItemActor request is distance/owner checked and inventory-conserving.
+        ru.nexora.world.PlayerPosition currentPosition =
+                manager.playerPosition("authenticated-client").orElseThrow();
+        ru.nexora.world.WorldItemEntity pickup = testWorld.itemEntities().spawn(
+                new ItemStack("minecraft:diamond", 2, 64),
+                currentPosition.x(), currentPosition.y(), currentPosition.z(),
+                0, 0, 0, System.currentTimeMillis(), 0, "123456789");
+        BedrockPacket takeItem = BedrockTakeItemActorCodec.createAcknowledgement(pickup.runtimeId(), 1);
+        int framesBeforePickup = outboundFrames.size();
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(takeItem), true, 256));
+        assertEquals(2, inventory.count("minecraft:diamond"));
+        assertTrue(testWorld.itemEntities().find(pickup.runtimeId()).isEmpty());
+        assertEquals(framesBeforePickup + 3, outboundFrames.size()); // inventory, TakeItemActor, RemoveActor
+
         assertThrows(SecurityException.class, () -> sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256)));
 
@@ -472,7 +497,8 @@ class BedrockSessionManagerTest {
         assertEquals(1.0f, savedPlayer.z());
         assertEquals(30.0f, savedPlayer.yaw());
         var savedInventory = inventoryStorage.load("123456789").orElseThrow();
-        assertEquals(3, savedInventory.count("nexora:arcane_shard"));
+        assertEquals(2, savedInventory.count("nexora:arcane_shard"));
+        assertEquals(2, savedInventory.count("minecraft:diamond"));
         PlayerEquipment savedEquipment = equipmentStorage.load("123456789").orElseThrow();
         assertEquals(new ItemStack("minecraft:iron_helmet", 1, 1), savedEquipment.armor(0).orElseThrow());
         assertEquals(new ItemStack("minecraft:iron_chestplate", 1, 1), savedEquipment.armor(1).orElseThrow());

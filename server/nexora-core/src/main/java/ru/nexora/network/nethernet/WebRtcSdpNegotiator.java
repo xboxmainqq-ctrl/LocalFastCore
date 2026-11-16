@@ -110,7 +110,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         if (closed.get()) throw new IllegalStateException("WebRTC negotiator is closed");
         Objects.requireNonNull(networkId, "networkId");
         Objects.requireNonNull(sdpOffer, "sdpOffer");
-        if (networkId.isBlank() || networkId.length() > 4096) {
+        if (networkId.isBlank()) {
             throw new IllegalArgumentException("Invalid NetworkID");
         }
         if (sessions.containsKey(networkId)) {

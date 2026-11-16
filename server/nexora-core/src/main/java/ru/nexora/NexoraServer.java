@@ -66,9 +66,6 @@ public final class NexoraServer {
         World world = new World(
                 "NEXORA World", 0L, new FlatWorldGenerator(), 0, 65, 0, worldStorage);
         PlayerDataStorage playerStorage = new PlayerDataStorage(Path.of(dataDirectory, "players"));
-        long autosaveSeconds = Long.parseLong(System.getenv().getOrDefault("NEXORA_AUTOSAVE_SECONDS", "300"));
-        WorldAutosave autosave = new WorldAutosave(world, Duration.ofSeconds(autosaveSeconds),
-                exception -> System.err.println("NEXORA: periodic world autosave failed: " + exception.getMessage()));
         AtomicReference<WebRtcSdpNegotiator> negotiatorReference = new AtomicReference<>();
         BedrockSessionManager bedrockSessions = new BedrockSessionManager(
                 2225,

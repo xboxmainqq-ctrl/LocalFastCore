@@ -8,6 +8,8 @@ import ru.nexora.network.nethernet.NetherNetInboundPipeline;
 import ru.nexora.network.nethernet.NetherNetMessageFramer;
 import ru.nexora.inventory.PlayerInventory;
 import ru.nexora.inventory.PlayerInventoryStorage;
+import ru.nexora.inventory.PlayerEquipment;
+import ru.nexora.inventory.PlayerEquipmentStorage;
 import ru.nexora.inventory.InventoryTransactionService;
 import ru.nexora.world.FlatWorldGenerator;
 import ru.nexora.world.BlockType;
@@ -57,6 +59,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final World world;
     private final PlayerDataStorage playerStorage;
     private final PlayerInventoryStorage inventoryStorage;
+    private final PlayerEquipmentStorage equipmentStorage;
     private volatile BedrockItemRegistry itemRegistry = BedrockItemRegistry.empty();
     private final InventoryTransactionService inventoryTransactionService = new InventoryTransactionService();
     private final OutboundFrameSender outbound;
@@ -130,7 +133,22 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             Consumer<PacketEvent> packetSink
     ) {
         this(serverProtocol, serverVersion, compressionThreshold, world, playerStorage, inventoryStorage,
-                outbound, packetSink, System::nanoTime);
+                null, outbound, packetSink, System::nanoTime);
+    }
+
+    public BedrockSessionManager(
+            int serverProtocol,
+            String serverVersion,
+            int compressionThreshold,
+            World world,
+            PlayerDataStorage playerStorage,
+            PlayerInventoryStorage inventoryStorage,
+            PlayerEquipmentStorage equipmentStorage,
+            OutboundFrameSender outbound,
+            Consumer<PacketEvent> packetSink
+    ) {
+        this(serverProtocol, serverVersion, compressionThreshold, world, playerStorage, inventoryStorage,
+                equipmentStorage, outbound, packetSink, System::nanoTime);
     }
 
     BedrockSessionManager(
@@ -171,6 +189,22 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             Consumer<PacketEvent> packetSink,
             LongSupplier nanoTime
     ) {
+        this(serverProtocol, serverVersion, compressionThreshold, world, playerStorage, inventoryStorage,
+                null, outbound, packetSink, nanoTime);
+    }
+
+    BedrockSessionManager(
+            int serverProtocol,
+            String serverVersion,
+            int compressionThreshold,
+            World world,
+            PlayerDataStorage playerStorage,
+            PlayerInventoryStorage inventoryStorage,
+            PlayerEquipmentStorage equipmentStorage,
+            OutboundFrameSender outbound,
+            Consumer<PacketEvent> packetSink,
+            LongSupplier nanoTime
+    ) {
         if (serverProtocol < 1) throw new IllegalArgumentException("serverProtocol must be positive");
         if (serverVersion == null || serverVersion.isBlank()) {
             throw new IllegalArgumentException("serverVersion must not be blank");
@@ -184,6 +218,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         this.world = Objects.requireNonNull(world, "world");
         this.playerStorage = playerStorage;
         this.inventoryStorage = inventoryStorage;
+        this.equipmentStorage = equipmentStorage;
         this.outbound = Objects.requireNonNull(outbound, "outbound");
         this.packetSink = Objects.requireNonNull(packetSink, "packetSink");
         this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime");
@@ -214,6 +249,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 try {
                     savePlayer(state);
                     saveInventory(state);
+                    saveEquipment(state);
+                    saveEquipment(state);
                 } catch (IOException exception) {
                     System.err.println("NEXORA: unable to save disconnected player: " + exception.getMessage());
                 }
@@ -258,6 +295,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         inventoryStorage.save(state.identity.xuid(), state.inventory);
     }
 
+    private void saveEquipment(SessionState state) throws IOException {
+        if (equipmentStorage == null || !state.loginAuthenticated || state.identity == null) return;
+        equipmentStorage.save(state.identity.xuid(), state.equipment);
+    }
+
     public int activeSessionCount() {
         return sessions.size();
     }
@@ -277,6 +319,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         synchronized (state) {
             if (!state.loginAuthenticated) return Optional.empty();
             return Optional.of(state.inventory);
+        }
+    }
+
+    /** Returns authoritative armor, offhand and cursor state for an authenticated player. */
+    public Optional<PlayerEquipment> playerEquipment(String networkId) {
+        SessionState state = sessions.get(networkId);
+        if (state == null) return Optional.empty();
+        synchronized (state) {
+            if (!state.loginAuthenticated) return Optional.empty();
+            return Optional.of(state.equipment);
         }
     }
 
@@ -434,6 +486,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             } catch (IOException | RuntimeException exception) {
                 state.rejected = true;
                 throw new SecurityException("Unable to safely restore authenticated player inventory", exception);
+            }
+        }
+        if (equipmentStorage != null) {
+            try {
+                state.equipment = equipmentStorage.load(state.identity.xuid()).orElseGet(PlayerEquipment::new);
+            } catch (IOException | RuntimeException exception) {
+                state.rejected = true;
+                throw new SecurityException("Unable to safely restore authenticated player equipment", exception);
             }
         }
         // Do not mark the session authenticated until its persisted inventory has been restored.
@@ -765,9 +825,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
      */
     private void sendInitialPlayerInventory(String networkId, SessionState state) {
         try {
-            sendPackets(networkId, List.of(
-                    BedrockInventoryContentCodec.createPlayerInventory(state.inventory, itemRegistry),
-                    BedrockMobEquipmentCodec.createPlayerEquipment(state.entityId, state.inventory, itemRegistry)), true);
+            List<BedrockPacket> initialPackets = new java.util.ArrayList<>();
+            initialPackets.add(BedrockInventoryContentCodec.createPlayerInventory(state.inventory, itemRegistry));
+            initialPackets.add(BedrockMobEquipmentCodec.createPlayerEquipment(state.entityId, state.inventory, itemRegistry));
+            initialPackets.addAll(BedrockPlayerEquipmentCodec.createInitialEquipment(state.equipment, itemRegistry));
+            sendPackets(networkId, initialPackets, true);
         } catch (IllegalArgumentException exception) {
             System.err.println("NEXORA: initial inventory sync deferred because a stored item has no Bedrock definition");
         }
@@ -964,6 +1026,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     private static final class SessionState {
         private PlayerInventory inventory = new PlayerInventory();
+        private PlayerEquipment equipment = new PlayerEquipment();
         private boolean compressionNegotiated;
         private volatile boolean loginAuthenticated;
         private boolean clientHandshakeReceived;

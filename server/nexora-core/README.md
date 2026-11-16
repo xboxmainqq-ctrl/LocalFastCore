@@ -8,11 +8,12 @@ The initial target is modern Minecraft Bedrock clients. NetherNet is the require
 
 The modern connection path is:
 
-1. Client calls \`GET /v1/join\` to verify NetherNet support and read server metadata.
-2. Client sends its complete WebRTC SDP offer to \`POST /v1/join/{networkId}\`.
-3. NEXORA creates a WebRTC peer, validates the client's identity assertion, creates a complete SDP answer, and signs the server identity assertion.
-4. Client and server establish ICE, DTLS and SCTP data channels.
-5. NEXORA receives Bedrock game batches from the reliable and unreliable data channels.
+1. Client calls GET /v1/join to verify NetherNet support and read server metadata.
+2. Client sends its complete WebRTC SDP offer to POST /v1/join/{networkId}.
+3. NEXORA validates the client's GameServerToken and detached DTLS-fingerprint JWS, then creates a WebRTC answer.
+4. NEXORA signs its server identity assertion and returns the complete SDP answer.
+5. Client and server establish ICE, DTLS and SCTP data channels.
+6. NEXORA receives framed Bedrock game messages on the reliable and unreliable channels.
 
 Official Mojang onboarding guide: https://mojang.github.io/bedrock-protocol-docs/guides/nether-net-onboarding-guide/
 
@@ -22,22 +23,26 @@ Official Mojang onboarding guide: https://mojang.github.io/bedrock-protocol-docs
 - Legacy RakNet unconnected ping/pong codec and UDP discovery responder (for protocol study; not sufficient for modern clients).
 - NetherNet server metadata model and JSON serialization.
 - NetherNet HTTP signaling endpoint:
-  - \`GET /v1/join\` returns server metadata.
-  - \`POST /v1/join/{networkId}\` validates the SDP request and delegates negotiation to an \`SdpNegotiator\`.
+  - GET /v1/join returns server metadata.
+  - POST /v1/join/{networkId} validates the SDP request and delegates negotiation.
   - Request size limit, content-type validation, bounded worker pool, and explicit error responses.
-- Unit tests for legacy RakNet discovery and NetherNet HTTP signaling.
+- WebRTC SDP answerer using webrtc-java, with full ICE gathering and peer-session limits.
+- NetherNet identity implementation:
+  - Verifies client GameServerToken RS256 signatures against a configurable Minecraft auth JWKS endpoint.
+  - Checks issuer, audience, expiry and not-before claims.
+  - Verifies the client's ES384 detached DTLS-fingerprint assertion.
+  - Creates a persistent P-384 server identity keypair, self-signed server JWT and signed fingerprint assertion.
+- NetherNet message framing and reliable-channel fragmentation/reassembly with size limits.
+- Unit tests for legacy RakNet discovery, signaling HTTP behavior, message framing and server identity signatures.
 
-## Not implemented yet
+## Not implemented / not wired yet
 
-- A production WebRTC peer-connection provider / native binding.
-- Client GameServerToken and signed fingerprint validation.
-- Server operator identity JWT and detached fingerprint signature.
-- ICE candidate reachability and deployment port allocation.
-- NetherNet reliable/unreliable data-channel framing and fragmentation.
-- Bedrock packet batching, compression, encryption/login, resource-pack negotiation, player spawn or gameplay.
-- World, entities, inventory or persistence.
-
-The signaling HTTP layer is deliberately separated from WebRTC through \`SdpNegotiator\`. It must not be exposed as a working NetherNet service until a real implementation validates identity assertions, creates a WebRTC answer with reachable ICE candidates, and includes the mandatory server \`a=identity\` assertion.
+- The NetherNet signaling server, WebRTC negotiator and identity service are not yet started by the main server bootstrap.
+- No HTTPS listener or TLS reverse-proxy configuration yet. HTTPS is recommended for the signaling endpoint; plaintext HTTP relies on client TOFU for the server identity.
+- No game packet-batch codec, compression, Bedrock login, encryption/session state or resource-pack negotiation.
+- No player session lifecycle, player spawn, world, entities, inventory or persistence.
+- No outbound game-packet pipeline connected to the data channels.
+- No Android-client end-to-end connection test.
 
 ## Protocol target
 
@@ -47,17 +52,28 @@ Initial stable game target: **Bedrock 1.26.62 / game protocol 2225**. The transp
 
 The current bootstrap still runs the legacy UDP discovery responder on port 19132. This is not a playable server and modern Bedrock clients may not connect through it.
 
-Build:
+Build and test:
 
-\`\`\`sh
+~~~sh
 mvn -f server/nexora-core/pom.xml clean verify
-\`\`\`
+~~~
 
-Run the legacy discovery experiment:
+The build copies runtime dependencies to server/nexora-core/target/lib/ so the application jar can be launched with its manifest classpath:
 
-\`\`\`sh
+~~~sh
 java -jar server/nexora-core/target/nexora-core-0.1.0-SNAPSHOT.jar 0.0.0.0 19132 "NEXORA Core" 20
-\`\`\`
+~~~
+
+The WebRTC implementation uses native libraries supplied by webrtc-java; the deployment host must match a published native classifier and have the required system runtime libraries installed.
+
+## Identity key safety
+
+The first initialization of DefaultNetherNetIdentityService creates:
+
+- nethernet-identity.pk8 — private P-384 key; keep it secret and back it up securely.
+- nethernet-identity.x509 — matching public key.
+
+Keep both files together and persistent across restarts and server migrations. If one is missing or the keypair does not match, startup fails rather than silently rotating the server identity.
 
 ## Engineering rules
 

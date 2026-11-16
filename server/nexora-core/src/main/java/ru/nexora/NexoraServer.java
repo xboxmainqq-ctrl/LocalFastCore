@@ -49,8 +49,9 @@ public final class NexoraServer {
                 new java.security.SecureRandom().nextLong()
         );
 
+        String dataDirectory = System.getenv().getOrDefault("NEXORA_DATA_DIR", "data");
         DefaultNetherNetIdentityService identityService =
-                new DefaultNetherNetIdentityService(Path.of("data", "identity"));
+                new DefaultNetherNetIdentityService(Path.of(dataDirectory, "identity"));
         AtomicReference<WebRtcSdpNegotiator> negotiatorReference = new AtomicReference<>();
         BedrockSessionManager bedrockSessions = new BedrockSessionManager(
                 2225,

@@ -61,6 +61,33 @@ class BedrockInventoryTransactionCodecTest {
     }
 
     @Test
+    void decodesFoodItemReleaseConsumeTransaction() {
+        BedrockItemRegistry foods = BedrockVanillaItemCatalog.createRegistry();
+        byte[] payload = itemRelease(1, 0, 261, 1, 0.5f, 66.62f, 0.5f);
+        BedrockPacket packet = new BedrockPacket(0x1e, 0, 0, payload);
+
+        assertEquals(4, BedrockInventoryTransactionCodec.transactionType(packet));
+        var decoded = BedrockInventoryTransactionCodec.decodeItemRelease(packet, foods);
+        assertEquals(1, decoded.actionType());
+        assertEquals(0, decoded.hotbarSlot());
+        assertEquals("minecraft:bread", decoded.heldItem().orElseThrow().itemId());
+        assertEquals(66.62f, decoded.headY(), 0.0001f);
+    }
+
+    @Test
+    void decodesFoodUseCancellationAndRejectsUnsupportedReleaseActions() {
+        BedrockItemRegistry foods = BedrockVanillaItemCatalog.createRegistry();
+        var cancelled = BedrockInventoryTransactionCodec.decodeItemRelease(
+                new BedrockPacket(0x1e, 0, 0, itemRelease(0, 0, 261, 1, 0, 65, 0)), foods);
+        assertEquals(0, cancelled.actionType());
+
+        byte[] malformed = itemRelease(1, 1, 261, 1, 0, 65, 0);
+        assertThrows(UnsupportedOperationException.class, () ->
+                BedrockInventoryTransactionCodec.decodeItemRelease(
+                        new BedrockPacket(0x1e, 0, 0, malformed), foods));
+    }
+
+    @Test
     void rejectsUnknownRuntimeIdsAndForgedDescriptorMetadata() {
         byte[] unknown = transaction(action(0, 0, 0, empty(), stack(999, 1)));
         assertThrows(IllegalArgumentException.class,
@@ -179,6 +206,39 @@ class BedrockInventoryTransactionCodecTest {
         out.write(0); // block runtime ID
         out.write(0); // user data
         return out.toByteArray();
+    }
+
+    private static byte[] itemRelease(
+            int actionType, int actionCount, int runtimeItemId, int count,
+            float headX, float headY, float headZ
+    ) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        writeVarInt(out, 0); // LegacyRequestId
+        writeVarInt(out, 4); // ItemRelease transaction
+        writeVarUInt(out, actionCount);
+        if (actionCount != 0) {
+            writeVarInt(out, 0); // Container source
+            out.write(0); // placeholder action bytes
+        }
+        writeVarInt(out, actionType);
+        writeVarInt(out, 0); // hotbar slot
+        writeShort(out, runtimeItemId);
+        writeShort(out, count);
+        writeVarUInt(out, 0); // aux
+        out.write(0); // has StackNetId
+        writeVarUInt(out, 0); // block runtime ID
+        writeVarUInt(out, 0); // user data
+        writeFloat(out, headX); writeFloat(out, headY); writeFloat(out, headZ);
+        return out.toByteArray();
+    }
+
+    private static void writeFloat(ByteArrayOutputStream out, float value) {
+        int bits = Float.floatToIntBits(value);
+        out.write(bits); out.write(bits >>> 8); out.write(bits >>> 16); out.write(bits >>> 24);
+    }
+
+    private static void writeVarInt(ByteArrayOutputStream out, int value) {
+        writeVarUInt(out, Integer.toUnsignedLong((value << 1) ^ (value >> 31)));
     }
 
     private static void writeShort(ByteArrayOutputStream out, int value) {

@@ -16,6 +16,7 @@ Before enabling NetherNet on MCPEHost, confirm:
 1. The allocated port number.
 2. Whether the panel forwards both TCP and UDP on that same port.
 3. Whether outbound DNS/HTTPS and UDP traffic are allowed from the container.
+4. If outbound STUN is blocked, the provider's public UDP endpoint and whether it forwards to the allocated game port (configure it with `bedrock.advertised-addresses`).
 4. Whether the runtime is Linux glibc or Linux musl (Alpine), and its CPU architecture.
 
 Do not hardcode 19132: the host-assigned port must be configurable. Do not advertise a private container address as a public ICE candidate. A stable server identity PEM must be preserved between restarts because clients can pin its public key.

@@ -3,6 +3,7 @@ package ru.nexora.network.bedrock;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ru.nexora.network.nethernet.NetherNetClientIdentity;
+import ru.nexora.inventory.ItemStack;
 import ru.nexora.network.nethernet.NetherNetMessageFramer;
 import ru.nexora.world.PlayerDataStorage;
 import ru.nexora.world.PlayerData;
@@ -134,6 +135,13 @@ class BedrockSessionManagerTest {
                 BedrockBatchCodec.encode(List.of(login), true, 256));
 
         assertEquals(1, manager.authenticatedPlayerCount());
+        var inventory = manager.playerInventory("authenticated-client").orElseThrow();
+        assertEquals(36, inventory.size());
+        assertTrue(inventory.heldItem().isEmpty());
+        inventory.setSlot(0, new ItemStack("nexora:arcane_shard", 3, 64));
+        assertEquals(3, manager.playerInventory("authenticated-client").orElseThrow()
+                .orElseThrow().count("nexora:arcane_shard"));
+        assertTrue(manager.playerInventory("unknown-client").isEmpty());
 
         BedrockPacket clientHandshake = new BedrockPacket(
                 BedrockBatchCodec.CLIENT_TO_SERVER_HANDSHAKE_PACKET_ID, 0, 0, new byte[0]);

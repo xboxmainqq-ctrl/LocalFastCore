@@ -17,6 +17,8 @@ class ServerConfigurationTest {
         Path file = temporaryDirectory.resolve("server.properties");
         ServerConfiguration created = ServerConfiguration.loadOrCreate(file);
         assertEquals(ServerConfiguration.defaults(), created);
+        assertEquals("nexora_rpg", created.worldId());
+        assertEquals(20261116L, created.seed());
         assertTrue(Files.isRegularFile(file));
         assertEquals(created, ServerConfiguration.loadOrCreate(file));
     }

@@ -6,6 +6,7 @@ import ru.nexora.network.nethernet.NetherNetClientIdentity;
 import ru.nexora.network.nethernet.NetherNetDataChannelListener;
 import ru.nexora.network.nethernet.NetherNetInboundPipeline;
 import ru.nexora.network.nethernet.NetherNetMessageFramer;
+import ru.nexora.inventory.PlayerInventory;
 import ru.nexora.world.FlatWorldGenerator;
 import ru.nexora.world.BlockType;
 import ru.nexora.world.World;
@@ -225,6 +226,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     public long resourcePackReadyCount() {
         return sessions.values().stream().filter(state -> state.resourcePacksCompleted).count();
+    }
+
+    /** Returns the authoritative inventory for an authenticated player session. */
+    public Optional<PlayerInventory> playerInventory(String networkId) {
+        SessionState state = sessions.get(networkId);
+        if (state == null) return Optional.empty();
+        synchronized (state) {
+            if (!state.loginAuthenticated) return Optional.empty();
+            return Optional.of(state.inventory);
+        }
     }
 
     public Optional<PlayerPosition> playerPosition(String networkId) {
@@ -768,6 +779,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private static final class SessionState {
+        private final PlayerInventory inventory = new PlayerInventory();
         private boolean compressionNegotiated;
         private volatile boolean loginAuthenticated;
         private boolean clientHandshakeReceived;

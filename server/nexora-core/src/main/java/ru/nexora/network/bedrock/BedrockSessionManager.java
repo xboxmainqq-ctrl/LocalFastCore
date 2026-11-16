@@ -445,6 +445,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (distance > movementBudget) {
             return; // Token-bucket speed guard; full movement simulation follows later.
         }
+        if (!WorldCollision.canMove(world,
+                state.positionX, state.positionY, state.positionZ,
+                input.x(), input.y(), input.z())) {
+            return; // Reject movement that clips through solid world blocks.
+        }
         if (input.tick() < state.lastInputTick) return;
 
         state.movementBudget = movementBudget - distance;

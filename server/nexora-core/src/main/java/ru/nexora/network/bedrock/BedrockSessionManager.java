@@ -284,10 +284,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         sendPacket(networkId, worldPacket, true);
                     }
                     sendPacket(networkId, BedrockBiomeDefinitionCodec.createPacket(), true);
-                    int spawnChunkX = Math.floorDiv(world.spawnX(), 16);
-                    int spawnChunkZ = Math.floorDiv(world.spawnZ(), 16);
-                    sendPacket(networkId,
-                            BedrockLevelChunkCodec.createPacket(world.getChunk(spawnChunkX, spawnChunkZ)), true);
+                    sendInitialChunkArea(networkId);
                 }
                 System.out.printf("NEXORA: resource-pack negotiation completed for %s%n", networkId);
             }
@@ -295,6 +292,22 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
+
+    private void sendInitialChunkArea(String networkId) {
+        int centerX = Math.floorDiv(world.spawnX(), 16);
+        int centerZ = Math.floorDiv(world.spawnZ(), 16);
+        int initialRadius = 1; // 3x3 starter area; dynamic view-distance streaming is a later stage
+
+        for (int ring = 0; ring <= initialRadius; ring++) {
+            for (int offsetZ = -ring; offsetZ <= ring; offsetZ++) {
+                for (int offsetX = -ring; offsetX <= ring; offsetX++) {
+                    if (Math.max(Math.abs(offsetX), Math.abs(offsetZ)) != ring) continue;
+                    WorldChunk chunk = world.getChunk(centerX + offsetX, centerZ + offsetZ);
+                    sendPacket(networkId, BedrockLevelChunkCodec.createPacket(chunk), true);
+                }
+            }
+        }
+    }
 
     private void handleClientInitialized(
             NetherNetInboundPipeline.InboundMessage message,

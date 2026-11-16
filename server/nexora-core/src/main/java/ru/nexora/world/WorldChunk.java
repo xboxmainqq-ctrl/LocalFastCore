@@ -29,17 +29,27 @@ public final class WorldChunk {
     }
 
     public synchronized void setBlock(int localX, int worldY, int localZ, BlockType type) {
+        setBlockAndGetPrevious(localX, worldY, localZ, type);
+    }
+
+    /** Mutates one block and returns its previous value under the same chunk lock. */
+    public synchronized BlockType setBlockAndGetPrevious(int localX, int worldY, int localZ, BlockType type) {
         validateLocal(localX, localZ);
         int sectionIndex = sectionIndex(worldY);
         Objects.requireNonNull(type, "type");
-        if (sections[sectionIndex] == null) {
-            if (type == BlockType.AIR) return;
-            sections[sectionIndex] = new ChunkSection();
+        ChunkSection section = sections[sectionIndex];
+        BlockType previous = section == null ? BlockType.AIR : section.get(localX, worldY & 15, localZ);
+        if (previous == type) return previous;
+        if (section == null) {
+            if (type == BlockType.AIR) return previous;
+            section = new ChunkSection();
+            sections[sectionIndex] = section;
         }
-        sections[sectionIndex].set(localX, worldY & 15, localZ, type);
-        if (type == BlockType.AIR && sections[sectionIndex].isEmpty()) {
+        section.set(localX, worldY & 15, localZ, type);
+        if (type == BlockType.AIR && section.isEmpty()) {
             sections[sectionIndex] = null;
         }
+        return previous;
     }
 
     /**

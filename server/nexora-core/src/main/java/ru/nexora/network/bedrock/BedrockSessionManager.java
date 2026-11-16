@@ -388,6 +388,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
+    private List<BedrockPacket> createEquipmentReconciliationPackets(SessionState state) {
+        List<BedrockPacket> packets = new java.util.ArrayList<>();
+        packets.add(BedrockMobEquipmentCodec.createPlayerEquipment(state.entityId, state.inventory, itemRegistry));
+        packets.addAll(BedrockPlayerEquipmentCodec.createInitialEquipment(state.equipment, itemRegistry));
+        return List.copyOf(packets);
+    }
+
     private void handleInventoryTransaction(
             NetherNetInboundPipeline.InboundMessage message, SessionState state, BedrockPacket packet
     ) {
@@ -414,8 +421,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             decoded = BedrockInventoryTransactionCodec.decode(packet, registry);
         } catch (UnsupportedOperationException exception) {
             // Unsupported transaction variants are not interpreted; restore the client's prediction.
-            sendPackets(networkId, List.of(authoritativeContent,
-                        BedrockMobEquipmentCodec.createPlayerEquipment(state.entityId, state.inventory, registry)), true);
+            List<BedrockPacket> reconciliation = new java.util.ArrayList<>();
+            reconciliation.add(authoritativeContent);
+            reconciliation.addAll(createEquipmentReconciliationPackets(state));
+            sendPackets(networkId, reconciliation, true);
             return;
         } catch (IllegalArgumentException exception) {
             state.rejected = true;
@@ -428,8 +437,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             authoritativeContent = BedrockInventoryContentCodec.createPlayerInventory(state.inventory, registry);
         }
         // Always reconcile client prediction, including stale, unsupported, and rejected actions.
-        sendPackets(networkId, List.of(authoritativeContent,
-                BedrockMobEquipmentCodec.createPlayerEquipment(state.entityId, state.inventory, registry)), true);
+        List<BedrockPacket> reconciliation = new java.util.ArrayList<>();
+        reconciliation.add(authoritativeContent);
+        reconciliation.addAll(createEquipmentReconciliationPackets(state));
+        sendPackets(networkId, reconciliation, true);
     }
 
     private void handleNetworkSettingsRequest(
@@ -850,8 +861,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         try {
             equipment = BedrockMobEquipmentCodec.decode(packet, itemRegistry);
         } catch (UnsupportedOperationException exception) {
-            sendPacket(networkId, BedrockMobEquipmentCodec.createPlayerEquipment(
-                    state.entityId, state.inventory, itemRegistry), true);
+            sendPackets(networkId, createEquipmentReconciliationPackets(state), true);
             return;
         } catch (IllegalArgumentException exception) {
             state.rejected = true;
@@ -865,17 +875,17 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 || equipment.inventorySlot() >= PlayerInventory.HOTBAR_SIZE
                 || equipment.hotbarSlot() >= PlayerInventory.HOTBAR_SIZE
                 || equipment.inventorySlot() != equipment.hotbarSlot()) {
-            sendPacket(networkId, BedrockMobEquipmentCodec.createPlayerEquipment(
-                    state.entityId, state.inventory, itemRegistry), true);
+            sendPackets(networkId, createEquipmentReconciliationPackets(state), true);
             return;
         }
 
         Optional<ru.nexora.inventory.ItemStack> authoritative =
                 state.inventory.getSlot(equipment.inventorySlot());
         if (!authoritative.equals(equipment.item())) {
-            sendPackets(networkId, List.of(
-                    BedrockInventoryContentCodec.createPlayerInventory(state.inventory, itemRegistry),
-                    BedrockMobEquipmentCodec.createPlayerEquipment(state.entityId, state.inventory, itemRegistry)), true);
+            List<BedrockPacket> reconciliation = new java.util.ArrayList<>();
+            reconciliation.add(BedrockInventoryContentCodec.createPlayerInventory(state.inventory, itemRegistry));
+            reconciliation.addAll(createEquipmentReconciliationPackets(state));
+            sendPackets(networkId, reconciliation, true);
             return;
         }
         state.inventory.selectHotbarSlot(equipment.hotbarSlot());

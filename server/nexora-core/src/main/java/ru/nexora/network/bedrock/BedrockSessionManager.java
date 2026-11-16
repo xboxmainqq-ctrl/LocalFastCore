@@ -1633,6 +1633,23 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (requiredNanos == Long.MAX_VALUE
                 || nanoTime.getAsLong() - target.startedAtNanos() < requiredNanos) return;
 
+        WorldItemEntity dropped = null;
+        String dropItemId = blockDropItemId(current);
+        if (dropItemId != null && itemRegistry != null
+                && itemRegistry.findByIdentifier(dropItemId) != null) {
+            try {
+                dropped = world.itemEntities().spawn(
+                        new ru.nexora.inventory.ItemStack(dropItemId, 1, 64),
+                        target.x() + 0.5, target.y() + 0.5, target.z() + 0.5,
+                        0, 0.12, 0,
+                        System.currentTimeMillis(), WorldItemEntityManager.DEFAULT_PICKUP_DELAY_MILLIS,
+                        state.identity == null ? null : state.identity.xuid());
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: block break cancelled because its item drop could not be saved: "
+                        + exception.getMessage());
+                return;
+            }
+        }
         world.setBlock(target.x(), target.y(), target.z(), BlockType.AIR);
         state.breakTarget = null;
         BedrockPacket update = BedrockBlockUpdateCodec.createPacket(
@@ -1649,6 +1666,29 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 sendPacket(entry.getKey(), update, true);
             }
         }
+        if (dropped != null) {
+            broadcastItemActor(dropped, BedrockAddItemActorCodec.createAddItemActor(dropped, itemRegistry));
+        }
+    }
+
+    private static String blockDropItemId(BlockType block) {
+        return switch (block) {
+            case AIR, BEDROCK -> null;
+            case STONE -> "minecraft:cobblestone";
+            case GRASS_BLOCK -> "minecraft:dirt";
+            case DIRT -> "minecraft:dirt";
+            case COBBLESTONE -> "minecraft:cobblestone";
+            case GRAVEL -> "minecraft:gravel";
+            case GLASS -> "minecraft:glass";
+            case OBSIDIAN -> "minecraft:obsidian";
+            case NETHERRACK -> "minecraft:netherrack";
+            case END_STONE -> "minecraft:end_stone";
+            case COAL_BLOCK -> "minecraft:coal_block";
+            case IRON_BLOCK -> "minecraft:iron_block";
+            case GOLD_BLOCK -> "minecraft:gold_block";
+            case DIAMOND_BLOCK -> "minecraft:diamond_block";
+            case EMERALD_BLOCK -> "minecraft:emerald_block";
+        };
     }
 
     private static boolean matchesBreakTarget(SessionState state, BedrockPlayerAuthInputCodec.BlockAction action) {

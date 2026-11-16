@@ -74,6 +74,21 @@ class BedrockInventoryTransactionCodecTest {
     }
 
     @Test
+    void preservesUnsignedUint32AuxAndBlockRuntimeValues() {
+        var registry = new BedrockItemRegistry(List.of(
+                new BedrockItemRegistry.Entry("nexora:runed_stone",
+                        new BedrockInventoryContentCodec.ItemDefinition(
+                                258, 0xffff_ffffL, 0xffff_ffffL, new byte[] {1, 2}), 1)));
+        byte[] payload = transaction(action(0, 0, 0, empty(),
+                stack(258, 1, 0xffff_ffffL, 0xffff_ffffL, new byte[] {1, 2})));
+
+        var decoded = BedrockInventoryTransactionCodec.decode(
+                new BedrockPacket(0x1e, 0, 0, payload), registry);
+        assertEquals("nexora:runed_stone", decoded.actions().getFirst().to().orElseThrow().itemId());
+        assertEquals(1, decoded.actions().getFirst().to().orElseThrow().count());
+    }
+
+    @Test
     void rejectsNetIdsMalformedBooleansAndTrailingBytes() {
         byte[] withNetId = transaction(action(0, 0, 0, empty(), stackWithNetId(257, 1)));
         assertThrows(UnsupportedOperationException.class,

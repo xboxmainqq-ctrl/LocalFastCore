@@ -11,6 +11,7 @@ import ru.nexora.network.nethernet.NetherNetMessageFramer;
 import ru.nexora.world.PlayerDataStorage;
 import ru.nexora.world.PlayerData;
 import ru.nexora.world.PlayerVitals;
+import ru.nexora.world.WorldItemEntity;
 
 import java.nio.file.Path;
 import java.nio.file.Files;

@@ -6,7 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Curated protocol-2225 vanilla item subset with verified runtime IDs, including common stackable items and armor.
+ * Curated protocol-2225 vanilla item subset with verified runtime IDs, including common stackable items, placeable blocks and armor.
  *
  * IDs and ItemVersion values are transcribed from the protocol-2225 item-state
  * palette (runtime_item_states_2225.json, Nukkit-MOT reference revision

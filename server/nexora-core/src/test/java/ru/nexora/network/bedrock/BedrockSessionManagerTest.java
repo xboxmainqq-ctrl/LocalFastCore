@@ -258,7 +258,7 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(replayedMovement), true, 256));
         assertEquals(1.0f, manager.playerPosition("authenticated-client").orElseThrow().x());
-        assertEquals(22, outboundFrames.size());
+        assertEquals(23, outboundFrames.size());
 
         monotonicClock.set(200_000_000L);
         BedrockPacket implausibleTeleport = new BedrockPacket(0x90, 0, 0,
@@ -266,7 +266,7 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(implausibleTeleport), true, 256));
         assertEquals(1.0f, manager.playerPosition("authenticated-client").orElseThrow().x());
-        assertEquals(22, outboundFrames.size());
+        assertEquals(23, outboundFrames.size());
 
         float[] walkPositions = {3.0f, 5.0f, 7.0f, 9.0f, 11.0f, 13.0f, 15.0f, 16.5f};
         long[] walkTimes = {400_000_000L, 650_000_000L, 900_000_000L, 1_150_000_000L,
@@ -278,9 +278,9 @@ class BedrockSessionManagerTest {
                             walkPositions[i], 65.0f, 1.0f, 30.0f, 3L + i, false));
             sendClientBatch(manager, "authenticated-client",
                     BedrockBatchCodec.encode(List.of(step), true, 256));
-            if (i < walkPositions.length - 1) assertEquals(22, outboundFrames.size());
+            if (i < walkPositions.length - 1) assertEquals(23, outboundFrames.size());
         }
-        assertEquals(29, outboundFrames.size());
+        assertEquals(27, outboundFrames.size());
         assertEquals(0x79, decodeOutbound(outboundFrames.get(23), true).packetId());
         for (int index = 24; index < 27; index++) {
             assertEquals(0x3a, decodeOutbound(outboundFrames.get(index), true).packetId());
@@ -293,14 +293,14 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(speedHack), true, 256));
         assertEquals(16.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
-        assertEquals(26, outboundFrames.size());
+        assertEquals(27, outboundFrames.size());
 
         BedrockPacket invalidBlockPosition = new BedrockPacket(0x90, 0, 0,
                 BedrockPlayerAuthInputCodecTest.blockActionPayload(
                         16.5f, 65.0f, 1.0f, 0, 16, 400, 1, 1, 11L));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(invalidBlockPosition), true, 256));
-        assertEquals(26, outboundFrames.size());
+        assertEquals(27, outboundFrames.size());
 
         monotonicClock.set(3_100_000_000L);
         BedrockPacket startBreak = new BedrockPacket(0x90, 0, 0,
@@ -308,7 +308,7 @@ class BedrockSessionManagerTest {
                         16.5f, 65.0f, 1.0f, 0, 16, 64, 1, 1, 12L));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(startBreak), true, 256));
-        assertEquals(26, outboundFrames.size());
+        assertEquals(27, outboundFrames.size());
 
         monotonicClock.set(3_600_000_000L);
         BedrockPacket prematureBreak = new BedrockPacket(0x90, 0, 0,
@@ -316,7 +316,7 @@ class BedrockSessionManagerTest {
                         16.5f, 65.0f, 1.0f, 26, 16, 64, 1, 1, 5_000L));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(prematureBreak), true, 256));
-        assertEquals(26, outboundFrames.size()); // too little break time has elapsed
+        assertEquals(27, outboundFrames.size()); // too little break time has elapsed
 
         monotonicClock.set(3_800_000_000L);
         BedrockPacket finishBreak = new BedrockPacket(0x90, 0, 0,
@@ -324,16 +324,16 @@ class BedrockSessionManagerTest {
                         16.5f, 65.0f, 1.0f, 26, 16, 64, 1, 1, 5_001L));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(finishBreak), true, 256));
-        assertEquals(27, outboundFrames.size());
-        assertEquals(0x15, decodeOutbound(outboundFrames.get(28), true).packetId());
+        assertEquals(28, outboundFrames.size());
+        assertEquals(0x15, decodeOutbound(outboundFrames.get(27), true).packetId());
 
         // A decoded no-op player-slot transaction is accepted and reconciled with authoritative content.
         BedrockPacket inventoryTransaction = new BedrockPacket(0x1e, 0, 0,
                 noOpInventoryTransactionPayload(257, 3));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(inventoryTransaction), true, 256));
-        assertEquals(28, outboundFrames.size());
-        assertEquals(0x31, decodeOutbound(outboundFrames.get(27), true).packetId());
+        assertEquals(29, outboundFrames.size());
+        assertEquals(0x31, decodeOutbound(outboundFrames.get(28), true).packetId());
 
         assertThrows(SecurityException.class, () -> sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256)));

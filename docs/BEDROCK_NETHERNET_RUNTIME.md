@@ -22,6 +22,7 @@ java -jar target/nexora-runtime-0.1.0-SNAPSHOT.jar \
 - `--bedrock-port` is the TCP signaling port and, when ICE port is 0, the UDP media port too.
 - `--bedrock-ice-port 0` enables shared-port operation. Set a different nonzero UDP port only when the hosting provider allocates it separately.
 - `--bedrock-identity-file` defaults to `nethernet-identity.pem`, relative to the data directory.
+- `bedrock.advertised-addresses` in `server.properties` can list public ICE endpoints such as `play.example.net:23472` (comma-separated). Use this when the host blocks outbound STUN; each address must be publicly reachable over UDP and forward to the configured ICE port. When set, manual endpoints replace STUN discovery.
 - Bedrock networking is disabled unless `--enable-bedrock-network` is supplied.
 - The legacy unauthenticated development listener is a separate feature and must not be exposed publicly.
 

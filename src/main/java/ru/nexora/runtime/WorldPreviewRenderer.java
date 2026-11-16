@@ -104,6 +104,10 @@ public final class WorldPreviewRenderer {
     }
 
     private static int biomeColor(int biomeId, String block, int elevation) {
+        if (block.contains("snow") || block.contains("ice")) return 0xE4EDF0;
+        if (block.contains("sand")) return 0xD8C27A;
+        if (block.contains("gravel")) return 0x8C8B86;
+        if (block.contains("stone") && elevation > 100) return 0x8B9297;
         return switch (biomeId) {
             case BiomeRegistry.MISTWOOD_ID -> block.contains("leaves") ? 0x286B38 : 0x56864B;
             case BiomeRegistry.GLASSGRASS_STEPPE_ID -> 0xA5A65A;

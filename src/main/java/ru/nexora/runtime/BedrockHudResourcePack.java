@@ -12,7 +12,7 @@ import java.util.zip.ZipOutputStream;
 
 /** Builds the built-in Bedrock resource pack that replaces vanilla hearts with the NEXORA HP bar. */
 public final class BedrockHudResourcePack {
-    private static final UUID PACK_ID = UUID.fromString("2b9b8df2-3a24-4e6b-8d15-7d45c1b2a903");
+    private static final UUID PACK_ID = UUID.fromString("4a0a3b92-2e6d-4c1d-9f6c-2e77bca5f201");
     private static final String VERSION = "1.0.0";
     private static final Map<String, String> ASSETS = Map.of(
             "manifest.json", "/bedrock/nexora-hud/manifest.json",

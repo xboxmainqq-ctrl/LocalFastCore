@@ -16,6 +16,7 @@ class BedrockHudResourcePackTest {
     void buildsBedrockPackWithCustomHealthBarAndVanillaHeartsDisabled() throws Exception {
         BedrockResourcePackTransferCodec.Pack pack = BedrockHudResourcePack.create();
         assertEquals("1.0.0", pack.version());
+        assertEquals("4a0a3b92-2e6d-4c1d-9f6c-2e77bca5f201", pack.uuid().toString());
         assertTrue(pack.archiveSize() > 0);
 
         Map<String, String> entries = new HashMap<>();

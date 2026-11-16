@@ -62,6 +62,21 @@ class WorldItemEntityManagerTest {
     }
 
     @Test
+    void droppedItemFallsAndSettlesOnTheWorldSurface() {
+        World world = new World("item-physics", 0L, new FlatWorldGenerator());
+        WorldItemEntityManager manager = new WorldItemEntityManager();
+        WorldItemEntity spawned = manager.spawn(new ItemStack("minecraft:stone", 1, 64),
+                0.5, 70.0, 0.5, 0, 0, 0, 0, 0, null);
+
+        for (int i = 0; i < 120; i++) manager.tick(world, 0.05);
+
+        WorldItemEntity settled = manager.find(spawned.runtimeId()).orElseThrow();
+        assertEquals(65.125, settled.y(), 0.001);
+        assertEquals(0.0, settled.velocityY(), 0.000001);
+        assertEquals(ru.nexora.world.BlockType.GRASS_BLOCK, world.getBlock(0, 64, 0));
+    }
+
+    @Test
     void persistsDroppedItemsAcrossRestartAndPersistsPickup() throws IOException {
         WorldItemEntityStorage storage = new WorldItemEntityStorage(temporaryDirectory, "test-world");
         WorldItemEntityManager first = new WorldItemEntityManager(storage);

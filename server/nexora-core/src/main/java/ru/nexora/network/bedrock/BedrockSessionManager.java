@@ -82,7 +82,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final Map<String, SessionState> sessions = new ConcurrentHashMap<>();
     private final AtomicLong nextEntityId = new AtomicLong(1);
     private final AtomicLong nextFormId = new AtomicLong(1);
-    private final AtomicLong lastItemActorTickNanos = new AtomicLong(-1);
+    private final AtomicLong lastItemActorTickNanos = new AtomicLong(Long.MIN_VALUE);
     private volatile boolean serverAuthoritativeMovement;
     private final NetherNetInboundPipeline inbound;
 
@@ -1921,7 +1921,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         long nowNanos = nanoTime.getAsLong();
         while (true) {
             long previous = lastItemActorTickNanos.get();
-            if (previous < 0) {
+            if (previous == Long.MIN_VALUE) {
                 if (lastItemActorTickNanos.compareAndSet(previous, nowNanos)) return;
                 continue;
             }

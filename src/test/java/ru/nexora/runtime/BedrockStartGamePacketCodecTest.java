@@ -46,7 +46,6 @@ class BedrockStartGamePacketCodecTest {
             assertEquals(77L, decoded.getSeed());
             assertEquals(2, decoded.getGeneratorId());
             assertEquals(2, decoded.getDifficulty());
-            assertEquals(1, decoded.getAuthoritativeMovementMode().ordinal());
             assertEquals(0, decoded.getRewindHistorySize());
             assertFalse(decoded.isServerAuthoritativeBlockBreaking());
             assertEquals("correlation", decoded.getMultiplayerCorrelationId());

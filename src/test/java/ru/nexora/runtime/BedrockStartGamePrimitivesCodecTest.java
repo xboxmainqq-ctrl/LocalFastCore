@@ -46,7 +46,7 @@ class BedrockStartGamePrimitivesCodecTest {
         buffer.flip();
         assertEquals(expected, BedrockStartGamePrimitivesCodec.readMovementSettings(buffer));
 
-        ByteBuffer nonCanonicalTrue = ByteBuffer.wrap(new byte[] {2, 0, 2});
+        ByteBuffer nonCanonicalTrue = ByteBuffer.wrap(new byte[] {0, 2});
         assertEquals(new BedrockStartGamePrimitivesCodec.SyncedPlayerMovementSettings(0, true),
                 BedrockStartGamePrimitivesCodec.readMovementSettings(nonCanonicalTrue));
     }

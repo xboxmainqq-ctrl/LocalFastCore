@@ -94,4 +94,18 @@ class EquipmentStatsTest {
         assertThrows(IllegalArgumentException.class, () -> new EquipmentStats(
                 Map.of(EquipmentAttribute.MAGIC_POWER, Double.POSITIVE_INFINITY)));
     }
+
+    @Test
+    void includesArmorAndOffhandBonusesInDerivedStats() {
+        EquipmentSlotRegistry registry = NexoraMagicEquipmentCatalog.createRegistry();
+        PlayerEquipment equipment = new PlayerEquipment();
+        equipment.setArmor(0, new ItemStack("minecraft:iron_helmet", 1, 1));
+        equipment.setArmor(1, new ItemStack("minecraft:iron_chestplate", 1, 1));
+        equipment.setArmor(2, new ItemStack("minecraft:iron_leggings", 1, 1));
+        equipment.setArmor(3, new ItemStack("minecraft:iron_boots", 1, 1));
+        equipment.setOffhand(new ItemStack("minecraft:shield", 1, 1));
+
+        EquipmentStats stats = EquipmentStats.calculate(equipment, registry);
+        assertEquals(15.0, stats.value(EquipmentAttribute.ARMOR), 0.0001);
+    }
 }

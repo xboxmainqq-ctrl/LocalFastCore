@@ -103,7 +103,7 @@ Open the following ports in the VPS firewall:
 - UDP 30000-30199 for WebRTC ICE/DTLS/SCTP traffic.
 - UDP 19132 only for the legacy RakNet discovery experiment.
 
-The WebRTC UDP range is configurable with NEXORA_UDP_PORT_MIN and NEXORA_UDP_PORT_MAX. World and player autosave are configurable with NEXORA_AUTOSAVE_SECONDS (default 300 seconds). Player profiles are stored under data/players/. Set both to 0 to use the operating system's default ephemeral range. The HTTP listener bind address is configurable with NEXORA_HTTP_BIND; it defaults to the main bind host.
+The WebRTC UDP range is configurable with NEXORA_UDP_PORT_MIN and NEXORA_UDP_PORT_MAX. World and player autosave are configurable with NEXORA_AUTOSAVE_SECONDS (default 300 seconds). Player profiles are stored under data/players/. Set both UDP port bounds to 0 to use the operating system's default ephemeral range. The HTTP listener bind address is configurable with NEXORA_HTTP_BIND; it defaults to the main bind host.
 
 ## Identity key safety
 

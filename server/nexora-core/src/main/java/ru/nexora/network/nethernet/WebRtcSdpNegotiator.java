@@ -336,6 +336,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
             if (!reliableLabel && !unreliableLabel) {
                 channel.close();
                 channel.dispose();
+                closeForProtocolError("unexpected data-channel label: " + label);
                 return;
             }
             if (channel.isReliable() != reliableLabel || channel.isOrdered() != reliableLabel) {
@@ -345,11 +346,12 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
                 return;
             }
 
-            RTCDataChannel previous = channels.put(label, channel);
+            RTCDataChannel previous = channels.putIfAbsent(label, channel);
             if (previous != null) {
-                previous.unregisterObserver();
-                previous.close();
-                previous.dispose();
+                channel.close();
+                channel.dispose();
+                closeForProtocolError("duplicate data-channel label: " + label);
+                return;
             }
 
             channel.registerObserver(new RTCDataChannelObserver() {
@@ -360,7 +362,9 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
 
                 @Override
                 public void onStateChange() {
-                    // Session lifetime is tracked by the owning PeerConnection.
+                    if (channel.getState() == RTCDataChannelState.CLOSED && !sessionClosed.get()) {
+                        closeForProtocolError("NetherNet data channel closed unexpectedly");
+                    }
                 }
 
                 @Override

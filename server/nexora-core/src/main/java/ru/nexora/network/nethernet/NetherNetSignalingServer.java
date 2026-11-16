@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpServer;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
@@ -63,22 +64,28 @@ public final class NetherNetSignalingServer implements AutoCloseable {
     private void handleJoin(HttpExchange exchange) throws IOException {
         try (exchange) {
             String method = exchange.getRequestMethod();
-            String path = exchange.getRequestURI().getPath();
+            String rawPath = exchange.getRequestURI().getRawPath();
 
-            if ("GET".equals(method) && "/v1/join".equals(path)) {
+            if ("GET".equals(method) && "/v1/join".equals(rawPath)) {
                 send(exchange, 200, "application/json; charset=utf-8",
                         metadata.toJson().getBytes(StandardCharsets.UTF_8));
                 return;
             }
 
             String prefix = "/v1/join/";
-            if (!"POST".equals(method) || !path.startsWith(prefix) || path.length() == prefix.length()) {
+            if (!"POST".equals(method) || !rawPath.startsWith(prefix) || rawPath.length() == prefix.length()) {
                 sendError(exchange, 404, "Unknown NetherNet signaling endpoint");
                 return;
             }
+            if (rawPath.length() > 8192) {
+                sendError(exchange, 414, "NetworkID path is too long");
+                return;
+            }
 
-            String networkId = path.substring(prefix.length());
-            if (networkId.length() > 256 || networkId.indexOf('/') >= 0) {
+            String encodedNetworkId = rawPath.substring(prefix.length());
+            String networkId = URLDecoder.decode(
+                    encodedNetworkId.replace("+", "%2B"), StandardCharsets.UTF_8);
+            if (networkId.isBlank() || networkId.length() > 4096) {
                 sendError(exchange, 400, "Invalid NetworkID path");
                 return;
             }

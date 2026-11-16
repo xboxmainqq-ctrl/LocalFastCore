@@ -17,7 +17,7 @@ import java.util.zip.CRC32C;
 /** Versioned, checksummed and atomically replaced player-profile files. */
 public final class PlayerDataStorage {
     private static final int MAGIC = 0x4e58504c; // NXPL
-    private static final int FORMAT_VERSION = 1;
+    private static final int FORMAT_VERSION = 2;
     private static final int MAX_FILE_BYTES = 1024;
 
     private final Path playersDirectory;
@@ -48,6 +48,10 @@ public final class PlayerDataStorage {
             output.writeFloat(player.yaw());
             output.writeFloat(player.pitch());
             output.writeLong(player.lastSeenEpochMillis());
+            output.writeFloat(player.vitals().health());
+            output.writeInt(player.vitals().hunger());
+            output.writeFloat(player.vitals().saturation());
+            output.writeFloat(player.vitals().exhaustion());
         }
 
         byte[] body = bodyBytes.toByteArray();
@@ -96,22 +100,26 @@ public final class PlayerDataStorage {
         try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(bytes, 0, bodyLength))) {
             if (input.readInt() != MAGIC) throw new IOException("Invalid NEXORA player profile magic");
             int version = input.readUnsignedByte();
-            if (version != FORMAT_VERSION) throw new IOException("Unsupported NEXORA player profile version: " + version);
+            if (version != 1 && version != FORMAT_VERSION) {
+                throw new IOException("Unsupported NEXORA player profile version: " + version);
+            }
             String storedXuid = readString(input, 64);
             if (!storedXuid.equals(xuid)) throw new IOException("Player profile XUID does not match file name");
             PlayerData player;
             try {
-                player = new PlayerData(
-                        storedXuid,
-                        readString(input, 128),
-                        readString(input, 128),
-                        input.readFloat(),
-                        input.readFloat(),
-                        input.readFloat(),
-                        input.readFloat(),
-                        input.readFloat(),
-                        input.readLong()
-                );
+                String displayName = readString(input, 128);
+                String worldName = readString(input, 128);
+                float x = input.readFloat();
+                float y = input.readFloat();
+                float z = input.readFloat();
+                float yaw = input.readFloat();
+                float pitch = input.readFloat();
+                long lastSeen = input.readLong();
+                PlayerVitals vitals = version == 1 ? PlayerVitals.DEFAULT
+                        : new PlayerVitals(input.readFloat(), input.readInt(), input.readFloat(), input.readFloat());
+                player = new PlayerData(storedXuid, displayName, worldName,
+                        x, y, z, yaw, pitch, lastSeen, vitals);
+            }
             } catch (IllegalArgumentException exception) {
                 throw new IOException("Invalid NEXORA player profile values", exception);
             }

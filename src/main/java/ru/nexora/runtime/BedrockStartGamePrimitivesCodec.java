@@ -26,9 +26,18 @@ public final class BedrockStartGamePrimitivesCodec {
     public record BlockPosition(int x, int y, int z) {
     }
 
-    public record SyncedPlayerMovementSettings(int rewindHistorySize,
+    public record SyncedPlayerMovementSettings(int authoritativeMovementMode,
+                                                int rewindHistorySize,
                                                 boolean serverAuthoritativeBlockBreaking) {
+        public SyncedPlayerMovementSettings(int rewindHistorySize,
+                                            boolean serverAuthoritativeBlockBreaking) {
+            this(1, rewindHistorySize, serverAuthoritativeBlockBreaking);
+        }
+
         public SyncedPlayerMovementSettings {
+            if (authoritativeMovementMode < 0 || authoritativeMovementMode > 2) {
+                throw new IllegalArgumentException("authoritativeMovementMode must be 0, 1 or 2");
+            }
             if (rewindHistorySize < 0) {
                 throw new IllegalArgumentException("rewindHistorySize must not be negative");
             }
@@ -93,20 +102,25 @@ public final class BedrockStartGamePrimitivesCodec {
     ) {
         Objects.requireNonNull(output, "output");
         Objects.requireNonNull(value, "value");
+        BedrockBinary.writeVarInt32(output, value.authoritativeMovementMode());
         BedrockBinary.writeVarInt32(output, value.rewindHistorySize());
         output.put((byte) (value.serverAuthoritativeBlockBreaking() ? 1 : 0));
     }
 
     public static SyncedPlayerMovementSettings readMovementSettings(ByteBuffer input) {
         Objects.requireNonNull(input, "input");
+        int authoritativeMovementMode = BedrockBinary.readVarInt32(input);
         int rewindHistorySize = BedrockBinary.readVarInt32(input);
+        if (authoritativeMovementMode < 0 || authoritativeMovementMode > 2) {
+            throw new IllegalArgumentException("Unsupported authoritative movement mode");
+        }
         if (rewindHistorySize < 0) {
             throw new IllegalArgumentException("rewindHistorySize must not be negative");
         }
         if (!input.hasRemaining()) {
             throw new IllegalArgumentException("Truncated movement settings boolean");
         }
-        return new SyncedPlayerMovementSettings(rewindHistorySize, input.get() != 0);
+        return new SyncedPlayerMovementSettings(authoritativeMovementMode, rewindHistorySize, input.get() != 0);
     }
 
     private static void requireFinite(float value, String name) {

@@ -1,5 +1,10 @@
 package ru.nexora.runtime;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import org.cloudburstmc.nbt.NbtMap;
+import org.cloudburstmc.protocol.bedrock.codec.v2225.Bedrock_v2225;
+
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -8,9 +13,10 @@ import java.util.Objects;
 /**
  * Protocol-2225 StartGame packet serializer for the minimal standalone NEXORA world.
  *
- * <p>The serializer emits every top-level field in schema order. Player properties
- * use the documented PropertySyncData structure. Server configuration is absent
- * (its optional-presence byte is false); block properties are currently empty.</p>
+ * <p>The serializer emits the protocol-2225 StartGame fields in schema order.
+ * The current server sends an empty player-property NBT compound, empty block
+ * properties and empty item definitions. Non-empty player properties are rejected
+ * until their NBT schema is implemented.</p>
  */
 public final class BedrockStartGamePacketCodec {
     public static final int PACKET_ID = 11;
@@ -30,7 +36,7 @@ public final class BedrockStartGamePacketCodec {
         }
     }
 
-    /** PropertySyncData: integer entries followed by float entries. */
+    /** In-memory player properties; only the empty protocol-2225 NBT form is currently serialized. */
     public record PlayerPropertyData(List<IntProperty> integers, List<FloatProperty> floats) {
         public PlayerPropertyData {
             integers = List.copyOf(Objects.requireNonNull(integers, "integers"));
@@ -129,15 +135,16 @@ public final class BedrockStartGamePacketCodec {
         writeBoolean(out, settings.trial());
         BedrockStartGamePrimitivesCodec.writeMovementSettings(out, settings.movementSettings());
 
-        // 11-16: clock, enchantment seed, empty block-property list, and server metadata.
+        // 11-16: clock, enchantment seed, empty block/item definitions, and server metadata.
         BedrockBinary.writeLittleEndianInt64(out, settings.levelCurrentTime());
         BedrockBinary.writeVarInt32(out, settings.enchantmentSeed());
-        BedrockBinary.writeVarUInt32(out, 0); // ServerBlockProperty[]
+        BedrockBinary.writeVarUInt32(out, 0); // BlockPropertyData[]
+        BedrockBinary.writeVarUInt32(out, 0); // ItemDefinitions[]
         BedrockBinary.writeString(out, settings.multiplayerCorrelationId(), 128);
         writeBoolean(out, settings.itemStackNetManagerEnabled());
         BedrockBinary.writeString(out, settings.serverVersion(), 128);
 
-        // 17: Player Property Data (PropertySyncData).
+        // 17: PlayerPropertyData is an NBT compound, not a pair of varint arrays.
         writePlayerPropertyData(out, settings.playerPropertyData());
 
         // 18-22: registry/template identifiers and network permissions.
@@ -146,9 +153,10 @@ public final class BedrockStartGamePacketCodec {
         BedrockBinary.writeLittleEndianInt64(out, settings.worldTemplateLeastSignificantBits());
         writeBoolean(out, settings.clientSideGenerationEnabled());
         writeBoolean(out, settings.blockNetworkIdsAreHashes());
-        writeBoolean(out, settings.serverAuthSoundEnabled());
+        writeBoolean(out, false); // tickDeathSystemsEnabled
+        writeBoolean(out, settings.serverAuthSoundEnabled()); // NetworkPermissions.serverAuthSounds
 
-        // 23: optional server_config is intentionally absent for this minimal server.
+        // Optional server-join information is intentionally absent for this minimal server.
         writeBoolean(out, false);
 
         // 24: protocol-2225 ServerTelemetryData (server, scenario, world, owner IDs).
@@ -170,15 +178,18 @@ public final class BedrockStartGamePacketCodec {
     }
 
     private static void writePlayerPropertyData(ByteBuffer out, PlayerPropertyData data) {
-        BedrockBinary.writeVarUInt32(out, data.integers().size());
-        for (IntProperty property : data.integers()) {
-            BedrockBinary.writeVarUInt32(out, property.index());
-            BedrockBinary.writeVarInt32(out, property.value());
+        if (!data.integers().isEmpty() || !data.floats().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Non-empty Bedrock 1.26.60 player-property NBT is not supported yet");
         }
-        BedrockBinary.writeVarUInt32(out, data.floats().size());
-        for (FloatProperty property : data.floats()) {
-            BedrockBinary.writeVarUInt32(out, property.index());
-            BedrockBinary.writeLittleEndianFloat(out, property.value());
+        ByteBuf nbt = Unpooled.buffer();
+        try {
+            Bedrock_v2225.CODEC.createHelper().writeTag(nbt, NbtMap.EMPTY);
+            byte[] encoded = new byte[nbt.readableBytes()];
+            nbt.readBytes(encoded);
+            out.put(encoded);
+        } finally {
+            nbt.release();
         }
     }
 

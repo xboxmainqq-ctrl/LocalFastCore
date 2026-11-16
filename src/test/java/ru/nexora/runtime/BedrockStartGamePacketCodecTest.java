@@ -13,14 +13,11 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockStartGamePacketCodecTest {
     @Test
-    void serializesAllProtocol2225StartGameFieldsInSchemaOrder() {
+    void serializesAllProtocol2225StartGameFieldsInSchemaOrder() throws Exception {
         var level = new BedrockLevelSettingsCodec.Settings(
                 77L, 0,
                 new BedrockStartGamePrimitivesCodec.BlockPosition(0, 64, 0),
                 2, -1, 4, "1.26.60");
-        var properties = new BedrockStartGamePacketCodec.PlayerPropertyData(
-                List.of(new BedrockStartGamePacketCodec.IntProperty(2, -7)),
-                List.of(new BedrockStartGamePacketCodec.FloatProperty(4, 1.25f)));
         var settings = new BedrockStartGamePacketCodec.Settings(
                 -9L, 123L, 0,
                 new BedrockStartGamePrimitivesCodec.Vec3(1.0f, 65.0f, -2.0f),
@@ -28,59 +25,52 @@ class BedrockStartGamePacketCodecTest {
                 level, "nexora-level", "NEXORA", "", false,
                 new BedrockStartGamePrimitivesCodec.SyncedPlayerMovementSettings(0, false),
                 6000L, -3, "correlation", false, "NEXORA/0.1",
-                properties, 0x0102030405060708L,
+                BedrockStartGamePacketCodec.PlayerPropertyData.empty(), 0x0102030405060708L,
                 0x1112131415161718L, 0x2122232425262728L,
-                false, false, false,
+                false, true, false,
                 new BedrockStartGamePacketCodec.Telemetry("server", "scenario", "world", "owner"));
 
-        ByteBuffer in = BedrockStartGamePacketCodec.encodePayload(settings);
-        assertEquals(-9L, BedrockBinary.readVarInt64(in));
-        assertEquals(123L, BedrockBinary.readVarUInt64(in));
-        assertEquals(0, BedrockBinary.readVarInt32(in));
-        assertEquals(new BedrockStartGamePrimitivesCodec.Vec3(1.0f, 65.0f, -2.0f),
-                BedrockStartGamePrimitivesCodec.readVec3(in));
-        assertEquals(new BedrockStartGamePrimitivesCodec.Vec2(90.0f, 0.0f),
-                BedrockStartGamePrimitivesCodec.readVec2(in));
+        ByteBuffer encoded = BedrockStartGamePacketCodec.encodePayload(settings);
+        byte[] bytes = new byte[encoded.remaining()];
+        encoded.get(bytes);
+        var input = Unpooled.wrappedBuffer(bytes);
+        try {
+            StartGamePacket decoded = (StartGamePacket) Bedrock_v2225.CODEC.tryDecode(
+                    Bedrock_v2225.CODEC.createHelper(), input,
+                    BedrockStartGamePacketCodec.PACKET_ID, PacketRecipient.CLIENT);
 
-        ByteBuffer levelBytes = BedrockLevelSettingsCodec.encodeMinimalSurvivalFlat(level);
-        byte[] expectedLevel = new byte[levelBytes.remaining()];
-        levelBytes.get(expectedLevel);
-        byte[] actualLevel = new byte[expectedLevel.length];
-        in.get(actualLevel);
-        assertArrayEquals(expectedLevel, actualLevel);
-
-        assertEquals("nexora-level", BedrockBinary.readString(in, 4096));
-        assertEquals("NEXORA", BedrockBinary.readString(in, 4096));
-        assertEquals("", BedrockBinary.readString(in, 4096));
-        assertFalse(readBoolean(in));
-        assertEquals(new BedrockStartGamePrimitivesCodec.SyncedPlayerMovementSettings(0, false),
-                BedrockStartGamePrimitivesCodec.readMovementSettings(in));
-        assertEquals(6000L, BedrockBinary.readLittleEndianInt64(in));
-        assertEquals(-3, BedrockBinary.readVarInt32(in));
-        assertEquals(0, BedrockBinary.readVarUInt32(in)); // no server block properties
-        assertEquals("correlation", BedrockBinary.readString(in, 128));
-        assertFalse(readBoolean(in));
-        assertEquals("NEXORA/0.1", BedrockBinary.readString(in, 128));
-
-        assertEquals(1, BedrockBinary.readVarUInt32(in));
-        assertEquals(2, BedrockBinary.readVarUInt32(in));
-        assertEquals(-7, BedrockBinary.readVarInt32(in));
-        assertEquals(1, BedrockBinary.readVarUInt32(in));
-        assertEquals(4, BedrockBinary.readVarUInt32(in));
-        assertEquals(1.25f, BedrockBinary.readLittleEndianFloat(in), 0.0001f);
-
-        assertEquals(0x0102030405060708L, BedrockBinary.readLittleEndianInt64(in));
-        assertEquals(0x1112131415161718L, BedrockBinary.readLittleEndianInt64(in));
-        assertEquals(0x2122232425262728L, BedrockBinary.readLittleEndianInt64(in));
-        assertFalse(readBoolean(in));
-        assertFalse(readBoolean(in));
-        assertFalse(readBoolean(in));
-        assertFalse(readBoolean(in)); // server_config absent
-        assertEquals("server", BedrockBinary.readString(in, 4096));
-        assertEquals("scenario", BedrockBinary.readString(in, 4096));
-        assertEquals("world", BedrockBinary.readString(in, 4096));
-        assertEquals("owner", BedrockBinary.readString(in, 4096));
-        assertFalse(in.hasRemaining());
+            assertEquals(-9L, decoded.getUniqueEntityId());
+            assertEquals(123L, decoded.getRuntimeEntityId());
+            assertEquals("nexora-level", decoded.getLevelId());
+            assertEquals("NEXORA", decoded.getLevelName());
+            assertEquals(77L, decoded.getSeed());
+            assertEquals(2, decoded.getGeneratorId());
+            assertEquals(2, decoded.getDifficulty());
+            assertEquals(1, decoded.getAuthoritativeMovementMode().ordinal());
+            assertEquals(0, decoded.getRewindHistorySize());
+            assertFalse(decoded.isServerAuthoritativeBlockBreaking());
+            assertEquals("correlation", decoded.getMultiplayerCorrelationId());
+            assertFalse(decoded.isInventoriesServerAuthoritative());
+            assertEquals("NEXORA/0.1", decoded.getServerEngine());
+            assertTrue(decoded.getBlockProperties().isEmpty());
+            assertTrue(decoded.getItemDefinitions().isEmpty());
+            assertTrue(decoded.getPlayerPropertyData().isEmpty());
+            assertEquals(0x0102030405060708L, decoded.getBlockRegistryChecksum());
+            assertEquals(new java.util.UUID(0x1112131415161718L, 0x2122232425262728L),
+                    decoded.getWorldTemplateId());
+            assertFalse(decoded.isClientSideGenerationEnabled());
+            assertTrue(decoded.isBlockNetworkIdsHashed());
+            assertFalse(decoded.getNetworkPermissions().serverAuthSounds());
+            assertFalse(decoded.isTickDeathSystemsEnabled());
+            assertFalse(decoded.isHasServerJoinInformation());
+            assertEquals("server", decoded.getServerId());
+            assertEquals("scenario", decoded.getScenarioId());
+            assertEquals("world", decoded.getWorldId());
+            assertEquals("owner", decoded.getOwnerId());
+            assertEquals(0, input.readableBytes());
+        } finally {
+            input.release();
+        }
     }
 
     @Test
@@ -104,38 +94,6 @@ class BedrockStartGamePacketCodecTest {
         assertEquals(0, packet.header().senderSubClientId());
         assertEquals(0, packet.header().targetSubClientId());
         assertTrue(packet.payload().length > 0);
-    }
-
-    @Test
-    void emittedPayloadIsAcceptedByThePinnedBedrock12260Codec() throws Exception {
-        var level = new BedrockLevelSettingsCodec.Settings(
-                77L, 0, new BedrockStartGamePrimitivesCodec.BlockPosition(0, 64, 0),
-                2, -1, 4, "1.26.60");
-        var settings = new BedrockStartGamePacketCodec.Settings(
-                -9L, 123L, 0,
-                new BedrockStartGamePrimitivesCodec.Vec3(1.0f, 65.0f, -2.0f),
-                new BedrockStartGamePrimitivesCodec.Vec2(90.0f, 0.0f),
-                level, "nexora-level", "NEXORA", "", false,
-                new BedrockStartGamePrimitivesCodec.SyncedPlayerMovementSettings(0, false),
-                6000L, -3, "correlation", false, "NEXORA/0.1",
-                BedrockStartGamePacketCodec.PlayerPropertyData.empty(),
-                0L, 0L, 0L, false, true, false,
-                BedrockStartGamePacketCodec.Telemetry.empty());
-
-        ByteBuffer encoded = BedrockStartGamePacketCodec.encodePayload(settings);
-        byte[] bytes = new byte[encoded.remaining()];
-        encoded.get(bytes);
-        var input = Unpooled.wrappedBuffer(bytes);
-        StartGamePacket decoded = (StartGamePacket) Bedrock_v2225.CODEC.tryDecode(
-                Bedrock_v2225.CODEC.createHelper(), input,
-                BedrockStartGamePacketCodec.PACKET_ID, PacketRecipient.CLIENT);
-
-        assertEquals(123L, decoded.getRuntimeEntityId());
-        assertEquals("nexora-level", decoded.getLevelId());
-        assertEquals("NEXORA", decoded.getLevelName());
-        assertEquals(77L, decoded.getSeed());
-        assertEquals(0, input.readableBytes());
-        input.release();
     }
 
     @Test

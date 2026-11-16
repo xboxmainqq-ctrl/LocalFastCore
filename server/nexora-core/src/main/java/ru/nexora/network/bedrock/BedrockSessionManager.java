@@ -459,7 +459,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 input.x(), input.y(), input.z())) {
             return; // Reject movement that clips through solid world blocks.
         }
-        if (input.tick() < state.lastInputTick) return;
+        // PlayerAuthInput ticks are monotonic; reject duplicate ticks as replayed movement.
+        if (input.tick() <= state.lastInputTick) return;
 
         state.movementBudget = movementBudget - distance;
         state.lastMovementNanos = nowNanos;

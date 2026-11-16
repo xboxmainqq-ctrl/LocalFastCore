@@ -155,6 +155,9 @@ class BedrockSessionManagerTest {
         AtomicLong clock = new AtomicLong();
         ru.nexora.world.World world = new ru.nexora.world.World(
                 "NEXORA World", 0L, new ru.nexora.world.FlatWorldGenerator());
+        WorldItemEntity existingItem = world.itemEntities().spawn(
+                new ItemStack("minecraft:bread", 1, 64),
+                2.5, 65.5, 2.5, 0, 0, 0, 0, 0, null);
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
                 world, profiles, null, null,
@@ -191,6 +194,9 @@ class BedrockSessionManagerTest {
                 List.of(new BedrockPacket(0x71, 0, 0, new byte[] {1})), true, 256));
 
         assertEquals(10, manager.playerVitals("food-client").orElseThrow().hunger());
+        assertTrue(outboundFrames.stream().flatMap(frame -> decodeOutboundAll(frame, true).stream())
+                .anyMatch(packet -> packet.packetId() == BedrockAddItemActorCodec.ADD_ITEM_ACTOR_PACKET_ID));
+        assertTrue(world.itemEntities().find(existingItem.runtimeId()).isPresent());
         BedrockPacket startEating = new BedrockPacket(0x90, 0, 0,
                 BedrockPlayerAuthInputCodecTest.foodUseMovementPayload(
                         0.5f, 65.0f, 0.5f, 0, 1L, 0, 261, 1,
@@ -209,6 +215,32 @@ class BedrockSessionManagerTest {
         assertTrue(outboundFrames.subList(beforeConsume, outboundFrames.size()).stream()
                 .flatMap(frame -> decodeOutboundAll(frame, true).stream())
                 .anyMatch(packet -> packet.packetId() == BedrockItemUseCompletionCodec.PACKET_ID));
+
+        clock.set(1_000_000_000L);
+        BedrockPacket startBreaking = new BedrockPacket(0x90, 0, 0,
+                BedrockPlayerAuthInputCodecTest.blockActionPayload(
+                        0.5f, 65.0f, 0.5f, 0, 1, 64, 0, 1, 2L));
+        sendClientBatch(manager, "food-client", BedrockBatchCodec.encode(List.of(startBreaking), true, 256));
+        clock.set(1_600_000_000L);
+        BedrockPacket stopBreaking = new BedrockPacket(0x90, 0, 0,
+                BedrockPlayerAuthInputCodecTest.blockActionPayload(
+                        0.5f, 65.0f, 0.5f, 2, 1, 64, 0, 1, 3L));
+        int beforeBlockDrop = outboundFrames.size();
+        sendClientBatch(manager, "food-client", BedrockBatchCodec.encode(List.of(stopBreaking), true, 256));
+        assertEquals(ru.nexora.world.BlockType.AIR, world.getBlock(1, 64, 0));
+        WorldItemEntity dirtDrop = world.itemEntities().snapshot().stream()
+                .filter(entity -> entity.stack().itemId().equals("minecraft:dirt"))
+                .findFirst().orElseThrow();
+        assertTrue(outboundFrames.subList(beforeBlockDrop, outboundFrames.size()).stream()
+                .flatMap(frame -> decodeOutboundAll(frame, true).stream())
+                .anyMatch(packet -> packet.packetId() == BedrockAddItemActorCodec.ADD_ITEM_ACTOR_PACKET_ID));
+
+        Thread.sleep(550);
+        BedrockPacket takeDirt = BedrockTakeItemActorCodec.createAcknowledgement(
+                dirtDrop.runtimeId(), manager.playerRuntimeId("food-client").orElseThrow());
+        sendClientBatch(manager, "food-client", BedrockBatchCodec.encode(List.of(takeDirt), true, 256));
+        assertTrue(world.itemEntities().find(dirtDrop.runtimeId()).isEmpty());
+        assertEquals(1, manager.playerInventory("food-client").orElseThrow().count("minecraft:dirt"));
         manager.close();
     }
 

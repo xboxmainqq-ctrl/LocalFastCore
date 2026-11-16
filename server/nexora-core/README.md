@@ -42,8 +42,10 @@ Official Mojang onboarding guide: https://mojang.github.io/bedrock-protocol-docs
 
 ## Not implemented / not wired yet
 
+The following list is intentionally conservative: a protocol stage is only considered implemented after its packet format, state transitions and tests are present. A passing unit test is not a substitute for a real Android Bedrock connection test.
+
 - The main bootstrap now starts the NetherNet HTTP signaling endpoint and the WebRTC answerer alongside the legacy UDP discovery experiment.
-- No HTTPS listener or TLS reverse-proxy configuration yet. HTTPS is recommended for the signaling endpoint; plaintext HTTP relies on client TOFU for the server identity.
+- NEXORA's signaling listener is plain HTTP; production TLS termination is provided by the documented Caddy reverse-proxy example. The application does not terminate TLS itself.
 - No StartGame/DimensionData packet sequence, player spawn, world, entities, inventory or persistence.
 - No general outbound gameplay-packet pipeline yet; only login, NetworkSettings, PlayStatus and empty resource-pack handshake responses are sent.
 - Guest/offline authentication is not supported; the current login path requires an authenticated Xbox Live GameServerToken.
@@ -57,7 +59,7 @@ Initial stable game target: **Bedrock 1.26.62 / game protocol 2225**. The transp
 
 The bootstrap runs the modern NetherNet signaling endpoint over TCP and keeps the legacy RakNet discovery responder over UDP on the same port. The transport path can establish WebRTC data channels, but it is not yet a playable server.
 
-Build and test:
+Build and test locally (the GitHub Actions workflow also runs this command for changes under server/nexora-core):
 
 ~~~sh
 mvn -f server/nexora-core/pom.xml clean verify

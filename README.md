@@ -63,6 +63,18 @@ java -jar target/nexora-runtime-0.1.0-SNAPSHOT.jar \
   --bedrock-ice-port 0
 ```
 
+You can also enable the listener without JVM arguments by editing `server.properties` in the server data directory. This is the preferred setup for hosts that only let you choose a JAR:
+
+```properties
+bedrock.network.enabled=true
+bedrock.bind-address=0.0.0.0
+bedrock.port=23472
+bedrock.ice-port=0
+bedrock.identity-file=nethernet-identity.pem
+```
+
+Replace `23472` with the actual port assigned by the host. The host must expose that port for both TCP and UDP. The listener stays disabled when `bedrock.network.enabled=false` or the setting is absent. Command-line Bedrock options override these file settings.
+
 Port 0 for the ICE option means WebRTC media shares the Bedrock port. The host must expose **both TCP and UDP** on that port; opening TCP signaling alone is not enough. A separate ICE UDP port can be selected with `--bedrock-ice-port` if the host allocates one. STUN discovery is enabled for public-address candidates.
 
 The server creates `nethernet-identity.pem` in the data directory on first launch. Keep this file between restarts and deployments: replacing it changes the server's cryptographic identity. Retail authentication is mandatory; there is no unauthenticated public Bedrock mode.

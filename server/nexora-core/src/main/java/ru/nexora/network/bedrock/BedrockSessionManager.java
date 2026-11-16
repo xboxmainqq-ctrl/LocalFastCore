@@ -356,6 +356,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
+    /** Returns authoritative health and hunger state for an authenticated player. */
+    public Optional<PlayerVitals> playerVitals(String networkId) {
+        SessionState state = sessions.get(networkId);
+        if (state == null) return Optional.empty();
+        synchronized (state) {
+            if (!state.loginAuthenticated) return Optional.empty();
+            return Optional.of(state.vitals);
+        }
+    }
+
     /** Returns derived magical equipment attributes for an authenticated player. */
     public Optional<EquipmentStats> playerEquipmentStats(String networkId) {
         SessionState state = sessions.get(networkId);

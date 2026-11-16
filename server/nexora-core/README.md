@@ -45,6 +45,7 @@ Official Mojang onboarding guide: https://mojang.github.io/bedrock-protocol-docs
 - Bounded protocol-2225 PlayerAuthInput parser for movement snapshots; checks finite coordinates, world bounds, input tick order and implausible single-packet teleports before storing per-session position.
 - Initial server-authoritative world model: 24 vertical sections (-64..319), sparse chunk sections, negative block coordinates, and a deterministic flat starter platform.
 - Versioned world-chunk persistence with CRC32C integrity checks and atomic file replacement; loaded chunks are restored at startup and saved on shutdown.
+- Configurable periodic world autosave (default 300 seconds) with a final synchronous flush during graceful shutdown; set NEXORA_AUTOSAVE_SECONDS to change the interval.
 - Unit tests for legacy RakNet discovery, signaling HTTP behavior, identity signatures, NetherNet framing, Bedrock batches, login parsing and the initial login/resource-pack stages.
 
 ## Not implemented / not wired yet
@@ -53,7 +54,7 @@ The following list is intentionally conservative: a protocol stage is only consi
 
 - The main bootstrap now starts the NetherNet HTTP signaling endpoint and the WebRTC answerer alongside the legacy UDP discovery experiment.
 - NEXORA's signaling listener is plain HTTP; production TLS termination is provided by the documented Caddy reverse-proxy example. The application does not terminate TLS itself.
-- Only the initial 3x3 spawn area is sent. Dynamic chunk-radius streaming, chunk unloads, biome variation, block updates, server-side movement physics/collision, movement corrections, entity replication and inventory are not implemented. PlayerAuthInput is only a validated position snapshot at this stage. Player data persistence and periodic autosave are also not implemented. The world is still not playable until those gameplay paths and an Android-client end-to-end test are complete.
+- Only the initial 3x3 spawn area is sent. Dynamic chunk-radius streaming, chunk unloads, biome variation, block updates, server-side movement physics/collision, movement corrections, entity replication and inventory are not implemented. PlayerAuthInput is only a validated position snapshot at this stage. Player data persistence is not implemented. The world is still not playable until those gameplay paths and an Android-client end-to-end test are complete.
 - No general outbound gameplay-packet pipeline yet; only login, NetworkSettings, PlayStatus and empty resource-pack handshake responses are sent.
 - Guest/offline authentication is not supported; the current login path requires an authenticated Xbox Live GameServerToken.
 - No Android-client end-to-end connection test.
@@ -98,7 +99,7 @@ Open the following ports in the VPS firewall:
 - UDP 30000-30199 for WebRTC ICE/DTLS/SCTP traffic.
 - UDP 19132 only for the legacy RakNet discovery experiment.
 
-The WebRTC UDP range is configurable with NEXORA_UDP_PORT_MIN and NEXORA_UDP_PORT_MAX. Set both to 0 to use the operating system's default ephemeral range. The HTTP listener bind address is configurable with NEXORA_HTTP_BIND; it defaults to the main bind host.
+The WebRTC UDP range is configurable with NEXORA_UDP_PORT_MIN and NEXORA_UDP_PORT_MAX. World autosave is configurable with NEXORA_AUTOSAVE_SECONDS (default 300 seconds). Set both to 0 to use the operating system's default ephemeral range. The HTTP listener bind address is configurable with NEXORA_HTTP_BIND; it defaults to the main bind host.
 
 ## Identity key safety
 

@@ -159,7 +159,7 @@ class BedrockInventoryTransactionCodecTest {
         return stack(runtimeId, count, 0, 0, new byte[0]);
     }
 
-    private static byte[] stack(int runtimeId, int count, int aux, long blockRuntimeId, byte[] userData) {
+    private static byte[] stack(int runtimeId, int count, long aux, long blockRuntimeId, byte[] userData) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         writeShort(out, runtimeId); writeShort(out, count);
         writeVarUInt(out, aux);

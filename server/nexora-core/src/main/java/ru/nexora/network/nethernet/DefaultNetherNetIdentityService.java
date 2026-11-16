@@ -302,7 +302,7 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
         if (expires == null || !expires.canConvertToLong()) {
             throw new SecurityException("GameServerToken is missing a valid expiry");
         }
-        if (now > expires.asLong() + 30) throw new SecurityException("GameServerToken has expired";
+        if (now > expires.asLong() + 30) throw new SecurityException("GameServerToken has expired");
         JsonNode notBefore = claims.get("nbf");
         if (notBefore != null) {
             if (!notBefore.canConvertToLong()) throw new SecurityException("Invalid GameServerToken not-before claim");

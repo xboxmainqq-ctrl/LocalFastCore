@@ -141,6 +141,65 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void serverAuthoritativeMovementUsesInputAndCorrectsClientPrediction() throws Exception {
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
+        generator.initialize(new ECGenParameterSpec("secp384r1"));
+        KeyPair clientKey = generator.generateKeyPair();
+        List<byte[]> outboundFrames = new ArrayList<>();
+        AtomicLong clock = new AtomicLong();
+        ru.nexora.world.World world = new ru.nexora.world.World(
+                "NEXORA World", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                world, (networkId, label, frame) -> outboundFrames.add(frame), event -> {}, clock::get);
+        manager.enableServerAuthoritativeMovement();
+        manager.onIdentity("physics-client", new NetherNetClientIdentity(
+                "physics-game-token", clientKey.getPublic().getEncoded(), "physics-xuid",
+                "PhysicsPlayer", "physics-playfab", "20CA2", null));
+
+        byte[] protocol = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(2225).array();
+        BedrockPacket settings = new BedrockPacket(
+                BedrockBatchCodec.REQUEST_NETWORK_SETTINGS_PACKET_ID, 0, 0, protocol);
+        sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(List.of(settings), false, 256));
+
+        String rawClientDataToken = signClientDataToken(clientKey);
+        String certificate = "{\\"chain\\":[]}";
+        String chainJson = "{\\"Certificate\\":\\"" + certificate.replace("\\", "\\\\")
+                .replace("\\"", "\\\\"")
+                + "\\",\\"AuthenticationType\\":0,\\"Token\\":\\"physics-game-token\\"}";
+        BedrockPacket login = new BedrockPacket(1, 0, 0,
+                loginPayload(2225, connectionRequest(chainJson, rawClientDataToken)));
+        sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(List.of(login), true, 256));
+        sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(List.of(
+                new BedrockPacket(BedrockBatchCodec.CLIENT_TO_SERVER_HANDSHAKE_PACKET_ID, 0, 0, new byte[0])
+        ), true, 256));
+        sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(
+                List.of(resourcePackResponse(2, "downloadingfinished")), true, 256));
+        sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(
+                List.of(resourcePackResponse(3, "resourcepackstackfinished")), true, 256));
+        sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(
+                List.of(new BedrockPacket(0x71, 0, 0, new byte[] {1})), true, 256));
+
+        int beforeMovement = outboundFrames.size();
+        BedrockPacket forward = new BedrockPacket(0x90, 0, 0,
+                movementInputPayload(0.5f, 65.0f, 0.715f, 0.0f, 1L, 0.0f, 1.0f));
+        sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(List.of(forward), true, 256));
+        assertEquals(0.5f, manager.playerPosition("physics-client").orElseThrow().x(), 0.0001f);
+        assertEquals(0.715f, manager.playerPosition("physics-client").orElseThrow().z(), 0.002f);
+        assertEquals(beforeMovement, outboundFrames.size()); // client prediction agreed with server physics
+
+        BedrockPacket forgedTeleport = new BedrockPacket(0x90, 0, 0,
+                movementInputPayload(100.0f, 65.0f, 0.715f, 0.0f, 2L, 0.0f, 0.0f));
+        sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(List.of(forgedTeleport), true, 256));
+        assertEquals(0.5f, manager.playerPosition("physics-client").orElseThrow().x(), 0.0001f);
+        assertEquals(beforeMovement + 1, outboundFrames.size());
+        BedrockPacket correction = decodeOutbound(outboundFrames.getLast(), true);
+        assertEquals(BedrockMovementCorrectionCodec.PACKET_ID, correction.packetId());
+        assertEquals(0, Byte.toUnsignedInt(correction.payload()[0]));
+        manager.close();
+    }
+
+    @Test
     void authenticatesLoginAndCompletesEmptyResourcePackExchange() throws Exception {
         KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
         generator.initialize(new ECGenParameterSpec("secp384r1"));
@@ -564,6 +623,16 @@ class BedrockSessionManagerTest {
         assertEquals(4, Byte.toUnsignedInt(spawnChunk.payload()[0])); // chunk X = 2
         assertEquals(3, Byte.toUnsignedInt(spawnChunk.payload()[1])); // chunk Z = -2
         manager.close();
+    }
+
+    private static byte[] movementInputPayload(
+            float x, float y, float z, float yaw, long tick, float moveX, float moveZ
+    ) {
+        byte[] payload = BedrockPlayerAuthInputCodecTest.movementPayload(x, y, z, yaw, tick, false);
+        ByteBuffer wire = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN);
+        wire.putFloat(20, moveX); // PlayerAuthInput Move Vector X
+        wire.putFloat(24, moveZ); // PlayerAuthInput Move Vector Y / local forward
+        return payload;
     }
 
     private static BedrockPacket decodeOutbound(byte[] frame, boolean compressed) {

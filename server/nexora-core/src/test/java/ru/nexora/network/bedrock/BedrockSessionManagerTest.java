@@ -698,6 +698,19 @@ class BedrockSessionManagerTest {
         assertEquals(dropped.runtimeId(), testWorld.itemEntities().find(dropped.runtimeId()).orElseThrow().runtimeId());
         assertEquals(framesBeforeDrop + 2, outboundFrames.size()); // inventory state + AddItemActor
 
+        // A real protocol-2225 PlayerAction DROP_ITEM request drops exactly one
+        // server-selected item from the active hotbar slot and creates a world actor.
+        int actorsBeforeClientDrop = testWorld.itemEntities().size();
+        int framesBeforeClientDrop = outboundFrames.size();
+        BedrockPacket clientDrop = new BedrockPacket(
+                BedrockPlayerActionCodec.PLAYER_ACTION_PACKET_ID, 0, 0,
+                playerActionPayload(runtimeEntityId, BedrockPlayerActionCodec.ACTION_DROP_ITEM));
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(clientDrop), true, 256));
+        assertEquals(1, inventory.count("nexora:arcane_shard"));
+        assertEquals(actorsBeforeClientDrop + 1, testWorld.itemEntities().size());
+        assertEquals(framesBeforeClientDrop + 2, outboundFrames.size()); // inventory state + AddItemActor
+
         // A valid client TakeItemActor request is distance/owner checked and inventory-conserving.
         BedrockSessionManager.PlayerPosition currentPosition =
                 manager.playerPosition("authenticated-client").orElseThrow();

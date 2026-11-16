@@ -77,17 +77,18 @@ public final class NexoraServer {
         WebRtcSdpNegotiator negotiator = new WebRtcSdpNegotiator(
                 identityService, bedrockSessions, maxPlayers, stunUrls, udpPortMin, udpPortMax);
         negotiatorReference.set(negotiator);
-        NetherNetServerMetadata metadata = new NetherNetServerMetadata(
-                motd,
-                2225,
-                "1.26.62",
-                "NEXORA World",
-                0,
-                maxPlayers,
-                0
-        );
         NetherNetSignalingServer signaling = new NetherNetSignalingServer(
-                signalingAddress, metadata, negotiator);
+                signalingAddress,
+                () -> new NetherNetServerMetadata(
+                        motd,
+                        2225,
+                        "1.26.62",
+                        "NEXORA World",
+                        (int) Math.min(bedrockSessions.authenticatedPlayerCount(), maxPlayers),
+                        maxPlayers,
+                        0
+                ),
+                negotiator);
 
         try {
             discovery.start();

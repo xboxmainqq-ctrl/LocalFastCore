@@ -8,7 +8,7 @@ package ru.nexora.network.nethernet;
  * and add the server's signed identity assertion to the final answer.
  */
 public interface NetherNetIdentityService {
-    String validateClientOfferAndStripIdentity(String networkId, String offerSdp) throws Exception;
+    ValidatedClientOffer validateClientOfferAndStripIdentity(String networkId, String offerSdp) throws Exception;
 
     String appendServerIdentityAssertion(String answerSdp) throws Exception;
 }

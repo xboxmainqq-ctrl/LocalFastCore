@@ -226,6 +226,13 @@ class BedrockSessionManagerTest {
         assertEquals(16.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
         assertEquals(26, outboundFrames.size());
 
+        BedrockPacket invalidBlockPosition = new BedrockPacket(0x90, 0, 0,
+                BedrockPlayerAuthInputCodecTest.blockActionPayload(
+                        16.5f, 65.0f, 1.0f, 0, 16, 400, 1, 1, 11L));
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(invalidBlockPosition), true, 256));
+        assertEquals(26, outboundFrames.size());
+
         monotonicClock.set(3_100_000_000L);
         BedrockPacket startBreak = new BedrockPacket(0x90, 0, 0,
                 BedrockPlayerAuthInputCodecTest.blockActionPayload(

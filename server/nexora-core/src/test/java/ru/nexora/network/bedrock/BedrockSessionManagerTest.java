@@ -10,6 +10,7 @@ import ru.nexora.world.PlayerDataStorage;
 import ru.nexora.world.PlayerData;
 
 import java.nio.file.Path;
+import java.nio.file.Files;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
@@ -90,6 +91,52 @@ class BedrockSessionManagerTest {
 
         assertThrows(IllegalArgumentException.class,
                 () -> manager.onFrame("client-2", "UnreliableDataChannel", frame));
+    }
+
+    @Test
+    void rejectsLoginWhenPersistedInventoryIsCorruptedWithoutOverwritingIt() throws Exception {
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
+        generator.initialize(new ECGenParameterSpec("secp384r1"));
+        KeyPair clientKey = generator.generateKeyPair();
+
+        Path inventoryDirectory = temporaryDirectory.resolve("corrupt-inventories");
+        Files.createDirectories(inventoryDirectory);
+        Path inventoryFile = inventoryDirectory.resolve("corrupt-xuid.nxi");
+        byte[] corruptedBytes = new byte[] {
+                0x4e, 0x58, 0x49, 0x56, 0x01, 0x00, 0x24, 0x00, 0, 0, 0, 0
+        };
+        Files.write(inventoryFile, corruptedBytes);
+
+        PlayerInventoryStorage inventoryStorage = new PlayerInventoryStorage(inventoryDirectory);
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("NEXORA World", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                null, inventoryStorage, (networkId, label, frame) -> {}, event -> {});
+        manager.onIdentity("corrupt-client", new NetherNetClientIdentity(
+                "corrupt-game-token", clientKey.getPublic().getEncoded(), "corrupt-xuid",
+                "CorruptPlayer", "playfab-id", "20CA2", null));
+
+        byte[] protocol = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(2225).array();
+        BedrockPacket request = new BedrockPacket(
+                BedrockBatchCodec.REQUEST_NETWORK_SETTINGS_PACKET_ID, 0, 0, protocol);
+        sendClientBatch(manager, "corrupt-client", BedrockBatchCodec.encode(List.of(request), false, 256));
+
+        String rawClientDataToken = signClientDataToken(clientKey);
+        String certificate = "{\\"chain\\":[]}";
+        String chainJson = "{\\"Certificate\\":\\"" + certificate.replace("\\\\", "\\\\\\\\")
+                .replace("\\"", "\\\\\\"")
+                + "\\"",\\"AuthenticationType\\":0,\\"Token\\":\\"corrupt-game-token\\"}";
+        BedrockPacket login = new BedrockPacket(1, 0, 0,
+                loginPayload(2225, connectionRequest(chainJson, rawClientDataToken)));
+
+        assertThrows(SecurityException.class, () -> sendClientBatch(manager, "corrupt-client",
+                BedrockBatchCodec.encode(List.of(login), true, 256)));
+        assertEquals(0, manager.authenticatedPlayerCount());
+        assertTrue(manager.playerInventory("corrupt-client").isEmpty());
+
+        manager.onDisconnected("corrupt-client");
+        assertArrayEquals(corruptedBytes, Files.readAllBytes(inventoryFile));
+        manager.close();
     }
 
     @Test

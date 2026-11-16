@@ -65,8 +65,11 @@ class BedrockPlayerAuthInputCodecTest {
                         movementPayload(0, 65, 0, 0, 13L, true)));
 
         assertTrue(input.optionalSectionsPresent());
-        assertTrue(input.interactionPayloadUnparsed());
+        assertFalse(input.interactionPayloadUnparsed());
         assertEquals(13L, input.tick());
+        assertNotNull(input.itemUseTransaction());
+        assertEquals(0, input.itemUseTransaction().actionType());
+        assertEquals(1, input.itemUseTransaction().triggerType());
     }
 
     @Test
@@ -150,9 +153,22 @@ class BedrockPlayerAuthInputCodecTest {
         writeVarULong(output, tick);
         writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0); // delta
         if (optional) {
-            // Opaque item-use payload: the decoder must stop after the movement snapshot.
-            output.write(0x7f);
-            return output.toByteArray();
+            // PackedItemUseLegacyInventoryTransaction: request ID 0, no inventory actions.
+            writeVarInt(output, 0);
+            writeVarUInt(output, 0); // inventory actions
+            writeVarInt(output, 0); // Place
+            output.write(1); // Player Input trigger
+            writeVarInt(output, 0); writeVarInt(output, 64); writeVarInt(output, 0); // target block
+            output.write(1); // top face
+            writeVarInt(output, 0); // hotbar slot
+            output.write(0); // main hand
+            writeShort(output, 0); writeShort(output, 0); // empty item descriptor
+            writeVarUInt(output, 0); output.write(0); writeVarUInt(output, 0); writeVarUInt(output, 0);
+            writeFloat(output, 0); writeFloat(output, 65); writeFloat(output, 0); // from position
+            writeFloat(output, 0.5f); writeFloat(output, 1); writeFloat(output, 0.5f); // click position
+            writeVarUInt(output, 0); // target block runtime ID
+            output.write(1); // predicted success
+            output.write(0); // cooldown off
         }
         writeFloat(output, 0); writeFloat(output, 0); // analog move
         writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0); // camera orientation
@@ -198,6 +214,11 @@ class BedrockPlayerAuthInputCodecTest {
         writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0);
         writeFloat(output, 0); writeFloat(output, 0);
         return output.toByteArray();
+    }
+
+    private static void writeShort(ByteArrayOutputStream output, int value) {
+        output.write(value);
+        output.write(value >>> 8);
     }
 
     private static void writeFloat(ByteArrayOutputStream output, float value) {

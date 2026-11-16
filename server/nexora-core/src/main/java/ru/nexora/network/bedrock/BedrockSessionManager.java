@@ -124,6 +124,20 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 outbound, packetSink, nanoTime);
     }
 
+    BedrockSessionManager(
+            int serverProtocol,
+            String serverVersion,
+            int compressionThreshold,
+            World world,
+            PlayerDataStorage playerStorage,
+            OutboundFrameSender outbound,
+            Consumer<PacketEvent> packetSink,
+            LongSupplier nanoTime
+    ) {
+        this(serverProtocol, serverVersion, compressionThreshold, world, playerStorage,
+                outbound, packetSink, nanoTime);
+    }
+
     private BedrockSessionManager(
             int serverProtocol,
             String serverVersion,

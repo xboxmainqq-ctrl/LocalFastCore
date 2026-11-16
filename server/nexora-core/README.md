@@ -77,7 +77,7 @@ The first initialization of DefaultNetherNetIdentityService creates:
 - nethernet-identity.pk8 — private P-384 key; keep it secret and back it up securely.
 - nethernet-identity.x509 — matching public key.
 
-Keep both files together and persistent across restarts and server migrations. If one is missing or the keypair does not match, startup fails rather than silently rotating the server identity.
+Keep both files together and persistent across restarts and server migrations. By default they live in data/identity; set NEXORA_DATA_DIR to a persistent data-volume path to relocate them. If one is missing or the keypair does not match, startup fails rather than silently rotating the server identity.
 
 ## Engineering rules
 

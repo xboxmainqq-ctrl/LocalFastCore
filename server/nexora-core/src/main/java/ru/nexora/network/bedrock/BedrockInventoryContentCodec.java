@@ -80,7 +80,7 @@ public final class BedrockInventoryContentCodec {
                 throw new IllegalArgumentException(
                         "No Bedrock item definition registered for " + stack.itemId());
             }
-            writeStack(out, definition.legacyItemId(), stack.count(),
+            writeStack(out, definition.runtimeItemId(), stack.count(),
                     definition.auxValue(), definition.blockRuntimeId(), definition.userData());
         }
         return new BedrockPacket(0x32, 0, 0, out.toByteArray());

@@ -751,7 +751,7 @@ class BedrockSessionManagerTest {
 
     private static BedrockPacket resourcePackResponse(int response, String name) {
         ByteArrayOutputStream body = new ByteArrayOutputStream();
-        writeVarInt(body, response);
+        writeVarUInt(body, response);
         writeString(body, name);
         return new BedrockPacket(
                 BedrockBatchCodec.RESOURCE_PACK_CLIENT_RESPONSE_PACKET_ID, 0, 0, body.toByteArray());

@@ -162,9 +162,12 @@ class BedrockSessionManagerTest {
                 (networkId, label, frame) -> outboundFrames.add(frame),
                 event -> {},
                 monotonicClock::get);
-        manager.setItemRegistry(new BedrockItemRegistry(List.of(
-                new BedrockItemRegistry.Entry("nexora:arcane_shard",
-                        new BedrockInventoryContentCodec.ItemDefinition(257, 0, 0, new byte[0])))));
+        List<BedrockItemRegistry.Entry> itemEntries = new ArrayList<>(
+                BedrockVanillaItemCatalog.createRegistry().entries());
+        itemEntries.add(new BedrockItemRegistry.Entry("nexora:arcane_shard",
+                new BedrockInventoryContentCodec.ItemDefinition(257, 0, 0, new byte[0])));
+        manager.setItemRegistry(new BedrockItemRegistry(itemEntries));
+        manager.setArmorSlotRegistry(ru.nexora.inventory.VanillaArmorSlotCatalog.createRegistry());
         manager.onIdentity("authenticated-client", new NetherNetClientIdentity(
                 "game-server-token",
                 clientKey.getPublic().getEncoded(),
@@ -196,8 +199,9 @@ class BedrockSessionManagerTest {
         assertTrue(inventory.heldItem().isEmpty());
         inventory.setSlot(0, new ItemStack("nexora:arcane_shard", 3, 64));
         inventory.setSlot(1, new ItemStack("nexora:arcane_shard", 1, 64));
+        inventory.setSlot(2, new ItemStack("minecraft:iron_chestplate", 1, 1));
         manager.playerEquipment("authenticated-client").orElseThrow()
-                .setArmor(0, new ItemStack("nexora:arcane_shard", 1, 64));
+                .setArmor(0, new ItemStack("minecraft:iron_helmet", 1, 1));
         manager.playerEquipment("authenticated-client").orElseThrow()
                 .setOffhand(new ItemStack("nexora:arcane_shard", 2, 64));
         manager.playerEquipment("authenticated-client").orElseThrow()
@@ -387,6 +391,16 @@ class BedrockSessionManagerTest {
                 .offhand().orElseThrow().count());
         assertEquals(30, outboundFrames.size());
 
+        // Equip a registered iron chestplate from the main inventory into armor slot 1.
+        BedrockPacket armorTransfer = new BedrockPacket(0x1e, 0, 0,
+                transferToArmorPayload(347, 1, 2, 1));
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(armorTransfer), true, 256));
+        assertTrue(manager.playerInventory("authenticated-client").orElseThrow().getSlot(2).isEmpty());
+        assertEquals(new ItemStack("minecraft:iron_chestplate", 1, 1),
+                manager.playerEquipment("authenticated-client").orElseThrow().armor(1).orElseThrow());
+        assertEquals(31, outboundFrames.size());
+
         assertThrows(SecurityException.class, () -> sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256)));
 
@@ -399,7 +413,8 @@ class BedrockSessionManagerTest {
         var savedInventory = inventoryStorage.load("123456789").orElseThrow();
         assertEquals(3, savedInventory.count("nexora:arcane_shard"));
         PlayerEquipment savedEquipment = equipmentStorage.load("123456789").orElseThrow();
-        assertEquals(new ItemStack("nexora:arcane_shard", 1, 64), savedEquipment.armor(0).orElseThrow());
+        assertEquals(new ItemStack("minecraft:iron_helmet", 1, 1), savedEquipment.armor(0).orElseThrow());
+        assertEquals(new ItemStack("minecraft:iron_chestplate", 1, 1), savedEquipment.armor(1).orElseThrow());
         assertEquals(new ItemStack("nexora:arcane_shard", 3, 64), savedEquipment.offhand().orElseThrow());
         assertEquals(new ItemStack("nexora:ember_staff", 1, 1),
                 savedEquipment.magicSlot(ru.nexora.inventory.EquipmentSlot.MAGIC_STAFF).orElseThrow());
@@ -584,6 +599,31 @@ class BedrockSessionManagerTest {
             if (value != 0) next |= 0x80;
             out.write(next);
         } while (value != 0);
+    }
+
+    private static byte[] transferToArmorPayload(int runtimeItemId, int count,
+                                                  int sourceSlot, int armorSlot) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        out.write(0); // LegacyRequestId
+        out.write(0); // Normal transaction
+        out.write(2); // two actions
+
+        out.write(0); // ContainerInventory source
+        out.write(1); // container ID present
+        out.write(0); // main player inventory
+        out.write(0); // no flags
+        out.write(sourceSlot); // slot VarUInt32
+        writeDescriptor(out, runtimeItemId, count);
+        writeDescriptor(out, 0, 0);
+
+        out.write(0); // ContainerInventory source
+        out.write(1); // container ID present
+        out.write(120); // armor container
+        out.write(0); // no flags
+        out.write(armorSlot); // armor slot
+        writeDescriptor(out, 0, 0);
+        writeDescriptor(out, runtimeItemId, count);
+        return out.toByteArray();
     }
 
     private static byte[] transferToOffhandPayload(int runtimeItemId, int count, int sourceSlot) {

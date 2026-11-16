@@ -105,6 +105,44 @@ class InventoryTransactionServiceTest {
     }
 
     @Test
+    void transfersItemsBetweenMainInventoryOffhandAndCursorAtomically() {
+        PlayerInventory inventory = new PlayerInventory();
+        PlayerEquipment equipment = new PlayerEquipment();
+        ItemStack four = new ItemStack("nexora:mana_crystal", 4, 64);
+        ItemStack two = new ItemStack("nexora:mana_crystal", 2, 64);
+        ItemStack remaining = new ItemStack("nexora:mana_crystal", 2, 64);
+        inventory.setSlot(0, four);
+
+        var toOffhand = service.applyPlayerInventoryAndUiTransaction(inventory, equipment, List.of(
+                new InventoryTransactionService.Action(0, 0, 0, Optional.of(four), Optional.of(remaining)),
+                new InventoryTransactionService.Action(0, 119, 0, Optional.empty(), Optional.of(two))));
+        assertEquals(InventoryTransactionService.Result.APPLIED, toOffhand);
+        assertEquals(remaining, inventory.getSlot(0).orElseThrow());
+        assertEquals(two, equipment.offhand().orElseThrow());
+
+        var offhandToCursor = service.applyPlayerInventoryAndUiTransaction(inventory, equipment, List.of(
+                new InventoryTransactionService.Action(0, 119, 0, Optional.of(two), Optional.empty()),
+                new InventoryTransactionService.Action(0, 124, 0, Optional.empty(), Optional.of(two))));
+        assertEquals(InventoryTransactionService.Result.APPLIED, offhandToCursor);
+        assertTrue(equipment.offhand().isEmpty());
+        assertEquals(two, equipment.cursor().orElseThrow());
+        assertEquals(4, inventory.count("nexora:mana_crystal")
+                + equipment.offhand().map(ItemStack::count).orElse(0)
+                + equipment.cursor().map(ItemStack::count).orElse(0));
+    }
+
+    @Test
+    void rejectsArmorTransactionsUntilSlotCompatibilityIsRegistered() {
+        PlayerInventory inventory = new PlayerInventory();
+        PlayerEquipment equipment = new PlayerEquipment();
+        ItemStack helmet = new ItemStack("nexora:arcane_helmet", 1, 1);
+        var result = service.applyPlayerInventoryAndUiTransaction(inventory, equipment, List.of(
+                new InventoryTransactionService.Action(0, 120, 0, Optional.empty(), Optional.of(helmet))));
+        assertEquals(InventoryTransactionService.Result.UNSUPPORTED_CONTAINER, result);
+        assertTrue(equipment.armor(0).isEmpty());
+    }
+
+    @Test
     void rejectsInvalidSlotsAndActionCounts() {
         PlayerInventory inventory = new PlayerInventory();
         var invalidSlot = service.applyPlayerInventoryTransaction(inventory, List.of(

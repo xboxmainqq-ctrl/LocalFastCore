@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockSessionManagerTest {
     @Test
-    void negotiatesNetworkSettingsThenDecodesCompressedLoginBatch() {
+    void negotiatesNetworkSettingsThenDecodesCompressedGameBatch() {
         List<byte[]> outboundFrames = new ArrayList<>();
         AtomicReference<BedrockSessionManager.PacketEvent> received = new AtomicReference<>();
         BedrockSessionManager manager = new BedrockSessionManager(
@@ -34,13 +34,13 @@ class BedrockSessionManagerTest {
 
         byte[] loginPayload = new byte[512];
         java.util.Arrays.fill(loginPayload, (byte) 0x42);
-        BedrockPacket login = new BedrockPacket(1, 0, 0, loginPayload);
+        BedrockPacket login = new BedrockPacket(9, 0, 0, loginPayload);
         byte[] compressedLogin = BedrockBatchCodec.encode(List.of(login), true, 256);
         assertEquals(0, Byte.toUnsignedInt(compressedLogin[0]));
         sendClientBatch(manager, "client-1", compressedLogin);
 
         assertNotNull(received.get());
-        assertEquals(1, received.get().packet().packetId());
+        assertEquals(9, received.get().packet().packetId());
         assertArrayEquals(loginPayload, received.get().packet().payload());
     }
 

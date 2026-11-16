@@ -10,6 +10,7 @@ import ru.nexora.inventory.PlayerEquipmentStorage;
 import ru.nexora.network.nethernet.NetherNetMessageFramer;
 import ru.nexora.world.PlayerDataStorage;
 import ru.nexora.world.PlayerData;
+import ru.nexora.world.PlayerVitals;
 
 import java.nio.file.Path;
 import java.nio.file.Files;

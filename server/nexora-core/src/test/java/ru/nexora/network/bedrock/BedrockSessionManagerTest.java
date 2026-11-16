@@ -714,6 +714,15 @@ class BedrockSessionManagerTest {
         } while (value != 0);
     }
 
+    private static void writeVarUInt(ByteArrayOutputStream out, long value) {
+        do {
+            int next = (int) (value & 0x7f);
+            value >>>= 7;
+            if (value != 0) next |= 0x80;
+            out.write(next);
+        } while (value != 0);
+    }
+
     private static void writeVarInt(ByteArrayOutputStream out, int value) {
         long encoded = Integer.toUnsignedLong((value << 1) ^ (value >> 31));
         do {
@@ -751,7 +760,7 @@ class BedrockSessionManagerTest {
     private static byte[] loginPayload(int protocol, byte[] connectionRequest) {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         output.writeBytes(ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(protocol).array());
-        writeVarInt(output, connectionRequest.length);
+        writeVarUInt(output, connectionRequest.length);
         output.writeBytes(connectionRequest);
         return output.toByteArray();
     }
@@ -787,7 +796,7 @@ class BedrockSessionManagerTest {
 
     private static void writeString(ByteArrayOutputStream output, String value) {
         byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
-        writeVarInt(output, bytes.length);
+        writeVarUInt(output, bytes.length);
         output.writeBytes(bytes);
     }
 

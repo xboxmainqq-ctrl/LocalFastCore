@@ -10,7 +10,6 @@ package ru.nexora.runtime;
  */
 final class TerrainHeightSampler {
     private static final int MIN_HEIGHT = 8;
-    private static final double SEA_REFERENCE = 62.0;
 
     private TerrainHeightSampler() {
     }

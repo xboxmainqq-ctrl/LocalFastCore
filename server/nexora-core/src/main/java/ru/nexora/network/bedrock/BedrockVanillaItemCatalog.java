@@ -1,0 +1,102 @@
+package ru.nexora.network.bedrock;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Curated protocol-2225 vanilla item subset with verified runtime IDs.
+ *
+ * IDs and ItemVersion values are transcribed from the protocol-2225 item-state
+ * palette (runtime_item_states_2225.json, Nukkit-MOT reference revision
+ * 7323f582e864782934d4c405505551f79f4ed10e). Only stackable, non-component
+ * items with no block-state payload are included. This is intentionally not
+ * advertised as the complete vanilla item catalog.
+ */
+public final class BedrockVanillaItemCatalog {
+    private static final byte[] EMPTY_NETWORK_NBT = {10, 0, 0, 0};
+
+    private BedrockVanillaItemCatalog() {
+    }
+
+    public static BedrockItemRegistry createRegistry() {
+        List<BedrockItemRegistry.Entry> entries = new ArrayList<>();
+        add(entries, "diamond", 306, 2, 64);
+        add(entries, "iron_ingot", 307, 2, 64);
+        add(entries, "gold_ingot", 308, 2, 64);
+        add(entries, "emerald", 523, 2, 64);
+        add(entries, "stick", 323, 2, 64);
+        add(entries, "lapis_lazuli", 417, 2, 64);
+        add(entries, "redstone", 376, 2, 64);
+        add(entries, "amethyst_shard", 639, 2, 64);
+        add(entries, "quartz", 534, 2, 64);
+        add(entries, "netherite_ingot", 624, 2, 64);
+        add(entries, "copper_ingot", 515, 2, 64);
+        add(entries, "wheat", 337, 2, 64);
+        add(entries, "bread", 261, 0, 64);
+        add(entries, "carrot", 279, 0, 64);
+        add(entries, "potato", 280, 0, 64);
+        add(entries, "baked_potato", 281, 0, 64);
+        add(entries, "bone", 418, 2, 64);
+        add(entries, "leather", 384, 2, 64);
+        add(entries, "paper", 389, 2, 64);
+        add(entries, "book", 390, 2, 64);
+        add(entries, "glass_bottle", 431, 2, 64);
+        add(entries, "ender_pearl", 425, 2, 16);
+        add(entries, "blaze_rod", 426, 2, 64);
+        add(entries, "ghast_tear", 428, 2, 64);
+        add(entries, "slime_ball", 391, 2, 64);
+        add(entries, "magma_cream", 434, 2, 64);
+        add(entries, "gunpowder", 331, 2, 64);
+        add(entries, "feather", 330, 2, 64);
+        add(entries, "flint", 359, 2, 64);
+        add(entries, "raw_iron", 516, 2, 64);
+        add(entries, "raw_gold", 517, 2, 64);
+        add(entries, "raw_copper", 518, 2, 64);
+        add(entries, "iron_nugget", 579, 2, 64);
+        add(entries, "gold_nugget", 429, 2, 64);
+        add(entries, "heart_of_the_sea", 581, 2, 64);
+        add(entries, "nautilus_shell", 580, 2, 64);
+        add(entries, "prismarine_shard", 575, 2, 64);
+        add(entries, "prismarine_crystals", 559, 2, 64);
+        add(entries, "phantom_membrane", 584, 2, 64);
+        add(entries, "shulker_shell", 576, 2, 64);
+        add(entries, "experience_bottle", 519, 2, 64);
+        add(entries, "fire_charge", 520, 2, 64);
+        add(entries, "firework_rocket", 529, 2, 64);
+        add(entries, "cookie", 271, 0, 64);
+        add(entries, "cooked_beef", 274, 0, 64);
+        add(entries, "beef", 273, 0, 64);
+        add(entries, "chicken", 275, 0, 64);
+        add(entries, "cooked_chicken", 276, 0, 64);
+        add(entries, "salmon", 265, 0, 64);
+        add(entries, "cooked_salmon", 269, 0, 64);
+        add(entries, "cod", 264, 0, 64);
+        add(entries, "cooked_cod", 268, 0, 64);
+        add(entries, "poisonous_potato", 282, 0, 64);
+        add(entries, "pumpkin_pie", 284, 0, 64);
+        add(entries, "melon_slice", 272, 0, 64);
+        add(entries, "sweet_berries", 287, 0, 64);
+        add(entries, "glow_berries", 884, 0, 64);
+        add(entries, "honey_bottle", 604, 0, 16);
+        add(entries, "honeycomb", 603, 0, 64);
+        add(entries, "nether_wart", 294, 0, 64);
+        add(entries, "rabbit_foot", 538, 2, 64);
+        add(entries, "rabbit_hide", 539, 2, 64);
+        add(entries, "rabbit", 288, 0, 64);
+        add(entries, "ink_sac", 416, 2, 64);
+        add(entries, "glow_ink_sac", 514, 2, 64);
+        return new BedrockItemRegistry(entries);
+    }
+
+    private static void add(List<BedrockItemRegistry.Entry> entries,
+                            String path, int runtimeId, int itemVersion, int maxStackSize) {
+        entries.add(new BedrockItemRegistry.Entry(
+                "minecraft:" + path,
+                new BedrockInventoryContentCodec.ItemDefinition(runtimeId, 0, 0, new byte[0]),
+                maxStackSize,
+                false,
+                itemVersion,
+                EMPTY_NETWORK_NBT
+        ));
+    }
+}

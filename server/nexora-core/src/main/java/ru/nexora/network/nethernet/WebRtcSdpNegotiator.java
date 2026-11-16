@@ -11,6 +11,7 @@ import dev.onvoid.webrtc.RTCDataChannelBuffer;
 import dev.onvoid.webrtc.RTCDataChannelObserver;
 import dev.onvoid.webrtc.RTCDataChannelState;
 import dev.onvoid.webrtc.RTCIceCandidate;
+import dev.onvoid.webrtc.RTCIceServer;
 import dev.onvoid.webrtc.RTCIceGatheringState;
 import dev.onvoid.webrtc.RTCSdpType;
 import dev.onvoid.webrtc.RTCSessionDescription;
@@ -19,6 +20,7 @@ import dev.onvoid.webrtc.CreateSessionDescriptionObserver;
 
 import java.nio.ByteBuffer;
 import java.util.Map;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -44,6 +46,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
     private final NetherNetDataChannelListener dataChannelListener;
     private final int maxSessions;
     private final long timeoutMillis;
+    private final List<String> iceServerUrls;
     private final Map<String, PeerSession> sessions = new ConcurrentHashMap<>();
     private final Semaphore sessionPermits;
     private final ScheduledExecutorService sessionReaper;
@@ -54,7 +57,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
             NetherNetDataChannelListener dataChannelListener,
             int maxSessions
     ) {
-        this(identityService, dataChannelListener, maxSessions, DEFAULT_TIMEOUT_MILLIS);
+        this(identityService, dataChannelListener, maxSessions, List.of(), DEFAULT_TIMEOUT_MILLIS);
     }
 
     public WebRtcSdpNegotiator(
@@ -63,12 +66,35 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
             int maxSessions,
             long timeoutMillis
     ) {
+        this(identityService, dataChannelListener, maxSessions, List.of(), timeoutMillis);
+    }
+
+    public WebRtcSdpNegotiator(
+            NetherNetIdentityService identityService,
+            NetherNetDataChannelListener dataChannelListener,
+            int maxSessions,
+            List<String> iceServerUrls
+    ) {
+        this(identityService, dataChannelListener, maxSessions, iceServerUrls, DEFAULT_TIMEOUT_MILLIS);
+    }
+
+    public WebRtcSdpNegotiator(
+            NetherNetIdentityService identityService,
+            NetherNetDataChannelListener dataChannelListener,
+            int maxSessions,
+            List<String> iceServerUrls,
+            long timeoutMillis
+    ) {
         this.identityService = Objects.requireNonNull(identityService, "identityService");
         this.dataChannelListener = Objects.requireNonNull(dataChannelListener, "dataChannelListener");
         if (maxSessions < 1) throw new IllegalArgumentException("maxSessions must be >= 1");
         if (timeoutMillis < 1) throw new IllegalArgumentException("timeoutMillis must be >= 1");
         this.maxSessions = maxSessions;
         this.sessionPermits = new Semaphore(maxSessions);
+        this.iceServerUrls = List.copyOf(Objects.requireNonNull(iceServerUrls, "iceServerUrls"));
+        if (this.iceServerUrls.stream().anyMatch(url -> url == null || !url.startsWith("stun:"))) {
+            throw new IllegalArgumentException("Only STUN URLs are supported by this configuration");
+        }
         this.timeoutMillis = timeoutMillis;
         this.factory = new PeerConnectionFactory();
         this.sessionReaper = Executors.newSingleThreadScheduledExecutor(task -> {
@@ -103,6 +129,11 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         PeerSession session = new PeerSession(networkId);
         RTCConfiguration configuration = new RTCConfiguration();
         configuration.iceServers.clear();
+        if (!iceServerUrls.isEmpty()) {
+            RTCIceServer iceServer = new RTCIceServer();
+            iceServer.urls.addAll(iceServerUrls);
+            configuration.iceServers.add(iceServer);
+        }
         configuration.bundlePolicy = dev.onvoid.webrtc.RTCBundlePolicy.MAX_BUNDLE;
         configuration.tcpCandidatePolicy = dev.onvoid.webrtc.RTCTcpCandidatePolicy.DISABLED;
 

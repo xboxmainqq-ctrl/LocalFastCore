@@ -187,6 +187,8 @@ public final class NexoraMain {
         Map<UUID, PlayerInventory> inventories = new ConcurrentHashMap<>();
         FilePlayerInventoryStorage playerInventoryStorage =
                 new FilePlayerInventoryStorage(dataDirectory.resolve("players"));
+        FilePlayerVitalsStorage playerVitalsStorage =
+                new FilePlayerVitalsStorage(dataDirectory.resolve("player-vitals"));
         int workers = Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() - 1));
         AtomicReference<WorldChunkPipeline> activeChunkPipeline = new AtomicReference<>();
         AtomicReference<PlayerChunkStreamingManager> activeChunkStreaming = new AtomicReference<>();
@@ -342,7 +344,8 @@ public final class NexoraMain {
                             BedrockBlockCompatibilityRegistry.builtIn().adapt(blockProfile.registry());
                     playerSessions = new BedrockPlayerSessionManager(
                             world, entities, streaming, bedrockNetwork, initialChunks,
-                            findSpawnY(world), blockRegistry, log, inventories, playerInventoryStorage);
+                            findSpawnY(world), blockRegistry, log, inventories, playerInventoryStorage,
+                            playerVitalsStorage);
                     playerSessionTask = scheduler.scheduleRepeating(1, 1, playerSessions::tick);
                     BedrockLoginIdentityVerifier loginVerifier = new BedrockLoginIdentityVerifier(
                             new NetherNetGameServerTokenVerifier(new NetherNetJwksKeyCache()));

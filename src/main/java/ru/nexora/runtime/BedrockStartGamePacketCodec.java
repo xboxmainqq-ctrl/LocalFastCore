@@ -152,7 +152,6 @@ public final class BedrockStartGamePacketCodec {
         BedrockBinary.writeLittleEndianInt64(out, settings.worldTemplateLeastSignificantBits());
         writeBoolean(out, settings.clientSideGenerationEnabled());
         writeBoolean(out, settings.blockNetworkIdsAreHashes());
-        writeBoolean(out, false); // tickDeathSystemsEnabled
         writeBoolean(out, settings.serverAuthSoundEnabled()); // NetworkPermissions.serverAuthSounds
 
         // Optional server-join information is intentionally absent for this minimal server.

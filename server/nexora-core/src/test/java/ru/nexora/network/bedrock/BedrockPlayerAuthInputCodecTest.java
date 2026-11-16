@@ -3,6 +3,7 @@ package ru.nexora.network.bedrock;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -33,6 +34,28 @@ class BedrockPlayerAuthInputCodecTest {
         assertEquals(java.util.List.of(6, 31, 60), input.inputActions());
         assertTrue(input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.JUMPING));
         assertFalse(input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.SPRINTING));
+    }
+
+    @Test
+    void preservesDigitalAnalogAndRawMovementVectors() {
+        byte[] payload = movementPayload(0.5f, 65.0f, 0.5f, 90.0f, 16L, false);
+        ByteBuffer wire = ByteBuffer.wrap(payload).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        wire.putFloat(20, -1.0f); // digital move vector X
+        wire.putFloat(24, 0.75f); // digital move vector Z
+        wire.putFloat(payload.length - 28, -0.5f); // analog move vector X
+        wire.putFloat(payload.length - 24, 0.25f); // analog move vector Z
+        wire.putFloat(payload.length - 8, 1.0f); // raw move vector X
+        wire.putFloat(payload.length - 4, -1.0f); // raw move vector Z
+
+        BedrockPlayerAuthInputCodec.PlayerInput input =
+                BedrockPlayerAuthInputCodec.decode(new BedrockPacket(0x90, 0, 0, payload));
+
+        assertEquals(-1.0f, input.motionX());
+        assertEquals(0.75f, input.motionZ());
+        assertEquals(-0.5f, input.analogMoveX());
+        assertEquals(0.25f, input.analogMoveZ());
+        assertEquals(1.0f, input.rawMoveX());
+        assertEquals(-1.0f, input.rawMoveZ());
     }
 
     @Test

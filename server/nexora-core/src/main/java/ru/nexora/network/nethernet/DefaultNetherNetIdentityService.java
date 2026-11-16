@@ -243,20 +243,40 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
     }
 
     private void validateStandardClaims(JsonNode claims) {
-        String issuer = requiredText(claims, "iss");
-        if (!expectedIssuer.equals(issuer)) throw new SecurityException("Unexpected GameServerToken issuer");
-        JsonNode audience = requiredNode(claims, "aud");
-        boolean audienceMatches = audience.isTextual() && expectedAudience.equals(audience.asText());
-        if (audience.isArray()) {
-            for (JsonNode item : audience) {
-                if (item.isTextual() && expectedAudience.equals(item.asText())) audienceMatches = true;
+        JsonNode issuerNode = claims.get("iss");
+        if (issuerNode != null && !issuerNode.isNull()) {
+            if (!issuerNode.isTextual()) throw new SecurityException("Invalid GameServerToken issuer");
+            String issuer = issuerNode.asText();
+            if (!expectedIssuer.equals(issuer)) {
+                String tokenIssuerHost;
+                try {
+                    tokenIssuerHost = URI.create(issuer).getHost();
+                } catch (IllegalArgumentException exception) {
+                    tokenIssuerHost = null;
+                }
+                String expectedHost = URI.create(expectedIssuer).getHost();
+                if (tokenIssuerHost == null || !tokenIssuerHost.equalsIgnoreCase(expectedHost)) {
+                    throw new SecurityException("Unexpected GameServerToken issuer");
+                }
             }
         }
-        if (!audienceMatches) throw new SecurityException("Unexpected GameServerToken audience");
+
+        JsonNode audience = claims.get("aud");
+        if (audience != null && !audience.isNull()) {
+            boolean audienceMatches = audience.isTextual() && expectedAudience.equals(audience.asText());
+            if (audience.isArray()) {
+                for (JsonNode item : audience) {
+                    if (item.isTextual() && expectedAudience.equals(item.asText())) audienceMatches = true;
+                }
+            }
+            if (!audienceMatches) throw new SecurityException("Unexpected GameServerToken audience");
+        }
 
         long now = Instant.now().getEpochSecond();
-        long expiresAt = requiredLong(claims, "exp");
-        if (now > expiresAt + 30) throw new SecurityException("GameServerToken has expired");
+        JsonNode expires = claims.get("exp");
+        if (expires != null && expires.canConvertToLong() && now > expires.asLong() + 30) {
+            throw new SecurityException("GameServerToken has expired");
+        }
         JsonNode notBefore = claims.get("nbf");
         if (notBefore != null && notBefore.canConvertToLong() && now + 30 < notBefore.asLong()) {
             throw new SecurityException("GameServerToken is not active yet");
@@ -291,6 +311,7 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
         ObjectNode header = mapper.createObjectNode();
         header.put("alg", "ES384");
         header.put("typ", "JWT");
+        header.put("x5u", Base64.getEncoder().encodeToString(publicKey.getEncoded()));
 
         ObjectNode claims = mapper.createObjectNode();
         ObjectNode cpk = claims.putObject("cpk");

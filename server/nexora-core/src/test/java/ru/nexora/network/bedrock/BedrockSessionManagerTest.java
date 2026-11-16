@@ -192,7 +192,7 @@ class BedrockSessionManagerTest {
         assertTrue(inventory.heldItem().isEmpty());
         inventory.setSlot(0, new ItemStack("nexora:arcane_shard", 3, 64));
         inventory.setSlot(1, new ItemStack("nexora:arcane_shard", 1, 64));
-        assertEquals(3, manager.playerInventory("authenticated-client").orElseThrow()
+        assertEquals(4, manager.playerInventory("authenticated-client").orElseThrow()
                 .count("nexora:arcane_shard"));
         assertTrue(manager.playerInventory("unknown-client").isEmpty());
 
@@ -366,7 +366,7 @@ class BedrockSessionManagerTest {
         assertEquals(1.0f, savedPlayer.z());
         assertEquals(30.0f, savedPlayer.yaw());
         var savedInventory = inventoryStorage.load("123456789").orElseThrow();
-        assertEquals(3, savedInventory.count("nexora:arcane_shard"));
+        assertEquals(4, savedInventory.count("nexora:arcane_shard"));
     }
 
     @Test

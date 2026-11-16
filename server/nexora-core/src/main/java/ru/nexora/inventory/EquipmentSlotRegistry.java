@@ -35,6 +35,10 @@ public final class EquipmentSlotRegistry {
         return new Builder();
     }
 
+    public static EquipmentSlotRegistry empty() {
+        return new EquipmentSlotRegistry(Map.of(), Map.of());
+    }
+
     /** Only single, registered items may occupy a magical equipment slot. */
     public boolean allows(ItemStack stack, EquipmentSlot slot) {
         if (stack == null || stack.count() != 1 || slot == null) return false;

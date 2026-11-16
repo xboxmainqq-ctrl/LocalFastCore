@@ -33,6 +33,7 @@ Official Mojang onboarding guide: https://mojang.github.io/bedrock-protocol-docs
   - Verifies the client's ES384 detached DTLS-fingerprint assertion.
   - Creates a persistent P-384 server identity keypair, self-signed server JWT and signed fingerprint assertion.
 - NetherNet message framing and reliable-channel fragmentation/reassembly with size limits.
+- WebRTC DTLS provides transport encryption; the legacy Bedrock application-layer cipher is intentionally disabled on NetherNet.
 - Bedrock packet batch codec: VarInt packet lengths and headers, protocol 2225 RequestNetworkSettings parsing, NetworkSettings response, raw-DEFLATE compression framing and uncompressed framing.
 - Initial Bedrock session stage: validates the requested protocol, sends NetworkSettings, and switches to negotiated compression.
 - Login stage: matches the Login GameServerToken to the verified NetherNet identity, verifies the client's ES384 client-data JWT, requires an authenticated Xbox Live identity, and handles the empty ClientToServerHandshake used with NetherNet's DTLS transport.
@@ -68,7 +69,7 @@ The build copies runtime dependencies to server/nexora-core/target/lib/ so the a
 java -jar server/nexora-core/target/nexora-core-0.1.0-SNAPSHOT.jar 0.0.0.0 19132 "NEXORA Core" 20
 ~~~
 
-The WebRTC implementation uses native libraries supplied by webrtc-java; the deployment host must match a published native classifier and have the required system runtime libraries installed. If the VPS is behind NAT, set NEXORA_STUN_URLS to a semicolon-separated list of STUN URLs so the answer can include a public server-reflexive ICE candidate.
+The WebRTC implementation uses native libraries supplied by webrtc-java; the deployment host must match a published native classifier and have the required system runtime libraries installed. If the VPS is behind NAT, set NEXORA_STUN_URLS to a semicolon-separated list of STUN URLs so the answer can include a public server-reflexive ICE candidate. Leave it empty on a directly reachable public host; each configured STUN server adds connection-setup latency.
 
 ## Identity key safety
 

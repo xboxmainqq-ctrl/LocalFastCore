@@ -33,6 +33,17 @@ class BedrockStartGameCodecTest {
     }
 
     @Test
+    void disablesItemStackNetManagerUntilServerSupportsItsRequests() {
+        byte[] payload = BedrockStartGameCodec.create(
+                7, "NEXORA World", "1.26.62", "1.26.62", 0.5f, 65.0f, 0.5f).payload();
+        byte[] serverVersion = "1.26.62".getBytes(StandardCharsets.UTF_8);
+        int versionOffset = lastIndexOf(payload, serverVersion);
+
+        assertTrue(versionOffset >= 0);
+        assertEquals(0, Byte.toUnsignedInt(payload[versionOffset + serverVersion.length]));
+    }
+
+    @Test
     void buildsInitialWorldMetadataInProtocolOrder() {
         List<BedrockPacket> packets = BedrockStartGameCodec.createInitialWorldPackets(
                 9, "NEXORA World", "1.26.62", "1.26.62", 0.5f, 65.0f, 0.5f);
@@ -49,6 +60,17 @@ class BedrockStartGameCodecTest {
                 () -> BedrockStartGameCodec.create(0, "NEXORA", "1.26.62", "1.26.62", 0, 65, 0));
         assertThrows(IllegalArgumentException.class,
                 () -> BedrockStartGameCodec.create(1, " ", "1.26.62", "1.26.62", 0, 65, 0));
+    }
+
+    private static int lastIndexOf(byte[] haystack, byte[] needle) {
+        outer:
+        for (int i = haystack.length - needle.length; i >= 0; i--) {
+            for (int j = 0; j < needle.length; j++) {
+                if (haystack[i + j] != needle[j]) continue outer;
+            }
+            return i;
+        }
+        return -1;
     }
 
     private static boolean contains(byte[] haystack, byte[] needle) {

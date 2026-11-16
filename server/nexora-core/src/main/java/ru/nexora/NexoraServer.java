@@ -30,6 +30,9 @@ public final class NexoraServer {
 
         InetAddress bindAddress = InetAddress.getByName(bindHost);
         InetSocketAddress socketAddress = new InetSocketAddress(bindAddress, port);
+        String httpBindHost = System.getenv().getOrDefault("NEXORA_HTTP_BIND", bindHost);
+        InetAddress httpBindAddress = InetAddress.getByName(httpBindHost);
+        InetSocketAddress signalingAddress = new InetSocketAddress(httpBindAddress, port);
 
         BedrockServerStatus legacyStatus = new BedrockServerStatus(
                 motd,
@@ -82,7 +85,7 @@ public final class NexoraServer {
                 0
         );
         NetherNetSignalingServer signaling = new NetherNetSignalingServer(
-                socketAddress, metadata, negotiator);
+                signalingAddress, metadata, negotiator);
 
         try {
             discovery.start();
@@ -102,7 +105,7 @@ public final class NexoraServer {
             discovery.close();
         }, "nexora-shutdown"));
 
-        System.out.printf("NEXORA NetherNet signaling listening on TCP %s:%d%n", bindHost, port);
+        System.out.printf("NEXORA NetherNet signaling listening on TCP %s:%d%n", httpBindHost, port);
         System.out.printf("NEXORA legacy RakNet discovery listening on UDP %s:%d%n", bindHost, port);
         System.out.println("WebRTC sessions use the persistent operator identity in data/identity/.");
         System.out.println("Plain HTTP signaling is enabled; use HTTPS in production.");

@@ -446,8 +446,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
             RTCPeerConnection current = peer;
             if (current != null) {
                 try {
-                    current.close();
-                    current.dispose();
+                    // RTCPeerConnection.close() releases its native resources in webrtc-java.
                 } catch (RuntimeException ignored) {
                     // The native connection may already have been closed by WebRTC.
                 }

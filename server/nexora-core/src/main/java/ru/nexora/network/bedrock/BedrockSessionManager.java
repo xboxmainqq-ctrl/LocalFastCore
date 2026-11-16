@@ -395,6 +395,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         state.positionZ = world.spawnZ() + 0.5f;
                         state.positionInitialized = true;
                     }
+                    state.lastMovementNanos = nanoTime.getAsLong();
                     for (BedrockPacket worldPacket : BedrockStartGameCodec.createInitialWorldPackets(
                             state.entityId,
                             world.name(),
@@ -432,14 +433,19 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 || input.y() < WorldChunk.MIN_Y - 16 || input.y() > WorldChunk.MAX_Y + 16) {
             return;
         }
+        long nowNanos = nanoTime.getAsLong();
         double dx = input.x() - state.positionX;
         double dy = input.y() - state.positionY;
         double dz = input.z() - state.positionZ;
-        if (dx * dx + dy * dy + dz * dz > 100.0) {
-            return; // Reject an implausible single-input teleport; movement simulation follows later.
+        long elapsedNanos = Math.max(0, nowNanos - state.lastMovementNanos);
+        double allowedDistance = 2.0
+                + (Math.min(elapsedNanos, 1_000_000_000L) / 1_000_000_000.0) * 8.0;
+        if (dx * dx + dy * dy + dz * dz > allowedDistance * allowedDistance) {
+            return; // Basic speed/teleport guard; full movement simulation follows later.
         }
         if (input.tick() < state.lastInputTick) return;
 
+        state.lastMovementNanos = nowNanos;
         state.positionX = input.x();
         state.positionY = input.y();
         state.positionZ = input.z();
@@ -737,6 +743,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private float yaw;
         private float pitch;
         private long lastInputTick;
+        private long lastMovementNanos;
         private int lastChunkX = Integer.MIN_VALUE;
         private int lastChunkZ = Integer.MIN_VALUE;
         private final Set<Long> sentChunkKeys = new HashSet<>();

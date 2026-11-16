@@ -83,7 +83,9 @@ public final class CloudburstNetherNetBedrockModule implements RuntimeModule {
                     .setIdentity(identity)
                     .setTokenTrust(TokenTrust.MINECRAFT_AUTH)
                     .setMotd(advertisement)
-                    .setStunServers(List.of("stun:stun.l.google.com:19302"))
+                    .setStunServers(List.of(
+                            "stun:stun.cloudflare.com:3478",
+                            "stun:stun.l.google.com:19302"))
                     .setIceOnLocalPort(settings.separateIcePort() == 0)
                     .build();
 

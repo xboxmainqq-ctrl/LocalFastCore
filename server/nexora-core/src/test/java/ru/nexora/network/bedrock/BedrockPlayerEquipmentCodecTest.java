@@ -40,7 +40,8 @@ class BedrockPlayerEquipmentCodecTest {
         assertEquals(119, offhand[0] & 0xff);
         assertEquals(1, offhand[1] & 0xff);
         assertEquals(34, offhand[offhand.length - 15] & 0xff); // OFFHAND
-        assertEquals(0, offhand[offhand.length - 14] & 0xff); // dynamic ID 0 present
+        assertEquals(1, offhand[offhand.length - 14] & 0xff); // dynamic ID optional is present
+        assertEquals(0, offhand[offhand.length - 13] & 0xff); // dynamic ID = 0
 
         BedrockPacket cursor = packets.get(2);
         assertEquals(0x32, cursor.packetId());

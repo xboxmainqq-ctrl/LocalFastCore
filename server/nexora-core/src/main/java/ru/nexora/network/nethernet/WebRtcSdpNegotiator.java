@@ -78,15 +78,17 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         if (networkId.isBlank() || networkId.length() > 256) {
             throw new IllegalArgumentException("Invalid NetworkID");
         }
-        if (sessions.containsKey(networkId) || !sessionPermits.tryAcquire()) {
-            throw new IllegalStateException("Server is full or NetworkID is already connected");
+        if (sessions.containsKey(networkId)) {
+            throw new IllegalStateException("NetworkID is already connected");
         }
 
         String verifiedOffer = identityService.validateClientOfferAndStripIdentity(networkId, sdpOffer);
         if (verifiedOffer == null || !verifiedOffer.startsWith("v=0")
                 || verifiedOffer.contains("a=identity:")) {
-            sessionPermits.release();
             throw new SecurityException("Client identity service returned an invalid sanitized SDP offer");
+        }
+        if (!sessionPermits.tryAcquire()) {
+            throw new IllegalStateException("Server is full");
         }
 
         PeerSession session = new PeerSession(networkId);

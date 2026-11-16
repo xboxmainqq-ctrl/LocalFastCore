@@ -28,12 +28,12 @@ public final class BedrockBlockCompatibilityRegistry {
     /** Common blocks currently emitted by the NEXORA overworld generator. */
     public static BedrockBlockCompatibilityRegistry builtIn() {
         return new BedrockBlockCompatibilityRegistry(List.of(
-                "minecraft:air", "minecraft:bedrock", "minecraft:stone", "minecraft:dirt",
+                "minecraft:air", "minecraft:bedrock", "minecraft:stone", "minecraft:cobblestone", "minecraft:dirt", "minecraft:coarse_dirt",
                 "minecraft:grass_block", "minecraft:podzol", "minecraft:sand", "minecraft:mud",
                 "minecraft:snow_block", "minecraft:water", "minecraft:oak_log", "minecraft:oak_leaves",
                 "minecraft:birch_log", "minecraft:birch_leaves", "minecraft:dark_oak_log",
                 "minecraft:dark_oak_leaves", "minecraft:spruce_log", "minecraft:spruce_leaves",
-                "minecraft:dead_bush").stream().map(BedrockBlockCompatibilityRegistry::vanilla).toList());
+                "minecraft:dead_bush", "minecraft:oak_log", "minecraft:spruce_log", "minecraft:birch_log", "minecraft:dark_oak_log").stream().map(BedrockBlockCompatibilityRegistry::vanilla).toList());
     }
 
     private static BedrockBlockMapping vanilla(String identifier) {

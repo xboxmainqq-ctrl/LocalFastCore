@@ -25,7 +25,7 @@ public final class PlayerPhysics {
         if (world == null || !finite(x, y, z) || !WorldCollision.canOccupy(world, x, y, z)) {
             throw new IllegalArgumentException("Invalid or obstructed player spawn position");
         }
-        return new State(x, y, z, 0, 0, 0, WorldCollision.isOnGround(world, x, y, z));
+        return new State(x, y, z, 0, 0, 0, WorldCollision.isOnGround(world, x, y, z), 0, 0);
     }
 
     /**
@@ -42,6 +42,7 @@ public final class PlayerPhysics {
         }
 
         boolean grounded = WorldCollision.isOnGround(world, current.x(), current.y(), current.z());
+        boolean wasGrounded = grounded;
         double vx = current.velocityX();
         double vy = current.velocityY();
         double vz = current.velocityZ();
@@ -129,9 +130,16 @@ public final class PlayerPhysics {
         }
         if (!WorldCollision.canOccupy(world, nextX, nextY, nextZ)) {
             // Never publish a state embedded in terrain, even after malformed geometry.
-            return new State(current.x(), current.y(), current.z(), 0, 0, 0, grounded);
+            return new State(current.x(), current.y(), current.z(), 0, 0, 0,
+                    grounded, current.fallDistance(), 0);
         }
-        return new State(nextX, nextY, nextZ, vx, vy, vz, grounded);
+
+        double fallDistance = current.fallDistance();
+        boolean descending = nextY < current.y();
+        if (!wasGrounded && descending) fallDistance += current.y() - nextY;
+        double landedDistance = !wasGrounded && grounded && descending ? fallDistance : 0;
+        if (grounded) fallDistance = 0;
+        return new State(nextX, nextY, nextZ, vx, vy, vz, grounded, fallDistance, landedDistance);
     }
 
     private static boolean finite(double... values) {
@@ -142,10 +150,11 @@ public final class PlayerPhysics {
     public record State(
             double x, double y, double z,
             double velocityX, double velocityY, double velocityZ,
-            boolean onGround
+            boolean onGround, double fallDistance, double landedDistance
     ) {
         public State {
-            if (!finite(x, y, z, velocityX, velocityY, velocityZ)
+            if (!finite(x, y, z, velocityX, velocityY, velocityZ, fallDistance, landedDistance)
+                    || fallDistance < 0 || landedDistance < 0
                     || Math.abs(x) > 30_000_000 || Math.abs(z) > 30_000_000
                     || y < WorldChunk.MIN_Y || y > WorldChunk.MAX_Y) {
                 throw new IllegalArgumentException("Invalid player physics state");

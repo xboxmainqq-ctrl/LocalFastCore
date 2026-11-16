@@ -10,7 +10,7 @@ The target is Bedrock-style mobile gameplay; Java Edition is out of scope. A nat
 
 Do not use Luanti or copy proprietary Minecraft source code/assets. Use public protocol documentation, clean-room implementations and original or properly licensed content.
 
-Server foundation: [NEXORA on Nukkit-MOT](docs/architecture/nukkit-mot-foundation.md). Product briefs: [Survival single-player vs RPG servers](docs/SINGLEPLAYER_AND_SERVER_MODES.md) · [NEXORA RPG network vision](docs/PRODUCT_VISION_RPG_NETWORK.md) · Architecture decisions: [NEXORA platform direction](docs/architecture/nexora-platform-direction.md) · [Minecraft compatibility and client audit](docs/architecture/minecraft-compatibility-audit.md).
+Server foundation: [NEXORA on Nukkit-MOT](docs/architecture/nukkit-mot-foundation.md) · [Nukkit-MOT import and build plan](docs/architecture/nukkit-mot-import-plan.md). Product briefs: [Survival single-player vs RPG servers](docs/SINGLEPLAYER_AND_SERVER_MODES.md) · [NEXORA RPG network vision](docs/PRODUCT_VISION_RPG_NETWORK.md) · Architecture decisions: [NEXORA platform direction](docs/architecture/nexora-platform-direction.md) · [Minecraft compatibility and client audit](docs/architecture/minecraft-compatibility-audit.md).
 
 ### Android-first game modes
 

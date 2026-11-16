@@ -213,6 +213,18 @@ class BedrockSessionManagerTest {
         assertTrue(outboundFrames.subList(beforePlacement, outboundFrames.size()).stream()
                 .map(frame -> decodeOutbound(frame, true).packetId())
                 .anyMatch(id -> id == BedrockBlockUpdateCodec.UPDATE_BLOCK_PACKET_ID));
+
+        assertEquals(20.0f, manager.playerVitals("physics-client").orElseThrow().health());
+        assertEquals(20, manager.playerVitals("physics-client").orElseThrow().hunger());
+        assertTrue(manager.damagePlayer("physics-client", 3.0f));
+        assertEquals(17.0f, manager.playerVitals("physics-client").orElseThrow().health());
+        clock.set(4_000_000_000L);
+        BedrockPacket naturalRegeneration = new BedrockPacket(0x90, 0, 0,
+                movementInputPayload(0.5f, 65.0f, 0.715f, 0.0f, 4L, 0.0f, 0.0f));
+        sendClientBatch(manager, "physics-client",
+                BedrockBatchCodec.encode(List.of(naturalRegeneration), true, 256));
+        assertEquals(18.0f, manager.playerVitals("physics-client").orElseThrow().health());
+        assertEquals(4.0f, manager.playerVitals("physics-client").orElseThrow().saturation());
         manager.close();
     }
 

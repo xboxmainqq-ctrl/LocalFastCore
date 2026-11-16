@@ -13,6 +13,9 @@ public final class BiomeRegistry {
     public static final int FROSTVEIL_ID = 1004;
     public static final int SKYGLASS_HIGHLANDS_ID = 1005;
     public static final int SALTWIND_BASIN_ID = 1006;
+    public static final int BLOOMVEIL_GROVE_ID = 1007;
+    public static final int ASHEN_WASTES_ID = 1008;
+    public static final int MOONFROST_TUNDRA_ID = 1009;
 
     private final Map<Integer, BiomeDefinition> byId;
     private final Map<String, BiomeDefinition> byKey;
@@ -60,7 +63,19 @@ public final class BiomeRegistry {
                 new BiomeDefinition(SALTWIND_BASIN_ID, "saltwind_basin", "Saltwind Basin",
                         0.90, 0.12, 0.34, 0.72, 0.0,
                         state("minecraft:sand"), state("minecraft:sand"),
-                        state("minecraft:dead_bush"), state("minecraft:dead_bush"), 0, 0)
+                        state("minecraft:dead_bush"), state("minecraft:dead_bush"), 0, 0),
+                new BiomeDefinition(BLOOMVEIL_GROVE_ID, "bloomveil_grove", "Bloomveil Grove",
+                        0.64, 0.97, 0.24, 0.82, 0.065,
+                        state("minecraft:moss_block"), state("minecraft:rooted_dirt"),
+                        state("minecraft:cherry_log"), state("minecraft:cherry_leaves"), 5, 8),
+                new BiomeDefinition(ASHEN_WASTES_ID, "ashen_wastes", "Ashen Wastes",
+                        0.97, 0.25, 0.57, 1.22, 0.0,
+                        state("minecraft:basalt"), state("minecraft:tuff"),
+                        state("minecraft:dead_bush"), state("minecraft:dead_bush"), 0, 0),
+                new BiomeDefinition(MOONFROST_TUNDRA_ID, "moonfrost_tundra", "Moonfrost Tundra",
+                        0.03, 0.85, 0.85, 1.42, 0.008,
+                        state("minecraft:packed_ice"), state("minecraft:snow_block"),
+                        state("minecraft:spruce_log"), state("minecraft:spruce_leaves"), 3, 5)
         ));
     }
 

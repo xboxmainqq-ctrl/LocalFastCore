@@ -95,6 +95,33 @@ public final class EquipmentSlotRegistry {
             return this;
         }
 
+        /** Registers additive bonuses for non-magical equipment such as armor. */
+        public Builder registerAttributes(String itemId, Map<EquipmentAttribute, Double> itemAttributes) {
+            Objects.requireNonNull(itemId, "itemId");
+            if (!itemId.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")) {
+                throw new IllegalArgumentException("Invalid namespaced equipment item ID");
+            }
+            Objects.requireNonNull(itemAttributes, "itemAttributes");
+            if (itemAttributes.isEmpty()) {
+                throw new IllegalArgumentException("At least one equipment attribute is required");
+            }
+            if (attributes.containsKey(itemId)) {
+                throw new IllegalArgumentException("Equipment attributes are already registered: " + itemId);
+            }
+            java.util.EnumMap<EquipmentAttribute, Double> checked =
+                    new java.util.EnumMap<>(EquipmentAttribute.class);
+            itemAttributes.forEach((attribute, value) -> {
+                Objects.requireNonNull(attribute, "attribute");
+                Objects.requireNonNull(value, "attribute value");
+                if (!Double.isFinite(value) || Math.abs(value) > 1_000_000.0) {
+                    throw new IllegalArgumentException("Equipment attribute value is outside safe limits");
+                }
+                checked.put(attribute, value);
+            });
+            attributes.put(itemId, Map.copyOf(checked));
+            return this;
+        }
+
         public EquipmentSlotRegistry build() {
             return new EquipmentSlotRegistry(entries, attributes);
         }

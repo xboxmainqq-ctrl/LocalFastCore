@@ -282,6 +282,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     )) {
                         sendPacket(networkId, worldPacket, true);
                     }
+                    sendPacket(networkId, BedrockBiomeDefinitionCodec.createPacket(), true);
+                    int spawnChunkX = Math.floorDiv(world.spawnX(), 16);
+                    int spawnChunkZ = Math.floorDiv(world.spawnZ(), 16);
+                    sendPacket(networkId,
+                            BedrockLevelChunkCodec.createPacket(world.getChunk(spawnChunkX, spawnChunkZ)), true);
+                    sendPacket(networkId, BedrockBatchCodec.createPlayStatus(3), true);
                 }
                 System.out.printf("NEXORA: resource-pack negotiation completed for %s%n", networkId);
             }

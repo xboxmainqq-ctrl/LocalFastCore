@@ -19,10 +19,11 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.zip.CRC32C;
 
-/** Checksummed atomic persistence for armor, offhand and cursor equipment state. */
+/** Checksummed atomic persistence for armor, offhand, cursor and magical equipment slots. */
 public final class PlayerEquipmentStorage {
     private static final int MAGIC = 0x4e584551; // NXEQ
-    private static final int VERSION = 1;
+    private static final int VERSION = 2;
+    private static final int LEGACY_VERSION = 1;
     private static final int MAX_FILE_BYTES = 4096;
     private static final int MAX_ITEM_ID_BYTES = 128;
     private final Path directory;
@@ -38,13 +39,14 @@ public final class PlayerEquipmentStorage {
     public void save(String xuid, PlayerEquipment equipment) throws IOException {
         Objects.requireNonNull(equipment, "equipment");
         PlayerEquipment.Snapshot snapshot = equipment.snapshot();
-        ByteArrayOutputStream body = new ByteArrayOutputStream(256);
+        ByteArrayOutputStream body = new ByteArrayOutputStream(512);
         try (DataOutputStream out = new DataOutputStream(body)) {
             out.writeInt(MAGIC);
             out.writeByte(VERSION);
             for (Optional<ItemStack> item : snapshot.armor()) writeStack(out, item);
             writeStack(out, snapshot.offhand());
             writeStack(out, snapshot.cursor());
+            for (Optional<ItemStack> item : snapshot.magicSlots()) writeStack(out, item);
         }
         byte[] data = body.toByteArray();
         CRC32C crc = new CRC32C();
@@ -87,14 +89,22 @@ public final class PlayerEquipmentStorage {
         try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(bytes, 0, bodyLength))) {
             if (in.readInt() != MAGIC) throw new IOException("Invalid player equipment magic");
             int version = in.readUnsignedByte();
-            if (version != VERSION) throw new IOException("Unsupported player equipment version: " + version);
+            if (version != VERSION && version != LEGACY_VERSION) {
+                throw new IOException("Unsupported player equipment version: " + version);
+            }
             List<Optional<ItemStack>> armor = new ArrayList<>(PlayerEquipment.ARMOR_SLOTS);
             for (int i = 0; i < PlayerEquipment.ARMOR_SLOTS; i++) armor.add(readStack(in));
             Optional<ItemStack> offhand = readStack(in);
             Optional<ItemStack> cursor = readStack(in);
+            List<Optional<ItemStack>> magic = new ArrayList<>(PlayerEquipment.MAGIC_SLOTS);
+            if (version == VERSION) {
+                for (int i = 0; i < PlayerEquipment.MAGIC_SLOTS; i++) magic.add(readStack(in));
+            } else {
+                for (int i = 0; i < PlayerEquipment.MAGIC_SLOTS; i++) magic.add(Optional.empty());
+            }
             if (in.available() != 0) throw new IOException("Trailing player equipment data");
             PlayerEquipment result = new PlayerEquipment();
-            result.restore(new PlayerEquipment.Snapshot(armor, offhand, cursor));
+            result.restore(new PlayerEquipment.Snapshot(armor, offhand, cursor, magic));
             return Optional.of(result);
         } catch (java.io.EOFException exception) {
             throw new IOException("Truncated player equipment file", exception);
@@ -134,7 +144,9 @@ public final class PlayerEquipmentStorage {
     }
 
     private Path path(String xuid) {
-        if (xuid == null || !xuid.matches("[A-Za-z0-9_-]{1,64}")) throw new IllegalArgumentException("Invalid player XUID");
+        if (xuid == null || !xuid.matches("[A-Za-z0-9_-]{1,64}")) {
+            throw new IllegalArgumentException("Invalid player XUID");
+        }
         return directory.resolve(xuid + ".nxe");
     }
 

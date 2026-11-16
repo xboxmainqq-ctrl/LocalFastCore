@@ -503,7 +503,7 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
     }
 
     private static JsonNode decodeJwtPart(String token, int index) throws IOException {
-        String[] parts = token.split("\\\\.", -1);
+        String[] parts = token.split("\\.", -1);
         if (parts.length != 3) throw new SecurityException("Malformed JWT");
         return new ObjectMapper().readTree(Base64.getUrlDecoder().decode(parts[index]));
     }

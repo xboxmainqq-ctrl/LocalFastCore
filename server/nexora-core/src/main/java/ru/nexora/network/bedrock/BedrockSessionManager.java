@@ -533,9 +533,17 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.breakTarget = null;
         BedrockPacket update = BedrockBlockUpdateCodec.createPacket(
                 target.x(), target.y(), target.z(), BlockType.AIR);
+        int changedChunkX = Math.floorDiv(target.x(), 16);
+        int changedChunkZ = Math.floorDiv(target.z(), 16);
+        long changedChunkKey = ((long) changedChunkX << 32) | (changedChunkZ & 0xffff_ffffL);
         for (var entry : sessions.entrySet()) {
             SessionState recipient = entry.getValue();
-            if (recipient.clientInitialized) sendPacket(entry.getKey(), update, true);
+            // Only update clients that currently have this chunk in their sent view.
+            // The set is concurrent because different session event loops can publish chunks
+            // while another player breaks a block.
+            if (recipient.clientInitialized && recipient.sentChunkKeys.contains(changedChunkKey)) {
+                sendPacket(entry.getKey(), update, true);
+            }
         }
     }
 
@@ -773,7 +781,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private double movementBudget = 2.0;
         private int lastChunkX = Integer.MIN_VALUE;
         private int lastChunkZ = Integer.MIN_VALUE;
-        private final Set<Long> sentChunkKeys = new HashSet<>();
+        private final Set<Long> sentChunkKeys = ConcurrentHashMap.newKeySet();
         private BreakTarget breakTarget;
         private long entityId;
         private boolean rejected;

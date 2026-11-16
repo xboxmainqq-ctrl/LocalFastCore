@@ -11,6 +11,7 @@ import ru.nexora.network.raknet.RakNetDiscoveryServer;
 import ru.nexora.world.FlatWorldGenerator;
 import ru.nexora.world.World;
 import ru.nexora.world.WorldStorage;
+import ru.nexora.world.WorldItemEntityStorage;
 import ru.nexora.world.WorldAutosave;
 import ru.nexora.world.PlayerDataStorage;
 import ru.nexora.inventory.PlayerInventoryStorage;
@@ -67,8 +68,11 @@ public final class NexoraServer {
         DefaultNetherNetIdentityService identityService =
                 new DefaultNetherNetIdentityService(Path.of(dataDirectory, "identity"));
         WorldStorage worldStorage = new WorldStorage(Path.of(dataDirectory, "worlds"), "NEXORA World");
+        WorldItemEntityStorage itemStorage = new WorldItemEntityStorage(
+                Path.of(dataDirectory, "worlds"), "NEXORA World");
         World world = new World(
-                "NEXORA World", 0L, new FlatWorldGenerator(), 0, 65, 0, worldStorage);
+                "NEXORA World", 0L, new FlatWorldGenerator(), 0, 65, 0,
+                worldStorage, itemStorage);
         PlayerDataStorage playerStorage = new PlayerDataStorage(Path.of(dataDirectory, "players"));
         PlayerInventoryStorage inventoryStorage = new PlayerInventoryStorage(Path.of(dataDirectory, "inventories"));
         PlayerEquipmentStorage equipmentStorage = new PlayerEquipmentStorage(Path.of(dataDirectory, "equipment"));
@@ -161,6 +165,7 @@ public final class NexoraServer {
         System.out.println("Player profiles use versioned, checksummed files under " + Path.of(dataDirectory, "players").toAbsolutePath());
         System.out.println("Player inventories use versioned, checksummed files under " + Path.of(dataDirectory, "inventories").toAbsolutePath());
         System.out.println("Player armor, offhand, cursor and magical equipment use checksummed files under " + Path.of(dataDirectory, "equipment").toAbsolutePath());
+        System.out.println("Dropped world items use checksummed storage under " + Path.of(dataDirectory, "worlds", "NEXORA World", "items").toAbsolutePath());
         System.out.println("Players can open the magical equipment interface with /equipment.");
         System.out.printf("World autosave interval: %d seconds%n", autosaveSeconds);
         System.out.println("Saved player positions and rotations are restored on re-login.");

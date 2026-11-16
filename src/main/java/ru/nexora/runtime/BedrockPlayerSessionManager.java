@@ -15,6 +15,7 @@ import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerId;
 import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerSlotType;
 import org.cloudburstmc.protocol.bedrock.data.inventory.FullContainerName;
 import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData;
+import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction;
 import org.cloudburstmc.protocol.bedrock.packet.InventoryContentPacket;
 import org.cloudburstmc.protocol.bedrock.packet.PlayerHotbarPacket;
 import org.cloudburstmc.protocol.bedrock.packet.CorrectPlayerMovePredictionPacket;
@@ -199,6 +200,15 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
                             PacketRecipient.SERVER);
                     if (decoded instanceof PlayerAuthInputPacket input) {
                         session.pendingInput.set(PlayerInput.from(input));
+                        ItemUseTransaction use = input.getItemUseTransaction();
+                        if (use != null && use.getBlockPosition() != null && use.getItemInHand() != null
+                                && use.getItemInHand().getDefinition() != null) {
+                            Vector3i target = use.getBlockPosition();
+                            session.enqueueItemUseAction(new ItemUseAction(use.getActionType(), use.getHand(),
+                                    use.getHotbarSlot(), use.getBlockFace(),
+                                    new BlockPosition(target.getX(), target.getY(), target.getZ()),
+                                    use.getItemInHand().getDefinition().getIdentifier()));
+                        }
                     } else if (decoded instanceof PlayerActionPacket action) {
                         PlayerActionType type = action.getAction();
                         Vector3i block = action.getBlockPosition();
@@ -241,6 +251,7 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
                 ensureSpawned(session);
                 applyPendingInput(session);
                 processBlockActions(session);
+                processItemUseActions(session);
                 if (session.playReady) {
                     if (!session.itemRegistrySynced) {
                         session.itemRegistrySynced = sendProtocolPacket(
@@ -369,6 +380,30 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
                 }
                 default -> {
                     // Other PlayerActionPacket actions are not block mutations.
+                }
+            }
+        }
+    }
+
+    /** Applies Bedrock item-use transactions on the game thread. */
+    private void processItemUseActions(PlayerSession session) {
+        ItemUseAction action;
+        while ((action = session.pollItemUseAction()) != null) {
+            if (action.actionType() != 0 || action.hand() != 0) continue;
+            PlayerInventory inventory = inventories.get(session.playerId);
+            if (inventory == null) continue;
+            BlockPlacementService.Outcome outcome = BlockPlacementService.placeBlock(
+                    world, inventory, action.hotbarSlot(), action.itemId(), action.clickedBlock(),
+                    action.face(), session.x, session.y, session.z);
+            if (!outcome.placed()) continue;
+            blockRegistry.runtimeId(outcome.placedState());
+            broadcastBlockUpdate(outcome.position(), outcome.placedState());
+            sendInventory(session, false);
+            if (inventoryStorage != null) {
+                try {
+                    inventoryStorage.save(inventory);
+                } catch (java.io.IOException failure) {
+                    throw new IllegalStateException("Could not save inventory for " + session.playerId, failure);
                 }
             }
         }
@@ -646,7 +681,9 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
         private final AtomicBoolean closed = new AtomicBoolean();
         private final AtomicReference<PlayerInput> pendingInput = new AtomicReference<>();
         private final ConcurrentLinkedQueue<BlockAction> pendingBlockActions = new ConcurrentLinkedQueue<>();
+        private final ConcurrentLinkedQueue<ItemUseAction> pendingItemUseActions = new ConcurrentLinkedQueue<>();
         private final AtomicInteger pendingBlockActionCount = new AtomicInteger();
+        private final AtomicInteger pendingItemUseActionCount = new AtomicInteger();
         private final AtomicInteger requestedRadius = new AtomicInteger(-1);
         private BlockPosition breakingBlock;
         private final Set<ChunkPosition> sentChunks = new HashSet<>();
@@ -679,6 +716,21 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
             return action;
         }
 
+        private void enqueueItemUseAction(ItemUseAction action) {
+            int count = pendingItemUseActionCount.incrementAndGet();
+            if (count > 32) {
+                pendingItemUseActionCount.decrementAndGet();
+                throw new IllegalArgumentException("Too many pending Bedrock item-use actions");
+            }
+            pendingItemUseActions.add(action);
+        }
+
+        private ItemUseAction pollItemUseAction() {
+            ItemUseAction action = pendingItemUseActions.poll();
+            if (action != null) pendingItemUseActionCount.decrementAndGet();
+            return action;
+        }
+
         private PlayerSession(TransportConnection connection, BedrockAuthenticatedPlayer player,
                               UUID playerId, double x, double y, double z, double yaw) {
             this.connection = connection;
@@ -694,7 +746,11 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
     private record BlockAction(PlayerActionType type, BlockPosition position) {
     }
 
-    private record PlayerInput(float x, float y, float z, float yaw,
+    private record ItemUseAction(int actionType, int hand, int hotbarSlot, int face,
+                                 BlockPosition clickedBlock, String itemId) {
+    }
+
+    private record PlayerInput(float x, float y, float z,
                                float pitch, float headYaw, long tick, boolean onGround) {
         private static PlayerInput from(PlayerAuthInputPacket packet) {
             Vector3f position = packet.getPosition();

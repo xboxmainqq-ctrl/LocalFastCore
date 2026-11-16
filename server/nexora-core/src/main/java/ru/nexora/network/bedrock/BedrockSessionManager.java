@@ -10,6 +10,7 @@ import ru.nexora.world.FlatWorldGenerator;
 import ru.nexora.world.BlockType;
 import ru.nexora.world.World;
 import ru.nexora.world.WorldChunk;
+import ru.nexora.world.WorldCollision;
 import ru.nexora.world.PlayerData;
 import ru.nexora.world.PlayerDataStorage;
 

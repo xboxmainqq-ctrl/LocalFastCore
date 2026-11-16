@@ -385,9 +385,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 target.x(), target.y(), target.z(), BlockType.AIR);
         for (var entry : sessions.entrySet()) {
             SessionState recipient = entry.getValue();
-            synchronized (recipient) {
-                if (recipient.clientInitialized) sendPacket(entry.getKey(), update, true);
-            }
+            if (recipient.clientInitialized) sendPacket(entry.getKey(), update, true);
         }
     }
 
@@ -607,7 +605,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private boolean resourcePackStackSent;
         private volatile boolean resourcePacksCompleted;
         private boolean gameStarted;
-        private boolean clientInitialized;
+        private volatile boolean clientInitialized;
         private float positionX;
         private float positionY;
         private float positionZ;

@@ -791,15 +791,6 @@ class BedrockSessionManagerTest {
         output.writeBytes(bytes);
     }
 
-    private static void writeVarInt(ByteArrayOutputStream output, int value) {
-        do {
-            int current = value & 0x7f;
-            value >>>= 7;
-            if (value != 0) current |= 0x80;
-            output.write(current);
-        } while (value != 0);
-    }
-
     private static byte[] derToJose(byte[] der) {
         int offset = 2;
         if (der[offset++] != 0x02) throw new IllegalArgumentException("Invalid ECDSA signature");

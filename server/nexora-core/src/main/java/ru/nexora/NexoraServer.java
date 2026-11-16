@@ -12,6 +12,7 @@ import ru.nexora.world.World;
 import ru.nexora.world.WorldStorage;
 import ru.nexora.world.WorldAutosave;
 import ru.nexora.world.PlayerDataStorage;
+import ru.nexora.world.PlayerDataStorage;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -82,6 +83,10 @@ public final class NexoraServer {
                 },
                 event -> System.out.printf("NEXORA: Bedrock packet 0x%02X from %s (%d bytes)%n",
                         event.packet().packetId(), event.networkId(), event.packet().payload().length));
+        long autosaveSeconds = Long.parseLong(System.getenv().getOrDefault("NEXORA_AUTOSAVE_SECONDS", "300"));
+        WorldAutosave autosave = new WorldAutosave(world, Duration.ofSeconds(autosaveSeconds),
+                exception -> System.err.println("NEXORA: periodic world/player autosave failed: " + exception.getMessage()),
+                bedrockSessions::savePlayers);
         String stunEnvironment = System.getenv("NEXORA_STUN_URLS");
         List<String> stunUrls = stunEnvironment == null || stunEnvironment.isBlank()
                 ? List.of()
@@ -113,26 +118,26 @@ public final class NexoraServer {
         } catch (Exception exception) {
             signaling.close();
             negotiator.close();
-            bedrockSessions.close();
-            discovery.close();
             try {
                 autosave.close();
             } catch (java.io.IOException saveException) {
                 exception.addSuppressed(saveException);
             }
+            bedrockSessions.close();
+            discovery.close();
             throw exception;
         }
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             signaling.close();
             negotiator.close();
-            bedrockSessions.close();
-            discovery.close();
             try {
                 autosave.close();
             } catch (java.io.IOException exception) {
-                System.err.println("NEXORA: unable to flush world autosave: " + exception.getMessage());
+                System.err.println("NEXORA: unable to flush world/player autosave: " + exception.getMessage());
             }
+            bedrockSessions.close();
+            discovery.close();
         }, "nexora-shutdown"));
 
         System.out.printf("NEXORA NetherNet signaling listening on TCP %s:%d%n", httpBindHost, port);
@@ -147,6 +152,7 @@ public final class NexoraServer {
         System.out.println("World chunks use versioned, checksummed files under " + Path.of(dataDirectory, "worlds").toAbsolutePath());
         System.out.println("Player profiles use versioned, checksummed files under " + Path.of(dataDirectory, "players").toAbsolutePath());
         System.out.printf("World autosave interval: %d seconds%n", autosaveSeconds);
-        System.out.println("LevelChunk streaming and PLAYER_SPAWN are the next protocol stages.");
+        System.out.println("Saved player positions and rotations are restored on re-login.");
+        System.out.println("Next gameplay stages: block placement, movement physics and entity replication.");
     }
 }

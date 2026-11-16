@@ -12,9 +12,9 @@ import java.util.Objects;
  * Immutable, validated mapping between NEXORA item identifiers and the exact
  * protocol-specific fields needed by Bedrock network item stack descriptors.
  *
- * This is deliberately not an ItemRegistryPacket encoder: protocol 2225 marks
- * ItemData.ItemComponentData as unknown, and the hashed_string wire primitive
- * is not fully specified by the published schema. No packet bytes are guessed.
+ * Item registry metadata is kept separate from the stack descriptor. Component
+ * data is supplied as an already encoded, protocol-specific network-NBT value;
+ * this registry never fabricates component payloads.
  */
 public final class BedrockItemRegistry implements BedrockInventoryContentCodec.ItemDefinitionResolver {
     private final Map<String, Entry> byIdentifier;
@@ -74,11 +74,22 @@ public final class BedrockItemRegistry implements BedrockInventoryContentCodec.I
     public record Entry(
             String namespacedId,
             BedrockInventoryContentCodec.ItemDefinition networkDefinition,
-            int maxStackSize
+            int maxStackSize,
+            boolean componentBased,
+            int itemVersion,
+            byte[] componentData
     ) {
+        private static final byte[] EMPTY_COMPOUND_NBT = new byte[] {10, 0, 0, 0};
+
         public Entry(String namespacedId, BedrockInventoryContentCodec.ItemDefinition networkDefinition) {
-            this(namespacedId, networkDefinition, 64);
+            this(namespacedId, networkDefinition, 64, false, 2, EMPTY_COMPOUND_NBT);
         }
+
+        public Entry(String namespacedId, BedrockInventoryContentCodec.ItemDefinition networkDefinition,
+                     int maxStackSize) {
+            this(namespacedId, networkDefinition, maxStackSize, false, 2, EMPTY_COMPOUND_NBT);
+        }
+
         public Entry {
             Objects.requireNonNull(namespacedId, "namespacedId");
             if (!namespacedId.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")) {
@@ -88,6 +99,18 @@ public final class BedrockItemRegistry implements BedrockInventoryContentCodec.I
             if (maxStackSize < 1 || maxStackSize > 99) {
                 throw new IllegalArgumentException("maxStackSize must be 1..99");
             }
+            if (itemVersion < 0 || itemVersion > 2) {
+                throw new IllegalArgumentException("itemVersion must be one of 0 (Legacy), 1 (DataDriven), or 2 (None)");
+            }
+            componentData = Objects.requireNonNull(componentData, "componentData").clone();
+            if (componentData.length < 4 || componentData.length > 1_048_576) {
+                throw new IllegalArgumentException("componentData must be a complete bounded network-NBT tag");
+            }
+        }
+
+        @Override
+        public byte[] componentData() {
+            return componentData.clone();
         }
     }
 }

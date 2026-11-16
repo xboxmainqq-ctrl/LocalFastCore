@@ -1160,10 +1160,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         boolean jumping = input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.START_JUMPING)
                 || input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.JUMP_PRESSED_RAW)
                 || input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.JUMPING);
+        if (state.usingItem && nanoTime.getAsLong() - state.usingItemStartedNanos > 3_000_000_000L) {
+            state.usingItem = false;
+        }
+        float movementX = state.usingItem ? input.motionX() * 0.2f : input.motionX();
+        float movementZ = state.usingItem ? input.motionZ() * 0.2f : input.motionZ();
         PlayerPhysics.State next;
         try {
             next = PlayerPhysics.tick(world, state.physicsState,
-                    new PlayerPhysics.Input(input.motionX(), input.motionZ(), input.yaw(),
+                    new PlayerPhysics.Input(movementX, movementZ, input.yaw(),
                             input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.SPRINTING),
                             jumping),
                     deltaSeconds);
@@ -1218,19 +1223,36 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             String networkId, SessionState state,
             BedrockPlayerAuthInputCodec.ItemUseTransaction transaction
     ) {
-        if (transaction == null || transaction.actionType() != 0
-                || transaction.triggerType() == 0 || transaction.hand() != 0
+        if (transaction == null || transaction.triggerType() == 0
+                || transaction.hand() != 0
                 || transaction.slot() != state.inventory.selectedHotbarSlot()) return;
 
         ItemStack held = state.inventory.getSlot(transaction.slot()).orElse(null);
-        if (held == null || !matchesRegisteredItem(transaction.item(), held)) return;
+        if (held == null || !matchesRegisteredItem(transaction.item(), held)
+                || !itemUseActionsMatch(transaction, held)) return;
+
+        if (transaction.actionType() == 1) {
+            FoodStats food = foodStats(held.itemId());
+            if (food == null || state.vitals.hunger() >= PlayerVitals.MAX_HUNGER) return;
+            double dx = transaction.fromX() - state.positionX;
+            double dy = transaction.fromY() - state.positionY;
+            double dz = transaction.fromZ() - state.positionZ;
+            if (dx * dx + dy * dy + dz * dz > 2.25) return;
+            state.usingItem = true;
+            state.usingItemSlot = transaction.slot();
+            state.usingItemRuntimeId = transaction.item().runtimeItemId();
+            state.usingItemStartedNanos = nanoTime.getAsLong();
+            return;
+        }
+        if (transaction.actionType() != 0) return;
+
         BlockType placedType = switch (held.itemId()) {
             case "minecraft:stone" -> BlockType.STONE;
             case "minecraft:dirt" -> BlockType.DIRT;
             case "minecraft:grass_block" -> BlockType.GRASS_BLOCK;
             default -> null;
         };
-        if (placedType == null || !itemUseActionsMatch(transaction, held)) return;
+        if (placedType == null) return;
 
         int targetX = transaction.x();
         int targetY = transaction.y();
@@ -1290,6 +1312,29 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
         broadcastBlockUpdate(placeX, placeY, placeZ, placedType);
         sendInventoryAndEquipmentState(networkId, state);
+    }
+
+    private static FoodStats foodStats(String itemId) {
+        return switch (itemId) {
+            case "minecraft:bread" -> new FoodStats(5, 0.6f);
+            case "minecraft:carrot" -> new FoodStats(3, 0.6f);
+            case "minecraft:potato" -> new FoodStats(1, 0.3f);
+            case "minecraft:baked_potato" -> new FoodStats(5, 0.6f);
+            case "minecraft:cookie" -> new FoodStats(2, 0.1f);
+            case "minecraft:cooked_beef" -> new FoodStats(8, 0.8f);
+            case "minecraft:beef" -> new FoodStats(3, 0.3f);
+            case "minecraft:chicken" -> new FoodStats(2, 0.3f);
+            case "minecraft:cooked_chicken" -> new FoodStats(6, 0.6f);
+            case "minecraft:salmon" -> new FoodStats(2, 0.4f);
+            case "minecraft:cooked_salmon" -> new FoodStats(6, 0.8f);
+            case "minecraft:cod" -> new FoodStats(2, 0.1f);
+            case "minecraft:cooked_cod" -> new FoodStats(5, 0.6f);
+            case "minecraft:pumpkin_pie" -> new FoodStats(8, 0.3f);
+            case "minecraft:melon_slice" -> new FoodStats(2, 0.3f);
+            case "minecraft:sweet_berries", "minecraft:glow_berries" -> new FoodStats(2, 0.1f);
+            case "minecraft:rabbit" -> new FoodStats(3, 0.3f);
+            default -> null;
+        };
     }
 
     private boolean matchesRegisteredItem(
@@ -1888,6 +1933,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private record BreakTarget(int x, int y, int z, long startedAtNanos) {
     }
 
+    private record FoodStats(int foodPoints, float saturationModifier) {
+    }
+
     private enum EquipmentFormKind { MAIN, SLOT }
 
     private record PendingEquipmentForm(
@@ -1902,6 +1950,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private PlayerVitals vitals = PlayerVitals.DEFAULT;
         private boolean dead;
         private boolean deathPacketsSent;
+        private boolean usingItem;
+        private int usingItemSlot = -1;
+        private int usingItemRuntimeId;
+        private long usingItemStartedNanos;
         private long nextNaturalVitalsNanos;
         private boolean compressionNegotiated;
         private volatile boolean loginAuthenticated;

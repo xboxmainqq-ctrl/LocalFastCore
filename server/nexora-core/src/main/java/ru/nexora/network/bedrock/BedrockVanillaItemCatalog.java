@@ -1,5 +1,7 @@
 package ru.nexora.network.bedrock;
 
+import ru.nexora.world.BlockType;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,6 +21,9 @@ public final class BedrockVanillaItemCatalog {
 
     public static BedrockItemRegistry createRegistry() {
         List<BedrockItemRegistry.Entry> entries = new ArrayList<>();
+        addBlock(entries, "stone", 1, BlockType.STONE);
+        addBlock(entries, "grass_block", 2, BlockType.GRASS_BLOCK);
+        addBlock(entries, "dirt", 3, BlockType.DIRT);
         add(entries, "diamond", 306, 2, 64);
         add(entries, "iron_ingot", 307, 2, 64);
         add(entries, "gold_ingot", 308, 2, 64);
@@ -112,6 +117,16 @@ public final class BedrockVanillaItemCatalog {
         add(entries, "elytra", 574, 2, 1);
         add(entries, "shield", 358, 2, 1);
         return new BedrockItemRegistry(entries);
+    }
+
+    private static void addBlock(List<BedrockItemRegistry.Entry> entries,
+                                 String path, int runtimeId, BlockType blockType) {
+        entries.add(new BedrockItemRegistry.Entry(
+                "minecraft:" + path,
+                new BedrockInventoryContentCodec.ItemDefinition(
+                        runtimeId, 0, Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(blockType)), new byte[0]),
+                64, false, 2, EMPTY_NETWORK_NBT
+        ));
     }
 
     private static void add(List<BedrockItemRegistry.Entry> entries,

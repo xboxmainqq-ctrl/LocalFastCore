@@ -59,8 +59,8 @@ public final class WorldStorage {
             output.writeInt(chunk.chunkX());
             output.writeInt(chunk.chunkZ());
             output.writeByte(WorldChunk.SECTION_COUNT);
-            for (int sectionIndex = 0; sectionIndex < WorldChunk.SECTION_COUNT; sectionIndex++) {
-                byte[] raw = chunk.copySectionRaw(sectionIndex);
+            byte[][] snapshot = chunk.copySectionsRaw();
+            for (byte[] raw : snapshot) {
                 output.writeBoolean(raw != null);
                 if (raw != null) output.write(raw);
             }

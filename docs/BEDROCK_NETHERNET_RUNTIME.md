@@ -30,7 +30,7 @@ java -jar target/nexora-runtime-0.1.0-SNAPSHOT.jar \
 
 The hosting provider must forward **TCP and UDP** for the configured port. NetherNet is not a UDP-only RakNet listener: the client first uses HTTP signaling over TCP and then carries gameplay over WebRTC/UDP. If the panel exposes only TCP or only UDP, retail clients will not be able to complete the connection.
 
-STUN discovery is configured to help the server announce a reachable public media candidate. It does not bypass a host firewall or a provider that blocks UDP. A real connection test from outside the hosting network is mandatory.
+Both the NetherNet signaling layer and the WebRTC peer connections now have STUN discovery configured (Cloudflare and Google). WebRTC gathers host and server-reflexive UDP candidates; TURN relay and TCP candidates remain disabled. STUN does not bypass a host firewall or a provider that blocks outbound/inbound UDP. A real connection test from outside the hosting network is mandatory.
 
 The runtime includes a persistent P-384 operator identity. Preserve `nethernet-identity.pem` when updating the JAR or moving the server. Deleting it rotates the server identity and can invalidate client trust-on-first-use pins.
 

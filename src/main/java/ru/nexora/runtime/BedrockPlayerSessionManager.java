@@ -242,10 +242,14 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
                 applyPendingInput(session);
                 processBlockActions(session);
                 if (session.playReady) {
-                    if (!session.inventorySynced) {
+                    if (!session.itemRegistrySynced) {
+                        session.itemRegistrySynced = sendProtocolPacket(
+                                session.connection, itemRegistry.createPacket());
+                    }
+                    if (session.itemRegistrySynced && !session.inventorySynced) {
                         session.inventorySynced = sendInventory(session, true);
                     }
-                    if (session.inventorySynced) {
+                    if (session.itemRegistrySynced && session.inventorySynced) {
                         syncVisibleItemEntities(session);
                         collectNearbyItems(session);
                     }
@@ -653,6 +657,7 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
         private double yaw;
         private boolean onGround = true;
         private boolean entitySpawned;
+        private boolean itemRegistrySynced;
         private boolean inventorySynced;
         private boolean playReady;
         private long lastInputTick = -1;

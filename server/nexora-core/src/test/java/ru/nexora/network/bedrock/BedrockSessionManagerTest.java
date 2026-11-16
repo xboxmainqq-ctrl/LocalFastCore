@@ -243,6 +243,30 @@ class BedrockSessionManagerTest {
         }
         assertTrue(manager.playerPosition("physics-client").orElseThrow().y() < 65.0f);
         assertEquals(16.0f, manager.playerVitals("physics-client").orElseThrow().health());
+
+        int beforeDeath = outboundFrames.size();
+        assertTrue(manager.damagePlayer("physics-client", 100.0f));
+        assertEquals(0.0f, manager.playerVitals("physics-client").orElseThrow().health());
+        List<BedrockPacket> deathPackets = outboundFrames.subList(beforeDeath, outboundFrames.size()).stream()
+                .flatMap(frame -> BedrockBatchCodec.decode(frame, true).stream()).toList();
+        assertTrue(deathPackets.stream().anyMatch(packet ->
+                packet.packetId() == BedrockRespawnCodec.DEATH_INFO_PACKET_ID));
+        assertTrue(deathPackets.stream().anyMatch(packet ->
+                packet.packetId() == BedrockRespawnCodec.RESPAWN_PACKET_ID));
+
+        long runtimeEntityId = manager.playerRuntimeId("physics-client").orElseThrow();
+        BedrockPacket respawnAction = new BedrockPacket(
+                BedrockPlayerActionCodec.PLAYER_ACTION_PACKET_ID, 0, 0,
+                playerActionPayload(runtimeEntityId, BedrockPlayerActionCodec.ACTION_RESPAWN));
+        int beforeRespawn = outboundFrames.size();
+        sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(List.of(respawnAction), true, 256));
+        assertEquals(PlayerVitals.DEFAULT, manager.playerVitals("physics-client").orElseThrow());
+        assertEquals(0.5f, manager.playerPosition("physics-client").orElseThrow().x(), 0.0001f);
+        assertEquals(65.0f, manager.playerPosition("physics-client").orElseThrow().y(), 0.0001f);
+        List<BedrockPacket> respawnPackets = outboundFrames.subList(beforeRespawn, outboundFrames.size()).stream()
+                .flatMap(frame -> BedrockBatchCodec.decode(frame, true).stream()).toList();
+        assertTrue(respawnPackets.stream().anyMatch(packet ->
+                packet.packetId() == BedrockRespawnCodec.MOVE_PLAYER_PACKET_ID));
         manager.close();
     }
 
@@ -670,6 +694,33 @@ class BedrockSessionManagerTest {
         assertEquals(4, Byte.toUnsignedInt(spawnChunk.payload()[0])); // chunk X = 2
         assertEquals(3, Byte.toUnsignedInt(spawnChunk.payload()[1])); // chunk Z = -2
         manager.close();
+    }
+
+    private static byte[] playerActionPayload(long runtimeEntityId, int action) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        writeVarUInt64(out, runtimeEntityId);
+        writeVarInt(out, action);
+        for (int i = 0; i < 7; i++) writeVarInt(out, 0);
+        return out.toByteArray();
+    }
+
+    private static void writeVarUInt64(ByteArrayOutputStream out, long value) {
+        do {
+            int next = (int) (value & 0x7f);
+            value >>>= 7;
+            if (value != 0) next |= 0x80;
+            out.write(next);
+        } while (value != 0);
+    }
+
+    private static void writeVarInt(ByteArrayOutputStream out, int value) {
+        long encoded = Integer.toUnsignedLong((value << 1) ^ (value >> 31));
+        do {
+            int next = (int) (encoded & 0x7f);
+            encoded >>>= 7;
+            if (encoded != 0) next |= 0x80;
+            out.write(next);
+        } while (encoded != 0);
     }
 
     private static byte[] movementInputPayload(

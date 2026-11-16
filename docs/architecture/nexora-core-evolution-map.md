@@ -1,7 +1,7 @@
 # NEXORA Core evolution map
 
 **Date:** 2026-11-16  
-**Status:** first isolated Platform API module committed; no Nukkit-MOT engine source has been modified and no runtime adapter is wired yet.
+**Status:** isolated Java 17 Platform API and dependency-aware module lifecycle manager committed, with descriptor and lifecycle tests; no Nukkit-MOT engine source has been modified and no runtime adapter is wired yet.
 
 This document defines how NEXORA will evolve from a pinned Nukkit-MOT server into an independently owned game server core without destabilizing the first playable server.
 
@@ -34,7 +34,7 @@ These are integration seams, not promises that every internal method is a stable
 
 The first modules should be isolated from Nukkit internals and communicate through small interfaces:
 
-- **nexora-platform-api** — stable interfaces, identifiers, lifecycle contracts and module metadata. Initial isolated Java 17 API module now exists at `nexora-modules/platform-api/`; it is not part of the root Maven build and is not yet wired to Nukkit-MOT.
+- **nexora-platform-api** — stable interfaces, identifiers, lifecycle contracts and module metadata. Initial isolated Java 17 API module now exists at `nexora-modules/platform-api/`, including `ModuleManager` for dependency ordering, lifecycle callbacks, reverse shutdown and enable-failure rollback. It is not part of the root Maven build and is not yet wired to Nukkit-MOT.
 - **nexora-identity** — player identity/profile mapping, session metadata and future account integration. Do not invent an authentication protocol in the baseline milestone.
 - **nexora-permissions** — rank inheritance, permission evaluation and audit events; initially adapt to Nukkit permissions.
 - **nexora-gameplay** — classes, stats, XP, abilities, cooldowns and combat rules.
@@ -48,7 +48,7 @@ The repository's current Maven root still belongs to the preserved Standalone Ru
 
 1. **Baseline:** build and boot pinned Nukkit-MOT; verify McpeHost and retail Bedrock 1.26.60.
 2. **Product shell:** NEXORA config, branding, version metadata, startup diagnostics and release packaging.
-3. **Platform boundary:** API contract module is now scaffolded with descriptor validation tests; next add the Nukkit-MOT lifecycle adapter after the pinned baseline source is imported and builds reproducibly.
+3. **Platform boundary:** API contract and dependency-aware lifecycle manager are implemented with descriptor/lifecycle tests. Next add jar discovery and a Nukkit-MOT lifecycle adapter only after the pinned baseline source is imported and builds reproducibly.
 4. **Gameplay ownership:** move ranks, staff, RPG classes/stats/abilities and economy into NEXORA modules.
 5. **World/content ownership:** add NEXORA world rules, custom content and resource-pack pipeline with client tests.
 6. **Selective engine replacement:** replace network, entity, world or persistence internals only where a measured requirement justifies it. Keep protocol compatibility tests and a rollback path.

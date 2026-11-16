@@ -5,6 +5,7 @@ import io.netty.buffer.Unpooled;
 import org.cloudburstmc.math.vector.Vector3f;
 import org.cloudburstmc.math.vector.Vector3i;
 import org.cloudburstmc.protocol.bedrock.codec.v2225.Bedrock_v2225;
+import org.cloudburstmc.protocol.bedrock.data.AttributeData;
 import org.cloudburstmc.protocol.bedrock.data.PacketRecipient;
 import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket;
 import org.cloudburstmc.protocol.bedrock.packet.ChunkRadiusUpdatedPacket;
@@ -25,6 +26,7 @@ import org.cloudburstmc.protocol.bedrock.packet.PlayerActionPacket;
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket;
 import org.cloudburstmc.protocol.bedrock.packet.RequestChunkRadiusPacket;
 import org.cloudburstmc.protocol.bedrock.packet.UpdateBlockPacket;
+import org.cloudburstmc.protocol.bedrock.packet.UpdateAttributesPacket;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -292,6 +294,7 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
                         syncVisibleItemEntities(session);
                         collectNearbyItems(session);
                     }
+                    syncVitals(session);
                     publishChunkCenter(session);
                     acknowledgeChunkRadius(session);
                     sendNewChunks(session);
@@ -302,6 +305,35 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
                 session.closed.set(true);
                 session.connection.close();
             }
+        }
+    }
+
+    /** Sends the authoritative health and hunger attributes to the Bedrock HUD when they change. */
+    private void syncVitals(PlayerSession session) {
+        PlayerVitals playerVitals = vitals.get(session.playerId);
+        if (playerVitals == null) return;
+
+        int health = playerVitals.health();
+        int maxHealth = playerVitals.maxHealth();
+        int hunger = playerVitals.hunger();
+        if (health == session.lastSentHealth
+                && maxHealth == session.lastSentMaxHealth
+                && hunger == session.lastSentHunger) {
+            return;
+        }
+
+        UpdateAttributesPacket packet = new UpdateAttributesPacket();
+        packet.setRuntimeEntityId(playerRuntimeEntityId(session));
+        packet.setAttributes(List.of(
+                new AttributeData("minecraft:health", 0.0f, 1024.0f,
+                        (float) health, (float) maxHealth),
+                new AttributeData("minecraft:player.hunger", 0.0f, 20.0f,
+                        (float) hunger, 20.0f)
+        ));
+        if (sendProtocolPacket(session.connection, packet)) {
+            session.lastSentHealth = health;
+            session.lastSentMaxHealth = maxHealth;
+            session.lastSentHunger = hunger;
         }
     }
 
@@ -771,6 +803,9 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
         private boolean itemRegistrySynced;
         private boolean inventorySynced;
         private boolean playReady;
+        private int lastSentHealth = -1;
+        private int lastSentMaxHealth = -1;
+        private int lastSentHunger = -1;
         private long lastInputTick = -1;
         private int acknowledgedRadius = -1;
         private ChunkPosition lastPublishedCenter;

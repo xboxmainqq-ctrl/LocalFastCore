@@ -14,6 +14,9 @@ import ru.nexora.inventory.EquipmentSlot;
 import ru.nexora.inventory.EquipmentSlotRegistry;
 import ru.nexora.inventory.PlayerEquipmentService;
 import ru.nexora.inventory.ArmorSlotRegistry;
+import ru.nexora.inventory.EquipmentSlotRegistry;
+import ru.nexora.inventory.EquipmentStats;
+import ru.nexora.inventory.EquipmentAttribute;
 import ru.nexora.inventory.InventoryTransactionService;
 import ru.nexora.world.FlatWorldGenerator;
 import ru.nexora.world.BlockType;
@@ -66,6 +69,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final PlayerEquipmentStorage equipmentStorage;
     private volatile BedrockItemRegistry itemRegistry = BedrockItemRegistry.empty();
     private volatile ArmorSlotRegistry armorSlotRegistry = ArmorSlotRegistry.empty();
+    private volatile EquipmentSlotRegistry equipmentSlotRegistry = EquipmentSlotRegistry.empty();
     private final InventoryTransactionService inventoryTransactionService = new InventoryTransactionService();
     private final PlayerEquipmentService playerEquipmentService = new PlayerEquipmentService();
     private volatile EquipmentSlotRegistry equipmentSlotRegistry = EquipmentSlotRegistry.builder().build();
@@ -339,6 +343,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
+    /** Returns derived magical equipment attributes for an authenticated player. */
+    public Optional<EquipmentStats> playerEquipmentStats(String networkId) {
+        SessionState state = sessions.get(networkId);
+        if (state == null) return Optional.empty();
+        synchronized (state) {
+            if (!state.loginAuthenticated) return Optional.empty();
+            return Optional.of(EquipmentStats.calculate(state.equipment, equipmentSlotRegistry));
+        }
+    }
+
     /**
      * Installs the server-authoritative magical equipment compatibility registry.
      * It must be configured before the first player session is created.
@@ -448,6 +462,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             throw new IllegalStateException("The armor slot registry must be installed before sessions are created");
         }
         this.armorSlotRegistry = Objects.requireNonNull(registry, "registry");
+    }
+
+    /** Installs server-owned magical item compatibility and attribute definitions before clients connect. */
+    public synchronized void setEquipmentSlotRegistry(EquipmentSlotRegistry registry) {
+        if (!sessions.isEmpty()) {
+            throw new IllegalStateException("The magical equipment registry must be installed before sessions are created");
+        }
+        this.equipmentSlotRegistry = Objects.requireNonNull(registry, "registry");
     }
 
     public Optional<PlayerPosition> playerPosition(String networkId) {

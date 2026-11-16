@@ -39,6 +39,9 @@ Official Mojang onboarding guide: https://mojang.github.io/bedrock-protocol-docs
 - Login stage: matches the Login GameServerToken to the verified NetherNet identity, verifies the client's ES384 client-data JWT, requires an authenticated Xbox Live identity, and handles the empty ClientToServerHandshake used with NetherNet's DTLS transport.
 - Empty resource-pack exchange: sends LoginSuccess, ResourcePacksInfo and ResourcePackStack, then validates the client's completion response.
 - Initial world bootstrap: sends a protocol-2225 StartGame packet with a unique player runtime ID, survival mode, Overworld spawn metadata, followed by SetTime, SetDifficulty, SetCommandsEnabled, SetSpawnPosition, SetPlayerGameType and NetworkChunkPublisherUpdate.
+- Protocol-2225 biome registry captured from Bedrock Dedicated Server 1.26.60.6, stored with third-party attribution and sent during world bootstrap.
+- Initial LevelChunk encoder: hashed block-state network IDs, version-9 sub-chunks, negative-height empty sections, 3D plains biome palettes and protocol-2225 chunk framing.
+- Sends the generated spawn chunk after StartGame and waits for the client's SetLocalPlayerAsInitialized acknowledgement before reporting PlayerSpawn.
 - Initial server-authoritative world model: 24 vertical sections (-64..319), sparse chunk sections, negative block coordinates, and a deterministic flat starter platform.
 - Versioned world-chunk persistence with CRC32C integrity checks and atomic file replacement; loaded chunks are restored at startup and saved on shutdown.
 - Unit tests for legacy RakNet discovery, signaling HTTP behavior, identity signatures, NetherNet framing, Bedrock batches, login parsing and the initial login/resource-pack stages.
@@ -49,7 +52,7 @@ The following list is intentionally conservative: a protocol stage is only consi
 
 - The main bootstrap now starts the NetherNet HTTP signaling endpoint and the WebRTC answerer alongside the legacy UDP discovery experiment.
 - NEXORA's signaling listener is plain HTTP; production TLS termination is provided by the documented Caddy reverse-proxy example. The application does not terminate TLS itself.
-- No LevelChunk/sub-chunk streaming, biome definitions, PLAYER_SPAWN completion, player movement, entity replication or inventory. Player data persistence and periodic autosave are also not implemented. StartGame is only the first world-bootstrap stage; it does not yet create a playable world.
+- Only the initial spawn chunk is sent. Chunk-radius streaming, chunk unloads, biome variation, block updates, player movement, entity replication and inventory are not implemented. Player data persistence and periodic autosave are also not implemented. The world is still not playable until those gameplay paths and an Android-client end-to-end test are complete.
 - No general outbound gameplay-packet pipeline yet; only login, NetworkSettings, PlayStatus and empty resource-pack handshake responses are sent.
 - Guest/offline authentication is not supported; the current login path requires an authenticated Xbox Live GameServerToken.
 - No Android-client end-to-end connection test.

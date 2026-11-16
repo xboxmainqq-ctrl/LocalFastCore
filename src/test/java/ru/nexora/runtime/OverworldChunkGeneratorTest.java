@@ -50,6 +50,24 @@ class OverworldChunkGeneratorTest {
     }
 
     @Test
+    void surfaceMaterialsFollowClimateAltitudeAndCoastlines() {
+        BiomeRegistry biomes = BiomeRegistry.builtIn();
+        BlockState coldPeak = OverworldChunkGenerator.surfaceMaterial(
+                biomes.get(BiomeRegistry.FROSTVEIL_ID), new ClimateSample(0.10, 0.55, 0.85),
+                112, 62, 77L, 10, 10);
+        BlockState warmHighland = OverworldChunkGenerator.surfaceMaterial(
+                biomes.get(BiomeRegistry.SKYGLASS_HIGHLANDS_ID), new ClimateSample(0.95, 0.40, 0.82),
+                112, 62, 77L, 10, 10);
+        BlockState coast = OverworldChunkGenerator.surfaceMaterial(
+                biomes.get(BiomeRegistry.MISTWOOD_ID), new ClimateSample(0.55, 0.80, 0.40),
+                62, 62, 77L, 10, 10);
+        assertEquals("minecraft:snow_block", coldPeak.identifier());
+        assertEquals("minecraft:stone", warmHighland.identifier());
+        assertTrue(coast.identifier().equals("minecraft:sand")
+                || coast.identifier().equals("minecraft:gravel"));
+    }
+
+    @Test
     void generatesBedrockTerrainAndWaterWithinChunkBounds() {
         GeneratedChunk generated = generator.generate(new ChunkPosition(-2, -1), height, 42L);
 

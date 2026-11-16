@@ -1,7 +1,6 @@
 package ru.nexora.network.bedrock;
 
 import ru.nexora.world.BlockType;
-import ru.nexora.world.ChunkSection;
 import ru.nexora.world.WorldChunk;
 
 import java.io.ByteArrayOutputStream;
@@ -23,7 +22,14 @@ public final class BedrockLevelChunkCodec {
     public static BedrockPacket createPacket(WorldChunk chunk) {
         if (chunk == null) throw new IllegalArgumentException("chunk must not be null");
 
-        int highestSection = chunk.highestNonEmptySectionCount();
+        byte[][] sections = chunk.copySectionsRaw();
+        int highestSection = 0;
+        for (int index = sections.length - 1; index >= 0; index--) {
+            if (sections[index] != null) {
+                highestSection = index + 1;
+                break;
+            }
+        }
         int positiveSectionCount = Math.max(0, highestSection - NEGATIVE_SUB_CHUNKS);
         int subChunkCount = NEGATIVE_SUB_CHUNKS + positiveSectionCount;
 
@@ -32,7 +38,7 @@ public final class BedrockLevelChunkCodec {
             writeEmptySubChunk(chunkData, sectionY);
         }
         for (int sectionY = 0; sectionY < positiveSectionCount; sectionY++) {
-            ChunkSection section = chunk.section(sectionY + NEGATIVE_SUB_CHUNKS);
+            byte[] section = sections[sectionY + NEGATIVE_SUB_CHUNKS];
             writeSubChunk(chunkData, sectionY, section);
         }
 
@@ -65,17 +71,16 @@ public final class BedrockLevelChunkCodec {
         out.byteValue(sectionY);
     }
 
-    private static void writeSubChunk(Writer out, int sectionY, ChunkSection section) {
+    private static void writeSubChunk(Writer out, int sectionY, byte[] raw) {
         out.byteValue(9); // SubChunk version 9
         out.byteValue(1); // One block-storage layer
         out.byteValue(sectionY);
-        if (section == null || section.isEmpty()) {
+        if (raw == null || isEmpty(raw)) {
             out.byteValue(1); // V0 singleton palette, runtime IDs
             out.varInt32(BedrockBlockRuntimeIds.forBlock(BlockType.AIR));
             return;
         }
 
-        byte[] raw = section.copyRawBlocks();
         Map<Integer, Integer> paletteIndexes = new LinkedHashMap<>();
         List<Integer> palette = new ArrayList<>();
         int[] indexes = new int[ChunkSection.VOLUME];
@@ -91,6 +96,11 @@ public final class BedrockLevelChunkCodec {
             indexes[i] = paletteIndex;
         }
         writePalette(out, indexes, palette);
+    }
+
+    private static boolean isEmpty(byte[] raw) {
+        for (byte value : raw) if (value != 0) return false;
+        return true;
     }
 
     private static void writePalette(Writer out, int[] indexes, List<Integer> palette) {

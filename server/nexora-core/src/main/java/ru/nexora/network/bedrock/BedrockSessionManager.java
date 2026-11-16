@@ -460,10 +460,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             return; // Reject movement that clips through solid world blocks.
         }
         // PlayerAuthInput ticks are monotonic; reject duplicate ticks as replayed movement.
-        if (input.tick() <= state.lastInputTick) return;
+        if (state.hasReceivedInput && input.tick() <= state.lastInputTick) return;
 
         state.movementBudget = movementBudget - distance;
         state.lastMovementNanos = nowNanos;
+        state.hasReceivedInput = true;
         state.positionX = input.x();
         state.positionY = input.y();
         state.positionZ = input.z();
@@ -767,6 +768,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private float yaw;
         private float pitch;
         private long lastInputTick;
+        private boolean hasReceivedInput;
         private long lastMovementNanos;
         private double movementBudget = 2.0;
         private int lastChunkX = Integer.MIN_VALUE;

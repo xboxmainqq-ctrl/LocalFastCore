@@ -35,7 +35,7 @@ class BedrockPlayerAuthInputCodecTest {
     void decodesProtocol2225BlockActionsInWireOrder() {
         BedrockPlayerAuthInputCodec.PlayerInput input =
                 BedrockPlayerAuthInputCodec.decode(new BedrockPacket(0x90, 0, 0,
-                        blockActionPayload(26, -2, 64, 3, 1, 15L)));
+                        blockActionPayload(0.5f, 65.0f, 0.5f, 26, -2, 64, 3, 1, 15L)));
 
         assertEquals(1, input.blockActions().size());
         BedrockPlayerAuthInputCodec.BlockAction action = input.blockActions().getFirst();
@@ -103,10 +103,13 @@ class BedrockPlayerAuthInputCodecTest {
         return output.toByteArray();
     }
 
-    static byte[] blockActionPayload(int action, int x, int y, int z, int face, long tick) {
+    static byte[] blockActionPayload(
+            float playerX, float playerY, float playerZ,
+            int action, int x, int y, int z, int face, long tick
+    ) {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         writeFloat(output, 0); writeFloat(output, 0); // pitch/yaw
-        writeFloat(output, 0.5f); writeFloat(output, 65); writeFloat(output, 0.5f);
+        writeFloat(output, playerX); writeFloat(output, playerY); writeFloat(output, playerZ);
         writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0);
         writeVarUInt(output, 0); // input actions
         writeVarUInt(output, 2); writeVarUInt(output, 0); writeVarInt(output, 0);

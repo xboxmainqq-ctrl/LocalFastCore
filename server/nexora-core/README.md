@@ -47,7 +47,8 @@ Official Mojang onboarding guide: https://mojang.github.io/bedrock-protocol-docs
 - Starter block breaking: parses protocol-2225 block actions, checks player reach and server-side break duration, keeps bedrock unbreakable, updates the world and broadcasts hashed-ID UpdateBlock packets.
 - Initial server-authoritative world model: 24 vertical sections (-64..319), sparse chunk sections, negative block coordinates, and a deterministic flat starter platform.
 - Versioned world-chunk persistence with CRC32C integrity checks and atomic file replacement; loaded chunks are restored at startup and saved on shutdown.
-- Configurable periodic world autosave (default 300 seconds) with a final synchronous flush during graceful shutdown; set NEXORA_AUTOSAVE_SECONDS to change the interval.
+- Configurable periodic world and player autosave (default 300 seconds) with a final synchronous flush during graceful shutdown; set NEXORA_AUTOSAVE_SECONDS to change the interval.
+- Player profiles keyed by verified XUID, stored in versioned CRC32C-protected files; position and rotation are restored in StartGame, and profiles are saved on disconnect, periodic autosave and shutdown.
 - Authenticated player profiles persisted by XUID with last world, position and rotation; checksummed, versioned files under `data/players`, restored on login and saved on disconnect/server shutdown.
 - Unit tests for legacy RakNet discovery, signaling HTTP behavior, identity signatures, NetherNet framing, Bedrock batches, login parsing and the initial login/resource-pack stages.
 
@@ -102,7 +103,7 @@ Open the following ports in the VPS firewall:
 - UDP 30000-30199 for WebRTC ICE/DTLS/SCTP traffic.
 - UDP 19132 only for the legacy RakNet discovery experiment.
 
-The WebRTC UDP range is configurable with NEXORA_UDP_PORT_MIN and NEXORA_UDP_PORT_MAX. World autosave is configurable with NEXORA_AUTOSAVE_SECONDS (default 300 seconds). Set both to 0 to use the operating system's default ephemeral range. The HTTP listener bind address is configurable with NEXORA_HTTP_BIND; it defaults to the main bind host.
+The WebRTC UDP range is configurable with NEXORA_UDP_PORT_MIN and NEXORA_UDP_PORT_MAX. World and player autosave are configurable with NEXORA_AUTOSAVE_SECONDS (default 300 seconds). Player profiles are stored under data/players/. Set both to 0 to use the operating system's default ephemeral range. The HTTP listener bind address is configurable with NEXORA_HTTP_BIND; it defaults to the main bind host.
 
 ## Identity key safety
 

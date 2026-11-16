@@ -10,7 +10,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.function.Supplier;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -61,8 +63,15 @@ public final class NetherNetSignalingServer implements AutoCloseable {
             thread.setDaemon(false);
             return thread;
         };
-        executor = Executors.newFixedThreadPool(
-                Math.max(2, Math.min(8, Runtime.getRuntime().availableProcessors())), threadFactory);
+        int workerCount = Math.max(2, Math.min(8, Runtime.getRuntime().availableProcessors()));
+        executor = new ThreadPoolExecutor(
+                workerCount,
+                workerCount,
+                0L,
+                TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(64),
+                threadFactory,
+                new ThreadPoolExecutor.CallerRunsPolicy());
         created.setExecutor(executor);
         created.createContext("/v1/join", this::handleJoin);
         created.start();

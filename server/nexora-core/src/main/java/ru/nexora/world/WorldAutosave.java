@@ -13,17 +13,25 @@ import java.util.function.Consumer;
 public final class WorldAutosave implements AutoCloseable {
     private final World world;
     private final Consumer<IOException> errorHandler;
+    private final SaveHook additionalSave;
     private final ScheduledExecutorService executor;
     private final Object saveLock = new Object();
     private final AtomicBoolean closed = new AtomicBoolean();
 
     public WorldAutosave(World world, Duration interval, Consumer<IOException> errorHandler) {
+        this(world, interval, errorHandler, () -> {});
+    }
+
+    public WorldAutosave(
+            World world, Duration interval, Consumer<IOException> errorHandler, SaveHook additionalSave
+    ) {
         this.world = Objects.requireNonNull(world, "world");
         Objects.requireNonNull(interval, "interval");
         if (interval.isZero() || interval.isNegative() || interval.toMillis() < 1) {
             throw new IllegalArgumentException("Autosave interval must be at least one millisecond");
         }
         this.errorHandler = Objects.requireNonNull(errorHandler, "errorHandler");
+        this.additionalSave = Objects.requireNonNull(additionalSave, "additionalSave");
         this.executor = Executors.newSingleThreadScheduledExecutor(task -> {
             Thread thread = new Thread(task, "nexora-world-autosave");
             thread.setDaemon(true);
@@ -38,13 +46,17 @@ public final class WorldAutosave implements AutoCloseable {
         if (closed.get()) throw new IllegalStateException("World autosave is closed");
         synchronized (saveLock) {
             world.saveAll();
+            additionalSave.save();
         }
     }
 
     private void saveSafely() {
         try {
             synchronized (saveLock) {
-                if (!closed.get()) world.saveAll();
+                if (!closed.get()) {
+                    world.saveAll();
+                    additionalSave.save();
+                }
             }
         } catch (IOException exception) {
             try {
@@ -73,6 +85,12 @@ public final class WorldAutosave implements AutoCloseable {
         }
         synchronized (saveLock) {
             world.saveAll();
+            additionalSave.save();
         }
+    }
+
+    @FunctionalInterface
+    public interface SaveHook {
+        void save() throws IOException;
     }
 }

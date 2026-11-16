@@ -42,6 +42,7 @@ class BedrockPlayerAuthInputCodecTest {
                         movementPayload(0, 65, 0, 0, 13L, true)));
 
         assertTrue(input.optionalSectionsPresent());
+        assertTrue(input.interactionPayloadUnparsed());
         assertEquals(13L, input.tick());
     }
 
@@ -109,11 +110,14 @@ class BedrockPlayerAuthInputCodecTest {
         writeFloat(output, 0); writeFloat(output, 0); // interact rotation
         writeVarULong(output, tick);
         writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0); // delta
-        output.write(optional ? 1 : 0); // item use
-        output.write(0); // item stack request
-        output.write(0); // block actions
-        output.write(0); // vehicle rotation
-        output.write(0); // predicted vehicle
+        if (optional && inputActions.length == 0) {
+            // The item-use payload remains opaque until the inventory codec is implemented.
+            writeVarUInt(output, 1);
+            writeVarInt(output, BedrockPlayerAuthInputCodec.InputAction.PERFORM_ITEM_INTERACTION);
+            output.write(0x7f);
+        } else if (inputActions.length > 0) {
+            // Caller-supplied flags are encoded above; optional payloads are added by dedicated helpers.
+        }
         if (!optional) {
             writeFloat(output, 0); writeFloat(output, 0); // analog move
             writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0); // camera orientation
@@ -132,12 +136,12 @@ class BedrockPlayerAuthInputCodecTest {
         writeFloat(output, 0); writeFloat(output, 30); // pitch/yaw
         writeFloat(output, playerX); writeFloat(output, playerY); writeFloat(output, playerZ);
         writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0);
-        writeVarUInt(output, 0); // input actions
+        writeVarUInt(output, 1); // input actions
+        writeVarInt(output, BedrockPlayerAuthInputCodec.InputAction.PERFORM_BLOCK_ACTIONS);
         writeVarUInt(output, 2); writeVarUInt(output, 0); writeVarInt(output, 0);
         writeFloat(output, 0); writeFloat(output, 0);
         writeVarULong(output, tick);
         writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0);
-        output.write(0); output.write(0); output.write(1); output.write(0); output.write(0);
         writeVarUInt(output, 1);
         writeVarInt(output, action);
         writeVarInt(output, x); writeVarInt(output, y); writeVarInt(output, z); writeVarInt(output, face);

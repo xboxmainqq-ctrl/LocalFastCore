@@ -438,6 +438,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             throw new SecurityException("PlayerAuthInput arrived before client initialization");
         }
         BedrockPlayerAuthInputCodec.PlayerInput input = BedrockPlayerAuthInputCodec.decode(packet);
+        if (state.hasReceivedInput && input.tick() <= state.lastInputTick) return;
 
         if (Math.abs(input.x()) > 30_000_000 || Math.abs(input.z()) > 30_000_000
                 || input.y() < WorldChunk.MIN_Y - 16 || input.y() > WorldChunk.MAX_Y + 16) {
@@ -459,9 +460,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 input.x(), input.y(), input.z())) {
             return; // Reject movement that clips through solid world blocks.
         }
-        // PlayerAuthInput ticks are monotonic; reject duplicate ticks as replayed movement.
-        if (state.hasReceivedInput && input.tick() <= state.lastInputTick) return;
-
         state.movementBudget = movementBudget - distance;
         state.lastMovementNanos = nowNanos;
         state.hasReceivedInput = true;

@@ -73,6 +73,34 @@ class BedrockBatchCodecTest {
     }
 
     @Test
+    void buildsEmptyResourcePackPackets() {
+        BedrockPacket info = BedrockBatchCodec.createResourcePacksInfo();
+        BedrockPacket stack = BedrockBatchCodec.createResourcePackStack("1.26.62");
+
+        assertEquals(BedrockBatchCodec.RESOURCE_PACKS_INFO_PACKET_ID, info.packetId());
+        assertEquals(22, info.payload().length);
+        assertEquals(BedrockBatchCodec.RESOURCE_PACK_STACK_PACKET_ID, stack.packetId());
+        assertEquals(16, stack.payload().length);
+    }
+
+    @Test
+    void parsesResourcePackClientResponseEnumAndName() {
+        byte[] body = new byte[] {
+                2, 18,
+                'd', 'o', 'w', 'n', 'l', 'o', 'a', 'd', 'i', 'n', 'g',
+                'f', 'i', 'n', 'i', 's', 'h', 'e', 'd'
+        };
+        BedrockPacket packet = new BedrockPacket(
+                BedrockBatchCodec.RESOURCE_PACK_CLIENT_RESPONSE_PACKET_ID, 0, 0, body);
+
+        BedrockBatchCodec.ResourcePackClientResponseData response =
+                BedrockBatchCodec.parseResourcePackClientResponse(packet);
+
+        assertEquals(2, response.response());
+        assertEquals("downloadingfinished", response.name());
+    }
+
+    @Test
     void rejectsRakNetBatchMarkerOnNetherNet() {
         assertThrows(IllegalArgumentException.class,
                 () -> BedrockBatchCodec.decode(new byte[] {(byte) 0xfe}, false));

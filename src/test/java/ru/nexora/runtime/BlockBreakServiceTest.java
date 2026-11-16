@@ -35,6 +35,21 @@ class BlockBreakServiceTest {
     }
 
     @Test
+    void refusesBreakingThroughAnOccludingWall() {
+        InMemoryWorld world = loadedWorld();
+        BlockPosition wall = new BlockPosition(2, 1, 1);
+        BlockPosition target = new BlockPosition(3, 1, 1);
+        world.setBlock(wall, new BlockState("minecraft:stone"));
+        world.setBlock(target, new BlockState("minecraft:stone"));
+
+        BlockBreakService.Outcome outcome = BlockBreakService.breakBlock(
+                world, target, 1.5, 1.0, 1.5);
+
+        assertEquals(BlockBreakService.Result.OCCLUDED, outcome.result());
+        assertEquals("minecraft:stone", world.blockAt(target).identifier());
+    }
+
+    @Test
     void refusesBedrock() {
         InMemoryWorld world = loadedWorld();
         BlockPosition target = new BlockPosition(2, 1, 2);

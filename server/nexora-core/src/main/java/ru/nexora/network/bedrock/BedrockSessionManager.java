@@ -1659,7 +1659,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return switch (type) {
             case AIR, BEDROCK -> Long.MAX_VALUE;
             case DIRT, GRASS_BLOCK -> 600_000_000L; // 0.6 seconds
-            case STONE -> 7_500_000_000L; // 7.5 seconds without a tool
+            case GRAVEL -> 900_000_000L;
+            case GLASS -> 300_000_000L;
+            case NETHERRACK -> 400_000_000L;
+            case STONE, COBBLESTONE, COAL_BLOCK, IRON_BLOCK, GOLD_BLOCK,
+                    DIAMOND_BLOCK, EMERALD_BLOCK -> 7_500_000_000L;
+            case END_STONE -> 9_000_000_000L;
+            case OBSIDIAN -> 250_000_000_000L;
         };
     }
 

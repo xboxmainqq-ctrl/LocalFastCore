@@ -6,11 +6,14 @@ import android.content.Intent;
 import android.net.Uri;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
+import android.view.MotionEvent;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
@@ -396,48 +399,41 @@ public final class MainActivity extends Activity {
             camera.setText(firstPerson ? "КАМЕРА: 1-Е ЛИЦО" : "КАМЕРА: 3-Е ЛИЦО");
         });
 
-        LinearLayout forward = new LinearLayout(this);
-        forward.setGravity(Gravity.CENTER);
-        page.addView(forward, matchWrap());
-        Button forwardButton = gameButton("▲");
-        forward.addView(forwardButton, new LinearLayout.LayoutParams(dp(76), dp(42)));
-        bindHoldMovement(forwardButton, () -> {
-            if (localPreview != null) localPreview.movePlayer(1f, 0f);
+        LinearLayout touchControls = new LinearLayout(this);
+        touchControls.setGravity(Gravity.CENTER_VERTICAL);
+        touchControls.setOrientation(LinearLayout.HORIZONTAL);
+        page.addView(touchControls, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(132)));
+        MinecraftJoystick joystick = new MinecraftJoystick(this, (forward, strafe) -> {
+            ChunkPreviewView preview = localPreview;
+            if (preview != null && (Math.abs(forward) > 0.08f || Math.abs(strafe) > 0.08f)) {
+                preview.movePlayer(forward, strafe);
+            }
         });
-
-        LinearLayout directions = new LinearLayout(this);
-        directions.setGravity(Gravity.CENTER);
-        page.addView(directions, matchWrap());
-        Button left = gameButton("◀");
-        Button backStep = gameButton("▼");
-        Button right = gameButton("▶");
-        directions.addView(left, new LinearLayout.LayoutParams(dp(58), dp(42)));
-        directions.addView(backStep, new LinearLayout.LayoutParams(dp(76), dp(42)));
-        directions.addView(right, new LinearLayout.LayoutParams(dp(58), dp(42)));
-        bindHoldMovement(left, () -> {
-            if (localPreview != null) localPreview.movePlayer(0f, -1f);
-        });
-        bindHoldMovement(backStep, () -> {
-            if (localPreview != null) localPreview.movePlayer(-1f, 0f);
-        });
-        bindHoldMovement(right, () -> {
-            if (localPreview != null) localPreview.movePlayer(0f, 1f);
-        });
-        addSpace(page, 6);
+        touchControls.addView(joystick, new LinearLayout.LayoutParams(dp(128), dp(128)));
+        View spacer = new View(this);
+        touchControls.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
+        LinearLayout rightControls = new LinearLayout(this);
+        rightControls.setGravity(Gravity.CENTER);
+        rightControls.setOrientation(LinearLayout.VERTICAL);
+        touchControls.addView(rightControls, new LinearLayout.LayoutParams(dp(174),
+                ViewGroup.LayoutParams.MATCH_PARENT));
         LinearLayout actionRow = new LinearLayout(this);
         actionRow.setGravity(Gravity.CENTER);
-        actionRow.setOrientation(LinearLayout.HORIZONTAL);
-        page.addView(actionRow, new LinearLayout.LayoutParams(
+        rightControls.addView(actionRow, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(46)));
         Button breakBlock = gameButton("ЛОМАТЬ");
         Button placeBlock = gameButton("СТАВИТЬ");
-        Button jump = gameButton("ПРЫЖОК");
         actionRow.addView(breakBlock, new LinearLayout.LayoutParams(0, dp(42), 1f));
         actionRow.addView(placeBlock, new LinearLayout.LayoutParams(0, dp(42), 1f));
-        actionRow.addView(jump, new LinearLayout.LayoutParams(0, dp(42), 1f));
         breakBlock.setOnClickListener(v -> performLocalBlockAction(worldId, false));
         placeBlock.setOnClickListener(v -> performLocalBlockAction(worldId, true));
-        jump.setOnClickListener(v -> localPreview.jumpPlayer());
+        Button jump = gameButton("ПРЫЖОК");
+        rightControls.addView(jump, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
+        jump.setOnClickListener(v -> {
+            if (localPreview != null) localPreview.jumpPlayer();
+        });
         addSpace(page, 6);
         page.addView(text("Мир хранится на устройстве. После выхода твоя позиция и созданные чанки останутся сохранены.",
                 11, MUTED, false), matchWrap());
@@ -748,38 +744,6 @@ public final class MainActivity extends Activity {
                 runOnUiThread(() -> Toast.makeText(this,
                         "Ошибка сохранения блока", Toast.LENGTH_SHORT).show());
             }
-        });
-    }
-
-    private void bindHoldMovement(Button button, Runnable movement) {
-        android.os.Handler handler = new android.os.Handler(getMainLooper());
-        boolean[] held = {false};
-        Runnable repeat = new Runnable() {
-            @Override
-            public void run() {
-                if (!held[0]) return;
-                movement.run();
-                handler.postDelayed(this, 90L);
-            }
-        };
-        button.setOnTouchListener((view, event) -> {
-            int action = event.getActionMasked();
-            if (action == android.view.MotionEvent.ACTION_DOWN) {
-                held[0] = true;
-                movement.run();
-                handler.postDelayed(repeat, 90L);
-                view.setPressed(true);
-                return true;
-            }
-            if (action == android.view.MotionEvent.ACTION_UP
-                    || action == android.view.MotionEvent.ACTION_CANCEL
-                    || action == android.view.MotionEvent.ACTION_OUTSIDE) {
-                held[0] = false;
-                handler.removeCallbacks(repeat);
-                view.setPressed(false);
-                return true;
-            }
-            return true;
         });
     }
 
@@ -1549,6 +1513,54 @@ public final class MainActivity extends Activity {
             netherNetClient = null;
         }
         super.onDestroy();
+    }
+
+    private final class MinecraftJoystick extends View {
+        interface Listener { void onMove(float forward, float strafe); }
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Listener listener;
+        private float knobX, knobY;
+        private boolean active;
+        MinecraftJoystick(android.content.Context context, Listener listener) {
+            super(context); this.listener = listener;
+        }
+        @Override protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float cx=getWidth()/2f, cy=getHeight()/2f;
+            float radius=Math.min(getWidth(),getHeight())*0.39f;
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.argb(105,120,145,180));
+            canvas.drawCircle(cx,cy,radius,paint);
+            paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(2));
+            paint.setColor(Color.argb(210,220,230,245));
+            canvas.drawCircle(cx,cy,radius,paint);
+            float kr=radius*0.43f;
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.argb(205,55,105,170));
+            canvas.drawCircle(active?knobX:cx,active?knobY:cy,kr,paint);
+            paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(2));
+            paint.setColor(Color.argb(230,235,242,255));
+            canvas.drawCircle(active?knobX:cx,active?knobY:cy,kr,paint);
+        }
+        @Override public boolean onTouchEvent(MotionEvent event) {
+            float cx=getWidth()/2f, cy=getHeight()/2f;
+            float max=Math.min(getWidth(),getHeight())*0.34f;
+            switch(event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                case MotionEvent.ACTION_MOVE:
+                    active=true;
+                    float dx=event.getX()-cx, dy=event.getY()-cy;
+                    float distance=(float)Math.hypot(dx,dy);
+                    if(distance>max && distance>0f){dx=dx/distance*max;dy=dy/distance*max;}
+                    knobX=cx+dx; knobY=cy+dy;
+                    listener.onMove(-dy/max,dx/max);
+                    invalidate(); return true;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    active=false; listener.onMove(0f,0f); invalidate(); return true;
+                default: return true;
+            }
+        }
     }
 
     private LinearLayout card() {

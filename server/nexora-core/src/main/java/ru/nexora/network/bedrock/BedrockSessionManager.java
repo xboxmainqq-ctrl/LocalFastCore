@@ -7,6 +7,7 @@ import ru.nexora.network.nethernet.NetherNetDataChannelListener;
 import ru.nexora.network.nethernet.NetherNetInboundPipeline;
 import ru.nexora.network.nethernet.NetherNetMessageFramer;
 import ru.nexora.inventory.PlayerInventory;
+import ru.nexora.inventory.ItemStack;
 import ru.nexora.inventory.PlayerInventoryStorage;
 import ru.nexora.inventory.PlayerEquipment;
 import ru.nexora.inventory.PlayerEquipmentStorage;
@@ -1039,6 +1040,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         for (BedrockPlayerAuthInputCodec.BlockAction action : input.blockActions()) {
             handleBlockAction(networkId, state, action);
         }
+        handleItemUseTransaction(networkId, state, input.itemUseTransaction());
 
         int chunkX = Math.floorDiv((int) Math.floor(input.x()), 16);
         int chunkZ = Math.floorDiv((int) Math.floor(input.z()), 16);
@@ -1104,6 +1106,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         for (BedrockPlayerAuthInputCodec.BlockAction action : input.blockActions()) {
             handleBlockAction(networkId, state, action);
         }
+        handleItemUseTransaction(networkId, state, input.itemUseTransaction());
 
         int chunkX = Math.floorDiv((int) Math.floor(state.positionX), 16);
         int chunkZ = Math.floorDiv((int) Math.floor(state.positionZ), 16);
@@ -1112,6 +1115,144 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     (int) Math.floor(state.positionX), (int) Math.floor(state.positionY),
                     (int) Math.floor(state.positionZ)), true);
             sendChunkArea(networkId, state, chunkX, chunkZ);
+        }
+    }
+
+    private void handleItemUseTransaction(
+            String networkId, SessionState state,
+            BedrockPlayerAuthInputCodec.ItemUseTransaction transaction
+    ) {
+        if (transaction == null || transaction.actionType() != 0
+                || transaction.triggerType() == 0 || transaction.hand() != 0
+                || transaction.slot() != state.inventory.selectedHotbarSlot()) return;
+
+        ItemStack held = state.inventory.getSlot(transaction.slot()).orElse(null);
+        if (held == null || !matchesRegisteredItem(transaction.item(), held)) return;
+        BlockType placedType = switch (held.itemId()) {
+            case "minecraft:stone" -> BlockType.STONE;
+            case "minecraft:dirt" -> BlockType.DIRT;
+            case "minecraft:grass_block" -> BlockType.GRASS_BLOCK;
+            default -> null;
+        };
+        if (placedType == null || !itemUseActionsMatch(transaction, held)) return;
+
+        int targetX = transaction.x();
+        int targetY = transaction.y();
+        int targetZ = transaction.z();
+        BlockType targetType = world.getBlock(targetX, targetY, targetZ);
+        if (targetType == BlockType.AIR
+                || transaction.targetBlockId()
+                != Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(targetType))
+                || !isWithinBlockReach(state, targetX, targetY, targetZ)) return;
+
+        double fromDx = transaction.fromX() - state.positionX;
+        double fromDy = transaction.fromY() - state.positionY;
+        double fromDz = transaction.fromZ() - state.positionZ;
+        if (fromDx * fromDx + fromDy * fromDy + fromDz * fromDz > 2.25) return;
+
+        int placeX = targetX;
+        int placeY = targetY;
+        int placeZ = targetZ;
+        switch (transaction.face()) {
+            case 0 -> placeY--;
+            case 1 -> placeY++;
+            case 2 -> placeZ--;
+            case 3 -> placeZ++;
+            case 4 -> placeX--;
+            case 5 -> placeX++;
+            default -> { return; }
+        }
+        if (placeY < WorldChunk.MIN_Y || placeY > WorldChunk.MAX_Y
+                || world.getBlock(placeX, placeY, placeZ) != BlockType.AIR
+                || intersectsPlayer(state, placeX, placeY, placeZ)) return;
+
+        List<Optional<ItemStack>> before = state.inventory.snapshot();
+        int selectedSlot = state.inventory.selectedHotbarSlot();
+        state.inventory.setSlot(transaction.slot(),
+                held.count() == 1 ? null : held.withCount(held.count() - 1));
+        try {
+            saveInventory(state);
+        } catch (IOException | RuntimeException exception) {
+            state.inventory.restore(before, selectedSlot);
+            sendInventoryAndEquipmentState(networkId, state);
+            System.err.println("NEXORA: unable to persist block placement inventory: " + exception.getMessage());
+            return;
+        }
+
+        try {
+            world.setBlock(placeX, placeY, placeZ, placedType);
+        } catch (RuntimeException exception) {
+            state.inventory.restore(before, selectedSlot);
+            try {
+                saveInventory(state);
+            } catch (IOException rollbackFailure) {
+                exception.addSuppressed(rollbackFailure);
+            }
+            sendInventoryAndEquipmentState(networkId, state);
+            return;
+        }
+
+        broadcastBlockUpdate(placeX, placeY, placeZ, placedType);
+        sendInventoryAndEquipmentState(networkId, state);
+    }
+
+    private boolean matchesRegisteredItem(
+            BedrockPlayerAuthInputCodec.RawItemStack descriptor, ItemStack expected
+    ) {
+        if (descriptor == null || descriptor.hasStackNetId()) return false;
+        BedrockItemRegistry.Entry entry = itemRegistry.findByRuntimeItemId(descriptor.runtimeItemId());
+        if (entry == null) return false;
+        BedrockInventoryContentCodec.ItemDefinition definition = entry.networkDefinition();
+        return descriptor.count() == expected.count()
+                && descriptor.auxValue() == definition.auxValue()
+                && descriptor.blockRuntimeId() == definition.blockRuntimeId()
+                && java.util.Arrays.equals(descriptor.userData(), definition.userData())
+                && expected.itemId().equals(entry.namespacedId())
+                && expected.maxStackSize() == entry.maxStackSize();
+    }
+
+    private boolean itemUseActionsMatch(
+            BedrockPlayerAuthInputCodec.ItemUseTransaction transaction, ItemStack held
+    ) {
+        List<BedrockPlayerAuthInputCodec.RawInventoryAction> actions = transaction.actions();
+        if (actions.isEmpty()) return true;
+        if (actions.size() != 1) return false;
+        BedrockPlayerAuthInputCodec.RawInventoryAction action = actions.getFirst();
+        if (action.sourceType() == 2) {
+            // WorldInteraction action accompanies a use on the world; it does not own inventory slots.
+            return action.sourceFlags() <= 1
+                    && action.from().runtimeItemId() == 0 && action.to().runtimeItemId() == 0;
+        }
+        if (action.sourceType() != 0 || action.containerId() != 0
+                || action.slot() != transaction.slot()
+                || !matchesRegisteredItem(action.from(), held)) return false;
+        ItemStack expectedAfter = held.count() == 1 ? null : held.withCount(held.count() - 1);
+        if (expectedAfter == null) return action.to().runtimeItemId() == 0;
+        return matchesRegisteredItem(action.to(), expectedAfter);
+    }
+
+    private static boolean intersectsPlayer(SessionState state, int blockX, int blockY, int blockZ) {
+        double playerMinX = state.positionX - 0.3;
+        double playerMaxX = state.positionX + 0.3;
+        double playerMinY = state.positionY;
+        double playerMaxY = state.positionY + 1.8;
+        double playerMinZ = state.positionZ - 0.3;
+        double playerMaxZ = state.positionZ + 0.3;
+        return playerMaxX > blockX && playerMinX < blockX + 1
+                && playerMaxY > blockY && playerMinY < blockY + 1
+                && playerMaxZ > blockZ && playerMinZ < blockZ + 1;
+    }
+
+    private void broadcastBlockUpdate(int x, int y, int z, BlockType type) {
+        BedrockPacket update = BedrockBlockUpdateCodec.createPacket(x, y, z, type);
+        int changedChunkX = Math.floorDiv(x, 16);
+        int changedChunkZ = Math.floorDiv(z, 16);
+        long changedChunkKey = ((long) changedChunkX << 32) | (changedChunkZ & 0xffff_ffffL);
+        for (var entry : sessions.entrySet()) {
+            SessionState recipient = entry.getValue();
+            if (recipient.clientInitialized && recipient.sentChunkKeys.contains(changedChunkKey)) {
+                sendPacket(entry.getKey(), update, true);
+            }
         }
     }
 

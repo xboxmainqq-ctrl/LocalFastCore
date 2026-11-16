@@ -23,7 +23,7 @@ class BlockPlacementServiceTest {
   InMemoryWorld w=loaded();BlockPosition s=new BlockPosition(2,1,2);w.setBlock(s,new BlockState("minecraft:stone"));PlayerInventory inv=new PlayerInventory(UUID.randomUUID());inv.addOne("minecraft:dirt");
   assertEquals(BlockPlacementService.Result.INVALID_FACE,BlockPlacementService.placeBlock(w,inv,0,"minecraft:dirt",s,6,1.5,1,2.5).result());
   assertEquals(BlockPlacementService.Result.OUT_OF_REACH,BlockPlacementService.placeBlock(w,inv,0,"minecraft:dirt",s,5,20.5,1,20.5).result());
-  assertEquals(BlockPlacementService.Result.PLAYER_COLLISION,BlockPlacementService.placeBlock(w,inv,0,"minecraft:dirt",s,5,2.5,1,2.5).result());assertEquals(1,inv.count("minecraft:dirt"));
+  assertEquals(BlockPlacementService.Result.PLAYER_COLLISION,BlockPlacementService.placeBlock(w,inv,0,"minecraft:dirt",s,5,2.8,1,2.5).result());assertEquals(1,inv.count("minecraft:dirt"));
  }
  @Test void rejectsAirTargetsAndUnloadedDestination(){
   InMemoryWorld w=loaded();PlayerInventory inv=new PlayerInventory(UUID.randomUUID());inv.addOne("minecraft:dirt");BlockPosition air=new BlockPosition(2,1,2);

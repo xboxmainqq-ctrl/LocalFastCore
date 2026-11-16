@@ -72,7 +72,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private volatile EquipmentSlotRegistry equipmentSlotRegistry = EquipmentSlotRegistry.empty();
     private final InventoryTransactionService inventoryTransactionService = new InventoryTransactionService();
     private final PlayerEquipmentService playerEquipmentService = new PlayerEquipmentService();
-    private volatile EquipmentSlotRegistry equipmentSlotRegistry = EquipmentSlotRegistry.builder().build();
     private final OutboundFrameSender outbound;
     private final Consumer<PacketEvent> packetSink;
     private final LongSupplier nanoTime;
@@ -352,17 +351,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             if (!state.loginAuthenticated) return Optional.empty();
             return Optional.of(EquipmentStats.calculate(state.equipment, equipmentSlotRegistry));
         }
-    }
-
-    /**
-     * Installs the server-authoritative magical equipment compatibility registry.
-     * It must be configured before the first player session is created.
-     */
-    public synchronized void setEquipmentSlotRegistry(EquipmentSlotRegistry registry) {
-        if (!sessions.isEmpty()) {
-            throw new IllegalStateException("The equipment slot registry must be installed before sessions are created");
-        }
-        this.equipmentSlotRegistry = Objects.requireNonNull(registry, "registry");
     }
 
     /**

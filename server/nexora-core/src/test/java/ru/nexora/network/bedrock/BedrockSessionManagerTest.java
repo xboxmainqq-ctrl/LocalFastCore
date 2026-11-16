@@ -200,6 +200,12 @@ class BedrockSessionManagerTest {
                 .setArmor(0, new ItemStack("nexora:arcane_shard", 1, 64));
         manager.playerEquipment("authenticated-client").orElseThrow()
                 .setOffhand(new ItemStack("nexora:arcane_shard", 2, 64));
+        manager.playerEquipment("authenticated-client").orElseThrow()
+                .setMagicSlot(ru.nexora.inventory.EquipmentSlot.MAGIC_STAFF,
+                        new ItemStack("nexora:ember_staff", 1, 1));
+        manager.playerEquipment("authenticated-client").orElseThrow()
+                .setMagicSlot(ru.nexora.inventory.EquipmentSlot.TALISMAN,
+                        new ItemStack("nexora:luck_talisman", 1, 1));
         assertEquals(4, manager.playerInventory("authenticated-client").orElseThrow()
                 .count("nexora:arcane_shard"));
         assertTrue(manager.playerInventory("unknown-client").isEmpty());
@@ -395,6 +401,10 @@ class BedrockSessionManagerTest {
         PlayerEquipment savedEquipment = equipmentStorage.load("123456789").orElseThrow();
         assertEquals(new ItemStack("nexora:arcane_shard", 1, 64), savedEquipment.armor(0).orElseThrow());
         assertEquals(new ItemStack("nexora:arcane_shard", 3, 64), savedEquipment.offhand().orElseThrow());
+        assertEquals(new ItemStack("nexora:ember_staff", 1, 1),
+                savedEquipment.magicSlot(ru.nexora.inventory.EquipmentSlot.MAGIC_STAFF).orElseThrow());
+        assertEquals(new ItemStack("nexora:luck_talisman", 1, 1),
+                savedEquipment.magicSlot(ru.nexora.inventory.EquipmentSlot.TALISMAN).orElseThrow());
     }
 
     @Test

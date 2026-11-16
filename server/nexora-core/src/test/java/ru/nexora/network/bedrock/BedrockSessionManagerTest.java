@@ -595,8 +595,9 @@ class BedrockSessionManagerTest {
         out.write(119); // offhand
         out.write(0); // no flags
         out.write(0); // offhand slot
-        writeDescriptor(out, 0, 0);
-        writeDescriptor(out, runtimeItemId, count);
+        // The test player already has two items in the offhand stack.
+        writeDescriptor(out, runtimeItemId, 2);
+        writeDescriptor(out, runtimeItemId, count + 2);
         return out.toByteArray();
     }
 

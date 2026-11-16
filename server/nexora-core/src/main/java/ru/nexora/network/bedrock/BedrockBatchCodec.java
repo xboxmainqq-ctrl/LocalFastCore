@@ -158,6 +158,13 @@ public final class BedrockBatchCodec {
         return ByteBuffer.wrap(payload).order(ByteOrder.BIG_ENDIAN).getInt();
     }
 
+    /** Builds a PlayStatus packet. Status is a four-byte big-endian enum value. */
+    public static BedrockPacket createPlayStatus(int status) {
+        ByteBuffer body = ByteBuffer.allocate(Integer.BYTES).order(ByteOrder.BIG_ENDIAN);
+        body.putInt(status);
+        return new BedrockPacket(PLAY_STATUS_PACKET_ID, 0, 0, body.array());
+    }
+
     /** Builds NetworkSettings (packet 0x8F), to be sent before compression framing is enabled. */
     public static BedrockPacket createNetworkSettings(int compressionThreshold, int compressionAlgorithm) {
         if (compressionThreshold < 1 || compressionThreshold > 0xffff) {

@@ -29,7 +29,8 @@ public final class BedrockPlayerAuthInputCodec {
         if (actionCount > MAX_INPUT_ACTIONS) {
             throw new IllegalArgumentException("PlayerAuthInput has too many input actions");
         }
-        for (int i = 0; i < actionCount; i++) in.varInt32();
+        java.util.List<Integer> inputActions = new java.util.ArrayList<>(actionCount);
+        for (int i = 0; i < actionCount; i++) inputActions.add(in.varInt32());
 
         int inputMode = in.varUInt32();
         int playMode = in.varUInt32();
@@ -53,7 +54,8 @@ public final class BedrockPlayerAuthInputCodec {
         if (hasItemUse || hasItemStackRequest) {
             return new PlayerInput(pitch, yaw, x, y, z, motionX, motionZ, headYaw,
                     tick, true, inputMode, playMode, interactionModel,
-                    interactYaw, interactPitch, deltaX, deltaY, deltaZ, java.util.List.of());
+                    interactYaw, interactPitch, deltaX, deltaY, deltaZ,
+                    java.util.List.copyOf(inputActions), java.util.List.of());
         }
 
         java.util.List<BlockAction> blockActions = new java.util.ArrayList<>();
@@ -79,7 +81,8 @@ public final class BedrockPlayerAuthInputCodec {
 
         return new PlayerInput(pitch, yaw, x, y, z, motionX, motionZ, headYaw,
                 tick, optionalSectionsPresent, inputMode, playMode, interactionModel,
-                interactYaw, interactPitch, deltaX, deltaY, deltaZ, java.util.List.copyOf(blockActions));
+                interactYaw, interactPitch, deltaX, deltaY, deltaZ,
+                java.util.List.copyOf(inputActions), java.util.List.copyOf(blockActions));
     }
 
     public record PlayerInput(
@@ -90,8 +93,23 @@ public final class BedrockPlayerAuthInputCodec {
             int inputMode, int playMode, int interactionModel,
             float interactYaw, float interactPitch,
             float deltaX, float deltaY, float deltaZ,
+            java.util.List<Integer> inputActions,
             java.util.List<BlockAction> blockActions
     ) {
+        public boolean hasInputAction(int action) {
+            return inputActions.contains(action);
+        }
+    }
+
+    /** Protocol-2225 PlayerAuthInputData flags relevant to initial movement simulation. */
+    public static final class InputAction {
+        public static final int JUMPING = 6;
+        public static final int START_JUMPING = 31;
+        public static final int JUMP_PRESSED_RAW = 60;
+        public static final int JUMP_CURRENT_RAW = 61;
+
+        private InputAction() {
+        }
     }
 
     public record BlockAction(int action, int x, int y, int z, int face) {

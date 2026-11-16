@@ -18,6 +18,13 @@ class BedrockVanillaItemCatalogTest {
         assertEquals(64, registry.findByIdentifier("minecraft:iron_ingot").maxStackSize());
         assertEquals(884, registry.findByIdentifier("minecraft:glow_berries")
                 .networkDefinition().runtimeItemId());
+        assertEquals(346, registry.findByIdentifier("minecraft:iron_helmet")
+                .networkDefinition().runtimeItemId());
+        assertEquals(347, registry.findByIdentifier("minecraft:iron_chestplate")
+                .networkDefinition().runtimeItemId());
+        assertEquals(1, registry.findByIdentifier("minecraft:iron_chestplate").maxStackSize());
+        assertEquals(358, registry.findByIdentifier("minecraft:shield")
+                .networkDefinition().runtimeItemId());
 
         assertNull(registry.findByIdentifier("minecraft:air"));
         assertNull(registry.findByIdentifier("minecraft:apple")); // component-based; not yet catalogued

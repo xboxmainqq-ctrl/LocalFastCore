@@ -300,6 +300,13 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
                         BlockBreakService.Outcome outcome = BlockBreakService.breakBlock(
                                 world, action.position(), session.x, session.y, session.z);
                         if (outcome.broken()) {
+                            String drop = BlockDropTable.dropFor(outcome.previousState());
+                            if (drop != null) {
+                                entities.spawn(new WorldEntity(UUID.randomUUID(), WorldEntity.Type.ITEM,
+                                        drop, action.position().x() + 0.5d,
+                                        action.position().y() + 0.5d,
+                                        action.position().z() + 0.5d, 0.0d, -1));
+                            }
                             broadcastBlockUpdate(action.position(), BlockState.AIR);
                         }
                     }

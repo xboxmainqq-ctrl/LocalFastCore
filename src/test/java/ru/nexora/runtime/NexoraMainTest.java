@@ -167,11 +167,11 @@ class NexoraMainTest {
         runtime.server().start();
         try {
             NexoraWorldInfo info = runtime.worldInfo();
-            assertEquals("world", info.worldId());
+            assertEquals("nexora_rpg", info.worldId());
             assertEquals(-64, info.minY());
             assertEquals(320, info.maxYExclusive());
             assertEquals(0, info.spawnX());
-            World world = runtime.worlds().get("world").orElseThrow();
+            World world = runtime.worlds().get("nexora_rpg").orElseThrow();
             assertEquals(NexoraMain.findSpawnY(world), info.spawnY());
             assertEquals(0, info.spawnZ());
             assertEquals(20, info.tickRate());

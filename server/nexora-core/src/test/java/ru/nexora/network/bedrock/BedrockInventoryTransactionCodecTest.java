@@ -2,6 +2,8 @@ package ru.nexora.network.bedrock;
 
 import org.junit.jupiter.api.Test;
 import ru.nexora.inventory.InventoryTransactionService;
+import ru.nexora.inventory.PlayerInventory;
+import ru.nexora.inventory.ItemStack;
 
 import java.io.ByteArrayOutputStream;
 import java.util.List;
@@ -24,9 +26,13 @@ class BedrockInventoryTransactionCodecTest {
 
         assertEquals(0, decoded.transactionType());
         assertEquals(2, decoded.actions().size());
+        PlayerInventory inventory = new PlayerInventory();
+        inventory.setSlot(0, new ItemStack("nexora:mana_crystal", 10, 64));
         var result = new InventoryTransactionService().applyPlayerInventoryTransaction(
-                new ru.nexora.inventory.PlayerInventory(), decoded.actions());
-        assertEquals(InventoryTransactionService.Result.REJECTED_STALE_OR_UNSAFE, result);
+                inventory, decoded.actions());
+        assertEquals(InventoryTransactionService.Result.APPLIED, result);
+        assertEquals(6, inventory.getSlot(0).orElseThrow().count());
+        assertEquals(4, inventory.getSlot(1).orElseThrow().count());
     }
 
     @Test
@@ -80,7 +86,8 @@ class BedrockInventoryTransactionCodecTest {
                 () -> BedrockInventoryTransactionCodec.decode(
                         new BedrockPacket(0x1e, 0, 0, malformedBoolean), REGISTRY));
 
-        byte[] trailing = java.util.Arrays.copyOf(transaction(action(0, 0, 0, empty(), empty())), 1 + 1 + 1 + 1 + 1 + 1 + 8 + 1);
+        byte[] valid = transaction(action(0, 0, 0, empty(), empty()));
+        byte[] trailing = java.util.Arrays.copyOf(valid, valid.length + 1);
         trailing[trailing.length - 1] = 99;
         assertThrows(IllegalArgumentException.class,
                 () -> BedrockInventoryTransactionCodec.decode(

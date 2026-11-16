@@ -62,7 +62,7 @@ class PlayerCollisionResolverTest {
         for (int x = 0; x < 4; x++) {
             blocks.put(new BlockPosition(x, 5, 0), new BlockState("minecraft:stone"));
         }
-        world.loadChunk(new GeneratedChunk(new ChunkPosition(0, 0), blocks));
+        blocks.forEach(world::setBlock);
 
         PlayerCollisionResolver.Resolution result = PlayerCollisionResolver.resolve(
                 world, 1.5, 1.0, 0.5, 1.5, 4.0, 0.5);

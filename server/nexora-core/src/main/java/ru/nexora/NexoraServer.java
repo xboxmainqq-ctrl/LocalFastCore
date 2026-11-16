@@ -7,6 +7,8 @@ import ru.nexora.network.nethernet.NetherNetSignalingServer;
 import ru.nexora.network.nethernet.WebRtcSdpNegotiator;
 import ru.nexora.network.raknet.BedrockServerStatus;
 import ru.nexora.network.raknet.RakNetDiscoveryServer;
+import ru.nexora.world.FlatWorldGenerator;
+import ru.nexora.world.World;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -55,9 +57,13 @@ public final class NexoraServer {
         String dataDirectory = System.getenv().getOrDefault("NEXORA_DATA_DIR", "data");
         DefaultNetherNetIdentityService identityService =
                 new DefaultNetherNetIdentityService(Path.of(dataDirectory, "identity"));
+        World world = new World("NEXORA World", 0L, new FlatWorldGenerator());
         AtomicReference<WebRtcSdpNegotiator> negotiatorReference = new AtomicReference<>();
         BedrockSessionManager bedrockSessions = new BedrockSessionManager(
                 2225,
+                "1.26.62",
+                BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                world,
                 (networkId, channelLabel, frame) -> {
                     WebRtcSdpNegotiator active = negotiatorReference.get();
                     if (active == null) throw new IllegalStateException("WebRTC transport is not ready");
@@ -83,7 +89,7 @@ public final class NexoraServer {
                         motd,
                         2225,
                         "1.26.62",
-                        "NEXORA World",
+                        world.name(),
                         (int) Math.min(bedrockSessions.authenticatedPlayerCount(), maxPlayers),
                         maxPlayers,
                         0

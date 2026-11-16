@@ -35,10 +35,10 @@ class BedrockWorldStartupHandlerTest {
         ByteBuffer batch = BedrockBatchCompressionCodec.decodeAfterNetworkSettings(
                 connection.sent.get(0), NETWORK);
         List<BedrockGamePacket> packets = BedrockPacketBatchCodec.decodeUncompressed(batch);
-        assertEquals(List.of(11, 58, 58),
+        assertEquals(List.of(11, 162, 58, 58),
                 packets.stream().map(packet -> packet.header().packetId()).toList());
 
-        ByteBuffer firstSkeleton = packets.get(1).payloadBuffer();
+        ByteBuffer firstSkeleton = packets.get(2).payloadBuffer();
         assertEquals(0, BedrockBinary.readVarInt32(firstSkeleton));
         assertEquals(0, BedrockBinary.readVarInt32(firstSkeleton));
         assertEquals(0, BedrockBinary.readVarInt32(firstSkeleton));

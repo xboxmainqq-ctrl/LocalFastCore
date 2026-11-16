@@ -43,6 +43,7 @@ Official Mojang onboarding guide: https://mojang.github.io/bedrock-protocol-docs
 - Initial LevelChunk encoder: hashed block-state network IDs, version-9 sub-chunks, negative-height empty sections, 3D plains biome palettes and protocol-2225 chunk framing.
 - Sends a bounded 3x3 starter chunk area around the spawn after StartGame and waits for the client's SetLocalPlayerAsInitialized acknowledgement before reporting PlayerSpawn.
 - Bounded protocol-2225 PlayerAuthInput parser for movement snapshots; checks finite coordinates, world bounds, input tick order and implausible single-packet teleports before storing per-session position.
+- Incremental 3x3 chunk-window streaming as a player crosses chunk boundaries; updates NetworkChunkPublisherUpdate and sends only chunks not already in the overlapping window.
 - Initial server-authoritative world model: 24 vertical sections (-64..319), sparse chunk sections, negative block coordinates, and a deterministic flat starter platform.
 - Versioned world-chunk persistence with CRC32C integrity checks and atomic file replacement; loaded chunks are restored at startup and saved on shutdown.
 - Configurable periodic world autosave (default 300 seconds) with a final synchronous flush during graceful shutdown; set NEXORA_AUTOSAVE_SECONDS to change the interval.
@@ -54,7 +55,7 @@ The following list is intentionally conservative: a protocol stage is only consi
 
 - The main bootstrap now starts the NetherNet HTTP signaling endpoint and the WebRTC answerer alongside the legacy UDP discovery experiment.
 - NEXORA's signaling listener is plain HTTP; production TLS termination is provided by the documented Caddy reverse-proxy example. The application does not terminate TLS itself.
-- Only the initial 3x3 spawn area is sent. Dynamic chunk-radius streaming, chunk unloads, biome variation, block updates, server-side movement physics/collision, movement corrections, entity replication and inventory are not implemented. PlayerAuthInput is only a validated position snapshot at this stage. Player data persistence is not implemented. The world is still not playable until those gameplay paths and an Android-client end-to-end test are complete.
+- Chunk streaming currently uses a fixed 3x3 window; configurable view distance, explicit chunk unload handling, biome variation, block updates, server-side movement physics/collision, movement corrections, entity replication and inventory are not implemented. PlayerAuthInput is only a validated position snapshot at this stage. Player data persistence is not implemented. The world is still not playable until those gameplay paths and an Android-client end-to-end test are complete.
 - No general outbound gameplay-packet pipeline yet; only login, NetworkSettings, PlayStatus and empty resource-pack handshake responses are sent.
 - Guest/offline authentication is not supported; the current login path requires an authenticated Xbox Live GameServerToken.
 - No Android-client end-to-end connection test.

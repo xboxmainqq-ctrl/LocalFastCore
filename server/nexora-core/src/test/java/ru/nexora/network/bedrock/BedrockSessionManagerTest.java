@@ -5,6 +5,8 @@ import org.junit.jupiter.api.io.TempDir;
 import ru.nexora.network.nethernet.NetherNetClientIdentity;
 import ru.nexora.inventory.ItemStack;
 import ru.nexora.inventory.PlayerInventoryStorage;
+import ru.nexora.inventory.PlayerEquipment;
+import ru.nexora.inventory.PlayerEquipmentStorage;
 import ru.nexora.network.nethernet.NetherNetMessageFramer;
 import ru.nexora.world.PlayerDataStorage;
 import ru.nexora.world.PlayerData;

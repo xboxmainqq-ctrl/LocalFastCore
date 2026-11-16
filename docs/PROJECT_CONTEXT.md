@@ -157,3 +157,18 @@ The user explicitly changed the immediate priority: **finish the independently i
 5. Verify the server artifact and acceptance tests on CI, including fresh install, startup, world generation, save/restart and configuration validation.
 6. Only after the server milestone is verified, resume NEXORA Client work: connect to the dedicated server, then build visual/content editors and resource-pack workflows.
 7. Add the optional Bedrock compatibility gateway after the NEXORA client/server path is reliable.
+
+
+## Latest server foundation decision — Nukkit-MOT (2026-11-16)
+
+The user explicitly clarified that **Nukkit-MOT is the immediate server foundation for NEXORA**. The previous direction to build the first server milestone on the independent Standalone Runtime is superseded for the active server implementation.
+
+- Base server: upstream [MemoriesOfTime/Nukkit-MOT](https://github.com/MemoriesOfTime/Nukkit-MOT), default branch `master`.
+- Baseline inspected on 2026-11-16: upstream commit `3258c14baf71792c289519d623ef14e7cc02dd37` (Netty 4.2.20.Final / NetherNet stack update).
+- NEXORA must maintain its own fork/branch and gradually customize the server while retaining Nukkit-MOT's Bedrock networking and hosting foundation.
+- Do not write a replacement server runtime as the primary server. Existing standalone NEXORA runtime code remains preserved as a separate experiment/reference until a deliberate migration decision; do not silently delete it or claim its resource-pack pipeline is already running on Nukkit-MOT.
+- First establish a reproducible NEXORA build based on a pinned Nukkit-MOT revision, then add NEXORA branding/configuration and a clean extension/plugin layer. After that, move NEXORA systems into server-side modules and only patch core internals where the plugin API is insufficient.
+- The Nukkit-MOT upstream repository is currently readable but the connected GitHub account has read-only access to it. Do not claim a fork or upstream modification has been created. The NEXORA-owned repository/branch must host all changes.
+- Before redistributing modified Nukkit-MOT builds, preserve required LGPL-3.0 notices, source availability and corresponding license obligations. Do not copy proprietary Minecraft assets or code.
+- Resource packs, login negotiation and other Bedrock-facing work must be implemented against Nukkit-MOT's actual APIs/protocol pipeline, not the standalone runtime classes.
+- Acceptance gate: build the NEXORA/Nukkit-MOT server artifact in CI, run it on McpeHost, and verify connection from retail Bedrock 1.26.60. Until then, describe compatibility as unverified.

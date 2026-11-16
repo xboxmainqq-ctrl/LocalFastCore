@@ -10,34 +10,34 @@ public final class ChunkSection {
 
     private final byte[] blocks = new byte[VOLUME];
 
-    public BlockType get(int localX, int localY, int localZ) {
+    public synchronized BlockType get(int localX, int localY, int localZ) {
         return BlockType.byInternalId(Byte.toUnsignedInt(blocks[index(localX, localY, localZ)]));
     }
 
-    public void set(int localX, int localY, int localZ, BlockType type) {
+    public synchronized void set(int localX, int localY, int localZ, BlockType type) {
         blocks[index(localX, localY, localZ)] =
                 (byte) Objects.requireNonNull(type, "type").internalId();
     }
 
-    public boolean isEmpty() {
+    public synchronized boolean isEmpty() {
         for (byte block : blocks) {
             if (block != 0) return false;
         }
         return true;
     }
 
-    public byte[] copyRawBlocks() {
+    public synchronized byte[] copyRawBlocks() {
         return blocks.clone();
     }
 
-    public void loadRawBlocks(byte[] raw) {
+    public synchronized void loadRawBlocks(byte[] raw) {
         Objects.requireNonNull(raw, "raw");
         if (raw.length != VOLUME) throw new IllegalArgumentException("A chunk section must contain 4096 blocks");
         for (byte value : raw) BlockType.byInternalId(Byte.toUnsignedInt(value));
         System.arraycopy(raw, 0, blocks, 0, VOLUME);
     }
 
-    public void clear() {
+    public synchronized void clear() {
         Arrays.fill(blocks, (byte) 0);
     }
 

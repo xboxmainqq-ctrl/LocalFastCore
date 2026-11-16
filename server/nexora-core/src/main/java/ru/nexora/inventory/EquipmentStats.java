@@ -37,12 +37,19 @@ public final class EquipmentStats {
         Objects.requireNonNull(equipment, "equipment");
         Objects.requireNonNull(registry, "registry");
         EnumMap<EquipmentAttribute, Double> totals = new EnumMap<>(EquipmentAttribute.class);
+        for (var optional : equipment.armorSnapshot()) {
+            optional.ifPresent(stack -> addAttributes(totals, registry, stack));
+        }
+        equipment.offhand().ifPresent(stack -> addAttributes(totals, registry, stack));
         for (var optional : equipment.magicSnapshot()) {
-            if (optional.isEmpty()) continue;
-            ItemStack stack = optional.orElseThrow();
-            registry.attributes(stack.itemId()).forEach(
-                    (attribute, value) -> totals.merge(attribute, value, Double::sum));
+            optional.ifPresent(stack -> addAttributes(totals, registry, stack));
         }
         return new EquipmentStats(totals);
+    }
+
+    private static void addAttributes(EnumMap<EquipmentAttribute, Double> totals,
+                                      EquipmentSlotRegistry registry, ItemStack stack) {
+        registry.attributes(stack.itemId()).forEach(
+                (attribute, value) -> totals.merge(attribute, value, Double::sum));
     }
 }

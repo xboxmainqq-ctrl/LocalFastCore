@@ -160,6 +160,24 @@ class BedrockSessionManagerTest {
         BedrockPacket playerSpawn = decodeOutbound(outboundFrames.get(21), true);
         assertEquals(BedrockBatchCodec.PLAY_STATUS_PACKET_ID, playerSpawn.packetId());
         assertEquals(3, ByteBuffer.wrap(playerSpawn.payload()).order(ByteOrder.BIG_ENDIAN).getInt());
+        assertEquals(0.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
+        assertEquals(65.0f, manager.playerPosition("authenticated-client").orElseThrow().y());
+
+        BedrockPacket movement = new BedrockPacket(0x90, 0, 0,
+                BedrockPlayerAuthInputCodecTest.movementPayload(1.0f, 65.0f, 1.0f, 30.0f, 1L, false));
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(movement), true, 256));
+        BedrockSessionManager.PlayerPosition moved = manager.playerPosition("authenticated-client").orElseThrow();
+        assertEquals(1.0f, moved.x());
+        assertEquals(1.0f, moved.z());
+        assertEquals(30.0f, moved.yaw());
+        assertEquals(1L, moved.tick());
+
+        BedrockPacket implausibleTeleport = new BedrockPacket(0x90, 0, 0,
+                BedrockPlayerAuthInputCodecTest.movementPayload(100.0f, 65.0f, 100.0f, 90.0f, 2L, false));
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(implausibleTeleport), true, 256));
+        assertEquals(1.0f, manager.playerPosition("authenticated-client").orElseThrow().x());
 
         assertThrows(SecurityException.class, () -> sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256)));

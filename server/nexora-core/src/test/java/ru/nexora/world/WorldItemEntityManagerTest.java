@@ -43,8 +43,11 @@ class WorldItemEntityManagerTest {
         WorldItemEntityManager manager = new WorldItemEntityManager();
         WorldItemEntity entity = manager.spawn(new ItemStack("minecraft:diamond", 2, 64),
                 0, 65, 0, 0, 0, 0, 1000, 0, null);
-        PlayerInventory inventory = new PlayerInventory(1);
+        PlayerInventory inventory = new PlayerInventory(9);
         inventory.setSlot(0, new ItemStack("minecraft:diamond", 63, 64));
+        for (int slot = 1; slot < inventory.size(); slot++) {
+            inventory.setSlot(slot, new ItemStack("minecraft:iron_ingot", 64, 64));
+        }
 
         assertFalse(manager.pickup(entity.runtimeId(), inventory, "player-xuid", 0, 65, 0, 1001));
         assertEquals(63, inventory.count("minecraft:diamond"));

@@ -250,7 +250,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     savePlayer(state);
                     saveInventory(state);
                     saveEquipment(state);
-                    saveEquipment(state);
                 } catch (IOException exception) {
                     System.err.println("NEXORA: unable to save disconnected player: " + exception.getMessage());
                 }
@@ -267,6 +266,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 try {
                     savePlayer(state);
                     saveInventory(state);
+                    saveEquipment(state);
                 } catch (IOException exception) {
                     if (failure == null) failure = exception;
                     else failure.addSuppressed(exception);

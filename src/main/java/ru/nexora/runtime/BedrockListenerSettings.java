@@ -2,7 +2,11 @@ package ru.nexora.runtime;
 
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
+import java.io.IOException;
+import java.io.Reader;
+import java.nio.file.Files;
 import java.util.Objects;
+import java.util.Properties;
 
 /**
  * Validated bind and identity settings for the Bedrock NetherNet listener.
@@ -43,6 +47,36 @@ public record BedrockListenerSettings(
     public static BedrockListenerSettings disabled() {
         return new BedrockListenerSettings(false, "0.0.0.0", 19132, 0,
                 Path.of("nethernet-identity.pem"), true);
+    }
+
+
+    /**
+     * Reads the authenticated public Bedrock listener from server.properties.
+     * Missing settings preserve the safe offline default.
+     */
+    public static BedrockListenerSettings loadFromProperties(Path file) throws IOException {
+        Objects.requireNonNull(file, "file");
+        if (Files.notExists(file)) return disabled();
+        Properties properties = new Properties();
+        try (Reader reader = Files.newBufferedReader(file)) {
+            properties.load(reader);
+        }
+        String enabledValue = properties.getProperty("bedrock.network.enabled", "false").trim();
+        if (!"true".equalsIgnoreCase(enabledValue) && !"false".equalsIgnoreCase(enabledValue)) {
+            throw new IOException("bedrock.network.enabled must be true or false in " + file);
+        }
+        if (!Boolean.parseBoolean(enabledValue)) return disabled();
+        try {
+            String bind = properties.getProperty("bedrock.bind-address", "0.0.0.0");
+            int port = Integer.parseInt(properties.getProperty("bedrock.port", "19132").trim());
+            int icePort = Integer.parseInt(properties.getProperty("bedrock.ice-port", "0").trim());
+            Path identity = Path.of(properties.getProperty(
+                    "bedrock.identity-file", "nethernet-identity.pem").trim());
+            return new BedrockListenerSettings(true, bind, port, icePort, identity, true);
+        } catch (RuntimeException invalid) {
+            throw new IOException("Invalid Bedrock listener setting in " + file + ": "
+                    + invalid.getMessage(), invalid);
+        }
     }
 
     public int mediaUdpPort() {

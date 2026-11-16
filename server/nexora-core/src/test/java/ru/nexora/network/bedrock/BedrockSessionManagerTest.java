@@ -142,6 +142,77 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void consumesFoodOnlyAfterValidatedItemRelease() throws Exception {
+        PlayerDataStorage profiles = new PlayerDataStorage(temporaryDirectory.resolve("food-profiles"));
+        profiles.save(new PlayerData("food-xuid", "FoodPlayer", "NEXORA World",
+                0.5f, 65.0f, 0.5f, 0, 0, 1,
+                new PlayerVitals(20.0f, 10, 2.0f, 0.0f)));
+
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
+        generator.initialize(new ECGenParameterSpec("secp384r1"));
+        KeyPair clientKey = generator.generateKeyPair();
+        List<byte[]> outboundFrames = new ArrayList<>();
+        AtomicLong clock = new AtomicLong();
+        ru.nexora.world.World world = new ru.nexora.world.World(
+                "NEXORA World", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                world, profiles, null, null,
+                (networkId, label, frame) -> outboundFrames.add(frame), event -> {}, clock::get);
+        manager.enableServerAuthoritativeMovement();
+        manager.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
+        manager.onIdentity("food-client", new NetherNetClientIdentity(
+                "food-game-token", clientKey.getPublic().getEncoded(), "food-xuid",
+                "FoodPlayer", "food-playfab", "20CA2", null));
+
+        byte[] protocol = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(2225).array();
+        BedrockPacket settings = new BedrockPacket(
+                BedrockBatchCodec.REQUEST_NETWORK_SETTINGS_PACKET_ID, 0, 0, protocol);
+        sendClientBatch(manager, "food-client", BedrockBatchCodec.encode(List.of(settings), false, 256));
+
+        String rawClientDataToken = signClientDataToken(clientKey);
+        String certificate = "{\\"chain\\":[]}";
+        String chainJson = "{\\"Certificate\\":\\"" + certificate.replace("\\", "\\\\")
+                .replace("\\"", "\\\\"")
+                + "\\",\\"AuthenticationType\\":0,\\"Token\\":\\"food-game-token\\"}";
+        BedrockPacket login = new BedrockPacket(1, 0, 0,
+                loginPayload(2225, connectionRequest(chainJson, rawClientDataToken)));
+        sendClientBatch(manager, "food-client", BedrockBatchCodec.encode(List.of(login), true, 256));
+        manager.playerInventory("food-client").orElseThrow()
+                .setSlot(0, new ItemStack("minecraft:bread", 1, 64));
+        sendClientBatch(manager, "food-client", BedrockBatchCodec.encode(List.of(
+                new BedrockPacket(BedrockBatchCodec.CLIENT_TO_SERVER_HANDSHAKE_PACKET_ID, 0, 0, new byte[0])
+        ), true, 256));
+        sendClientBatch(manager, "food-client", BedrockBatchCodec.encode(
+                List.of(resourcePackResponse(2, "downloadingfinished")), true, 256));
+        sendClientBatch(manager, "food-client", BedrockBatchCodec.encode(
+                List.of(resourcePackResponse(3, "resourcepackstackfinished")), true, 256));
+        sendClientBatch(manager, "food-client", BedrockBatchCodec.encode(
+                List.of(new BedrockPacket(0x71, 0, 0, new byte[] {1})), true, 256));
+
+        assertEquals(10, manager.playerVitals("food-client").orElseThrow().hunger());
+        BedrockPacket startEating = new BedrockPacket(0x90, 0, 0,
+                BedrockPlayerAuthInputCodecTest.foodUseMovementPayload(
+                        0.5f, 65.0f, 0.5f, 0, 1L, 0, 261, 1,
+                        0.5f, 65.0f, 0.5f));
+        sendClientBatch(manager, "food-client", BedrockBatchCodec.encode(List.of(startEating), true, 256));
+        assertEquals(1, manager.playerInventory("food-client").orElseThrow().count("minecraft:bread"));
+        assertEquals(10, manager.playerVitals("food-client").orElseThrow().hunger());
+
+        int beforeConsume = outboundFrames.size();
+        BedrockPacket finishEating = new BedrockPacket(0x1e, 0, 0,
+                itemReleasePayload(1, 0, 261, 1, 0.5f, 66.62f, 0.5f));
+        sendClientBatch(manager, "food-client", BedrockBatchCodec.encode(List.of(finishEating), true, 256));
+        assertEquals(0, manager.playerInventory("food-client").orElseThrow().count("minecraft:bread"));
+        assertEquals(15, manager.playerVitals("food-client").orElseThrow().hunger());
+        assertEquals(8.0f, manager.playerVitals("food-client").orElseThrow().saturation());
+        assertTrue(outboundFrames.subList(beforeConsume, outboundFrames.size()).stream()
+                .flatMap(frame -> decodeOutboundAll(frame, true).stream())
+                .anyMatch(packet -> packet.packetId() == BedrockItemUseCompletionCodec.PACKET_ID));
+        manager.close();
+    }
+
+    @Test
     void serverAuthoritativeMovementUsesInputAndCorrectsClientPrediction() throws Exception {
         KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
         generator.initialize(new ECGenParameterSpec("secp384r1"));
@@ -705,6 +776,39 @@ class BedrockSessionManagerTest {
         assertEquals(4, Byte.toUnsignedInt(spawnChunk.payload()[0])); // chunk X = 2
         assertEquals(3, Byte.toUnsignedInt(spawnChunk.payload()[1])); // chunk Z = -2
         manager.close();
+    }
+
+    private static byte[] itemReleasePayload(
+            int actionType, int slot, int runtimeItemId, int count,
+            float headX, float headY, float headZ
+    ) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        writeVarInt(out, 0); // LegacyRequestId
+        writeVarInt(out, 4); // ItemRelease transaction
+        writeVarUInt(out, 0); // no inventory actions
+        writeVarInt(out, actionType);
+        writeVarInt(out, slot);
+        writeLittleEndianShort(out, runtimeItemId);
+        writeLittleEndianShort(out, count);
+        writeVarUInt(out, 0); // aux
+        out.write(0); // no StackNetId
+        writeVarUInt(out, 0); // block runtime ID
+        writeVarUInt(out, 0); // user data
+        writeFloat32(out, headX); writeFloat32(out, headY); writeFloat32(out, headZ);
+        return out.toByteArray();
+    }
+
+    private static void writeLittleEndianShort(ByteArrayOutputStream out, int value) {
+        out.write(value & 0xff);
+        out.write((value >>> 8) & 0xff);
+    }
+
+    private static void writeFloat32(ByteArrayOutputStream out, float value) {
+        int bits = Float.floatToIntBits(value);
+        out.write(bits & 0xff);
+        out.write((bits >>> 8) & 0xff);
+        out.write((bits >>> 16) & 0xff);
+        out.write((bits >>> 24) & 0xff);
     }
 
     private static byte[] playerActionPayload(long runtimeEntityId, int action) {

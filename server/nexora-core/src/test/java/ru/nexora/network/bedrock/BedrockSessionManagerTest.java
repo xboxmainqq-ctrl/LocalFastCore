@@ -148,6 +148,7 @@ class BedrockSessionManagerTest {
         AtomicLong monotonicClock = new AtomicLong();
         PlayerDataStorage playerStorage = new PlayerDataStorage(temporaryDirectory.resolve("players"));
         PlayerInventoryStorage inventoryStorage = new PlayerInventoryStorage(temporaryDirectory.resolve("inventories"));
+        PlayerEquipmentStorage equipmentStorage = new PlayerEquipmentStorage(temporaryDirectory.resolve("equipment"));
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225,
                 "1.26.62",
@@ -155,6 +156,7 @@ class BedrockSessionManagerTest {
                 new ru.nexora.world.World("NEXORA World", 0L, new ru.nexora.world.FlatWorldGenerator()),
                 playerStorage,
                 inventoryStorage,
+                equipmentStorage,
                 (networkId, label, frame) -> outboundFrames.add(frame),
                 event -> {},
                 monotonicClock::get);
@@ -192,6 +194,10 @@ class BedrockSessionManagerTest {
         assertTrue(inventory.heldItem().isEmpty());
         inventory.setSlot(0, new ItemStack("nexora:arcane_shard", 3, 64));
         inventory.setSlot(1, new ItemStack("nexora:arcane_shard", 1, 64));
+        manager.playerEquipment("authenticated-client").orElseThrow()
+                .setArmor(0, new ItemStack("nexora:arcane_shard", 1, 64));
+        manager.playerEquipment("authenticated-client").orElseThrow()
+                .setOffhand(new ItemStack("nexora:arcane_shard", 2, 64));
         assertEquals(4, manager.playerInventory("authenticated-client").orElseThrow()
                 .count("nexora:arcane_shard"));
         assertTrue(manager.playerInventory("unknown-client").isEmpty());
@@ -243,8 +249,11 @@ class BedrockSessionManagerTest {
         assertEquals(0x31, decodeOutbound(outboundFrames.get(22), true).packetId());
         List<BedrockPacket> initialInventoryBatch = BedrockBatchCodec.decode(
                 reassemble(List.of(outboundFrames.get(22))), true);
-        assertEquals(2, initialInventoryBatch.size());
+        assertEquals(5, initialInventoryBatch.size());
         assertEquals(0x1f, initialInventoryBatch.get(1).packetId());
+        assertEquals(0x31, initialInventoryBatch.get(2).packetId()); // armor container
+        assertEquals(0x31, initialInventoryBatch.get(3).packetId()); // offhand container
+        assertEquals(0x32, initialInventoryBatch.get(4).packetId()); // cursor slot
         BedrockPacket playerSpawn = decodeOutbound(outboundFrames.get(21), true);
         assertEquals(BedrockBatchCodec.PLAY_STATUS_PACKET_ID, playerSpawn.packetId());
         assertEquals(3, ByteBuffer.wrap(playerSpawn.payload()).order(ByteOrder.BIG_ENDIAN).getInt());
@@ -367,6 +376,9 @@ class BedrockSessionManagerTest {
         assertEquals(30.0f, savedPlayer.yaw());
         var savedInventory = inventoryStorage.load("123456789").orElseThrow();
         assertEquals(4, savedInventory.count("nexora:arcane_shard"));
+        PlayerEquipment savedEquipment = equipmentStorage.load("123456789").orElseThrow();
+        assertEquals(new ItemStack("nexora:arcane_shard", 1, 64), savedEquipment.armor(0).orElseThrow());
+        assertEquals(new ItemStack("nexora:arcane_shard", 2, 64), savedEquipment.offhand().orElseThrow());
     }
 
     @Test

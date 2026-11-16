@@ -1,6 +1,9 @@
 package ru.nexora.world;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -12,13 +15,21 @@ public final class World {
     private final int spawnX;
     private final int spawnY;
     private final int spawnZ;
+    private final WorldStorage storage;
     private final ConcurrentMap<Long, WorldChunk> chunks = new ConcurrentHashMap<>();
 
     public World(String name, long seed, WorldGenerator generator) {
-        this(name, seed, generator, 0, 65, 0);
+        this(name, seed, generator, 0, 65, 0, null);
     }
 
     public World(String name, long seed, WorldGenerator generator, int spawnX, int spawnY, int spawnZ) {
+        this(name, seed, generator, spawnX, spawnY, spawnZ, null);
+    }
+
+    public World(
+            String name, long seed, WorldGenerator generator,
+            int spawnX, int spawnY, int spawnZ, WorldStorage storage
+    ) {
         if (name == null || name.isBlank()) throw new IllegalArgumentException("World name must not be blank");
         if (spawnY <= WorldChunk.MIN_Y || spawnY > WorldChunk.MAX_Y) {
             throw new IllegalArgumentException("Spawn Y must be inside the Overworld build height");
@@ -29,6 +40,7 @@ public final class World {
         this.spawnX = spawnX;
         this.spawnY = spawnY;
         this.spawnZ = spawnZ;
+        this.storage = storage;
     }
 
     public String name() {
@@ -46,6 +58,14 @@ public final class World {
     public WorldChunk getChunk(int chunkX, int chunkZ) {
         long key = chunkKey(chunkX, chunkZ);
         return chunks.computeIfAbsent(key, ignored -> {
+            if (storage != null) {
+                try {
+                    Optional<WorldChunk> stored = storage.loadChunk(chunkX, chunkZ);
+                    if (stored.isPresent()) return stored.get();
+                } catch (IOException exception) {
+                    throw new UncheckedIOException("Unable to load NEXORA chunk " + chunkX + "," + chunkZ, exception);
+                }
+            }
             WorldChunk chunk = new WorldChunk(chunkX, chunkZ);
             generator.generate(chunk, seed);
             return chunk;
@@ -70,6 +90,11 @@ public final class World {
 
     public int loadedChunkCount() {
         return chunks.size();
+    }
+
+    public void saveAll() throws IOException {
+        if (storage == null) return;
+        for (WorldChunk chunk : chunks.values()) storage.saveChunk(chunk);
     }
 
     private static long chunkKey(int x, int z) {

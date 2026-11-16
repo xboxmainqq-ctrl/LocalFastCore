@@ -118,7 +118,7 @@ class NexoraMainTest {
                 bedrock.bind-address=127.0.0.1
                 bedrock.port=%d
                 bedrock.ice-port=0
-                bedrock.identity-file=keys/nexora.pem
+                bedrock.identity-file=nethernet-identity.pem
                 """.formatted(port));
 
         NexoraMain.RuntimeHandle runtime = NexoraMain.createRuntime(
@@ -127,7 +127,7 @@ class NexoraMainTest {
         assertTrue(runtime.server().moduleIds().contains("bedrock-nethernet"));
         runtime.server().start();
         try {
-            assertTrue(Files.isRegularFile(dataDirectory.resolve("keys/nexora.pem")));
+            assertTrue(Files.isRegularFile(dataDirectory.resolve("nethernet-identity.pem")));
             assertEquals(ServerState.RUNNING, runtime.server().state());
         } finally {
             runtime.server().stop();

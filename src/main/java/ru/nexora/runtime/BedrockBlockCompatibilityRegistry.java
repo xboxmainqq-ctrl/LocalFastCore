@@ -33,7 +33,7 @@ public final class BedrockBlockCompatibilityRegistry {
                 "minecraft:snow_block", "minecraft:water", "minecraft:oak_log", "minecraft:oak_leaves",
                 "minecraft:birch_log", "minecraft:birch_leaves", "minecraft:dark_oak_log",
                 "minecraft:dark_oak_leaves", "minecraft:spruce_log", "minecraft:spruce_leaves",
-                "minecraft:dead_bush", "minecraft:oak_log", "minecraft:spruce_log", "minecraft:birch_log", "minecraft:dark_oak_log").stream().map(BedrockBlockCompatibilityRegistry::vanilla).toList());
+                "minecraft:dead_bush").stream().map(BedrockBlockCompatibilityRegistry::vanilla).toList());
     }
 
     private static BedrockBlockMapping vanilla(String identifier) {

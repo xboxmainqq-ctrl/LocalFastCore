@@ -391,6 +391,7 @@ final class ChunkPreviewView extends GLSurfaceView {
             playerY = y;
             playerZ = z;
             verticalVelocity = 0f;
+            lastPhysicsTickNanos = System.nanoTime();
             playerInitialized = true;
         }
 
@@ -398,6 +399,8 @@ final class ChunkPreviewView extends GLSurfaceView {
             playerX = x;
             playerY = y;
             playerZ = z;
+            verticalVelocity = 0f;
+            lastPhysicsTickNanos = System.nanoTime();
             playerInitialized = true;
         }
 
@@ -537,28 +540,32 @@ final class ChunkPreviewView extends GLSurfaceView {
         public void onDrawFrame(GL10 gl) {
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
             if (meshDirty) rebuildMesh();
-            if (playerInitialized && Math.abs(verticalVelocity) > 0.0001f) {
+            if (playerInitialized && (!hasGroundBelow() || verticalVelocity > 0.0001f)) {
                 long now = System.nanoTime();
                 if (now - lastPhysicsTickNanos >= 50_000_000L) {
                     float previousPlayerY = playerY;
+                    // Fixed-step gravity keeps movement consistent across device frame rates.
+                    verticalVelocity = Math.max(-0.65f, verticalVelocity - 0.035f);
                     float nextY = playerY + verticalVelocity;
                     if (canOccupy(playerX, nextY, playerZ)) {
                         playerY = nextY;
-                        verticalVelocity -= 0.035f;
                     } else {
+                        // A downward collision means the player has landed on a solid voxel.
                         verticalVelocity = 0f;
                     }
-                    if (playerY < -64f) verticalVelocity = 0f;
+                    if (playerY < -64f) {
+                        playerY = -64f;
+                        verticalVelocity = 0f;
+                    }
                     lastPhysicsTickNanos = now;
                     if (Math.abs(playerY - previousPlayerY) > 0.0001f) {
                         ChunkPreviewView.this.publishPlayerPosition();
                     }
-                    if (Math.abs(verticalVelocity) > 0.0001f) {
-                        ChunkPreviewView.this.requestRender();
-                    }
-                } else {
-                    ChunkPreviewView.this.requestRender();
                 }
+                // Keep the on-demand surface alive only while airborne.
+                ChunkPreviewView.this.postDelayed(ChunkPreviewView.this::requestRender, 50L);
+            } else if (playerInitialized && verticalVelocity < 0f) {
+                verticalVelocity = 0f;
             }
             if (vertexBuffer == null || vertexCount == 0 || program == 0 || textureProgram == 0) return;
 

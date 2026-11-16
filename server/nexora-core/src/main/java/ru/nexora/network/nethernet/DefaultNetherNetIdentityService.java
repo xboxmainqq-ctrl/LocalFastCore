@@ -19,14 +19,12 @@ import java.security.GeneralSecurityException;
 import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
-import java.security.MessageDigest;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.Signature;
 import java.security.interfaces.ECPublicKey;
 import java.security.interfaces.RSAPublicKey;
 import java.security.spec.ECGenParameterSpec;
-import java.security.spec.ECPublicKeySpec;
 import java.security.spec.RSAPublicKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.time.Duration;
@@ -34,8 +32,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -331,6 +327,15 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
             if (!(publicKey instanceof ECPublicKey ecKey)
                     || ecKey.getParams().getCurve().getField().getFieldSize() != 384) {
                 throw new GeneralSecurityException("Stored NetherNet identity key is not P-384");
+            }
+            Signature consistencyCheck = Signature.getInstance("SHA384withECDSA");
+            consistencyCheck.initSign(privateKey);
+            consistencyCheck.update("NEXORA-NetherNet-key-check".getBytes(StandardCharsets.US_ASCII));
+            byte[] proof = consistencyCheck.sign();
+            consistencyCheck.initVerify(publicKey);
+            consistencyCheck.update("NEXORA-NetherNet-key-check".getBytes(StandardCharsets.US_ASCII));
+            if (!consistencyCheck.verify(proof)) {
+                throw new GeneralSecurityException("Stored NetherNet public and private keys do not match");
             }
             return new KeyPair(publicKey, privateKey);
         }

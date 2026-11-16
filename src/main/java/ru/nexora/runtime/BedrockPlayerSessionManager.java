@@ -448,10 +448,17 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
         });
     }
 
+    private long playerRuntimeEntityId(PlayerSession session) {
+        long runtimeId = UUID.nameUUIDFromBytes(
+                session.player.identityId().getBytes(StandardCharsets.UTF_8))
+                .getLeastSignificantBits() & Long.MAX_VALUE;
+        return runtimeId == 0L ? 1L : runtimeId;
+    }
+
     private void broadcastItemTaken(WorldEntity item, PlayerSession collector) {
         Long itemRuntimeId = runtimeEntityIds.get(item.id());
         if (itemRuntimeId == null) return;
-        long collectorRuntimeId = runtimeEntityId(collector.playerId);
+        long collectorRuntimeId = playerRuntimeEntityId(collector);
         for (PlayerSession viewer : new ArrayList<>(byConnection.values())) {
             if (viewer.closed.get() || !viewer.connection.isOpen()
                     || !viewer.visibleItemEntities.remove(item.id())) continue;

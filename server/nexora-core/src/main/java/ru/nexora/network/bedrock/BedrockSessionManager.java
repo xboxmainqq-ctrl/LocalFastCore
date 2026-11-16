@@ -617,7 +617,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         form.put("content", description.toString());
         com.fasterxml.jackson.databind.node.ArrayNode buttons = form.putArray("buttons");
         for (EquipmentSlot slot : EquipmentSlot.values()) {
-            String item = state.equipment.magicSlot(slot).map(ru.nexora.inventory.ItemStack::itemId)
+            String item = state.equipment.magicSlot(slot).map(stack -> equipmentItemDisplayName(stack.itemId()))
                     .orElse("пусто");
             buttons.addObject().put("text", slot.displayName() + " — " + item);
         }
@@ -636,7 +636,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             ru.nexora.inventory.ItemStack stack = optional.orElseThrow();
             if (!equipmentSlotRegistry.allows(stack, slot)) continue;
             inventorySlots.add(i);
-            labels.add("Инвентарь " + (i + 1) + " — " + stack.itemId());
+            labels.add("Инвентарь " + (i + 1) + " — " + equipmentItemDisplayName(stack.itemId()));
         }
 
         boolean hasUnequip = state.equipment.magicSlot(slot).isPresent();
@@ -644,7 +644,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         form.put("type", "form");
         form.put("title", "Экипировка — " + slot.displayName());
         String current = state.equipment.magicSlot(slot)
-                .map(ru.nexora.inventory.ItemStack::itemId).orElse("пусто");
+                .map(stack -> equipmentItemDisplayName(stack.itemId())).orElse("пусто");
         StringBuilder description = new StringBuilder("Сейчас: ").append(current);
         if (status != null && !status.isBlank()) description.append("\n").append(status);
         if (labels.isEmpty()) description.append("\nВ инвентаре нет подходящих предметов.");
@@ -658,6 +658,25 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
         sendEquipmentForm(networkId, state, form, new PendingEquipmentForm(
                 0, EquipmentFormKind.SLOT, slot, List.copyOf(inventorySlots), hasUnequip));
+    }
+
+    private static String equipmentItemDisplayName(String itemId) {
+        return switch (itemId) {
+            case "minecraft:blaze_rod" -> "Огненный жезл (временный предмет)";
+            case "minecraft:gold_nugget" -> "Золотое кольцо (временный предмет)";
+            case "minecraft:nautilus_shell" -> "Амулет моря (временный предмет)";
+            case "minecraft:amethyst_shard" -> "Талисман аметиста (временный предмет)";
+            case "minecraft:heart_of_the_sea" -> "Сердце моря — артефакт";
+            case "minecraft:ghast_tear" -> "Слеза гаста — артефакт";
+            case "nexora:ember_staff" -> "Посох углей";
+            case "nexora:power_ring" -> "Кольцо силы";
+            case "nexora:ward_ring" -> "Кольцо защиты";
+            case "nexora:moon_amulet" -> "Лунный амулет";
+            case "nexora:luck_talisman" -> "Талисман удачи";
+            case "nexora:ancient_eye" -> "Око древних";
+            case "nexora:phoenix_core" -> "Ядро феникса";
+            default -> itemId;
+        };
     }
 
     private void sendEquipmentForm(

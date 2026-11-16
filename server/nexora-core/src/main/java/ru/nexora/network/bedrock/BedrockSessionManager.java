@@ -454,6 +454,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private boolean resourcePackStackSent;
         private volatile boolean resourcePacksCompleted;
         private boolean gameStarted;
+        private boolean clientInitialized;
         private long entityId;
         private boolean rejected;
         private int clientProtocol;

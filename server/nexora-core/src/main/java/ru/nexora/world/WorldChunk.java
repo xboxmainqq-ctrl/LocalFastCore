@@ -17,13 +17,8 @@ public final class WorldChunk {
         this.chunkZ = chunkZ;
     }
 
-    public int chunkX() {
-        return chunkX;
-    }
-
-    public int chunkZ() {
-        return chunkZ;
-    }
+    public int chunkX() { return chunkX; }
+    public int chunkZ() { return chunkZ; }
 
     public synchronized BlockType getBlock(int localX, int worldY, int localZ) {
         validateLocal(localX, localZ);
@@ -47,14 +42,31 @@ public final class WorldChunk {
         }
     }
 
+    /**
+     * Returns a detached section copy. Mutating the returned value cannot bypass
+     * the chunk's synchronization or alter persisted/networked world state.
+     */
     public synchronized ChunkSection section(int index) {
         if (index < 0 || index >= SECTION_COUNT) throw new IndexOutOfBoundsException("Invalid section index");
-        return sections[index];
+        byte[] raw = sections[index] == null ? null : sections[index].copyRawBlocks();
+        if (raw == null) return null;
+        ChunkSection copy = new ChunkSection();
+        copy.loadRawBlocks(raw);
+        return copy;
     }
 
     public synchronized byte[] copySectionRaw(int index) {
         if (index < 0 || index >= SECTION_COUNT) throw new IndexOutOfBoundsException("Invalid section index");
         return sections[index] == null ? null : sections[index].copyRawBlocks();
+    }
+
+    /** Takes one consistent, detached snapshot for persistence or packet encoding. */
+    public synchronized byte[][] copySectionsRaw() {
+        byte[][] snapshot = new byte[SECTION_COUNT][];
+        for (int index = 0; index < SECTION_COUNT; index++) {
+            snapshot[index] = sections[index] == null ? null : sections[index].copyRawBlocks();
+        }
+        return snapshot;
     }
 
     public synchronized void loadSectionRaw(int index, byte[] raw) {

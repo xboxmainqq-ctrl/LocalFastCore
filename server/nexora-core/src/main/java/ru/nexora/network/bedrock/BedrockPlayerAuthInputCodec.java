@@ -103,6 +103,7 @@ public final class BedrockPlayerAuthInputCodec {
 
     /** Protocol-2225 PlayerAuthInputData flags relevant to initial movement simulation. */
     public static final class InputAction {
+        public static final int SPRINTING = 20;
         public static final int JUMPING = 6;
         public static final int START_JUMPING = 31;
         public static final int JUMP_PRESSED_RAW = 60;

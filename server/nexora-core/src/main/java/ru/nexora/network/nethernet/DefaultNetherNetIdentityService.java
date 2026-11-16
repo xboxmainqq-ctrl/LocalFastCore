@@ -70,7 +70,7 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
     private final AtomicReference<CachedKeys> cachedKeys = new AtomicReference<>();
 
     public DefaultNetherNetIdentityService(Path keyDirectory) throws IOException, GeneralSecurityException {
-        this(keyDirectory, DEFAULT_JWKS_URI, DEFAULT_ISSUER, DEFAULT_AUDIENCE, "self");
+        this(keyDirectory, DEFAULT_JWKS_URI, DEFAULT_ISSUER, null, "self");
     }
 
     public DefaultNetherNetIdentityService(
@@ -85,7 +85,8 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
         }
         this.jwksUri = jwksUri;
         this.expectedIssuer = requireText(expectedIssuer, "expectedIssuer");
-        this.expectedAudience = requireText(expectedAudience, "expectedAudience");
+        this.expectedAudience = expectedAudience == null || expectedAudience.isBlank()
+                ? null : expectedAudience;
         this.providerDomain = requireText(providerDomain, "providerDomain");
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
@@ -262,7 +263,7 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
         }
 
         JsonNode audience = claims.get("aud");
-        if (audience != null && !audience.isNull()) {
+        if (expectedAudience != null && audience != null && !audience.isNull()) {
             boolean audienceMatches = audience.isTextual() && expectedAudience.equals(audience.asText());
             if (audience.isArray()) {
                 for (JsonNode item : audience) {

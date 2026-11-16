@@ -194,6 +194,27 @@ public final class PlayerInventory {
         }
     }
 
+    /**
+     * Restores a previously captured authoritative snapshot. Intended for rollback
+     * when a multi-object equipment transaction cannot be persisted.
+     */
+    public synchronized void restore(List<Optional<ItemStack>> snapshot, int selectedSlot) {
+        Objects.requireNonNull(snapshot, "snapshot");
+        if (snapshot.size() != slots.length) {
+            throw new IllegalArgumentException("Inventory snapshot size does not match this inventory");
+        }
+        if (selectedSlot < 0 || selectedSlot >= HOTBAR_SIZE || selectedSlot >= slots.length) {
+            throw new IllegalArgumentException("Invalid selected hotbar slot in snapshot");
+        }
+        ItemStack[] restored = new ItemStack[slots.length];
+        for (int i = 0; i < snapshot.size(); i++) {
+            Optional<ItemStack> item = Objects.requireNonNull(snapshot.get(i), "snapshot item");
+            restored[i] = item.orElse(null);
+        }
+        System.arraycopy(restored, 0, slots, 0, slots.length);
+        selectedHotbarSlot = selectedSlot;
+    }
+
     /** Swaps two slots atomically without dropping or merging either stack. */
     public synchronized void swapSlots(int firstSlot, int secondSlot) {
         checkSlot(firstSlot);

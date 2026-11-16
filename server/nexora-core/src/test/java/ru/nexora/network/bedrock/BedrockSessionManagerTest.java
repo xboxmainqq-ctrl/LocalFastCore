@@ -234,6 +234,8 @@ class BedrockSessionManagerTest {
         }
         assertEquals(ru.nexora.world.BlockType.AIR, world.getBlock(0, 64, 0));
         assertEquals(ru.nexora.world.BlockType.AIR, world.getBlock(0, 64, 1));
+        world.setBlock(0, 59, 0, ru.nexora.world.BlockType.STONE);
+        world.setBlock(0, 59, 1, ru.nexora.world.BlockType.STONE);
         for (long tick = 5; tick <= 40 && manager.playerVitals("physics-client").orElseThrow().health() == 18.0f; tick++) {
             BedrockPacket falling = new BedrockPacket(0x90, 0, 0,
                     movementInputPayload(0.5f, 65.0f, 0.715f, 0.0f, tick, 0.0f, 0.0f));

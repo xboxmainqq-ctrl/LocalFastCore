@@ -108,7 +108,7 @@ class BedrockPlayerAuthInputCodecTest {
             int action, int x, int y, int z, int face, long tick
     ) {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
-        writeFloat(output, 0); writeFloat(output, 0); // pitch/yaw
+        writeFloat(output, 0); writeFloat(output, 30); // pitch/yaw
         writeFloat(output, playerX); writeFloat(output, playerY); writeFloat(output, playerZ);
         writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0);
         writeVarUInt(output, 0); // input actions

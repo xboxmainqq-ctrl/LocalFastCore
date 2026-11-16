@@ -57,8 +57,10 @@ public final class ModuleManager {
                 entry.state = ModuleState.LOADED;
             } catch (Exception exception) {
                 entry.state = ModuleState.FAILED;
-                throw new ModuleLifecycleException(
+                ModuleLifecycleException failure = new ModuleLifecycleException(
                         "Failed to load module " + entry.descriptor.id(), exception);
+                rollbackLoadedModules(failure);
+                throw failure;
             }
         }
     }
@@ -76,16 +78,20 @@ public final class ModuleManager {
                 entry.state = ModuleState.ENABLED;
             } catch (Exception exception) {
                 entry.state = ModuleState.FAILED;
-                disableEnabledModules();
-                throw new ModuleLifecycleException(
+                ModuleLifecycleException failure = new ModuleLifecycleException(
                         "Failed to enable module " + entry.descriptor.id(), exception);
+                rollbackLoadedModules(failure);
+                throw failure;
             }
         }
     }
 
+    /** Disables enabled modules and releases resources of loaded-but-not-enabled modules. */
     public synchronized void disableAll() throws ModuleLifecycleException {
-        ModuleLifecycleException failure = disableEnabledModules();
-        if (failure != null) {
+        ModuleLifecycleException failure = new ModuleLifecycleException(
+                "One or more modules failed to disable", null);
+        rollbackLoadedModules(failure);
+        if (failure.getSuppressed().length > 0) {
             throw failure;
         }
     }
@@ -133,11 +139,14 @@ public final class ModuleManager {
         ordered.add(entry);
     }
 
-    private ModuleLifecycleException disableEnabledModules() {
-        ModuleLifecycleException failure = null;
+    /**
+     * Calls onDisable for every module that completed onLoad, including modules
+     * that never reached ENABLED. Cleanup always runs in reverse dependency order.
+     */
+    private void rollbackLoadedModules(ModuleLifecycleException failure) {
         for (int index = lifecycleOrder.size() - 1; index >= 0; index--) {
             Entry entry = lifecycleOrder.get(index);
-            if (entry.state != ModuleState.ENABLED) {
+            if (entry.state != ModuleState.ENABLED && entry.state != ModuleState.LOADED) {
                 continue;
             }
             try {
@@ -145,15 +154,9 @@ public final class ModuleManager {
                 entry.state = ModuleState.DISABLED;
             } catch (Exception exception) {
                 entry.state = ModuleState.FAILED;
-                if (failure == null) {
-                    failure = new ModuleLifecycleException(
-                            "One or more modules failed to disable", exception);
-                } else {
-                    failure.addSuppressed(exception);
-                }
+                failure.addSuppressed(exception);
             }
         }
-        return failure;
     }
 
     private enum Visit {

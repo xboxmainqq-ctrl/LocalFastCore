@@ -20,6 +20,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -134,6 +135,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return sessions.values().stream().filter(state -> state.resourcePacksCompleted).count();
     }
 
+    public Optional<PlayerPosition> playerPosition(String networkId) {
+        SessionState state = sessions.get(networkId);
+        if (state == null) return Optional.empty();
+        synchronized (state) {
+            if (!state.clientInitialized) return Optional.empty();
+            return Optional.of(new PlayerPosition(state.positionX, state.positionY, state.positionZ,
+                    state.yaw, state.pitch, state.lastInputTick));
+        }
+    }
+
     private void handleCompleteMessage(NetherNetInboundPipeline.InboundMessage message) {
         SessionState state = sessions.computeIfAbsent(message.networkId(), ignored -> new SessionState());
         synchronized (state) {
@@ -156,6 +167,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             handleResourcePackResponse(message.networkId(), state, packet,
                                     resourcePacksInfoWasSent, resourcePackStackWasSent);
                     case 0x71 -> handleClientInitialized(message, state, packet);
+                    case BedrockPlayerAuthInputCodec.PLAYER_AUTH_INPUT_PACKET_ID ->
+                            handlePlayerAuthInput(state, packet);
                     default -> packetSink.accept(new PacketEvent(
                             message.networkId(), message.channelLabel(), packet));
                 }
@@ -269,6 +282,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 state.resourcePacksCompleted = true;
                 if (!state.gameStarted) {
                     state.gameStarted = true;
+                    state.positionX = world.spawnX() + 0.5f;
+                    state.positionY = world.spawnY();
+                    state.positionZ = world.spawnZ() + 0.5f;
                     for (BedrockPacket worldPacket : BedrockStartGameCodec.createInitialWorldPackets(
                             state.entityId,
                             world.name(),
@@ -293,6 +309,32 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
+
+    private void handlePlayerAuthInput(SessionState state, BedrockPacket packet) {
+        if (!state.clientInitialized) {
+            throw new SecurityException("PlayerAuthInput arrived before client initialization");
+        }
+        BedrockPlayerAuthInputCodec.PlayerInput input = BedrockPlayerAuthInputCodec.decode(packet);
+
+        if (Math.abs(input.x()) > 30_000_000 || Math.abs(input.z()) > 30_000_000
+                || input.y() < WorldChunk.MIN_Y - 16 || input.y() > WorldChunk.MAX_Y + 16) {
+            return;
+        }
+        double dx = input.x() - state.positionX;
+        double dy = input.y() - state.positionY;
+        double dz = input.z() - state.positionZ;
+        if (dx * dx + dy * dy + dz * dz > 100.0) {
+            return; // Reject an implausible single-input teleport; movement simulation follows later.
+        }
+        if (input.tick() < state.lastInputTick) return;
+
+        state.positionX = input.x();
+        state.positionY = input.y();
+        state.positionZ = input.z();
+        state.yaw = input.yaw();
+        state.pitch = input.pitch();
+        state.lastInputTick = input.tick();
+    }
 
     private void sendInitialChunkArea(String networkId) {
         int centerX = Math.floorDiv(world.spawnX(), 16);
@@ -469,6 +511,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private volatile boolean resourcePacksCompleted;
         private boolean gameStarted;
         private boolean clientInitialized;
+        private float positionX;
+        private float positionY;
+        private float positionZ;
+        private float yaw;
+        private float pitch;
+        private long lastInputTick;
         private long entityId;
         private boolean rejected;
         private int clientProtocol;

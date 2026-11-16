@@ -103,4 +103,36 @@ class PlayerInventoryTest {
         assertThrows(IllegalArgumentException.class, () -> new ItemStack("diamond", 1, 64));
         assertThrows(IllegalArgumentException.class, () -> new ItemStack("nexora:wand", 2, 1));
     }
+
+    @Test
+    void restoresInventorySnapshotAndSelectedHotbarSlot() {
+        PlayerInventory inventory = new PlayerInventory();
+        inventory.setSlot(2, new ItemStack("minecraft:diamond", 5, 64));
+        inventory.selectHotbarSlot(2);
+        var snapshot = inventory.snapshot();
+
+        inventory.setSlot(2, null);
+        inventory.setSlot(3, new ItemStack("minecraft:stone", 12, 64));
+        inventory.selectHotbarSlot(3);
+        inventory.restore(snapshot, 2);
+
+        assertEquals(new ItemStack("minecraft:diamond", 5, 64), inventory.getSlot(2).orElseThrow());
+        assertTrue(inventory.getSlot(3).isEmpty());
+        assertEquals(2, inventory.selectedHotbarSlot());
+    }
+
+    @Test
+    void rejectsInvalidInventoryRestoreWithoutChangingState() {
+        PlayerInventory inventory = new PlayerInventory();
+        ItemStack diamond = new ItemStack("minecraft:diamond", 1, 64);
+        inventory.setSlot(0, diamond);
+        var before = inventory.snapshot();
+
+        assertThrows(IllegalArgumentException.class,
+                () -> inventory.restore(java.util.List.of(java.util.Optional.empty()), 0));
+        assertThrows(IllegalArgumentException.class,
+                () -> inventory.restore(before, 9));
+
+        assertEquals(before, inventory.snapshot());
+    }
 }

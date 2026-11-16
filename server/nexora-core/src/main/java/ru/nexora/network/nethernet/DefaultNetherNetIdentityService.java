@@ -120,8 +120,13 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
         }
         String providerDomainClaim = requiredText(provider, "domain");
         String expectedProviderHost = URI.create(expectedIssuer).getHost();
-        if (!providerDomainClaim.equals(expectedIssuer)
-                && !providerDomainClaim.equals(expectedProviderHost)) {
+        String claimedProviderHost = providerDomainClaim;
+        if (providerDomainClaim.contains("://")) {
+            claimedProviderHost = URI.create(providerDomainClaim).getHost();
+        }
+        if (!providerDomainClaim.equalsIgnoreCase(expectedIssuer)
+                && (claimedProviderHost == null
+                || !claimedProviderHost.equalsIgnoreCase(expectedProviderHost))) {
             throw new SecurityException("Unexpected NetherNet identity provider domain");
         }
         String assertionJson = requiredText(envelope, "assertion");

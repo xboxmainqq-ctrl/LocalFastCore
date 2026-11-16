@@ -178,6 +178,24 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(implausibleTeleport), true, 256));
         assertEquals(1.0f, manager.playerPosition("authenticated-client").orElseThrow().x());
+        assertEquals(22, outboundFrames.size());
+
+        BedrockPacket approachChunkEdge = new BedrockPacket(0x90, 0, 0,
+                BedrockPlayerAuthInputCodecTest.movementPayload(10.0f, 65.0f, 1.0f, 30.0f, 3L, false));
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(approachChunkEdge), true, 256));
+        assertEquals(22, outboundFrames.size()); // same chunk: no redundant stream
+
+        BedrockPacket crossChunkBoundary = new BedrockPacket(0x90, 0, 0,
+                BedrockPlayerAuthInputCodecTest.movementPayload(16.5f, 65.0f, 1.0f, 30.0f, 4L, false));
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(crossChunkBoundary), true, 256));
+        assertEquals(26, outboundFrames.size());
+        assertEquals(0x79, decodeOutbound(outboundFrames.get(22), true).packetId());
+        for (int index = 23; index < 26; index++) {
+            assertEquals(0x3a, decodeOutbound(outboundFrames.get(index), true).packetId());
+        }
+        assertEquals(16.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
 
         assertThrows(SecurityException.class, () -> sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256)));

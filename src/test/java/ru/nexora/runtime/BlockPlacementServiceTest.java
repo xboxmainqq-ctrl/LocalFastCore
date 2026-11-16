@@ -31,5 +31,18 @@ class BlockPlacementServiceTest {
   BlockPosition edge=new BlockPosition(15,1,2);w.setBlock(edge,new BlockState("minecraft:stone"));
   assertEquals(BlockPlacementService.Result.UNLOADED_CHUNK,BlockPlacementService.placeBlock(w,inv,0,"minecraft:dirt",edge,5,14.5,1,2.5).result());assertEquals(1,inv.count("minecraft:dirt"));
  }
+ @Test void supportsAllSixBedrockBlockFaces(){
+  int[][] offsets={{0,-1,0},{0,1,0},{0,0,-1},{0,0,1},{-1,0,0},{1,0,0}};
+  for(int face=0;face<6;face++){
+   InMemoryWorld w=loaded();BlockPosition clicked=new BlockPosition(8,5,8);
+   w.setBlock(clicked,new BlockState("minecraft:stone"));
+   PlayerInventory inv=new PlayerInventory(UUID.randomUUID());assertTrue(inv.addOne("minecraft:dirt"));
+   var result=BlockPlacementService.placeBlock(w,inv,0,"minecraft:dirt",clicked,face,5.5,2.0,5.5);
+   BlockPosition expected=new BlockPosition(8+offsets[face][0],5+offsets[face][1],8+offsets[face][2]);
+   assertEquals(BlockPlacementService.Result.PLACED,result.result(),"face "+face);
+   assertEquals("minecraft:dirt",w.blockAt(expected).identifier(),"face "+face);
+   assertEquals(0,inv.count("minecraft:dirt"),"face "+face);
+  }
+ }
  private static InMemoryWorld loaded(){InMemoryWorld w=new InMemoryWorld("overworld",new WorldHeight(0,16));w.loadChunk(new GeneratedChunk(new ChunkPosition(0,0),Map.of()));return w;}
 }

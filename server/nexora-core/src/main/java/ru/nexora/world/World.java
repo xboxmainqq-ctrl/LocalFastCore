@@ -18,6 +18,7 @@ public final class World {
     private final int spawnZ;
     private final WorldStorage storage;
     private final ConcurrentMap<Long, WorldChunk> chunks = new ConcurrentHashMap<>();
+    private final WorldItemEntityManager itemEntities = new WorldItemEntityManager();
     private final CopyOnWriteArrayList<WorldBlockChangeListener> blockChangeListeners = new CopyOnWriteArrayList<>();
 
     public World(String name, long seed, WorldGenerator generator) {
@@ -117,6 +118,11 @@ public final class World {
             Objects.requireNonNull(previous, "previous");
             Objects.requireNonNull(current, "current");
         }
+    }
+
+    /** Returns the authoritative dropped-item actor manager for this world. */
+    public WorldItemEntityManager itemEntities() {
+        return itemEntities;
     }
 
     public int loadedChunkCount() {

@@ -14,7 +14,6 @@ import ru.nexora.inventory.EquipmentSlot;
 import ru.nexora.inventory.EquipmentSlotRegistry;
 import ru.nexora.inventory.PlayerEquipmentService;
 import ru.nexora.inventory.ArmorSlotRegistry;
-import ru.nexora.inventory.EquipmentSlotRegistry;
 import ru.nexora.inventory.EquipmentStats;
 import ru.nexora.inventory.InventoryTransactionService;
 import ru.nexora.world.FlatWorldGenerator;

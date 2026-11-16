@@ -14,8 +14,15 @@ public record PlayerData(
         float z,
         float yaw,
         float pitch,
-        long lastSeenEpochMillis
+        long lastSeenEpochMillis,
+        PlayerVitals vitals
 ) {
+    public PlayerData(
+            String xuid, String displayName, String worldName,
+            float x, float y, float z, float yaw, float pitch, long lastSeenEpochMillis
+    ) {
+        this(xuid, displayName, worldName, x, y, z, yaw, pitch, lastSeenEpochMillis, PlayerVitals.DEFAULT);
+    }
     private static final Pattern SAFE_XUID = Pattern.compile("[A-Za-z0-9_-]{1,64}");
 
     public PlayerData {
@@ -33,6 +40,7 @@ public record PlayerData(
             throw new IllegalArgumentException("Player position is outside supported world bounds");
         }
         if (lastSeenEpochMillis < 0) throw new IllegalArgumentException("Invalid last-seen timestamp");
+        Objects.requireNonNull(vitals, "vitals");
     }
 
     private static void validateText(String value, String field, int maxBytes) {

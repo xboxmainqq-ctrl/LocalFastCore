@@ -158,6 +158,9 @@ class BedrockSessionManagerTest {
                 (networkId, label, frame) -> outboundFrames.add(frame),
                 event -> {},
                 monotonicClock::get);
+        manager.setItemRegistry(new BedrockItemRegistry(List.of(
+                new BedrockItemRegistry.Entry("nexora:arcane_shard",
+                        new BedrockInventoryContentCodec.ItemDefinition(257, 0, 0, new byte[0])))));
         manager.onIdentity("authenticated-client", new NetherNetClientIdentity(
                 "game-server-token",
                 clientKey.getPublic().getEncoded(),
@@ -322,6 +325,14 @@ class BedrockSessionManagerTest {
                 BedrockBatchCodec.encode(List.of(finishBreak), true, 256));
         assertEquals(27, outboundFrames.size());
         assertEquals(0x15, decodeOutbound(outboundFrames.get(26), true).packetId());
+
+        // A decoded no-op player-slot transaction is accepted and reconciled with authoritative content.
+        BedrockPacket inventoryTransaction = new BedrockPacket(0x1e, 0, 0,
+                noOpInventoryTransactionPayload(257, 3));
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(inventoryTransaction), true, 256));
+        assertEquals(28, outboundFrames.size());
+        assertEquals(0x31, decodeOutbound(outboundFrames.get(27), true).packetId());
 
         assertThrows(SecurityException.class, () -> sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256)));
@@ -496,4 +507,30 @@ class BedrockSessionManagerTest {
         assertNotNull(complete);
         return complete;
     }
+    private static byte[] noOpInventoryTransactionPayload(int runtimeItemId, int count) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        out.write(0); // LegacyRequestId
+        out.write(0); // Normal transaction
+        out.write(1); // one action
+        out.write(0); // ContainerInventory source
+        out.write(1); // container ID present
+        out.write(0); // player inventory container
+        out.write(0); // no world flags
+        out.write(0); // slot zero
+        writeDescriptor(out, runtimeItemId, count);
+        writeDescriptor(out, runtimeItemId, count);
+        return out.toByteArray();
+    }
+
+    private static void writeDescriptor(ByteArrayOutputStream out, int runtimeItemId, int count) {
+        out.write(runtimeItemId & 0xff);
+        out.write((runtimeItemId >>> 8) & 0xff);
+        out.write(count & 0xff);
+        out.write((count >>> 8) & 0xff);
+        out.write(0); // aux
+        out.write(0); // has StackNetId = false
+        out.write(0); // block runtime ID
+        out.write(0); // user data length
+    }
+
 }

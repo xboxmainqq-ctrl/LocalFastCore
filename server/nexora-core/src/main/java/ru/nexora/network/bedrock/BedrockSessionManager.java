@@ -251,7 +251,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 state.resourcePacksCompleted = true;
                 if (!state.gameStarted) {
                     state.gameStarted = true;
-                    sendPacket(networkId, BedrockStartGameCodec.create(
+                    for (BedrockPacket worldPacket : BedrockStartGameCodec.createInitialWorldPackets(
                             state.entityId,
                             "NEXORA World",
                             serverVersion,
@@ -259,7 +259,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             0.5f,
                             65.0f,
                             0.5f
-                    ), true);
+                    )) {
+                        sendPacket(networkId, worldPacket, true);
+                    }
                 }
                 System.out.printf("NEXORA: resource-pack negotiation completed for %s%n", networkId);
             }

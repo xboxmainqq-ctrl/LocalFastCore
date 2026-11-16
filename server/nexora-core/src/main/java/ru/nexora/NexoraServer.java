@@ -92,6 +92,7 @@ public final class NexoraServer {
                 },
                 event -> System.out.printf("NEXORA: Bedrock packet 0x%02X from %s (%d bytes)%n",
                         event.packet().packetId(), event.networkId(), event.packet().payload().length));
+        bedrockSessions.enableServerAuthoritativeMovement();
         bedrockSessions.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
         bedrockSessions.setArmorSlotRegistry(VanillaArmorSlotCatalog.createRegistry());
         bedrockSessions.setEquipmentSlotRegistry(NexoraMagicEquipmentCatalog.createRegistry());

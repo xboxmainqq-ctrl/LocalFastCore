@@ -197,6 +197,21 @@ class BedrockSessionManagerTest {
         }
         assertEquals(16.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
 
+        BedrockPacket startBreak = new BedrockPacket(0x90, 0, 0,
+                BedrockPlayerAuthInputCodecTest.blockActionPayload(
+                        16.5f, 65.0f, 1.0f, 0, 16, 64, 1, 1, 5L));
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(startBreak), true, 256));
+        assertEquals(26, outboundFrames.size());
+
+        BedrockPacket finishBreak = new BedrockPacket(0x90, 0, 0,
+                BedrockPlayerAuthInputCodecTest.blockActionPayload(
+                        16.5f, 65.0f, 1.0f, 26, 16, 64, 1, 1, 20L));
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(finishBreak), true, 256));
+        assertEquals(27, outboundFrames.size());
+        assertEquals(0x15, decodeOutbound(outboundFrames.get(26), true).packetId());
+
         assertThrows(SecurityException.class, () -> sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256)));
     }

@@ -139,15 +139,15 @@ public final class NetherNetSignalingServer implements AutoCloseable {
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
             switch (c) {
-                case '"' -> result.append("\\\\"");
-                case '\\\\' -> result.append("\\\\\\\\");
-                case '\\b' -> result.append("\\\\b");
-                case '\\f' -> result.append("\\\\f");
-                case '\\n' -> result.append("\\\\n");
-                case '\\r' -> result.append("\\\\r");
-                case '\\t' -> result.append("\\\\t");
+                case '"' -> result.append("\\\"");
+                case '\\' -> result.append("\\\\");
+                case '\b' -> result.append("\\b");
+                case '\f' -> result.append("\\f");
+                case '\n' -> result.append("\\n");
+                case '\r' -> result.append("\\r");
+                case '\t' -> result.append("\\t");
                 default -> {
-                    if (c < 0x20) result.append(String.format("\\\\u%04x", (int) c));
+                    if (c < 0x20) result.append(String.format("\\u%04x", (int) c));
                     else result.append(c);
                 }
             }

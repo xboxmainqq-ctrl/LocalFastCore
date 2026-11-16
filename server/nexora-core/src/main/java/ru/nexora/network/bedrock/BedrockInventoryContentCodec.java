@@ -55,6 +55,37 @@ public final class BedrockInventoryContentCodec {
         return new BedrockPacket(INVENTORY_CONTENT_PACKET_ID, 0, 0, out.toByteArray());
     }
 
+    /**
+     * Encodes one player inventory slot using the same disabled ItemStackNetManager
+     * compatibility format as InventoryContent.
+     */
+    public static BedrockPacket createPlayerInventorySlot(
+            PlayerInventory inventory, int slot, ItemDefinitionResolver itemDefinitionResolver
+    ) {
+        Objects.requireNonNull(inventory, "inventory");
+        Objects.requireNonNull(itemDefinitionResolver, "itemDefinitionResolver");
+        var optionalStack = inventory.getSlot(slot); // validates slot bounds
+        Writer out = new Writer();
+        out.byteValue(PLAYER_INVENTORY_CONTAINER_ID);
+        out.varUInt32(slot);
+        // FullContainerName: InventoryContainer. Dynamic ID and Storage Item are absent.
+        out.byteValue(PLAYER_INVENTORY_CONTAINER_NAME);
+        ItemStack stack = optionalStack.orElse(null);
+        out.varInt32(stack == null ? 0 : 1);
+        if (stack == null) {
+            writeStack(out, 0, 0, 0, 0, new byte[0]);
+        } else {
+            ItemDefinition definition = itemDefinitionResolver.resolve(stack.itemId());
+            if (definition == null) {
+                throw new IllegalArgumentException(
+                        "No Bedrock item definition registered for " + stack.itemId());
+            }
+            writeStack(out, definition.legacyItemId(), stack.count(),
+                    definition.auxValue(), definition.blockRuntimeId(), definition.userData());
+        }
+        return new BedrockPacket(0x32, 0, 0, out.toByteArray());
+    }
+
     private static void writeStack(
             Writer out, int itemId, int count, long auxValue, long blockRuntimeId, byte[] userData
     ) {

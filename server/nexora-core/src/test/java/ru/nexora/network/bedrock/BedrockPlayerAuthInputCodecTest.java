@@ -268,6 +268,7 @@ class BedrockPlayerAuthInputCodecTest {
         writeVarUInt(output, 2); writeVarUInt(output, 0); writeVarInt(output, 0);
         writeFloat(output, 0); writeFloat(output, 0);
         writeVarULong(output, tick);
+        writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0); // delta
         writeVarInt(output, 0); // legacy request ID
         writeVarUInt(output, 0); // inventory actions
         writeVarInt(output, 1); // ItemUseActionType.ClickAir

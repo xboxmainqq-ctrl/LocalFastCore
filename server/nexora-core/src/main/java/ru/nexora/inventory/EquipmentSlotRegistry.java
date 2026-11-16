@@ -88,9 +88,10 @@ public final class EquipmentSlotRegistry {
                 checkedAttributes.put(attribute, value);
             });
 
-            if (entries.putIfAbsent(itemId, accepted) != null) {
+            if (entries.containsKey(itemId) || attributes.containsKey(itemId)) {
                 throw new IllegalArgumentException("Equipment item is already registered: " + itemId);
             }
+            entries.put(itemId, accepted);
             attributes.put(itemId, Map.copyOf(checkedAttributes));
             return this;
         }
@@ -105,8 +106,8 @@ public final class EquipmentSlotRegistry {
             if (itemAttributes.isEmpty()) {
                 throw new IllegalArgumentException("At least one equipment attribute is required");
             }
-            if (attributes.containsKey(itemId)) {
-                throw new IllegalArgumentException("Equipment attributes are already registered: " + itemId);
+            if (entries.containsKey(itemId) || attributes.containsKey(itemId)) {
+                throw new IllegalArgumentException("Equipment item or attributes are already registered: " + itemId);
             }
             java.util.EnumMap<EquipmentAttribute, Double> checked =
                     new java.util.EnumMap<>(EquipmentAttribute.class);

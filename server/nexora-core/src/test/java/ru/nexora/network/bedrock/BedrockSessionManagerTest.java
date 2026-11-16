@@ -168,6 +168,7 @@ class BedrockSessionManagerTest {
                 new BedrockInventoryContentCodec.ItemDefinition(257, 0, 0, new byte[0])));
         manager.setItemRegistry(new BedrockItemRegistry(itemEntries));
         manager.setArmorSlotRegistry(ru.nexora.inventory.VanillaArmorSlotCatalog.createRegistry());
+        manager.setEquipmentSlotRegistry(ru.nexora.inventory.NexoraMagicEquipmentCatalog.createRegistry());
         manager.onIdentity("authenticated-client", new NetherNetClientIdentity(
                 "game-server-token",
                 clientKey.getPublic().getEncoded(),
@@ -210,6 +211,11 @@ class BedrockSessionManagerTest {
         manager.playerEquipment("authenticated-client").orElseThrow()
                 .setMagicSlot(ru.nexora.inventory.EquipmentSlot.TALISMAN,
                         new ItemStack("nexora:luck_talisman", 1, 1));
+        var equipmentStats = manager.playerEquipmentStats("authenticated-client").orElseThrow();
+        assertEquals(12.0, equipmentStats.value(ru.nexora.inventory.EquipmentAttribute.MAGIC_POWER), 0.0001);
+        assertEquals(20.0, equipmentStats.value(ru.nexora.inventory.EquipmentAttribute.MAX_MANA), 0.0001);
+        assertEquals(1.0, equipmentStats.value(ru.nexora.inventory.EquipmentAttribute.MANA_REGENERATION), 0.0001);
+        assertEquals(0.10, equipmentStats.value(ru.nexora.inventory.EquipmentAttribute.COOLDOWN_REDUCTION), 0.0001);
         assertEquals(4, manager.playerInventory("authenticated-client").orElseThrow()
                 .count("nexora:arcane_shard"));
         assertTrue(manager.playerInventory("unknown-client").isEmpty());

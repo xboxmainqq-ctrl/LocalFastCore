@@ -150,6 +150,33 @@ class NexoraMainTest {
     }
 
     @Test
+    void startsAndStopsTheAuthenticatedBedrockNetherNetListener() throws Exception {
+        Path dataDirectory = temporaryDirectory.resolve("bedrock-listener-smoke");
+        int port;
+        try (java.net.ServerSocket tcp = new java.net.ServerSocket(0)) {
+            port = tcp.getLocalPort();
+            try (java.net.DatagramSocket udp = new java.net.DatagramSocket(port)) {
+                assertTrue(udp.isBound());
+            }
+        }
+
+        NexoraMain.LaunchOptions options = NexoraMain.parseArguments(new String[] {
+                "--data-dir", dataDirectory.toString(),
+                "--enable-bedrock-network",
+                "--bedrock-port", Integer.toString(port)
+        });
+        NexoraMain.RuntimeHandle runtime = NexoraMain.createRuntime(options, ignored -> { });
+        runtime.server().start();
+        try {
+            assertEquals(ServerState.RUNNING, runtime.server().state());
+            assertTrue(Files.isRegularFile(dataDirectory.resolve("nethernet-identity.pem")));
+        } finally {
+            runtime.server().stop();
+        }
+        assertEquals(ServerState.STOPPED, runtime.server().state());
+    }
+
+    @Test
     void runtimeUsesServerPropertiesForWorldGeneratorHeightAndTickRate() throws Exception {
         Path dataDirectory = temporaryDirectory.resolve("configured-server");
         Files.createDirectories(dataDirectory);

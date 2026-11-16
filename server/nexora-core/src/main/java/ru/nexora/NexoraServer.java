@@ -3,6 +3,7 @@ package ru.nexora;
 import ru.nexora.network.nethernet.DefaultNetherNetIdentityService;
 import ru.nexora.network.nethernet.NetherNetServerMetadata;
 import ru.nexora.network.bedrock.BedrockSessionManager;
+import ru.nexora.network.bedrock.BedrockVanillaItemCatalog;
 import ru.nexora.network.nethernet.NetherNetSignalingServer;
 import ru.nexora.network.nethernet.WebRtcSdpNegotiator;
 import ru.nexora.network.raknet.BedrockServerStatus;
@@ -82,6 +83,7 @@ public final class NexoraServer {
                 },
                 event -> System.out.printf("NEXORA: Bedrock packet 0x%02X from %s (%d bytes)%n",
                         event.packet().packetId(), event.networkId(), event.packet().payload().length));
+        bedrockSessions.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
         String stunEnvironment = System.getenv("NEXORA_STUN_URLS");
         List<String> stunUrls = stunEnvironment == null || stunEnvironment.isBlank()
                 ? List.of()

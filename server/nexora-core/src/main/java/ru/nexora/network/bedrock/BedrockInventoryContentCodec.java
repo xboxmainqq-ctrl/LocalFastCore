@@ -10,7 +10,7 @@ import java.util.Objects;
  * Encodes the protocol 2225 InventoryContent packet while ItemStackNetManager is disabled.
  *
  * The caller must supply a complete protocol definition for every non-empty NEXORA item.
- * This codec deliberately does not guess legacy IDs, block runtime IDs, metadata or user data.
+ * This codec deliberately does not guess Bedrock runtime item IDs, block runtime IDs, metadata or user data.
  * The disabled-manager ItemStackNetId is 0 for empty slots and 1 for non-empty slots.
  */
 public final class BedrockInventoryContentCodec {

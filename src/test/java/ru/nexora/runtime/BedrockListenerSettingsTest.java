@@ -36,6 +36,23 @@ class BedrockListenerSettingsTest {
     }
 
     @Test
+    void parsesConfiguredPublicIceEndpoints() throws Exception {
+        java.nio.file.Path file = java.nio.file.Files.createTempFile("nexora-bedrock", ".properties");
+        try {
+            java.nio.file.Files.writeString(file, """
+                    bedrock.network.enabled=true
+                    bedrock.port=23472
+                    bedrock.advertised-addresses=203.0.113.10:23472, game.example.net:23472
+                    """);
+            BedrockListenerSettings settings = BedrockListenerSettings.loadFromProperties(file);
+            assertEquals(java.util.List.of("203.0.113.10:23472", "game.example.net:23472"),
+                    settings.advertisedAddresses());
+        } finally {
+            java.nio.file.Files.deleteIfExists(file);
+        }
+    }
+
+    @Test
     void rejectsBlankBindAddress() {
         assertThrows(IllegalArgumentException.class, () -> new BedrockListenerSettings(
                 false, "  ", 19132, 0, Path.of("identity.pem"), true));

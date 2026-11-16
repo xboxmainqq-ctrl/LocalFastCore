@@ -42,7 +42,7 @@ public final class BedrockInventoryTransactionCodec {
             throw new UnsupportedOperationException("Legacy inventory requests are not supported");
         }
 
-        int transactionType = in.varUInt32Int();
+        int transactionType = in.varInt32();
         if (transactionType != NORMAL_TRANSACTION_TYPE) {
             throw new UnsupportedOperationException("Only normal inventory transactions are supported");
         }
@@ -80,6 +80,45 @@ public final class BedrockInventoryTransactionCodec {
 
         in.requireExhausted();
         return new DecodedTransaction(transactionType, List.copyOf(actions));
+    }
+
+    public static int transactionType(BedrockPacket packet) {
+        if (packet == null || packet.packetId() != INVENTORY_TRANSACTION_PACKET_ID) {
+            throw new IllegalArgumentException("Expected InventoryTransaction packet 0x1e");
+        }
+        Reader in = new Reader(packet.payload());
+        int legacyRequestId = in.varInt32();
+        if (legacyRequestId != 0) throw new UnsupportedOperationException("Legacy inventory requests are not supported");
+        return in.varInt32();
+    }
+
+    /** Decodes the supported ItemRelease consume/cancel subset used to finish food use. */
+    public static DecodedItemRelease decodeItemRelease(BedrockPacket packet, BedrockItemRegistry registry) {
+        if (packet == null || packet.packetId() != INVENTORY_TRANSACTION_PACKET_ID) {
+            throw new IllegalArgumentException("Expected InventoryTransaction packet 0x1e");
+        }
+        if (registry == null) throw new NullPointerException("registry");
+        Reader in = new Reader(packet.payload());
+        if (in.varInt32() != 0) throw new UnsupportedOperationException("Legacy inventory requests are not supported");
+        if (in.varInt32() != 4) throw new IllegalArgumentException("Expected ItemRelease transaction type");
+        int actionCount = in.varUInt32Int();
+        if (actionCount != 0) {
+            throw new UnsupportedOperationException("ItemRelease inventory action arrays are not supported");
+        }
+        int actionType = in.varInt32();
+        int hotbarSlot = in.varInt32();
+        Optional<ItemStack> heldItem = readItemStack(in, registry);
+        float headX = in.float32();
+        float headY = in.float32();
+        float headZ = in.float32();
+        if (actionType < 0 || actionType > 1 || hotbarSlot < 0 || hotbarSlot >= 9
+                || !Float.isFinite(headX) || !Float.isFinite(headY) || !Float.isFinite(headZ)
+                || Math.abs(headX) > 30_000_000 || Math.abs(headZ) > 30_000_000
+                || headY < -2048 || headY > 2048) {
+            throw new IllegalArgumentException("Invalid ItemRelease transaction fields");
+        }
+        in.requireExhausted();
+        return new DecodedItemRelease(actionType, hotbarSlot, heldItem, headX, headY, headZ);
     }
 
     private static Optional<ItemStack> readItemStack(Reader in, BedrockItemRegistry registry) {
@@ -126,6 +165,15 @@ public final class BedrockInventoryTransactionCodec {
         }
     }
 
+    public record DecodedItemRelease(
+            int actionType, int hotbarSlot, Optional<ItemStack> heldItem,
+            float headX, float headY, float headZ
+    ) {
+        public DecodedItemRelease {
+            heldItem = Optional.ofNullable(heldItem).orElse(Optional.empty());
+        }
+    }
+
     private static final class Reader {
         private final ByteBuffer buffer;
 
@@ -144,6 +192,11 @@ public final class BedrockInventoryTransactionCodec {
         int int16() {
             require(Short.BYTES);
             return buffer.getShort();
+        }
+
+        float float32() {
+            require(Float.BYTES);
+            return buffer.getFloat();
         }
 
         boolean bool() {

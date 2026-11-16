@@ -62,6 +62,26 @@ class EquipmentStatsTest {
     }
 
     @Test
+    void defaultNexoraCatalogProvidesServerOwnedMagicBonuses() {
+        PlayerEquipment equipment = new PlayerEquipment();
+        equipment.setMagicSlot(EquipmentSlot.MAGIC_STAFF,
+                new ItemStack("nexora:ember_staff", 1, 1));
+        equipment.setMagicSlot(EquipmentSlot.RING_LEFT,
+                new ItemStack("nexora:power_ring", 1, 1));
+        equipment.setMagicSlot(EquipmentSlot.AMULET,
+                new ItemStack("nexora:moon_amulet", 1, 1));
+        equipment.setMagicSlot(EquipmentSlot.TALISMAN,
+                new ItemStack("nexora:luck_talisman", 1, 1));
+
+        EquipmentStats stats = EquipmentStats.calculate(equipment, NexoraMagicEquipmentCatalog.createRegistry());
+        assertEquals(16.0, stats.value(EquipmentAttribute.MAGIC_POWER), 0.0001);
+        assertEquals(35.0, stats.value(EquipmentAttribute.MAX_MANA), 0.0001);
+        assertEquals(3.0, stats.value(EquipmentAttribute.MANA_REGENERATION), 0.0001);
+        assertEquals(0.10, stats.value(EquipmentAttribute.COOLDOWN_REDUCTION), 0.0001);
+        assertEquals(0.10, stats.value(EquipmentAttribute.FIRE_RESISTANCE), 0.0001);
+    }
+
+    @Test
     void rejectsNonFiniteOrUnreasonablyLargeRegisteredBonuses() {
         assertThrows(IllegalArgumentException.class, () -> EquipmentSlotRegistry.builder()
                 .register("nexora:bad_item",

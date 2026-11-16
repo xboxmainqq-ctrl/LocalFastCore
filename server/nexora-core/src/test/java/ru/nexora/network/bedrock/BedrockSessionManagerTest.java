@@ -216,6 +216,7 @@ class BedrockSessionManagerTest {
         assertEquals(20.0, equipmentStats.value(ru.nexora.inventory.EquipmentAttribute.MAX_MANA), 0.0001);
         assertEquals(1.0, equipmentStats.value(ru.nexora.inventory.EquipmentAttribute.MANA_REGENERATION), 0.0001);
         assertEquals(0.10, equipmentStats.value(ru.nexora.inventory.EquipmentAttribute.COOLDOWN_REDUCTION), 0.0001);
+        assertEquals(2.0, equipmentStats.value(ru.nexora.inventory.EquipmentAttribute.ARMOR), 0.0001);
         assertEquals(4, manager.playerInventory("authenticated-client").orElseThrow()
                 .count("nexora:arcane_shard"));
         assertTrue(manager.playerInventory("unknown-client").isEmpty());

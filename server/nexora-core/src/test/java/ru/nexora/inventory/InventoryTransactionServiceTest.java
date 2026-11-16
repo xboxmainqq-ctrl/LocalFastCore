@@ -165,13 +165,13 @@ class InventoryTransactionServiceTest {
     }
 
     @Test
-    void rejectsArmorTransactionsUntilSlotCompatibilityIsRegistered() {
+    void rejectsArmorTransactionsWithoutRegisteredSlotCompatibility() {
         PlayerInventory inventory = new PlayerInventory();
         PlayerEquipment equipment = new PlayerEquipment();
         ItemStack helmet = new ItemStack("nexora:arcane_helmet", 1, 1);
         var result = service.applyPlayerInventoryAndUiTransaction(inventory, equipment, List.of(
                 new InventoryTransactionService.Action(0, 120, 0, Optional.empty(), Optional.of(helmet))));
-        assertEquals(InventoryTransactionService.Result.UNSUPPORTED_CONTAINER, result);
+        assertEquals(InventoryTransactionService.Result.INCOMPATIBLE_EQUIPMENT_ITEM, result);
         assertTrue(equipment.armor(0).isEmpty());
     }
 

@@ -298,6 +298,20 @@ class BedrockSessionManagerTest {
         assertEquals(18.0f, manager.playerVitals("physics-client").orElseThrow().health());
         assertEquals(4.0f, manager.playerVitals("physics-client").orElseThrow().saturation());
 
+        manager.playerInventory("physics-client").orElseThrow()
+                .setSlot(1, new ItemStack("minecraft:cobblestone", 1, 64));
+        manager.playerInventory("physics-client").orElseThrow().selectHotbarSlot(1);
+        BedrockPacket placeCobblestone = new BedrockPacket(0x90, 0, 0,
+                BedrockPlayerAuthInputCodecTest.itemUseMovementPayload(
+                        0.5f, 65.0f, 0.715f, 0.0f, 5L,
+                        2, 64, 2, 1, 1, 4, 1,
+                        Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.COBBLESTONE)),
+                        0.5f, 65.0f, 0.715f));
+        sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(List.of(placeCobblestone), true, 256));
+        assertEquals(ru.nexora.world.BlockType.COBBLESTONE, world.getBlock(2, 65, 2));
+        assertEquals(0, manager.playerInventory("physics-client").orElseThrow().count("minecraft:cobblestone"));
+        manager.playerInventory("physics-client").orElseThrow().selectHotbarSlot(0);
+
         // Remove a small floor patch and let the server physics model land the player on the lower layer.
         for (int x = 0; x <= 0; x++) {
             for (int z = 0; z <= 1; z++) {

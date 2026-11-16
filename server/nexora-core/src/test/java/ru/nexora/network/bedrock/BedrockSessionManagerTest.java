@@ -259,7 +259,7 @@ class BedrockSessionManagerTest {
         assertTrue(manager.damagePlayer("physics-client", 100.0f));
         assertEquals(0.0f, manager.playerVitals("physics-client").orElseThrow().health());
         List<BedrockPacket> deathPackets = outboundFrames.subList(beforeDeath, outboundFrames.size()).stream()
-                .flatMap(frame -> BedrockBatchCodec.decode(frame, true).stream()).toList();
+                .flatMap(frame -> decodeOutboundAll(frame, true).stream()).toList();
         assertTrue(deathPackets.stream().anyMatch(packet ->
                 packet.packetId() == BedrockRespawnCodec.DEATH_INFO_PACKET_ID));
         assertTrue(deathPackets.stream().anyMatch(packet ->
@@ -275,7 +275,7 @@ class BedrockSessionManagerTest {
         assertEquals(0.5f, manager.playerPosition("physics-client").orElseThrow().x(), 0.0001f);
         assertEquals(65.0f, manager.playerPosition("physics-client").orElseThrow().y(), 0.0001f);
         List<BedrockPacket> respawnPackets = outboundFrames.subList(beforeRespawn, outboundFrames.size()).stream()
-                .flatMap(frame -> BedrockBatchCodec.decode(frame, true).stream()).toList();
+                .flatMap(frame -> decodeOutboundAll(frame, true).stream()).toList();
         assertTrue(respawnPackets.stream().anyMatch(packet ->
                 packet.packetId() == BedrockRespawnCodec.MOVE_PLAYER_PACKET_ID));
         manager.close();
@@ -751,6 +751,12 @@ class BedrockSessionManagerTest {
         wire.putFloat(20, moveX); // PlayerAuthInput Move Vector X
         wire.putFloat(24, moveZ); // PlayerAuthInput Move Vector Y / local forward
         return payload;
+    }
+
+    private static List<BedrockPacket> decodeOutboundAll(byte[] frame, boolean compressed) {
+        NetherNetMessageFramer.Reassembler reassembler = new NetherNetMessageFramer.Reassembler();
+        byte[] payload = reassembler.accept(frame, true).orElseThrow();
+        return BedrockBatchCodec.decode(payload, compressed);
     }
 
     private static BedrockPacket decodeOutbound(byte[] frame, boolean compressed) {

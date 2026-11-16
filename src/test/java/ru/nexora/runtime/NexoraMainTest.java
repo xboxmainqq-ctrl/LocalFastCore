@@ -101,6 +101,39 @@ class NexoraMainTest {
         assertTrue(enabled.server().moduleIds().contains("bedrock-nethernet"));
     }
 
+
+    @Test
+    void enablesAuthenticatedBedrockListenerFromServerPropertiesWithoutCliFlags() throws Exception {
+        Path dataDirectory = temporaryDirectory.resolve("bedrock-properties");
+        Files.createDirectories(dataDirectory);
+        int port;
+        try (java.net.ServerSocket tcp = new java.net.ServerSocket(0)) {
+            port = tcp.getLocalPort();
+            try (java.net.DatagramSocket udp = new java.net.DatagramSocket(port)) {
+                assertTrue(udp.isBound());
+            }
+        }
+        Files.writeString(dataDirectory.resolve("server.properties"), """
+                bedrock.network.enabled=true
+                bedrock.bind-address=127.0.0.1
+                bedrock.port=%d
+                bedrock.ice-port=0
+                bedrock.identity-file=keys/nexora.pem
+                """.formatted(port));
+
+        NexoraMain.RuntimeHandle runtime = NexoraMain.createRuntime(
+                NexoraMain.parseArguments(new String[] {"--data-dir", dataDirectory.toString()}),
+                ignored -> { });
+        assertTrue(runtime.server().moduleIds().contains("bedrock-nethernet"));
+        runtime.server().start();
+        try {
+            assertTrue(Files.isRegularFile(dataDirectory.resolve("keys/nexora.pem")));
+            assertEquals(ServerState.RUNNING, runtime.server().state());
+        } finally {
+            runtime.server().stop();
+        }
+    }
+
     @Test
     void requiresExplicitFlagBeforeOpeningDevelopmentNetwork() {
         assertThrows(IllegalArgumentException.class,

@@ -171,6 +171,6 @@ public final class NexoraServer {
         System.out.println("Players can open the magical equipment interface with /equipment.");
         System.out.printf("World autosave interval: %d seconds%n", autosaveSeconds);
         System.out.println("Saved player positions and rotations are restored on re-login.");
-        System.out.println("Next gameplay stages: expanded block catalog, entity replication, containers/crafting and real-client validation.");
+        System.out.println("Next gameplay stages: entity replication, containers/crafting, death drops and real-client validation.");
     }
 }

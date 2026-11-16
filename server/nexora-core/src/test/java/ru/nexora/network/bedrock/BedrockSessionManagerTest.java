@@ -407,6 +407,35 @@ class BedrockSessionManagerTest {
                 manager.playerEquipment("authenticated-client").orElseThrow().armor(1).orElseThrow());
         assertEquals(31, outboundFrames.size());
 
+        // Open the player-facing equipment UI, choose the staff slot, and equip a compatible item.
+        inventory.setSlot(4, new ItemStack("minecraft:blaze_rod", 1, 64));
+        BedrockPacket equipmentCommand = new BedrockPacket(0x4d, 0, 0,
+                commandRequestPayload("/equipment", "Player", "equipment-ui-1", 1L));
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(equipmentCommand), true, 256));
+        assertEquals(32, outboundFrames.size());
+        assertEquals(BedrockModalFormCodec.MODAL_FORM_REQUEST_PACKET_ID,
+                decodeOutbound(outboundFrames.get(31), true).packetId());
+
+        BedrockPacket chooseStaffSlot = new BedrockPacket(0x65, 0, 0,
+                modalFormResponsePayload(1, "0"));
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(chooseStaffSlot), true, 256));
+        assertEquals(33, outboundFrames.size());
+        assertEquals(BedrockModalFormCodec.MODAL_FORM_REQUEST_PACKET_ID,
+                decodeOutbound(outboundFrames.get(32), true).packetId());
+
+        BedrockPacket equipStaff = new BedrockPacket(0x65, 0, 0,
+                modalFormResponsePayload(2, "0"));
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(equipStaff), true, 256));
+        assertEquals(new ItemStack("minecraft:blaze_rod", 1, 64),
+                manager.playerEquipment("authenticated-client").orElseThrow()
+                        .magicSlot(ru.nexora.inventory.EquipmentSlot.MAGIC_STAFF).orElseThrow());
+        assertTrue(inventory.getSlot(4).isEmpty());
+        assertEquals(BedrockModalFormCodec.MODAL_FORM_REQUEST_PACKET_ID,
+                decodeOutbound(outboundFrames.getLast(), true).packetId());
+
         assertThrows(SecurityException.class, () -> sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256)));
 
@@ -570,6 +599,43 @@ class BedrockSessionManagerTest {
         int first = value.length > 1 && value[0] == 0 ? 1 : 0;
         int length = value.length - first;
         System.arraycopy(value, first, output, offset + 48 - length, length);
+    }
+
+    private static byte[] commandRequestPayload(String command, String origin,
+                                                String requestId, long playerId) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        writeTestString(out, command);
+        writeTestString(out, origin);
+        out.writeBytes(new byte[16]); // CommandOriginData UUID
+        writeTestString(out, requestId);
+        out.writeBytes(ByteBuffer.allocate(Long.BYTES).order(ByteOrder.LITTLE_ENDIAN)
+                .putLong(playerId).array());
+        out.write(0); // IsInternal
+        writeTestString(out, "Latest");
+        return out.toByteArray();
+    }
+
+    private static byte[] modalFormResponsePayload(int formId, String responseJson) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        writeTestVarUInt(out, formId);
+        out.write(1); // JSON response present
+        writeTestString(out, responseJson);
+        out.write(0); // Cancel reason absent
+        return out.toByteArray();
+    }
+
+    private static void writeTestString(ByteArrayOutputStream out, String value) {
+        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+        writeTestVarUInt(out, bytes.length);
+        out.writeBytes(bytes);
+    }
+
+    private static void writeTestVarUInt(ByteArrayOutputStream out, int value) {
+        do {
+            int next = value & 0x7f;
+            value >>>= 7;
+            out.write(value == 0 ? next : next | 0x80);
+        } while (value != 0);
     }
 
     private static void sendClientBatch(BedrockSessionManager manager, String id, byte[] batch) {

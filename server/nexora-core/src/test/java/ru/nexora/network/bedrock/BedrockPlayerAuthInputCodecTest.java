@@ -22,6 +22,20 @@ class BedrockPlayerAuthInputCodecTest {
     }
 
     @Test
+    void decodesInputFlagsNeededByMovementSimulation() {
+        BedrockPlayerAuthInputCodec.PlayerInput input =
+                BedrockPlayerAuthInputCodec.decode(new BedrockPacket(0x90, 0, 0,
+                        movementPayload(0, 65, 0, 0, 14L, false,
+                                BedrockPlayerAuthInputCodec.InputAction.JUMPING,
+                                BedrockPlayerAuthInputCodec.InputAction.START_JUMPING,
+                                BedrockPlayerAuthInputCodec.InputAction.JUMP_PRESSED_RAW)));
+
+        assertEquals(java.util.List.of(6, 31, 60), input.inputActions());
+        assertTrue(input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.JUMPING));
+        assertFalse(input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.SPRINTING));
+    }
+
+    @Test
     void reportsOptionalActionSectionsWithoutMisreadingTheirPayload() {
         BedrockPlayerAuthInputCodec.PlayerInput input =
                 BedrockPlayerAuthInputCodec.decode(new BedrockPacket(0x90, 0, 0,
@@ -72,6 +86,12 @@ class BedrockPlayerAuthInputCodecTest {
     }
 
     static byte[] movementPayload(float x, float y, float z, float yaw, long tick, boolean optional) {
+        return movementPayload(x, y, z, yaw, tick, optional, new int[0]);
+    }
+
+    static byte[] movementPayload(
+            float x, float y, float z, float yaw, long tick, boolean optional, int... inputActions
+    ) {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         writeFloat(output, 0); // pitch
         writeFloat(output, yaw);
@@ -81,7 +101,8 @@ class BedrockPlayerAuthInputCodecTest {
         writeFloat(output, 0); // motion X
         writeFloat(output, 0); // motion Z
         writeFloat(output, yaw); // head yaw
-        writeVarUInt(output, 0); // input actions
+        writeVarUInt(output, inputActions.length);
+        for (int action : inputActions) writeVarInt(output, action);
         writeVarUInt(output, 2); // input mode
         writeVarUInt(output, 0); // play mode
         writeVarInt(output, 0); // interaction model

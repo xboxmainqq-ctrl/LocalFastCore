@@ -79,15 +79,25 @@ public final class CloudburstNetherNetBedrockModule implements RuntimeModule {
                     .setSelfSignedAuth(false)
                     .build();
 
-            signaling = new NetherNetHTTPServerSignaling.Builder()
-                    .setIdentity(identity)
-                    .setTokenTrust(TokenTrust.MINECRAFT_AUTH)
-                    .setMotd(advertisement)
-                    .setStunServers(List.of(
-                            "stun:stun.cloudflare.com:3478",
-                            "stun:stun.l.google.com:19302"))
-                    .setIceOnLocalPort(settings.separateIcePort() == 0)
-                    .build();
+            NetherNetHTTPServerSignaling.Builder signalingBuilder =
+                    new NetherNetHTTPServerSignaling.Builder()
+                            .setIdentity(identity)
+                            .setTokenTrust(TokenTrust.MINECRAFT_AUTH)
+                            .setMotd(advertisement)
+                            .setIceOnLocalPort(settings.separateIcePort() == 0);
+            if (settings.advertisedAddresses().isEmpty()) {
+                // Try independent public STUN services. Some game hosts filter one provider.
+                signalingBuilder.setStunServers(List.of(
+                        "stun:stun.cloudflare.com:3478",
+                        "stun:stun.l.google.com:19302"));
+                log.accept("NetherNet ICE public-address discovery: Cloudflare STUN + Google STUN");
+            } else {
+                // For providers with blocked outbound STUN, announce their public UDP endpoint directly.
+                signalingBuilder.setAdvertisedAddresses(settings.advertisedAddresses());
+                log.accept("NetherNet ICE using configured public endpoint(s): "
+                        + String.join(", ", settings.advertisedAddresses()));
+            }
+            signaling = signalingBuilder.build();
 
             eventLoops = new NioEventLoopGroup();
             ServerBootstrap bootstrap = new ServerBootstrap()

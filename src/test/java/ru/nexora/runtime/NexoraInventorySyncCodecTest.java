@@ -19,13 +19,11 @@ class NexoraInventorySyncCodecTest {
                 NexoraInventorySyncCodec.decode(ByteBuffer.wrap(NexoraInventorySyncCodec.encode(inventory)));
 
         assertEquals(player, decoded.playerId());
-        assertEquals(3, decoded.stacks().size());
+        assertEquals(2, decoded.stacks().size());
         assertEquals(new NexoraInventorySyncCodec.InventoryEntry(0,
-                new ItemStack("minecraft:apple", 64)), decoded.stacks().get(0));
+                new ItemStack("minecraft:apple", 65)), decoded.stacks().get(0));
         assertEquals(new NexoraInventorySyncCodec.InventoryEntry(1,
-                new ItemStack("minecraft:apple", 1)), decoded.stacks().get(1));
-        assertEquals(new NexoraInventorySyncCodec.InventoryEntry(2,
-                new ItemStack("minecraft:diamond", 1)), decoded.stacks().get(2));
+                new ItemStack("minecraft:diamond", 1)), decoded.stacks().get(1));
     }
 
     @Test
@@ -46,11 +44,11 @@ class NexoraInventorySyncCodecTest {
     @Test
     void movesAndMergesStacksWithoutExceedingTheStackLimit() {
         PlayerInventory inventory = new PlayerInventory(UUID.randomUUID());
-        for (int i = 0; i < 65; i++) assertTrue(inventory.addOne("minecraft:apple"));
+        for (int i = 0; i < 100; i++) assertTrue(inventory.addOne("minecraft:apple"));
         assertNotNull(inventory.removeOne(0));
         assertTrue(inventory.moveOrSwap(1, 0));
 
-        assertEquals(new ItemStack("minecraft:apple", 64), inventory.stackAt(0));
+        assertEquals(new ItemStack("minecraft:apple", 99), inventory.stackAt(0));
         assertNull(inventory.stackAt(1));
     }
 

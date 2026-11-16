@@ -12,6 +12,7 @@ import dev.onvoid.webrtc.RTCDataChannelObserver;
 import dev.onvoid.webrtc.RTCDataChannelSendObserver;
 import dev.onvoid.webrtc.RTCDataChannelState;
 import dev.onvoid.webrtc.RTCIceGatheringState;
+import dev.onvoid.webrtc.RTCIceServer;
 import dev.onvoid.webrtc.RTCIceTransportPolicy;
 import dev.onvoid.webrtc.RTCPeerConnection;
 import dev.onvoid.webrtc.RTCPeerConnectionState;
@@ -39,9 +40,9 @@ import java.util.function.Consumer;
 /**
  * Desktop/server WebRTC implementation of the NetherNet peer-host boundary.
  *
- * <p>Uses host ICE candidates only, no STUN/TURN, no TCP candidates, MAX_BUNDLE,
- * and full ICE gathering. A host must have a directly reachable UDP candidate;
- * NAT traversal/relay configuration is intentionally not added here.</p>
+ * <p>Gathers host and server-reflexive UDP ICE candidates using public STUN services.
+ * TURN relay and TCP candidates remain disabled; MAX_BUNDLE and full ICE gathering
+ * are used so the signaling response contains the complete candidate set.</p>
  */
 public final class WebRtcJavaNetherNetPeerHost
         implements NetherNetPeerHost, NetworkTransport {
@@ -212,12 +213,17 @@ public final class WebRtcJavaNetherNetPeerHost
     static RTCConfiguration createConfiguration() {
         RTCConfiguration configuration = new RTCConfiguration();
         configuration.iceServers.clear();
+        RTCIceServer cloudflareStun = new RTCIceServer();
+        cloudflareStun.urls.add("stun:stun.cloudflare.com:3478");
+        RTCIceServer googleStun = new RTCIceServer();
+        googleStun.urls.add("stun:stun.l.google.com:19302");
+        configuration.iceServers.add(cloudflareStun);
+        configuration.iceServers.add(googleStun);
         configuration.iceTransportPolicy = RTCIceTransportPolicy.ALL;
         configuration.bundlePolicy = RTCBundlePolicy.MAX_BUNDLE;
         configuration.tcpCandidatePolicy = RTCTcpCandidatePolicy.DISABLED;
         configuration.continualGatheringPolicy = RTCContinualGatheringPolicy.GATHER_ONCE;
-        configuration.portAllocatorConfig.setDisableStun(true)
-                .setDisableRelay(true)
+        configuration.portAllocatorConfig.setDisableRelay(true)
                 .setDisableTcp(true);
         return configuration;
     }

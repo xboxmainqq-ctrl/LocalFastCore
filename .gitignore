@@ -1,0 +1,9 @@
+# NEXORA runtime output and secrets
+/data/identity/
+/server/nexora-core/data/identity/
+/server/nexora-core/target/
+/target/
+
+# Persistent NetherNet operator identity keys
+*.pk8
+*.x509

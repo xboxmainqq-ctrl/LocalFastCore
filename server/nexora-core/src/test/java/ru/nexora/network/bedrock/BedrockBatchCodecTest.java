@@ -86,7 +86,7 @@ class BedrockBatchCodecTest {
     @Test
     void parsesResourcePackClientResponseEnumAndName() {
         byte[] body = new byte[] {
-                2, 18,
+                2, 19,
                 'd', 'o', 'w', 'n', 'l', 'o', 'a', 'd', 'i', 'n', 'g',
                 'f', 'i', 'n', 'i', 's', 'h', 'e', 'd'
         };

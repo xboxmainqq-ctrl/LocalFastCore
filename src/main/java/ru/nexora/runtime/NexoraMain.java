@@ -297,6 +297,8 @@ public final class NexoraMain {
             server.register(new RuntimeModule() {
                 private CloudburstNetherNetBedrockModule ingress;
                 private java.util.concurrent.ExecutorService authenticationExecutor;
+                private BedrockPlayerSessionManager playerSessions;
+                private TickScheduler.TaskHandle playerSessionTask;
 
                 @Override
                 public String id() {
@@ -321,6 +323,14 @@ public final class NexoraMain {
 
                     BedrockNetworkSettings bedrockNetwork = new BedrockNetworkSettings(
                             1, BedrockNetworkSettings.CompressionAlgorithm.ZLIB, false, 0, 0.0f);
+                    PlayerChunkStreamingManager streaming = activeChunkStreaming.get();
+                    if (streaming == null) {
+                        throw new IllegalStateException("Player chunk streaming must start before Bedrock networking");
+                    }
+                    playerSessions = new BedrockPlayerSessionManager(
+                            world, entities, streaming, bedrockNetwork, initialChunks,
+                            findSpawnY(world), log);
+                    playerSessionTask = scheduler.scheduleRepeating(1, 1, playerSessions::tick);
                     BedrockLoginIdentityVerifier loginVerifier = new BedrockLoginIdentityVerifier(
                             new NetherNetGameServerTokenVerifier(new NetherNetJwksKeyCache()));
                     authenticationExecutor = new java.util.concurrent.ThreadPoolExecutor(
@@ -336,8 +346,10 @@ public final class NexoraMain {
                     BedrockWorldSessionPipeline sessions = new BedrockWorldSessionPipeline(
                             bedrockNetwork, world, 0, -1, initialChunks,
                             BedrockRuntimeBlockRegistryProfile.hashing(),
-                            (connection, player) -> createBedrockStartGameSettings(
-                                    world, player, seed, worldId),
+                            (connection, player) -> {
+                                playerSessions.onAuthenticated(connection, player);
+                                return createBedrockStartGameSettings(world, player, seed, worldId);
+                            },
                             (connection, login, request) -> CompletableFuture.supplyAsync(() -> {
                                 try {
                                     NetherNetGameServerTokenVerifier.VerifiedClientIdentity identity =
@@ -350,9 +362,8 @@ public final class NexoraMain {
                                     throw new java.util.concurrent.CompletionException(failure);
                                 }
                             }, authenticationExecutor),
-                            (connection, message) -> log.accept(
-                                    "Bedrock gameplay packet not yet handled for " + connection.id()
-                                            + " (" + message.sizeBytes() + " bytes)."));
+                            (connection, message) -> playerSessions.accept(connection, message));
+                    sessions.router().addConnectionCloseListener(playerSessions::onDisconnected);
                     ingress = new CloudburstNetherNetBedrockModule(
                             effectiveSettings, sessions, worldId, log);
                     ingress.start();
@@ -365,6 +376,14 @@ public final class NexoraMain {
                     if (ingress != null) {
                         ingress.stop();
                         ingress = null;
+                    }
+                    if (playerSessionTask != null) {
+                        playerSessionTask.cancel();
+                        playerSessionTask = null;
+                    }
+                    if (playerSessions != null) {
+                        playerSessions.close();
+                        playerSessions = null;
                     }
                     if (authenticationExecutor != null) {
                         authenticationExecutor.shutdownNow();

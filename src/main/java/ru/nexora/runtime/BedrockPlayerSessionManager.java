@@ -1,0 +1,413 @@
+package ru.nexora.runtime;
+
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import org.cloudburstmc.math.vector.Vector3f;
+import org.cloudburstmc.math.vector.Vector3i;
+import org.cloudburstmc.protocol.bedrock.codec.v2225.Bedrock_v2225;
+import org.cloudburstmc.protocol.bedrock.data.PacketRecipient;
+import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket;
+import org.cloudburstmc.protocol.bedrock.packet.ChunkRadiusUpdatedPacket;
+import org.cloudburstmc.protocol.bedrock.packet.CorrectPlayerMovePredictionPacket;
+import org.cloudburstmc.protocol.bedrock.packet.NetworkChunkPublisherUpdatePacket;
+import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket;
+import org.cloudburstmc.protocol.bedrock.packet.RequestChunkRadiusPacket;
+
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+
+/**
+ * Tick-owned Bedrock player state and bounded movement/chunk streaming.
+ *
+ * <p>Transport callbacks only decode packets and publish immutable input
+ * snapshots. Entity and chunk-ticket mutations happen from {@link #tick()} on
+ * the server game thread.</p>
+ *
+ * <p>This is the first movement milestone: it accepts bounded PlayerAuthInput
+ * positions, rejects large teleports with a prediction correction, tracks
+ * players in the world entity registry, and streams skeleton chunks as players
+ * move. Collision resolution, block actions and inventory transactions remain
+ * separate gameplay systems.</p>
+ */
+public final class BedrockPlayerSessionManager implements AutoCloseable {
+    private static final int VIEW_DISTANCE_CHUNKS = 1;
+    private static final int CHUNK_SIZE = 16;
+    private static final double MAX_COORDINATE = 30_000_000d;
+    private static final int MAX_PACKETS_PER_MESSAGE = 128;
+
+    private final World world;
+    private final EntityRegistry entities;
+    private final PlayerChunkStreamingManager chunkStreaming;
+    private final BedrockNetworkSettings networkSettings;
+    private final List<ChunkPosition> initialChunks;
+    private final int spawnY;
+    private final Consumer<String> log;
+    private final ConcurrentMap<String, PlayerSession> byConnection = new ConcurrentHashMap<>();
+    private final ConcurrentMap<UUID, PlayerSession> byPlayer = new ConcurrentHashMap<>();
+    private final AtomicBoolean closed = new AtomicBoolean();
+
+    public BedrockPlayerSessionManager(
+            World world,
+            EntityRegistry entities,
+            PlayerChunkStreamingManager chunkStreaming,
+            BedrockNetworkSettings networkSettings,
+            List<ChunkPosition> initialChunks,
+            int spawnY,
+            Consumer<String> log
+    ) {
+        this.world = Objects.requireNonNull(world, "world");
+        this.entities = Objects.requireNonNull(entities, "entities");
+        this.chunkStreaming = Objects.requireNonNull(chunkStreaming, "chunkStreaming");
+        this.networkSettings = Objects.requireNonNull(networkSettings, "networkSettings");
+        this.initialChunks = List.copyOf(Objects.requireNonNull(initialChunks, "initialChunks"));
+        this.log = Objects.requireNonNull(log, "log");
+        if (this.initialChunks.isEmpty() || this.initialChunks.size() > 128) {
+            throw new IllegalArgumentException("Initial Bedrock chunk set must contain 1 to 128 chunks");
+        }
+        if (spawnY < world.height().minY() || spawnY >= world.height().maxYExclusive()) {
+            throw new IllegalArgumentException("Bedrock spawn Y is outside world height");
+        }
+        this.spawnY = spawnY;
+    }
+
+    /** Called by the post-login StartGame settings factory; no world state is mutated here. */
+    public void onAuthenticated(TransportConnection connection, BedrockAuthenticatedPlayer player) {
+        Objects.requireNonNull(connection, "connection");
+        Objects.requireNonNull(player, "player");
+        if (closed.get() || !connection.isOpen()) {
+            connection.close();
+            return;
+        }
+        UUID playerId = UUID.nameUUIDFromBytes(
+                ("nexora-bedrock:" + player.identityId()).getBytes(StandardCharsets.UTF_8));
+        PlayerSession session = new PlayerSession(connection, player, playerId,
+                0.5d, spawnY, 0.5d, 0.0d);
+        PlayerSession existingConnection = byConnection.putIfAbsent(connection.id(), session);
+        if (existingConnection != null) {
+            connection.close();
+            return;
+        }
+        PlayerSession previousPlayer = byPlayer.put(playerId, session);
+        if (previousPlayer != null) {
+            previousPlayer.closed.set(true);
+            log.accept("Replacing an existing Bedrock session for XUID " + player.identityId());
+        }
+    }
+
+    /** Marks a session for tick-thread cleanup after the transport closes. */
+    public void onDisconnected(TransportConnection connection) {
+        if (connection == null) return;
+        PlayerSession session = byConnection.get(connection.id());
+        if (session != null) {
+            session.closed.set(true);
+        }
+    }
+
+    /** Receives the post-login gameplay stream. This callback may run on a Netty I/O thread. */
+    public void accept(TransportConnection connection, TransportMessage message) {
+        Objects.requireNonNull(connection, "connection");
+        Objects.requireNonNull(message, "message");
+        if (closed.get() || !connection.isOpen()) return;
+        PlayerSession session = byConnection.get(connection.id());
+        if (session == null || session.closed.get()) return;
+
+        try {
+            ByteBuffer batch = BedrockBatchCompressionCodec.decodeAfterNetworkSettings(
+                    message.payload(), networkSettings);
+            List<BedrockGamePacket> packets = BedrockPacketBatchCodec.decodeUncompressed(batch);
+            if (packets.isEmpty() || packets.size() > MAX_PACKETS_PER_MESSAGE) {
+                throw new IllegalArgumentException("Invalid Bedrock gameplay packet count");
+            }
+            for (BedrockGamePacket packet : packets) {
+                ByteBuf payload = Unpooled.wrappedBuffer(packet.payload());
+                try {
+                    BedrockPacket decoded = Bedrock_v2225.CODEC.tryDecode(
+                            Bedrock_v2225.CODEC.createHelper(),
+                            payload,
+                            packet.header().packetId(),
+                            PacketRecipient.SERVER);
+                    if (decoded instanceof PlayerAuthInputPacket input) {
+                        session.pendingInput.set(PlayerInput.from(input));
+                    } else if (decoded instanceof RequestChunkRadiusPacket request) {
+                        session.requestedRadius.set(Math.max(1,
+                                Math.min(VIEW_DISTANCE_CHUNKS, request.getRadius())));
+                    }
+                } finally {
+                    payload.release();
+                }
+            }
+        } catch (Exception malformed) {
+            log.accept("Closing malformed Bedrock gameplay stream for "
+                    + session.player.displayName() + ": " + malformed.getMessage());
+            connection.close();
+            session.closed.set(true);
+        }
+    }
+
+    /** Called once per server tick. All entity and chunk-ticket mutations happen here. */
+    public void tick() {
+        if (closed.get()) return;
+        List<PlayerSession> snapshot = new ArrayList<>(byConnection.values());
+
+        // Remove old/replaced sessions first so a reconnect with the same XUID can respawn safely.
+        for (PlayerSession session : snapshot) {
+            if (session.closed.get() || !session.connection.isOpen()) {
+                removeSession(session);
+            }
+        }
+
+        snapshot = new ArrayList<>(byConnection.values());
+        for (PlayerSession session : snapshot) {
+            if (session.closed.get() || !session.connection.isOpen()) continue;
+            try {
+                ensureSpawned(session);
+                applyPendingInput(session);
+                if (session.playReady) {
+                    publishChunkCenter(session);
+                    acknowledgeChunkRadius(session);
+                    sendNewChunks(session);
+                }
+            } catch (RuntimeException failure) {
+                log.accept("Bedrock gameplay tick failed for " + session.player.displayName()
+                        + ": " + failure.getMessage());
+                session.closed.set(true);
+                session.connection.close();
+            }
+        }
+    }
+
+    private void ensureSpawned(PlayerSession session) {
+        if (session.entitySpawned) return;
+        entities.spawn(WorldEntity.player(session.playerId, session.player.displayName(),
+                session.x, session.y, session.z, session.yaw, 0));
+        chunkStreaming.updatePlayer(session.playerId, floorToInt(session.x), floorToInt(session.z));
+        session.sentChunks.addAll(initialChunks);
+        session.entitySpawned = true;
+    }
+
+    private void applyPendingInput(PlayerSession session) {
+        PlayerInput input = session.pendingInput.getAndSet(null);
+        if (input == null) return;
+        if (input.tick() <= session.lastInputTick) return;
+
+        long previousTick = session.lastInputTick;
+        session.lastInputTick = input.tick();
+        if (!input.finite()) {
+            sendCorrection(session, input.tick());
+            return;
+        }
+
+        double x = input.x();
+        double y = input.y();
+        double z = input.z();
+        WorldHeight height = world.height();
+        if (Math.abs(x) > MAX_COORDINATE || Math.abs(z) > MAX_COORDINATE
+                || y < height.minY() - 2.0d || y > height.maxYExclusive() + 2.0d) {
+            sendCorrection(session, input.tick());
+            return;
+        }
+
+        long elapsedTicks = previousTick < 0 ? 1 : Math.max(1, input.tick() - previousTick);
+        double maximumStep = Math.min(16.0d, Math.max(3.0d, elapsedTicks * 1.25d));
+        double dx = x - session.x;
+        double dy = y - session.y;
+        double dz = z - session.z;
+        if (dx * dx + dy * dy + dz * dz > maximumStep * maximumStep) {
+            sendCorrection(session, input.tick());
+            return;
+        }
+
+        session.x = x;
+        session.y = y;
+        session.z = z;
+        session.yaw = normalizeYaw(input.yaw());
+        session.onGround = input.onGround();
+        session.playReady = true;
+        entities.updatePosition(session.playerId, x, y, z, session.yaw);
+        chunkStreaming.updatePlayer(session.playerId, floorToInt(x), floorToInt(z));
+    }
+
+    private void sendCorrection(PlayerSession session, long tick) {
+        CorrectPlayerMovePredictionPacket correction = new CorrectPlayerMovePredictionPacket();
+        correction.setPosition(Vector3f.from((float) session.x, (float) session.y, (float) session.z));
+        correction.setDelta(Vector3f.from(0.0f, 0.0f, 0.0f));
+        correction.setOnGround(session.onGround);
+        correction.setTick(tick);
+        sendProtocolPacket(session.connection, correction);
+    }
+
+    private void acknowledgeChunkRadius(PlayerSession session) {
+        int requested = session.requestedRadius.get();
+        if (requested < 0 || session.acknowledgedRadius == VIEW_DISTANCE_CHUNKS) return;
+        ChunkRadiusUpdatedPacket response = new ChunkRadiusUpdatedPacket();
+        response.setRadius(VIEW_DISTANCE_CHUNKS);
+        if (sendProtocolPacket(session.connection, response)) {
+            session.acknowledgedRadius = VIEW_DISTANCE_CHUNKS;
+        }
+    }
+
+    private void publishChunkCenter(PlayerSession session) {
+        ChunkPosition center = ChunkPosition.fromBlock(floorToInt(session.x), floorToInt(session.z));
+        if (center.equals(session.lastPublishedCenter)) return;
+        NetworkChunkPublisherUpdatePacket update = new NetworkChunkPublisherUpdatePacket();
+        update.setPosition(Vector3i.from(floorToInt(session.x), floorToInt(session.y), floorToInt(session.z)));
+        update.setRadius(VIEW_DISTANCE_CHUNKS * CHUNK_SIZE);
+        if (sendProtocolPacket(session.connection, update)) {
+            session.lastPublishedCenter = center;
+        }
+    }
+
+    private void sendNewChunks(PlayerSession session) {
+        ChunkPosition center = ChunkPosition.fromBlock(floorToInt(session.x), floorToInt(session.z));
+        Set<ChunkPosition> desired = desiredChunks(center);
+        session.sentChunks.retainAll(desired);
+        List<ChunkPosition> ordered = new ArrayList<>(desired);
+        ordered.sort(Comparator.comparingInt(ChunkPosition::x).thenComparingInt(ChunkPosition::z));
+        for (ChunkPosition position : ordered) {
+            if (session.sentChunks.contains(position) || !world.isChunkLoaded(position)) continue;
+            BedrockGamePacket packet = BedrockLevelChunkPacketCodec.encodeSkeletonPacket(
+                    new BedrockLevelChunkPacketCodec.ChunkPosition(position.x(), position.z()),
+                    0, BedrockLevelChunkPacketCodec.SUBCHUNK_REQUEST_SENTINEL);
+            TransportSendResult result = sendGamePacket(session.connection, packet);
+            if (result == TransportSendResult.ACCEPTED) {
+                session.sentChunks.add(position);
+            } else if (result == TransportSendResult.CLOSED) {
+                session.closed.set(true);
+                return;
+            }
+        }
+    }
+
+    private Set<ChunkPosition> desiredChunks(ChunkPosition center) {
+        Set<ChunkPosition> result = new HashSet<>();
+        int radiusSquared = VIEW_DISTANCE_CHUNKS * VIEW_DISTANCE_CHUNKS;
+        for (int dx = -VIEW_DISTANCE_CHUNKS; dx <= VIEW_DISTANCE_CHUNKS; dx++) {
+            for (int dz = -VIEW_DISTANCE_CHUNKS; dz <= VIEW_DISTANCE_CHUNKS; dz++) {
+                if (dx * dx + dz * dz > radiusSquared) continue;
+                result.add(new ChunkPosition(center.x() + dx, center.z() + dz));
+            }
+        }
+        return result;
+    }
+
+    private boolean sendProtocolPacket(TransportConnection connection, BedrockPacket packet) {
+        ByteBuf payload = Unpooled.buffer();
+        try {
+            Bedrock_v2225.CODEC.tryEncode(Bedrock_v2225.CODEC.createHelper(), payload, packet);
+            int packetId = Bedrock_v2225.CODEC.getPacketDefinition(packet.getClass()).id();
+            byte[] bytes = new byte[payload.readableBytes()];
+            payload.readBytes(bytes);
+            BedrockGamePacket gamePacket = new BedrockGamePacket(
+                    new BedrockPacketHeader(packetId, 0, 0), bytes);
+            return sendGamePacket(connection, gamePacket) == TransportSendResult.ACCEPTED;
+        } catch (Exception failure) {
+            log.accept("Could not encode Bedrock response packet: " + failure.getMessage());
+            connection.close();
+            return false;
+        } finally {
+            payload.release();
+        }
+    }
+
+    private TransportSendResult sendGamePacket(TransportConnection connection, BedrockGamePacket packet) {
+        ByteBuffer batch = BedrockPacketBatchCodec.encodeUncompressed(List.of(packet));
+        ByteBuffer frame = BedrockBatchCompressionCodec.encodeAfterNetworkSettings(batch, networkSettings);
+        return connection.send(frame, DeliveryMode.RELIABLE_ORDERED);
+    }
+
+    private void removeSession(PlayerSession session) {
+        if (!byConnection.remove(session.connection.id(), session)) return;
+        byPlayer.remove(session.playerId, session);
+        if (session.entitySpawned) {
+            entities.remove(session.playerId);
+            chunkStreaming.removePlayer(session.playerId);
+            session.entitySpawned = false;
+        }
+    }
+
+    @Override
+    public void close() {
+        if (!closed.compareAndSet(false, true)) return;
+        for (PlayerSession session : new ArrayList<>(byConnection.values())) {
+            session.closed.set(true);
+            removeSession(session);
+        }
+        byConnection.clear();
+        byPlayer.clear();
+    }
+
+    private static int floorToInt(double value) {
+        return (int) Math.floor(value);
+    }
+
+    private static double normalizeYaw(double yaw) {
+        double normalized = yaw % 360.0d;
+        if (normalized > 180.0d) normalized -= 360.0d;
+        if (normalized < -180.0d) normalized += 360.0d;
+        return normalized;
+    }
+
+    private static final class PlayerSession {
+        private final TransportConnection connection;
+        private final BedrockAuthenticatedPlayer player;
+        private final UUID playerId;
+        private final AtomicBoolean closed = new AtomicBoolean();
+        private final AtomicReference<PlayerInput> pendingInput = new AtomicReference<>();
+        private final AtomicInteger requestedRadius = new AtomicInteger(-1);
+        private final Set<ChunkPosition> sentChunks = new HashSet<>();
+        private double x;
+        private double y;
+        private double z;
+        private double yaw;
+        private boolean onGround = true;
+        private boolean entitySpawned;
+        private boolean playReady;
+        private long lastInputTick = -1;
+        private int acknowledgedRadius = -1;
+        private ChunkPosition lastPublishedCenter;
+
+        private PlayerSession(TransportConnection connection, BedrockAuthenticatedPlayer player,
+                              UUID playerId, double x, double y, double z, double yaw) {
+            this.connection = connection;
+            this.player = player;
+            this.playerId = playerId;
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.yaw = yaw;
+        }
+    }
+
+    private record PlayerInput(float x, float y, float z, float yaw,
+                               float pitch, float headYaw, long tick, boolean onGround) {
+        private static PlayerInput from(PlayerAuthInputPacket packet) {
+            Vector3f position = packet.getPosition();
+            Vector3f rotation = packet.getRotation();
+            if (position == null || rotation == null) {
+                return new PlayerInput(Float.NaN, Float.NaN, Float.NaN,
+                        Float.NaN, Float.NaN, Float.NaN, packet.getTick(), packet.isOnGround());
+            }
+            return new PlayerInput(position.getX(), position.getY(), position.getZ(),
+                    rotation.getY(), rotation.getX(), rotation.getZ(),
+                    packet.getTick(), packet.isOnGround());
+        }
+
+        private boolean finite() {
+            return Float.isFinite(x) && Float.isFinite(y) && Float.isFinite(z)
+                    && Float.isFinite(yaw) && Float.isFinite(pitch) && Float.isFinite(headYaw);
+        }
+    }
+}

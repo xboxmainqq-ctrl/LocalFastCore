@@ -67,7 +67,7 @@ Port 0 for the ICE option means WebRTC media shares the Bedrock port. The host m
 
 The server creates `nethernet-identity.pem` in the data directory on first launch. Keep this file between restarts and deployments: replacing it changes the server's cryptographic identity. Retail authentication is mandatory; there is no unauthenticated public Bedrock mode.
 
-**Compatibility is not yet certified.** Current automated tests cover the transport-neutral Bedrock handshake and identity-binding rejection, but CI does not prove that a retail 1.26.60 client can complete WebRTC, login, resource-pack negotiation and gameplay on a real host. Movement, block interaction and complete gameplay packet handling are still in progress. Do not advertise the server as fully playable until those tests pass. See [Bedrock NetherNet runtime notes](docs/BEDROCK_NETHERNET_RUNTIME.md).
+**Compatibility is not yet certified.** Current automated tests cover the transport-neutral Bedrock handshake and identity-binding rejection, but CI does not prove that a retail 1.26.60 client can complete WebRTC, login, resource-pack negotiation and gameplay on a real host. Basic PlayerAuthInput movement tracking, bounded movement correction, player entity registration and radius-based chunk streaming are now wired. Server-side collision/physics, block breaking/placing, inventory, entity replication and the remaining gameplay packet families are still in progress. Do not advertise the server as fully playable until those tests pass. See [Bedrock NetherNet runtime notes](docs/BEDROCK_NETHERNET_RUNTIME.md).
 
 ## Current implementation
 

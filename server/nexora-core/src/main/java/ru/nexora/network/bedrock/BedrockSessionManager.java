@@ -10,6 +10,7 @@ import ru.nexora.inventory.PlayerInventory;
 import ru.nexora.inventory.PlayerInventoryStorage;
 import ru.nexora.inventory.PlayerEquipment;
 import ru.nexora.inventory.PlayerEquipmentStorage;
+import ru.nexora.inventory.ArmorSlotRegistry;
 import ru.nexora.inventory.InventoryTransactionService;
 import ru.nexora.world.FlatWorldGenerator;
 import ru.nexora.world.BlockType;
@@ -61,6 +62,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final PlayerInventoryStorage inventoryStorage;
     private final PlayerEquipmentStorage equipmentStorage;
     private volatile BedrockItemRegistry itemRegistry = BedrockItemRegistry.empty();
+    private volatile ArmorSlotRegistry armorSlotRegistry = ArmorSlotRegistry.empty();
     private final InventoryTransactionService inventoryTransactionService = new InventoryTransactionService();
     private final OutboundFrameSender outbound;
     private final Consumer<PacketEvent> packetSink;
@@ -343,6 +345,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         this.itemRegistry = Objects.requireNonNull(registry, "registry");
     }
 
+    /** Installs server-owned armor compatibility rules before clients connect. */
+    public synchronized void setArmorSlotRegistry(ArmorSlotRegistry registry) {
+        if (!sessions.isEmpty()) {
+            throw new IllegalStateException("The armor slot registry must be installed before sessions are created");
+        }
+        this.armorSlotRegistry = Objects.requireNonNull(registry, "registry");
+    }
+
     public Optional<PlayerPosition> playerPosition(String networkId) {
         SessionState state = sessions.get(networkId);
         if (state == null) return Optional.empty();
@@ -433,7 +443,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
         InventoryTransactionService.Result result =
                 inventoryTransactionService.applyPlayerInventoryAndUiTransaction(
-                        state.inventory, state.equipment, decoded.actions());
+                        state.inventory, state.equipment, decoded.actions(), armorSlotRegistry);
         if (result == InventoryTransactionService.Result.APPLIED) {
             authoritativeContent = BedrockInventoryContentCodec.createPlayerInventory(state.inventory, registry);
         }

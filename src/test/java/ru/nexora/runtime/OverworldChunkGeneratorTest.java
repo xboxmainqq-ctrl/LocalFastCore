@@ -29,6 +29,27 @@ class OverworldChunkGeneratorTest {
     }
 
     @Test
+    void createsBroadContinentsAndDistinctMountainRelief() {
+        int minimum = Integer.MAX_VALUE;
+        int maximum = Integer.MIN_VALUE;
+        int belowSea = 0;
+        int samples = 0;
+        for (int x = -4096; x <= 4096; x += 128) {
+            for (int z = -4096; z <= 4096; z += 128) {
+                int elevation = TerrainHeightSampler.sample(x, z, 20261116L, height, 1.0);
+                minimum = Math.min(minimum, elevation);
+                maximum = Math.max(maximum, elevation);
+                if (elevation < OverworldChunkGenerator.DEFAULT_SEA_LEVEL) belowSea++;
+                samples++;
+            }
+        }
+        assertTrue(minimum < 50, "Expected low coastal shelves and ocean basins");
+        assertTrue(maximum > 110, "Expected tall mountain systems");
+        assertTrue(maximum - minimum > 70, "Expected a wide natural elevation range");
+        assertTrue(belowSea > samples / 5, "Expected a meaningful amount of coastline and ocean");
+    }
+
+    @Test
     void generatesBedrockTerrainAndWaterWithinChunkBounds() {
         GeneratedChunk generated = generator.generate(new ChunkPosition(-2, -1), height, 42L);
 

@@ -1708,6 +1708,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     if (state.sentChunkKeys.add(key)) {
                         WorldChunk chunk = world.getChunk(chunkX, chunkZ);
                         sendPacket(networkId, BedrockLevelChunkCodec.createPacket(chunk), true);
+                        if (itemRegistry != null) {
+                            for (WorldItemEntity entity : world.itemEntities().snapshot()) {
+                                if (Math.floorDiv((int) Math.floor(entity.x()), 16) == chunkX
+                                        && Math.floorDiv((int) Math.floor(entity.z()), 16) == chunkZ) {
+                                    sendPacket(networkId,
+                                            BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry), true);
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1811,7 +1820,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
 
             sendInventoryAndEquipmentState(networkId, state);
-            broadcastPacket(BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry));
+            broadcastItemActor(entity, BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry));
             return Optional.of(entity);
         }
     }
@@ -1860,8 +1869,26 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             throw new IllegalStateException("Unable to persist picked-up item inventory", exception);
         }
         sendInventoryAndEquipmentState(networkId, state);
-        broadcastPacket(BedrockTakeItemActorCodec.createAcknowledgement(entity.runtimeId(), state.entityId));
-        broadcastPacket(BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()));
+        broadcastItemActor(entity,
+                BedrockTakeItemActorCodec.createAcknowledgement(entity.runtimeId(), state.entityId));
+        broadcastItemActor(entity, BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()));
+    }
+
+    private void broadcastItemActor(WorldItemEntity entity, BedrockPacket packet) {
+        int chunkX = Math.floorDiv((int) Math.floor(entity.x()), 16);
+        int chunkZ = Math.floorDiv((int) Math.floor(entity.z()), 16);
+        long chunkKey = ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
+        for (var entry : sessions.entrySet()) {
+            SessionState recipient = entry.getValue();
+            if (!recipient.clientInitialized || recipient.rejected
+                    || !recipient.sentChunkKeys.contains(chunkKey)) continue;
+            try {
+                sendPacket(entry.getKey(), packet, true);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to sync item actor to " + entry.getKey()
+                        + ": " + exception.getMessage());
+            }
+        }
     }
 
     private void broadcastPacket(BedrockPacket packet) {

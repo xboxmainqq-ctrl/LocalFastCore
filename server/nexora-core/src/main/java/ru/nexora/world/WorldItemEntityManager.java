@@ -3,6 +3,8 @@ package ru.nexora.world;
 import ru.nexora.inventory.ItemStack;
 import ru.nexora.inventory.PlayerInventory;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -21,6 +23,25 @@ public final class WorldItemEntityManager {
     public static final long DEFAULT_PICKUP_DELAY_MILLIS = 500;
     private final AtomicLong nextRuntimeId = new AtomicLong(1_000_000);
     private final ConcurrentMap<Long, WorldItemEntity> entities = new ConcurrentHashMap<>();
+    private final WorldItemEntityStorage storage;
+
+    public WorldItemEntityManager() {
+        this.storage = null;
+    }
+
+    /** Loads persisted actors before the world begins accepting players. */
+    public WorldItemEntityManager(WorldItemEntityStorage storage) throws IOException {
+        this.storage = Objects.requireNonNull(storage, "storage");
+        long highestRuntimeId = 999_999;
+        for (WorldItemEntity entity : storage.load()) {
+            if (entity.runtimeId() == Long.MAX_VALUE
+                    || entities.putIfAbsent(entity.runtimeId(), entity) != null) {
+                throw new IOException("Invalid or duplicate persisted dropped-item runtime ID");
+            }
+            highestRuntimeId = Math.max(highestRuntimeId, entity.runtimeId());
+        }
+        nextRuntimeId.set(highestRuntimeId + 1);
+    }
 
     public WorldItemEntity spawn(ItemStack stack, double x, double y, double z,
                                  double velocityX, double velocityY, double velocityZ,
@@ -35,6 +56,12 @@ public final class WorldItemEntityManager {
                 x, y, z, velocityX, velocityY, velocityZ,
                 nowMillis + pickupDelayMillis, ownerXuid);
         entities.put(runtimeId, entity);
+        try {
+            persist();
+        } catch (RuntimeException exception) {
+            entities.remove(runtimeId, entity);
+            throw exception;
+        }
         return entity;
     }
 
@@ -52,7 +79,14 @@ public final class WorldItemEntityManager {
         WorldItemEntity entity = entities.get(runtimeId);
         if (entity == null) return false;
         synchronized (entity) {
-            return entities.remove(runtimeId, entity);
+            if (!entities.remove(runtimeId, entity)) return false;
+            try {
+                persist();
+                return true;
+            } catch (RuntimeException exception) {
+                entities.putIfAbsent(runtimeId, entity);
+                throw exception;
+            }
         }
     }
 
@@ -61,6 +95,12 @@ public final class WorldItemEntityManager {
         Objects.requireNonNull(entity, "entity");
         if (entities.putIfAbsent(entity.runtimeId(), entity) != null) {
             throw new IllegalStateException("Item actor runtime ID is already present");
+        }
+        try {
+            persist();
+        } catch (RuntimeException exception) {
+            entities.remove(entity.runtimeId(), entity);
+            throw exception;
         }
     }
 
@@ -96,8 +136,33 @@ public final class WorldItemEntityManager {
                     inventory.restore(before, selectedSlot);
                     return false;
                 }
-                return entities.remove(runtimeId, entity);
+                if (!entities.remove(runtimeId, entity)) {
+                    inventory.restore(before, selectedSlot);
+                    return false;
+                }
+                try {
+                    persist();
+                    return true;
+                } catch (RuntimeException exception) {
+                    entities.putIfAbsent(runtimeId, entity);
+                    inventory.restore(before, selectedSlot);
+                    throw exception;
+                }
             }
+        }
+    }
+
+    /** Flushes the current actor snapshot; a no-storage manager is a no-op. */
+    public void save() throws IOException {
+        if (storage != null) storage.save(snapshot());
+    }
+
+    private void persist() {
+        if (storage == null) return;
+        try {
+            storage.save(snapshot());
+        } catch (IOException exception) {
+            throw new UncheckedIOException("Unable to persist dropped world items", exception);
         }
     }
 

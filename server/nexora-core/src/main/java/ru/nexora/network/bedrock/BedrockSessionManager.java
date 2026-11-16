@@ -1346,6 +1346,17 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case "minecraft:stone" -> BlockType.STONE;
             case "minecraft:dirt" -> BlockType.DIRT;
             case "minecraft:grass_block" -> BlockType.GRASS_BLOCK;
+            case "minecraft:cobblestone" -> BlockType.COBBLESTONE;
+            case "minecraft:gravel" -> BlockType.GRAVEL;
+            case "minecraft:glass" -> BlockType.GLASS;
+            case "minecraft:obsidian" -> BlockType.OBSIDIAN;
+            case "minecraft:netherrack" -> BlockType.NETHERRACK;
+            case "minecraft:end_stone" -> BlockType.END_STONE;
+            case "minecraft:coal_block" -> BlockType.COAL_BLOCK;
+            case "minecraft:iron_block" -> BlockType.IRON_BLOCK;
+            case "minecraft:gold_block" -> BlockType.GOLD_BLOCK;
+            case "minecraft:diamond_block" -> BlockType.DIAMOND_BLOCK;
+            case "minecraft:emerald_block" -> BlockType.EMERALD_BLOCK;
             default -> null;
         };
         if (placedType == null) return;

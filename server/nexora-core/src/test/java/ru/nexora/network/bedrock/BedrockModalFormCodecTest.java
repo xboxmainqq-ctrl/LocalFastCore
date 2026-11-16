@@ -81,7 +81,6 @@ class BedrockModalFormCodecTest {
     }
 
     private static final class Reader {
-        private final java.nio.ByteBuffer buffer = java.nio.ByteBuffer.wrap(new byte[0]);
         private final java.io.ByteArrayInputStream input;
 
         Reader(byte[] bytes) {
@@ -99,7 +98,7 @@ class BedrockModalFormCodecTest {
             return value;
         }
 
-        String string() {
+        String string() throws java.io.IOException {
             int length = varUInt32();
             byte[] bytes = input.readNBytes(length);
             if (bytes.length != length) throw new AssertionError("truncated string");

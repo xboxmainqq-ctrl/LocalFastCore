@@ -20,6 +20,7 @@ import ru.nexora.inventory.InventoryTransactionService;
 import ru.nexora.world.FlatWorldGenerator;
 import ru.nexora.world.BlockType;
 import ru.nexora.world.World;
+import ru.nexora.world.WorldItemEntity;
 import ru.nexora.world.WorldChunk;
 import ru.nexora.world.WorldCollision;
 import ru.nexora.world.WorldRaycast;
@@ -503,6 +504,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             handleCommandRequest(message, state, packet);
                     case BedrockModalFormCodec.MODAL_FORM_RESPONSE_PACKET_ID ->
                             handleModalFormResponse(message, state, packet);
+                    case BedrockTakeItemActorCodec.TAKE_ITEM_ACTOR_PACKET_ID ->
+                            handleTakeItemActor(message, state, packet);
                     default -> packetSink.accept(new PacketEvent(
                             message.networkId(), message.channelLabel(), packet));
                 }
@@ -1188,6 +1191,110 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             sendPackets(networkId, initialPackets, true);
         } catch (IllegalArgumentException exception) {
             System.err.println("NEXORA: initial inventory sync deferred because a stored item has no Bedrock definition");
+        }
+    }
+
+    /** Drops a server-selected inventory stack and advertises the new world actor. */
+    public Optional<WorldItemEntity> dropPlayerItem(
+            String networkId, int inventorySlot, int quantity,
+            double velocityX, double velocityY, double velocityZ
+    ) throws IOException {
+        SessionState state = sessions.get(networkId);
+        if (state == null) return Optional.empty();
+        synchronized (state) {
+            if (!state.loginAuthenticated || !state.clientInitialized || state.identity == null) {
+                return Optional.empty();
+            }
+            Optional<ru.nexora.inventory.ItemStack> current = state.inventory.getSlot(inventorySlot);
+            if (current.isEmpty() || quantity < 1 || quantity > current.orElseThrow().count()) {
+                return Optional.empty();
+            }
+            ru.nexora.inventory.ItemStack stack = current.orElseThrow();
+            if (itemRegistry.findByIdentifier(stack.itemId()) == null) return Optional.empty();
+
+            List<Optional<ru.nexora.inventory.ItemStack>> previousInventory = state.inventory.snapshot();
+            int previousSelectedSlot = state.inventory.selectedHotbarSlot();
+            if (quantity == stack.count()) {
+                state.inventory.setSlot(inventorySlot, null);
+            } else {
+                state.inventory.setSlot(inventorySlot,
+                        new ru.nexora.inventory.ItemStack(stack.itemId(), stack.count() - quantity,
+                                stack.maxStackSize()));
+            }
+
+            WorldItemEntity entity;
+            try {
+                entity = world.itemEntities().spawn(
+                        new ru.nexora.inventory.ItemStack(stack.itemId(), quantity, stack.maxStackSize()),
+                        state.positionX, state.positionY + 0.5, state.positionZ,
+                        velocityX, velocityY, velocityZ,
+                        System.currentTimeMillis(), WorldItemEntityManager.DEFAULT_PICKUP_DELAY_MILLIS,
+                        state.identity.xuid());
+                saveInventory(state);
+            } catch (IOException | RuntimeException exception) {
+                state.inventory.restore(previousInventory, previousSelectedSlot);
+                if (exception instanceof IOException ioException) throw ioException;
+                throw exception;
+            }
+
+            sendInventoryAndEquipmentState(networkId, state);
+            broadcastPacket(BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry));
+            return Optional.of(entity);
+        }
+    }
+
+    private void handleTakeItemActor(
+            NetherNetInboundPipeline.InboundMessage message, SessionState state, BedrockPacket packet
+    ) {
+        String networkId = message.networkId();
+        if (!message.reliable()) throw new SecurityException("TakeItemActor must arrive on ReliableDataChannel");
+        if (!state.loginAuthenticated || !state.clientInitialized || state.identity == null) {
+            throw new SecurityException("TakeItemActor arrived before player initialization");
+        }
+
+        BedrockTakeItemActorCodec.DecodedPickup request;
+        try {
+            request = BedrockTakeItemActorCodec.decode(packet);
+        } catch (IllegalArgumentException exception) {
+            throw new SecurityException("Malformed Bedrock TakeItemActor", exception);
+        }
+        if (request.playerRuntimeId() != state.entityId) {
+            throw new SecurityException("TakeItemActor player runtime ID does not match this session");
+        }
+
+        WorldItemEntity entity = world.itemEntities().find(request.itemRuntimeId()).orElse(null);
+        if (entity == null) return;
+        boolean pickedUp = world.itemEntities().pickup(
+                entity.runtimeId(), state.inventory, state.identity.xuid(),
+                state.positionX, state.positionY, state.positionZ, System.currentTimeMillis());
+        if (!pickedUp) {
+            sendPacket(networkId, BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry), true);
+            return;
+        }
+
+        try {
+            saveInventory(state);
+        } catch (IOException exception) {
+            // Restore the actor if persistence fails; the inventory update is rolled back from
+            // the pre-pickup snapshot by the caller path below in future transactional storage.
+            state.rejected = true;
+            throw new IllegalStateException("Unable to persist picked-up item inventory", exception);
+        }
+        sendInventoryAndEquipmentState(networkId, state);
+        broadcastPacket(BedrockTakeItemActorCodec.createAcknowledgement(entity.runtimeId(), state.entityId));
+        broadcastPacket(BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()));
+    }
+
+    private void broadcastPacket(BedrockPacket packet) {
+        for (var entry : sessions.entrySet()) {
+            SessionState recipient = entry.getValue();
+            if (!recipient.clientInitialized || recipient.rejected) continue;
+            try {
+                sendPacket(entry.getKey(), packet, true);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to broadcast actor packet to " + entry.getKey()
+                        + ": " + exception.getMessage());
+            }
         }
     }
 

@@ -23,6 +23,12 @@ Product briefs: [Survival single-player vs RPG servers](docs/SINGLEPLAYER_AND_SE
 - Design the client for easy, polished and efficient customization through data-driven content, resource packs, configurable HUD/UI, reusable components and creator tools rather than hardcoding each server's content into the app.
 - Delivery order: playable offline Survival → one online RPG server tested with two Android clients → RPG systems and creator/customization tools → lobby and multi-world network services.
 
+## NEXORA world generation
+
+The standalone server generates its own seeded terrain through the `overworld` generator. Biomes are selected from world-space temperature, moisture and elevation fields, so neighboring chunks share continuous climate borders. The built-in NEXORA biome set includes Mistwood, Glassgrass Steppe, Emberfen, Frostveil, Skyglass Highlands, Saltwind Basin, Bloomveil Grove, Ashen Wastes and Moonfrost Tundra. Terrain includes rivers and lakes, underground caves, lush cave pockets, underground water, crystal geodes, ore veins and biome-specific trees. New chunks use the selected generator; already saved chunks are preserved when the server restarts or the generator changes.
+
+The generator is selected in `nexora-data/server.properties` with `world.generator=overworld`; set `world.seed` before creating a new world to choose its terrain layout. The server creates and saves the initial spawn chunk at startup and generates additional requested chunks through its bounded chunk pipeline. A PNG preview can be exported in CI from the same authoritative generator.
+
 ## Bedrock block compatibility
 
 The world model keeps stable block names and now has an explicit compatibility registry for translating them to Bedrock block names. The initial registry covers the blocks emitted by the current overworld generator and allows custom NEXORA blocks to map to vanilla Bedrock blocks. This is only the name-translation foundation: per-session Bedrock runtime palette resolution and actual chunk-packet integration are still required. See [Bedrock block compatibility](docs/architecture/bedrock-block-compatibility.md).

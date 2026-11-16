@@ -108,7 +108,7 @@ public final class NexoraServer {
         if (!stunUrls.isEmpty()) {
             System.out.println("Configured STUN endpoints: " + String.join(", ", stunUrls));
         }
-        System.out.println("Bedrock RequestNetworkSettings / NetworkSettings and compression framing are active.");
-        System.out.println("Login authentication, resource packs and world simulation are the next protocol stages.");
+        System.out.println("Bedrock NetworkSettings, authenticated Login and empty resource-pack exchange are active.");
+        System.out.println("StartGame, player spawn and world simulation are the next protocol stages.");
     }
 }

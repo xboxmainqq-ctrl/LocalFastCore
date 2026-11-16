@@ -34,16 +34,16 @@ class BedrockHudResourcePackTest {
         assertTrue(entries.containsKey("manifest.json"));
         assertTrue(entries.containsKey("ui/hud_screen.json"));
         String manifest = entries.get("manifest.json");
-        assertTrue(manifest.contains("\\"type\\": \\"resources\\""));
+        assertTrue(manifest.contains("\"type\": \"resources\""));
 
         String hud = entries.get("ui/hud_screen.json");
-        assertTrue(hud.contains("\\"heart_renderer\\": {"));
-        assertTrue(hud.contains("\\"type\\": \\"panel\\""));
-        assertTrue(hud.contains("\\"visible\\": false"));
-        assertTrue(hud.contains("\\"binding_name\\": \\"#health\\""));
-        assertTrue(hud.contains("\\"binding_name\\": \\"#health_max\\""));
-        assertTrue(hud.contains("\\"target_property_name\\": \\"#clip_ratio\\""));
-        assertTrue(hud.contains("\\"nexora_health_bar@nexora_health_bar\\": {}"));
+        assertTrue(hud.contains("\"heart_renderer\": {"));
+        assertTrue(hud.contains("\"type\": \"panel\""));
+        assertTrue(hud.contains("\"visible\": false"));
+        assertTrue(hud.contains("\"binding_name\": \"#health\""));
+        assertTrue(hud.contains("\"binding_name\": \"#health_max\""));
+        assertTrue(hud.contains("\"target_property_name\": \"#clip_ratio\""));
+        assertTrue(hud.contains("\"nexora_health_bar@nexora_health_bar\": {}"));
         assertFalse(hud.contains("#player_health"));
         assertFalse(hud.contains("#player_max_health"));
 

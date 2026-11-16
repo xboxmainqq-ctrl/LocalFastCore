@@ -22,7 +22,7 @@ public final class BedrockItemActorCodec {
     public static BedrockPacket createAdd(WorldItemEntity entity, BedrockItemRegistry registry) {
         Objects.requireNonNull(entity, "entity");
         Objects.requireNonNull(registry, "registry");
-        BedrockItemRegistry.ItemDefinition definition = registry.findByIdentifier(entity.stack().itemId())
+        BedrockInventoryContentCodec.ItemDefinition definition = registry.findByIdentifier(entity.stack().itemId())
                 .networkDefinition();
         ItemStack stack = entity.stack();
         if (stack.count() > definition.maxStackSize()) {

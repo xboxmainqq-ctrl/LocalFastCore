@@ -491,7 +491,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (Math.abs((long) action.x()) > 30_000_000
                 || Math.abs((long) action.z()) > 30_000_000
                 || action.y() < WorldChunk.MIN_Y || action.y() > WorldChunk.MAX_Y
-                || action.face() < 0 || action.face() > 5) {
+                || (action.action() == 0 && (action.face() < 0 || action.face() > 5))) {
             return;
         }
         if (action.action() == 0) { // START_DESTROY_BLOCK

@@ -744,6 +744,22 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         state.clientInitialized = true;
         sendPacket(message.networkId(), BedrockBatchCodec.createPlayStatus(3), true);
+        sendInitialPlayerInventory(message.networkId(), state);
+    }
+
+    /**
+     * Sends the first authoritative player inventory snapshot only after the client
+     * has acknowledged StartGame. Unknown persisted items are never serialized with
+     * guessed Bedrock IDs; in that case the inventory remains server-side until its
+     * exact protocol definition is registered.
+     */
+    private void sendInitialPlayerInventory(String networkId, SessionState state) {
+        try {
+            sendPacket(networkId,
+                    BedrockInventoryContentCodec.createPlayerInventory(state.inventory, itemRegistry), true);
+        } catch (IllegalArgumentException exception) {
+            System.err.println("NEXORA: initial inventory sync deferred because a stored item has no Bedrock definition");
+        }
     }
 
     private static long readUnsignedVarLong(byte[] payload) {

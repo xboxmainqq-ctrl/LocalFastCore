@@ -1083,6 +1083,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (!state.clientInitialized) {
             throw new SecurityException("PlayerAuthInput arrived before client initialization");
         }
+        if (state.dead) return;
         BedrockPlayerAuthInputCodec.PlayerInput input = BedrockPlayerAuthInputCodec.decode(packet);
         if (state.hasReceivedInput && input.tick() <= state.lastInputTick) return;
 
@@ -1405,6 +1406,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         packets.add(BedrockVitalsCodec.createUpdateAttributes(
                 state.entityId, state.vitals, Math.max(0, tick)));
         sendPackets(networkId, packets, true);
+        if (state.vitals.dead()) handleDeath(networkId, state, deathCause);
     }
 
     private void sendMovementCorrection(String networkId, SessionState state, long tick) {

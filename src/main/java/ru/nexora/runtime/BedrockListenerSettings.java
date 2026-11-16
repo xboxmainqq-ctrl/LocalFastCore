@@ -7,6 +7,8 @@ import java.io.Reader;
 import java.nio.file.Files;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * Validated bind and identity settings for the Bedrock NetherNet listener.
@@ -18,7 +20,8 @@ public record BedrockListenerSettings(
         int signalingPort,
         int separateIcePort,
         Path identityFile,
-        boolean requireRetailAuthentication
+        boolean requireRetailAuthentication,
+        List<String> advertisedAddresses
 ) {
     public BedrockListenerSettings {
         bindAddress = Objects.requireNonNull(bindAddress, "bindAddress").trim();
@@ -35,6 +38,8 @@ public record BedrockListenerSettings(
             throw new IllegalArgumentException("Separate ICE port must differ from the signaling port");
         }
         identityFile = Objects.requireNonNull(identityFile, "identityFile").normalize();
+        advertisedAddresses = advertisedAddresses == null ? List.of() : advertisedAddresses.stream()
+                .map(String::trim).filter(value -> !value.isEmpty()).distinct().toList();
         if (identityFile.toString().isBlank()) {
             throw new IllegalArgumentException("NetherNet identity file must not be blank");
         }
@@ -44,9 +49,16 @@ public record BedrockListenerSettings(
         }
     }
 
+    public BedrockListenerSettings(boolean enabled, String bindAddress, int signalingPort,
+                                   int separateIcePort, Path identityFile,
+                                   boolean requireRetailAuthentication) {
+        this(enabled, bindAddress, signalingPort, separateIcePort, identityFile,
+                requireRetailAuthentication, List.of());
+    }
+
     public static BedrockListenerSettings disabled() {
         return new BedrockListenerSettings(false, "0.0.0.0", 19132, 0,
-                Path.of("nethernet-identity.pem"), true);
+                Path.of("nethernet-identity.pem"), true, List.of());
     }
 
 
@@ -72,7 +84,10 @@ public record BedrockListenerSettings(
             int icePort = Integer.parseInt(properties.getProperty("bedrock.ice-port", "0").trim());
             Path identity = Path.of(properties.getProperty(
                     "bedrock.identity-file", "nethernet-identity.pem").trim());
-            return new BedrockListenerSettings(true, bind, port, icePort, identity, true);
+            List<String> advertised = Arrays.stream(properties.getProperty(
+                    "bedrock.advertised-addresses", "").split(","))
+                    .map(String::trim).filter(value -> !value.isEmpty()).distinct().toList();
+            return new BedrockListenerSettings(true, bind, port, icePort, identity, true, advertised);
         } catch (RuntimeException invalid) {
             throw new IOException("Invalid Bedrock listener setting in " + file + ": "
                     + invalid.getMessage(), invalid);

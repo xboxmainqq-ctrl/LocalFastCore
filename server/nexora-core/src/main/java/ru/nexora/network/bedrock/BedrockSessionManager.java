@@ -39,6 +39,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -77,6 +78,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final LongSupplier nanoTime;
     private final Map<String, SessionState> sessions = new ConcurrentHashMap<>();
     private final AtomicLong nextEntityId = new AtomicLong(1);
+    private final AtomicLong nextFormId = new AtomicLong(1);
     private final NetherNetInboundPipeline inbound;
 
     public BedrockSessionManager(
@@ -509,10 +511,184 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             handleInventoryTransaction(message, state, packet);
                     case BedrockMobEquipmentCodec.MOB_EQUIPMENT_PACKET_ID ->
                             handleMobEquipment(message, state, packet);
+                    case BedrockCommandRequestCodec.COMMAND_REQUEST_PACKET_ID ->
+                            handleCommandRequest(message, state, packet);
+                    case BedrockModalFormCodec.MODAL_FORM_RESPONSE_PACKET_ID ->
+                            handleModalFormResponse(message, state, packet);
                     default -> packetSink.accept(new PacketEvent(
                             message.networkId(), message.channelLabel(), packet));
                 }
             }
+        }
+    }
+
+    private void handleCommandRequest(
+            NetherNetInboundPipeline.InboundMessage message, SessionState state, BedrockPacket packet
+    ) {
+        if (!message.reliable()) {
+            throw new SecurityException("CommandRequest must arrive on ReliableDataChannel");
+        }
+        if (!state.loginAuthenticated || !state.clientInitialized) {
+            throw new SecurityException("CommandRequest arrived before player initialization");
+        }
+        BedrockCommandRequestCodec.DecodedCommand command;
+        try {
+            command = BedrockCommandRequestCodec.decode(packet);
+        } catch (IllegalArgumentException exception) {
+            throw new SecurityException("Malformed Bedrock CommandRequest", exception);
+        }
+        if (!"Player".equals(command.originType()) || command.internal()
+                || command.playerId() != state.entityId) {
+            throw new SecurityException("CommandRequest origin does not match the authenticated player");
+        }
+
+        String normalized = command.command().trim().toLowerCase(Locale.ROOT);
+        if (normalized.equals("/equipment") || normalized.equals("/equip")) {
+            openEquipmentMenu(message.networkId(), state, "");
+            return;
+        }
+        packetSink.accept(new PacketEvent(message.networkId(), message.channelLabel(), packet));
+    }
+
+    private void handleModalFormResponse(
+            NetherNetInboundPipeline.InboundMessage message, SessionState state, BedrockPacket packet
+    ) {
+        if (!message.reliable()) {
+            throw new SecurityException("ModalFormResponse must arrive on ReliableDataChannel");
+        }
+        if (!state.loginAuthenticated || !state.clientInitialized) {
+            throw new SecurityException("ModalFormResponse arrived before player initialization");
+        }
+        BedrockModalFormCodec.DecodedResponse response;
+        try {
+            response = BedrockModalFormCodec.decodeResponse(packet);
+        } catch (IllegalArgumentException exception) {
+            throw new SecurityException("Malformed Bedrock ModalFormResponse", exception);
+        }
+        PendingEquipmentForm pending = state.pendingEquipmentForm;
+        if (pending == null || pending.formId() != response.formId()) return;
+        state.pendingEquipmentForm = null;
+        if (response.cancelled()) return;
+
+        final com.fasterxml.jackson.databind.JsonNode selected;
+        try {
+            selected = MAPPER.readTree(response.responseJson());
+        } catch (IOException exception) {
+            throw new SecurityException("Invalid JSON in ModalFormResponse", exception);
+        }
+        if (selected == null || !selected.isIntegralNumber() || !selected.canConvertToInt()) return;
+        int index = selected.intValue();
+
+        if (pending.kind() == EquipmentFormKind.MAIN) {
+            EquipmentSlot[] slots = EquipmentSlot.values();
+            if (index < 0 || index >= slots.length) return;
+            openEquipmentSlotMenu(message.networkId(), state, slots[index], "");
+            return;
+        }
+
+        if (index >= 0 && index < pending.inventorySlots().size()) {
+            int inventorySlot = pending.inventorySlots().get(index);
+            try {
+                PlayerEquipmentService.Result result = equipMagicItem(
+                        message.networkId(), pending.slot(), inventorySlot);
+                String status = result == PlayerEquipmentService.Result.EQUIPPED
+                        ? "Предмет надет." : "Не удалось надеть предмет: " + result.name();
+                openEquipmentSlotMenu(message.networkId(), state, pending.slot(), status);
+            } catch (IOException exception) {
+                openEquipmentSlotMenu(message.networkId(), state, pending.slot(),
+                        "Не удалось сохранить экипировку. Предмет возвращён в исходное состояние.");
+            }
+            return;
+        }
+
+        int unequipIndex = pending.inventorySlots().size();
+        if (pending.hasUnequip() && index == unequipIndex) {
+            try {
+                PlayerEquipmentService.Result result = unequipMagicItem(message.networkId(), pending.slot());
+                String status = result == PlayerEquipmentService.Result.UNEQUIPPED
+                        ? "Предмет снят." : "Не удалось снять предмет: " + result.name();
+                openEquipmentSlotMenu(message.networkId(), state, pending.slot(), status);
+            } catch (IOException exception) {
+                openEquipmentSlotMenu(message.networkId(), state, pending.slot(),
+                        "Не удалось сохранить экипировку. Изменения отменены.");
+            }
+            return;
+        }
+
+        int backIndex = pending.inventorySlots().size() + (pending.hasUnequip() ? 1 : 0);
+        if (index == backIndex) openEquipmentMenu(message.networkId(), state, "");
+    }
+
+    private void openEquipmentMenu(String networkId, SessionState state, String status) {
+        com.fasterxml.jackson.databind.node.ObjectNode form = MAPPER.createObjectNode();
+        form.put("type", "form");
+        form.put("title", "NEXORA — Экипировка");
+        StringBuilder description = new StringBuilder("Магическая экипировка персонажа.");
+        if (status != null && !status.isBlank()) description.append("\\n").append(status);
+        description.append("\\nВыбери слот:");
+        form.put("content", description.toString());
+        com.fasterxml.jackson.databind.node.ArrayNode buttons = form.putArray("buttons");
+        for (EquipmentSlot slot : EquipmentSlot.values()) {
+            String item = state.equipment.magicSlot(slot).map(ru.nexora.inventory.ItemStack::itemId)
+                    .orElse("пусто");
+            buttons.addObject().put("text", slot.displayName() + " — " + item);
+        }
+        sendEquipmentForm(networkId, state, form, new PendingEquipmentForm(
+                0, EquipmentFormKind.MAIN, null, List.of(), false));
+    }
+
+    private void openEquipmentSlotMenu(
+            String networkId, SessionState state, EquipmentSlot slot, String status
+    ) {
+        List<Integer> inventorySlots = new java.util.ArrayList<>();
+        List<String> labels = new java.util.ArrayList<>();
+        for (int i = 0; i < state.inventory.size(); i++) {
+            Optional<ru.nexora.inventory.ItemStack> optional = state.inventory.getSlot(i);
+            if (optional.isEmpty()) continue;
+            ru.nexora.inventory.ItemStack stack = optional.orElseThrow();
+            if (!equipmentSlotRegistry.allows(stack, slot)) continue;
+            inventorySlots.add(i);
+            labels.add("Инвентарь " + (i + 1) + " — " + stack.itemId());
+        }
+
+        boolean hasUnequip = state.equipment.magicSlot(slot).isPresent();
+        com.fasterxml.jackson.databind.node.ObjectNode form = MAPPER.createObjectNode();
+        form.put("type", "form");
+        form.put("title", "Экипировка — " + slot.displayName());
+        String current = state.equipment.magicSlot(slot)
+                .map(ru.nexora.inventory.ItemStack::itemId).orElse("пусто");
+        StringBuilder description = new StringBuilder("Сейчас: ").append(current);
+        if (status != null && !status.isBlank()) description.append("\\n").append(status);
+        if (labels.isEmpty()) description.append("\\nВ инвентаре нет подходящих предметов.");
+        else description.append("\\nВыбери предмет для этого слота:");
+        form.put("content", description.toString());
+
+        com.fasterxml.jackson.databind.node.ArrayNode buttons = form.putArray("buttons");
+        for (String label : labels) buttons.addObject().put("text", label);
+        if (hasUnequip) buttons.addObject().put("text", "Снять надетый предмет");
+        buttons.addObject().put("text", "Назад");
+
+        sendEquipmentForm(networkId, state, form, new PendingEquipmentForm(
+                0, EquipmentFormKind.SLOT, slot, List.copyOf(inventorySlots), hasUnequip));
+    }
+
+    private void sendEquipmentForm(
+            String networkId, SessionState state,
+            com.fasterxml.jackson.databind.node.ObjectNode form, PendingEquipmentForm pending
+    ) {
+        long next = nextFormId.getAndIncrement();
+        if (next < 1 || next > Integer.MAX_VALUE) {
+            throw new IllegalStateException("Bedrock form ID space exhausted");
+        }
+        int formId = (int) next;
+        state.pendingEquipmentForm = new PendingEquipmentForm(
+                formId, pending.kind(), pending.slot(), pending.inventorySlots(), pending.hasUnequip());
+        try {
+            sendPacket(networkId, BedrockModalFormCodec.createRequest(
+                    formId, MAPPER.writeValueAsString(form)), true);
+        } catch (IOException exception) {
+            state.pendingEquipmentForm = null;
+            throw new IllegalStateException("Unable to encode NEXORA equipment form", exception);
         }
     }
 
@@ -1163,6 +1339,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private record BreakTarget(int x, int y, int z, long startedAtNanos) {
     }
 
+    private enum EquipmentFormKind { MAIN, SLOT }
+
+    private record PendingEquipmentForm(
+            int formId, EquipmentFormKind kind, EquipmentSlot slot,
+            List<Integer> inventorySlots, boolean hasUnequip
+    ) {
+    }
+
     private static final class SessionState {
         private PlayerInventory inventory = new PlayerInventory();
         private PlayerEquipment equipment = new PlayerEquipment();
@@ -1190,6 +1374,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private BreakTarget breakTarget;
         private long entityId;
         private boolean rejected;
+        private PendingEquipmentForm pendingEquipmentForm;
         private int clientProtocol;
         private NetherNetClientIdentity identity;
     }

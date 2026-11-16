@@ -391,7 +391,7 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
             result.add(line);
         }
         if (!inserted) throw new SecurityException("SDP answer has no media section");
-        return String.join("\\r\\n", result);
+        return String.join("\r\n", result);
     }
 
     private static String removeIdentityLine(List<String> lines) {
@@ -399,12 +399,12 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
         for (String line : lines) {
             if (!line.startsWith("a=identity:")) result.add(line);
         }
-        return String.join("\\r\\n", result);
+        return String.join("\r\n", result);
     }
 
     private static List<String> splitSdpLines(String sdp) {
         if (sdp == null || !sdp.startsWith("v=0")) throw new SecurityException("Malformed SDP");
-        return List.of(sdp.replace("\\r\\n", "\\n").split("\\n", -1));
+        return List.of(sdp.replace("\r\n", "\n").split("\n", -1));
     }
 
     private static byte[] signEs384(PrivateKey privateKey, byte[] input) throws GeneralSecurityException {
@@ -539,7 +539,7 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
     }
 
     private static String jsonEscape(String value) {
-        return value.replace("\\\\", "\\\\\\\\").replace("\\"", "\\\\\\"");
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     private static String requireText(String value, String name) {

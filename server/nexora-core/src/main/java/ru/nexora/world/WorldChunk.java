@@ -25,7 +25,7 @@ public final class WorldChunk {
         return chunkZ;
     }
 
-    public BlockType getBlock(int localX, int worldY, int localZ) {
+    public synchronized BlockType getBlock(int localX, int worldY, int localZ) {
         validateLocal(localX, localZ);
         int sectionIndex = sectionIndex(worldY);
         ChunkSection section = sections[sectionIndex];
@@ -33,7 +33,7 @@ public final class WorldChunk {
                 : section.get(localX, worldY & 15, localZ);
     }
 
-    public void setBlock(int localX, int worldY, int localZ, BlockType type) {
+    public synchronized void setBlock(int localX, int worldY, int localZ, BlockType type) {
         validateLocal(localX, localZ);
         int sectionIndex = sectionIndex(worldY);
         Objects.requireNonNull(type, "type");
@@ -47,17 +47,17 @@ public final class WorldChunk {
         }
     }
 
-    public ChunkSection section(int index) {
+    public synchronized ChunkSection section(int index) {
         if (index < 0 || index >= SECTION_COUNT) throw new IndexOutOfBoundsException("Invalid section index");
         return sections[index];
     }
 
-    public byte[] copySectionRaw(int index) {
+    public synchronized byte[] copySectionRaw(int index) {
         if (index < 0 || index >= SECTION_COUNT) throw new IndexOutOfBoundsException("Invalid section index");
         return sections[index] == null ? null : sections[index].copyRawBlocks();
     }
 
-    public void loadSectionRaw(int index, byte[] raw) {
+    public synchronized void loadSectionRaw(int index, byte[] raw) {
         if (index < 0 || index >= SECTION_COUNT) throw new IndexOutOfBoundsException("Invalid section index");
         if (raw == null) {
             sections[index] = null;
@@ -68,7 +68,7 @@ public final class WorldChunk {
         sections[index] = section.isEmpty() ? null : section;
     }
 
-    public int highestNonEmptySectionCount() {
+    public synchronized int highestNonEmptySectionCount() {
         for (int i = sections.length - 1; i >= 0; i--) {
             if (sections[i] != null && !sections[i].isEmpty()) return i + 1;
         }

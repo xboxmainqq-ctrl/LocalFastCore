@@ -370,6 +370,17 @@ class BedrockSessionManagerTest {
         assertEquals(0x31, inventoryReconciliation.get(3).packetId());
         assertEquals(0x32, inventoryReconciliation.get(4).packetId());
 
+        // Transfer one item from the main inventory into the offhand container.
+        BedrockPacket offhandTransfer = new BedrockPacket(0x1e, 0, 0,
+                transferToOffhandPayload(257, 1, 1));
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(offhandTransfer), true, 256));
+        assertEquals(3, manager.playerInventory("authenticated-client").orElseThrow()
+                .count("nexora:arcane_shard"));
+        assertEquals(3, manager.playerEquipment("authenticated-client").orElseThrow()
+                .offhand().orElseThrow().count());
+        assertEquals(30, outboundFrames.size());
+
         assertThrows(SecurityException.class, () -> sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256)));
 
@@ -380,10 +391,10 @@ class BedrockSessionManagerTest {
         assertEquals(1.0f, savedPlayer.z());
         assertEquals(30.0f, savedPlayer.yaw());
         var savedInventory = inventoryStorage.load("123456789").orElseThrow();
-        assertEquals(4, savedInventory.count("nexora:arcane_shard"));
+        assertEquals(3, savedInventory.count("nexora:arcane_shard"));
         PlayerEquipment savedEquipment = equipmentStorage.load("123456789").orElseThrow();
         assertEquals(new ItemStack("nexora:arcane_shard", 1, 64), savedEquipment.armor(0).orElseThrow());
-        assertEquals(new ItemStack("nexora:arcane_shard", 2, 64), savedEquipment.offhand().orElseThrow());
+        assertEquals(new ItemStack("nexora:arcane_shard", 3, 64), savedEquipment.offhand().orElseThrow());
     }
 
     @Test
@@ -563,6 +574,30 @@ class BedrockSessionManagerTest {
             if (value != 0) next |= 0x80;
             out.write(next);
         } while (value != 0);
+    }
+
+    private static byte[] transferToOffhandPayload(int runtimeItemId, int count, int sourceSlot) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        out.write(0); // LegacyRequestId
+        out.write(0); // Normal transaction
+        out.write(2); // two actions
+
+        out.write(0); // ContainerInventory source
+        out.write(1); // container ID present
+        out.write(0); // main player inventory
+        out.write(0); // no flags
+        writeVarInt(out, sourceSlot);
+        writeDescriptor(out, runtimeItemId, count);
+        writeDescriptor(out, 0, 0);
+
+        out.write(0); // ContainerInventory source
+        out.write(1); // container ID present
+        out.write(119); // offhand
+        out.write(0); // no flags
+        out.write(0); // offhand slot
+        writeDescriptor(out, 0, 0);
+        writeDescriptor(out, runtimeItemId, count);
+        return out.toByteArray();
     }
 
     private static byte[] noOpInventoryTransactionPayload(int runtimeItemId, int count) {

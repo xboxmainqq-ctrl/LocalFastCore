@@ -108,8 +108,14 @@ public final class NetherNetSignalingServer implements AutoCloseable {
             }
 
             String encodedNetworkId = rawPath.substring(prefix.length());
-            String networkId = URLDecoder.decode(
-                    encodedNetworkId.replace("+", "%2B"), StandardCharsets.UTF_8);
+            String networkId;
+            try {
+                networkId = URLDecoder.decode(
+                        encodedNetworkId.replace("+", "%2B"), StandardCharsets.UTF_8);
+            } catch (IllegalArgumentException exception) {
+                sendError(exchange, 400, "NetworkID path contains invalid percent encoding");
+                return;
+            }
             if (networkId.isBlank()) {
                 sendError(exchange, 400, "Invalid NetworkID path");
                 return;

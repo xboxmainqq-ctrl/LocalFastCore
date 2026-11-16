@@ -326,7 +326,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     case BedrockPlayerAuthInputCodec.PLAYER_AUTH_INPUT_PACKET_ID ->
                             handlePlayerAuthInput(message.networkId(), state, packet);
                     case BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID ->
-                            handleInventoryTransaction(message.networkId(), state, packet);
+                            handleInventoryTransaction(message, state, packet);
                     default -> packetSink.accept(new PacketEvent(
                             message.networkId(), message.channelLabel(), packet));
                 }
@@ -334,7 +334,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
-    private void handleInventoryTransaction(String networkId, SessionState state, BedrockPacket packet) {
+    private void handleInventoryTransaction(
+            NetherNetInboundPipeline.InboundMessage message, SessionState state, BedrockPacket packet
+    ) {
+        String networkId = message.networkId();
+        if (!message.reliable()) {
+            throw new SecurityException("InventoryTransaction must arrive on ReliableDataChannel");
+        }
         if (!state.loginAuthenticated || !state.clientInitialized) {
             throw new SecurityException("InventoryTransaction arrived before player initialization");
         }

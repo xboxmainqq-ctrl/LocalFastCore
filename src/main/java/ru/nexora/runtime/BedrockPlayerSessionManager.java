@@ -74,6 +74,8 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
     private final Consumer<String> log;
     private final Map<UUID, PlayerInventory> inventories;
     private final FilePlayerInventoryStorage inventoryStorage;
+    private final ConcurrentMap<UUID, PlayerVitals> vitals = new ConcurrentHashMap<>();
+    private final FilePlayerVitalsStorage vitalsStorage;
     private final ItemPickupService itemPickupService;
     private final BedrockItemRegistry itemRegistry;
     private final ConcurrentMap<String, PlayerSession> byConnection = new ConcurrentHashMap<>();
@@ -107,7 +109,7 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
             Consumer<String> log
     ) {
         this(world, entities, chunkStreaming, networkSettings, initialChunks, spawnY,
-                blockRegistry, log, new ConcurrentHashMap<>(), null);
+                blockRegistry, log, new ConcurrentHashMap<>(), null, null);
     }
 
     public BedrockPlayerSessionManager(
@@ -122,6 +124,23 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
             Map<UUID, PlayerInventory> inventories,
             FilePlayerInventoryStorage inventoryStorage
     ) {
+        this(world, entities, chunkStreaming, networkSettings, initialChunks, spawnY,
+                blockRegistry, log, inventories, inventoryStorage, null);
+    }
+
+    public BedrockPlayerSessionManager(
+            World world,
+            EntityRegistry entities,
+            PlayerChunkStreamingManager chunkStreaming,
+            BedrockNetworkSettings networkSettings,
+            List<ChunkPosition> initialChunks,
+            int spawnY,
+            BedrockRuntimeBlockRegistry blockRegistry,
+            Consumer<String> log,
+            Map<UUID, PlayerInventory> inventories,
+            FilePlayerInventoryStorage inventoryStorage,
+            FilePlayerVitalsStorage vitalsStorage
+    ) {
         this.world = Objects.requireNonNull(world, "world");
         this.entities = Objects.requireNonNull(entities, "entities");
         this.chunkStreaming = Objects.requireNonNull(chunkStreaming, "chunkStreaming");
@@ -131,6 +150,7 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
         this.log = Objects.requireNonNull(log, "log");
         this.inventories = Objects.requireNonNull(inventories, "inventories");
         this.inventoryStorage = inventoryStorage;
+        this.vitalsStorage = vitalsStorage;
         this.itemPickupService = new ItemPickupService(this.entities, this.world);
         this.itemRegistry = BedrockItemRegistry.loadBundled();
         if (this.initialChunks.isEmpty() || this.initialChunks.size() > 128) {
@@ -140,6 +160,14 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
             throw new IllegalArgumentException("Bedrock spawn Y is outside world height");
         }
         this.spawnY = spawnY;
+    }
+
+    /** Returns the live survival vitals model for RPG rewards and gameplay systems. */
+    public PlayerVitals vitals(UUID playerId) {
+        Objects.requireNonNull(playerId, "playerId");
+        PlayerVitals value = vitals.get(playerId);
+        if (value == null) throw new IllegalStateException("Player vitals are not loaded yet");
+        return value;
     }
 
     /** Called by the post-login StartGame settings factory; no world state is mutated here. */
@@ -287,6 +315,14 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
                 return inventoryStorage.load(id);
             } catch (java.io.IOException failure) {
                 throw new IllegalStateException("Could not load inventory for " + id, failure);
+            }
+        });
+        vitals.computeIfAbsent(session.playerId, id -> {
+            if (vitalsStorage == null) return new PlayerVitals(id);
+            try {
+                return vitalsStorage.load(id);
+            } catch (java.io.IOException failure) {
+                throw new IllegalStateException("Could not load vitals for " + id, failure);
             }
         });
         chunkStreaming.updatePlayer(session.playerId, floorToInt(session.x), floorToInt(session.z));
@@ -673,6 +709,15 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
     private void removeSession(PlayerSession session) {
         if (!byConnection.remove(session.connection.id(), session)) return;
         byPlayer.remove(session.playerId, session);
+        PlayerVitals playerVitals = vitals.get(session.playerId);
+        if (playerVitals != null && vitalsStorage != null) {
+            try {
+                vitalsStorage.save(playerVitals);
+            } catch (java.io.IOException failure) {
+                log.accept("Could not save player vitals for " + session.player.displayName()
+                        + ": " + failure.getMessage());
+            }
+        }
         session.visibleItemEntities.clear();
         if (session.entitySpawned) {
             entities.remove(session.playerId);

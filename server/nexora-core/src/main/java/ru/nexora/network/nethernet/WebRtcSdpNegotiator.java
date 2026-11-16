@@ -75,7 +75,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         if (closed.get()) throw new IllegalStateException("WebRTC negotiator is closed");
         Objects.requireNonNull(networkId, "networkId");
         Objects.requireNonNull(sdpOffer, "sdpOffer");
-        if (networkId.isBlank() || networkId.length() > 256) {
+        if (networkId.isBlank() || networkId.length() > 4096) {
             throw new IllegalArgumentException("Invalid NetworkID");
         }
         if (sessions.containsKey(networkId)) {
@@ -267,9 +267,17 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         @Override
         public void onDataChannel(RTCDataChannel channel) {
             String label = channel.getLabel();
-            if (!"ReliableDataChannel".equals(label) && !"UnreliableDataChannel".equals(label)) {
+            boolean reliableLabel = "ReliableDataChannel".equals(label);
+            boolean unreliableLabel = "UnreliableDataChannel".equals(label);
+            if (!reliableLabel && !unreliableLabel) {
                 channel.close();
                 channel.dispose();
+                return;
+            }
+            if (channel.isReliable() != reliableLabel || channel.isOrdered() != reliableLabel) {
+                channel.close();
+                channel.dispose();
+                closeForProtocolError("data-channel reliability does not match its NetherNet label");
                 return;
             }
 

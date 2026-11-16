@@ -34,16 +34,18 @@ Official Mojang onboarding guide: https://mojang.github.io/bedrock-protocol-docs
   - Creates a persistent P-384 server identity keypair, self-signed server JWT and signed fingerprint assertion.
 - NetherNet message framing and reliable-channel fragmentation/reassembly with size limits.
 - Bedrock packet batch codec: VarInt packet lengths and headers, protocol 2225 RequestNetworkSettings parsing, NetworkSettings response, raw-DEFLATE compression framing and uncompressed framing.
-- Initial Bedrock session stage: validates the requested protocol, sends PlayStatus for version mismatch, sends NetworkSettings and switches to negotiated compression.
-- Unit tests for legacy RakNet discovery, signaling HTTP behavior, identity signatures, NetherNet framing and the Bedrock batch/NetworkSettings handshake.
+- Initial Bedrock session stage: validates the requested protocol, sends NetworkSettings, and switches to negotiated compression.
+- Login stage: matches the Login GameServerToken to the verified NetherNet identity, verifies the client's ES384 client-data JWT, requires an authenticated Xbox Live identity, and handles the empty ClientToServerHandshake used with NetherNet's DTLS transport.
+- Empty resource-pack exchange: sends LoginSuccess, ResourcePacksInfo and ResourcePackStack, then validates the client's completion response.
+- Unit tests for legacy RakNet discovery, signaling HTTP behavior, identity signatures, NetherNet framing, Bedrock batches, login parsing and the initial login/resource-pack stages.
 
 ## Not implemented / not wired yet
 
 - The main bootstrap now starts the NetherNet HTTP signaling endpoint and the WebRTC answerer alongside the legacy UDP discovery experiment.
 - No HTTPS listener or TLS reverse-proxy configuration yet. HTTPS is recommended for the signaling endpoint; plaintext HTTP relies on client TOFU for the server identity.
-- No Bedrock Login packet authentication, encryption/session state or resource-pack negotiation.
-- No complete player session lifecycle, player spawn, world, entities, inventory or persistence.
-- No general outbound gameplay-packet pipeline yet; only the initial NetworkSettings and protocol-mismatch responses are sent.
+- No StartGame/DimensionData packet sequence, player spawn, world, entities, inventory or persistence.
+- No general outbound gameplay-packet pipeline yet; only login, NetworkSettings, PlayStatus and empty resource-pack handshake responses are sent.
+- Guest/offline authentication is not supported; the current login path requires an authenticated Xbox Live GameServerToken.
 - No Android-client end-to-end connection test.
 
 ## Protocol target

@@ -10,12 +10,15 @@ import ru.nexora.world.FlatWorldGenerator;
 import ru.nexora.world.BlockType;
 import ru.nexora.world.World;
 import ru.nexora.world.WorldChunk;
+import ru.nexora.world.PlayerData;
+import ru.nexora.world.PlayerDataStorage;
 
 import java.security.KeyFactory;
 import java.security.MessageDigest;
 import java.security.PublicKey;
 import java.security.Signature;
 import java.security.spec.X509EncodedKeySpec;
+import java.io.IOException;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
@@ -47,6 +50,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final String serverVersion;
     private final int compressionThreshold;
     private final World world;
+    private final PlayerDataStorage playerStorage;
     private final OutboundFrameSender outbound;
     private final Consumer<PacketEvent> packetSink;
     private final LongSupplier nanoTime;
@@ -90,7 +94,21 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             OutboundFrameSender outbound,
             Consumer<PacketEvent> packetSink
     ) {
-        this(serverProtocol, serverVersion, compressionThreshold, world, outbound, packetSink, System::nanoTime);
+        this(serverProtocol, serverVersion, compressionThreshold, world, null,
+                outbound, packetSink, System::nanoTime);
+    }
+
+    public BedrockSessionManager(
+            int serverProtocol,
+            String serverVersion,
+            int compressionThreshold,
+            World world,
+            PlayerDataStorage playerStorage,
+            OutboundFrameSender outbound,
+            Consumer<PacketEvent> packetSink
+    ) {
+        this(serverProtocol, serverVersion, compressionThreshold, world, playerStorage,
+                outbound, packetSink, System::nanoTime);
     }
 
     BedrockSessionManager(
@@ -98,6 +116,20 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             String serverVersion,
             int compressionThreshold,
             World world,
+            OutboundFrameSender outbound,
+            Consumer<PacketEvent> packetSink,
+            LongSupplier nanoTime
+    ) {
+        this(serverProtocol, serverVersion, compressionThreshold, world, null,
+                outbound, packetSink, nanoTime);
+    }
+
+    private BedrockSessionManager(
+            int serverProtocol,
+            String serverVersion,
+            int compressionThreshold,
+            World world,
+            PlayerDataStorage playerStorage,
             OutboundFrameSender outbound,
             Consumer<PacketEvent> packetSink,
             LongSupplier nanoTime
@@ -113,6 +145,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         this.serverVersion = serverVersion;
         this.compressionThreshold = compressionThreshold;
         this.world = Objects.requireNonNull(world, "world");
+        this.playerStorage = playerStorage;
         this.outbound = Objects.requireNonNull(outbound, "outbound");
         this.packetSink = Objects.requireNonNull(packetSink, "packetSink");
         this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime");
@@ -137,8 +170,43 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     @Override
     public void onDisconnected(String networkId) {
-        sessions.remove(networkId);
+        SessionState state = sessions.get(networkId);
+        if (state != null) {
+            synchronized (state) {
+                try {
+                    savePlayer(state);
+                } catch (IOException exception) {
+                    System.err.println("NEXORA: unable to save disconnected player: " + exception.getMessage());
+                }
+            }
+            sessions.remove(networkId, state);
+        }
         inbound.onDisconnected(networkId);
+    }
+
+    public void savePlayers() throws IOException {
+        IOException failure = null;
+        for (SessionState state : sessions.values()) {
+            synchronized (state) {
+                try {
+                    savePlayer(state);
+                } catch (IOException exception) {
+                    if (failure == null) failure = exception;
+                    else failure.addSuppressed(exception);
+                }
+            }
+        }
+        if (failure != null) throw failure;
+    }
+
+    private void savePlayer(SessionState state) throws IOException {
+        if (playerStorage == null || !state.loginAuthenticated || !state.positionInitialized
+                || state.identity == null) return;
+        String displayName = state.identity.displayName() == null ? "unknown" : state.identity.displayName();
+        playerStorage.save(new PlayerData(
+                state.identity.xuid(), displayName, world.name(),
+                state.positionX, state.positionY, state.positionZ,
+                state.yaw, state.pitch, System.currentTimeMillis()));
     }
 
     public int activeSessionCount() {
@@ -250,6 +318,23 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
         String displayName = state.identity.displayName() == null
                 ? "unknown" : state.identity.displayName();
+        if (playerStorage != null) {
+            try {
+                Optional<PlayerData> saved = playerStorage.load(state.identity.xuid());
+                if (saved.isPresent() && saved.get().worldName().equals(world.name())) {
+                    PlayerData player = saved.get();
+                    state.positionX = player.x();
+                    state.positionY = player.y();
+                    state.positionZ = player.z();
+                    state.yaw = player.yaw();
+                    state.pitch = player.pitch();
+                    state.positionInitialized = true;
+                }
+            } catch (IOException | IllegalArgumentException exception) {
+                System.err.println("NEXORA: unable to load player profile for " + displayName
+                        + ": " + exception.getMessage());
+            }
+        }
         System.out.printf("NEXORA: authenticated player %s%n", displayName);
     }
 
@@ -300,9 +385,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 state.resourcePacksCompleted = true;
                 if (!state.gameStarted) {
                     state.gameStarted = true;
-                    state.positionX = world.spawnX() + 0.5f;
-                    state.positionY = world.spawnY();
-                    state.positionZ = world.spawnZ() + 0.5f;
+                    if (!state.positionInitialized) {
+                        state.positionX = world.spawnX() + 0.5f;
+                        state.positionY = world.spawnY();
+                        state.positionZ = world.spawnZ() + 0.5f;
+                        state.positionInitialized = true;
+                    }
                     for (BedrockPacket worldPacket : BedrockStartGameCodec.createInitialWorldPackets(
                             state.entityId,
                             world.name(),
@@ -312,9 +400,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             world.spawnX(),
                             world.spawnY() - 1,
                             world.spawnZ(),
-                            world.spawnX() + 0.5f,
-                            world.spawnY(),
-                            world.spawnZ() + 0.5f
+                            state.positionX,
+                            state.positionY,
+                            state.positionZ,
+                            state.pitch,
+                            state.yaw
                     )) {
                         sendPacket(networkId, worldPacket, true);
                     }
@@ -438,8 +528,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private void sendInitialChunkArea(String networkId, SessionState state) {
-        int centerX = Math.floorDiv(world.spawnX(), 16);
-        int centerZ = Math.floorDiv(world.spawnZ(), 16);
+        int centerX = Math.floorDiv((int) Math.floor(state.positionX), 16);
+        int centerZ = Math.floorDiv((int) Math.floor(state.positionZ), 16);
         sendChunkArea(networkId, state, centerX, centerZ);
     }
 
@@ -600,6 +690,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     @Override
     public void close() {
+        try {
+            savePlayers();
+        } catch (IOException exception) {
+            System.err.println("NEXORA: unable to save player profiles on shutdown: " + exception.getMessage());
+        }
         sessions.clear();
     }
 
@@ -631,6 +726,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private volatile boolean resourcePacksCompleted;
         private boolean gameStarted;
         private volatile boolean clientInitialized;
+        private boolean positionInitialized;
         private float positionX;
         private float positionY;
         private float positionZ;

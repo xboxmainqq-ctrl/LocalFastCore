@@ -1296,6 +1296,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (updated.equals(before)) return;
         state.vitals = updated;
         boolean healthChanged = updated.health() != before.health();
+        boolean clientVisibleChanged = healthChanged
+                || updated.hunger() != before.hunger()
+                || updated.saturation() != before.saturation();
+        if (!clientVisibleChanged) return;
         List<BedrockPacket> packets = new java.util.ArrayList<>();
         if (healthChanged) packets.add(BedrockVitalsCodec.createSetHealth(updated));
         packets.add(BedrockVitalsCodec.createUpdateAttributes(

@@ -23,8 +23,13 @@ class BedrockItemEntityPacketTest {
         packet.setPosition(Vector3f.from(1.5f, 64.5f, -2.5f));
         packet.setMotion(Vector3f.from(0.0f, 0.08f, 0.0f));
 
-        assertTrue(encode(packet).isReadable());
-        assertNotNull(Bedrock_v2225.CODEC.getPacketDefinition(AddItemEntityPacket.class));
+        ByteBuf bytes = encode(packet);
+        try {
+            assertTrue(bytes.isReadable());
+            assertNotNull(Bedrock_v2225.CODEC.getPacketDefinition(AddItemEntityPacket.class));
+        } finally {
+            bytes.release();
+        }
     }
 
     @Test

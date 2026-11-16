@@ -23,6 +23,12 @@ class WorldCollisionTest {
     }
 
     @Test
+    void rejectsOversizedSweepsWithoutUnboundedSampling() {
+        World world = new World("NEXORA", 1L, new FlatWorldGenerator());
+        assertFalse(WorldCollision.canMove(world, 0.5, 65, 0.5, 1_000_000, 65, 0.5));
+    }
+
+    @Test
     void rejectsPositionsInsideBlocksAndOutsideBuildHeight() {
         World world = new World("NEXORA", 1L, new FlatWorldGenerator());
         world.setBlock(0, 65, 0, BlockType.STONE);

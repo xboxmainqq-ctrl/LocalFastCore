@@ -75,6 +75,44 @@ class ModuleManagerTest {
         assertEquals(ModuleState.FAILED, manager.stateOf("nexora.second"));
     }
 
+    @Test
+    void failedLoadCleansUpPreviouslyLoadedModulesInReverseOrder() {
+        List<String> events = new ArrayList<>();
+        ModuleManager manager = new ModuleManager(context());
+        manager.register(module("nexora.first", List.of(), events));
+        manager.register(new NexoraModule() {
+            @Override
+            public ModuleDescriptor descriptor() {
+                return descriptor("nexora.second", List.of("nexora.first"));
+            }
+
+            @Override
+            public void onLoad(ModuleContext context) {
+                events.add("load:nexora.second");
+                throw new IllegalStateException("expected load failure");
+            }
+        });
+
+        assertThrows(ModuleLifecycleException.class, manager::loadAll);
+        assertEquals(List.of("load:nexora.first", "load:nexora.second",
+                "disable:nexora.first"), events);
+        assertEquals(ModuleState.DISABLED, manager.stateOf("nexora.first"));
+        assertEquals(ModuleState.FAILED, manager.stateOf("nexora.second"));
+    }
+
+    @Test
+    void disableAllCleansLoadedModulesEvenBeforeEnable() throws Exception {
+        List<String> events = new ArrayList<>();
+        ModuleManager manager = new ModuleManager(context());
+        manager.register(module("nexora.first", List.of(), events));
+
+        manager.loadAll();
+        manager.disableAll();
+
+        assertEquals(List.of("load:nexora.first", "disable:nexora.first"), events);
+        assertEquals(ModuleState.DISABLED, manager.stateOf("nexora.first"));
+    }
+
     private static NexoraModule module(String id, List<String> dependencies,
                                        List<String> events) {
         return new NexoraModule() {

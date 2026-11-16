@@ -119,13 +119,18 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         }
         session.peer = peer;
 
-        if (closed.get()) {
+        if (closed.get() || session.sessionClosed.get()) {
             session.close();
-            throw new IllegalStateException("WebRTC negotiator is closed");
+            throw new IllegalStateException("WebRTC negotiator or peer session closed during setup");
         }
         if (sessions.putIfAbsent(networkId, session) != null) {
             session.close();
             throw new IllegalStateException("NetworkID is already connected");
+        }
+        if (closed.get() || session.sessionClosed.get()) {
+            sessions.remove(networkId, session);
+            session.close();
+            throw new IllegalStateException("WebRTC negotiator or peer session closed during setup");
         }
 
         try {

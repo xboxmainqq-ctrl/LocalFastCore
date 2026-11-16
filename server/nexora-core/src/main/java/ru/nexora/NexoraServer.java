@@ -10,10 +10,12 @@ import ru.nexora.network.raknet.RakNetDiscoveryServer;
 import ru.nexora.world.FlatWorldGenerator;
 import ru.nexora.world.World;
 import ru.nexora.world.WorldStorage;
+import ru.nexora.world.WorldAutosave;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -61,6 +63,9 @@ public final class NexoraServer {
         WorldStorage worldStorage = new WorldStorage(Path.of(dataDirectory, "worlds"), "NEXORA World");
         World world = new World(
                 "NEXORA World", 0L, new FlatWorldGenerator(), 0, 65, 0, worldStorage);
+        long autosaveSeconds = Long.parseLong(System.getenv().getOrDefault("NEXORA_AUTOSAVE_SECONDS", "300"));
+        WorldAutosave autosave = new WorldAutosave(world, Duration.ofSeconds(autosaveSeconds),
+                exception -> System.err.println("NEXORA: periodic world autosave failed: " + exception.getMessage()));
         AtomicReference<WebRtcSdpNegotiator> negotiatorReference = new AtomicReference<>();
         BedrockSessionManager bedrockSessions = new BedrockSessionManager(
                 2225,
@@ -107,6 +112,11 @@ public final class NexoraServer {
             negotiator.close();
             bedrockSessions.close();
             discovery.close();
+            try {
+                autosave.close();
+            } catch (java.io.IOException saveException) {
+                exception.addSuppressed(saveException);
+            }
             throw exception;
         }
 
@@ -116,9 +126,9 @@ public final class NexoraServer {
             bedrockSessions.close();
             discovery.close();
             try {
-                world.saveAll();
+                autosave.close();
             } catch (java.io.IOException exception) {
-                System.err.println("NEXORA: unable to save world chunks: " + exception.getMessage());
+                System.err.println("NEXORA: unable to flush world autosave: " + exception.getMessage());
             }
         }, "nexora-shutdown"));
 
@@ -132,6 +142,7 @@ public final class NexoraServer {
         System.out.printf("WebRTC ICE UDP port range: %d-%d%n", udpPortMin, udpPortMax);
         System.out.println("Bedrock NetworkSettings, authenticated Login and StartGame bootstrap are active.");
         System.out.println("World chunks use versioned, checksummed files under " + Path.of(dataDirectory, "worlds").toAbsolutePath());
+        System.out.printf("World autosave interval: %d seconds%n", autosaveSeconds);
         System.out.println("LevelChunk streaming and PLAYER_SPAWN are the next protocol stages.");
     }
 }

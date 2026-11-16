@@ -16,7 +16,7 @@ Changing the seed affects newly generated chunks only. To start a completely new
 
 ## Terrain and climate
 
-The RPG terrain profile is not a Minecraft-style flat noise stack. It models large continental shelves and coastlines first, then overlays eroded lowlands, rolling uplands, foothills, long mountain belts, narrow ridges and broad valleys. Domain warping reduces obvious repeating noise patterns. Mountain relief is controlled by both the biome profile and a separate mountain-belt field, so highlands form coherent regions rather than isolated random spikes. River and lake channels are applied after the landform pass.
+The RPG terrain profile is not a Minecraft-style flat noise stack. It models large continental shelves and coastlines first, then overlays eroded lowlands, rolling uplands, foothills, long mountain belts, narrow ridges and broad valleys. Domain warping reduces obvious repeating noise patterns. Mountain relief is controlled by both the biome profile and a separate mountain-belt field, so highlands form coherent regions rather than isolated random spikes. River and lake channels are applied after the landform pass. Surface materials then transition with altitude and climate: cold regions receive earlier alpine snow, warm regions keep a higher snowline, exposed high slopes become rock, and coasts receive sand and gravel beaches.
 
 
 The built-in `overworld` generator uses deterministic world-coordinate fields. Climate sampling is independent of chunk boundaries, so adjacent chunks agree at their borders. Biome selection uses normalized temperature, moisture and elevation; relief is blended across nearby climates to avoid hard terrain-height seams.

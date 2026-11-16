@@ -879,7 +879,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (playerStorage != null) {
             try {
                 Optional<PlayerData> saved = playerStorage.load(state.identity.xuid());
-                if (saved.isPresent() && saved.get().worldName().equals(world.name())) {
+                if (saved.isPresent()) {
                     PlayerData player = saved.get();
                     state.vitals = player.vitals();
                     if (player.worldName().equals(world.name())
@@ -890,7 +890,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         state.yaw = player.yaw();
                         state.pitch = player.pitch();
                         state.positionInitialized = true;
-                    } else {
+                    } else if (player.worldName().equals(world.name())) {
                         System.err.println("NEXORA: saved position for " + displayName
                                 + " is obstructed; using the world spawn");
                     }

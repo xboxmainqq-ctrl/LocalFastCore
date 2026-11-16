@@ -75,7 +75,7 @@ class BedrockInventoryContentCodecTest {
     @Test
     void encodesSingleEmptyPlayerInventorySlot() {
         BedrockPacket packet = BedrockInventoryContentCodec.createPlayerInventorySlot(
-                new PlayerInventory(), ignored -> fail("Empty slot must not resolve item IDs"));
+                new PlayerInventory(), 0, ignored -> fail("Empty slot must not resolve item IDs"));
 
         assertEquals(0x32, packet.packetId());
         assertArrayEquals(new byte[] {

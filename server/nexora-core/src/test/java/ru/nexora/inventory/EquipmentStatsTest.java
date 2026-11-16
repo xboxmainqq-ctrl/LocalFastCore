@@ -108,4 +108,16 @@ class EquipmentStatsTest {
         EquipmentStats stats = EquipmentStats.calculate(equipment, registry);
         assertEquals(15.0, stats.value(EquipmentAttribute.ARMOR), 0.0001);
     }
+
+    @Test
+    void rejectsDuplicateAttributeDefinitionsAcrossMagicalAndArmorItems() {
+        assertThrows(IllegalArgumentException.class, () -> EquipmentSlotRegistry.builder()
+                .registerAttributes("minecraft:iron_helmet",
+                        Map.of(EquipmentAttribute.ARMOR, 2.0))
+                .register("minecraft:iron_helmet", EquipmentSlot.MAGIC_STAFF));
+        assertThrows(IllegalArgumentException.class, () -> EquipmentSlotRegistry.builder()
+                .register("nexora:duplicate", EquipmentSlot.MAGIC_STAFF)
+                .registerAttributes("nexora:duplicate",
+                        Map.of(EquipmentAttribute.MAGIC_POWER, 1.0)));
+    }
 }

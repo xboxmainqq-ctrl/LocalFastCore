@@ -154,6 +154,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     case BedrockBatchCodec.RESOURCE_PACK_CLIENT_RESPONSE_PACKET_ID ->
                             handleResourcePackResponse(message.networkId(), state, packet,
                                     resourcePacksInfoWasSent, resourcePackStackWasSent);
+                    case 0x71 -> handleClientInitialized(message, state, packet);
                     default -> packetSink.accept(new PacketEvent(
                             message.networkId(), message.channelLabel(), packet));
                 }
@@ -287,12 +288,54 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     int spawnChunkZ = Math.floorDiv(world.spawnZ(), 16);
                     sendPacket(networkId,
                             BedrockLevelChunkCodec.createPacket(world.getChunk(spawnChunkX, spawnChunkZ)), true);
-                    sendPacket(networkId, BedrockBatchCodec.createPlayStatus(3), true);
                 }
                 System.out.printf("NEXORA: resource-pack negotiation completed for %s%n", networkId);
             }
             default -> throw new IllegalArgumentException("Unknown resource-pack response");
         }
+    }
+
+
+    private void handleClientInitialized(
+            NetherNetInboundPipeline.InboundMessage message,
+            SessionState state,
+            BedrockPacket packet
+    ) {
+        if (!message.reliable()) {
+            throw new SecurityException("SetLocalPlayerAsInitialized must arrive on ReliableDataChannel");
+        }
+        if (!state.gameStarted) {
+            throw new SecurityException("SetLocalPlayerAsInitialized arrived before StartGame");
+        }
+        if (state.clientInitialized) {
+            throw new SecurityException("Duplicate SetLocalPlayerAsInitialized packet");
+        }
+        long runtimeEntityId = readUnsignedVarLong(packet.payload());
+        if (runtimeEntityId != state.entityId) {
+            throw new SecurityException("SetLocalPlayerAsInitialized runtime ID does not match this player");
+        }
+        state.clientInitialized = true;
+        sendPacket(message.networkId(), BedrockBatchCodec.createPlayStatus(3), true);
+    }
+
+    private static long readUnsignedVarLong(byte[] payload) {
+        long value = 0;
+        int shift = 0;
+        for (int i = 0; i < 10; i++) {
+            if (i >= payload.length) throw new IllegalArgumentException("Truncated unsigned VarLong");
+            int current = Byte.toUnsignedInt(payload[i]);
+            if (i == 9 && (current & 0xfe) != 0) {
+                throw new IllegalArgumentException("Unsigned VarLong exceeds 64 bits");
+            }
+            value |= (long) (current & 0x7f) << shift;
+            if ((current & 0x80) == 0) {
+                if (i + 1 != payload.length) throw new IllegalArgumentException("Trailing bytes in unsigned VarLong");
+                if (value < 0) throw new IllegalArgumentException("Runtime entity ID exceeds signed long range");
+                return value;
+            }
+            shift += 7;
+        }
+        throw new IllegalArgumentException("Unsigned VarLong is too long");
     }
 
     private void sendPacket(String networkId, BedrockPacket packet, boolean compressionNegotiated) {

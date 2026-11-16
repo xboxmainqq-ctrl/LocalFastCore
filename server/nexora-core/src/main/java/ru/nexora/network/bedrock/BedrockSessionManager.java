@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 /**
@@ -40,6 +41,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final OutboundFrameSender outbound;
     private final Consumer<PacketEvent> packetSink;
     private final Map<String, SessionState> sessions = new ConcurrentHashMap<>();
+    private final AtomicLong nextEntityId = new AtomicLong(1);
     private final NetherNetInboundPipeline inbound;
 
     public BedrockSessionManager(
@@ -192,6 +194,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         verifyClientDataToken(login.rawClientDataToken(), state.identity);
         state.loginAuthenticated = true;
+        state.entityId = nextEntityId.getAndIncrement();
+        if (state.entityId < 1) {
+            throw new IllegalStateException("NEXORA entity ID space exhausted");
+        }
 
         String displayName = state.identity.displayName() == null
                 ? "unknown" : state.identity.displayName();
@@ -243,6 +249,18 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     throw new SecurityException("Resource-pack stack completed before the server sent its stack");
                 }
                 state.resourcePacksCompleted = true;
+                if (!state.gameStarted) {
+                    state.gameStarted = true;
+                    sendPacket(networkId, BedrockStartGameCodec.create(
+                            state.entityId,
+                            "NEXORA World",
+                            serverVersion,
+                            serverVersion,
+                            0.5f,
+                            65.0f,
+                            0.5f
+                    ), true);
+                }
                 System.out.printf("NEXORA: resource-pack negotiation completed for %s%n", networkId);
             }
             default -> throw new IllegalArgumentException("Unknown resource-pack response");
@@ -364,6 +382,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private boolean resourcePacksInfoSent;
         private boolean resourcePackStackSent;
         private volatile boolean resourcePacksCompleted;
+        private boolean gameStarted;
+        private long entityId;
         private boolean rejected;
         private int clientProtocol;
         private NetherNetClientIdentity identity;

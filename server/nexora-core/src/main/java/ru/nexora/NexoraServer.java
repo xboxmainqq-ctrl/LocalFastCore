@@ -1,8 +1,8 @@
 package ru.nexora;
 
 import ru.nexora.network.nethernet.DefaultNetherNetIdentityService;
-import ru.nexora.network.nethernet.NetherNetInboundPipeline;
 import ru.nexora.network.nethernet.NetherNetServerMetadata;
+import ru.nexora.network.bedrock.BedrockSessionManager;
 import ru.nexora.network.nethernet.NetherNetSignalingServer;
 import ru.nexora.network.nethernet.WebRtcSdpNegotiator;
 import ru.nexora.network.raknet.BedrockServerStatus;
@@ -13,6 +13,7 @@ import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * NEXORA Core bootstrap. Modern Bedrock transport is NetherNet over WebRTC.
@@ -50,9 +51,16 @@ public final class NexoraServer {
 
         DefaultNetherNetIdentityService identityService =
                 new DefaultNetherNetIdentityService(Path.of("data", "identity"));
-        NetherNetInboundPipeline inboundPipeline = new NetherNetInboundPipeline(message ->
-                System.out.printf("NEXORA: received %s payload from %s (%d bytes); Bedrock batch decoding is next%n",
-                        message.channelLabel(), message.networkId(), message.payload().length));
+        AtomicReference<WebRtcSdpNegotiator> negotiatorReference = new AtomicReference<>();
+        BedrockSessionManager bedrockSessions = new BedrockSessionManager(
+                2225,
+                (networkId, channelLabel, frame) -> {
+                    WebRtcSdpNegotiator active = negotiatorReference.get();
+                    if (active == null) throw new IllegalStateException("WebRTC transport is not ready");
+                    active.sendFrame(networkId, channelLabel, frame);
+                },
+                event -> System.out.printf("NEXORA: Bedrock packet 0x%02X from %s (%d bytes)%n",
+                        event.packet().packetId(), event.networkId(), event.packet().payload().length));
         String stunEnvironment = System.getenv("NEXORA_STUN_URLS");
         List<String> stunUrls = stunEnvironment == null || stunEnvironment.isBlank()
                 ? List.of()
@@ -61,7 +69,8 @@ public final class NexoraServer {
                         .filter(value -> !value.isEmpty())
                         .toList();
         WebRtcSdpNegotiator negotiator = new WebRtcSdpNegotiator(
-                identityService, inboundPipeline, maxPlayers, stunUrls);
+                identityService, bedrockSessions, maxPlayers, stunUrls);
+        negotiatorReference.set(negotiator);
         NetherNetServerMetadata metadata = new NetherNetServerMetadata(
                 motd,
                 2225,
@@ -80,6 +89,7 @@ public final class NexoraServer {
         } catch (Exception exception) {
             signaling.close();
             negotiator.close();
+            bedrockSessions.close();
             discovery.close();
             throw exception;
         }
@@ -87,6 +97,7 @@ public final class NexoraServer {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             signaling.close();
             negotiator.close();
+            bedrockSessions.close();
             discovery.close();
         }, "nexora-shutdown"));
 
@@ -97,6 +108,7 @@ public final class NexoraServer {
         if (!stunUrls.isEmpty()) {
             System.out.println("Configured STUN endpoints: " + String.join(", ", stunUrls));
         }
-        System.out.println("Transport is not yet a playable server: Bedrock batch decoding, login and world simulation are next.");
+        System.out.println("Bedrock RequestNetworkSettings / NetworkSettings and compression framing are active.");
+        System.out.println("Login authentication, resource packs and world simulation are the next protocol stages.");
     }
 }

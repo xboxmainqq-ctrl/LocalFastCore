@@ -7,7 +7,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockItemRegistryTest {
-    private static BedrockItemRegistry.Entry entry(String id, int legacyId) {
+    private static BedrockItemRegistry.Entry entry(String id, int runtimeId) {
         return new BedrockItemRegistry.Entry(id,
                 new BedrockInventoryContentCodec.ItemDefinition(legacyId, 0, 0, new byte[0]));
     }
@@ -20,8 +20,8 @@ class BedrockItemRegistryTest {
 
         assertEquals(2, registry.size());
         assertSame(shard, registry.findByIdentifier("nexora:arcane_shard"));
-        assertSame(wand, registry.findByLegacyId(258));
-        assertEquals(257, registry.resolve("nexora:arcane_shard").legacyItemId());
+        assertSame(wand, registry.findByRuntimeItemId(258));
+        assertEquals(257, registry.resolve("nexora:arcane_shard").runtimeItemId());
         assertNull(registry.resolve("nexora:missing"));
         assertNull(registry.findByLegacyId(999));
     }

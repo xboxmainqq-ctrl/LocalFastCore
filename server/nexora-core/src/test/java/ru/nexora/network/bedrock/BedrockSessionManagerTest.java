@@ -153,6 +153,7 @@ class BedrockSessionManagerTest {
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
                 world, (networkId, label, frame) -> outboundFrames.add(frame), event -> {}, clock::get);
         manager.enableServerAuthoritativeMovement();
+        manager.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
         manager.onIdentity("physics-client", new NetherNetClientIdentity(
                 "physics-game-token", clientKey.getPublic().getEncoded(), "physics-xuid",
                 "PhysicsPlayer", "physics-playfab", "20CA2", null));
@@ -170,6 +171,8 @@ class BedrockSessionManagerTest {
         BedrockPacket login = new BedrockPacket(1, 0, 0,
                 loginPayload(2225, connectionRequest(chainJson, rawClientDataToken)));
         sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(List.of(login), true, 256));
+        manager.playerInventory("physics-client").orElseThrow()
+                .setSlot(0, new ItemStack("minecraft:stone", 2, 64));
         sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(List.of(
                 new BedrockPacket(BedrockBatchCodec.CLIENT_TO_SERVER_HANDSHAKE_PACKET_ID, 0, 0, new byte[0])
         ), true, 256));
@@ -196,6 +199,20 @@ class BedrockSessionManagerTest {
         BedrockPacket correction = decodeOutbound(outboundFrames.getLast(), true);
         assertEquals(BedrockMovementCorrectionCodec.PACKET_ID, correction.packetId());
         assertEquals(0, Byte.toUnsignedInt(correction.payload()[0]));
+
+        int beforePlacement = outboundFrames.size();
+        BedrockPacket placeStone = new BedrockPacket(0x90, 0, 0,
+                BedrockPlayerAuthInputCodecTest.itemUseMovementPayload(
+                        0.5f, 65.0f, 0.715f, 0.0f, 3L,
+                        0, 64, 0, 5, 0, 1, 2,
+                        Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.STONE)),
+                        0.5f, 65.0f, 0.715f));
+        sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(List.of(placeStone), true, 256));
+        assertEquals(ru.nexora.world.BlockType.STONE, world.getBlock(1, 64, 0));
+        assertEquals(1, manager.playerInventory("physics-client").orElseThrow().count("minecraft:stone"));
+        assertTrue(outboundFrames.subList(beforePlacement, outboundFrames.size()).stream()
+                .map(frame -> decodeOutbound(frame, true).packetId())
+                .anyMatch(id -> id == BedrockBlockUpdateCodec.UPDATE_BLOCK_PACKET_ID));
         manager.close();
     }
 

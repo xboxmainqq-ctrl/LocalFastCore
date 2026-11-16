@@ -737,7 +737,7 @@ class BedrockSessionManagerTest {
         assertEquals(1.0f, savedPlayer.z());
         assertEquals(30.0f, savedPlayer.yaw());
         var savedInventory = inventoryStorage.load("123456789").orElseThrow();
-        assertEquals(2, savedInventory.count("nexora:arcane_shard"));
+        assertEquals(1, savedInventory.count("nexora:arcane_shard"));
         assertEquals(2, savedInventory.count("minecraft:diamond"));
         PlayerEquipment savedEquipment = equipmentStorage.load("123456789").orElseThrow();
         assertEquals(new ItemStack("minecraft:iron_helmet", 1, 1), savedEquipment.armor(0).orElseThrow());

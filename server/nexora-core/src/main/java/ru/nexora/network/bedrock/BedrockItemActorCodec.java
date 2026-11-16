@@ -22,10 +22,11 @@ public final class BedrockItemActorCodec {
     public static BedrockPacket createAdd(WorldItemEntity entity, BedrockItemRegistry registry) {
         Objects.requireNonNull(entity, "entity");
         Objects.requireNonNull(registry, "registry");
-        BedrockInventoryContentCodec.ItemDefinition definition = registry.findByIdentifier(entity.stack().itemId())
-                .networkDefinition();
+        BedrockItemRegistry.Entry entry = registry.findByIdentifier(entity.stack().itemId());
+        if (entry == null) throw new IllegalArgumentException("No Bedrock definition for dropped item");
+        BedrockInventoryContentCodec.ItemDefinition definition = entry.networkDefinition();
         ItemStack stack = entity.stack();
-        if (stack.count() > definition.maxStackSize()) {
+        if (stack.count() > entry.maxStackSize()) {
             throw new IllegalArgumentException("Dropped stack exceeds registered item maximum");
         }
         Writer out = new Writer();

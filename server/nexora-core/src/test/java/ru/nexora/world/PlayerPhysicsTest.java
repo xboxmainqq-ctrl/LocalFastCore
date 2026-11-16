@@ -39,6 +39,24 @@ class PlayerPhysicsTest {
     }
 
     @Test
+    void tracksFallDistanceAndEmitsOneTickLandingDistance() {
+        World world = world();
+        PlayerPhysics.State state = PlayerPhysics.spawn(world, 0.5, 70.0, 0.5);
+        double landed = 0;
+        for (int i = 0; i < 100 && !state.onGround(); i++) {
+            state = PlayerPhysics.tick(world, state,
+                    new PlayerPhysics.Input(0, 0, 0, false, false), 0.05);
+            if (state.landedDistance() > 0) landed = state.landedDistance();
+        }
+        assertTrue(state.onGround());
+        assertEquals(5.0, landed, 0.02);
+        assertEquals(0.0, state.fallDistance(), 1.0e-9);
+        PlayerPhysics.State next = PlayerPhysics.tick(world, state,
+                new PlayerPhysics.Input(0, 0, 0, false, false), 0.05);
+        assertEquals(0.0, next.landedDistance(), 1.0e-9);
+    }
+
+    @Test
     void sprintMovesFasterThanWalking() {
         World world = world();
         PlayerPhysics.State walking = PlayerPhysics.spawn(world, 0.5, 65.0, 0.5);

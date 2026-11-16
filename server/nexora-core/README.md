@@ -33,15 +33,17 @@ Official Mojang onboarding guide: https://mojang.github.io/bedrock-protocol-docs
   - Verifies the client's ES384 detached DTLS-fingerprint assertion.
   - Creates a persistent P-384 server identity keypair, self-signed server JWT and signed fingerprint assertion.
 - NetherNet message framing and reliable-channel fragmentation/reassembly with size limits.
-- Unit tests for legacy RakNet discovery, signaling HTTP behavior, message framing and server identity signatures.
+- Bedrock packet batch codec: VarInt packet lengths and headers, protocol 2225 RequestNetworkSettings parsing, NetworkSettings response, raw-DEFLATE compression framing and uncompressed framing.
+- Initial Bedrock session stage: validates the requested protocol, sends PlayStatus for version mismatch, sends NetworkSettings and switches to negotiated compression.
+- Unit tests for legacy RakNet discovery, signaling HTTP behavior, identity signatures, NetherNet framing and the Bedrock batch/NetworkSettings handshake.
 
 ## Not implemented / not wired yet
 
 - The main bootstrap now starts the NetherNet HTTP signaling endpoint and the WebRTC answerer alongside the legacy UDP discovery experiment.
 - No HTTPS listener or TLS reverse-proxy configuration yet. HTTPS is recommended for the signaling endpoint; plaintext HTTP relies on client TOFU for the server identity.
-- No game packet-batch codec, compression, Bedrock login, encryption/session state or resource-pack negotiation.
-- No player session lifecycle, player spawn, world, entities, inventory or persistence.
-- No outbound game-packet pipeline connected to the data channels.
+- No Bedrock Login packet authentication, encryption/session state or resource-pack negotiation.
+- No complete player session lifecycle, player spawn, world, entities, inventory or persistence.
+- No general outbound gameplay-packet pipeline yet; only the initial NetworkSettings and protocol-mismatch responses are sent.
 - No Android-client end-to-end connection test.
 
 ## Protocol target

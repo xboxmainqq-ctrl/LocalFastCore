@@ -38,7 +38,7 @@ class PlayerInventoryTest {
         assertEquals(16, inventory.getSlot(0).orElseThrow().count());
         assertEquals(64, inventory.getSlot(1).orElseThrow().count());
         assertEquals(0, inventory.move(0, 1, 10));
-        assertEquals(0, inventory.move(0, 2, 0));
+        assertThrows(IllegalArgumentException.class, () -> inventory.move(0, 2, 0));
     }
 
     @Test

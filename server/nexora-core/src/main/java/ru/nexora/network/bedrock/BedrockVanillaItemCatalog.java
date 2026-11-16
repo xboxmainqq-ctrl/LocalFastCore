@@ -4,13 +4,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Curated protocol-2225 vanilla item subset with verified runtime IDs.
+ * Curated protocol-2225 vanilla item subset with verified runtime IDs, including common stackable items and armor.
  *
  * IDs and ItemVersion values are transcribed from the protocol-2225 item-state
  * palette (runtime_item_states_2225.json, Nukkit-MOT reference revision
- * 7323f582e864782934d4c405505551f79f4ed10e). Only stackable, non-component
- * items with no block-state payload are included. This is intentionally not
- * advertised as the complete vanilla item catalog.
+ * 7323f582e864782934d4c405505551f79f4ed10e). Only non-component items with no block-state payload are included. Armor and shields
+ * use a maximum stack size of one. This is intentionally not a complete vanilla catalog.
  */
 public final class BedrockVanillaItemCatalog {
     private static final byte[] EMPTY_NETWORK_NBT = {10, 0, 0, 0};
@@ -85,6 +84,33 @@ public final class BedrockVanillaItemCatalog {
         add(entries, "rabbit", 288, 0, 64);
         add(entries, "ink_sac", 416, 2, 64);
         add(entries, "glow_ink_sac", 514, 2, 64);
+        add(entries, "leather_helmet", 338, 2, 1);
+        add(entries, "leather_chestplate", 339, 2, 1);
+        add(entries, "leather_leggings", 340, 2, 1);
+        add(entries, "leather_boots", 341, 2, 1);
+        add(entries, "chainmail_helmet", 342, 2, 1);
+        add(entries, "chainmail_chestplate", 343, 2, 1);
+        add(entries, "chainmail_leggings", 344, 2, 1);
+        add(entries, "chainmail_boots", 345, 2, 1);
+        add(entries, "iron_helmet", 346, 2, 1);
+        add(entries, "iron_chestplate", 347, 2, 1);
+        add(entries, "iron_leggings", 348, 2, 1);
+        add(entries, "iron_boots", 349, 2, 1);
+        add(entries, "diamond_helmet", 350, 2, 1);
+        add(entries, "diamond_chestplate", 351, 2, 1);
+        add(entries, "diamond_leggings", 352, 2, 1);
+        add(entries, "diamond_boots", 353, 2, 1);
+        add(entries, "golden_helmet", 354, 2, 1);
+        add(entries, "golden_chestplate", 355, 2, 1);
+        add(entries, "golden_leggings", 356, 2, 1);
+        add(entries, "golden_boots", 357, 2, 1);
+        add(entries, "netherite_helmet", 625, 2, 1);
+        add(entries, "netherite_chestplate", 626, 2, 1);
+        add(entries, "netherite_leggings", 627, 2, 1);
+        add(entries, "netherite_boots", 628, 2, 1);
+        add(entries, "turtle_helmet", 583, 2, 1);
+        add(entries, "elytra", 574, 2, 1);
+        add(entries, "shield", 358, 2, 1);
         return new BedrockItemRegistry(entries);
     }
 

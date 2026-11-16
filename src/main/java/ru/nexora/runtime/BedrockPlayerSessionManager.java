@@ -236,7 +236,12 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
                 applyPendingInput(session);
                 processBlockActions(session);
                 if (session.playReady) {
-                    collectNearbyItems(session);
+                    if (!session.inventorySynced) {
+                        session.inventorySynced = sendInventory(session, true);
+                    }
+                    if (session.inventorySynced) {
+                        collectNearbyItems(session);
+                    }
                     publishChunkCenter(session);
                     acknowledgeChunkRadius(session);
                     sendNewChunks(session);
@@ -265,9 +270,6 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
         chunkStreaming.updatePlayer(session.playerId, floorToInt(session.x), floorToInt(session.z));
         session.sentChunks.addAll(initialChunks);
         session.entitySpawned = true;
-        if (!session.inventorySynced) {
-            session.inventorySynced = sendInventory(session, true);
-        }
     }
 
     private void applyPendingInput(PlayerSession session) {

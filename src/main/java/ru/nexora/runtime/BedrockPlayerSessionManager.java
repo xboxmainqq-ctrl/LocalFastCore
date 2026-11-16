@@ -10,8 +10,11 @@ import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket;
 import org.cloudburstmc.protocol.bedrock.packet.ChunkRadiusUpdatedPacket;
 import org.cloudburstmc.protocol.bedrock.packet.CorrectPlayerMovePredictionPacket;
 import org.cloudburstmc.protocol.bedrock.packet.NetworkChunkPublisherUpdatePacket;
+import org.cloudburstmc.protocol.bedrock.data.PlayerActionType;
+import org.cloudburstmc.protocol.bedrock.packet.PlayerActionPacket;
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket;
 import org.cloudburstmc.protocol.bedrock.packet.RequestChunkRadiusPacket;
+import org.cloudburstmc.protocol.bedrock.packet.UpdateBlockPacket;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -24,6 +27,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -52,6 +56,7 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
     private final EntityRegistry entities;
     private final PlayerChunkStreamingManager chunkStreaming;
     private final BedrockNetworkSettings networkSettings;
+    private final BedrockRuntimeBlockRegistry blockRegistry;
     private final List<ChunkPosition> initialChunks;
     private final int spawnY;
     private final Consumer<String> log;
@@ -68,10 +73,26 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
             int spawnY,
             Consumer<String> log
     ) {
+        this(world, entities, chunkStreaming, networkSettings, initialChunks, spawnY,
+                BedrockBlockCompatibilityRegistry.builtIn().adapt(
+                        BedrockRuntimeBlockRegistryProfile.hashing().registry()), log);
+    }
+
+    public BedrockPlayerSessionManager(
+            World world,
+            EntityRegistry entities,
+            PlayerChunkStreamingManager chunkStreaming,
+            BedrockNetworkSettings networkSettings,
+            List<ChunkPosition> initialChunks,
+            int spawnY,
+            BedrockRuntimeBlockRegistry blockRegistry,
+            Consumer<String> log
+    ) {
         this.world = Objects.requireNonNull(world, "world");
         this.entities = Objects.requireNonNull(entities, "entities");
         this.chunkStreaming = Objects.requireNonNull(chunkStreaming, "chunkStreaming");
         this.networkSettings = Objects.requireNonNull(networkSettings, "networkSettings");
+        this.blockRegistry = Objects.requireNonNull(blockRegistry, "blockRegistry");
         this.initialChunks = List.copyOf(Objects.requireNonNull(initialChunks, "initialChunks"));
         this.log = Objects.requireNonNull(log, "log");
         if (this.initialChunks.isEmpty() || this.initialChunks.size() > 128) {
@@ -141,6 +162,13 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
                             PacketRecipient.SERVER);
                     if (decoded instanceof PlayerAuthInputPacket input) {
                         session.pendingInput.set(PlayerInput.from(input));
+                    } else if (decoded instanceof PlayerActionPacket action) {
+                        PlayerActionType type = action.getAction();
+                        Vector3i block = action.getBlockPosition();
+                        if (type != null && block != null && isBlockAction(type)) {
+                            session.enqueueBlockAction(new BlockAction(type,
+                                    new BlockPosition(block.getX(), block.getY(), block.getZ())));
+                        }
                     } else if (decoded instanceof RequestChunkRadiusPacket request) {
                         session.requestedRadius.set(Math.max(1,
                                 Math.min(VIEW_DISTANCE_CHUNKS, request.getRadius())));
@@ -175,6 +203,7 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
             try {
                 ensureSpawned(session);
                 applyPendingInput(session);
+                processBlockActions(session);
                 if (session.playReady) {
                     publishChunkCenter(session);
                     acknowledgeChunkRadius(session);
@@ -242,6 +271,56 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
         chunkStreaming.updatePlayer(session.playerId, floorToInt(session.x), floorToInt(session.z));
         if (resolved.collided()) {
             sendCorrection(session, input.tick());
+        }
+    }
+
+    private static boolean isBlockAction(PlayerActionType action) {
+        return action == PlayerActionType.START_BREAK
+                || action == PlayerActionType.ABORT_BREAK
+                || action == PlayerActionType.STOP_BREAK
+                || action == PlayerActionType.BLOCK_PREDICT_DESTROY
+                || action == PlayerActionType.BLOCK_CONTINUE_DESTROY;
+    }
+
+    /** Applies client block actions on the game thread, never on a Netty I/O thread. */
+    private void processBlockActions(PlayerSession session) {
+        BlockAction action;
+        while ((action = session.pollBlockAction()) != null) {
+            switch (action.type()) {
+                case START_BREAK, BLOCK_PREDICT_DESTROY, BLOCK_CONTINUE_DESTROY ->
+                        session.breakingBlock = action.position();
+                case ABORT_BREAK -> {
+                    if (action.position().equals(session.breakingBlock)) {
+                        session.breakingBlock = null;
+                    }
+                }
+                case STOP_BREAK -> {
+                    if (action.position().equals(session.breakingBlock)) {
+                        session.breakingBlock = null;
+                        BlockBreakService.Outcome outcome = BlockBreakService.breakBlock(
+                                world, action.position(), session.x, session.y, session.z);
+                        if (outcome.broken()) {
+                            broadcastBlockUpdate(action.position(), BlockState.AIR);
+                        }
+                    }
+                }
+                default -> {
+                    // Other PlayerActionPacket actions are not block mutations.
+                }
+            }
+        }
+    }
+
+    private void broadcastBlockUpdate(BlockPosition position, BlockState state) {
+        UpdateBlockPacket update = new UpdateBlockPacket();
+        update.setBlockPosition(Vector3i.from(position.x(), position.y(), position.z()));
+        update.getFlags().add(UpdateBlockPacket.Flag.NETWORK);
+        update.setDataLayer(0);
+        update.setDefinition(() -> blockRegistry.runtimeId(state));
+        for (PlayerSession viewer : new ArrayList<>(byConnection.values())) {
+            if (!viewer.closed.get() && viewer.connection.isOpen() && viewer.playReady) {
+                sendProtocolPacket(viewer.connection, update);
+            }
         }
     }
 
@@ -371,7 +450,10 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
         private final UUID playerId;
         private final AtomicBoolean closed = new AtomicBoolean();
         private final AtomicReference<PlayerInput> pendingInput = new AtomicReference<>();
+        private final ConcurrentLinkedQueue<BlockAction> pendingBlockActions = new ConcurrentLinkedQueue<>();
+        private final AtomicInteger pendingBlockActionCount = new AtomicInteger();
         private final AtomicInteger requestedRadius = new AtomicInteger(-1);
+        private BlockPosition breakingBlock;
         private final Set<ChunkPosition> sentChunks = new HashSet<>();
         private double x;
         private double y;
@@ -384,6 +466,21 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
         private int acknowledgedRadius = -1;
         private ChunkPosition lastPublishedCenter;
 
+        private void enqueueBlockAction(BlockAction action) {
+            int count = pendingBlockActionCount.incrementAndGet();
+            if (count > 64) {
+                pendingBlockActionCount.decrementAndGet();
+                throw new IllegalArgumentException("Too many pending block actions");
+            }
+            pendingBlockActions.add(action);
+        }
+
+        private BlockAction pollBlockAction() {
+            BlockAction action = pendingBlockActions.poll();
+            if (action != null) pendingBlockActionCount.decrementAndGet();
+            return action;
+        }
+
         private PlayerSession(TransportConnection connection, BedrockAuthenticatedPlayer player,
                               UUID playerId, double x, double y, double z, double yaw) {
             this.connection = connection;
@@ -394,6 +491,9 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
             this.z = z;
             this.yaw = yaw;
         }
+    }
+
+    private record BlockAction(PlayerActionType type, BlockPosition position) {
     }
 
     private record PlayerInput(float x, float y, float z, float yaw,

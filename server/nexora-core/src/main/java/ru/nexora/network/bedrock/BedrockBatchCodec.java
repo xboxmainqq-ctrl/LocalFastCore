@@ -96,6 +96,16 @@ public final class BedrockBatchCodec {
             int threshold,
             int maxBatchBytes
     ) {
+        return encode(packets, compressionNegotiated, threshold, COMPRESSION_ZLIB, maxBatchBytes);
+    }
+
+    public static byte[] encode(
+            List<BedrockPacket> packets,
+            boolean compressionNegotiated,
+            int threshold,
+            int compressionAlgorithm,
+            int maxBatchBytes
+    ) {
         Objects.requireNonNull(packets, "packets");
         if (packets.isEmpty()) throw new IllegalArgumentException("Cannot encode an empty Bedrock batch");
         if (packets.size() > MAX_PACKETS_PER_BATCH) {
@@ -125,6 +135,12 @@ public final class BedrockBatchCodec {
 
         byte[] raw = batch.toByteArray();
         if (!compressionNegotiated) return raw;
+        if (compressionAlgorithm == COMPRESSION_NONE) {
+            return withCompressionHeader(COMPRESSION_HEADER_NONE, raw);
+        }
+        if (compressionAlgorithm != COMPRESSION_ZLIB) {
+            throw new UnsupportedOperationException("Only Zlib and no compression are supported");
+        }
         if (raw.length < threshold) return withCompressionHeader(COMPRESSION_HEADER_NONE, raw);
         return withCompressionHeader(COMPRESSION_HEADER_ZLIB, deflateRaw(raw));
     }

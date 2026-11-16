@@ -359,10 +359,26 @@ public final class NexoraMain {
                             },
                             new java.util.concurrent.ThreadPoolExecutor.AbortPolicy());
 
+                    final List<BedrockResourcePackTransferCodec.Pack> bedrockResourcePacks;
+                    try {
+                        bedrockResourcePacks = new BedrockResourcePackArchiveLoader().load(
+                                dataDirectory.resolve("resource-packs"), "1.0.0");
+                    } catch (java.io.IOException invalidResourcePacks) {
+                        throw new IllegalStateException(
+                                "Could not load Bedrock resource packs from "
+                                        + dataDirectory.resolve("resource-packs"),
+                                invalidResourcePacks);
+                    }
+                    List<BedrockResourcePackTransferCodec.Pack> advertisedPacks =
+                            new ArrayList<>(bedrockResourcePacks);
+                    advertisedPacks.add(BedrockHudResourcePack.create());
+                    log.accept("Loaded " + bedrockResourcePacks.size()
+                            + " custom Bedrock resource pack(s) and the NEXORA HUD pack.");
+
                     BedrockWorldSessionPipeline sessions = new BedrockWorldSessionPipeline(
                             bedrockNetwork, world, 0, -1, initialChunks,
                             blockProfile, BedrockBlockCompatibilityRegistry.builtIn(),
-                            List.of(BedrockHudResourcePack.create()), true,
+                            List.copyOf(advertisedPacks), true,
                             (connection, player) -> {
                                 playerSessions.onAuthenticated(connection, player);
                                 return createBedrockStartGameSettings(world, player, seed, worldId);

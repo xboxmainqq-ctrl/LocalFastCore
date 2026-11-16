@@ -225,6 +225,19 @@ class BedrockSessionManagerTest {
                 BedrockBatchCodec.encode(List.of(naturalRegeneration), true, 256));
         assertEquals(18.0f, manager.playerVitals("physics-client").orElseThrow().health());
         assertEquals(4.0f, manager.playerVitals("physics-client").orElseThrow().saturation());
+
+        // Remove a small floor patch and let the server physics model land the player on the lower layer.
+        for (int x = 0; x <= 0; x++) {
+            for (int z = 0; z <= 1; z++) {
+                for (int y = 60; y <= 64; y++) world.setBlock(x, y, z, ru.nexora.world.BlockType.AIR);
+            }
+        }
+        for (long tick = 5; tick <= 40 && manager.playerVitals("physics-client").orElseThrow().health() == 18.0f; tick++) {
+            BedrockPacket falling = new BedrockPacket(0x90, 0, 0,
+                    movementInputPayload(0.5f, 65.0f, 0.715f, 0.0f, tick, 0.0f, 0.0f));
+            sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(List.of(falling), true, 256));
+        }
+        assertEquals(16.0f, manager.playerVitals("physics-client").orElseThrow().health());
         manager.close();
     }
 

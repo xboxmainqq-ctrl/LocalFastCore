@@ -1,11 +1,9 @@
 package ru.nexora.inventory;
 
 import java.util.Collections;
-import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 /** Immutable authoritative mapping from item identifiers to legal armor positions. */
 public final class ArmorSlotRegistry {

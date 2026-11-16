@@ -56,6 +56,14 @@ public final class WorldItemEntityManager {
         }
     }
 
+    /** Restores a previously removed immutable actor after a failed durable inventory update. */
+    public void restore(WorldItemEntity entity) {
+        Objects.requireNonNull(entity, "entity");
+        if (entities.putIfAbsent(entity.runtimeId(), entity) != null) {
+            throw new IllegalStateException("Item actor runtime ID is already present");
+        }
+    }
+
     /**
      * Picks up an entire stack only when the player can accept all of it.
      * Partial inventory insertion is rolled back, leaving the world actor unchanged.

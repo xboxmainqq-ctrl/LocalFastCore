@@ -16,6 +16,7 @@ import ru.nexora.world.PlayerDataStorage;
 import ru.nexora.inventory.PlayerInventoryStorage;
 import ru.nexora.inventory.PlayerEquipmentStorage;
 import ru.nexora.inventory.VanillaArmorSlotCatalog;
+import ru.nexora.inventory.NexoraMagicEquipmentCatalog;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -89,6 +90,7 @@ public final class NexoraServer {
                         event.packet().packetId(), event.networkId(), event.packet().payload().length));
         bedrockSessions.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
         bedrockSessions.setArmorSlotRegistry(VanillaArmorSlotCatalog.createRegistry());
+        bedrockSessions.setEquipmentSlotRegistry(NexoraMagicEquipmentCatalog.createRegistry());
         String stunEnvironment = System.getenv("NEXORA_STUN_URLS");
         List<String> stunUrls = stunEnvironment == null || stunEnvironment.isBlank()
                 ? List.of()

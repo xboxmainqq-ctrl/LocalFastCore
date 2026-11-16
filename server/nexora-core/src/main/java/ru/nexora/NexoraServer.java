@@ -14,6 +14,7 @@ import ru.nexora.world.WorldStorage;
 import ru.nexora.world.WorldAutosave;
 import ru.nexora.world.PlayerDataStorage;
 import ru.nexora.inventory.PlayerInventoryStorage;
+import ru.nexora.inventory.PlayerEquipmentStorage;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -68,6 +69,7 @@ public final class NexoraServer {
                 "NEXORA World", 0L, new FlatWorldGenerator(), 0, 65, 0, worldStorage);
         PlayerDataStorage playerStorage = new PlayerDataStorage(Path.of(dataDirectory, "players"));
         PlayerInventoryStorage inventoryStorage = new PlayerInventoryStorage(Path.of(dataDirectory, "inventories"));
+        PlayerEquipmentStorage equipmentStorage = new PlayerEquipmentStorage(Path.of(dataDirectory, "equipment"));
         AtomicReference<WebRtcSdpNegotiator> negotiatorReference = new AtomicReference<>();
         BedrockSessionManager bedrockSessions = new BedrockSessionManager(
                 2225,
@@ -76,6 +78,7 @@ public final class NexoraServer {
                 world,
                 playerStorage,
                 inventoryStorage,
+                equipmentStorage,
                 (networkId, channelLabel, frame) -> {
                     WebRtcSdpNegotiator active = negotiatorReference.get();
                     if (active == null) throw new IllegalStateException("WebRTC transport is not ready");
@@ -153,6 +156,7 @@ public final class NexoraServer {
         System.out.println("World chunks use versioned, checksummed files under " + Path.of(dataDirectory, "worlds").toAbsolutePath());
         System.out.println("Player profiles use versioned, checksummed files under " + Path.of(dataDirectory, "players").toAbsolutePath());
         System.out.println("Player inventories use versioned, checksummed files under " + Path.of(dataDirectory, "inventories").toAbsolutePath());
+        System.out.println("Player armor, offhand and cursor use checksummed files under " + Path.of(dataDirectory, "equipment").toAbsolutePath());
         System.out.printf("World autosave interval: %d seconds%n", autosaveSeconds);
         System.out.println("Saved player positions and rotations are restored on re-login.");
         System.out.println("Next gameplay stages: block placement, movement physics and entity replication.");

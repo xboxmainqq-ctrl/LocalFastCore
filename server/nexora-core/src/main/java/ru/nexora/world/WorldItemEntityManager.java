@@ -172,6 +172,66 @@ public final class WorldItemEntityManager {
         }
     }
 
+    /**
+     * Advances simple server-side dropped-item gravity and block collision.
+     * Position changes are kept in memory and are included in the next world autosave.
+     */
+    public synchronized List<WorldItemEntity> tick(World world, double deltaSeconds) {
+        Objects.requireNonNull(world, "world");
+        if (!Double.isFinite(deltaSeconds) || deltaSeconds <= 0) {
+            throw new IllegalArgumentException("Item actor tick duration must be positive and finite");
+        }
+        double dt = Math.min(0.1, deltaSeconds);
+        List<WorldItemEntity> moved = new ArrayList<>();
+        for (WorldItemEntity current : snapshot()) {
+            double vx = current.velocityX() * 0.98;
+            double vy = current.velocityY() - 32.0 * dt;
+            double vz = current.velocityZ() * 0.98;
+            double nextX = current.x() + vx * dt;
+            double nextZ = current.z() + vz * dt;
+
+            if (solid(world, floor(nextX), floor(current.y()), floor(nextZ))) {
+                nextX = current.x();
+                nextZ = current.z();
+                vx = 0;
+                vz = 0;
+            }
+
+            double nextY = current.y() + vy * dt;
+            int supportY = floor(nextY - 0.125);
+            if (vy < 0 && solid(world, floor(nextX), supportY, floor(nextZ))) {
+                nextY = supportY + 1.125;
+                vy = 0;
+                vx *= 0.6;
+                vz *= 0.6;
+            } else if (solid(world, floor(nextX), floor(nextY), floor(nextZ))) {
+                nextY = current.y();
+                vy = 0;
+            }
+
+            WorldItemEntity updated = new WorldItemEntity(
+                    current.uniqueId(), current.runtimeId(), current.stack(),
+                    nextX, nextY, nextZ, vx, vy, vz,
+                    current.pickupAvailableAtMillis(), current.ownerXuid());
+            if (!updated.equals(current) && entities.replace(current.runtimeId(), current, updated)) {
+                moved.add(updated);
+            }
+        }
+        return List.copyOf(moved);
+    }
+
+    private static boolean solid(World world, int x, int y, int z) {
+        return y >= WorldChunk.MIN_Y && y <= WorldChunk.MAX_Y
+                && world.getBlock(x, y, z) != BlockType.AIR;
+    }
+
+    private static int floor(double value) {
+        if (value <= Integer.MIN_VALUE || value >= Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("Item actor coordinate is outside world bounds");
+        }
+        return (int) Math.floor(value);
+    }
+
     public int size() {
         return entities.size();
     }

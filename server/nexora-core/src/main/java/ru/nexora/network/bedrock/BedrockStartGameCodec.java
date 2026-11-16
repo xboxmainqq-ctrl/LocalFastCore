@@ -19,10 +19,22 @@ public final class BedrockStartGameCodec {
     }
 
     public static BedrockPacket create(
+            long entityId, String worldName, String gameVersion, String baseGameVersion,
+            float spawnX, float spawnY, float spawnZ
+    ) {
+        return create(entityId, worldName, gameVersion, baseGameVersion,
+                0L, 0, 64, 0, spawnX, spawnY, spawnZ);
+    }
+
+    public static BedrockPacket create(
             long entityId,
             String worldName,
             String gameVersion,
             String baseGameVersion,
+            long worldSeed,
+            int worldSpawnX,
+            int worldSpawnY,
+            int worldSpawnZ,
             float spawnX,
             float spawnY,
             float spawnZ
@@ -41,7 +53,7 @@ public final class BedrockStartGameCodec {
         out.float32(spawnZ);
         out.float32(0);                     // Pitch
         out.float32(0);                     // Yaw
-        out.int64(0);                       // WorldSeed
+        out.int64(worldSeed);              // WorldSeed
         out.int16(0);                       // SpawnBiomeType: default
         out.string("");                     // UserDefinedBiomeName
         out.varInt32(0);                    // Dimension: overworld
@@ -49,9 +61,9 @@ public final class BedrockStartGameCodec {
         out.varInt32(0);                    // WorldGameMode: survival
         out.bool(false);                    // Hardcore
         out.varInt32(1);                    // Difficulty: easy
-        out.varInt32(0);                    // WorldSpawn X
-        out.varInt32(64);                   // WorldSpawn Y
-        out.varInt32(0);                    // WorldSpawn Z
+        out.varInt32(worldSpawnX);
+        out.varInt32(worldSpawnY);
+        out.varInt32(worldSpawnZ);
         out.bool(false);                    // AchievementsDisabled
         out.varInt32(0);                    // EditorWorldType
         out.bool(false);                    // CreatedInEditor
@@ -130,14 +142,24 @@ public final class BedrockStartGameCodec {
             long entityId, String worldName, String gameVersion, String baseGameVersion,
             float spawnX, float spawnY, float spawnZ
     ) {
+        return createInitialWorldPackets(entityId, worldName, gameVersion, baseGameVersion,
+                0L, 0, 64, 0, spawnX, spawnY, spawnZ);
+    }
+
+    public static List<BedrockPacket> createInitialWorldPackets(
+            long entityId, String worldName, String gameVersion, String baseGameVersion,
+            long worldSeed, int spawnBlockX, int spawnBlockY, int spawnBlockZ,
+            float spawnX, float spawnY, float spawnZ
+    ) {
         return List.of(
-                create(entityId, worldName, gameVersion, baseGameVersion, spawnX, spawnY, spawnZ),
+                create(entityId, worldName, gameVersion, baseGameVersion, worldSeed,
+                        spawnBlockX, spawnBlockY, spawnBlockZ, spawnX, spawnY, spawnZ),
                 packet(0x0a, varIntPayload(0)),
                 packet(0x3c, varUIntPayload(1)),
                 packet(0x3b, new byte[] {1}),
-                packet(0x2b, setSpawnPositionPayload()),
+                packet(0x2b, setSpawnPositionPayload(spawnBlockX, spawnBlockY, spawnBlockZ)),
                 packet(0x3e, varIntPayload(0)),
-                packet(0x79, chunkPublisherPayload())
+                packet(0x79, chunkPublisherPayload(spawnBlockX, spawnBlockY, spawnBlockZ))
         );
     }
 
@@ -153,10 +175,10 @@ public final class BedrockStartGameCodec {
         Writer out = new Writer(); out.varUInt32(value); return out.toByteArray();
     }
 
-    private static byte[] setSpawnPositionPayload() {
+    private static byte[] setSpawnPositionPayload(int x, int y, int z) {
         Writer out = new Writer();
         out.varInt32(1);
-        out.varInt32(0); out.varInt32(64); out.varInt32(0);
+        out.varInt32(x); out.varInt32(y); out.varInt32(z);
         out.varInt32(0);
         out.varInt32(Integer.MIN_VALUE);
         out.varInt32(Integer.MIN_VALUE);
@@ -164,9 +186,9 @@ public final class BedrockStartGameCodec {
         return out.toByteArray();
     }
 
-    private static byte[] chunkPublisherPayload() {
+    private static byte[] chunkPublisherPayload(int x, int y, int z) {
         Writer out = new Writer();
-        out.varInt32(0); out.varInt32(65); out.varInt32(0);
+        out.varInt32(x); out.varInt32(y); out.varInt32(z);
         out.varUInt32(128);
         out.uint32(0);
         return out.toByteArray();

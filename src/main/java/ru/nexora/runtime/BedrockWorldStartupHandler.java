@@ -1,5 +1,9 @@
 package ru.nexora.runtime;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import org.cloudburstmc.protocol.bedrock.codec.v2225.Bedrock_v2225;
+import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -24,6 +28,7 @@ public final class BedrockWorldStartupHandler
     private final int clientRequestSubChunkLimit;
     private final List<ChunkPosition> initialChunks;
     private final BedrockRuntimeBlockRegistryProfile blockRegistryProfile;
+    private final BedrockItemRegistry itemRegistry;
     private final BiFunction<TransportConnection, BedrockAuthenticatedPlayer,
             BedrockStartGamePacketCodec.Settings> settingsFactory;
 
@@ -49,6 +54,7 @@ public final class BedrockWorldStartupHandler
         this.clientRequestSubChunkLimit = clientRequestSubChunkLimit;
         this.initialChunks = List.copyOf(Objects.requireNonNull(initialChunks, "initialChunks"));
         this.blockRegistryProfile = Objects.requireNonNull(blockRegistryProfile, "blockRegistryProfile");
+        this.itemRegistry = BedrockItemRegistry.loadBundled();
         if (this.initialChunks.isEmpty() || this.initialChunks.size() > MAX_INITIAL_CHUNKS) {
             throw new IllegalArgumentException("Initial chunk count must be between 1 and 128");
         }
@@ -88,8 +94,9 @@ public final class BedrockWorldStartupHandler
             }
             blockRegistryProfile.validateStartGameSettings(startSettings);
 
-            List<BedrockGamePacket> packets = new ArrayList<>(initialChunks.size() + 1);
+            List<BedrockGamePacket> packets = new ArrayList<>(initialChunks.size() + 2);
             packets.add(BedrockStartGamePacketCodec.encodePacket(startSettings));
+            packets.add(encodeProtocolPacket(itemRegistry.createPacket()));
             for (ChunkPosition position : initialChunks) {
                 packets.add(BedrockLevelChunkPacketCodec.encodeSkeletonPacket(
                         new BedrockLevelChunkPacketCodec.ChunkPosition(position.x(), position.z()),
@@ -107,6 +114,22 @@ public final class BedrockWorldStartupHandler
             return CompletableFuture.completedFuture(null);
         } catch (RuntimeException failure) {
             return CompletableFuture.failedFuture(failure);
+        }
+    }
+
+    private static BedrockGamePacket encodeProtocolPacket(BedrockPacket packet) {
+        ByteBuf payload = Unpooled.buffer();
+        try {
+            Bedrock_v2225.CODEC.tryEncode(Bedrock_v2225.CODEC.createHelper(), payload, packet);
+            int packetId = Bedrock_v2225.CODEC.getPacketDefinition(packet.getClass()).id();
+            byte[] bytes = new byte[payload.readableBytes()];
+            payload.readBytes(bytes);
+            return new BedrockGamePacket(new BedrockPacketHeader(packetId, 0, 0), bytes);
+        } catch (Exception failure) {
+            throw new IllegalStateException("Could not encode Bedrock startup packet "
+                    + packet.getClass().getSimpleName(), failure);
+        } finally {
+            payload.release();
         }
     }
 }

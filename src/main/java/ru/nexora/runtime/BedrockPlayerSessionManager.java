@@ -251,7 +251,6 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
                 ensureSpawned(session);
                 applyPendingInput(session);
                 processBlockActions(session);
-                processItemUseActions(session);
                 if (session.playReady) {
                     if (!session.itemRegistrySynced) {
                         session.itemRegistrySynced = sendProtocolPacket(
@@ -261,6 +260,7 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
                         session.inventorySynced = sendInventory(session, true);
                     }
                     if (session.itemRegistrySynced && session.inventorySynced) {
+                        processItemUseActions(session);
                         syncVisibleItemEntities(session);
                         collectNearbyItems(session);
                     }
@@ -395,7 +395,11 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
             BlockPlacementService.Outcome outcome = BlockPlacementService.placeBlock(
                     world, inventory, action.hotbarSlot(), action.itemId(), action.clickedBlock(),
                     action.face(), session.x, session.y, session.z);
-            if (!outcome.placed()) continue;
+            if (!outcome.placed()) {
+                correctPredictedPlacement(session, action);
+                sendInventory(session, false);
+                continue;
+            }
             blockRegistry.runtimeId(outcome.placedState());
             broadcastBlockUpdate(outcome.position(), outcome.placedState());
             sendInventory(session, false);
@@ -407,6 +411,31 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
                 }
             }
         }
+    }
+
+    /** Resets client-side placement prediction after a rejected placement. */
+    private void correctPredictedPlacement(PlayerSession session, ItemUseAction action) {
+        sendCurrentBlockState(action.clickedBlock());
+        BlockPosition destination = adjacentPlacementPosition(action.clickedBlock(), action.face());
+        if (destination != null) sendCurrentBlockState(destination);
+    }
+
+    private void sendCurrentBlockState(BlockPosition position) {
+        if (world.height().contains(position.y()) && world.isChunkLoaded(position.chunkPosition())) {
+            broadcastBlockUpdate(position, world.blockAt(position));
+        }
+    }
+
+    private static BlockPosition adjacentPlacementPosition(BlockPosition block, int face) {
+        return switch (face) {
+            case 0 -> new BlockPosition(block.x(), block.y() - 1, block.z());
+            case 1 -> new BlockPosition(block.x(), block.y() + 1, block.z());
+            case 2 -> new BlockPosition(block.x(), block.y(), block.z() - 1);
+            case 3 -> new BlockPosition(block.x(), block.y(), block.z() + 1);
+            case 4 -> new BlockPosition(block.x() - 1, block.y(), block.z());
+            case 5 -> new BlockPosition(block.x() + 1, block.y(), block.z());
+            default -> null;
+        };
     }
 
     private void collectNearbyItems(PlayerSession session) {

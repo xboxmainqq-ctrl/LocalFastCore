@@ -24,16 +24,26 @@ public final class ModuleManager {
     }
 
     public synchronized void register(NexoraModule module) {
-        Objects.requireNonNull(module, "module");
-        ModuleDescriptor descriptor = Objects.requireNonNull(
-                module.descriptor(), "module descriptor");
+        registerAll(List.of(Objects.requireNonNull(module, "module")));
+    }
+
+    /** Registers a batch only after validating every descriptor and identifier. */
+    public synchronized void registerAll(Collection<? extends NexoraModule> batch) {
+        Objects.requireNonNull(batch, "batch");
         if (!lifecycleOrder.isEmpty()) {
             throw new IllegalStateException("Cannot register modules after lifecycle startup");
         }
-        Entry previous = modules.putIfAbsent(descriptor.id(), new Entry(module, descriptor));
-        if (previous != null) {
-            throw new IllegalArgumentException("Duplicate module id: " + descriptor.id());
+        Map<String, Entry> pending = new LinkedHashMap<>();
+        for (NexoraModule module : batch) {
+            Objects.requireNonNull(module, "module");
+            ModuleDescriptor descriptor = Objects.requireNonNull(
+                    module.descriptor(), "module descriptor");
+            if (modules.containsKey(descriptor.id()) || pending.containsKey(descriptor.id())) {
+                throw new IllegalArgumentException("Duplicate module id: " + descriptor.id());
+            }
+            pending.put(descriptor.id(), new Entry(module, descriptor));
         }
+        modules.putAll(pending);
     }
 
     public synchronized void loadAll() throws ModuleLifecycleException {

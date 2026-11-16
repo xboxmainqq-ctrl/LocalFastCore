@@ -66,6 +66,7 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
         Map<BlockPosition, BlockState> fluids = new HashMap<>(2_000);
         Map<BiomeColumnPosition, Integer> biomeColumns = new HashMap<>(256);
         BiomeDefinition[][] columnBiomes = new BiomeDefinition[16][16];
+        ClimateSample[][] columnClimates = new ClimateSample[16][16];
         BiomeRegistry biomeRegistry = BiomeRegistry.builtIn();
         HydrologyField hydrology = HydrologyField.forChunk(position, height, seed);
         boolean[][] waterColumns = new boolean[16][16];
@@ -91,6 +92,7 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
                     waterColumns[localX][localZ] = true;
                 }
                 columnBiomes[localX][localZ] = biome;
+                columnClimates[localX][localZ] = climate;
                 surfaceHeights[localX][localZ] = surfaceY;
                 BlockPosition surfacePosition = new BlockPosition(x, surfaceY, z);
                 biomeColumns.put(new BiomeColumnPosition(x, z), biome.id());
@@ -118,7 +120,8 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
         decorateLushCaves(baseX, baseZ, height, seed, blocks, fluids);
         generateUndergroundWater(baseX, baseZ, height, seed, blocks, fluids);
         decorateCrystalGeodes(baseX, baseZ, height, seed, blocks, fluids);
-        placeTrees(position, baseX, baseZ, height, seed, surfaceHeights, columnBiomes, waterColumns, blocks);
+        placeTrees(position, baseX, baseZ, height, seed, surfaceHeights,
+                columnBiomes, columnClimates, waterColumns, blocks);
         return new GeneratedChunk(position, blocks, Map.of(), fluids, biomeColumns, height);
     }
 
@@ -431,6 +434,7 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
             long seed,
             int[][] surfaceHeights,
             BiomeDefinition[][] columnBiomes,
+            ClimateSample[][] columnClimates,
             boolean[][] waterColumns,
             Map<BlockPosition, BlockState> blocks
     ) {
@@ -439,16 +443,25 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
                 int x = baseX + localX;
                 int z = baseZ + localZ;
                 BiomeDefinition biome = columnBiomes[localX][localZ];
+                ClimateSample climate = columnClimates[localX][localZ];
                 if (waterColumns[localX][localZ] || biome.treeChance() <= 0.0) {
-                    continue;
-                }
-                long featureHash = coordinateHash(seed ^ 0x2d358dccaa6c78a5L, x, z);
-                double roll = Long.remainderUnsigned(featureHash, 1_000_000L) / 1_000_000.0;
-                if (roll >= biome.treeChance()) {
                     continue;
                 }
 
                 int groundY = surfaceHeights[localX][localZ];
+                double treeLine = 108.0 + climate.temperature() * 32.0;
+                if (groundY > treeLine) {
+                    continue;
+                }
+                long featureHash = coordinateHash(seed ^ 0x2d358dccaa6c78a5L, x, z);
+                double roll = Long.remainderUnsigned(featureHash, 1_000_000L) / 1_000_000.0;
+                double forestField = (valueNoise(x, z, seed, 260, 0x73a4c91dL) + 1.0) * 0.5;
+                double patch = Math.max(0.0, Math.min(1.0, (forestField - 0.24) / 0.58));
+                patch = patch * patch * (3.0 - 2.0 * patch);
+                double localTreeChance = biome.treeChance() * (0.12 + 1.75 * patch);
+                if (roll >= localTreeChance) {
+                    continue;
+                }
                 int treeRange = biome.maxTreeHeight() - biome.minTreeHeight() + 1;
                 int trunkHeight = biome.minTreeHeight()
                         + (int) Long.remainderUnsigned(featureHash >>> 8, treeRange);

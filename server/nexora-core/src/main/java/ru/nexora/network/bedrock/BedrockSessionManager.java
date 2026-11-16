@@ -7,7 +7,6 @@ import ru.nexora.network.nethernet.NetherNetDataChannelListener;
 import ru.nexora.network.nethernet.NetherNetInboundPipeline;
 import ru.nexora.network.nethernet.NetherNetMessageFramer;
 
-import java.io.ByteArrayOutputStream;
 import java.security.KeyFactory;
 import java.security.MessageDigest;
 import java.security.PublicKey;
@@ -258,7 +257,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     private static void verifyClientDataToken(String token, NetherNetClientIdentity identity) {
         try {
-            String[] parts = token.split("\\\\.", -1);
+            String[] parts = token.split("\\.", -1);
             if (parts.length != 3 || parts[2].isEmpty()) {
                 throw new SecurityException("Malformed client-data JWT");
             }

@@ -204,6 +204,13 @@ class BedrockSessionManagerTest {
                 BedrockBatchCodec.encode(List.of(startBreak), true, 256));
         assertEquals(26, outboundFrames.size());
 
+        BedrockPacket prematureBreak = new BedrockPacket(0x90, 0, 0,
+                BedrockPlayerAuthInputCodecTest.blockActionPayload(
+                        16.5f, 65.0f, 1.0f, 26, 16, 64, 1, 1, 10L));
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(prematureBreak), true, 256));
+        assertEquals(26, outboundFrames.size()); // too little break time has elapsed
+
         BedrockPacket finishBreak = new BedrockPacket(0x90, 0, 0,
                 BedrockPlayerAuthInputCodecTest.blockActionPayload(
                         16.5f, 65.0f, 1.0f, 26, 16, 64, 1, 1, 20L));

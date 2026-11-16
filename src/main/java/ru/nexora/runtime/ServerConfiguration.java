@@ -82,6 +82,11 @@ public record ServerConfiguration(
         properties.setProperty("world.max-y-exclusive", Integer.toString(worldHeight.maxYExclusive()));
         properties.setProperty("server.tick-rate", Integer.toString(tickRate));
         properties.setProperty("server.network.enabled", "false");
+        properties.setProperty("bedrock.network.enabled", "false");
+        properties.setProperty("bedrock.bind-address", "0.0.0.0");
+        properties.setProperty("bedrock.port", "19132");
+        properties.setProperty("bedrock.ice-port", "0");
+        properties.setProperty("bedrock.identity-file", "nethernet-identity.pem");
         try (Writer writer = Files.newBufferedWriter(file)) {
             properties.store(writer, "NEXORA Dedicated Server configuration");
         }

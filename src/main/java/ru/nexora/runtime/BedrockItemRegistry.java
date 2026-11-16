@@ -12,7 +12,7 @@ import org.cloudburstmc.protocol.bedrock.packet.ItemRegistryPacket;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,8 +33,9 @@ public final class BedrockItemRegistry {
     private final List<ItemDefinition> orderedDefinitions;
 
     private BedrockItemRegistry(Map<String, ItemDefinition> definitions) {
-        this.definitions = Map.copyOf(definitions);
-        this.orderedDefinitions = List.copyOf(definitions.values());
+        Map<String, ItemDefinition> ordered = new LinkedHashMap<>(definitions);
+        this.definitions = Collections.unmodifiableMap(ordered);
+        this.orderedDefinitions = List.copyOf(ordered.values());
     }
 
     public static BedrockItemRegistry loadBundled() {

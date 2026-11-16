@@ -17,6 +17,17 @@ public final class BedrockBlockRuntimeIds {
             case DIRT -> hashState("minecraft:dirt");
             case GRASS_BLOCK -> hashState("minecraft:grass_block");
             case BEDROCK -> hashState("minecraft:bedrock", "infiniburn_bit", false);
+            case COBBLESTONE -> hashState("minecraft:cobblestone");
+            case GRAVEL -> hashState("minecraft:gravel");
+            case GLASS -> hashState("minecraft:glass");
+            case OBSIDIAN -> hashState("minecraft:obsidian");
+            case NETHERRACK -> hashState("minecraft:netherrack");
+            case END_STONE -> hashState("minecraft:end_stone");
+            case COAL_BLOCK -> hashState("minecraft:coal_block");
+            case IRON_BLOCK -> hashState("minecraft:iron_block");
+            case GOLD_BLOCK -> hashState("minecraft:gold_block");
+            case DIAMOND_BLOCK -> hashState("minecraft:diamond_block");
+            case EMERALD_BLOCK -> hashState("minecraft:emerald_block");
         };
     }
 

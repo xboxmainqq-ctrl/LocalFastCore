@@ -49,9 +49,11 @@ public final class BedrockInventoryContentCodec {
             }
         }
 
-        // FullContainerName: InventoryContainer. Dynamic ID is optional and omitted.
-        out.byteValue(PLAYER_INVENTORY_CONTAINER_NAME);
-        // Optional Storage Item is absent.
+        // Protocol 2225 FullContainerName uses an optional little-endian dynamic ID.
+        out.byteValue(12); // HOTBAR_AND_INVENTORY
+        out.byteValue(1);  // dynamic ID is present, including the player container ID 0
+        out.int32(PLAYER_INVENTORY_CONTAINER_ID);
+        writeEmptyStorageItem(out);
         return new BedrockPacket(INVENTORY_CONTENT_PACKET_ID, 0, 0, out.toByteArray());
     }
 
@@ -68,10 +70,10 @@ public final class BedrockInventoryContentCodec {
         Writer out = new Writer();
         out.byteValue(PLAYER_INVENTORY_CONTAINER_ID);
         out.varUInt32(slot);
-        // FullContainerName: InventoryContainer. Dynamic ID and Storage Item are absent.
-        out.byteValue(PLAYER_INVENTORY_CONTAINER_NAME);
+        // Protocol >= 1.26.20.26 carries optional FullContainerName and StorageItem flags.
+        out.byteValue(0);
+        out.byteValue(0);
         ItemStack stack = optionalStack.orElse(null);
-        out.varInt32(stack == null ? 0 : 1);
         if (stack == null) {
             writeStack(out, 0, 0, 0, 0, new byte[0]);
         } else {
@@ -84,6 +86,10 @@ public final class BedrockInventoryContentCodec {
                     definition.auxValue(), definition.blockRuntimeId(), definition.userData());
         }
         return new BedrockPacket(0x32, 0, 0, out.toByteArray());
+    }
+
+    private static void writeEmptyStorageItem(Writer out) {
+        writeStack(out, 0, 0, 0, 0, new byte[0]);
     }
 
     private static void writeStack(
@@ -148,6 +154,13 @@ public final class BedrockInventoryContentCodec {
             }
             byteValue(value);
             byteValue(value >>> 8);
+        }
+
+        void int32(int value) {
+            byteValue(value);
+            byteValue(value >>> 8);
+            byteValue(value >>> 16);
+            byteValue(value >>> 24);
         }
 
         void varInt32(int value) {

@@ -49,15 +49,15 @@ public final class BedrockPlayerAuthInputCodec {
         boolean optionalSectionsPresent = hasItemUse || hasItemStackRequest
                 || hasBlockActions || inPredictedVehicle;
 
-        // The item-use and item-stack-request payloads are intentionally opaque until
-        // their inventory codecs are implemented. Preserve the movement snapshot but
-        // never pretend that trailing interaction data was decoded.
-        if (hasItemUse || hasItemStackRequest) {
+        ItemUseTransaction itemUseTransaction = hasItemUse ? readPackedItemUse(in) : null;
+        // ItemStackRequest remains opaque. The preceding packed item-use transaction
+        // is still decoded so ordinary block placement can be validated server-side.
+        if (hasItemStackRequest) {
             return new PlayerInput(pitch, yaw, x, y, z, motionX, motionZ, headYaw,
                     tick, true, true, inputMode, playMode, interactionModel,
                     interactYaw, interactPitch, deltaX, deltaY, deltaZ,
                     0, 0, 0, 0, 0, 0, 0,
-                    java.util.List.copyOf(inputActions), java.util.List.of());
+                    java.util.List.copyOf(inputActions), java.util.List.of(), itemUseTransaction);
         }
 
         java.util.List<BlockAction> blockActions = new java.util.ArrayList<>();
@@ -89,7 +89,7 @@ public final class BedrockPlayerAuthInputCodec {
                 tick, optionalSectionsPresent, false, inputMode, playMode, interactionModel,
                 interactYaw, interactPitch, deltaX, deltaY, deltaZ,
                 analogMoveX, analogMoveZ, cameraX, cameraY, cameraZ, rawMoveX, rawMoveZ,
-                java.util.List.copyOf(inputActions), java.util.List.copyOf(blockActions));
+                java.util.List.copyOf(inputActions), java.util.List.copyOf(blockActions), itemUseTransaction);
     }
 
     public record PlayerInput(
@@ -104,7 +104,8 @@ public final class BedrockPlayerAuthInputCodec {
             float cameraX, float cameraY, float cameraZ,
             float rawMoveX, float rawMoveZ,
             java.util.List<Integer> inputActions,
-            java.util.List<BlockAction> blockActions
+            java.util.List<BlockAction> blockActions,
+            ItemUseTransaction itemUseTransaction
     ) {
         public boolean hasInputAction(int action) {
             return inputActions.contains(action);
@@ -130,6 +131,110 @@ public final class BedrockPlayerAuthInputCodec {
     public record BlockAction(int action, int x, int y, int z, int face) {
     }
 
+    public record RawItemStack(
+            int runtimeItemId, int count, long auxValue,
+            boolean hasStackNetId, int stackNetId,
+            long blockRuntimeId, byte[] userData
+    ) {
+        public RawItemStack {
+            userData = userData.clone();
+        }
+        @Override public byte[] userData() { return userData.clone(); }
+    }
+
+    public record RawInventoryAction(
+            int sourceType, int containerId, long sourceFlags, int slot,
+            RawItemStack from, RawItemStack to
+    ) {
+    }
+
+    public record ItemUseTransaction(
+            java.util.List<RawInventoryAction> actions,
+            int actionType, int triggerType,
+            int x, int y, int z, int face, int slot, int hand,
+            RawItemStack item,
+            float fromX, float fromY, float fromZ,
+            float clickX, float clickY, float clickZ,
+            long targetBlockId, int clientPrediction, int cooldownState
+    ) {
+        public ItemUseTransaction {
+            actions = java.util.List.copyOf(actions);
+        }
+    }
+
+    private static ItemUseTransaction readPackedItemUse(Reader in) {
+        int legacyRequestId = in.varInt32();
+        if (legacyRequestId != 0) {
+            throw new UnsupportedOperationException("Legacy item slot lists are not supported");
+        }
+        int actionCount = in.varUInt32();
+        if (actionCount > 64) throw new IllegalArgumentException("Item-use transaction has too many inventory actions");
+        java.util.List<RawInventoryAction> actions = new java.util.ArrayList<>(actionCount);
+        for (int i = 0; i < actionCount; i++) {
+            int sourceType = in.varUInt32();
+            int containerId = -1;
+            long sourceFlags = 0;
+            if (sourceType == 0) containerId = in.int8();
+            else if (sourceType == 2) sourceFlags = in.varUInt32Long();
+            int slot = in.varUInt32();
+            RawItemStack from = readRawItemStack(in);
+            RawItemStack to = readRawItemStack(in);
+            actions.add(new RawInventoryAction(sourceType, containerId, sourceFlags, slot, from, to));
+        }
+        int actionType = in.varInt32();
+        int triggerType = in.uint8();
+        int x = in.varInt32();
+        int y = in.varInt32();
+        int z = in.varInt32();
+        int face = in.uint8();
+        int slot = in.varInt32();
+        int hand = in.uint8();
+        RawItemStack item = readRawItemStack(in);
+        float fromX = in.float32();
+        float fromY = in.float32();
+        float fromZ = in.float32();
+        float clickX = in.float32();
+        float clickY = in.float32();
+        float clickZ = in.float32();
+        long targetBlockId = in.varUInt32Long();
+        int clientPrediction = in.uint8();
+        int cooldownState = in.uint8();
+        if (triggerType > 2 || face > 5 || hand > 1
+                || clientPrediction > 1 || cooldownState > 1) {
+            throw new IllegalArgumentException("Invalid item-use transaction enum value");
+        }
+        if (slot < 0 || slot >= 36 || y < WorldChunk.MIN_Y || y > WorldChunk.MAX_Y) {
+            throw new IllegalArgumentException("Item-use target or slot is outside supported bounds");
+        }
+        if (clickX < -0.001f || clickX > 1.001f
+                || clickY < -0.001f || clickY > 1.001f
+                || clickZ < -0.001f || clickZ > 1.001f) {
+            throw new IllegalArgumentException("Item-use click position is outside target block bounds");
+        }
+        return new ItemUseTransaction(actions, actionType, triggerType, x, y, z, face, slot, hand,
+                item, fromX, fromY, fromZ, clickX, clickY, clickZ,
+                targetBlockId, clientPrediction, cooldownState);
+    }
+
+    private static RawItemStack readRawItemStack(Reader in) {
+        int runtimeItemId = in.int16();
+        int count = in.uint16();
+        long auxValue = in.varUInt32Long();
+        boolean hasStackNetId = in.bool();
+        int stackNetId = hasStackNetId ? in.varInt32() : 0;
+        long blockRuntimeId = in.varUInt32Long();
+        byte[] userData = in.byteArray(1_048_576);
+        if (runtimeItemId == 0 && (count != 0 || auxValue != 0
+                || blockRuntimeId != 0 || userData.length != 0 || hasStackNetId)) {
+            throw new IllegalArgumentException("Malformed empty item-use descriptor");
+        }
+        if (runtimeItemId != 0 && (count < 1 || count > 99)) {
+            throw new IllegalArgumentException("Invalid item-use stack count");
+        }
+        return new RawItemStack(runtimeItemId, count, auxValue, hasStackNetId,
+                stackNetId, blockRuntimeId, userData);
+    }
+
     private static final class Reader {
         private final ByteBuffer buffer;
 
@@ -147,6 +252,26 @@ public final class BedrockPlayerAuthInputCodec {
             return value;
         }
 
+        int int8() {
+            require(1);
+            return buffer.get();
+        }
+
+        int uint8() {
+            require(1);
+            return Byte.toUnsignedInt(buffer.get());
+        }
+
+        int int16() {
+            require(Short.BYTES);
+            return buffer.getShort();
+        }
+
+        int uint16() {
+            require(Short.BYTES);
+            return Short.toUnsignedInt(buffer.getShort());
+        }
+
         boolean bool() {
             require(1);
             int value = Byte.toUnsignedInt(buffer.get());
@@ -154,23 +279,36 @@ public final class BedrockPlayerAuthInputCodec {
             return value != 0;
         }
 
-        int varUInt32() {
+        long varUInt32Long() {
             long value = 0;
             for (int i = 0; i < 5; i++) {
                 require(1);
                 int current = Byte.toUnsignedInt(buffer.get());
+                if (i == 4 && (current & 0xf0) != 0) throw new IllegalArgumentException("VarUInt32 overflow");
                 value |= (long) (current & 0x7f) << (7 * i);
-                if ((current & 0x80) == 0) {
-                    if (value > Integer.MAX_VALUE) throw new IllegalArgumentException("VarUInt32 exceeds supported integer range");
-                    return (int) value;
-                }
+                if ((current & 0x80) == 0) return value;
             }
             throw new IllegalArgumentException("VarUInt32 is too long");
+        }
+
+        int varUInt32() {
+            long value = varUInt32Long();
+            if (value > Integer.MAX_VALUE) throw new IllegalArgumentException("VarUInt32 exceeds supported integer range");
+            return (int) value;
         }
 
         int varInt32() {
             int value = varUInt32();
             return (value >>> 1) ^ -(value & 1);
+        }
+
+        byte[] byteArray(int maximumLength) {
+            long length = varUInt32Long();
+            if (length > maximumLength) throw new IllegalArgumentException("PlayerAuthInput byte array exceeds size limit");
+            require((int) length);
+            byte[] result = new byte[(int) length];
+            buffer.get(result);
+            return result;
         }
 
         long varUInt64() {

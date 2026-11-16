@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -60,7 +61,7 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
     private final List<ChunkPosition> initialChunks;
     private final int spawnY;
     private final Consumer<String> log;
-    private final ConcurrentMap<UUID, PlayerInventory> inventories;
+    private final Map<UUID, PlayerInventory> inventories;
     private final FilePlayerInventoryStorage inventoryStorage;
     private final ItemPickupService itemPickupService;
     private final ConcurrentMap<String, PlayerSession> byConnection = new ConcurrentHashMap<>();
@@ -104,7 +105,7 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
             int spawnY,
             BedrockRuntimeBlockRegistry blockRegistry,
             Consumer<String> log,
-            ConcurrentMap<UUID, PlayerInventory> inventories,
+            Map<UUID, PlayerInventory> inventories,
             FilePlayerInventoryStorage inventoryStorage
     ) {
         this.world = Objects.requireNonNull(world, "world");

@@ -42,19 +42,19 @@ public final class BedrockInventoryTransactionCodec {
             throw new UnsupportedOperationException("Legacy inventory requests are not supported");
         }
 
-        int transactionType = in.varUInt32();
+        int transactionType = in.varUInt32Int();
         if (transactionType != NORMAL_TRANSACTION_TYPE) {
             throw new UnsupportedOperationException("Only normal inventory transactions are supported");
         }
 
-        int actionCount = in.varUInt32();
+        int actionCount = in.varUInt32Int();
         if (actionCount < 1 || actionCount > MAX_ACTIONS) {
             throw new IllegalArgumentException("Invalid inventory transaction action count");
         }
 
         List<InventoryTransactionService.Action> actions = new ArrayList<>(actionCount);
         for (int i = 0; i < actionCount; i++) {
-            int sourceType = in.varUInt32();
+            int sourceType = in.varUInt32Int();
 
             boolean hasContainerId = in.bool();
             int containerId = hasContainerId ? in.int8() : -1;
@@ -68,7 +68,7 @@ public final class BedrockInventoryTransactionCodec {
                 }
             }
 
-            int slot = in.varUInt32();
+            int slot = in.varUInt32Int();
             Optional<ItemStack> from = readItemStack(in, registry);
             Optional<ItemStack> to = readItemStack(in, registry);
             actions.add(new InventoryTransactionService.Action(
@@ -150,7 +150,7 @@ public final class BedrockInventoryTransactionCodec {
             return value != 0;
         }
 
-        int varUInt32() {
+        long varUInt32() {
             long value = 0;
             for (int i = 0; i < 5; i++) {
                 require(1);
@@ -159,26 +159,30 @@ public final class BedrockInventoryTransactionCodec {
                     throw new IllegalArgumentException("InventoryTransaction VarUInt32 overflow");
                 }
                 value |= (long) (current & 0x7f) << (7 * i);
-                if ((current & 0x80) == 0) {
-                    if (value > Integer.MAX_VALUE) {
-                        throw new IllegalArgumentException("InventoryTransaction integer exceeds supported range");
-                    }
-                    return (int) value;
-                }
+                if ((current & 0x80) == 0) return value;
             }
             throw new IllegalArgumentException("InventoryTransaction VarUInt32 is too long");
         }
 
+        int varUInt32Int() {
+            long value = varUInt32();
+            if (value > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException("InventoryTransaction integer exceeds supported range");
+            }
+            return (int) value;
+        }
+
         int varInt32() {
-            int value = varUInt32();
+            int value = varUInt32Int();
             return (value >>> 1) ^ -(value & 1);
         }
 
         byte[] byteArray(int maximumLength) {
-            int length = varUInt32();
-            if (length > maximumLength) {
+            long lengthValue = varUInt32();
+            if (lengthValue > maximumLength) {
                 throw new IllegalArgumentException("Inventory item user data exceeds size limit");
             }
+            int length = (int) lengthValue;
             require(length);
             byte[] result = new byte[length];
             buffer.get(result);

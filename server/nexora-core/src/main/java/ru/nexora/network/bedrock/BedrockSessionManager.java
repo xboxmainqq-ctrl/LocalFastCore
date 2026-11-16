@@ -192,8 +192,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
         String displayName = state.identity.displayName() == null
                 ? "unknown" : state.identity.displayName();
-        System.out.printf("NEXORA: authenticated player %s (XUID %s)%n",
-                displayName, state.identity.xuid());
+        System.out.printf("NEXORA: authenticated player %s%n", displayName);
     }
 
     private void handleClientHandshake(String networkId, SessionState state, BedrockPacket packet) {

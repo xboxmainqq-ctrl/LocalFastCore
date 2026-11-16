@@ -40,7 +40,9 @@ Do not move the existing root project as part of the source import unless a dedi
 - [ ] No unrelated Standalone Runtime files were overwritten.
 
 ### Gate B — reproducible baseline
-- [ ] CI checks out the pinned Nukkit-MOT source.
+- [x] A manually triggered GitHub Actions workflow checks out the pinned Nukkit-MOT revision into an isolated CI workspace: `.github/workflows/nukkit-mot-baseline.yml`.
+- [ ] CI baseline workflow has completed successfully and produced a verified artifact.
+- [ ] CI checks out the pinned Nukkit-MOT source as part of a successful run.
 - [ ] CI builds it using the JDK/Maven requirements declared by that pinned revision.
 - [ ] CI runs the upstream test suite where supported.
 - [ ] CI publishes a clearly labelled test artifact with commit SHA and build metadata.
@@ -72,6 +74,6 @@ Every core patch must include tests, a short rationale, an upstream-sync note an
 ## Current blockers and honest status
 
 - The connected upstream access is read-only; it cannot create or push a NEXORA fork.
-- No Nukkit-MOT source import is claimed yet.
-- No Nukkit-MOT build artifact or McpeHost/retail-client acceptance result is claimed yet.
+- No Nukkit-MOT source import is claimed yet; the workflow fetches upstream into an ephemeral CI workspace only.
+- The baseline workflow is committed but has not yet been run; no Nukkit-MOT build artifact or McpeHost/retail-client acceptance result is claimed yet.
 - The Standalone Runtime remains preserved and is not the active hosted server foundation.

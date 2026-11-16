@@ -139,7 +139,7 @@ public final class BedrockStartGameCodec {
         out.varInt32(0);                    // EnchantmentSeed
         out.varUInt32(0);                   // Custom blocks: empty
         out.string(UUID.randomUUID().toString()); // MultiPlayerCorrelationID
-        out.bool(true);                     // ServerAuthoritativeInventory
+        out.bool(false);                    // EnableItemStackNetManager: disabled until request handling is implemented
         out.string(gameVersion);
         out.bytes(new byte[] {0x0a, 0, 0, 0}); // Empty network-little-endian NBT compound
         out.uint64(0);                      // ServerBlockStateChecksum

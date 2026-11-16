@@ -82,6 +82,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final Map<String, SessionState> sessions = new ConcurrentHashMap<>();
     private final AtomicLong nextEntityId = new AtomicLong(1);
     private final AtomicLong nextFormId = new AtomicLong(1);
+    private final AtomicLong lastItemActorTickNanos = new AtomicLong(-1);
     private volatile boolean serverAuthoritativeMovement;
     private final NetherNetInboundPipeline inbound;
 
@@ -1171,6 +1172,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             handleBlockAction(networkId, state, action);
         }
         handleItemUseTransaction(networkId, state, input.itemUseTransaction());
+        tickWorldItemActors(input.tick());
 
         int chunkX = Math.floorDiv((int) Math.floor(input.x()), 16);
         int chunkZ = Math.floorDiv((int) Math.floor(input.z()), 16);
@@ -1253,6 +1255,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             handleBlockAction(networkId, state, action);
         }
         handleItemUseTransaction(networkId, state, input.itemUseTransaction());
+        tickWorldItemActors(input.tick());
 
         int chunkX = Math.floorDiv((int) Math.floor(state.positionX), 16);
         int chunkZ = Math.floorDiv((int) Math.floor(state.positionZ), 16);
@@ -1912,6 +1915,26 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         broadcastItemActor(entity,
                 BedrockTakeItemActorCodec.createAcknowledgement(entity.runtimeId(), state.entityId));
         broadcastItemActor(entity, BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()));
+    }
+
+    private void tickWorldItemActors(long tick) {
+        long nowNanos = nanoTime.getAsLong();
+        while (true) {
+            long previous = lastItemActorTickNanos.get();
+            if (previous < 0) {
+                if (lastItemActorTickNanos.compareAndSet(previous, nowNanos)) return;
+                continue;
+            }
+            long elapsed = nowNanos - previous;
+            if (elapsed < 50_000_000L) return;
+            if (!lastItemActorTickNanos.compareAndSet(previous, nowNanos)) continue;
+            double deltaSeconds = Math.min(0.1, elapsed / 1_000_000_000.0);
+            for (WorldItemEntity entity : world.itemEntities().tick(world, deltaSeconds)) {
+                broadcastItemActor(entity, BedrockItemActorCodec.createMove(
+                        entity, Math.abs(entity.velocityY()) < 1.0e-6, Math.max(0, tick)));
+            }
+            return;
+        }
     }
 
     private void broadcastItemActor(WorldItemEntity entity, BedrockPacket packet) {

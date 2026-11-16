@@ -132,6 +132,39 @@ class InventoryTransactionServiceTest {
     }
 
     @Test
+    void equipsAndUnequipsVanillaArmorOnlyInItsRegisteredSlot() {
+        PlayerInventory inventory = new PlayerInventory();
+        PlayerEquipment equipment = new PlayerEquipment();
+        ArmorSlotRegistry armorRules = VanillaArmorSlotCatalog.createRegistry();
+        ItemStack helmet = new ItemStack("minecraft:iron_helmet", 1, 1);
+        inventory.setSlot(3, helmet);
+
+        var equip = service.applyPlayerInventoryAndUiTransaction(inventory, equipment, List.of(
+                new InventoryTransactionService.Action(0, 0, 3, Optional.of(helmet), Optional.empty()),
+                new InventoryTransactionService.Action(0, 120, 0, Optional.empty(), Optional.of(helmet))),
+                armorRules);
+        assertEquals(InventoryTransactionService.Result.APPLIED, equip);
+        assertTrue(inventory.getSlot(3).isEmpty());
+        assertEquals(helmet, equipment.armor(0).orElseThrow());
+
+        var wrongSlot = service.applyPlayerInventoryAndUiTransaction(inventory, equipment, List.of(
+                new InventoryTransactionService.Action(0, 120, 0, Optional.of(helmet), Optional.empty()),
+                new InventoryTransactionService.Action(0, 120, 3, Optional.empty(), Optional.of(helmet))),
+                armorRules);
+        assertEquals(InventoryTransactionService.Result.INCOMPATIBLE_EQUIPMENT_ITEM, wrongSlot);
+        assertEquals(helmet, equipment.armor(0).orElseThrow());
+        assertTrue(equipment.armor(3).isEmpty());
+
+        var unequip = service.applyPlayerInventoryAndUiTransaction(inventory, equipment, List.of(
+                new InventoryTransactionService.Action(0, 120, 0, Optional.of(helmet), Optional.empty()),
+                new InventoryTransactionService.Action(0, 0, 3, Optional.empty(), Optional.of(helmet))),
+                armorRules);
+        assertEquals(InventoryTransactionService.Result.APPLIED, unequip);
+        assertTrue(equipment.armor(0).isEmpty());
+        assertEquals(helmet, inventory.getSlot(3).orElseThrow());
+    }
+
+    @Test
     void rejectsArmorTransactionsUntilSlotCompatibilityIsRegistered() {
         PlayerInventory inventory = new PlayerInventory();
         PlayerEquipment equipment = new PlayerEquipment();

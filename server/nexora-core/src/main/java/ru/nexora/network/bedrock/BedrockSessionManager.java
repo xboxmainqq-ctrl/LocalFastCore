@@ -8,6 +8,7 @@ import ru.nexora.network.nethernet.NetherNetInboundPipeline;
 import ru.nexora.network.nethernet.NetherNetMessageFramer;
 import ru.nexora.inventory.PlayerInventory;
 import ru.nexora.inventory.PlayerInventoryStorage;
+import ru.nexora.inventory.InventoryTransactionService;
 import ru.nexora.world.FlatWorldGenerator;
 import ru.nexora.world.BlockType;
 import ru.nexora.world.World;
@@ -56,6 +57,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final World world;
     private final PlayerDataStorage playerStorage;
     private final PlayerInventoryStorage inventoryStorage;
+    private volatile BedrockItemRegistry itemRegistry = BedrockItemRegistry.empty();
+    private final InventoryTransactionService inventoryTransactionService = new InventoryTransactionService();
     private final OutboundFrameSender outbound;
     private final Consumer<PacketEvent> packetSink;
     private final LongSupplier nanoTime;
@@ -277,6 +280,17 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
+    /**
+     * Installs the protocol item registry before clients connect. The registry is
+     * immutable so it cannot change underneath an active inventory transaction.
+     */
+    public synchronized void setItemRegistry(BedrockItemRegistry registry) {
+        if (!sessions.isEmpty()) {
+            throw new IllegalStateException("The Bedrock item registry must be installed before sessions are created");
+        }
+        this.itemRegistry = Objects.requireNonNull(registry, "registry");
+    }
+
     public Optional<PlayerPosition> playerPosition(String networkId) {
         SessionState state = sessions.get(networkId);
         if (state == null) return Optional.empty();
@@ -311,11 +325,49 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     case 0x71 -> handleClientInitialized(message, state, packet);
                     case BedrockPlayerAuthInputCodec.PLAYER_AUTH_INPUT_PACKET_ID ->
                             handlePlayerAuthInput(message.networkId(), state, packet);
+                    case BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID ->
+                            handleInventoryTransaction(message.networkId(), state, packet);
                     default -> packetSink.accept(new PacketEvent(
                             message.networkId(), message.channelLabel(), packet));
                 }
             }
         }
+    }
+
+    private void handleInventoryTransaction(String networkId, SessionState state, BedrockPacket packet) {
+        if (!state.loginAuthenticated || !state.clientInitialized) {
+            throw new SecurityException("InventoryTransaction arrived before player initialization");
+        }
+
+        BedrockItemRegistry registry = itemRegistry;
+        BedrockPacket authoritativeContent;
+        try {
+            authoritativeContent = BedrockInventoryContentCodec.createPlayerInventory(state.inventory, registry);
+        } catch (IllegalArgumentException exception) {
+            // If a persisted item has no protocol definition, do not mutate the inventory.
+            System.err.println("NEXORA: inventory transaction blocked because an item has no Bedrock definition");
+            return;
+        }
+
+        BedrockInventoryTransactionCodec.DecodedTransaction decoded;
+        try {
+            decoded = BedrockInventoryTransactionCodec.decode(packet, registry);
+        } catch (UnsupportedOperationException exception) {
+            // Unsupported transaction variants are not interpreted; restore the client's prediction.
+            sendPacket(networkId, authoritativeContent, true);
+            return;
+        } catch (IllegalArgumentException exception) {
+            state.rejected = true;
+            throw new SecurityException("Malformed Bedrock InventoryTransaction", exception);
+        }
+
+        InventoryTransactionService.Result result =
+                inventoryTransactionService.applyPlayerInventoryTransaction(state.inventory, decoded.actions());
+        if (result == InventoryTransactionService.Result.APPLIED) {
+            authoritativeContent = BedrockInventoryContentCodec.createPlayerInventory(state.inventory, registry);
+        }
+        // Always reconcile client prediction, including stale, unsupported, and rejected actions.
+        sendPacket(networkId, authoritativeContent, true);
     }
 
     private void handleNetworkSettingsRequest(
@@ -718,7 +770,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 outbound.sendFrame(networkId, "ReliableDataChannel", frame);
             }
         } catch (Exception exception) {
-            throw new IllegalStateException("Unable to send Bedrock login handshake packet", exception);
+            throw new IllegalStateException("Unable to send Bedrock packet", exception);
         }
     }
 

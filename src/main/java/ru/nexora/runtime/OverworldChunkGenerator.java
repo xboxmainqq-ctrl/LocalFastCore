@@ -129,7 +129,7 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
     private static BlockState surfaceMaterial(
             BiomeDefinition biome, ClimateSample climate, int surfaceY,
             int seaLevel, long seed, int x, int z) {
-        double snowLine = 142.0 - climate.temperature() * 42.0;
+        double snowLine = 100.0 + climate.temperature() * 42.0;
         if (surfaceY >= snowLine) {
             return SNOW_BLOCK;
         }

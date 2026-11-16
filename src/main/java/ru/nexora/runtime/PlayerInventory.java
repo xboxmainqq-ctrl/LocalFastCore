@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Thread-safe fixed-slot player inventory with 64-item stack limits. */
+/** Thread-safe fixed-slot player inventory with 99-item stack limits. */
 public final class PlayerInventory {
     public static final int DEFAULT_SLOTS = 36;
 

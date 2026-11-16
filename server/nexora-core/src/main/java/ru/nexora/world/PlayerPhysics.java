@@ -97,9 +97,21 @@ public final class PlayerPhysics {
         }
 
         if (!WorldCollision.canMove(world, nextX, current.y(), nextZ, nextX, nextY, nextZ)) {
-            if (vy < 0) grounded = true; // floor contact
+            // Resolve the vertical contact to the block boundary instead of
+            // stopping at the last coarse sweep sample (which causes hovering).
+            double validY = current.y();
+            double blockedY = nextY;
+            for (int i = 0; i < 20; i++) {
+                double middle = (validY + blockedY) * 0.5;
+                if (WorldCollision.canOccupy(world, nextX, middle, nextZ)) {
+                    validY = middle;
+                } else {
+                    blockedY = middle;
+                }
+            }
+            nextY = validY;
+            if (vy < 0) grounded = true;
             vy = 0;
-            nextY = current.y();
         } else {
             grounded = false;
         }

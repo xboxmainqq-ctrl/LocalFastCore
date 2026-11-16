@@ -191,6 +191,7 @@ class BedrockSessionManagerTest {
         assertEquals(36, inventory.size());
         assertTrue(inventory.heldItem().isEmpty());
         inventory.setSlot(0, new ItemStack("nexora:arcane_shard", 3, 64));
+        inventory.setSlot(1, new ItemStack("nexora:arcane_shard", 1, 64));
         assertEquals(3, manager.playerInventory("authenticated-client").orElseThrow()
                 .count("nexora:arcane_shard"));
         assertTrue(manager.playerInventory("unknown-client").isEmpty());
@@ -240,11 +241,22 @@ class BedrockSessionManagerTest {
                 BedrockBatchCodec.encode(List.of(initialized), true, 256));
         assertEquals(23, outboundFrames.size());
         assertEquals(0x31, decodeOutbound(outboundFrames.get(22), true).packetId());
+        List<BedrockPacket> initialInventoryBatch = BedrockBatchCodec.decode(
+                reassemble(List.of(outboundFrames.get(22))), true);
+        assertEquals(2, initialInventoryBatch.size());
+        assertEquals(0x1f, initialInventoryBatch.get(1).packetId());
         BedrockPacket playerSpawn = decodeOutbound(outboundFrames.get(21), true);
         assertEquals(BedrockBatchCodec.PLAY_STATUS_PACKET_ID, playerSpawn.packetId());
         assertEquals(3, ByteBuffer.wrap(playerSpawn.payload()).order(ByteOrder.BIG_ENDIAN).getInt());
         assertEquals(0.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
         assertEquals(65.0f, manager.playerPosition("authenticated-client").orElseThrow().y());
+
+        BedrockPacket selectSecondHotbarSlot = new BedrockPacket(0x1f, 0, 0,
+                mobEquipmentPayload(1, 257, 1, 1));
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(selectSecondHotbarSlot), true, 256));
+        assertEquals(1, inventory.selectedHotbarSlot());
+        assertEquals(1, inventory.heldItem().orElseThrow().count());
 
         monotonicClock.set(100_000_000L);
         BedrockPacket movement = new BedrockPacket(0x90, 0, 0,
@@ -339,6 +351,10 @@ class BedrockSessionManagerTest {
                 BedrockBatchCodec.encode(List.of(inventoryTransaction), true, 256));
         assertEquals(29, outboundFrames.size());
         assertEquals(0x31, decodeOutbound(outboundFrames.get(28), true).packetId());
+        List<BedrockPacket> inventoryReconciliation = BedrockBatchCodec.decode(
+                reassemble(List.of(outboundFrames.get(28))), true);
+        assertEquals(2, inventoryReconciliation.size());
+        assertEquals(0x1f, inventoryReconciliation.get(1).packetId());
 
         assertThrows(SecurityException.class, () -> sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256)));
@@ -513,6 +529,25 @@ class BedrockSessionManagerTest {
         assertNotNull(complete);
         return complete;
     }
+    private static byte[] mobEquipmentPayload(long entityId, int runtimeItemId, int count, int slot) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        writeVarULong(out, entityId);
+        writeDescriptor(out, runtimeItemId, count);
+        out.write(slot);
+        out.write(slot);
+        out.write(0); // player inventory container
+        return out.toByteArray();
+    }
+
+    private static void writeVarULong(ByteArrayOutputStream out, long value) {
+        do {
+            int next = (int) (value & 0x7f);
+            value >>>= 7;
+            if (value != 0) next |= 0x80;
+            out.write(next);
+        } while (value != 0);
+    }
+
     private static byte[] noOpInventoryTransactionPayload(int runtimeItemId, int count) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         out.write(0); // LegacyRequestId

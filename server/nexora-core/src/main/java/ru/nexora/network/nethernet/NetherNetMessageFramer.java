@@ -13,7 +13,7 @@ import java.util.Optional;
 public final class NetherNetMessageFramer {
     public static final int HEADER_BYTES = 1;
     public static final int MAX_FRAGMENTS = 256;
-    public static final int DEFAULT_MAX_MESSAGE_BYTES = 16 * 1024 * 1024;
+    public static final int DEFAULT_MAX_MESSAGE_BYTES = 4 * 1024 * 1024;
 
     private NetherNetMessageFramer() {
     }
@@ -35,7 +35,7 @@ public final class NetherNetMessageFramer {
             throw new IllegalArgumentException("maxChannelMessageBytes must be at least 2");
         }
         if (message.length > DEFAULT_MAX_MESSAGE_BYTES) {
-            throw new IllegalArgumentException("Message exceeds the 16 MiB safety limit");
+            throw new IllegalArgumentException("Message exceeds the 4 MiB safety limit");
         }
 
         int maxPayload = maxChannelMessageBytes - HEADER_BYTES;
@@ -84,7 +84,7 @@ public final class NetherNetMessageFramer {
 
         public Reassembler(int maxMessageBytes) {
             if (maxMessageBytes < 1 || maxMessageBytes > DEFAULT_MAX_MESSAGE_BYTES) {
-                throw new IllegalArgumentException("maxMessageBytes must be 1..16 MiB");
+                throw new IllegalArgumentException("maxMessageBytes must be 1..4 MiB");
             }
             this.maxMessageBytes = maxMessageBytes;
         }

@@ -58,9 +58,11 @@ public final class WorldAutosave implements AutoCloseable {
                     additionalSave.save();
                 }
             }
-        } catch (IOException exception) {
+        } catch (IOException | RuntimeException exception) {
+            IOException failure = exception instanceof IOException io
+                    ? io : new IOException("Unexpected NEXORA autosave failure", exception);
             try {
-                errorHandler.accept(exception);
+                errorHandler.accept(failure);
             } catch (RuntimeException ignored) {
                 // A logging callback must not terminate the scheduled autosave task.
             }

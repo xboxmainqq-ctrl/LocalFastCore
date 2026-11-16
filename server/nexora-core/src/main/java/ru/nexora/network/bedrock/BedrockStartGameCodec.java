@@ -39,6 +39,25 @@ public final class BedrockStartGameCodec {
             float spawnY,
             float spawnZ
     ) {
+        return create(entityId, worldName, gameVersion, baseGameVersion, worldSeed,
+                worldSpawnX, worldSpawnY, worldSpawnZ, spawnX, spawnY, spawnZ, 0, 0);
+    }
+
+    public static BedrockPacket create(
+            long entityId,
+            String worldName,
+            String gameVersion,
+            String baseGameVersion,
+            long worldSeed,
+            int worldSpawnX,
+            int worldSpawnY,
+            int worldSpawnZ,
+            float spawnX,
+            float spawnY,
+            float spawnZ,
+            float pitch,
+            float yaw
+    ) {
         if (entityId < 1) throw new IllegalArgumentException("entityId must be positive");
         requireText(worldName, "worldName");
         requireText(gameVersion, "gameVersion");
@@ -51,8 +70,8 @@ public final class BedrockStartGameCodec {
         out.float32(spawnX);
         out.float32(spawnY);
         out.float32(spawnZ);
-        out.float32(0);                     // Pitch
-        out.float32(0);                     // Yaw
+        out.float32(pitch);                 // Pitch
+        out.float32(yaw);                   // Yaw
         out.int64(worldSeed);              // WorldSeed
         out.int16(0);                       // SpawnBiomeType: default
         out.string("");                     // UserDefinedBiomeName
@@ -151,15 +170,25 @@ public final class BedrockStartGameCodec {
             long worldSeed, int spawnBlockX, int spawnBlockY, int spawnBlockZ,
             float spawnX, float spawnY, float spawnZ
     ) {
+        return createInitialWorldPackets(entityId, worldName, gameVersion, baseGameVersion,
+                worldSeed, spawnBlockX, spawnBlockY, spawnBlockZ, spawnX, spawnY, spawnZ, 0, 0);
+    }
+
+    public static List<BedrockPacket> createInitialWorldPackets(
+            long entityId, String worldName, String gameVersion, String baseGameVersion,
+            long worldSeed, int spawnBlockX, int spawnBlockY, int spawnBlockZ,
+            float spawnX, float spawnY, float spawnZ, float pitch, float yaw
+    ) {
         return List.of(
                 create(entityId, worldName, gameVersion, baseGameVersion, worldSeed,
-                        spawnBlockX, spawnBlockY, spawnBlockZ, spawnX, spawnY, spawnZ),
+                        spawnBlockX, spawnBlockY, spawnBlockZ, spawnX, spawnY, spawnZ, pitch, yaw),
                 packet(0x0a, varIntPayload(0)),
                 packet(0x3c, varUIntPayload(1)),
                 packet(0x3b, new byte[] {1}),
                 packet(0x2b, setSpawnPositionPayload(spawnBlockX, spawnBlockY, spawnBlockZ)),
                 packet(0x3e, varIntPayload(0)),
-                packet(0x79, chunkPublisherPayload(spawnBlockX, (int) Math.floor(spawnY), spawnBlockZ))
+                packet(0x79, chunkPublisherPayload(
+                        (int) Math.floor(spawnX), (int) Math.floor(spawnY), (int) Math.floor(spawnZ)))
         );
     }
 

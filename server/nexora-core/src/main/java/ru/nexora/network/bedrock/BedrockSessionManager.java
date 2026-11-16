@@ -328,14 +328,19 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 Optional<PlayerData> saved = playerStorage.load(state.identity.xuid());
                 if (saved.isPresent() && saved.get().worldName().equals(world.name())) {
                     PlayerData player = saved.get();
-                    state.positionX = player.x();
-                    state.positionY = player.y();
-                    state.positionZ = player.z();
-                    state.yaw = player.yaw();
-                    state.pitch = player.pitch();
-                    state.positionInitialized = true;
+                    if (WorldCollision.canOccupy(world, player.x(), player.y(), player.z())) {
+                        state.positionX = player.x();
+                        state.positionY = player.y();
+                        state.positionZ = player.z();
+                        state.yaw = player.yaw();
+                        state.pitch = player.pitch();
+                        state.positionInitialized = true;
+                    } else {
+                        System.err.println("NEXORA: saved position for " + displayName
+                                + " is obstructed; using the world spawn");
+                    }
                 }
-            } catch (IOException | IllegalArgumentException exception) {
+            } catch (IOException | RuntimeException exception) {
                 System.err.println("NEXORA: unable to load player profile for " + displayName
                         + ": " + exception.getMessage());
             }
@@ -394,6 +399,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         state.positionX = world.spawnX() + 0.5f;
                         state.positionY = world.spawnY();
                         state.positionZ = world.spawnZ() + 0.5f;
+                        if (!WorldCollision.canOccupy(world, state.positionX, state.positionY, state.positionZ)) {
+                            throw new IllegalStateException("Configured NEXORA world spawn is obstructed");
+                        }
                         state.positionInitialized = true;
                     }
                     state.lastMovementNanos = nanoTime.getAsLong();

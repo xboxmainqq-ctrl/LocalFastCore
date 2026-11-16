@@ -60,6 +60,9 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
     private final List<ChunkPosition> initialChunks;
     private final int spawnY;
     private final Consumer<String> log;
+    private final ConcurrentMap<UUID, PlayerInventory> inventories;
+    private final FilePlayerInventoryStorage inventoryStorage;
+    private final ItemPickupService itemPickupService;
     private final ConcurrentMap<String, PlayerSession> byConnection = new ConcurrentHashMap<>();
     private final ConcurrentMap<UUID, PlayerSession> byPlayer = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
@@ -88,6 +91,22 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
             BedrockRuntimeBlockRegistry blockRegistry,
             Consumer<String> log
     ) {
+        this(world, entities, chunkStreaming, networkSettings, initialChunks, spawnY,
+                blockRegistry, log, new ConcurrentHashMap<>(), null);
+    }
+
+    public BedrockPlayerSessionManager(
+            World world,
+            EntityRegistry entities,
+            PlayerChunkStreamingManager chunkStreaming,
+            BedrockNetworkSettings networkSettings,
+            List<ChunkPosition> initialChunks,
+            int spawnY,
+            BedrockRuntimeBlockRegistry blockRegistry,
+            Consumer<String> log,
+            ConcurrentMap<UUID, PlayerInventory> inventories,
+            FilePlayerInventoryStorage inventoryStorage
+    ) {
         this.world = Objects.requireNonNull(world, "world");
         this.entities = Objects.requireNonNull(entities, "entities");
         this.chunkStreaming = Objects.requireNonNull(chunkStreaming, "chunkStreaming");
@@ -95,6 +114,9 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
         this.blockRegistry = Objects.requireNonNull(blockRegistry, "blockRegistry");
         this.initialChunks = List.copyOf(Objects.requireNonNull(initialChunks, "initialChunks"));
         this.log = Objects.requireNonNull(log, "log");
+        this.inventories = Objects.requireNonNull(inventories, "inventories");
+        this.inventoryStorage = inventoryStorage;
+        this.itemPickupService = new ItemPickupService(this.entities, this.world);
         if (this.initialChunks.isEmpty() || this.initialChunks.size() > 128) {
             throw new IllegalArgumentException("Initial Bedrock chunk set must contain 1 to 128 chunks");
         }
@@ -205,6 +227,7 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
                 applyPendingInput(session);
                 processBlockActions(session);
                 if (session.playReady) {
+                    collectNearbyItems(session);
                     publishChunkCenter(session);
                     acknowledgeChunkRadius(session);
                     sendNewChunks(session);
@@ -222,6 +245,14 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
         if (session.entitySpawned) return;
         entities.spawn(WorldEntity.player(session.playerId, session.player.displayName(),
                 session.x, session.y, session.z, session.yaw, 0));
+        inventories.computeIfAbsent(session.playerId, id -> {
+            if (inventoryStorage == null) return new PlayerInventory(id);
+            try {
+                return inventoryStorage.load(id);
+            } catch (java.io.IOException failure) {
+                throw new IllegalStateException("Could not load inventory for " + id, failure);
+            }
+        });
         chunkStreaming.updatePlayer(session.playerId, floorToInt(session.x), floorToInt(session.z));
         session.sentChunks.addAll(initialChunks);
         session.entitySpawned = true;
@@ -314,6 +345,20 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
                 default -> {
                     // Other PlayerActionPacket actions are not block mutations.
                 }
+            }
+        }
+    }
+
+    private void collectNearbyItems(PlayerSession session) {
+        PlayerInventory inventory = inventories.get(session.playerId);
+        if (inventory == null) return;
+        ItemPickupService.PickupResult result = itemPickupService.pickup(
+                session.playerId, session.x, session.y, session.z, inventory);
+        if (result.collected() > 0 && inventoryStorage != null) {
+            try {
+                inventoryStorage.save(inventory);
+            } catch (java.io.IOException failure) {
+                throw new IllegalStateException("Could not save inventory for " + session.playerId, failure);
             }
         }
     }

@@ -1,8 +1,10 @@
 package ru.nexora.runtime;
 
+import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -16,6 +18,7 @@ import java.util.zip.CRC32C;
 public final class FilePlayerVitalsStorage {
     private static final int MAGIC = 0x4E585654; // NXVT
     private static final short VERSION = 1;
+    private static final int FILE_SIZE = 4 + 2 + 16 + 4 + 4 + 4 + 4;
     private final Path directory;
 
     public FilePlayerVitalsStorage(Path directory) {
@@ -29,13 +32,20 @@ public final class FilePlayerVitalsStorage {
                 || !Files.exists(file, LinkOption.NOFOLLOW_LINKS)) return new PlayerVitals(playerId);
         validateDirectory();
         if (Files.isSymbolicLink(file) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)
-                || Files.size(file) != 4 + 2 + 16 + 4 + 4 + 4 + 4) {
+                || Files.size(file) != FILE_SIZE) {
             throw new IOException("Invalid player vitals file");
         }
+
+        byte[] bytes = Files.readAllBytes(file);
+        int payloadLength = bytes.length - Integer.BYTES;
         CRC32C crc = new CRC32C();
-        try (var raw = Files.newInputStream(file);
-             var checked = new java.util.zip.CheckedInputStream(raw, crc);
-             var input = new DataInputStream(checked)) {
+        crc.update(bytes, 0, payloadLength);
+        int storedChecksum = ByteBuffer.wrap(bytes, payloadLength, Integer.BYTES).getInt();
+        if (storedChecksum != (int) crc.getValue()) {
+            throw new IOException("Player vitals checksum mismatch");
+        }
+
+        try (var input = new DataInputStream(new ByteArrayInputStream(bytes, 0, payloadLength))) {
             if (input.readInt() != MAGIC || input.readShort() != VERSION) {
                 throw new IOException("Unsupported player vitals file");
             }
@@ -44,10 +54,6 @@ public final class FilePlayerVitalsStorage {
             int maxHealth = input.readInt();
             int health = input.readInt();
             int hunger = input.readInt();
-            int checksum = input.readInt();
-            if (checksum != (int) crc.getValue() || input.read() != -1) {
-                throw new IOException("Player vitals checksum mismatch");
-            }
             try {
                 return new PlayerVitals(playerId, maxHealth, health, hunger);
             } catch (IllegalArgumentException invalid) {

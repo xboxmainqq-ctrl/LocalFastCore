@@ -20,6 +20,9 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
     private static final BlockState DIRT = new BlockState("minecraft:dirt");
     private static final BlockState GRASS = new BlockState("minecraft:grass_block");
     private static final BlockState WATER = new BlockState("minecraft:water");
+    private static final BlockState SAND = new BlockState("minecraft:sand");
+    private static final BlockState GRAVEL = new BlockState("minecraft:gravel");
+    private static final BlockState SNOW_BLOCK = new BlockState("minecraft:snow_block");
     private static final BlockState MOSS_BLOCK = new BlockState("minecraft:moss_block");
     private static final BlockState MOSS_CARPET = new BlockState("minecraft:moss_carpet");
     private static final BlockState GLOW_LICHEN = new BlockState("minecraft:glow_lichen");
@@ -92,14 +95,17 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
                 BlockPosition surfacePosition = new BlockPosition(x, surfaceY, z);
                 biomeColumns.put(new BiomeColumnPosition(x, z), biome.id());
 
+                BlockState topMaterial = surfaceMaterial(biome, climate, surfaceY, seaLevel, seed, x, z);
+                BlockState underMaterial = topMaterial == SAND || topMaterial == GRAVEL || topMaterial == STONE
+                        ? topMaterial : biome.subsurfaceBlock();
                 blocks.put(new BlockPosition(x, height.minY(), z), BEDROCK);
                 for (int y = height.minY() + 1; y < surfaceY - 3; y++) {
                     blocks.put(new BlockPosition(x, y, z), STONE);
                 }
                 for (int y = Math.max(height.minY() + 1, surfaceY - 3); y < surfaceY; y++) {
-                    blocks.put(new BlockPosition(x, y, z), biome.subsurfaceBlock());
+                    blocks.put(new BlockPosition(x, y, z), underMaterial);
                 }
-                blocks.put(surfacePosition, biome.surfaceBlock());
+                blocks.put(surfacePosition, topMaterial);
 
                 int fluidTop = Math.max(seaLevel, waterSurfaceY);
                 for (int y = surfaceY + 1; y <= fluidTop && y < height.maxYExclusive(); y++) {
@@ -114,6 +120,27 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
         decorateCrystalGeodes(baseX, baseZ, height, seed, blocks, fluids);
         placeTrees(position, baseX, baseZ, height, seed, surfaceHeights, columnBiomes, waterColumns, blocks);
         return new GeneratedChunk(position, blocks, Map.of(), fluids, biomeColumns, height);
+    }
+
+    /**
+     * Applies natural alpine, exposed-rock and shoreline transitions on top of
+     * the climate biome. The same world-coordinate hash is used on every chunk.
+     */
+    private static BlockState surfaceMaterial(
+            BiomeDefinition biome, ClimateSample climate, int surfaceY,
+            int seaLevel, long seed, int x, int z) {
+        double snowLine = 142.0 - climate.temperature() * 42.0;
+        if (surfaceY >= snowLine) {
+            return SNOW_BLOCK;
+        }
+        if (surfaceY >= 104 && biome.reliefMultiplier() >= 1.05) {
+            return STONE;
+        }
+        if (surfaceY >= seaLevel - 4 && surfaceY <= seaLevel + 4) {
+            long shore = coordinateHash(seed ^ 0x3f84d5b5b5470917L, x, z);
+            return Long.remainderUnsigned(shore, 6) == 0 ? GRAVEL : SAND;
+        }
+        return biome.surfaceBlock();
     }
 
     private static int terrainHeight(int x, int z, long seed, WorldHeight worldHeight) {

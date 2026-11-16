@@ -160,7 +160,8 @@ public final class NexoraServer {
         System.out.println("World chunks use versioned, checksummed files under " + Path.of(dataDirectory, "worlds").toAbsolutePath());
         System.out.println("Player profiles use versioned, checksummed files under " + Path.of(dataDirectory, "players").toAbsolutePath());
         System.out.println("Player inventories use versioned, checksummed files under " + Path.of(dataDirectory, "inventories").toAbsolutePath());
-        System.out.println("Player armor, offhand and cursor use checksummed files under " + Path.of(dataDirectory, "equipment").toAbsolutePath());
+        System.out.println("Player armor, offhand, cursor and magical equipment use checksummed files under " + Path.of(dataDirectory, "equipment").toAbsolutePath());
+        System.out.println("Players can open the magical equipment interface with /equipment.");
         System.out.printf("World autosave interval: %d seconds%n", autosaveSeconds);
         System.out.println("Saved player positions and rotations are restored on re-login.");
         System.out.println("Next gameplay stages: block placement, movement physics and entity replication.");

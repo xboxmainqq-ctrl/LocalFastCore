@@ -139,7 +139,7 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(stackCompleted), true, 256));
         assertEquals(1, manager.resourcePackReadyCount());
-        assertEquals(11, outboundFrames.size());
+        assertEquals(14, outboundFrames.size());
         assertEquals(0x0b, decodeOutbound(outboundFrames.get(4), true).packetId());
         assertEquals(0x0a, decodeOutbound(outboundFrames.get(5), true).packetId());
         assertEquals(0x3c, decodeOutbound(outboundFrames.get(6), true).packetId());
@@ -147,6 +147,11 @@ class BedrockSessionManagerTest {
         assertEquals(0x2b, decodeOutbound(outboundFrames.get(8), true).packetId());
         assertEquals(0x3e, decodeOutbound(outboundFrames.get(9), true).packetId());
         assertEquals(0x79, decodeOutbound(outboundFrames.get(10), true).packetId());
+        assertEquals(0x7a, decodeOutbound(outboundFrames.get(11), true).packetId());
+        assertEquals(0x3a, decodeOutbound(outboundFrames.get(12), true).packetId());
+        BedrockPacket playerSpawn = decodeOutbound(outboundFrames.get(13), true);
+        assertEquals(BedrockBatchCodec.PLAY_STATUS_PACKET_ID, playerSpawn.packetId());
+        assertEquals(3, ByteBuffer.wrap(playerSpawn.payload()).order(ByteOrder.BIG_ENDIAN).getInt());
     }
 
     private static BedrockPacket decodeOutbound(byte[] frame, boolean compressed) {

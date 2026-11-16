@@ -73,6 +73,47 @@ class BedrockInventoryContentCodecTest {
     }
 
     @Test
+    void encodesSingleEmptyPlayerInventorySlot() {
+        BedrockPacket packet = BedrockInventoryContentCodec.createPlayerInventorySlot(
+                new PlayerInventory(), ignored -> fail("Empty slot must not resolve item IDs"));
+
+        assertEquals(0x32, packet.packetId());
+        assertArrayEquals(new byte[] {
+                0, 0, 29, // player container, slot zero, InventoryContainer
+                0, 0, 0, 0, 0, 0, 0, 0 // empty net ID and empty stack descriptor
+        }, packet.payload());
+    }
+
+    @Test
+    void encodesSingleNonEmptyPlayerInventorySlot() {
+        PlayerInventory inventory = new PlayerInventory();
+        inventory.setSlot(5, new ItemStack("nexora:arcane_shard", 3, 64));
+
+        BedrockPacket packet = BedrockInventoryContentCodec.createPlayerInventorySlot(
+                inventory, 5, ignored -> new BedrockInventoryContentCodec.ItemDefinition(
+                        257, 0, 0, new byte[0]));
+
+        assertEquals(0x32, packet.packetId());
+        assertArrayEquals(new byte[] {
+                0, 5, 29, // player container, slot five, InventoryContainer
+                2,         // VarInt32(1): non-empty ItemStackNetId
+                1, 1,      // legacy item ID 257
+                3, 0,      // stack size
+                0, 0, 0    // aux, block runtime ID, empty user data
+        }, packet.payload());
+    }
+
+    @Test
+    void slotEncoderRejectsOutOfRangeSlotsAndUnknownItems() {
+        PlayerInventory inventory = new PlayerInventory();
+        assertThrows(IndexOutOfBoundsException.class,
+                () -> BedrockInventoryContentCodec.createPlayerInventorySlot(inventory, 36, ignored -> null));
+        inventory.setSlot(0, new ItemStack("nexora:arcane_shard", 1, 64));
+        assertThrows(IllegalArgumentException.class,
+                () -> BedrockInventoryContentCodec.createPlayerInventorySlot(inventory, 0, ignored -> null));
+    }
+
+    @Test
     void rejectsMissingOrInvalidBedrockItemDefinitions() {
         PlayerInventory inventory = new PlayerInventory();
         inventory.setSlot(0, new ItemStack("nexora:arcane_shard", 1, 64));

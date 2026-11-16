@@ -473,7 +473,7 @@ class BedrockSessionManagerTest {
         assertEquals(framesBeforeDrop + 2, outboundFrames.size()); // inventory state + AddItemActor
 
         // A valid client TakeItemActor request is distance/owner checked and inventory-conserving.
-        ru.nexora.world.PlayerPosition currentPosition =
+        BedrockSessionManager.PlayerPosition currentPosition =
                 manager.playerPosition("authenticated-client").orElseThrow();
         ru.nexora.world.WorldItemEntity pickup = testWorld.itemEntities().spawn(
                 new ItemStack("minecraft:diamond", 2, 64),

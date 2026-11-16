@@ -68,6 +68,7 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
     private final KeyPair serverKeyPair;
     private final String serverToken;
     private final AtomicReference<CachedKeys> cachedKeys = new AtomicReference<>();
+    private long lastForcedJwksRefreshMillis;
 
     public DefaultNetherNetIdentityService(Path keyDirectory) throws IOException, GeneralSecurityException {
         this(keyDirectory, DEFAULT_JWKS_URI, DEFAULT_ISSUER, null, "self");
@@ -199,7 +200,7 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
         if (parts.length != 3 || parts[2].isEmpty()) {
             throw new SecurityException("Malformed client GameServerToken");
         }
-        PublicKey key = getJwksKeys().get(keyId);
+        PublicKey key = getJwksKey(keyId);
         if (!(key instanceof RSAPublicKey)) {
             throw new SecurityException("Unknown or invalid GameServerToken signing key");
         }
@@ -208,6 +209,19 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
         verifier.update((parts[0] + "." + parts[1]).getBytes(StandardCharsets.US_ASCII));
         if (!verifier.verify(Base64.getUrlDecoder().decode(parts[2]))) {
             throw new SecurityException("Invalid GameServerToken signature");
+        }
+    }
+
+    private PublicKey getJwksKey(String keyId) throws Exception {
+        PublicKey key = getJwksKeys().get(keyId);
+        if (key != null) return key;
+
+        synchronized (cachedKeys) {
+            long now = System.currentTimeMillis();
+            if (now - lastForcedJwksRefreshMillis < 30_000) return null;
+            lastForcedJwksRefreshMillis = now;
+            cachedKeys.set(null);
+            return getJwksKeys().get(keyId);
         }
     }
 

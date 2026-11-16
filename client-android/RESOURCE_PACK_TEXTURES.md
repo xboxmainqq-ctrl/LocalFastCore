@@ -3,8 +3,8 @@
 ## Importing a Bedrock resource pack
 
 In the Android client, open **РЕСУРС-ПАКИ** and choose a Bedrock resource-pack
-ZIP file. The importer reads supported PNG textures from
-`textures/blocks/`; a ZIP root folder is also accepted.
+ZIP file. The importer reads supported PNG textures from `textures/blocks/`;
+a ZIP root folder is also accepted.
 
 Examples:
 
@@ -39,13 +39,31 @@ Textures are scaled to 16x16 with nearest-neighbour filtering. Reopen the
 world preview after importing so the renderer creates its atlas from the
 new active pack. Missing textures use generated built-in atlas tiles.
 
+## Server delivery
+
+The standalone NEXORA runtime can load one server resource-pack ZIP from
+`<data-directory>/resource-packs/` and transfer it to the first-party Android
+client over the authenticated NEXORA session. The archive must use the NEXORA
+resource-pack manifest schema documented in
+[`RESOURCE_PACK_SERVER.md`](../RESOURCE_PACK_SERVER.md). The client verifies
+the SHA-256 digest before installing the pack. Restart the server after
+changing the ZIP.
+
+This is separate from the retail Minecraft Bedrock login pipeline: the current
+Bedrock 1.26.60 pipeline sends the bundled NEXORA HUD pack and does not yet load
+custom ZIPs from the server's `resource-packs/` directory. Do not assume that
+a pack configured for the first-party Android client is automatically sent to
+a retail Bedrock client.
+
 ## Current scope
 
-The Android client keeps each imported pack in a private local library. Open
+The Android client keeps imported packs in a private local library. Open
 **РЕСУРС-ПАКИ** to import another ZIP, choose an installed pack as active, or
 delete a pack. The active pack is copied into the renderer's active texture
 folder; reopen the world preview after switching or importing. Deleting the
 active pack returns the renderer to its generated built-in textures.
 
-Server delivery, automatic pack negotiation, and live reload while a world is
-already open are not implemented yet.
+Only block-atlas textures listed above are applied by the current renderer.
+Custom geometry, entity models, animation controllers, scripts, add-ons,
+ray-tracing features, live reload while a world is open, and multiple stacked
+server packs are not implemented yet.

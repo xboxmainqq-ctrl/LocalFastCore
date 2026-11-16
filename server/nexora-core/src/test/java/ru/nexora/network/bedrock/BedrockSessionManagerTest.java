@@ -139,6 +139,9 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(stackCompleted), true, 256));
         assertEquals(1, manager.resourcePackReadyCount());
+        assertEquals(5, outboundFrames.size());
+        assertEquals(BedrockStartGameCodec.START_GAME_PACKET_ID,
+                decodeOutbound(outboundFrames.get(4), true).packetId());
     }
 
     private static BedrockPacket decodeOutbound(byte[] frame, boolean compressed) {

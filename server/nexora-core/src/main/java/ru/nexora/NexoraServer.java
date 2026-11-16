@@ -9,6 +9,7 @@ import ru.nexora.network.raknet.BedrockServerStatus;
 import ru.nexora.network.raknet.RakNetDiscoveryServer;
 import ru.nexora.world.FlatWorldGenerator;
 import ru.nexora.world.World;
+import ru.nexora.world.WorldStorage;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -57,7 +58,9 @@ public final class NexoraServer {
         String dataDirectory = System.getenv().getOrDefault("NEXORA_DATA_DIR", "data");
         DefaultNetherNetIdentityService identityService =
                 new DefaultNetherNetIdentityService(Path.of(dataDirectory, "identity"));
-        World world = new World("NEXORA World", 0L, new FlatWorldGenerator());
+        WorldStorage worldStorage = new WorldStorage(Path.of(dataDirectory, "worlds"), "NEXORA World");
+        World world = new World(
+                "NEXORA World", 0L, new FlatWorldGenerator(), 0, 65, 0, worldStorage);
         AtomicReference<WebRtcSdpNegotiator> negotiatorReference = new AtomicReference<>();
         BedrockSessionManager bedrockSessions = new BedrockSessionManager(
                 2225,
@@ -112,6 +115,11 @@ public final class NexoraServer {
             negotiator.close();
             bedrockSessions.close();
             discovery.close();
+            try {
+                world.saveAll();
+            } catch (java.io.IOException exception) {
+                System.err.println("NEXORA: unable to save world chunks: " + exception.getMessage());
+            }
         }, "nexora-shutdown"));
 
         System.out.printf("NEXORA NetherNet signaling listening on TCP %s:%d%n", httpBindHost, port);
@@ -122,7 +130,8 @@ public final class NexoraServer {
             System.out.println("Configured STUN endpoints: " + String.join(", ", stunUrls));
         }
         System.out.printf("WebRTC ICE UDP port range: %d-%d%n", udpPortMin, udpPortMax);
-        System.out.println("Bedrock NetworkSettings, authenticated Login and empty resource-pack exchange are active.");
-        System.out.println("StartGame, player spawn and world simulation are the next protocol stages.");
+        System.out.println("Bedrock NetworkSettings, authenticated Login and StartGame bootstrap are active.");
+        System.out.println("World chunks use versioned, checksummed files under " + Path.of(dataDirectory, "worlds").toAbsolutePath());
+        System.out.println("LevelChunk streaming and PLAYER_SPAWN are the next protocol stages.");
     }
 }

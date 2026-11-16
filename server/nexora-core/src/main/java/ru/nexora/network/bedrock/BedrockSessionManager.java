@@ -1274,13 +1274,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         float exhaustion = (float) (horizontalDistance * (sprinting ? 0.1 : 0.01));
         if (jumpStarted) exhaustion += 0.2f;
         PlayerVitals updated = before.addExhaustion(exhaustion);
-        if (tick >= state.nextNaturalVitalsTick) {
+        long nowNanos = nanoTime.getAsLong();
+        if (nowNanos >= state.nextNaturalVitalsNanos) {
             if (updated.hunger() >= 18 && updated.health() < PlayerVitals.MAX_HEALTH) {
                 updated = updated.heal(1.0f).addExhaustion(6.0f);
             } else if (updated.hunger() == 0 && updated.health() > 1.0f) {
                 updated = updated.damage(1.0f);
             }
-            state.nextNaturalVitalsTick = tick + 80;
+            state.nextNaturalVitalsNanos = nowNanos + 4_000_000_000L;
         }
         if (updated.equals(before)) return;
         state.vitals = updated;
@@ -1482,7 +1483,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             initialPackets.add(BedrockVitalsCodec.createUpdateAttributes(
                     state.entityId, state.vitals, Math.max(0, state.lastInputTick)));
             sendPackets(networkId, initialPackets, true);
-            state.nextNaturalVitalsTick = Math.max(0, state.lastInputTick) + 80;
+            state.nextNaturalVitalsNanos = nanoTime.getAsLong() + 4_000_000_000L;
         } catch (IllegalArgumentException exception) {
             System.err.println("NEXORA: initial inventory sync deferred because a stored item has no Bedrock definition");
         }
@@ -1800,7 +1801,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private PlayerInventory inventory = new PlayerInventory();
         private PlayerEquipment equipment = new PlayerEquipment();
         private PlayerVitals vitals = PlayerVitals.DEFAULT;
-        private long nextNaturalVitalsTick = 80;
+        private long nextNaturalVitalsNanos;
         private boolean compressionNegotiated;
         private volatile boolean loginAuthenticated;
         private boolean clientHandshakeReceived;

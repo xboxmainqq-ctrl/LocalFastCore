@@ -72,8 +72,10 @@ public final class NexoraServer {
                         .map(String::trim)
                         .filter(value -> !value.isEmpty())
                         .toList();
+        int udpPortMin = Integer.parseInt(System.getenv().getOrDefault("NEXORA_UDP_PORT_MIN", "30000"));
+        int udpPortMax = Integer.parseInt(System.getenv().getOrDefault("NEXORA_UDP_PORT_MAX", "30199"));
         WebRtcSdpNegotiator negotiator = new WebRtcSdpNegotiator(
-                identityService, bedrockSessions, maxPlayers, stunUrls);
+                identityService, bedrockSessions, maxPlayers, stunUrls, udpPortMin, udpPortMax);
         negotiatorReference.set(negotiator);
         NetherNetServerMetadata metadata = new NetherNetServerMetadata(
                 motd,
@@ -112,6 +114,7 @@ public final class NexoraServer {
         if (!stunUrls.isEmpty()) {
             System.out.println("Configured STUN endpoints: " + String.join(", ", stunUrls));
         }
+        System.out.printf("WebRTC ICE UDP port range: %d-%d%n", udpPortMin, udpPortMax);
         System.out.println("Bedrock NetworkSettings, authenticated Login and empty resource-pack exchange are active.");
         System.out.println("StartGame, player spawn and world simulation are the next protocol stages.");
     }

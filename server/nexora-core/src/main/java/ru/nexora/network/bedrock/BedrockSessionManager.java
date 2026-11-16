@@ -375,7 +375,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (target == null || !matchesBreakTarget(target, action)) return;
         if (tick < target.startedAtTick()) return;
 
+        if (!isWithinBlockReach(state, target.x(), target.y(), target.z())) {
+            state.breakTarget = null;
+            return;
+        }
         BlockType current = world.getBlock(target.x(), target.y(), target.z());
+        if (current == BlockType.AIR) {
+            state.breakTarget = null;
+            return;
+        }
         int requiredTicks = requiredBreakTicks(current);
         if (requiredTicks == Integer.MAX_VALUE || tick - target.startedAtTick() < requiredTicks) return;
 

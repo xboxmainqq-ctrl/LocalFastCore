@@ -1473,6 +1473,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
      * exact protocol definition is registered.
      */
     private void sendInitialPlayerInventory(String networkId, SessionState state) {
+        state.nextNaturalVitalsNanos = nanoTime.getAsLong() + 4_000_000_000L;
         try {
             List<BedrockPacket> initialPackets = new java.util.ArrayList<>();
             initialPackets.add(BedrockInventoryContentCodec.createPlayerInventory(state.inventory, itemRegistry));
@@ -1483,7 +1484,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             initialPackets.add(BedrockVitalsCodec.createUpdateAttributes(
                     state.entityId, state.vitals, Math.max(0, state.lastInputTick)));
             sendPackets(networkId, initialPackets, true);
-            state.nextNaturalVitalsNanos = nanoTime.getAsLong() + 4_000_000_000L;
         } catch (IllegalArgumentException exception) {
             System.err.println("NEXORA: initial inventory sync deferred because a stored item has no Bedrock definition");
         }

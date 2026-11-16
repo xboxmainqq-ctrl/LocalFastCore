@@ -56,6 +56,7 @@ public final class BedrockPlayerAuthInputCodec {
             return new PlayerInput(pitch, yaw, x, y, z, motionX, motionZ, headYaw,
                     tick, true, true, inputMode, playMode, interactionModel,
                     interactYaw, interactPitch, deltaX, deltaY, deltaZ,
+                    0, 0, 0, 0, 0, 0, 0,
                     java.util.List.copyOf(inputActions), java.util.List.of());
         }
 
@@ -75,14 +76,19 @@ public final class BedrockPlayerAuthInputCodec {
             in.varInt64(); // client-predicted vehicle unique ID
         }
 
-        in.float32(); in.float32(); // analog move vector
-        in.float32(); in.float32(); in.float32(); // camera orientation
-        in.float32(); in.float32(); // raw move vector
+        float analogMoveX = in.float32();
+        float analogMoveZ = in.float32();
+        float cameraX = in.float32();
+        float cameraY = in.float32();
+        float cameraZ = in.float32();
+        float rawMoveX = in.float32();
+        float rawMoveZ = in.float32();
         in.requireExhausted();
 
         return new PlayerInput(pitch, yaw, x, y, z, motionX, motionZ, headYaw,
                 tick, optionalSectionsPresent, false, inputMode, playMode, interactionModel,
                 interactYaw, interactPitch, deltaX, deltaY, deltaZ,
+                analogMoveX, analogMoveZ, cameraX, cameraY, cameraZ, rawMoveX, rawMoveZ,
                 java.util.List.copyOf(inputActions), java.util.List.copyOf(blockActions));
     }
 
@@ -94,6 +100,9 @@ public final class BedrockPlayerAuthInputCodec {
             int inputMode, int playMode, int interactionModel,
             float interactYaw, float interactPitch,
             float deltaX, float deltaY, float deltaZ,
+            float analogMoveX, float analogMoveZ,
+            float cameraX, float cameraY, float cameraZ,
+            float rawMoveX, float rawMoveZ,
             java.util.List<Integer> inputActions,
             java.util.List<BlockAction> blockActions
     ) {

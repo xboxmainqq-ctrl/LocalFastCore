@@ -175,6 +175,10 @@ public final class BedrockStartGameCodec {
         Writer out = new Writer(); out.varUInt32(value); return out.toByteArray();
     }
 
+    public static BedrockPacket createChunkPublisherUpdate(int x, int y, int z) {
+        return packet(0x79, chunkPublisherPayload(x, y, z));
+    }
+
     private static byte[] setSpawnPositionPayload(int x, int y, int z) {
         Writer out = new Writer();
         out.varInt32(1);

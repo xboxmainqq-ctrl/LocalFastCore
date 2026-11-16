@@ -49,6 +49,45 @@ class WorldTest {
     }
 
     @Test
+    void serializesMutationsAndEventsWithinOneChunk() throws Exception {
+        World world = new World("NEXORA", 1L, new FlatWorldGenerator());
+        java.util.List<World.BlockChange> changes = new java.util.concurrent.CopyOnWriteArrayList<>();
+        java.util.concurrent.CountDownLatch firstListenerEntered = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch releaseFirstListener = new java.util.concurrent.CountDownLatch(1);
+        world.addBlockChangeListener(change -> {
+            changes.add(change);
+            if (change.current() == BlockType.STONE) {
+                firstListenerEntered.countDown();
+                try {
+                    if (!releaseFirstListener.await(2, java.util.concurrent.TimeUnit.SECONDS)) {
+                        throw new AssertionError("Timed out waiting to release first block event");
+                    }
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new AssertionError(exception);
+                }
+            }
+        });
+
+        Thread first = new Thread(() -> world.setBlock(1, 70, 1, BlockType.STONE));
+        Thread second = new Thread(() -> world.setBlock(1, 70, 1, BlockType.DIRT));
+        first.start();
+        assertTrue(firstListenerEntered.await(2, java.util.concurrent.TimeUnit.SECONDS));
+        second.start();
+        releaseFirstListener.countDown();
+        first.join(2_000);
+        second.join(2_000);
+
+        assertFalse(first.isAlive());
+        assertFalse(second.isAlive());
+        assertEquals(2, changes.size());
+        assertEquals(BlockType.AIR, changes.get(0).previous());
+        assertEquals(BlockType.STONE, changes.get(0).current());
+        assertEquals(BlockType.STONE, changes.get(1).previous());
+        assertEquals(BlockType.DIRT, changes.get(1).current());
+    }
+
+    @Test
     void chunkReturnsPreviousBlockFromAtomicMutation() {
         WorldChunk chunk = new WorldChunk(0, 0);
 

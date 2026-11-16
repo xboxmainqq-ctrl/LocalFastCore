@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ru.nexora.network.nethernet.NetherNetClientIdentity;
 import ru.nexora.inventory.ItemStack;
+import ru.nexora.inventory.PlayerInventoryStorage;
 import ru.nexora.network.nethernet.NetherNetMessageFramer;
 import ru.nexora.world.PlayerDataStorage;
 import ru.nexora.world.PlayerData;
@@ -99,13 +100,15 @@ class BedrockSessionManagerTest {
 
         List<byte[]> outboundFrames = new ArrayList<>();
         AtomicLong monotonicClock = new AtomicLong();
-        PlayerDataStorage playerStorage = new PlayerDataStorage(temporaryDirectory);
+        PlayerDataStorage playerStorage = new PlayerDataStorage(temporaryDirectory.resolve("players"));
+        PlayerInventoryStorage inventoryStorage = new PlayerInventoryStorage(temporaryDirectory.resolve("inventories"));
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225,
                 "1.26.62",
                 BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
                 new ru.nexora.world.World("NEXORA World", 0L, new ru.nexora.world.FlatWorldGenerator()),
                 playerStorage,
+                inventoryStorage,
                 (networkId, label, frame) -> outboundFrames.add(frame),
                 event -> {},
                 monotonicClock::get);
@@ -283,6 +286,8 @@ class BedrockSessionManagerTest {
         assertEquals(65.0f, savedPlayer.y());
         assertEquals(1.0f, savedPlayer.z());
         assertEquals(30.0f, savedPlayer.yaw());
+        var savedInventory = inventoryStorage.load("123456789").orElseThrow();
+        assertEquals(3, savedInventory.count("nexora:arcane_shard"));
     }
 
     @Test

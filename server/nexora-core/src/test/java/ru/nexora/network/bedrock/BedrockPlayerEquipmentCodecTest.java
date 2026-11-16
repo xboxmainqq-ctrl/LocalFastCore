@@ -24,8 +24,8 @@ class BedrockPlayerEquipmentCodecTest {
         assertEquals(2, payload[2] & 0xff); // non-empty item stack net ID
         assertEquals(50, payload[3] & 0xff);
         assertEquals(1, payload[4] & 0xff); // runtime ID 306
-        assertEquals(6, payload[payload.length - 15] & 0xff); // ARMOR full container name
-        assertEquals(1, payload[payload.length - 14] & 0xff); // dynamic ID present
+        assertEquals(6, payload[payload.length - 14] & 0xff); // ARMOR full container name
+        assertEquals(1, payload[payload.length - 12] & 0xff); // dynamic ID present
         assertEquals(120, payload[payload.length - 13] & 0xff);
     }
 
@@ -39,9 +39,9 @@ class BedrockPlayerEquipmentCodecTest {
         byte[] offhand = packets.get(1).payload();
         assertEquals(119, offhand[0] & 0xff);
         assertEquals(1, offhand[1] & 0xff);
-        assertEquals(34, offhand[offhand.length - 15] & 0xff); // OFFHAND
-        assertEquals(1, offhand[offhand.length - 14] & 0xff); // dynamic ID optional is present
-        assertEquals(0, offhand[offhand.length - 13] & 0xff); // dynamic ID = 0
+        assertEquals(34, offhand[offhand.length - 14] & 0xff); // OFFHAND
+        assertEquals(1, offhand[offhand.length - 13] & 0xff); // dynamic ID optional is present
+        assertEquals(0, offhand[offhand.length - 12] & 0xff); // dynamic ID = 0
 
         BedrockPacket cursor = packets.get(2);
         assertEquals(0x32, cursor.packetId());

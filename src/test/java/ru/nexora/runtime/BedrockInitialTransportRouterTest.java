@@ -118,6 +118,26 @@ class BedrockInitialTransportRouterTest {
     }
 
     @Test
+    void rejectsBedrockLoginWhenItsIdentityDoesNotMatchTheNetherNetOffer() {
+        BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
+                SETTINGS,
+                (connection, login, request) -> CompletableFuture.completedFuture(authenticatedPlayer()),
+                (connection, player) -> fail("Mismatched identity must not enter play"),
+                (connection, message) -> fail("Mismatched identity must not receive play messages"));
+        FakeConnection connection = new FakeConnection("peer-identity-mismatch", null, false);
+        router.accept(connection);
+        connection.receive(frame(BedrockRequestNetworkSettingsPacketCodec.PACKET_ID,
+                BedrockRequestNetworkSettingsPacketCodec.encodePayload(
+                        new BedrockRequestNetworkSettingsPacket(2225)), false));
+        connection.receive(frame(BedrockLoginPacketCodec.PACKET_ID,
+                BedrockLoginPacketCodec.encodePayload(new BedrockLoginPacket(2225, LOGIN_JSON, CLIENT_DATA_JWT)),
+                true));
+
+        assertFalse(connection.isOpen());
+        router.close();
+    }
+
+    @Test
     void rejectsLoginWhenAuthenticatorDeniesIt() {
         BedrockInitialTransportRouter router = new BedrockInitialTransportRouter(
                 SETTINGS,
@@ -277,9 +297,10 @@ class BedrockInitialTransportRouterTest {
                 : BedrockBatchCompressionCodec.encodeBeforeNetworkSettings(batch);
     }
 
-    private static final class FakeConnection implements NetherNetAuthenticatedTransportConnection {
+    private static final class FakeConnection implements NetherNetAuthenticatedTransportConnection, NetherNetTransportIdentityBinding {
         private final String id;
         private final java.util.Optional<NetherNetIdentityValidator.VerifiedIdentity> authenticatedIdentity;
+        private final boolean identityBindingMatches;
         private Consumer<TransportMessage> messageListener;
         private Consumer<TransportCloseEvent> closeListener;
         private final List<ByteBuffer> sent = new ArrayList<>();
@@ -287,10 +308,18 @@ class BedrockInitialTransportRouterTest {
                 new java.util.concurrent.CountDownLatch(1);
         private boolean open = true;
 
-        private FakeConnection(String id) { this(id, null); }
+        private FakeConnection(String id) { this(id, null, true); }
         private FakeConnection(String id, NetherNetIdentityValidator.VerifiedIdentity identity) {
+            this(id, identity, true);
+        }
+        private FakeConnection(String id, NetherNetIdentityValidator.VerifiedIdentity identity,
+                               boolean identityBindingMatches) {
             this.id = id;
             this.authenticatedIdentity = java.util.Optional.ofNullable(identity);
+            this.identityBindingMatches = identityBindingMatches;
+        }
+        @Override public boolean matchesAuthenticatedPlayer(BedrockAuthenticatedPlayer player) {
+            return identityBindingMatches;
         }
         @Override public java.util.Optional<NetherNetIdentityValidator.VerifiedIdentity> authenticatedIdentity() {
             return authenticatedIdentity;

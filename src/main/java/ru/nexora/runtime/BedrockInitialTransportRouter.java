@@ -247,6 +247,11 @@ public final class BedrockInitialTransportRouter implements Consumer<TransportCo
                 close(session, "Login authentication was rejected");
                 return;
             }
+            if (session.connection instanceof NetherNetTransportIdentityBinding binding
+                    && !binding.matchesAuthenticatedPlayer(accepted)) {
+                close(session, "Bedrock Login identity does not match the authenticated NetherNet offer");
+                return;
+            }
             synchronized (session) {
                 cancelTimeout(session);
                 if (session.closed.get()) {

@@ -8,6 +8,7 @@ import java.security.KeyPairGenerator;
 import java.security.spec.ECGenParameterSpec;
 import java.util.Map;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -61,7 +62,13 @@ public final class NexoraMain {
                     + "use only on a trusted private network.");
             System.out.println("WebRTC requires reachable UDP host candidates; "
                     + "STUN/TURN relay is not configured.");
-        } else {
+        }
+        if (options.bedrockListenerSettings().enabled()) {
+            BedrockListenerSettings bedrock = options.bedrockListenerSettings();
+            System.out.println("Bedrock 1.26.60 NetherNet: TCP "
+                    + bedrock.signalingBindAddress() + " + UDP " + bedrock.mediaBindAddress());
+        }
+        if (!options.developmentNetworkEnabled() && !options.bedrockListenerSettings().enabled()) {
             System.out.println("Network ingress: disabled (safe offline development mode).");
         }
         System.out.println("Data directory: " + options.dataDirectory());
@@ -85,7 +92,8 @@ public final class NexoraMain {
 
     static RuntimeHandle createRuntime(Path dataDirectory, long seed, Consumer<String> log) {
         return createRuntime(new LaunchOptions(dataDirectory.toAbsolutePath().normalize(),
-                seed, false, false, false, "0.0.0.0", 8080, 0), log);
+                seed, false, false, false, "0.0.0.0", 8080, 0,
+                BedrockListenerSettings.disabled()), log);
     }
 
     static RuntimeHandle createRuntime(LaunchOptions options, Consumer<String> log) {
@@ -278,6 +286,94 @@ public final class NexoraMain {
             }
         });
 
+        if (options.bedrockListenerSettings().enabled()) {
+            BedrockListenerSettings configured = options.bedrockListenerSettings();
+            Path identityFile = configured.identityFile().isAbsolute()
+                    ? configured.identityFile()
+                    : dataDirectory.resolve(configured.identityFile()).normalize();
+            BedrockListenerSettings effectiveSettings = new BedrockListenerSettings(
+                    true, configured.bindAddress(), configured.signalingPort(),
+                    configured.separateIcePort(), identityFile, true);
+            server.register(new RuntimeModule() {
+                private CloudburstNetherNetBedrockModule ingress;
+                private java.util.concurrent.ExecutorService authenticationExecutor;
+
+                @Override
+                public String id() {
+                    return "bedrock-nethernet";
+                }
+
+                @Override
+                public void start() throws Exception {
+                    World world = worlds.get(worldId)
+                            .orElseThrow(() -> new IllegalStateException("Default world is not loaded"));
+                    List<ChunkPosition> initialChunks = new ArrayList<>(9);
+                    for (int chunkX = -1; chunkX <= 1; chunkX++) {
+                        for (int chunkZ = -1; chunkZ <= 1; chunkZ++) {
+                            ChunkPosition position = new ChunkPosition(chunkX, chunkZ);
+                            if (!world.isChunkLoaded(position)
+                                    && !world.loadChunk(generator.generate(position, world.height(), seed))) {
+                                throw new IllegalStateException("Could not generate Bedrock spawn chunk " + position);
+                            }
+                            initialChunks.add(position);
+                        }
+                    }
+
+                    BedrockNetworkSettings bedrockNetwork = new BedrockNetworkSettings(
+                            1, BedrockNetworkSettings.CompressionAlgorithm.ZLIB, false, 0, 0.0f);
+                    BedrockLoginIdentityVerifier loginVerifier = new BedrockLoginIdentityVerifier(
+                            new NetherNetGameServerTokenVerifier(new NetherNetJwksKeyCache()));
+                    authenticationExecutor = new java.util.concurrent.ThreadPoolExecutor(
+                            2, 2, 30L, java.util.concurrent.TimeUnit.SECONDS,
+                            new java.util.concurrent.ArrayBlockingQueue<>(64),
+                            runnable -> {
+                                Thread thread = new Thread(runnable, "nexora-bedrock-auth");
+                                thread.setDaemon(true);
+                                return thread;
+                            },
+                            new java.util.concurrent.ThreadPoolExecutor.AbortPolicy());
+
+                    BedrockWorldSessionPipeline sessions = new BedrockWorldSessionPipeline(
+                            bedrockNetwork, world, 0, -1, initialChunks,
+                            BedrockRuntimeBlockRegistryProfile.hashing(),
+                            (connection, player) -> createBedrockStartGameSettings(
+                                    world, player, seed, worldId),
+                            (connection, login, request) -> CompletableFuture.supplyAsync(() -> {
+                                try {
+                                    NetherNetGameServerTokenVerifier.VerifiedClientIdentity identity =
+                                            loginVerifier.verify(request);
+                                    String clientData = BedrockClientDataJwtVerifier.verifyAndReadPayload(
+                                            login.clientDataJwt(), identity.clientPublicKey());
+                                    return new BedrockAuthenticatedPlayer(identity.xuid(),
+                                            identity.displayName(), identity.clientPublicKey(), clientData);
+                                } catch (Exception failure) {
+                                    throw new java.util.concurrent.CompletionException(failure);
+                                }
+                            }, authenticationExecutor),
+                            (connection, message) -> log.accept(
+                                    "Bedrock gameplay packet not yet handled for " + connection.id()
+                                            + " (" + message.sizeBytes() + " bytes)."));
+                    ingress = new CloudburstNetherNetBedrockModule(
+                            effectiveSettings, sessions, worldId, log);
+                    ingress.start();
+                    log.accept("Prepared " + initialChunks.size()
+                            + " Bedrock spawn chunks for authenticated NetherNet sessions.");
+                }
+
+                @Override
+                public void stop() {
+                    if (ingress != null) {
+                        ingress.stop();
+                        ingress = null;
+                    }
+                    if (authenticationExecutor != null) {
+                        authenticationExecutor.shutdownNow();
+                        authenticationExecutor = null;
+                    }
+                }
+            });
+        }
+
         if (options.developmentNetworkEnabled()) {
             WebRtcJavaNetherNetPeerHost peerHost = new WebRtcJavaNetherNetPeerHost();
             KeyPair signingKey = createDevelopmentSigningKey();
@@ -332,6 +428,30 @@ public final class NexoraMain {
                 playerInventoryStorage, gameLoop, tickRate, worldId);
     }
 
+    private static BedrockStartGamePacketCodec.Settings createBedrockStartGameSettings(
+            World world, BedrockAuthenticatedPlayer player, long seed, String worldId) {
+        int spawnY = findSpawnY(world);
+        long runtimeId = UUID.nameUUIDFromBytes(
+                player.identityId().getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                .getLeastSignificantBits() & Long.MAX_VALUE;
+        if (runtimeId == 0) {
+            runtimeId = 1;
+        }
+        BedrockLevelSettingsCodec.Settings level = new BedrockLevelSettingsCodec.Settings(
+                seed, 0, new BedrockStartGamePrimitivesCodec.BlockPosition(0, spawnY, 0),
+                1, 0, 4, BedrockProtocolTarget.BEDROCK_1_26_60_VERSION);
+        return new BedrockStartGamePacketCodec.Settings(
+                runtimeId, runtimeId, 0,
+                new BedrockStartGamePrimitivesCodec.Vec3(0.5f, spawnY, 0.5f),
+                new BedrockStartGamePrimitivesCodec.Vec2(0, 0),
+                level, worldId, "NEXORA", "", false,
+                new BedrockStartGamePrimitivesCodec.SyncedPlayerMovementSettings(0, false),
+                0L, 0, "nexora-" + runtimeId, false, "NEXORA/" + VERSION,
+                BedrockStartGamePacketCodec.PlayerPropertyData.empty(),
+                0L, 0L, 0L, false, true, false,
+                BedrockStartGamePacketCodec.Telemetry.empty());
+    }
+
     /**
      * Finds a safe vertical spawn coordinate above the highest solid block at
      * the default world spawn column. The spawn chunk must already be loaded.
@@ -369,6 +489,12 @@ public final class NexoraMain {
         String bindAddress = "0.0.0.0";
         int signalingPort = 8080;
         int tickRate = 0;
+        boolean bedrockNetworkEnabled = false;
+        boolean bedrockOptionsSpecified = false;
+        String bedrockBindAddress = "0.0.0.0";
+        int bedrockPort = 19132;
+        int bedrockIcePort = 0;
+        Path bedrockIdentityFile = Path.of("nethernet-identity.pem");
 
         for (int index = 0; index < args.length; index++) {
             String argument = Objects.requireNonNull(args[index], "argument");
@@ -376,6 +502,49 @@ public final class NexoraMain {
                 case "--help", "-h" -> help = true;
                 case "--version", "-v" -> version = true;
                 case "--enable-development-network" -> developmentNetworkEnabled = true;
+                case "--enable-bedrock-network" -> bedrockNetworkEnabled = true;
+                case "--bedrock-bind-address" -> {
+                    bedrockOptionsSpecified = true;
+                    if (++index >= args.length || args[index].isBlank()) {
+                        throw new IllegalArgumentException("--bedrock-bind-address requires a host or IP");
+                    }
+                    bedrockBindAddress = args[index].trim();
+                }
+                case "--bedrock-port" -> {
+                    bedrockOptionsSpecified = true;
+                    if (++index >= args.length) {
+                        throw new IllegalArgumentException("--bedrock-port requires a port");
+                    }
+                    try {
+                        bedrockPort = Integer.parseInt(args[index]);
+                    } catch (NumberFormatException invalidPort) {
+                        throw new IllegalArgumentException("--bedrock-port must be an integer", invalidPort);
+                    }
+                    if (bedrockPort < 1 || bedrockPort > 65535) {
+                        throw new IllegalArgumentException("--bedrock-port must be between 1 and 65535");
+                    }
+                }
+                case "--bedrock-ice-port" -> {
+                    bedrockOptionsSpecified = true;
+                    if (++index >= args.length) {
+                        throw new IllegalArgumentException("--bedrock-ice-port requires a port (0 means shared)");
+                    }
+                    try {
+                        bedrockIcePort = Integer.parseInt(args[index]);
+                    } catch (NumberFormatException invalidPort) {
+                        throw new IllegalArgumentException("--bedrock-ice-port must be an integer", invalidPort);
+                    }
+                    if (bedrockIcePort < 0 || bedrockIcePort > 65535) {
+                        throw new IllegalArgumentException("--bedrock-ice-port must be between 0 and 65535");
+                    }
+                }
+                case "--bedrock-identity-file" -> {
+                    bedrockOptionsSpecified = true;
+                    if (++index >= args.length || args[index].isBlank()) {
+                        throw new IllegalArgumentException("--bedrock-identity-file requires a non-empty path");
+                    }
+                    bedrockIdentityFile = Path.of(args[index]);
+                }
                 case "--bind-address" -> {
                     if (++index >= args.length || args[index].isBlank()) {
                         throw new IllegalArgumentException("--bind-address requires a host or IP");
@@ -432,8 +601,16 @@ public final class NexoraMain {
             throw new IllegalArgumentException(
                     "--bind-address and --signaling-port require --enable-development-network");
         }
+        if (!bedrockNetworkEnabled && bedrockOptionsSpecified) {
+            throw new IllegalArgumentException(
+                    "Bedrock listener options require --enable-bedrock-network");
+        }
+        BedrockListenerSettings bedrockSettings = bedrockNetworkEnabled
+                ? new BedrockListenerSettings(true, bedrockBindAddress, bedrockPort,
+                        bedrockIcePort, bedrockIdentityFile, true)
+                : BedrockListenerSettings.disabled();
         return new LaunchOptions(dataDirectory.toAbsolutePath().normalize(), seed, help, version,
-                developmentNetworkEnabled, bindAddress, signalingPort, tickRate);
+                developmentNetworkEnabled, bindAddress, signalingPort, tickRate, bedrockSettings);
     }
 
     private static void printUsage(Consumer<String> output) {
@@ -444,16 +621,23 @@ public final class NexoraMain {
         output.accept("  --enable-development-network   Enable unauthenticated private-network testing");
         output.accept("  --bind-address <host>          Signaling bind host (default: 0.0.0.0)");
         output.accept("  --signaling-port <port>        HTTP signaling port (default: 8080)");
+        output.accept("  --enable-bedrock-network       Enable authenticated Bedrock 1.26.60 NetherNet ingress");
+        output.accept("  --bedrock-bind-address <host>  Bedrock listener bind host (default: 0.0.0.0)");
+        output.accept("  --bedrock-port <port>          TCP signaling and shared UDP media port (default: 19132)");
+        output.accept("  --bedrock-ice-port <port>      Separate UDP media port; 0 shares --bedrock-port");
+        output.accept("  --bedrock-identity-file <path> Persistent NetherNet operator identity PEM");
         output.accept("  --version                      Print the NEXORA version");
         output.accept("  --help                         Show this help");
     }
 
     record LaunchOptions(Path dataDirectory, long seed, boolean help, boolean version,
                          boolean developmentNetworkEnabled, String bindAddress,
-                         int signalingPort, int tickRate) {
+                         int signalingPort, int tickRate,
+                         BedrockListenerSettings bedrockListenerSettings) {
         LaunchOptions {
             Objects.requireNonNull(dataDirectory, "dataDirectory");
             Objects.requireNonNull(bindAddress, "bindAddress");
+            Objects.requireNonNull(bedrockListenerSettings, "bedrockListenerSettings");
             if (bindAddress.isBlank() || signalingPort < 1 || signalingPort > 65535
                     || tickRate < 0 || tickRate > 120) {
                 throw new IllegalArgumentException("Invalid NEXORA launch configuration");

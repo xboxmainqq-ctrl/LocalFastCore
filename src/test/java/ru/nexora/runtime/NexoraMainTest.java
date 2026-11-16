@@ -59,6 +59,49 @@ class NexoraMainTest {
     }
 
     @Test
+    void parsesAuthenticatedBedrockNetherNetListenerSettings() {
+        NexoraMain.LaunchOptions options = NexoraMain.parseArguments(new String[] {
+                "--enable-bedrock-network",
+                "--bedrock-bind-address", "127.0.0.1",
+                "--bedrock-port", "19140",
+                "--bedrock-ice-port", "19141",
+                "--bedrock-identity-file", "keys/nexora.pem"
+        });
+
+        BedrockListenerSettings settings = options.bedrockListenerSettings();
+        assertTrue(settings.enabled());
+        assertTrue(settings.requireRetailAuthentication());
+        assertEquals("127.0.0.1", settings.bindAddress());
+        assertEquals(19140, settings.signalingPort());
+        assertEquals(19141, settings.separateIcePort());
+        assertEquals(Path.of("keys/nexora.pem"), settings.identityFile());
+    }
+
+    @Test
+    void keepsBedrockListenerDisabledUnlessExplicitlyEnabled() {
+        assertFalse(NexoraMain.parseArguments(new String[0])
+                .bedrockListenerSettings().enabled());
+        assertThrows(IllegalArgumentException.class,
+                () -> NexoraMain.parseArguments(new String[] {"--bedrock-port", "19140"}));
+        assertThrows(IllegalArgumentException.class,
+                () -> NexoraMain.parseArguments(new String[] {
+                        "--enable-bedrock-network", "--bedrock-ice-port", "19132"
+                }));
+    }
+
+    @Test
+    void registersBedrockNetherNetModuleOnlyWhenEnabled() {
+        NexoraMain.RuntimeHandle offline = NexoraMain.createRuntime(
+                NexoraMain.parseArguments(new String[0]), ignored -> { });
+        assertFalse(offline.server().moduleIds().contains("bedrock-nethernet"));
+
+        NexoraMain.RuntimeHandle enabled = NexoraMain.createRuntime(
+                NexoraMain.parseArguments(new String[] {"--enable-bedrock-network"}),
+                ignored -> { });
+        assertTrue(enabled.server().moduleIds().contains("bedrock-nethernet"));
+    }
+
+    @Test
     void requiresExplicitFlagBeforeOpeningDevelopmentNetwork() {
         assertThrows(IllegalArgumentException.class,
                 () -> NexoraMain.parseArguments(new String[] {

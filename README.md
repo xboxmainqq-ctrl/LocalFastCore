@@ -6,7 +6,7 @@
 
 The NEXORA Dedicated Server runs headlessly and owns authoritative worlds, chunks, blocks, entities, players, inventories, permissions, commands, events and gameplay. The separate NEXORA Android Client provides rendering, touch controls, UI/HUD, resource packs, server connection and creator tools. Single-player starts an embedded instance of the same NEXORA Core and works offline.
 
-The target is Bedrock-style mobile gameplay; Java Edition is out of scope. An optional adapter for unmodified Bedrock clients may be developed later, but it must be tested against real pinned client versions before compatibility is claimed. The NEXORA Client remains a separate first-party application.
+The target is Bedrock-style mobile gameplay; Java Edition is out of scope. A native Bedrock 1.26.60 / protocol 2225 ingress is now being integrated through NetherNet. It remains experimental until unmodified retail clients pass end-to-end login and gameplay tests. The NEXORA Client remains a separate first-party application.
 
 Do not use Luanti or copy proprietary Minecraft source code/assets. Use public protocol documentation, clean-room implementations and original or properly licensed content.
 
@@ -48,9 +48,30 @@ java -jar target/nexora-runtime-0.1.0-SNAPSHOT.jar \
 
 In the NEXORA Android client, enter `http://<server-LAN-IP>:8080`. Confirm the server identity fingerprint only after checking it with the server owner. Do not port-forward this development endpoint or use it on an untrusted network. The WebRTC peer connection also needs a reachable UDP host candidate; a successful HTTP signaling response alone does not guarantee that the data channels can connect.
 
+## Bedrock 1.26.60 NetherNet ingress (experimental)
+
+The server now has an opt-in Cloudburst NetherNet listener wired to the protocol-2225 initial login and world-startup pipeline. Signaling validates the Minecraft-issued NetherNet identity assertion, Bedrock Login independently validates the multiplayer token, and the login public key must match the key authenticated by signaling. The listener advertises the NEXORA server and prepares a 3×3 spawn area before accepting players.
+
+Enable it with:
+
+```bash
+java -jar target/nexora-runtime-0.1.0-SNAPSHOT.jar \
+  --data-dir ./nexora-data \
+  --enable-bedrock-network \
+  --bedrock-bind-address 0.0.0.0 \
+  --bedrock-port 19132 \
+  --bedrock-ice-port 0
+```
+
+Port 0 for the ICE option means WebRTC media shares the Bedrock port. The host must expose **both TCP and UDP** on that port; opening TCP signaling alone is not enough. A separate ICE UDP port can be selected with `--bedrock-ice-port` if the host allocates one. STUN discovery is enabled for public-address candidates.
+
+The server creates `nethernet-identity.pem` in the data directory on first launch. Keep this file between restarts and deployments: replacing it changes the server's cryptographic identity. Retail authentication is mandatory; there is no unauthenticated public Bedrock mode.
+
+**Compatibility is not yet certified.** Current automated tests cover the transport-neutral Bedrock handshake and identity-binding rejection, but CI does not prove that a retail 1.26.60 client can complete WebRTC, login, resource-pack negotiation and gameplay on a real host. Movement, block interaction and complete gameplay packet handling are still in progress. Do not advertise the server as fully playable until those tests pass. See [Bedrock NetherNet runtime notes](docs/BEDROCK_NETHERNET_RUNTIME.md).
+
 ## Current implementation
 
-- Standalone Java 21 Maven module with no Nukkit, Bukkit, or Minecraft server API dependency.
+- Standalone Java 25 Maven module with no Nukkit, Bukkit, or Minecraft server API dependency.
 - Initial RPG domain foundation: four namespaced classes (Warrior, Mage, Ranger, Guardian), immutable base attributes, and deterministic class registration.
 - Server-side XP progression up to level 100, with five attribute points per level and bounded validation; see [NEXORA RPG architecture](docs/architecture/nexora-rpg.md).
 - Explicit server lifecycle states.
@@ -68,7 +89,7 @@ In the NEXORA Android client, enter `http://<server-LAN-IP>:8080`. Confirm the s
 - Bedrock batch compression envelope for pre-negotiation batches, raw DEFLATE, and uncompressed frames, with decompression limits; Snappy remains explicitly unsupported.
 - Frame-level Bedrock initial handshake processor joins batch framing, compression, RequestNetworkSettings, NetworkSettings response creation, and compressed Login decoding.
 - `BedrockInitialTransportRouter` connects accepted NetherNet peers to per-connection handshake processors, sends NetworkSettings over the reliable ordered channel, and hands decoded Login requests to an asynchronous authentication callback, then forwards subsequent messages to the play handler only after authentication succeeds.
-- `NetherNetBedrockModule` composes the WebRTC host, HTTP signaling server, and Bedrock transport router into one lifecycle-managed module for `NexoraServer`.
+- `CloudburstNetherNetBedrockModule` binds the Cloudburst NetherNet HTTP/WebRTC transport to the Bedrock router, using retail Minecraft identity validation and a persistent operator key. The older custom WebRTC development module remains separate and is not the retail Bedrock transport.
 - NetherNet message framing helper: bounded reliable-message fragmentation with countdown headers, strict unfragmented-message validation for unreliable delivery, and tests that feed encoded fragments through the reassembler.
 - Existing NetherNet fragment assembler enforces per-message byte, fragment-count, and assembly-time limits.
 - Bounded NetherNet SDP parsing preserves the original offer for identity verification and removes the non-standard `a=identity` line only from the SDP passed to WebRTC.

@@ -5,15 +5,13 @@ import ru.nexora.inventory.PlayerInventory;
 
 import java.io.ByteArrayOutputStream;
 import java.util.Objects;
-import java.util.function.ToIntFunction;
 
 /**
  * Encodes the protocol 2225 InventoryContent packet while ItemStackNetManager is disabled.
  *
- * The caller must supply the protocol's signed 16-bit legacy item ID for every
- * non-empty NEXORA item. This codec deliberately does not guess IDs or register
- * custom items. The disabled-manager ItemStackNetId is 0 for empty slots and 1
- * for non-empty slots, as required by the Bedrock compatibility guide.
+ * The caller must supply a complete protocol definition for every non-empty NEXORA item.
+ * This codec deliberately does not guess legacy IDs, block runtime IDs, metadata or user data.
+ * The disabled-manager ItemStackNetId is 0 for empty slots and 1 for non-empty slots.
  */
 public final class BedrockInventoryContentCodec {
     public static final int INVENTORY_CONTENT_PACKET_ID = 0x31;
@@ -25,10 +23,10 @@ public final class BedrockInventoryContentCodec {
 
     public static BedrockPacket createPlayerInventory(
             PlayerInventory inventory,
-            ToIntFunction<String> legacyItemIdResolver
+            ItemDefinitionResolver itemDefinitionResolver
     ) {
         Objects.requireNonNull(inventory, "inventory");
-        Objects.requireNonNull(legacyItemIdResolver, "legacyItemIdResolver");
+        Objects.requireNonNull(itemDefinitionResolver, "itemDefinitionResolver");
 
         var slots = inventory.snapshot();
         Writer out = new Writer();
@@ -39,14 +37,15 @@ public final class BedrockInventoryContentCodec {
             ItemStack stack = optionalStack.orElse(null);
             out.varInt32(stack == null ? 0 : 1);
             if (stack == null) {
-                writeEmptyStack(out);
+                writeStack(out, 0, 0, 0, 0, new byte[0]);
             } else {
-                int itemId = legacyItemIdResolver.applyAsInt(stack.itemId());
-                if (itemId == 0 || itemId < Short.MIN_VALUE || itemId > Short.MAX_VALUE) {
+                ItemDefinition definition = itemDefinitionResolver.resolve(stack.itemId());
+                if (definition == null) {
                     throw new IllegalArgumentException(
-                            "No valid Bedrock legacy item ID for " + stack.itemId());
+                            "No Bedrock item definition registered for " + stack.itemId());
                 }
-                writeStack(out, itemId, stack.count());
+                writeStack(out, definition.legacyItemId(), stack.count(),
+                        definition.auxValue(), definition.blockRuntimeId(), definition.userData());
             }
         }
 
@@ -56,17 +55,46 @@ public final class BedrockInventoryContentCodec {
         return new BedrockPacket(INVENTORY_CONTENT_PACKET_ID, 0, 0, out.toByteArray());
     }
 
-    private static void writeEmptyStack(Writer out) {
-        writeStack(out, 0, 0);
-    }
-
-    private static void writeStack(Writer out, int itemId, int count) {
+    private static void writeStack(
+            Writer out, int itemId, int count, long auxValue, long blockRuntimeId, byte[] userData
+    ) {
         out.int16(itemId);
         out.uint16(count);
-        out.varUInt32(0); // Aux value / metadata
+        out.varUInt32(auxValue);
         // Optional ItemStackNetIdVariant is omitted while ItemStackNetManager is disabled.
-        out.varUInt32(0); // Block Runtime ID (not a block-specific descriptor)
-        out.string("");
+        out.varUInt32(blockRuntimeId);
+        out.string(userData);
+    }
+
+    @FunctionalInterface
+    public interface ItemDefinitionResolver {
+        ItemDefinition resolve(String namespacedItemId);
+    }
+
+    /** Protocol-specific fields that cannot safely be inferred from the logical ItemStack. */
+    public record ItemDefinition(
+            int legacyItemId, long auxValue, long blockRuntimeId, byte[] userData
+    ) {
+        public ItemDefinition {
+            if (legacyItemId == 0 || legacyItemId < Short.MIN_VALUE || legacyItemId > Short.MAX_VALUE) {
+                throw new IllegalArgumentException("legacyItemId must be a non-zero signed int16");
+            }
+            if (auxValue < 0 || auxValue > 0xffff_ffffL) {
+                throw new IllegalArgumentException("auxValue must be uint32");
+            }
+            if (blockRuntimeId < 0 || blockRuntimeId > 0xffff_ffffL) {
+                throw new IllegalArgumentException("blockRuntimeId must be uint32");
+            }
+            userData = Objects.requireNonNull(userData, "userData").clone();
+            if (userData.length > 1_048_576) {
+                throw new IllegalArgumentException("userData exceeds 1 MiB");
+            }
+        }
+
+        @Override
+        public byte[] userData() {
+            return userData.clone();
+        }
     }
 
     private static final class Writer {
@@ -105,11 +133,10 @@ public final class BedrockInventoryContentCodec {
             } while (value != 0);
         }
 
-        void string(String value) {
-            byte[] bytes = Objects.requireNonNull(value, "value")
-                    .getBytes(java.nio.charset.StandardCharsets.UTF_8);
-            varUInt32(bytes.length);
-            output.writeBytes(bytes);
+        void string(byte[] value) {
+            Objects.requireNonNull(value, "value");
+            varUInt32(value.length);
+            output.writeBytes(value);
         }
 
         byte[] toByteArray() {

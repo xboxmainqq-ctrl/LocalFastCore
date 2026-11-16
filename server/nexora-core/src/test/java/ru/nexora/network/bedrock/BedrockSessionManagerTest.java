@@ -700,6 +700,7 @@ class BedrockSessionManagerTest {
 
         // A real protocol-2225 PlayerAction DROP_ITEM request drops exactly one
         // server-selected item from the active hotbar slot and creates a world actor.
+        inventory.selectHotbarSlot(0);
         int actorsBeforeClientDrop = testWorld.itemEntities().size();
         int framesBeforeClientDrop = outboundFrames.size();
         BedrockPacket clientDrop = new BedrockPacket(

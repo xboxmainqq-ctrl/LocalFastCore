@@ -362,8 +362,11 @@ class BedrockSessionManagerTest {
         assertEquals(0x31, decodeOutbound(outboundFrames.get(28), true).packetId());
         List<BedrockPacket> inventoryReconciliation = BedrockBatchCodec.decode(
                 reassemble(List.of(outboundFrames.get(28))), true);
-        assertEquals(2, inventoryReconciliation.size());
+        assertEquals(5, inventoryReconciliation.size());
         assertEquals(0x1f, inventoryReconciliation.get(1).packetId());
+        assertEquals(0x31, inventoryReconciliation.get(2).packetId());
+        assertEquals(0x31, inventoryReconciliation.get(3).packetId());
+        assertEquals(0x32, inventoryReconciliation.get(4).packetId());
 
         assertThrows(SecurityException.class, () -> sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256)));

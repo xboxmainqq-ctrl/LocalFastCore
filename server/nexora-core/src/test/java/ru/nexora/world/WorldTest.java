@@ -46,6 +46,22 @@ class WorldTest {
     }
 
     @Test
+    void chunkSnapshotsAreDetachedFromSubsequentMutations() {
+        WorldChunk chunk = new WorldChunk(0, 0);
+        chunk.setBlock(1, 64, 1, BlockType.STONE);
+
+        byte[][] snapshot = chunk.copySectionsRaw();
+        ChunkSection detached = chunk.section(8);
+        detached.set(1, 0, 1, BlockType.DIRT);
+        chunk.setBlock(1, 64, 1, BlockType.GRASS_BLOCK);
+
+        assertEquals(BlockType.STONE, BlockType.byInternalId(Byte.toUnsignedInt(snapshot[8][(1 << 8) | (1 << 4)])));
+        assertEquals(BlockType.GRASS_BLOCK, chunk.getBlock(1, 64, 1));
+        assertEquals(BlockType.GRASS_BLOCK,
+                BlockType.byInternalId(Byte.toUnsignedInt(chunk.copySectionRaw(8)[(1 << 8) | (1 << 4)])));
+    }
+
+    @Test
     void rejectsCoordinatesOutsideChunkAndOverworldBounds() {
         WorldChunk chunk = new WorldChunk(0, 0);
 

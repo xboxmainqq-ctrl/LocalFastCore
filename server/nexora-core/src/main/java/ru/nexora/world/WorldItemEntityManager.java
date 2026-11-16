@@ -43,7 +43,7 @@ public final class WorldItemEntityManager {
         nextRuntimeId.set(highestRuntimeId + 1);
     }
 
-    public WorldItemEntity spawn(ItemStack stack, double x, double y, double z,
+    public synchronized WorldItemEntity spawn(ItemStack stack, double x, double y, double z,
                                  double velocityX, double velocityY, double velocityZ,
                                  long nowMillis, long pickupDelayMillis, String ownerXuid) {
         Objects.requireNonNull(stack, "stack");
@@ -77,7 +77,7 @@ public final class WorldItemEntityManager {
         return List.copyOf(result);
     }
 
-    public boolean remove(long runtimeId) {
+    public synchronized boolean remove(long runtimeId) {
         WorldItemEntity entity = entities.get(runtimeId);
         if (entity == null) return false;
         synchronized (entity) {
@@ -93,7 +93,7 @@ public final class WorldItemEntityManager {
     }
 
     /** Restores a previously removed immutable actor after a failed durable inventory update. */
-    public void restore(WorldItemEntity entity) {
+    public synchronized void restore(WorldItemEntity entity) {
         Objects.requireNonNull(entity, "entity");
         if (entity.runtimeId() == Long.MAX_VALUE) {
             throw new IllegalArgumentException("Item actor runtime ID space exhausted");
@@ -114,7 +114,7 @@ public final class WorldItemEntityManager {
      * Picks up an entire stack only when the player can accept all of it.
      * Partial inventory insertion is rolled back, leaving the world actor unchanged.
      */
-    public boolean pickup(long runtimeId, PlayerInventory inventory, String playerXuid,
+    public synchronized boolean pickup(long runtimeId, PlayerInventory inventory, String playerXuid,
                           double playerX, double playerY, double playerZ, long nowMillis) {
         Objects.requireNonNull(inventory, "inventory");
         Objects.requireNonNull(playerXuid, "playerXuid");
@@ -159,7 +159,7 @@ public final class WorldItemEntityManager {
     }
 
     /** Flushes the current actor snapshot; a no-storage manager is a no-op. */
-    public void save() throws IOException {
+    public synchronized void save() throws IOException {
         if (storage != null) storage.save(snapshot());
     }
 

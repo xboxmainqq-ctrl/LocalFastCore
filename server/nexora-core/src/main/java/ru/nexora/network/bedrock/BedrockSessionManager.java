@@ -8,6 +8,7 @@ import ru.nexora.network.nethernet.NetherNetInboundPipeline;
 import ru.nexora.network.nethernet.NetherNetMessageFramer;
 import ru.nexora.world.FlatWorldGenerator;
 import ru.nexora.world.World;
+import ru.nexora.world.WorldChunk;
 
 import java.security.KeyFactory;
 import java.security.MessageDigest;

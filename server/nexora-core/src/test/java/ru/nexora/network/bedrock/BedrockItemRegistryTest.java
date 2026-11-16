@@ -9,11 +9,11 @@ import static org.junit.jupiter.api.Assertions.*;
 class BedrockItemRegistryTest {
     private static BedrockItemRegistry.Entry entry(String id, int runtimeId) {
         return new BedrockItemRegistry.Entry(id,
-                new BedrockInventoryContentCodec.ItemDefinition(legacyId, 0, 0, new byte[0]));
+                new BedrockInventoryContentCodec.ItemDefinition(runtimeId, 0, 0, new byte[0]));
     }
 
     @Test
-    void resolvesDefinitionsByNamespacedIdAndLegacyId() {
+    void resolvesDefinitionsByNamespacedIdAndRuntimeId() {
         var shard = entry("nexora:arcane_shard", 257);
         var wand = entry("nexora:apprentice_wand", 258);
         var registry = new BedrockItemRegistry(List.of(shard, wand));
@@ -23,7 +23,7 @@ class BedrockItemRegistryTest {
         assertSame(wand, registry.findByRuntimeItemId(258));
         assertEquals(257, registry.resolve("nexora:arcane_shard").runtimeItemId());
         assertNull(registry.resolve("nexora:missing"));
-        assertNull(registry.findByLegacyId(999));
+        assertNull(registry.findByRuntimeItemId(999));
     }
 
     @Test
@@ -43,7 +43,7 @@ class BedrockItemRegistryTest {
     }
 
     @Test
-    void rejectsDuplicateLegacyIds() {
+    void rejectsDuplicateRuntimeIds() {
         assertThrows(IllegalArgumentException.class, () -> new BedrockItemRegistry(List.of(
                 entry("nexora:first", 257), entry("nexora:second", 257))));
     }

@@ -233,7 +233,8 @@ class BedrockSessionManagerTest {
         BedrockPacket initialized = new BedrockPacket(0x71, 0, 0, new byte[] {1});
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256));
-        assertEquals(22, outboundFrames.size());
+        assertEquals(23, outboundFrames.size());
+        assertEquals(0x31, decodeOutbound(outboundFrames.get(22), true).packetId());
         BedrockPacket playerSpawn = decodeOutbound(outboundFrames.get(21), true);
         assertEquals(BedrockBatchCodec.PLAY_STATUS_PACKET_ID, playerSpawn.packetId());
         assertEquals(3, ByteBuffer.wrap(playerSpawn.payload()).order(ByteOrder.BIG_ENDIAN).getInt());
@@ -279,9 +280,9 @@ class BedrockSessionManagerTest {
                     BedrockBatchCodec.encode(List.of(step), true, 256));
             if (i < walkPositions.length - 1) assertEquals(22, outboundFrames.size());
         }
-        assertEquals(26, outboundFrames.size());
-        assertEquals(0x79, decodeOutbound(outboundFrames.get(22), true).packetId());
-        for (int index = 23; index < 26; index++) {
+        assertEquals(29, outboundFrames.size());
+        assertEquals(0x79, decodeOutbound(outboundFrames.get(23), true).packetId());
+        for (int index = 24; index < 27; index++) {
             assertEquals(0x3a, decodeOutbound(outboundFrames.get(index), true).packetId());
         }
         assertEquals(16.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
@@ -324,7 +325,7 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(finishBreak), true, 256));
         assertEquals(27, outboundFrames.size());
-        assertEquals(0x15, decodeOutbound(outboundFrames.get(26), true).packetId());
+        assertEquals(0x15, decodeOutbound(outboundFrames.get(28), true).packetId());
 
         // A decoded no-op player-slot transaction is accepted and reconciled with authoritative content.
         BedrockPacket inventoryTransaction = new BedrockPacket(0x1e, 0, 0,

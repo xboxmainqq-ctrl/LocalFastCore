@@ -636,16 +636,18 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             ru.nexora.inventory.ItemStack stack = optional.orElseThrow();
             if (!equipmentSlotRegistry.allows(stack, slot)) continue;
             inventorySlots.add(i);
-            labels.add("Инвентарь " + (i + 1) + " — " + equipmentItemDisplayName(stack.itemId()));
+            labels.add("Инвентарь " + (i + 1) + " — " + equipmentItemDisplayName(stack.itemId())
+                    + " (" + formatEquipmentAttributes(stack.itemId()) + ")");
         }
 
         boolean hasUnequip = state.equipment.magicSlot(slot).isPresent();
         com.fasterxml.jackson.databind.node.ObjectNode form = MAPPER.createObjectNode();
         form.put("type", "form");
         form.put("title", "Экипировка — " + slot.displayName());
-        String current = state.equipment.magicSlot(slot)
-                .map(stack -> equipmentItemDisplayName(stack.itemId())).orElse("пусто");
+        Optional<ru.nexora.inventory.ItemStack> currentStack = state.equipment.magicSlot(slot);
+        String current = currentStack.map(stack -> equipmentItemDisplayName(stack.itemId())).orElse("пусто");
         StringBuilder description = new StringBuilder("Сейчас: ").append(current);
+        currentStack.ifPresent(stack -> description.append("\n").append(formatEquipmentAttributes(stack.itemId())));
         if (status != null && !status.isBlank()) description.append("\n").append(status);
         if (labels.isEmpty()) description.append("\nВ инвентаре нет подходящих предметов.");
         else description.append("\nВыбери предмет для этого слота:");
@@ -658,6 +660,36 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
         sendEquipmentForm(networkId, state, form, new PendingEquipmentForm(
                 0, EquipmentFormKind.SLOT, slot, List.copyOf(inventorySlots), hasUnequip));
+    }
+
+    private String formatEquipmentAttributes(String itemId) {
+        var attributes = equipmentSlotRegistry.attributes(itemId);
+        if (attributes.isEmpty()) return "Бонусы: нет";
+        List<String> values = new java.util.ArrayList<>();
+        attributes.forEach((attribute, value) -> {
+            String name = switch (attribute) {
+                case MAX_HEALTH -> "Здоровье";
+                case ARMOR -> "Броня";
+                case ATTACK_DAMAGE -> "Урон";
+                case MOVEMENT_SPEED -> "Скорость";
+                case MAX_MANA -> "Макс. мана";
+                case MANA_REGENERATION -> "Реген. маны";
+                case MAGIC_POWER -> "Сила магии";
+                case COOLDOWN_REDUCTION -> "Снижение перезарядки";
+                case FIRE_RESISTANCE -> "Сопротивление огню";
+                case ICE_RESISTANCE -> "Сопротивление льду";
+                case LIGHTNING_RESISTANCE -> "Сопротивление молнии";
+            };
+            boolean percentage = attribute == ru.nexora.inventory.EquipmentAttribute.COOLDOWN_REDUCTION
+                    || attribute == ru.nexora.inventory.EquipmentAttribute.FIRE_RESISTANCE
+                    || attribute == ru.nexora.inventory.EquipmentAttribute.ICE_RESISTANCE
+                    || attribute == ru.nexora.inventory.EquipmentAttribute.LIGHTNING_RESISTANCE;
+            String formatted = percentage
+                    ? String.format(Locale.ROOT, "%+.0f%%", value * 100.0)
+                    : String.format(Locale.ROOT, "%+.1f", value);
+            values.add(name + " " + formatted);
+        });
+        return "Бонусы: " + String.join(", ", values);
     }
 
     private static String equipmentItemDisplayName(String itemId) {

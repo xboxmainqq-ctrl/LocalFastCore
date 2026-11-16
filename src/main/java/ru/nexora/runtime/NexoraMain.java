@@ -327,9 +327,13 @@ public final class NexoraMain {
                     if (streaming == null) {
                         throw new IllegalStateException("Player chunk streaming must start before Bedrock networking");
                     }
+                    BedrockRuntimeBlockRegistryProfile blockProfile =
+                            BedrockRuntimeBlockRegistryProfile.hashing();
+                    BedrockRuntimeBlockRegistry blockRegistry =
+                            BedrockBlockCompatibilityRegistry.builtIn().adapt(blockProfile.registry());
                     playerSessions = new BedrockPlayerSessionManager(
                             world, entities, streaming, bedrockNetwork, initialChunks,
-                            findSpawnY(world), log);
+                            findSpawnY(world), blockRegistry, log);
                     playerSessionTask = scheduler.scheduleRepeating(1, 1, playerSessions::tick);
                     BedrockLoginIdentityVerifier loginVerifier = new BedrockLoginIdentityVerifier(
                             new NetherNetGameServerTokenVerifier(new NetherNetJwksKeyCache()));
@@ -345,7 +349,7 @@ public final class NexoraMain {
 
                     BedrockWorldSessionPipeline sessions = new BedrockWorldSessionPipeline(
                             bedrockNetwork, world, 0, -1, initialChunks,
-                            BedrockRuntimeBlockRegistryProfile.hashing(),
+                            blockProfile,
                             (connection, player) -> {
                                 playerSessions.onAuthenticated(connection, player);
                                 return createBedrockStartGameSettings(world, player, seed, worldId);

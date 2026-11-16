@@ -47,7 +47,7 @@ public final class NetherNetSignalingServer implements AutoCloseable {
             return thread;
         };
         executor = Executors.newFixedThreadPool(
-                Math.max(2, Runtime.getRuntime().availableProcessors()), threadFactory);
+                Math.max(2, Math.min(8, Runtime.getRuntime().availableProcessors())), threadFactory);
         created.setExecutor(executor);
         created.createContext("/v1/join", this::handleJoin);
         created.start();
@@ -135,10 +135,24 @@ public final class NetherNetSignalingServer implements AutoCloseable {
     }
 
     private static String escapeJson(String value) {
-        return value.replace("\\\\", "\\\\\\\\")
-                .replace("\"", "\\\\"")
-                .replace("\r", "\\r")
-                .replace("\n", "\\n");
+        StringBuilder result = new StringBuilder(value.length() + 16);
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            switch (c) {
+                case '"' -> result.append("\\\\"");
+                case '\\\\' -> result.append("\\\\\\\\");
+                case '\\b' -> result.append("\\\\b");
+                case '\\f' -> result.append("\\\\f");
+                case '\\n' -> result.append("\\\\n");
+                case '\\r' -> result.append("\\\\r");
+                case '\\t' -> result.append("\\\\t");
+                default -> {
+                    if (c < 0x20) result.append(String.format("\\\\u%04x", (int) c));
+                    else result.append(c);
+                }
+            }
+        }
+        return result.toString();
     }
 
     @Override

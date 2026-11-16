@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockModalFormCodecTest {
     @Test
-    void createsProtocol2225ModalFormRequest() {
+    void createsProtocol2225ModalFormRequest() throws java.io.IOException {
         BedrockPacket packet = BedrockModalFormCodec.createRequest(300, "{\"type\":\"form\",\"title\":\"NEXORA\"}");
         assertEquals(0x64, packet.packetId());
         Reader reader = new Reader(packet.payload());

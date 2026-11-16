@@ -1,5 +1,6 @@
 {
   "namespace": "hud",
+
   "nexora_health_bar": {
     "type": "image",
     "texture": "textures/ui/Black",
@@ -22,16 +23,16 @@
           "layer": 1,
           "bindings": [
             {
-              "binding_name": "#player_health",
+              "binding_name": "#health",
               "binding_type": "global"
             },
             {
-              "binding_name": "#player_max_health",
+              "binding_name": "#health_max",
               "binding_type": "global"
             },
             {
               "binding_type": "view",
-              "source_property_name": "(#player_health / #player_max_health)",
+              "source_property_name": "(#health / #health_max)",
               "target_property_name": "#clip_ratio"
             }
           ]
@@ -49,13 +50,13 @@
             {
               "current_health": {
                 "type": "label",
-                "text": "#player_health",
+                "text": "#health",
                 "color": [1, 1, 1],
                 "font_size": "small",
                 "shadow": true,
                 "bindings": [
                   {
-                    "binding_name": "#player_health",
+                    "binding_name": "#health",
                     "binding_name_override": "#text",
                     "binding_type": "global"
                   }
@@ -74,13 +75,13 @@
             {
               "maximum_health": {
                 "type": "label",
-                "text": "#player_max_health",
+                "text": "#health_max",
                 "color": [1, 1, 1],
                 "font_size": "small",
                 "shadow": true,
                 "bindings": [
                   {
-                    "binding_name": "#player_max_health",
+                    "binding_name": "#health_max",
                     "binding_name_override": "#text",
                     "binding_type": "global"
                   }
@@ -101,9 +102,13 @@
       }
     ]
   },
+
   "heart_renderer": {
+    "type": "panel",
+    "size": [1, 1],
     "visible": false
   },
+
   "root_panel": {
     "modifications": [
       {
@@ -111,7 +116,7 @@
         "operation": "insert_front",
         "value": [
           {
-            "nexora_health_bar@hud.nexora_health_bar": {}
+            "nexora_health_bar@nexora_health_bar": {}
           }
         ]
       }

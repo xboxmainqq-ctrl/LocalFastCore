@@ -62,7 +62,7 @@ class PlayerPhysicsTest {
 
         for (int i = 0; i < 30; i++) {
             state = PlayerPhysics.tick(world, state,
-                    new PlayerPhysics.Input(0, 1, 90, false, false), 0.05);
+                    new PlayerPhysics.Input(0, 1, -90, false, false), 0.05);
         }
         assertTrue(state.x() < 0.71);
         assertTrue(WorldCollision.canOccupy(world, state.x(), state.y(), state.z()));

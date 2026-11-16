@@ -18,6 +18,8 @@ import java.security.spec.X509EncodedKeySpec;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -168,7 +170,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                                     resourcePacksInfoWasSent, resourcePackStackWasSent);
                     case 0x71 -> handleClientInitialized(message, state, packet);
                     case BedrockPlayerAuthInputCodec.PLAYER_AUTH_INPUT_PACKET_ID ->
-                            handlePlayerAuthInput(state, packet);
+                            handlePlayerAuthInput(message.networkId(), state, packet);
                     default -> packetSink.accept(new PacketEvent(
                             message.networkId(), message.channelLabel(), packet));
                 }
@@ -301,7 +303,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         sendPacket(networkId, worldPacket, true);
                     }
                     sendPacket(networkId, BedrockBiomeDefinitionCodec.createPacket(), true);
-                    sendInitialChunkArea(networkId);
+                    sendInitialChunkArea(networkId, state);
                 }
                 System.out.printf("NEXORA: resource-pack negotiation completed for %s%n", networkId);
             }
@@ -310,7 +312,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
 
-    private void handlePlayerAuthInput(SessionState state, BedrockPacket packet) {
+    private void handlePlayerAuthInput(String networkId, SessionState state, BedrockPacket packet) {
         if (!state.clientInitialized) {
             throw new SecurityException("PlayerAuthInput arrived before client initialization");
         }
@@ -334,22 +336,43 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.yaw = input.yaw();
         state.pitch = input.pitch();
         state.lastInputTick = input.tick();
+
+        int chunkX = Math.floorDiv((int) Math.floor(input.x()), 16);
+        int chunkZ = Math.floorDiv((int) Math.floor(input.z()), 16);
+        if (chunkX != state.lastChunkX || chunkZ != state.lastChunkZ) {
+            sendPacket(networkId, BedrockStartGameCodec.createChunkPublisherUpdate(
+                    (int) Math.floor(input.x()), (int) Math.floor(input.y()), (int) Math.floor(input.z())), true);
+            sendChunkArea(networkId, state, chunkX, chunkZ);
+        }
     }
 
-    private void sendInitialChunkArea(String networkId) {
+    private void sendInitialChunkArea(String networkId, SessionState state) {
         int centerX = Math.floorDiv(world.spawnX(), 16);
         int centerZ = Math.floorDiv(world.spawnZ(), 16);
-        int initialRadius = 1; // 3x3 starter area; dynamic view-distance streaming is a later stage
+        sendChunkArea(networkId, state, centerX, centerZ);
+    }
 
-        for (int ring = 0; ring <= initialRadius; ring++) {
+    private void sendChunkArea(String networkId, SessionState state, int centerX, int centerZ) {
+        int radius = 1;
+        Set<Long> desiredChunks = new HashSet<>();
+        for (int ring = 0; ring <= radius; ring++) {
             for (int offsetZ = -ring; offsetZ <= ring; offsetZ++) {
                 for (int offsetX = -ring; offsetX <= ring; offsetX++) {
                     if (Math.max(Math.abs(offsetX), Math.abs(offsetZ)) != ring) continue;
-                    WorldChunk chunk = world.getChunk(centerX + offsetX, centerZ + offsetZ);
-                    sendPacket(networkId, BedrockLevelChunkCodec.createPacket(chunk), true);
+                    int chunkX = centerX + offsetX;
+                    int chunkZ = centerZ + offsetZ;
+                    long key = ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
+                    desiredChunks.add(key);
+                    if (state.sentChunkKeys.add(key)) {
+                        WorldChunk chunk = world.getChunk(chunkX, chunkZ);
+                        sendPacket(networkId, BedrockLevelChunkCodec.createPacket(chunk), true);
+                    }
                 }
             }
         }
+        state.sentChunkKeys.retainAll(desiredChunks);
+        state.lastChunkX = centerX;
+        state.lastChunkZ = centerZ;
     }
 
     private void handleClientInitialized(
@@ -520,6 +543,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private float yaw;
         private float pitch;
         private long lastInputTick;
+        private int lastChunkX = Integer.MIN_VALUE;
+        private int lastChunkZ = Integer.MIN_VALUE;
+        private final Set<Long> sentChunkKeys = new HashSet<>();
         private long entityId;
         private boolean rejected;
         private int clientProtocol;

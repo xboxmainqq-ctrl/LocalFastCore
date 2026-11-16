@@ -39,7 +39,7 @@ class BedrockStartGameCodecTest {
 
         assertEquals(List.of(0x0b, 0x0a, 0x3c, 0x3b, 0x2b, 0x3e, 0x79),
                 packets.stream().map(BedrockPacket::packetId).toList());
-        assertArrayEquals(new byte[] {0, (byte) 0x82, 1, 0, (byte) 0x80, 1, 0, 0, 0, 0},
+        assertArrayEquals(new byte[] {0, (byte) 0x82, 1, 0, 0x30, 0, 0, 0, 0},
                 packets.get(6).payload());
     }
 

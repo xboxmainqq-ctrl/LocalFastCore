@@ -15,7 +15,7 @@ import java.util.Objects;
  *
  * <p>The serializer emits the protocol-2225 StartGame fields in schema order.
  * The current server sends an empty player-property NBT compound, empty block
- * properties and empty item definitions. Non-empty player properties are rejected
+ * properties. Item definitions are omitted by the pinned protocol serializer. Non-empty player properties are rejected
  * until their NBT schema is implemented.</p>
  */
 public final class BedrockStartGamePacketCodec {
@@ -135,11 +135,10 @@ public final class BedrockStartGamePacketCodec {
         writeBoolean(out, settings.trial());
         BedrockStartGamePrimitivesCodec.writeMovementSettings(out, settings.movementSettings());
 
-        // 11-16: clock, enchantment seed, empty block/item definitions, and server metadata.
+        // 11-16: clock, enchantment seed, empty block properties, and server metadata.
         BedrockBinary.writeLittleEndianInt64(out, settings.levelCurrentTime());
         BedrockBinary.writeVarInt32(out, settings.enchantmentSeed());
         BedrockBinary.writeVarUInt32(out, 0); // BlockPropertyData[]
-        BedrockBinary.writeVarUInt32(out, 0); // ItemDefinitions[]
         BedrockBinary.writeString(out, settings.multiplayerCorrelationId(), 128);
         writeBoolean(out, settings.itemStackNetManagerEnabled());
         BedrockBinary.writeString(out, settings.serverVersion(), 128);

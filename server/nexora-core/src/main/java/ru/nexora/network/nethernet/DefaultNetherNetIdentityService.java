@@ -118,6 +118,12 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
         if (!"default".equals(requiredText(provider, "protocol"))) {
             throw new SecurityException("Unsupported NetherNet identity provider protocol");
         }
+        String providerDomainClaim = requiredText(provider, "domain");
+        String expectedProviderHost = URI.create(expectedIssuer).getHost();
+        if (!providerDomainClaim.equals(expectedIssuer)
+                && !providerDomainClaim.equals(expectedProviderHost)) {
+            throw new SecurityException("Unexpected NetherNet identity provider domain");
+        }
         String assertionJson = requiredText(envelope, "assertion");
         JsonNode assertion = mapper.readTree(assertionJson);
         String token = requiredText(assertion, "token");

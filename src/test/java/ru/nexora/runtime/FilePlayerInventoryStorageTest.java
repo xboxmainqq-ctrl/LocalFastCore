@@ -45,7 +45,8 @@ class FilePlayerInventoryStorageTest {
             assertTrue(inventory.addOne("minecraft:apple"));
         }
         assertEquals(99, inventory.stackAt(0).count());
-        assertFalse(inventory.addOne("minecraft:apple"));
+        assertTrue(inventory.addOne("minecraft:apple"));
+        assertEquals(1, inventory.stackAt(1).count());
 
         storage.save(inventory);
         PlayerInventory loaded = storage.load(playerId);

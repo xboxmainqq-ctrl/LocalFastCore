@@ -1,6 +1,10 @@
 package ru.nexora.runtime;
 
 import org.junit.jupiter.api.Test;
+import io.netty.buffer.Unpooled;
+import org.cloudburstmc.protocol.bedrock.codec.v2225.Bedrock_v2225;
+import org.cloudburstmc.protocol.bedrock.data.PacketRecipient;
+import org.cloudburstmc.protocol.bedrock.packet.StartGamePacket;
 
 import java.nio.ByteBuffer;
 import java.util.List;
@@ -100,6 +104,38 @@ class BedrockStartGamePacketCodecTest {
         assertEquals(0, packet.header().senderSubClientId());
         assertEquals(0, packet.header().targetSubClientId());
         assertTrue(packet.payload().length > 0);
+    }
+
+    @Test
+    void emittedPayloadIsAcceptedByThePinnedBedrock12260Codec() throws Exception {
+        var level = new BedrockLevelSettingsCodec.Settings(
+                77L, 0, new BedrockStartGamePrimitivesCodec.BlockPosition(0, 64, 0),
+                2, -1, 4, "1.26.60");
+        var settings = new BedrockStartGamePacketCodec.Settings(
+                -9L, 123L, 0,
+                new BedrockStartGamePrimitivesCodec.Vec3(1.0f, 65.0f, -2.0f),
+                new BedrockStartGamePrimitivesCodec.Vec2(90.0f, 0.0f),
+                level, "nexora-level", "NEXORA", "", false,
+                new BedrockStartGamePrimitivesCodec.SyncedPlayerMovementSettings(0, false),
+                6000L, -3, "correlation", false, "NEXORA/0.1",
+                BedrockStartGamePacketCodec.PlayerPropertyData.empty(),
+                0L, 0L, 0L, false, true, false,
+                BedrockStartGamePacketCodec.Telemetry.empty());
+
+        ByteBuffer encoded = BedrockStartGamePacketCodec.encodePayload(settings);
+        byte[] bytes = new byte[encoded.remaining()];
+        encoded.get(bytes);
+        var input = Unpooled.wrappedBuffer(bytes);
+        StartGamePacket decoded = (StartGamePacket) Bedrock_v2225.CODEC.tryDecode(
+                Bedrock_v2225.CODEC.createHelper(), input,
+                BedrockStartGamePacketCodec.PACKET_ID, PacketRecipient.CLIENT);
+
+        assertEquals(123L, decoded.getRuntimeEntityId());
+        assertEquals("nexora-level", decoded.getLevelId());
+        assertEquals("NEXORA", decoded.getLevelName());
+        assertEquals(77L, decoded.getSeed());
+        assertEquals(0, input.readableBytes());
+        input.release();
     }
 
     @Test

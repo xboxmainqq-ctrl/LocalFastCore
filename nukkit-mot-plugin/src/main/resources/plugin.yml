@@ -1,0 +1,6 @@
+name: NEXORA
+main: ru.nexora.mot.NexoraMotPlugin
+version: "0.1.0"
+api: ["1.0.0"]
+author: NEXORA
+description: NEXORA server integration for Nukkit-MOT 1.26.60

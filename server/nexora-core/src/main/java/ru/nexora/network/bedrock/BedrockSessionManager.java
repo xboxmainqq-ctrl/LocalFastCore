@@ -488,6 +488,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             SessionState state,
             BedrockPlayerAuthInputCodec.BlockAction action
     ) {
+        if (Math.abs((long) action.x()) > 30_000_000
+                || Math.abs((long) action.z()) > 30_000_000
+                || action.y() < WorldChunk.MIN_Y || action.y() > WorldChunk.MAX_Y
+                || action.face() < 0 || action.face() > 5) {
+            return;
+        }
         if (action.action() == 0) { // START_DESTROY_BLOCK
             if (!isWithinBlockReach(state, action.x(), action.y(), action.z())) return;
             BlockType type = world.getBlock(action.x(), action.y(), action.z());

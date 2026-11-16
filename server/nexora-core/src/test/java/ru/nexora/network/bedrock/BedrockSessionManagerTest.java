@@ -199,18 +199,18 @@ class BedrockSessionManagerTest {
         assertEquals(1.0f, manager.playerPosition("authenticated-client").orElseThrow().x());
         assertEquals(22, outboundFrames.size());
 
-        monotonicClock.set(2_000_000_000L);
-        BedrockPacket approachChunkEdge = new BedrockPacket(0x90, 0, 0,
-                BedrockPlayerAuthInputCodecTest.movementPayload(10.0f, 65.0f, 1.0f, 30.0f, 3L, false));
-        sendClientBatch(manager, "authenticated-client",
-                BedrockBatchCodec.encode(List.of(approachChunkEdge), true, 256));
-        assertEquals(22, outboundFrames.size()); // same chunk: no redundant stream
-
-        monotonicClock.set(3_000_000_000L);
-        BedrockPacket crossChunkBoundary = new BedrockPacket(0x90, 0, 0,
-                BedrockPlayerAuthInputCodecTest.movementPayload(16.5f, 65.0f, 1.0f, 30.0f, 4L, false));
-        sendClientBatch(manager, "authenticated-client",
-                BedrockBatchCodec.encode(List.of(crossChunkBoundary), true, 256));
+        float[] walkPositions = {3.0f, 5.0f, 7.0f, 9.0f, 11.0f, 13.0f, 15.0f, 16.5f};
+        long[] walkTimes = {400_000_000L, 650_000_000L, 900_000_000L, 1_150_000_000L,
+                1_400_000_000L, 1_650_000_000L, 1_900_000_000L, 2_100_000_000L};
+        for (int i = 0; i < walkPositions.length; i++) {
+            monotonicClock.set(walkTimes[i]);
+            BedrockPacket step = new BedrockPacket(0x90, 0, 0,
+                    BedrockPlayerAuthInputCodecTest.movementPayload(
+                            walkPositions[i], 65.0f, 1.0f, 30.0f, 3L + i, false));
+            sendClientBatch(manager, "authenticated-client",
+                    BedrockBatchCodec.encode(List.of(step), true, 256));
+            if (i < walkPositions.length - 1) assertEquals(22, outboundFrames.size());
+        }
         assertEquals(26, outboundFrames.size());
         assertEquals(0x79, decodeOutbound(outboundFrames.get(22), true).packetId());
         for (int index = 23; index < 26; index++) {
@@ -218,9 +218,9 @@ class BedrockSessionManagerTest {
         }
         assertEquals(16.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
 
-        monotonicClock.set(3_010_000_000L);
+        monotonicClock.set(2_110_000_000L);
         BedrockPacket speedHack = new BedrockPacket(0x90, 0, 0,
-                BedrockPlayerAuthInputCodecTest.movementPayload(26.5f, 65.0f, 1.0f, 30.0f, 5L, false));
+                BedrockPlayerAuthInputCodecTest.movementPayload(26.5f, 65.0f, 1.0f, 30.0f, 11L, false));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(speedHack), true, 256));
         assertEquals(16.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
@@ -229,7 +229,7 @@ class BedrockSessionManagerTest {
         monotonicClock.set(3_100_000_000L);
         BedrockPacket startBreak = new BedrockPacket(0x90, 0, 0,
                 BedrockPlayerAuthInputCodecTest.blockActionPayload(
-                        16.5f, 65.0f, 1.0f, 0, 16, 64, 1, 1, 5L));
+                        16.5f, 65.0f, 1.0f, 0, 16, 64, 1, 1, 12L));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(startBreak), true, 256));
         assertEquals(26, outboundFrames.size());

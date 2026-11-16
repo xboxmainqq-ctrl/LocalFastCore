@@ -232,11 +232,14 @@ class BedrockSessionManagerTest {
                 for (int y = 60; y <= 64; y++) world.setBlock(x, y, z, ru.nexora.world.BlockType.AIR);
             }
         }
+        assertEquals(ru.nexora.world.BlockType.AIR, world.getBlock(0, 64, 0));
+        assertEquals(ru.nexora.world.BlockType.AIR, world.getBlock(0, 64, 1));
         for (long tick = 5; tick <= 40 && manager.playerVitals("physics-client").orElseThrow().health() == 18.0f; tick++) {
             BedrockPacket falling = new BedrockPacket(0x90, 0, 0,
                     movementInputPayload(0.5f, 65.0f, 0.715f, 0.0f, tick, 0.0f, 0.0f));
             sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(List.of(falling), true, 256));
         }
+        assertTrue(manager.playerPosition("physics-client").orElseThrow().y() < 65.0f);
         assertEquals(16.0f, manager.playerVitals("physics-client").orElseThrow().health());
         manager.close();
     }

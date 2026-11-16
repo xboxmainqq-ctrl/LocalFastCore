@@ -204,11 +204,11 @@ class BedrockSessionManagerTest {
         BedrockPacket placeStone = new BedrockPacket(0x90, 0, 0,
                 BedrockPlayerAuthInputCodecTest.itemUseMovementPayload(
                         0.5f, 65.0f, 0.715f, 0.0f, 3L,
-                        0, 64, 0, 5, 0, 1, 2,
+                        1, 64, 0, 1, 0, 1, 2,
                         Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.STONE)),
                         0.5f, 65.0f, 0.715f));
         sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(List.of(placeStone), true, 256));
-        assertEquals(ru.nexora.world.BlockType.STONE, world.getBlock(1, 64, 0));
+        assertEquals(ru.nexora.world.BlockType.STONE, world.getBlock(1, 65, 0));
         assertEquals(1, manager.playerInventory("physics-client").orElseThrow().count("minecraft:stone"));
         assertTrue(outboundFrames.subList(beforePlacement, outboundFrames.size()).stream()
                 .map(frame -> decodeOutbound(frame, true).packetId())

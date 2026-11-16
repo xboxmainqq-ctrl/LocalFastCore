@@ -29,20 +29,20 @@ class BedrockInventoryContentCodecTest {
     }
 
     @Test
-    void encodesNonEmptySlotWithDisabledManagerNetIdAndResolvedLegacyItemId() {
+    void encodesNonEmptySlotUsingResolvedProtocolItemDefinition() {
         PlayerInventory inventory = new PlayerInventory();
-        inventory.setSlot(0, new ItemStack("minecraft:stone", 3, 64));
+        inventory.setSlot(0, new ItemStack("nexora:arcane_shard", 3, 64));
 
         BedrockPacket packet = BedrockInventoryContentCodec.createPlayerInventory(
                 inventory, itemId -> {
-                    assertEquals("minecraft:stone", itemId);
-                    return 1;
+                    assertEquals("nexora:arcane_shard", itemId);
+                    return new BedrockInventoryContentCodec.ItemDefinition(257, 0, 0, new byte[0]);
                 });
 
         byte[] payload = packet.payload();
         assertArrayEquals(new byte[] {
                 2,       // VarInt32(1): non-empty ItemStackNetId
-                1, 0,    // legacy item ID 1
+                1, 1,    // legacy item ID 257
                 3, 0,    // stack size 3
                 0,       // aux value
                 0,       // block runtime ID
@@ -52,13 +52,38 @@ class BedrockInventoryContentCodecTest {
     }
 
     @Test
-    void refusesToInventAnUnknownOrInvalidBedrockItemId() {
+    void encodesBlockRuntimeIdAuxValueAndUserDataFromDefinition() {
+        PlayerInventory inventory = new PlayerInventory();
+        inventory.setSlot(0, new ItemStack("nexora:runed_block", 2, 64));
+        byte[] userData = {1, 2};
+
+        BedrockPacket packet = BedrockInventoryContentCodec.createPlayerInventory(
+                inventory, ignored -> new BedrockInventoryContentCodec.ItemDefinition(
+                        258, 2, 1234, userData));
+
+        userData[0] = 99; // ItemDefinition must own a defensive copy.
+        assertArrayEquals(new byte[] {
+                2,             // ItemStackNetId = 1
+                2, 1,          // legacy item ID 258
+                2, 0,          // stack size
+                2,             // aux value
+                (byte) 0xd2, 9,// block runtime ID 1234
+                2, 1, 2        // user data string
+        }, Arrays.copyOfRange(packet.payload(), 2, 13));
+    }
+
+    @Test
+    void rejectsMissingOrInvalidBedrockItemDefinitions() {
         PlayerInventory inventory = new PlayerInventory();
         inventory.setSlot(0, new ItemStack("nexora:arcane_shard", 1, 64));
 
         assertThrows(IllegalArgumentException.class,
-                () -> BedrockInventoryContentCodec.createPlayerInventory(inventory, ignored -> 0));
+                () -> BedrockInventoryContentCodec.createPlayerInventory(inventory, ignored -> null));
         assertThrows(IllegalArgumentException.class,
-                () -> BedrockInventoryContentCodec.createPlayerInventory(inventory, ignored -> 40_000));
+                () -> BedrockInventoryContentCodec.createPlayerInventory(inventory,
+                        ignored -> new BedrockInventoryContentCodec.ItemDefinition(0, 0, 0, new byte[0])));
+        assertThrows(IllegalArgumentException.class,
+                () -> BedrockInventoryContentCodec.createPlayerInventory(inventory,
+                        ignored -> new BedrockInventoryContentCodec.ItemDefinition(40_000, 0, 0, new byte[0])));
     }
 }

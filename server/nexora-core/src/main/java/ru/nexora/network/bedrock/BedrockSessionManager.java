@@ -7,6 +7,7 @@ import ru.nexora.network.nethernet.NetherNetDataChannelListener;
 import ru.nexora.network.nethernet.NetherNetInboundPipeline;
 import ru.nexora.network.nethernet.NetherNetMessageFramer;
 import ru.nexora.world.FlatWorldGenerator;
+import ru.nexora.world.BlockType;
 import ru.nexora.world.World;
 import ru.nexora.world.WorldChunk;
 
@@ -337,6 +338,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.pitch = input.pitch();
         state.lastInputTick = input.tick();
 
+        for (BedrockPlayerAuthInputCodec.BlockAction action : input.blockActions()) {
+            handleBlockAction(networkId, state, action, input.tick());
+        }
+
         int chunkX = Math.floorDiv((int) Math.floor(input.x()), 16);
         int chunkZ = Math.floorDiv((int) Math.floor(input.z()), 16);
         if (chunkX != state.lastChunkX || chunkZ != state.lastChunkZ) {
@@ -344,6 +349,69 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     (int) Math.floor(input.x()), (int) Math.floor(input.y()), (int) Math.floor(input.z())), true);
             sendChunkArea(networkId, state, chunkX, chunkZ);
         }
+    }
+
+    private void handleBlockAction(
+            String networkId,
+            SessionState state,
+            BedrockPlayerAuthInputCodec.BlockAction action,
+            long tick
+    ) {
+        if (action.action() == 0) { // START_DESTROY_BLOCK
+            if (!isWithinBlockReach(state, action.x(), action.y(), action.z())) return;
+            BlockType type = world.getBlock(action.x(), action.y(), action.z());
+            if (type == BlockType.AIR || type == BlockType.BEDROCK) return;
+            state.breakTarget = new BreakTarget(action.x(), action.y(), action.z(), tick);
+            return;
+        }
+
+        if (action.action() == 1) { // ABORT_DESTROY_BLOCK
+            if (matchesBreakTarget(state, action)) state.breakTarget = null;
+            return;
+        }
+
+        if (action.action() != 2 && action.action() != 26) return; // STOP / PREDICT_DESTROY_BLOCK
+        BreakTarget target = state.breakTarget;
+        if (target == null || !matchesBreakTarget(target, action)) return;
+        if (tick < target.startedAtTick()) return;
+
+        BlockType current = world.getBlock(target.x(), target.y(), target.z());
+        int requiredTicks = requiredBreakTicks(current);
+        if (requiredTicks == Integer.MAX_VALUE || tick - target.startedAtTick() < requiredTicks) return;
+
+        world.setBlock(target.x(), target.y(), target.z(), BlockType.AIR);
+        state.breakTarget = null;
+        BedrockPacket update = BedrockBlockUpdateCodec.createPacket(
+                target.x(), target.y(), target.z(), BlockType.AIR);
+        for (var entry : sessions.entrySet()) {
+            SessionState recipient = entry.getValue();
+            synchronized (recipient) {
+                if (recipient.clientInitialized) sendPacket(entry.getKey(), update, true);
+            }
+        }
+    }
+
+    private static boolean matchesBreakTarget(SessionState state, BedrockPlayerAuthInputCodec.BlockAction action) {
+        return matchesBreakTarget(state.breakTarget, action);
+    }
+
+    private static boolean matchesBreakTarget(BreakTarget target, BedrockPlayerAuthInputCodec.BlockAction action) {
+        return target != null && target.x() == action.x() && target.y() == action.y() && target.z() == action.z();
+    }
+
+    private static boolean isWithinBlockReach(SessionState state, int x, int y, int z) {
+        double dx = state.positionX - (x + 0.5);
+        double dy = state.positionY - (y + 0.5);
+        double dz = state.positionZ - (z + 0.5);
+        return dx * dx + dy * dy + dz * dz <= 36.0;
+    }
+
+    private static int requiredBreakTicks(BlockType type) {
+        return switch (type) {
+            case AIR, BEDROCK -> Integer.MAX_VALUE;
+            case DIRT, GRASS_BLOCK -> 12;
+            case STONE -> 150;
+        };
     }
 
     private void sendInitialChunkArea(String networkId, SessionState state) {
@@ -528,6 +596,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     public record PlayerPosition(float x, float y, float z, float yaw, float pitch, long tick) {
     }
 
+    private record BreakTarget(int x, int y, int z, long startedAtTick) {
+    }
+
     private static final class SessionState {
         private boolean compressionNegotiated;
         private volatile boolean loginAuthenticated;
@@ -546,6 +617,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private int lastChunkX = Integer.MIN_VALUE;
         private int lastChunkZ = Integer.MIN_VALUE;
         private final Set<Long> sentChunkKeys = new HashSet<>();
+        private BreakTarget breakTarget;
         private long entityId;
         private boolean rejected;
         private int clientProtocol;

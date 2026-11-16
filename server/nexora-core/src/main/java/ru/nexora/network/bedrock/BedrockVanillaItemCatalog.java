@@ -24,6 +24,17 @@ public final class BedrockVanillaItemCatalog {
         addBlock(entries, "stone", 1, BlockType.STONE);
         addBlock(entries, "grass_block", 2, BlockType.GRASS_BLOCK);
         addBlock(entries, "dirt", 3, BlockType.DIRT);
+        addBlock(entries, "cobblestone", 4, BlockType.COBBLESTONE);
+        addBlock(entries, "gravel", 13, BlockType.GRAVEL);
+        addBlock(entries, "glass", 20, BlockType.GLASS);
+        addBlock(entries, "obsidian", 49, BlockType.OBSIDIAN);
+        addBlock(entries, "netherrack", 87, BlockType.NETHERRACK);
+        addBlock(entries, "end_stone", 121, BlockType.END_STONE);
+        addBlock(entries, "coal_block", 173, BlockType.COAL_BLOCK);
+        addBlock(entries, "iron_block", 42, BlockType.IRON_BLOCK);
+        addBlock(entries, "gold_block", 41, BlockType.GOLD_BLOCK);
+        addBlock(entries, "diamond_block", 57, BlockType.DIAMOND_BLOCK);
+        addBlock(entries, "emerald_block", 133, BlockType.EMERALD_BLOCK);
         add(entries, "diamond", 306, 2, 64);
         add(entries, "iron_ingot", 307, 2, 64);
         add(entries, "gold_ingot", 308, 2, 64);

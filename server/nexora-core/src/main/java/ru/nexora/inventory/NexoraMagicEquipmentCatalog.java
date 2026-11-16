@@ -68,6 +68,31 @@ public final class NexoraMagicEquipmentCatalog {
                         EquipmentAttribute.MAX_HEALTH, 5.0,
                         EquipmentAttribute.FIRE_RESISTANCE, 0.20),
                         EquipmentSlot.ARTIFACT_LEFT, EquipmentSlot.ARTIFACT_RIGHT)
+                .registerAttributes("minecraft:leather_helmet", Map.of(EquipmentAttribute.ARMOR, 1.0))
+                .registerAttributes("minecraft:leather_chestplate", Map.of(EquipmentAttribute.ARMOR, 3.0))
+                .registerAttributes("minecraft:leather_leggings", Map.of(EquipmentAttribute.ARMOR, 2.0))
+                .registerAttributes("minecraft:leather_boots", Map.of(EquipmentAttribute.ARMOR, 1.0))
+                .registerAttributes("minecraft:chainmail_helmet", Map.of(EquipmentAttribute.ARMOR, 2.0))
+                .registerAttributes("minecraft:chainmail_chestplate", Map.of(EquipmentAttribute.ARMOR, 5.0))
+                .registerAttributes("minecraft:chainmail_leggings", Map.of(EquipmentAttribute.ARMOR, 4.0))
+                .registerAttributes("minecraft:chainmail_boots", Map.of(EquipmentAttribute.ARMOR, 1.0))
+                .registerAttributes("minecraft:iron_helmet", Map.of(EquipmentAttribute.ARMOR, 2.0))
+                .registerAttributes("minecraft:iron_chestplate", Map.of(EquipmentAttribute.ARMOR, 6.0))
+                .registerAttributes("minecraft:iron_leggings", Map.of(EquipmentAttribute.ARMOR, 5.0))
+                .registerAttributes("minecraft:iron_boots", Map.of(EquipmentAttribute.ARMOR, 2.0))
+                .registerAttributes("minecraft:golden_helmet", Map.of(EquipmentAttribute.ARMOR, 2.0))
+                .registerAttributes("minecraft:golden_chestplate", Map.of(EquipmentAttribute.ARMOR, 5.0))
+                .registerAttributes("minecraft:golden_leggings", Map.of(EquipmentAttribute.ARMOR, 3.0))
+                .registerAttributes("minecraft:golden_boots", Map.of(EquipmentAttribute.ARMOR, 1.0))
+                .registerAttributes("minecraft:diamond_helmet", Map.of(EquipmentAttribute.ARMOR, 3.0))
+                .registerAttributes("minecraft:diamond_chestplate", Map.of(EquipmentAttribute.ARMOR, 8.0))
+                .registerAttributes("minecraft:diamond_leggings", Map.of(EquipmentAttribute.ARMOR, 6.0))
+                .registerAttributes("minecraft:diamond_boots", Map.of(EquipmentAttribute.ARMOR, 3.0))
+                .registerAttributes("minecraft:netherite_helmet", Map.of(EquipmentAttribute.ARMOR, 3.0))
+                .registerAttributes("minecraft:netherite_chestplate", Map.of(EquipmentAttribute.ARMOR, 8.0))
+                .registerAttributes("minecraft:netherite_leggings", Map.of(EquipmentAttribute.ARMOR, 6.0))
+                .registerAttributes("minecraft:netherite_boots", Map.of(EquipmentAttribute.ARMOR, 3.0))
+                .registerAttributes("minecraft:turtle_helmet", Map.of(EquipmentAttribute.ARMOR, 2.0))
                 .build();
     }
 }

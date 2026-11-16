@@ -14,8 +14,8 @@ public final class BedrockTakeItemActorCodec {
             throw new IllegalArgumentException("Expected TakeItemActor packet 0x11");
         }
         Reader in = new Reader(packet.payload());
-        long itemRuntimeId = in.varUInt64();
         long playerRuntimeId = in.varUInt64();
+        long itemRuntimeId = in.varUInt64();
         in.requireExhausted();
         if (itemRuntimeId == 0 || playerRuntimeId == 0) {
             throw new IllegalArgumentException("TakeItemActor IDs must be non-zero");
@@ -28,8 +28,8 @@ public final class BedrockTakeItemActorCodec {
             throw new IllegalArgumentException("TakeItemActor IDs must be positive");
         }
         Writer out = new Writer();
-        out.varUInt64(itemRuntimeId);
         out.varUInt64(playerRuntimeId);
+        out.varUInt64(itemRuntimeId);
         return new BedrockPacket(TAKE_ITEM_ACTOR_PACKET_ID, 0, 0, out.bytes());
     }
 

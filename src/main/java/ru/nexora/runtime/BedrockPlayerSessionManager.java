@@ -207,7 +207,7 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
                             session.enqueueItemUseAction(new ItemUseAction(use.getActionType(), use.getHand(),
                                     use.getHotbarSlot(), use.getBlockFace(),
                                     new BlockPosition(target.getX(), target.getY(), target.getZ()),
-                                    use.getItemInHand().getDefinition().getIdentifier()));
+                                    use.getItemInHand().getDefinition().identifier()));
                         }
                     } else if (decoded instanceof PlayerActionPacket action) {
                         PlayerActionType type = action.getAction();
@@ -751,7 +751,7 @@ public final class BedrockPlayerSessionManager implements AutoCloseable {
     }
 
     private record PlayerInput(float x, float y, float z,
-                               float pitch, float headYaw, long tick, boolean onGround) {
+                               float yaw, float pitch, float headYaw, long tick, boolean onGround) {
         private static PlayerInput from(PlayerAuthInputPacket packet) {
             Vector3f position = packet.getPosition();
             Vector3f rotation = packet.getRotation();

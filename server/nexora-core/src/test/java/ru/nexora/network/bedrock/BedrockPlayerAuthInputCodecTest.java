@@ -98,6 +98,19 @@ class BedrockPlayerAuthInputCodecTest {
     }
 
     @Test
+    void decodesClickAirFoodUseWithUnsignedFaceSentinel() {
+        byte[] payload = foodUseMovementPayload(
+                0.5f, 65.0f, 0.5f, 0.0f, 21L,
+                0, 261, 1, 0.5f, 66.62f, 0.5f);
+        var input = BedrockPlayerAuthInputCodec.decode(new BedrockPacket(0x90, 0, 0, payload));
+        assertNotNull(input.itemUseTransaction());
+        assertEquals(1, input.itemUseTransaction().actionType());
+        assertEquals(255, input.itemUseTransaction().face());
+        assertEquals(261, input.itemUseTransaction().item().runtimeItemId());
+        assertEquals(1, input.itemUseTransaction().item().count());
+    }
+
+    @Test
     void decodesProtocol2225BlockActionsInWireOrder() {
         BedrockPlayerAuthInputCodec.PlayerInput input =
                 BedrockPlayerAuthInputCodec.decode(new BedrockPacket(0x90, 0, 0,
@@ -238,6 +251,45 @@ class BedrockPlayerAuthInputCodecTest {
         writeFloat(output, 0); writeFloat(output, 0);
         writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0);
         writeFloat(output, 0); writeFloat(output, 0);
+        return output.toByteArray();
+    }
+
+    static byte[] foodUseMovementPayload(
+            float playerX, float playerY, float playerZ, float yaw, long tick,
+            int slot, int runtimeItemId, int count,
+            float fromX, float fromY, float fromZ
+    ) {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        writeFloat(output, 0); writeFloat(output, yaw);
+        writeFloat(output, playerX); writeFloat(output, playerY); writeFloat(output, playerZ);
+        writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, yaw);
+        writeVarUInt(output, 1);
+        writeVarInt(output, BedrockPlayerAuthInputCodec.InputAction.PERFORM_ITEM_INTERACTION);
+        writeVarUInt(output, 2); writeVarUInt(output, 0); writeVarInt(output, 0);
+        writeFloat(output, 0); writeFloat(output, 0);
+        writeVarULong(output, tick);
+        writeVarInt(output, 0); // legacy request ID
+        writeVarUInt(output, 0); // inventory actions
+        writeVarInt(output, 1); // ItemUseActionType.ClickAir
+        output.write(1); // Player Input trigger
+        writeVarInt(output, 0); writeVarInt(output, 0); writeVarInt(output, 0);
+        output.write(255); // no block face for click-air
+        writeVarInt(output, slot);
+        output.write(0); // main hand
+        writeShort(output, runtimeItemId);
+        writeShort(output, count);
+        writeVarUInt(output, 0); // aux value
+        output.write(0); // has StackNetId
+        writeVarUInt(output, 0); // block runtime ID
+        writeVarUInt(output, 0); // user data
+        writeFloat(output, fromX); writeFloat(output, fromY); writeFloat(output, fromZ);
+        writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0); // click position
+        writeVarInt(output, 0); // no target block
+        output.write(1); // prediction success
+        output.write(0); // cooldown off
+        writeFloat(output, 0); writeFloat(output, 0); // analog move
+        writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0); // camera
+        writeFloat(output, 0); writeFloat(output, 0); // raw move
         return output.toByteArray();
     }
 

@@ -156,17 +156,17 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             int status = clientProtocol < serverProtocol
                     ? LOGIN_FAILED_CLIENT_OLD
                     : LOGIN_FAILED_SERVER_OLD;
-            sendPacket(message.networkId(), BedrockBatchCodec.createPlayStatus(status), false);
             state.rejected = true;
+            sendPacket(message.networkId(), BedrockBatchCodec.createPlayStatus(status), false);
             System.out.printf("NEXORA: rejected Bedrock protocol %d; server requires %d%n",
                     clientProtocol, serverProtocol);
             return;
         }
 
-        sendPacket(message.networkId(), BedrockBatchCodec.createNetworkSettings(
-                compressionThreshold, BedrockBatchCodec.COMPRESSION_ZLIB), false);
         state.compressionNegotiated = true;
         state.clientProtocol = clientProtocol;
+        sendPacket(message.networkId(), BedrockBatchCodec.createNetworkSettings(
+                compressionThreshold, BedrockBatchCodec.COMPRESSION_ZLIB), false);
         System.out.printf("NEXORA: negotiated Bedrock protocol %d for %s%n",
                 clientProtocol, message.networkId());
     }
@@ -209,9 +209,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
         // NetherNet's DTLS layer provides transport encryption; no Bedrock application cipher is enabled.
         state.clientHandshakeReceived = true;
+        state.resourcePacksInfoSent = true;
         sendPacket(networkId, BedrockBatchCodec.createPlayStatus(LOGIN_SUCCESS), true);
         sendPacket(networkId, BedrockBatchCodec.createResourcePacksInfo(), true);
-        state.resourcePacksInfoSent = true;
     }
 
     private void handleResourcePackResponse(String networkId, SessionState state, BedrockPacket packet) {
@@ -227,8 +227,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 if (state.resourcePackStackSent) {
                     throw new SecurityException("Duplicate all-packs-downloaded response");
                 }
-                sendPacket(networkId, BedrockBatchCodec.createResourcePackStack(serverVersion), true);
                 state.resourcePackStackSent = true;
+                sendPacket(networkId, BedrockBatchCodec.createResourcePackStack(serverVersion), true);
             }
             case 3 -> {
                 if (!state.resourcePackStackSent) {

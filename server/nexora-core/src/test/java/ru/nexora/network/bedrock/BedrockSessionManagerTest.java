@@ -1,10 +1,17 @@
 package ru.nexora.network.bedrock;
 
 import org.junit.jupiter.api.Test;
+import ru.nexora.network.nethernet.NetherNetClientIdentity;
 import ru.nexora.network.nethernet.NetherNetMessageFramer;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.Signature;
+import java.security.spec.ECGenParameterSpec;
+import java.util.Base64;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -72,6 +79,154 @@ class BedrockSessionManagerTest {
 
         assertThrows(IllegalArgumentException.class,
                 () -> manager.onFrame("client-2", "UnreliableDataChannel", frame));
+    }
+
+    @Test
+    void authenticatesLoginAndCompletesEmptyResourcePackExchange() throws Exception {
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
+        generator.initialize(new ECGenParameterSpec("secp384r1"));
+        KeyPair clientKey = generator.generateKeyPair();
+
+        List<byte[]> outboundFrames = new ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, (networkId, label, frame) -> outboundFrames.add(frame), event -> {});
+        manager.onIdentity("authenticated-client", new NetherNetClientIdentity(
+                "game-server-token",
+                clientKey.getPublic().getEncoded(),
+                "123456789",
+                "TestPlayer",
+                "playfab-id",
+                "20CA2",
+                null
+        ));
+
+        byte[] protocol = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(2225).array();
+        BedrockPacket request = new BedrockPacket(
+                BedrockBatchCodec.REQUEST_NETWORK_SETTINGS_PACKET_ID, 0, 0, protocol);
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(request), false, 256));
+
+        String rawClientDataToken = signClientDataToken(clientKey);
+        String certificate = "{\"chain\":[]}";
+        String chainJson = "{\"Certificate\":\"" + certificate.replace("\\", "\\\\")
+                .replace("\"", "\\\"") + "\",\"AuthenticationType\":0,\"Token\":\"game-server-token\"}";
+        BedrockPacket login = new BedrockPacket(1, 0, 0,
+                loginPayload(2225, connectionRequest(chainJson, rawClientDataToken)));
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(login), true, 256));
+
+        assertEquals(1, manager.authenticatedPlayerCount());
+
+        BedrockPacket clientHandshake = new BedrockPacket(
+                BedrockBatchCodec.CLIENT_TO_SERVER_HANDSHAKE_PACKET_ID, 0, 0, new byte[0]);
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(clientHandshake), true, 256));
+
+        assertEquals(3, outboundFrames.size());
+        assertEquals(BedrockBatchCodec.PLAY_STATUS_PACKET_ID,
+                decodeOutbound(outboundFrames.get(1), true).packetId());
+        assertEquals(BedrockBatchCodec.RESOURCE_PACKS_INFO_PACKET_ID,
+                decodeOutbound(outboundFrames.get(2), true).packetId());
+
+        BedrockPacket allPacksDownloaded = resourcePackResponse(2, "downloadingfinished");
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(allPacksDownloaded), true, 256));
+        assertEquals(BedrockBatchCodec.RESOURCE_PACK_STACK_PACKET_ID,
+                decodeOutbound(outboundFrames.get(3), true).packetId());
+
+        BedrockPacket stackCompleted = resourcePackResponse(3, "resourcepackstackfinished");
+        sendClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(stackCompleted), true, 256));
+        assertEquals(1, manager.resourcePackReadyCount());
+    }
+
+    private static BedrockPacket decodeOutbound(byte[] frame, boolean compressed) {
+        NetherNetMessageFramer.Reassembler reassembler = new NetherNetMessageFramer.Reassembler();
+        byte[] payload = reassembler.accept(frame, true).orElseThrow();
+        return BedrockBatchCodec.decode(payload, compressed).getFirst();
+    }
+
+    private static BedrockPacket resourcePackResponse(int response, String name) {
+        ByteArrayOutputStream body = new ByteArrayOutputStream();
+        writeVarInt(body, response);
+        writeString(body, name);
+        return new BedrockPacket(
+                BedrockBatchCodec.RESOURCE_PACK_CLIENT_RESPONSE_PACKET_ID, 0, 0, body.toByteArray());
+    }
+
+    private static byte[] loginPayload(int protocol, byte[] connectionRequest) {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        output.writeBytes(ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(protocol).array());
+        writeVarInt(output, connectionRequest.length);
+        output.writeBytes(connectionRequest);
+        return output.toByteArray();
+    }
+
+    private static byte[] connectionRequest(String chainJson, String rawToken) {
+        byte[] chain = chainJson.getBytes(StandardCharsets.UTF_8);
+        byte[] token = rawToken.getBytes(StandardCharsets.UTF_8);
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        output.writeBytes(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(chain.length).array());
+        output.writeBytes(chain);
+        output.writeBytes(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(token.length).array());
+        output.writeBytes(token);
+        return output.toByteArray();
+    }
+
+    private static String signClientDataToken(KeyPair keyPair) throws Exception {
+        String publicKey = Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded());
+        String header = base64Url("{\"alg\":\"ES384\",\"x5u\":\"" + publicKey + "\"}");
+        long now = java.time.Instant.now().getEpochSecond();
+        String payload = base64Url("{\"exp\":" + (now + 3600) + ",\"nbf\":" + (now - 60) + "}");
+        String signingInput = header + "." + payload;
+        Signature signer = Signature.getInstance("SHA384withECDSA");
+        signer.initSign(keyPair.getPrivate());
+        signer.update(signingInput.getBytes(StandardCharsets.US_ASCII));
+        byte[] signature = derToJose(signer.sign());
+        return signingInput + "." + Base64.getUrlEncoder().withoutPadding().encodeToString(signature);
+    }
+
+    private static String base64Url(String value) {
+        return Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void writeString(ByteArrayOutputStream output, String value) {
+        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+        writeVarInt(output, bytes.length);
+        output.writeBytes(bytes);
+    }
+
+    private static void writeVarInt(ByteArrayOutputStream output, int value) {
+        do {
+            int current = value & 0x7f;
+            value >>>= 7;
+            if (value != 0) current |= 0x80;
+            output.write(current);
+        } while (value != 0);
+    }
+
+    private static byte[] derToJose(byte[] der) {
+        int offset = 2;
+        if (der[offset++] != 0x02) throw new IllegalArgumentException("Invalid ECDSA signature");
+        int rLength = der[offset++] & 0xff;
+        byte[] r = new byte[rLength];
+        System.arraycopy(der, offset, r, 0, rLength);
+        offset += rLength;
+        if (der[offset++] != 0x02) throw new IllegalArgumentException("Invalid ECDSA signature");
+        int sLength = der[offset++] & 0xff;
+        byte[] s = new byte[sLength];
+        System.arraycopy(der, offset, s, 0, sLength);
+        byte[] jose = new byte[96];
+        copyFixed(r, jose, 0);
+        copyFixed(s, jose, 48);
+        return jose;
+    }
+
+    private static void copyFixed(byte[] value, byte[] output, int offset) {
+        int first = value.length > 1 && value[0] == 0 ? 1 : 0;
+        int length = value.length - first;
+        System.arraycopy(value, first, output, offset + 48 - length, length);
     }
 
     private static void sendClientBatch(BedrockSessionManager manager, String id, byte[] batch) {

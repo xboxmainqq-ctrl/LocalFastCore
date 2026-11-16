@@ -71,6 +71,26 @@ java -jar server/nexora-core/target/nexora-core-0.1.0-SNAPSHOT.jar 0.0.0.0 19132
 
 The WebRTC implementation uses native libraries supplied by webrtc-java; the deployment host must match a published native classifier and have the required system runtime libraries installed. If the VPS is behind NAT, set NEXORA_STUN_URLS to a semicolon-separated list of STUN URLs so the answer can include a public server-reflexive ICE candidate. Leave it empty on a directly reachable public host; each configured STUN server adds connection-setup latency.
 
+## HTTPS and firewall deployment
+
+For production, prefer HTTPS signaling. A reverse proxy can terminate TLS while NEXORA serves HTTP on loopback:
+
+~~~sh
+NEXORA_HTTP_BIND=127.0.0.1
+NEXORA_UDP_PORT_MIN=30000
+NEXORA_UDP_PORT_MAX=30199
+~~~
+
+Copy Caddyfile.example to your Caddy configuration and replace example.com with a domain whose DNS points to the VPS. Caddy obtains and renews the TLS certificate automatically.
+
+Open the following ports in the VPS firewall:
+
+- TCP 443 for HTTPS signaling through Caddy (or TCP 19132 for direct HTTP signaling).
+- UDP 30000-30199 for WebRTC ICE/DTLS/SCTP traffic.
+- UDP 19132 only for the legacy RakNet discovery experiment.
+
+The WebRTC UDP range is configurable with NEXORA_UDP_PORT_MIN and NEXORA_UDP_PORT_MAX. Set both to 0 to use the operating system's default ephemeral range. The HTTP listener bind address is configurable with NEXORA_HTTP_BIND; it defaults to the main bind host.
+
 ## Identity key safety
 
 The first initialization of DefaultNetherNetIdentityService creates:

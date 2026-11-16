@@ -21,6 +21,7 @@ import ru.nexora.world.FlatWorldGenerator;
 import ru.nexora.world.BlockType;
 import ru.nexora.world.World;
 import ru.nexora.world.WorldItemEntity;
+import ru.nexora.world.WorldItemEntityManager;
 import ru.nexora.world.WorldChunk;
 import ru.nexora.world.WorldCollision;
 import ru.nexora.world.WorldRaycast;
@@ -1205,6 +1206,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             if (!state.loginAuthenticated || !state.clientInitialized || state.identity == null) {
                 return Optional.empty();
             }
+            if (inventorySlot < 0 || inventorySlot >= state.inventory.size()) return Optional.empty();
             Optional<ru.nexora.inventory.ItemStack> current = state.inventory.getSlot(inventorySlot);
             if (current.isEmpty() || quantity < 1 || quantity > current.orElseThrow().count()) {
                 return Optional.empty();
@@ -1222,7 +1224,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                                 stack.maxStackSize()));
             }
 
-            WorldItemEntity entity;
+            WorldItemEntity entity = null;
             try {
                 entity = world.itemEntities().spawn(
                         new ru.nexora.inventory.ItemStack(stack.itemId(), quantity, stack.maxStackSize()),
@@ -1232,6 +1234,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         state.identity.xuid());
                 saveInventory(state);
             } catch (IOException | RuntimeException exception) {
+                if (entity != null) world.itemEntities().remove(entity.runtimeId());
                 state.inventory.restore(previousInventory, previousSelectedSlot);
                 if (exception instanceof IOException ioException) throw ioException;
                 throw exception;
@@ -1264,6 +1267,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
         WorldItemEntity entity = world.itemEntities().find(request.itemRuntimeId()).orElse(null);
         if (entity == null) return;
+        if (itemRegistry.findByIdentifier(entity.stack().itemId()) == null) {
+            throw new SecurityException("Dropped item has no registered Bedrock definition");
+        }
+        List<Optional<ru.nexora.inventory.ItemStack>> previousInventory = state.inventory.snapshot();
+        int previousSelectedSlot = state.inventory.selectedHotbarSlot();
         boolean pickedUp = world.itemEntities().pickup(
                 entity.runtimeId(), state.inventory, state.identity.xuid(),
                 state.positionX, state.positionY, state.positionZ, System.currentTimeMillis());
@@ -1275,9 +1283,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         try {
             saveInventory(state);
         } catch (IOException exception) {
-            // Restore the actor if persistence fails; the inventory update is rolled back from
-            // the pre-pickup snapshot by the caller path below in future transactional storage.
-            state.rejected = true;
+            state.inventory.restore(previousInventory, previousSelectedSlot);
+            world.itemEntities().restore(entity);
+            sendInventoryAndEquipmentState(networkId, state);
+            sendPacket(networkId, BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry), true);
             throw new IllegalStateException("Unable to persist picked-up item inventory", exception);
         }
         sendInventoryAndEquipmentState(networkId, state);

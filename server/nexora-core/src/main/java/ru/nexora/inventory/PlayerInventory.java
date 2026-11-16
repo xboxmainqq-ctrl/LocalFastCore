@@ -115,6 +115,49 @@ public final class PlayerInventory {
         return true;
     }
 
+    /**
+     * Moves up to quantity items from one slot to another.
+     *
+     * The operation is atomic. It only moves into an empty slot or a compatible
+     * stack with available capacity; it never silently swaps or overwrites items.
+     * Returns the number of items moved.
+     */
+    public synchronized int move(int sourceSlot, int destinationSlot, int quantity) {
+        checkSlot(sourceSlot);
+        checkSlot(destinationSlot);
+        if (quantity < 1) throw new IllegalArgumentException("quantity must be positive");
+        if (sourceSlot == destinationSlot) return 0;
+
+        ItemStack source = slots[sourceSlot];
+        if (source == null) return 0;
+
+        ItemStack destination = slots[destinationSlot];
+        if (destination != null && !destination.canStackWith(source)) return 0;
+
+        int capacity = destination == null
+                ? source.maxStackSize()
+                : destination.maxStackSize() - destination.count();
+        int moved = Math.min(Math.min(quantity, source.count()), capacity);
+        if (moved <= 0) return 0;
+
+        slots[sourceSlot] = moved == source.count()
+                ? null : source.withCount(source.count() - moved);
+        slots[destinationSlot] = destination == null
+                ? source.withCount(moved)
+                : destination.withCount(destination.count() + moved);
+        return moved;
+    }
+
+    /** Swaps two slots atomically without dropping or merging either stack. */
+    public synchronized void swapSlots(int firstSlot, int secondSlot) {
+        checkSlot(firstSlot);
+        checkSlot(secondSlot);
+        if (firstSlot == secondSlot) return;
+        ItemStack first = slots[firstSlot];
+        slots[firstSlot] = slots[secondSlot];
+        slots[secondSlot] = first;
+    }
+
     public synchronized int count(String itemId) {
         Objects.requireNonNull(itemId, "itemId");
         int total = 0;

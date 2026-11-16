@@ -37,7 +37,7 @@ Official Mojang onboarding guide: https://mojang.github.io/bedrock-protocol-docs
 
 ## Not implemented / not wired yet
 
-- The NetherNet signaling server, WebRTC negotiator and identity service are not yet started by the main server bootstrap.
+- The main bootstrap now starts the NetherNet HTTP signaling endpoint and the WebRTC answerer alongside the legacy UDP discovery experiment.
 - No HTTPS listener or TLS reverse-proxy configuration yet. HTTPS is recommended for the signaling endpoint; plaintext HTTP relies on client TOFU for the server identity.
 - No game packet-batch codec, compression, Bedrock login, encryption/session state or resource-pack negotiation.
 - No player session lifecycle, player spawn, world, entities, inventory or persistence.
@@ -50,7 +50,7 @@ Initial stable game target: **Bedrock 1.26.62 / game protocol 2225**. The transp
 
 ## Legacy RakNet discovery experiment
 
-The current bootstrap still runs the legacy UDP discovery responder on port 19132. This is not a playable server and modern Bedrock clients may not connect through it.
+The bootstrap runs the modern NetherNet signaling endpoint over TCP and keeps the legacy RakNet discovery responder over UDP on the same port. The transport path can establish WebRTC data channels, but it is not yet a playable server.
 
 Build and test:
 

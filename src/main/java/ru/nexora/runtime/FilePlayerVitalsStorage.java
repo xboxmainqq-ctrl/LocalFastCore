@@ -29,7 +29,7 @@ public final class FilePlayerVitalsStorage {
                 || !Files.exists(file, LinkOption.NOFOLLOW_LINKS)) return new PlayerVitals(playerId);
         validateDirectory();
         if (Files.isSymbolicLink(file) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)
-                || Files.size(file) != 4 + 2 + 16 + 4 + 4 + 4) {
+                || Files.size(file) != 4 + 2 + 16 + 4 + 4 + 4 + 4) {
             throw new IOException("Invalid player vitals file");
         }
         CRC32C crc = new CRC32C();

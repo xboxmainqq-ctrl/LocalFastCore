@@ -23,7 +23,7 @@ public final class BedrockModalFormCodec {
         ByteArrayOutputStream out = new ByteArrayOutputStream(jsonBytes.length + 8);
         writeVarUInt32(out, formId);
         writeString(out, jsonBytes);
-        return new BedrockPacket(MODAL_FORM_REQUEST_PACKET_ID, out.toByteArray());
+        return new BedrockPacket(MODAL_FORM_REQUEST_PACKET_ID, 0, 0, out.toByteArray());
     }
 
     public static DecodedResponse decodeResponse(BedrockPacket packet) {

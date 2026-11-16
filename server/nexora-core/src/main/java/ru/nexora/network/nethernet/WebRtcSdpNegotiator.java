@@ -303,7 +303,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
                     try {
                         dataChannelListener.onFrame(networkId, label, frame);
                     } catch (RuntimeException exception) {
-                        System.err.println("NEXORA: data-channel listener failed: " + exception.getMessage());
+                        closeForProtocolError("invalid NetherNet frame: " + exception.getMessage());
                     }
                 }
             });
@@ -327,6 +327,11 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
                 }
             });
             channels.clear();
+            try {
+                dataChannelListener.onDisconnected(networkId);
+            } catch (RuntimeException ignored) {
+                // Session teardown must continue even if an observer fails.
+            }
             RTCPeerConnection current = peer;
             if (current != null) {
                 try {

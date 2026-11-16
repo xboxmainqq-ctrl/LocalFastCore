@@ -1,6 +1,7 @@
 package ru.nexora.network.bedrock;
 
 import ru.nexora.world.BlockType;
+import ru.nexora.world.ChunkSection;
 import ru.nexora.world.WorldChunk;
 
 import java.io.ByteArrayOutputStream;

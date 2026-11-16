@@ -129,7 +129,7 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
      * Applies natural alpine, exposed-rock and shoreline transitions on top of
      * the climate biome. The same world-coordinate hash is used on every chunk.
      */
-    private static BlockState surfaceMaterial(
+    static BlockState surfaceMaterial(
             BiomeDefinition biome, ClimateSample climate, int surfaceY,
             int seaLevel, long seed, int x, int z) {
         double snowLine = 100.0 + climate.temperature() * 42.0;

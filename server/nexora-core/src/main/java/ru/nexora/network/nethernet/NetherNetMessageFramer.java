@@ -103,6 +103,11 @@ public final class NetherNetMessageFramer {
                 throw new IllegalArgumentException("Unreliable channel cannot carry fragmented messages");
             }
 
+            if (payloadLength > maxMessageBytes) {
+                reset();
+                throw new IllegalArgumentException("NetherNet fragment exceeds configured message limit");
+            }
+
             if (pending == null) {
                 if (header == 0) {
                     ensureWithinLimit(payloadLength);

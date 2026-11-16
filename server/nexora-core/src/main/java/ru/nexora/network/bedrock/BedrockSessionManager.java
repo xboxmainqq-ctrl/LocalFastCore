@@ -11,6 +11,7 @@ import ru.nexora.world.BlockType;
 import ru.nexora.world.World;
 import ru.nexora.world.WorldChunk;
 import ru.nexora.world.WorldCollision;
+import ru.nexora.world.WorldRaycast;
 import ru.nexora.world.PlayerData;
 import ru.nexora.world.PlayerDataStorage;
 
@@ -553,11 +554,19 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return target != null && target.x() == action.x() && target.y() == action.y() && target.z() == action.z();
     }
 
-    private static boolean isWithinBlockReach(SessionState state, int x, int y, int z) {
-        double dx = state.positionX - (x + 0.5);
-        double dy = state.positionY - (y + 0.5);
-        double dz = state.positionZ - (z + 0.5);
-        return dx * dx + dy * dy + dz * dz <= 36.0;
+    private boolean isWithinBlockReach(SessionState state, int x, int y, int z) {
+        // Bedrock player position is at the feet; block interaction originates near eye height.
+        double eyeX = state.positionX;
+        double eyeY = state.positionY + 1.62;
+        double eyeZ = state.positionZ;
+        double targetX = x + 0.5;
+        double targetY = y + 0.5;
+        double targetZ = z + 0.5;
+        double dx = eyeX - targetX;
+        double dy = eyeY - targetY;
+        double dz = eyeZ - targetZ;
+        return dx * dx + dy * dy + dz * dz <= 36.0
+                && WorldRaycast.hasLineOfSight(world, eyeX, eyeY, eyeZ, x, y, z);
     }
 
     private static long requiredBreakNanos(BlockType type) {

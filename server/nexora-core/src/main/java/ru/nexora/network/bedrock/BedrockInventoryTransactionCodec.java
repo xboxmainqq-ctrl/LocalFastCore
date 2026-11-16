@@ -63,9 +63,8 @@ public final class BedrockInventoryTransactionCodec {
             if (hasFlags) in.varUInt32(); // World-interaction flags are not supported by this service.
 
             if (sourceType == SOURCE_CONTAINER) {
-                // Parse the known player UI containers structurally. The transaction
-                // service currently mutates only container 0; armor/offhand/UI changes
-                // are rejected safely and reconciled instead of disconnecting the player.
+                // Parse known player containers structurally. The authoritative transaction
+                // service validates main inventory, armor, offhand and cursor changes separately.
                 if (!hasContainerId || (containerId != 0 && containerId != 119
                         && containerId != 120 && containerId != 124) || hasFlags) {
                     throw new IllegalArgumentException("Malformed player inventory source");

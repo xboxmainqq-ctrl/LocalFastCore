@@ -222,7 +222,7 @@ public final class BedrockStartGameCodec {
     private static byte[] chunkPublisherPayload(int x, int y, int z) {
         Writer out = new Writer();
         out.varInt32(x); out.varInt32(y); out.varInt32(z);
-        out.varUInt32(128);
+        out.varUInt32(48); // 3x3 chunk window, including diagonal corners
         out.uint32(0);
         return out.toByteArray();
     }

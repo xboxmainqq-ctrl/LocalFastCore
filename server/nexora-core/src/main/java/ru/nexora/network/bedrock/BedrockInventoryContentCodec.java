@@ -44,7 +44,7 @@ public final class BedrockInventoryContentCodec {
                     throw new IllegalArgumentException(
                             "No Bedrock item definition registered for " + stack.itemId());
                 }
-                writeStack(out, definition.legacyItemId(), stack.count(),
+                writeStack(out, definition.runtimeItemId(), stack.count(),
                         definition.auxValue(), definition.blockRuntimeId(), definition.userData());
             }
         }
@@ -92,7 +92,9 @@ public final class BedrockInventoryContentCodec {
         out.int16(itemId);
         out.uint16(count);
         out.varUInt32(auxValue);
-        // Optional ItemStackNetIdVariant is omitted while ItemStackNetManager is disabled.
+        // NetworkItemStackDescriptor always carries the hasNetId presence boolean.
+        // ItemStackNetManager is disabled, so this must be false.
+        out.byteValue(0);
         out.varUInt32(blockRuntimeId);
         out.string(userData);
     }
@@ -104,11 +106,11 @@ public final class BedrockInventoryContentCodec {
 
     /** Protocol-specific fields that cannot safely be inferred from the logical ItemStack. */
     public record ItemDefinition(
-            int legacyItemId, long auxValue, long blockRuntimeId, byte[] userData
+            int runtimeItemId, long auxValue, long blockRuntimeId, byte[] userData
     ) {
         public ItemDefinition {
-            if (legacyItemId == 0 || legacyItemId < Short.MIN_VALUE || legacyItemId > Short.MAX_VALUE) {
-                throw new IllegalArgumentException("legacyItemId must be a non-zero signed int16");
+            if (runtimeItemId == 0 || runtimeItemId < Short.MIN_VALUE || runtimeItemId > Short.MAX_VALUE) {
+                throw new IllegalArgumentException("runtimeItemId must be a non-zero signed int16");
             }
             if (auxValue < 0 || auxValue > 0xffff_ffffL) {
                 throw new IllegalArgumentException("auxValue must be uint32");

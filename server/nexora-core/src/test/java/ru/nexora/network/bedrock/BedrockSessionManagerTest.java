@@ -5,6 +5,7 @@ import org.junit.jupiter.api.io.TempDir;
 import ru.nexora.network.nethernet.NetherNetClientIdentity;
 import ru.nexora.network.nethernet.NetherNetMessageFramer;
 import ru.nexora.world.PlayerDataStorage;
+import ru.nexora.world.PlayerData;
 
 import java.nio.file.Path;
 
@@ -246,6 +247,61 @@ class BedrockSessionManagerTest {
         assertEquals(65.0f, savedPlayer.y());
         assertEquals(1.0f, savedPlayer.z());
         assertEquals(30.0f, savedPlayer.yaw());
+    }
+
+    @Test
+    void restoresSavedPositionAndRotationInStartGame() throws Exception {
+        PlayerDataStorage storage = new PlayerDataStorage(temporaryDirectory);
+        storage.save(new PlayerData("saved-xuid", "SavedPlayer", "NEXORA World",
+                32.5f, 70.0f, -16.5f, 90.0f, 12.0f, System.currentTimeMillis()));
+
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
+        generator.initialize(new ECGenParameterSpec("secp384r1"));
+        KeyPair clientKey = generator.generateKeyPair();
+        List<byte[]> outboundFrames = new ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("NEXORA World", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                storage, (networkId, label, frame) -> outboundFrames.add(frame), event -> {});
+        manager.onIdentity("saved-client", new NetherNetClientIdentity(
+                "saved-game-token", clientKey.getPublic().getEncoded(), "saved-xuid",
+                "SavedPlayer", "saved-playfab", "20CA2", null));
+
+        byte[] protocol = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(2225).array();
+        BedrockPacket settings = new BedrockPacket(
+                BedrockBatchCodec.REQUEST_NETWORK_SETTINGS_PACKET_ID, 0, 0, protocol);
+        sendClientBatch(manager, "saved-client", BedrockBatchCodec.encode(List.of(settings), false, 256));
+
+        String rawClientDataToken = signClientDataToken(clientKey);
+        String certificate = "{\\"chain\\":[]}";
+        String chainJson = "{\\"Certificate\\":\\"" + certificate.replace("\\\\", "\\\\\\\\")
+                .replace("\\"", "\\\\\"") + "\\",\\"AuthenticationType\\":0,\\"Token\\":\\"saved-game-token\\"}";
+        BedrockPacket login = new BedrockPacket(1, 0, 0,
+                loginPayload(2225, connectionRequest(chainJson, rawClientDataToken)));
+        sendClientBatch(manager, "saved-client", BedrockBatchCodec.encode(List.of(login), true, 256));
+
+        BedrockPacket clientHandshake = new BedrockPacket(
+                BedrockBatchCodec.CLIENT_TO_SERVER_HANDSHAKE_PACKET_ID, 0, 0, new byte[0]);
+        sendClientBatch(manager, "saved-client", BedrockBatchCodec.encode(List.of(clientHandshake), true, 256));
+        sendClientBatch(manager, "saved-client", BedrockBatchCodec.encode(
+                List.of(resourcePackResponse(2, "downloadingfinished")), true, 256));
+        sendClientBatch(manager, "saved-client", BedrockBatchCodec.encode(
+                List.of(resourcePackResponse(3, "resourcepackstackfinished")), true, 256));
+
+        BedrockPacket startGame = decodeOutbound(outboundFrames.get(4), true);
+        ByteBuffer position = ByteBuffer.wrap(startGame.payload(), 3, 20).order(ByteOrder.LITTLE_ENDIAN);
+        assertEquals(32.5f, position.getFloat());
+        assertEquals(70.0f, position.getFloat());
+        assertEquals(-16.5f, position.getFloat());
+        assertEquals(12.0f, position.getFloat()); // pitch
+        assertEquals(90.0f, position.getFloat()); // yaw
+
+        assertArrayEquals(new byte[] {0x40, (byte) 0x8c, 0x01, 0x21, (byte) 0x80, 0x01, 0, 0, 0, 0},
+                decodeOutbound(outboundFrames.get(10), true).payload());
+        BedrockPacket spawnChunk = decodeOutbound(outboundFrames.get(12), true);
+        assertEquals(4, Byte.toUnsignedInt(spawnChunk.payload()[0])); // chunk X = 2
+        assertEquals(3, Byte.toUnsignedInt(spawnChunk.payload()[1])); // chunk Z = -2
+        manager.close();
     }
 
     private static BedrockPacket decodeOutbound(byte[] frame, boolean compressed) {

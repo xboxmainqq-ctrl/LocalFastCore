@@ -140,7 +140,7 @@ class BedrockSessionManagerTest {
         assertTrue(inventory.heldItem().isEmpty());
         inventory.setSlot(0, new ItemStack("nexora:arcane_shard", 3, 64));
         assertEquals(3, manager.playerInventory("authenticated-client").orElseThrow()
-                .orElseThrow().count("nexora:arcane_shard"));
+                .count("nexora:arcane_shard"));
         assertTrue(manager.playerInventory("unknown-client").isEmpty());
 
         BedrockPacket clientHandshake = new BedrockPacket(

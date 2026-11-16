@@ -12,7 +12,6 @@ import ru.nexora.world.World;
 import ru.nexora.world.WorldStorage;
 import ru.nexora.world.WorldAutosave;
 import ru.nexora.world.PlayerDataStorage;
-import ru.nexora.world.PlayerDataStorage;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -147,7 +146,6 @@ public final class NexoraServer {
         System.out.printf("WebRTC ICE UDP port range: %d-%d%n", udpPortMin, udpPortMax);
         System.out.println("Bedrock NetworkSettings, authenticated Login and StartGame bootstrap are active.");
         System.out.println("World chunks use versioned, checksummed files under " + Path.of(dataDirectory, "worlds").toAbsolutePath());
-        System.out.println("Player profiles use versioned, checksummed files under " + Path.of(dataDirectory, "players").toAbsolutePath());
         System.out.println("Player profiles use versioned, checksummed files under " + Path.of(dataDirectory, "players").toAbsolutePath());
         System.out.printf("World autosave interval: %d seconds%n", autosaveSeconds);
         System.out.println("Saved player positions and rotations are restored on re-login.");

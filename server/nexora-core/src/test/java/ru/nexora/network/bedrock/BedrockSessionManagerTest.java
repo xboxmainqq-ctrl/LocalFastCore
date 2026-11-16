@@ -586,7 +586,7 @@ class BedrockSessionManagerTest {
         out.write(1); // container ID present
         out.write(0); // main player inventory
         out.write(0); // no flags
-        writeVarInt(out, sourceSlot);
+        out.write(sourceSlot); // slot is VarUInt32, not ZigZag VarInt32
         writeDescriptor(out, runtimeItemId, count);
         writeDescriptor(out, 0, 0);
 

@@ -91,6 +91,9 @@ public final class OverworldChunkGenerator implements ChunkGenerator {
                     waterSurfaceY = drainage.waterSurfaceY();
                     waterColumns[localX][localZ] = true;
                 }
+                if (surfaceY < seaLevel) {
+                    waterColumns[localX][localZ] = true;
+                }
                 columnBiomes[localX][localZ] = biome;
                 columnClimates[localX][localZ] = climate;
                 surfaceHeights[localX][localZ] = surfaceY;

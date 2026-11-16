@@ -288,7 +288,7 @@ class NexoraMainTest {
 
         runtime.server().start();
         try {
-            World world = runtime.worlds().get("world").orElseThrow();
+            World world = runtime.worlds().get(runtime.worldId()).orElseThrow();
             assertTrue(world.isChunkLoaded(new ChunkPosition(0, 0)));
             int spawnY = NexoraMain.findSpawnY(world);
             assertFalse(world.blockAt(new BlockPosition(0, spawnY - 1, 0)).isAir());
@@ -306,6 +306,6 @@ class NexoraMainTest {
 
         assertFalse(runtime.gameLoop().isRunning());
         assertEquals(ServerState.STOPPED, runtime.server().state());
-        assertTrue(Files.isRegularFile(dataDirectory.resolve("worlds").resolve("world.nxw")));
+        assertTrue(Files.isRegularFile(dataDirectory.resolve("worlds").resolve(runtime.worldId() + ".nxw")));
     }
 }

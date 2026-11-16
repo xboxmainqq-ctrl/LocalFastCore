@@ -408,7 +408,7 @@ class BedrockSessionManagerTest {
         assertEquals(31, outboundFrames.size());
 
         // Open the player-facing equipment UI, choose the staff slot, and equip a compatible item.
-        inventory.setSlot(4, new ItemStack("minecraft:blaze_rod", 1, 64));
+        inventory.setSlot(4, new ItemStack("minecraft:gold_nugget", 1, 64));
         BedrockPacket equipmentCommand = new BedrockPacket(0x4d, 0, 0,
                 commandRequestPayload("/equipment", "Player", "equipment-ui-1", 1L));
         sendClientBatch(manager, "authenticated-client",
@@ -418,7 +418,7 @@ class BedrockSessionManagerTest {
                 decodeOutbound(outboundFrames.get(31), true).packetId());
 
         BedrockPacket chooseStaffSlot = new BedrockPacket(0x65, 0, 0,
-                modalFormResponsePayload(1, "0"));
+                modalFormResponsePayload(1, "1"));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(chooseStaffSlot), true, 256));
         assertEquals(33, outboundFrames.size());
@@ -429,9 +429,9 @@ class BedrockSessionManagerTest {
                 modalFormResponsePayload(2, "0"));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(equipStaff), true, 256));
-        assertEquals(new ItemStack("minecraft:blaze_rod", 1, 64),
+        assertEquals(new ItemStack("minecraft:gold_nugget", 1, 64),
                 manager.playerEquipment("authenticated-client").orElseThrow()
-                        .magicSlot(ru.nexora.inventory.EquipmentSlot.MAGIC_STAFF).orElseThrow());
+                        .magicSlot(ru.nexora.inventory.EquipmentSlot.RING_LEFT).orElseThrow());
         assertTrue(inventory.getSlot(4).isEmpty());
         assertEquals(BedrockModalFormCodec.MODAL_FORM_REQUEST_PACKET_ID,
                 decodeOutbound(outboundFrames.getLast(), true).packetId());
@@ -455,6 +455,8 @@ class BedrockSessionManagerTest {
                 savedEquipment.magicSlot(ru.nexora.inventory.EquipmentSlot.MAGIC_STAFF).orElseThrow());
         assertEquals(new ItemStack("nexora:luck_talisman", 1, 1),
                 savedEquipment.magicSlot(ru.nexora.inventory.EquipmentSlot.TALISMAN).orElseThrow());
+        assertEquals(new ItemStack("minecraft:gold_nugget", 1, 64),
+                savedEquipment.magicSlot(ru.nexora.inventory.EquipmentSlot.RING_LEFT).orElseThrow());
     }
 
     @Test

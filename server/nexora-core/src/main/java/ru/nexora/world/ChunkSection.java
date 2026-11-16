@@ -33,6 +33,7 @@ public final class ChunkSection {
     public void loadRawBlocks(byte[] raw) {
         Objects.requireNonNull(raw, "raw");
         if (raw.length != VOLUME) throw new IllegalArgumentException("A chunk section must contain 4096 blocks");
+        for (byte value : raw) BlockType.byInternalId(Byte.toUnsignedInt(value));
         System.arraycopy(raw, 0, blocks, 0, VOLUME);
     }
 

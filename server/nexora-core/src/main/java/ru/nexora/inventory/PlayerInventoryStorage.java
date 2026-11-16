@@ -38,13 +38,18 @@ public final class PlayerInventoryStorage {
         Objects.requireNonNull(inventory, "inventory");
         Path target = inventoryPath(xuid);
         rejectSymlink(target);
-        var snapshot = inventory.snapshot();
+        java.util.List<java.util.Optional<ItemStack>> snapshot;
+        int selectedHotbarSlot;
+        synchronized (inventory) {
+            snapshot = inventory.snapshot();
+            selectedHotbarSlot = inventory.selectedHotbarSlot();
+        }
         ByteArrayOutputStream bodyBytes = new ByteArrayOutputStream(512);
         try (DataOutputStream output = new DataOutputStream(bodyBytes)) {
             output.writeInt(MAGIC);
             output.writeByte(FORMAT_VERSION);
             output.writeShort(snapshot.size());
-            output.writeByte(inventory.selectedHotbarSlot());
+            output.writeByte(selectedHotbarSlot);
             for (var slot : snapshot) {
                 output.writeBoolean(slot.isPresent());
                 if (slot.isEmpty()) continue;

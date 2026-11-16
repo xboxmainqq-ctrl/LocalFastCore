@@ -38,6 +38,7 @@ Official Mojang onboarding guide: https://mojang.github.io/bedrock-protocol-docs
 - Initial Bedrock session stage: validates the requested protocol, sends NetworkSettings, and switches to negotiated compression.
 - Login stage: matches the Login GameServerToken to the verified NetherNet identity, verifies the client's ES384 client-data JWT, requires an authenticated Xbox Live identity, and handles the empty ClientToServerHandshake used with NetherNet's DTLS transport.
 - Empty resource-pack exchange: sends LoginSuccess, ResourcePacksInfo and ResourcePackStack, then validates the client's completion response.
+- Initial world bootstrap: sends a protocol-2225 StartGame packet with a unique player runtime ID, survival mode, Overworld spawn metadata, followed by SetTime, SetDifficulty, SetCommandsEnabled, SetSpawnPosition, SetPlayerGameType and NetworkChunkPublisherUpdate.
 - Unit tests for legacy RakNet discovery, signaling HTTP behavior, identity signatures, NetherNet framing, Bedrock batches, login parsing and the initial login/resource-pack stages.
 
 ## Not implemented / not wired yet
@@ -46,7 +47,7 @@ The following list is intentionally conservative: a protocol stage is only consi
 
 - The main bootstrap now starts the NetherNet HTTP signaling endpoint and the WebRTC answerer alongside the legacy UDP discovery experiment.
 - NEXORA's signaling listener is plain HTTP; production TLS termination is provided by the documented Caddy reverse-proxy example. The application does not terminate TLS itself.
-- No StartGame/DimensionData packet sequence, player spawn, world, entities, inventory or persistence.
+- No LevelChunk/sub-chunk streaming, biome definitions, PLAYER_SPAWN completion, player movement, entity replication, inventory or persistent world/player storage. StartGame is only the first world-bootstrap stage; it does not yet create a playable world.
 - No general outbound gameplay-packet pipeline yet; only login, NetworkSettings, PlayStatus and empty resource-pack handshake responses are sent.
 - Guest/offline authentication is not supported; the current login path requires an authenticated Xbox Live GameServerToken.
 - No Android-client end-to-end connection test.

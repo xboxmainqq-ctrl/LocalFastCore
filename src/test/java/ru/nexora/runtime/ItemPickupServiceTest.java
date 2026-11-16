@@ -57,7 +57,7 @@ class ItemPickupServiceTest {
         EntityRegistry entities = new EntityRegistry();
         UUID playerId = UUID.randomUUID();
         PlayerInventory inventory = new PlayerInventory(playerId, 1);
-        for (int i = 0; i < 64; i++) {
+        for (int i = 0; i < 99; i++) {
             assertTrue(inventory.addOne("minecraft:stone"));
         }
         UUID remaining = spawnItem(entities, "minecraft:apple", 0.5, 64, 0.5);
@@ -68,7 +68,7 @@ class ItemPickupServiceTest {
         assertEquals(0, result.collected());
         assertTrue(result.inventoryFull());
         assertTrue(entities.find(remaining).isPresent());
-        assertEquals(64, inventory.count("minecraft:stone"));
+        assertEquals(99, inventory.count("minecraft:stone"));
     }
 
     @Test
@@ -104,21 +104,21 @@ class ItemPickupServiceTest {
     }
 
     @Test
-    void inventoryStacksUpTo64AndUsesNextSlot() {
+    void inventoryStacksUpTo99AndUsesNextSlot() {
         PlayerInventory inventory = new PlayerInventory(UUID.randomUUID(), 2);
 
-        for (int i = 0; i < 65; i++) {
+        for (int i = 0; i < 100; i++) {
             assertTrue(inventory.addOne("minecraft:apple"));
         }
 
-        assertEquals(65, inventory.count("minecraft:apple"));
+        assertEquals(100, inventory.count("minecraft:apple"));
         assertEquals(2, inventory.occupiedSlots());
         assertEquals(2, inventory.snapshot().size());
-        assertEquals(64, inventory.snapshot().get(0).count());
+        assertEquals(99, inventory.snapshot().get(0).count());
         assertEquals(1, inventory.snapshot().get(1).count());
         assertFalse(inventory.isFull());
         assertFalse(inventory.addOne("minecraft:diamond"));
-        for (int i = 0; i < 63; i++) {
+        for (int i = 0; i < 98; i++) {
             assertTrue(inventory.addOne("minecraft:apple"));
         }
         assertTrue(inventory.isFull());

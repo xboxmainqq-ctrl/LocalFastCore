@@ -350,11 +350,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     private static final class SessionState {
         private boolean compressionNegotiated;
-        private boolean loginAuthenticated;
+        private volatile boolean loginAuthenticated;
         private boolean clientHandshakeReceived;
         private boolean resourcePacksInfoSent;
         private boolean resourcePackStackSent;
-        private boolean resourcePacksCompleted;
+        private volatile boolean resourcePacksCompleted;
         private boolean rejected;
         private int clientProtocol;
         private NetherNetClientIdentity identity;

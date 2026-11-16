@@ -327,6 +327,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             handlePlayerAuthInput(message.networkId(), state, packet);
                     case BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID ->
                             handleInventoryTransaction(message, state, packet);
+                    case BedrockMobEquipmentCodec.MOB_EQUIPMENT_PACKET_ID ->
+                            handleMobEquipment(message, state, packet);
                     default -> packetSink.accept(new PacketEvent(
                             message.networkId(), message.channelLabel(), packet));
                 }
@@ -360,7 +362,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             decoded = BedrockInventoryTransactionCodec.decode(packet, registry);
         } catch (UnsupportedOperationException exception) {
             // Unsupported transaction variants are not interpreted; restore the client's prediction.
-            sendPacket(networkId, authoritativeContent, true);
+            sendPackets(networkId, List.of(authoritativeContent,
+                        BedrockMobEquipmentCodec.createPlayerEquipment(state.entityId, state.inventory, registry)), true);
             return;
         } catch (IllegalArgumentException exception) {
             state.rejected = true;
@@ -373,7 +376,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             authoritativeContent = BedrockInventoryContentCodec.createPlayerInventory(state.inventory, registry);
         }
         // Always reconcile client prediction, including stale, unsupported, and rejected actions.
-        sendPacket(networkId, authoritativeContent, true);
+        sendPackets(networkId, List.of(authoritativeContent,
+                BedrockMobEquipmentCodec.createPlayerEquipment(state.entityId, state.inventory, registry)), true);
     }
 
     private void handleNetworkSettingsRequest(
@@ -761,11 +765,58 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
      */
     private void sendInitialPlayerInventory(String networkId, SessionState state) {
         try {
-            sendPacket(networkId,
-                    BedrockInventoryContentCodec.createPlayerInventory(state.inventory, itemRegistry), true);
+            sendPackets(networkId, List.of(
+                    BedrockInventoryContentCodec.createPlayerInventory(state.inventory, itemRegistry),
+                    BedrockMobEquipmentCodec.createPlayerEquipment(state.entityId, state.inventory, itemRegistry)), true);
         } catch (IllegalArgumentException exception) {
             System.err.println("NEXORA: initial inventory sync deferred because a stored item has no Bedrock definition");
         }
+    }
+
+    private void handleMobEquipment(
+            NetherNetInboundPipeline.InboundMessage message, SessionState state, BedrockPacket packet
+    ) {
+        String networkId = message.networkId();
+        if (!message.reliable()) {
+            throw new SecurityException("MobEquipment must arrive on ReliableDataChannel");
+        }
+        if (!state.loginAuthenticated || !state.clientInitialized) {
+            throw new SecurityException("MobEquipment arrived before player initialization");
+        }
+
+        BedrockMobEquipmentCodec.DecodedEquipment equipment;
+        try {
+            equipment = BedrockMobEquipmentCodec.decode(packet, itemRegistry);
+        } catch (UnsupportedOperationException exception) {
+            sendPacket(networkId, BedrockMobEquipmentCodec.createPlayerEquipment(
+                    state.entityId, state.inventory, itemRegistry), true);
+            return;
+        } catch (IllegalArgumentException exception) {
+            state.rejected = true;
+            throw new SecurityException("Malformed Bedrock MobEquipment", exception);
+        }
+
+        if (equipment.runtimeEntityId() != state.entityId) {
+            throw new SecurityException("MobEquipment runtime entity ID does not match this player");
+        }
+        if (equipment.containerId() != BedrockInventoryContentCodec.PLAYER_INVENTORY_CONTAINER_ID
+                || equipment.inventorySlot() >= PlayerInventory.HOTBAR_SIZE
+                || equipment.hotbarSlot() >= PlayerInventory.HOTBAR_SIZE
+                || equipment.inventorySlot() != equipment.hotbarSlot()) {
+            sendPacket(networkId, BedrockMobEquipmentCodec.createPlayerEquipment(
+                    state.entityId, state.inventory, itemRegistry), true);
+            return;
+        }
+
+        Optional<ru.nexora.inventory.ItemStack> authoritative =
+                state.inventory.getSlot(equipment.inventorySlot());
+        if (!authoritative.equals(equipment.item())) {
+            sendPackets(networkId, List.of(
+                    BedrockInventoryContentCodec.createPlayerInventory(state.inventory, itemRegistry),
+                    BedrockMobEquipmentCodec.createPlayerEquipment(state.entityId, state.inventory, itemRegistry)), true);
+            return;
+        }
+        state.inventory.selectHotbarSlot(equipment.hotbarSlot());
     }
 
     private static long readUnsignedVarLong(byte[] payload) {

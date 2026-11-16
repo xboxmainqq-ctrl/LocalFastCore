@@ -122,3 +122,6 @@ Keep both files together and persistent across restarts and server migrations. B
 - Start with one inexpensive-hosting profile and explicit limits for players, chunks and entities.
 - Treat Nukkit-MOT as a protocol/architecture reference only, not as the NEXORA implementation base.
 - Preserve applicable third-party license notices and obligations when studying or reusing external code.
+
+
+Player equipment is maintained separately from the 36-slot main inventory. The server persists four armor slots, one offhand slot and the UI cursor in checksummed `.nxe` files under `data/equipment`. After SetLocalPlayerAsInitialized, protocol-2225 InventoryContent packets synchronize the armor (container 120) and offhand (container 119), and InventorySlot synchronizes the cursor (UI container 124). Known armor/offhand/UI transaction containers are decoded structurally; until their dedicated authoritative transaction rules are implemented, proposed changes are rejected and all inventory/equipment views are restored from server state. Main-inventory transactions remain the only accepted mutation path.

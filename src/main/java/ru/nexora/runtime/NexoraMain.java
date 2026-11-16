@@ -63,12 +63,11 @@ public final class NexoraMain {
             System.out.println("WebRTC requires reachable UDP host candidates; "
                     + "STUN/TURN relay is not configured.");
         }
-        if (options.bedrockListenerSettings().enabled()) {
-            BedrockListenerSettings bedrock = options.bedrockListenerSettings();
-            System.out.println("Bedrock 1.26.60 NetherNet: TCP "
-                    + bedrock.signalingBindAddress() + " + UDP " + bedrock.mediaBindAddress());
+        boolean bedrockEnabled = runtime.server().moduleIds().contains("bedrock-nethernet");
+        if (bedrockEnabled) {
+            System.out.println("Bedrock 1.26.60 NetherNet listener: enabled (authenticated).");
         }
-        if (!options.developmentNetworkEnabled() && !options.bedrockListenerSettings().enabled()) {
+        if (!options.developmentNetworkEnabled() && !bedrockEnabled) {
             System.out.println("Network ingress: disabled (safe offline development mode).");
         }
         System.out.println("Data directory: " + options.dataDirectory());
@@ -286,8 +285,18 @@ public final class NexoraMain {
             }
         });
 
-        if (options.bedrockListenerSettings().enabled()) {
-            BedrockListenerSettings configured = options.bedrockListenerSettings();
+        BedrockListenerSettings configuredBedrockSettings = options.bedrockListenerSettings();
+        if (!configuredBedrockSettings.enabled()) {
+            try {
+                configuredBedrockSettings = BedrockListenerSettings.loadFromProperties(
+                        dataDirectory.resolve("server.properties"));
+            } catch (java.io.IOException failure) {
+                throw new IllegalStateException("Could not load Bedrock listener settings", failure);
+            }
+        }
+        final BedrockListenerSettings bedrockSettings = configuredBedrockSettings;
+        if (bedrockSettings.enabled()) {
+            BedrockListenerSettings configured = bedrockSettings;
             Path identityFile = configured.identityFile().isAbsolute()
                     ? configured.identityFile()
                     : dataDirectory.resolve(configured.identityFile()).normalize();

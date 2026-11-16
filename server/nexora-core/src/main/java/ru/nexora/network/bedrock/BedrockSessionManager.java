@@ -540,7 +540,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             state.pitch,
                             state.yaw
                     )) {
-                        sendPacket(networkId, worldPacket, true);
+                        if (worldPacket.packetId() == 0x0b) {
+                            // Bedrock requires ItemRegistry immediately after StartGame.
+                            sendPackets(networkId, List.of(worldPacket,
+                                    BedrockItemRegistryPacketCodec.createPacket(itemRegistry)), true);
+                        } else {
+                            sendPacket(networkId, worldPacket, true);
+                        }
                     }
                     sendPacket(networkId, BedrockBiomeDefinitionCodec.createPacket(), true);
                     sendInitialChunkArea(networkId, state);
@@ -783,8 +789,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private void sendPacket(String networkId, BedrockPacket packet, boolean compressionNegotiated) {
+        sendPackets(networkId, List.of(packet), compressionNegotiated);
+    }
+
+    private void sendPackets(String networkId, List<BedrockPacket> packets, boolean compressionNegotiated) {
         byte[] batch = BedrockBatchCodec.encode(
-                List.of(packet), compressionNegotiated, compressionThreshold);
+                packets, compressionNegotiated, compressionThreshold);
         List<byte[]> frames = NetherNetMessageFramer.fragment(
                 batch, SCTP_MAX_MESSAGE_BYTES, true);
         try {
@@ -792,7 +802,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 outbound.sendFrame(networkId, "ReliableDataChannel", frame);
             }
         } catch (Exception exception) {
-            throw new IllegalStateException("Unable to send Bedrock packet", exception);
+            throw new IllegalStateException("Unable to send Bedrock packet batch", exception);
         }
     }
 

@@ -40,6 +40,34 @@ public final class NexoraMagicEquipmentCatalog {
                         EquipmentAttribute.MAX_HEALTH, 5.0,
                         EquipmentAttribute.FIRE_RESISTANCE, 0.20),
                         EquipmentSlot.ARTIFACT_LEFT, EquipmentSlot.ARTIFACT_RIGHT)
+                // Vanilla placeholders make the equipment flow testable before the custom
+                // NEXORA resource-pack item definitions are shipped.
+                .register("minecraft:blaze_rod", Map.of(
+                        EquipmentAttribute.MAGIC_POWER, 12.0,
+                        EquipmentAttribute.MAX_MANA, 20.0,
+                        EquipmentAttribute.COOLDOWN_REDUCTION, 0.05),
+                        EquipmentSlot.MAGIC_STAFF)
+                .register("minecraft:gold_nugget", Map.of(
+                        EquipmentAttribute.MAGIC_POWER, 4.0,
+                        EquipmentAttribute.MAX_MANA, 5.0,
+                        EquipmentAttribute.FIRE_RESISTANCE, 0.10),
+                        EquipmentSlot.RING_LEFT, EquipmentSlot.RING_RIGHT)
+                .register("minecraft:nautilus_shell", Map.of(
+                        EquipmentAttribute.MAX_MANA, 10.0,
+                        EquipmentAttribute.MANA_REGENERATION, 2.0),
+                        EquipmentSlot.AMULET)
+                .register("minecraft:amethyst_shard", Map.of(
+                        EquipmentAttribute.MANA_REGENERATION, 1.0,
+                        EquipmentAttribute.COOLDOWN_REDUCTION, 0.05),
+                        EquipmentSlot.TALISMAN)
+                .register("minecraft:heart_of_the_sea", Map.of(
+                        EquipmentAttribute.MAGIC_POWER, 8.0,
+                        EquipmentAttribute.LIGHTNING_RESISTANCE, 0.15),
+                        EquipmentSlot.ARTIFACT_LEFT, EquipmentSlot.ARTIFACT_RIGHT)
+                .register("minecraft:ghast_tear", Map.of(
+                        EquipmentAttribute.MAX_HEALTH, 5.0,
+                        EquipmentAttribute.FIRE_RESISTANCE, 0.20),
+                        EquipmentSlot.ARTIFACT_LEFT, EquipmentSlot.ARTIFACT_RIGHT)
                 .build();
     }
 }

@@ -41,7 +41,7 @@ Official Mojang onboarding guide: https://mojang.github.io/bedrock-protocol-docs
 - Initial world bootstrap: sends a protocol-2225 StartGame packet with a unique player runtime ID, survival mode, Overworld spawn metadata, followed by SetTime, SetDifficulty, SetCommandsEnabled, SetSpawnPosition, SetPlayerGameType and NetworkChunkPublisherUpdate.
 - Protocol-2225 biome registry captured from Bedrock Dedicated Server 1.26.60.6, stored with third-party attribution and sent during world bootstrap.
 - Initial LevelChunk encoder: hashed block-state network IDs, version-9 sub-chunks, negative-height empty sections, 3D plains biome palettes and protocol-2225 chunk framing.
-- Sends a bounded 3x3 starter chunk area around the spawn after StartGame and waits for the client's SetLocalPlayerAsInitialized acknowledgement before reporting PlayerSpawn.
+- Sends a bounded 3x3 starter chunk area around the player's current spawn position after StartGame and waits for the client's SetLocalPlayerAsInitialized acknowledgement before reporting PlayerSpawn.
 - Bounded protocol-2225 PlayerAuthInput parser for movement snapshots; checks finite coordinates, world bounds, input tick order and implausible single-packet teleports before storing per-session position.
 - Incremental 3x3 chunk-window streaming as a player crosses chunk boundaries; updates NetworkChunkPublisherUpdate and sends only chunks not already in the overlapping window.
 - Starter block breaking: parses protocol-2225 block actions, checks player reach and server-side break duration, keeps bedrock unbreakable, updates the world and broadcasts hashed-ID UpdateBlock packets.
@@ -49,7 +49,6 @@ Official Mojang onboarding guide: https://mojang.github.io/bedrock-protocol-docs
 - Versioned world-chunk persistence with CRC32C integrity checks and atomic file replacement; loaded chunks are restored at startup and saved on shutdown.
 - Configurable periodic world and player autosave (default 300 seconds) with a final synchronous flush during graceful shutdown; set NEXORA_AUTOSAVE_SECONDS to change the interval.
 - Player profiles keyed by verified XUID, stored in versioned CRC32C-protected files; position and rotation are restored in StartGame, and profiles are saved on disconnect, periodic autosave and shutdown.
-- Authenticated player profiles persisted by XUID with last world, position and rotation; checksummed, versioned files under `data/players`, restored on login and saved on disconnect/server shutdown.
 - Unit tests for legacy RakNet discovery, signaling HTTP behavior, identity signatures, NetherNet framing, Bedrock batches, login parsing and the initial login/resource-pack stages.
 
 ## Not implemented / not wired yet
@@ -58,8 +57,8 @@ The following list is intentionally conservative: a protocol stage is only consi
 
 - The main bootstrap now starts the NetherNet HTTP signaling endpoint and the WebRTC answerer alongside the legacy UDP discovery experiment.
 - NEXORA's signaling listener is plain HTTP; production TLS termination is provided by the documented Caddy reverse-proxy example. The application does not terminate TLS itself.
-- Chunk streaming currently uses a fixed 3x3 window; configurable view distance, explicit chunk unload handling, biome variation, block placement, tool-aware hardness, server-side movement physics/collision, movement corrections, entity replication and inventory are not implemented. PlayerAuthInput is only a validated position snapshot at this stage. Player profiles are persisted, but full movement simulation and gameplay remain incomplete. The world is still not playable until those gameplay paths and an Android-client end-to-end test are complete.
-- No general outbound gameplay-packet pipeline yet; only login, NetworkSettings, PlayStatus and empty resource-pack handshake responses are sent.
+- Chunk streaming currently uses a fixed 3x3 window; configurable view distance, explicit chunk unload handling, biome variation, block placement, tool-aware hardness, server-side movement physics/collision, movement corrections, entity replication and inventory are not implemented. PlayerAuthInput position snapshots are bounded and checked, while block breaking is reach-checked and timed using the server's monotonic clock. Full movement simulation and collision are still missing. Player profiles are persisted. The world is still not playable until those gameplay paths and an Android-client end-to-end test are complete.
+- Outbound gameplay support is currently limited to login/bootstrap packets, LevelChunk, UpdateBlock and PlayStatus; entity replication, inventory, chat and interactive UI packets are not implemented.
 - Guest/offline authentication is not supported; the current login path requires an authenticated Xbox Live GameServerToken.
 - No Android-client end-to-end connection test.
 

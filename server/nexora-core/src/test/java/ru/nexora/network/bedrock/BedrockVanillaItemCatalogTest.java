@@ -30,6 +30,19 @@ class BedrockVanillaItemCatalogTest {
                 registry.findByIdentifier("minecraft:stone").networkDefinition().blockRuntimeId());
         assertEquals(2, registry.findByIdentifier("minecraft:grass_block").networkDefinition().runtimeItemId());
         assertEquals(3, registry.findByIdentifier("minecraft:dirt").networkDefinition().runtimeItemId());
+        assertEquals(4, registry.findByIdentifier("minecraft:cobblestone").networkDefinition().runtimeItemId());
+        assertEquals(13, registry.findByIdentifier("minecraft:gravel").networkDefinition().runtimeItemId());
+        assertEquals(20, registry.findByIdentifier("minecraft:glass").networkDefinition().runtimeItemId());
+        assertEquals(49, registry.findByIdentifier("minecraft:obsidian").networkDefinition().runtimeItemId());
+        assertEquals(87, registry.findByIdentifier("minecraft:netherrack").networkDefinition().runtimeItemId());
+        assertEquals(121, registry.findByIdentifier("minecraft:end_stone").networkDefinition().runtimeItemId());
+        assertEquals(173, registry.findByIdentifier("minecraft:coal_block").networkDefinition().runtimeItemId());
+        assertEquals(42, registry.findByIdentifier("minecraft:iron_block").networkDefinition().runtimeItemId());
+        assertEquals(41, registry.findByIdentifier("minecraft:gold_block").networkDefinition().runtimeItemId());
+        assertEquals(57, registry.findByIdentifier("minecraft:diamond_block").networkDefinition().runtimeItemId());
+        assertEquals(133, registry.findByIdentifier("minecraft:emerald_block").networkDefinition().runtimeItemId());
+        assertEquals(Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.COBBLESTONE)),
+                registry.findByIdentifier("minecraft:cobblestone").networkDefinition().blockRuntimeId());
 
         assertNull(registry.findByIdentifier("minecraft:air"));
         assertNull(registry.findByIdentifier("minecraft:apple")); // component-based; not yet catalogued

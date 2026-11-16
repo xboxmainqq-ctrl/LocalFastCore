@@ -366,15 +366,17 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             throw new SecurityException("Login GameServerToken does not match the verified NetherNet identity");
         }
         verifyClientDataToken(login.rawClientDataToken(), state.identity);
-        state.loginAuthenticated = true;
         if (inventoryStorage != null) {
             try {
                 state.inventory = inventoryStorage.load(state.identity.xuid()).orElseGet(PlayerInventory::new);
             } catch (IOException | RuntimeException exception) {
-                System.err.println("NEXORA: unable to load player inventory for "
-                        + state.identity.displayName() + ": " + exception.getMessage());
+                state.rejected = true;
+                throw new SecurityException("Unable to safely restore authenticated player inventory", exception);
             }
         }
+        // Do not mark the session authenticated until its persisted inventory has been restored.
+        // Otherwise a failed load could be replaced by an empty inventory during autosave.
+        state.loginAuthenticated = true;
         state.entityId = nextEntityId.getAndIncrement();
         if (state.entityId < 1) {
             throw new IllegalStateException("NEXORA entity ID space exhausted");

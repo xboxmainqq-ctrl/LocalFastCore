@@ -854,6 +854,30 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             return;
         }
 
+        int transactionType;
+        try {
+            transactionType = BedrockInventoryTransactionCodec.transactionType(packet);
+        } catch (UnsupportedOperationException exception) {
+            sendInventoryReconciliation(networkId, state, authoritativeContent);
+            return;
+        } catch (IllegalArgumentException exception) {
+            state.rejected = true;
+            throw new SecurityException("Malformed Bedrock InventoryTransaction header", exception);
+        }
+        if (transactionType == 4) {
+            try {
+                BedrockInventoryTransactionCodec.DecodedItemRelease release =
+                        BedrockInventoryTransactionCodec.decodeItemRelease(packet, registry);
+                handleItemRelease(networkId, state, release);
+            } catch (UnsupportedOperationException exception) {
+                sendInventoryReconciliation(networkId, state, authoritativeContent);
+            } catch (IllegalArgumentException exception) {
+                state.rejected = true;
+                throw new SecurityException("Malformed Bedrock ItemRelease transaction", exception);
+            }
+            return;
+        }
+
         BedrockInventoryTransactionCodec.DecodedTransaction decoded;
         try {
             decoded = BedrockInventoryTransactionCodec.decode(packet, registry);
@@ -1217,6 +1241,76 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     (int) Math.floor(state.positionZ)), true);
             sendChunkArea(networkId, state, chunkX, chunkZ);
         }
+    }
+
+    private void sendInventoryReconciliation(
+            String networkId, SessionState state, BedrockPacket authoritativeContent
+    ) {
+        List<BedrockPacket> reconciliation = new java.util.ArrayList<>();
+        reconciliation.add(authoritativeContent);
+        reconciliation.addAll(createEquipmentReconciliationPackets(state));
+        sendPackets(networkId, reconciliation, true);
+    }
+
+    private void handleItemRelease(
+            String networkId, SessionState state,
+            BedrockInventoryTransactionCodec.DecodedItemRelease release
+    ) {
+        if (!state.usingItem) return;
+        if (release.actionType() == 0) {
+            clearUsingItem(state);
+            return;
+        }
+        if (release.actionType() != 1 || release.hotbarSlot() != state.usingItemSlot) {
+            clearUsingItem(state);
+            return;
+        }
+
+        ItemStack held = state.inventory.getSlot(state.usingItemSlot).orElse(null);
+        ItemStack released = release.heldItem().orElse(null);
+        FoodStats food = held == null ? null : foodStats(held.itemId());
+        if (held == null || released == null || food == null
+                || !held.equals(released) || state.vitals.hunger() >= PlayerVitals.MAX_HUNGER) {
+            clearUsingItem(state);
+            return;
+        }
+        double headDx = release.headX() - state.positionX;
+        double headDy = release.headY() - (state.positionY + 1.62);
+        double headDz = release.headZ() - state.positionZ;
+        if (headDx * headDx + headDy * headDy + headDz * headDz > 4.0) {
+            clearUsingItem(state);
+            return;
+        }
+
+        List<Optional<ItemStack>> before = state.inventory.snapshot();
+        int selectedSlot = state.inventory.selectedHotbarSlot();
+        state.inventory.setSlot(state.usingItemSlot,
+                held.count() == 1 ? null : held.withCount(held.count() - 1));
+        try {
+            saveInventory(state);
+        } catch (IOException | RuntimeException exception) {
+            state.inventory.restore(before, selectedSlot);
+            clearUsingItem(state);
+            sendInventoryAndEquipmentState(networkId, state);
+            return;
+        }
+
+        int runtimeItemId = state.usingItemRuntimeId;
+        clearUsingItem(state);
+        state.vitals = state.vitals.feed(food.foodPoints(), food.saturationModifier());
+        sendPackets(networkId, List.of(
+                BedrockItemUseCompletionCodec.create(runtimeItemId),
+                BedrockVitalsCodec.createUpdateAttributes(
+                        state.entityId, state.vitals, Math.max(0, state.lastInputTick))
+        ), true);
+        sendInventoryAndEquipmentState(networkId, state);
+    }
+
+    private static void clearUsingItem(SessionState state) {
+        state.usingItem = false;
+        state.usingItemSlot = -1;
+        state.usingItemRuntimeId = 0;
+        state.usingItemStartedNanos = 0;
     }
 
     private void handleItemUseTransaction(

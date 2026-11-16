@@ -110,7 +110,14 @@ public final class PlayerPhysics {
                 }
             }
             nextY = validY;
-            if (vy < 0) grounded = true;
+            if (vy < 0) {
+                grounded = true;
+                double blockBoundary = Math.rint(nextY);
+                if (Math.abs(nextY - blockBoundary) < 1.0e-3
+                        && WorldCollision.canOccupy(world, nextX, blockBoundary, nextZ)) {
+                    nextY = blockBoundary;
+                }
+            }
             vy = 0;
         } else {
             grounded = false;

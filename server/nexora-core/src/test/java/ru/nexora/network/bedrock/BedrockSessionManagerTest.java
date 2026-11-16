@@ -704,7 +704,7 @@ class BedrockSessionManagerTest {
         int framesBeforeClientDrop = outboundFrames.size();
         BedrockPacket clientDrop = new BedrockPacket(
                 BedrockPlayerActionCodec.PLAYER_ACTION_PACKET_ID, 0, 0,
-                playerActionPayload(runtimeEntityId, BedrockPlayerActionCodec.ACTION_DROP_ITEM));
+                playerActionPayload(manager.playerRuntimeId("authenticated-client").orElseThrow(), BedrockPlayerActionCodec.ACTION_DROP_ITEM));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(clientDrop), true, 256));
         assertEquals(1, inventory.count("nexora:arcane_shard"));

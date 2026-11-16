@@ -15,7 +15,7 @@ class BedrockMovementCorrectionCodecTest {
 
         assertEquals(0xA1, packet.packetId());
         byte[] payload = packet.payload();
-        assertEquals(27, payload.length);
+        assertEquals(28, payload.length);
         assertEquals(0, payload[0]); // Player prediction, not vehicle
 
         ByteBuffer values = ByteBuffer.wrap(payload, 1, 24).order(ByteOrder.LITTLE_ENDIAN);
@@ -27,7 +27,7 @@ class BedrockMovementCorrectionCodecTest {
         assertEquals(0.25f, values.getFloat());
         assertEquals(1, Byte.toUnsignedInt(payload[25]));
         assertEquals(0xac, Byte.toUnsignedInt(payload[26])); // first byte of VarUInt64(300)
-        assertEquals(0x02, Byte.toUnsignedInt(payload[27 - 1])); // second byte shares last index? 
+        assertEquals(0x02, Byte.toUnsignedInt(payload[27])); // second byte of VarUInt64(300) 
     }
 
     @Test

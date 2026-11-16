@@ -22,6 +22,10 @@ public final class BedrockBatchCodec {
     public static final int REQUEST_NETWORK_SETTINGS_PACKET_ID = 0xC1;
     public static final int NETWORK_SETTINGS_PACKET_ID = 0x8F;
     public static final int PLAY_STATUS_PACKET_ID = 0x02;
+    public static final int CLIENT_TO_SERVER_HANDSHAKE_PACKET_ID = 0x04;
+    public static final int RESOURCE_PACKS_INFO_PACKET_ID = 0x06;
+    public static final int RESOURCE_PACK_STACK_PACKET_ID = 0x07;
+    public static final int RESOURCE_PACK_CLIENT_RESPONSE_PACKET_ID = 0x08;
 
     public static final int COMPRESSION_ZLIB = 0;
     public static final int COMPRESSION_SNAPPY = 1;
@@ -163,6 +167,84 @@ public final class BedrockBatchCodec {
         ByteBuffer body = ByteBuffer.allocate(Integer.BYTES).order(ByteOrder.BIG_ENDIAN);
         body.putInt(status);
         return new BedrockPacket(PLAY_STATUS_PACKET_ID, 0, 0, body.array());
+    }
+
+    /** Builds an empty ResourcePacksInfo packet for a server that has no custom packs. */
+    public static BedrockPacket createResourcePacksInfo() {
+        ByteArrayOutputStream body = new ByteArrayOutputStream();
+        body.write(0); // texture packs not required
+        body.write(0); // no addons
+        body.write(0); // no scripts
+        body.write(0); // do not force-disable vibrant visuals
+        body.writeBytes(new byte[16]); // empty world-template UUID
+        writeString(body, "");
+        writeUnsignedVarInt(body, 0); // no texture packs
+        return new BedrockPacket(RESOURCE_PACKS_INFO_PACKET_ID, 0, 0, body.toByteArray());
+    }
+
+    /** Builds an empty ResourcePackStack packet. */
+    public static BedrockPacket createResourcePackStack(String baseGameVersion) {
+        Objects.requireNonNull(baseGameVersion, "baseGameVersion");
+        ByteArrayOutputStream body = new ByteArrayOutputStream();
+        body.write(0); // texture packs not required
+        writeUnsignedVarInt(body, 0); // no texture packs in the stack
+        writeString(body, baseGameVersion);
+        body.writeBytes(new byte[Integer.BYTES]); // no experiments (uint32 count)
+        body.write(0); // experiments were not previously toggled
+        body.write(0); // not an editor world
+        return new BedrockPacket(RESOURCE_PACK_STACK_PACKET_ID, 0, 0, body.toByteArray());
+    }
+
+    /** Parses the response enum and display string from ResourcePackClientResponse. */
+    public static ResourcePackClientResponseData parseResourcePackClientResponse(BedrockPacket packet) {
+        Objects.requireNonNull(packet, "packet");
+        if (packet.packetId() != RESOURCE_PACK_CLIENT_RESPONSE_PACKET_ID) {
+            throw new IllegalArgumentException("Expected ResourcePackClientResponse (0x08)");
+        }
+        byte[] payload = packet.payload();
+        int[] offset = {0};
+        long response = readUnsignedVarInt(payload, offset, payload.length);
+        if (response > 3) throw new IllegalArgumentException("Unknown resource-pack response enum");
+        String name = readString(payload, offset);
+        String expectedName = switch ((int) response) {
+            case 0 -> "cancel";
+            case 1 -> "downloading";
+            case 2 -> "downloadingfinished";
+            case 3 -> "resourcepackstackfinished";
+            default -> throw new IllegalArgumentException("Unknown resource-pack response enum");
+        };
+        if (!expectedName.equals(name)) {
+            throw new IllegalArgumentException("Resource-pack response name does not match its enum");
+        }
+        if (response == 1) {
+            long count = readUnsignedVarInt(payload, offset, payload.length);
+            if (count > 128) throw new IllegalArgumentException("Too many requested resource packs");
+            for (int i = 0; i < count; i++) readString(payload, offset);
+        }
+        if (offset[0] != payload.length) {
+            throw new IllegalArgumentException("Trailing bytes in ResourcePackClientResponse");
+        }
+        return new ResourcePackClientResponseData((int) response, name);
+    }
+
+    private static void writeString(ByteArrayOutputStream output, String value) {
+        byte[] bytes = value.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        writeUnsignedVarInt(output, bytes.length);
+        output.writeBytes(bytes);
+    }
+
+    private static String readString(byte[] input, int[] offset) {
+        long length = readUnsignedVarInt(input, offset, input.length);
+        if (length > 1_048_576 || offset[0] > input.length - (int) length) {
+            throw new IllegalArgumentException("Invalid Bedrock string length");
+        }
+        String value = new String(input, offset[0], (int) length,
+                java.nio.charset.StandardCharsets.UTF_8);
+        offset[0] += (int) length;
+        return value;
+    }
+
+    public record ResourcePackClientResponseData(int response, String name) {
     }
 
     /** Builds NetworkSettings (packet 0x8F), to be sent before compression framing is enabled. */

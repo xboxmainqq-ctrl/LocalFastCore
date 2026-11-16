@@ -333,7 +333,7 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
         }
     }
 
-    private String createServerIdentityToken(KeyPair keyPair, String issuer) throws Exception {
+    private String createServerIdentityToken(KeyPair keyPair, String issuer) throws IOException, GeneralSecurityException {
         ECPublicKey publicKey = (ECPublicKey) keyPair.getPublic();
         ObjectNode header = mapper.createObjectNode();
         header.put("alg", "ES384");

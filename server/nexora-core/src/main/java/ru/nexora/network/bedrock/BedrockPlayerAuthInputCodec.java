@@ -1,5 +1,7 @@
 package ru.nexora.network.bedrock;
 
+import ru.nexora.world.WorldChunk;
+
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 

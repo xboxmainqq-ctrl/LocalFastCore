@@ -13,5 +13,16 @@ class BedrockBlockRuntimeIdsTest {
         assertEquals(0x824eef86, BedrockBlockRuntimeIds.forBlock(BlockType.DIRT));
         assertEquals(0xde3128b4, BedrockBlockRuntimeIds.forBlock(BlockType.GRASS_BLOCK));
         assertEquals(0xf5ac7cfb, BedrockBlockRuntimeIds.forBlock(BlockType.BEDROCK));
+        assertEquals(0x67d16e2e, BedrockBlockRuntimeIds.forBlock(BlockType.COBBLESTONE));
+        assertEquals(0x5b235f1a, BedrockBlockRuntimeIds.forBlock(BlockType.GRAVEL));
+        assertEquals(0x374b17d2, BedrockBlockRuntimeIds.forBlock(BlockType.GLASS));
+        assertEquals(0xa5cfa9ba, BedrockBlockRuntimeIds.forBlock(BlockType.OBSIDIAN));
+        assertEquals(0x803389c0, BedrockBlockRuntimeIds.forBlock(BlockType.NETHERRACK));
+        assertEquals(0xb5438557, BedrockBlockRuntimeIds.forBlock(BlockType.END_STONE));
+        assertEquals(0x7ec4fa68, BedrockBlockRuntimeIds.forBlock(BlockType.COAL_BLOCK));
+        assertEquals(0xc806ec5f, BedrockBlockRuntimeIds.forBlock(BlockType.IRON_BLOCK));
+        assertEquals(0x5c6024c3, BedrockBlockRuntimeIds.forBlock(BlockType.GOLD_BLOCK));
+        assertEquals(0x57067910, BedrockBlockRuntimeIds.forBlock(BlockType.DIAMOND_BLOCK));
+        assertEquals(0x2deae764, BedrockBlockRuntimeIds.forBlock(BlockType.EMERALD_BLOCK));
     }
 }

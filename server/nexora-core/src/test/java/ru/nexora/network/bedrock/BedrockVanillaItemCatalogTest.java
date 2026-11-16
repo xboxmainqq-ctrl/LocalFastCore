@@ -25,10 +25,14 @@ class BedrockVanillaItemCatalogTest {
         assertEquals(1, registry.findByIdentifier("minecraft:iron_chestplate").maxStackSize());
         assertEquals(358, registry.findByIdentifier("minecraft:shield")
                 .networkDefinition().runtimeItemId());
+        assertEquals(1, registry.findByIdentifier("minecraft:stone").networkDefinition().runtimeItemId());
+        assertEquals(Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.STONE)),
+                registry.findByIdentifier("minecraft:stone").networkDefinition().blockRuntimeId());
+        assertEquals(2, registry.findByIdentifier("minecraft:grass_block").networkDefinition().runtimeItemId());
+        assertEquals(3, registry.findByIdentifier("minecraft:dirt").networkDefinition().runtimeItemId());
 
         assertNull(registry.findByIdentifier("minecraft:air"));
         assertNull(registry.findByIdentifier("minecraft:apple")); // component-based; not yet catalogued
-        assertNull(registry.findByIdentifier("minecraft:stone")); // block-state item; not yet catalogued
 
         for (BedrockItemRegistry.Entry entry : registry.entries()) {
             assertFalse(entry.componentBased());

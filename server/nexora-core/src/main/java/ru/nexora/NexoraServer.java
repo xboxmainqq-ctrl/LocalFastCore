@@ -12,6 +12,7 @@ import ru.nexora.world.World;
 import ru.nexora.world.WorldStorage;
 import ru.nexora.world.WorldAutosave;
 import ru.nexora.world.PlayerDataStorage;
+import ru.nexora.inventory.PlayerInventoryStorage;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -65,6 +66,7 @@ public final class NexoraServer {
         World world = new World(
                 "NEXORA World", 0L, new FlatWorldGenerator(), 0, 65, 0, worldStorage);
         PlayerDataStorage playerStorage = new PlayerDataStorage(Path.of(dataDirectory, "players"));
+        PlayerInventoryStorage inventoryStorage = new PlayerInventoryStorage(Path.of(dataDirectory, "inventories"));
         AtomicReference<WebRtcSdpNegotiator> negotiatorReference = new AtomicReference<>();
         BedrockSessionManager bedrockSessions = new BedrockSessionManager(
                 2225,
@@ -72,6 +74,7 @@ public final class NexoraServer {
                 BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
                 world,
                 playerStorage,
+                inventoryStorage,
                 (networkId, channelLabel, frame) -> {
                     WebRtcSdpNegotiator active = negotiatorReference.get();
                     if (active == null) throw new IllegalStateException("WebRTC transport is not ready");
@@ -147,6 +150,7 @@ public final class NexoraServer {
         System.out.println("Bedrock NetworkSettings, authenticated Login and StartGame bootstrap are active.");
         System.out.println("World chunks use versioned, checksummed files under " + Path.of(dataDirectory, "worlds").toAbsolutePath());
         System.out.println("Player profiles use versioned, checksummed files under " + Path.of(dataDirectory, "players").toAbsolutePath());
+        System.out.println("Player inventories use versioned, checksummed files under " + Path.of(dataDirectory, "inventories").toAbsolutePath());
         System.out.printf("World autosave interval: %d seconds%n", autosaveSeconds);
         System.out.println("Saved player positions and rotations are restored on re-login.");
         System.out.println("Next gameplay stages: block placement, movement physics and entity replication.");

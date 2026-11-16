@@ -372,14 +372,20 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             try {
                 saveInventory(state);
                 saveEquipment(state);
-                sendInventoryAndEquipmentState(networkId, state);
-                return result;
             } catch (IOException | RuntimeException exception) {
                 state.inventory.restore(previousInventory, previousSelectedSlot);
                 state.equipment.restore(previousEquipment);
+                try {
+                    saveInventory(state);
+                    saveEquipment(state);
+                } catch (IOException rollbackFailure) {
+                    exception.addSuppressed(rollbackFailure);
+                }
                 if (exception instanceof IOException ioException) throw ioException;
                 throw exception;
             }
+            sendInventoryAndEquipmentState(networkId, state);
+            return result;
         }
     }
 
@@ -401,14 +407,20 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             try {
                 saveInventory(state);
                 saveEquipment(state);
-                sendInventoryAndEquipmentState(networkId, state);
-                return result;
             } catch (IOException | RuntimeException exception) {
                 state.inventory.restore(previousInventory, previousSelectedSlot);
                 state.equipment.restore(previousEquipment);
+                try {
+                    saveInventory(state);
+                    saveEquipment(state);
+                } catch (IOException rollbackFailure) {
+                    exception.addSuppressed(rollbackFailure);
+                }
                 if (exception instanceof IOException ioException) throw ioException;
                 throw exception;
             }
+            sendInventoryAndEquipmentState(networkId, state);
+            return result;
         }
     }
 

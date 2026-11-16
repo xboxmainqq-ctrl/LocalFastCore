@@ -9,6 +9,7 @@ import dev.onvoid.webrtc.RTCPeerConnectionState;
 import dev.onvoid.webrtc.RTCDataChannel;
 import dev.onvoid.webrtc.RTCDataChannelBuffer;
 import dev.onvoid.webrtc.RTCDataChannelObserver;
+import dev.onvoid.webrtc.RTCDataChannelState;
 import dev.onvoid.webrtc.RTCIceCandidate;
 import dev.onvoid.webrtc.RTCIceGatheringState;
 import dev.onvoid.webrtc.RTCSdpType;
@@ -25,6 +26,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.Semaphore;
 
 /**
  * WebRTC answerer for NetherNet HTTP signaling.
@@ -41,6 +43,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
     private final int maxSessions;
     private final long timeoutMillis;
     private final Map<String, PeerSession> sessions = new ConcurrentHashMap<>();
+    private final Semaphore sessionPermits;
     private final AtomicBoolean closed = new AtomicBoolean();
 
     public WebRtcSdpNegotiator(
@@ -62,6 +65,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         if (maxSessions < 1) throw new IllegalArgumentException("maxSessions must be >= 1");
         if (timeoutMillis < 1) throw new IllegalArgumentException("timeoutMillis must be >= 1");
         this.maxSessions = maxSessions;
+        this.sessionPermits = new Semaphore(maxSessions);
         this.timeoutMillis = timeoutMillis;
         this.factory = new PeerConnectionFactory();
     }
@@ -74,13 +78,14 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         if (networkId.isBlank() || networkId.length() > 256) {
             throw new IllegalArgumentException("Invalid NetworkID");
         }
-        if (sessions.size() >= maxSessions || sessions.containsKey(networkId)) {
+        if (sessions.containsKey(networkId) || !sessionPermits.tryAcquire()) {
             throw new IllegalStateException("Server is full or NetworkID is already connected");
         }
 
         String verifiedOffer = identityService.validateClientOfferAndStripIdentity(networkId, sdpOffer);
         if (verifiedOffer == null || !verifiedOffer.startsWith("v=0")
                 || verifiedOffer.contains("a=identity:")) {
+            sessionPermits.release();
             throw new SecurityException("Client identity service returned an invalid sanitized SDP offer");
         }
 
@@ -90,10 +95,23 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         configuration.bundlePolicy = dev.onvoid.webrtc.RTCBundlePolicy.MAX_BUNDLE;
         configuration.tcpCandidatePolicy = dev.onvoid.webrtc.RTCTcpCandidatePolicy.DISABLED;
 
-        RTCPeerConnection peer = factory.createPeerConnection(configuration, session);
-        if (peer == null) throw new IllegalStateException("WebRTC failed to create a PeerConnection");
+        RTCPeerConnection peer;
+        try {
+            peer = factory.createPeerConnection(configuration, session);
+        } catch (RuntimeException exception) {
+            session.close();
+            throw exception;
+        }
+        if (peer == null) {
+            session.close();
+            throw new IllegalStateException("WebRTC failed to create a PeerConnection");
+        }
         session.peer = peer;
 
+        if (closed.get()) {
+            session.close();
+            throw new IllegalStateException("WebRTC negotiator is closed");
+        }
         if (sessions.putIfAbsent(networkId, session) != null) {
             session.close();
             throw new IllegalStateException("NetworkID is already connected");
@@ -130,6 +148,18 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
 
     public int activeSessionCount() {
         return sessions.size();
+    }
+
+    /** Sends an already-framed binary NetherNet message to one peer. */
+    public void sendFrame(String networkId, String channelLabel, byte[] frame) throws Exception {
+        Objects.requireNonNull(frame, "frame");
+        PeerSession session = sessions.get(networkId);
+        if (session == null) throw new IllegalStateException("Unknown NetherNet session");
+        RTCDataChannel channel = session.channels.get(channelLabel);
+        if (channel == null || channel.getState() != RTCDataChannelState.OPEN) {
+            throw new IllegalStateException("NetherNet data channel is not open: " + channelLabel);
+        }
+        channel.send(new RTCDataChannelBuffer(ByteBuffer.wrap(frame), true));
     }
 
     private static CompletableFuture<Void> setRemoteDescription(
@@ -304,6 +334,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
                     // The native connection may already have been closed by WebRTC.
                 }
             }
+            sessionPermits.release();
         }
     }
 }

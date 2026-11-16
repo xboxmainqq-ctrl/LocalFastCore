@@ -34,7 +34,12 @@ public final class NetherNetSignalingServer implements AutoCloseable {
             NetherNetServerMetadata metadata,
             SdpNegotiator negotiator
     ) {
-        this(bindAddress, () -> Objects.requireNonNull(metadata, "metadata"), negotiator);
+        this(bindAddress, fixedMetadata(metadata), negotiator);
+    }
+
+    private static Supplier<NetherNetServerMetadata> fixedMetadata(NetherNetServerMetadata metadata) {
+        NetherNetServerMetadata checked = Objects.requireNonNull(metadata, "metadata");
+        return () -> checked;
     }
 
     public NetherNetSignalingServer(

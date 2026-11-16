@@ -122,9 +122,9 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "corrupt-client", BedrockBatchCodec.encode(List.of(request), false, 256));
 
         String rawClientDataToken = signClientDataToken(clientKey);
-        String certificate = "{\\"chain\\":[]}";
-        String chainJson = "{\\"Certificate\\":\\"" + certificate.replace("\\\\", "\\\\\\\\")
-                .replace("\\"", "\\\\\\"") + "\\",\\"AuthenticationType\\":0,\\"Token\\":\\"corrupt-game-token\\"}";
+        String certificate = "{\"chain\":[]}";
+        String chainJson = "{\"Certificate\":\"" + certificate.replace("\\", "\\\\")
+                .replace("\"", "\\\"") + "\",\"AuthenticationType\":0,\"Token\":\"corrupt-game-token\"}";
         BedrockPacket login = new BedrockPacket(1, 0, 0,
                 loginPayload(2225, connectionRequest(chainJson, rawClientDataToken)));
 

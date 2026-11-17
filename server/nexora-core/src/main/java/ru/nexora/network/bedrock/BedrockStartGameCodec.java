@@ -205,7 +205,17 @@ public final class BedrockStartGameCodec {
     }
 
     public static BedrockPacket createChunkPublisherUpdate(int x, int y, int z) {
-        return packet(0x79, chunkPublisherPayload(x, y, z));
+        return createChunkPublisherUpdate(x, y, z, BedrockChunkRadiusCodec.DEFAULT_RADIUS);
+    }
+
+    /** Publishes the server-approved chunk-view diameter for the local player. */
+    public static BedrockPacket createChunkPublisherUpdate(int x, int y, int z, int chunkRadius) {
+        if (chunkRadius < 1 || chunkRadius > BedrockChunkRadiusCodec.MAX_SERVER_RADIUS) {
+            throw new IllegalArgumentException("chunkRadius must be between 1 and "
+                    + BedrockChunkRadiusCodec.MAX_SERVER_RADIUS);
+        }
+        int viewDiameterBlocks = Math.multiplyExact(chunkRadius * 2 + 1, 16);
+        return packet(0x79, chunkPublisherPayload(x, y, z, viewDiameterBlocks));
     }
 
     private static byte[] setSpawnPositionPayload(int x, int y, int z) {
@@ -219,10 +229,10 @@ public final class BedrockStartGameCodec {
         return out.toByteArray();
     }
 
-    private static byte[] chunkPublisherPayload(int x, int y, int z) {
+    private static byte[] chunkPublisherPayload(int x, int y, int z, int viewDiameterBlocks) {
         Writer out = new Writer();
         out.varInt32(x); out.varInt32(y); out.varInt32(z);
-        out.varUInt32(48); // 3x3 chunk window, including diagonal corners
+        out.varUInt32(viewDiameterBlocks);
         out.uint32(0);
         return out.toByteArray();
     }

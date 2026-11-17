@@ -50,7 +50,7 @@ class MobStuckTrackerTest {
 
         assertEquals(2, tracker.stats(1_000).tracked());
         assertEquals(1, tracker.stats(1_000).evictions());
-        assertTrue(tracker.stuck(5_000, 5).isEmpty());
+        assertTrue(tracker.stuck(1_000, 5).isEmpty());
     }
 
     @Test

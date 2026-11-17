@@ -178,10 +178,7 @@ class BedrockSessionManagerTest {
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
                 combatWorld, (networkId, label, frame) -> outboundFrames.add(frame), event -> {});
-        manager.setItemRegistry(new BedrockItemRegistry(List.of(
-                new BedrockItemRegistry.Entry("minecraft:rotten_flesh",
-                        new BedrockInventoryContentCodec.ItemDefinition(
-                                100, 0, 0, new byte[] {10, 0, 0, 0})))));
+        manager.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
         manager.onIdentity("reward-killer", new NetherNetClientIdentity(
                 "reward-token", new byte[] {6}, "reward-xuid", "RewardKiller", "playfab-reward", "20CA2", null));
         setSessionField(manager, "reward-killer", "loginAuthenticated", true);

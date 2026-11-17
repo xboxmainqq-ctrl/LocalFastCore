@@ -22,6 +22,7 @@ import ru.nexora.inventory.ContainerInventoryTransactionService;
 import ru.nexora.world.FlatWorldGenerator;
 import ru.nexora.world.BlockType;
 import ru.nexora.world.World;
+import ru.nexora.world.WorldContainerManager;
 import ru.nexora.world.WorldItemEntity;
 import ru.nexora.world.WorldItemEntityManager;
 import ru.nexora.world.WorldChunk;

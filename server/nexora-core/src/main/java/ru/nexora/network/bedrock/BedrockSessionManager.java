@@ -1561,7 +1561,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
         long now = nanoTime.getAsLong();
         if (attacker.lastAttackNanos != Long.MIN_VALUE
-                && now - attacker.lastAttackNanos < 250_000_000L) return;
+                && now - attacker.lastAttackNanos < 50_000_000L) return;
 
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
             String targetNetworkId = entry.getKey();
@@ -1574,12 +1574,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             try {
                 if (!target.loginAuthenticated || !target.clientInitialized
                         || target.dead || target.vitals.dead()) return;
+                if (target.lastCombatDamageNanos != Long.MIN_VALUE
+                        && now - target.lastCombatDamageNanos < 500_000_000L) return;
                 double dx = target.positionX - attacker.positionX;
                 double dy = target.positionY - attacker.positionY;
                 double dz = target.positionZ - attacker.positionZ;
                 if (dx * dx + dy * dy + dz * dz > 3.5 * 3.5) return;
 
                 attacker.lastAttackNanos = now;
+                target.lastCombatDamageNanos = now;
                 float baseDamage = baseAttackDamage(weapon);
                 ru.nexora.combat.EnchantmentCombatService.AttackEffect effect =
                         ru.nexora.combat.EnchantmentCombatService.resolveAttack(
@@ -1649,11 +1652,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private static float baseAttackDamage(ItemStack weapon) {
         if (weapon == null) return 1.0f;
         return switch (weapon.itemId()) {
-            case "minecraft:wooden_sword", "minecraft:golden_sword" -> 4.0f;
-            case "minecraft:stone_sword" -> 5.0f;
-            case "minecraft:iron_sword" -> 6.0f;
-            case "minecraft:diamond_sword" -> 7.0f;
-            case "minecraft:netherite_sword" -> 8.0f;
+            case "minecraft:wooden_sword", "minecraft:golden_sword" -> 5.0f;
+            case "minecraft:stone_sword" -> 6.0f;
+            case "minecraft:iron_sword" -> 7.0f;
+            case "minecraft:diamond_sword" -> 8.0f;
+            case "minecraft:netherite_sword" -> 9.0f;
             default -> 1.0f;
         };
     }
@@ -3230,6 +3233,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private static final class SessionState {
         private final ReentrantLock combatLock = new ReentrantLock();
         private long lastAttackNanos = Long.MIN_VALUE;
+        private long lastCombatDamageNanos = Long.MIN_VALUE;
         private long fireUntilNanos = Long.MIN_VALUE;
         private long nextFireDamageNanos = Long.MIN_VALUE;
         private PlayerInventory inventory = new PlayerInventory();

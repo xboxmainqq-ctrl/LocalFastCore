@@ -14,6 +14,16 @@ NexoraAI is an in-core operations observer and optional in-game assistant for NE
 
 `NexoraAiMonitor` samples these metrics every 30 seconds and writes warnings to the server console. It does not change server state. The Bedrock mob-AI update and furnace tick are timed; executions taking longer than 50 ms are counted. Periodic world/player autosaves taking longer than 1 second are also counted. Bedrock inbound message handling is also timed from before per-session lock acquisition through packet dispatch; processing taking longer than 50 ms is grouped as `bedrock-inbound`. This includes time waiting for that session's lock and is not a packet-rate or network-bandwidth measurement. The current core does not expose one centralized fixed-rate server tick loop: player movement is processed from Bedrock `PlayerAuthInput`, while mob AI is throttled to at most one update per 50 ms when player input is handled. Therefore inbound processing latency is measured as its own signal rather than mislabeled as TPS. These are subsystem execution warnings, not a server-wide TPS measurement or a complete hang detector.
 
+## NexoraAI Guard (network observer)
+
+- The first Guard stage observes inbound NetherNet transport frames per peer using monotonic 5-second windows.
+- Default review thresholds are more than 300 frames or more than 1 MiB per peer per window. A peer produces at most one signal per window.
+- Per-peer state is capped at 1,024 entries and removed on disconnect; when full, the oldest tracked entry is evicted.
+- Aggregate Guard status is included in the operator runtime context without exposing peer identifiers.
+- Signals are evidence for review only. This stage does not throttle, disconnect, mute, or ban players.
+- These are application-observed per-peer frame/byte thresholds, not proof of a DDoS attack. They cannot observe traffic dropped upstream or protect a saturated network link; host/network-level filtering is still required.
+- Movement/combat cheat detection and a moderator case-review interface are not implemented yet.
+
 ## In-game assistant
 
 - `/ai` opens a Bedrock input form.

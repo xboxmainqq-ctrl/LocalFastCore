@@ -2504,7 +2504,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case CHEST -> 2_500_000_000L;
             case OAK_LOG -> 2_000_000_000L;
             case OAK_PLANKS -> 2_000_000_000L;
-            case CRAFTING_TABLE, FURNACE -> 2_500_000_000L;
+            case CRAFTING_TABLE, FURNACE, BLAST_FURNACE, SMOKER -> 2_500_000_000L;
         };
     }
 

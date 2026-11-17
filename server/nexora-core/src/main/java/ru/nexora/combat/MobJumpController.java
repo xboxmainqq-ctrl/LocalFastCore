@@ -34,7 +34,8 @@ public final class MobJumpController {
                                          double nextX, double nextZ, long nowMillis) {
         if (world == null || mob == null || !Double.isFinite(nextX) || !Double.isFinite(nextZ)
                 || nowMillis < 0) throw new IllegalArgumentException("Invalid mob jump observation");
-        if (LivingEntityAiService.isFlyingMob(mob.identifier())
+        if (!WorldPathfinder.isMobFootprintLoaded(world, mob.x(), mob.z())
+                || LivingEntityAiService.isFlyingMob(mob.identifier())
                 || nowMillis < nextJumpAt.getOrDefault(mob.runtimeId(), 0L)
                 || !WorldCollision.isOnGround(world, mob.x(), mob.y(), mob.z())) {
             rejected++;
@@ -52,8 +53,11 @@ public final class MobJumpController {
             return false;
         }
 
-        world.livingEntities().setVelocity(mob.runtimeId(),
-                mob.velocityX(), JUMP_VELOCITY, mob.velocityZ());
+        if (world.livingEntities().setVelocity(mob.runtimeId(),
+                mob.velocityX(), JUMP_VELOCITY, mob.velocityZ()).isEmpty()) {
+            rejected++;
+            return false;
+        }
         nextJumpAt.put(mob.runtimeId(), safeNextJumpAt(nowMillis));
         jumps++;
         trim();

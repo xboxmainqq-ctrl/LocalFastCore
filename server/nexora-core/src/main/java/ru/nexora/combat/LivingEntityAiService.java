@@ -148,8 +148,8 @@ public final class LivingEntityAiService {
     /** Hostile families pursue players; neutral mobs only retaliate after being hit. */
     public static boolean isHostile(String identifier) {
         return switch (identifier) {
-            case "minecraft:zombie", "minecraft:husk", "minecraft:drowned",
-                    "minecraft:zombified_piglin", "minecraft:zoglin",
+            case "minecraft:zombie", "minecraft:zombie_villager", "minecraft:husk", "minecraft:drowned",
+                    "minecraft:zoglin",
                     "minecraft:spider", "minecraft:cave_spider", "minecraft:silverfish",
                     "minecraft:endermite", "minecraft:skeleton", "minecraft:stray",
                     "minecraft:wither_skeleton", "minecraft:creeper", "minecraft:witch",
@@ -157,7 +157,7 @@ public final class LivingEntityAiService {
                     "minecraft:blaze", "minecraft:ghast", "minecraft:guardian",
                     "minecraft:elder_guardian", "minecraft:shulker", "minecraft:vindicator",
                     "minecraft:evoker", "minecraft:pillager", "minecraft:ravager",
-                    "minecraft:hoglin", "minecraft:piglin", "minecraft:piglin_brute",
+                    "minecraft:hoglin", "minecraft:piglin_brute", "minecraft:ender_dragon",
                     "minecraft:warden", "minecraft:breeze",
                     "minecraft:bogged" -> true;
             default -> false;

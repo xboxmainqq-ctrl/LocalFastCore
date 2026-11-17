@@ -97,7 +97,7 @@ public final class PlayerEquipmentStorage {
             Optional<ItemStack> offhand = readStack(in, version);
             Optional<ItemStack> cursor = readStack(in, version);
             List<Optional<ItemStack>> magic = new ArrayList<>(PlayerEquipment.MAGIC_SLOTS);
-            if (version == VERSION) {
+            if (version >= 2) {
                 for (int i = 0; i < PlayerEquipment.MAGIC_SLOTS; i++) magic.add(readStack(in, version));
             } else {
                 for (int i = 0; i < PlayerEquipment.MAGIC_SLOTS; i++) magic.add(Optional.empty());

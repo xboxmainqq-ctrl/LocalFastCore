@@ -260,7 +260,8 @@ public final class WorldItemEntityManager {
                             currentFirst.ownerXuid());
                     entities.put(currentFirst.runtimeId(), currentFirst);
                     if (entities.remove(currentSecond.runtimeId(), currentSecond)) removed.add(currentSecond);
-                    moved.removeIf(entity -> entity.runtimeId() == currentFirst.runtimeId());
+                    long mergedRuntimeId = currentFirst.runtimeId();
+                    moved.removeIf(entity -> entity.runtimeId() == mergedRuntimeId);
                     moved.add(currentFirst);
                     changed = true;
                 }

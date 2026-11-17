@@ -42,6 +42,27 @@ class WorldFurnaceManagerTest {
     }
 
     @Test
+    void tickAllAdvancesEveryLoadedFurnace() throws Exception {
+        ContainerInventoryStorage inventoryStorage =
+                new ContainerInventoryStorage(temporaryDirectory, "NEXORA");
+        FurnaceStateStorage stateStorage = new FurnaceStateStorage(temporaryDirectory, "NEXORA");
+        WorldFurnaceManager manager = new WorldFurnaceManager(inventoryStorage, stateStorage);
+        var first = manager.getOrCreate(0, 64, 0);
+        var second = manager.getOrCreate(1, 64, 0);
+        first.setSlot(0, new ItemStack("minecraft:raw_iron", 1, 64));
+        first.setSlot(1, new ItemStack("minecraft:blaze_rod", 1, 64));
+        second.setSlot(0, new ItemStack("minecraft:raw_gold", 1, 64));
+        second.setSlot(1, new ItemStack("minecraft:blaze_rod", 1, 64));
+
+        manager.tickAll(200);
+
+        assertEquals(new ItemStack("minecraft:iron_ingot", 1, 64),
+                first.getSlot(2).orElseThrow());
+        assertEquals(new ItemStack("minecraft:gold_ingot", 1, 64),
+                second.getSlot(2).orElseThrow());
+    }
+
+    @Test
     void removeDeletesBothInventoryAndProgress() throws Exception {
         ContainerInventoryStorage inventoryStorage =
                 new ContainerInventoryStorage(temporaryDirectory, "NEXORA");

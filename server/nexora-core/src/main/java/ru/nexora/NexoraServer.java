@@ -22,6 +22,7 @@ import ru.nexora.inventory.PlayerInventoryStorage;
 import ru.nexora.inventory.PlayerEquipmentStorage;
 import ru.nexora.inventory.VanillaArmorSlotCatalog;
 import ru.nexora.inventory.NexoraMagicEquipmentCatalog;
+import ru.nexora.inventory.DurabilitySettings;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -68,6 +69,7 @@ public final class NexoraServer {
                 new java.security.SecureRandom().nextLong()
         );
 
+        DurabilitySettings durabilitySettings = DurabilitySettings.fromEnvironment(System.getenv());
         String dataDirectory = System.getenv().getOrDefault("NEXORA_DATA_DIR", "data");
         DefaultNetherNetIdentityService identityService =
                 new DefaultNetherNetIdentityService(Path.of(dataDirectory, "identity"));
@@ -193,6 +195,8 @@ public final class NexoraServer {
         System.out.println("Furnace inventories and burn/cook progress use checksummed storage under " + Path.of(dataDirectory, "worlds", "NEXORA World", "furnaces").toAbsolutePath());
         System.out.println("Server-authoritative movement, block drops, item pickups, fall damage, death/respawn, food use and persisted survival vitals are enabled.");
         System.out.println("Players can open the magical equipment interface with /equipment.");
+        System.out.println("Weapon and armor durability wear is disabled by default; NEXORA_DURABILITY_ENABLED="
+                + durabilitySettings.enabled() + " (wear processing is not implemented yet).");
         System.out.printf("World autosave interval: %d seconds%n", autosaveSeconds);
         System.out.println("Saved player positions and rotations are restored on re-login.");
         System.out.println("Next gameplay stages: item bounce/despawn, player/mob entity replication, containers/crafting, death inventory drops and real-client validation.");

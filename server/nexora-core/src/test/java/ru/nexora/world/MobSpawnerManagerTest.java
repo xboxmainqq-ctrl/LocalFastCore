@@ -152,6 +152,47 @@ class MobSpawnerManagerTest {
         assertTrue(manager.snapshot().isEmpty());
     }
 
+
+    @Test
+    void oneSpawnerBatchIsProcessedAtMostOncePerServerTick() {
+        World world = createWorld();
+        MobSpawnerManager manager = world.mobSpawners();
+        long due = manager.snapshot().get(0).nextSpawnTick();
+        AtomicInteger calls = new AtomicInteger();
+        var first = manager.tick(world, due,
+                List.of(new MobSpawnerManager.PlayerPosition(0.5, 65, 0.5)),
+                request -> { calls.incrementAndGet(); return true; });
+        var duplicate = manager.tick(world, due,
+                List.of(new MobSpawnerManager.PlayerPosition(0.5, 65, 0.5)),
+                request -> { calls.incrementAndGet(); return true; });
+
+        assertEquals(1, first.processedSpawners());
+        assertEquals(0, duplicate.processedSpawners());
+        assertEquals(first.spawned(), calls.get());
+    }
+
+    @Test
+    void spawnerWorkIsBoundedAndRotatesAcrossTicks() {
+        World world = new World("spawner-budget-test", 0L, new FlatWorldGenerator());
+        for (int i = 0; i <= MobSpawnerManager.MAX_SPAWNERS_PER_TICK; i++) {
+            world.setBlock(i % 16, 65, i / 16, BlockType.SPAWNER);
+        }
+        MobSpawnerManager manager = world.mobSpawners();
+        long due = manager.snapshot().stream().mapToLong(MobSpawnerState::nextSpawnTick)
+                .max().orElseThrow();
+        List<MobSpawnerManager.PlayerPosition> players = manager.snapshot().stream()
+                .map(state -> new MobSpawnerManager.PlayerPosition(
+                        state.x() + 0.5, state.y(), state.z() + 0.5))
+                .toList();
+
+        var first = manager.tick(world, due, players, request -> false);
+        var second = manager.tick(world, due + 1, players, request -> false);
+
+        assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK, first.processedSpawners());
+        assertEquals(1, second.processedSpawners());
+        assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK + 1, first.trackedSpawners());
+    }
+
     @Test
     void configurationAndRemovalAreValidated() {
         MobSpawnerManager manager = new MobSpawnerManager();

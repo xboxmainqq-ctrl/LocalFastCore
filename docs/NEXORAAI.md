@@ -17,6 +17,7 @@ NexoraAI is an in-core operations observer and optional in-game assistant for NE
 
 - `/ai` opens a Bedrock input form.
 - `/ai <question>` sends a direct question.
+- `/ai help` lists available commands; `/ai status` shows whether the provider is configured.
 - The assistant answers asynchronously through an OpenAI-compatible Chat Completions endpoint.
 - Per-player requests are rate-limited and prompts/replies are bounded.
 - The model receives a small read-only JVM status snapshot. It is explicitly instructed not to claim it can execute commands or modify the server.

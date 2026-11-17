@@ -167,10 +167,14 @@ public final class BedrockItemStackUserDataCodec {
             require(length);
             byte[] bytes = new byte[length];
             buffer.get(bytes);
-            return StandardCharsets.UTF_8.newDecoder()
-                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
-                    .decode(ByteBuffer.wrap(bytes)).toString();
+            try {
+                return StandardCharsets.UTF_8.newDecoder()
+                        .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                        .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                        .decode(ByteBuffer.wrap(bytes)).toString();
+            } catch (java.nio.charset.CharacterCodingException exception) {
+                throw new IllegalArgumentException("Invalid UTF-8 in item user data", exception);
+            }
         }
         boolean exhausted() { return !buffer.hasRemaining(); }
         private void require(int length) {

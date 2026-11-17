@@ -13,7 +13,7 @@ class MobLootServiceTest {
 
         var spider = MobLootService.dropsFor("minecraft:spider");
         assertEquals(5_000, spider.experienceMilliPoints());
-        assertTrue(spider.drops().isEmpty());
+        assertEquals("minecraft:string", spider.drops().getFirst().itemId());
 
         var skeleton = MobLootService.dropsFor("minecraft:skeleton");
         assertEquals(1, skeleton.drops().size());
@@ -39,7 +39,19 @@ class MobLootServiceTest {
     }
 
     @Test
+    void supportedMobFamiliesHaveTheirExpectedLoot() {
+        assertEquals("minecraft:gunpowder",
+                MobLootService.dropsFor("minecraft:creeper").drops().getFirst().itemId());
+        assertEquals("minecraft:ender_pearl",
+                MobLootService.dropsFor("minecraft:enderman").drops().getFirst().itemId());
+        assertEquals("minecraft:beef",
+                MobLootService.dropsFor("minecraft:cow").drops().getFirst().itemId());
+        assertEquals("minecraft:totem_of_undying",
+                MobLootService.dropsFor("minecraft:evoker").drops().getFirst().itemId());
+    }
+
+    @Test
     void unknownMobsHaveNoLootOrExperience() {
-        assertEquals(MobLootService.Loot.EMPTY, MobLootService.dropsFor("minecraft:cow"));
+        assertEquals(MobLootService.Loot.EMPTY, MobLootService.dropsFor("minecraft:unknown_mob"));
     }
 }

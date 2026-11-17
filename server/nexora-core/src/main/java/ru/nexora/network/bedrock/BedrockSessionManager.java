@@ -91,6 +91,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final OutboundFrameSender outbound;
     private final Consumer<PacketEvent> packetSink;
     private final LongSupplier nanoTime;
+    private final AutoCloseable furnaceUpdateListener;
     private final Map<String, SessionState> sessions = new ConcurrentHashMap<>();
     private final AtomicLong nextEntityId = new AtomicLong(1);
     private final AtomicLong nextFormId = new AtomicLong(1);
@@ -252,6 +253,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         this.packetSink = Objects.requireNonNull(packetSink, "packetSink");
         this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime");
         this.inbound = new NetherNetInboundPipeline(this::handleCompleteMessage);
+        this.furnaceUpdateListener = this.world.furnaces()
+                .map(manager -> manager.addUpdateListener(this::handleFurnaceUpdate))
+                .orElse(null);
     }
 
     @Override
@@ -991,6 +995,31 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.openContainerX = 0;
         state.openContainerY = 0;
         state.openContainerZ = 0;
+    }
+
+    private void handleFurnaceUpdate(WorldFurnaceManager.FurnaceUpdate update) {
+        if (itemRegistry == null) return;
+        BedrockPacket content;
+        try {
+            content = BedrockInventoryContentCodec.createContainerInventory(
+                    1, update.inventory(), itemRegistry);
+        } catch (RuntimeException exception) {
+            System.err.println("NEXORA: unable to encode furnace update: " + exception.getMessage());
+            return;
+        }
+        for (var entry : sessions.entrySet()) {
+            SessionState state = entry.getValue();
+            synchronized (state) {
+                if (!state.clientInitialized || !state.openContainerIsFurnace
+                        || state.openContainerWindowId == 0
+                        || state.openContainerX != update.x()
+                        || state.openContainerY != update.y()
+                        || state.openContainerZ != update.z()) continue;
+                BedrockPacket windowContent = BedrockInventoryContentCodec.createContainerInventory(
+                        state.openContainerWindowId, update.inventory(), itemRegistry);
+                sendPacket(entry.getKey(), windowContent, true);
+            }
+        }
     }
 
     private void sendContainerReconciliation(String networkId, SessionState state) {
@@ -2845,6 +2874,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     @Override
     public void close() {
+        if (furnaceUpdateListener != null) {
+            try { furnaceUpdateListener.close(); }
+            catch (Exception exception) {
+                System.err.println("NEXORA: unable to unregister furnace updates: " + exception.getMessage());
+            }
+        }
         for (SessionState state : sessions.values()) {
             synchronized (state) {
                 try {

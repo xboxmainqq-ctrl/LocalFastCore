@@ -236,9 +236,12 @@ class MobSpawnerManagerTest {
 
         assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK, first.processedSpawners());
         assertEquals(0, duplicate.processedSpawners());
-        assertEquals(2, second.processedSpawners());
-        assertEquals(400, manager.snapshot().get(0).nextSpawnTick());
-        assertEquals(401, manager.snapshot().get(129).nextSpawnTick());
+        assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK, second.processedSpawners());
+        var states = manager.snapshot();
+        assertEquals(401, states.get(0).nextSpawnTick());
+        assertEquals(400, states.get(126).nextSpawnTick());
+        assertEquals(400, states.get(127).nextSpawnTick());
+        assertEquals(401, states.get(128).nextSpawnTick());
     }
 
     @Test

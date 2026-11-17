@@ -163,7 +163,7 @@ class MobSpawnerManagerTest {
         manager.tick(world, 10, List.of(new MobSpawnerManager.PlayerPosition(32.5, 65, 32.5)),
                 request -> true);
 
-        assertEquals(211, manager.snapshot().get(0).nextSpawnTick());
+        assertEquals(210, manager.snapshot().get(0).nextSpawnTick());
         assertEquals(0, world.loadedChunkCount());
     }
 

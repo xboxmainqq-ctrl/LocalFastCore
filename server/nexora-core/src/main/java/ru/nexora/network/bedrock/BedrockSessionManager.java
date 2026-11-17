@@ -2212,6 +2212,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             WorldLivingEntity entity = result.current();
             if (result.killed()) {
                 nextMobAttackMillis.remove(entity.runtimeId());
+                mobPathCache.remove(entity.runtimeId());
                 MobKillCredit credit = livingEntityKillCredit.remove(entity.runtimeId());
                 SessionState killer = credit == null ? null : sessions.get(credit.networkId());
                 if (killer != null) {
@@ -2535,6 +2536,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         if (world.livingEntities().remove(creeper.runtimeId())) {
             nextMobAttackMillis.remove(creeper.runtimeId());
+            mobPathCache.remove(creeper.runtimeId());
             livingEntityKillCredit.remove(creeper.runtimeId());
             livingEntityAggroTargets.remove(creeper.runtimeId());
             broadcastLivingActorPacket(
@@ -2592,6 +2594,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                                 livingEntityAggroTargets.remove(mob.runtimeId());
                                 grantMobRewards(networkId, target, mob, 0);
                                 nextMobAttackMillis.remove(mob.runtimeId());
+                                mobPathCache.remove(mob.runtimeId());
                                 broadcastLivingActorPacket(
                                         BedrockAddItemActorCodec.createRemoveActor(mob.uniqueId()));
                             } else {

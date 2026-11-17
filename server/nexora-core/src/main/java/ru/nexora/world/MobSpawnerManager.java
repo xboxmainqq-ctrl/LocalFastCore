@@ -3,6 +3,7 @@ package ru.nexora.world;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +25,7 @@ public final class MobSpawnerManager {
     public static final int MAX_SPAWNERS_PER_TICK = 128;
 
     private final Map<Position, MobSpawnerState> spawners = new LinkedHashMap<>();
+    private final Map<Position, Long> lastObservedTick = new HashMap<>();
     private final Map<Position, Long> lastVisitedTicks = new LinkedHashMap<>();
     private final MobSpawnerStorage storage;
 
@@ -48,6 +50,7 @@ public final class MobSpawnerManager {
             if (spawners.putIfAbsent(position, state) != null) {
                 throw new IOException("Duplicate mob spawner position");
             }
+            lastObservedTick.put(position, nowTick);
             lastVisitedTicks.put(position, nowTick);
         }
     }
@@ -76,7 +79,6 @@ public final class MobSpawnerManager {
     private long cappedAttempts;
     private long inactiveTicks;
     private long invalidPositionAttempts;
-    private long lastProcessedTick = Long.MIN_VALUE;
     private int nextSpawnerCursor;
 
     public synchronized boolean register(int x, int y, int z, long currentTick) {
@@ -228,6 +230,13 @@ public final class MobSpawnerManager {
         Long previous = lastVisitedTicks.put(key, currentTick);
         if (previous == null) return 1L;
         return currentTick >= previous ? currentTick - previous : 0L;
+    }
+
+    private synchronized long elapsedTicksFor(MobSpawnerState state, long currentTick) {
+        Position key = new Position(state.x(), state.y(), state.z());
+        Long previous = lastObservedTick.put(key, currentTick);
+        if (previous == null || currentTick <= previous) return 0L;
+        return currentTick - previous;
     }
 
     /** Pauses the countdown while the chunk is unloaded or no player activates the spawner. */

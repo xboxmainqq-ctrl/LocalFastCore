@@ -36,4 +36,18 @@ class WorldPathfinderTest {
         assertTrue(WorldPathfinder.findNextStep(world, 0.1, 65, 0.1, 0.9, 0.9).isEmpty());
         assertTrue(WorldPathfinder.findNextStep(world, Double.NaN, 65, 0, 3, 3).isEmpty());
     }
+    @Test
+    void reportsSearchAreaResidentOnlyWhenAllRelevantChunksAreLoaded() {
+        World world = new World("path-area-loaded", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
+        assertFalse(WorldPathfinder.isSearchAreaLoaded(world, 8.5, 8.5));
+
+        for (int chunkX = -1; chunkX <= 1; chunkX++) {
+            for (int chunkZ = -1; chunkZ <= 1; chunkZ++) {
+                world.getChunk(chunkX, chunkZ);
+            }
+        }
+        assertTrue(WorldPathfinder.isSearchAreaLoaded(world, 8.5, 8.5));
+    }
+
 }

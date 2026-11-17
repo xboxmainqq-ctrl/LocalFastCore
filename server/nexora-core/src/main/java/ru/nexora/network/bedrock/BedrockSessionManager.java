@@ -1593,6 +1593,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     applyDamage(targetNetworkId, target, finalDamage,
                             target.lastInputTick, "death.attack.generic");
                 }
+                applyKnockback(targetNetworkId, target, attacker, effect.knockbackLevel());
+                if (effect.fireDurationSeconds() > 0) {
+                    if (target.fireUntilNanos <= now) {
+                        target.nextFireDamageNanos = now + 1_000_000_000L;
+                    }
+                    target.fireUntilNanos = Math.max(target.fireUntilNanos,
+                            now + effect.fireDurationSeconds() * 1_000_000_000L);
+                }
 
                 List<ItemStack> armor = target.equipment.armorSnapshot().stream()
                         .flatMap(Optional::stream).toList();
@@ -1617,6 +1625,25 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 target.combatLock.unlock();
             }
         }
+    }
+
+    private void applyKnockback(
+            String targetNetworkId, SessionState target, SessionState attacker, int level
+    ) {
+        if (level <= 0 || target.physicsState == null) return;
+        double dx = target.positionX - attacker.positionX;
+        double dz = target.positionZ - attacker.positionZ;
+        double length = Math.hypot(dx, dz);
+        if (length < 0.0001) return;
+        double strength = 0.4 + 0.1 * level;
+        PlayerPhysics.State current = target.physicsState;
+        target.physicsState = new PlayerPhysics.State(
+                current.x(), current.y(), current.z(),
+                current.velocityX() + dx / length * strength,
+                Math.max(current.velocityY(), 0.1),
+                current.velocityZ() + dz / length * strength,
+                current.onGround(), current.fallDistance(), current.landedDistance());
+        sendMovementCorrection(targetNetworkId, target, target.lastInputTick);
     }
 
     private static float baseAttackDamage(ItemStack weapon) {
@@ -2440,6 +2467,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (jumpStarted) exhaustion += 0.2f;
         PlayerVitals updated = before.addExhaustion(exhaustion);
         long nowNanos = nanoTime.getAsLong();
+        if (state.fireUntilNanos != Long.MIN_VALUE && nowNanos >= state.fireUntilNanos) {
+            state.fireUntilNanos = Long.MIN_VALUE;
+            state.nextFireDamageNanos = Long.MIN_VALUE;
+        } else if (state.fireUntilNanos != Long.MIN_VALUE
+                && nowNanos >= state.nextFireDamageNanos && !updated.dead()) {
+            updated = updated.damage(1.0f);
+            state.nextFireDamageNanos = nowNanos + 1_000_000_000L;
+        }
         if (nowNanos >= state.nextNaturalVitalsNanos) {
             if (updated.hunger() >= 18 && updated.health() < PlayerVitals.MAX_HEALTH) {
                 updated = updated.heal(1.0f).addExhaustion(6.0f);
@@ -2454,11 +2489,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         boolean clientVisibleChanged = healthChanged
                 || updated.hunger() != before.hunger()
                 || updated.saturation() != before.saturation();
-        if (!clientVisibleChanged) return;
+        if (!clientVisibleChanged) {
+            if (state.vitals.dead()) handleDeath(networkId, state, "death.attack.onFire");
+            return;
+        }
         List<BedrockPacket> packets = new java.util.ArrayList<>();
         if (healthChanged) packets.add(BedrockVitalsCodec.createSetHealth(updated));
         packets.add(createPlayerAttributes(state, Math.max(0, tick)));
         sendPackets(networkId, packets, true);
+        if (state.vitals.dead()) handleDeath(networkId, state, "death.attack.onFire");
     }
 
     /** Applies a server-originated damage event, for later fall, combat and hazard systems. */
@@ -3191,6 +3230,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private static final class SessionState {
         private final ReentrantLock combatLock = new ReentrantLock();
         private long lastAttackNanos = Long.MIN_VALUE;
+        private long fireUntilNanos = Long.MIN_VALUE;
+        private long nextFireDamageNanos = Long.MIN_VALUE;
         private PlayerInventory inventory = new PlayerInventory();
         private PlayerEquipment equipment = new PlayerEquipment();
         private PlayerVitals vitals = PlayerVitals.DEFAULT;

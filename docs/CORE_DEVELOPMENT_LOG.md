@@ -13,9 +13,19 @@ Work only on engine/server foundations:
 - transport-neutral protocol, authentication and safe networking;
 - versioned extension API, data-driven content and distribution.
 
-**Out of scope:** Android client, separate RPG server/product, RPG classes/progression, magic, spells, abilities, quests, bosses, RPG economy, AI mods and RPG-specific plugins. Existing historical code may remain untouched. Mob AI is in scope as a native Core entity subsystem, but should follow foundational entity/physics work. Core AI and Moderation AI assistants are in scope as later optional modules after a stable, permissioned API exists.
+**Out of scope:** Android client, separate RPG server/product, RPG classes/progression, magic, spells, abilities, quests, bosses, RPG economy, AI mods and RPG-specific plugins. Existing historical code may remain untouched. Mob AI and the two operator/moderation assistant foundations are now in the repository; they are incomplete and must remain optional.
 
 ## Work log
+
+### 2026-11-17 — initial AI subsystem foundations
+- Added `MobAiController` and wired it into the authoritative `EntityTickEngine`. Configured mobs can use PASSIVE, NEUTRAL or HOSTILE profiles; hostile perception checks nearby players and line of sight, neutral mobs can be provoked, pursuit checks loaded chunks and safe footing, and attack-range decisions emit an intent without applying damage.
+- Added regression tests for hostile pursuit, neutral provocation, and blocked line of sight. Pathfinding, combat/damage, profile persistence and load-budget enforcement are still incomplete.
+- Added `AiToolRegistry` and `CoreAiAssistant`: registered tools require explicit permissions, mutating tools require explicit approval, and audit events omit arguments. No model/provider integration or natural-language runtime is included yet.
+- Added `ModerationSignalAnalyzer` and `ModerationAiAssistant`: bounded per-player history, repeated-message and message-rate signals, SHA-256 fingerprints instead of stored raw chat, explicit player-data deletion, and mandatory human review. No automatic punishments or model-based classifier.
+- Added tests for permission denial, approval gates, audit records, moderation thresholds, expiry and invalid events.
+- Code commits: `0b01bda109031d871fd8cdc465776b6fbf014842`, `a444373b6fd23fc4ab2196696aa6fe5bbeaab2b9`, `b80c9c4337a4ae6b43bb2d9125db2b9790e272f4`, `9a76cce0d677cd4a03f863f93942bea86c59d9d4`, `08dbaf9eb445458606fff5fcf8b6b757ec80c5f8`, `611f840b51782289e379d2e890e26a7390d3defa`, `bf710a2a92a380c2561b2e643857aa8a88656f8f`, `bf2ed01581eb50882aad41e56110014ab97abf57`, `88aed5ccfdcd0e2a6ecbc193659b3670da40b7f9`.
+- Verification: tests are committed; no successful CI run has been observed for these commits. Do not claim tests pass.
+
 
 ### 2026-11-17 — server configuration reliability
 - Implemented atomic replacement when saving `server.properties`: write to a temporary file, then replace the target; use a non-atomic replacement only when the filesystem does not support atomic moves.
@@ -79,12 +89,12 @@ Work only on engine/server foundations:
 
 ## Definition of core-ready
 
-Do not start magic/RPG implementation until the dedicated core can pass automated tests for clean installation, world creation, chunk generation/loading, block/world persistence across restart, entity/player simulation, bounded networking and clean shutdown. Record actual CI evidence and any remaining limitations here.
+The Core is ready only after automated tests cover clean installation, world creation, chunk generation/loading, block/world persistence across restart, entity/player simulation, bounded networking, AI isolation and clean shutdown. Record actual CI evidence and any remaining limitations here.
 
 ## Session hand-off template
 
-- Completed: added `.nxw` future-version, truncation and trailing-byte rejection tests; reviewed world lifecycle rollback/retry coverage; reviewed chunk pipeline against public Nukkit/PowerNukkitX architecture references; fixed async waiter completion when the failure reporter throws and when the generator throws a fatal `Error`, with regression tests for both; serialized result delivery against new requests to close a completion race.
-- Tests/CI: tests are committed but not confirmed passing; workflow runs fail before runner allocation and logs/annotations are inaccessible through the current GitHub connection.
-- Not completed / blockers: CI infrastructure/dispatch failure of unknown cause; no evidence yet of a code compilation failure.
-- Next exact task: restore a working CI runner/verification path; continue the chunk lifecycle audit with worker interruption, cancellation races, retry semantics and shutdown behavior; then define NEXORA's explicit chunk lifecycle state machine before expanding streaming behavior.
+- Completed: core persistence/config reliability tests; async chunk waiter and cancellation fixes; initial profile-based Mob AI; permissioned/audited AI tool boundary; privacy-conscious moderation signal foundation.
+- Tests/CI: regression tests have been added, but no successful CI run is confirmed for the latest AI commits. The most recent earlier server workflow had a failed job with no steps/logs exposed; inspect current run details before diagnosing the failure.
+- Not completed / blockers: CI verification; chunk lifecycle state machine; full mob pathfinding/combat; model/provider adapters and complete assistant workflows; moderation case management.
+- Next exact task: obtain a real server CI run, fix compile/test failures, then continue bounded chunk lifecycle and mob navigation work.
 - Commit SHA:

@@ -66,6 +66,10 @@ The current server-side spawner implementation provides:
 
 This is an initial vanilla-style simulation, not yet a claim of complete Minecraft parity. Survival item acquisition/placement, mob-spawner block-entity NBT/visual animation, exact vanilla spawn rules, full chunk lifecycle integration, and protocol-version validation still require implementation and real-client integration testing.
 
+### Mob combat and rewards
+
+The generic AI uses species profiles for selected movement speeds, melee reach, and attack damage. Ranged bow users and creepers keep dedicated behavior paths; wither skeletons remain melee attackers. The deterministic reward table covers common drops and XP for several hostile and passive families, with Looting applied as a bounded stack bonus. Items absent from the active item registry are skipped safely rather than creating unknown inventory entries.
+
 ### Mob lifecycle cleanup
 
 Manual despawn, melee death, fire death, creeper explosion, and thorns-reflection death all clear transient AI state, navigation cache entries, aggro/fuse/cooldown tracking, kill-credit references, and owned mob projectiles. Projectile despawn packets are sent so clients do not retain orphaned arrows.

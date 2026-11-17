@@ -101,7 +101,7 @@ public final class NexoraAiAssistant {
                 + "; медленных операций " + s.slowOperationCount()
                 + "; последняя медленная: " + s.lastSlowOperation()
                 + "; мир: " + adminRuntimeSnapshot()
-                + "\\nНедавние события:\\n" + diagnostics.recentEvidence();
+                + "\nНедавние события:\n" + diagnostics.recentEvidence();
     }
 
     /**

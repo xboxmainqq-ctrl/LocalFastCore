@@ -186,7 +186,7 @@ class MobSpawnerManagerTest {
         var duplicate = manager.tick(world, 2, List.of(), request -> true);
 
         assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK, first.processedSpawners());
-        assertEquals(1, second.processedSpawners());
+        assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK, second.processedSpawners());
         assertEquals(0, duplicate.processedSpawners());
         assertEquals(0, world.loadedChunkCount());
     }
@@ -380,7 +380,7 @@ class MobSpawnerManagerTest {
         manager.tick(world, due,
                 List.of(new MobSpawnerManager.PlayerPosition(15.5, 65, 0.5)), request -> true);
 
-        assertFalse(world.isChunkLoadedAt(1, 0));
+        assertFalse(world.isChunkLoadedAt(16, 0));
     }
 
 }

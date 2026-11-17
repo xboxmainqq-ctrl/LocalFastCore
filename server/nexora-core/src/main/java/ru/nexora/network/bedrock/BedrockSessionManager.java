@@ -115,6 +115,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final ru.nexora.combat.LivingEntityAiService livingEntityAi =
             new ru.nexora.combat.LivingEntityAiService();
     private volatile boolean serverAuthoritativeMovement;
+    private volatile ru.nexora.inventory.DurabilitySettings durabilitySettings =
+            ru.nexora.inventory.DurabilitySettings.defaults();
     private final NetherNetInboundPipeline inbound;
 
     public BedrockSessionManager(
@@ -605,6 +607,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             throw new IllegalStateException("The Bedrock item registry must be installed before sessions are created");
         }
         this.itemRegistry = Objects.requireNonNull(registry, "registry");
+    }
+
+    /** Installs durability policy before clients connect. */
+    public synchronized void setDurabilitySettings(ru.nexora.inventory.DurabilitySettings settings) {
+        if (!sessions.isEmpty()) {
+            throw new IllegalStateException("Durability policy must be configured before sessions are created");
+        }
+        this.durabilitySettings = Objects.requireNonNull(settings, "settings");
     }
 
     /** Installs server-owned armor compatibility rules before clients connect. */
@@ -1633,7 +1643,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 if (finalDamage > 0.0f) {
                     applyDamage(targetNetworkId, target, finalDamage,
                             target.lastInputTick, "death.attack.generic");
+                    applyArmorDurabilityWear(targetNetworkId, target);
                 }
+                applyWeaponDurabilityWear(networkId, attacker, weapon);
                 applyKnockback(targetNetworkId, target, attacker,
                         Math.max(effect.knockbackLevel(),
                                 chargeEffect != null && chargeEffect.knockback() ? 1 : 0));
@@ -1708,6 +1720,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                                 : (float) attacker.physicsState.fallDistance());
         var damage = world.livingEntities().damage(target.runtimeId(), effect.damage()).orElse(null);
         if (damage == null) return;
+        applyWeaponDurabilityWear(attackerNetworkId, attacker, weapon);
         broadcastPacketExcept(attackerNetworkId,
                 BedrockAnimateCodec.createSwing(attacker.entityId, BedrockAnimateCodec.MAIN_HAND));
         applySpearLunge(attackerNetworkId, attacker, weapon);
@@ -2153,6 +2166,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                                 ru.nexora.combat.EnchantmentCombatService.DamageType.GENERIC);
                 if (mitigatedDamage > 0.0f) {
                     applyDamage(networkId, target, mitigatedDamage, tick, "death.attack.mob");
+                    applyArmorDurabilityWear(networkId, target);
                 }
                 if (!target.vitals.dead() && !armor.isEmpty()) {
                     double[] rolls = new double[armor.size()];
@@ -3352,6 +3366,49 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
         } finally {
             state.combatLock.unlock();
+        }
+    }
+
+    private void applyWeaponDurabilityWear(String networkId, SessionState state, ItemStack expectedWeapon) {
+        if (!durabilitySettings.enabled() || expectedWeapon == null) return;
+        int slot = state.inventory.selectedHotbarSlot();
+        ItemStack current = state.inventory.getSlot(slot).orElse(null);
+        if (!expectedWeapon.equals(current)) return;
+        Optional<ItemStack> updated = ru.nexora.inventory.ItemDurabilityService.applyWear(
+                current, 1, java.util.concurrent.ThreadLocalRandom.current());
+        if (updated.filter(current::equals).isPresent()) return;
+        state.inventory.setSlot(slot, updated.orElse(null));
+        clearSpearCharge(state);
+        sendInventoryAndEquipmentState(networkId, state);
+        persistDurabilityState(networkId, state, true, false);
+    }
+
+    private void applyArmorDurabilityWear(String networkId, SessionState state) {
+        if (!durabilitySettings.enabled()) return;
+        boolean changed = false;
+        for (int slot = 0; slot < ru.nexora.inventory.PlayerEquipment.ARMOR_SLOTS; slot++) {
+            ItemStack current = state.equipment.armor(slot).orElse(null);
+            if (current == null) continue;
+            Optional<ItemStack> updated = ru.nexora.inventory.ItemDurabilityService.applyWear(
+                    current, 1, java.util.concurrent.ThreadLocalRandom.current());
+            if (updated.filter(current::equals).isPresent()) continue;
+            state.equipment.setArmor(slot, updated.orElse(null));
+            changed = true;
+        }
+        if (!changed) return;
+        sendPackets(networkId, createEquipmentReconciliationPackets(state), true);
+        persistDurabilityState(networkId, state, false, true);
+    }
+
+    private void persistDurabilityState(
+            String networkId, SessionState state, boolean inventoryChanged, boolean equipmentChanged
+    ) {
+        try {
+            if (inventoryChanged) saveInventory(state);
+            if (equipmentChanged) saveEquipment(state);
+        } catch (IOException exception) {
+            System.err.println("NEXORA: unable to persist durability update for " + networkId
+                    + ": " + exception.getMessage());
         }
     }
 

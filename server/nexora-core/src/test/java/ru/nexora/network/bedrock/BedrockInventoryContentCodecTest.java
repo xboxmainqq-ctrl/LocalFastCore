@@ -1,7 +1,8 @@
 package ru.nexora.network.bedrock;
 
 import org.junit.jupiter.api.Test;
-import ru.nexora.inventory.ItemStack;\nimport ru.nexora.inventory.ContainerInventory;
+import ru.nexora.inventory.ItemStack;
+import ru.nexora.inventory.ContainerInventory;
 import ru.nexora.inventory.PlayerInventory;
 
 import java.util.Arrays;

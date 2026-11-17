@@ -878,7 +878,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     BedrockContainerPacketCodec.BLOCK_CONTAINER_ENTITY_ID);
             BedrockPacket content = BedrockInventoryContentCodec.createContainerInventory(
                     windowId, inventory, itemRegistry);
-            sendPackets(networkId, List.of(open, content), true);
+            var furnaceState = manager.tick(x, y, z, 0);
+            sendPackets(networkId, List.of(open, content,
+                    BedrockContainerSetDataCodec.create(windowId, 0, furnaceState.cookProgress()),
+                    BedrockContainerSetDataCodec.create(windowId, 1, furnaceState.burnTicksRemaining()),
+                    BedrockContainerSetDataCodec.create(windowId, 2, furnaceState.burnTicksTotal())), true);
             state.openContainerWindowId = windowId;
             state.openContainerType = BedrockContainerPacketCodec.FURNACE_TYPE;
             state.openContainerIsCraftingTable = false;
@@ -999,14 +1003,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     private void handleFurnaceUpdate(WorldFurnaceManager.FurnaceUpdate update) {
         if (itemRegistry == null) return;
-        BedrockPacket content;
-        try {
-            content = BedrockInventoryContentCodec.createContainerInventory(
-                    1, update.inventory(), itemRegistry);
-        } catch (RuntimeException exception) {
-            System.err.println("NEXORA: unable to encode furnace update: " + exception.getMessage());
-            return;
-        }
         for (var entry : sessions.entrySet()) {
             SessionState state = entry.getValue();
             synchronized (state) {
@@ -1015,9 +1011,18 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         || state.openContainerX != update.x()
                         || state.openContainerY != update.y()
                         || state.openContainerZ != update.z()) continue;
-                BedrockPacket windowContent = BedrockInventoryContentCodec.createContainerInventory(
-                        state.openContainerWindowId, update.inventory(), itemRegistry);
-                sendPacket(entry.getKey(), windowContent, true);
+                List<BedrockPacket> packets = new ArrayList<>();
+                if (update.result().inventoryChanged()) {
+                    packets.add(BedrockInventoryContentCodec.createContainerInventory(
+                            state.openContainerWindowId, update.inventory(), itemRegistry));
+                }
+                packets.add(BedrockContainerSetDataCodec.create(
+                        state.openContainerWindowId, 0, update.result().cookProgress()));
+                packets.add(BedrockContainerSetDataCodec.create(
+                        state.openContainerWindowId, 1, update.result().burnTicksRemaining()));
+                packets.add(BedrockContainerSetDataCodec.create(
+                        state.openContainerWindowId, 2, update.result().burnTicksTotal()));
+                sendPackets(entry.getKey(), packets, true);
             }
         }
     }

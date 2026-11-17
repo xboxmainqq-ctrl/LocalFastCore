@@ -64,4 +64,25 @@ class NexoraAiAssistantTest {
         assertTrue(assistant.adminStatus().contains("мир: unavailable"));
     }
 
+    @Test
+    void repairProposalActionsRequireAnAllowlistedOperator() {
+        NexoraAiAssistant assistant = NexoraAiAssistant.fromEnvironment(
+                Map.of("NEXORA_AI_ADMIN_XUIDS", "operator-xuid"), new NexoraAiDiagnostics());
+
+        assertThrows(SecurityException.class, () -> assistant.repairProposals("player-xuid"));
+        assertThrows(SecurityException.class, () -> assistant.repairProposal("player-xuid", "R-000001"));
+        assertThrows(SecurityException.class, () -> assistant.approveRepairProposal("player-xuid", "R-000001"));
+        assertThrows(SecurityException.class, () -> assistant.rejectRepairProposal("player-xuid", "R-000001"));
+        assertDoesNotThrow(() -> assistant.repairProposals("operator-xuid"));
+    }
+
+    @Test
+    void repairPlanCreationRejectsNonOperatorBeforeProviderUse() {
+        NexoraAiAssistant assistant = NexoraAiAssistant.fromEnvironment(
+                Map.of("NEXORA_AI_ADMIN_XUIDS", "operator-xuid"), new NexoraAiDiagnostics());
+
+        assertThrows(SecurityException.class, () ->
+                assistant.createRepairProposal("player-xuid", "Player", "Server is slow", ignored -> {}));
+    }
+
 }

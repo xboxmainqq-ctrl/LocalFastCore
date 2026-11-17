@@ -22,6 +22,7 @@ public final class World {
     private final WorldLivingEntityManager livingEntities;
     private final WorldContainerManager containers;
     private final WorldFurnaceManager furnaces;
+    private final MobSpawnerManager mobSpawners;
     private final CopyOnWriteArrayList<WorldBlockChangeListener> blockChangeListeners = new CopyOnWriteArrayList<>();
 
     public World(String name, long seed, WorldGenerator generator) {
@@ -51,6 +52,8 @@ public final class World {
         this.livingEntities = new WorldLivingEntityManager();
         this.containers = null;
         this.furnaces = null;
+        this.mobSpawners = createMobSpawnerManager(storage);
+        addBlockChangeListener(change -> mobSpawners.onBlockChanged(change, System.currentTimeMillis() / 50L));
     }
 
     /** Creates a world with durable dropped-item actor storage loaded before play begins. */
@@ -114,6 +117,8 @@ public final class World {
         this.containers = containerStorage == null ? null : new WorldContainerManager(containerStorage);
         this.furnaces = containerStorage == null || furnaceStateStorage == null ? null
                 : new WorldFurnaceManager(containerStorage, furnaceStateStorage);
+        this.mobSpawners = createMobSpawnerManager(storage);
+        addBlockChangeListener(change -> mobSpawners.onBlockChanged(change, System.currentTimeMillis() / 50L));
     }
 
     public String name() {
@@ -210,6 +215,11 @@ public final class World {
         return Optional.ofNullable(furnaces);
     }
 
+    /** Returns the world-scoped mob spawner controller. */
+    public MobSpawnerManager mobSpawners() {
+        return mobSpawners;
+    }
+
     public int loadedChunkCount() {
         return chunks.size();
     }
@@ -220,8 +230,18 @@ public final class World {
         }
         itemEntities.save();
         livingEntities.save();
+        mobSpawners.save();
         if (containers != null) containers.saveAll();
         if (furnaces != null) furnaces.saveAll();
+    }
+
+    private static MobSpawnerManager createMobSpawnerManager(WorldStorage storage) {
+        if (storage == null) return new MobSpawnerManager();
+        try {
+            return new MobSpawnerManager(new MobSpawnerStorage(storage.worldDirectory()));
+        } catch (IOException exception) {
+            throw new UncheckedIOException("Unable to load NEXORA mob spawners", exception);
+        }
     }
 
     private static long chunkKey(int x, int z) {

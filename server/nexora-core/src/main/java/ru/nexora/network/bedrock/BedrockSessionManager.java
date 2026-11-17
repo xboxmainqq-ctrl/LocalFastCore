@@ -1846,6 +1846,17 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
+    private void sendExistingLivingActors(String networkId) {
+        for (WorldLivingEntity entity : world.livingEntities().snapshot()) {
+            try {
+                sendPacket(networkId, BedrockAddActorCodec.createAddActor(entity), true);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to send existing living actor to " + networkId
+                        + ": " + exception.getMessage());
+            }
+        }
+    }
+
     private void broadcastLivingActorPacket(BedrockPacket packet) {
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
             if (entry.getValue().clientInitialized) sendPacket(entry.getKey(), packet, true);
@@ -1874,6 +1885,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     public boolean despawnLivingEntity(long runtimeId) {
         WorldLivingEntity entity = world.livingEntities().find(runtimeId).orElse(null);
         if (entity == null || !world.livingEntities().remove(runtimeId)) return false;
+        nextMobAttackMillis.remove(runtimeId);
         broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()));
         return true;
     }
@@ -3110,6 +3122,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.clientInitialized = true;
         sendPacket(message.networkId(), BedrockBatchCodec.createPlayStatus(3), true);
         sendInitialPlayerInventory(message.networkId(), state);
+        sendExistingLivingActors(message.networkId());
         if (state.dead) handleDeath(message.networkId(), state, "death.attack.generic");
     }
 

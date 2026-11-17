@@ -2738,7 +2738,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             float fallDamage = (float) Math.ceil(next.landedDistance() - 3.0);
             List<ItemStack> armor = state.equipment.armorSnapshot().stream()
                     .flatMap(Optional::stream).toList();
-            fallDamage = ru.nexora.combat.EnchantmentCombatService.applyEnchantmentProtection(
+            fallDamage = ru.nexora.combat.EnchantmentCombatService.applyIncomingDamage(
                     fallDamage, armor,
                     ru.nexora.combat.EnchantmentCombatService.DamageType.FALL);
             if (fallDamage > 0.0f) {

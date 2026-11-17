@@ -1,0 +1,126 @@
+package ru.nexora.network.bedrock;
+
+import org.junit.jupiter.api.Test;
+import ru.nexora.network.nethernet.NetherNetClientIdentity;
+import ru.nexora.network.nethernet.NetherNetMessageFramer;
+import ru.nexora.world.FlatWorldGenerator;
+import ru.nexora.world.World;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class BedrockPlayerPresenceIntegrationTest {
+    @Test
+    void advertisesPlayerListBeforeSpawningActorsForBothClients() throws Exception {
+        List<Outbound> outbound = new ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new World("player-presence-test", 0L, new FlatWorldGenerator()),
+                (networkId, label, frame) -> outbound.add(new Outbound(networkId, frame)),
+                event -> { });
+
+        try {
+            manager.onIdentity("existing", identity("existing", "ExistingPlayer"));
+            manager.onIdentity("joining", identity("joining", "JoiningPlayer"));
+
+            Object existing = session(manager, "existing");
+            Object joining = session(manager, "joining");
+            prepareSession(existing, entry("00000000-0000-0000-0000-000000000101", 101, "ExistingPlayer"));
+            prepareSession(joining, entry("00000000-0000-0000-0000-000000000102", 102, "JoiningPlayer"));
+            set(existing, "playerListAdvertised", true);
+
+            Method advertise = BedrockSessionManager.class.getDeclaredMethod(
+                    "advertisePlayerList", String.class, existing.getClass());
+            advertise.setAccessible(true);
+            advertise.invoke(manager, "joining", joining);
+
+            List<BedrockPacket> forJoining = packetsFor(outbound, "joining");
+            List<BedrockPacket> forExisting = packetsFor(outbound, "existing");
+
+            assertEquals(List.of(
+                    BedrockPlayerListCodec.PLAYER_LIST_PACKET_ID,
+                    BedrockAddPlayerCodec.ADD_PLAYER_PACKET_ID),
+                    packetIds(forJoining));
+            assertEquals(List.of(
+                    BedrockPlayerListCodec.PLAYER_LIST_PACKET_ID,
+                    BedrockAddPlayerCodec.ADD_PLAYER_PACKET_ID),
+                    packetIds(forExisting));
+
+            // The joining client receives both list entries in its snapshot.
+            assertEquals(2, Byte.toUnsignedInt(forJoining.get(0).payload()[0]));
+            // The existing client receives the new player's list entry before its actor.
+            assertEquals(1, Byte.toUnsignedInt(forExisting.get(0).payload()[0]));
+            assertTrue((boolean) field(joining, "playerListAdvertised"));
+        } finally {
+            manager.close();
+        }
+    }
+
+    private static NetherNetClientIdentity identity(String id, String name) {
+        return new NetherNetClientIdentity(
+                id + "-token", new byte[] {1, 2, 3}, id + "-xuid",
+                name, id + "-playfab", "20CA2", null);
+    }
+
+    private static BedrockPlayerListCodec.AddEntry entry(String uuid, long actorId, String name) {
+        return new BedrockPlayerListCodec.AddEntry(
+                UUID.fromString(uuid), actorId, name, actorId + "-xuid",
+                actorId + "-playfab", "", 8, new byte[] {1},
+                false, false, false, 0);
+    }
+
+    private static void prepareSession(Object session, BedrockPlayerListCodec.AddEntry player) throws Exception {
+        set(session, "clientInitialized", true);
+        set(session, "compressionNegotiated", true);
+        set(session, "playerListEntry", player);
+        set(session, "entityId", player.actorUniqueId());
+        set(session, "buildPlatform", 8);
+        set(session, "playerDeviceId", "");
+        set(session, "platformChatId", "");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Object session(BedrockSessionManager manager, String id) throws Exception {
+        Field sessionsField = BedrockSessionManager.class.getDeclaredField("sessions");
+        sessionsField.setAccessible(true);
+        Map<String, Object> sessions = (Map<String, Object>) sessionsField.get(manager);
+        return sessions.get(id);
+    }
+
+    private static void set(Object target, String name, Object value) throws Exception {
+        Field field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(target, value);
+    }
+
+    private static Object field(Object target, String name) throws Exception {
+        Field field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        return field.get(target);
+    }
+
+    private static List<BedrockPacket> packetsFor(List<Outbound> frames, String recipient) {
+        List<BedrockPacket> packets = new ArrayList<>();
+        for (Outbound outbound : frames) {
+            if (!recipient.equals(outbound.recipient())) continue;
+            NetherNetMessageFramer.Reassembler reassembler = new NetherNetMessageFramer.Reassembler();
+            byte[] message = reassembler.accept(outbound.frame(), true).orElseThrow();
+            packets.addAll(BedrockBatchCodec.decode(message, true));
+        }
+        return packets;
+    }
+
+    private static List<Integer> packetIds(List<BedrockPacket> packets) {
+        return packets.stream().map(BedrockPacket::packetId).toList();
+    }
+
+    private record Outbound(String recipient, byte[] frame) {
+    }
+}

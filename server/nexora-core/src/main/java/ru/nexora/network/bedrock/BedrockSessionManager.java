@@ -35,6 +35,7 @@ import ru.nexora.world.WorldCollision;
 import ru.nexora.world.WorldRaycast;
 import ru.nexora.world.PlayerData;
 import ru.nexora.world.PlayerDataStorage;
+import ru.nexora.world.PlayerExperience;
 import ru.nexora.world.PlayerPhysics;
 import ru.nexora.world.PlayerVitals;
 
@@ -320,7 +321,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             playerStorage.save(new PlayerData(
                     state.identity.xuid(), displayName, world.name(),
                     state.positionX, state.positionY, state.positionZ,
-                    state.yaw, state.pitch, System.currentTimeMillis(), state.vitals));
+                    state.yaw, state.pitch, System.currentTimeMillis(), state.vitals, state.experiencePoints));
         } catch (IllegalArgumentException exception) {
             throw new IOException("Authenticated player data cannot be persisted", exception);
         }
@@ -1499,27 +1500,55 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         List<Optional<ItemStack>> previousPlayer = state.inventory.snapshot();
         int previousSelectedSlot = state.inventory.selectedHotbarSlot();
         List<Optional<ItemStack>> previousContainer = container.snapshot();
+        int claimedExperienceMilli = 0;
+        int previousOutputCount = 0;
+        boolean furnaceWindow = state.openContainerIsFurnace;
+        WorldFurnaceManager furnaceManager = furnaceWindow ? world.furnaces().orElse(null) : null;
+        if (furnaceWindow && furnaceManager != null) {
+            ItemStack previousOutput = container.getSlot(2).orElse(null);
+            previousOutputCount = previousOutput == null ? 0 : previousOutput.count();
+        }
+
         ContainerInventoryTransactionService.Result result = containerTransactionService.apply(
                 state.inventory, container, windowId, actions);
 
         if (result == ContainerInventoryTransactionService.Result.APPLIED) {
             try {
+                if (furnaceWindow && furnaceManager != null && previousOutputCount > 0) {
+                    ItemStack previousOutput = previousContainer.get(2).orElse(null);
+                    ItemStack currentOutput = container.getSlot(2).orElse(null);
+                    int currentCount = currentOutput != null && previousOutput != null
+                            && currentOutput.itemId().equals(previousOutput.itemId())
+                            ? currentOutput.count() : 0;
+                    int collectedItems = Math.max(0, previousOutputCount - currentCount);
+                    if (collectedItems > 0) {
+                        claimedExperienceMilli = furnaceManager.collectExperience(
+                                state.openContainerX, state.openContainerY, state.openContainerZ,
+                                collectedItems, previousOutputCount);
+                    }
+                }
                 saveInventory(state);
-                if (state.openContainerIsFurnace) {
-                    WorldFurnaceManager manager = world.furnaces().orElseThrow(
-                            () -> new IllegalStateException("World furnace storage is not configured"));
-                    manager.save(state.openContainerX, state.openContainerY, state.openContainerZ);
+                if (furnaceWindow) {
+                    if (furnaceManager == null) {
+                        throw new IllegalStateException("World furnace storage is not configured");
+                    }
+                    furnaceManager.save(state.openContainerX, state.openContainerY, state.openContainerZ);
                 } else if (!state.openContainerIsCraftingTable) {
                     WorldContainerManager manager = world.containers().orElseThrow(
                             () -> new IllegalStateException("World container storage is not configured"));
                     manager.save(state.openContainerX, state.openContainerY, state.openContainerZ);
                 }
             } catch (IOException | RuntimeException exception) {
+                if (claimedExperienceMilli > 0 && furnaceManager != null) {
+                    furnaceManager.restorePendingExperience(
+                            state.openContainerX, state.openContainerY, state.openContainerZ,
+                            claimedExperienceMilli);
+                }
                 state.inventory.restore(previousPlayer, previousSelectedSlot);
                 container.restore(previousContainer);
                 try {
                     saveInventory(state);
-                    if (state.openContainerIsFurnace) {
+                    if (furnaceWindow) {
                         world.furnaces().ifPresent(manager -> {
                             try { manager.save(state.openContainerX, state.openContainerY, state.openContainerZ); }
                             catch (IOException rollbackFailure) { throw new java.io.UncheckedIOException(rollbackFailure); }
@@ -1536,8 +1565,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 } catch (IOException | RuntimeException rollbackFailure) {
                     exception.addSuppressed(rollbackFailure);
                 }
-                System.err.println("NEXORA: chest transaction rolled back because persistence failed: "
+                claimedExperienceMilli = 0;
+                System.err.println("NEXORA: container transaction rolled back because persistence failed: "
                         + exception.getMessage());
+            }
+            if (claimedExperienceMilli > 0) {
+                int experiencePoints = Math.max(0, Math.round(claimedExperienceMilli / 1000.0f));
+                state.experiencePoints = PlayerExperience.addPoints(state.experiencePoints, experiencePoints);
+                sendPacket(networkId, createPlayerAttributes(state, Math.max(0, state.lastInputTick)), true);
             }
         }
 
@@ -1630,6 +1665,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 if (saved.isPresent()) {
                     PlayerData player = saved.get();
                     state.vitals = player.vitals();
+                    state.experiencePoints = player.experiencePoints();
                     state.dead = state.vitals.dead();
                     if (player.worldName().equals(world.name())
                             && WorldCollision.canOccupy(world, player.x(), player.y(), player.z())) {
@@ -1946,8 +1982,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.vitals = state.vitals.feed(food.foodPoints(), food.saturationModifier());
         sendPackets(networkId, List.of(
                 BedrockItemUseCompletionCodec.create(runtimeItemId),
-                BedrockVitalsCodec.createUpdateAttributes(
-                        state.entityId, state.vitals, Math.max(0, state.lastInputTick))
+                createPlayerAttributes(state, Math.max(0, state.lastInputTick))
         ), true);
         sendInventoryAndEquipmentState(networkId, state);
     }
@@ -2243,8 +2278,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (!clientVisibleChanged) return;
         List<BedrockPacket> packets = new java.util.ArrayList<>();
         if (healthChanged) packets.add(BedrockVitalsCodec.createSetHealth(updated));
-        packets.add(BedrockVitalsCodec.createUpdateAttributes(
-                state.entityId, updated, Math.max(0, tick)));
+        packets.add(createPlayerAttributes(state, Math.max(0, tick)));
         sendPackets(networkId, packets, true);
     }
 
@@ -2268,10 +2302,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (state.vitals.health() != before.health()) {
             packets.add(BedrockVitalsCodec.createSetHealth(state.vitals));
         }
-        packets.add(BedrockVitalsCodec.createUpdateAttributes(
-                state.entityId, state.vitals, Math.max(0, tick)));
+        packets.add(createPlayerAttributes(state, Math.max(0, tick)));
         sendPackets(networkId, packets, true);
         if (state.vitals.dead()) handleDeath(networkId, state, deathCause);
+    }
+
+    private BedrockPacket createPlayerAttributes(SessionState state, long tick) {
+        PlayerExperience.Progress experience = PlayerExperience.fromTotalPoints(state.experiencePoints);
+        return BedrockVitalsCodec.createUpdateAttributes(state.entityId, state.vitals,
+                experience.level(), experience.progress(), tick);
     }
 
     private void sendMovementCorrection(String networkId, SessionState state, long tick) {
@@ -2593,8 +2632,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         sendPackets(networkId, List.of(
                 BedrockVitalsCodec.createSetHealth(state.vitals),
-                BedrockVitalsCodec.createUpdateAttributes(
-                        state.entityId, state.vitals, Math.max(0, state.lastInputTick))), true);
+                createPlayerAttributes(state, Math.max(0, state.lastInputTick))), true);
     }
 
     /** Drops a server-selected inventory stack and advertises the new world actor. */
@@ -2970,6 +3008,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private PlayerInventory inventory = new PlayerInventory();
         private PlayerEquipment equipment = new PlayerEquipment();
         private PlayerVitals vitals = PlayerVitals.DEFAULT;
+        private int experiencePoints;
         private boolean dead;
         private boolean deathPacketsSent;
         private boolean usingItem;

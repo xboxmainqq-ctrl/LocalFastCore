@@ -39,6 +39,42 @@ class EnchantmentCombatServiceTest {
     }
 
     @Test
+    void appliesGeneralAndMatchingSpecializedProtection() {
+        ItemStack fireArmor = new ItemStack("minecraft:diamond_chestplate", 1, 1, Map.of(
+                "minecraft:protection", 1,
+                "minecraft:fire_protection", 2));
+        ItemStack projectileArmor = new ItemStack("minecraft:diamond_leggings", 1, 1,
+                Map.of("minecraft:projectile_protection", 3));
+        ItemStack fallArmor = new ItemStack("minecraft:diamond_boots", 1, 1,
+                Map.of("minecraft:feather_falling", 4));
+
+        assertEquals(80.0f, EnchantmentCombatService.resolveIncomingDamage(
+                100.0f, List.of(fireArmor), EnchantmentCombatService.DamageType.FIRE), 0.0001f);
+        assertEquals(92.0f, EnchantmentCombatService.resolveIncomingDamage(
+                100.0f, List.of(fireArmor), EnchantmentCombatService.DamageType.NORMAL), 0.0001f);
+        assertEquals(76.0f, EnchantmentCombatService.resolveIncomingDamage(
+                100.0f, List.of(projectileArmor), EnchantmentCombatService.DamageType.PROJECTILE), 0.0001f);
+        assertEquals(68.0f, EnchantmentCombatService.resolveIncomingDamage(
+                100.0f, List.of(fallArmor), EnchantmentCombatService.DamageType.FALL), 0.0001f);
+    }
+
+    @Test
+    void capsCombinedProtectionReductionAtEightyPercent() {
+        ItemStack helmet = new ItemStack("minecraft:diamond_helmet", 1, 1, Map.of(
+                "minecraft:protection", 4, "minecraft:fire_protection", 4));
+        ItemStack chest = new ItemStack("minecraft:diamond_chestplate", 1, 1, Map.of(
+                "minecraft:protection", 4, "minecraft:fire_protection", 4));
+        ItemStack legs = new ItemStack("minecraft:diamond_leggings", 1, 1, Map.of(
+                "minecraft:protection", 4, "minecraft:fire_protection", 4));
+        ItemStack boots = new ItemStack("minecraft:diamond_boots", 1, 1, Map.of(
+                "minecraft:protection", 4, "minecraft:fire_protection", 4));
+
+        assertEquals(20.0f, EnchantmentCombatService.resolveIncomingDamage(
+                100.0f, List.of(helmet, chest, legs, boots),
+                EnchantmentCombatService.DamageType.FIRE), 0.0001f);
+    }
+
+    @Test
     void rollsThornsPerArmorPieceAndReturnsCombinedReflectionDamage() {
         ItemStack thornsOne = new ItemStack("minecraft:diamond_chestplate", 1, 1,
                 Map.of("minecraft:thorns", 2));
@@ -60,10 +96,15 @@ class EnchantmentCombatServiceTest {
                 EnchantmentCombatService.resolveAttack(Float.NaN, null,
                         EnchantmentCombatService.TargetType.NORMAL));
         assertThrows(IllegalArgumentException.class, () ->
+                EnchantmentCombatService.resolveIncomingDamage(Float.POSITIVE_INFINITY, List.of(),
+                        EnchantmentCombatService.DamageType.NORMAL));
+        assertThrows(IllegalArgumentException.class, () ->
                 EnchantmentCombatService.resolveThornsDamage(List.of(), new double[]{0}, new int[]{1}));
         assertThrows(IllegalArgumentException.class, () ->
                 EnchantmentCombatService.resolveThornsDamage(
                         List.of(new ItemStack("minecraft:diamond_chestplate", 1, 1)),
                         new double[]{1.0}, new int[]{1}));
+        assertThrows(NullPointerException.class, () ->
+                EnchantmentCombatService.resolveIncomingDamage(1.0f, List.of(), null));
     }
 }

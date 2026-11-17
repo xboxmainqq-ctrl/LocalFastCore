@@ -321,9 +321,22 @@ public final class MobSpawnerManager {
         int z = (int) Math.floor(request.z());
         if (y <= WorldChunk.MIN_Y || y >= WorldChunk.MAX_Y - 1
                 || !WorldPathfinder.isMobFootprintLoaded(world, request.x(), request.z())) return false;
-        return world.getBlock(x, y, z) == BlockType.AIR
-                && world.getBlock(x, y + 1, z) == BlockType.AIR
-                && world.getBlock(x, y - 1, z) != BlockType.AIR;
+        if (world.getBlock(x, y - 1, z) == BlockType.AIR) return false;
+        int requiredAirBlocks = spawnHeightBlocks(request.identifier());
+        for (int offset = 0; offset < requiredAirBlocks; offset++) {
+            if (world.getBlock(x, y + offset, z) != BlockType.AIR) return false;
+        }
+        return true;
+    }
+
+    private static int spawnHeightBlocks(String identifier) {
+        return switch (identifier) {
+            case "minecraft:ender_dragon" -> 8;
+            case "minecraft:ghast" -> 4;
+            case "minecraft:warden", "minecraft:iron_golem", "minecraft:ravager",
+                    "minecraft:camel" -> 3;
+            default -> 2;
+        };
     }
 
     private static long safeNextTick(long tick, int delay) {

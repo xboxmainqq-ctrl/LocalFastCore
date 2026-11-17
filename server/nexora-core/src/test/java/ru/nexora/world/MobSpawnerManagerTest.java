@@ -20,19 +20,20 @@ class MobSpawnerManagerTest {
         MobSpawnerManager manager = world.mobSpawners();
         assertTrue(manager.register(0, 65, 0, 0));
         AtomicInteger spawned = new AtomicInteger();
+        long baseTick = System.currentTimeMillis() / 50L;
 
-        var inactive = manager.tick(world, 500,
+        var inactive = manager.tick(world, baseTick + 100,
                 List.of(new MobSpawnerManager.PlayerPosition(100, 65, 100)),
                 request -> { spawned.incrementAndGet(); return true; });
         assertEquals(0, inactive.activeSpawners());
         assertEquals(0, spawned.get());
 
-        var early = manager.tick(world, 199,
+        var early = manager.tick(world, baseTick + 199,
                 List.of(new MobSpawnerManager.PlayerPosition(0.5, 65, 0.5)),
                 request -> { spawned.incrementAndGet(); return true; });
         assertEquals(0, early.spawned());
 
-        var due = manager.tick(world, 200,
+        var due = manager.tick(world, baseTick + 200,
                 List.of(new MobSpawnerManager.PlayerPosition(0.5, 65, 0.5)),
                 request -> { spawned.incrementAndGet(); return true; });
         assertTrue(due.spawned() > 0);
@@ -48,7 +49,7 @@ class MobSpawnerManagerTest {
             world.livingEntities().spawn("minecraft:zombie", 20, 0.5 + i * 0.1, 65, 0.5);
         }
 
-        var result = manager.tick(world, 200,
+        var result = manager.tick(world, System.currentTimeMillis() / 50L + 200,
                 List.of(new MobSpawnerManager.PlayerPosition(0.5, 65, 0.5)), request -> true);
 
         assertEquals(0, result.spawned());
@@ -68,7 +69,7 @@ class MobSpawnerManagerTest {
         manager.register(0, 65, 0, 0);
         AtomicInteger calls = new AtomicInteger();
 
-        var result = manager.tick(world, 200,
+        var result = manager.tick(world, System.currentTimeMillis() / 50L + 200,
                 List.of(new MobSpawnerManager.PlayerPosition(0.5, 65, 0.5)),
                 request -> { calls.incrementAndGet(); return true; });
 

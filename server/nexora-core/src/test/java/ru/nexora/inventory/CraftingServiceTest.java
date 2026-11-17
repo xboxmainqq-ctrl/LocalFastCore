@@ -57,7 +57,7 @@ class CraftingServiceTest {
 
         assertEquals(CraftingService.Result.CRAFTED,
                 service.craftFromGrid(player, ui, 28, recipe));
-        assertTrue(ui.getSlot(28).isEmpty());
+        assertEquals(1, ui.getSlot(28).orElseThrow().count());
         assertTrue(ui.getSlot(30).isEmpty());
         assertEquals(4, player.count("minecraft:stick"));
     }

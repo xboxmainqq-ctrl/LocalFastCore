@@ -22,7 +22,11 @@ NexoraAI is an in-core operations observer and optional in-game assistant for NE
 - Aggregate Guard status is included in the operator runtime context without exposing peer identifiers. Threshold crossings are also added to the bounded diagnostic evidence ring as identifier-free `GUARD` events for operator status and repair-plan context.
 - Signals are evidence for review only. This stage does not throttle, disconnect, mute, or ban players.
 - These are application-observed per-peer frame/byte thresholds, not proof of a DDoS attack. They cannot observe traffic dropped upstream or protect a saturated network link; host/network-level filtering is still required.
-- Movement/combat cheat detection and a moderator case-review interface are not implemented yet.
+- When server-authoritative movement is enabled, Guard observes client/server reconciliation errors. Four horizontal discrepancies above 0.75 blocks in a 10-second window produce a possible-speed review signal; the same threshold for vertical discrepancies produces a possible-fly signal.
+- Player-versus-player and player-versus-mob attack attempts beyond the server weapon reach by more than 0.75 blocks are counted; five such attempts in a 10-second window produce a possible-reach review signal.
+- Movement and reach evidence is bounded to 1,024 player keys, reset by a 10-second monotonic window, and cleared when the authenticated player disconnects. Aggregate status reports tracked and suspicious players without exposing XUIDs.
+- These signals are heuristics, not proof: latency, prediction differences, server load, or legitimate edge cases can cause movement corrections; repeated out-of-range attempts can also be accidental. Review evidence before taking action.
+- KillAura classification, a moderator case-review interface, and automatic punishments are not implemented.
 
 ## In-game assistant
 

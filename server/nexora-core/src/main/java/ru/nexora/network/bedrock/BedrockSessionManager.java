@@ -2457,13 +2457,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 mobStuckTracker.clear(mob.runtimeId());
                 continue;
             }
+            ru.nexora.combat.LivingEntityAiService.PlayerTarget nearestPlayer =
+                    ru.nexora.combat.LivingEntityAiService.nearestAlivePlayer(mob, targets);
             double nearestPlayerDistanceSquared = Double.POSITIVE_INFINITY;
-            for (ru.nexora.combat.LivingEntityAiService.PlayerTarget player : targets) {
-                double dx = player.x() - mob.x();
-                double dy = player.y() - mob.y();
-                double dz = player.z() - mob.z();
-                nearestPlayerDistanceSquared = Math.min(nearestPlayerDistanceSquared,
-                        dx * dx + dy * dy + dz * dz);
+            if (nearestPlayer != null) {
+                double dx = nearestPlayer.x() - mob.x();
+                double dy = nearestPlayer.y() - mob.y();
+                double dz = nearestPlayer.z() - mob.z();
+                nearestPlayerDistanceSquared = dx * dx + dy * dy + dz * dz;
             }
             boolean hasActiveTarget = livingEntityAggroTargets.containsKey(mob.runtimeId());
             if (!mobAiLoadController.shouldUpdate(mob.runtimeId(), tick,
@@ -2473,7 +2474,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             long nextAttackAt = nextMobAttackMillis.getOrDefault(mob.runtimeId(), 0L);
             ru.nexora.combat.LivingEntityAiService.Decision decision =
                     livingEntityAi.decide(mob, targets, nowMillis, nextAttackAt,
-                            livingEntityAggroTargets.get(mob.runtimeId()));
+                            livingEntityAggroTargets.get(mob.runtimeId()), nearestPlayer);
             if (decision.attack()) {
                 mobStuckTracker.clear(mob.runtimeId());
                 if (damagePlayerFromMob(decision.targetNetworkId(), mob, decision.attackDamage(), tick)) {

@@ -101,6 +101,38 @@ class WorldItemEntityManagerTest {
     }
 
     @Test
+    void mergesNearbyCompatibleStacksAndQueuesRemovedActorForClientSync() {
+        World world = new World("item-merge", 0L, new FlatWorldGenerator());
+        WorldItemEntityManager manager = new WorldItemEntityManager();
+        WorldItemEntity first = manager.spawn(new ItemStack("minecraft:diamond", 2, 64),
+                0.5, 65.125, 0.5, 0, 0, 0, 0, 0, "same-owner");
+        WorldItemEntity second = manager.spawn(new ItemStack("minecraft:diamond", 3, 64),
+                0.9, 65.125, 0.5, 0, 0, 0, 0, 0, "same-owner");
+
+        List<WorldItemEntity> moved = manager.tick(world, 0.05, 100);
+
+        assertEquals(1, manager.size());
+        assertEquals(5, manager.find(first.runtimeId()).orElseThrow().stack().count());
+        assertTrue(manager.find(second.runtimeId()).isEmpty());
+        assertTrue(moved.stream().anyMatch(entity -> entity.runtimeId() == first.runtimeId()));
+        assertEquals(List.of(second), manager.drainRemovedByTick());
+    }
+
+    @Test
+    void despawnsOldDroppedItemsAndQueuesRemovalForClientSync() {
+        World world = new World("item-despawn", 0L, new FlatWorldGenerator());
+        WorldItemEntityManager manager = new WorldItemEntityManager();
+        WorldItemEntity old = manager.spawn(new ItemStack("minecraft:stone", 1, 64),
+                0.5, 65.125, 0.5, 0, 0, 0, 1_000, 0, null);
+
+        manager.tick(world, 0.05, 1_000 + WorldItemEntityManager.DEFAULT_DESPAWN_AGE_MILLIS);
+
+        assertTrue(manager.find(old.runtimeId()).isEmpty());
+        assertEquals(List.of(old), manager.drainRemovedByTick());
+        assertEquals(0, manager.size());
+    }
+
+    @Test
     void rejectsInvalidPositionVelocityAndOwnerMetadata() {
         WorldItemEntityManager manager = new WorldItemEntityManager();
         assertThrows(IllegalArgumentException.class, () -> manager.spawn(

@@ -13,6 +13,7 @@ public final class FurnaceService {
     public static final int FUEL_SLOT = 1;
     public static final int OUTPUT_SLOT = 2;
     public static final int COOK_TIME_TICKS = 200;
+    public static final int MAX_BURN_TICKS = 16_000;
 
     public enum Kind {
         FURNACE(200, RecipeGroup.ALL),
@@ -113,9 +114,9 @@ public final class FurnaceService {
     public synchronized void restoreState(
             int x, int y, int z, int burnTicksRemaining, int cookProgress, int burnTicksTotal
     ) {
-        if (burnTicksRemaining < 0 || burnTicksRemaining > 2400
+        if (burnTicksRemaining < 0 || burnTicksRemaining > MAX_BURN_TICKS
                 || cookProgress < 0 || cookProgress >= COOK_TIME_TICKS
-                || burnTicksTotal < burnTicksRemaining || burnTicksTotal > 2400) {
+                || burnTicksTotal < burnTicksRemaining || burnTicksTotal > MAX_BURN_TICKS) {
             throw new IllegalArgumentException("Invalid persisted furnace state");
         }
         states.put(new Position(x, y, z),

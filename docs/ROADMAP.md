@@ -46,6 +46,7 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 - [x] Reuse nearest-player targeting results between scheduling and generic decisions; remove stream allocation from creeper target selection.
 - [x] Add selected species movement-speed, melee-reach, and attack-damage profiles with regression tests.
 - [x] Centralize transient AI/navigation/projectile cleanup across manual despawn and mob death paths.
+- [x] Expand deterministic loot/XP coverage for common hostile and passive mob families, with bounded Looting bonuses.
 
 ## Priority 5 — Vanilla-style mob spawners
 

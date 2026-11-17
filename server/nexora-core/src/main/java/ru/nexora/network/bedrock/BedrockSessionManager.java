@@ -107,6 +107,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final AtomicLong lastLivingAiTickMillis = new AtomicLong(Long.MIN_VALUE);
     private final Map<Long, Long> nextMobAttackMillis = new ConcurrentHashMap<>();
     private final Map<Long, MobKillCredit> livingEntityKillCredit = new ConcurrentHashMap<>();
+    private final Map<Long, String> livingEntityAggroTargets = new ConcurrentHashMap<>();
     private final ru.nexora.combat.LivingEntityAiService livingEntityAi =
             new ru.nexora.combat.LivingEntityAiService();
     private volatile boolean serverAuthoritativeMovement;
@@ -1807,7 +1808,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         for (WorldLivingEntity mob : world.livingEntities().snapshot()) {
             long nextAttackAt = nextMobAttackMillis.getOrDefault(mob.runtimeId(), 0L);
             ru.nexora.combat.LivingEntityAiService.Decision decision =
-                    livingEntityAi.decide(mob, targets, nowMillis, nextAttackAt);
+                    livingEntityAi.decide(mob, targets, nowMillis, nextAttackAt,
+                            livingEntityAggroTargets.get(mob.runtimeId()));
             if (decision.attack()) {
                 if (damagePlayerFromMob(decision.targetNetworkId(), mob, decision.attackDamage(), tick)) {
                     nextMobAttackMillis.put(mob.runtimeId(),

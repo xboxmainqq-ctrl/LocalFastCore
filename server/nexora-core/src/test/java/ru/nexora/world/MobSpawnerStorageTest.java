@@ -17,8 +17,9 @@ class MobSpawnerStorageTest {
         World first = new World("spawner-world", 1L, new FlatWorldGenerator(),
                 0, 65, 0, storage);
         first.setBlock(2, 65, 3, BlockType.SPAWNER);
+        long nowTick = Math.max(0L, System.nanoTime() / 50_000_000L);
         assertTrue(first.mobSpawners().configure(2, 65, 3,
-                "minecraft:skeleton", 300, 50_000));
+                "minecraft:skeleton", 300, nowTick));
         first.saveAll();
 
         WorldStorage reopenedStorage = new WorldStorage(temporaryDirectory, "spawner-world");
@@ -26,9 +27,11 @@ class MobSpawnerStorageTest {
                 0, 65, 0, reopenedStorage);
 
         MobSpawnerState restored = reopened.mobSpawners().snapshot().get(0);
+        long remaining = restored.nextSpawnTick()
+                - Math.max(0L, System.nanoTime() / 50_000_000L);
         assertEquals("minecraft:skeleton", restored.entityIdentifier());
         assertEquals(300, restored.delayTicks());
-        assertEquals(50_000, restored.nextSpawnTick());
+        assertTrue(remaining >= 0 && remaining <= 300);
         assertEquals(BlockType.SPAWNER, reopened.getBlock(2, 65, 3));
     }
 

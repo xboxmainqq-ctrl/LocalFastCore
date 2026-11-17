@@ -1898,6 +1898,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 double dy = target.positionY - attacker.positionY;
                 double dz = target.positionZ - attacker.positionZ;
                 double distanceSquared = dx * dx + dy * dy + dz * dz;
+                aiGuard.recordOutOfReachAttack(
+                        attacker.identity == null ? networkId : attacker.identity.xuid(),
+                        Math.sqrt(distanceSquared), maximumWeaponReach(weapon), now);
                 if (!isWithinWeaponReach(weapon, distanceSquared)) return;
                 int targetBlockX = (int) Math.floor(target.positionX);
                 int targetBlockY = (int) Math.floor(target.positionY + 1.0);
@@ -1982,6 +1985,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         double dy = target.y() - attacker.positionY;
         double dz = target.z() - attacker.positionZ;
         double distanceSquared = dx * dx + dy * dy + dz * dz;
+        aiGuard.recordOutOfReachAttack(
+                attacker.identity == null ? attackerNetworkId : attacker.identity.xuid(),
+                Math.sqrt(distanceSquared), maximumWeaponReach(weapon), nowNanos);
         if (!isWithinWeaponReach(weapon, distanceSquared)) return;
         int targetBlockX = (int) Math.floor(target.x());
         int targetBlockY = (int) Math.floor(target.y() + 1.0);
@@ -2653,6 +2659,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     /** Spears require 2 blocks of minimum reach and have a 4.5 block maximum reach. */
+    private static double maximumWeaponReach(ItemStack weapon) {
+        return ru.nexora.combat.SpearCombatStats.forItem(weapon)
+                .map(ru.nexora.combat.SpearCombatStats.Profile::maximumReach)
+                .orElse(3.5);
+    }
+
     private static boolean isWithinWeaponReach(ItemStack weapon, double distanceSquared) {
         var spearProfile = ru.nexora.combat.SpearCombatStats.forItem(weapon);
         return spearProfile.map(profile -> profile.isWithinReach(distanceSquared))

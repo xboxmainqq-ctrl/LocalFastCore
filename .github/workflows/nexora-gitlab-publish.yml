@@ -7,7 +7,6 @@ on:
       - work/nexora-ai-foundation
     paths:
       - "server/nexora-core/**"
-      - ".github/workflows/nexora-gitlab-publish.yml"
 
 permissions:
   contents: read

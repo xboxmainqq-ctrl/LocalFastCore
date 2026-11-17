@@ -1538,7 +1538,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         int chunkX = Math.floorDiv((int) Math.floor(x), 16);
         int chunkZ = Math.floorDiv((int) Math.floor(z), 16);
         sendPacket(networkId, BedrockStartGameCodec.createChunkPublisherUpdate(
-                (int) Math.floor(x), (int) Math.floor(y), (int) Math.floor(z)), true);
+                (int) Math.floor(x), (int) Math.floor(y), (int) Math.floor(z), state.chunkViewRadius), true);
         sendChunkArea(networkId, state, chunkX, chunkZ);
     }
 
@@ -3715,7 +3715,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         int chunkZ = Math.floorDiv((int) Math.floor(input.z()), 16);
         if (chunkX != state.lastChunkX || chunkZ != state.lastChunkZ) {
             sendPacket(networkId, BedrockStartGameCodec.createChunkPublisherUpdate(
-                    (int) Math.floor(input.x()), (int) Math.floor(input.y()), (int) Math.floor(input.z())), true);
+                    (int) Math.floor(input.x()), (int) Math.floor(input.y()), (int) Math.floor(input.z()),
+                    state.chunkViewRadius), true);
             sendChunkArea(networkId, state, chunkX, chunkZ);
         }
     }
@@ -3815,7 +3816,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (chunkX != state.lastChunkX || chunkZ != state.lastChunkZ) {
             sendPacket(networkId, BedrockStartGameCodec.createChunkPublisherUpdate(
                     (int) Math.floor(state.positionX), (int) Math.floor(state.positionY),
-                    (int) Math.floor(state.positionZ)), true);
+                    (int) Math.floor(state.positionZ), state.chunkViewRadius), true);
             sendChunkArea(networkId, state, chunkX, chunkZ);
         }
     }
@@ -4630,7 +4631,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (previousRadius != radius || state.lastChunkX == Integer.MIN_VALUE) {
             sendPacket(message.networkId(), BedrockStartGameCodec.createChunkPublisherUpdate(
                     (int) Math.floor(state.positionX), (int) Math.floor(state.positionY),
-                    (int) Math.floor(state.positionZ)), true);
+                    (int) Math.floor(state.positionZ), state.chunkViewRadius), true);
             int centerX = Math.floorDiv((int) Math.floor(state.positionX), 16);
             int centerZ = Math.floorDiv((int) Math.floor(state.positionZ), 16);
             sendChunkArea(message.networkId(), state, centerX, centerZ);

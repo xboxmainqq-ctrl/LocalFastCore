@@ -909,6 +909,43 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void caveSpiderAppliesPoisonButPoisonCannotKillPlayer() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "cave-spider-poison-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
+        manager.onIdentity("poison-player", new NetherNetClientIdentity(
+                "poison-token", new byte[] {19}, "poison-xuid",
+                "PoisonPlayer", "playfab-poison", "20CA2", null));
+        setSessionField(manager, "poison-player", "loginAuthenticated", true);
+        setSessionField(manager, "poison-player", "clientInitialized", true);
+        setSessionField(manager, "poison-player", "positionInitialized", true);
+        setSessionField(manager, "poison-player", "entityId", 119L);
+        setSessionField(manager, "poison-player", "positionX", 1.0f);
+        setSessionField(manager, "poison-player", "positionY", 65.0f);
+        setSessionField(manager, "poison-player", "positionZ", 0.5f);
+        var spider = manager.spawnLivingEntity("minecraft:cave_spider", 12.0f, 0.5, 65.0, 0.5);
+
+        clock.addAndGet(50_000_000L);
+        invokeLivingActorTick(manager, 1L);
+        assertTrue((long) getSessionField(manager, "poison-player", "poisonUntilNanos") > clock.get());
+
+        assertTrue(manager.despawnLivingEntity(spider.runtimeId()));
+        setSessionField(manager, "poison-player", "vitals",
+                new ru.nexora.world.PlayerVitals(1.0f, 20, 5.0f, 0.0f));
+        clock.addAndGet(1_000_000_000L);
+        invokeLivingActorTick(manager, 2L);
+
+        ru.nexora.world.PlayerVitals vitals = (ru.nexora.world.PlayerVitals)
+                getSessionField(manager, "poison-player", "vitals");
+        assertEquals(1.0f, vitals.health(), 0.0001f);
+        manager.close();
+    }
+
+    @Test
     void groundMobJumpsOverSingleBlockDuringAiTick() throws Exception {
         java.util.concurrent.atomic.AtomicLong clock =
                 new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);

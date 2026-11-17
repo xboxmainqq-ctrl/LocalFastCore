@@ -81,6 +81,19 @@ public final class World {
             ru.nexora.inventory.ContainerInventoryStorage containerStorage,
             ru.nexora.inventory.FurnaceStateStorage furnaceStateStorage
     ) throws IOException {
+        this(name, seed, generator, spawnX, spawnY, spawnZ,
+                storage, itemStorage, containerStorage, furnaceStateStorage, null);
+    }
+
+    /** Creates a world with durable dropped items, containers, furnaces and living actors. */
+    public World(
+            String name, long seed, WorldGenerator generator,
+            int spawnX, int spawnY, int spawnZ,
+            WorldStorage storage, WorldItemEntityStorage itemStorage,
+            ru.nexora.inventory.ContainerInventoryStorage containerStorage,
+            ru.nexora.inventory.FurnaceStateStorage furnaceStateStorage,
+            WorldLivingEntityStorage livingEntityStorage
+    ) throws IOException {
         if (name == null || name.isBlank()) throw new IllegalArgumentException("World name must not be blank");
         if (spawnY <= WorldChunk.MIN_Y || spawnY > WorldChunk.MAX_Y) {
             throw new IllegalArgumentException("Spawn Y must be inside the Overworld build height");
@@ -95,7 +108,9 @@ public final class World {
         this.itemEntities = itemStorage == null
                 ? new WorldItemEntityManager()
                 : new WorldItemEntityManager(itemStorage);
-        this.livingEntities = new WorldLivingEntityManager();
+        this.livingEntities = livingEntityStorage == null
+                ? new WorldLivingEntityManager()
+                : new WorldLivingEntityManager(livingEntityStorage);
         this.containers = containerStorage == null ? null : new WorldContainerManager(containerStorage);
         this.furnaces = containerStorage == null || furnaceStateStorage == null ? null
                 : new WorldFurnaceManager(containerStorage, furnaceStateStorage);
@@ -204,6 +219,7 @@ public final class World {
             for (WorldChunk chunk : chunks.values()) storage.saveChunk(chunk);
         }
         itemEntities.save();
+        livingEntities.save();
         if (containers != null) containers.saveAll();
         if (furnaces != null) furnaces.saveAll();
     }

@@ -71,7 +71,7 @@ public final class BedrockCraftingDataCodec {
         out.varUInt32(0); // potion mix recipes
         out.varUInt32(0); // container mix recipes
         out.varUInt32(0); // material reducers
-        out.byteValue(1); // cleanRecipes
+        out.byteValue(0); // merge with the client's vanilla recipe catalog; this packet is only a subset
 
         return new BedrockPacket(CRAFTING_DATA_PACKET_ID, 0, 0, out.toByteArray());
     }

@@ -188,6 +188,6 @@ This section is the latest user-confirmed direction and overrides every conflict
 ## Verified current AI implementation snapshot — 2026-11-17
 
 - Mob AI code: `MobAiController` is integrated with `EntityTickEngine`; supports configured passive/neutral/hostile behavior, player perception, line-of-sight, provocation and direct collision-aware pursuit. It does not yet provide pathfinding or damage/combat.
-- Core assistant code: permission-gated and audited tool registry plus assistant facade. No language model/provider is connected.
-- Moderation assistant code: bounded heuristic chat signals using message fingerprints, with human review mandatory. No automatic enforcement or model classifier.
+- Core assistant code: permission-gated and audited tool registry, optional bounded `AiModelProvider` SPI and assistant facade. No production model provider is bundled.
+- Moderation assistant code: bounded heuristic chat signals using message fingerprints, optional summaries from signal metadata only, and mandatory human review. No automatic enforcement or trained classifier.
 - Android workflow `.github/workflows/nexora-android.yml` has been removed from active CI. Historical Android source and RPG source are retained but are not active product scope.

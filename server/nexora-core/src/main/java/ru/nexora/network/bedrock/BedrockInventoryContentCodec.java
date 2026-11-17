@@ -48,7 +48,7 @@ public final class BedrockInventoryContentCodec {
                             "No Bedrock item definition registered for " + stack.itemId());
                 }
                 writeStack(out, definition.runtimeItemId(), stack.count(),
-                        definition.auxValue(), definition.blockRuntimeId(), definition.userData());
+                        definition.auxValue(), definition.blockRuntimeId(), BedrockItemStackUserDataCodec.encode(stack, definition.userData()));
             }
         }
 
@@ -90,7 +90,7 @@ public final class BedrockInventoryContentCodec {
                             "No Bedrock item definition registered for " + stack.itemId());
                 }
                 writeStack(out, definition.runtimeItemId(), stack.count(),
-                        definition.auxValue(), definition.blockRuntimeId(), definition.userData());
+                        definition.auxValue(), definition.blockRuntimeId(), BedrockItemStackUserDataCodec.encode(stack, definition.userData()));
             }
         }
         out.byteValue(CRAFTING_INPUT_SLOT_TYPE);
@@ -131,7 +131,7 @@ public final class BedrockInventoryContentCodec {
                             "No Bedrock item definition registered for " + stack.itemId());
                 }
                 writeStack(out, definition.runtimeItemId(), stack.count(),
-                        definition.auxValue(), definition.blockRuntimeId(), definition.userData());
+                        definition.auxValue(), definition.blockRuntimeId(), BedrockItemStackUserDataCodec.encode(stack, definition.userData()));
             }
         }
 
@@ -167,7 +167,7 @@ public final class BedrockInventoryContentCodec {
                         "No Bedrock item definition registered for " + stack.itemId());
             }
             writeStack(out, definition.runtimeItemId(), stack.count(),
-                    definition.auxValue(), definition.blockRuntimeId(), definition.userData());
+                    definition.auxValue(), definition.blockRuntimeId(), BedrockItemStackUserDataCodec.encode(stack, definition.userData()));
         }
         return new BedrockPacket(0x32, 0, 0, out.toByteArray());
     }

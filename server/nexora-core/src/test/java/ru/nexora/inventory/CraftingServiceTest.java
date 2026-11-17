@@ -230,13 +230,12 @@ class CraftingServiceTest {
         assertTrue(grid.snapshot().stream().allMatch(java.util.Optional::isEmpty));
 
         grid.setSlot(0, new ItemStack("minecraft:oak_planks", 1, 64));
+        grid.setSlot(1, new ItemStack("minecraft:iron_ingot", 1, 64));
         grid.setSlot(2, new ItemStack("minecraft:oak_planks", 1, 64));
         grid.setSlot(3, new ItemStack("minecraft:oak_planks", 1, 64));
         grid.setSlot(4, new ItemStack("minecraft:oak_planks", 1, 64));
         grid.setSlot(5, new ItemStack("minecraft:oak_planks", 1, 64));
-        grid.setSlot(6, new ItemStack("minecraft:oak_planks", 1, 64));
-        grid.setSlot(7, new ItemStack("minecraft:iron_ingot", 1, 64));
-        grid.setSlot(8, new ItemStack("minecraft:oak_planks", 1, 64));
+        grid.setSlot(7, new ItemStack("minecraft:oak_planks", 1, 64));
 
         assertEquals(CraftingService.Result.CRAFTED,
                 service.craftFromGrid(player, grid, 0, 3, 3, recipes.find("minecraft:shield")));

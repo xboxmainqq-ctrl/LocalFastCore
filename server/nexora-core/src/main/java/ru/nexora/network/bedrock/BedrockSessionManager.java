@@ -554,6 +554,121 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
+    private void handleContainerClose(
+            NetherNetInboundPipeline.InboundMessage message, SessionState state, BedrockPacket packet
+    ) {
+        if (!message.reliable()) {
+            throw new SecurityException("ContainerClose must arrive on ReliableDataChannel");
+        }
+        if (!state.loginAuthenticated || !state.clientInitialized) {
+            throw new SecurityException("ContainerClose arrived before player initialization");
+        }
+
+        BedrockContainerPacketCodec.DecodedClose close;
+        try {
+            close = BedrockContainerPacketCodec.decodeClose(packet);
+        } catch (IllegalArgumentException exception) {
+            state.rejected = true;
+            throw new SecurityException("Malformed Bedrock ContainerClose", exception);
+        }
+        if (close.serverInitiated()) {
+            throw new SecurityException("Client cannot mark ContainerClose as server initiated");
+        }
+        if (state.openContainerWindowId == 0
+                || close.windowId() != state.openContainerWindowId
+                || close.type() != BedrockContainerPacketCodec.CONTAINER_TYPE) {
+            return;
+        }
+
+        saveAndClearContainerWindow(state);
+    }
+
+    private void openChestWindow(String networkId, SessionState state, int x, int y, int z) {
+        if (world.getBlock(x, y, z) != BlockType.CHEST || !isWithinBlockReach(state, x, y, z)) return;
+        WorldContainerManager manager = world.containers().orElse(null);
+        if (manager == null) return;
+
+        if (state.openContainerWindowId != 0) {
+            closeContainerWindow(networkId, state, true);
+        }
+
+        int windowId = state.nextContainerWindowId++;
+        if (state.nextContainerWindowId > ContainerInventoryTransactionService.MAX_CONTAINER_WINDOW_ID) {
+            state.nextContainerWindowId = 1;
+        }
+
+        try {
+            ContainerInventory inventory = manager.getOrCreate(x, y, z);
+            BedrockPacket content = BedrockInventoryContentCodec.createContainerInventory(
+                    windowId, inventory, itemRegistry);
+            BedrockPacket open = BedrockContainerPacketCodec.createChestOpen(windowId, x, y, z);
+            sendPackets(networkId, List.of(open, content), true);
+            state.openContainerWindowId = windowId;
+            state.openContainerX = x;
+            state.openContainerY = y;
+            state.openContainerZ = z;
+            state.openContainerInventory = inventory;
+        } catch (IOException | RuntimeException exception) {
+            System.err.println("NEXORA: unable to open chest at " + x + "," + y + "," + z
+                    + ": " + exception.getMessage());
+        }
+    }
+
+    private void closeContainerWindow(String networkId, SessionState state, boolean serverInitiated) {
+        if (state.openContainerWindowId == 0) return;
+        int windowId = state.openContainerWindowId;
+        try {
+            world.containers().ifPresent(manager -> {
+                try {
+                    manager.save(state.openContainerX, state.openContainerY, state.openContainerZ);
+                } catch (IOException exception) {
+                    throw new java.io.UncheckedIOException(exception);
+                }
+            });
+        } catch (RuntimeException exception) {
+            System.err.println("NEXORA: unable to save chest while closing: " + exception.getMessage());
+        }
+        try {
+            sendPacket(networkId, BedrockContainerPacketCodec.createClose(
+                    windowId, BedrockContainerPacketCodec.CONTAINER_TYPE, serverInitiated), true);
+        } finally {
+            clearContainerWindow(state);
+        }
+    }
+
+    private void saveAndClearContainerWindow(SessionState state) {
+        if (state.openContainerWindowId == 0) return;
+        try {
+            WorldContainerManager manager = world.containers().orElse(null);
+            if (manager != null) {
+                manager.save(state.openContainerX, state.openContainerY, state.openContainerZ);
+            }
+        } catch (IOException exception) {
+            System.err.println("NEXORA: unable to save closed chest: " + exception.getMessage());
+        } finally {
+            clearContainerWindow(state);
+        }
+    }
+
+    private static void clearContainerWindow(SessionState state) {
+        state.openContainerWindowId = 0;
+        state.openContainerInventory = null;
+        state.openContainerX = 0;
+        state.openContainerY = 0;
+        state.openContainerZ = 0;
+    }
+
+    private void sendContainerReconciliation(String networkId, SessionState state) {
+        List<BedrockPacket> packets = new java.util.ArrayList<>();
+        packets.add(BedrockInventoryContentCodec.createPlayerInventory(state.inventory, itemRegistry));
+        packets.addAll(createEquipmentReconciliationPackets(state));
+        if (state.openContainerWindowId != 0 && state.openContainerInventory != null) {
+            packets.add(BedrockInventoryContentCodec.createContainerInventory(
+                    state.openContainerWindowId, state.openContainerInventory, itemRegistry));
+        }
+        sendPackets(networkId, packets, true);
+    }
+
     private void handlePlayerAction(
             NetherNetInboundPipeline.InboundMessage message, SessionState state, BedrockPacket packet
     ) {

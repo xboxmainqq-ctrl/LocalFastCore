@@ -54,28 +54,42 @@ public final class LivingEntityAiService {
             return pursue(mob, nearest, nowMillis, nextAttackAtMillis);
         }
 
+        PlayerTarget provoker = findPlayer(players, provokedByNetworkId);
         if (isPassivePrey(mob.identifier())) {
-            if (nearest != null && distanceSquared(mob, nearest) <= FLEE_RANGE * FLEE_RANGE) {
+            if (provoker != null
+                    && distanceSquared(mob, provoker) <= ACQUIRE_RANGE * ACQUIRE_RANGE) {
+                return flee(mob, provoker);
+            }
+            if (isTimidMob(mob.identifier()) && nearest != null
+                    && distanceSquared(mob, nearest) <= FLEE_RANGE * FLEE_RANGE) {
                 return flee(mob, nearest);
             }
             return wander(mob, nowMillis);
         }
 
-        if (provokedByNetworkId != null && !provokedByNetworkId.isBlank()) {
-            PlayerTarget provoker = null;
-            for (PlayerTarget player : players) {
-                if (player != null && player.alive()
-                        && player.networkId().equals(provokedByNetworkId)) {
-                    provoker = player;
-                    break;
-                }
-            }
-            if (provoker != null
-                    && distanceSquared(mob, provoker) <= ACQUIRE_RANGE * ACQUIRE_RANGE) {
-                return pursue(mob, provoker, nowMillis, nextAttackAtMillis);
-            }
+        if (provoker != null
+                && distanceSquared(mob, provoker) <= ACQUIRE_RANGE * ACQUIRE_RANGE) {
+            return pursue(mob, provoker, nowMillis, nextAttackAtMillis);
         }
         return wander(mob, nowMillis);
+    }
+
+    private static PlayerTarget findPlayer(List<PlayerTarget> players, String networkId) {
+        if (networkId == null || networkId.isBlank()) return null;
+        for (PlayerTarget player : players) {
+            if (player != null && player.alive() && player.networkId().equals(networkId)) {
+                return player;
+            }
+        }
+        return null;
+    }
+
+    /** Species that naturally avoid nearby players even without being attacked. */
+    public static boolean isTimidMob(String identifier) {
+        return switch (identifier) {
+            case "minecraft:bat", "minecraft:fox", "minecraft:ocelot", "minecraft:rabbit" -> true;
+            default -> false;
+        };
     }
 
     private Decision pursue(WorldLivingEntity mob, PlayerTarget target, long nowMillis,

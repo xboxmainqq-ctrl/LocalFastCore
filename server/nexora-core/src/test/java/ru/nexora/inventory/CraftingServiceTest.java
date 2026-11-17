@@ -48,6 +48,39 @@ class CraftingServiceTest {
     }
 
     @Test
+    void consumesCraftingGridItemsAndReturnsOutputToPlayerInventoryAtomically() {
+        PlayerInventory player = new PlayerInventory();
+        ContainerInventory ui = new ContainerInventory(51);
+        ui.setSlot(28, new ItemStack("minecraft:oak_planks", 2, 64));
+        ui.setSlot(30, new ItemStack("minecraft:oak_planks", 1, 64));
+        var recipe = recipes.find("minecraft:sticks_from_oak_planks");
+
+        assertEquals(CraftingService.Result.CRAFTED,
+                service.craftFromGrid(player, ui, 28, recipe));
+        assertTrue(ui.getSlot(28).isEmpty());
+        assertTrue(ui.getSlot(30).isEmpty());
+        assertEquals(4, player.count("minecraft:stick"));
+    }
+
+    @Test
+    void restoresCraftingGridAndPlayerWhenGridOutputCannotFit() {
+        PlayerInventory player = new PlayerInventory();
+        ContainerInventory ui = new ContainerInventory(51);
+        ui.setSlot(28, new ItemStack("minecraft:oak_planks", 1, 64));
+        ui.setSlot(30, new ItemStack("minecraft:oak_planks", 1, 64));
+        for (int slot = 0; slot < player.size(); slot++) {
+            player.setSlot(slot, new ItemStack("minecraft:diamond", 64, 64));
+        }
+        var beforePlayer = player.snapshot();
+        var beforeUi = ui.snapshot();
+
+        assertEquals(CraftingService.Result.INVENTORY_FULL,
+                service.craftFromGrid(player, ui, 28, recipes.find("minecraft:sticks_from_oak_planks")));
+        assertEquals(beforePlayer, player.snapshot());
+        assertEquals(beforeUi, ui.snapshot());
+    }
+
+    @Test
     void craftsCraftingTableFromFourOakPlanks() {
         PlayerInventory inventory = new PlayerInventory();
         inventory.setSlot(0, new ItemStack("minecraft:oak_planks", 4, 64));

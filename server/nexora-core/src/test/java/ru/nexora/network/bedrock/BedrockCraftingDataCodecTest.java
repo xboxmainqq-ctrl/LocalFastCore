@@ -68,7 +68,7 @@ class BedrockCraftingDataCodecTest {
         assertEquals(0, in.varUInt()); // potion
         assertEquals(0, in.varUInt()); // container
         assertEquals(0, in.varUInt()); // material reducers
-        assertEquals(1, in.byteValue()); // cleanRecipes
+        assertEquals(0, in.byteValue()); // merge with client vanilla recipes
         assertEquals(0, in.remaining());
     }
 

@@ -30,7 +30,7 @@ Configuration is read from the server process environment:
 - `NEXORA_AI_TIMEOUT_SECONDS` — request timeout; default 30.
 - `NEXORA_AI_ADMIN_XUIDS` — comma-separated Xbox XUID allowlist for operator mode.
 
-Only HTTPS endpoints are accepted, except HTTP on localhost for private development providers. API keys are never written to source files or logs. Player questions, the player's display name, and bounded recent conversation context are sent to the configured AI provider; operators should disclose this to players and must not invite them to submit passwords, tokens, or other secrets.
+Only HTTPS endpoints are accepted, except HTTP on localhost for private development providers. API keys are never written to source files or logs. Player questions, operator repair-plan descriptions, the player's display name, and bounded recent conversation context are sent to the configured AI provider; operators should disclose this to players and must not invite them to submit passwords, tokens, or other secrets.
 
 ## Operator mode
 
@@ -38,7 +38,7 @@ Only HTTPS endpoints are accepted, except HTTP on localhost for private developm
 - `/ai admin <question>` asks the assistant in operator context.
 - Access is granted only when the authenticated Xbox XUID is present in `NEXORA_AI_ADMIN_XUIDS`.
 - `/ai admin plan <problem>` asks the configured provider for a repair plan; `/ai admin proposals` lists saved proposals; `/ai admin proposal <id>` shows one; `/ai admin approve <id>` approves it for manual review; `/ai admin reject <id>` rejects it.
-- Proposals are bounded, held in memory only, and expire after 24 hours. Approval is a review-state change only: it does not execute commands, apply patches, edit files, restart services, or mutate worlds.
+- Proposals are bounded, held in memory only, and expire after 24 hours. The proposal text and issue description are visible to allowlisted operators on the server. Approval is a review-state change only: it does not execute commands, apply patches, edit files, restart services, or mutate worlds.
 
 ## Safety and roadmap
 

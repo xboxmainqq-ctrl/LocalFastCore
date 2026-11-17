@@ -12,6 +12,7 @@ class MobPhysicsServiceTest {
     @Test
     void unsupportedGroundMobFallsUnderGravity() {
         World world = new World("mob-physics-fall", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
         var mob = world.livingEntities().spawn("minecraft:zombie", 20, 0.5, 70, 0.5);
 
         var result = physics.tick(world, mob);
@@ -25,6 +26,7 @@ class MobPhysicsServiceTest {
     @Test
     void groundedMobDoesNotSinkThroughTheFloor() {
         World world = new World("mob-physics-ground", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
         var mob = world.livingEntities().spawn("minecraft:zombie", 20, 0.5, 65, 0.5);
 
         var result = physics.tick(world, mob);
@@ -38,6 +40,7 @@ class MobPhysicsServiceTest {
     @Test
     void knockbackVelocityMovesMobAndDampsOverTime() {
         World world = new World("mob-physics-knockback", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
         var mob = world.livingEntities().spawn("minecraft:zombie", 20, 0.5, 65, 0.5);
         mob = world.livingEntities().setVelocity(mob.runtimeId(), 0.4, 0, 0).orElseThrow();
 
@@ -60,12 +63,13 @@ class MobPhysicsServiceTest {
         assertFalse(result.moved());
         assertEquals(15.5, result.entity().x(), 0.0001);
         assertEquals(0, result.entity().velocityX(), 0.0001);
-        assertFalse(world.isChunkLoadedAt(1, 0));
+        assertFalse(world.isChunkLoadedAt(16, 0));
     }
 
     @Test
     void slimeBouncesWhenItsDownwardMotionHitsTheGround() {
         World world = new World("mob-physics-slime-bounce", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
         var slime = world.livingEntities().spawn("minecraft:slime", 20, 0.5, 65.1, 0.5);
         slime = world.livingEntities().setVelocity(slime.runtimeId(), 0, -3.0, 0).orElseThrow();
 
@@ -79,6 +83,7 @@ class MobPhysicsServiceTest {
     @Test
     void flyingMobDoesNotReceiveGroundGravity() {
         World world = new World("mob-physics-flight", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
         var bat = world.livingEntities().spawn("minecraft:bat", 6, 0.5, 70, 0.5);
 
         var result = physics.tick(world, bat);

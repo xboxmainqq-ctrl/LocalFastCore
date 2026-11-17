@@ -212,9 +212,9 @@ public final class NexoraAiGuard {
                 window.signalled = true;
                 totalSignals++;
                 String safeName = sanitizePlayerName(displayName);
-                combatCases.put(playerKey, new CombatCase(
-                        String.format(java.util.Locale.ROOT, "K-%06d", nextCombatCaseId++),
-                        safeName, window.hits, window.targetSwitches, nowNanos));
+                String caseId = String.format(java.util.Locale.ROOT, "K-%06d", nextCombatCaseId++);
+                combatCases.put(caseId, new CombatCase(
+                        caseId, safeName, window.hits, window.targetSwitches, nowNanos));
                 while (combatCases.size() > 64) {
                     combatCases.remove(combatCases.keySet().iterator().next());
                 }
@@ -386,7 +386,7 @@ public final class NexoraAiGuard {
 
         private CombatCaseView view() {
             return new CombatCaseView(id, displayName, hits, targetSwitches,
-                    status, reviewedByXuid != null && reviewedAtNanos > 0);
+                    status, reviewedByXuid != null);
         }
     }
 

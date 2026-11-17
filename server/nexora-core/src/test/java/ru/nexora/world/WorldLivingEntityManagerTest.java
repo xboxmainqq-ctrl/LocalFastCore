@@ -35,6 +35,8 @@ class WorldLivingEntityManagerTest {
                 WorldLivingEntity.familyForIdentifier("minecraft:zombie"));
         assertEquals(WorldLivingEntity.Family.UNDEAD,
                 WorldLivingEntity.familyForIdentifier("minecraft:wither_skeleton"));
+        assertEquals(WorldLivingEntity.Family.UNDEAD,
+                WorldLivingEntity.familyForIdentifier("minecraft:bogged"));
         assertEquals(WorldLivingEntity.Family.ARTHROPOD,
                 WorldLivingEntity.familyForIdentifier("minecraft:cave_spider"));
         assertEquals(WorldLivingEntity.Family.ARTHROPOD,

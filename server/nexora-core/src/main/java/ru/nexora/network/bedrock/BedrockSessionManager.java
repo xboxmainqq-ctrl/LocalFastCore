@@ -3085,6 +3085,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         for (var entry : mobArrows.entrySet()) {
             if (entry.getValue().ownerNetworkId().equals("mob:" + runtimeId)
                     && mobArrows.remove(entry.getKey(), entry.getValue())) {
+                poisonMobArrows.remove(entry.getKey());
                 broadcastLivingActorPacket(
                         BedrockAddItemActorCodec.createRemoveActor(entry.getValue().uniqueId()));
             }

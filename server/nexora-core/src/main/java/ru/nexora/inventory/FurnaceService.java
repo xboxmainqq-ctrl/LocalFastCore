@@ -37,8 +37,11 @@ public final class FurnaceService {
 
     private static final Map<String, SmeltingRecipe> RECIPES = recipes();
     private static final Map<String, Integer> FUELS = Map.of(
+            "minecraft:coal_block", 16000,
             "minecraft:blaze_rod", 2400,
             "minecraft:coal", 1600,
+            "minecraft:oak_log", 300,
+            "minecraft:oak_planks", 300,
             "minecraft:stick", 100
     );
     private final Map<Position, FurnaceState> states = new HashMap<>();

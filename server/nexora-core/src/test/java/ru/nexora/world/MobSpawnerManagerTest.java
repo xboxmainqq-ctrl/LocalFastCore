@@ -117,6 +117,21 @@ class MobSpawnerManagerTest {
     }
 
     @Test
+    void unloadedChunkPausesSpawnerCountdownByElapsedTicks() {
+        World world = new World("unloaded-spawner-timer", 0L, new FlatWorldGenerator());
+        MobSpawnerManager manager = new MobSpawnerManager();
+        assertTrue(manager.register(32, 65, 32, 0));
+
+        manager.tick(world, 0, List.of(new MobSpawnerManager.PlayerPosition(32.5, 65, 32.5)),
+                request -> true);
+        manager.tick(world, 10, List.of(new MobSpawnerManager.PlayerPosition(32.5, 65, 32.5)),
+                request -> true);
+
+        assertEquals(211, manager.snapshot().get(0).nextSpawnTick());
+        assertEquals(0, world.loadedChunkCount());
+    }
+
+    @Test
     void nearbySpawnersShareTheSameTypeCapDuringOneTick() {
         World world = new World("shared-spawner-cap-test", 0L, new FlatWorldGenerator());
         world.setBlock(0, 65, 0, BlockType.SPAWNER);

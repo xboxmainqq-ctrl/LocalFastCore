@@ -135,6 +135,24 @@ class MobSpawnerManagerTest {
     }
 
     @Test
+    void spawnerWorkIsBoundedAndRoundRobinAcrossServerTicks() {
+        World world = new World("spawner-work-budget", 0L, new FlatWorldGenerator());
+        MobSpawnerManager manager = new MobSpawnerManager();
+        for (int i = 0; i < MobSpawnerManager.MAX_SPAWNERS_PER_TICK + 1; i++) {
+            assertTrue(manager.register(i * 16, 65, 0, 0));
+        }
+
+        var first = manager.tick(world, 1, List.of(), request -> true);
+        var second = manager.tick(world, 2, List.of(), request -> true);
+        var duplicate = manager.tick(world, 2, List.of(), request -> true);
+
+        assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK, first.processedSpawners());
+        assertEquals(1, second.processedSpawners());
+        assertEquals(0, duplicate.processedSpawners());
+        assertEquals(0, world.loadedChunkCount());
+    }
+
+    @Test
     void unloadedChunkPausesSpawnerCountdownByElapsedTicks() {
         World world = new World("unloaded-spawner-timer", 0L, new FlatWorldGenerator());
         MobSpawnerManager manager = new MobSpawnerManager();

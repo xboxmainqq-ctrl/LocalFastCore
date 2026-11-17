@@ -80,6 +80,35 @@ class MobSpawnerManagerTest {
     }
 
     @Test
+    void spawnersInUnloadedChunksDoNotForceChunkLoads() {
+        World world = new World("unloaded-spawner-test", 0L, new FlatWorldGenerator());
+        MobSpawnerManager manager = world.mobSpawners();
+        assertTrue(manager.register(32, 65, 32, System.currentTimeMillis() / 50L));
+        assertEquals(0, world.loadedChunkCount());
+
+        manager.tick(world, manager.snapshot().get(0).nextSpawnTick(),
+                List.of(new MobSpawnerManager.PlayerPosition(32.5, 65, 32.5)), request -> true);
+
+        assertEquals(0, world.loadedChunkCount());
+    }
+
+    @Test
+    void nearbySpawnersShareTheSameTypeCapDuringOneTick() {
+        World world = new World("shared-spawner-cap-test", 0L, new FlatWorldGenerator());
+        world.setBlock(0, 65, 0, BlockType.SPAWNER);
+        world.setBlock(1, 65, 0, BlockType.SPAWNER);
+        MobSpawnerManager manager = world.mobSpawners();
+        long due = manager.snapshot().stream().mapToLong(MobSpawnerState::nextSpawnTick).max().orElseThrow();
+        AtomicInteger spawned = new AtomicInteger();
+
+        manager.tick(world, due,
+                List.of(new MobSpawnerManager.PlayerPosition(0.5, 65, 0.5)),
+                request -> { spawned.incrementAndGet(); return true; });
+
+        assertTrue(spawned.get() <= MobSpawnerManager.MAX_NEARBY_SAME_TYPE);
+    }
+
+    @Test
     void configurationAndRemovalAreValidated() {
         MobSpawnerManager manager = new MobSpawnerManager();
         assertTrue(manager.register(1, 65, 1, 10));

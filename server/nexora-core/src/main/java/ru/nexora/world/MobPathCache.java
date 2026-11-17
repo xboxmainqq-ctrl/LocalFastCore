@@ -56,8 +56,8 @@ public final class MobPathCache {
         Entry cached = get(mobRuntimeId, key, nowMillis);
         if (cached != null) {
             WorldPathfinder.Step step = cached.step();
-            if (world.isChunkLoadedAt((int) Math.floor(startX), (int) Math.floor(startZ))
-                    && world.isChunkLoadedAt((int) Math.floor(step.x()), (int) Math.floor(step.z()))
+            if (WorldPathfinder.isMobFootprintLoaded(world, startX, startZ)
+                    && WorldPathfinder.isMobFootprintLoaded(world, step.x(), step.z())
                     && WorldCollision.canMove(world, startX, feetY, startZ, step.x(), feetY, step.z())) {
                 recordHit();
                 return Optional.of(step);

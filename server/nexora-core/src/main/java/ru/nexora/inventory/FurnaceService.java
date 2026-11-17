@@ -110,16 +110,24 @@ public final class FurnaceService {
         return result(state, changed, kind);
     }
 
-    public synchronized void restoreState(int x, int y, int z, int burnTicksRemaining, int cookProgress) {
-        restoreState(x, y, z, burnTicksRemaining, cookProgress, burnTicksRemaining);
+        public synchronized void restoreState(int x, int y, int z, int burnTicksRemaining, int cookProgress) {
+        restoreState(x, y, z, burnTicksRemaining, cookProgress, burnTicksRemaining, 0);
     }
 
     public synchronized void restoreState(
             int x, int y, int z, int burnTicksRemaining, int cookProgress, int burnTicksTotal
     ) {
+        restoreState(x, y, z, burnTicksRemaining, cookProgress, burnTicksTotal, 0);
+    }
+
+    public synchronized void restoreState(
+            int x, int y, int z, int burnTicksRemaining, int cookProgress,
+            int burnTicksTotal, int pendingExperienceMilli
+    ) {
         if (burnTicksRemaining < 0 || burnTicksRemaining > MAX_BURN_TICKS
                 || cookProgress < 0 || cookProgress >= COOK_TIME_TICKS
-                || burnTicksTotal < burnTicksRemaining || burnTicksTotal > MAX_BURN_TICKS\n                || pendingExperienceMilli < 0 || pendingExperienceMilli > MAX_PENDING_EXPERIENCE_MILLI) {
+                || burnTicksTotal < burnTicksRemaining || burnTicksTotal > MAX_BURN_TICKS
+                || pendingExperienceMilli < 0 || pendingExperienceMilli > MAX_PENDING_EXPERIENCE_MILLI) {
             throw new IllegalArgumentException("Invalid persisted furnace state");
         }
         states.put(new Position(x, y, z),
@@ -129,10 +137,28 @@ public final class FurnaceService {
     public synchronized FurnaceStateSnapshot snapshotState(int x, int y, int z) {
         FurnaceState state = states.get(new Position(x, y, z));
         return state == null ? new FurnaceStateSnapshot(0, 0, 0)
-                : new FurnaceStateSnapshot(state.burnTicksRemaining, state.cookProgress, state.burnTicksTotal,\n                        state.pendingExperienceMilli);
+                : new FurnaceStateSnapshot(state.burnTicksRemaining, state.cookProgress, state.burnTicksTotal,
+                        state.pendingExperienceMilli);
     }
 
-    public synchronized int collectExperience(int x, int y, int z, int removedItems, int previousOutputCount) {\n        if (removedItems <= 0 || previousOutputCount <= 0) return 0;\n        FurnaceState state = states.get(new Position(x, y, z));\n        if (state == null || state.pendingExperienceMilli == 0) return 0;\n        int collected = removedItems >= previousOutputCount ? state.pendingExperienceMilli\n                : (int) ((long) state.pendingExperienceMilli * removedItems / previousOutputCount);\n        state.pendingExperienceMilli -= collected;\n        return collected;\n    }\n\n    public synchronized void restorePendingExperience(int x, int y, int z, int amount) {\n        if (amount < 0) throw new IllegalArgumentException("Experience rollback amount cannot be negative");\n        FurnaceState state = states.computeIfAbsent(new Position(x, y, z), ignored -> new FurnaceState());\n        state.pendingExperienceMilli = Math.min(MAX_PENDING_EXPERIENCE_MILLI,\n                state.pendingExperienceMilli + amount);\n    }\n\n    public synchronized void remove(int x, int y, int z) {
+    public synchronized int collectExperience(int x, int y, int z, int removedItems, int previousOutputCount) {
+        if (removedItems <= 0 || previousOutputCount <= 0) return 0;
+        FurnaceState state = states.get(new Position(x, y, z));
+        if (state == null || state.pendingExperienceMilli == 0) return 0;
+        int collected = removedItems >= previousOutputCount ? state.pendingExperienceMilli
+                : (int) ((long) state.pendingExperienceMilli * removedItems / previousOutputCount);
+        state.pendingExperienceMilli -= collected;
+        return collected;
+    }
+
+    public synchronized void restorePendingExperience(int x, int y, int z, int amount) {
+        if (amount < 0) throw new IllegalArgumentException("Experience rollback amount cannot be negative");
+        FurnaceState state = states.computeIfAbsent(new Position(x, y, z), ignored -> new FurnaceState());
+        state.pendingExperienceMilli = Math.min(MAX_PENDING_EXPERIENCE_MILLI,
+                state.pendingExperienceMilli + amount);
+    }
+
+    public synchronized void remove(int x, int y, int z) {
         states.remove(new Position(x, y, z));
     }
 
@@ -174,18 +200,20 @@ public final class FurnaceService {
     }
 
     private static void addRecipe(
-            Map<String, SmeltingRecipe> recipes, String input, String output, RecipeGroup group
+            Map<String, SmeltingRecipe> recipes, String input, String output,
+            RecipeGroup group, int experienceMilli
     ) {
-        recipes.put(input, new SmeltingRecipe(input, new ItemStack(output, 1, 64), group));
+        recipes.put(input, new SmeltingRecipe(input, new ItemStack(output, 1, 64), group, experienceMilli));
     }
 
-    private record Position(int x, int y, int z) { }
+        private record Position(int x, int y, int z) { }
     private record SmeltingRecipe(String input, ItemStack result, RecipeGroup group, int experienceMilli) { }
 
     private static final class FurnaceState {
         private int burnTicksRemaining;
         private int cookProgress;
-        private int burnTicksTotal;\n        private int pendingExperienceMilli;
+        private int burnTicksTotal;
+        private int pendingExperienceMilli;
 
         private FurnaceState() { }
         private FurnaceState(int burnTicksRemaining, int cookProgress, int burnTicksTotal) {
@@ -195,7 +223,12 @@ public final class FurnaceService {
         }
     }
 
-    public record FurnaceStateSnapshot(int burnTicksRemaining, int cookProgress, int burnTicksTotal,\n                                       int pendingExperienceMilli) {\n        public FurnaceStateSnapshot(int burnTicksRemaining, int cookProgress, int burnTicksTotal) {\n            this(burnTicksRemaining, cookProgress, burnTicksTotal, 0);\n        }\n    }
+    public record FurnaceStateSnapshot(int burnTicksRemaining, int cookProgress, int burnTicksTotal,
+                                       int pendingExperienceMilli) {
+        public FurnaceStateSnapshot(int burnTicksRemaining, int cookProgress, int burnTicksTotal) {
+            this(burnTicksRemaining, cookProgress, burnTicksTotal, 0);
+        }
+    }
     public record TickResult(int burnTicksRemaining, int cookProgress, int cookPercent, boolean inventoryChanged,
                              int burnTicksTotal) { }
 }

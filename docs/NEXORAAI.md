@@ -37,8 +37,9 @@ Only HTTPS endpoints are accepted, except HTTP on localhost for private developm
 - `/ai admin` shows a read-only runtime snapshot. It also includes aggregate player/session, living-entity, and dropped-item counts; no player inventory or private profile data is exposed.
 - `/ai admin <question>` asks the assistant in operator context.
 - Access is granted only when the authenticated Xbox XUID is present in `NEXORA_AI_ADMIN_XUIDS`.
-- This mode does not execute commands, change settings, edit files, restart services, or mutate worlds.
+- `/ai admin plan <problem>` asks the configured provider for a repair plan; `/ai admin proposals` lists saved proposals; `/ai admin proposal <id>` shows one; `/ai admin approve <id>` approves it for manual review; `/ai admin reject <id>` rejects it.
+- Proposals are bounded, held in memory only, and expire after 24 hours. Approval is a review-state change only: it does not execute commands, apply patches, edit files, restart services, or mutate worlds.
 
 ## Safety and roadmap
 
-The current release is observe-and-explain only. Automated source repairs are not enabled. A future repair workflow must create a proposal, run tests, preserve a backup, require explicit operator approval, and support rollback before any change can be applied.
+The current release is observe-and-explain plus non-executable repair planning. NexoraAI can draft a proposed investigation and validation/backup/rollback checklist, but it does not inspect or modify source files, run tests, create backups, or apply changes. Operator approval only marks a proposal for manual review. Any future automated repair workflow must independently verify the target, run tests, preserve a backup, require explicit operator approval, and support rollback before a change can be applied.

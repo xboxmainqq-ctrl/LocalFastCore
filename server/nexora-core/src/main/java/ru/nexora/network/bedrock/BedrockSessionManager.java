@@ -964,6 +964,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     case BedrockBatchCodec.RESOURCE_PACK_CLIENT_RESPONSE_PACKET_ID ->
                             handleResourcePackResponse(message.networkId(), state, packet,
                                     resourcePacksInfoWasSent, resourcePackStackWasSent);
+                    case BedrockSubChunkCodec.SUB_CHUNK_REQUEST_PACKET_ID ->
+                            handleSubChunkRequest(message, state, packet);
                     case 0x71 -> handleClientInitialized(message, state, packet);
                     case BedrockChunkRadiusCodec.REQUEST_PACKET_ID ->
                             handleChunkRadiusRequest(message, state, packet);
@@ -4606,6 +4608,68 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case CRAFTING_TABLE, FURNACE, BLAST_FURNACE, SMOKER -> 2_500_000_000L;
             case SPAWNER -> 5_000_000_000L;
         };
+    }
+
+    private void handleSubChunkRequest(
+            NetherNetInboundPipeline.InboundMessage message, SessionState state, BedrockPacket packet
+    ) {
+        if (!message.reliable()) {
+            throw new SecurityException("SubChunkRequest must arrive on ReliableDataChannel");
+        }
+        if (!state.loginAuthenticated || !state.gameStarted || !state.positionInitialized
+                || state.sentChunkKeys.isEmpty()) {
+            throw new SecurityException("SubChunkRequest arrived before chunk streaming was ready");
+        }
+
+        BedrockSubChunkCodec.Request request;
+        try {
+            request = BedrockSubChunkCodec.decodeRequest(packet);
+        } catch (IllegalArgumentException exception) {
+            state.rejected = true;
+            throw new SecurityException("Malformed Bedrock SubChunkRequest", exception);
+        }
+
+        List<BedrockSubChunkCodec.Response> responses = new ArrayList<>(request.offsets().size());
+        for (BedrockSubChunkCodec.Offset offset : request.offsets()) {
+            if (request.dimension() != 0) {
+                responses.add(new BedrockSubChunkCodec.Response(
+                        offset, BedrockSubChunkCodec.RESULT_WRONG_DIMENSION, null));
+                continue;
+            }
+            long chunkX = (long) request.centerX() + offset.x();
+            long subChunkY = (long) request.centerY() + offset.y();
+            long chunkZ = (long) request.centerZ() + offset.z();
+            if (chunkX < Integer.MIN_VALUE || chunkX > Integer.MAX_VALUE
+                    || chunkZ < Integer.MIN_VALUE || chunkZ > Integer.MAX_VALUE
+                    || subChunkY < -4 || subChunkY > 19) {
+                responses.add(new BedrockSubChunkCodec.Response(
+                        offset, BedrockSubChunkCodec.RESULT_INDEX_OUT_OF_BOUNDS, null));
+                continue;
+            }
+
+            int absoluteChunkX = (int) chunkX;
+            int absoluteChunkZ = (int) chunkZ;
+            long chunkKey = ((long) absoluteChunkX << 32) | (absoluteChunkZ & 0xffff_ffffL);
+            if (!state.sentChunkKeys.contains(chunkKey)) {
+                responses.add(new BedrockSubChunkCodec.Response(
+                        offset, BedrockSubChunkCodec.RESULT_LEVEL_CHUNK_DOES_NOT_EXIST, null));
+                continue;
+            }
+
+            byte[] serialized = BedrockLevelChunkCodec.createSubChunkData(
+                    world.getChunk(absoluteChunkX, absoluteChunkZ), (int) subChunkY);
+            if (serialized == null) {
+                responses.add(new BedrockSubChunkCodec.Response(
+                        offset, BedrockSubChunkCodec.RESULT_SUCCESS_ALL_AIR, null));
+            } else {
+                responses.add(new BedrockSubChunkCodec.Response(
+                        offset, BedrockSubChunkCodec.RESULT_SUCCESS, serialized));
+            }
+        }
+
+        if (!responses.isEmpty()) {
+            sendPacket(message.networkId(), BedrockSubChunkCodec.createResponsePacket(request, responses), true);
+        }
     }
 
     private void handleChunkRadiusRequest(

@@ -44,4 +44,24 @@ class NexoraAiAssistantTest {
                 "secret", "model", URI.create("https://api.example.com/chat"),
                 Duration.ofMinutes(3), new NexoraAiDiagnostics()));
     }
+    @Test
+    void adminStatusIncludesReadOnlyWorldSummary() {
+        NexoraAiAssistant assistant = NexoraAiAssistant.fromEnvironment(
+                Map.of(), new NexoraAiDiagnostics());
+        assistant.setAdminRuntimeSnapshotProvider(() -> "players=2, mobs=7, droppedItems=3");
+
+        assertTrue(assistant.adminStatus().contains("мир: players=2, mobs=7, droppedItems=3"));
+    }
+
+    @Test
+    void unavailableWorldSummaryDoesNotBreakAdminDiagnostics() {
+        NexoraAiAssistant assistant = NexoraAiAssistant.fromEnvironment(
+                Map.of(), new NexoraAiDiagnostics());
+        assistant.setAdminRuntimeSnapshotProvider(() -> {
+            throw new IllegalStateException("snapshot unavailable");
+        });
+
+        assertTrue(assistant.adminStatus().contains("мир: unavailable"));
+    }
+
 }

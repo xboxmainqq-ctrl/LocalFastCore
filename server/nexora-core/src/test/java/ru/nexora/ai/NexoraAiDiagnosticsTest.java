@@ -76,4 +76,41 @@ class NexoraAiDiagnosticsTest {
                 () -> diagnostics.recordSlowOperation("mob-ai", 10, 0));
     }
 
+    @Test
+    void recentEvidenceIncludesTimestampedFailuresAndSlowOperationsNewestFirst() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+
+        diagnostics.recordFailure(new IllegalStateException("furnace tick failed"));
+        diagnostics.recordSlowOperation("mob-ai", 75_000_000L, 50_000_000L);
+
+        String evidence = diagnostics.recentEvidence();
+        assertTrue(evidence.contains("[SLOW] mob-ai took 75 ms"));
+        assertTrue(evidence.contains("[FAILURE] IllegalStateException: furnace tick failed"));
+        assertTrue(evidence.indexOf("[SLOW]") < evidence.indexOf("[FAILURE]"));
+        assertTrue(evidence.length() <= 1_900);
+    }
+
+    @Test
+    void recentEvidenceIsBoundedToTwelveEvents() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        for (int i = 0; i < 20; i++) {
+            diagnostics.recordFailure(new IllegalStateException("failure-" + i));
+        }
+
+        String evidence = diagnostics.recentEvidence();
+        assertTrue(evidence.contains("failure-19"));
+        assertTrue(evidence.contains("failure-8"));
+        assertFalse(evidence.contains("failure-7"));
+    }
+
+    @Test
+    void recentEvidenceDoesNotExposeStackTraces() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        diagnostics.recordFailure(new IllegalStateException("bounded summary"));
+
+        String evidence = diagnostics.recentEvidence();
+        assertFalse(evidence.contains("at ru.nexora"));
+        assertFalse(evidence.contains("java.lang.Thread"));
+    }
+
 }

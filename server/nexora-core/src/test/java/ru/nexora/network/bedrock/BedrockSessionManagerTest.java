@@ -1574,6 +1574,7 @@ class BedrockSessionManagerTest {
         writeVarUInt(out, 0); // block runtime ID
         writeVarUInt(out, 0); // user data
         writeFloat32(out, headX); writeFloat32(out, headY); writeFloat32(out, headZ);
+        out.write(0); // protocol 2225 main hand
         return out.toByteArray();
     }
 

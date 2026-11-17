@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class WorldItemEntityManager {
     public static final double DEFAULT_PICKUP_RADIUS = 1.5;
     public static final long DEFAULT_PICKUP_DELAY_MILLIS = 500;
-    public static final long DEFAULT_DESPAWN_AGE_MILLIS = 5 * 60 * 1000L;
+    public static final long DEFAULT_DESPAWN_AGE_MILLIS = 10 * 60 * 1000L;
     public static final double DEFAULT_MERGE_RADIUS = 0.75;
     private final List<WorldItemEntity> removedByTick = new ArrayList<>();
     private final AtomicLong nextRuntimeId = new AtomicLong(1_000_000);

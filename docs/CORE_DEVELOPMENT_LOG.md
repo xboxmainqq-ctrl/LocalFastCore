@@ -38,8 +38,8 @@ Work only on engine/server foundations:
 ## Next tasks — in order
 
 1. **Verify current CI** for the active branch and fix any compilation/test failures before adding more code.
-2. **World persistence hardening:** inspect `.nxw` storage for atomic writes, corruption detection, format/version validation and recovery behavior; add focused tests before changing the format.
-3. **World lifecycle and multi-world configuration:** ensure create/load/unload/save flows are explicit, safe and independently testable.
+2. **World persistence hardening:** initial review and regression coverage are in place (atomic replacement, CRC32C, version/signature/size/count validation, corruption/truncation/trailing-byte tests). Before changing the file format, add a bounded-write safeguard and a documented recovery/backup policy.
+3. **World lifecycle and multi-world configuration:** existing tests cover startup rollback, reuse of pre-registered worlds, restart persistence and retry after failed shutdown save; extend only where a concrete gap is found.
 4. **Chunk pipeline correctness:** cancellation, back-pressure, bounded memory/queues, duplicate requests and clean shutdown under load.
 5. **Entity and player simulation:** authoritative movement/collision boundaries, deterministic tick behavior and persistence.
 6. **Dedicated server packaging:** verify clean install, documented config, startup, save/restart and shutdown using CI artifacts.
@@ -50,8 +50,8 @@ Do not start magic/RPG implementation until the dedicated core can pass automate
 
 ## Session hand-off template
 
-- Completed:
-- Tests/CI:
-- Not completed / blockers:
-- Next exact task:
+- Completed: added `.nxw` future-version, truncation and trailing-byte rejection tests; reviewed world lifecycle rollback/retry coverage.
+- Tests/CI: tests are committed but not confirmed passing; workflow runs fail before runner allocation and logs/annotations are inaccessible through the current GitHub connection.
+- Not completed / blockers: CI infrastructure/dispatch failure of unknown cause; no evidence yet of a code compilation failure.
+- Next exact task: restore a working CI runner/verification path, then inspect bounded chunk-pipeline behavior under cancellation and load.
 - Commit SHA:

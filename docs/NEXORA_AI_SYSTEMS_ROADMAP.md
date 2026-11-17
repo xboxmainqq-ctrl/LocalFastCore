@@ -31,7 +31,7 @@ Acceptance stages:
 4. Collision-aware movement and basic idle/follow/hostile behavior.
 5. Load tests proving bounded CPU, memory and path-request queues.
 
-Initial implementation now exists: `MobAiController` is connected to the authoritative entity tick and supports explicit PASSIVE/NEUTRAL/HOSTILE profiles, nearest-player perception with line-of-sight checks, neutral provocation, collision-aware direct pursuit and attack intents. Regression tests cover pursuit, provocation and solid-wall visibility. This is an early behavior controller, not a complete mob AI: bounded pathfinding, combat/damage, richer goals, vertical navigation, persistence of profiles and load budgets remain incomplete.
+Initial implementation now exists: `MobAiController` is connected to the authoritative entity tick and supports explicit PASSIVE/NEUTRAL/HOSTILE profiles, nearest-player perception with line-of-sight checks, neutral provocation, collision-aware pursuit, bounded deterministic A* routing over loaded ground cells, cached waypoints and a hard per-search expansion limit (512 nodes). Regression tests cover pursuit, neutral provocation, solid-wall visibility, route-around-obstacle behavior and a fully blocked mob. This remains an early behavior controller, not a complete mob AI: combat/damage, richer goals, vertical navigation, dynamic hazard handling, persisted profiles and aggregate tick-level path budgets remain incomplete.
 
 ## 2. NEXORA Core AI Assistant — operator/developer helper
 
@@ -84,7 +84,7 @@ Safety and privacy requirements:
 ## Current implementation status
 
 ### Implemented foundations
-- **Mob AI:** initial profile-based controller is wired into `EntityTickEngine`. PASSIVE mobs retain the existing deterministic wander behavior; configured NEUTRAL mobs wait for provocation; configured HOSTILE mobs detect visible nearby players and pursue them on authoritative server ticks. Attack-range decisions emit intent only; no damage is applied yet.
+- **Mob AI:** the existing profile-based `MobAiController` is wired into `EntityTickEngine`; no second mob simulation or tick loop exists. PASSIVE mobs retain deterministic wandering; NEUTRAL mobs wait for provocation; HOSTILE mobs detect visible nearby players and use cached, bounded A* routes around solid ground-level obstacles in loaded chunks. Each route search expands at most 512 nodes. Attack-range decisions emit intent only; no damage is applied yet.
 - **Core AI Assistant:** `AiToolRegistry` and `CoreAiAssistant` provide a provider-neutral tool boundary with per-tool permissions, explicit approval for mutating tools, bounded argument payloads and audit events that omit arguments. `AiModelProvider` is an optional provider SPI; prompts and context are bounded, sensitive context keys are rejected, and Core remains usable without a provider. A lifecycle-managed optional runtime module is available. A production provider and full operator conversation/tool-planning workflow are not yet included.
 - **Moderation AI Assistant:** `ModerationSignalAnalyzer` and `ModerationAiAssistant` provide bounded chat-rate/repetition signals, retain only SHA-256 fingerprints rather than raw chat, cap per-player history and total tracked players with LRU eviction, support data deletion, and always mark results for human review. An optional model summary receives only risk/score/reason metadata, never raw chat or player IDs. A lifecycle-managed optional runtime module is available. This is a deterministic signal foundation, not a trained/model-based classifier and it does not punish players.
 

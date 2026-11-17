@@ -113,3 +113,13 @@ The Core is ready only after automated tests cover clean installation, world cre
 - Not completed / blockers: CI verification; chunk lifecycle state machine; full mob pathfinding/combat; model/provider adapters and complete assistant workflows; moderation case management.
 - Next exact task: obtain a real server CI run, fix compile/test failures, then continue bounded chunk lifecycle and mob navigation work.
 - Commit SHA:
+
+### 2026-11-17 — extend the existing Mob AI with bounded navigation
+- Re-read the active branch's entity simulation, MobAiController, EntityTickEngine, registry and regression tests before changing the mob architecture.
+- Confirmed that MobAiController already runs from the authoritative EntityTickEngine tick. It does not own a separate clock, thread, entity registry or mob population. Kept that integration and did not add a second AI subsystem.
+- Replaced straight-line-only pursuit with deterministic A* pathfinding on the loaded ground plane. Paths avoid solid/unsafe cells, are bounded to the configured detection radius, and expand no more than 512 nodes per search.
+- Cached per-mob waypoints and rebuild routes when the target moves to another block or the current route becomes unusable. Waypoint advancement waits until the mob is near the center of the cell to reduce corner cutting.
+- Added regression tests for routing around a one-block obstacle and reporting STUCK when all four adjacent ground cells are blocked. Existing passive wandering, neutral provocation, hostile perception and line-of-sight behavior remain in place.
+- Commits: 13b3c74918b8f9f9bcec6f34f8dc24ef90ade544 (bounded pathfinding), 544bf3aec507a98f9de5b93dc43d558e4d2c02d4 (waypoint precision), 87645c8ad11db2a85703357d5bfeb488f6ded046 (route regression assertion).
+- Verification: source and tests are committed, but Maven execution is not yet confirmed. Previous Actions jobs failed before reporting steps; do not claim the tests pass until a runner executes them.
+- Next Mob AI tasks: navigation across height changes, safe handling of liquids/hazards, target retention after line-of-sight loss, combat integration, and aggregate per-tick pathfinding budgets.

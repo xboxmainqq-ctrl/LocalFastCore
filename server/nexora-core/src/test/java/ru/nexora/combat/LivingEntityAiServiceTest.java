@@ -98,6 +98,19 @@ class LivingEntityAiServiceTest {
     }
 
     @Test
+    void nearestAlivePlayerUsesClosestLivingTargetAndSkipsNullAndDeadEntries() {
+        WorldLivingEntity zombie = new WorldLivingEntityManager().spawn(
+                "minecraft:zombie", 20, 0, 64, 0);
+        var nearest = new LivingEntityAiService.PlayerTarget("nearest", 2, 64, 0, true);
+        var farther = new LivingEntityAiService.PlayerTarget("farther", 8, 64, 0, true);
+        var dead = new LivingEntityAiService.PlayerTarget("dead", 1, 64, 0, false);
+
+        assertSame(nearest, LivingEntityAiService.nearestAlivePlayer(
+                zombie, java.util.Arrays.asList(farther, null, dead, nearest)));
+        assertNull(LivingEntityAiService.nearestAlivePlayer(zombie, List.of()));
+    }
+
+    @Test
     void rejectsInvalidTimeAndTarget() {
         WorldLivingEntity zombie = new WorldLivingEntityManager().spawn(
                 "minecraft:zombie", 20, 0, 64, 0);

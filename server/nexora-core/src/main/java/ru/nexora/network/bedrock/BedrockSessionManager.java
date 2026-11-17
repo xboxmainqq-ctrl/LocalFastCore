@@ -4415,7 +4415,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     private static String blockDropItemId(BlockType block) {
         return switch (block) {
-            case AIR, BEDROCK -> null;
+            case AIR, BEDROCK, SPAWNER -> null;
             case STONE -> "minecraft:cobblestone";
             case GRASS_BLOCK -> "minecraft:dirt";
             case DIRT -> "minecraft:dirt";
@@ -4478,6 +4478,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case OAK_LOG -> 2_000_000_000L;
             case OAK_PLANKS -> 2_000_000_000L;
             case CRAFTING_TABLE, FURNACE, BLAST_FURNACE, SMOKER -> 2_500_000_000L;
+            case SPAWNER -> 5_000_000_000L;
         };
     }
 

@@ -21,6 +21,9 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class WorldItemEntityManager {
     public static final double DEFAULT_PICKUP_RADIUS = 1.5;
     public static final long DEFAULT_PICKUP_DELAY_MILLIS = 500;
+    public static final long DEFAULT_DESPAWN_AGE_MILLIS = 5 * 60 * 1000L;
+    public static final double DEFAULT_MERGE_RADIUS = 0.75;
+    private final List<WorldItemEntity> removedByTick = new ArrayList<>();
     private final AtomicLong nextRuntimeId = new AtomicLong(1_000_000);
     private final ConcurrentMap<Long, WorldItemEntity> entities = new ConcurrentHashMap<>();
     private final WorldItemEntityStorage storage;
@@ -173,51 +176,116 @@ public final class WorldItemEntityManager {
     }
 
     /**
-     * Advances simple server-side dropped-item gravity and block collision.
-     * Position changes are kept in memory and are included in the next world autosave.
+     * Advances dropped-item physics. The two-argument overload is retained for
+     * deterministic physics-only callers; production ticks pass wall-clock time
+     * to enable despawning.
      */
     public synchronized List<WorldItemEntity> tick(World world, double deltaSeconds) {
+        return tick(world, deltaSeconds, -1);
+    }
+
+    public synchronized List<WorldItemEntity> tick(World world, double deltaSeconds, long nowMillis) {
         Objects.requireNonNull(world, "world");
-        if (!Double.isFinite(deltaSeconds) || deltaSeconds <= 0) {
-            throw new IllegalArgumentException("Item actor tick duration must be positive and finite");
+        if (!Double.isFinite(deltaSeconds) || deltaSeconds <= 0 || nowMillis < -1) {
+            throw new IllegalArgumentException("Invalid item actor tick timing");
         }
         double dt = Math.min(0.1, deltaSeconds);
+        List<WorldItemEntity> before = snapshot();
         List<WorldItemEntity> moved = new ArrayList<>();
-        for (WorldItemEntity current : snapshot()) {
-            double vx = current.velocityX() * 0.98;
-            double vy = current.velocityY() - 32.0 * dt;
-            double vz = current.velocityZ() * 0.98;
-            double nextX = current.x() + vx * dt;
-            double nextZ = current.z() + vz * dt;
+        List<WorldItemEntity> removed = new ArrayList<>();
+        boolean changed = false;
+        try {
+            for (WorldItemEntity current : before) {
+                if (nowMillis >= 0 && nowMillis >= current.pickupAvailableAtMillis()
+                        && nowMillis - current.pickupAvailableAtMillis() >= DEFAULT_DESPAWN_AGE_MILLIS) {
+                    if (entities.remove(current.runtimeId(), current)) {
+                        removed.add(current);
+                        changed = true;
+                    }
+                    continue;
+                }
 
-            if (solid(world, floor(nextX), floor(current.y()), floor(nextZ))) {
-                nextX = current.x();
-                nextZ = current.z();
-                vx = 0;
-                vz = 0;
+                double vx = current.velocityX() * 0.98;
+                double vy = current.velocityY() - 32.0 * dt;
+                double vz = current.velocityZ() * 0.98;
+                double nextX = current.x() + vx * dt;
+                double nextZ = current.z() + vz * dt;
+                if (solid(world, floor(nextX), floor(current.y()), floor(nextZ))) {
+                    nextX = current.x();
+                    nextZ = current.z();
+                    vx = 0;
+                    vz = 0;
+                }
+
+                double nextY = current.y() + vy * dt;
+                int supportY = floor(nextY - 0.125);
+                if (vy < 0 && solid(world, floor(nextX), supportY, floor(nextZ))) {
+                    nextY = supportY + 1.125;
+                    vy = 0;
+                    vx *= 0.6;
+                    vz *= 0.6;
+                } else if (solid(world, floor(nextX), floor(nextY), floor(nextZ))) {
+                    nextY = current.y();
+                    vy = 0;
+                }
+
+                WorldItemEntity updated = new WorldItemEntity(
+                        current.uniqueId(), current.runtimeId(), current.stack(),
+                        nextX, nextY, nextZ, vx, vy, vz,
+                        current.pickupAvailableAtMillis(), current.ownerXuid());
+                if (!updated.equals(current) && entities.replace(current.runtimeId(), current, updated)) {
+                    moved.add(updated);
+                    changed = true;
+                }
             }
 
-            double nextY = current.y() + vy * dt;
-            int supportY = floor(nextY - 0.125);
-            if (vy < 0 && solid(world, floor(nextX), supportY, floor(nextZ))) {
-                nextY = supportY + 1.125;
-                vy = 0;
-                vx *= 0.6;
-                vz *= 0.6;
-            } else if (solid(world, floor(nextX), floor(nextY), floor(nextZ))) {
-                nextY = current.y();
-                vy = 0;
+            for (WorldItemEntity first : snapshot()) {
+                WorldItemEntity currentFirst = entities.get(first.runtimeId());
+                if (currentFirst == null) continue;
+                for (WorldItemEntity second : snapshot()) {
+                    if (second.runtimeId() <= currentFirst.runtimeId()) continue;
+                    WorldItemEntity currentSecond = entities.get(second.runtimeId());
+                    if (currentSecond == null || !canMerge(currentFirst, currentSecond)) continue;
+                    int combined = currentFirst.stack().count() + currentSecond.stack().count();
+                    if (combined > currentFirst.stack().maxStackSize()) continue;
+                    double dx = currentFirst.x() - currentSecond.x();
+                    double dy = currentFirst.y() - currentSecond.y();
+                    double dz = currentFirst.z() - currentSecond.z();
+                    if (dx * dx + dy * dy + dz * dz > DEFAULT_MERGE_RADIUS * DEFAULT_MERGE_RADIUS) continue;
+                    currentFirst = new WorldItemEntity(currentFirst.uniqueId(), currentFirst.runtimeId(),
+                            new ItemStack(currentFirst.stack().itemId(), combined, currentFirst.stack().maxStackSize()),
+                            currentFirst.x(), currentFirst.y(), currentFirst.z(),
+                            currentFirst.velocityX(), currentFirst.velocityY(), currentFirst.velocityZ(),
+                            Math.max(currentFirst.pickupAvailableAtMillis(), currentSecond.pickupAvailableAtMillis()),
+                            currentFirst.ownerXuid());
+                    entities.put(currentFirst.runtimeId(), currentFirst);
+                    if (entities.remove(currentSecond.runtimeId(), currentSecond)) removed.add(currentSecond);
+                    moved.removeIf(entity -> entity.runtimeId() == currentFirst.runtimeId());
+                    moved.add(currentFirst);
+                    changed = true;
+                }
             }
-
-            WorldItemEntity updated = new WorldItemEntity(
-                    current.uniqueId(), current.runtimeId(), current.stack(),
-                    nextX, nextY, nextZ, vx, vy, vz,
-                    current.pickupAvailableAtMillis(), current.ownerXuid());
-            if (!updated.equals(current) && entities.replace(current.runtimeId(), current, updated)) {
-                moved.add(updated);
-            }
+            if (changed) persist();
+            removedByTick.addAll(removed);
+            return List.copyOf(moved);
+        } catch (RuntimeException exception) {
+            entities.clear();
+            for (WorldItemEntity entity : before) entities.put(entity.runtimeId(), entity);
+            throw exception;
         }
-        return List.copyOf(moved);
+    }
+
+    private static boolean canMerge(WorldItemEntity first, WorldItemEntity second) {
+        return first.stack().itemId().equals(second.stack().itemId())
+                && first.stack().maxStackSize() == second.stack().maxStackSize()
+                && Objects.equals(first.ownerXuid(), second.ownerXuid());
+    }
+
+    /** Returns actors removed by the most recent successful tick for client despawn broadcasts. */
+    public synchronized List<WorldItemEntity> drainRemovedByTick() {
+        List<WorldItemEntity> result = List.copyOf(removedByTick);
+        removedByTick.clear();
+        return result;
     }
 
     private static boolean solid(World world, int x, int y, int z) {

@@ -10,8 +10,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Validates atomic Bedrock inventory transfers between a player's main
- * inventory and one currently-open block container.
+ * Validates atomic Bedrock inventory transfers between a player's main inventory and an active block
+ * container or the approved player UI crafting-grid slots.
  *
  * The packet decoder must already have resolved item descriptors through the
  * server's Bedrock item registry. This service checks the active window ID,

@@ -44,6 +44,6 @@ class MobClimbControllerTest {
         var spider = world.livingEntities().spawn("minecraft:spider", 16, 15.5, 65, 0.5);
 
         assertFalse(new MobClimbController().tryClimb(world, spider, 15.8, 0.5));
-        assertFalse(world.isChunkLoadedAt(1, 0));
+        assertFalse(world.isChunkLoadedAt(16, 0));
     }
 }

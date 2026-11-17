@@ -225,7 +225,9 @@ public final class NexoraAiAssistant {
                 + s.health() + ", heap=" + heap + ", threads=" + s.liveThreadCount()
                 + ", uptimeMs=" + s.uptimeMillis() + ", reportedFailures=" + s.recordedFailures()
                 + ". Это не полная диагностика TPS или игровых подсистем."
-                + (admin ? " Текущая сводка мира и сессий: " + adminRuntimeSnapshot() + ". "
+                + (admin ? " Медленные операции: " + s.slowOperationCount()
+                + ", последняя: " + s.lastSlowOperation() + ". "
+                + "Текущая сводка мира и сессий: " + adminRuntimeSnapshot() + ". "
                 + "Ты отвечаешь администратору сервера. Можно подробно объяснять показатели диагностики, "
                 + "но нельзя выполнять команды, менять настройки, файлы, мир или процессы." : "");
     }

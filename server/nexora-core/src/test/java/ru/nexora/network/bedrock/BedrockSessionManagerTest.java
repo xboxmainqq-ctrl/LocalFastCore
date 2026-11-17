@@ -7,6 +7,7 @@ import ru.nexora.inventory.ItemStack;
 import ru.nexora.inventory.PlayerInventoryStorage;
 import ru.nexora.inventory.PlayerEquipment;
 import ru.nexora.inventory.PlayerEquipmentStorage;
+import ru.nexora.inventory.ContainerInventoryStorage;
 import ru.nexora.network.nethernet.NetherNetMessageFramer;
 import ru.nexora.world.PlayerDataStorage;
 import ru.nexora.world.PlayerData;
@@ -139,6 +140,90 @@ class BedrockSessionManagerTest {
 
         manager.onDisconnected("corrupt-client");
         assertArrayEquals(corruptedBytes, Files.readAllBytes(inventoryFile));
+        manager.close();
+    }
+
+    @Test
+    void opensChestAndRoutesPersistedBedrockContainerTransactions() throws Exception {
+        var containerStorage = new ContainerInventoryStorage(
+                temporaryDirectory.resolve("chest-storage"), "NEXORA_World");
+        var world = new ru.nexora.world.World(
+                "NEXORA World", 0L, new ru.nexora.world.FlatWorldGenerator(),
+                0, 65, 0, null, null, containerStorage);
+        world.setBlock(1, 65, 0, ru.nexora.world.BlockType.CHEST);
+        var chest = world.containers().orElseThrow().getOrCreate(1, 65, 0);
+        chest.setSlot(0, new ItemStack("minecraft:diamond", 2, 64));
+
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
+        generator.initialize(new ECGenParameterSpec("secp384r1"));
+        KeyPair clientKey = generator.generateKeyPair();
+        List<byte[]> outboundFrames = new ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                world, null, null, null,
+                (networkId, label, frame) -> outboundFrames.add(frame), event -> {}, () -> 0L);
+        manager.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
+        manager.onIdentity("chest-client", new NetherNetClientIdentity(
+                "chest-game-token", clientKey.getPublic().getEncoded(), "chest-xuid",
+                "ChestPlayer", "chest-playfab", "20CA2", null));
+
+        byte[] protocol = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(2225).array();
+        BedrockPacket settings = new BedrockPacket(
+                BedrockBatchCodec.REQUEST_NETWORK_SETTINGS_PACKET_ID, 0, 0, protocol);
+        sendClientBatch(manager, "chest-client", BedrockBatchCodec.encode(List.of(settings), false, 256));
+
+        String rawClientDataToken = signClientDataToken(clientKey);
+        String certificate = "{\"chain\":[]}";
+        String chainJson = "{\"Certificate\":\"" + certificate.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                + "\",\"AuthenticationType\":0,\"Token\":\"chest-game-token\"}";
+        BedrockPacket login = new BedrockPacket(1, 0, 0,
+                loginPayload(2225, connectionRequest(chainJson, rawClientDataToken)));
+        sendClientBatch(manager, "chest-client", BedrockBatchCodec.encode(List.of(login), true, 256));
+        manager.playerInventory("chest-client").orElseThrow()
+                .setSlot(0, new ItemStack("minecraft:chest", 1, 64));
+        sendClientBatch(manager, "chest-client", BedrockBatchCodec.encode(List.of(
+                new BedrockPacket(BedrockBatchCodec.CLIENT_TO_SERVER_HANDSHAKE_PACKET_ID, 0, 0, new byte[0])
+        ), true, 256));
+        sendClientBatch(manager, "chest-client", BedrockBatchCodec.encode(
+                List.of(resourcePackResponse(2, "downloadingfinished")), true, 256));
+        sendClientBatch(manager, "chest-client", BedrockBatchCodec.encode(
+                List.of(resourcePackResponse(3, "resourcepackstackfinished")), true, 256));
+        sendClientBatch(manager, "chest-client", BedrockBatchCodec.encode(
+                List.of(new BedrockPacket(0x71, 0, 0, new byte[] {1})), true, 256));
+
+        int beforeOpen = outboundFrames.size();
+        BedrockPacket clickChest = new BedrockPacket(0x90, 0, 0,
+                chestUseMovementPayload(0.5f, 65.0f, 0.5f, 1L, 0, 54, 1));
+        sendClientBatch(manager, "chest-client", BedrockBatchCodec.encode(List.of(clickChest), true, 256));
+        List<BedrockPacket> openPackets = outboundFrames.subList(beforeOpen, outboundFrames.size()).stream()
+                .flatMap(frame -> decodeOutboundAll(frame, true).stream()).toList();
+        BedrockPacket open = openPackets.stream()
+                .filter(packet -> packet.packetId() == BedrockContainerPacketCodec.CONTAINER_OPEN_PACKET_ID)
+                .findFirst().orElseThrow();
+        assertEquals(1, Byte.toUnsignedInt(open.payload()[0]));
+        assertTrue(openPackets.stream().anyMatch(packet ->
+                packet.packetId() == BedrockInventoryContentCodec.INVENTORY_CONTENT_PACKET_ID
+                        && Byte.toUnsignedInt(packet.payload()[0]) == 1));
+
+        BedrockPacket transfer = new BedrockPacket(0x1e, 0, 0, chestTransferPayload());
+        int beforeTransfer = outboundFrames.size();
+        sendClientBatch(manager, "chest-client", BedrockBatchCodec.encode(List.of(transfer), true, 256));
+        assertTrue(chest.getSlot(0).isEmpty());
+        assertEquals(2, manager.playerInventory("chest-client").orElseThrow().getSlot(1)
+                .orElseThrow().count());
+        List<BedrockPacket> transferPackets = outboundFrames.subList(beforeTransfer, outboundFrames.size()).stream()
+                .flatMap(frame -> decodeOutboundAll(frame, true).stream()).toList();
+        assertTrue(transferPackets.stream().anyMatch(packet ->
+                packet.packetId() == BedrockInventoryContentCodec.INVENTORY_CONTENT_PACKET_ID
+                        && Byte.toUnsignedInt(packet.payload()[0]) == 1));
+
+        sendClientBatch(manager, "chest-client", BedrockBatchCodec.encode(List.of(
+                BedrockContainerPacketCodec.createClose(1, 0, false)), true, 256));
+        var persisted = containerStorage.load(1, 65, 0).orElseThrow();
+        assertTrue(persisted.getSlot(0).isEmpty());
+        assertEquals(2, manager.playerInventory("chest-client").orElseThrow()
+                .getSlot(1).orElseThrow().count());
         manager.close();
     }
 
@@ -839,6 +924,65 @@ class BedrockSessionManagerTest {
         assertEquals(4, Byte.toUnsignedInt(spawnChunk.payload()[0])); // chunk X = 2
         assertEquals(3, Byte.toUnsignedInt(spawnChunk.payload()[1])); // chunk Z = -2
         manager.close();
+    }
+
+    private static byte[] chestUseMovementPayload(
+            float x, float y, float z, long tick, int slot, int runtimeItemId, int count
+    ) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        writeFloat32(out, 0); writeFloat32(out, 0);
+        writeFloat32(out, x); writeFloat32(out, y); writeFloat32(out, z);
+        writeFloat32(out, 0); writeFloat32(out, 0); writeFloat32(out, 0);
+        writeVarUInt(out, 1);
+        writeVarInt(out, BedrockPlayerAuthInputCodec.InputAction.PERFORM_ITEM_INTERACTION);
+        writeVarUInt(out, 2); writeVarUInt(out, 0); writeVarInt(out, 0);
+        writeFloat32(out, 0); writeFloat32(out, 0);
+        writeVarULong(out, tick);
+        writeFloat32(out, 0); writeFloat32(out, 0); writeFloat32(out, 0);
+        writeVarInt(out, 0); // legacy request ID
+        writeVarUInt(out, 0); // no inventory mutation
+        writeVarInt(out, 0); // block interaction
+        out.write(1); // PlayerInput trigger
+        writeVarInt(out, 1); writeVarInt(out, 65); writeVarInt(out, 0);
+        out.write(4); // clicked west face
+        writeVarInt(out, slot);
+        out.write(0); // main hand
+        writeLittleEndianShort(out, runtimeItemId);
+        writeLittleEndianShort(out, count);
+        writeVarUInt(out, 0); // aux
+        out.write(0); // no StackNetId
+        writeVarUInt(out, Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(
+                ru.nexora.world.BlockType.CHEST)));
+        writeVarUInt(out, 0); // user data
+        writeFloat32(out, x); writeFloat32(out, y); writeFloat32(out, z);
+        writeFloat32(out, 0.5f); writeFloat32(out, 0.5f); writeFloat32(out, 0.5f);
+        writeVarInt(out, BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.CHEST));
+        out.write(1); // prediction success
+        out.write(0); // cooldown off
+        for (int i = 0; i < 7; i++) writeFloat32(out, 0);
+        return out.toByteArray();
+    }
+
+    private static byte[] chestTransferPayload() {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        writeVarInt(out, 0); // legacy request ID
+        writeVarInt(out, 0); // normal transaction
+        writeVarUInt(out, 2);
+
+        writeVarInt(out, 0); out.write(1); out.write(1); out.write(0);
+        writeVarUInt(out, 0);
+        writeLittleEndianShort(out, 306); writeLittleEndianShort(out, 2);
+        writeVarUInt(out, 0); out.write(0); writeVarUInt(out, 0); writeVarUInt(out, 0);
+        writeLittleEndianShort(out, 0); writeLittleEndianShort(out, 0);
+        out.write(0); out.write(0); out.write(0); out.write(0);
+
+        writeVarInt(out, 0); out.write(1); out.write(0); out.write(0);
+        writeVarUInt(out, 1);
+        writeLittleEndianShort(out, 0); writeLittleEndianShort(out, 0);
+        out.write(0); out.write(0); out.write(0); out.write(0);
+        writeLittleEndianShort(out, 306); writeLittleEndianShort(out, 2);
+        writeVarUInt(out, 0); out.write(0); writeVarUInt(out, 0); writeVarUInt(out, 0);
+        return out.toByteArray();
     }
 
     private static byte[] itemReleasePayload(

@@ -17,8 +17,8 @@ import java.util.UUID;
  * Deterministic, server-authoritative perception and goal controller for configured mobs.
  *
  * <p>This first controller provides passive, neutral and hostile profiles,
- * nearest-player perception, provocation memory and collision-aware direct
- * pursuit. It intentionally does not perform combat damage; it emits an
+ * nearest-player perception, bounded target memory, collision-aware movement
+ * and loaded-world pathfinding. It intentionally does not perform combat damage; it emits an
  * attack intent for a later combat system.</p>
  */
 public final class MobAiController {

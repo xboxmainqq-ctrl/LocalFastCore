@@ -146,6 +146,28 @@ class MobAiControllerTest {
     }
 
     @Test
+    void hostileMobForgetsLastKnownTargetAfterMemoryWindowExpires() {
+        InMemoryWorld world = groundedWorld();
+        EntityRegistry entities = new EntityRegistry();
+        UUID mobId = UUID.randomUUID();
+        UUID playerId = UUID.randomUUID();
+        entities.spawn(new WorldEntity(mobId, WorldEntity.Type.MOB, "Zombie", 0.5, 64, 0.5, 0, -1));
+        entities.spawn(WorldEntity.player(playerId, "Player", 5.5, 64, 0.5, 180, 0));
+        EntityTickEngine engine = new EntityTickEngine(entities, world);
+        engine.mobAi().setBehavior(mobId, MobAiController.Behavior.HOSTILE);
+
+        engine.tick();
+        world.setBlock(new BlockPosition(2, 64, 0), new BlockState("minecraft:stone"));
+        world.setBlock(new BlockPosition(2, 65, 0), new BlockState("minecraft:stone"));
+        for (int i = 0; i < 101; i++) {
+            engine.tick();
+        }
+
+        assertEquals(MobAiController.State.IDLE,
+                engine.mobAi().lastDecision(mobId).orElseThrow().state());
+    }
+
+    @Test
     void hostileMobReportsStuckWhenEveryAdjacentGroundCellIsBlocked() {
         InMemoryWorld world = groundedWorld();
         world.setBlock(new BlockPosition(1, 64, 0), new BlockState("minecraft:stone"));

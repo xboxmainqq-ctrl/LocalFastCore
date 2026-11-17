@@ -714,6 +714,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (state.dead && state.deathPacketsSent) return;
         state.dead = true;
         clearUsingItem(state);
+        closeContainerWindow(networkId, state, true);
         state.deathPacketsSent = true;
         sendPackets(networkId, List.of(
                 BedrockRespawnCodec.createDeathInfo(deathCause),

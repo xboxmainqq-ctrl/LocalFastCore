@@ -1822,13 +1822,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             double nextY = mob.y() + decision.moveY();
             double nextZ = mob.z() + decision.moveZ();
             if (!WorldCollision.canMove(world, mob.x(), mob.y(), mob.z(), nextX, nextY, nextZ)) {
-                if (!ru.nexora.combat.LivingEntityAiService.isHostile(mob.identifier())) continue;
-                ru.nexora.combat.LivingEntityAiService.PlayerTarget target = targets.stream()
-                        .filter(candidate -> candidate.networkId().equals(decision.targetNetworkId()))
-                        .findFirst().orElse(null);
-                if (target == null) continue;
-                ru.nexora.world.WorldPathfinder.Step waypoint = WorldPathfinder.findNextStep(
-                        world, mob.x(), mob.y(), mob.z(), target.x(), target.z()).orElse(null);
+                double desiredX = mob.x() + decision.moveX() * 8.0;
+                double desiredZ = mob.z() + decision.moveZ() * 8.0;
+                WorldPathfinder.Step waypoint = WorldPathfinder.findNextStep(
+                        world, mob.x(), mob.y(), mob.z(), desiredX, desiredZ).orElse(null);
                 if (waypoint == null) continue;
                 double dx = waypoint.x() - mob.x();
                 double dz = waypoint.z() - mob.z();
@@ -1843,11 +1840,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             WorldLivingEntity moved = world.livingEntities().move(
                     mob.runtimeId(), nextX, nextY, nextZ).orElse(null);
             if (moved == null) continue;
-            ru.nexora.combat.LivingEntityAiService.PlayerTarget target = targets.stream()
-                    .filter(candidate -> candidate.networkId().equals(decision.targetNetworkId()))
-                    .findFirst().orElse(null);
-            float yaw = target == null ? (float) Math.toDegrees(Math.atan2(-decision.moveX(), decision.moveZ()))
-                    : (float) Math.toDegrees(Math.atan2(-(target.x() - moved.x()), target.z() - moved.z()));
+            float yaw = (float) Math.toDegrees(Math.atan2(-decision.moveX(), decision.moveZ()));
             broadcastLivingActorPacket(BedrockMoveActorAbsoluteCodec.create(
                     moved.runtimeId(), moved.x(), moved.y(), moved.z(), 0.0f, yaw, yaw,
                     WorldCollision.isOnGround(world, moved.x(), moved.y(), moved.z())));

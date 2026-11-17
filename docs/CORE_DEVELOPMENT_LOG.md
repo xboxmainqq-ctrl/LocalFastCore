@@ -35,12 +35,22 @@ Work only on engine/server foundations:
 
 - CI: the previous workflow run for configuration work (run 44095600935) ended in failure. GitHub exposed no job steps/log payload for that run, so its cause is not yet established. The new test commit triggers another verification run; record its result after it completes.
 
+
+### 2026-11-17 — chunk pipeline reliability review (clean-room Nukkit reference)
+- Reviewed the existing NEXORA chunk generation, game-thread commit pipeline and player ticket manager before changing behavior.
+- Studied public PowerNukkitX/Nukkit documentation and release notes as an architectural reference only: chunk storage exposes separate load/save/unload operations; chunk APIs distinguish generation/population/finish/initialization states; recent PowerNukkitX fixes specifically address retrying failed chunk loads, deduplicating player chunk requests and reducing per-tick streaming allocations. References: https://powernukkitx.github.io/PowerNukkitX/org/powernukkitx/level/format/IChunk.html, https://powernukkitx.github.io/PowerNukkitX/org/powernukkitx/level/format/LevelProvider.html, https://powernukkitx.org/changelog.
+- No Nukkit/PowerNukkit source code, classes, assets or implementation was copied or added as a dependency. The observations are used only to shape NEXORA's own lifecycle and reliability requirements.
+- Fixed a NEXORA-specific waiter leak: if the chunk failure-reporting callback itself throws while a generation result is drained, an async chunk request now still completes with `false` instead of remaining unresolved forever.
+- Added a regression test for that failure path in `WorldChunkPipelineTest`.
+- Verification: code and test are committed; CI has not yet been confirmed. The previously observed runner-allocation failure remains an infrastructure blocker, so no passing-test claim is made.
+- Commit references: `6a1bd82c7d3cb943262a646b08490b01a37be506` (fix), `e6a9f31430cca5ee01736b0eef0b42deaba262d4` (regression test).
+
 ## Next tasks — in order
 
 1. **Verify current CI** for the active branch and fix any compilation/test failures before adding more code.
 2. **World persistence hardening:** initial review and regression coverage are in place (atomic replacement, CRC32C, version/signature/size/count validation, corruption/truncation/trailing-byte tests). Before changing the file format, add a bounded-write safeguard and a documented recovery/backup policy.
 3. **World lifecycle and multi-world configuration:** existing tests cover startup rollback, reuse of pre-registered worlds, restart persistence and retry after failed shutdown save; extend only where a concrete gap is found.
-4. **Chunk pipeline correctness:** cancellation, back-pressure, bounded memory/queues, duplicate requests and clean shutdown under load.
+4. **Chunk lifecycle and pipeline correctness:** define NEXORA-owned states (generated, persisted, loaded, initialized/ready) and explicit transitions; then test cancellation, retry after generation/load failure, back-pressure, bounded memory/queues, duplicate requests and clean shutdown under load. Use Nukkit/PowerNukkitX only as a public behavior reference; no source/API copying.
 5. **Entity and player simulation:** authoritative movement/collision boundaries, deterministic tick behavior and persistence.
 6. **Dedicated server packaging:** verify clean install, documented config, startup, save/restart and shutdown using CI artifacts.
 
@@ -50,8 +60,8 @@ Do not start magic/RPG implementation until the dedicated core can pass automate
 
 ## Session hand-off template
 
-- Completed: added `.nxw` future-version, truncation and trailing-byte rejection tests; reviewed world lifecycle rollback/retry coverage.
+- Completed: added `.nxw` future-version, truncation and trailing-byte rejection tests; reviewed world lifecycle rollback/retry coverage; reviewed chunk pipeline against public Nukkit/PowerNukkitX architecture references; fixed async waiter completion when the failure reporter throws and added a regression test.
 - Tests/CI: tests are committed but not confirmed passing; workflow runs fail before runner allocation and logs/annotations are inaccessible through the current GitHub connection.
 - Not completed / blockers: CI infrastructure/dispatch failure of unknown cause; no evidence yet of a code compilation failure.
-- Next exact task: restore a working CI runner/verification path, then inspect bounded chunk-pipeline behavior under cancellation and load.
+- Next exact task: restore a working CI runner/verification path, then define and test NEXORA's explicit chunk lifecycle state machine before expanding streaming behavior.
 - Commit SHA:

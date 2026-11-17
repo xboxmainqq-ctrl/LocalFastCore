@@ -212,4 +212,52 @@ class CraftingServiceTest {
         assertEquals(CraftingService.Result.INVALID_GRID,
                 service.craftFromGrid(player, ui, 0, 4, 3, recipe));
     }
+
+    @Test
+    void craftsArmorAndShieldFromThreeByThreeWorkbenchGrid() {
+        PlayerInventory player = new PlayerInventory();
+        ContainerInventory grid = new ContainerInventory(9);
+        var helmet = recipes.find("minecraft:iron_helmet");
+        grid.setSlot(0, new ItemStack("minecraft:iron_ingot", 1, 64));
+        grid.setSlot(1, new ItemStack("minecraft:iron_ingot", 1, 64));
+        grid.setSlot(2, new ItemStack("minecraft:iron_ingot", 1, 64));
+        grid.setSlot(3, new ItemStack("minecraft:iron_ingot", 1, 64));
+        grid.setSlot(5, new ItemStack("minecraft:iron_ingot", 1, 64));
+
+        assertEquals(CraftingService.Result.CRAFTED,
+                service.craftFromGrid(player, grid, 0, 3, 3, helmet));
+        assertEquals(1, player.count("minecraft:iron_helmet"));
+        assertTrue(grid.snapshot().stream().allMatch(java.util.Optional::isEmpty));
+
+        grid.setSlot(0, new ItemStack("minecraft:oak_planks", 1, 64));
+        grid.setSlot(2, new ItemStack("minecraft:oak_planks", 1, 64));
+        grid.setSlot(3, new ItemStack("minecraft:oak_planks", 1, 64));
+        grid.setSlot(4, new ItemStack("minecraft:oak_planks", 1, 64));
+        grid.setSlot(5, new ItemStack("minecraft:oak_planks", 1, 64));
+        grid.setSlot(6, new ItemStack("minecraft:oak_planks", 1, 64));
+        grid.setSlot(7, new ItemStack("minecraft:iron_ingot", 1, 64));
+        grid.setSlot(8, new ItemStack("minecraft:oak_planks", 1, 64));
+
+        assertEquals(CraftingService.Result.CRAFTED,
+                service.craftFromGrid(player, grid, 0, 3, 3, recipes.find("minecraft:shield")));
+        assertEquals(1, player.count("minecraft:shield"));
+    }
+
+    @Test
+    void mirroredThreeByThreeShapedRecipesAreAccepted() {
+        PlayerInventory player = new PlayerInventory();
+        ContainerInventory grid = new ContainerInventory(9);
+        var recipe = CraftingRecipe.shaped(
+                "nexora:mirrored_pattern_test",
+                java.util.List.of("AB ", " A "),
+                java.util.Map.of('A', "minecraft:oak_planks", 'B', "minecraft:stick"),
+                new ItemStack("minecraft:shield", 1, 1));
+        grid.setSlot(1, new ItemStack("minecraft:stick", 1, 64));
+        grid.setSlot(2, new ItemStack("minecraft:oak_planks", 1, 64));
+        grid.setSlot(4, new ItemStack("minecraft:oak_planks", 1, 64));
+
+        assertEquals(CraftingService.Result.CRAFTED,
+                service.craftFromGrid(player, grid, 0, 3, 3, recipe));
+        assertEquals(1, player.count("minecraft:shield"));
+    }
 }

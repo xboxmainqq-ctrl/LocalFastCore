@@ -85,6 +85,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private volatile ArmorSlotRegistry armorSlotRegistry = ArmorSlotRegistry.empty();
     private volatile EquipmentSlotRegistry equipmentSlotRegistry = EquipmentSlotRegistry.empty();
     private final InventoryTransactionService inventoryTransactionService = new InventoryTransactionService();
+    private final ru.nexora.inventory.AnvilTransactionService anvilTransactionService =
+            new ru.nexora.inventory.AnvilTransactionService();
     private final ContainerInventoryTransactionService containerTransactionService =
             new ContainerInventoryTransactionService();
     private final CraftingRecipeRegistry craftingRecipes = CraftingRecipeRegistry.vanillaSubset();
@@ -393,6 +395,54 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     public long resourcePackReadyCount() {
         return sessions.values().stream().filter(state -> state.resourcePacksCompleted).count();
+    }
+
+    /**
+     * Server-authoritative anvil entry point. The screen/controller can call this after
+     * validating its two input slots; failed combinations never mutate inventory or XP.
+     */
+    public Optional<ru.nexora.inventory.AnvilTransactionService.Result> combineAnvilItems(
+            String networkId, int baseSlot, int sacrificeSlot
+    ) throws IOException {
+        SessionState state = sessions.get(networkId);
+        if (state == null) return Optional.empty();
+        synchronized (state) {
+            if (!state.loginAuthenticated || !state.clientInitialized || state.dead) return Optional.empty();
+
+            List<Optional<ru.nexora.inventory.ItemStack>> previousInventory = state.inventory.snapshot();
+            int previousSelectedSlot = state.inventory.selectedHotbarSlot();
+            int previousExperiencePoints = state.experiencePoints;
+            int previousExperienceRemainderMilli = state.experienceRemainderMilli;
+            long totalExperienceMilli = (long) previousExperiencePoints * 1000L
+                    + previousExperienceRemainderMilli;
+
+            ru.nexora.inventory.AnvilTransactionService.Result result =
+                    anvilTransactionService.combine(state.inventory, baseSlot, sacrificeSlot, totalExperienceMilli);
+            if (!result.successful()) return Optional.of(result);
+
+            state.experiencePoints = (int) (result.remainingExperienceMilli() / 1000L);
+            state.experienceRemainderMilli = (int) (result.remainingExperienceMilli() % 1000L);
+            try {
+                saveInventory(state);
+                savePlayer(state);
+            } catch (IOException | RuntimeException exception) {
+                state.inventory.restore(previousInventory, previousSelectedSlot);
+                state.experiencePoints = previousExperiencePoints;
+                state.experienceRemainderMilli = previousExperienceRemainderMilli;
+                try {
+                    saveInventory(state);
+                    savePlayer(state);
+                } catch (IOException | RuntimeException rollbackFailure) {
+                    exception.addSuppressed(rollbackFailure);
+                }
+                if (exception instanceof IOException ioException) throw ioException;
+                throw exception;
+            }
+
+            sendInventoryAndEquipmentState(networkId, state);
+            sendPacket(networkId, createPlayerAttributes(state, Math.max(0, state.lastInputTick)), true);
+            return Optional.of(result);
+        }
     }
 
     /** Returns the authoritative inventory for an authenticated player session. */

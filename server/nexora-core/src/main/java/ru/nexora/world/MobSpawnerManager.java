@@ -311,8 +311,9 @@ public final class MobSpawnerManager {
         int dx = Math.floorMod((int) (mixed ^ (mixed >>> 32)), SPAWN_RADIUS * 2 + 1) - SPAWN_RADIUS;
         int dz = Math.floorMod((int) ((mixed >>> 17) ^ (mixed >>> 41)), SPAWN_RADIUS * 2 + 1)
                 - SPAWN_RADIUS;
+        int dy = Math.floorMod((int) (mixed >>> 29), 3) - 1;
         return new SpawnRequest(state.entityIdentifier(), state.x() + 0.5 + dx,
-                state.y(), state.z() + 0.5 + dz);
+                state.y() + dy, state.z() + 0.5 + dz);
     }
 
     private static boolean validSpawnPosition(World world, SpawnRequest request) {

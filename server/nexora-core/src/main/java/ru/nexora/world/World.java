@@ -19,6 +19,7 @@ public final class World {
     private final WorldStorage storage;
     private final ConcurrentMap<Long, WorldChunk> chunks = new ConcurrentHashMap<>();
     private final WorldItemEntityManager itemEntities;
+    private final WorldLivingEntityManager livingEntities;
     private final WorldContainerManager containers;
     private final WorldFurnaceManager furnaces;
     private final CopyOnWriteArrayList<WorldBlockChangeListener> blockChangeListeners = new CopyOnWriteArrayList<>();
@@ -47,6 +48,7 @@ public final class World {
         this.spawnZ = spawnZ;
         this.storage = storage;
         this.itemEntities = new WorldItemEntityManager();
+        this.livingEntities = new WorldLivingEntityManager();
         this.containers = null;
         this.furnaces = null;
     }
@@ -93,6 +95,7 @@ public final class World {
         this.itemEntities = itemStorage == null
                 ? new WorldItemEntityManager()
                 : new WorldItemEntityManager(itemStorage);
+        this.livingEntities = new WorldLivingEntityManager();
         this.containers = containerStorage == null ? null : new WorldContainerManager(containerStorage);
         this.furnaces = containerStorage == null || furnaceStateStorage == null ? null
                 : new WorldFurnaceManager(containerStorage, furnaceStateStorage);
@@ -175,6 +178,11 @@ public final class World {
     /** Returns the authoritative dropped-item actor manager for this world. */
     public WorldItemEntityManager itemEntities() {
         return itemEntities;
+    }
+
+    /** Returns the authoritative living-actor manager for mobs and damageable world entities. */
+    public WorldLivingEntityManager livingEntities() {
+        return livingEntities;
     }
 
     /** Returns the persistent block-container manager when container storage is configured. */

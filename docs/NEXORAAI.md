@@ -54,17 +54,17 @@ Mobs within 24 blocks of a player and mobs with an active aggro target are updat
 The current server-side spawner implementation provides:
 
 - A dedicated internal `SPAWNER` block and Bedrock runtime-state mapping for the protocol palette used by this branch.
-- A 16-block player activation radius.
+- A 16-block player activation radius; inactive spawners and spawners in unloaded chunks pause their countdown.
 - A default 200-tick delay, configurable from 20 to 800 ticks.
 - Up to four spawn-position attempts per activation cycle.
 - A same-type nearby cap of six mobs in the local 9-block volume.
-- Basic spawn-space checks for two air blocks above a non-air floor.
+- Basic spawn-space checks for two air blocks above a non-air floor; candidate validation never forces a neighboring chunk to load.
 - A bounded registry of 10,000 spawners.
 - Atomic, checksummed persistence of spawner type, delay, coordinates, and next-spawn timer alongside world storage.
-- Server-side entity creation and AddActor replication to initialized Bedrock clients.
+- Server-side entity creation and AddActor replication to initialized Bedrock clients; operator placement/removal sends a Bedrock block update.
 - Operator commands for placing, configuring, listing, and removing spawners.
 
-This is an initial vanilla-style simulation, not yet a claim of complete Minecraft parity. Survival item acquisition/placement, mob-spawner block-entity NBT/visual animation, exact vanilla spawn rules, chunk activation/unload semantics, and protocol-version validation still require implementation and integration testing.
+This is an initial vanilla-style simulation, not yet a claim of complete Minecraft parity. Survival item acquisition/placement, mob-spawner block-entity NBT/visual animation, exact vanilla spawn rules, full chunk lifecycle integration, and protocol-version validation still require implementation and real-client integration testing.
 
 ## Performance verification
 

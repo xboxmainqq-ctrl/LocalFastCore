@@ -59,7 +59,10 @@ public final class MobPathCache {
 
         Optional<WorldPathfinder.Step> computed = WorldPathfinder.findNextStep(
                 world, startX, feetY, startZ, targetX, targetZ);
-        put(mobRuntimeId, new Entry(key, computed, nowMillis + ttlMillis));
+        // Do not cache "no path": terrain can open at any time and should be retried immediately.
+        if (computed.isPresent()) {
+            put(mobRuntimeId, new Entry(key, computed, nowMillis + ttlMillis));
+        }
         return computed;
     }
 

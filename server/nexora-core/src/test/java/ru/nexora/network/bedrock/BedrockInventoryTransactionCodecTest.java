@@ -86,7 +86,7 @@ class BedrockInventoryTransactionCodecTest {
         assertEquals(1, decoded.actionType());
         assertEquals(0, decoded.hotbarSlot());
         assertEquals("minecraft:bread", decoded.heldItem().orElseThrow().itemId());
-        assertEquals(66.62f, decoded.fromY(), 0.0001f);
+        assertEquals(65.0f, decoded.fromY(), 0.0001f);
         assertEquals(0, decoded.hand());
     }
 

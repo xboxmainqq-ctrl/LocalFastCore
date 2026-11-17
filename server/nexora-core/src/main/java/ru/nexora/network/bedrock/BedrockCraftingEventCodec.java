@@ -140,12 +140,14 @@ public final class BedrockCraftingEventCodec {
             BedrockItemRegistry.Entry entry = registry.findByRuntimeItemId(runtimeItemId);
             if (entry == null) throw new IllegalArgumentException("Unknown crafting item runtime ID " + runtimeItemId);
             BedrockInventoryContentCodec.ItemDefinition definition = entry.networkDefinition();
-            if (auxValue != definition.auxValue() || blockRuntimeId != definition.blockRuntimeId()
-                    || !Arrays.equals(userData, definition.userData())) {
+            if (auxValue != definition.auxValue() || blockRuntimeId != definition.blockRuntimeId()) {
                 throw new IllegalArgumentException("Crafting item descriptor does not match the item registry");
             }
+            BedrockItemStackUserDataCodec.DecodedMetadata metadata =
+                    BedrockItemStackUserDataCodec.decode(userData, definition.userData());
             if (count > entry.maxStackSize()) throw new IllegalArgumentException("Crafting stack exceeds max size");
-            return Optional.of(new ItemStack(entry.namespacedId(), count, entry.maxStackSize()));
+            return Optional.of(new ItemStack(entry.namespacedId(), count, entry.maxStackSize(),
+                    metadata.enchantments(), metadata.repairCost()));
         }
 
         byte[] byteArray(int maximumLength) {

@@ -377,6 +377,34 @@ class BedrockSessionManagerTest {
         assertEquals(Long.MIN_VALUE,
                 getSessionField(manager, "charge-cancel-player", "spearChargeReleasedNanos"));
 
+        // Moving the charged stack away and back through validated inventory transactions
+        // must cancel the original hold; restoring the same stack cannot revive it.
+        manager.playerInventory("charge-cancel-player").orElseThrow().setSlot(0, diamondSpear);
+        sendClientBatch(manager, "charge-cancel-player",
+                BedrockBatchCodec.encode(List.of(startUse), true, 256));
+        assertNotEquals(Long.MIN_VALUE,
+                getSessionField(manager, "charge-cancel-player", "spearChargeStartedNanos"));
+        BedrockPacket moveSpearOut = new BedrockPacket(
+                BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID, 0, 0,
+                movePlayerInventorySlotPayload(0, 1, 856, 1));
+        sendClientBatch(manager, "charge-cancel-player",
+                BedrockBatchCodec.encode(List.of(moveSpearOut), true, 256));
+        assertEquals(Long.MIN_VALUE,
+                getSessionField(manager, "charge-cancel-player", "spearChargeStartedNanos"));
+        BedrockPacket moveSpearBack = new BedrockPacket(
+                BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID, 0, 0,
+                movePlayerInventorySlotPayload(1, 0, 856, 1));
+        sendClientBatch(manager, "charge-cancel-player",
+                BedrockBatchCodec.encode(List.of(moveSpearBack), true, 256));
+        clock.addAndGet(100_000_000L);
+        BedrockPacket staleRelease = new BedrockPacket(
+                BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID, 0, 0,
+                itemReleasePayload(0, 0, 856, 1, 0.5f, 65.0f, 0.5f));
+        sendClientBatch(manager, "charge-cancel-player",
+                BedrockBatchCodec.encode(List.of(staleRelease), true, 256));
+        assertEquals(Long.MIN_VALUE,
+                getSessionField(manager, "charge-cancel-player", "spearChargeReleasedNanos"));
+
         // Charge timeout is enforced on PlayerAuthInput even without server-authoritative movement.
         sendClientBatch(manager, "charge-cancel-player",
                 BedrockBatchCodec.encode(List.of(startUse), true, 256));
@@ -1832,6 +1860,28 @@ class BedrockSessionManagerTest {
         out.write(0); out.write(0); out.write(0); out.write(0);
         writeLittleEndianShort(out, 306); writeLittleEndianShort(out, 2);
         writeVarUInt(out, 0); out.write(0); writeVarUInt(out, 0); writeVarUInt(out, 0);
+        return out.toByteArray();
+    }
+
+    private static byte[] movePlayerInventorySlotPayload(
+            int sourceSlot, int destinationSlot, int runtimeItemId, int count
+    ) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        writeVarInt(out, 0); // no legacy request
+        writeVarInt(out, 0); // normal transaction
+        writeVarUInt(out, 2); // source and destination slot actions
+
+        writeVarInt(out, 0); // container inventory source
+        out.write(1); out.write(0); out.write(0); // player inventory container, no flags
+        writeVarUInt(out, sourceSlot);
+        writeDescriptor(out, runtimeItemId, count);
+        writeDescriptor(out, 0, 0);
+
+        writeVarInt(out, 0); // container inventory source
+        out.write(1); out.write(0); out.write(0); // player inventory container, no flags
+        writeVarUInt(out, destinationSlot);
+        writeDescriptor(out, 0, 0);
+        writeDescriptor(out, runtimeItemId, count);
         return out.toByteArray();
     }
 

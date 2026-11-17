@@ -13,10 +13,11 @@ class MobLootServiceTest {
 
         var spider = MobLootService.dropsFor("minecraft:spider");
         assertEquals(5_000, spider.experienceMilliPoints());
-        assertEquals("minecraft:string", spider.drops().getFirst().itemId());
+        assertTrue(spider.drops().isEmpty());
 
         var skeleton = MobLootService.dropsFor("minecraft:skeleton");
-        assertEquals(2, skeleton.drops().size());
+        assertEquals(1, skeleton.drops().size());
+        assertEquals("minecraft:bone", skeleton.drops().getFirst().itemId());
         assertEquals(5_000, skeleton.experienceMilliPoints());
 
         var endermite = MobLootService.dropsFor("minecraft:endermite");

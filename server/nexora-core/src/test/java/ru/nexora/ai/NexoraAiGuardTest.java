@@ -100,7 +100,9 @@ class NexoraAiGuardTest {
         }
         assertTrue(events.isEmpty());
 
-        guard.recordOutOfReachAttack("player-xuid", 4.5, 3.5, 4_000_000_000L);
+        for (int i = 4; i < 9; i++) {
+            guard.recordOutOfReachAttack("player-xuid", 4.5, 3.5, i * 1_000_000_000L);
+        }
 
         assertEquals(1, events.size());
         assertTrue(events.getFirst().reason().contains("possible reach"));

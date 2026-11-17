@@ -23,6 +23,7 @@ public final class MobSpawnerManager {
     public static final int MAX_SPAWNERS_PER_TICK = 128;
 
     private final Map<Position, MobSpawnerState> spawners = new LinkedHashMap<>();
+    private final Map<Position, Long> lastVisitedTicks = new LinkedHashMap<>();
     private final MobSpawnerStorage storage;
 
     public MobSpawnerManager() {
@@ -46,6 +47,7 @@ public final class MobSpawnerManager {
             if (spawners.putIfAbsent(position, state) != null) {
                 throw new IOException("Duplicate mob spawner position");
             }
+            lastVisitedTicks.put(position, nowTick);
         }
     }
 
@@ -84,11 +86,14 @@ public final class MobSpawnerManager {
         spawners.put(position, new MobSpawnerState(x, y, z, "minecraft:zombie",
                 MobSpawnerState.DEFAULT_DELAY_TICKS, safeNextTick(currentTick,
                 MobSpawnerState.DEFAULT_DELAY_TICKS)));
+        lastVisitedTicks.put(position, currentTick);
         return true;
     }
 
     public synchronized boolean remove(int x, int y, int z) {
-        return spawners.remove(new Position(x, y, z)) != null;
+        Position position = new Position(x, y, z);
+        lastVisitedTicks.remove(position);
+        return spawners.remove(position) != null;
     }
 
     public synchronized boolean configure(int x, int y, int z, String identifier,
@@ -99,6 +104,7 @@ public final class MobSpawnerManager {
         try {
             spawners.put(position, existing.withConfiguration(identifier, delayTicks,
                     safeNextTick(currentTick, delayTicks)));
+            lastVisitedTicks.put(position, currentTick);
             return true;
         } catch (IllegalArgumentException exception) {
             return false;
@@ -149,8 +155,10 @@ public final class MobSpawnerManager {
         int capped = 0;
         int invalid = 0;
         for (MobSpawnerState state : snapshot) {
+            if (!isCurrent(state)) continue;
+            long spawnerElapsedTicks = elapsedSinceLastVisit(state, currentTick);
             if (!world.isChunkLoadedAt(state.x(), state.z())) {
-                pauseTimer(state, elapsedTicks);
+                pauseTimer(state, spawnerElapsedTicks);
                 continue;
             }
             if (world.getBlock(state.x(), state.y(), state.z()) != BlockType.SPAWNER) {
@@ -159,7 +167,7 @@ public final class MobSpawnerManager {
             }
             if (!isPlayerNearby(state, players)) {
                 synchronized (this) { inactiveTicks++; }
-                pauseTimer(state, elapsedTicks);
+                pauseTimer(state, spawnerElapsedTicks);
                 continue;
             }
             active++;
@@ -209,6 +217,13 @@ public final class MobSpawnerManager {
     public synchronized Stats stats() {
         return new Stats(spawners.size(), spawnCount, spawnAttempts, cappedAttempts, inactiveTicks,
                 invalidPositionAttempts);
+    }
+
+    private synchronized long elapsedSinceLastVisit(MobSpawnerState state, long currentTick) {
+        Position key = new Position(state.x(), state.y(), state.z());
+        Long previous = lastVisitedTicks.put(key, currentTick);
+        if (previous == null) return 1L;
+        return currentTick >= previous ? currentTick - previous : 0L;
     }
 
     /** Pauses the countdown while the chunk is unloaded or no player activates the spawner. */

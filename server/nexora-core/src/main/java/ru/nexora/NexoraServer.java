@@ -12,6 +12,7 @@ import ru.nexora.world.FlatWorldGenerator;
 import ru.nexora.world.World;
 import ru.nexora.world.WorldStorage;
 import ru.nexora.world.WorldItemEntityStorage;
+import ru.nexora.world.WorldLivingEntityStorage;
 import ru.nexora.inventory.ContainerInventoryStorage;
 import ru.nexora.inventory.FurnaceStateStorage;
 import ru.nexora.world.WorldAutosave;
@@ -73,13 +74,15 @@ public final class NexoraServer {
         WorldStorage worldStorage = new WorldStorage(Path.of(dataDirectory, "worlds"), "NEXORA World");
         WorldItemEntityStorage itemStorage = new WorldItemEntityStorage(
                 Path.of(dataDirectory, "worlds"), "NEXORA World");
+        WorldLivingEntityStorage livingEntityStorage = new WorldLivingEntityStorage(
+                Path.of(dataDirectory, "worlds"), "NEXORA World");
         ContainerInventoryStorage containerStorage = new ContainerInventoryStorage(
                 Path.of(dataDirectory, "worlds"), "NEXORA World");
         FurnaceStateStorage furnaceStateStorage = new FurnaceStateStorage(
                 Path.of(dataDirectory, "worlds"), "NEXORA World");
         World world = new World(
                 "NEXORA World", 0L, new FlatWorldGenerator(), 0, 65, 0,
-                worldStorage, itemStorage, containerStorage, furnaceStateStorage);
+                worldStorage, itemStorage, containerStorage, furnaceStateStorage, livingEntityStorage);
         PlayerDataStorage playerStorage = new PlayerDataStorage(Path.of(dataDirectory, "players"));
         PlayerInventoryStorage inventoryStorage = new PlayerInventoryStorage(Path.of(dataDirectory, "inventories"));
         PlayerEquipmentStorage equipmentStorage = new PlayerEquipmentStorage(Path.of(dataDirectory, "equipment"));

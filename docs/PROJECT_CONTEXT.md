@@ -183,3 +183,11 @@ This section is the latest user-confirmed direction and overrides every conflict
 - Build order: first stabilize the general Core and server; then implement Mob AI as a native entity/simulation subsystem; then add the Core AI Assistant and Moderation AI as isolated optional modules using a stable, permissioned API. Keep all three in the product roadmap, but do not destabilize core lifecycle, networking or simulation to rush AI features.
 - Existing repository code and older documents may contain Android/RPG/Bedrock experiments. Do not infer they remain product goals; preserve useful code until reviewed, but do not extend removed directions.
 - See [NEXORA AI systems roadmap](NEXORA_AI_SYSTEMS_ROADMAP.md) for the current AI scope and staged acceptance criteria.
+
+
+## Verified current AI implementation snapshot — 2026-11-17
+
+- Mob AI code: `MobAiController` is integrated with `EntityTickEngine`; supports configured passive/neutral/hostile behavior, player perception, line-of-sight, provocation and direct collision-aware pursuit. It does not yet provide pathfinding or damage/combat.
+- Core assistant code: permission-gated and audited tool registry plus assistant facade. No language model/provider is connected.
+- Moderation assistant code: bounded heuristic chat signals using message fingerprints, with human review mandatory. No automatic enforcement or model classifier.
+- Android workflow `.github/workflows/nexora-android.yml` has been removed from active CI. Historical Android source and RPG source are retained but are not active product scope.

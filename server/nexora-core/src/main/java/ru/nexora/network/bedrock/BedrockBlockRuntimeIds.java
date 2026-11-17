@@ -36,6 +36,7 @@ public final class BedrockBlockRuntimeIds {
             case FURNACE -> hashState("minecraft:furnace", "minecraft:cardinal_direction", "south");
             case BLAST_FURNACE -> hashState("minecraft:blast_furnace", "minecraft:cardinal_direction", "south");
             case SMOKER -> hashState("minecraft:smoker", "minecraft:cardinal_direction", "south");
+            case SPAWNER -> hashState("minecraft:mob_spawner");
         };
     }
 

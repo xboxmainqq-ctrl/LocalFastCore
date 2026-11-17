@@ -100,7 +100,7 @@ public final class BedrockPlayerEquipmentCodec {
         out.varUInt32(definition.auxValue());
         out.byteValue(0); // ItemStackNetManager disabled
         out.varUInt32(definition.blockRuntimeId());
-        out.byteArray(definition.userData());
+        out.byteArray(BedrockItemStackUserDataCodec.encode(stack, definition.userData()));
     }
 
     private static void writeFullContainerName(Writer out, int type, int dynamicId) {

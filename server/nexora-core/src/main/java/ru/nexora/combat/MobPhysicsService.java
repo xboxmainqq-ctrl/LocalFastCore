@@ -25,7 +25,7 @@ public final class MobPhysicsService {
 
         boolean flying = LivingEntityAiService.isFlyingMob(entity.identifier());
         boolean groundedBeforeMove = !flying && WorldCollision.isOnGround(
-                world, entity.x(), entity.y(), entity.z(), GROUND_CONTACT_TOLERANCE);
+                world, entity.x(), entity.y(), entity.z());
 
         double vx = entity.velocityX();
         double vy = entity.velocityY();
@@ -81,7 +81,9 @@ public final class MobPhysicsService {
         if (moved) {
             updated = world.livingEntities().move(entity.runtimeId(), x, y, z).orElse(updated);
         }
-        boolean groundedAfterMove = !flying && WorldCollision.isOnGround(world, x, y, z, GROUND_CONTACT_TOLERANCE);
+        boolean groundedAfterMove = !flying
+                && !(isBouncyMob(entity.identifier()) && vy > 0.0)
+                && WorldCollision.isOnGround(world, x, y, z, GROUND_CONTACT_TOLERANCE);
         return new Result(updated, moved, groundedAfterMove);
     }
 

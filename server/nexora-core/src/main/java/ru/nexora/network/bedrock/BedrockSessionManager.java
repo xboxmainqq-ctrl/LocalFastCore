@@ -579,10 +579,28 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private static String normalizeSpawnerIdentifier(String value) {
         String identifier = value.contains(":") ? value.toLowerCase(Locale.ROOT)
                 : "minecraft:" + value.toLowerCase(Locale.ROOT);
-        if (!java.util.Set.of("minecraft:zombie", "minecraft:skeleton", "minecraft:creeper",
-                "minecraft:spider", "minecraft:cave_spider", "minecraft:husk", "minecraft:drowned",
-                "minecraft:stray", "minecraft:enderman", "minecraft:pig", "minecraft:cow",
-                "minecraft:sheep", "minecraft:chicken", "minecraft:iron_golem").contains(identifier)) {
+        if (!java.util.Set.of(
+                "minecraft:allay", "minecraft:armadillo", "minecraft:axolotl", "minecraft:bat",
+                "minecraft:bee", "minecraft:blaze", "minecraft:bogged", "minecraft:camel",
+                "minecraft:cat", "minecraft:cave_spider", "minecraft:chicken", "minecraft:cod",
+                "minecraft:cow", "minecraft:creeper", "minecraft:dolphin", "minecraft:donkey",
+                "minecraft:drowned", "minecraft:elder_guardian", "minecraft:enderman",
+                "minecraft:endermite", "minecraft:evoker", "minecraft:fox", "minecraft:frog",
+                "minecraft:ghast", "minecraft:glow_squid", "minecraft:goat", "minecraft:hoglin",
+                "minecraft:horse", "minecraft:husk", "minecraft:iron_golem", "minecraft:llama",
+                "minecraft:magma_cube", "minecraft:mooshroom", "minecraft:mule", "minecraft:ocelot",
+                "minecraft:panda", "minecraft:parrot", "minecraft:phantom", "minecraft:pig",
+                "minecraft:piglin", "minecraft:pillager", "minecraft:polar_bear",
+                "minecraft:pufferfish", "minecraft:rabbit", "minecraft:ravager", "minecraft:salmon",
+                "minecraft:sheep", "minecraft:shulker", "minecraft:silverfish", "minecraft:skeleton",
+                "minecraft:slime", "minecraft:sniffer", "minecraft:snow_golem", "minecraft:spider",
+                "minecraft:squid", "minecraft:stray", "minecraft:strider", "minecraft:tadpole",
+                "minecraft:trader_llama", "minecraft:tropical_fish", "minecraft:turtle",
+                "minecraft:vex", "minecraft:villager", "minecraft:vindicator",
+                "minecraft:wandering_trader", "minecraft:warden", "minecraft:witch",
+                "minecraft:wither", "minecraft:wither_skeleton", "minecraft:wolf",
+                "minecraft:zoglin", "minecraft:zombie", "minecraft:zombie_villager",
+                "minecraft:zombified_piglin").contains(identifier)) {
             throw new IllegalArgumentException("Unsupported spawner mob");
         }
         return identifier;

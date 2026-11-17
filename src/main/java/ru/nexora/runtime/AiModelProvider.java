@@ -29,8 +29,9 @@ public interface AiModelProvider {
                 String normalized = key.toLowerCase(java.util.Locale.ROOT);
                 if (normalized.contains("password") || normalized.contains("secret")
                         || normalized.contains("token") || normalized.contains("private")
-                        || normalized.contains("ip") || normalized.contains("chat")
-                        || normalized.contains("message")) {
+                        || normalized.equals("ip") || normalized.contains("ipaddress")
+                        || normalized.contains("playerip") || normalized.contains("chat")
+                        || normalized.contains("message") || normalized.contains("credential")) {
                     throw new IllegalArgumentException("Sensitive context key is not allowed: " + key);
                 }
                 if (!key.matches("[A-Za-z0-9._-]{1,64}") || value.length() > 2_048) {

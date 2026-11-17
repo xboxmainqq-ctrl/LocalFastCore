@@ -1607,17 +1607,21 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 ru.nexora.combat.EnchantmentCombatService.AttackEffect effect =
                         ru.nexora.combat.EnchantmentCombatService.resolveAttack(
                                 baseDamage, weapon,
-                                ru.nexora.combat.EnchantmentCombatService.TargetType.NORMAL);
+                                ru.nexora.combat.EnchantmentCombatService.TargetType.NORMAL,
+                                attacker.physicsState == null ? 0.0f
+                                        : (float) attacker.physicsState.fallDistance());
                 List<ItemStack> targetArmor = target.equipment.armorSnapshot().stream()
                         .flatMap(Optional::stream).toList();
                 float finalDamage = ru.nexora.combat.EnchantmentCombatService
                         .applyIncomingDamage(effect.damage(), targetArmor,
-                                ru.nexora.combat.EnchantmentCombatService.DamageType.GENERIC);
+                                ru.nexora.combat.EnchantmentCombatService.DamageType.GENERIC,
+                                effect.breachLevel());
                 if (finalDamage > 0.0f) {
                     applyDamage(targetNetworkId, target, finalDamage,
                             target.lastInputTick, "death.attack.generic");
                 }
                 applyKnockback(targetNetworkId, target, attacker, effect.knockbackLevel());
+                applySpearLunge(networkId, attacker, weapon);
                 if (effect.fireDurationSeconds() > 0) {
                     if (target.fireUntilNanos <= now) {
                         target.nextFireDamageNanos = now + 1_000_000_000L;
@@ -1678,9 +1682,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         };
         ru.nexora.combat.EnchantmentCombatService.AttackEffect effect =
                 ru.nexora.combat.EnchantmentCombatService.resolveAttack(
-                        baseAttackDamage(weapon), weapon, targetType);
+                        baseAttackDamage(weapon), weapon, targetType,
+                        attacker.physicsState == null ? 0.0f
+                                : (float) attacker.physicsState.fallDistance());
         var damage = world.livingEntities().damage(target.runtimeId(), effect.damage()).orElse(null);
         if (damage == null) return;
+        applySpearLunge(attackerNetworkId, attacker, weapon);
         if (damage.killed()) {
             grantMobRewards(attackerNetworkId, attacker, target, weapon == null ? 0 : weapon.enchantments().getOrDefault("minecraft:looting", 0));
             nextMobAttackMillis.remove(target.runtimeId());
@@ -2243,6 +2250,33 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return true;
     }
 
+    /**
+     * Lunge is triggered by a successful spear jab. Exhaustion converts to saturation
+     * and then hunger using the same survival rules as normal movement.
+     *
+     * The current world model has no water blocks or item durability state, so those
+     * two vanilla Lunge restrictions/costs cannot yet be represented here.
+     */
+    private void applySpearLunge(String networkId, SessionState attacker, ItemStack weapon) {
+        if (weapon == null || !weapon.itemId().endsWith("_spear")
+                || attacker.vitals.hunger() <= 5 || attacker.physicsState == null) return;
+        int level = weapon.enchantments().getOrDefault("minecraft:lunge", 0);
+        if (level <= 0) return;
+
+        PlayerPhysics.State current = attacker.physicsState;
+        double radians = Math.toRadians(attacker.yaw);
+        double impulse = 0.458 * 20.0 * level;
+        double velocityX = current.velocityX() - Math.sin(radians) * impulse;
+        double velocityZ = current.velocityZ() + Math.cos(radians) * impulse;
+        attacker.physicsState = new PlayerPhysics.State(
+                current.x(), current.y(), current.z(),
+                velocityX, current.velocityY(), velocityZ,
+                current.onGround(), current.fallDistance(), current.landedDistance());
+        attacker.vitals = attacker.vitals.addExhaustion(4.0f * level);
+        sendMovementCorrection(networkId, attacker, attacker.lastInputTick);
+        sendPacket(networkId, createPlayerAttributes(attacker, Math.max(0, attacker.lastInputTick)), true);
+    }
+
     private void applyKnockback(
             String targetNetworkId, SessionState target, SessionState attacker, int level
     ) {
@@ -2278,6 +2312,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case "minecraft:iron_sword" -> 7.0f;
             case "minecraft:diamond_sword" -> 8.0f;
             case "minecraft:netherite_sword" -> 9.0f;
+            case "minecraft:mace" -> 6.0f;
+            case "minecraft:wooden_spear", "minecraft:golden_spear" -> 2.0f;
+            case "minecraft:stone_spear", "minecraft:copper_spear" -> 3.0f;
+            case "minecraft:iron_spear" -> 4.0f;
+            case "minecraft:diamond_spear" -> 5.0f;
+            case "minecraft:netherite_spear" -> 6.0f;
             default -> 1.0f;
         };
     }

@@ -29,7 +29,7 @@ Configuration is read from the server process environment:
 - `NEXORA_AI_TIMEOUT_SECONDS` — request timeout; default 30.
 - `NEXORA_AI_ADMIN_XUIDS` — comma-separated Xbox XUID allowlist for operator mode.
 
-Only HTTPS endpoints are accepted, except HTTP on localhost for private development providers. API keys are never written to source files or logs.
+Only HTTPS endpoints are accepted, except HTTP on localhost for private development providers. API keys are never written to source files or logs. Player questions and the player's display name are sent to the configured AI provider; operators should disclose this to players and must not invite them to submit passwords, tokens, or other secrets.
 
 ## Operator mode
 

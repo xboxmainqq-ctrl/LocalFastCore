@@ -1561,14 +1561,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
             String targetNetworkId = entry.getKey();
             SessionState target = entry.getValue();
-            if (target == attacker || target.entityId != transaction.runtimeEntityId()
-                    || !target.loginAuthenticated || !target.clientInitialized || target.dead
-                    || target.vitals.dead()) continue;
+            if (target == attacker || target.entityId != transaction.runtimeEntityId()) continue;
 
             // Never wait on another player's session lock while holding this one.
             // Simultaneous reciprocal attacks are safely dropped rather than deadlocking.
             if (!target.combatLock.tryLock()) return;
             try {
+                if (!target.loginAuthenticated || !target.clientInitialized
+                        || target.dead || target.vitals.dead()) return;
                 double dx = target.positionX - attacker.positionX;
                 double dy = target.positionY - attacker.positionY;
                 double dz = target.positionZ - attacker.positionZ;
@@ -1631,11 +1631,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             ItemStack piece = optional.orElse(null);
             if (piece == null) continue;
             String id = piece.itemId();
-            int materialPoints = armorMaterialPoints(id);
-            if (id.endsWith("_helmet")) armorPoints += materialPoints == 0 ? 0 : materialPoints / 3;
-            else if (id.endsWith("_chestplate")) armorPoints += materialPoints * 2;
-            else if (id.endsWith("_leggings")) armorPoints += materialPoints * 3 / 2;
-            else if (id.endsWith("_boots")) armorPoints += materialPoints == 0 ? 0 : materialPoints / 3;
+            armorPoints += armorPointsForPiece(id);
             if (id.contains("diamond") || id.contains("netherite")) toughness += 0.5;
             protectionLevels += piece.enchantments().getOrDefault("minecraft:protection", 0);
         }
@@ -1649,12 +1645,28 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return (float) (incomingDamage * (1.0 - armorReduction) * (1.0 - enchantmentReduction));
     }
 
-    private static int armorMaterialPoints(String itemId) {
-        if (itemId.contains("leather")) return 3;
-        if (itemId.contains("chainmail")) return 4;
-        if (itemId.contains("iron")) return 6;
-        if (itemId.contains("golden")) return 5;
-        if (itemId.contains("diamond") || itemId.contains("netherite")) return 8;
+    private static int armorPointsForPiece(String itemId) {
+        int helmet;
+        int chestplate;
+        int leggings;
+        int boots;
+        if (itemId.contains("leather")) {
+            helmet = 1; chestplate = 3; leggings = 2; boots = 1;
+        } else if (itemId.contains("chainmail")) {
+            helmet = 2; chestplate = 5; leggings = 4; boots = 1;
+        } else if (itemId.contains("iron")) {
+            helmet = 2; chestplate = 6; leggings = 5; boots = 2;
+        } else if (itemId.contains("golden")) {
+            helmet = 2; chestplate = 5; leggings = 3; boots = 1;
+        } else if (itemId.contains("diamond") || itemId.contains("netherite")) {
+            helmet = 3; chestplate = 8; leggings = 6; boots = 3;
+        } else {
+            return 0;
+        }
+        if (itemId.endsWith("_helmet")) return helmet;
+        if (itemId.endsWith("_chestplate")) return chestplate;
+        if (itemId.endsWith("_leggings")) return leggings;
+        if (itemId.endsWith("_boots")) return boots;
         return 0;
     }
 

@@ -27,9 +27,12 @@ public final class MobLootService {
                     new Loot(List.of(new ItemStack("minecraft:rotten_flesh", 1, 64)), 5_000);
             case "minecraft:spider", "minecraft:cave_spider" ->
                     new Loot(List.of(new ItemStack("minecraft:string", 1, 64)), 5_000);
-            case "minecraft:skeleton", "minecraft:stray", "minecraft:wither_skeleton",
-                    "minecraft:bogged" ->
-                    new Loot(List.of(new ItemStack("minecraft:bone", 1, 64)), 5_000);
+            case "minecraft:skeleton", "minecraft:stray", "minecraft:bogged" ->
+                    new Loot(List.of(new ItemStack("minecraft:bone", 1, 64),
+                            new ItemStack("minecraft:arrow", 1, 64)), 5_000);
+            case "minecraft:wither_skeleton" ->
+                    new Loot(List.of(new ItemStack("minecraft:bone", 1, 64),
+                            new ItemStack("minecraft:coal", 1, 64)), 5_000);
             case "minecraft:creeper" ->
                     new Loot(List.of(new ItemStack("minecraft:gunpowder", 1, 64)), 5_000);
             case "minecraft:enderman" ->
@@ -38,14 +41,22 @@ public final class MobLootService {
                     new Loot(List.of(new ItemStack("minecraft:blaze_rod", 1, 64)), 5_000);
             case "minecraft:ghast" ->
                     new Loot(List.of(new ItemStack("minecraft:ghast_tear", 1, 64)), 5_000);
+            case "minecraft:wither" ->
+                    new Loot(List.of(new ItemStack("minecraft:nether_star", 1, 1)), 50_000);
+            case "minecraft:breeze" ->
+                    new Loot(List.of(new ItemStack("minecraft:breeze_rod", 1, 64)), 5_000);
             case "minecraft:witch" ->
                     new Loot(List.of(new ItemStack("minecraft:redstone", 1, 64)), 5_000);
             case "minecraft:slime" ->
                     new Loot(List.of(new ItemStack("minecraft:slime_ball", 1, 64)), 1_000);
             case "minecraft:magma_cube" ->
                     new Loot(List.of(new ItemStack("minecraft:magma_cream", 1, 64)), 1_000);
-            case "minecraft:guardian", "minecraft:elder_guardian" ->
-                    new Loot(List.of(new ItemStack("minecraft:prismarine_shard", 1, 64)), 5_000);
+            case "minecraft:guardian" ->
+                    new Loot(List.of(new ItemStack("minecraft:prismarine_shard", 1, 64),
+                            new ItemStack("minecraft:cod", 1, 64)), 5_000);
+            case "minecraft:elder_guardian" ->
+                    new Loot(List.of(new ItemStack("minecraft:prismarine_shard", 1, 64),
+                            new ItemStack("minecraft:wet_sponge", 1, 1)), 10_000);
             case "minecraft:shulker" ->
                     new Loot(List.of(new ItemStack("minecraft:shulker_shell", 1, 64)), 5_000);
             case "minecraft:phantom" ->
@@ -57,6 +68,17 @@ public final class MobLootService {
             case "minecraft:ender_dragon" -> new Loot(List.of(), 100_000);
             case "minecraft:hoglin" ->
                     new Loot(List.of(new ItemStack("minecraft:porkchop", 1, 64)), 5_000);
+            case "minecraft:strider" ->
+                    new Loot(List.of(new ItemStack("minecraft:string", 1, 64)), 3_000);
+            case "minecraft:camel", "minecraft:donkey", "minecraft:horse",
+                    "minecraft:mule", "minecraft:llama", "minecraft:trader_llama" ->
+                    new Loot(List.of(new ItemStack("minecraft:leather", 1, 64)), 3_000);
+            case "minecraft:vindicator" ->
+                    new Loot(List.of(new ItemStack("minecraft:emerald", 1, 64)), 5_000);
+            case "minecraft:warden" ->
+                    new Loot(List.of(new ItemStack("minecraft:sculk_catalyst", 1, 1)), 5_000);
+            case "minecraft:panda" ->
+                    new Loot(List.of(new ItemStack("minecraft:bamboo", 1, 64)), 3_000);
             case "minecraft:piglin", "minecraft:piglin_brute" ->
                     new Loot(List.of(new ItemStack("minecraft:gold_nugget", 1, 64)), 5_000);
             case "minecraft:iron_golem" ->

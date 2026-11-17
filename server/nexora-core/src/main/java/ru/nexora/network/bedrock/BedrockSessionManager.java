@@ -965,6 +965,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             handleResourcePackResponse(message.networkId(), state, packet,
                                     resourcePacksInfoWasSent, resourcePackStackWasSent);
                     case 0x71 -> handleClientInitialized(message, state, packet);
+                    case BedrockChunkRadiusCodec.REQUEST_PACKET_ID ->
+                            handleChunkRadiusRequest(message, state, packet);
                     case BedrockPlayerAuthInputCodec.PLAYER_AUTH_INPUT_PACKET_ID ->
                             handlePlayerAuthInput(message.networkId(), state, packet);
                     case BedrockPlayerActionCodec.PLAYER_ACTION_PACKET_ID ->
@@ -4603,14 +4605,54 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         };
     }
 
+    private void handleChunkRadiusRequest(
+            NetherNetInboundPipeline.InboundMessage message, SessionState state, BedrockPacket packet
+    ) {
+        if (!message.reliable()) {
+            throw new SecurityException("RequestChunkRadius must arrive on ReliableDataChannel");
+        }
+        if (!state.loginAuthenticated || !state.gameStarted || !state.positionInitialized) {
+            throw new SecurityException("RequestChunkRadius arrived before the world was ready");
+        }
+        BedrockChunkRadiusCodec.Request request;
+        try {
+            request = BedrockChunkRadiusCodec.decodeRequest(packet);
+        } catch (IllegalArgumentException exception) {
+            state.rejected = true;
+            throw new SecurityException("Malformed Bedrock RequestChunkRadius", exception);
+        }
+        int radius = BedrockChunkRadiusCodec.negotiateRadius(request);
+        int previousRadius = state.chunkViewRadius;
+        state.chunkViewRadius = radius;
+        sendPacket(message.networkId(), BedrockChunkRadiusCodec.createUpdatedPacket(radius), true);
+        if (previousRadius != radius || state.lastChunkX == Integer.MIN_VALUE) {
+            sendPacket(message.networkId(), BedrockStartGameCodec.createChunkPublisherUpdate(
+                    (int) Math.floor(state.positionX), (int) Math.floor(state.positionY),
+                    (int) Math.floor(state.positionZ)), true);
+            int centerX = Math.floorDiv((int) Math.floor(state.positionX), 16);
+            int centerZ = Math.floorDiv((int) Math.floor(state.positionZ), 16);
+            sendChunkArea(message.networkId(), state, centerX, centerZ);
+        }
+    }
+
     private void sendInitialChunkArea(String networkId, SessionState state) {
         int centerX = Math.floorDiv((int) Math.floor(state.positionX), 16);
         int centerZ = Math.floorDiv((int) Math.floor(state.positionZ), 16);
+        sendPacket(networkId, BedrockChunkRadiusCodec.createUpdatedPacket(state.chunkViewRadius), true);
         sendChunkArea(networkId, state, centerX, centerZ);
     }
 
     private void sendChunkArea(String networkId, SessionState state, int centerX, int centerZ) {
-        int radius = 1;
+        int radius = state.chunkViewRadius;
+        Map<Long, List<WorldItemEntity>> itemsByChunk = new java.util.HashMap<>();
+        if (itemRegistry != null) {
+            for (WorldItemEntity entity : world.itemEntities().snapshot()) {
+                int itemChunkX = Math.floorDiv((int) Math.floor(entity.x()), 16);
+                int itemChunkZ = Math.floorDiv((int) Math.floor(entity.z()), 16);
+                long itemChunkKey = ((long) itemChunkX << 32) | (itemChunkZ & 0xffff_ffffL);
+                itemsByChunk.computeIfAbsent(itemChunkKey, ignored -> new ArrayList<>()).add(entity);
+            }
+        }
         Set<Long> desiredChunks = new HashSet<>();
         for (int ring = 0; ring <= radius; ring++) {
             for (int offsetZ = -ring; offsetZ <= ring; offsetZ++) {
@@ -4624,12 +4666,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         WorldChunk chunk = world.getChunk(chunkX, chunkZ);
                         sendPacket(networkId, BedrockLevelChunkCodec.createPacket(chunk), true);
                         if (itemRegistry != null) {
-                            for (WorldItemEntity entity : world.itemEntities().snapshot()) {
-                                if (Math.floorDiv((int) Math.floor(entity.x()), 16) == chunkX
-                                        && Math.floorDiv((int) Math.floor(entity.z()), 16) == chunkZ) {
-                                    sendPacket(networkId,
-                                            BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry), true);
-                                }
+                            for (WorldItemEntity entity : itemsByChunk.getOrDefault(key, List.of())) {
+                                sendPacket(networkId,
+                                        BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry), true);
                             }
                         }
                     }
@@ -5347,6 +5386,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private double movementBudget = 2.0;
         private int lastChunkX = Integer.MIN_VALUE;
         private int lastChunkZ = Integer.MIN_VALUE;
+        private volatile int chunkViewRadius = BedrockChunkRadiusCodec.DEFAULT_RADIUS;
         private final Set<Long> sentChunkKeys = ConcurrentHashMap.newKeySet();
         private final Set<Long> visiblePlayerEntityIds = ConcurrentHashMap.newKeySet();
         private BreakTarget breakTarget;

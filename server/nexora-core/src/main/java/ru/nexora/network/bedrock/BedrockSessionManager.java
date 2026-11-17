@@ -2330,23 +2330,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     /** Bedrock spear jab cooldowns are tier-specific; other weapons keep the existing gate. */
     private static long weaponAttackCooldownNanos(ItemStack weapon) {
-        if (!isSpear(weapon)) return 50_000_000L;
-        long millis = switch (weapon.itemId()) {
-            case "minecraft:wooden_spear" -> 650L;
-            case "minecraft:stone_spear" -> 750L;
-            case "minecraft:copper_spear" -> 850L;
-            case "minecraft:golden_spear", "minecraft:iron_spear" -> 950L;
-            case "minecraft:diamond_spear" -> 1_050L;
-            case "minecraft:netherite_spear" -> 1_150L;
-            default -> 650L;
-        };
-        return millis * 1_000_000L;
+        return ru.nexora.combat.SpearCombatStats.forItem(weapon)
+                .map(ru.nexora.combat.SpearCombatStats.Profile::jabCooldownNanos)
+                .orElse(50_000_000L);
     }
 
     /** Spears require 2 blocks of minimum reach and have a 4.5 block maximum reach. */
     private static boolean isWithinWeaponReach(ItemStack weapon, double distanceSquared) {
-        if (isSpear(weapon)) return distanceSquared >= 4.0 && distanceSquared <= 4.5 * 4.5;
-        return distanceSquared <= 3.5 * 3.5;
+        var spearProfile = ru.nexora.combat.SpearCombatStats.forItem(weapon);
+        return spearProfile.map(profile -> profile.isWithinReach(distanceSquared))
+                .orElse(distanceSquared <= 3.5 * 3.5);
     }
 
     private static float baseAttackDamage(ItemStack weapon) {
@@ -2358,12 +2351,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case "minecraft:diamond_sword" -> 8.0f;
             case "minecraft:netherite_sword" -> 9.0f;
             case "minecraft:mace" -> 6.0f;
-            case "minecraft:wooden_spear", "minecraft:golden_spear" -> 2.0f;
-            case "minecraft:stone_spear", "minecraft:copper_spear" -> 3.0f;
-            case "minecraft:iron_spear" -> 4.0f;
-            case "minecraft:diamond_spear" -> 5.0f;
-            case "minecraft:netherite_spear" -> 6.0f;
-            default -> 1.0f;
+            default -> ru.nexora.combat.SpearCombatStats.forItem(weapon)
+                    .map(ru.nexora.combat.SpearCombatStats.Profile::jabDamage)
+                    .orElse(1.0f);
         };
     }
 

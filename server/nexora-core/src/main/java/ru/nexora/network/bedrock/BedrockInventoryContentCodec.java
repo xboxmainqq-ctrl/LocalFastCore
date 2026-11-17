@@ -58,6 +58,48 @@ public final class BedrockInventoryContentCodec {
     }
 
     /**
+     * Encodes a protocol-2225 block-container inventory window.
+     * Bedrock's normal block inventories use LEVEL_ENTITY as their FullContainerName
+     * slot type and do not carry a dynamic ID.
+     */
+    public static BedrockPacket createContainerInventory(
+            int windowId,
+            ru.nexora.inventory.ContainerInventory inventory,
+            ItemDefinitionResolver itemDefinitionResolver
+    ) {
+        if (windowId < 1 || windowId > 100) {
+            throw new IllegalArgumentException("Container window ID must be 1..100");
+        }
+        Objects.requireNonNull(inventory, "inventory");
+        Objects.requireNonNull(itemDefinitionResolver, "itemDefinitionResolver");
+
+        var slots = inventory.snapshot();
+        Writer out = new Writer();
+        out.varUInt32(windowId);
+        out.varUInt32(slots.size());
+        for (var optionalStack : slots) {
+            ItemStack stack = optionalStack.orElse(null);
+            out.varInt32(stack == null ? 0 : 1);
+            if (stack == null) {
+                writeStack(out, 0, 0, 0, 0, new byte[0]);
+            } else {
+                ItemDefinition definition = itemDefinitionResolver.resolve(stack.itemId());
+                if (definition == null) {
+                    throw new IllegalArgumentException(
+                            "No Bedrock item definition registered for " + stack.itemId());
+                }
+                writeStack(out, definition.runtimeItemId(), stack.count(),
+                        definition.auxValue(), definition.blockRuntimeId(), definition.userData());
+            }
+        }
+
+        out.byteValue(7); // LEVEL_ENTITY FullContainerName for ordinary block inventories
+        out.byteValue(0); // dynamic ID is absent
+        writeEmptyStorageItem(out);
+        return new BedrockPacket(INVENTORY_CONTENT_PACKET_ID, 0, 0, out.toByteArray());
+    }
+
+    /**
      * Encodes one player inventory slot using the same disabled ItemStackNetManager
      * compatibility format as InventoryContent.
      */

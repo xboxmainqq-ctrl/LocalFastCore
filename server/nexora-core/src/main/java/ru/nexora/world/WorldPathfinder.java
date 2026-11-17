@@ -30,6 +30,7 @@ public final class WorldPathfinder {
         int targetCellX = (int) Math.floor(targetX);
         int targetCellZ = (int) Math.floor(targetZ);
         if (startCellX == targetCellX && startCellZ == targetCellZ) return Optional.empty();
+        if (!world.isChunkLoadedAt(startCellX, startCellZ)) return Optional.empty();
 
         ArrayDeque<Node> queue = new ArrayDeque<>();
         Set<Long> visited = new HashSet<>();
@@ -46,6 +47,7 @@ public final class WorldPathfinder {
                 int nextZ = current.z() + direction[1];
                 if (Math.abs((long) nextX - startCellX) > MAX_DEPTH
                         || Math.abs((long) nextZ - startCellZ) > MAX_DEPTH) continue;
+                if (!world.isChunkLoadedAt(nextX, nextZ)) continue;
                 long key = key(nextX, nextZ);
                 if (!visited.add(key)) continue;
 

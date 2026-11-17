@@ -27,7 +27,7 @@ class MobFallTrackerTest {
         MobFallTracker tracker = new MobFallTracker();
         tracker.update(7, 70, false, false);
         tracker.update(7, 72, false, false);
-        assertEquals(2.0, tracker.update(7, 67, true, false).fallDistance(), 0.0001);
+        assertEquals(5.0, tracker.update(7, 67, true, false).fallDistance(), 0.0001);
 
         tracker.update(8, 100, false, false);
         assertEquals(0, tracker.update(8, 60, true, true).damage());

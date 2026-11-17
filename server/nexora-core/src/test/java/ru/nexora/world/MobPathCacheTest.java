@@ -8,6 +8,7 @@ class MobPathCacheTest {
     @Test
     void reusesARecentPathForTheSameMobAndRequest() {
         World world = new World("mob-path-cache", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
         MobPathCache cache = new MobPathCache(8, 150);
 
         var first = cache.findNextStep(7L, world, 0.5, 65, 0.5, 3.5, 0.5, 1_000);
@@ -24,6 +25,7 @@ class MobPathCacheTest {
     @Test
     void revalidatesCachedWaypointWhenWorldChanges() {
         World world = new World("mob-path-cache-change", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
         MobPathCache cache = new MobPathCache(8, 150);
         var original = cache.findNextStep(9L, world, 0.5, 65, 0.5, 3.5, 0.5, 2_000)
                 .orElseThrow();
@@ -62,6 +64,7 @@ class MobPathCacheTest {
     @Test
     void expiresEntriesAndKeepsTheCacheBounded() {
         World world = new World("mob-path-cache-bound", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
         MobPathCache cache = new MobPathCache(2, 10);
 
         cache.findNextStep(1L, world, 0.5, 65, 0.5, 3.5, 0.5, 100);

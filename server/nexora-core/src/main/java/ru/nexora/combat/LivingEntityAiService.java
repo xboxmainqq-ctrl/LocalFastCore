@@ -26,14 +26,26 @@ public final class LivingEntityAiService {
 
     public Decision decide(WorldLivingEntity mob, List<PlayerTarget> players, long nowMillis,
                            long nextAttackAtMillis, String provokedByNetworkId) {
+        return decide(mob, players, nowMillis, nextAttackAtMillis, provokedByNetworkId,
+                nearestAlivePlayer(mob, players));
+    }
+
+    /**
+     * Reuses the caller's nearest-player scan so the scheduler and behavior decision
+     * do not each walk the same player list for every mob tick.
+     */
+    public Decision decide(WorldLivingEntity mob, List<PlayerTarget> players, long nowMillis,
+                           long nextAttackAtMillis, String provokedByNetworkId,
+                           PlayerTarget nearest) {
         Objects.requireNonNull(mob, "mob");
         Objects.requireNonNull(players, "players");
         if (nowMillis < 0 || nextAttackAtMillis < 0) {
             throw new IllegalArgumentException("AI timestamps must be non-negative");
         }
+        if (nearest != null && !nearest.alive()) {
+            throw new IllegalArgumentException("nearest player must be alive");
+        }
         if (mob.health() <= 0) return Decision.idle(mob.runtimeId());
-
-        PlayerTarget nearest = nearestAlivePlayer(mob, players);
 
         if (isHostile(mob.identifier())) {
             if (nearest == null || distanceSquared(mob, nearest) > ACQUIRE_RANGE * ACQUIRE_RANGE) {

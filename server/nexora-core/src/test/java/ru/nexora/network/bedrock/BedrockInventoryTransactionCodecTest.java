@@ -181,6 +181,45 @@ class BedrockInventoryTransactionCodecTest {
                         new BedrockPacket(0x1e, 0, 0, invalidWindow), REGISTRY));
     }
 
+    @Test
+    void decodesProtocol2225UseOnActorAttackWithHandByte() {
+        BedrockItemRegistry items = BedrockVanillaItemCatalog.createRegistry();
+        byte[] payload = useOnActor(9_000_001L, 1, 2, 0,
+                stack(257, 1), 1.5f, 65.0f, -2.5f, 0.25f, 1.1f, -0.4f);
+        BedrockPacket packet = new BedrockPacket(0x1e, 0, 0, payload);
+
+        assertEquals(3, BedrockInventoryTransactionCodec.transactionType(packet));
+        var decoded = BedrockInventoryTransactionCodec.decodeUseOnActor(packet, REGISTRY);
+
+        assertEquals(9_000_001L, decoded.runtimeEntityId());
+        assertEquals(1, decoded.actionType());
+        assertEquals(2, decoded.slot());
+        assertEquals(0, decoded.hand());
+        assertEquals("nexora:mana_crystal", decoded.item().orElseThrow().itemId());
+        assertEquals(1.5f, decoded.fromX(), 0.0001f);
+        assertEquals(65.0f, decoded.fromY(), 0.0001f);
+        assertEquals(-0.4f, decoded.hitZ(), 0.0001f);
+    }
+
+    @Test
+    void rejectsMalformedActorUseAndUnsupportedInventoryDeltas() {
+        byte[] badAction = useOnActor(5, 9, 0, 0, empty(), 0, 65, 0, 0, 0, 0);
+        assertThrows(IllegalArgumentException.class, () ->
+                BedrockInventoryTransactionCodec.decodeUseOnActor(
+                        new BedrockPacket(0x1e, 0, 0, badAction), REGISTRY));
+
+        byte[] badHand = useOnActor(5, 1, 0, 2, empty(), 0, 65, 0, 0, 0, 0);
+        assertThrows(IllegalArgumentException.class, () ->
+                BedrockInventoryTransactionCodec.decodeUseOnActor(
+                        new BedrockPacket(0x1e, 0, 0, badHand), REGISTRY));
+
+        byte[] unsupportedDelta = useOnActor(5, 1, 0, 0, empty(), 0, 65, 0, 0, 0, 0);
+        unsupportedDelta[2] = 1; // one inventory action, not supported by actor handler yet
+        assertThrows(UnsupportedOperationException.class, () ->
+                BedrockInventoryTransactionCodec.decodeUseOnActor(
+                        new BedrockPacket(0x1e, 0, 0, unsupportedDelta), REGISTRY));
+    }
+
     private static byte[] transaction(byte[]... actions) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         out.write(0); // LegacyRequestId = 0
@@ -235,6 +274,23 @@ class BedrockInventoryTransactionCodecTest {
         out.write(2); // ZigZag(1)
         out.write(0); // block runtime ID
         out.write(0); // user data
+        return out.toByteArray();
+    }
+
+    private static byte[] useOnActor(long runtimeId, int actionType, int slot, int hand,
+                                     byte[] item, float fromX, float fromY, float fromZ,
+                                     float hitX, float hitY, float hitZ) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        writeVarInt(out, 0); // LegacyRequestId
+        writeVarInt(out, 3); // ItemUseOnActor transaction
+        writeVarUInt(out, 0); // no inventory actions
+        writeVarUInt(out, runtimeId);
+        writeVarInt(out, actionType);
+        writeVarInt(out, slot);
+        out.write(hand); // protocol 2225 Hand byte precedes Item
+        out.writeBytes(item);
+        writeFloat(out, fromX); writeFloat(out, fromY); writeFloat(out, fromZ);
+        writeFloat(out, hitX); writeFloat(out, hitY); writeFloat(out, hitZ);
         return out.toByteArray();
     }
 

@@ -2528,7 +2528,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     }
                 }
                 if (waypoint == null) {
-                    mobStuckTracker.recordBlockedAttempt(mob.runtimeId(), mob.x(), mob.y(), mob.z(), nowMillis);
+                    if (ru.nexora.world.WorldPathfinder.isSearchAreaLoaded(world, mob.x(), mob.z())) {
+                        mobStuckTracker.recordBlockedAttempt(
+                                mob.runtimeId(), mob.x(), mob.y(), mob.z(), nowMillis);
+                    } else {
+                        mobStuckTracker.clear(mob.runtimeId());
+                    }
                     continue;
                 }
                 double dx = waypoint.x() - mob.x();

@@ -53,7 +53,7 @@ class PlayerInventoryStorageTest {
                 loaded.craftingUiInventory().getSlot(28).orElseThrow());
         assertEquals(new ItemStack("minecraft:oak_log", 1, 64),
                 loaded.craftingUiInventory().getSlot(31).orElseThrow());
-        assertEquals(4, Byte.toUnsignedInt(Files.readAllBytes(
+        assertEquals(5, Byte.toUnsignedInt(Files.readAllBytes(
                 temporaryDirectory.resolve("craft-player.nxi"))[4]));
         assertEquals(9, storage.load("craft-player").orElseThrow().count("minecraft:iron_nugget"));
     }

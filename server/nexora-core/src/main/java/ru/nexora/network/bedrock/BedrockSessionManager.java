@@ -108,6 +108,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final Map<Long, Long> nextMobAttackMillis = new ConcurrentHashMap<>();
     private final Map<Long, MobKillCredit> livingEntityKillCredit = new ConcurrentHashMap<>();
     private final Map<Long, String> livingEntityAggroTargets = new ConcurrentHashMap<>();
+    private final Map<Long, ru.nexora.combat.ArrowProjectile> mobArrows = new ConcurrentHashMap<>();
+    private final AtomicLong nextMobArrowRuntimeId = new AtomicLong(4_000_000L);
     private final Map<Long, Long> creeperFuseStartedMillis = new ConcurrentHashMap<>();
     private final ru.nexora.combat.LivingEntityAiService livingEntityAi =
             new ru.nexora.combat.LivingEntityAiService();
@@ -1811,6 +1813,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     && tickCreeperBehavior(mob, targets, nowMillis, tick)) {
                 continue;
             }
+            if (tickRangedMobBehavior(mob, targets, nowMillis)) continue;
             long nextAttackAt = nextMobAttackMillis.getOrDefault(mob.runtimeId(), 0L);
             ru.nexora.combat.LivingEntityAiService.Decision decision =
                     livingEntityAi.decide(mob, targets, nowMillis, nextAttackAt,
@@ -1850,6 +1853,126 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     moved.runtimeId(), moved.x(), moved.y(), moved.z(), 0.0f, yaw, yaw,
                     WorldCollision.isOnGround(world, moved.x(), moved.y(), moved.z())));
         }
+        tickMobArrows(tick);
+    }
+
+    private boolean tickRangedMobBehavior(
+            WorldLivingEntity mob,
+            List<ru.nexora.combat.LivingEntityAiService.PlayerTarget> targets,
+            long nowMillis
+    ) {
+        if (!isRangedMob(mob.identifier())) return false;
+        ru.nexora.combat.LivingEntityAiService.PlayerTarget nearest = targets.stream()
+                .filter(Objects::nonNull)
+                .min(java.util.Comparator.comparingDouble(player -> {
+                    double dx = player.x() - mob.x();
+                    double dy = player.y() - mob.y();
+                    double dz = player.z() - mob.z();
+                    return dx * dx + dy * dy + dz * dz;
+                })).orElse(null);
+        if (nearest == null) return false;
+        double dx = nearest.x() - mob.x();
+        double dy = nearest.y() + 1.0 - (mob.y() + 1.2);
+        double dz = nearest.z() - mob.z();
+        double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (distance < 4.0 || distance > 16.0) return false;
+        if (!WorldRaycast.hasLineOfSight(world, mob.x(), mob.y() + 1.2, mob.z(),
+                (int) Math.floor(nearest.x()), (int) Math.floor(nearest.y() + 1.0),
+                (int) Math.floor(nearest.z()))) {
+            return false;
+        }
+        if (nowMillis < nextMobAttackMillis.getOrDefault(mob.runtimeId(), 0L)) return true;
+        double speed = 1.8;
+        double aimY = dy + distance * 0.025;
+        double aimLength = Math.sqrt(dx * dx + aimY * aimY + dz * dz);
+        if (aimLength < 0.0001) return true;
+        long runtimeId = nextMobArrowRuntimeId.getAndIncrement();
+        if (runtimeId <= 0 || runtimeId == Long.MAX_VALUE) {
+            nextMobArrowRuntimeId.set(4_000_000L);
+            runtimeId = nextMobArrowRuntimeId.getAndIncrement();
+        }
+        ru.nexora.combat.ArrowProjectile arrow = new ru.nexora.combat.ArrowProjectile(
+                -runtimeId, runtimeId, nearest.networkId(),
+                mob.x(), mob.y() + 1.2, mob.z(),
+                dx / aimLength * speed, aimY / aimLength * speed, dz / aimLength * speed, 0);
+        mobArrows.put(runtimeId, arrow);
+        broadcastLivingActorPacket(BedrockArrowActorCodec.createSpawn(arrow));
+        nextMobAttackMillis.put(mob.runtimeId(), nowMillis + 2_000L);
+        return true;
+    }
+
+    private static boolean isRangedMob(String identifier) {
+        return switch (identifier) {
+            case "minecraft:skeleton", "minecraft:stray", "minecraft:wither_skeleton",
+                    "minecraft:bogged", "minecraft:pillager" -> true;
+            default -> false;
+        };
+    }
+
+    private void tickMobArrows(long tick) {
+        for (var entry : mobArrows.entrySet()) {
+            ru.nexora.combat.ArrowProjectile current = entry.getValue();
+            ru.nexora.combat.ArrowProjectile next = current.advance();
+            boolean removed = next.expired();
+            if (!removed) {
+                int blockX = (int) Math.floor(next.x());
+                int blockY = (int) Math.floor(next.y());
+                int blockZ = (int) Math.floor(next.z());
+                removed = blockY < WorldChunk.MIN_Y || blockY > WorldChunk.MAX_Y
+                        || world.getBlock(blockX, blockY, blockZ) != BlockType.AIR;
+            }
+            if (!removed) {
+                for (Map.Entry<String, SessionState> playerEntry : sessions.entrySet()) {
+                    SessionState player = playerEntry.getValue();
+                    if (next.ageTicks() <= 5 && current.ownerNetworkId().equals(playerEntry.getKey())) continue;
+                    if (!player.loginAuthenticated || !player.clientInitialized
+                            || !player.positionInitialized || player.dead || player.vitals.dead()) continue;
+                    double distanceSquared = distanceToSegmentSquared(
+                            player.positionX, player.positionY + 0.9, player.positionZ,
+                            current.x(), current.y(), current.z(), next.x(), next.y(), next.z());
+                    if (distanceSquared > 0.55 * 0.55) continue;
+                    player.combatLock.lock();
+                    try {
+                        synchronized (player) {
+                            if (player.dead || player.vitals.dead()) continue;
+                            List<ItemStack> armor = player.equipment.armorSnapshot().stream()
+                                    .flatMap(Optional::stream).toList();
+                            float damage = ru.nexora.combat.EnchantmentCombatService
+                                    .applyArmorReduction(4.0f, armor);
+                            if (damage > 0.0f) {
+                                applyDamage(playerEntry.getKey(), player, damage, tick, "death.attack.arrow");
+                            }
+                        }
+                    } finally {
+                        player.combatLock.unlock();
+                    }
+                    removed = true;
+                    break;
+                }
+            }
+            if (removed) {
+                if (mobArrows.remove(entry.getKey(), current)) {
+                    broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(current.uniqueId()));
+                }
+            } else if (mobArrows.replace(entry.getKey(), current, next)) {
+                broadcastLivingActorPacket(BedrockArrowActorCodec.createMove(next, Math.max(0, tick)));
+            }
+        }
+    }
+
+    private static double distanceToSegmentSquared(
+            double px, double py, double pz,
+            double ax, double ay, double az, double bx, double by, double bz
+    ) {
+        double dx = bx - ax, dy = by - ay, dz = bz - az;
+        double lengthSquared = dx * dx + dy * dy + dz * dz;
+        double t = lengthSquared < 1.0e-12 ? 0.0
+                : Math.max(0.0, Math.min(1.0,
+                        ((px - ax) * dx + (py - ay) * dy + (pz - az) * dz) / lengthSquared));
+        double ox = px - (ax + t * dx);
+        double oy = py - (ay + t * dy);
+        double oz = pz - (az + t * dz);
+        return ox * ox + oy * oy + oz * oz;
     }
 
     private boolean tickCreeperBehavior(
@@ -2006,6 +2129,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private void sendExistingLivingActors(String networkId) {
+        for (ru.nexora.combat.ArrowProjectile arrow : mobArrows.values()) {
+            try {
+                sendPacket(networkId, BedrockArrowActorCodec.createSpawn(arrow), true);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to send existing arrow to " + networkId
+                        + ": " + exception.getMessage());
+            }
+        }
         for (WorldLivingEntity entity : world.livingEntities().snapshot()) {
             try {
                 sendPacket(networkId, BedrockAddActorCodec.createAddActor(entity), true);
@@ -2047,6 +2178,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         nextMobAttackMillis.remove(runtimeId);
         creeperFuseStartedMillis.remove(runtimeId);
         livingEntityAggroTargets.remove(runtimeId);
+        for (var entry : mobArrows.entrySet()) {
+            if (entry.getValue().ownerNetworkId().equals(Long.toString(runtimeId))) {
+                mobArrows.remove(entry.getKey(), entry.getValue());
+            }
+        }
         livingEntityKillCredit.remove(runtimeId);
         broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()));
         return true;

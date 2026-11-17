@@ -111,6 +111,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final Map<Long, Long> livingEntityAggroExpiresAtMillis = new ConcurrentHashMap<>();
     private static final long MOB_AGGRO_RETENTION_MILLIS = 10_000L;
     private final Map<Long, ru.nexora.combat.ArrowProjectile> mobArrows = new ConcurrentHashMap<>();
+    private final Set<Long> poisonMobArrows = ConcurrentHashMap.newKeySet();
     private final AtomicLong nextMobArrowRuntimeId = new AtomicLong(4_000_000L);
     private final Map<Long, Long> creeperFuseStartedMillis = new ConcurrentHashMap<>();
     private final Map<Long, Long> endermanTeleportCooldownMillis = new ConcurrentHashMap<>();
@@ -2714,6 +2715,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 mob.x(), mob.y() + 1.2, mob.z(),
                 dx / aimLength * speed, aimY / aimLength * speed, dz / aimLength * speed, 0);
         mobArrows.put(runtimeId, arrow);
+        if ("minecraft:bogged".equals(mob.identifier())) poisonMobArrows.add(runtimeId);
         broadcastLivingActorPacket(BedrockArrowActorCodec.createSpawn(arrow));
         nextMobAttackMillis.put(mob.runtimeId(), nowMillis + 2_000L);
         return true;
@@ -2762,6 +2764,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             if (damage > 0.0f) {
                                 applyDamage(playerEntry.getKey(), player, damage, tick, "death.attack.arrow");
                             }
+                            if (poisonMobArrows.contains(entry.getKey())) applyPoison(player);
                         }
                     } finally {
                         player.combatLock.unlock();
@@ -2772,6 +2775,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
             if (removed) {
                 if (mobArrows.remove(entry.getKey(), current)) {
+                    poisonMobArrows.remove(entry.getKey());
                     broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(current.uniqueId()));
                 }
             } else if (mobArrows.replace(entry.getKey(), current, next)) {
@@ -2929,7 +2933,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 if (mitigatedDamage > 0.0f) {
                     applyDamage(networkId, target, mitigatedDamage, tick, "death.attack.mob");
                     if (!target.vitals.dead() && "minecraft:cave_spider".equals(mob.identifier())) {
-                        applyCaveSpiderPoison(target);
+                        applyPoison(target);
                     }
                 }
                 if (!target.vitals.dead() && !armor.isEmpty()) {
@@ -4103,7 +4107,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
 
-    private void applyCaveSpiderPoison(SessionState target) {
+    private void applyPoison(SessionState target) {
         long now = nanoTime.getAsLong();
         if (target.poisonUntilNanos <= now) {
             target.nextPoisonDamageNanos = safeAddNanos(now, 1_000_000_000L);

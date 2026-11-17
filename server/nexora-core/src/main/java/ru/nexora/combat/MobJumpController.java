@@ -34,9 +34,14 @@ public final class MobJumpController {
                                          double nextX, double nextZ, long nowMillis) {
         if (world == null || mob == null || !Double.isFinite(nextX) || !Double.isFinite(nextZ)
                 || nowMillis < 0) throw new IllegalArgumentException("Invalid mob jump observation");
+        Long cooldown = nextJumpAt.get(mob.runtimeId());
+        if (cooldown != null && nowMillis < cooldown) {
+            rejected++;
+            return false;
+        }
+        if (cooldown != null) nextJumpAt.remove(mob.runtimeId());
         if (!WorldPathfinder.isMobFootprintLoaded(world, mob.x(), mob.z())
                 || LivingEntityAiService.isFlyingMob(mob.identifier())
-                || nowMillis < nextJumpAt.getOrDefault(mob.runtimeId(), 0L)
                 || !WorldCollision.isOnGround(world, mob.x(), mob.y(), mob.z())) {
             rejected++;
             return false;

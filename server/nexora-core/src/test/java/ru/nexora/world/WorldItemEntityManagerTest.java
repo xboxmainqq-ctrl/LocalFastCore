@@ -81,12 +81,15 @@ class WorldItemEntityManagerTest {
     void persistsDroppedItemsAcrossRestartAndPersistsPickup() throws IOException {
         WorldItemEntityStorage storage = new WorldItemEntityStorage(temporaryDirectory, "test-world");
         WorldItemEntityManager first = new WorldItemEntityManager(storage);
-        WorldItemEntity dropped = first.spawn(new ItemStack("minecraft:diamond", 4, 64),
+        WorldItemEntity dropped = first.spawn(new ItemStack("minecraft:diamond", 4, 64,
+                        java.util.Map.of("minecraft:unbreaking", 3), 7),
                 2.5, 65.0, -1.5, 0.1, 0.2, -0.1, 10_000, 500, "owner-xuid");
 
         WorldItemEntityManager afterRestart = new WorldItemEntityManager(storage);
         WorldItemEntity restored = afterRestart.find(dropped.runtimeId()).orElseThrow();
         assertEquals(dropped, restored);
+        assertEquals(java.util.Map.of("minecraft:unbreaking", 3), restored.stack().enchantments());
+        assertEquals(7, restored.stack().repairCost());
         WorldItemEntity next = afterRestart.spawn(new ItemStack("minecraft:iron_ingot", 2, 64),
                 0, 65, 0, 0, 0, 0, 10_000, 0, null);
         assertTrue(next.runtimeId() > dropped.runtimeId());
@@ -117,6 +120,23 @@ class WorldItemEntityManagerTest {
         assertTrue(manager.find(second.runtimeId()).isEmpty());
         assertTrue(moved.stream().anyMatch(entity -> entity.runtimeId() == first.runtimeId()));
         assertEquals(List.of(second), manager.drainRemovedByTick());
+    }
+
+    @Test
+    void doesNotMergeStacksWithDifferentEnchantmentMetadata() {
+        World world = new World("item-enchantment-merge", 0L, new FlatWorldGenerator());
+        WorldItemEntityManager manager = new WorldItemEntityManager();
+        WorldItemEntity plain = manager.spawn(new ItemStack("minecraft:diamond_sword", 1, 1),
+                0.5, 65.125, 0.5, 0, 0, 0, 0, 0, "same-owner");
+        WorldItemEntity enchanted = manager.spawn(new ItemStack("minecraft:diamond_sword", 1, 1,
+                java.util.Map.of("minecraft:sharpness", 3), 1),
+                0.9, 65.125, 0.5, 0, 0, 0, 0, 0, "same-owner");
+
+        manager.tick(world, 0.05, 100);
+
+        assertEquals(2, manager.size());
+        assertEquals(plain.stack(), manager.find(plain.runtimeId()).orElseThrow().stack());
+        assertEquals(enchanted.stack(), manager.find(enchanted.runtimeId()).orElseThrow().stack());
     }
 
     @Test

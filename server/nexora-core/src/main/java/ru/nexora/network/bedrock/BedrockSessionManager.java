@@ -17,6 +17,8 @@ import ru.nexora.inventory.PlayerEquipmentService;
 import ru.nexora.inventory.ArmorSlotRegistry;
 import ru.nexora.inventory.EquipmentStats;
 import ru.nexora.inventory.InventoryTransactionService;
+import ru.nexora.inventory.ContainerInventory;
+import ru.nexora.inventory.ContainerInventoryTransactionService;
 import ru.nexora.world.FlatWorldGenerator;
 import ru.nexora.world.BlockType;
 import ru.nexora.world.World;
@@ -75,6 +77,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private volatile ArmorSlotRegistry armorSlotRegistry = ArmorSlotRegistry.empty();
     private volatile EquipmentSlotRegistry equipmentSlotRegistry = EquipmentSlotRegistry.empty();
     private final InventoryTransactionService inventoryTransactionService = new InventoryTransactionService();
+    private final ContainerInventoryTransactionService containerTransactionService =
+            new ContainerInventoryTransactionService();
     private final PlayerEquipmentService playerEquipmentService = new PlayerEquipmentService();
     private final OutboundFrameSender outbound;
     private final Consumer<PacketEvent> packetSink;
@@ -533,6 +537,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             handlePlayerAction(message, state, packet);
                     case BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID ->
                             handleInventoryTransaction(message, state, packet);
+                    case BedrockContainerPacketCodec.CONTAINER_CLOSE_PACKET_ID ->
+                            handleContainerClose(message, state, packet);
                     case BedrockMobEquipmentCodec.MOB_EQUIPMENT_PACKET_ID ->
                             handleMobEquipment(message, state, packet);
                     case BedrockCommandRequestCodec.COMMAND_REQUEST_PACKET_ID ->
@@ -2210,6 +2216,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private long entityId;
         private boolean rejected;
         private PendingEquipmentForm pendingEquipmentForm;
+        private int nextContainerWindowId = 1;
+        private int openContainerWindowId;
+        private int openContainerX;
+        private int openContainerY;
+        private int openContainerZ;
+        private ContainerInventory openContainerInventory;
         private int clientProtocol;
         private NetherNetClientIdentity identity;
     }

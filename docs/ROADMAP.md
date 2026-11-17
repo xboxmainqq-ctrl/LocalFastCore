@@ -49,7 +49,8 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 - [x] Expand deterministic loot/XP coverage for common hostile and passive mob families, with bounded Looting bonuses.
 - [x] Add server-side gravity, collision-resolved falling, knockback damping, and 3D flight targeting for selected flying species.
 - [x] Add bounded hostile-mob natural despawn after a 30-second grace period beyond 128 blocks; passive/neutral mobs are preserved.
-- [ ] Add mob fall damage, jumping, fluid movement, climbing, and species-specific special attacks.
+- [x] Add bounded fall-distance tracking and landing damage for ground-bound mobs.
+- [ ] Add jumping, fluid movement, climbing, and species-specific special attacks.
 
 ## Priority 5 — Vanilla-style mob spawners
 

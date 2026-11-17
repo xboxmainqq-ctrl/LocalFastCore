@@ -1,0 +1,85 @@
+package ru.nexora.combat;
+
+import org.junit.jupiter.api.Test;
+import ru.nexora.combat.SpearChargeCombatService.Vector;
+import ru.nexora.inventory.ItemStack;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class SpearChargeCombatServiceTest {
+
+    private static final Vector FORWARD = new Vector(1, 0, 0);
+    private static final Vector STILL = new Vector(0, 0, 0);
+
+    @Test
+    void chargeDamageUsesTierMultiplierAndServerMeasuredClosingSpeed() {
+        ItemStack diamond = spear("diamond");
+        var effect = SpearChargeCombatService.resolve(
+                diamond, new Vector(6, 0, 0), STILL, FORWARD);
+
+        assertTrue(effect.hit());
+        assertEquals(6.45f, effect.damage(), 0.0001f);
+        assertTrue(effect.knockback());
+        assertEquals(6.0, effect.closingSpeed(), 0.0001);
+    }
+
+    @Test
+    void targetMovingTowardAttackerContributesToClosingSpeed() {
+        ItemStack iron = spear("iron");
+        var effect = SpearChargeCombatService.resolve(
+                iron, new Vector(2, 0, 0), new Vector(-3, 0, 0), FORWARD);
+
+        assertEquals(4.75f, effect.damage(), 0.0001f);
+        assertFalse(effect.knockback());
+        assertEquals(5.0, effect.closingSpeed(), 0.0001);
+    }
+
+    @Test
+    void targetRunningAwayReducesClosingSpeedAndCanCancelDamage() {
+        var effect = SpearChargeCombatService.resolve(
+                spear("netherite"), new Vector(6, 0, 0), new Vector(2, 0, 0), FORWARD);
+
+        assertFalse(effect.hit());
+        assertEquals(0.0f, effect.damage());
+        assertEquals(4.0, effect.closingSpeed(), 0.0001);
+    }
+
+    @Test
+    void damageAndKnockbackHaveSeparateSpeedThresholds() {
+        var noDamage = SpearChargeCombatService.resolve(
+                spear("wooden"), new Vector(4.5, 0, 0), STILL, FORWARD);
+        assertFalse(noDamage.hit());
+
+        var damageOnly = SpearChargeCombatService.resolve(
+                spear("wooden"), new Vector(5.0, 0, 0), STILL, FORWARD);
+        assertTrue(damageOnly.hit());
+        assertFalse(damageOnly.knockback());
+
+        var damageAndKnockback = SpearChargeCombatService.resolve(
+                spear("wooden"), new Vector(5.1, 0, 0), STILL, FORWARD);
+        assertTrue(damageAndKnockback.knockback());
+    }
+
+    @Test
+    void onlySpearItemsCanProduceChargeDamage() {
+        var sword = SpearChargeCombatService.resolve(
+                new ItemStack("minecraft:diamond_sword", 1, 1),
+                new Vector(8, 0, 0), STILL, FORWARD);
+        assertFalse(sword.hit());
+        assertEquals(0.0f, sword.damage());
+    }
+
+    @Test
+    void viewDirectionIsNormalizedAndZeroDirectionIsRejected() {
+        var effect = SpearChargeCombatService.resolve(
+                spear("stone"), new Vector(6, 0, 0), STILL, new Vector(2, 0, 0));
+        assertEquals(4.92f, effect.damage(), 0.0001f);
+
+        assertThrows(IllegalArgumentException.class, () ->
+                SpearChargeCombatService.resolve(spear("stone"), STILL, STILL, STILL));
+    }
+
+    private static ItemStack spear(String tier) {
+        return new ItemStack("minecraft:" + tier + "_spear", 1, 1);
+    }
+}

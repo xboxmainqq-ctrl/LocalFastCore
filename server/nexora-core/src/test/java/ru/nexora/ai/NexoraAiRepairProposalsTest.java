@@ -2,6 +2,12 @@ package ru.nexora.ai;
 
 import org.junit.jupiter.api.Test;
 
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.util.concurrent.atomic.AtomicReference;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class NexoraAiRepairProposalsTest {
@@ -72,4 +78,44 @@ class NexoraAiRepairProposalsTest {
         assertThrows(IllegalArgumentException.class, () -> store.create("operator", " ", "plan"));
         assertThrows(IllegalArgumentException.class, () -> store.create("operator", "issue", " "));
     }
+    @Test
+    void expiresProposalsAfterTwentyFourHours() {
+        MutableClock clock = new MutableClock(Instant.parse("2026-11-17T10:00:00Z"));
+        NexoraAiRepairProposals store = new NexoraAiRepairProposals(clock);
+        NexoraAiRepairProposals.Proposal proposal =
+                store.create("operator", "Slow tick", "Inspect the tick scheduler.");
+
+        clock.advance(Duration.ofHours(24).plusSeconds(1));
+
+        assertTrue(store.find(proposal.id()).isEmpty());
+        assertTrue(store.list().isEmpty());
+    }
+
+    private static final class MutableClock extends Clock {
+        private final AtomicReference<Instant> now;
+
+        private MutableClock(Instant initial) {
+            this.now = new AtomicReference<>(initial);
+        }
+
+        void advance(Duration duration) {
+            now.updateAndGet(value -> value.plus(duration));
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneId.of("UTC");
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return now.get();
+        }
+    }
+
 }

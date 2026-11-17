@@ -432,6 +432,38 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return aiGuard.combatReviewSummary(nanoTime.getAsLong());
     }
 
+    /** Read-only mob navigation/cache diagnostics for allowlisted operators. */
+    public String mobAiDiagnosticsSummary() {
+        ru.nexora.world.MobPathCache.Stats cache = mobPathCache.stats();
+        StringBuilder result = new StringBuilder("Mob path cache: ")
+                .append("hits=").append(cache.hits())
+                .append(", misses=").append(cache.misses())
+                .append(", hitRate=").append(Math.round(cache.hitRate() * 1000.0) / 10.0).append('%')
+                .append(", recomputations=").append(cache.recomputations())
+                .append(", blocked=").append(cache.blockedWaypoints())
+                .append(", evictions=").append(cache.evictions())
+                .append(", entries=").append(cache.entries());
+        ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
+        if (diagnostics == null) {
+            result.append("\nMob AI latency: diagnostics unavailable");
+        } else {
+            boolean found = false;
+            for (ru.nexora.ai.NexoraAiDiagnostics.LatencySummary latency : diagnostics.latencySummaries()) {
+                if (!latency.subsystem().equals("mob-ai")
+                        && !latency.subsystem().equals("mob-pathfinding")) continue;
+                found = true;
+                result.append("\n").append(latency.subsystem())
+                        .append(": samples=").append(latency.sampleCount())
+                        .append(", avg=").append(latency.averageNanos() / 1_000_000L).append(" ms")
+                        .append(", p95=").append(latency.p95Nanos() / 1_000_000L).append(" ms")
+                        .append(", max=").append(latency.maxNanos() / 1_000_000L).append(" ms");
+            }
+            if (!found) result.append("\nMob AI latency: waiting for measurements");
+        }
+        result.append("\nЭто накопительные счётчики и время подсистем, не TPS и не CPU.");
+        return result.toString();
+    }
+
     private void handleAiGuardCommand(String networkId, SessionState state, String arguments) {
         String[] parts = arguments.isBlank() ? new String[0] : arguments.split("\\s+", 2);
         if (parts.length == 0 || parts[0].equalsIgnoreCase("status")) {
@@ -1363,6 +1395,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             openEquipmentMenu(message.networkId(), state, "");
             return;
         }
+        if (normalized.equals("/ai mob") || normalized.equals("/ai mob stats")) {
+            if (!isAiAdmin(state)) {
+                sendAiMessage(message.networkId(), "§c[NEXORA AI] Нет доступа к диагностике Mob AI.");
+            } else {
+                sendAiMessage(message.networkId(), "§b[NEXORA AI MOB] §f" + mobAiDiagnosticsSummary());
+            }
+            return;
+        }
         if (normalized.equals("/ai guard") || normalized.startsWith("/ai guard ")) {
             if (!isAiAdmin(state)) {
                 sendAiMessage(message.networkId(), "§c[NEXORA AI] Нет доступа к панели Guard.");
@@ -1444,7 +1484,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private void handleAiChat(String networkId, SessionState state, String prompt, boolean admin) {
         if (prompt.equalsIgnoreCase("help")) {
             sendAiMessage(networkId, "§b[NEXORA AI] §fКоманды: /ai, /ai <вопрос>, /ai clear; "
-                    + "операторам: /ai guard, /ai admin, /ai admin plan <проблема>, /ai admin proposals, "
+                    + "операторам: /ai mob stats, /ai guard, /ai admin, /ai admin plan <проблема>, /ai admin proposals, "
                     + "/ai admin proposal <id>, /ai admin approve <id>, /ai admin reject <id>.");
             return;
         }

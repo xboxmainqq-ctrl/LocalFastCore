@@ -2,7 +2,11 @@ package ru.nexora.ai;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryUsage;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -13,10 +17,13 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class NexoraAiDiagnostics {
     private static final int MAX_FAILURE_DESCRIPTION_LENGTH = 240;
+    private static final int MAX_EVENTS = 12;
+    private static final int MAX_EVIDENCE_LENGTH = 1_800;
 
     private final long startedAtNanos = System.nanoTime();
     private final AtomicLong recordedFailures = new AtomicLong();
     private final AtomicLong slowOperationCount = new AtomicLong();
+    private final ConcurrentLinkedDeque<DiagnosticEvent> events = new ConcurrentLinkedDeque<>();
     private volatile String lastFailure = "none";
     private volatile String lastSlowOperation = "none";
 
@@ -27,8 +34,8 @@ public final class NexoraAiDiagnostics {
         String message = failure.getMessage();
         String description = failure.getClass().getSimpleName()
                 + (message == null || message.isBlank() ? "" : ": " + message);
-        lastFailure = description.length() <= MAX_FAILURE_DESCRIPTION_LENGTH
-                ? description : description.substring(0, MAX_FAILURE_DESCRIPTION_LENGTH);
+        lastFailure = bound(description, MAX_FAILURE_DESCRIPTION_LENGTH);
+        recordEvent("FAILURE", lastFailure);
     }
 
     /** Records an operation that exceeded its expected execution budget. */
@@ -40,6 +47,37 @@ public final class NexoraAiDiagnostics {
         if (elapsedNanos <= thresholdNanos) return;
         slowOperationCount.incrementAndGet();
         lastSlowOperation = subsystem + " took " + (elapsedNanos / 1_000_000L) + " ms";
+        recordEvent("SLOW", lastSlowOperation);
+    }
+
+    /**
+     * Returns a small newest-first evidence block for an operator-requested repair plan.
+     * Entries contain only bounded diagnostic summaries, never stack traces or player data.
+     */
+    public String recentEvidence() {
+        StringBuilder result = new StringBuilder("Наблюдаемые диагностические события (новые сверху):");
+        int count = 0;
+        for (DiagnosticEvent event : events) {
+            if (count++ >= MAX_EVENTS) break;
+            result.append("\n- ").append(event.timestamp()).append(" [")
+                    .append(event.type()).append("] ").append(event.description());
+            if (result.length() >= MAX_EVIDENCE_LENGTH) {
+                result.setLength(MAX_EVIDENCE_LENGTH);
+                break;
+            }
+        }
+        if (count == 0) result.append("\n- Нет зарегистрированных событий.");
+        return result.toString();
+    }
+
+    private void recordEvent(String type, String description) {
+        String safeDescription = bound(description.replaceAll("[\\p{Cntrl}&&[^\\n\\t]]", " "), 240);
+        events.addFirst(new DiagnosticEvent(Instant.now().toString(), type, safeDescription));
+        while (events.size() > MAX_EVENTS) events.pollLast();
+    }
+
+    private static String bound(String value, int maxLength) {
+        return value.length() <= maxLength ? value : value.substring(0, maxLength);
     }
 
     /** Returns a point-in-time, read-only view of JVM health. */
@@ -72,6 +110,9 @@ public final class NexoraAiDiagnostics {
         return new Snapshot(health, reason, uptimeMillis, used, max, heapUsage,
                 threadCount, processors, systemLoad, recordedFailures.get(), lastFailure,
                 slowOperationCount.get(), lastSlowOperation);
+    }
+
+    private record DiagnosticEvent(String timestamp, String type, String description) {
     }
 
     public enum Health {

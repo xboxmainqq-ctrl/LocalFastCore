@@ -36,11 +36,11 @@ public final class FurnaceStateStorage {
 
     public synchronized void save(int x, int y, int z,
                                   FurnaceService.FurnaceStateSnapshot state) throws IOException {
-        if (state == null || state.burnTicksRemaining() < 0 || state.burnTicksRemaining() > 2400
+        if (state == null || state.burnTicksRemaining() < 0 || state.burnTicksRemaining() > FurnaceService.MAX_BURN_TICKS
                 || state.cookProgress() < 0 || state.cookProgress() >= FurnaceService.COOK_TIME_TICKS) {
             throw new IllegalArgumentException("Invalid furnace state");
         }
-        if (state.burnTicksTotal() < state.burnTicksRemaining() || state.burnTicksTotal() > 2400) {
+        if (state.burnTicksTotal() < state.burnTicksRemaining() || state.burnTicksTotal() > FurnaceService.MAX_BURN_TICKS) {
             throw new IllegalArgumentException("Invalid total furnace burn duration");
         }
         ByteBuffer body = ByteBuffer.allocate(BODY_V2_BYTES);
@@ -93,7 +93,7 @@ public final class FurnaceStateStorage {
         int burn = Short.toUnsignedInt(in.getShort());
         int progress = Short.toUnsignedInt(in.getShort());
         int total = version == 1 ? burn : Short.toUnsignedInt(in.getShort());
-        if (burn > 2400 || progress >= FurnaceService.COOK_TIME_TICKS || total < burn || total > 2400) {
+        if (burn > FurnaceService.MAX_BURN_TICKS || progress >= FurnaceService.COOK_TIME_TICKS || total < burn || total > FurnaceService.MAX_BURN_TICKS) {
             throw new IOException("Invalid furnace state values");
         }
         return Optional.of(new FurnaceService.FurnaceStateSnapshot(burn, progress, total));

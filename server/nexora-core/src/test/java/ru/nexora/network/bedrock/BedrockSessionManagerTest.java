@@ -294,9 +294,14 @@ class BedrockSessionManagerTest {
                 new java.util.concurrent.atomic.AtomicLong(2_000_000_000L);
         ru.nexora.world.World combatWorld = new ru.nexora.world.World(
                 "charged-spear-pvp-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        List<byte[]> attackerFrames = new ArrayList<>();
+        List<byte[]> targetFrames = new ArrayList<>();
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
-                combatWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
+                combatWorld, (networkId, label, frame) -> {
+                    if ("charge-pvp-attacker".equals(networkId)) attackerFrames.add(frame);
+                    if ("charge-pvp-target".equals(networkId)) targetFrames.add(frame);
+                }, event -> {}, clock::get);
         BedrockItemRegistry registry = BedrockVanillaItemCatalog.createRegistry();
         manager.setItemRegistry(registry);
         manager.onIdentity("charge-pvp-attacker", new NetherNetClientIdentity(
@@ -356,6 +361,18 @@ class BedrockSessionManagerTest {
                 manager.playerVitals("charge-pvp-target").orElseThrow().health(), 0.0001f);
         assertEquals(Long.MIN_VALUE,
                 getSessionField(manager, "charge-pvp-attacker", "spearChargeStartedNanos"));
+        List<BedrockPacket> observerPackets = targetFrames.stream()
+                .flatMap(frame -> decodeOutboundAll(frame, true).stream()).toList();
+        assertTrue(observerPackets.stream().anyMatch(packet ->
+                        packet.packetId() == BedrockAnimateCodec.ANIMATE_PACKET_ID
+                                && packet.payload().length > 0
+                                && Byte.toUnsignedInt(packet.payload()[0]) == BedrockAnimateCodec.ACTION_SWING),
+                "The target client must receive the attacker's main-hand swing animation");
+        List<BedrockPacket> attackerPackets = attackerFrames.stream()
+                .flatMap(frame -> decodeOutboundAll(frame, true).stream()).toList();
+        assertFalse(attackerPackets.stream().anyMatch(packet ->
+                        packet.packetId() == BedrockAnimateCodec.ANIMATE_PACKET_ID),
+                "Do not replay the predicted swing to the attacking client");
         manager.close();
     }
 

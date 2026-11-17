@@ -20,7 +20,8 @@ class MobSpawnerManagerTest {
         MobSpawnerManager manager = world.mobSpawners();
         assertTrue(manager.register(0, 65, 0, 0));
         AtomicInteger spawned = new AtomicInteger();
-        long baseTick = System.currentTimeMillis() / 50L;
+        long baseTick = manager.snapshot().get(0).nextSpawnTick()
+                - MobSpawnerState.DEFAULT_DELAY_TICKS;
 
         var inactive = manager.tick(world, baseTick + 100,
                 List.of(new MobSpawnerManager.PlayerPosition(100, 65, 100)),
@@ -49,7 +50,7 @@ class MobSpawnerManagerTest {
             world.livingEntities().spawn("minecraft:zombie", 20, 0.5 + i * 0.1, 65, 0.5);
         }
 
-        var result = manager.tick(world, System.currentTimeMillis() / 50L + 200,
+        var result = manager.tick(world, manager.snapshot().get(0).nextSpawnTick(),
                 List.of(new MobSpawnerManager.PlayerPosition(0.5, 65, 0.5)), request -> true);
 
         assertEquals(0, result.spawned());

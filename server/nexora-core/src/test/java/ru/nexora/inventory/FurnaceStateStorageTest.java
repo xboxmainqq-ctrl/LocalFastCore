@@ -15,7 +15,7 @@ class FurnaceStateStorageTest {
     void savesAndRestoresProgressAcrossRestart() throws Exception {
         FurnaceStateStorage storage = new FurnaceStateStorage(temporaryDirectory, "NEXORA");
         FurnaceService.FurnaceStateSnapshot expected =
-                new FurnaceService.FurnaceStateSnapshot(1250, 87);
+                new FurnaceService.FurnaceStateSnapshot(1250, 87, 1600);
 
         storage.save(-12, 64, 31, expected);
 
@@ -26,7 +26,7 @@ class FurnaceStateStorageTest {
     @Test
     void rejectsCorruptedStateAndCanDeleteIt() throws Exception {
         FurnaceStateStorage storage = new FurnaceStateStorage(temporaryDirectory, "NEXORA");
-        storage.save(1, 2, 3, new FurnaceService.FurnaceStateSnapshot(100, 50));
+        storage.save(1, 2, 3, new FurnaceService.FurnaceStateSnapshot(100, 50, 1600));
         Path file = temporaryDirectory.resolve("NEXORA/furnaces/1_2_3.nxf");
         byte[] bytes = Files.readAllBytes(file);
         bytes[8] ^= 0x01;
@@ -41,8 +41,8 @@ class FurnaceStateStorageTest {
     void rejectsInvalidStateValues() throws Exception {
         FurnaceStateStorage storage = new FurnaceStateStorage(temporaryDirectory, "NEXORA");
         assertThrows(IllegalArgumentException.class, () ->
-                storage.save(0, 0, 0, new FurnaceService.FurnaceStateSnapshot(2401, 0)));
+                storage.save(0, 0, 0, new FurnaceService.FurnaceStateSnapshot(2401, 0, 2401)));
         assertThrows(IllegalArgumentException.class, () ->
-                storage.save(0, 0, 0, new FurnaceService.FurnaceStateSnapshot(0, 200)));
+                storage.save(0, 0, 0, new FurnaceService.FurnaceStateSnapshot(0, 200, 0)));
     }
 }

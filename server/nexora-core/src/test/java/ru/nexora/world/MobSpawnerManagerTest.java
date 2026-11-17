@@ -32,13 +32,14 @@ class MobSpawnerManagerTest {
                 request -> { spawned.incrementAndGet(); return true; });
         assertEquals(0, inactive.activeSpawners());
         assertEquals(0, spawned.get());
+        assertEquals(baseTick + 201, manager.snapshot().get(0).nextSpawnTick());
 
-        var early = manager.tick(world, baseTick + 199,
+        var early = manager.tick(world, baseTick + 200,
                 List.of(new MobSpawnerManager.PlayerPosition(0.5, 65, 0.5)),
                 request -> { spawned.incrementAndGet(); return true; });
         assertEquals(0, early.spawned());
 
-        var due = manager.tick(world, baseTick + 200,
+        var due = manager.tick(world, baseTick + 201,
                 List.of(new MobSpawnerManager.PlayerPosition(0.5, 65, 0.5)),
                 request -> { spawned.incrementAndGet(); return true; });
         assertTrue(due.spawned() > 0);

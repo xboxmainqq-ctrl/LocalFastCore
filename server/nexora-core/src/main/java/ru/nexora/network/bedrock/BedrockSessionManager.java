@@ -533,9 +533,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 world.setBlock(x, y, z, ru.nexora.world.BlockType.SPAWNER);
                 if (!world.mobSpawners().configure(x, y, z, identifier, delay,
                         Math.max(0L, nanoTime.getAsLong() / 50_000_000L))) {
+                    world.setBlock(x, y, z, ru.nexora.world.BlockType.AIR);
                     sendAiMessage(networkId, "§c[NEXORA SPAWNER] Не удалось настроить спавнер.");
                     return;
                 }
+                broadcastBlockUpdate(x, y, z, ru.nexora.world.BlockType.SPAWNER);
                 sendAiMessage(networkId, "§a[NEXORA SPAWNER] Спавнер установлен: " + identifier
                         + " (" + x + " " + y + " " + z + "), задержка " + delay + " тиков.");
                 return;
@@ -563,6 +565,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     return;
                 }
                 world.setBlock(x, y, z, ru.nexora.world.BlockType.AIR);
+                broadcastBlockUpdate(x, y, z, ru.nexora.world.BlockType.AIR);
                 sendAiMessage(networkId, "§a[NEXORA SPAWNER] Спавнер удалён.");
                 return;
             }

@@ -60,6 +60,7 @@ public final class BedrockVanillaItemCatalog {
         add(entries, "potato", 280, 0, 64);
         add(entries, "baked_potato", 281, 0, 64);
         add(entries, "bone", 418, 2, 64);
+        add(entries, "rotten_flesh", 277, 0, 64);
         add(entries, "leather", 384, 2, 64);
         add(entries, "paper", 389, 2, 64);
         add(entries, "book", 390, 2, 64);

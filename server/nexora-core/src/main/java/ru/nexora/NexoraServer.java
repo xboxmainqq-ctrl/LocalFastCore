@@ -76,9 +76,9 @@ public final class NexoraServer {
         NexoraAiDiagnostics aiDiagnostics = new NexoraAiDiagnostics();
         NexoraAiMonitor aiMonitor = new NexoraAiMonitor(aiDiagnostics, snapshot -> {
             if (snapshot.health() == NexoraAiDiagnostics.Health.WARNING) {
-                System.err.printf("NEXORA AI: runtime warning: %s (heap %.1f%%, threads %d, failures %d)%n",
+                System.err.printf("NEXORA AI: runtime warning: %s (heap %.1f%%, threads %d, failures %d, slow operations %d)%n",
                         snapshot.reason(), snapshot.heapUsageRatio() * 100.0,
-                        snapshot.liveThreadCount(), snapshot.recordedFailures());
+                        snapshot.liveThreadCount(), snapshot.recordedFailures(), snapshot.slowOperationCount());
             }
         });
         String dataDirectory = System.getenv().getOrDefault("NEXORA_DATA_DIR", "data");
@@ -115,6 +115,7 @@ public final class NexoraServer {
                 },
                 event -> System.out.printf("NEXORA: Bedrock packet 0x%02X from %s (%d bytes)%n",
                         event.packet().packetId(), event.networkId(), event.packet().payload().length));
+        bedrockSessions.setAiDiagnostics(aiDiagnostics);
         bedrockSessions.setAiAssistant(NexoraAiAssistant.fromEnvironment(System.getenv(), aiDiagnostics));
         bedrockSessions.enableServerAuthoritativeMovement();
         bedrockSessions.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());

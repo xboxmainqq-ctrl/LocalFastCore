@@ -92,15 +92,15 @@ public final class AnvilService {
 
     private static Map<String, Enchantment> createEnchantments() {
         Map<String, Enchantment> values = new LinkedHashMap<>();
-        register(values, "minecraft:sharpness", 5, 1, "sword", Set.of(
+        register(values, "minecraft:sharpness", 5, 1, "sword_spear", Set.of(
                 "minecraft:smite", "minecraft:bane_of_arthropods"));
-        register(values, "minecraft:smite", 5, 2, "sword", Set.of(
-                "minecraft:sharpness", "minecraft:bane_of_arthropods"));
-        register(values, "minecraft:bane_of_arthropods", 5, 2, "sword", Set.of(
-                "minecraft:sharpness", "minecraft:smite"));
-        register(values, "minecraft:knockback", 2, 2, "sword", Set.of());
-        register(values, "minecraft:fire_aspect", 2, 2, "sword", Set.of());
-        register(values, "minecraft:looting", 3, 2, "sword", Set.of());
+        register(values, "minecraft:smite", 5, 2, "sword_mace_spear", Set.of(
+                "minecraft:sharpness", "minecraft:bane_of_arthropods", "minecraft:density", "minecraft:breach"));
+        register(values, "minecraft:bane_of_arthropods", 5, 2, "sword_mace_spear", Set.of(
+                "minecraft:sharpness", "minecraft:smite", "minecraft:density", "minecraft:breach"));
+        register(values, "minecraft:knockback", 2, 2, "sword_mace_spear", Set.of());
+        register(values, "minecraft:fire_aspect", 2, 2, "sword_mace_spear", Set.of());
+        register(values, "minecraft:looting", 3, 2, "sword_mace_spear", Set.of());
         register(values, "minecraft:efficiency", 5, 1, "tool", Set.of());
         register(values, "minecraft:unbreaking", 3, 1, "durable", Set.of());
         register(values, "minecraft:fortune", 3, 2, "tool", Set.of("minecraft:silk_touch"));
@@ -136,6 +136,14 @@ public final class AnvilService {
         register(values, "minecraft:feather_falling", 4, 1, "boots", Set.of());
         register(values, "minecraft:depth_strider", 3, 2, "boots", Set.of("minecraft:frost_walker"));
         register(values, "minecraft:frost_walker", 2, 2, "boots", Set.of("minecraft:depth_strider"));
+        register(values, "minecraft:binding", 1, 4, "armor", Set.of());
+        register(values, "minecraft:vanishing", 1, 4, "durable", Set.of());
+        register(values, "minecraft:wind_burst", 3, 2, "mace", Set.of());
+        register(values, "minecraft:density", 5, 1, "mace", Set.of(
+                "minecraft:breach", "minecraft:smite", "minecraft:bane_of_arthropods"));
+        register(values, "minecraft:breach", 4, 2, "mace", Set.of(
+                "minecraft:density", "minecraft:smite", "minecraft:bane_of_arthropods"));
+        register(values, "minecraft:lunge", 3, 1, "spear", Set.of());
         return Collections.unmodifiableMap(values);
     }
 
@@ -148,6 +156,15 @@ public final class AnvilService {
         Map<String, Set<String>> groups = new LinkedHashMap<>();
         add(groups, "sword", "wooden_sword", "stone_sword", "iron_sword", "golden_sword",
                 "diamond_sword", "netherite_sword");
+        add(groups, "sword_spear", "wooden_sword", "stone_sword", "iron_sword", "golden_sword",
+                "diamond_sword", "netherite_sword", "wooden_spear", "stone_spear", "copper_spear",
+                "iron_spear", "golden_spear", "diamond_spear", "netherite_spear");
+        add(groups, "sword_mace_spear", "wooden_sword", "stone_sword", "iron_sword", "golden_sword",
+                "diamond_sword", "netherite_sword", "mace", "wooden_spear", "stone_spear",
+                "copper_spear", "iron_spear", "golden_spear", "diamond_spear", "netherite_spear");
+        add(groups, "mace", "mace");
+        add(groups, "spear", "wooden_spear", "stone_spear", "copper_spear", "iron_spear",
+                "golden_spear", "diamond_spear", "netherite_spear");
         add(groups, "tool", "wooden_pickaxe", "stone_pickaxe", "iron_pickaxe", "golden_pickaxe",
                 "diamond_pickaxe", "netherite_pickaxe", "wooden_axe", "stone_axe", "iron_axe",
                 "golden_axe", "diamond_axe", "netherite_axe", "wooden_shovel", "stone_shovel",
@@ -176,7 +193,9 @@ public final class AnvilService {
                 "iron_axe", "golden_axe", "diamond_axe", "netherite_axe", "wooden_shovel",
                 "stone_shovel", "iron_shovel", "golden_shovel", "diamond_shovel", "netherite_shovel",
                 "wooden_hoe", "stone_hoe", "iron_hoe", "golden_hoe", "diamond_hoe", "netherite_hoe",
-                "bow", "crossbow", "trident", "shield", "elytra", "fishing_rod",
+                "bow", "crossbow", "trident", "mace", "wooden_spear", "stone_spear",
+                "copper_spear", "iron_spear", "golden_spear", "diamond_spear", "netherite_spear",
+                "shield", "elytra", "fishing_rod",
                 "flint_and_steel", "shears", "carrot_on_a_stick", "warped_fungus_on_a_stick",
                 "brush", "mace", "leather_helmet", "leather_chestplate", "leather_leggings",
                 "leather_boots", "chainmail_helmet", "chainmail_chestplate", "chainmail_leggings",

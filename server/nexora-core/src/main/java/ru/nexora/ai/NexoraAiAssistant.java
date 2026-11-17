@@ -140,7 +140,8 @@ public final class NexoraAiAssistant {
         body.put("temperature", 0.5);
         ArrayNode messages = body.putArray("messages");
         messages.addObject().put("role", "system").put("content", systemPrompt(admin));
-        for (NexoraAiConversationMemory.Message message : conversationMemory.history(playerId, admin)) {
+        NexoraAiConversationMemory.History history = conversationMemory.history(playerId, admin);
+        for (NexoraAiConversationMemory.Message message : history.messages()) {
             messages.addObject().put("role", message.role()).put("content", message.content());
         }
         String userMessage = "Игрок " + playerName + " спрашивает: " + prompt;
@@ -194,7 +195,7 @@ public final class NexoraAiAssistant {
                 }
                 answer = answer.replaceAll("[\\p{Cntrl}&&[^\\n\\t]]", " ").trim();
                 if (answer.length() > 1200) answer = answer.substring(0, 1200) + "…";
-                conversationMemory.recordExchange(playerId, admin, userMessage, answer);
+                conversationMemory.recordExchange(playerId, admin, history, userMessage, answer);
                 reply.accept(answer);
             } catch (IOException | RuntimeException exception) {
                 diagnostics.recordFailure(exception);

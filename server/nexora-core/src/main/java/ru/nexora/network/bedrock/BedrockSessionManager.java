@@ -120,6 +120,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             new ru.nexora.world.MobPathCache();
     private final ru.nexora.combat.MobStuckTracker mobStuckTracker =
             new ru.nexora.combat.MobStuckTracker();
+    private final ru.nexora.combat.MobFallTracker mobFallTracker =
+            new ru.nexora.combat.MobFallTracker();
     private final ru.nexora.combat.MobDespawnTracker mobDespawnTracker =
             new ru.nexora.combat.MobDespawnTracker();
     private final ru.nexora.combat.MobAiLoadController mobAiLoadController =
@@ -455,7 +457,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 .append("\nMob stuck tracker: tracked=").append(stuck.tracked())
                 .append(", stuck=").append(stuck.stuck())
                 .append(", evictions=").append(stuck.evictions())
-                .append("\nMob AI load controller: ").append(mobAiLoadController.stats().summary());
+                .append("\nMob AI load controller: ").append(mobAiLoadController.stats().summary())
+                .append("\nMob fall tracker: ").append(mobFallTracker.stats().summary());
         ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
         if (diagnostics == null) {
             result.append("\nMob AI latency: diagnostics unavailable");
@@ -2485,6 +2488,24 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 broadcastLivingActorPacket(BedrockMoveActorAbsoluteCodec.create(
                         mob.runtimeId(), mob.x(), mob.y(), mob.z(), 0.0f,
                         physicsYaw, physicsYaw, physics.grounded()));
+            }
+            ru.nexora.combat.MobFallTracker.Result fall =
+                    mobFallTracker.update(mob.runtimeId(), mob.y(), physics.grounded(),
+                            ru.nexora.combat.LivingEntityAiService.isFlyingMob(mob.identifier()));
+            if (fall.damage() > 0) {
+                WorldLivingEntityManager.DamageResult fallDamage =
+                        world.livingEntities().damage(mob.runtimeId(), fall.damage()).orElse(null);
+                if (fallDamage != null && fallDamage.killed()) {
+                    cleanupLivingEntityRuntimeState(mob.runtimeId());
+                    broadcastLivingActorPacket(
+                            BedrockAddItemActorCodec.createRemoveActor(mob.uniqueId()));
+                    continue;
+                }
+                if (fallDamage != null) {
+                    mob = fallDamage.current();
+                    broadcastLivingActorPacket(BedrockVitalsCodec.createActorHealthUpdate(
+                            mob.runtimeId(), mob.health(), mob.maxHealth(), Math.max(0, tick)));
+                }
             }
             ru.nexora.combat.LivingEntityAiService.PlayerTarget nearestPlayer =
                     ru.nexora.combat.LivingEntityAiService.nearestAlivePlayer(mob, targets);

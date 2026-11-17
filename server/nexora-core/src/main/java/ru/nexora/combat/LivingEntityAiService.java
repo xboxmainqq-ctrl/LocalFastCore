@@ -246,7 +246,7 @@ public final class LivingEntityAiService {
                     "minecraft:evoker", "minecraft:pillager", "minecraft:ravager",
                     "minecraft:hoglin", "minecraft:piglin_brute", "minecraft:ender_dragon",
                     "minecraft:warden", "minecraft:breeze", "minecraft:vex",
-                    "minecraft:bogged" -> true;
+                    "minecraft:wither", "minecraft:bogged" -> true;
             default -> false;
         };
     }

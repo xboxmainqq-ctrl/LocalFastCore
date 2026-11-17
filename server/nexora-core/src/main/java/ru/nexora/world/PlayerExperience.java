@@ -23,6 +23,22 @@ public final class PlayerExperience {
         return new Progress(level, (float) remaining / next, totalPoints);
     }
 
+    public static Progress fromTotalMilliPoints(long totalMilliPoints) {
+        if (totalMilliPoints < 0 || totalMilliPoints > (long) MAX_TOTAL_POINTS * 1000L) {
+            throw new IllegalArgumentException("Experience must be within supported range");
+        }
+        int level = 0;
+        long remainingMilli = totalMilliPoints;
+        while (level < MAX_LEVEL) {
+            long requiredMilli = (long) pointsToNextLevel(level) * 1000L;
+            if (remainingMilli < requiredMilli) break;
+            remainingMilli -= requiredMilli;
+            level++;
+        }
+        float progress = (float) (remainingMilli / 1000.0 / pointsToNextLevel(level));
+        return new Progress(level, progress, (int) (totalMilliPoints / 1000L));
+    }
+
     public static int pointsToNextLevel(int level) {
         if (level < 0 || level > MAX_LEVEL) throw new IllegalArgumentException("Invalid XP level");
         if (level <= 15) return 2 * level + 7;

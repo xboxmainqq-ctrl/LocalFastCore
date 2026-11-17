@@ -4639,6 +4639,43 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.sentChunkKeys.retainAll(desiredChunks);
         state.lastChunkX = centerX;
         state.lastChunkZ = centerZ;
+        syncVisiblePlayerActors(networkId, state);
+    }
+
+    /** Reconciles remote player actors whenever a client's published chunk view changes. */
+    private void syncVisiblePlayerActors(String recipientNetworkId, SessionState recipient) {
+        if (!recipient.clientInitialized || !recipient.playerListAdvertised) return;
+        BedrockPacket remove = null;
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            if (entry.getKey().equals(recipientNetworkId)) continue;
+            SessionState player = entry.getValue();
+            if (!player.clientInitialized || !player.playerListAdvertised
+                    || player.playerListEntry == null) continue;
+            boolean visible = isPlayerChunkVisible(recipient, player);
+            if (visible && recipient.visiblePlayerEntityIds.add(player.entityId)) {
+                try {
+                    sendPacket(recipientNetworkId, createAddPlayerPacket(player), true);
+                } catch (RuntimeException exception) {
+                    recipient.visiblePlayerEntityIds.remove(player.entityId);
+                    System.err.println("NEXORA: unable to add player entering chunk view: " + exception.getMessage());
+                }
+            } else if (!visible && recipient.visiblePlayerEntityIds.remove(player.entityId)) {
+                if (remove == null) remove = BedrockAddItemActorCodec.createRemoveActor(player.entityId);
+                try {
+                    sendPacket(recipientNetworkId, remove, true);
+                } catch (RuntimeException exception) {
+                    System.err.println("NEXORA: unable to remove player leaving chunk view: " + exception.getMessage());
+                }
+            }
+        }
+    }
+
+    private static boolean isPlayerChunkVisible(SessionState recipient, SessionState player) {
+        if (!Float.isFinite(player.positionX) || !Float.isFinite(player.positionZ)) return false;
+        int chunkX = Math.floorDiv((int) Math.floor(player.positionX), 16);
+        int chunkZ = Math.floorDiv((int) Math.floor(player.positionZ), 16);
+        long key = ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
+        return recipient.sentChunkKeys.contains(key);
     }
 
     private void handleClientInitialized(
@@ -4975,14 +5012,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     + ": " + exception.getMessage());
             return;
         }
-        // Existing player actors are spawned for the newcomer after the matching PlayerList entries.
+        // Spawn only actors inside the joining client's currently published chunk view.
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
             if (entry.getKey().equals(networkId)) continue;
             SessionState existing = entry.getValue();
             if (!existing.clientInitialized || !existing.playerListAdvertised
-                    || existing.playerListEntry == null) continue;
+                    || existing.playerListEntry == null
+                    || !isPlayerChunkVisible(joining, existing)) continue;
             try {
                 sendPacket(networkId, createAddPlayerPacket(existing), true);
+                joining.visiblePlayerEntityIds.add(existing.entityId);
             } catch (RuntimeException exception) {
                 System.err.println("NEXORA: unable to spawn existing player for " + networkId
                         + ": " + exception.getMessage());
@@ -4997,7 +5036,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             try {
                 // The client must know the UUID/skin before AddPlayer can create the remote actor.
                 sendPacket(entry.getKey(), addListEntry, true);
-                sendPacket(entry.getKey(), addPlayer, true);
+                if (isPlayerChunkVisible(recipient, joining)) {
+                    sendPacket(entry.getKey(), addPlayer, true);
+                    recipient.visiblePlayerEntityIds.add(joining.entityId);
+                }
             } catch (RuntimeException exception) {
                 System.err.println("NEXORA: unable to advertise and spawn joining player for "
                         + entry.getKey() + ": " + exception.getMessage());
@@ -5017,7 +5059,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             SessionState recipient = entry.getValue();
             if (!recipient.clientInitialized || !recipient.playerListAdvertised) continue;
             try {
-                sendPacket(entry.getKey(), removeActor, true);
+                if (recipient.visiblePlayerEntityIds.remove(leaving.entityId)) {
+                    sendPacket(entry.getKey(), removeActor, true);
+                }
                 sendPacket(entry.getKey(), remove, true);
             } catch (RuntimeException exception) {
                 System.err.println("NEXORA: unable to remove disconnected player from " + entry.getKey()
@@ -5068,12 +5112,23 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 player.yaw,
                 player.yaw,
                 onGround);
+        BedrockPacket spawn = null;
+        BedrockPacket remove = BedrockAddItemActorCodec.createRemoveActor(player.entityId);
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
             if (entry.getKey().equals(sourceNetworkId)) continue;
             SessionState recipient = entry.getValue();
             if (!recipient.clientInitialized || !recipient.playerListAdvertised) continue;
+            boolean visible = isPlayerChunkVisible(recipient, player);
             try {
-                sendPacket(entry.getKey(), movement, true);
+                if (visible) {
+                    if (recipient.visiblePlayerEntityIds.add(player.entityId)) {
+                        if (spawn == null) spawn = createAddPlayerPacket(player);
+                        sendPacket(entry.getKey(), spawn, true);
+                    }
+                    sendPacket(entry.getKey(), movement, true);
+                } else if (recipient.visiblePlayerEntityIds.remove(player.entityId)) {
+                    sendPacket(entry.getKey(), remove, true);
+                }
             } catch (RuntimeException exception) {
                 System.err.println("NEXORA: unable to sync player movement to " + entry.getKey()
                         + ": " + exception.getMessage());
@@ -5293,6 +5348,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private int lastChunkX = Integer.MIN_VALUE;
         private int lastChunkZ = Integer.MIN_VALUE;
         private final Set<Long> sentChunkKeys = ConcurrentHashMap.newKeySet();
+        private final Set<Long> visiblePlayerEntityIds = ConcurrentHashMap.newKeySet();
         private BreakTarget breakTarget;
         private long entityId;
         private volatile boolean rejected;

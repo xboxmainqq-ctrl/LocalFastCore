@@ -1,6 +1,6 @@
 # NEXORA AI Systems Roadmap
 
-Status: user-confirmed product direction, 2026-11-17. This document describes planned capabilities, not implemented features.
+Status: user-confirmed product direction, 2026-11-17. This roadmap separates implemented foundations from incomplete capabilities.
 
 ## Product boundaries
 
@@ -31,7 +31,7 @@ Acceptance stages:
 4. Collision-aware movement and basic idle/follow/hostile behavior.
 5. Load tests proving bounded CPU, memory and path-request queues.
 
-Do not claim mobs are implemented until real entity behavior is connected to the server tick and world collision model.
+Initial implementation now exists: `MobAiController` is connected to the authoritative entity tick and supports explicit PASSIVE/NEUTRAL/HOSTILE profiles, nearest-player perception with line-of-sight checks, neutral provocation, collision-aware direct pursuit and attack intents. Regression tests cover pursuit, provocation and solid-wall visibility. This is an early behavior controller, not a complete mob AI: bounded pathfinding, combat/damage, richer goals, vertical navigation, persistence of profiles and load budgets remain incomplete.
 
 ## 2. NEXORA Core AI Assistant — operator/developer helper
 
@@ -81,6 +81,16 @@ Safety and privacy requirements:
 5. Implement the Moderation AI Assistant as an optional module with human review and auditability.
 6. Add integration, load, privacy and failure-mode tests for all AI modules.
 
-## Current status
+## Current implementation status
 
-All three AI directions are confirmed as roadmap scope. This does not mean their implementations already exist. The current engineering priority remains Core reliability and successful CI verification. Existing repository files must be inspected before claiming any AI subsystem is present.
+### Implemented foundations
+- **Mob AI:** initial profile-based controller is wired into `EntityTickEngine`. PASSIVE mobs retain the existing deterministic wander behavior; configured NEUTRAL mobs wait for provocation; configured HOSTILE mobs detect visible nearby players and pursue them on authoritative server ticks. Attack-range decisions emit intent only; no damage is applied yet.
+- **Core AI Assistant:** `AiToolRegistry` and `CoreAiAssistant` provide a provider-neutral tool boundary with per-tool permissions, explicit approval for mutating tools, and audit events that omit arguments. There is no LLM/provider adapter or natural-language runtime yet.
+- **Moderation AI Assistant:** `ModerationSignalAnalyzer` and `ModerationAiAssistant` provide bounded chat-rate/repetition signals, retain only SHA-256 fingerprints rather than raw chat, support data deletion, and always mark results for human review. This is a deterministic signal foundation, not a trained/model-based classifier and it does not punish players.
+
+### Not yet implemented
+- Mob pathfinding around obstacles, combat/damage, additional goals, vertical navigation, persistent profiles and load testing.
+- AI model/provider adapters, operator-facing conversation workflow, live diagnostics catalogue and secure context redaction pipeline.
+- Moderation case management, report ingestion, policy-aware recommendations, audit persistence, appeals and model-based review.
+
+The current engineering priority remains Core reliability and confirmed CI verification. Do not describe these foundations as complete AI assistants or complete mob behavior until the missing capabilities and integration tests are delivered.

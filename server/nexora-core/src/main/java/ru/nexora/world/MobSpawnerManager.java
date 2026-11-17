@@ -158,11 +158,10 @@ public final class MobSpawnerManager {
                     invalid++;
                     continue;
                 }
-                if (spawnHandler.test(request)) {
-                    spawnedFromThis++;
-                    spawned++;
-                    spawnedThisTick.add(request);
-                }
+                if (!spawnHandler.test(request)) break;
+                spawnedFromThis++;
+                spawned++;
+                spawnedThisTick.add(request);
             }
             updateNext(state, currentTick);
         }

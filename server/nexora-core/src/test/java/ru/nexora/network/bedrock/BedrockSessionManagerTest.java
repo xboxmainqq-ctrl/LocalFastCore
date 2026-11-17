@@ -1974,7 +1974,7 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(stackCompleted), true, 256));
         assertEquals(1, manager.resourcePackReadyCount());
-        assertEquals(21, outboundFrames.size());
+        assertEquals(22, outboundFrames.size());
         assertEquals(0x0b, decodeOutbound(outboundFrames.get(4), true).packetId());
         List<BedrockPacket> startGameBatch = BedrockBatchCodec.decode(
                 reassemble(List.of(outboundFrames.get(4))), true);
@@ -1988,7 +1988,9 @@ class BedrockSessionManagerTest {
         assertEquals(0x3e, decodeOutbound(outboundFrames.get(9), true).packetId());
         assertEquals(0x79, decodeOutbound(outboundFrames.get(10), true).packetId());
         assertEquals(0x7a, decodeOutbound(outboundFrames.get(11), true).packetId());
-        for (int index = 12; index < 21; index++) {
+        assertEquals(BedrockChunkRadiusCodec.UPDATED_PACKET_ID,
+                decodeOutbound(outboundFrames.get(12), true).packetId());
+        for (int index = 13; index < 22; index++) {
             assertEquals(0x3a, decodeOutbound(outboundFrames.get(index), true).packetId());
         }
 
@@ -1996,10 +1998,10 @@ class BedrockSessionManagerTest {
         BedrockPacket initialized = new BedrockPacket(0x71, 0, 0, new byte[] {1});
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256));
-        assertEquals(24, outboundFrames.size());
-        assertEquals(0x31, decodeOutbound(outboundFrames.get(22), true).packetId());
+        assertEquals(25, outboundFrames.size());
+        assertEquals(0x31, decodeOutbound(outboundFrames.get(23), true).packetId());
         List<BedrockPacket> initialInventoryBatch = BedrockBatchCodec.decode(
-                reassemble(List.of(outboundFrames.get(22))), true);
+                reassemble(List.of(outboundFrames.get(23))), true);
         assertEquals(8, initialInventoryBatch.size());
         assertEquals(0x1f, initialInventoryBatch.get(1).packetId());
         assertEquals(0x31, initialInventoryBatch.get(2).packetId()); // armor container
@@ -2010,7 +2012,7 @@ class BedrockSessionManagerTest {
         assertEquals(BedrockCraftingDataCodec.CRAFTING_DATA_PACKET_ID,
                 initialInventoryBatch.get(6).packetId()); // crafting recipes
         assertEquals(124, Byte.toUnsignedInt(initialInventoryBatch.get(7).payload()[0])); // player UI grid
-        BedrockPacket playerSpawn = decodeOutbound(outboundFrames.get(21), true);
+        BedrockPacket playerSpawn = decodeOutbound(outboundFrames.get(22), true);
         assertEquals(BedrockBatchCodec.PLAY_STATUS_PACKET_ID, playerSpawn.packetId());
         assertEquals(3, ByteBuffer.wrap(playerSpawn.payload()).order(ByteOrder.BIG_ENDIAN).getInt());
         assertEquals(0.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
@@ -2307,7 +2309,7 @@ class BedrockSessionManagerTest {
 
         assertArrayEquals(new byte[] {0x40, (byte) 0x8c, 0x01, 0x21, 0x30, 0, 0, 0, 0},
                 decodeOutbound(outboundFrames.get(10), true).payload());
-        BedrockPacket spawnChunk = decodeOutbound(outboundFrames.get(12), true);
+        BedrockPacket spawnChunk = decodeOutbound(outboundFrames.get(13), true);
         assertEquals(4, Byte.toUnsignedInt(spawnChunk.payload()[0])); // chunk X = 2
         assertEquals(3, Byte.toUnsignedInt(spawnChunk.payload()[1])); // chunk Z = -2
         manager.close();

@@ -9,7 +9,7 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 ## Priority 1 — Core stability and performance
 
 - [ ] Establish repeatable baselines for tick-like subsystem latency, Bedrock inbound handling, mob AI, furnace updates, saves, heap, and thread counts. Clearly distinguish measured subsystem latency from true server TPS.
-- [ ] Profile hot paths before optimizing; avoid speculative micro-optimizations.
+- [ ] Profile hot paths before optimizing; avoid speculative micro-optimizations. The first mob-AI cleanup replaces per-mob Stream-based nearest-target scans with allocation-free loops; this is a code-path cleanup, not a measured performance claim.
 - [ ] Reduce avoidable allocations and repeated world/entity scans in measured hot paths.
 - [ ] Audit locks and per-session synchronization for contention and deadlock risks.
 - [ ] Audit chunk/world loading, entity lifecycle, and scheduled work for bounded cost and safe shutdown.

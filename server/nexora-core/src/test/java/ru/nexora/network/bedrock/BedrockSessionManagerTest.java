@@ -137,6 +137,7 @@ class BedrockSessionManagerTest {
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
                 combatWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
+        manager.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
         manager.onIdentity("fire-killer", new NetherNetClientIdentity(
                 "fire-reward-token", new byte[] {7}, "fire-reward-xuid",
                 "FireKiller", "playfab-fire-reward", "20CA2", null));
@@ -149,7 +150,7 @@ class BedrockSessionManagerTest {
         setSessionField(manager, "fire-killer", "positionZ", 0.0f);
 
         ItemStack sword = new ItemStack("minecraft:wooden_sword", 1, 1,
-                java.util.Map.of("minecraft:fire_aspect", 1));
+                java.util.Map.of("minecraft:fire_aspect", 1, "minecraft:looting", 3));
         manager.playerInventory("fire-killer").orElseThrow().setSlot(0, sword);
         var zombie = manager.spawnLivingEntity("minecraft:zombie", 6.0f, 2.0, 65.0, 0.0);
         var attack = new BedrockInventoryTransactionCodec.DecodedUseOnActor(
@@ -162,6 +163,10 @@ class BedrockSessionManagerTest {
         clock.addAndGet(1_000_000_000L);
         invokeLivingActorTick(manager, 2L);
         assertTrue(combatWorld.livingEntities().find(zombie.runtimeId()).isEmpty());
+        assertEquals(1, combatWorld.itemEntities().snapshot().size());
+        int delayedLootCount = combatWorld.itemEntities().snapshot().getFirst().stack().count();
+        assertTrue(delayedLootCount >= 1 && delayedLootCount <= 4,
+                "Delayed Fire Aspect death must retain Looting III kill credit");
         long experienceMilli = ((Number) getSessionField(
                 manager, "fire-killer", "experiencePoints")).longValue() * 1000L
                 + ((Number) getSessionField(

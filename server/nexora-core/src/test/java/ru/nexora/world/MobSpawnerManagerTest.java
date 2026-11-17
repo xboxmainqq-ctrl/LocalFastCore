@@ -104,6 +104,22 @@ class MobSpawnerManagerTest {
     }
 
     @Test
+    void nearbyMobCapIncludesEntitiesAcrossChunkBoundaries() {
+        World world = createWorld();
+        world.getChunk(1, 0);
+        world.setBlock(15, 65, 0, BlockType.SPAWNER);
+        world.livingEntities().spawn("minecraft:zombie", 20, 16.0, 65, 0.5);
+        MobSpawnerManager manager = new MobSpawnerManager();
+        assertTrue(manager.register(15, 65, 0, 0));
+
+        var result = manager.tick(world, 200,
+                List.of(new MobSpawnerManager.PlayerPosition(15.5, 65, 0.5)), request -> true);
+
+        assertEquals(1, result.capped());
+        assertEquals(0, result.spawned());
+    }
+
+    @Test
     void spawnersInUnloadedChunksDoNotForceChunkLoads() {
         World world = new World("unloaded-spawner-test", 0L, new FlatWorldGenerator());
         MobSpawnerManager manager = world.mobSpawners();

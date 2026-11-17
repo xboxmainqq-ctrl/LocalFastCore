@@ -117,7 +117,7 @@ class AnvilServiceTest {
     @Test
     void combinesRealItemStacksAndReturnsPersistentMetadata() {
         ItemStack sword = new ItemStack("minecraft:diamond_sword", 1, 1,
-                Map.of("minecraft:sharpness", 2), 0);
+                Map.of("minecraft:sharpness", 2), 0, 147);
         ItemStack book = new ItemStack("minecraft:enchanted_book", 1, 1,
                 Map.of("minecraft:sharpness", 2), 0);
 
@@ -126,6 +126,8 @@ class AnvilServiceTest {
         assertTrue(outcome.successful());
         assertEquals(3, outcome.resultStack().enchantments().get("minecraft:sharpness"));
         assertEquals(1, outcome.resultStack().repairCost());
+        assertEquals(147, outcome.resultStack().durabilityDamage(),
+                "Adding an enchantment must not repair the item for free");
         assertEquals(3, outcome.levelCost());
     }
 

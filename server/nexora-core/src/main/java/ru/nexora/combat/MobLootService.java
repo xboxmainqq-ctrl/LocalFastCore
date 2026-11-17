@@ -63,8 +63,6 @@ public final class MobLootService {
                     new Loot(List.of(new ItemStack("minecraft:phantom_membrane", 1, 64)), 5_000);
             case "minecraft:evoker" ->
                     new Loot(List.of(new ItemStack("minecraft:totem_of_undying", 1, 1)), 10_000);
-            case "minecraft:wither" ->
-                    new Loot(List.of(new ItemStack("minecraft:nether_star", 1, 64)), 50_000);
             case "minecraft:ender_dragon" -> new Loot(List.of(), 100_000);
             case "minecraft:hoglin" ->
                     new Loot(List.of(new ItemStack("minecraft:porkchop", 1, 64)), 5_000);

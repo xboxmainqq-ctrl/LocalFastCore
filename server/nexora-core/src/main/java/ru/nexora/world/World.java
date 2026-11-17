@@ -19,6 +19,7 @@ public final class World {
     private final WorldStorage storage;
     private final ConcurrentMap<Long, WorldChunk> chunks = new ConcurrentHashMap<>();
     private final WorldItemEntityManager itemEntities;
+    private final WorldContainerManager containers;
     private final CopyOnWriteArrayList<WorldBlockChangeListener> blockChangeListeners = new CopyOnWriteArrayList<>();
 
     public World(String name, long seed, WorldGenerator generator) {
@@ -45,6 +46,7 @@ public final class World {
         this.spawnZ = spawnZ;
         this.storage = storage;
         this.itemEntities = new WorldItemEntityManager();
+        this.containers = null;
     }
 
     /** Creates a world with durable dropped-item actor storage loaded before play begins. */
@@ -52,6 +54,16 @@ public final class World {
             String name, long seed, WorldGenerator generator,
             int spawnX, int spawnY, int spawnZ,
             WorldStorage storage, WorldItemEntityStorage itemStorage
+    ) throws IOException {
+        this(name, seed, generator, spawnX, spawnY, spawnZ, storage, itemStorage, null);
+    }
+
+    /** Creates a world with durable item actors and block-container inventories. */
+    public World(
+            String name, long seed, WorldGenerator generator,
+            int spawnX, int spawnY, int spawnZ,
+            WorldStorage storage, WorldItemEntityStorage itemStorage,
+            ru.nexora.inventory.ContainerInventoryStorage containerStorage
     ) throws IOException {
         if (name == null || name.isBlank()) throw new IllegalArgumentException("World name must not be blank");
         if (spawnY <= WorldChunk.MIN_Y || spawnY > WorldChunk.MAX_Y) {
@@ -67,6 +79,7 @@ public final class World {
         this.itemEntities = itemStorage == null
                 ? new WorldItemEntityManager()
                 : new WorldItemEntityManager(itemStorage);
+        this.containers = containerStorage == null ? null : new WorldContainerManager(containerStorage);
     }
 
     public String name() {
@@ -148,6 +161,11 @@ public final class World {
         return itemEntities;
     }
 
+    /** Returns the persistent block-container manager when container storage is configured. */
+    public Optional<WorldContainerManager> containers() {
+        return Optional.ofNullable(containers);
+    }
+
     public int loadedChunkCount() {
         return chunks.size();
     }
@@ -157,6 +175,7 @@ public final class World {
             for (WorldChunk chunk : chunks.values()) storage.saveChunk(chunk);
         }
         itemEntities.save();
+        if (containers != null) containers.saveAll();
     }
 
     private static long chunkKey(int x, int z) {

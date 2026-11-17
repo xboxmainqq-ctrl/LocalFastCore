@@ -38,7 +38,10 @@ public final class CraftingRecipeRegistry {
                         new ItemStack("minecraft:gold_nugget", 9, 64)),
                 new CraftingRecipe("minecraft:oak_planks_from_oak_log",
                         Map.of("minecraft:oak_log", 1),
-                        new ItemStack("minecraft:oak_planks", 4, 64))
+                        new ItemStack("minecraft:oak_planks", 4, 64)),
+                CraftingRecipe.shaped("minecraft:sticks_from_oak_planks",
+                        List.of("P", "P"), Map.of('P', "minecraft:oak_planks"),
+                        new ItemStack("minecraft:stick", 4, 64))
         ));
     }
 

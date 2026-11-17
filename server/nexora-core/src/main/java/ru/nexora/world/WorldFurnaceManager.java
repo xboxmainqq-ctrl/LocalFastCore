@@ -52,7 +52,8 @@ public final class WorldFurnaceManager {
                 .orElseGet(() -> new ContainerInventory(3));
         if (inventory.size() != 3) throw new IOException("Stored furnace inventory must contain exactly 3 slots");
         stateStorage.load(x, y, z).ifPresent(state ->
-                service.restoreState(x, y, z, state.burnTicksRemaining(), state.cookProgress(),\n                        state.burnTicksTotal(), state.pendingExperienceMilli()));
+                service.restoreState(x, y, z, state.burnTicksRemaining(), state.cookProgress(),
+                        state.burnTicksTotal(), state.pendingExperienceMilli()));
         loaded.put(position, inventory);
         kinds.put(position, kind);
         return inventory;

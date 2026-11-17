@@ -51,7 +51,7 @@ public final class BedrockAddItemActorCodec {
         out.varUInt32(definition.auxValue());
         out.byteValue(0); // ItemStackNetManager disabled
         out.varUInt32(definition.blockRuntimeId());
-        out.byteArray(definition.userData());
+        out.byteArray(BedrockItemStackUserDataCodec.encode(stack, definition.userData()));
     }
 
     private static final class Writer {

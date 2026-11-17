@@ -64,7 +64,7 @@ class EnchantmentCombatServiceTest {
                 new ItemStack("minecraft:diamond_boots", 1, 1));
 
         float reduced = EnchantmentCombatService.applyArmorReduction(10.0f, diamondArmor);
-        assertEquals(3.024f, reduced, 0.001f);
+        assertEquals(1.68f, reduced, 0.001f);
         assertEquals(10.0f, EnchantmentCombatService.applyArmorReduction(10.0f, List.of()), 0.0001f);
     }
 

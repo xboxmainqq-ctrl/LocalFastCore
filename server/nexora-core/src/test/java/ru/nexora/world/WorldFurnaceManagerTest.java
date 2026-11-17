@@ -86,6 +86,27 @@ class WorldFurnaceManagerTest {
     }
 
     @Test
+    void preservesBlastFurnaceProgressAcrossRestart() throws Exception {
+        ContainerInventoryStorage inventoryStorage =
+                new ContainerInventoryStorage(temporaryDirectory, "NEXORA");
+        FurnaceStateStorage stateStorage = new FurnaceStateStorage(temporaryDirectory, "NEXORA");
+        WorldFurnaceManager first = new WorldFurnaceManager(inventoryStorage, stateStorage);
+        var blast = first.getOrCreate(7, 64, -2, FurnaceService.Kind.BLAST_FURNACE);
+        blast.setSlot(0, new ItemStack("minecraft:raw_iron", 1, 64));
+        blast.setSlot(1, new ItemStack("minecraft:coal", 1, 64));
+        var partial = first.tick(7, 64, -2, FurnaceService.Kind.BLAST_FURNACE, 50);
+        assertEquals(50, partial.cookPercent());
+        first.saveAll();
+
+        WorldFurnaceManager restarted = new WorldFurnaceManager(inventoryStorage, stateStorage);
+        var restored = restarted.getOrCreate(7, 64, -2, FurnaceService.Kind.BLAST_FURNACE);
+        var completed = restarted.tick(7, 64, -2, FurnaceService.Kind.BLAST_FURNACE, 50);
+
+        assertEquals(0, completed.cookProgress());
+        assertEquals(new ItemStack("minecraft:iron_ingot", 1, 64), restored.getSlot(2).orElseThrow());
+    }
+
+    @Test
     void removeDeletesBothInventoryAndProgress() throws Exception {
         ContainerInventoryStorage inventoryStorage =
                 new ContainerInventoryStorage(temporaryDirectory, "NEXORA");

@@ -159,6 +159,22 @@ class FurnaceServiceTest {
     }
 
     @Test
+    void smokerSupportsRabbitAndMuttonRecipes() {
+        FurnaceService service = new FurnaceService();
+        String[] inputs = {"minecraft:rabbit", "minecraft:mutton"};
+        String[] outputs = {"minecraft:cooked_rabbit", "minecraft:cooked_mutton"};
+
+        for (int i = 0; i < inputs.length; i++) {
+            ContainerInventory smoker = new ContainerInventory(3);
+            smoker.setSlot(FurnaceService.INPUT_SLOT, new ItemStack(inputs[i], 1, 64));
+            smoker.setSlot(FurnaceService.FUEL_SLOT, new ItemStack("minecraft:coal", 1, 64));
+            service.tick(i + 20, 64, 20, smoker, FurnaceService.Kind.SMOKER, 100);
+            assertEquals(new ItemStack(outputs[i], 1, 64),
+                    smoker.getSlot(FurnaceService.OUTPUT_SLOT).orElseThrow());
+        }
+    }
+
+    @Test
     void rejectsUnsupportedFuelAndInvalidElapsedTicks() {
         FurnaceService service = new FurnaceService();
         ContainerInventory furnace = new ContainerInventory(3);

@@ -62,7 +62,6 @@ class BedrockPlayerPresenceIntegrationTest {
         }
     }
 
-
     @Test
     void removesRemoteActorBeforeRemovingPlayerListEntryOnDisconnect() throws Exception {
         List<Outbound> outbound = new ArrayList<>();
@@ -170,11 +169,11 @@ class BedrockPlayerPresenceIntegrationTest {
 
     private static List<BedrockPacket> packetsFor(List<Outbound> frames, String recipient) {
         List<BedrockPacket> packets = new ArrayList<>();
+        NetherNetMessageFramer.Reassembler reassembler = new NetherNetMessageFramer.Reassembler();
         for (Outbound outbound : frames) {
             if (!recipient.equals(outbound.recipient())) continue;
-            NetherNetMessageFramer.Reassembler reassembler = new NetherNetMessageFramer.Reassembler();
-            byte[] message = reassembler.accept(outbound.frame(), true).orElseThrow();
-            packets.addAll(BedrockBatchCodec.decode(message, true));
+            reassembler.accept(outbound.frame(), true).ifPresent(
+                    message -> packets.addAll(BedrockBatchCodec.decode(message, true)));
         }
         return packets;
     }

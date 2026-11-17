@@ -906,6 +906,28 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void fallingMobTakesLandingDamageThroughWorldTick() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "mob-fall-damage-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
+        var zombie = manager.spawnLivingEntity("minecraft:zombie", 20.0f, 0.5, 70.0, 0.5);
+
+        for (long tick = 0; tick < 30; tick++) {
+            clock.addAndGet(50_000_000L);
+            invokeLivingActorTick(manager, tick);
+        }
+
+        var landed = mobWorld.livingEntities().find(zombie.runtimeId()).orElseThrow();
+        assertTrue(landed.y() <= 65.1 && landed.y() >= 64.9);
+        assertTrue(landed.health() < 20.0f);
+        manager.close();
+    }
+
+    @Test
     void fireDeathClearsTransientMobAiState() throws Exception {
         java.util.concurrent.atomic.AtomicLong clock =
                 new java.util.concurrent.atomic.AtomicLong(2_000_000_000L);

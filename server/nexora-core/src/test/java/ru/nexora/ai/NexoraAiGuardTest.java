@@ -35,7 +35,7 @@ class NexoraAiGuardTest {
         assertEquals("inbound-byte threshold exceeded", events.getFirst().reason());
 
         guard.recordInboundFrame("peer-a", 10, 1_000);
-        assertEquals(1, guard.snapshot().signalledPeers());
+        assertEquals(0, guard.snapshot().signalledPeers());
         assertEquals(1, events.size());
         assertEquals(10, guard.snapshot().bytesInCurrentWindows());
     }

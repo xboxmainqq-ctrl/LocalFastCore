@@ -74,4 +74,18 @@ class MobPhysicsServiceTest {
         assertFalse(world.isChunkLoadedAt(1, 0));
     }
 
+    @Test
+    void slimeBouncesInsteadOfStoppingWhenItLands() {
+        World world = new World("mob-physics-slime-bounce", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
+        var slime = world.livingEntities().spawn("minecraft:slime", 16, 0.5, 65, 0.5);
+        slime = world.livingEntities().setVelocity(slime.runtimeId(), 0, -0.5, 0).orElseThrow();
+
+        var result = physics.tick(world, slime);
+
+        assertTrue(result.entity().y() > 65.0);
+        assertTrue(result.entity().velocityY() > 0.0);
+        assertFalse(result.grounded());
+    }
+
 }

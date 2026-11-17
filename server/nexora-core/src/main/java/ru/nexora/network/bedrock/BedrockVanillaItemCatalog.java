@@ -35,6 +35,7 @@ public final class BedrockVanillaItemCatalog {
         addBlock(entries, "gold_block", 41, BlockType.GOLD_BLOCK);
         addBlock(entries, "diamond_block", 57, BlockType.DIAMOND_BLOCK);
         addBlock(entries, "emerald_block", 133, BlockType.EMERALD_BLOCK);
+        addBlock(entries, "chest", 54, BlockType.CHEST);
         add(entries, "diamond", 306, 2, 64);
         add(entries, "iron_ingot", 307, 2, 64);
         add(entries, "gold_ingot", 308, 2, 64);

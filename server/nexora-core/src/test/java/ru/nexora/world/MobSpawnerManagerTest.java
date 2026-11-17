@@ -70,7 +70,7 @@ class MobSpawnerManagerTest {
         manager.register(0, 65, 0, 0);
         AtomicInteger calls = new AtomicInteger();
 
-        var result = manager.tick(world, System.currentTimeMillis() / 50L + 200,
+        var result = manager.tick(world, manager.snapshot().get(0).nextSpawnTick(),
                 List.of(new MobSpawnerManager.PlayerPosition(0.5, 65, 0.5)),
                 request -> { calls.incrementAndGet(); return true; });
 

@@ -9,7 +9,8 @@ NexoraAI is an in-core operations observer and optional in-game assistant for NE
 - live thread count and available processors;
 - system load average when provided by the JVM;
 - process uptime;
-- bounded summaries of failures explicitly reported to the service.
+- bounded summaries of failures explicitly reported to the service;
+- a newest-first ring buffer of up to 12 timestamped failure/slow-operation events, with descriptions capped at 240 characters.
 
 `NexoraAiMonitor` samples these metrics every 30 seconds and writes warnings to the server console. It does not change server state. The Bedrock mob-AI update and furnace tick are timed; executions taking longer than 50 ms are counted. Periodic world/player autosaves taking longer than 1 second are also counted. These are subsystem execution warnings, not a server-wide TPS measurement or a complete hang detector.
 
@@ -30,14 +31,14 @@ Configuration is read from the server process environment:
 - `NEXORA_AI_TIMEOUT_SECONDS` — request timeout; default 30.
 - `NEXORA_AI_ADMIN_XUIDS` — comma-separated Xbox XUID allowlist for operator mode.
 
-Only HTTPS endpoints are accepted, except HTTP on localhost for private development providers. API keys are never written to source files or logs. Player questions, operator repair-plan descriptions, the player's display name, and bounded recent conversation context are sent to the configured AI provider; operators should disclose this to players and must not invite them to submit passwords, tokens, or other secrets.
+Only HTTPS endpoints are accepted, except HTTP on localhost for private development providers. API keys are never written to source files or logs. Player questions, operator repair-plan descriptions, the player's display name, bounded recent conversation context, and (for repair plans) up to 12 timestamped diagnostic summaries are sent to the configured AI provider; operators should disclose this to players and must not invite them to submit passwords, tokens, or other secrets.
 
 ## Operator mode
 
 - `/ai admin` shows a read-only runtime snapshot. It also includes aggregate player/session, living-entity, and dropped-item counts; no player inventory or private profile data is exposed.
 - `/ai admin <question>` asks the assistant in operator context.
 - Access is granted only when the authenticated Xbox XUID is present in `NEXORA_AI_ADMIN_XUIDS`.
-- `/ai admin plan <problem>` asks the configured provider for a repair plan; `/ai admin proposals` lists saved proposals; `/ai admin proposal <id>` shows one; `/ai admin approve <id>` approves it for manual review; `/ai admin reject <id>` rejects it.
+- `/ai admin plan <problem>` asks the configured provider for a repair plan using the operator's description plus up to 12 recent timestamped diagnostic summaries. The model is told to separate observed facts from hypotheses and unknowns; `/ai admin proposals` lists saved proposals; `/ai admin proposal <id>` shows one; `/ai admin approve <id>` approves it for manual review; `/ai admin reject <id>` rejects it.
 - Proposals are bounded, held in memory only, and expire after 24 hours. The proposal text and issue description are visible to allowlisted operators on the server. Approval is a review-state change only and records the reviewing operator XUID and timestamp; it does not execute commands, apply patches, edit files, restart services, or mutate worlds.
 
 ## Safety and roadmap

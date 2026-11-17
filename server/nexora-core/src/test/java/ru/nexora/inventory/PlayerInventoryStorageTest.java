@@ -85,4 +85,29 @@ class PlayerInventoryStorageTest {
         assertThrows(IllegalArgumentException.class, () -> storage.save("../outside", new PlayerInventory()));
         assertThrows(IllegalArgumentException.class, () -> storage.load("../outside"));
     }
+    @Test
+    void persistsEnchantmentLevelsAndAnvilRepairPenalty() throws Exception {
+        PlayerInventoryStorage storage = new PlayerInventoryStorage(temporaryDirectory);
+        PlayerInventory inventory = new PlayerInventory();
+        inventory.setSlot(0, new ItemStack("minecraft:diamond_sword", 1, 1,
+                java.util.Map.of("minecraft:sharpness", 5, "minecraft:unbreaking", 3), 7));
+        storage.save("enchanted-player", inventory);
+
+        ItemStack restored = storage.load("enchanted-player").orElseThrow()
+                .getSlot(0).orElseThrow();
+        assertEquals(java.util.Map.of("minecraft:sharpness", 5, "minecraft:unbreaking", 3),
+                restored.enchantments());
+        assertEquals(7, restored.repairCost());
+        assertEquals(3, Byte.toUnsignedInt(Files.readAllBytes(
+                temporaryDirectory.resolve("enchanted-player.nxi"))[4]));
+    }
+
+    @Test
+    void enchantedStacksDoNotMergeWithUnenchantedStacks() {
+        ItemStack plain = new ItemStack("minecraft:diamond_sword", 1, 1);
+        ItemStack enchanted = new ItemStack("minecraft:diamond_sword", 1, 1,
+                java.util.Map.of("minecraft:sharpness", 1));
+        assertFalse(plain.canStackWith(enchanted));
+    }
+
 }

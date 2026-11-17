@@ -1641,11 +1641,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 target.combatLock.unlock();
             }
         }
-        handleLivingActorAttack(attacker, transaction, weapon, now);
+        handleLivingActorAttack(networkId, attacker, transaction, weapon, now);
     }
 
     private void handleLivingActorAttack(
-            SessionState attacker,
+            String attackerNetworkId, SessionState attacker,
             BedrockInventoryTransactionCodec.DecodedUseOnActor transaction,
             ItemStack weapon, long nowNanos
     ) {
@@ -1674,6 +1674,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         var damage = world.livingEntities().damage(target.runtimeId(), effect.damage()).orElse(null);
         if (damage == null) return;
         if (damage.killed()) {
+            grantMobRewards(attackerNetworkId, attacker, target);
+            nextMobAttackMillis.remove(target.runtimeId());
             broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(target.uniqueId()));
             return;
         }
@@ -1698,6 +1700,57 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         updated.velocityZ(), Math.max(0, attacker.lastInputTick)));
             }
         }
+    }
+
+    private void grantMobRewards(String networkId, SessionState killer, WorldLivingEntity mob) {
+        ru.nexora.combat.MobLootService.Loot loot =
+                ru.nexora.combat.MobLootService.dropsFor(mob.identifier());
+        if (loot.experienceMilliPoints() > 0) {
+            awardExperienceMilli(networkId, killer, loot.experienceMilliPoints());
+        }
+        String ownerXuid = killer.identity == null ? null : killer.identity.xuid();
+        long nowMillis = System.currentTimeMillis();
+        for (int i = 0; i < loot.drops().size(); i++) {
+            ItemStack drop = loot.drops().get(i);
+            if (itemRegistry.findByIdentifier(drop.itemId()) == null) continue;
+            WorldItemEntity entity = null;
+            try {
+                entity = world.itemEntities().spawn(drop,
+                        mob.x(), mob.y() + 0.25, mob.z(),
+                        (i - (loot.drops().size() - 1) / 2.0) * 0.12, 0.18, 0.08,
+                        nowMillis, WorldItemEntityManager.DEFAULT_PICKUP_DELAY_MILLIS, ownerXuid);
+                broadcastItemActor(entity, BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry));
+            } catch (IOException | RuntimeException exception) {
+                if (entity != null) {
+                    try {
+                        world.itemEntities().remove(entity.runtimeId());
+                    } catch (RuntimeException rollbackFailure) {
+                        exception.addSuppressed(rollbackFailure);
+                    }
+                }
+                System.err.println("NEXORA: unable to create mob loot for " + mob.identifier()
+                        + ": " + exception.getMessage());
+            }
+        }
+    }
+
+    private void awardExperienceMilli(String networkId, SessionState state, int amountMilli) {
+        if (amountMilli <= 0 || !state.loginAuthenticated || state.dead || state.vitals.dead()) return;
+        long previous = (long) state.experiencePoints * 1000L + state.experienceRemainderMilli;
+        long updated = Math.min(2_000_000_000_000L, previous + amountMilli);
+        if (updated == previous) return;
+        state.experiencePoints = (int) (updated / 1000L);
+        state.experienceRemainderMilli = (int) (updated % 1000L);
+        try {
+            savePlayer(state);
+        } catch (IOException | RuntimeException exception) {
+            state.experiencePoints = (int) (previous / 1000L);
+            state.experienceRemainderMilli = (int) (previous % 1000L);
+            System.err.println("NEXORA: mob XP reward could not be persisted for " + networkId
+                    + ": " + exception.getMessage());
+            return;
+        }
+        sendPacket(networkId, createPlayerAttributes(state, Math.max(0, state.lastInputTick)), true);
     }
 
     private void tickWorldLivingActors(long tick) {

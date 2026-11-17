@@ -29,8 +29,12 @@ public final class MobPhysicsService {
         double vy = entity.velocityY();
         double vz = entity.velocityZ();
         if (!flying) {
-            if (groundedBeforeMove && vy < 0) vy = 0;
-            else if (!groundedBeforeMove) vy = Math.max(TERMINAL_FALL_SPEED, vy - GRAVITY_PER_TICK);
+            if (groundedBeforeMove && vy < 0) {
+                vy = isBouncyMob(entity.identifier())
+                        ? Math.min(1.2, Math.max(0.2, -vy * 0.8)) : 0;
+            } else if (!groundedBeforeMove) {
+                vy = Math.max(TERMINAL_FALL_SPEED, vy - GRAVITY_PER_TICK);
+            }
         }
 
         double x = entity.x();
@@ -72,6 +76,10 @@ public final class MobPhysicsService {
         }
         boolean groundedAfterMove = !flying && WorldCollision.isOnGround(world, x, y, z);
         return new Result(updated, moved, groundedAfterMove);
+    }
+
+    private static boolean isBouncyMob(String identifier) {
+        return "minecraft:slime".equals(identifier) || "minecraft:magma_cube".equals(identifier);
     }
 
     private static double damp(double value) {

@@ -3492,6 +3492,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             throw new IllegalStateException("NEXORA entity ID space exhausted");
         }
         try {
+            state.playerDeviceId = clientData.path("DeviceId").asText("");
+            state.platformChatId = clientData.path("PlatformOnlineId").asText("");
+            state.buildPlatform = BedrockPlayerSkinCodec.buildPlatform(clientData);
             state.playerListEntry = createPlayerListEntry(state.identity, clientData, state.entityId);
         } catch (RuntimeException exception) {
             // Cosmetic data must never prevent an otherwise authenticated player from joining.
@@ -3693,6 +3696,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.yaw = input.yaw();
         state.pitch = input.pitch();
         state.lastInputTick = input.tick();
+        broadcastPlayerMovement(networkId, state);
 
         for (BedrockPlayerAuthInputCodec.BlockAction action : input.blockActions()) {
             handleBlockAction(networkId, state, action);
@@ -3776,6 +3780,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.lastInputTick = input.tick();
         state.lastMovementNanos = nanoTime.getAsLong();
         state.hasReceivedInput = true;
+        broadcastPlayerMovement(networkId, state);
         double horizontalDistance = Math.hypot(state.positionX - previousX, state.positionZ - previousZ);
         updateSurvivalVitals(networkId, state, input.tick(), horizontalDistance, sprinting, jumpStarted);
         if (next.landedDistance() > 3.0) {
@@ -4923,10 +4928,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private BedrockPlayerListCodec.AddEntry createPlayerListEntry(
             NetherNetClientIdentity identity, JsonNode clientData, long actorUniqueId
     ) {
-        UUID playerUuid;
-        try {
-            playerUuid = UUID.fromString(identity.identityUuid());
-        } catch (RuntimeException exception) {
+        UUID playerUuid = parsePlayerUuid(identity.identityUuid());
+        if (playerUuid == null) playerUuid = parsePlayerUuid(clientData.path("SelfSignedId").asText(""));
+        if (playerUuid == null) {
             playerUuid = UUID.nameUUIDFromBytes(
                     ("NEXORA:" + identity.xuid()).getBytes(StandardCharsets.UTF_8));
         }
@@ -4968,15 +4972,28 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     + ": " + exception.getMessage());
             return;
         }
-        BedrockPacket add = BedrockPlayerListCodec.createAdd(List.of(joining.playerListEntry));
+        // Existing player actors are spawned for the newcomer after the matching PlayerList entries.
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            if (entry.getKey().equals(networkId)) continue;
+            SessionState existing = entry.getValue();
+            if (!existing.clientInitialized || !existing.playerListAdvertised
+                    || existing.playerListEntry == null) continue;
+            try {
+                sendPacket(networkId, createAddPlayerPacket(existing), true);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to spawn existing player for " + networkId
+                        + ": " + exception.getMessage());
+            }
+        }
+        BedrockPacket addPlayer = createAddPlayerPacket(joining);
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
             if (entry.getKey().equals(networkId)) continue;
             SessionState recipient = entry.getValue();
             if (!recipient.clientInitialized || !recipient.playerListAdvertised) continue;
             try {
-                sendPacket(entry.getKey(), add, true);
+                sendPacket(entry.getKey(), addPlayer, true);
             } catch (RuntimeException exception) {
-                System.err.println("NEXORA: unable to advertise joining player to " + entry.getKey()
+                System.err.println("NEXORA: unable to spawn joining player for " + entry.getKey()
                         + ": " + exception.getMessage());
             }
         }
@@ -4988,14 +5005,71 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         leaving.playerListAdvertised = false;
         BedrockPacket remove = BedrockPlayerListCodec.createRemove(
                 List.of(leaving.playerListEntry.uuid()));
+        BedrockPacket removeActor = BedrockAddItemActorCodec.createRemoveActor(leaving.entityId);
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
             if (entry.getKey().equals(networkId)) continue;
             SessionState recipient = entry.getValue();
             if (!recipient.clientInitialized || !recipient.playerListAdvertised) continue;
             try {
+                sendPacket(entry.getKey(), removeActor, true);
                 sendPacket(entry.getKey(), remove, true);
             } catch (RuntimeException exception) {
                 System.err.println("NEXORA: unable to remove disconnected player from " + entry.getKey()
+                        + ": " + exception.getMessage());
+            }
+        }
+    }
+
+    private static UUID parsePlayerUuid(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+    }
+
+    private BedrockPacket createAddPlayerPacket(SessionState player) {
+        BedrockPlayerListCodec.AddEntry entry = Objects.requireNonNull(
+                player.playerListEntry, "playerListEntry");
+        return BedrockAddPlayerCodec.createSpawn(new BedrockAddPlayerCodec.SpawnData(
+                entry.uuid(),
+                entry.playerName(),
+                player.entityId,
+                player.platformChatId,
+                player.positionX,
+                player.positionY + 1.62,
+                player.positionZ,
+                (float) player.velocityX,
+                (float) player.velocityY,
+                (float) player.velocityZ,
+                player.pitch,
+                player.yaw,
+                player.yaw,
+                player.playerDeviceId,
+                player.buildPlatform));
+    }
+
+    private void broadcastPlayerMovement(String sourceNetworkId, SessionState player) {
+        if (!player.clientInitialized || !player.playerListAdvertised || player.playerListEntry == null) return;
+        boolean onGround = player.physicsState != null && player.physicsState.onGround();
+        BedrockPacket movement = BedrockMoveActorAbsoluteCodec.create(
+                player.entityId,
+                player.positionX,
+                player.positionY + 1.62,
+                player.positionZ,
+                player.pitch,
+                player.yaw,
+                player.yaw,
+                onGround);
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            if (entry.getKey().equals(sourceNetworkId)) continue;
+            SessionState recipient = entry.getValue();
+            if (!recipient.clientInitialized || !recipient.playerListAdvertised) continue;
+            try {
+                sendPacket(entry.getKey(), movement, true);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to sync player movement to " + entry.getKey()
                         + ": " + exception.getMessage());
             }
         }
@@ -5233,5 +5307,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private NetherNetClientIdentity identity;
         private BedrockPlayerListCodec.AddEntry playerListEntry;
         private boolean playerListAdvertised;
+        private String playerDeviceId = "";
+        private String platformChatId = "";
+        private int buildPlatform = -1;
     }
 }

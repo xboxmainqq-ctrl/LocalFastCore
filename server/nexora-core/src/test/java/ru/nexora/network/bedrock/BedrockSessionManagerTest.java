@@ -885,6 +885,27 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void hostileMobsDespawnAfterLongAbsenceButPassiveMobsRemain() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "mob-natural-despawn-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
+        var zombie = manager.spawnLivingEntity("minecraft:zombie", 20.0f, 0.5, 65.0, 0.5);
+        var cow = manager.spawnLivingEntity("minecraft:cow", 10.0f, 2.5, 65.0, 0.5);
+
+        invokeLivingActorTick(manager, 20L);
+        clock.set(31_000_000_000L);
+        invokeLivingActorTick(manager, 620L);
+
+        assertTrue(mobWorld.livingEntities().find(zombie.runtimeId()).isEmpty());
+        assertTrue(mobWorld.livingEntities().find(cow.runtimeId()).isPresent());
+        manager.close();
+    }
+
+    @Test
     void fireDeathClearsTransientMobAiState() throws Exception {
         java.util.concurrent.atomic.AtomicLong clock =
                 new java.util.concurrent.atomic.AtomicLong(2_000_000_000L);

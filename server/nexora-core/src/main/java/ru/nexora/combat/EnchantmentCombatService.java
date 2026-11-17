@@ -59,7 +59,7 @@ public final class EnchantmentCombatService {
         return total;
     }
 
-    /** Applies vanilla-style armor points, toughness, and Protection enchantments. */
+    /** Applies Bedrock armor-point and Protection-enchantment damage reduction. */
     public static float applyArmorReduction(float incomingDamage, List<ItemStack> armor) {
         if (!Float.isFinite(incomingDamage) || incomingDamage < 0.0f) {
             throw new IllegalArgumentException("incomingDamage must be finite and non-negative");

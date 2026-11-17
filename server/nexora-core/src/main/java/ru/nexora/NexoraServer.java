@@ -15,6 +15,7 @@ import ru.nexora.world.WorldItemEntityStorage;
 import ru.nexora.inventory.ContainerInventoryStorage;
 import ru.nexora.inventory.FurnaceStateStorage;
 import ru.nexora.world.WorldAutosave;
+import ru.nexora.world.WorldFurnaceTicker;
 import ru.nexora.world.PlayerDataStorage;
 import ru.nexora.inventory.PlayerInventoryStorage;
 import ru.nexora.inventory.PlayerEquipmentStorage;
@@ -131,12 +132,19 @@ public final class NexoraServer {
         WorldAutosave autosave = new WorldAutosave(world, Duration.ofSeconds(autosaveSeconds),
                 exception -> System.err.println("NEXORA: periodic world/player autosave failed: " + exception.getMessage()),
                 bedrockSessions::savePlayers);
+        WorldFurnaceTicker furnaceTicker = new WorldFurnaceTicker(world,
+                exception -> System.err.println("NEXORA: furnace tick failed: " + exception.getMessage()));
         try {
             discovery.start();
             signaling.start();
         } catch (Exception exception) {
             signaling.close();
             negotiator.close();
+            try {
+                furnaceTicker.close();
+            } catch (java.io.IOException tickerException) {
+                exception.addSuppressed(tickerException);
+            }
             try {
                 autosave.close();
             } catch (java.io.IOException saveException) {
@@ -150,6 +158,11 @@ public final class NexoraServer {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             signaling.close();
             negotiator.close();
+            try {
+                furnaceTicker.close();
+            } catch (java.io.IOException exception) {
+                System.err.println("NEXORA: unable to stop furnace ticker: " + exception.getMessage());
+            }
             try {
                 autosave.close();
             } catch (java.io.IOException exception) {

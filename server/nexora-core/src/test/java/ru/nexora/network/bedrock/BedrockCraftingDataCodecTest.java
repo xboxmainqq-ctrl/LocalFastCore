@@ -12,16 +12,45 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockCraftingDataCodecTest {
     @Test
-    void encodesProtocol2225ShapelessRecipesAndRequiredSmithingTrimEntry() {
+    void encodesProtocol2225ShapedAndShapelessRecipesAndRequiredSmithingTrimEntry() {
         var recipes = CraftingRecipeRegistry.vanillaSubset();
         var items = BedrockVanillaItemCatalog.createRegistry();
         BedrockPacket packet = BedrockCraftingDataCodec.createPacket(recipes, items);
         assertEquals(0x34, packet.packetId());
 
         Reader in = new Reader(packet.payload());
-        assertEquals(0, in.varUInt());
-        assertEquals(3, in.varUInt());
-        for (CraftingRecipe recipe : recipes.recipes()) {
+        assertEquals(1, in.varUInt()); // shaped recipes
+        CraftingRecipe shaped = recipes.recipes().stream().filter(CraftingRecipe::isShaped)
+                .findFirst().orElseThrow();
+        assertEquals(shaped.id(), in.string());
+        assertEquals(shaped.width(), in.varInt());
+        assertEquals(shaped.height(), in.varInt());
+        for (String row : shaped.pattern()) {
+            for (int i = 0; i < row.length(); i++) {
+                assertEquals(1, in.varUInt()); // DEFAULT ingredient descriptor
+                assertEquals("name", in.string());
+                assertEquals(shaped.key().get(row.charAt(i)), in.string());
+                assertEquals(0, in.varInt());
+                assertEquals(1, in.varInt());
+            }
+        }
+        assertEquals(1, in.varUInt()); // shaped result count
+        var shapedOutput = items.findByIdentifier(shaped.result().itemId()).networkDefinition();
+        assertEquals(shapedOutput.runtimeItemId(), in.varInt());
+        assertEquals(shaped.result().count(), in.int16());
+        assertEquals(shapedOutput.auxValue(), in.varUIntLong());
+        assertEquals(shapedOutput.blockRuntimeId(), in.varInt());
+        assertEquals(0, in.byteArray().length);
+        assertEquals(shaped.uuid(), in.uuidLittleEndian());
+        assertEquals("crafting_table", in.string());
+        assertEquals(0, in.varInt());
+        assertEquals(1, in.byteValue());
+        assertEquals(1, in.varInt());
+        assertEquals(0, in.byteValue());
+        assertEquals(recipes.networkId(shaped.id()), in.varUInt());
+
+        assertEquals(3, in.varUInt()); // shapeless recipes
+        for (CraftingRecipe recipe : recipes.recipes().stream().filter(r -> !r.isShaped()).toList()) {
             assertEquals(recipe.id(), in.string());
             assertEquals(1, in.varUInt());
             assertEquals(1, in.varUInt()); // DEFAULT item descriptor

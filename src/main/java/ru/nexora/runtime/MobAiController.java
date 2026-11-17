@@ -64,6 +64,7 @@ public final class MobAiController {
         Objects.requireNonNull(behavior, "behavior");
         behaviors.put(mobId, behavior);
         decisions.remove(mobId);
+        pathRetries.remove(mobId);
         if (behavior != Behavior.NEUTRAL) {
             provokedTargets.remove(mobId);
         }
@@ -233,6 +234,7 @@ public final class MobAiController {
         double nextZ = mob.z() + stepZ * scale;
         if (!hasSafeFooting(world, nextX, mob.y(), nextZ)) {
             navigation.remove(mob.id());
+            pathRetries.put(mob.id(), new PathRetryState(targetX, targetZ, tick + 1));
             return remember(mob.id(), new Decision(State.STUCK, target.id(), false, false));
         }
 

@@ -93,7 +93,7 @@ public final class BedrockItemStackUserDataCodec {
     public static DecodedMetadata decode(byte[] userData, byte[] registeredUserData) {
         Objects.requireNonNull(userData, "userData");
         Objects.requireNonNull(registeredUserData, "registeredUserData");
-        if (java.util.Arrays.equals(userData, registeredUserData)) return new DecodedMetadata(Map.of(), 0);
+        if (java.util.Arrays.equals(userData, registeredUserData)) return new DecodedMetadata(Map.of(), 0, 0);
         if (registeredUserData.length != 0) throw new IllegalArgumentException("Unexpected custom Bedrock item user data");
 
         Reader in = new Reader(userData);

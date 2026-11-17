@@ -5295,7 +5295,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private final Set<Long> sentChunkKeys = ConcurrentHashMap.newKeySet();
         private BreakTarget breakTarget;
         private long entityId;
-        private boolean rejected;
+        private volatile boolean rejected;
         private PendingEquipmentForm pendingEquipmentForm;
         private int pendingAiFormId;
         private int nextContainerWindowId = 1;
@@ -5312,7 +5312,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private int clientProtocol;
         private NetherNetClientIdentity identity;
         private BedrockPlayerListCodec.AddEntry playerListEntry;
-        private boolean playerListAdvertised;
+        private volatile boolean playerListAdvertised;
         private String playerDeviceId = "";
         private String platformChatId = "";
         private int buildPlatform = -1;

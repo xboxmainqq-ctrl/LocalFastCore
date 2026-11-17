@@ -108,7 +108,9 @@ class MobSpawnerManagerTest {
         World world = createWorld();
         world.getChunk(1, 0);
         world.setBlock(15, 65, 0, BlockType.SPAWNER);
-        world.livingEntities().spawn("minecraft:zombie", 20, 16.0, 65, 0.5);
+        for (int i = 0; i < MobSpawnerManager.MAX_NEARBY_SAME_TYPE; i++) {
+            world.livingEntities().spawn("minecraft:zombie", 20, 16.0 + i * 0.1, 65, 0.5);
+        }
         MobSpawnerManager manager = new MobSpawnerManager();
         assertTrue(manager.register(15, 65, 0, 0));
 

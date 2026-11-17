@@ -122,6 +122,23 @@ class MobSpawnerManagerTest {
     }
 
     @Test
+    void flyingMobsCanSpawnWithoutSolidFloor() {
+        World world = createWorld();
+        world.setBlock(0, 65, 0, BlockType.SPAWNER);
+        for (int x = -4; x <= 4; x++) {
+            for (int z = -4; z <= 4; z++) world.setBlock(x, 64, z, BlockType.AIR);
+        }
+        MobSpawnerManager manager = new MobSpawnerManager();
+        assertTrue(manager.register(0, 65, 0, 0));
+        assertTrue(manager.configure(0, 65, 0, "minecraft:ghast", 20, 0));
+
+        var result = manager.tick(world, 20,
+                List.of(new MobSpawnerManager.PlayerPosition(0.5, 65, 0.5)), request -> true);
+
+        assertTrue(result.spawned() > 0);
+    }
+
+    @Test
     void largeMobSpawnRequiresItsFullBodyClearance() {
         World world = createWorld();
         world.setBlock(0, 65, 0, BlockType.SPAWNER);

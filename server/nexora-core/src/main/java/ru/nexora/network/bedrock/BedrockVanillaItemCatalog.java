@@ -38,6 +38,7 @@ public final class BedrockVanillaItemCatalog {
         addBlock(entries, "chest", 54, BlockType.CHEST);
         addBlock(entries, "oak_log", 17, BlockType.OAK_LOG);
         addBlock(entries, "oak_planks", 5, BlockType.OAK_PLANKS);
+        addBlock(entries, "crafting_table", 58, BlockType.CRAFTING_TABLE);
         add(entries, "diamond", 306, 2, 64);
         add(entries, "iron_ingot", 307, 2, 64);
         add(entries, "gold_ingot", 308, 2, 64);

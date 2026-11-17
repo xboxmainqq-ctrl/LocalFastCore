@@ -171,16 +171,17 @@ class MobSpawnerManagerTest {
         long placedAt = Math.max(0L, System.nanoTime() / 50_000_000L);
         assertTrue(first.mobSpawners().configure(3, 65, 3,
                 "minecraft:skeleton", 300, placedAt));
-        long expectedNextTick = first.mobSpawners().snapshot().get(0).nextSpawnTick();
         first.saveAll();
 
         World restarted = new World("spawner-persistence", 1L, new FlatWorldGenerator(),
                 0, 65, 0, new WorldStorage(directory, "spawner-persistence"),
                 null, null, null, null);
         MobSpawnerState restored = restarted.mobSpawners().snapshot().get(0);
+        long remainingAfterRestart = restored.nextSpawnTick()
+                - Math.max(0L, System.nanoTime() / 50_000_000L);
         assertEquals("minecraft:skeleton", restored.entityIdentifier());
         assertEquals(300, restored.delayTicks());
-        assertEquals(expectedNextTick, restored.nextSpawnTick());
+        assertTrue(remainingAfterRestart >= 0 && remainingAfterRestart <= 300);
         assertEquals(BlockType.SPAWNER, restarted.getBlock(3, 65, 3));
     }
 

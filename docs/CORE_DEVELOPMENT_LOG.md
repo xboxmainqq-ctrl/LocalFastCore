@@ -1,6 +1,6 @@
 # NEXORA Core — development log and next steps
 
-This is the hand-off log for core work. Update it after every meaningful implementation change. The user explicitly set the order: build the general-purpose NEXORA Core first; add magic and RPG gameplay only after the core foundations are ready.
+This is the hand-off log for NEXORA Core and its server. The latest user direction (2026-11-17) excludes an Android client and a separate RPG server. Keep general-purpose server/core work in scope, including native Mob AI; plan the Core AI Assistant and Moderation AI Assistant as later optional modules. See docs/NEXORA_AI_SYSTEMS_ROADMAP.md.
 
 ## Current scope
 
@@ -13,7 +13,7 @@ Work only on engine/server foundations:
 - transport-neutral protocol, authentication and safe networking;
 - versioned extension API, data-driven content and distribution.
 
-**Out of scope until the core milestone is accepted:** RPG classes/progression, magic, spells, abilities, quests, bosses, RPG economy and RPG-specific plugins. Existing RPG code may remain in the repository, but do not expand it during this phase.
+**Out of scope:** Android client, separate RPG server/product, RPG classes/progression, magic, spells, abilities, quests, bosses, RPG economy, AI mods and RPG-specific plugins. Existing historical code may remain untouched. Mob AI is in scope as a native Core entity subsystem, but should follow foundational entity/physics work. Core AI and Moderation AI assistants are in scope as later optional modules after a stable, permissioned API exists.
 
 ## Work log
 

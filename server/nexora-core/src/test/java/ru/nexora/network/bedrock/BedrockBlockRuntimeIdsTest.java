@@ -32,4 +32,11 @@ class BedrockBlockRuntimeIdsTest {
         assertEquals(0x7fb511dc, BedrockBlockRuntimeIds.forBlock(BlockType.BLAST_FURNACE));
         assertEquals(0xccc0ac65, BedrockBlockRuntimeIds.forBlock(BlockType.SMOKER));
     }
+    @Test
+    void mobSpawnerHasItsOwnBedrockRuntimeState() {
+        int spawner = BedrockBlockRuntimeIds.forBlock(BlockType.SPAWNER);
+        assertNotEquals(BedrockBlockRuntimeIds.forBlock(BlockType.AIR), spawner);
+        assertNotEquals(BedrockBlockRuntimeIds.forBlock(BlockType.STONE), spawner);
+    }
+
 }

@@ -476,6 +476,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         List<BedrockPacket> packets = new java.util.ArrayList<>();
         packets.add(BedrockInventoryContentCodec.createPlayerInventory(state.inventory, itemRegistry));
         packets.addAll(createEquipmentReconciliationPackets(state));
+        packets.add(BedrockInventoryContentCodec.createPlayerUiInventory(state.craftingUiInventory, itemRegistry));
         sendPackets(networkId, packets, true);
     }
 
@@ -773,6 +774,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         List<BedrockPacket> packets = new java.util.ArrayList<>();
         packets.add(BedrockInventoryContentCodec.createPlayerInventory(state.inventory, itemRegistry));
         packets.addAll(createEquipmentReconciliationPackets(state));
+        packets.add(BedrockInventoryContentCodec.createPlayerUiInventory(state.craftingUiInventory, itemRegistry));
         if (state.openContainerWindowId != 0 && state.openContainerInventory != null) {
             packets.add(BedrockInventoryContentCodec.createContainerInventory(
                     state.openContainerWindowId, state.openContainerInventory, itemRegistry));

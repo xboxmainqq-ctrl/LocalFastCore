@@ -24,6 +24,10 @@ class BedrockVanillaItemCatalogTest {
                 .networkDefinition().runtimeItemId());
         assertEquals(425, registry.findByIdentifier("minecraft:ender_pearl")
                 .networkDefinition().runtimeItemId());
+        assertEquals(277, registry.findByIdentifier("minecraft:rotten_flesh")
+                .networkDefinition().runtimeItemId());
+        assertEquals(418, registry.findByIdentifier("minecraft:bone")
+                .networkDefinition().runtimeItemId());
         assertEquals(16, registry.findByIdentifier("minecraft:ender_pearl").maxStackSize());
         assertEquals(64, registry.findByIdentifier("minecraft:iron_ingot").maxStackSize());
         assertEquals(289, registry.findByIdentifier("minecraft:cooked_rabbit").networkDefinition().runtimeItemId());

@@ -120,6 +120,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             new ru.nexora.world.MobPathCache();
     private final ru.nexora.combat.MobStuckTracker mobStuckTracker =
             new ru.nexora.combat.MobStuckTracker();
+    private final ru.nexora.combat.MobDespawnTracker mobDespawnTracker =
+            new ru.nexora.combat.MobDespawnTracker();
     private final ru.nexora.combat.MobAiLoadController mobAiLoadController =
             new ru.nexora.combat.MobAiLoadController();
     private volatile boolean serverAuthoritativeMovement;
@@ -2502,6 +2504,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 double dz = nearestPlayer.z() - mob.z();
                 nearestPlayerDistanceSquared = dx * dx + dy * dy + dz * dz;
             }
+            if (mobDespawnTracker.shouldDespawn(mob.runtimeId(),
+                    ru.nexora.combat.LivingEntityAiService.isHostile(mob.identifier()),
+                    nearestPlayerDistanceSquared, nowMillis)) {
+                despawnLivingEntity(mob.runtimeId());
+                continue;
+            }
             boolean hasActiveTarget = livingEntityAggroTargets.containsKey(mob.runtimeId());
             if (!mobAiLoadController.shouldUpdate(mob.runtimeId(), tick,
                     nearestPlayerDistanceSquared, hasActiveTarget)) {
@@ -2984,6 +2992,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         nextMobAttackMillis.remove(runtimeId);
         mobPathCache.remove(runtimeId);
         mobStuckTracker.clear(runtimeId);
+        mobDespawnTracker.clear(runtimeId);
         creeperFuseStartedMillis.remove(runtimeId);
         endermanTeleportCooldownMillis.remove(runtimeId);
         livingEntityAggroTargets.remove(runtimeId);

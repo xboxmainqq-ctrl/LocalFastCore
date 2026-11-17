@@ -14,6 +14,7 @@ import java.util.UUID;
 public final class BedrockCraftingEventCodec {
     public static final int CRAFTING_EVENT_PACKET_ID = 0x35;
     public static final int TYPE_SHAPELESS = 0;
+    public static final int TYPE_SHAPED = 1;
 
     private static final int MAX_GRID_SLOTS = 9;
     private static final int MAX_OUTPUTS = 4;
@@ -30,6 +31,9 @@ public final class BedrockCraftingEventCodec {
         Reader in = new Reader(packet.payload());
         int windowId = in.byteValue();
         int type = in.varInt32();
+        if (type != TYPE_SHAPELESS && type != TYPE_SHAPED) {
+            throw new IllegalArgumentException("Unsupported CraftingEvent recipe type");
+        }
         UUID recipeId = in.uuidLittleEndian();
         int inputCount = in.varUInt32();
         if (inputCount < 1 || inputCount > MAX_GRID_SLOTS) {

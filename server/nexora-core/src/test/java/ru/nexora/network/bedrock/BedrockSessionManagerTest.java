@@ -229,6 +229,16 @@ class BedrockSessionManagerTest {
                 combatWorld.livingEntities().find(zombie.runtimeId()).orElseThrow().health(), 0.0001f);
         assertEquals(Long.MIN_VALUE,
                 getSessionField(manager, "charge-mob-attacker", "spearChargeStartedNanos"));
+        assertEquals(Long.MIN_VALUE,
+                getSessionField(manager, "charge-mob-attacker", "spearChargeReleasedNanos"));
+
+        // The released charge is single-use. After the normal spear cooldown,
+        // another packet hit deals only the ordinary 5 damage, not charged damage.
+        clock.addAndGet(1_100_000_000L);
+        sendActorAttack(manager, "charge-mob-attacker", zombie.runtimeId(),
+                spearDefinition.networkDefinition().runtimeItemId(), 0.5f, 65.0f, 0.5f);
+        assertEquals(8.55f,
+                combatWorld.livingEntities().find(zombie.runtimeId()).orElseThrow().health(), 0.0001f);
         manager.close();
     }
 

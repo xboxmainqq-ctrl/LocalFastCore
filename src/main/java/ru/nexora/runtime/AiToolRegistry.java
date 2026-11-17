@@ -62,14 +62,17 @@ public final class AiToolRegistry {
         }
         // Write the audit record before invoking a state-changing operation.
         auditSink.accept(new AuditEvent(principal.id(), toolId, Status.APPROVED, tool.mutating()));
+        String output;
         try {
-            String output = Objects.requireNonNull(tool.action().apply(safeArguments), "AI tool output");
-            auditSink.accept(new AuditEvent(principal.id(), toolId, Status.SUCCESS, tool.mutating()));
-            return new ToolResult(Status.SUCCESS, output);
+            output = Objects.requireNonNull(tool.action().apply(safeArguments), "AI tool output");
         } catch (RuntimeException failure) {
             auditSink.accept(new AuditEvent(principal.id(), toolId, Status.FAILED, tool.mutating()));
             return new ToolResult(Status.FAILED, "Tool failed: " + failure.getClass().getSimpleName());
         }
+        // Keep audit-sink failures separate from action failures: the action has
+        // already completed and must never be reported as though it did not run.
+        auditSink.accept(new AuditEvent(principal.id(), toolId, Status.SUCCESS, tool.mutating()));
+        return new ToolResult(Status.SUCCESS, output);
     }
 
     private static Map<String, String> validateArguments(Map<String, String> arguments) {

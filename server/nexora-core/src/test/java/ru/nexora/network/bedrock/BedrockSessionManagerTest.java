@@ -1100,8 +1100,6 @@ class BedrockSessionManagerTest {
                 (ru.nexora.world.MobPathCache) getManagerField(manager, "mobPathCache");
         ru.nexora.combat.MobStuckTracker stuck =
                 (ru.nexora.combat.MobStuckTracker) getManagerField(manager, "mobStuckTracker");
-        ru.nexora.combat.MobFallTracker falls =
-                (ru.nexora.combat.MobFallTracker) getManagerField(manager, "mobFallTracker");
         cache.findNextStep(zombie.runtimeId(), mobWorld, 0.5, 65, 0.5, 3.5, 0.5, 1_000);
         stuck.recordBlockedAttempt(zombie.runtimeId(), 0.5, 65, 0.5, 1_000);
         falls.update(zombie.runtimeId(), 80, false, false);

@@ -1,6 +1,9 @@
 package ru.nexora.inventory;
 
 import java.util.LinkedHashMap;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.UUID;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -8,6 +11,7 @@ import java.util.Objects;
 /** Immutable recipe registry. The initial vanilla subset contains only verified items. */
 public final class CraftingRecipeRegistry {
     private final Map<String, CraftingRecipe> byId;
+    private final List<CraftingRecipe> ordered;
 
     public CraftingRecipeRegistry(List<CraftingRecipe> recipes) {
         Objects.requireNonNull(recipes, "recipes");
@@ -19,6 +23,9 @@ public final class CraftingRecipeRegistry {
             }
         }
         byId = Map.copyOf(index);
+        List<CraftingRecipe> sorted = new ArrayList<>(index.values());
+        sorted.sort(Comparator.comparing(CraftingRecipe::id));
+        ordered = List.copyOf(sorted);
     }
 
     public static CraftingRecipeRegistry vanillaSubset() {
@@ -37,7 +44,19 @@ public final class CraftingRecipeRegistry {
     }
 
     public List<CraftingRecipe> recipes() {
-        return List.copyOf(byId.values());
+        return ordered;
+    }
+
+    public CraftingRecipe findByUuid(UUID uuid) {
+        if (uuid == null) return null;
+        return ordered.stream().filter(recipe -> recipe.uuid().equals(uuid)).findFirst().orElse(null);
+    }
+
+    public int networkId(String recipeId) {
+        for (int i = 0; i < ordered.size(); i++) {
+            if (ordered.get(i).id().equals(recipeId)) return i + 1;
+        }
+        return 0;
     }
 
     public int size() {

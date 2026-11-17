@@ -147,6 +147,14 @@ class MobSpawnerManagerTest {
     }
 
     @Test
+    void spawnerStateRejectsCoordinatesOutsideWorldBorder() {
+        assertThrows(IllegalArgumentException.class, () ->
+                new MobSpawnerState(30_000_001, 65, 0, "minecraft:zombie", 200, 300));
+        assertThrows(IllegalArgumentException.class, () ->
+                new MobSpawnerState(0, 65, -30_000_001, "minecraft:zombie", 200, 300));
+    }
+
+    @Test
     void blockChangeRegistersAndRemovesSpawner() {
         MobSpawnerManager manager = new MobSpawnerManager();
         manager.onBlockChanged(new World.BlockChange(2, 65, 2, BlockType.AIR, BlockType.SPAWNER), 50);

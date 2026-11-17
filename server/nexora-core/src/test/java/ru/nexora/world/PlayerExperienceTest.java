@@ -26,6 +26,18 @@ class PlayerExperienceTest {
     }
 
     @Test
+    void retainsFractionalExperienceAcrossSmallFurnaceCollections() {
+        PlayerExperience.Progress progress = PlayerExperience.fromTotalMilliPoints(350);
+        assertEquals(0, progress.level());
+        assertEquals(0.05f, progress.progress(), 0.0001f);
+        assertEquals(0, progress.totalPoints());
+
+        PlayerExperience.Progress onePoint = PlayerExperience.fromTotalMilliPoints(1000);
+        assertEquals(1, onePoint.totalPoints());
+        assertEquals(1.0f / 7.0f, onePoint.progress(), 0.0001f);
+    }
+
+    @Test
     void addsPointsWithoutOverflowAndRejectsInvalidValues() {
         assertEquals(15, PlayerExperience.addPoints(10, 5));
         assertEquals(2_000_000_000, PlayerExperience.addPoints(2_000_000_000, 100));

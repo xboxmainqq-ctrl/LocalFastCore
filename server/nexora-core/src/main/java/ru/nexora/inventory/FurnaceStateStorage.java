@@ -12,8 +12,9 @@ import java.util.zip.CRC32C;
 /** Atomic, checksummed persistence for furnace burn and cook progress. */
 public final class FurnaceStateStorage {
     private static final int MAGIC = 0x4e584652; // NXFR
-    private static final int VERSION = 1;
-    private static final int BODY_BYTES = Integer.BYTES + 1 + 3 * Integer.BYTES + 2 * Integer.BYTES;
+    private static final int VERSION = 2;
+    private static final int BODY_V1_BYTES = Integer.BYTES + 1 + 3 * Integer.BYTES + 2 * Short.BYTES;
+    private static final int BODY_V2_BYTES = BODY_V1_BYTES + Short.BYTES;
     private final Path directory;
 
     public FurnaceStateStorage(Path rootDirectory, String worldName) throws IOException {

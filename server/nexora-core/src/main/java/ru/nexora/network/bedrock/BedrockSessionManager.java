@@ -623,6 +623,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
 
         CraftingRecipe recipe = craftingRecipes.findByUuid(event.recipeId());
+        if (state.openContainerIsCraftingTable && state.openContainerInventory != null
+                && event.windowId() == state.openContainerWindowId) {
+            handleCraftingTableEvent(networkId, state, event, recipe);
+            return;
+        }
         if (recipe == null || event.windowId() != 0 || event.input().size() != 4
                 || event.output().size() != 1 || event.output().getFirst().isEmpty()
                 || event.type() != (recipe.isShaped()
@@ -660,6 +665,51 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             System.err.println("NEXORA: rejected crafting event for " + recipe.id() + ": " + result);
         }
         sendInventoryAndEquipmentState(networkId, state);
+    }
+
+    private void handleCraftingTableEvent(
+            String networkId, SessionState state,
+            BedrockCraftingEventCodec.DecodedEvent event, CraftingRecipe recipe
+    ) {
+        ContainerInventory grid = state.openContainerInventory;
+        if (recipe == null || grid == null || event.input().size() != 9
+                || event.output().size() != 1 || event.output().getFirst().isEmpty()
+                || event.type() != (recipe.isShaped()
+                        ? BedrockCraftingEventCodec.TYPE_SHAPED : BedrockCraftingEventCodec.TYPE_SHAPELESS)
+                || !event.output().getFirst().orElseThrow().itemId().equals(recipe.result().itemId())
+                || event.output().getFirst().orElseThrow().count() != recipe.result().count()
+                || !event.input().equals(grid.snapshot())) {
+            sendPackets(networkId, List.of(
+                    BedrockInventoryContentCodec.createPlayerInventory(state.inventory, itemRegistry),
+                    BedrockInventoryContentCodec.createContainerInventory(
+                            state.openContainerWindowId, grid, itemRegistry)), true);
+            return;
+        }
+
+        List<Optional<ItemStack>> beforePlayer = state.inventory.snapshot();
+        int selectedSlot = state.inventory.selectedHotbarSlot();
+        List<Optional<ItemStack>> beforeGrid = grid.snapshot();
+        CraftingService.Result result = craftingService.craftFromGrid(
+                state.inventory, grid, 0, 3, 3, recipe);
+        if (result == CraftingService.Result.CRAFTED) {
+            try {
+                saveInventory(state);
+            } catch (IOException | RuntimeException exception) {
+                state.inventory.restore(beforePlayer, selectedSlot);
+                grid.restore(beforeGrid);
+                try { saveInventory(state); }
+                catch (IOException | RuntimeException rollbackFailure) {
+                    exception.addSuppressed(rollbackFailure);
+                }
+                System.err.println("NEXORA: crafting table transaction rolled back: " + exception.getMessage());
+            }
+        } else {
+            System.err.println("NEXORA: rejected crafting table event for " + recipe.id() + ": " + result);
+        }
+        sendPackets(networkId, List.of(
+                BedrockInventoryContentCodec.createPlayerInventory(state.inventory, itemRegistry),
+                BedrockInventoryContentCodec.createContainerInventory(
+                        state.openContainerWindowId, grid, itemRegistry)), true);
     }
 
     private static boolean craftingUiGridMatches(

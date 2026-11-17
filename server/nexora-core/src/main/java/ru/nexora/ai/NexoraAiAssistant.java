@@ -13,6 +13,9 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.Arrays;
+import java.util.stream.Collectors;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -29,11 +32,17 @@ public final class NexoraAiAssistant {
     private final URI endpoint;
     private final Duration timeout;
     private final NexoraAiDiagnostics diagnostics;
+    private final Set<String> adminXuids;
     private final HttpClient client;
     private final ConcurrentMap<String, Long> lastRequest = new ConcurrentHashMap<>();
 
     public NexoraAiAssistant(String apiKey, String model, URI endpoint,
                              Duration timeout, NexoraAiDiagnostics diagnostics) {
+        this(apiKey, model, endpoint, timeout, diagnostics, Set.of());
+    }
+
+    public NexoraAiAssistant(String apiKey, String model, URI endpoint,
+                             Duration timeout, NexoraAiDiagnostics diagnostics, Set<String> adminXuids) {
         this.apiKey = apiKey == null ? "" : apiKey.trim();
         if (model == null || model.isBlank()) throw new IllegalArgumentException("model must not be blank");
         this.model = model.trim();
@@ -43,6 +52,7 @@ public final class NexoraAiAssistant {
             throw new IllegalArgumentException("timeout must be between 1 ms and 2 minutes");
         }
         this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
+        this.adminXuids = Set.copyOf(Objects.requireNonNull(adminXuids, "adminXuids"));
         this.client = HttpClient.newBuilder().connectTimeout(timeout).build();
     }
 
@@ -52,14 +62,36 @@ public final class NexoraAiAssistant {
         String model = env.getOrDefault("NEXORA_AI_MODEL", "gpt-4o-mini");
         URI endpoint = URI.create(env.getOrDefault("NEXORA_AI_ENDPOINT", DEFAULT_ENDPOINT));
         long seconds = Long.parseLong(env.getOrDefault("NEXORA_AI_TIMEOUT_SECONDS", "30"));
-        return new NexoraAiAssistant(key, model, endpoint, Duration.ofSeconds(seconds), diagnostics);
+        Set<String> admins = Arrays.stream(env.getOrDefault("NEXORA_AI_ADMIN_XUIDS", "").split(","))
+                .map(String::trim).filter(value -> !value.isEmpty()).collect(Collectors.toUnmodifiableSet());
+        return new NexoraAiAssistant(key, model, endpoint, Duration.ofSeconds(seconds), diagnostics, admins);
     }
 
     public boolean isEnabled() {
         return !apiKey.isBlank();
     }
 
+    /** Checks the authenticated Xbox XUID against the server-side operator allowlist. */
+    public boolean isAdmin(String xuid) {
+        return xuid != null && !xuid.isBlank() && adminXuids.contains(xuid);
+    }
+
+    /** Read-only operator snapshot; no command execution or repair is performed. */
+    public String adminStatus() {
+        NexoraAiDiagnostics.Snapshot s = diagnostics.inspect();
+        String heap = s.heapUsageRatio() < 0 ? "unknown"
+                : String.format(java.util.Locale.ROOT, "%.1f%%", s.heapUsageRatio() * 100.0);
+        return "Состояние ядра: " + s.health() + "; heap " + heap
+                + "; потоки " + s.liveThreadCount() + "; CPU " + s.availableProcessors()
+                + "; ошибок " + s.recordedFailures() + "; последняя: " + s.lastFailure();
+    }
+
     public AskResult ask(String playerId, String playerName, String prompt, Consumer<String> reply) {
+        return ask(playerId, playerName, prompt, false, reply);
+    }
+
+    public AskResult ask(String playerId, String playerName, String prompt,
+                         boolean admin, Consumer<String> reply) {
         Objects.requireNonNull(playerId, "playerId");
         Objects.requireNonNull(playerName, "playerName");
         Objects.requireNonNull(prompt, "prompt");
@@ -85,7 +117,7 @@ public final class NexoraAiAssistant {
         body.put("max_tokens", 320);
         body.put("temperature", 0.5);
         ArrayNode messages = body.putArray("messages");
-        messages.addObject().put("role", "system").put("content", systemPrompt());
+        messages.addObject().put("role", "system").put("content", systemPrompt(admin));
         messages.addObject().put("role", "user")
                 .put("content", "Игрок " + playerName + " спрашивает: " + prompt);
 
@@ -135,7 +167,7 @@ public final class NexoraAiAssistant {
         return AskResult.ACCEPTED;
     }
 
-    private String systemPrompt() {
+    private String systemPrompt(boolean admin) {
         NexoraAiDiagnostics.Snapshot s = diagnostics.inspect();
         String heap = s.heapUsageRatio() < 0 ? "unknown"
                 : String.format(java.util.Locale.ROOT, "%.1f%%", s.heapUsageRatio() * 100.0);
@@ -144,7 +176,9 @@ public final class NexoraAiAssistant {
                 + "выполнять команды, читать файлы или исправлять исходники. Доступные показатели JVM: health="
                 + s.health() + ", heap=" + heap + ", threads=" + s.liveThreadCount()
                 + ", uptimeMs=" + s.uptimeMillis() + ", reportedFailures=" + s.recordedFailures()
-                + ". Это не полная диагностика TPS или игровых подсистем.";
+                + ". Это не полная диагностика TPS или игровых подсистем."
+                + (admin ? " Ты отвечаешь администратору сервера. Можно подробно объяснять показатели диагностики, "
+                + "но нельзя выполнять команды, менять настройки, файлы, мир или процессы." : ""));
     }
 
     private static URI validateEndpoint(URI uri) {

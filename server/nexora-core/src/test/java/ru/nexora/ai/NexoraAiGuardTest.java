@@ -64,6 +64,59 @@ class NexoraAiGuardTest {
     }
 
     @Test
+    void repeatedHorizontalMovementCorrectionsProduceSpeedReviewSignal() {
+        List<NexoraAiGuard.GuardEvent> events = new ArrayList<>();
+        NexoraAiGuard guard = new NexoraAiGuard(1_000, 100, 10_000, 8, events::add);
+
+        for (int i = 0; i < 4; i++) {
+            guard.recordMovementDiscrepancy("player-xuid", 0.9, 0.1, i * 1_000_000_000L);
+        }
+
+        assertEquals(1, events.size());
+        assertTrue(events.getFirst().reason().contains("possible speed"));
+        assertEquals(1, guard.snapshot().totalSignalsSinceStart());
+    }
+
+    @Test
+    void repeatedVerticalMovementCorrectionsProduceFlyReviewSignal() {
+        List<NexoraAiGuard.GuardEvent> events = new ArrayList<>();
+        NexoraAiGuard guard = new NexoraAiGuard(1_000, 100, 10_000, 8, events::add);
+
+        for (int i = 0; i < 4; i++) {
+            guard.recordMovementDiscrepancy("player-xuid", 0.1, 1.0, i * 1_000_000_000L);
+        }
+
+        assertEquals(1, events.size());
+        assertTrue(events.getFirst().reason().contains("possible fly"));
+    }
+
+    @Test
+    void oneOffMovementCorrectionsDoNotFlagAndEvidenceExpires() {
+        List<NexoraAiGuard.GuardEvent> events = new ArrayList<>();
+        NexoraAiGuard guard = new NexoraAiGuard(1_000, 100, 10_000, 8, events::add);
+
+        guard.recordMovementDiscrepancy("player-xuid", 1.0, 0.0, 0);
+        guard.recordMovementDiscrepancy("player-xuid", 0.0, 1.0, 1_000_000_000L);
+        guard.recordMovementDiscrepancy("player-xuid", 1.0, 0.0, 2_000_000_000L);
+        guard.recordMovementDiscrepancy("player-xuid", 0.0, 1.0, 3_000_000_000L);
+        guard.recordMovementDiscrepancy("player-xuid", 1.0, 0.0, 11_000_000_000L);
+
+        assertTrue(events.isEmpty());
+        assertEquals(0, guard.snapshot().totalSignalsSinceStart());
+    }
+
+    @Test
+    void movementEvidenceIsBoundedAndRemovedWhenPlayerDisconnects() {
+        NexoraAiGuard guard = new NexoraAiGuard(1_000, 100, 10_000, 2, ignored -> { });
+        guard.recordMovementDiscrepancy("player-a", 1.0, 0.0, 0);
+        guard.recordMovementDiscrepancy("player-b", 1.0, 0.0, 0);
+        guard.recordMovementDiscrepancy("player-c", 1.0, 0.0, 0);
+        guard.onPlayerDisconnected("player-c");
+
+        assertEquals(0, guard.snapshot().signalledPeers());
+    }
+
+    @Test
     void rejectsInvalidLimitsAndFrames() {
         assertThrows(IllegalArgumentException.class,
                 () -> new NexoraAiGuard(0, 1, 1, 1, ignored -> { }));

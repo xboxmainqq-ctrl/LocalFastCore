@@ -15,6 +15,10 @@ class MobPathCacheTest {
 
         assertEquals(first, second);
         assertEquals(1, cache.size());
+        assertEquals(1, cache.stats().hits());
+        assertEquals(1, cache.stats().misses());
+        assertEquals(1, cache.stats().recomputations());
+        assertEquals(0.5, cache.stats().hitRate());
     }
 
     @Test
@@ -33,6 +37,8 @@ class MobPathCacheTest {
         assertNotEquals(original, replacement);
         assertTrue(WorldCollision.canMove(world, 0.5, 65, 0.5,
                 replacement.x(), 65, replacement.z()));
+        assertEquals(1, cache.stats().blockedWaypoints());
+        assertEquals(2, cache.stats().recomputations());
     }
 
     @Test
@@ -49,6 +55,8 @@ class MobPathCacheTest {
 
         world.setBlock(1, 65, 0, BlockType.AIR);
         assertTrue(cache.findNextStep(11L, world, 0.5, 65, 0.5, 3.5, 0.5, 3_050).isPresent());
+        assertEquals(2, cache.stats().recomputations());
+        assertEquals(2, cache.stats().misses());
     }
 
     @Test
@@ -60,10 +68,19 @@ class MobPathCacheTest {
         cache.findNextStep(2L, world, 0.5, 65, 1.5, 3.5, 1.5, 100);
         cache.findNextStep(3L, world, 0.5, 65, 2.5, 3.5, 2.5, 100);
         assertEquals(2, cache.size());
+        assertEquals(1, cache.stats().evictions());
 
         cache.findNextStep(3L, world, 0.5, 65, 2.5, 3.5, 2.5, 111);
         assertEquals(2, cache.size());
+        assertEquals(1, cache.stats().misses());
         cache.remove(3L);
         assertEquals(1, cache.size());
+    }
+
+    @Test
+    void emptyCacheHasZeroHitRate() {
+        MobPathCache cache = new MobPathCache();
+        assertEquals(0.0, cache.stats().hitRate());
+        assertEquals(0, cache.stats().requests());
     }
 }

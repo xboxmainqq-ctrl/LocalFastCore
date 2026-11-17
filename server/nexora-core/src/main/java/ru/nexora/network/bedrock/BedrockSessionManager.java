@@ -106,7 +106,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final AtomicLong lastItemActorTickNanos = new AtomicLong(Long.MIN_VALUE);
     private final AtomicLong lastLivingAiTickMillis = new AtomicLong(Long.MIN_VALUE);
     private final Map<Long, Long> nextMobAttackMillis = new ConcurrentHashMap<>();
-    private final Map<Long, String> livingEntityKillCredit = new ConcurrentHashMap<>();
+    private final Map<Long, MobKillCredit> livingEntityKillCredit = new ConcurrentHashMap<>();
     private final ru.nexora.combat.LivingEntityAiService livingEntityAi =
             new ru.nexora.combat.LivingEntityAiService();
     private volatile boolean serverAuthoritativeMovement;
@@ -1676,13 +1676,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         var damage = world.livingEntities().damage(target.runtimeId(), effect.damage()).orElse(null);
         if (damage == null) return;
         if (damage.killed()) {
-            grantMobRewards(attackerNetworkId, attacker, target);
+            grantMobRewards(attackerNetworkId, attacker, target, weapon.enchantments().getOrDefault("minecraft:looting", 0));
             nextMobAttackMillis.remove(target.runtimeId());
             broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(target.uniqueId()));
             return;
         }
         if (effect.fireDurationSeconds() > 0) {
-            livingEntityKillCredit.put(target.runtimeId(), attackerNetworkId);
+            livingEntityKillCredit.put(target.runtimeId(), new MobKillCredit(attackerNetworkId,\n                    weapon.enchantments().getOrDefault("minecraft:looting", 0)));
         }
         WorldLivingEntity updated = damage.current();
         broadcastLivingActorPacket(BedrockVitalsCodec.createActorHealthUpdate(
@@ -1707,9 +1707,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
-    private void grantMobRewards(String networkId, SessionState killer, WorldLivingEntity mob) {
+    private void grantMobRewards(
+            String networkId, SessionState killer, WorldLivingEntity mob, int lootingLevel
+    ) {
+        int boundedLooting = Math.max(0, Math.min(3, lootingLevel));
+        int bonusRoll = boundedLooting == 0 ? 0
+                : java.util.concurrent.ThreadLocalRandom.current().nextInt(boundedLooting + 1);
         ru.nexora.combat.MobLootService.Loot loot =
-                ru.nexora.combat.MobLootService.dropsFor(mob.identifier());
+                ru.nexora.combat.MobLootService.dropsFor(mob.identifier(), boundedLooting, bonusRoll);
         if (loot.experienceMilliPoints() > 0) {
             awardExperienceMilli(networkId, killer, loot.experienceMilliPoints());
         }
@@ -1764,13 +1769,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             WorldLivingEntity entity = result.current();
             if (result.killed()) {
                 nextMobAttackMillis.remove(entity.runtimeId());
-                String killerNetworkId = livingEntityKillCredit.remove(entity.runtimeId());
-                SessionState killer = killerNetworkId == null ? null : sessions.get(killerNetworkId);
+                MobKillCredit credit = livingEntityKillCredit.remove(entity.runtimeId());
+                SessionState killer = credit == null ? null : sessions.get(credit.networkId());
                 if (killer != null) {
                     killer.combatLock.lock();
                     try {
                         synchronized (killer) {
-                            grantMobRewards(killerNetworkId, killer, entity);
+                            grantMobRewards(credit.networkId(), killer, entity, credit.lootingLevel());
                         }
                     } finally {
                         killer.combatLock.unlock();
@@ -1886,13 +1891,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             .resolveThornsDamage(armor, rolls, damageRolls);
                     if (reflected > 0) {
                         if (reflected >= mob.health()) {
-                            livingEntityKillCredit.put(mob.runtimeId(), networkId);
+                            livingEntityKillCredit.put(mob.runtimeId(), new MobKillCredit(networkId, 0));
                         }
                         var thornsDamage = world.livingEntities().damage(mob.runtimeId(), reflected).orElse(null);
                         if (thornsDamage != null) {
                             if (thornsDamage.killed()) {
                                 livingEntityKillCredit.remove(mob.runtimeId());
-                                grantMobRewards(networkId, target, mob);
+                                grantMobRewards(networkId, target, mob, 0);
                                 nextMobAttackMillis.remove(mob.runtimeId());
                                 broadcastLivingActorPacket(
                                         BedrockAddItemActorCodec.createRemoveActor(mob.uniqueId()));
@@ -3605,6 +3610,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             int formId, EquipmentFormKind kind, EquipmentSlot slot,
             List<Integer> inventorySlots, boolean hasUnequip
     ) {
+    }
+
+    private record MobKillCredit(String networkId, int lootingLevel) {
+        private MobKillCredit {
+            Objects.requireNonNull(networkId, "networkId");
+            if (networkId.isBlank() || lootingLevel < 0 || lootingLevel > 3) {
+                throw new IllegalArgumentException("Invalid mob kill credit");
+            }
+        }
     }
 
     private static final class SessionState {

@@ -55,7 +55,7 @@ class EnchantmentCombatServiceTest {
     }
 
     @Test
-    void appliesArmorToughnessAndProtectionToIncomingPlayerDamage() {
+    void appliesBedrockArmorPointsAndProtectionToIncomingPlayerDamage() {
         List<ItemStack> diamondArmor = List.of(
                 new ItemStack("minecraft:diamond_helmet", 1, 1),
                 new ItemStack("minecraft:diamond_chestplate", 1, 1,

@@ -70,6 +70,6 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 
 1. Finish and verify the NexoraAI Guard moderator case workflow and its CI run.
 2. Continue profiling the real update loops and build a trustworthy performance baseline; current mob-AI timing is available as subsystem latency, not TPS.
-3. Extend mob-AI regression/load coverage and investigate bounded path-result reuse only after measuring pathfinder cost.
+3. Benchmark the bounded mob path cache under realistic entity counts; validate hit rate, pathfinding latency, and behavior after terrain changes before tuning its 150 ms TTL or 1,024-entry limit.
 4. Extend diagnostics with incident correlation and sustained-latency windows.
 5. Continue the security/moderation roadmap after the core baseline is stable.

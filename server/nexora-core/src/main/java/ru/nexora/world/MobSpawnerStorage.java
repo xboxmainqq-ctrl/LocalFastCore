@@ -79,7 +79,9 @@ public final class MobSpawnerStorage {
         checksum.update(bytes, 0, bodyLength);
         if ((int) checksum.getValue() != expected) throw new IOException("Spawner storage checksum mismatch");
         try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(bytes, 0, bodyLength))) {
-            if (in.readInt() != MAGIC || in.readUnsignedByte() != VERSION) {
+            if (in.readInt() != MAGIC) throw new IOException("Invalid spawner storage magic");
+            int version = in.readUnsignedByte();
+            if (version != 1 && version != VERSION) {
                 throw new IOException("Unsupported spawner storage format");
             }
             int count = in.readInt();
@@ -90,7 +92,13 @@ public final class MobSpawnerStorage {
                 int x = in.readInt(), y = in.readInt(), z = in.readInt();
                 MobSpawnerState state;
                 try {
-                    state = new MobSpawnerState(x, y, z, in.readUTF(), in.readInt(), in.readLong());
+                    String identifier = in.readUTF();
+                    int delayTicks = in.readInt();
+                    long nextSpawnTick = in.readLong();
+                    // Version 1 stored an absolute server tick. That clock is not stable across restarts,
+                    // so migrate old entries to a safe full configured delay.
+                    if (version == 1 && nextSpawnTick > delayTicks) nextSpawnTick = delayTicks;
+                    state = new MobSpawnerState(x, y, z, identifier, delayTicks, nextSpawnTick);
                 } catch (IllegalArgumentException exception) {
                     throw new IOException("Invalid persisted mob spawner", exception);
                 }

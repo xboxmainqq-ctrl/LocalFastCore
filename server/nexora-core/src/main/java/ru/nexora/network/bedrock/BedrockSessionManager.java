@@ -1724,6 +1724,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return entity;
     }
 
+    /** Spawns a living actor and infers its Smite/Bane family from the vanilla identifier. */
+    public WorldLivingEntity spawnLivingEntity(
+            String identifier, float maxHealth, double x, double y, double z
+    ) {
+        return spawnLivingEntity(identifier, WorldLivingEntity.familyForIdentifier(identifier),
+                maxHealth, x, y, z);
+    }
+
     /** Removes a server-owned living actor and despawns it for all initialized clients. */
     public boolean despawnLivingEntity(long runtimeId) {
         WorldLivingEntity entity = world.livingEntities().find(runtimeId).orElse(null);

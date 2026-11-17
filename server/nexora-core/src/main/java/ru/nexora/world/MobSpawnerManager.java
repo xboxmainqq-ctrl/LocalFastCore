@@ -145,13 +145,10 @@ public final class MobSpawnerManager {
                 nextSpawnerCursor = 0;
             }
         }
-        Map<Long, List<WorldLivingEntity>> livingByChunk = new HashMap<>();
-        for (WorldLivingEntity entity : world.livingEntities().snapshot()) {
-            int chunkX = Math.floorDiv((int) Math.floor(entity.x()), 16);
-            int chunkZ = Math.floorDiv((int) Math.floor(entity.z()), 16);
-            livingByChunk.computeIfAbsent(chunkKey(chunkX, chunkZ), ignored -> new ArrayList<>())
-                    .add(entity);
+        if (snapshot.isEmpty()) {
+            return new TickResult(tracked, 0, 0, 0, 0, 0, 0);
         }
+        Map<Long, List<WorldLivingEntity>> livingByChunk = null;
         List<SpawnRequest> spawnedThisTick = new ArrayList<>();
         int active = 0;
         int spawned = 0;
@@ -177,6 +174,15 @@ public final class MobSpawnerManager {
             active++;
             if (currentTick < state.nextSpawnTick()) continue;
 
+            if (livingByChunk == null) {
+                livingByChunk = new HashMap<>();
+                for (WorldLivingEntity entity : world.livingEntities().snapshot()) {
+                    int chunkX = Math.floorDiv((int) Math.floor(entity.x()), 16);
+                    int chunkZ = Math.floorDiv((int) Math.floor(entity.z()), 16);
+                    livingByChunk.computeIfAbsent(chunkKey(chunkX, chunkZ),
+                            ignored -> new ArrayList<>()).add(entity);
+                }
+            }
             int nearby = countNearby(livingByChunk, spawnedThisTick, state);
             if (nearby >= MAX_NEARBY_SAME_TYPE) {
                 capped++;

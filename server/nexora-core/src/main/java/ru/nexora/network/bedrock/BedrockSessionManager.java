@@ -1804,8 +1804,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             targets.add(new ru.nexora.combat.LivingEntityAiService.PlayerTarget(
                     entry.getKey(), player.positionX, player.positionY, player.positionZ, true));
         }
-        if (targets.isEmpty()) return;
-
         for (WorldLivingEntity mob : world.livingEntities().snapshot()) {
             long nextAttackAt = nextMobAttackMillis.getOrDefault(mob.runtimeId(), 0L);
             ru.nexora.combat.LivingEntityAiService.Decision decision =
@@ -1822,6 +1820,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             double nextY = mob.y() + decision.moveY();
             double nextZ = mob.z() + decision.moveZ();
             if (!WorldCollision.canMove(world, mob.x(), mob.y(), mob.z(), nextX, nextY, nextZ)) {
+                if (!ru.nexora.combat.LivingEntityAiService.isHostile(mob.identifier())) continue;
                 ru.nexora.combat.LivingEntityAiService.PlayerTarget target = targets.stream()
                         .filter(candidate -> candidate.networkId().equals(decision.targetNetworkId()))
                         .findFirst().orElse(null);
@@ -1845,7 +1844,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             ru.nexora.combat.LivingEntityAiService.PlayerTarget target = targets.stream()
                     .filter(candidate -> candidate.networkId().equals(decision.targetNetworkId()))
                     .findFirst().orElse(null);
-            float yaw = target == null ? 0.0f
+            float yaw = target == null ? (float) Math.toDegrees(Math.atan2(-decision.moveX(), decision.moveZ()))
                     : (float) Math.toDegrees(Math.atan2(-(target.x() - moved.x()), target.z() - moved.z()));
             broadcastLivingActorPacket(BedrockMoveActorAbsoluteCodec.create(
                     moved.runtimeId(), moved.x(), moved.y(), moved.z(), 0.0f, yaw, yaw,

@@ -95,6 +95,21 @@ class FurnaceServiceTest {
     }
 
     @Test
+    void accumulatesRecipeExperienceUntilOutputIsCollected() {
+        FurnaceService service = new FurnaceService();
+        ContainerInventory furnace = new ContainerInventory(3);
+        furnace.setSlot(0, new ItemStack("minecraft:raw_iron", 2, 64));
+        furnace.setSlot(1, new ItemStack("minecraft:coal", 1, 64));
+
+        service.tick(31, 64, 0, furnace, FurnaceService.Kind.BLAST_FURNACE, 200);
+        assertEquals(1400, service.snapshotState(31, 64, 0).pendingExperienceMilli());
+        assertEquals(700, service.collectExperience(31, 64, 0, 1, 2));
+        assertEquals(700, service.snapshotState(31, 64, 0).pendingExperienceMilli());
+        assertEquals(700, service.collectExperience(31, 64, 0, 1, 1));
+        assertEquals(0, service.snapshotState(31, 64, 0).pendingExperienceMilli());
+    }
+
+    @Test
     void supportsWoodAndCoalBlockAsFuel() {
         FurnaceService service = new FurnaceService();
         String[] fuels = {"minecraft:oak_log", "minecraft:oak_planks", "minecraft:coal_block"};

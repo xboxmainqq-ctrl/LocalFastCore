@@ -1580,6 +1580,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 double dy = target.positionY - attacker.positionY;
                 double dz = target.positionZ - attacker.positionZ;
                 if (dx * dx + dy * dy + dz * dz > 3.5 * 3.5) return;
+                int targetBlockX = (int) Math.floor(target.positionX);
+                int targetBlockY = (int) Math.floor(target.positionY + 1.0);
+                int targetBlockZ = (int) Math.floor(target.positionZ);
+                if (!WorldRaycast.hasLineOfSight(world,
+                        attacker.positionX, attacker.positionY + 1.62, attacker.positionZ,
+                        targetBlockX, targetBlockY, targetBlockZ)) return;
 
                 attacker.lastAttackNanos = now;
                 target.lastCombatDamageNanos = now;

@@ -62,6 +62,22 @@ class FurnaceServiceTest {
     }
 
     @Test
+    void fuelContinuesBurningAfterInputIsRemoved() {
+        FurnaceService service = new FurnaceService();
+        ContainerInventory furnace = new ContainerInventory(3);
+        furnace.setSlot(FurnaceService.INPUT_SLOT, new ItemStack("minecraft:raw_iron", 1, 64));
+        furnace.setSlot(FurnaceService.FUEL_SLOT, new ItemStack("minecraft:coal", 1, 64));
+
+        FurnaceService.TickResult started = service.tick(2, 64, 2, furnace, 50);
+        assertEquals(1550, started.burnTicksRemaining());
+        furnace.setSlot(FurnaceService.INPUT_SLOT, null);
+
+        FurnaceService.TickResult idle = service.tick(2, 64, 2, furnace, 50);
+        assertEquals(1500, idle.burnTicksRemaining());
+        assertEquals(0, idle.cookProgress());
+    }
+
+    @Test
     void doesNotConsumeInputWhenOutputCannotAcceptSmeltedItem() {
         FurnaceService service = new FurnaceService();
         ContainerInventory furnace = new ContainerInventory(3);

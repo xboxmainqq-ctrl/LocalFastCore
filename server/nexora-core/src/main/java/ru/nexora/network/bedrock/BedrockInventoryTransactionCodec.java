@@ -213,7 +213,7 @@ public final class BedrockInventoryTransactionCodec {
             throw new IllegalArgumentException("Item stack exceeds its registered maximum stack size");
         }
         return Optional.of(new ItemStack(entry.namespacedId(), count, entry.maxStackSize(),
-                metadata.enchantments(), metadata.repairCost()));
+                metadata.enchantments(), metadata.repairCost(), metadata.durabilityDamage()));
     }
 
     public record DecodedTransaction(int transactionType, List<InventoryTransactionService.Action> actions) {

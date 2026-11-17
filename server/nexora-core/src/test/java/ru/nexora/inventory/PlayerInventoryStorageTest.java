@@ -35,7 +35,7 @@ class PlayerInventoryStorageTest {
     }
 
     @Test
-    void atomicallyRoundTripsPlayerUiCraftingGridInVersionFourFormat() throws Exception {
+    void atomicallyRoundTripsPlayerUiCraftingGridInVersionFiveFormat() throws Exception {
         PlayerInventoryStorage storage = new PlayerInventoryStorage(temporaryDirectory);
         PlayerInventory inventory = new PlayerInventory();
         inventory.setSlot(0, new ItemStack("minecraft:iron_nugget", 9, 64));
@@ -53,7 +53,7 @@ class PlayerInventoryStorageTest {
                 loaded.craftingUiInventory().getSlot(28).orElseThrow());
         assertEquals(new ItemStack("minecraft:oak_log", 1, 64),
                 loaded.craftingUiInventory().getSlot(31).orElseThrow());
-        assertEquals(4, Byte.toUnsignedInt(Files.readAllBytes(
+        assertEquals(5, Byte.toUnsignedInt(Files.readAllBytes(
                 temporaryDirectory.resolve("craft-player.nxi"))[4]));
         assertEquals(9, storage.load("craft-player").orElseThrow().count("minecraft:iron_nugget"));
     }
@@ -90,7 +90,7 @@ class PlayerInventoryStorageTest {
         PlayerInventoryStorage storage = new PlayerInventoryStorage(temporaryDirectory);
         PlayerInventory inventory = new PlayerInventory();
         inventory.setSlot(0, new ItemStack("minecraft:diamond_sword", 1, 1,
-                java.util.Map.of("minecraft:sharpness", 5, "minecraft:unbreaking", 3), 7));
+                java.util.Map.of("minecraft:sharpness", 5, "minecraft:unbreaking", 3), 7, 123));
         storage.save("enchanted-player", inventory);
 
         ItemStack restored = storage.load("enchanted-player").orElseThrow()
@@ -98,7 +98,8 @@ class PlayerInventoryStorageTest {
         assertEquals(java.util.Map.of("minecraft:sharpness", 5, "minecraft:unbreaking", 3),
                 restored.enchantments());
         assertEquals(7, restored.repairCost());
-        assertEquals(4, Byte.toUnsignedInt(Files.readAllBytes(
+        assertEquals(123, restored.durabilityDamage());
+        assertEquals(5, Byte.toUnsignedInt(Files.readAllBytes(
                 temporaryDirectory.resolve("enchanted-player.nxi"))[4]));
     }
 

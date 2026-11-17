@@ -173,6 +173,7 @@ class BedrockSessionManagerTest {
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
                 combatWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
+        manager.setDurabilitySettings(new ru.nexora.inventory.DurabilitySettings(true));
         BedrockItemRegistry registry = BedrockVanillaItemCatalog.createRegistry();
         manager.setItemRegistry(registry);
         manager.onIdentity("spear-tier-attacker", new NetherNetClientIdentity(
@@ -204,6 +205,9 @@ class BedrockSessionManagerTest {
             assertEquals(20.0f - expectedDamage[i],
                     combatWorld.livingEntities().find(zombie.runtimeId()).orElseThrow().health(),
                     0.0001f, tiers[i] + " spear jab damage");
+            assertEquals(1, manager.playerInventory("spear-tier-attacker").orElseThrow()
+                    .getSlot(0).orElseThrow().durabilityDamage(),
+                    tiers[i] + " spear should lose one durability point after a successful jab");
             // Advance beyond the slowest tier cooldown before the next server hit.
             clock.addAndGet(1_200_000_000L);
         }
@@ -273,6 +277,9 @@ class BedrockSessionManagerTest {
         // diamond spear multiplier 1.075 gives 6.45 damage (base jab is 5).
         assertEquals(13.55f,
                 combatWorld.livingEntities().find(zombie.runtimeId()).orElseThrow().health(), 0.0001f);
+        assertEquals(0, manager.playerInventory("charge-mob-attacker").orElseThrow()
+                .getSlot(0).orElseThrow().durabilityDamage(),
+                "Durability must remain disabled when no setting is supplied");
         assertEquals(Long.MIN_VALUE,
                 getSessionField(manager, "charge-mob-attacker", "spearChargeStartedNanos"));
         assertEquals(Long.MIN_VALUE,
@@ -302,6 +309,7 @@ class BedrockSessionManagerTest {
                     if ("charge-pvp-attacker".equals(networkId)) attackerFrames.add(frame);
                     if ("charge-pvp-target".equals(networkId)) targetFrames.add(frame);
                 }, event -> {}, clock::get);
+        manager.setDurabilitySettings(new ru.nexora.inventory.DurabilitySettings(true));
         BedrockItemRegistry registry = BedrockVanillaItemCatalog.createRegistry();
         manager.setItemRegistry(registry);
         manager.onIdentity("charge-pvp-attacker", new NetherNetClientIdentity(
@@ -330,6 +338,10 @@ class BedrockSessionManagerTest {
         setSessionField(manager, "charge-pvp-target", "physicsState",
                 new ru.nexora.world.PlayerPhysics.State(
                         0.5, 65.0, 3.5, 0.0, 0.0, 0.0, true, 0.0, 0.0));
+        ru.nexora.inventory.PlayerEquipment targetEquipment =
+                new ru.nexora.inventory.PlayerEquipment();
+        targetEquipment.setArmor(0, new ItemStack("minecraft:diamond_chestplate", 1, 1));
+        setSessionField(manager, "charge-pvp-target", "equipment", targetEquipment);
 
         ItemStack spear = new ItemStack("minecraft:diamond_spear", 1, 1);
         manager.playerInventory("charge-pvp-attacker").orElseThrow().setSlot(0, spear);
@@ -357,8 +369,15 @@ class BedrockSessionManagerTest {
         sendActorAttack(manager, "charge-pvp-attacker", 123L,
                 spearDefinition.networkDefinition().runtimeItemId(), 0.5f, 65.0f, 0.5f);
 
-        assertEquals(13.55f,
+        assertEquals(15.614f,
                 manager.playerVitals("charge-pvp-target").orElseThrow().health(), 0.0001f);
+        assertEquals(1, manager.playerInventory("charge-pvp-attacker").orElseThrow()
+                .getSlot(0).orElseThrow().durabilityDamage(),
+                "Successful melee attack should wear the held spear");
+        var wornArmor = ((ru.nexora.inventory.PlayerEquipment) getSessionField(
+                manager, "charge-pvp-target", "equipment")).armor(0).orElseThrow();
+        assertEquals(1, wornArmor.durabilityDamage(),
+                "Taking a melee hit should wear equipped armor");
         assertEquals(Long.MIN_VALUE,
                 getSessionField(manager, "charge-pvp-attacker", "spearChargeStartedNanos"));
         List<BedrockPacket> observerPackets = targetFrames.stream()

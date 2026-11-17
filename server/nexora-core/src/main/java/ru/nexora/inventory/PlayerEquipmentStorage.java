@@ -22,7 +22,7 @@ import java.util.zip.CRC32C;
 /** Checksummed atomic persistence for armor, offhand, cursor and magical equipment slots. */
 public final class PlayerEquipmentStorage {
     private static final int MAGIC = 0x4e584551; // NXEQ
-    private static final int VERSION = 2;
+    private static final int VERSION = 3;
     private static final int LEGACY_VERSION = 1;
     private static final int MAX_FILE_BYTES = 4096;
     private static final int MAX_ITEM_ID_BYTES = 128;
@@ -43,10 +43,10 @@ public final class PlayerEquipmentStorage {
         try (DataOutputStream out = new DataOutputStream(body)) {
             out.writeInt(MAGIC);
             out.writeByte(VERSION);
-            for (Optional<ItemStack> item : snapshot.armor()) writeStack(out, item);
-            writeStack(out, snapshot.offhand());
-            writeStack(out, snapshot.cursor());
-            for (Optional<ItemStack> item : snapshot.magicSlots()) writeStack(out, item);
+            for (Optional<ItemStack> item : snapshot.armor()) writeStack(out, item, VERSION);
+            writeStack(out, snapshot.offhand(), VERSION);
+            writeStack(out, snapshot.cursor(), VERSION);
+            for (Optional<ItemStack> item : snapshot.magicSlots()) writeStack(out, item, VERSION);
         }
         byte[] data = body.toByteArray();
         CRC32C crc = new CRC32C();
@@ -89,16 +89,16 @@ public final class PlayerEquipmentStorage {
         try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(bytes, 0, bodyLength))) {
             if (in.readInt() != MAGIC) throw new IOException("Invalid player equipment magic");
             int version = in.readUnsignedByte();
-            if (version != VERSION && version != LEGACY_VERSION) {
+            if (version != VERSION && version != 2 && version != LEGACY_VERSION) {
                 throw new IOException("Unsupported player equipment version: " + version);
             }
             List<Optional<ItemStack>> armor = new ArrayList<>(PlayerEquipment.ARMOR_SLOTS);
-            for (int i = 0; i < PlayerEquipment.ARMOR_SLOTS; i++) armor.add(readStack(in));
-            Optional<ItemStack> offhand = readStack(in);
-            Optional<ItemStack> cursor = readStack(in);
+            for (int i = 0; i < PlayerEquipment.ARMOR_SLOTS; i++) armor.add(readStack(in, version));
+            Optional<ItemStack> offhand = readStack(in, version);
+            Optional<ItemStack> cursor = readStack(in, version);
             List<Optional<ItemStack>> magic = new ArrayList<>(PlayerEquipment.MAGIC_SLOTS);
-            if (version == VERSION) {
-                for (int i = 0; i < PlayerEquipment.MAGIC_SLOTS; i++) magic.add(readStack(in));
+            if (version >= 2) {
+                for (int i = 0; i < PlayerEquipment.MAGIC_SLOTS; i++) magic.add(readStack(in, version));
             } else {
                 for (int i = 0; i < PlayerEquipment.MAGIC_SLOTS; i++) magic.add(Optional.empty());
             }
@@ -111,7 +111,7 @@ public final class PlayerEquipmentStorage {
         }
     }
 
-    private static void writeStack(DataOutputStream out, Optional<ItemStack> optional) throws IOException {
+    private static void writeStack(DataOutputStream out, Optional<ItemStack> optional, int version) throws IOException {
         out.writeBoolean(optional.isPresent());
         if (optional.isEmpty()) return;
         ItemStack stack = optional.orElseThrow();
@@ -121,9 +121,21 @@ public final class PlayerEquipmentStorage {
         out.write(id);
         out.writeByte(stack.count());
         out.writeByte(stack.maxStackSize());
+        if (version >= 3) {
+            out.writeByte(stack.enchantments().size());
+            for (var enchantment : stack.enchantments().entrySet()) {
+                byte[] enchantmentId = enchantment.getKey().getBytes(StandardCharsets.UTF_8);
+                if (enchantmentId.length > 128) throw new IOException("Enchantment identifier exceeds equipment storage limit");
+                out.writeByte(enchantmentId.length);
+                out.write(enchantmentId);
+                out.writeByte(enchantment.getValue());
+            }
+            out.writeByte(stack.repairCost());
+            out.writeShort(stack.durabilityDamage());
+        }
     }
 
-    private static Optional<ItemStack> readStack(DataInputStream in) throws IOException {
+    private static Optional<ItemStack> readStack(DataInputStream in, int version) throws IOException {
         if (!in.readBoolean()) return Optional.empty();
         int length = in.readUnsignedByte();
         if (length < 3 || length > MAX_ITEM_ID_BYTES) throw new IOException("Invalid equipment item identifier length");
@@ -137,7 +149,40 @@ public final class PlayerEquipmentStorage {
             throw new IOException("Invalid UTF-8 equipment item identifier", exception);
         }
         try {
-            return Optional.of(new ItemStack(itemId, in.readUnsignedByte(), in.readUnsignedByte()));
+            int count = in.readUnsignedByte();
+            int maxStackSize = in.readUnsignedByte();
+            java.util.Map<String, Integer> enchantments = new java.util.LinkedHashMap<>();
+            int repairCost = 0;
+            int durabilityDamage = 0;
+            if (version >= 3) {
+                int enchantmentCount = in.readUnsignedByte();
+                if (enchantmentCount > 32) throw new IOException("Too many equipment enchantments");
+                for (int i = 0; i < enchantmentCount; i++) {
+                    int enchantmentLength = in.readUnsignedByte();
+                    if (enchantmentLength < 3 || enchantmentLength > 128) {
+                        throw new IOException("Invalid equipment enchantment identifier length");
+                    }
+                    byte[] enchantmentBytes = new byte[enchantmentLength];
+                    in.readFully(enchantmentBytes);
+                    String enchantmentId;
+                    try {
+                        enchantmentId = StandardCharsets.UTF_8.newDecoder()
+                                .onMalformedInput(CodingErrorAction.REPORT)
+                                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                                .decode(ByteBuffer.wrap(enchantmentBytes)).toString();
+                    } catch (CharacterCodingException exception) {
+                        throw new IOException("Invalid UTF-8 equipment enchantment identifier", exception);
+                    }
+                    int level = in.readUnsignedByte();
+                    if (enchantments.putIfAbsent(enchantmentId, level) != null) {
+                        throw new IOException("Duplicate equipment enchantment");
+                    }
+                }
+                repairCost = in.readUnsignedByte();
+                durabilityDamage = in.readUnsignedShort();
+            }
+            return Optional.of(new ItemStack(itemId, count, maxStackSize,
+                    enchantments, repairCost, durabilityDamage));
         } catch (IllegalArgumentException exception) {
             throw new IOException("Invalid stored equipment item", exception);
         }

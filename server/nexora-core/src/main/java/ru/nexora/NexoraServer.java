@@ -105,6 +105,7 @@ public final class NexoraServer {
                 event -> System.out.printf("NEXORA: Bedrock packet 0x%02X from %s (%d bytes)%n",
                         event.packet().packetId(), event.networkId(), event.packet().payload().length));
         bedrockSessions.enableServerAuthoritativeMovement();
+        bedrockSessions.setDurabilitySettings(durabilitySettings);
         bedrockSessions.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
         bedrockSessions.setArmorSlotRegistry(VanillaArmorSlotCatalog.createRegistry());
         bedrockSessions.setEquipmentSlotRegistry(NexoraMagicEquipmentCatalog.createRegistry());
@@ -195,8 +196,8 @@ public final class NexoraServer {
         System.out.println("Furnace inventories and burn/cook progress use checksummed storage under " + Path.of(dataDirectory, "worlds", "NEXORA World", "furnaces").toAbsolutePath());
         System.out.println("Server-authoritative movement, block drops, item pickups, fall damage, death/respawn, food use and persisted survival vitals are enabled.");
         System.out.println("Players can open the magical equipment interface with /equipment.");
-        System.out.println("Weapon and armor durability wear is disabled by default; NEXORA_DURABILITY_ENABLED="
-                + durabilitySettings.enabled() + " (wear processing is not implemented yet).");
+        System.out.println("Weapon and armor durability wear enabled: NEXORA_DURABILITY_ENABLED="
+                + durabilitySettings.enabled() + " (melee weapon and armor wear; Unbreaking supported).");
         System.out.printf("World autosave interval: %d seconds%n", autosaveSeconds);
         System.out.println("Saved player positions and rotations are restored on re-login.");
         System.out.println("Next gameplay stages: item bounce/despawn, player/mob entity replication, containers/crafting, death inventory drops and real-client validation.");

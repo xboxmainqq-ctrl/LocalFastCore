@@ -122,6 +122,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             new ru.nexora.combat.MobStuckTracker();
     private final ru.nexora.combat.MobFallTracker mobFallTracker =
             new ru.nexora.combat.MobFallTracker();
+    private final ru.nexora.combat.MobJumpController mobJumpController =
+            new ru.nexora.combat.MobJumpController();
     private final ru.nexora.combat.MobDespawnTracker mobDespawnTracker =
             new ru.nexora.combat.MobDespawnTracker();
     private final ru.nexora.combat.MobAiLoadController mobAiLoadController =
@@ -459,6 +461,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 .append(", evictions=").append(stuck.evictions())
                 .append("\nMob AI load controller: ").append(mobAiLoadController.stats().summary())
                 .append("\nMob fall tracker: ").append(mobFallTracker.stats().summary())
+                .append("\nMob jump controller: ").append(mobJumpController.stats().summary())
                 .append("\nMob despawn tracker: tracked=").append(mobDespawnTracker.stats().tracked())
                 .append(", evictions=").append(mobDespawnTracker.stats().evictions());
         ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
@@ -3023,6 +3026,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         mobPathCache.remove(runtimeId);
         mobStuckTracker.clear(runtimeId);
         mobFallTracker.clear(runtimeId);
+        mobJumpController.clear(runtimeId);
         mobDespawnTracker.clear(runtimeId);
         creeperFuseStartedMillis.remove(runtimeId);
         endermanTeleportCooldownMillis.remove(runtimeId);

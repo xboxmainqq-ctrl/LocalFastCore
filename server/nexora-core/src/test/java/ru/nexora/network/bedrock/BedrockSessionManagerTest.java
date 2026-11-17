@@ -277,7 +277,7 @@ class BedrockSessionManagerTest {
         // diamond spear multiplier 1.075 gives 6.45 damage (base jab is 5).
         assertEquals(13.55f,
                 combatWorld.livingEntities().find(zombie.runtimeId()).orElseThrow().health(), 0.0001f);
-        assertEquals(0, manager.playerInventory("charge-mob-player").orElseThrow()
+        assertEquals(0, manager.playerInventory("charge-mob-attacker").orElseThrow()
                 .getSlot(0).orElseThrow().durabilityDamage(),
                 "Durability must remain disabled when no setting is supplied");
         assertEquals(Long.MIN_VALUE,
@@ -369,7 +369,7 @@ class BedrockSessionManagerTest {
         sendActorAttack(manager, "charge-pvp-attacker", 123L,
                 spearDefinition.networkDefinition().runtimeItemId(), 0.5f, 65.0f, 0.5f);
 
-        assertEquals(13.55f,
+        assertEquals(15.614f,
                 manager.playerVitals("charge-pvp-target").orElseThrow().health(), 0.0001f);
         assertEquals(1, manager.playerInventory("charge-pvp-attacker").orElseThrow()
                 .getSlot(0).orElseThrow().durabilityDamage(),

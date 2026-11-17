@@ -22,7 +22,12 @@ public final class NexoraAiGuard {
     private final long maxBytesPerWindow;
     private final int maxTrackedPeers;
     private final Consumer<GuardEvent> eventSink;
+    private static final long MOVEMENT_WINDOW_NANOS = 10_000_000_000L;
+    private static final double MOVEMENT_ERROR_THRESHOLD = 0.75;
+    private static final int MOVEMENT_SIGNALS_THRESHOLD = 4;
+
     private final LinkedHashMap<String, PeerWindow> peers = new LinkedHashMap<>();
+    private final LinkedHashMap<String, PlayerSignals> playerSignals = new LinkedHashMap<>();
     private long totalSignals;
 
     public NexoraAiGuard() {
@@ -73,17 +78,73 @@ public final class NexoraAiGuard {
                 event = new GuardEvent(window.frames, window.bytes, reason);
             }
         }
-        if (event != null) {
-            try {
-                eventSink.accept(event);
-            } catch (RuntimeException ignored) {
-                // Security telemetry must never interrupt normal packet processing.
+        publish(event);
+    }
+
+    /**
+     * Observes server-authoritative movement reconciliation. Repeated large errors
+     * are review signals only; a single correction is never treated as cheating.
+     */
+    public void recordMovementDiscrepancy(
+            String playerKey, double horizontalError, double verticalError, long nowNanos
+    ) {
+        Objects.requireNonNull(playerKey, "playerKey");
+        if (playerKey.isBlank() || !Double.isFinite(horizontalError)
+                || !Double.isFinite(verticalError) || horizontalError < 0 || verticalError < 0) {
+            throw new IllegalArgumentException("Invalid movement evidence");
+        }
+        GuardEvent event = null;
+        synchronized (this) {
+            PlayerSignals signals = playerSignals.get(playerKey);
+            if (signals == null) {
+                if (playerSignals.size() >= maxTrackedPeers) {
+                    playerSignals.remove(playerSignals.keySet().iterator().next());
+                }
+                signals = new PlayerSignals(nowNanos);
+                playerSignals.put(playerKey, signals);
+            } else if (nowNanos < signals.movementStartedAtNanos
+                    || nowNanos - signals.movementStartedAtNanos >= MOVEMENT_WINDOW_NANOS) {
+                signals.resetMovement(nowNanos);
             }
+
+            String reason = null;
+            if (horizontalError > MOVEMENT_ERROR_THRESHOLD && !signals.horizontalSignalled) {
+                signals.horizontalCorrections++;
+                if (signals.horizontalCorrections >= MOVEMENT_SIGNALS_THRESHOLD) {
+                    signals.horizontalSignalled = true;
+                    reason = "repeated horizontal movement discrepancy (possible speed)";
+                }
+            }
+            if (verticalError > MOVEMENT_ERROR_THRESHOLD && !signals.verticalSignalled) {
+                signals.verticalCorrections++;
+                if (signals.verticalCorrections >= MOVEMENT_SIGNALS_THRESHOLD) {
+                    signals.verticalSignalled = true;
+                    reason = "repeated vertical movement discrepancy (possible fly)";
+                }
+            }
+            if (reason != null) {
+                totalSignals++;
+                event = new GuardEvent(signals.horizontalCorrections + signals.verticalCorrections,
+                        0, reason);
+            }
+        }
+        publish(event);
+    }
+
+    private void publish(GuardEvent event) {
+        if (event == null) return;
+        try {
+            eventSink.accept(event);
+        } catch (RuntimeException ignored) {
+            // Security telemetry must never interrupt normal packet processing.
         }
     }
 
     public synchronized void onDisconnected(String peerId) {
-        if (peerId != null) peers.remove(peerId);
+        if (peerId != null) {
+            peers.remove(peerId);
+            playerSignals.remove(peerId);
+        }
     }
 
     /** Aggregate-only status suitable for operator diagnostics; no peer identifiers are exposed. */
@@ -114,6 +175,26 @@ public final class NexoraAiGuard {
                     + ", bytes(current windows)=" + bytesInCurrentWindows
                     + ", signals since start=" + totalSignalsSinceStart
                     + ". Signals are review-only; no automatic punishment is applied.";
+        }
+    }
+
+    private static final class PlayerSignals {
+        private long movementStartedAtNanos;
+        private int horizontalCorrections;
+        private int verticalCorrections;
+        private boolean horizontalSignalled;
+        private boolean verticalSignalled;
+
+        private PlayerSignals(long startedAtNanos) {
+            movementStartedAtNanos = startedAtNanos;
+        }
+
+        private void resetMovement(long nowNanos) {
+            movementStartedAtNanos = nowNanos;
+            horizontalCorrections = 0;
+            verticalCorrections = 0;
+            horizontalSignalled = false;
+            verticalSignalled = false;
         }
     }
 

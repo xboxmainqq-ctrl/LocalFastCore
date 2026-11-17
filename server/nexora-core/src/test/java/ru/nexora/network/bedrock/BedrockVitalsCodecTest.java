@@ -25,7 +25,7 @@ class BedrockVitalsCodecTest {
         assertEquals(BedrockVitalsCodec.UPDATE_ATTRIBUTES_PACKET_ID, packet.packetId());
         Reader in = new Reader(packet.payload());
         assertEquals(123, in.varUInt64());
-        assertEquals(4, in.varUInt32());
+        assertEquals(6, in.varUInt32());
 
         assertEquals(0.0f, in.float32());
         assertEquals(20.0f, in.float32());
@@ -39,7 +39,40 @@ class BedrockVitalsCodecTest {
         in.skipAttribute("minecraft:player.hunger", 8.0f, 20.0f);
         in.skipAttribute("minecraft:player.saturation", 2.5f, 20.0f);
         in.skipAttribute("minecraft:player.exhaustion", 1.25f, 4.0f);
+        in.skipAttribute("minecraft:player.level", 0.0f, 24791.0f);
+        in.skipAttribute("minecraft:player.experience", 0.0f, 1.0f);
         assertEquals(300, in.varUInt64());
+        assertTrue(in.exhausted());
+    }
+
+    @Test
+    void encodesCurrentExperienceLevelAndProgress() {
+        BedrockPacket packet = BedrockVitalsCodec.createUpdateAttributes(
+                77, PlayerVitals.DEFAULT, 18, 0.625f, 44);
+        Reader in = new Reader(packet.payload());
+        assertEquals(77, in.varUInt64());
+        assertEquals(6, in.varUInt32());
+        in.skipAttribute("minecraft:health", 20.0f, 20.0f);
+        in.skipAttribute("minecraft:player.hunger", 20.0f, 20.0f);
+        in.skipAttribute("minecraft:player.saturation", 5.0f, 20.0f);
+        in.skipAttribute("minecraft:player.exhaustion", 0.0f, 4.0f);
+        assertEquals(0.0f, in.float32());
+        assertEquals(24791.0f, in.float32());
+        assertEquals(18.0f, in.float32());
+        assertEquals(0.0f, in.float32());
+        assertEquals(24791.0f, in.float32());
+        assertEquals(0.0f, in.float32());
+        assertEquals("minecraft:player.level", in.string());
+        assertEquals(0, in.varUInt32());
+        assertEquals(0.0f, in.float32());
+        assertEquals(1.0f, in.float32());
+        assertEquals(0.625f, in.float32());
+        assertEquals(0.0f, in.float32());
+        assertEquals(1.0f, in.float32());
+        assertEquals(0.0f, in.float32());
+        assertEquals("minecraft:player.experience", in.string());
+        assertEquals(0, in.varUInt32());
+        assertEquals(44, in.varUInt64());
         assertTrue(in.exhausted());
     }
 

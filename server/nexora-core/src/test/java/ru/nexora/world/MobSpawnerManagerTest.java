@@ -47,6 +47,25 @@ class MobSpawnerManagerTest {
     }
 
     @Test
+    void inactiveCountdownPausesAcrossElapsedServerTicks() {
+        World world = createWorld();
+        MobSpawnerManager manager = new MobSpawnerManager();
+        assertTrue(manager.register(0, 65, 0, 0));
+
+        manager.tick(world, 0, List.of(), request -> true);
+        manager.tick(world, 1, List.of(), request -> true);
+        manager.tick(world, 100, List.of(), request -> true);
+        assertEquals(301, manager.snapshot().get(0).nextSpawnTick());
+
+        var early = manager.tick(world, 300,
+                List.of(new MobSpawnerManager.PlayerPosition(0.5, 65, 0.5)), request -> true);
+        assertEquals(0, early.spawned());
+        var due = manager.tick(world, 301,
+                List.of(new MobSpawnerManager.PlayerPosition(0.5, 65, 0.5)), request -> true);
+        assertTrue(due.spawned() > 0);
+    }
+
+    @Test
     void nearbySameTypeCapPreventsMoreSpawns() {
         World world = createWorld();
         MobSpawnerManager manager = world.mobSpawners();

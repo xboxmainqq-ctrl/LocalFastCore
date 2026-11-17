@@ -828,6 +828,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             sendPacket(networkId, BedrockContainerPacketCodec.createClose(
                     windowId, state.openContainerType, serverInitiated), true);
         } finally {
+            if (state.openContainerIsCraftingTable) returnCraftingTableGridItems(state);
             clearContainerWindow(state);
         }
     }

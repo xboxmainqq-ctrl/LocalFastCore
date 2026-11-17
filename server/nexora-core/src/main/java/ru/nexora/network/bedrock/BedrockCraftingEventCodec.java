@@ -3,7 +3,6 @@ package ru.nexora.network.bedrock;
 import ru.nexora.inventory.ItemStack;
 
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -150,8 +149,9 @@ public final class BedrockCraftingEventCodec {
             if (length > maximumLength || length > input.available()) {
                 throw new IllegalArgumentException("Invalid crafting item user-data length");
             }
-            byte[] result = input.readNBytes(length);
-            if (result.length != length) throw new IllegalArgumentException("Truncated crafting item user data");
+            byte[] result = new byte[length];
+            int read = input.read(result, 0, length);
+            if (read != length) throw new IllegalArgumentException("Truncated crafting item user data");
             return result;
         }
 

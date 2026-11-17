@@ -2018,7 +2018,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 float yaw = (float) Math.toDegrees(Math.atan2(-awayX, awayZ));
                 broadcastLivingActorPacket(BedrockMoveActorAbsoluteCodec.create(
                         moved.runtimeId(), moved.x(), moved.y(), moved.z(), 0.0f, yaw, yaw,
-                        true, Math.max(0, tick)));
+                        true, true));
                 return;
             }
         }

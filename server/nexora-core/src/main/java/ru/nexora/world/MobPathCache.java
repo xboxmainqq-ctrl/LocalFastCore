@@ -17,6 +17,11 @@ public final class MobPathCache {
     private final int maxEntries;
     private final long ttlMillis;
     private final Map<Long, Entry> entries = new LinkedHashMap<>(16, 0.75f, true);
+    private long hits;
+    private long misses;
+    private long recomputations;
+    private long blockedWaypoints;
+    private long evictions;
 
     public MobPathCache() {
         this(DEFAULT_MAX_ENTRIES, DEFAULT_TTL_MILLIS);
@@ -50,27 +55,33 @@ public final class MobPathCache {
                 cell(targetX), cell(targetZ));
         Entry cached = get(mobRuntimeId, key, nowMillis);
         if (cached != null) {
-            if (cached.step().isEmpty()) return Optional.empty();
-            WorldPathfinder.Step step = cached.step().orElseThrow();
+            WorldPathfinder.Step step = cached.step();
             if (WorldCollision.canMove(world, startX, feetY, startZ, step.x(), feetY, step.z())) {
-                return cached.step();
+                recordHit();
+                return Optional.of(step);
             }
+            recordBlockedWaypoint();
         }
 
         Optional<WorldPathfinder.Step> computed = WorldPathfinder.findNextStep(
                 world, startX, feetY, startZ, targetX, targetZ);
+        recordRecomputation();
         // Do not cache "no path": terrain can open at any time and should be retried immediately.
         if (computed.isPresent()) {
-            put(mobRuntimeId, new Entry(key, computed, nowMillis + ttlMillis));
+            put(mobRuntimeId, new Entry(key, computed.orElseThrow(), nowMillis + ttlMillis));
         }
         return computed;
     }
 
     private synchronized Entry get(long mobRuntimeId, Key key, long nowMillis) {
         Entry entry = entries.get(mobRuntimeId);
-        if (entry == null) return null;
+        if (entry == null) {
+            misses++;
+            return null;
+        }
         if (nowMillis >= entry.expiresAtMillis() || !entry.key().equals(key)) {
             entries.remove(mobRuntimeId);
+            misses++;
             return null;
         }
         return entry;
@@ -81,7 +92,25 @@ public final class MobPathCache {
         while (entries.size() > maxEntries) {
             Long eldest = entries.keySet().iterator().next();
             entries.remove(eldest);
+            evictions++;
         }
+    }
+
+    private synchronized void recordHit() {
+        hits++;
+    }
+
+    private synchronized void recordBlockedWaypoint() {
+        blockedWaypoints++;
+    }
+
+    private synchronized void recordRecomputation() {
+        recomputations++;
+    }
+
+    /** Returns cumulative cache counters; counters are local to this cache instance. */
+    public synchronized Stats stats() {
+        return new Stats(hits, misses, recomputations, blockedWaypoints, evictions, entries.size());
     }
 
     public synchronized void remove(long mobRuntimeId) {
@@ -99,6 +128,24 @@ public final class MobPathCache {
     private record Key(int startX, int feetY, int startZ, int targetX, int targetZ) {
     }
 
-    private record Entry(Key key, Optional<WorldPathfinder.Step> step, long expiresAtMillis) {
+    private record Entry(Key key, WorldPathfinder.Step step, long expiresAtMillis) {
+    }
+
+    public record Stats(
+            long hits,
+            long misses,
+            long recomputations,
+            long blockedWaypoints,
+            long evictions,
+            int entries
+    ) {
+        public long requests() {
+            return hits + misses;
+        }
+
+        public double hitRate() {
+            long total = requests();
+            return total == 0 ? 0.0 : (double) hits / total;
+        }
     }
 }

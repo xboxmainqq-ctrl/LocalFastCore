@@ -111,6 +111,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final Map<Long, ru.nexora.combat.ArrowProjectile> mobArrows = new ConcurrentHashMap<>();
     private final AtomicLong nextMobArrowRuntimeId = new AtomicLong(4_000_000L);
     private final Map<Long, Long> creeperFuseStartedMillis = new ConcurrentHashMap<>();
+    private final Map<Long, Long> endermanTeleportCooldownMillis = new ConcurrentHashMap<>();
     private final ru.nexora.combat.LivingEntityAiService livingEntityAi =
             new ru.nexora.combat.LivingEntityAiService();
     private volatile boolean serverAuthoritativeMovement;
@@ -1685,6 +1686,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(target.uniqueId()));
             return;
         }
+        livingEntityAggroTargets.put(target.runtimeId(), attackerNetworkId);
         if (effect.fireDurationSeconds() > 0) {
             livingEntityKillCredit.put(target.runtimeId(), new MobKillCredit(attackerNetworkId,
                     weapon.enchantments().getOrDefault("minecraft:looting", 0)));
@@ -1693,6 +1695,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         broadcastLivingActorPacket(BedrockVitalsCodec.createActorHealthUpdate(
                 updated.runtimeId(), updated.health(), updated.maxHealth(),
                 Math.max(0, attacker.lastInputTick)));
+        if ("minecraft:enderman".equals(updated.identifier())) {
+            teleportEndermanAway(updated, attacker.positionX, attacker.positionY, attacker.positionZ,
+                    Math.max(0, nowNanos / 1_000_000L), attacker.lastInputTick);
+        }
         if (effect.fireDurationSeconds() > 0) {
             updated = world.livingEntities().ignite(updated.runtimeId(), effect.fireDurationSeconds(),
                     Math.max(0, nowNanos / 1_000_000L)).orElse(updated);
@@ -1976,6 +1982,49 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return ox * ox + oy * oy + oz * oz;
     }
 
+    /** Endermen blink away from a player who damages them, using collision-safe landing spots. */
+    private void teleportEndermanAway(
+            WorldLivingEntity enderman, double attackerX, double attackerY, double attackerZ,
+            long nowMillis, long tick
+    ) {
+        if (nowMillis < endermanTeleportCooldownMillis.getOrDefault(enderman.runtimeId(), 0L)) return;
+        double awayX = enderman.x() - attackerX;
+        double awayZ = enderman.z() - attackerZ;
+        double length = Math.hypot(awayX, awayZ);
+        if (length < 0.001) { awayX = 1.0; awayZ = 0.0; length = 1.0; }
+        awayX /= length;
+        awayZ /= length;
+        java.util.concurrent.ThreadLocalRandom random = java.util.concurrent.ThreadLocalRandom.current();
+        for (int attempt = 0; attempt < 24; attempt++) {
+            double distance = random.nextDouble(8.0, 13.0);
+            double candidateX = enderman.x() + awayX * distance + random.nextDouble(-3.0, 3.0);
+            double candidateZ = enderman.z() + awayZ * distance + random.nextDouble(-3.0, 3.0);
+            int baseY = (int) Math.floor(enderman.y());
+            for (int offset = 2; offset >= -2; offset--) {
+                double candidateY = baseY + offset;
+                int blockX = (int) Math.floor(candidateX);
+                int blockY = (int) Math.floor(candidateY);
+                int blockZ = (int) Math.floor(candidateZ);
+                if (blockY <= WorldChunk.MIN_Y || blockY + 2 > WorldChunk.MAX_Y) continue;
+                if (world.getBlock(blockX, blockY - 1, blockZ) == BlockType.AIR
+                        || world.getBlock(blockX, blockY, blockZ) != BlockType.AIR
+                        || world.getBlock(blockX, blockY + 1, blockZ) != BlockType.AIR
+                        || world.getBlock(blockX, blockY + 2, blockZ) != BlockType.AIR) continue;
+                if (!WorldCollision.canOccupy(world, candidateX, candidateY, candidateZ)) continue;
+                WorldLivingEntity moved = world.livingEntities().move(
+                        enderman.runtimeId(), candidateX, candidateY, candidateZ).orElse(null);
+                if (moved == null) return;
+                endermanTeleportCooldownMillis.put(enderman.runtimeId(), nowMillis + 1_000L);
+                float yaw = (float) Math.toDegrees(Math.atan2(-awayX, awayZ));
+                broadcastLivingActorPacket(BedrockMoveActorAbsoluteCodec.create(
+                        moved.runtimeId(), moved.x(), moved.y(), moved.z(), 0.0f, yaw, yaw,
+                        true, Math.max(0, tick)));
+                return;
+            }
+        }
+        endermanTeleportCooldownMillis.put(enderman.runtimeId(), nowMillis + 250L);
+    }
+
     private boolean tickCreeperBehavior(
             WorldLivingEntity creeper,
             List<ru.nexora.combat.LivingEntityAiService.PlayerTarget> targets,
@@ -2178,6 +2227,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (entity == null || !world.livingEntities().remove(runtimeId)) return false;
         nextMobAttackMillis.remove(runtimeId);
         creeperFuseStartedMillis.remove(runtimeId);
+        endermanTeleportCooldownMillis.remove(runtimeId);
         livingEntityAggroTargets.remove(runtimeId);
         for (var entry : mobArrows.entrySet()) {
             if (entry.getValue().ownerNetworkId().equals("mob:" + runtimeId)) {

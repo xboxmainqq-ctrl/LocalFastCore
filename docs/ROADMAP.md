@@ -69,7 +69,7 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 ## Current next steps
 
 1. Finish and verify the NexoraAI Guard moderator case workflow and its CI run.
-2. Inspect the core's real update loops and build a trustworthy performance baseline.
-3. Select one measured hot path (likely Bedrock inbound handling or mob AI) and optimize it with regression tests.
-4. Extend diagnostics with rolling latency summaries and incident correlation.
+2. Continue profiling the real update loops and build a trustworthy performance baseline; current mob-AI timing is available as subsystem latency, not TPS.
+3. Extend mob-AI regression/load coverage and investigate bounded path-result reuse only after measuring pathfinder cost.
+4. Extend diagnostics with incident correlation and sustained-latency windows.
 5. Continue the security/moderation roadmap after the core baseline is stable.

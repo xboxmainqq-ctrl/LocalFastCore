@@ -60,6 +60,7 @@ public final class FurnaceService {
         }
         Position position = new Position(x, y, z);
         FurnaceState state = states.computeIfAbsent(position, ignored -> new FurnaceState());
+        if (state.cookProgress >= kind.cookTimeTicks) state.cookProgress = 0;
         if (elapsedTicks == 0) return result(state, false, kind);
 
         boolean changed = false;

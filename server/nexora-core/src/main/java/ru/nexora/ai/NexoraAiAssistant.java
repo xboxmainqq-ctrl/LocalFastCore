@@ -94,7 +94,9 @@ public final class NexoraAiAssistant {
         return "Состояние ядра: " + s.health() + "; heap " + heap
                 + "; потоки " + s.liveThreadCount() + "; CPU " + s.availableProcessors()
                 + "; load " + load + "; uptime " + s.uptimeMillis() + " ms"
-                + "; ошибок " + s.recordedFailures() + "; последняя: " + s.lastFailure();
+                + "; ошибок " + s.recordedFailures() + "; последняя: " + s.lastFailure()
+                + "; медленных операций " + s.slowOperationCount()
+                + "; последняя медленная: " + s.lastSlowOperation();
     }
 
     public AskResult ask(String playerId, String playerName, String prompt, Consumer<String> reply) {

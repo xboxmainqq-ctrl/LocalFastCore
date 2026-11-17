@@ -584,7 +584,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
         CraftingRecipe recipe = craftingRecipes.findByUuid(event.recipeId());
         if (event.windowId() != 0 || event.type() != BedrockCraftingEventCodec.TYPE_SHAPELESS
-                || recipe == null || (event.input().size() != 4 && event.input().size() != 9)
+                || recipe == null || event.input().size() != 4
                 || event.output().size() != 1
                 || event.output().getFirst().isEmpty()
                 || !event.output().getFirst().orElseThrow().itemId().equals(recipe.result().itemId())

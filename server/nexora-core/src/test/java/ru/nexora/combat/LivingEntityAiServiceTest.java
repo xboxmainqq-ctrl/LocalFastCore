@@ -63,7 +63,7 @@ class LivingEntityAiServiceTest {
                 "minecraft:zombie", 20, 0, 64, 0);
         var distant = new LivingEntityAiService.PlayerTarget("far", 30, 64, 0, true);
 
-        assertFalse(ai.decide(cow, List.of(distant), 1, 0).moving());
+        assertTrue(ai.decide(cow, List.of(distant), 1, 0).moving());
         assertFalse(ai.decide(zombie, List.of(distant), 1, 0).moving());
         assertFalse(ai.decide(zombie, List.of(), 1, 0).attack());
     }

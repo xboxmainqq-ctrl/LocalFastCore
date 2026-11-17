@@ -30,7 +30,7 @@ public final class WorldPathfinder {
         int targetCellX = (int) Math.floor(targetX);
         int targetCellZ = (int) Math.floor(targetZ);
         if (startCellX == targetCellX && startCellZ == targetCellZ) return Optional.empty();
-        if (!world.isChunkLoadedAt(startCellX, startCellZ)) return Optional.empty();
+        if (!isMobFootprintLoaded(world, startX, startZ)) return Optional.empty();
 
         ArrayDeque<Node> queue = new ArrayDeque<>();
         Set<Long> visited = new HashSet<>();
@@ -47,7 +47,7 @@ public final class WorldPathfinder {
                 int nextZ = current.z() + direction[1];
                 if (Math.abs((long) nextX - startCellX) > MAX_DEPTH
                         || Math.abs((long) nextZ - startCellZ) > MAX_DEPTH) continue;
-                if (!world.isChunkLoadedAt(nextX, nextZ)) continue;
+                if (!isMobFootprintLoaded(world, nextX + 0.5, nextZ + 0.5)) continue;
                 long key = key(nextX, nextZ);
                 if (!visited.add(key)) continue;
 
@@ -66,6 +66,15 @@ public final class WorldPathfinder {
             }
         }
         return Optional.empty();
+    }
+
+    /** Checks all chunks touched by the mob's horizontal 0.6-block footprint without loading any. */
+    public static boolean isMobFootprintLoaded(World world, double x, double z) {
+        if (world == null || !Double.isFinite(x) || !Double.isFinite(z)) return false;
+        return world.isChunkLoadedAt((int) Math.floor(x - 0.3), (int) Math.floor(z - 0.3))
+                && world.isChunkLoadedAt((int) Math.floor(x - 0.3), (int) Math.floor(z + 0.3))
+                && world.isChunkLoadedAt((int) Math.floor(x + 0.3), (int) Math.floor(z - 0.3))
+                && world.isChunkLoadedAt((int) Math.floor(x + 0.3), (int) Math.floor(z + 0.3));
     }
 
     private static long key(int x, int z) {

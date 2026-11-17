@@ -425,6 +425,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return aiGuard.snapshot().summary();
     }
 
+    /** Read-only moderator review summary; never exposes XUIDs or executes punishments. */
+    public String guardReviewSummary() {
+        return aiGuard.combatReviewSummary(nanoTime.getAsLong());
+    }
+
     public int activeSessionCount() {
         return sessions.size();
     }
@@ -1286,6 +1291,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             openEquipmentMenu(message.networkId(), state, "");
             return;
         }
+        if (normalized.equals("/ai guard")) {
+            if (!isAiAdmin(state)) {
+                sendAiMessage(message.networkId(), "§c[NEXORA AI] Нет доступа к панели Guard.");
+            } else {
+                sendAiMessage(message.networkId(), "§b[NEXORA AI GUARD] §f" + guardSummary()
+                        + "\\n" + guardReviewSummary()
+                        + "\\nИстория доступна только для проверки модератором.");
+            }
+            return;
+        }
         if (normalized.equals("/ai admin")) {
             if (!isAiAdmin(state)) {
                 sendAiMessage(message.networkId(), "§c[NEXORA AI] Нет доступа к режиму администрации.");
@@ -1358,7 +1373,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private void handleAiChat(String networkId, SessionState state, String prompt, boolean admin) {
         if (prompt.equalsIgnoreCase("help")) {
             sendAiMessage(networkId, "§b[NEXORA AI] §fКоманды: /ai, /ai <вопрос>, /ai clear; "
-                    + "операторам: /ai admin, /ai admin plan <проблема>, /ai admin proposals, "
+                    + "операторам: /ai guard, /ai admin, /ai admin plan <проблема>, /ai admin proposals, "
                     + "/ai admin proposal <id>, /ai admin approve <id>, /ai admin reject <id>.");
             return;
         }
@@ -1935,6 +1950,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 if (finalDamage > 0.0f) {
                     applyDamage(targetNetworkId, target, finalDamage,
                             target.lastInputTick, "death.attack.generic");
+                    aiGuard.recordSuccessfulAttack(
+                            attacker.identity == null ? networkId : attacker.identity.xuid(),
+                            attacker.identity == null ? null : attacker.identity.displayName(),
+                            target.identity == null ? targetNetworkId : target.identity.xuid(), now);
                 }
                 applyKnockback(targetNetworkId, target, attacker,
                         Math.max(effect.knockbackLevel(),
@@ -2013,6 +2032,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                                 : (float) attacker.physicsState.fallDistance());
         var damage = world.livingEntities().damage(target.runtimeId(), effect.damage()).orElse(null);
         if (damage == null) return;
+        aiGuard.recordSuccessfulAttack(
+                attacker.identity == null ? attackerNetworkId : attacker.identity.xuid(),
+                attacker.identity == null ? null : attacker.identity.displayName(),
+                "entity:" + target.runtimeId(), nowNanos);
         broadcastPacketExcept(attackerNetworkId,
                 BedrockAnimateCodec.createSwing(attacker.entityId, BedrockAnimateCodec.MAIN_HAND));
         applySpearLunge(attackerNetworkId, attacker, weapon);

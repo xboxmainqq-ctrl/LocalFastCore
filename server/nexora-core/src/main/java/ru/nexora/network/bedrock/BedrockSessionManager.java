@@ -1164,12 +1164,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         if (action.action() == BedrockPlayerActionCodec.ACTION_START_USING_ITEM && !state.dead) {
             ItemStack held = state.inventory.heldItem().orElse(null);
-            if (isSpear(held)) {
-                clearSpearCharge(state);
-                state.spearChargeStartedNanos = nanoTime.getAsLong();
-                state.spearChargeSlot = state.inventory.selectedHotbarSlot();
-                state.spearChargeItemId = held.itemId();
-            }
+            startSpearChargeIfHeld(state);
             return;
         }
         if (action.action() == BedrockPlayerActionCodec.ACTION_DROP_ITEM && !state.dead) {
@@ -2711,6 +2706,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (state.dead) return;
         BedrockPlayerAuthInputCodec.PlayerInput input = BedrockPlayerAuthInputCodec.decode(packet);
         if (state.hasReceivedInput && input.tick() <= state.lastInputTick) return;
+        if (input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.START_USING_ITEM)) {
+            startSpearChargeIfHeld(state);
+        }
         tickPlayerFire(networkId, state, input.tick());
         tickWorldLivingActors(input.tick());
 
@@ -2950,6 +2948,18 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.usingItemSlot = -1;
         state.usingItemRuntimeId = 0;
         state.usingItemStartedNanos = 0;
+    }
+
+    private void startSpearChargeIfHeld(SessionState state) {
+        ItemStack held = state.inventory.heldItem().orElse(null);
+        if (!isSpear(held)) return;
+        if (state.spearChargeStartedNanos != Long.MIN_VALUE
+                && state.spearChargeSlot == state.inventory.selectedHotbarSlot()
+                && held.itemId().equals(state.spearChargeItemId)) return;
+        clearSpearCharge(state);
+        state.spearChargeStartedNanos = nanoTime.getAsLong();
+        state.spearChargeSlot = state.inventory.selectedHotbarSlot();
+        state.spearChargeItemId = held.itemId();
     }
 
     private static void clearSpearCharge(SessionState state) {

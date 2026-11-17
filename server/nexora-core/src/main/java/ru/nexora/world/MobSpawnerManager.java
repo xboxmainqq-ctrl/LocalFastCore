@@ -19,6 +19,8 @@ public final class MobSpawnerManager {
     public static final int MAX_NEARBY_SAME_TYPE = 6;
     public static final int MAX_SPAWN_ATTEMPTS = 4;
     public static final int MAX_TRACKED_SPAWNERS = 10_000;
+    /** Hard per-server-tick work budget; remaining spawners are handled round-robin. */
+    public static final int MAX_SPAWNERS_PER_TICK = 128;
 
     private final Map<Position, MobSpawnerState> spawners = new LinkedHashMap<>();
     private final MobSpawnerStorage storage;
@@ -72,6 +74,7 @@ public final class MobSpawnerManager {
     private long inactiveTicks;
     private long invalidPositionAttempts;
     private long lastProcessedTick = Long.MIN_VALUE;
+    private int nextSpawnerCursor;
 
     public synchronized boolean register(int x, int y, int z, long currentTick) {
         if (currentTick < 0 || (spawners.size() >= MAX_TRACKED_SPAWNERS
@@ -110,12 +113,33 @@ public final class MobSpawnerManager {
         if (currentTick < 0) throw new IllegalArgumentException("currentTick must be non-negative");
 
         List<MobSpawnerState> snapshot;
+        int tracked;
         long elapsedTicks;
         synchronized (this) {
+            tracked = spawners.size();
+            // Bedrock input can cause more than one world-AI callback in a server tick.
+            // A spawner must advance at most once for a given tick, regardless of player count.
+            if (currentTick == lastProcessedTick) {
+                return new TickResult(tracked, 0, 0, 0, 0, 0, 0);
+            }
             elapsedTicks = lastProcessedTick == Long.MIN_VALUE ? 1L
                     : Math.max(0L, currentTick - lastProcessedTick);
             lastProcessedTick = currentTick;
-            snapshot = List.copyOf(spawners.values());
+
+            // Never let a large number of placed spawners monopolize one AI update.
+            // Round-robin selection guarantees every registered spawner gets a turn.
+            List<MobSpawnerState> all = List.copyOf(spawners.values());
+            int processCount = Math.min(all.size(), MAX_SPAWNERS_PER_TICK);
+            snapshot = new ArrayList<>(processCount);
+            if (!all.isEmpty()) {
+                int start = Math.floorMod(nextSpawnerCursor, all.size());
+                for (int i = 0; i < processCount; i++) {
+                    snapshot.add(all.get((start + i) % all.size()));
+                }
+                nextSpawnerCursor = (start + processCount) % all.size();
+            } else {
+                nextSpawnerCursor = 0;
+            }
         }
         List<WorldLivingEntity> livingSnapshot = world.livingEntities().snapshot();
         List<SpawnRequest> spawnedThisTick = new ArrayList<>();
@@ -172,7 +196,7 @@ public final class MobSpawnerManager {
             cappedAttempts += capped;
             invalidPositionAttempts += invalid;
         }
-        return new TickResult(snapshot.size(), active, attempts, spawned, capped, invalid);
+        return new TickResult(tracked, snapshot.size(), active, attempts, spawned, capped, invalid);
     }
 
     public synchronized List<MobSpawnerState> snapshot() {
@@ -282,8 +306,8 @@ public final class MobSpawnerManager {
 
     public record SpawnRequest(String identifier, double x, double y, double z) { }
 
-    public record TickResult(int trackedSpawners, int activeSpawners, int attempts,
-                             int spawned, int capped, int invalidPositions) { }
+    public record TickResult(int trackedSpawners, int processedSpawners, int activeSpawners,
+                             int attempts, int spawned, int capped, int invalidPositions) { }
 
     public record Stats(int trackedSpawners, long spawned, long spawnAttempts,
                         long cappedAttempts, long inactiveTicks, long invalidPositionAttempts) {

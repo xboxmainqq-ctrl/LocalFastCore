@@ -106,6 +106,9 @@ public final class BedrockVanillaItemCatalog {
         add(entries, "rabbit_foot", 538, 2, 64);
         add(entries, "rabbit_hide", 539, 2, 64);
         add(entries, "rabbit", 288, 0, 64);
+        add(entries, "cooked_rabbit", 289, 0, 64);
+        add(entries, "mutton", 560, 0, 64);
+        add(entries, "cooked_mutton", 561, 0, 64);
         add(entries, "ink_sac", 416, 2, 64);
         add(entries, "glow_ink_sac", 514, 2, 64);
         add(entries, "leather_helmet", 338, 2, 1);

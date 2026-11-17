@@ -87,8 +87,11 @@ public final class NexoraAiAssistant {
         NexoraAiDiagnostics.Snapshot s = diagnostics.inspect();
         String heap = s.heapUsageRatio() < 0 ? "unknown"
                 : String.format(java.util.Locale.ROOT, "%.1f%%", s.heapUsageRatio() * 100.0);
+        String load = s.systemLoadAverage() < 0 ? "unknown"
+                : String.format(java.util.Locale.ROOT, "%.2f", s.systemLoadAverage());
         return "Состояние ядра: " + s.health() + "; heap " + heap
                 + "; потоки " + s.liveThreadCount() + "; CPU " + s.availableProcessors()
+                + "; load " + load + "; uptime " + s.uptimeMillis() + " ms"
                 + "; ошибок " + s.recordedFailures() + "; последняя: " + s.lastFailure();
     }
 

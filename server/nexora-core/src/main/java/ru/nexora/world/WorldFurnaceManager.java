@@ -38,7 +38,7 @@ public final class WorldFurnaceManager {
         return inventory;
     }
 
-    /** Advances one loaded furnace and persists its inventory and timers. */
+    /** Advances one loaded furnace in memory; save() or world autosave persists its inventory and timers. */
     public FurnaceService.TickResult tick(int x, int y, int z, long elapsedTicks)
             throws IOException {
         FurnaceUpdate update;

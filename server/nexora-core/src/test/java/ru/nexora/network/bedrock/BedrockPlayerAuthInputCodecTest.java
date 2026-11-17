@@ -37,6 +37,25 @@ class BedrockPlayerAuthInputCodecTest {
     }
 
     @Test
+    void distinguishesStartUsingItemFromStartSpinAttackInProtocol2225() {
+        BedrockPlayerAuthInputCodec.PlayerInput usingItem =
+                BedrockPlayerAuthInputCodec.decode(new BedrockPacket(0x90, 0, 0,
+                        movementPayload(0, 65, 0, 0, 15L, false,
+                                BedrockPlayerAuthInputCodec.InputAction.START_USING_ITEM)));
+        BedrockPlayerAuthInputCodec.PlayerInput spinAttack =
+                BedrockPlayerAuthInputCodec.decode(new BedrockPacket(0x90, 0, 0,
+                        movementPayload(0, 65, 0, 0, 16L, false,
+                                BedrockPlayerAuthInputCodec.InputAction.START_SPIN_ATTACK)));
+
+        assertEquals(52, BedrockPlayerAuthInputCodec.InputAction.START_USING_ITEM);
+        assertEquals(53, BedrockPlayerAuthInputCodec.InputAction.START_SPIN_ATTACK);
+        assertTrue(usingItem.hasInputAction(52));
+        assertFalse(usingItem.hasInputAction(53));
+        assertTrue(spinAttack.hasInputAction(53));
+        assertFalse(spinAttack.hasInputAction(52));
+    }
+
+    @Test
     void preservesDigitalAnalogAndRawMovementVectors() {
         byte[] payload = movementPayload(0.5f, 65.0f, 0.5f, 90.0f, 16L, false);
         ByteBuffer wire = ByteBuffer.wrap(payload).order(java.nio.ByteOrder.LITTLE_ENDIAN);

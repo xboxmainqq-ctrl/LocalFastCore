@@ -2797,6 +2797,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         enderman.runtimeId(), candidateX, candidateY, candidateZ).orElse(null);
                 if (moved == null) return;
                 endermanTeleportCooldownMillis.put(enderman.runtimeId(), nowMillis + 1_000L);
+                mobPathCache.remove(enderman.runtimeId());
+                mobStuckTracker.clear(enderman.runtimeId());
+                mobFallTracker.clear(enderman.runtimeId());
+                mobDespawnTracker.clear(enderman.runtimeId());
                 float yaw = (float) Math.toDegrees(Math.atan2(-awayX, awayZ));
                 broadcastLivingActorPacket(BedrockMoveActorAbsoluteCodec.create(
                         moved.runtimeId(), moved.x(), moved.y(), moved.z(), 0.0f, yaw, yaw,

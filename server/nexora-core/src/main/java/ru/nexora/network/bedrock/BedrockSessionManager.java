@@ -341,7 +341,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 int remaining = state.inventory.add(stack);
                 if (remaining > 0) {
                     var dropped = world.itemEntities().spawn(
-                            new ru.nexora.inventory.ItemStack(stack.itemId(), remaining, stack.maxStackSize()),
+                            stack.withCount(remaining),
                             state.positionX, state.positionY + 0.5, state.positionZ,
                             0, 0.15, 0, System.currentTimeMillis(),
                             WorldItemEntityManager.DEFAULT_PICKUP_DELAY_MILLIS,
@@ -998,7 +998,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 int overflow = state.inventory.add(stack);
                 if (overflow > 0) {
                     var dropped = world.itemEntities().spawn(
-                            new ItemStack(stack.itemId(), overflow, stack.maxStackSize()),
+                            stack.withCount(overflow),
                             state.positionX, state.positionY + 0.5, state.positionZ,
                             0, 0.15, 0, System.currentTimeMillis(),
                             WorldItemEntityManager.DEFAULT_PICKUP_DELAY_MILLIS,
@@ -2672,14 +2672,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 state.inventory.setSlot(inventorySlot, null);
             } else {
                 state.inventory.setSlot(inventorySlot,
-                        new ru.nexora.inventory.ItemStack(stack.itemId(), stack.count() - quantity,
-                                stack.maxStackSize()));
+                        stack.withCount(stack.count() - quantity));
             }
 
             WorldItemEntity entity = null;
             try {
                 entity = world.itemEntities().spawn(
-                        new ru.nexora.inventory.ItemStack(stack.itemId(), quantity, stack.maxStackSize()),
+                        stack.withCount(quantity),
                         state.positionX, state.positionY + 0.5, state.positionZ,
                         velocityX, velocityY, velocityZ,
                         System.currentTimeMillis(), WorldItemEntityManager.DEFAULT_PICKUP_DELAY_MILLIS,

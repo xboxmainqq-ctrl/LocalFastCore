@@ -2374,7 +2374,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 return;
             }
             try {
-                ContainerInventory furnace = manager.getOrCreate(\n                        target.x(), target.y(), target.z(), furnaceKind(current));
+                ContainerInventory furnace = manager.getOrCreate(
+                        target.x(), target.y(), target.z(), furnaceKind(current));
                 if (furnace.snapshot().stream().anyMatch(Optional::isPresent)) {
                     state.breakTarget = null;
                     sendPacket(networkId, BedrockBlockUpdateCodec.createPacket(

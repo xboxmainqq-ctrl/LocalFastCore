@@ -275,10 +275,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             synchronized (state) {
                 saveAndClearContainerWindow(state);
                 try {
+                    returnCraftingGridItems(state);
                     savePlayer(state);
                     saveInventory(state);
                     saveEquipment(state);
-                } catch (IOException exception) {
+                } catch (IOException | RuntimeException exception) {
                     System.err.println("NEXORA: unable to save disconnected player: " + exception.getMessage());
                 }
             }
@@ -315,6 +316,43 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     state.yaw, state.pitch, System.currentTimeMillis(), state.vitals));
         } catch (IllegalArgumentException exception) {
             throw new IOException("Authenticated player data cannot be persisted", exception);
+        }
+    }
+
+    private void returnCraftingGridItems(SessionState state) throws IOException {
+        List<Optional<ru.nexora.inventory.ItemStack>> playerBefore = state.inventory.snapshot();
+        int selectedSlot = state.inventory.selectedHotbarSlot();
+        List<Optional<ru.nexora.inventory.ItemStack>> uiBefore = state.craftingUiInventory.snapshot();
+        List<Long> spawnedRuntimeIds = new ArrayList<>();
+        try {
+            for (int slot = 28; slot <= 31; slot++) {
+                ru.nexora.inventory.ItemStack stack =
+                        state.craftingUiInventory.getSlot(slot).orElse(null);
+                if (stack == null) continue;
+                int remaining = state.inventory.add(stack);
+                if (remaining > 0) {
+                    var dropped = world.itemEntities().spawn(
+                            new ru.nexora.inventory.ItemStack(stack.itemId(), remaining, stack.maxStackSize()),
+                            state.positionX, state.positionY + 0.5, state.positionZ,
+                            0, 0.15, 0, System.currentTimeMillis(),
+                            WorldItemEntityManager.DEFAULT_PICKUP_DELAY_MILLIS,
+                            state.identity == null ? null : state.identity.xuid());
+                    spawnedRuntimeIds.add(dropped.runtimeId());
+                }
+                state.craftingUiInventory.setSlot(slot, null);
+            }
+            saveInventory(state);
+        } catch (IOException | RuntimeException exception) {
+            state.inventory.restore(playerBefore, selectedSlot);
+            state.craftingUiInventory.restore(uiBefore);
+            for (long runtimeId : spawnedRuntimeIds) {
+                try {
+                    world.itemEntities().remove(runtimeId);
+                } catch (RuntimeException rollbackFailure) {
+                    exception.addSuppressed(rollbackFailure);
+                }
+            }
+            throw exception;
         }
     }
 
@@ -2551,6 +2589,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     @Override
     public void close() {
+        for (SessionState state : sessions.values()) {
+            synchronized (state) {
+                try {
+                    returnCraftingGridItems(state);
+                } catch (IOException | RuntimeException exception) {
+                    System.err.println("NEXORA: unable to return crafting-grid items on shutdown: "
+                            + exception.getMessage());
+                }
+            }
+        }
         try {
             savePlayers();
         } catch (IOException exception) {

@@ -114,6 +114,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final Map<Long, Long> endermanTeleportCooldownMillis = new ConcurrentHashMap<>();
     private final ru.nexora.combat.LivingEntityAiService livingEntityAi =
             new ru.nexora.combat.LivingEntityAiService();
+    private final ru.nexora.combat.MobPhysicsService mobPhysics =
+            new ru.nexora.combat.MobPhysicsService();
     private final ru.nexora.world.MobPathCache mobPathCache =
             new ru.nexora.world.MobPathCache();
     private final ru.nexora.combat.MobStuckTracker mobStuckTracker =
@@ -2469,6 +2471,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         });
         for (WorldLivingEntity mob : world.livingEntities().snapshot()) {
             if (!ru.nexora.world.WorldPathfinder.isMobFootprintLoaded(world, mob.x(), mob.z())) continue;
+            ru.nexora.combat.MobPhysicsService.Result physics = mobPhysics.tick(world, mob);
+            mob = physics.entity();
+            if (physics.moved()) {
+                float physicsYaw = (float) Math.toDegrees(
+                        Math.atan2(-mob.velocityX(), mob.velocityZ()));
+                broadcastLivingActorPacket(BedrockMoveActorAbsoluteCodec.create(
+                        mob.runtimeId(), mob.x(), mob.y(), mob.z(), 0.0f,
+                        physicsYaw, physicsYaw, physics.grounded()));
+            }
             ru.nexora.combat.LivingEntityAiService.PlayerTarget nearestPlayer =
                     ru.nexora.combat.LivingEntityAiService.nearestAlivePlayer(mob, targets);
             if ("minecraft:creeper".equals(mob.identifier())

@@ -40,7 +40,7 @@ final class NexoraAiConversationMemory {
         this.maxConversations = maxConversations;
     }
 
-    List<Message> history(String playerId, boolean admin) {
+    History history(String playerId, boolean admin) {
         String key = key(playerId, admin);
         long now = nanoTime.getAsLong();
         Conversation conversation = conversations.compute(key, (ignored, existing) ->

@@ -962,6 +962,33 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void temporaryMobRetaliationTargetExpires() throws Exception {
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "mob-aggro-expiry-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {});
+        var piglin = manager.spawnLivingEntity("minecraft:piglin", 16.0f, 0.5, 65, 0.5);
+        @SuppressWarnings("unchecked")
+        java.util.Map<Long, String> targets =
+                (java.util.Map<Long, String>) getManagerField(manager, "livingEntityAggroTargets");
+        @SuppressWarnings("unchecked")
+        java.util.Map<Long, Long> expiry =
+                (java.util.Map<Long, Long>) getManagerField(manager, "livingEntityAggroExpiresAtMillis");
+        targets.put(piglin.runtimeId(), "attacker");
+        expiry.put(piglin.runtimeId(), 2_000L);
+
+        java.lang.reflect.Method activeProvoker =
+                BedrockSessionManager.class.getDeclaredMethod("activeMobProvoker", long.class, long.class);
+        activeProvoker.setAccessible(true);
+        assertEquals("attacker", activeProvoker.invoke(manager, piglin.runtimeId(), 1_999L));
+        assertNull(activeProvoker.invoke(manager, piglin.runtimeId(), 2_000L));
+        assertFalse(targets.containsKey(piglin.runtimeId()));
+        assertFalse(expiry.containsKey(piglin.runtimeId()));
+        manager.close();
+    }
+
+    @Test
     void fireDeathClearsTransientMobAiState() throws Exception {
         java.util.concurrent.atomic.AtomicLong clock =
                 new java.util.concurrent.atomic.AtomicLong(2_000_000_000L);

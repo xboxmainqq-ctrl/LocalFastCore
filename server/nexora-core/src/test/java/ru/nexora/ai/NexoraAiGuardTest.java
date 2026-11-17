@@ -141,13 +141,13 @@ class NexoraAiGuardTest {
     void flagsOnlyHighRateMultiTargetValidatedAttacksAndKeepsPrivateCaseSummary() {
         List<NexoraAiGuard.GuardEvent> events = new ArrayList<>();
         NexoraAiGuard guard = new NexoraAiGuard(1_000, 100, 10_000, 8, events::add);
-        for (int i = 0; i < 44; i++) {
+        for (int i = 0; i < 64; i++) {
             guard.recordSuccessfulAttack("private-xuid", "PlayerOne",
                     "target-" + (i % 4), i * 50_000_000L);
         }
         assertTrue(events.isEmpty());
         guard.recordSuccessfulAttack("private-xuid", "PlayerOne",
-                "target-3", 44 * 50_000_000L);
+                "target-3", 64 * 50_000_000L);
         assertEquals(1, events.size());
         assertTrue(events.getFirst().reason().contains("possible KillAura"));
         String summary = guard.combatReviewSummary(44 * 50_000_000L);
@@ -166,7 +166,7 @@ class NexoraAiGuardTest {
         }
         guard.recordSuccessfulAttack("xuid-a", "A", "target-1", 5_000_000_000L);
         assertTrue(guard.combatReviewSummary(5_000_000_000L).contains("no confirmed"));
-        for (int i = 0; i < 45; i++) {
+        for (int i = 0; i < 65; i++) {
             guard.recordSuccessfulAttack("xuid-a", "A", "target-" + (i % 4),
                     5_000_000_000L + i * 50_000_000L);
         }

@@ -67,21 +67,14 @@ public final class EnchantmentCombatService {
         Objects.requireNonNull(armor, "armor");
         int armorPoints = 0;
         int protectionLevels = 0;
-        double toughness = 0.0;
         for (ItemStack piece : armor) {
             Objects.requireNonNull(piece, "armor piece");
-            String id = piece.itemId();
-            armorPoints += armorPointsForPiece(id);
-            if (id.contains("diamond") || id.contains("netherite")) toughness += 0.5;
+            armorPoints += armorPointsForPiece(piece.itemId());
             protectionLevels += level(piece, "minecraft:protection");
         }
-        double armorReduction = 0.0;
-        if (armorPoints > 0) {
-            double effective = Math.min(20.0,
-                    Math.max(armorPoints / 5.0,
-                            armorPoints - incomingDamage / (2.0 + toughness / 4.0)));
-            armorReduction = effective / 25.0;
-        }
+        // Bedrock armor reduces 4% per armor point, up to 80%.
+        double armorReduction = Math.min(0.80, armorPoints * 0.04);
+        // Protection contributes 4% per level, also capped at 80%.
         double enchantmentReduction = Math.min(0.80, protectionLevels * 0.04);
         return (float) (incomingDamage * (1.0 - armorReduction) * (1.0 - enchantmentReduction));
     }

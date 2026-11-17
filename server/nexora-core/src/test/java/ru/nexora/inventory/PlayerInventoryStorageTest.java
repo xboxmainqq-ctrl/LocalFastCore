@@ -98,7 +98,7 @@ class PlayerInventoryStorageTest {
         assertEquals(java.util.Map.of("minecraft:sharpness", 5, "minecraft:unbreaking", 3),
                 restored.enchantments());
         assertEquals(7, restored.repairCost());
-        assertEquals(3, Byte.toUnsignedInt(Files.readAllBytes(
+        assertEquals(4, Byte.toUnsignedInt(Files.readAllBytes(
                 temporaryDirectory.resolve("enchanted-player.nxi"))[4]));
     }
 

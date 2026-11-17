@@ -3634,7 +3634,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             sendPacket(networkId, worldPacket, true);
                         }
                     }
-                    sendPacket(networkId, BedrockBiomeDefinitionCodec.createPacket(), true);
+                    sendPackets(networkId, List.of(
+                            BedrockBiomeDefinitionCodec.createPacket(),
+                            BedrockChunkRadiusCodec.createUpdatedPacket(state.chunkViewRadius)), true);
                     sendInitialChunkArea(networkId, state);
                 }
                 System.out.printf("NEXORA: resource-pack negotiation completed for %s%n", networkId);
@@ -4638,7 +4640,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private void sendInitialChunkArea(String networkId, SessionState state) {
         int centerX = Math.floorDiv((int) Math.floor(state.positionX), 16);
         int centerZ = Math.floorDiv((int) Math.floor(state.positionZ), 16);
-        sendPacket(networkId, BedrockChunkRadiusCodec.createUpdatedPacket(state.chunkViewRadius), true);
         sendChunkArea(networkId, state, centerX, centerZ);
     }
 

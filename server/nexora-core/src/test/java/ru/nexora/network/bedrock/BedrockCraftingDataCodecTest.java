@@ -20,7 +20,7 @@ class BedrockCraftingDataCodecTest {
 
         Reader in = new Reader(packet.payload());
         var shapedRecipes = recipes.recipes().stream().filter(CraftingRecipe::isShaped).toList();
-        assertEquals(2, in.varUInt()); // shaped recipes
+        assertEquals(shapedRecipes.size(), in.varUInt()); // shaped recipes
         for (CraftingRecipe shaped : shapedRecipes) {
             assertEquals(shaped.id(), in.string());
             assertEquals(shaped.width(), in.varInt());
@@ -55,7 +55,7 @@ class BedrockCraftingDataCodecTest {
             assertEquals(recipes.networkId(shaped.id()), in.varUInt());
         }
 
-        assertEquals(3, in.varUInt()); // shapeless recipes
+        assertEquals(recipes.recipes().size() - shapedRecipes.size(), in.varUInt()); // shapeless recipes
         for (CraftingRecipe recipe : recipes.recipes().stream().filter(r -> !r.isShaped()).toList()) {
             assertEquals(recipe.id(), in.string());
             assertEquals(1, in.varUInt());

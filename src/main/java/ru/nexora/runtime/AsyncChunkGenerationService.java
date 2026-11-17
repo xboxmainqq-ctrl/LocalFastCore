@@ -253,9 +253,15 @@ public final class AsyncChunkGenerationService implements RuntimeModule {
             failedCount.incrementAndGet();
             publish(request, new ChunkGenerationResult(request.position, null, failure));
         } catch (Error fatal) {
-            // FutureTask captures thrown errors. Release the reservation first so
-            // a broken generator cannot leave this chunk permanently pending.
-            inFlight.remove(request.position, request);
+            // Surface fatal generator failures through the bounded completion
+            // channel before rethrowing. This lets the game-thread pipeline
+            // resolve async waiters instead of leaving them incomplete forever.
+            failedCount.incrementAndGet();
+            publish(request, new ChunkGenerationResult(
+                    request.position,
+                    null,
+                    new IllegalStateException("Chunk generator failed with a fatal error", fatal)
+            ));
             throw fatal;
         }
     }

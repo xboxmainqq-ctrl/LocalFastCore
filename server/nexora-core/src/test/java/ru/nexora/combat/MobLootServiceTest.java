@@ -63,6 +63,20 @@ class MobLootServiceTest {
     }
 
     @Test
+    void additionalSpeciesHaveDistinctDrops() {
+        assertEquals("minecraft:breeze_rod",
+                MobLootService.dropsFor("minecraft:breeze").drops().getFirst().itemId());
+        assertEquals("minecraft:sculk_catalyst",
+                MobLootService.dropsFor("minecraft:warden").drops().getFirst().itemId());
+        assertEquals("minecraft:wet_sponge",
+                MobLootService.dropsFor("minecraft:elder_guardian").drops().get(1).itemId());
+        assertEquals("minecraft:leather",
+                MobLootService.dropsFor("minecraft:camel").drops().getFirst().itemId());
+        assertEquals("minecraft:arrow",
+                MobLootService.dropsFor("minecraft:bogged").drops().get(1).itemId());
+    }
+
+    @Test
     void unknownMobsHaveNoLootOrExperience() {
         assertEquals(MobLootService.Loot.EMPTY, MobLootService.dropsFor("minecraft:unknown_mob"));
     }

@@ -87,6 +87,30 @@ class AiToolRegistryTest {
     }
 
     @Test
+    void auditSinkFailureAfterExecutionDoesNotReclassifyCompletedAction() {
+        AtomicInteger auditCalls = new AtomicInteger();
+        AtomicInteger actionCalls = new AtomicInteger();
+        AiToolRegistry registry = new AiToolRegistry(event -> {
+            if (auditCalls.incrementAndGet() == 2) {
+                throw new IllegalStateException("audit storage unavailable");
+            }
+        });
+        registry.register(new AiToolRegistry.Tool(
+                "server.reload", "server.config.write", true,
+                arguments -> {
+                    actionCalls.incrementAndGet();
+                    return "reloaded";
+                }
+        ));
+
+        assertThrows(IllegalStateException.class, () -> registry.execute(
+                new AiToolRegistry.Principal("owner", Set.of("server.config.write")),
+                "server.reload", Map.of(), true));
+        assertEquals(1, actionCalls.get());
+        assertEquals(2, auditCalls.get());
+    }
+
+    @Test
     void duplicateToolIdsAndInvalidDefinitionsAreRejected() {
         AiToolRegistry registry = new AiToolRegistry(ignored -> { });
         AiToolRegistry.Tool tool = new AiToolRegistry.Tool("world.inspect", "world.read", false, args -> "ok");

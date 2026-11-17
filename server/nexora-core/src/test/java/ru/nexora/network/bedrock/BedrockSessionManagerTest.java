@@ -38,6 +38,82 @@ class BedrockSessionManagerTest {
     @TempDir
     Path temporaryDirectory;
     @Test
+    void densityMaceUsesServerFallDistanceWhenDamagingMob() throws Exception {
+        ru.nexora.world.World combatWorld = new ru.nexora.world.World(
+                "density-mace-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                combatWorld, (networkId, label, frame) -> {}, event -> {});
+        manager.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
+        manager.onIdentity("density-attacker", new NetherNetClientIdentity(
+                "density-token", new byte[] {11}, "density-xuid",
+                "DensityAttacker", "playfab-density", "20CA2", null));
+        setSessionField(manager, "density-attacker", "loginAuthenticated", true);
+        setSessionField(manager, "density-attacker", "clientInitialized", true);
+        setSessionField(manager, "density-attacker", "positionInitialized", true);
+        setSessionField(manager, "density-attacker", "entityId", 111L);
+        setSessionField(manager, "density-attacker", "positionX", 0.0f);
+        setSessionField(manager, "density-attacker", "positionY", 65.0f);
+        setSessionField(manager, "density-attacker", "positionZ", 0.0f);
+        setSessionField(manager, "density-attacker", "physicsState",
+                new ru.nexora.world.PlayerPhysics.State(
+                        0, 65, 0, 0, -4, 0, false, 4.0, 0));
+        ItemStack mace = new ItemStack("minecraft:mace", 1, 1,
+                java.util.Map.of("minecraft:density", 3));
+        manager.playerInventory("density-attacker").orElseThrow().setSlot(0, mace);
+        var zombie = manager.spawnLivingEntity("minecraft:zombie", 20.0f, 2.0, 65.0, 0.0);
+        var attack = new BedrockInventoryTransactionCodec.DecodedUseOnActor(
+                zombie.runtimeId(), 1, 0, 0, java.util.Optional.of(mace),
+                0.0f, 65.0f, 0.0f, 0.0f, 1.0f, 0.0f);
+
+        invokeActorAttack(manager, "density-attacker", attack);
+
+        assertEquals(8.0f,
+                combatWorld.livingEntities().find(zombie.runtimeId()).orElseThrow().health(), 0.0001f);
+        manager.close();
+    }
+
+    @Test
+    void lungeSpearJabPropelsAttackerAndConsumesExhaustion() throws Exception {
+        ru.nexora.world.World combatWorld = new ru.nexora.world.World(
+                "lunge-spear-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                combatWorld, (networkId, label, frame) -> {}, event -> {});
+        manager.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
+        manager.onIdentity("lunge-attacker", new NetherNetClientIdentity(
+                "lunge-token", new byte[] {12}, "lunge-xuid",
+                "LungeAttacker", "playfab-lunge", "20CA2", null));
+        setSessionField(manager, "lunge-attacker", "loginAuthenticated", true);
+        setSessionField(manager, "lunge-attacker", "clientInitialized", true);
+        setSessionField(manager, "lunge-attacker", "positionInitialized", true);
+        setSessionField(manager, "lunge-attacker", "entityId", 112L);
+        setSessionField(manager, "lunge-attacker", "positionX", 0.0f);
+        setSessionField(manager, "lunge-attacker", "positionY", 65.0f);
+        setSessionField(manager, "lunge-attacker", "positionZ", 0.0f);
+        setSessionField(manager, "lunge-attacker", "physicsState",
+                new ru.nexora.world.PlayerPhysics.State(0, 65, 0, 0, 0, 0, true, 0, 0));
+        ItemStack spear = new ItemStack("minecraft:diamond_spear", 1, 1,
+                java.util.Map.of("minecraft:lunge", 2));
+        manager.playerInventory("lunge-attacker").orElseThrow().setSlot(0, spear);
+        var zombie = manager.spawnLivingEntity("minecraft:zombie", 20.0f, 2.0, 65.0, 0.0);
+        var attack = new BedrockInventoryTransactionCodec.DecodedUseOnActor(
+                zombie.runtimeId(), 1, 0, 0, java.util.Optional.of(spear),
+                0.0f, 65.0f, 0.0f, 0.0f, 1.0f, 0.0f);
+
+        invokeActorAttack(manager, "lunge-attacker", attack);
+
+        var physics = (ru.nexora.world.PlayerPhysics.State) getSessionField(
+                manager, "lunge-attacker", "physicsState");
+        var vitals = manager.playerVitals("lunge-attacker").orElseThrow();
+        assertEquals(18.32, physics.velocityZ(), 0.0001);
+        assertEquals(3.0f, vitals.saturation(), 0.0001f);
+        assertEquals(20, vitals.hunger());
+        assertEquals(0.0f, vitals.exhaustion(), 0.0001f);
+        manager.close();
+    }
+
+    @Test
     void appliesServerValidatedPlayerAttackWithSharpnessAndHurtImmunity() throws Exception {
         List<byte[]> outboundFrames = new ArrayList<>();
         ru.nexora.world.World combatWorld = new ru.nexora.world.World(

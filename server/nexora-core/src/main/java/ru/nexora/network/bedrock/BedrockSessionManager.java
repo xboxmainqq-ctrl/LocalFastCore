@@ -3495,6 +3495,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         state.positionX = world.spawnX() + 0.5f;
                         state.positionY = world.spawnY();
                         state.positionZ = world.spawnZ() + 0.5f;
+                        ensureActorFootprintChunksLoaded(state.positionX, state.positionZ);
                         if (!WorldCollision.canOccupy(world, state.positionX, state.positionY, state.positionZ)) {
                             throw new IllegalStateException("Configured NEXORA world spawn is obstructed");
                         }

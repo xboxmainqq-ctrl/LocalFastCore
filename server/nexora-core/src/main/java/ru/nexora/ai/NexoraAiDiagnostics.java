@@ -53,6 +53,13 @@ public final class NexoraAiDiagnostics {
         appendEvent("FAILURE", lastFailure);
     }
 
+    /** Records a bounded, identifier-free security signal from NexoraAI Guard. */
+    public void recordGuardSignal(String description) {
+        Objects.requireNonNull(description, "description");
+        if (description.isBlank()) throw new IllegalArgumentException("description must not be blank");
+        appendEvent("GUARD", bound(sanitize(description), MAX_FAILURE_DESCRIPTION_LENGTH));
+    }
+
     /** Records an operation that exceeded its expected execution budget. */
     public void recordSlowOperation(String subsystem, long elapsedNanos, long thresholdNanos) {
         Objects.requireNonNull(subsystem, "subsystem");

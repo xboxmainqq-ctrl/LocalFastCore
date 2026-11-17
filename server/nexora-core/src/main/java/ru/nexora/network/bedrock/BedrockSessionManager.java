@@ -1036,6 +1036,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             throw new SecurityException("Malformed Bedrock InventoryTransaction", exception);
         }
 
+        if (state.openContainerWindowId != 0 && state.openContainerInventory != null
+                && decoded.actions().stream().anyMatch(
+                        action -> action.containerId() == state.openContainerWindowId)) {
+            handleOpenContainerTransaction(networkId, state, decoded.actions());
+            return;
+        }
+
         InventoryTransactionService.Result result =
                 inventoryTransactionService.applyPlayerInventoryAndUiTransaction(
                         state.inventory, state.equipment, decoded.actions(), armorSlotRegistry);
@@ -1047,6 +1054,49 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         reconciliation.add(authoritativeContent);
         reconciliation.addAll(createEquipmentReconciliationPackets(state));
         sendPackets(networkId, reconciliation, true);
+    }
+
+    private void handleOpenContainerTransaction(
+            String networkId, SessionState state, List<InventoryTransactionService.Action> actions
+    ) {
+        ContainerInventory container = state.openContainerInventory;
+        int windowId = state.openContainerWindowId;
+        if (container == null || windowId == 0) return;
+
+        List<Optional<ItemStack>> previousPlayer = state.inventory.snapshot();
+        int previousSelectedSlot = state.inventory.selectedHotbarSlot();
+        List<Optional<ItemStack>> previousContainer = container.snapshot();
+        ContainerInventoryTransactionService.Result result = containerTransactionService.apply(
+                state.inventory, container, windowId, actions);
+
+        if (result == ContainerInventoryTransactionService.Result.APPLIED) {
+            try {
+                saveInventory(state);
+                WorldContainerManager manager = world.containers().orElseThrow(
+                        () -> new IllegalStateException("World container storage is not configured"));
+                manager.save(state.openContainerX, state.openContainerY, state.openContainerZ);
+            } catch (IOException | RuntimeException exception) {
+                state.inventory.restore(previousPlayer, previousSelectedSlot);
+                container.restore(previousContainer);
+                try {
+                    saveInventory(state);
+                    world.containers().ifPresent(manager -> {
+                        try {
+                            manager.save(state.openContainerX, state.openContainerY, state.openContainerZ);
+                        } catch (IOException rollbackFailure) {
+                            throw new java.io.UncheckedIOException(rollbackFailure);
+                        }
+                    });
+                } catch (IOException | RuntimeException rollbackFailure) {
+                    exception.addSuppressed(rollbackFailure);
+                }
+                System.err.println("NEXORA: chest transaction rolled back because persistence failed: "
+                        + exception.getMessage());
+            }
+        }
+
+        // Always reconcile both inventories so a rejected or stale client prediction cannot linger.
+        sendContainerReconciliation(networkId, state);
     }
 
     private void handleNetworkSettingsRequest(

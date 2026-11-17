@@ -16,20 +16,29 @@ public record PlayerData(
         float pitch,
         long lastSeenEpochMillis,
         PlayerVitals vitals,
-        int experiencePoints
+        int experiencePoints,
+        int experienceRemainderMilli
 ) {
     public PlayerData(
             String xuid, String displayName, String worldName,
             float x, float y, float z, float yaw, float pitch, long lastSeenEpochMillis
     ) {
-        this(xuid, displayName, worldName, x, y, z, yaw, pitch, lastSeenEpochMillis, PlayerVitals.DEFAULT, 0);
+        this(xuid, displayName, worldName, x, y, z, yaw, pitch, lastSeenEpochMillis, PlayerVitals.DEFAULT, 0, 0);
     }
     public PlayerData(
             String xuid, String displayName, String worldName,
             float x, float y, float z, float yaw, float pitch, long lastSeenEpochMillis,
             PlayerVitals vitals
     ) {
-        this(xuid, displayName, worldName, x, y, z, yaw, pitch, lastSeenEpochMillis, vitals, 0);
+        this(xuid, displayName, worldName, x, y, z, yaw, pitch, lastSeenEpochMillis, vitals, 0, 0);
+    }
+    public PlayerData(
+            String xuid, String displayName, String worldName,
+            float x, float y, float z, float yaw, float pitch, long lastSeenEpochMillis,
+            PlayerVitals vitals, int experiencePoints
+    ) {
+        this(xuid, displayName, worldName, x, y, z, yaw, pitch,
+                lastSeenEpochMillis, vitals, experiencePoints, 0);
     }
     private static final Pattern SAFE_XUID = Pattern.compile("[A-Za-z0-9_-]{1,64}");
 
@@ -49,7 +58,8 @@ public record PlayerData(
         }
         if (lastSeenEpochMillis < 0) throw new IllegalArgumentException("Invalid last-seen timestamp");
         Objects.requireNonNull(vitals, "vitals");
-        if (experiencePoints < 0 || experiencePoints > 2_000_000_000) {
+        if (experiencePoints < 0 || experiencePoints > 2_000_000_000
+                || experienceRemainderMilli < 0 || experienceRemainderMilli >= 1000) {
             throw new IllegalArgumentException("Invalid player experience points");
         }
     }

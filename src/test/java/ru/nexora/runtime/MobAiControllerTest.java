@@ -90,6 +90,52 @@ class MobAiControllerTest {
     }
 
     @Test
+    void hostileMobFindsLoadedGroundRouteAroundSingleBlockObstacle() {
+        InMemoryWorld world = groundedWorld();
+        world.setBlock(new BlockPosition(1, 64, 0), new BlockState("minecraft:stone"));
+        EntityRegistry entities = new EntityRegistry();
+        UUID mobId = UUID.randomUUID();
+        UUID playerId = UUID.randomUUID();
+        entities.spawn(new WorldEntity(mobId, WorldEntity.Type.MOB, "Zombie", 0.5, 64, 0.5, 0, -1));
+        entities.spawn(WorldEntity.player(playerId, "Player", 4.5, 64, 0.5, 180, 0));
+        EntityTickEngine engine = new EntityTickEngine(entities, world);
+        engine.mobAi().setBehavior(mobId, MobAiController.Behavior.HOSTILE);
+
+        for (int i = 0; i < 80; i++) {
+            engine.tick();
+        }
+
+        WorldEntity mob = entities.find(mobId).orElseThrow();
+        assertTrue(mob.x() > 1.0, "mob should make progress beyond the blocked direct route");
+        assertTrue(Math.abs(mob.z() - 0.5) > 0.1,
+                "mob should move sideways to follow a path around the obstacle");
+        assertEquals(MobAiController.State.CHASE,
+                engine.mobAi().lastDecision(mobId).orElseThrow().state());
+    }
+
+    @Test
+    void hostileMobReportsStuckWhenEveryAdjacentGroundCellIsBlocked() {
+        InMemoryWorld world = groundedWorld();
+        world.setBlock(new BlockPosition(1, 64, 0), new BlockState("minecraft:stone"));
+        world.setBlock(new BlockPosition(-1, 64, 0), new BlockState("minecraft:stone"));
+        world.setBlock(new BlockPosition(0, 64, 1), new BlockState("minecraft:stone"));
+        world.setBlock(new BlockPosition(0, 64, -1), new BlockState("minecraft:stone"));
+        EntityRegistry entities = new EntityRegistry();
+        UUID mobId = UUID.randomUUID();
+        UUID playerId = UUID.randomUUID();
+        entities.spawn(new WorldEntity(mobId, WorldEntity.Type.MOB, "Zombie", 0.5, 64, 0.5, 0, -1));
+        entities.spawn(WorldEntity.player(playerId, "Player", 4.5, 64, 0.5, 180, 0));
+        EntityTickEngine engine = new EntityTickEngine(entities, world);
+        engine.mobAi().setBehavior(mobId, MobAiController.Behavior.HOSTILE);
+
+        engine.tick();
+
+        assertEquals(MobAiController.State.STUCK,
+                engine.mobAi().lastDecision(mobId).orElseThrow().state());
+        assertEquals(0.5, entities.find(mobId).orElseThrow().x(), 0.0001);
+    }
+
+    @Test
     void rejectsInvalidProfilesAndOnlyNeutralMobsCanBeProvoked() {
         MobAiController controller = new MobAiController();
         UUID mobId = UUID.randomUUID();

@@ -1,7 +1,14 @@
 package ru.nexora.runtime;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.PriorityQueue;
+import java.util.Set;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -18,10 +25,13 @@ public final class MobAiController {
     private static final double DEFAULT_DETECTION_RANGE = 16.0;
     private static final double DEFAULT_ATTACK_RANGE = 1.6;
     private static final double DEFAULT_MOVE_SPEED = 0.10;
+    private static final int MAX_PATH_NODES = 512;
+    private static final int[][] PATH_NEIGHBORS = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
 
     private final Map<UUID, Behavior> behaviors = new HashMap<>();
     private final Map<UUID, UUID> provokedTargets = new HashMap<>();
     private final Map<UUID, Decision> decisions = new HashMap<>();
+    private final Map<UUID, NavigationState> navigation = new HashMap<>();
     private final double detectionRange;
     private final double attackRange;
     private final double moveSpeed;
@@ -108,22 +118,7 @@ public final class MobAiController {
             return remember(mob.id(), new Decision(State.ATTACK, target.id(), false, true));
         }
 
-        double horizontalDistance = Math.sqrt(dx * dx + dz * dz);
-        if (horizontalDistance < 0.000001) {
-            return remember(mob.id(), new Decision(State.CHASE, target.id(), false, false));
-        }
-
-        double stepX = dx / horizontalDistance * Math.min(moveSpeed, horizontalDistance);
-        double stepZ = dz / horizontalDistance * Math.min(moveSpeed, horizontalDistance);
-        double nextX = mob.x() + stepX;
-        double nextZ = mob.z() + stepZ;
-        if (!hasSafeFooting(world, nextX, mob.y(), nextZ)) {
-            return remember(mob.id(), new Decision(State.STUCK, target.id(), false, false));
-        }
-
-        double yaw = Math.toDegrees(Math.atan2(-stepX, stepZ));
-        boolean moved = entities.updatePosition(mob.id(), nextX, mob.y(), nextZ, yaw);
-        return remember(mob.id(), new Decision(State.CHASE, target.id(), moved, false));
+        return navigateToward(mob, target, entities, world);
     }
 
     /** Drops all controller state for entities that no longer exist. */
@@ -132,6 +127,138 @@ public final class MobAiController {
         behaviors.keySet().removeIf(id -> entities.find(id).isEmpty());
         provokedTargets.keySet().removeIf(id -> entities.find(id).isEmpty());
         decisions.keySet().removeIf(id -> entities.find(id).isEmpty());
+        navigation.keySet().removeIf(id -> entities.find(id).isEmpty());
+    }
+
+    /**
+     * Follows a bounded deterministic A* route on the loaded ground plane.
+     * The path is cached per mob and rebuilt when its target enters another block.
+     */
+    private Decision navigateToward(WorldEntity mob, WorldEntity target,
+                                    EntityRegistry entities, World world) {
+        int targetX = floor(target.x());
+        int targetZ = floor(target.z());
+        NavigationState route = navigation.get(mob.id());
+        if (route == null || route.targetX != targetX || route.targetZ != targetZ) {
+            route = findPath(mob, target, world);
+            if (route == null) {
+                navigation.remove(mob.id());
+                return remember(mob.id(), new Decision(State.STUCK, target.id(), false, false));
+            }
+            navigation.put(mob.id(), route);
+        }
+
+        int mobBlockX = floor(mob.x());
+        int mobBlockZ = floor(mob.z());
+        while (!route.path.isEmpty()
+                && route.path.peekFirst().x == mobBlockX
+                && route.path.peekFirst().z == mobBlockZ) {
+            route.path.removeFirst();
+        }
+        if (route.path.isEmpty()) {
+            navigation.remove(mob.id());
+            return remember(mob.id(), new Decision(State.STUCK, target.id(), false, false));
+        }
+
+        PathNode waypoint = route.path.peekFirst();
+        double waypointX = waypoint.x + 0.5;
+        double waypointZ = waypoint.z + 0.5;
+        double stepX = waypointX - mob.x();
+        double stepZ = waypointZ - mob.z();
+        double distance = Math.sqrt(stepX * stepX + stepZ * stepZ);
+        if (distance < 0.000001) {
+            route.path.removeFirst();
+            return remember(mob.id(), new Decision(State.CHASE, target.id(), false, false));
+        }
+
+        double scale = Math.min(moveSpeed, distance) / distance;
+        double nextX = mob.x() + stepX * scale;
+        double nextZ = mob.z() + stepZ * scale;
+        if (!hasSafeFooting(world, nextX, mob.y(), nextZ)) {
+            navigation.remove(mob.id());
+            return remember(mob.id(), new Decision(State.STUCK, target.id(), false, false));
+        }
+
+        double yaw = Math.toDegrees(Math.atan2(-(nextX - mob.x()), nextZ - mob.z()));
+        boolean moved = entities.updatePosition(mob.id(), nextX, mob.y(), nextZ, yaw);
+        return remember(mob.id(), new Decision(State.CHASE, target.id(), moved, false));
+    }
+
+    private NavigationState findPath(WorldEntity mob, WorldEntity target, World world) {
+        PathNode start = new PathNode(floor(mob.x()), floor(mob.z()));
+        int targetX = floor(target.x());
+        int targetZ = floor(target.z());
+        PriorityQueue<SearchNode> open = new PriorityQueue<>(
+                Comparator.comparingInt(SearchNode::score)
+                        .thenComparingInt(SearchNode::heuristic)
+                        .thenComparingInt(node -> node.position.x)
+                        .thenComparingInt(node -> node.position.z));
+        Map<PathNode, Integer> costs = new HashMap<>();
+        Map<PathNode, PathNode> parents = new HashMap<>();
+        Set<PathNode> closed = new HashSet<>();
+        open.add(new SearchNode(start, 0, pathHeuristic(start, target.x(), target.z())));
+        costs.put(start, 0);
+
+        PathNode goal = null;
+        int expanded = 0;
+        int maxRadius = (int) Math.ceil(detectionRange);
+        while (!open.isEmpty() && expanded < MAX_PATH_NODES) {
+            SearchNode current = open.remove();
+            if (!closed.add(current.position)) {
+                continue;
+            }
+            expanded++;
+
+            double centerDx = current.position.x + 0.5 - target.x();
+            double centerDz = current.position.z + 0.5 - target.z();
+            if (centerDx * centerDx + centerDz * centerDz <= attackRange * attackRange) {
+                goal = current.position;
+                break;
+            }
+
+            for (int[] offset : PATH_NEIGHBORS) {
+                PathNode next = new PathNode(current.position.x + offset[0],
+                        current.position.z + offset[1]);
+                int fromStartX = next.x - start.x;
+                int fromStartZ = next.z - start.z;
+                if (fromStartX * fromStartX + fromStartZ * fromStartZ > maxRadius * maxRadius
+                        || closed.contains(next)
+                        || !hasSafeFooting(world, next.x + 0.5, mob.y(), next.z + 0.5)) {
+                    continue;
+                }
+
+                int nextCost = current.cost + 1;
+                Integer knownCost = costs.get(next);
+                if (knownCost != null && knownCost <= nextCost) {
+                    continue;
+                }
+                costs.put(next, nextCost);
+                parents.put(next, current.position);
+                open.add(new SearchNode(next, nextCost,
+                        pathHeuristic(next, target.x(), target.z())));
+            }
+        }
+
+        if (goal == null || goal.equals(start)) {
+            return null;
+        }
+        List<PathNode> reversed = new ArrayList<>();
+        PathNode cursor = goal;
+        while (!cursor.equals(start)) {
+            reversed.add(cursor);
+            cursor = parents.get(cursor);
+            if (cursor == null) {
+                return null;
+            }
+        }
+        Collections.reverse(reversed);
+        return new NavigationState(targetX, targetZ, reversed);
+    }
+
+    private static int pathHeuristic(PathNode node, double targetX, double targetZ) {
+        double dx = node.x + 0.5 - targetX;
+        double dz = node.z + 0.5 - targetZ;
+        return (int) Math.floor(Math.sqrt(dx * dx + dz * dz));
     }
 
     private WorldEntity nearestVisiblePlayer(WorldEntity mob, EntityRegistry entities, World world) {
@@ -206,6 +333,27 @@ public final class MobAiController {
 
     private static int floor(double value) {
         return (int) Math.floor(value);
+    }
+
+    private record PathNode(int x, int z) {
+    }
+
+    private record SearchNode(PathNode position, int cost, int heuristic) {
+        private int score() {
+            return cost + heuristic;
+        }
+    }
+
+    private static final class NavigationState {
+        private final int targetX;
+        private final int targetZ;
+        private final java.util.ArrayDeque<PathNode> path;
+
+        private NavigationState(int targetX, int targetZ, List<PathNode> path) {
+            this.targetX = targetX;
+            this.targetZ = targetZ;
+            this.path = new java.util.ArrayDeque<>(path);
+        }
     }
 
     public enum Behavior {

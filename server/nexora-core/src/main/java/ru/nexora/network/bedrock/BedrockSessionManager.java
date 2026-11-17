@@ -116,6 +116,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             new ru.nexora.combat.LivingEntityAiService();
     private final ru.nexora.world.MobPathCache mobPathCache =
             new ru.nexora.world.MobPathCache();
+    private final ru.nexora.combat.MobStuckTracker mobStuckTracker =
+            new ru.nexora.combat.MobStuckTracker();
     private volatile boolean serverAuthoritativeMovement;
     private volatile ru.nexora.ai.NexoraAiAssistant aiAssistant;
     private volatile ru.nexora.ai.NexoraAiDiagnostics aiDiagnostics;
@@ -435,6 +437,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     /** Read-only mob navigation/cache diagnostics for allowlisted operators. */
     public String mobAiDiagnosticsSummary() {
         ru.nexora.world.MobPathCache.Stats cache = mobPathCache.stats();
+        ru.nexora.combat.MobStuckTracker.Stats stuck = mobStuckTracker.stats(System.currentTimeMillis());
         StringBuilder result = new StringBuilder("Mob path cache: ")
                 .append("hits=").append(cache.hits())
                 .append(", misses=").append(cache.misses())
@@ -442,7 +445,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 .append(", recomputations=").append(cache.recomputations())
                 .append(", blocked=").append(cache.blockedWaypoints())
                 .append(", evictions=").append(cache.evictions())
-                .append(", entries=").append(cache.entries());
+                .append(", entries=").append(cache.entries())
+                .append("\nMob stuck tracker: tracked=").append(stuck.tracked())
+                .append(", stuck=").append(stuck.stuck())
+                .append(", evictions=").append(stuck.evictions());
         ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
         if (diagnostics == null) {
             result.append("\nMob AI latency: diagnostics unavailable");
@@ -461,6 +467,27 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             if (!found) result.append("\nMob AI latency: waiting for measurements");
         }
         result.append("\nЭто накопительные счётчики и время подсистем, не TPS и не CPU.");
+        return result.toString();
+    }
+
+    /** Lists a small, bounded set of mobs that have made no meaningful movement progress. */
+    public String mobAiStuckSummary() {
+        long now = System.currentTimeMillis();
+        ru.nexora.combat.MobStuckTracker.Stats stats = mobStuckTracker.stats(now);
+        StringBuilder result = new StringBuilder("Застрявшие мобы: ")
+                .append(stats.stuck()).append(" (отслеживается ").append(stats.tracked()).append(')');
+        List<ru.nexora.combat.MobStuckTracker.StuckMob> stuck =
+                mobStuckTracker.stuck(now, 5);
+        if (stuck.isEmpty()) {
+            result.append("\nПодтверждённых случаев пока нет.");
+        } else {
+            for (ru.nexora.combat.MobStuckTracker.StuckMob mob : stuck) {
+                result.append("\n#").append(mob.runtimeId())
+                        .append(": ").append(mob.durationMillis() / 1000.0).append(" сек., попыток=")
+                        .append(mob.attempts());
+            }
+        }
+        result.append("\nОбнаружение только сообщает о проблеме; мобов система не телепортирует.");
         return result.toString();
     }
 
@@ -1395,9 +1422,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             openEquipmentMenu(message.networkId(), state, "");
             return;
         }
-        if (normalized.equals("/ai mob") || normalized.equals("/ai mob stats")) {
+        if (normalized.equals("/ai mob") || normalized.equals("/ai mob stats")
+                || normalized.equals("/ai mob stuck")) {
             if (!isAiAdmin(state)) {
                 sendAiMessage(message.networkId(), "§c[NEXORA AI] Нет доступа к диагностике Mob AI.");
+            } else if (normalized.equals("/ai mob stuck")) {
+                sendAiMessage(message.networkId(), "§b[NEXORA AI MOB] §f" + mobAiStuckSummary());
             } else {
                 sendAiMessage(message.networkId(), "§b[NEXORA AI MOB] §f" + mobAiDiagnosticsSummary());
             }
@@ -1484,7 +1514,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private void handleAiChat(String networkId, SessionState state, String prompt, boolean admin) {
         if (prompt.equalsIgnoreCase("help")) {
             sendAiMessage(networkId, "§b[NEXORA AI] §fКоманды: /ai, /ai <вопрос>, /ai clear; "
-                    + "операторам: /ai mob stats, /ai guard, /ai admin, /ai admin plan <проблема>, /ai admin proposals, "
+                    + "операторам: /ai mob stats, /ai mob stuck, /ai guard, /ai admin, /ai admin plan <проблема>, /ai admin proposals, "
                     + "/ai admin proposal <id>, /ai admin approve <id>, /ai admin reject <id>.");
             return;
         }
@@ -2303,21 +2333,29 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         for (WorldLivingEntity mob : world.livingEntities().snapshot()) {
             if ("minecraft:creeper".equals(mob.identifier())
                     && tickCreeperBehavior(mob, targets, nowMillis, tick)) {
+                mobStuckTracker.clear(mob.runtimeId());
                 continue;
             }
-            if (tickRangedMobBehavior(mob, targets, nowMillis)) continue;
+            if (tickRangedMobBehavior(mob, targets, nowMillis)) {
+                mobStuckTracker.clear(mob.runtimeId());
+                continue;
+            }
             long nextAttackAt = nextMobAttackMillis.getOrDefault(mob.runtimeId(), 0L);
             ru.nexora.combat.LivingEntityAiService.Decision decision =
                     livingEntityAi.decide(mob, targets, nowMillis, nextAttackAt,
                             livingEntityAggroTargets.get(mob.runtimeId()));
             if (decision.attack()) {
+                mobStuckTracker.clear(mob.runtimeId());
                 if (damagePlayerFromMob(decision.targetNetworkId(), mob, decision.attackDamage(), tick)) {
                     nextMobAttackMillis.put(mob.runtimeId(),
                             nowMillis + ru.nexora.combat.LivingEntityAiService.ATTACK_COOLDOWN_MILLIS);
                 }
                 continue;
             }
-            if (!decision.moving()) continue;
+            if (!decision.moving()) {
+                mobStuckTracker.clear(mob.runtimeId());
+                continue;
+            }
             double nextX = mob.x() + decision.moveX();
             double nextY = mob.y() + decision.moveY();
             double nextZ = mob.z() + decision.moveZ();
@@ -2336,20 +2374,33 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                                 Math.max(0L, nanoTime.getAsLong() - pathStartedNanos), 5_000_000L);
                     }
                 }
-                if (waypoint == null) continue;
+                if (waypoint == null) {
+                    mobStuckTracker.recordBlockedAttempt(mob.runtimeId(), mob.x(), mob.y(), mob.z(), nowMillis);
+                    continue;
+                }
                 double dx = waypoint.x() - mob.x();
                 double dz = waypoint.z() - mob.z();
                 double length = Math.hypot(dx, dz);
-                if (length < 0.0001) continue;
+                if (length < 0.0001) {
+                    mobStuckTracker.recordBlockedAttempt(mob.runtimeId(), mob.x(), mob.y(), mob.z(), nowMillis);
+                    continue;
+                }
                 double step = Math.min(
                         ru.nexora.combat.LivingEntityAiService.WALK_SPEED_PER_TICK, length);
                 nextX = mob.x() + dx / length * step;
                 nextZ = mob.z() + dz / length * step;
-                if (!WorldCollision.canMove(world, mob.x(), mob.y(), mob.z(), nextX, nextY, nextZ)) continue;
+                if (!WorldCollision.canMove(world, mob.x(), mob.y(), mob.z(), nextX, nextY, nextZ)) {
+                    mobStuckTracker.recordBlockedAttempt(mob.runtimeId(), mob.x(), mob.y(), mob.z(), nowMillis);
+                    continue;
+                }
             }
             WorldLivingEntity moved = world.livingEntities().move(
                     mob.runtimeId(), nextX, nextY, nextZ).orElse(null);
-            if (moved == null) continue;
+            if (moved == null) {
+                mobStuckTracker.clear(mob.runtimeId());
+                continue;
+            }
+            mobStuckTracker.clear(mob.runtimeId());
             float yaw = (float) Math.toDegrees(Math.atan2(-decision.moveX(), decision.moveZ()));
             broadcastLivingActorPacket(BedrockMoveActorAbsoluteCodec.create(
                     moved.runtimeId(), moved.x(), moved.y(), moved.z(), 0.0f, yaw, yaw,

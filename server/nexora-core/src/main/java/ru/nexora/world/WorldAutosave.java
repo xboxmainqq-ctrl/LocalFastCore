@@ -8,22 +8,31 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.function.LongConsumer;
 
 /** Periodic world persistence with a final synchronous save during shutdown. */
 public final class WorldAutosave implements AutoCloseable {
     private final World world;
     private final Consumer<IOException> errorHandler;
     private final SaveHook additionalSave;
+    private final LongConsumer executionObserver;
     private final ScheduledExecutorService executor;
     private final Object saveLock = new Object();
     private final AtomicBoolean closed = new AtomicBoolean();
 
     public WorldAutosave(World world, Duration interval, Consumer<IOException> errorHandler) {
-        this(world, interval, errorHandler, () -> {});
+        this(world, interval, errorHandler, () -> {}, ignored -> {});
     }
 
     public WorldAutosave(
             World world, Duration interval, Consumer<IOException> errorHandler, SaveHook additionalSave
+    ) {
+        this(world, interval, errorHandler, additionalSave, ignored -> {});
+    }
+
+    public WorldAutosave(
+            World world, Duration interval, Consumer<IOException> errorHandler,
+            SaveHook additionalSave, LongConsumer executionObserver
     ) {
         this.world = Objects.requireNonNull(world, "world");
         Objects.requireNonNull(interval, "interval");
@@ -32,6 +41,7 @@ public final class WorldAutosave implements AutoCloseable {
         }
         this.errorHandler = Objects.requireNonNull(errorHandler, "errorHandler");
         this.additionalSave = Objects.requireNonNull(additionalSave, "additionalSave");
+        this.executionObserver = Objects.requireNonNull(executionObserver, "executionObserver");
         this.executor = Executors.newSingleThreadScheduledExecutor(task -> {
             Thread thread = new Thread(task, "nexora-world-autosave");
             thread.setDaemon(true);
@@ -50,6 +60,7 @@ public final class WorldAutosave implements AutoCloseable {
     }
 
     private void saveSafely() {
+        long started = System.nanoTime();
         try {
             synchronized (saveLock) {
                 if (!closed.get()) flushAll();
@@ -61,6 +72,11 @@ public final class WorldAutosave implements AutoCloseable {
                 errorHandler.accept(failure);
             } catch (RuntimeException ignored) {
                 // A logging callback must not terminate the scheduled autosave task.
+            }
+        } finally {
+            try { executionObserver.accept(Math.max(0L, System.nanoTime() - started)); }
+            catch (RuntimeException ignored) {
+                // Diagnostics must not terminate the scheduled autosave task.
             }
         }
     }

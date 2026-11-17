@@ -20,6 +20,11 @@ class MobFallTrackerTest {
         assertEquals(2, hard.damage());
         assertEquals(2, tracker.stats().completedFalls());
         assertEquals(2, tracker.stats().totalDamage());
+
+        tracker.update(3, 80, false, false);
+        var fractional = tracker.update(3, 76.5, true, false);
+        assertEquals(1, fractional.damage(),
+                "Vanilla-style fall damage rounds any positive excess distance up");
     }
 
     @Test

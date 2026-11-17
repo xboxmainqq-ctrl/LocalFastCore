@@ -376,6 +376,21 @@ class BedrockSessionManagerTest {
                 getSessionField(manager, "charge-cancel-player", "spearChargeStartedNanos"));
         assertEquals(Long.MIN_VALUE,
                 getSessionField(manager, "charge-cancel-player", "spearChargeReleasedNanos"));
+
+        // Charge timeout is enforced on PlayerAuthInput even without server-authoritative movement.
+        sendClientBatch(manager, "charge-cancel-player",
+                BedrockBatchCodec.encode(List.of(startUse), true, 256));
+        assertNotEquals(Long.MIN_VALUE,
+                getSessionField(manager, "charge-cancel-player", "spearChargeStartedNanos"));
+        clock.addAndGet(10_100_000_000L);
+        BedrockPacket movement = new BedrockPacket(
+                BedrockPlayerAuthInputCodec.PLAYER_AUTH_INPUT_PACKET_ID, 0, 0,
+                BedrockPlayerAuthInputCodecTest.movementPayload(
+                        0.5f, 65.0f, 0.5f, 0.0f, 1L, false));
+        sendClientBatch(manager, "charge-cancel-player",
+                BedrockBatchCodec.encode(List.of(movement), true, 256));
+        assertEquals(Long.MIN_VALUE,
+                getSessionField(manager, "charge-cancel-player", "spearChargeStartedNanos"));
         manager.close();
     }
 

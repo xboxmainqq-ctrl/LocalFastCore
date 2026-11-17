@@ -312,6 +312,8 @@ public final class MobSpawnerManager {
         int dx = Math.floorMod((int) (mixed ^ (mixed >>> 32)), SPAWN_RADIUS * 2 + 1) - SPAWN_RADIUS;
         int dz = Math.floorMod((int) ((mixed >>> 17) ^ (mixed >>> 41)), SPAWN_RADIUS * 2 + 1)
                 - SPAWN_RADIUS;
+        // A candidate must never occupy the spawner block itself.
+        if (dx == 0 && dz == 0) dz = 1;
         // Cycle vertical offsets across the bounded attempts so a valid layer is not
         // accidentally skipped when the pseudo-random samples all choose blocked heights.
         int dy = Math.floorMod(attempt, 3) - 1;

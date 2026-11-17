@@ -220,10 +220,8 @@ class BedrockSessionManagerTest {
                 getSessionField(manager, "charge-mob-attacker", "spearChargeReleasedNanos"));
 
         var zombie = manager.spawnLivingEntity("minecraft:zombie", 20.0f, 0.5, 65.0, 3.5);
-        var attack = new BedrockInventoryTransactionCodec.DecodedUseOnActor(
-                zombie.runtimeId(), 1, 0, 0, java.util.Optional.of(spear),
-                0.5f, 65.0f, 0.5f, 0.0f, 1.0f, 0.0f);
-        invokeActorAttack(manager, "charge-mob-attacker", attack);
+        sendActorAttack(manager, "charge-mob-attacker", zombie.runtimeId(),
+                spearDefinition.networkDefinition().runtimeItemId(), 0.5f, 65.0f, 0.5f);
 
         // 6 blocks/s exceeds the 4.6 blocks/s charge threshold:
         // diamond spear multiplier 1.075 gives 6.45 damage (base jab is 5).
@@ -295,10 +293,8 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "charge-pvp-attacker",
                 BedrockBatchCodec.encode(List.of(release), true, 256));
 
-        var attack = new BedrockInventoryTransactionCodec.DecodedUseOnActor(
-                123L, 1, 0, 0, java.util.Optional.of(spear),
-                0.5f, 65.0f, 0.5f, 0.0f, 1.0f, 0.0f);
-        invokeActorAttack(manager, "charge-pvp-attacker", attack);
+        sendActorAttack(manager, "charge-pvp-attacker", 123L,
+                spearDefinition.networkDefinition().runtimeItemId(), 0.5f, 65.0f, 0.5f);
 
         assertEquals(13.55f,
                 manager.playerVitals("charge-pvp-target").orElseThrow().health(), 0.0001f);
@@ -2053,6 +2049,37 @@ class BedrockSessionManagerTest {
                 "tickPlayerFire", String.class, state.getClass(), long.class);
         method.setAccessible(true);
         method.invoke(manager, networkId, state, tick);
+    }
+
+    private static void sendActorAttack(
+            BedrockSessionManager manager, String networkId, long targetRuntimeId,
+            int runtimeItemId, float fromX, float fromY, float fromZ
+    ) {
+        BedrockPacket attack = new BedrockPacket(
+                BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID, 0, 0,
+                itemUseOnActorPayload(targetRuntimeId, runtimeItemId, fromX, fromY, fromZ,
+                        fromX, fromY + 1.0f, fromZ + 2.0f));
+        sendClientBatch(manager, networkId,
+                BedrockBatchCodec.encode(List.of(attack), true, 256));
+    }
+
+    private static byte[] itemUseOnActorPayload(
+            long targetRuntimeId, int runtimeItemId,
+            float fromX, float fromY, float fromZ,
+            float hitX, float hitY, float hitZ
+    ) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        writeVarInt(out, 0); // LegacyRequestId
+        writeVarInt(out, 3); // ItemUseOnActor transaction
+        writeVarUInt(out, 0); // no inventory actions
+        writeVarUInt64(out, targetRuntimeId);
+        writeVarInt(out, 1); // attack
+        writeVarInt(out, 0); // selected hotbar slot
+        out.write(0); // main hand
+        writeDescriptor(out, runtimeItemId, 1);
+        writeFloat32(out, fromX); writeFloat32(out, fromY); writeFloat32(out, fromZ);
+        writeFloat32(out, hitX); writeFloat32(out, hitY); writeFloat32(out, hitZ);
+        return out.toByteArray();
     }
 
     private static void invokeActorAttack(

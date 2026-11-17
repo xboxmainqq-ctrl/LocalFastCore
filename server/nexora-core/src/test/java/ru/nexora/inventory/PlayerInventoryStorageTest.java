@@ -29,6 +29,9 @@ class PlayerInventoryStorageTest {
         assertEquals(new ItemStack("nexora:arcane_shard", 17, 64), loaded.getSlot(0).orElseThrow());
         assertEquals(new ItemStack("nexora:wand", 1, 1), loaded.getSlot(12).orElseThrow());
         assertTrue(loaded.getSlot(1).isEmpty());
+        var legacyState = storage.loadState("player-123").orElseThrow();
+        assertEquals(51, legacyState.craftingUiInventory().size());
+        assertTrue(legacyState.craftingUiInventory().getSlot(28).isEmpty());
     }
 
     @Test

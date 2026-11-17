@@ -850,6 +850,41 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void activeSpawnerCreatesAndReplicatesMobBeforeGenericAiScheduling() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(10_000_000_000L);
+        ru.nexora.world.World spawnerWorld = new ru.nexora.world.World(
+                "spawner-ai-integration", 0L, new ru.nexora.world.FlatWorldGenerator());
+        List<byte[]> outbound = new ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                spawnerWorld, (networkId, label, frame) -> outbound.add(frame),
+                event -> {}, clock::get);
+        manager.onIdentity("spawner-player", new NetherNetClientIdentity(
+                "spawner-token", new byte[] {15}, "spawner-xuid",
+                "SpawnerPlayer", "playfab-spawner", "20CA2", null));
+        setSessionField(manager, "spawner-player", "loginAuthenticated", true);
+        setSessionField(manager, "spawner-player", "clientInitialized", true);
+        setSessionField(manager, "spawner-player", "positionInitialized", true);
+        setSessionField(manager, "spawner-player", "entityId", 115L);
+        setSessionField(manager, "spawner-player", "positionX", 0.5f);
+        setSessionField(manager, "spawner-player", "positionY", 65.0f);
+        setSessionField(manager, "spawner-player", "positionZ", 0.5f);
+
+        spawnerWorld.setBlock(0, 65, 0, ru.nexora.world.BlockType.SPAWNER);
+        assertTrue(spawnerWorld.mobSpawners().configure(
+                0, 65, 0, "minecraft:zombie", 20, 180));
+
+        invokeLivingActorTick(manager, 200L);
+
+        assertTrue(spawnerWorld.livingEntities().snapshot().stream()
+                .anyMatch(entity -> entity.identifier().equals("minecraft:zombie")));
+        assertTrue(outbound.stream().flatMap(frame -> decodeOutboundAll(frame, true).stream())
+                .anyMatch(packet -> packet.packetId() == BedrockAddActorCodec.ADD_ACTOR_PACKET_ID));
+        manager.close();
+    }
+
+    @Test
     void despawningMobClearsAllTransientAiState() throws Exception {
         ru.nexora.world.World mobWorld = new ru.nexora.world.World(
                 "mob-cleanup-world", 0L, new ru.nexora.world.FlatWorldGenerator());

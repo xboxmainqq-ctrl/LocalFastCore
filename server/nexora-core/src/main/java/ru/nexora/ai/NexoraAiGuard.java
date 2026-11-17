@@ -94,7 +94,7 @@ public final class NexoraAiGuard {
         return new Snapshot(peers.size(), signalledPeers, frames, bytes, totalSignals);
     }
 
-    public record GuardEvent(int framesInWindow, long bytesInWindow, String reason) {
+    public record GuardEvent(long framesInWindow, long bytesInWindow, String reason) {
         public GuardEvent {
             Objects.requireNonNull(reason, "reason");
         }
@@ -114,7 +114,7 @@ public final class NexoraAiGuard {
 
     private static final class PeerWindow {
         private long startedAtNanos;
-        private int frames;
+        private long frames;
         private long bytes;
         private boolean signalled;
 

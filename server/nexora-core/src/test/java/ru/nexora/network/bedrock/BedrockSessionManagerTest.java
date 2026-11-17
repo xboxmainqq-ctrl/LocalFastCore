@@ -222,6 +222,19 @@ class BedrockSessionManagerTest {
                 .find("minecraft:sticks_from_oak_planks");
         int planksId = oakPlanksDefinition.runtimeItemId();
         int stickId = itemRegistry.findByIdentifier("minecraft:stick").networkDefinition().runtimeItemId();
+        BedrockPacket invalidHorizontalSticks = new BedrockPacket(
+                BedrockCraftingEventCodec.CRAFTING_EVENT_PACKET_ID, 0, 0,
+                BedrockCraftingDataCodecTest.craftingEventGrid(
+                        sticksRecipe.uuid(), BedrockCraftingEventCodec.TYPE_SHAPED,
+                        new int[] {planksId, planksId, 0, 0},
+                        new int[] {1, 1, 0, 0},
+                        new long[] {oakPlanksDefinition.blockRuntimeId(),
+                                oakPlanksDefinition.blockRuntimeId(), 0, 0},
+                        stickId, 4, 0));
+        sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(invalidHorizontalSticks), true, 256));
+        assertEquals(4, inventory.count("minecraft:oak_planks"));
+        assertEquals(0, inventory.count("minecraft:stick"));
+
         BedrockPacket sticksCraft = new BedrockPacket(
                 BedrockCraftingEventCodec.CRAFTING_EVENT_PACKET_ID, 0, 0,
                 BedrockCraftingDataCodecTest.craftingEventGrid(

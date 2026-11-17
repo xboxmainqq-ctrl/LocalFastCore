@@ -113,4 +113,17 @@ class NexoraAiDiagnosticsTest {
         assertFalse(evidence.contains("java.lang.Thread"));
     }
 
+    @Test
+    void diagnosticEvidenceRedactsCredentialLikeValues() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        diagnostics.recordFailure(new IllegalStateException(
+                "request failed Bearer abc.def.ghi api_key=sk-secret access_token=private-token"));
+
+        String evidence = diagnostics.recentEvidence();
+        assertFalse(evidence.contains("abc.def.ghi"));
+        assertFalse(evidence.contains("sk-secret"));
+        assertFalse(evidence.contains("private-token"));
+        assertTrue(evidence.contains("[REDACTED]"));
+    }
+
 }

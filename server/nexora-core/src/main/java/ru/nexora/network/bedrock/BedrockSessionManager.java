@@ -1575,7 +1575,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
         long now = nanoTime.getAsLong();
         if (attacker.lastAttackNanos != Long.MIN_VALUE
-                && now - attacker.lastAttackNanos < 50_000_000L) return;
+                && now - attacker.lastAttackNanos < weaponAttackCooldownNanos(weapon)) return;
 
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
             String targetNetworkId = entry.getKey();
@@ -1593,7 +1593,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 double dx = target.positionX - attacker.positionX;
                 double dy = target.positionY - attacker.positionY;
                 double dz = target.positionZ - attacker.positionZ;
-                if (dx * dx + dy * dy + dz * dz > 3.5 * 3.5) return;
+                double distanceSquared = dx * dx + dy * dy + dz * dz;
+                if (!isWithinWeaponReach(weapon, distanceSquared)) return;
                 int targetBlockX = (int) Math.floor(target.positionX);
                 int targetBlockY = (int) Math.floor(target.positionY + 1.0);
                 int targetBlockZ = (int) Math.floor(target.positionZ);
@@ -1666,7 +1667,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         double dx = target.x() - attacker.positionX;
         double dy = target.y() - attacker.positionY;
         double dz = target.z() - attacker.positionZ;
-        if (dx * dx + dy * dy + dz * dz > 3.5 * 3.5) return;
+        double distanceSquared = dx * dx + dy * dy + dz * dz;
+        if (!isWithinWeaponReach(weapon, distanceSquared)) return;
         int targetBlockX = (int) Math.floor(target.x());
         int targetBlockY = (int) Math.floor(target.y() + 1.0);
         int targetBlockZ = (int) Math.floor(target.z());
@@ -2302,6 +2304,31 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     target.entityId, velocityX, 0.1, velocityZ,
                     Math.max(0, target.lastInputTick)), true);
         }
+    }
+
+    private static boolean isSpear(ItemStack weapon) {
+        return weapon != null && weapon.itemId().endsWith("_spear");
+    }
+
+    /** Bedrock spear jab cooldowns are tier-specific; other weapons keep the existing gate. */
+    private static long weaponAttackCooldownNanos(ItemStack weapon) {
+        if (!isSpear(weapon)) return 50_000_000L;
+        long millis = switch (weapon.itemId()) {
+            case "minecraft:wooden_spear" -> 650L;
+            case "minecraft:stone_spear" -> 750L;
+            case "minecraft:copper_spear" -> 850L;
+            case "minecraft:golden_spear", "minecraft:iron_spear" -> 950L;
+            case "minecraft:diamond_spear" -> 1_050L;
+            case "minecraft:netherite_spear" -> 1_150L;
+            default -> 650L;
+        };
+        return millis * 1_000_000L;
+    }
+
+    /** Spears require 2 blocks of minimum reach and have a 4.5 block maximum reach. */
+    private static boolean isWithinWeaponReach(ItemStack weapon, double distanceSquared) {
+        if (isSpear(weapon)) return distanceSquared >= 4.0 && distanceSquared <= 4.5 * 4.5;
+        return distanceSquared <= 3.5 * 3.5;
     }
 
     private static float baseAttackDamage(ItemStack weapon) {

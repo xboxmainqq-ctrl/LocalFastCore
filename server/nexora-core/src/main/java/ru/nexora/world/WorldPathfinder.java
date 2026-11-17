@@ -68,6 +68,21 @@ public final class WorldPathfinder {
         return Optional.empty();
     }
 
+    /** Returns whether the bounded 25x25-block path-search area is already resident. */
+    public static boolean isSearchAreaLoaded(World world, double x, double z) {
+        if (world == null || !Double.isFinite(x) || !Double.isFinite(z)) return false;
+        int minChunkX = Math.floorDiv((int) Math.floor(x - MAX_DEPTH), 16);
+        int maxChunkX = Math.floorDiv((int) Math.floor(x + MAX_DEPTH), 16);
+        int minChunkZ = Math.floorDiv((int) Math.floor(z - MAX_DEPTH), 16);
+        int maxChunkZ = Math.floorDiv((int) Math.floor(z + MAX_DEPTH), 16);
+        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+                if (!world.isChunkLoadedAt(chunkX * 16, chunkZ * 16)) return false;
+            }
+        }
+        return true;
+    }
+
     /** Checks all chunks touched by the mob's horizontal 0.6-block footprint without loading any. */
     public static boolean isMobFootprintLoaded(World world, double x, double z) {
         if (world == null || !Double.isFinite(x) || !Double.isFinite(z)) return false;

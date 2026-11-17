@@ -151,6 +151,21 @@ class BedrockInventoryTransactionCodecTest {
                         new BedrockPacket(0x1e, 0, 0, new byte[] {0, 0, 65}), REGISTRY));
     }
 
+    @Test
+    void decodesBoundedBlockContainerWindowSources() {
+        byte[] payload = transaction(
+                action(0, 7, 0, empty(), stack(257, 4)));
+        var decoded = BedrockInventoryTransactionCodec.decode(
+                new BedrockPacket(0x1e, 0, 0, payload), REGISTRY);
+        assertEquals(7, decoded.actions().getFirst().containerId());
+        assertEquals(4, decoded.actions().getFirst().to().orElseThrow().count());
+
+        byte[] invalidWindow = transaction(action(0, 101, 0, empty(), stack(257, 1)));
+        assertThrows(IllegalArgumentException.class, () ->
+                BedrockInventoryTransactionCodec.decode(
+                        new BedrockPacket(0x1e, 0, 0, invalidWindow), REGISTRY));
+    }
+
     private static byte[] transaction(byte[]... actions) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         out.write(0); // LegacyRequestId = 0

@@ -2566,6 +2566,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             double nextZ = mob.z() + decision.moveZ();
             if (!ru.nexora.world.WorldPathfinder.isMobFootprintLoaded(world, nextX, nextZ)
                     || !WorldCollision.canMove(world, mob.x(), mob.y(), mob.z(), nextX, nextY, nextZ)) {
+                // Try a collision-checked one-block jump before spending work on pathfinding.
+                // The controller refuses flying mobs, unloaded chunks, and jumps without headroom.
+                if (mobJumpController.tryJump(world, mob, nextX, nextZ, nowMillis)) {
+                    mobStuckTracker.clear(mob.runtimeId());
+                    continue;
+                }
                 double desiredX = mob.x() + decision.moveX() * 8.0;
                 double desiredZ = mob.z() + decision.moveZ() * 8.0;
                 long pathStartedNanos = nanoTime.getAsLong();

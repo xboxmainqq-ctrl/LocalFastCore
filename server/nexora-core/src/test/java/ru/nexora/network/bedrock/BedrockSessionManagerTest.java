@@ -909,6 +909,48 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void boggedArrowAppliesPoisonWhenItHitsAPlayer() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "bogged-poison-arrow-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
+        manager.onIdentity("bogged-player", new NetherNetClientIdentity(
+                "bogged-token", new byte[] {21}, "bogged-xuid",
+                "BoggedPlayer", "playfab-bogged", "20CA2", null));
+        setSessionField(manager, "bogged-player", "loginAuthenticated", true);
+        setSessionField(manager, "bogged-player", "clientInitialized", true);
+        setSessionField(manager, "bogged-player", "positionInitialized", true);
+        setSessionField(manager, "bogged-player", "entityId", 121L);
+        setSessionField(manager, "bogged-player", "positionX", 5.5f);
+        setSessionField(manager, "bogged-player", "positionY", 65.0f);
+        setSessionField(manager, "bogged-player", "positionZ", 0.5f);
+        var bogged = manager.spawnLivingEntity("minecraft:bogged", 16.0f, 0.5, 65.0, 0.5);
+
+        @SuppressWarnings("unchecked")
+        java.util.Map<Long, ru.nexora.combat.ArrowProjectile> arrows =
+                (java.util.Map<Long, ru.nexora.combat.ArrowProjectile>)
+                        getManagerField(manager, "mobArrows");
+        @SuppressWarnings("unchecked")
+        java.util.Set<Long> poisonArrows =
+                (java.util.Set<Long>) getManagerField(manager, "poisonMobArrows");
+        long arrowId = 5_000_001L;
+        arrows.put(arrowId, new ru.nexora.combat.ArrowProjectile(
+                -arrowId, arrowId, "mob:" + bogged.runtimeId(),
+                4.5, 65.9, 0.5, 1.0, 0.0, 0.0, 0));
+        poisonArrows.add(arrowId);
+
+        clock.addAndGet(50_000_000L);
+        invokeLivingActorTick(manager, 1L);
+
+        assertTrue((long) getSessionField(manager, "bogged-player", "poisonUntilNanos") > clock.get());
+        assertFalse(poisonArrows.contains(arrowId));
+        manager.close();
+    }
+
+    @Test
     void caveSpiderAppliesPoisonButPoisonCannotKillPlayer() throws Exception {
         java.util.concurrent.atomic.AtomicLong clock =
                 new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);

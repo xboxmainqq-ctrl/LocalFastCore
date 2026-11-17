@@ -122,6 +122,8 @@ public final class MobSpawnerManager {
             int spawnedFromThis = 0;
             for (int attempt = 0; attempt < MAX_SPAWN_ATTEMPTS
                     && nearby + spawnedFromThis < MAX_NEARBY_SAME_TYPE; attempt++) {
+                if (!isCurrent(state)
+                        || world.getBlock(state.x(), state.y(), state.z()) != BlockType.SPAWNER) break;
                 attempts++;
                 SpawnRequest request = candidate(state, currentTick, attempt);
                 if (!validSpawnPosition(world, request)) {
@@ -162,6 +164,10 @@ public final class MobSpawnerManager {
         MobSpawnerState current = spawners.get(key);
         if (current == null || current.nextSpawnTick() == Long.MAX_VALUE) return;
         spawners.put(key, current.withNextSpawnTick(current.nextSpawnTick() + 1));
+    }
+
+    private synchronized boolean isCurrent(MobSpawnerState expected) {
+        return expected.equals(spawners.get(new Position(expected.x(), expected.y(), expected.z())));
     }
 
     private synchronized void updateNext(MobSpawnerState state, long currentTick) {

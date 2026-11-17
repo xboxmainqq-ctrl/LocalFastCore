@@ -35,7 +35,7 @@ Only HTTPS endpoints are accepted, except HTTP on localhost for private developm
 
 ## Operator mode
 
-- `/ai admin` shows a read-only runtime snapshot. It also includes aggregate player/session, living-entity, and dropped-item counts; no player inventory or private profile data is exposed.
+- `/ai admin` shows a read-only runtime snapshot and the newest bounded diagnostic events. It also includes aggregate player/session, living-entity, and dropped-item counts; no player inventory or private profile data is exposed.
 - `/ai admin <question>` asks the assistant in operator context.
 - Access is granted only when the authenticated Xbox XUID is present in `NEXORA_AI_ADMIN_XUIDS`.
 - `/ai admin plan <problem>` asks the configured provider for a repair plan using the operator's description plus up to 12 recent timestamped diagnostic summaries. The model is told to separate observed facts from hypotheses and unknowns; `/ai admin proposals` lists saved proposals; `/ai admin proposal <id>` shows one; `/ai admin approve <id>` approves it for manual review; `/ai admin reject <id>` rejects it.

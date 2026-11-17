@@ -63,8 +63,9 @@ class BedrockItemStackUserDataCodecTest {
     void roundTripsItemDurabilityDamageWithBedrockNbt() {
         ItemStack worn = new ItemStack("minecraft:diamond_sword", 1, 1,
                 Map.of("minecraft:unbreaking", 3), 2, 417);
-        byte[] encoded = BedrockItemStackUserDataCodec.encode(worn, new byte[0]);
-        var decoded = BedrockItemStackUserDataCodec.decode(encoded, new byte[0]);
+        byte[] emptyNetworkNbt = new byte[] {10, 0, 0, 0};
+        byte[] encoded = BedrockItemStackUserDataCodec.encode(worn, emptyNetworkNbt);
+        var decoded = BedrockItemStackUserDataCodec.decode(encoded, emptyNetworkNbt);
         assertEquals(worn.enchantments(), decoded.enchantments());
         assertEquals(2, decoded.repairCost());
         assertEquals(417, decoded.durabilityDamage());

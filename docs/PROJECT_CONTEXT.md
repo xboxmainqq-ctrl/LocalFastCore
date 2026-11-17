@@ -47,7 +47,7 @@ Build NEXORA as an original, standalone block-world engine and dedicated server.
 4. Complete authoritative entity/player movement, collision, sessions and interactions.
 5. Harden networking, authentication, protocol versioning and abuse limits.
 6. Stabilize versioned extension/content APIs and server packaging.
-7. Continue native Mob AI inside the existing entity simulation: vertical navigation, hazards, target memory, combat integration and aggregate tick budgets.
+7. Continue native Mob AI inside the existing entity simulation: vertical navigation, hazards, combat integration, persistent profiles and aggregate tick budgets.
 8. Complete optional operator and moderation assistants with privacy, audit, permission and failure-mode tests.
 
 ## Mob AI contract

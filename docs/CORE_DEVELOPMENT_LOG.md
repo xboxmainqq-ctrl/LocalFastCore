@@ -110,7 +110,7 @@ The Core is ready only after automated tests cover clean installation, world cre
 
 - Completed: core persistence/config reliability tests; async chunk waiter and cancellation fixes; initial profile-based Mob AI; permissioned/audited AI tool boundary; privacy-conscious moderation signal foundation.
 - Tests/CI: regression tests have been added, but no successful CI run is confirmed for the latest AI commits. The most recent earlier server workflow had a failed job with no steps/logs exposed; inspect current run details before diagnosing the failure.
-- Not completed / blockers: CI verification; chunk lifecycle state machine; full mob pathfinding/combat; model/provider adapters and complete assistant workflows; moderation case management.
+- Not completed / blockers: CI verification; chunk lifecycle state machine; vertical mob navigation, combat integration and aggregate pathfinding budgets; model/provider adapters and complete assistant workflows; moderation case management.
 - Next exact task: obtain a real server CI run, fix compile/test failures, then continue bounded chunk lifecycle and mob navigation work.
 - Commit SHA:
 
@@ -122,7 +122,7 @@ The Core is ready only after automated tests cover clean installation, world cre
 - Added regression tests for routing around a one-block obstacle and reporting STUCK when all four adjacent ground cells are blocked. Existing passive wandering, neutral provocation, hostile perception and line-of-sight behavior remain in place.
 - Commits: 13b3c74918b8f9f9bcec6f34f8dc24ef90ade544 (bounded pathfinding), 544bf3aec507a98f9de5b93dc43d558e4d2c02d4 (waypoint precision), 87645c8ad11db2a85703357d5bfeb488f6ded046 (route regression assertion).
 - Verification: source and tests are committed, but Maven execution is not yet confirmed. Previous Actions jobs failed before reporting steps; do not claim the tests pass until a runner executes them.
-- Next Mob AI tasks: navigation across height changes, safe handling of liquids/hazards, target retention after line-of-sight loss, combat integration, and aggregate per-tick pathfinding budgets.
+- Next Mob AI tasks after the follow-up target-memory work: navigation across height changes, safe handling of liquids/hazards, combat integration, persistent profiles and aggregate per-tick pathfinding budgets.
 ### 2026-11-17 — hostile target memory and safe search behavior
 - Extended the existing MobAiController with a bounded 100-server-tick memory of the last visible player position. If line of sight is broken, the mob can continue navigating toward the last known position rather than immediately forgetting the target.
 - A remembered position is a search destination only: it never produces an attack intent. If the player despawns or the memory window expires, the mob clears its target/navigation state and returns to IDLE.

@@ -76,8 +76,10 @@ public final class NexoraServer {
         NexoraAiDiagnostics aiDiagnostics = new NexoraAiDiagnostics();
         NexoraAiMonitor aiMonitor = new NexoraAiMonitor(aiDiagnostics, snapshot -> {
             if (snapshot.health() == NexoraAiDiagnostics.Health.WARNING) {
-                System.err.printf("NEXORA AI: runtime warning: %s (heap %.1f%%, threads %d, failures %d, slow operations %d)%n",
-                        snapshot.reason(), snapshot.heapUsageRatio() * 100.0,
+                String heapUsage = snapshot.heapUsageRatio() < 0.0 ? "unknown"
+                        : String.format(java.util.Locale.ROOT, "%.1f%%", snapshot.heapUsageRatio() * 100.0);
+                System.err.printf("NEXORA AI: runtime warning: %s (heap %s, threads %d, failures %d, slow operations %d)%n",
+                        snapshot.reason(), heapUsage,
                         snapshot.liveThreadCount(), snapshot.recordedFailures(), snapshot.slowOperationCount());
             }
         });

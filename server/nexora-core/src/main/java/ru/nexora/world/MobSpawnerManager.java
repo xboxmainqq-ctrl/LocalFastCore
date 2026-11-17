@@ -321,12 +321,22 @@ public final class MobSpawnerManager {
         int z = (int) Math.floor(request.z());
         if (y <= WorldChunk.MIN_Y || y >= WorldChunk.MAX_Y - 1
                 || !WorldPathfinder.isMobFootprintLoaded(world, request.x(), request.z())) return false;
-        if (world.getBlock(x, y - 1, z) == BlockType.AIR) return false;
+        if (requiresSolidFloor(request.identifier())
+                && world.getBlock(x, y - 1, z) == BlockType.AIR) return false;
         int requiredAirBlocks = spawnHeightBlocks(request.identifier());
         for (int offset = 0; offset < requiredAirBlocks; offset++) {
             if (world.getBlock(x, y + offset, z) != BlockType.AIR) return false;
         }
         return true;
+    }
+
+    private static boolean requiresSolidFloor(String identifier) {
+        return switch (identifier) {
+            case "minecraft:allay", "minecraft:bat", "minecraft:bee", "minecraft:blaze",
+                    "minecraft:ghast", "minecraft:phantom", "minecraft:vex",
+                    "minecraft:parrot", "minecraft:ender_dragon" -> false;
+            default -> true;
+        };
     }
 
     private static int spawnHeightBlocks(String identifier) {

@@ -5,6 +5,8 @@ import java.io.Reader;
 import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.regex.Pattern;
@@ -87,8 +89,24 @@ public record ServerConfiguration(
         properties.setProperty("bedrock.port", "19132");
         properties.setProperty("bedrock.ice-port", "0");
         properties.setProperty("bedrock.identity-file", "nethernet-identity.pem");
-        try (Writer writer = Files.newBufferedWriter(file)) {
-            properties.store(writer, "NEXORA Dedicated Server configuration");
+        Path target = file.toAbsolutePath().normalize();
+        Path temporary = Files.createTempFile(parent, target.getFileName().toString(), ".tmp");
+        boolean replaced = false;
+        try {
+            try (Writer writer = Files.newBufferedWriter(temporary)) {
+                properties.store(writer, "NEXORA Dedicated Server configuration");
+            }
+            try {
+                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException unsupported) {
+                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+            replaced = true;
+        } finally {
+            if (!replaced) {
+                Files.deleteIfExists(temporary);
+            }
         }
     }
 

@@ -334,6 +334,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     public void onDisconnected(String networkId) {
         SessionState state = sessions.get(networkId);
         if (state != null) {
+            synchronized (state) {
+                state.rejected = true;
+            }
             removePlayerListEntry(networkId, state);
             if (state.identity != null) aiGuard.onPlayerDisconnected(state.identity.xuid());
             state.combatLock.lock();
@@ -4953,7 +4956,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     /** Sends the current player-list snapshot, then advertises this player to existing clients. */
     private synchronized void advertisePlayerList(String networkId, SessionState joining) {
-        if (joining.playerListAdvertised || joining.playerListEntry == null) return;
+        if (joining.rejected || joining.playerListAdvertised || joining.playerListEntry == null) return;
         List<BedrockPlayerListCodec.AddEntry> snapshot = new ArrayList<>();
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
             if (entry.getKey().equals(networkId)) continue;

@@ -25,6 +25,13 @@ Work only on engine/server foundations:
 - Code commits: `594b650dde85c1b2d283f38e1bb4d3c2a8c42438` (atomic config save), `dbde27b8d145f690e47348f7a1f134489a58b5d0` (tests).
 - Verification status: changes committed to GitHub; CI result has not yet been confirmed in this log. Do not describe the tests as passing until CI reports success.
 
+
+### 2026-11-17 — world snapshot validation tests
+- Confirmed the existing `.nxw` reader already validates the magic signature, supported format range, world ID, bounded file size/counts, duplicate records, checksum and trailing data; the writer already stages a temporary snapshot and atomically replaces the destination where supported.
+- Added regression tests proving that future unsupported format versions, truncated snapshots and bytes appended after the checksum are rejected.
+- Test commit: `940cde47e246dcddcf042deef9cf835c6937cf15`.
+- CI: the previous workflow run for configuration work (run 44095600935) ended in failure. GitHub exposed no job steps/log payload for that run, so its cause is not yet established. The new test commit triggers another verification run; record its result after it completes.
+
 ## Next tasks — in order
 
 1. **Verify current CI** for the active branch and fix any compilation/test failures before adding more code.

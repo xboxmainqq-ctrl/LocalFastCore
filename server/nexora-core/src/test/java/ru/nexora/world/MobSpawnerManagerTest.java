@@ -1,6 +1,10 @@
 package ru.nexora.world;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Path;
+import java.io.IOException;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -129,4 +133,52 @@ class MobSpawnerManagerTest {
         manager.onBlockChanged(new World.BlockChange(2, 65, 2, BlockType.SPAWNER, BlockType.AIR), 51);
         assertEquals(0, manager.stats().trackedSpawners());
     }
+    @Test
+    void spawnerConfigurationAndTimerSurviveWorldRestart(@TempDir Path directory) throws IOException {
+        WorldStorage storage = new WorldStorage(directory, "spawner-persistence");
+        World first = new World("spawner-persistence", 1L, new FlatWorldGenerator(),
+                0, 65, 0, storage, null, null, null, null);
+        first.setBlock(3, 65, 3, BlockType.SPAWNER);
+        long placedAt = Math.max(0L, System.nanoTime() / 50_000_000L);
+        assertTrue(first.mobSpawners().configure(3, 65, 3,
+                "minecraft:skeleton", 300, placedAt));
+        long expectedNextTick = first.mobSpawners().snapshot().get(0).nextSpawnTick();
+        first.saveAll();
+
+        World restarted = new World("spawner-persistence", 1L, new FlatWorldGenerator(),
+                0, 65, 0, new WorldStorage(directory, "spawner-persistence"),
+                null, null, null, null);
+        MobSpawnerState restored = restarted.mobSpawners().snapshot().get(0);
+        assertEquals("minecraft:skeleton", restored.entityIdentifier());
+        assertEquals(300, restored.delayTicks());
+        assertEquals(expectedNextTick, restored.nextSpawnTick());
+        assertEquals(BlockType.SPAWNER, restarted.getBlock(3, 65, 3));
+    }
+
+    @Test
+    void corruptedSpawnerStorageIsRejected(@TempDir Path directory) throws IOException {
+        MobSpawnerStorage storage = new MobSpawnerStorage(directory);
+        storage.save(List.of(new MobSpawnerState(1, 65, 1, "minecraft:zombie", 200, 300)));
+        Path file = directory.resolve("mob-spawners.dat");
+        byte[] bytes = java.nio.file.Files.readAllBytes(file);
+        bytes[5] ^= 0x7f;
+        java.nio.file.Files.write(file, bytes);
+
+        assertThrows(IOException.class, storage::load);
+    }
+
+    @Test
+    void spawnValidationNeverLoadsNeighborChunks() {
+        World world = new World("spawner-neighbor-chunk", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
+        MobSpawnerManager manager = world.mobSpawners();
+        manager.register(15, 65, 0, 0);
+        long due = manager.snapshot().get(0).nextSpawnTick();
+
+        manager.tick(world, due,
+                List.of(new MobSpawnerManager.PlayerPosition(15.5, 65, 0.5)), request -> true);
+
+        assertFalse(world.isChunkLoadedAt(1, 0));
+    }
+
 }

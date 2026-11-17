@@ -126,6 +126,9 @@ public final class AnvilService {
         register(values, "minecraft:luck_of_the_sea", 3, 2, "fishing_rod", Set.of());
         register(values, "minecraft:lure", 3, 2, "fishing_rod", Set.of());
         register(values, "minecraft:impaling", 5, 2, "trident", Set.of());
+        register(values, "minecraft:quick_charge", 3, 2, "crossbow", Set.of());
+        register(values, "minecraft:soul_speed", 3, 2, "boots", Set.of());
+        register(values, "minecraft:swift_sneak", 3, 2, "leggings", Set.of());
         register(values, "minecraft:feather_falling", 4, 1, "boots", Set.of());
         register(values, "minecraft:depth_strider", 3, 2, "boots", Set.of("minecraft:frost_walker"));
         register(values, "minecraft:frost_walker", 2, 2, "boots", Set.of("minecraft:depth_strider"));
@@ -155,6 +158,8 @@ public final class AnvilService {
                 "turtle_helmet");
         add(groups, "boots", "leather_boots", "chainmail_boots", "iron_boots", "golden_boots",
                 "diamond_boots", "netherite_boots");
+        add(groups, "leggings", "leather_leggings", "chainmail_leggings", "iron_leggings",
+                "golden_leggings", "diamond_leggings", "netherite_leggings");
         add(groups, "helmet", "leather_helmet", "chainmail_helmet", "iron_helmet",
                 "golden_helmet", "diamond_helmet", "netherite_helmet", "turtle_helmet");
         add(groups, "fishing_rod", "fishing_rod");

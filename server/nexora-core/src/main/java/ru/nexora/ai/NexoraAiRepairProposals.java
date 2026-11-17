@@ -34,7 +34,7 @@ public final class NexoraAiRepairProposals {
         if (next < 1) throw new IllegalStateException("Repair proposal ID space exhausted");
         String id = String.format(Locale.ROOT, "R-%06d", next);
         Proposal proposal = new Proposal(id, requester, problem, proposalPlan,
-                Status.PENDING_REVIEW, Instant.now());
+                Status.PENDING_REVIEW, Instant.now(), null, null);
         proposals.put(id, proposal);
         while (proposals.size() > MAX_PROPOSALS) {
             String oldest = proposals.keySet().iterator().next();
@@ -56,22 +56,25 @@ public final class NexoraAiRepairProposals {
                 .toList();
     }
 
-    public synchronized Optional<Proposal> approveForManualReview(String id) {
-        return transition(id, Status.PENDING_REVIEW, Status.APPROVED_FOR_MANUAL_REVIEW);
+    public synchronized Optional<Proposal> approveForManualReview(String id, String reviewerXuid) {
+        return transition(id, reviewerXuid, Status.PENDING_REVIEW, Status.APPROVED_FOR_MANUAL_REVIEW);
     }
 
-    public synchronized Optional<Proposal> reject(String id) {
-        return transition(id, Status.PENDING_REVIEW, Status.REJECTED);
+    public synchronized Optional<Proposal> reject(String id, String reviewerXuid) {
+        return transition(id, reviewerXuid, Status.PENDING_REVIEW, Status.REJECTED);
     }
 
-    private Optional<Proposal> transition(String id, Status expected, Status target) {
+    private Optional<Proposal> transition(
+            String id, String reviewerXuid, Status expected, Status target
+    ) {
+        String reviewer = requireText(reviewerXuid, "reviewerXuid", 256);
         purgeExpired();
         if (id == null) return Optional.empty();
         String key = id.trim().toUpperCase(Locale.ROOT);
         Proposal current = proposals.get(key);
         if (current == null || current.status() != expected) return Optional.empty();
         Proposal updated = new Proposal(current.id(), current.requesterXuid(), current.issue(),
-                current.plan(), target, current.createdAt());
+                current.plan(), target, current.createdAt(), reviewer, Instant.now());
         proposals.put(key, updated);
         return Optional.of(updated);
     }
@@ -102,7 +105,9 @@ public final class NexoraAiRepairProposals {
             String issue,
             String plan,
             Status status,
-            Instant createdAt
+            Instant createdAt,
+            String reviewedByXuid,
+            Instant reviewedAt
     ) {
         public Proposal {
             Objects.requireNonNull(id, "id");
@@ -111,6 +116,13 @@ public final class NexoraAiRepairProposals {
             Objects.requireNonNull(plan, "plan");
             Objects.requireNonNull(status, "status");
             Objects.requireNonNull(createdAt, "createdAt");
+            if ((reviewedByXuid == null) != (reviewedAt == null)) {
+                throw new IllegalArgumentException("Review identity and timestamp must be set together");
+            }
+            if (status == Status.PENDING_REVIEW && reviewedByXuid != null
+                    || status != Status.PENDING_REVIEW && reviewedByXuid == null) {
+                throw new IllegalArgumentException("Review metadata does not match proposal status");
+            }
         }
     }
 }

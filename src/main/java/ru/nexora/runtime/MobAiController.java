@@ -56,6 +56,12 @@ public final class MobAiController {
         return behaviors.containsKey(Objects.requireNonNull(mobId, "mobId"));
     }
 
+    /** PASSIVE profiles use the Core's existing deterministic wander goal. */
+    public synchronized boolean controlsBehavior(UUID mobId) {
+        Behavior behavior = behaviors.get(Objects.requireNonNull(mobId, "mobId"));
+        return behavior != null && behavior != Behavior.PASSIVE;
+    }
+
     /** Records a valid player as the temporary target of a neutral mob. */
     public synchronized void provoke(UUID mobId, UUID playerId) {
         Objects.requireNonNull(mobId, "mobId");

@@ -51,7 +51,8 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 - [x] Add bounded hostile-mob natural despawn after a 30-second grace period beyond 128 blocks; passive/neutral mobs are preserved.
 - [x] Add bounded fall-distance tracking and landing damage for ground-bound mobs.
 - [x] Add conservative one-block obstacle jumping with headroom checks, cooldowns, loaded-chunk safety, and invoke it from the live mob movement loop before pathfinding.
-- [ ] Add fluid movement, climbing, and complete species-specific special attacks. Water/lava behavior remains blocked by the current world block/fluid model and must not be simulated with unsafe guesses.
+- [x] Add bounded spider and cave-spider wall climbing with headroom and loaded-chunk checks.
+- [ ] Add fluid movement and complete species-specific special attacks. Water/lava behavior remains blocked by the current world block/fluid model and must not be simulated with unsafe guesses.
 
 ## Priority 5 — Vanilla-style mob spawners
 

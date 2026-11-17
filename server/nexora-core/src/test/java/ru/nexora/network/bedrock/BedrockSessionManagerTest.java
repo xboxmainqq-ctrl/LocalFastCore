@@ -906,6 +906,37 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void groundMobJumpsOverSingleBlockDuringAiTick() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "mob-jump-integration", 0L, new ru.nexora.world.FlatWorldGenerator());
+        mobWorld.setBlock(1, 65, 0, ru.nexora.world.BlockType.STONE);
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
+        manager.onIdentity("jump-player", new NetherNetClientIdentity(
+                "jump-token", new byte[] {17}, "jump-xuid",
+                "JumpPlayer", "playfab-jump", "20CA2", null));
+        setSessionField(manager, "jump-player", "loginAuthenticated", true);
+        setSessionField(manager, "jump-player", "clientInitialized", true);
+        setSessionField(manager, "jump-player", "positionInitialized", true);
+        setSessionField(manager, "jump-player", "entityId", 117L);
+        setSessionField(manager, "jump-player", "positionX", 3.5f);
+        setSessionField(manager, "jump-player", "positionY", 65.0f);
+        setSessionField(manager, "jump-player", "positionZ", 0.5f);
+        var zombie = manager.spawnLivingEntity("minecraft:zombie", 20.0f, 0.5, 65.0, 0.5);
+
+        clock.addAndGet(50_000_000L);
+        invokeLivingActorTick(manager, 1L);
+
+        var jumping = mobWorld.livingEntities().find(zombie.runtimeId()).orElseThrow();
+        assertEquals(ru.nexora.combat.MobJumpController.JUMP_VELOCITY,
+                jumping.velocityY(), 0.0001);
+        manager.close();
+    }
+
+    @Test
     void fallingMobTakesLandingDamageThroughWorldTick() throws Exception {
         java.util.concurrent.atomic.AtomicLong clock =
                 new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);

@@ -106,6 +106,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final AtomicLong lastItemActorTickNanos = new AtomicLong(Long.MIN_VALUE);
     private final AtomicLong lastLivingAiTickMillis = new AtomicLong(Long.MIN_VALUE);
     private final Map<Long, Long> nextMobAttackMillis = new ConcurrentHashMap<>();
+    private final Map<Long, String> livingEntityKillCredit = new ConcurrentHashMap<>();
     private final ru.nexora.combat.LivingEntityAiService livingEntityAi =
             new ru.nexora.combat.LivingEntityAiService();
     private volatile boolean serverAuthoritativeMovement;
@@ -1674,7 +1675,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         baseAttackDamage(weapon), weapon, targetType);
         var damage = world.livingEntities().damage(target.runtimeId(), effect.damage()).orElse(null);
         if (damage == null) return;
+        livingEntityKillCredit.put(target.runtimeId(), attackerNetworkId);
         if (damage.killed()) {
+            livingEntityKillCredit.remove(target.runtimeId());
             grantMobRewards(attackerNetworkId, attacker, target);
             nextMobAttackMillis.remove(target.runtimeId());
             broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(target.uniqueId()));
@@ -1760,6 +1763,18 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             WorldLivingEntity entity = result.current();
             if (result.killed()) {
                 nextMobAttackMillis.remove(entity.runtimeId());
+                String killerNetworkId = livingEntityKillCredit.remove(entity.runtimeId());
+                SessionState killer = killerNetworkId == null ? null : sessions.get(killerNetworkId);
+                if (killer != null) {
+                    killer.combatLock.lock();
+                    try {
+                        synchronized (killer) {
+                            grantMobRewards(killerNetworkId, killer, entity);
+                        }
+                    } finally {
+                        killer.combatLock.unlock();
+                    }
+                }
                 broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()));
             } else {
                 broadcastLivingActorPacket(BedrockVitalsCodec.createActorHealthUpdate(
@@ -1862,9 +1877,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     int reflected = ru.nexora.combat.EnchantmentCombatService
                             .resolveThornsDamage(armor, rolls, damageRolls);
                     if (reflected > 0) {
+                        livingEntityKillCredit.put(mob.runtimeId(), networkId);
                         var thornsDamage = world.livingEntities().damage(mob.runtimeId(), reflected).orElse(null);
                         if (thornsDamage != null) {
                             if (thornsDamage.killed()) {
+                                livingEntityKillCredit.remove(mob.runtimeId());
                                 grantMobRewards(networkId, target, mob);
                                 nextMobAttackMillis.remove(mob.runtimeId());
                                 broadcastLivingActorPacket(
@@ -1943,6 +1960,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         WorldLivingEntity entity = world.livingEntities().find(runtimeId).orElse(null);
         if (entity == null || !world.livingEntities().remove(runtimeId)) return false;
         nextMobAttackMillis.remove(runtimeId);
+        livingEntityKillCredit.remove(runtimeId);
         broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()));
         return true;
     }

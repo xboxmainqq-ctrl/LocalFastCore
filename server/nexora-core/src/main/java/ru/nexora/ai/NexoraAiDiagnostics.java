@@ -42,13 +42,14 @@ public final class NexoraAiDiagnostics {
         if (subsystem.isBlank() || subsystem.length() > 64) {
             throw new IllegalArgumentException("Invalid diagnostic subsystem");
         }
+        String safeSubsystem = bound(sanitize(subsystem), 64);
         recordedFailures.incrementAndGet();
         String message = failure.getMessage();
-        String description = (subsystem.equals("unknown") ? "" : subsystem + ": ")
+        String description = (safeSubsystem.equals("unknown") ? "" : safeSubsystem + ": ")
                 + failure.getClass().getSimpleName()
                 + (message == null || message.isBlank() ? "" : ": " + message);
         lastFailure = bound(sanitize(description), MAX_FAILURE_DESCRIPTION_LENGTH);
-        incrementSignature("FAILURE:" + subsystem + ":" + failure.getClass().getSimpleName());
+        incrementSignature("FAILURE:" + safeSubsystem + ":" + failure.getClass().getSimpleName());
         appendEvent("FAILURE", lastFailure);
     }
 
@@ -59,9 +60,10 @@ public final class NexoraAiDiagnostics {
             throw new IllegalArgumentException("Invalid slow operation measurement");
         }
         if (elapsedNanos <= thresholdNanos) return;
+        String safeSubsystem = bound(sanitize(subsystem), 64);
         slowOperationCount.incrementAndGet();
-        incrementSignature("SLOW:" + subsystem);
-        lastSlowOperation = subsystem + " took " + (elapsedNanos / 1_000_000L) + " ms";
+        incrementSignature("SLOW:" + safeSubsystem);
+        lastSlowOperation = safeSubsystem + " took " + (elapsedNanos / 1_000_000L) + " ms";
         appendEvent("SLOW", lastSlowOperation);
     }
 

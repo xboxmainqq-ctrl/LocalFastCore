@@ -28,6 +28,7 @@ public final class BedrockBlockRuntimeIds {
             case GOLD_BLOCK -> hashState("minecraft:gold_block");
             case DIAMOND_BLOCK -> hashState("minecraft:diamond_block");
             case EMERALD_BLOCK -> hashState("minecraft:emerald_block");
+            case CHEST -> hashState("minecraft:chest", "minecraft:cardinal_direction", "north");
         };
     }
 
@@ -37,6 +38,31 @@ public final class BedrockBlockRuntimeIds {
 
     static int hashState(String name, String property, boolean value) {
         return hashStateNbt(name, property, value);
+    }
+
+    static int hashState(String name, String property, String value) {
+        ByteArrayOutputStream nbt = new ByteArrayOutputStream(128);
+        nbt.write(10); // Root TAG_Compound
+        writeString(nbt, "");
+        nbt.write(8);  // TAG_String "name"
+        writeString(nbt, "name");
+        writeString(nbt, name);
+        nbt.write(10); // TAG_Compound "states"
+        writeString(nbt, "states");
+        if (property != null) {
+            nbt.write(8); // TAG_String block-state property
+            writeString(nbt, property);
+            writeString(nbt, value);
+        }
+        nbt.write(0); // End states compound
+        nbt.write(0); // End root compound
+
+        int hash = 0x811c9dc5;
+        for (byte element : nbt.toByteArray()) {
+            hash ^= Byte.toUnsignedInt(element);
+            hash *= 0x01000193;
+        }
+        return hash;
     }
 
     private static int hashStateNbt(String name, String property, boolean value) {

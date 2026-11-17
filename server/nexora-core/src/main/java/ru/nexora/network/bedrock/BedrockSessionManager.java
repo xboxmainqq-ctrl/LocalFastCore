@@ -4988,16 +4988,19 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         + ": " + exception.getMessage());
             }
         }
+        BedrockPacket addListEntry = BedrockPlayerListCodec.createAdd(List.of(joining.playerListEntry));
         BedrockPacket addPlayer = createAddPlayerPacket(joining);
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
             if (entry.getKey().equals(networkId)) continue;
             SessionState recipient = entry.getValue();
             if (!recipient.clientInitialized || !recipient.playerListAdvertised) continue;
             try {
+                // The client must know the UUID/skin before AddPlayer can create the remote actor.
+                sendPacket(entry.getKey(), addListEntry, true);
                 sendPacket(entry.getKey(), addPlayer, true);
             } catch (RuntimeException exception) {
-                System.err.println("NEXORA: unable to spawn joining player for " + entry.getKey()
-                        + ": " + exception.getMessage());
+                System.err.println("NEXORA: unable to advertise and spawn joining player for "
+                        + entry.getKey() + ": " + exception.getMessage());
             }
         }
     }

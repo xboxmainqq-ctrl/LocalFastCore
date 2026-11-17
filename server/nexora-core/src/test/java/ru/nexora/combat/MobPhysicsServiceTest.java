@@ -49,6 +49,21 @@ class MobPhysicsServiceTest {
     }
 
     @Test
+    void physicsDoesNotLoadAnUnloadedNeighborChunk() {
+        World world = new World("mob-physics-chunk-edge", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
+        var mob = world.livingEntities().spawn("minecraft:zombie", 20, 15.5, 65, 0.5);
+        mob = world.livingEntities().setVelocity(mob.runtimeId(), 0.4, 0, 0).orElseThrow();
+
+        var result = physics.tick(world, mob);
+
+        assertFalse(result.moved());
+        assertEquals(15.5, result.entity().x(), 0.0001);
+        assertEquals(0, result.entity().velocityX(), 0.0001);
+        assertFalse(world.isChunkLoadedAt(1, 0));
+    }
+
+    @Test
     void slimeBouncesWhenItsDownwardMotionHitsTheGround() {
         World world = new World("mob-physics-slime-bounce", 0L, new FlatWorldGenerator());
         var slime = world.livingEntities().spawn("minecraft:slime", 20, 0.5, 65.1, 0.5);

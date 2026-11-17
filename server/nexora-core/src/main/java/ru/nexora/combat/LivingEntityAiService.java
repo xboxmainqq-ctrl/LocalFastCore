@@ -178,7 +178,7 @@ public final class LivingEntityAiService {
         return switch (identifier) {
             case "minecraft:allay", "minecraft:bat", "minecraft:bee", "minecraft:blaze",
                     "minecraft:ghast", "minecraft:phantom", "minecraft:vex",
-                    "minecraft:parrot", "minecraft:ender_dragon" -> true;
+                    "minecraft:parrot", "minecraft:ender_dragon", "minecraft:wither" -> true;
             default -> false;
         };
     }
@@ -187,6 +187,7 @@ public final class LivingEntityAiService {
     public static double movementSpeedFor(String identifier) {
         return switch (identifier) {
             case "minecraft:phantom", "minecraft:vex", "minecraft:ender_dragon" -> 0.30;
+            case "minecraft:wither" -> 0.20;
             case "minecraft:enderman", "minecraft:horse", "minecraft:donkey",
                     "minecraft:mule", "minecraft:camel" -> 0.30;
             case "minecraft:allay", "minecraft:bee", "minecraft:blaze",

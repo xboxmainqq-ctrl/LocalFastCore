@@ -20,7 +20,8 @@ public enum BlockType {
     EMERALD_BLOCK(15),
     CHEST(16),
     OAK_LOG(17),
-    OAK_PLANKS(18);
+    OAK_PLANKS(18),
+    CRAFTING_TABLE(19);
 
     private final int internalId;
 

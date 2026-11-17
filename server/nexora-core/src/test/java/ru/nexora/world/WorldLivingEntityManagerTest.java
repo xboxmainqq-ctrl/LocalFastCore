@@ -61,6 +61,23 @@ class WorldLivingEntityManagerTest {
     }
 
     @Test
+    void movesLivingActorWithoutChangingHealthOrCombatState() {
+        WorldLivingEntityManager manager = new WorldLivingEntityManager();
+        WorldLivingEntity zombie = manager.spawn("minecraft:zombie", 20, 1, 65, 2);
+        manager.ignite(zombie.runtimeId(), 5, 100).orElseThrow();
+
+        WorldLivingEntity moved = manager.move(zombie.runtimeId(), 1.25, 65, 2.5).orElseThrow();
+        assertEquals(1.25, moved.x(), 0.0001);
+        assertEquals(65.0, moved.y(), 0.0001);
+        assertEquals(2.5, moved.z(), 0.0001);
+        assertEquals(20.0f, moved.health(), 0.0001f);
+        assertEquals(5_100L, moved.fireUntilMillis());
+        assertTrue(manager.move(999_999, 0, 65, 0).isEmpty());
+        assertThrows(IllegalArgumentException.class,
+                () -> manager.move(zombie.runtimeId(), Double.NaN, 65, 0));
+    }
+
+    @Test
     void validatesSpawnAndDamageInputs() {
         WorldLivingEntityManager manager = new WorldLivingEntityManager();
         assertThrows(IllegalArgumentException.class, () -> manager.spawn(

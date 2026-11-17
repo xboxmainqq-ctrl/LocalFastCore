@@ -17,6 +17,14 @@ public final class BedrockMoveActorAbsoluteCodec {
             long runtimeEntityId, double x, double y, double z,
             float pitch, float yaw, float headYaw, boolean onGround
     ) {
+        return create(runtimeEntityId, x, y, z, pitch, yaw, headYaw, onGround, false);
+    }
+
+    /** Creates an absolute movement packet with the Bedrock teleport flag when requested. */
+    public static BedrockPacket create(
+            long runtimeEntityId, double x, double y, double z,
+            float pitch, float yaw, float headYaw, boolean onGround, boolean teleported
+    ) {
         if (runtimeEntityId <= 0 || !Double.isFinite(x) || !Double.isFinite(y)
                 || !Double.isFinite(z) || Math.abs(x) > 30_000_000
                 || Math.abs(z) > 30_000_000 || y < -2048 || y > 2048
@@ -25,7 +33,7 @@ public final class BedrockMoveActorAbsoluteCodec {
         }
         ByteArrayOutputStream out = new ByteArrayOutputStream(24);
         writeVarUInt64(out, runtimeEntityId);
-        out.write(onGround ? FLAG_ON_GROUND : 0);
+        out.write((onGround ? FLAG_ON_GROUND : 0) | (teleported ? FLAG_TELEPORTED : 0));
         writeFloat(out, (float) x);
         writeFloat(out, (float) y);
         writeFloat(out, (float) z);

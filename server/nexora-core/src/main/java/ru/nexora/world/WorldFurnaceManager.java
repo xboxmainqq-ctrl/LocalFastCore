@@ -37,7 +37,15 @@ public final class WorldFurnaceManager {
         Position position = new Position(x, y, z);
         ContainerInventory existing = loaded.get(position);
         if (existing != null) {
-            kinds.put(position, kind);
+            FurnaceService.Kind previousKind = kinds.put(position, kind);
+            if (previousKind != null && previousKind != kind) {
+                FurnaceService.FurnaceStateSnapshot state = service.snapshotState(x, y, z);
+                int scaledProgress = (int) Math.round(
+                        state.cookProgress() * (double) kind.cookTimeTicks() / previousKind.cookTimeTicks());
+                scaledProgress = Math.min(kind.cookTimeTicks() - 1, scaledProgress);
+                service.restoreState(x, y, z, state.burnTicksRemaining(),
+                        scaledProgress, state.burnTicksTotal());
+            }
             return existing;
         }
         ContainerInventory inventory = inventoryStorage.load(x, y, z)

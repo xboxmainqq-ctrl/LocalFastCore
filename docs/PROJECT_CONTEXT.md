@@ -34,7 +34,7 @@ Build NEXORA as an original, standalone block-world engine and dedicated server.
 - World registry, sparse chunk/block storage, generation and bounded asynchronous chunk pipeline.
 - Versioned NEXORA .nxw persistence with validation/checksums and atomic replacement.
 - Entity registry and authoritative entity tick simulation.
-- Existing MobAiController called by EntityTickEngine; PASSIVE/NEUTRAL/HOSTILE profiles, perception/line-of-sight, neutral provocation, deterministic passive wandering and bounded ground-plane A* pursuit and short-lived last-known-target memory are implemented foundations.
+- Existing MobAiController called by EntityTickEngine; PASSIVE/NEUTRAL/HOSTILE profiles, perception/line-of-sight, neutral provocation, deterministic passive wandering and bounded ground-plane A* pursuit, short-lived last-known-target memory and shared per-tick pathfinding budgets are implemented foundations.
 - AiToolRegistry, optional CoreAiAssistant provider boundary and lifecycle module.
 - ModerationSignalAnalyzer, optional ModerationAiAssistant and lifecycle module.
 - Experimental Bedrock and NEXORA protocol/network adapters; not proof of production readiness.
@@ -47,7 +47,7 @@ Build NEXORA as an original, standalone block-world engine and dedicated server.
 4. Complete authoritative entity/player movement, collision, sessions and interactions.
 5. Harden networking, authentication, protocol versioning and abuse limits.
 6. Stabilize versioned extension/content APIs and server packaging.
-7. Continue native Mob AI inside the existing entity simulation: vertical navigation, hazards, combat integration, persistent profiles and aggregate tick budgets.
+7. Continue native Mob AI inside the existing entity simulation: vertical navigation, hazards, combat integration, persistent profiles and stress validation of pathfinding budgets.
 8. Complete optional operator and moderation assistants with privacy, audit, permission and failure-mode tests.
 
 ## Mob AI contract

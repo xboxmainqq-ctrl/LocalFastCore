@@ -129,3 +129,9 @@ The Core is ready only after automated tests cover clean installation, world cre
 - Added regression coverage for continuing around a newly placed two-block wall without attacking an unseen target, and for forgetting the target after the memory window.
 - Commit: e761ad85fb43dfa380ec4ccb3ea9ef1b3eceae9e.
 - Verification remains blocked by GitHub Actions runner allocation: recent jobs finish with runner_id=0 and no steps. The new tests are committed but not yet executed.
+### 2026-11-17 — aggregate Mob AI pathfinding budget
+- Added a shared per-server-tick pathfinding budget to the existing MobAiController. Each new route search reserves a maximum of 512 node expansions, and the controller permits at most 4,096 reserved expansions (eight new searches) per server tick.
+- Mobs whose route search cannot start within the current tick budget receive WAITING and retry on a later server tick; cached routes do not consume new-search budget. This bounds bursts of simultaneous path requests without adding a new thread or tick loop.
+- Added a regression test with nine hostile mobs: eight can begin new routes in the first tick, the ninth is deferred, and the deferred mob gets a route on the next tick after cached paths stop consuming search budget.
+- Commit: 4fd102078a5b4f0e8c60049f2693eeafc7d81ec6.
+- Verification: committed but not executed because GitHub Actions still fails before allocating a runner (runner_id=0, empty step list). Load testing of the budget remains outstanding.

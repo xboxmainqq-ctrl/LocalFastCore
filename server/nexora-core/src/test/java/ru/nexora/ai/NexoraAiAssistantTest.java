@@ -21,6 +21,24 @@ class NexoraAiAssistantTest {
         assertDoesNotThrow(() -> new NexoraAiAssistant("secret", "model",
                 URI.create("http://localhost:8080/chat"), Duration.ofSeconds(10), new NexoraAiDiagnostics()));
     }
+
+    @Test void adminAccessRequiresAnExactConfiguredXuid() {
+        NexoraAiAssistant assistant = NexoraAiAssistant.fromEnvironment(
+                Map.of("NEXORA_AI_ADMIN_XUIDS", "111, 222"), new NexoraAiDiagnostics());
+        assertTrue(assistant.isAdmin("111"));
+        assertTrue(assistant.isAdmin("222"));
+        assertFalse(assistant.isAdmin("333"));
+        assertFalse(assistant.isAdmin(null));
+    }
+
+    @Test void invalidOptionalConfigurationDisablesAiInsteadOfBreakingStartup() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        NexoraAiAssistant assistant = NexoraAiAssistant.fromEnvironment(
+                Map.of("NEXORA_AI_ENDPOINT", "http://remote.example/chat"), diagnostics);
+        assertFalse(assistant.isEnabled());
+        assertEquals(1, diagnostics.inspect().recordedFailures());
+    }
+
     @Test void rejectsExcessiveTimeout() {
         assertThrows(IllegalArgumentException.class, () -> new NexoraAiAssistant(
                 "secret", "model", URI.create("https://api.example.com/chat"),

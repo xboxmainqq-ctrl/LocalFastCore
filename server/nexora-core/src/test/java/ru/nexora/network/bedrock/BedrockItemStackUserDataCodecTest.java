@@ -60,6 +60,17 @@ class BedrockItemStackUserDataCodecTest {
     }
 
     @Test
+    void roundTripsItemDurabilityDamageWithBedrockNbt() {
+        ItemStack worn = new ItemStack("minecraft:diamond_sword", 1, 1,
+                Map.of("minecraft:unbreaking", 3), 2, 417);
+        byte[] encoded = BedrockItemStackUserDataCodec.encode(worn, new byte[0]);
+        var decoded = BedrockItemStackUserDataCodec.decode(encoded, new byte[0]);
+        assertEquals(worn.enchantments(), decoded.enchantments());
+        assertEquals(2, decoded.repairCost());
+        assertEquals(417, decoded.durabilityDamage());
+    }
+
+    @Test
     void leavesPlainItemUserDataUnchanged() {
         byte[] registered = {1, 2, 3};
         byte[] encoded = BedrockItemStackUserDataCodec.encode(

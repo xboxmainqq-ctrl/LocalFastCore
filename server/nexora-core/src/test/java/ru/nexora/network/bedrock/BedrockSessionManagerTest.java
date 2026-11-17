@@ -261,6 +261,31 @@ class BedrockSessionManagerTest {
         assertEquals(0, inventory.count("minecraft:oak_planks"));
         assertEquals(8, inventory.count("minecraft:stick"));
 
+        inventory.setSlot(3, new ItemStack("minecraft:oak_log", 1, 64));
+        BedrockPacket morePlanks = new BedrockPacket(
+                BedrockCraftingEventCodec.CRAFTING_EVENT_PACKET_ID, 0, 0,
+                BedrockCraftingDataCodecTest.craftingEvent(
+                        planksRecipe.uuid(), oakLogDefinition.runtimeItemId(), 1, oakLogDefinition.blockRuntimeId(),
+                        oakPlanksDefinition.runtimeItemId(), 4, oakPlanksDefinition.blockRuntimeId()));
+        sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(morePlanks), true, 256));
+        assertEquals(4, inventory.count("minecraft:oak_planks"));
+
+        var tableRecipe = ru.nexora.inventory.CraftingRecipeRegistry.vanillaSubset()
+                .find("minecraft:crafting_table_from_oak_planks");
+        var tableDefinition = itemRegistry.findByIdentifier("minecraft:crafting_table").networkDefinition();
+        BedrockPacket craftingTable = new BedrockPacket(
+                BedrockCraftingEventCodec.CRAFTING_EVENT_PACKET_ID, 0, 0,
+                BedrockCraftingDataCodecTest.craftingEventGrid(
+                        tableRecipe.uuid(), BedrockCraftingEventCodec.TYPE_SHAPED,
+                        new int[] {planksId, planksId, planksId, planksId},
+                        new int[] {1, 1, 1, 1},
+                        new long[] {oakPlanksDefinition.blockRuntimeId(), oakPlanksDefinition.blockRuntimeId(),
+                                oakPlanksDefinition.blockRuntimeId(), oakPlanksDefinition.blockRuntimeId()},
+                        tableDefinition.runtimeItemId(), 1, tableDefinition.blockRuntimeId()));
+        sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(craftingTable), true, 256));
+        assertEquals(0, inventory.count("minecraft:oak_planks"));
+        assertEquals(1, inventory.count("minecraft:crafting_table"));
+
         int goldNuggetId = itemRegistry.findByIdentifier("minecraft:gold_nugget")
                 .networkDefinition().runtimeItemId();
         BedrockPacket forgedOutput = new BedrockPacket(

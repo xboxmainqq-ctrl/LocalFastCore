@@ -108,6 +108,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final Map<Long, Long> nextMobAttackMillis = new ConcurrentHashMap<>();
     private final Map<Long, MobKillCredit> livingEntityKillCredit = new ConcurrentHashMap<>();
     private final Map<Long, String> livingEntityAggroTargets = new ConcurrentHashMap<>();
+    private final Map<Long, Long> creeperFuseStartedMillis = new ConcurrentHashMap<>();
     private final ru.nexora.combat.LivingEntityAiService livingEntityAi =
             new ru.nexora.combat.LivingEntityAiService();
     private volatile boolean serverAuthoritativeMovement;
@@ -1806,6 +1807,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     entry.getKey(), player.positionX, player.positionY, player.positionZ, true));
         }
         for (WorldLivingEntity mob : world.livingEntities().snapshot()) {
+            if ("minecraft:creeper".equals(mob.identifier())
+                    && tickCreeperBehavior(mob, targets, nowMillis, tick)) {
+                continue;
+            }
             long nextAttackAt = nextMobAttackMillis.getOrDefault(mob.runtimeId(), 0L);
             ru.nexora.combat.LivingEntityAiService.Decision decision =
                     livingEntityAi.decide(mob, targets, nowMillis, nextAttackAt,
@@ -1845,6 +1850,73 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     moved.runtimeId(), moved.x(), moved.y(), moved.z(), 0.0f, yaw, yaw,
                     WorldCollision.isOnGround(world, moved.x(), moved.y(), moved.z())));
         }
+    }
+
+    private boolean tickCreeperBehavior(
+            WorldLivingEntity creeper,
+            List<ru.nexora.combat.LivingEntityAiService.PlayerTarget> targets,
+            long nowMillis,
+            long tick
+    ) {
+        ru.nexora.combat.LivingEntityAiService.PlayerTarget nearest = targets.stream()
+                .filter(Objects::nonNull)
+                .min(java.util.Comparator.comparingDouble(player -> {
+                    double dx = player.x() - creeper.x();
+                    double dy = player.y() - creeper.y();
+                    double dz = player.z() - creeper.z();
+                    return dx * dx + dy * dy + dz * dz;
+                })).orElse(null);
+        if (nearest == null) {
+            creeperFuseStartedMillis.remove(creeper.runtimeId());
+            return false;
+        }
+        double dx = nearest.x() - creeper.x();
+        double dy = nearest.y() - creeper.y();
+        double dz = nearest.z() - creeper.z();
+        double distanceSquared = dx * dx + dy * dy + dz * dz;
+        if (distanceSquared > 3.0 * 3.0) {
+            creeperFuseStartedMillis.remove(creeper.runtimeId());
+            return false;
+        }
+
+        long fuseStarted = creeperFuseStartedMillis.computeIfAbsent(
+                creeper.runtimeId(), ignored -> nowMillis);
+        if (nowMillis - fuseStarted < 1_500L) return true;
+
+        creeperFuseStartedMillis.remove(creeper.runtimeId());
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            SessionState player = entry.getValue();
+            player.combatLock.lock();
+            try {
+                synchronized (player) {
+                    if (!player.loginAuthenticated || !player.clientInitialized
+                            || player.dead || player.vitals.dead() || !player.positionInitialized) continue;
+                    double px = player.positionX - creeper.x();
+                    double py = player.positionY - creeper.y();
+                    double pz = player.positionZ - creeper.z();
+                    double distance = Math.sqrt(px * px + py * py + pz * pz);
+                    if (distance >= 3.5) continue;
+                    float rawDamage = (float) (12.0 * (1.0 - distance / 3.5));
+                    List<ItemStack> armor = player.equipment.armorSnapshot().stream()
+                            .flatMap(Optional::stream).toList();
+                    float damage = ru.nexora.combat.EnchantmentCombatService
+                            .applyArmorReduction(rawDamage, armor);
+                    if (damage > 0.0f) {
+                        applyDamage(entry.getKey(), player, damage, tick, "death.attack.explosion");
+                    }
+                }
+            } finally {
+                player.combatLock.unlock();
+            }
+        }
+        if (world.livingEntities().remove(creeper.runtimeId())) {
+            nextMobAttackMillis.remove(creeper.runtimeId());
+            livingEntityKillCredit.remove(creeper.runtimeId());
+            livingEntityAggroTargets.remove(creeper.runtimeId());
+            broadcastLivingActorPacket(
+                    BedrockAddItemActorCodec.createRemoveActor(creeper.uniqueId()));
+        }
+        return true;
     }
 
     private boolean damagePlayerFromMob(String networkId, WorldLivingEntity mob, float amount, long tick) {
@@ -1973,6 +2045,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         WorldLivingEntity entity = world.livingEntities().find(runtimeId).orElse(null);
         if (entity == null || !world.livingEntities().remove(runtimeId)) return false;
         nextMobAttackMillis.remove(runtimeId);
+        creeperFuseStartedMillis.remove(runtimeId);
+        livingEntityAggroTargets.remove(runtimeId);
         livingEntityKillCredit.remove(runtimeId);
         broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()));
         return true;

@@ -165,6 +165,8 @@ public final class FurnaceService {
         addRecipe(recipes, "minecraft:chicken", "minecraft:cooked_chicken", RecipeGroup.FOOD);
         addRecipe(recipes, "minecraft:salmon", "minecraft:cooked_salmon", RecipeGroup.FOOD);
         addRecipe(recipes, "minecraft:cod", "minecraft:cooked_cod", RecipeGroup.FOOD);
+        addRecipe(recipes, "minecraft:rabbit", "minecraft:cooked_rabbit", RecipeGroup.FOOD);
+        addRecipe(recipes, "minecraft:mutton", "minecraft:cooked_mutton", RecipeGroup.FOOD);
         return Map.copyOf(recipes);
     }
 

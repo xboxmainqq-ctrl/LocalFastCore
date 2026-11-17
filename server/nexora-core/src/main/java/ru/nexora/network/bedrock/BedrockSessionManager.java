@@ -2450,6 +2450,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
         });
         for (WorldLivingEntity mob : world.livingEntities().snapshot()) {
+            if (!world.isChunkLoadedAt((int) Math.floor(mob.x()), (int) Math.floor(mob.z()))) continue;
             if ("minecraft:creeper".equals(mob.identifier())
                     && tickCreeperBehavior(mob, targets, nowMillis, tick)) {
                 mobStuckTracker.clear(mob.runtimeId());
@@ -2611,6 +2612,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 int blockY = (int) Math.floor(next.y());
                 int blockZ = (int) Math.floor(next.z());
                 removed = blockY < WorldChunk.MIN_Y || blockY > WorldChunk.MAX_Y
+                        || !world.isChunkLoadedAt(blockX, blockZ)
                         || world.getBlock(blockX, blockY, blockZ) != BlockType.AIR;
             }
             if (!removed) {
@@ -2691,7 +2693,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 int blockX = (int) Math.floor(candidateX);
                 int blockY = (int) Math.floor(candidateY);
                 int blockZ = (int) Math.floor(candidateZ);
-                if (blockY <= WorldChunk.MIN_Y || blockY + 2 > WorldChunk.MAX_Y) continue;
+                if (blockY <= WorldChunk.MIN_Y || blockY + 2 > WorldChunk.MAX_Y
+                        || !world.isChunkLoadedAt(blockX, blockZ)) continue;
                 if (world.getBlock(blockX, blockY - 1, blockZ) == BlockType.AIR
                         || world.getBlock(blockX, blockY, blockZ) != BlockType.AIR
                         || world.getBlock(blockX, blockY + 1, blockZ) != BlockType.AIR
@@ -2887,6 +2890,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             String identifier, WorldLivingEntity.Family family,
             float maxHealth, double x, double y, double z
     ) {
+        if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
+                || Math.abs(x) > 30_000_000 || Math.abs(z) > 30_000_000
+                || y < WorldChunk.MIN_Y || y > WorldChunk.MAX_Y) {
+            throw new IllegalArgumentException("Living actor position is outside supported bounds");
+        }
+        world.getChunk(Math.floorDiv((int) Math.floor(x), 16),
+                Math.floorDiv((int) Math.floor(z), 16));
         WorldLivingEntity entity = world.livingEntities().spawn(identifier, family, maxHealth, x, y, z);
         broadcastLivingActorPacket(BedrockAddActorCodec.createAddActor(entity));
         return entity;

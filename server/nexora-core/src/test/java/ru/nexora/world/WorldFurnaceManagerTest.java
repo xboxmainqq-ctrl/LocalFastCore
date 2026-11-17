@@ -31,8 +31,7 @@ class WorldFurnaceManagerTest {
         var restored = restarted.getOrCreate(3, 64, -5);
         assertEquals(new ItemStack("minecraft:raw_iron", 1, 64),
                 restored.getSlot(0).orElseThrow());
-        assertEquals(new ItemStack("minecraft:stick", 1, 64),
-                restored.getSlot(1).orElseThrow());
+        assertTrue(restored.getSlot(1).isEmpty()); // The stick was consumed to supply the first 100 burn ticks.
 
         restored.setSlot(1, new ItemStack("minecraft:blaze_rod", 1, 64));
         restarted.tick(3, 64, -5, 100);

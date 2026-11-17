@@ -108,6 +108,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final Map<Long, Long> nextMobAttackMillis = new ConcurrentHashMap<>();
     private final Map<Long, MobKillCredit> livingEntityKillCredit = new ConcurrentHashMap<>();
     private final Map<Long, String> livingEntityAggroTargets = new ConcurrentHashMap<>();
+    private final Map<Long, Long> livingEntityAggroExpiresAtMillis = new ConcurrentHashMap<>();
+    private static final long MOB_AGGRO_RETENTION_MILLIS = 10_000L;
     private final Map<Long, ru.nexora.combat.ArrowProjectile> mobArrows = new ConcurrentHashMap<>();
     private final AtomicLong nextMobArrowRuntimeId = new AtomicLong(4_000_000L);
     private final Map<Long, Long> creeperFuseStartedMillis = new ConcurrentHashMap<>();
@@ -2328,6 +2330,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             return;
         }
         livingEntityAggroTargets.put(target.runtimeId(), attackerNetworkId);
+        long aggroNowMillis = Math.max(0L, nowNanos / 1_000_000L);
+        livingEntityAggroExpiresAtMillis.put(target.runtimeId(),
+                aggroNowMillis > Long.MAX_VALUE - MOB_AGGRO_RETENTION_MILLIS
+                        ? Long.MAX_VALUE : aggroNowMillis + MOB_AGGRO_RETENTION_MILLIS);
         if (effect.fireDurationSeconds() > 0) {
             livingEntityKillCredit.put(target.runtimeId(), new MobKillCredit(attackerNetworkId,
                     weapon.enchantments().getOrDefault("minecraft:looting", 0)));
@@ -2544,7 +2550,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 despawnLivingEntity(mob.runtimeId());
                 continue;
             }
-            boolean hasActiveTarget = livingEntityAggroTargets.containsKey(mob.runtimeId());
+            String provokedBy = activeMobProvoker(mob.runtimeId(), nowMillis);
+            boolean hasActiveTarget = provokedBy != null;
             // Use the server's monotonic 50 ms AI cadence, not a client-provided input tick.
             // Different players have independent input counters and must not perturb mob scheduling.
             long serverAiTick = Math.max(0L, nowMillis / 50L);
@@ -2555,7 +2562,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             long nextAttackAt = nextMobAttackMillis.getOrDefault(mob.runtimeId(), 0L);
             ru.nexora.combat.LivingEntityAiService.Decision decision =
                     livingEntityAi.decide(mob, targets, nowMillis, nextAttackAt,
-                            livingEntityAggroTargets.get(mob.runtimeId()), nearestPlayer);
+                            provokedBy, nearestPlayer);
             if (decision.attack()) {
                 mobStuckTracker.clear(mob.runtimeId());
                 if (damagePlayerFromMob(decision.targetNetworkId(), mob, decision.attackDamage(), tick)) {
@@ -3038,6 +3045,18 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return true;
     }
 
+    private String activeMobProvoker(long runtimeId, long nowMillis) {
+        String provoker = livingEntityAggroTargets.get(runtimeId);
+        if (provoker == null) return null;
+        Long expiresAt = livingEntityAggroExpiresAtMillis.get(runtimeId);
+        if (expiresAt == null || nowMillis >= expiresAt) {
+            livingEntityAggroTargets.remove(runtimeId, provoker);
+            livingEntityAggroExpiresAtMillis.remove(runtimeId);
+            return null;
+        }
+        return provoker;
+    }
+
     /** Clears every transient subsystem reference when a mob dies or is despawned. */
     private void cleanupLivingEntityRuntimeState(long runtimeId) {
         nextMobAttackMillis.remove(runtimeId);
@@ -3049,6 +3068,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         creeperFuseStartedMillis.remove(runtimeId);
         endermanTeleportCooldownMillis.remove(runtimeId);
         livingEntityAggroTargets.remove(runtimeId);
+        livingEntityAggroExpiresAtMillis.remove(runtimeId);
         livingEntityKillCredit.remove(runtimeId);
         for (var entry : mobArrows.entrySet()) {
             if (entry.getValue().ownerNetworkId().equals("mob:" + runtimeId)

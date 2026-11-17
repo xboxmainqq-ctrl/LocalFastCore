@@ -72,7 +72,7 @@ public final class NexoraAiAssistant {
                     .map(String::trim).filter(value -> !value.isEmpty()).collect(Collectors.toUnmodifiableSet());
             return new NexoraAiAssistant(key, model, endpoint, Duration.ofSeconds(seconds), diagnostics, admins);
         } catch (RuntimeException configurationFailure) {
-            diagnostics.recordFailure(configurationFailure);
+            diagnostics.recordFailure("nexora-ai", configurationFailure);
             return new NexoraAiAssistant("", "gpt-4o-mini", URI.create(DEFAULT_ENDPOINT),
                     Duration.ofSeconds(30), diagnostics);
         }
@@ -139,7 +139,7 @@ public final class NexoraAiAssistant {
                         repairProposals.create(requesterXuid, normalizedIssue, answer);
                 reply.accept(proposal);
             } catch (RuntimeException failure) {
-                diagnostics.recordFailure(failure);
+                diagnostics.recordFailure("nexora-ai", failure);
                 reply.accept(null);
             }
         });
@@ -235,7 +235,7 @@ public final class NexoraAiAssistant {
         try {
             json = MAPPER.writeValueAsString(body);
         } catch (IOException exception) {
-            diagnostics.recordFailure(exception);
+            diagnostics.recordFailure("nexora-ai", exception);
             reply.accept("Не удалось подготовить запрос к ИИ.");
             return AskResult.ACCEPTED;
         }
@@ -250,16 +250,16 @@ public final class NexoraAiAssistant {
                 request, HttpResponse.BodyHandlers.ofInputStream());
         future.whenComplete((response, failure) -> {
             if (failure != null) {
-                diagnostics.recordFailure(failure);
+                diagnostics.recordFailure("nexora-ai", failure);
                 reply.accept("ИИ временно недоступен. Попробуй позже.");
                 return;
             }
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 try (InputStream ignored = response.body()) {
-                    diagnostics.recordFailure(new IOException("AI provider returned HTTP " + response.statusCode()));
+                    diagnostics.recordFailure("nexora-ai", new IOException("AI provider returned HTTP " + response.statusCode()));
                     reply.accept("ИИ временно недоступен (ошибка провайдера " + response.statusCode() + ").");
                 } catch (IOException closeFailure) {
-                    diagnostics.recordFailure(closeFailure);
+                    diagnostics.recordFailure("nexora-ai", closeFailure);
                     reply.accept("ИИ временно недоступен.");
                 }
                 return;
@@ -267,7 +267,7 @@ public final class NexoraAiAssistant {
             try (InputStream bodyStream = response.body()) {
                 byte[] responseBytes = bodyStream.readNBytes(65_537);
                 if (responseBytes.length > 65_536) {
-                    diagnostics.recordFailure(new IOException("AI provider response exceeded 64 KiB"));
+                    diagnostics.recordFailure("nexora-ai", new IOException("AI provider response exceeded 64 KiB"));
                     reply.accept("Ответ ИИ превысил допустимый размер.");
                     return;
                 }
@@ -282,7 +282,7 @@ public final class NexoraAiAssistant {
                 conversationMemory.recordExchange(playerId, admin, history, userMessage, answer);
                 reply.accept(answer);
             } catch (IOException | RuntimeException exception) {
-                diagnostics.recordFailure(exception);
+                diagnostics.recordFailure("nexora-ai", exception);
                 reply.accept("Не удалось прочитать ответ ИИ.");
             }
         });

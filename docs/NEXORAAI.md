@@ -43,7 +43,7 @@ Mob navigation uses a bounded LRU path cache with a 150 ms TTL and a 1,024-entry
 
 ### Mob movement and physics
 
-Ground-bound mobs receive server-authoritative gravity, terminal fall speed, collision-safe knockback, and ground/air drag. Flying species use three-dimensional pursuit or fleeing and do not receive ground gravity. Species-specific movement speeds and melee reach are applied by the AI service. Ground-bound mobs accumulate fall distance and take landing damage above the safe three-block threshold; flying mobs are excluded. Hostile mobs continuously beyond 128 blocks are naturally despawned after a 30-second grace period, while passive and neutral mobs are preserved. Physics, pathfinding, raycasts, and projectile movement are restricted to already resident chunks; mob updates do not generate neighboring chunks as a side effect.
+Ground-bound mobs receive server-authoritative gravity, terminal fall speed, collision-safe knockback, and ground/air drag. They can jump over a single-block obstacle when the landing space and headroom are clear; jumps have a cooldown and never load neighboring chunks. Flying species use three-dimensional pursuit or fleeing and do not receive ground gravity. Species-specific movement speeds and melee reach are applied by the AI service. Ground-bound mobs accumulate fall distance and take landing damage above the safe three-block threshold; flying mobs are excluded. Hostile mobs continuously beyond 128 blocks are naturally despawned after a 30-second grace period, while passive and neutral mobs are preserved. Physics, pathfinding, raycasts, and projectile movement are restricted to already resident chunks; mob updates do not generate neighboring chunks as a side effect.
 
 ### Stuck-mob tracker
 

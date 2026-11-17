@@ -39,12 +39,16 @@ public final class FurnaceStateStorage {
                 || state.cookProgress() < 0 || state.cookProgress() >= FurnaceService.COOK_TIME_TICKS) {
             throw new IllegalArgumentException("Invalid furnace state");
         }
-        ByteBuffer body = ByteBuffer.allocate(BODY_BYTES);
+        if (state.burnTicksTotal() < state.burnTicksRemaining() || state.burnTicksTotal() > 2400) {
+            throw new IllegalArgumentException("Invalid total furnace burn duration");
+        }
+        ByteBuffer body = ByteBuffer.allocate(BODY_V2_BYTES);
         body.putInt(MAGIC).put((byte) VERSION).putInt(x).putInt(y).putInt(z)
-                .putShort((short) state.burnTicksRemaining()).putShort((short) state.cookProgress());
+                .putShort((short) state.burnTicksRemaining()).putShort((short) state.cookProgress())
+                .putShort((short) state.burnTicksTotal());
         CRC32C crc = new CRC32C();
-        crc.update(body.array(), 0, BODY_BYTES);
-        ByteBuffer file = ByteBuffer.allocate(BODY_BYTES + Integer.BYTES);
+        crc.update(body.array(), 0, BODY_V2_BYTES);
+        ByteBuffer file = ByteBuffer.allocate(BODY_V2_BYTES + Integer.BYTES);
         file.put(body.array()).putInt((int) crc.getValue());
         Path target = path(x, y, z);
         rejectSymlink(target);
@@ -67,24 +71,31 @@ public final class FurnaceStateStorage {
         rejectSymlink(file);
         if (!Files.exists(file)) return Optional.empty();
         byte[] bytes = Files.readAllBytes(file);
-        if (bytes.length != BODY_BYTES + Integer.BYTES) throw new IOException("Invalid furnace state file size");
+        if (bytes.length != BODY_V1_BYTES + Integer.BYTES
+                && bytes.length != BODY_V2_BYTES + Integer.BYTES) {
+            throw new IOException("Invalid furnace state file size");
+        }
         ByteBuffer in = ByteBuffer.wrap(bytes);
-        int storedCrc = ByteBuffer.wrap(bytes, BODY_BYTES, Integer.BYTES).getInt();
-        CRC32C crc = new CRC32C();
-        crc.update(bytes, 0, BODY_BYTES);
-        if ((int) crc.getValue() != storedCrc) throw new IOException("Furnace state checksum mismatch");
         if (in.getInt() != MAGIC) throw new IOException("Invalid furnace state magic");
         int version = Byte.toUnsignedInt(in.get());
-        if (version != VERSION) throw new IOException("Unsupported furnace state version: " + version);
+        int bodyBytes;
+        if (version == 1 && bytes.length == BODY_V1_BYTES + Integer.BYTES) bodyBytes = BODY_V1_BYTES;
+        else if (version == VERSION && bytes.length == BODY_V2_BYTES + Integer.BYTES) bodyBytes = BODY_V2_BYTES;
+        else throw new IOException("Unsupported or malformed furnace state version: " + version);
+        int storedCrc = ByteBuffer.wrap(bytes, bodyBytes, Integer.BYTES).getInt();
+        CRC32C crc = new CRC32C();
+        crc.update(bytes, 0, bodyBytes);
+        if ((int) crc.getValue() != storedCrc) throw new IOException("Furnace state checksum mismatch");
         if (in.getInt() != x || in.getInt() != y || in.getInt() != z) {
             throw new IOException("Furnace state coordinates do not match file name");
         }
         int burn = Short.toUnsignedInt(in.getShort());
         int progress = Short.toUnsignedInt(in.getShort());
-        if (burn > 2400 || progress >= FurnaceService.COOK_TIME_TICKS) {
+        int total = version == 1 ? burn : Short.toUnsignedInt(in.getShort());
+        if (burn > 2400 || progress >= FurnaceService.COOK_TIME_TICKS || total < burn || total > 2400) {
             throw new IOException("Invalid furnace state values");
         }
-        return Optional.of(new FurnaceService.FurnaceStateSnapshot(burn, progress));
+        return Optional.of(new FurnaceService.FurnaceStateSnapshot(burn, progress, total));
     }
 
     public synchronized void delete(int x, int y, int z) throws IOException {

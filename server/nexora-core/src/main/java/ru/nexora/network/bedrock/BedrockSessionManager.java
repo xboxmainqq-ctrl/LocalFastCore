@@ -2450,7 +2450,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
         });
         for (WorldLivingEntity mob : world.livingEntities().snapshot()) {
-            if (!world.isChunkLoadedAt((int) Math.floor(mob.x()), (int) Math.floor(mob.z()))) continue;
+            if (!ru.nexora.world.WorldPathfinder.isMobFootprintLoaded(world, mob.x(), mob.z())) continue;
             if ("minecraft:creeper".equals(mob.identifier())
                     && tickCreeperBehavior(mob, targets, nowMillis, tick)) {
                 mobStuckTracker.clear(mob.runtimeId());
@@ -2493,7 +2493,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             double nextX = mob.x() + decision.moveX();
             double nextY = mob.y() + decision.moveY();
             double nextZ = mob.z() + decision.moveZ();
-            if (!WorldCollision.canMove(world, mob.x(), mob.y(), mob.z(), nextX, nextY, nextZ)) {
+            if (!ru.nexora.world.WorldPathfinder.isMobFootprintLoaded(world, nextX, nextZ)
+                    || !WorldCollision.canMove(world, mob.x(), mob.y(), mob.z(), nextX, nextY, nextZ)) {
                 double desiredX = mob.x() + decision.moveX() * 8.0;
                 double desiredZ = mob.z() + decision.moveZ() * 8.0;
                 long pathStartedNanos = nanoTime.getAsLong();

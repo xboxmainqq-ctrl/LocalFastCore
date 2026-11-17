@@ -14,12 +14,13 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Deterministic, server-authoritative perception and goal controller for configured mobs.
+ * Native deterministic mob behavior controller invoked by EntityTickEngine.
  *
- * <p>This first controller provides passive, neutral and hostile profiles,
- * nearest-player perception, bounded target memory, collision-aware movement
- * and loaded-world pathfinding. It intentionally does not perform combat damage; it emits an
- * attack intent for a later combat system.</p>
+ * <p>It owns bounded per-mob decision state only; it does not own a separate
+ * entity population, server clock, thread or tick loop. It provides passive,
+ * neutral and hostile profiles, target memory and loaded-world pathfinding.
+ * Combat damage is not applied here; visible-target attack intents are emitted
+ * for the authoritative combat system.</p>
  */
 public final class MobAiController {
     private static final double DEFAULT_DETECTION_RANGE = 16.0;
@@ -214,7 +215,8 @@ public final class MobAiController {
         }
         if (route.path.isEmpty()) {
             navigation.remove(mob.id());
-            pathRetries.put(mob.id(), new PathRetryState(targetX, targetZ, tick + 1));
+            pathRetries.put(mob.id(), new PathRetryState(targetX, targetZ,
+                    tick + FAILED_PATH_RETRY_TICKS));
             return remember(mob.id(), new Decision(State.STUCK, target.id(), false, false));
         }
 

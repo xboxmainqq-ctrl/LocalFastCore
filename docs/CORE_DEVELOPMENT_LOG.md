@@ -140,3 +140,7 @@ The Core is ready only after automated tests cover clean installation, world cre
 - Added an explicit assertion that a remembered but unseen target never produces an attack intent.
 - Commits: ae26b762b3f8204bbfe1092346949bab43551945 (route backoff), 4715d507445bd4f53d2e38813ec5cfd43d1c222b (memory safety assertion).
 - The shared 4,096-reserved-node per-tick budget and nine-mob deferral test are in commit 4fd102078a5b4f0e8c60049f2693eeafc7d81ec6. Aggregate load tests remain outstanding.
+### 2026-11-17 — bound repeated failed-route retries
+- Added a ten-tick backoff after a route search proves unreachable. A changed target block can trigger a fresh search immediately; a cached route invalidated by a newly blocked step retries on the next tick.
+- This prevents permanently blocked mobs from consuming their reserved path-search budget every single tick and starving other mobs. The controller remains a stateful part of EntityTickEngine, not a second mob subsystem.
+- Commit: 95ae7e2e136b88bfbbef2a69104c17a3761f9582 (retry backoff), ae26b762b3f8204bbfe1092346949bab43551945 (backoff on invalidated waypoint).

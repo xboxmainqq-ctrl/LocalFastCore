@@ -89,7 +89,7 @@ Safety and privacy requirements:
 - **Moderation AI Assistant:** `ModerationSignalAnalyzer` and `ModerationAiAssistant` provide bounded chat-rate/repetition signals, retain only SHA-256 fingerprints rather than raw chat, cap per-player history and total tracked players with LRU eviction, support data deletion, and always mark results for human review. An optional model summary receives only risk/score/reason metadata, never raw chat or player IDs. A lifecycle-managed optional runtime module is available. This is a deterministic signal foundation, not a trained/model-based classifier and it does not punish players.
 
 ### Not yet implemented
-- Vertical pathfinding, combat/damage, richer goals, dynamic hazard handling, persistent profiles, aggregate tick-level path budgets and load testing.
+- Vertical pathfinding, combat/damage, richer goals, dynamic hazard handling, persistent profiles and stress/load validation of the shared tick-level path budget.
 - Production AI provider adapters, operator-facing conversation/tool-planning workflow, live diagnostics catalogue, provider lifecycle/rate limits and a broader secure context redaction pipeline.
 - Moderation case management, report ingestion, policy-aware recommendations, durable audit storage, appeals and model-based review.
 

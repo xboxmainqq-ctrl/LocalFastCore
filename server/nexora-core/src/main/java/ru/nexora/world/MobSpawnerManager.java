@@ -86,14 +86,17 @@ public final class MobSpawnerManager {
         Objects.requireNonNull(spawnHandler, "spawnHandler");
         if (currentTick < 0) throw new IllegalArgumentException("currentTick must be non-negative");
 
-        List<MobSpawnerState> snapshot = snapshot();
+        List<MobSpawnerState> snapshot;
+        synchronized (this) { snapshot = List.copyOf(spawners.values()); }
         List<WorldLivingEntity> livingSnapshot = world.livingEntities().snapshot();
+        List<SpawnRequest> spawnedThisTick = new ArrayList<>();
         int active = 0;
         int spawned = 0;
         int attempts = 0;
         int capped = 0;
         int invalid = 0;
         for (MobSpawnerState state : snapshot) {
+            if (!world.isChunkLoadedAt(state.x(), state.z())) continue;
             if (world.getBlock(state.x(), state.y(), state.z()) != BlockType.SPAWNER) {
                 remove(state.x(), state.y(), state.z());
                 continue;
@@ -105,7 +108,7 @@ public final class MobSpawnerManager {
             active++;
             if (currentTick < state.nextSpawnTick()) continue;
 
-            int nearby = countNearby(livingSnapshot, state);
+            int nearby = countNearby(livingSnapshot, spawnedThisTick, state);
             if (nearby >= MAX_NEARBY_SAME_TYPE) {
                 capped++;
                 updateNext(state, currentTick);
@@ -124,6 +127,7 @@ public final class MobSpawnerManager {
                 if (spawnHandler.test(request)) {
                     spawnedFromThis++;
                     spawned++;
+                    spawnedThisTick.add(request);
                 }
             }
             updateNext(state, currentTick);
@@ -169,9 +173,16 @@ public final class MobSpawnerManager {
         return false;
     }
 
-    private static int countNearby(List<WorldLivingEntity> entities, MobSpawnerState state) {
+    private static int countNearby(List<WorldLivingEntity> entities, List<SpawnRequest> spawned,
+                                   MobSpawnerState state) {
         int count = 0;
         for (WorldLivingEntity entity : entities) {
+            if (!entity.identifier().equals(state.entityIdentifier())) continue;
+            if (Math.abs(entity.x() - (state.x() + 0.5)) <= 4.5
+                    && Math.abs(entity.y() - (state.y() + 0.5)) <= 4.5
+                    && Math.abs(entity.z() - (state.z() + 0.5)) <= 4.5) count++;
+        }
+        for (SpawnRequest entity : spawned) {
             if (!entity.identifier().equals(state.entityIdentifier())) continue;
             if (Math.abs(entity.x() - (state.x() + 0.5)) <= 4.5
                     && Math.abs(entity.y() - (state.y() + 0.5)) <= 4.5

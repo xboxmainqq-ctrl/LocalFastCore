@@ -916,6 +916,7 @@ class BedrockSessionManagerTest {
         assertTrue(mobWorld.livingEntities().find(zombie.runtimeId()).isEmpty());
         assertFalse(attacks.containsKey(zombie.runtimeId()));
         assertFalse(aggro.containsKey(zombie.runtimeId()));
+        assertTrue(arrows.isEmpty());
         assertEquals(0, cache.size());
         assertEquals(0, stuck.stats(2_001).tracked());
         manager.close();
@@ -946,6 +947,12 @@ class BedrockSessionManagerTest {
         fuses.put(zombie.runtimeId(), 100L);
         teleports.put(zombie.runtimeId(), 100L);
         aggro.put(zombie.runtimeId(), "test-player");
+        @SuppressWarnings("unchecked")
+        java.util.Map<Long, ru.nexora.combat.ArrowProjectile> arrows =
+                (java.util.Map<Long, ru.nexora.combat.ArrowProjectile>) getManagerField(manager, "mobArrows");
+        arrows.put(77L, new ru.nexora.combat.ArrowProjectile(
+                -77L, 77L, "mob:" + zombie.runtimeId(),
+                0.5, 66, 0.5, 0.1, 0.1, 0.1, 0));
 
         ru.nexora.world.MobPathCache cache =
                 (ru.nexora.world.MobPathCache) getManagerField(manager, "mobPathCache");

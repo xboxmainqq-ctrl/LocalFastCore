@@ -26,6 +26,7 @@ class WorldFurnaceManagerTest {
 
         var partial = first.tick(3, 64, -5, 100);
         assertEquals(50, partial.cookPercent());
+        first.saveAll();
 
         WorldFurnaceManager restarted = new WorldFurnaceManager(inventoryStorage, stateStorage);
         var restored = restarted.getOrCreate(3, 64, -5);

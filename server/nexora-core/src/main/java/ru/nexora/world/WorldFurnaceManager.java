@@ -17,7 +17,7 @@ public final class WorldFurnaceManager {
     private final ContainerInventoryStorage inventoryStorage;
     private final FurnaceStateStorage stateStorage;
     private final FurnaceService service = new FurnaceService();
-    private final Map<Position, ContainerInventory> loaded = new HashMap<>();
+    private final Map<Position, ContainerInventory> loaded = new HashMap<>();\n    private final Map<Position, FurnaceService.Kind> kinds = new HashMap<>();
     private final CopyOnWriteArrayList<Consumer<FurnaceUpdate>> updateListeners = new CopyOnWriteArrayList<>();
 
     public WorldFurnaceManager(ContainerInventoryStorage inventoryStorage, FurnaceStateStorage stateStorage) {
@@ -46,7 +46,7 @@ public final class WorldFurnaceManager {
         synchronized (this) {
             ContainerInventory inventory = getOrCreate(x, y, z);
             FurnaceService.FurnaceStateSnapshot before = service.snapshotState(x, y, z);
-            result = service.tick(x, y, z, inventory, elapsedTicks);
+            result = service.tick(x, y, z, inventory, kind, elapsedTicks);
             update = updateIfChanged(x, y, z, inventory, before, result);
         }
         publish(update);

@@ -39,24 +39,34 @@ public final class WorldFurnaceManager {
     }
 
     /** Advances one loaded furnace and persists its inventory and timers. */
-    public synchronized FurnaceService.TickResult tick(int x, int y, int z, long elapsedTicks)
+    public FurnaceService.TickResult tick(int x, int y, int z, long elapsedTicks)
             throws IOException {
-        ContainerInventory inventory = getOrCreate(x, y, z);
-        FurnaceService.FurnaceStateSnapshot before = service.snapshotState(x, y, z);
-        FurnaceService.TickResult result = service.tick(x, y, z, inventory, elapsedTicks);
-        publishIfChanged(x, y, z, inventory, before, result);
+        FurnaceUpdate update;
+        FurnaceService.TickResult result;
+        synchronized (this) {
+            ContainerInventory inventory = getOrCreate(x, y, z);
+            FurnaceService.FurnaceStateSnapshot before = service.snapshotState(x, y, z);
+            result = service.tick(x, y, z, inventory, elapsedTicks);
+            update = updateIfChanged(x, y, z, inventory, before, result);
+        }
+        publish(update);
         return result;
     }
 
     /** Advances every loaded furnace by the supplied number of server ticks. */
-    public synchronized void tickAll(long elapsedTicks) {
-        for (var entry : loaded.entrySet()) {
-            Position p = entry.getKey();
-            FurnaceService.FurnaceStateSnapshot before = service.snapshotState(p.x(), p.y(), p.z());
-            FurnaceService.TickResult result =
-                    service.tick(p.x(), p.y(), p.z(), entry.getValue(), elapsedTicks);
-            publishIfChanged(p.x(), p.y(), p.z(), entry.getValue(), before, result);
+    public void tickAll(long elapsedTicks) {
+        java.util.List<FurnaceUpdate> updates = new java.util.ArrayList<>();
+        synchronized (this) {
+            for (var entry : loaded.entrySet()) {
+                Position p = entry.getKey();
+                FurnaceService.FurnaceStateSnapshot before = service.snapshotState(p.x(), p.y(), p.z());
+                FurnaceService.TickResult result =
+                        service.tick(p.x(), p.y(), p.z(), entry.getValue(), elapsedTicks);
+                FurnaceUpdate update = updateIfChanged(p.x(), p.y(), p.z(), entry.getValue(), before, result);
+                if (update != null) updates.add(update);
+            }
         }
+        updates.forEach(this::publish);
     }
 
     public AutoCloseable addUpdateListener(Consumer<FurnaceUpdate> listener) {
@@ -65,12 +75,16 @@ public final class WorldFurnaceManager {
         return () -> updateListeners.remove(listener);
     }
 
-    private void publishIfChanged(int x, int y, int z, ContainerInventory inventory,
-                                  FurnaceService.FurnaceStateSnapshot before,
-                                  FurnaceService.TickResult result) {
+    private FurnaceUpdate updateIfChanged(int x, int y, int z, ContainerInventory inventory,
+                                          FurnaceService.FurnaceStateSnapshot before,
+                                          FurnaceService.TickResult result) {
         FurnaceService.FurnaceStateSnapshot after = service.snapshotState(x, y, z);
-        if (before.equals(after) && !result.inventoryChanged()) return;
-        FurnaceUpdate update = new FurnaceUpdate(x, y, z, inventory, result);
+        return before.equals(after) && !result.inventoryChanged()
+                ? null : new FurnaceUpdate(x, y, z, inventory, result);
+    }
+
+    private void publish(FurnaceUpdate update) {
+        if (update == null) return;
         for (Consumer<FurnaceUpdate> listener : updateListeners) {
             try { listener.accept(update); }
             catch (RuntimeException exception) {

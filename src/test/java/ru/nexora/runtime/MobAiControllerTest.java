@@ -30,6 +30,23 @@ class MobAiControllerTest {
     }
 
     @Test
+    void explicitPassiveProfileKeepsExistingWanderGoal() {
+        InMemoryWorld world = groundedWorld();
+        EntityRegistry entities = new EntityRegistry();
+        UUID mobId = UUID.randomUUID();
+        entities.spawn(new WorldEntity(mobId, WorldEntity.Type.MOB, "Sheep", 0.5, 64, 0.5, 0, -1));
+        EntityTickEngine engine = new EntityTickEngine(entities, world);
+        engine.mobAi().setBehavior(mobId, MobAiController.Behavior.PASSIVE);
+
+        for (int i = 0; i < 100; i++) {
+            engine.tick();
+        }
+
+        WorldEntity mob = entities.find(mobId).orElseThrow();
+        assertTrue(Math.abs(mob.x() - 0.5) > 0.001 || Math.abs(mob.z() - 0.5) > 0.001);
+    }
+
+    @Test
     void neutralMobDoesNotChaseUntilProvoked() {
         InMemoryWorld world = groundedWorld();
         EntityRegistry entities = new EntityRegistry();

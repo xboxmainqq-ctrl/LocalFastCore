@@ -30,6 +30,20 @@ class WorldLivingEntityManagerTest {
     }
 
     @Test
+    void infersUndeadAndArthropodFamiliesForCombatEnchantments() {
+        assertEquals(WorldLivingEntity.Family.UNDEAD,
+                WorldLivingEntity.familyForIdentifier("minecraft:zombie"));
+        assertEquals(WorldLivingEntity.Family.UNDEAD,
+                WorldLivingEntity.familyForIdentifier("minecraft:wither_skeleton"));
+        assertEquals(WorldLivingEntity.Family.ARTHROPOD,
+                WorldLivingEntity.familyForIdentifier("minecraft:cave_spider"));
+        assertEquals(WorldLivingEntity.Family.ARTHROPOD,
+                WorldLivingEntity.familyForIdentifier("minecraft:bee"));
+        assertEquals(WorldLivingEntity.Family.NORMAL,
+                WorldLivingEntity.familyForIdentifier("minecraft:creeper"));
+    }
+
+    @Test
     void fireTicksDamageLivingActorAndClearAtExpiry() {
         WorldLivingEntityManager manager = new WorldLivingEntityManager();
         WorldLivingEntity spider = manager.spawn(

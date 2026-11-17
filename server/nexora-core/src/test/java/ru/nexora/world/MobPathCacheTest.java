@@ -36,6 +36,22 @@ class MobPathCacheTest {
     }
 
     @Test
+    void doesNotCacheNoPathResultsWhenTerrainCanChange() {
+        World world = new World("mob-path-cache-open", 0L, new FlatWorldGenerator());
+        world.setBlock(1, 65, 0, BlockType.STONE);
+        world.setBlock(-1, 65, 0, BlockType.STONE);
+        world.setBlock(0, 65, 1, BlockType.STONE);
+        world.setBlock(0, 65, -1, BlockType.STONE);
+        MobPathCache cache = new MobPathCache(8, 150);
+
+        assertTrue(cache.findNextStep(11L, world, 0.5, 65, 0.5, 3.5, 0.5, 3_000).isEmpty());
+        assertEquals(0, cache.size());
+
+        world.setBlock(1, 65, 0, BlockType.AIR);
+        assertTrue(cache.findNextStep(11L, world, 0.5, 65, 0.5, 3.5, 0.5, 3_050).isPresent());
+    }
+
+    @Test
     void expiresEntriesAndKeepsTheCacheBounded() {
         World world = new World("mob-path-cache-bound", 0L, new FlatWorldGenerator());
         MobPathCache cache = new MobPathCache(2, 10);

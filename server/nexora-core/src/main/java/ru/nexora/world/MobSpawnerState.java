@@ -15,6 +15,7 @@ public record MobSpawnerState(int x, int y, int z, String entityIdentifier,
             throw new IllegalArgumentException("Invalid spawner entity identifier");
         }
         if (delayTicks < MIN_DELAY_TICKS || delayTicks > MAX_DELAY_TICKS || nextSpawnTick < 0
+                || Math.abs((long) x) > 30_000_000 || Math.abs((long) z) > 30_000_000
                 || y <= WorldChunk.MIN_Y || y >= WorldChunk.MAX_Y) {
             throw new IllegalArgumentException("Invalid spawner position or timing");
         }

@@ -16,6 +16,24 @@ public final class FurnaceService {
     public static final int OUTPUT_SLOT = 2;
     public static final int COOK_TIME_TICKS = 200;
 
+    public enum Kind {
+        FURNACE(200, RecipeGroup.ALL),
+        BLAST_FURNACE(100, RecipeGroup.METALS),
+        SMOKER(100, RecipeGroup.FOOD);
+
+        private final int cookTimeTicks;
+        private final RecipeGroup recipeGroup;
+
+        Kind(int cookTimeTicks, RecipeGroup recipeGroup) {
+            this.cookTimeTicks = cookTimeTicks;
+            this.recipeGroup = recipeGroup;
+        }
+
+        public int cookTimeTicks() { return cookTimeTicks; }
+    }
+
+    private enum RecipeGroup {\n        ALL, METALS, FOOD;\n        boolean accepts(RecipeGroup recipe) { return this == ALL || this == recipe; }\n    }
+
     private static final Map<String, SmeltingRecipe> RECIPES = recipes();
     private static final Map<String, Integer> FUELS = Map.of(
             "minecraft:blaze_rod", 2400,
@@ -27,7 +45,7 @@ public final class FurnaceService {
     public synchronized TickResult tick(
             int x, int y, int z, ContainerInventory inventory, long elapsedTicks
     ) {
-        Objects.requireNonNull(inventory, "inventory");
+        Objects.requireNonNull(inventory, "inventory");\n        Objects.requireNonNull(kind, "kind");
         if (inventory.size() != 3) throw new IllegalArgumentException("Furnace inventory must have exactly 3 slots");
         if (elapsedTicks < 0 || elapsedTicks > 20_000) {
             throw new IllegalArgumentException("Elapsed furnace ticks must be 0..20000");
@@ -40,7 +58,7 @@ public final class FurnaceService {
         long remainingTicks = elapsedTicks;
         while (remainingTicks > 0) {
             ItemStack input = inventory.getSlot(INPUT_SLOT).orElse(null);
-            SmeltingRecipe recipe = input == null ? null : RECIPES.get(input.itemId());
+            SmeltingRecipe recipe = input == null ? null : RECIPES.get(input.itemId());\n            if (recipe != null && !kind.recipeGroup.accepts(recipe.group())) recipe = null;
             boolean canSmelt = recipe != null && canAcceptOutput(inventory, recipe.result());
 
             if (state.burnTicksRemaining == 0 && canSmelt) {
@@ -55,14 +73,14 @@ public final class FurnaceService {
             }
             if (state.burnTicksRemaining == 0) break;
 
-            int untilCooked = canSmelt ? COOK_TIME_TICKS - state.cookProgress : state.burnTicksRemaining;
+            int untilCooked = canSmelt ? kind.cookTimeTicks - state.cookProgress : state.burnTicksRemaining;
             long step = Math.min(remainingTicks, Math.min(state.burnTicksRemaining, untilCooked));
             state.burnTicksRemaining -= (int) step;
             remainingTicks -= step;
 
             if (canSmelt) {
                 state.cookProgress += (int) step;
-                if (state.cookProgress >= COOK_TIME_TICKS) {
+                if (state.cookProgress >= kind.cookTimeTicks) {
                     consumeOneInput(inventory);
                     addOutput(inventory, recipe.result());
                     state.cookProgress = 0;
@@ -72,7 +90,7 @@ public final class FurnaceService {
                 state.cookProgress = 0;
             }
         }
-        return result(state, changed);
+        return result(state, changed, kind);
     }
 
     public synchronized void restoreState(int x, int y, int z, int burnTicksRemaining, int cookProgress) {
@@ -141,7 +159,7 @@ public final class FurnaceService {
     }
 
     private record Position(int x, int y, int z) { }
-    private record SmeltingRecipe(String input, ItemStack result) { }
+    private record SmeltingRecipe(String input, ItemStack result, RecipeGroup group) { }\n\n    private static boolean accepts(RecipeGroup kind, RecipeGroup recipe) {\n        return kind == RecipeGroup.ALL || kind == recipe;\n    }
 
     private static final class FurnaceState {
         private int burnTicksRemaining;

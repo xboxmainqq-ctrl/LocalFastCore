@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.io.IOException;
 import java.util.function.Predicate;
 
 /**
@@ -20,13 +21,38 @@ public final class MobSpawnerManager {
     public static final int MAX_TRACKED_SPAWNERS = 10_000;
 
     private final Map<Position, MobSpawnerState> spawners = new LinkedHashMap<>();
+    private final MobSpawnerStorage storage;
+
+    public MobSpawnerManager() {
+        this.storage = null;
+    }
+
+    public MobSpawnerManager(MobSpawnerStorage storage) throws IOException {
+        this.storage = Objects.requireNonNull(storage, "storage");
+        for (MobSpawnerState state : storage.load()) {
+            Position position = new Position(state.x(), state.y(), state.z());
+            if (spawners.putIfAbsent(position, state) != null) {
+                throw new IOException("Duplicate mob spawner position");
+            }
+        }
+    }
+
+    public synchronized void save() throws IOException {
+        if (storage != null) storage.save(snapshot());
+    }
+
+    public void onBlockChanged(World.BlockChange change, long currentTick) {
+        if (change.current() == BlockType.SPAWNER) register(change.x(), change.y(), change.z(), currentTick);
+        else if (change.previous() == BlockType.SPAWNER) remove(change.x(), change.y(), change.z());
+    }
     private long spawnCount;
     private long cappedAttempts;
     private long inactiveTicks;
     private long invalidPositionAttempts;
 
     public synchronized boolean register(int x, int y, int z, long currentTick) {
-        if (currentTick < 0 || spawners.size() >= MAX_TRACKED_SPAWNERS) return false;
+        if (currentTick < 0 || (spawners.size() >= MAX_TRACKED_SPAWNERS
+                && !spawners.containsKey(new Position(x, y, z)))) return false;
         Position position = new Position(x, y, z);
         if (spawners.containsKey(position)) return true;
         spawners.put(position, new MobSpawnerState(x, y, z, "minecraft:zombie",

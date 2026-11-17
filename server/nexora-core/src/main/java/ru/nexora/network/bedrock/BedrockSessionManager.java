@@ -1846,6 +1846,44 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (requiredNanos == Long.MAX_VALUE
                 || nanoTime.getAsLong() - target.startedAtNanos() < requiredNanos) return;
 
+        if (current == BlockType.CHEST) {
+            ru.nexora.world.WorldContainerManager manager = world.containers().orElse(null);
+            if (manager == null) {
+                state.breakTarget = null;
+                sendPacket(networkId, BedrockBlockUpdateCodec.createPacket(
+                        target.x(), target.y(), target.z(), current), true);
+                return;
+            }
+            try {
+                ContainerInventory chest = manager.getOrCreate(target.x(), target.y(), target.z());
+                if (chest.snapshot().stream().anyMatch(Optional::isPresent)) {
+                    // Until atomic multi-stack spill is implemented, never destroy a
+                    // non-empty chest or its persistent contents.
+                    state.breakTarget = null;
+                    sendPacket(networkId, BedrockBlockUpdateCodec.createPacket(
+                            target.x(), target.y(), target.z(), current), true);
+                    return;
+                }
+                for (var entry : sessions.entrySet()) {
+                    SessionState viewer = entry.getValue();
+                    synchronized (viewer) {
+                        if (viewer.openContainerWindowId != 0
+                                && viewer.openContainerX == target.x()
+                                && viewer.openContainerY == target.y()
+                                && viewer.openContainerZ == target.z()) {
+                            closeContainerWindow(entry.getKey(), viewer, true);
+                        }
+                    }
+                }
+                manager.remove(target.x(), target.y(), target.z());
+            } catch (IOException exception) {
+                state.breakTarget = null;
+                System.err.println("NEXORA: chest break cancelled because its contents could not be checked: "
+                        + exception.getMessage());
+                return;
+            }
+        }
+
         WorldItemEntity dropped = null;
         String dropItemId = blockDropItemId(current);
         if (dropItemId != null && itemRegistry != null

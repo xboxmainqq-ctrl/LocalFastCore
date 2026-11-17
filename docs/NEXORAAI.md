@@ -34,7 +34,7 @@ Only HTTPS endpoints are accepted, except HTTP on localhost for private developm
 
 ## Operator mode
 
-- `/ai admin` shows a read-only runtime snapshot.
+- `/ai admin` shows a read-only runtime snapshot. It also includes aggregate player/session, living-entity, and dropped-item counts; no player inventory or private profile data is exposed.
 - `/ai admin <question>` asks the assistant in operator context.
 - Access is granted only when the authenticated Xbox XUID is present in `NEXORA_AI_ADMIN_XUIDS`.
 - This mode does not execute commands, change settings, edit files, restart services, or mutate worlds.

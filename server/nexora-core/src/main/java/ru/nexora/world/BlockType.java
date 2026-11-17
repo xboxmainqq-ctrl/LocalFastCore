@@ -18,7 +18,9 @@ public enum BlockType {
     GOLD_BLOCK(13),
     DIAMOND_BLOCK(14),
     EMERALD_BLOCK(15),
-    CHEST(16);
+    CHEST(16),
+    OAK_LOG(17),
+    OAK_PLANKS(18);
 
     private final int internalId;
 

@@ -195,4 +195,46 @@ class NexoraAiGuardTest {
         assertThrows(IllegalArgumentException.class,
                 () -> guard.recordInboundFrame(" ", 1, 0));
     }
+
+    @Test
+    void moderatorCanInspectConfirmAndDismissCasesWithoutApplyingPunishment() {
+        NexoraAiGuard guard = new NexoraAiGuard();
+        for (int i = 0; i < 65; i++) {
+            guard.recordSuccessfulAttack("private-xuid", "PlayerOne",
+                    "target-" + (i % 4), i * 50_000_000L);
+        }
+
+        var cases = guard.combatCases(3_200_000_000L);
+        assertEquals(1, cases.size());
+        var created = cases.getFirst();
+        assertEquals("K-000001", created.id());
+        assertEquals("OPEN", created.status());
+        assertFalse(created.reviewed());
+        assertTrue(guard.findCombatCase("k-000001", 3_200_000_000L).isPresent());
+
+        var confirmed = guard.reviewCombatCase(
+                created.id(), "moderator-private-xuid", true, 3_300_000_000L).orElseThrow();
+        assertEquals("CONFIRMED", confirmed.status());
+        assertTrue(confirmed.reviewed());
+        assertTrue(guard.reviewCombatCase(created.id(), "another-moderator", false,
+                3_400_000_000L).isEmpty());
+
+        assertFalse(guard.combatReviewSummary(3_400_000_000L).contains("moderator-private-xuid"));
+        assertFalse(guard.combatReviewSummary(3_400_000_000L).contains("private-xuid"));
+    }
+
+    @Test
+    void moderatorCanDismissFalsePositiveAndCasesExpire() {
+        NexoraAiGuard guard = new NexoraAiGuard();
+        for (int i = 0; i < 65; i++) {
+            guard.recordSuccessfulAttack("private-xuid", "PlayerTwo",
+                    "target-" + (i % 4), i * 50_000_000L);
+        }
+        var created = guard.combatCases(3_200_000_000L).getFirst();
+        var dismissed = guard.reviewCombatCase(
+                created.id(), "moderator-xuid", false, 3_300_000_000L).orElseThrow();
+        assertEquals("DISMISSED", dismissed.status());
+        assertTrue(guard.findCombatCase(created.id(), 1_804_000_000_001L).isEmpty());
+    }
+
 }

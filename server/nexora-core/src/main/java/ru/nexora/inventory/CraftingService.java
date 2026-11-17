@@ -55,11 +55,62 @@ public final class CraftingService {
         }
     }
 
+    /**
+     * Settles one recipe from the server-owned 2x2 crafting grid into the player inventory.
+     * The grid offset is 28 for the inventory crafting grid and the grid itself is not persisted.
+     */
+    public Result craftFromGrid(
+            PlayerInventory player, ContainerInventory grid, int gridOffset, CraftingRecipe recipe
+    ) {
+        Objects.requireNonNull(player, "player");
+        Objects.requireNonNull(grid, "grid");
+        Objects.requireNonNull(recipe, "recipe");
+        if (gridOffset < 0 || gridOffset + 4 > grid.size()) return Result.INVALID_GRID;
+
+        synchronized (player) {
+            synchronized (grid) {
+                List<Optional<ItemStack>> playerBefore = player.snapshot();
+                int selectedSlot = player.selectedHotbarSlot();
+                List<Optional<ItemStack>> gridBefore = grid.snapshot();
+
+                java.util.Map<String, Integer> actual = new java.util.HashMap<>();
+                for (int slot = 0; slot < 4; slot++) {
+                    Optional<ItemStack> item = grid.getSlot(gridOffset + slot);
+                    if (item.isPresent()) actual.merge(item.orElseThrow().itemId(), 1, Integer::sum);
+                }
+                if (!actual.equals(recipe.ingredients())) return Result.INSUFFICIENT_INGREDIENTS;
+
+                for (int slot = 0; slot < 4; slot++) {
+                    int gridSlot = gridOffset + slot;
+                    ItemStack item = grid.getSlot(gridSlot).orElse(null);
+                    if (item == null) continue;
+                    grid.setSlot(gridSlot, item.count() == 1 ? null
+                            : new ItemStack(item.itemId(), item.count() - 1, item.maxStackSize()));
+                }
+
+                int remaining = recipe.result().count();
+                while (remaining > 0) {
+                    int stackCount = Math.min(remaining, recipe.result().maxStackSize());
+                    int notAdded = player.add(new ItemStack(
+                            recipe.result().itemId(), stackCount, recipe.result().maxStackSize()));
+                    if (notAdded != 0) {
+                        player.restore(playerBefore, selectedSlot);
+                        grid.restore(gridBefore);
+                        return Result.INVENTORY_FULL;
+                    }
+                    remaining -= stackCount;
+                }
+                return Result.CRAFTED;
+            }
+        }
+    }
+
     public enum Result {
         CRAFTED,
         UNKNOWN_RECIPE,
         INVALID_MULTIPLIER,
         INSUFFICIENT_INGREDIENTS,
-        INVENTORY_FULL
+        INVENTORY_FULL,
+        INVALID_GRID
     }
 }

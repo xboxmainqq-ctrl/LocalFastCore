@@ -24,7 +24,7 @@ Work only on engine/server foundations:
 - Added `ModerationSignalAnalyzer` and `ModerationAiAssistant`: bounded per-player history, repeated-message and message-rate signals, SHA-256 fingerprints instead of stored raw chat, explicit player-data deletion, and mandatory human review. Optional model summaries receive only signal metadata, not raw chat or player identifiers. No automatic punishments or model-based classifier.
 - Added tests for permission denial, approval gates, audit records, provider availability/context safety, moderation thresholds, expiry, privacy and invalid events.
 - Code commits: `0b01bda109031d871fd8cdc465776b6fbf014842`, `a444373b6fd23fc4ab2196696aa6fe5bbeaab2b9`, `b80c9c4337a4ae6b43bb2d9125db2b9790e272f4`, `9a76cce0d677cd4a03f863f93942bea86c59d9d4`, `08dbaf9eb445458606fff5fcf8b6b757ec80c5f8`, `611f840b51782289e379d2e890e26a7390d3defa`, `bf710a2a92a380c2561b2e643857aa8a88656f8f`, `bf2ed01581eb50882aad41e56110014ab97abf57`, `88aed5ccfdcd0e2a6ecbc193659b3670da40b7f9`, `7f1f5c65bf5b7f94883d4e32985dfe8bffc192d4`, `417b8031411302d6f9f8c15e0ee94750ff0c3954`, `3a7ce7d241369997cf0f9f77c8644b601669c5e9`, `5d4a9a98fb8fb5517f6cd75c79d8e27e3afa1f83`, `2ff6aa6a0dd55f916ccc520d4d5a2990a9b5fa13`, `c51f45f5da04b34d8004c0dc4e05ff4ede51759d`.
-- Verification: tests are committed; no successful CI run has been observed for these commits. Do not claim tests pass.
+- Verification: tests are committed; no successful CI run has been observed for these commits. The available job summaries show completed failures with empty step lists and no downloadable logs. Do not claim tests pass.
 
 
 ### 2026-11-17 — server configuration reliability
@@ -78,14 +78,26 @@ Work only on engine/server foundations:
 - Commit: `49b64cbebbea657c2a96abf5723ddc91e5f09e19`.
 - Verification: source change committed; full tests still await a functioning GitHub Actions runner.
 
+### 2026-11-17 — provider SPI, privacy boundary and obsolete client workflow removal
+- Added `AiModelProvider` as an optional SPI with bounded prompt/output sizes and rejection of sensitive context keys. Wired it into the Core assistant and moderation summary facade; both assistants remain usable without a provider.
+- Tightened context-key filtering to avoid rejecting unrelated names that merely contain the letters "ip".
+- Preserved the existing passive mob wander goal when an explicit PASSIVE profile is assigned.
+- Removed `.github/workflows/nexora-android.yml` from active CI. The historical `client-android/` source tree and RPG source are retained, not actively built or extended.
+- Updated README, AGENTS.md, project context and AI roadmap to reflect the current standalone-server scope.
+- Relevant commits: `7f1f5c65bf5b7f94883d4e32985dfe8bffc192d4`, `417b8031411302d6f9f8c15e0ee94750ff0c3954`, `2ff6aa6a0dd55f916ccc520d4d5a2990a9b5fa13`, `3a7ce7d241369997cf0f9f77c8644b601669c5e9`, `5d4a9a98fb8fb5517f6cd75c79d8e27e3afa1f83`, `c51f45f5da04b34d8004c0dc4e05ff4ede51759d`, `95b839026e9166679f7ae40b1409b27360bcb3fb`, `319cc25f52a6a5642621f83a045fc9c520afd6c9`, `1b13c9ad285a13b4c200d2a625c51f63c7465a64`, `e67a2ba2be77229d4c084aeb5b89e7ebb3a3fa05`, `60ec713118c620cd00ac6673e27778b7ff439acc`, `e3e16a628c0400ee9f3cc813facf2de039cb3cf6`.
+- Verification: the server workflow continues to fail within roughly one second; the latest observed job exposes no steps and no logs. A rerun was requested, but no successful build is confirmed.
+
 ## Next tasks — in order
 
-1. **Verify current CI** for the active branch and fix any compilation/test failures before adding more code.
+1. **Restore a usable CI verification path** and fix any compile/test failures once the runner actually starts.
 2. **World persistence hardening:** initial review and regression coverage are in place (atomic replacement, CRC32C, version/signature/size/count validation, corruption/truncation/trailing-byte tests). Before changing the file format, add a bounded-write safeguard and a documented recovery/backup policy.
 3. **World lifecycle and multi-world configuration:** existing tests cover startup rollback, reuse of pre-registered worlds, restart persistence and retry after failed shutdown save; extend only where a concrete gap is found.
 4. **Chunk lifecycle and pipeline correctness:** define NEXORA-owned states (generated, persisted, loaded, initialized/ready) and explicit transitions; then test cancellation, retry after generation/load failure, back-pressure, bounded memory/queues, duplicate requests and clean shutdown under load. Use Nukkit/PowerNukkitX only as a public behavior reference; no source/API copying.
 5. **Entity and player simulation:** authoritative movement/collision boundaries, deterministic tick behavior and persistence.
 6. **Dedicated server packaging:** verify clean install, documented config, startup, save/restart and shutdown using CI artifacts.
+7. **Mob AI completion:** bounded pathfinding, target memory, combat/damage integration, profile persistence and per-tick work budgets.
+8. **Core AI completion:** production provider adapter, diagnostics catalogue, conversation workflow and durable audit storage.
+9. **Moderation AI completion:** report ingestion, case workflow, evidence retention policy, appeals and durable moderator audit.
 
 ## Definition of core-ready
 

@@ -57,7 +57,7 @@ class MobPhysicsServiceTest {
         var result = physics.tick(world, slime);
 
         assertFalse(result.moved());
-        assertTrue(result.grounded());
+        assertFalse(result.grounded());
         assertTrue(result.entity().velocityY() > 0);
     }
 

@@ -88,7 +88,8 @@ class LivingEntityAiServiceTest {
         WorldLivingEntity enderman = new WorldLivingEntityManager().spawn(
                 "minecraft:enderman", 40, 0, 64, 0);
         var player = new LivingEntityAiService.PlayerTarget("player", 2.5, 64, 0, true);
-        assertTrue(ai.decide(enderman, List.of(player), 1_000, 0).attack());
+        assertFalse(ai.decide(enderman, List.of(player), 1_000, 0).attack());
+        assertTrue(ai.decide(enderman, List.of(player), 2_000, 0, "player").attack());
     }
 
     @Test

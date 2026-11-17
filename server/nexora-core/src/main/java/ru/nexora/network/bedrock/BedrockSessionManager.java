@@ -2113,8 +2113,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         double horizontalDistance = Math.hypot(state.positionX - previousX, state.positionZ - previousZ);
         updateSurvivalVitals(networkId, state, input.tick(), horizontalDistance, sprinting, jumpStarted);
         if (next.landedDistance() > 3.0) {
-            applyDamage(networkId, state, (float) Math.ceil(next.landedDistance() - 3.0),
-                    input.tick(), "death.attack.fall");
+            float fallDamage = (float) Math.ceil(next.landedDistance() - 3.0);
+            List<ItemStack> armor = state.equipment.armorSnapshot().stream()
+                    .flatMap(Optional::stream).toList();
+            fallDamage = ru.nexora.combat.EnchantmentCombatService.applyEnchantmentProtection(
+                    fallDamage, armor,
+                    ru.nexora.combat.EnchantmentCombatService.DamageType.FALL);
+            if (fallDamage > 0.0f) {
+                applyDamage(networkId, state, fallDamage, input.tick(), "death.attack.fall");
+            }
         }
 
         if (correctionNeeded) sendMovementCorrection(networkId, state, input.tick());
@@ -2472,7 +2479,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         if (now >= state.nextFireDamageNanos && !state.vitals.dead()) {
             state.nextFireDamageNanos = now + 1_000_000_000L;
-            applyDamage(networkId, state, 1.0f, tick, "death.attack.onFire");
+            List<ItemStack> armor = state.equipment.armorSnapshot().stream()
+                    .flatMap(Optional::stream).toList();
+            float fireDamage = ru.nexora.combat.EnchantmentCombatService.applyEnchantmentProtection(
+                    1.0f, armor, ru.nexora.combat.EnchantmentCombatService.DamageType.FIRE);
+            if (fireDamage > 0.0f) {
+                applyDamage(networkId, state, fireDamage, tick, "death.attack.onFire");
+            }
         }
     }
 

@@ -19,6 +19,8 @@ Official Mojang onboarding guide: https://mojang.github.io/bedrock-protocol-docs
 
 ## Implemented
 
+- Persistent block-container foundation: a synchronized 27-slot chest inventory, item-conserving transfers between player and container slots, stale-snapshot validation, coordinate-keyed CRC32C storage with atomic replacement, a lazy world-scoped container cache, and autosave/shutdown integration. The Bedrock chest-open packet flow, block placement/runtime palette, container UI synchronization and incoming cross-container transaction routing are still pending.
+
 - Java 21 / Maven project.
 - Legacy RakNet unconnected ping/pong codec and UDP discovery responder (for protocol study; not sufficient for modern clients).
 - NetherNet server metadata model and JSON serialization.
@@ -59,7 +61,7 @@ The following list is intentionally conservative: a protocol stage is only consi
 
 - The main bootstrap now starts the NetherNet HTTP signaling endpoint and the WebRTC answerer alongside the legacy UDP discovery experiment.
 - NEXORA's signaling listener is plain HTTP; production TLS termination is provided by the documented Caddy reverse-proxy example. The application does not terminate TLS itself.
-- Chunk streaming currently uses a fixed 3x3 window; configurable view distance, explicit chunk unload handling, biome variation, item-actor bounce, death inventory drops, tool-aware hardness, more complex food effects, containers/crafting, sneak/swim/fly movement modifiers and player/mob entity replication are not implemented. Basic server-owned gravity, jumping, walking/sprinting and block collision are now integrated into the production PlayerAuthInput path, but movement constants and corrections still need validation with real Android/Windows Bedrock clients. Player profiles and survival vitals are persisted. The world is still not playable until the remaining gameplay paths and an Android-client end-to-end test are complete.
+- Chunk streaming currently uses a fixed 3x3 window; configurable view distance, explicit chunk unload handling, biome variation, item-actor bounce, death inventory drops, tool-aware hardness, more complex food effects, interactive chest placement/opening, Bedrock container UI and cross-container transaction routing, and crafting, sneak/swim/fly movement modifiers and player/mob entity replication are not implemented. Basic server-owned gravity, jumping, walking/sprinting and block collision are now integrated into the production PlayerAuthInput path, but movement constants and corrections still need validation with real Android/Windows Bedrock clients. Player profiles and survival vitals are persisted. The world is still not playable until the remaining gameplay paths and an Android-client end-to-end test are complete.
 - Outbound gameplay support currently includes login/bootstrap packets, LevelChunk, UpdateBlock, PlayStatus and the limited InventoryContent reconciliation path for accepted or rejected normal player-inventory transactions. Initial inventory synchronization, player UI container slots, full item registry distribution, entity replication, chat and interactive UI packets remain unimplemented.
 - Guest/offline authentication is not supported; the current login path requires an authenticated Xbox Live GameServerToken.
 - No Android-client end-to-end connection test.

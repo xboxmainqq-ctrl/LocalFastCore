@@ -53,7 +53,13 @@ public final class AiToolRegistry {
             return new ToolResult(Status.APPROVAL_REQUIRED, "Explicit operator approval is required");
         }
 
-        Map<String, String> safeArguments = Map.copyOf(new TreeMap<>(arguments));
+        Map<String, String> safeArguments;
+        try {
+            safeArguments = validateArguments(arguments);
+        } catch (IllegalArgumentException invalidArguments) {
+            auditSink.accept(new AuditEvent(principal.id(), toolId, Status.DENIED, tool.mutating()));
+            return new ToolResult(Status.DENIED, "Invalid AI tool arguments");
+        }
         // Write the audit record before invoking a state-changing operation.
         auditSink.accept(new AuditEvent(principal.id(), toolId, Status.APPROVED, tool.mutating()));
         try {
@@ -64,6 +70,22 @@ public final class AiToolRegistry {
             auditSink.accept(new AuditEvent(principal.id(), toolId, Status.FAILED, tool.mutating()));
             return new ToolResult(Status.FAILED, "Tool failed: " + failure.getClass().getSimpleName());
         }
+    }
+
+    private static Map<String, String> validateArguments(Map<String, String> arguments) {
+        if (arguments.size() > 32) {
+            throw new IllegalArgumentException("Too many AI tool arguments");
+        }
+        Map<String, String> safe = new TreeMap<>();
+        arguments.forEach((key, value) -> {
+            Objects.requireNonNull(key, "argument key");
+            Objects.requireNonNull(value, "argument value");
+            if (!key.matches("[A-Za-z0-9._-]{1,64}") || value.length() > 2_048) {
+                throw new IllegalArgumentException("Invalid AI tool argument");
+            }
+            safe.put(key, value);
+        });
+        return Map.copyOf(safe);
     }
 
     public Set<String> toolIds() {

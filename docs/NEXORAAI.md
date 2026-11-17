@@ -66,6 +66,10 @@ The current server-side spawner implementation provides:
 
 This is an initial vanilla-style simulation, not yet a claim of complete Minecraft parity. Survival item acquisition/placement, mob-spawner block-entity NBT/visual animation, exact vanilla spawn rules, full chunk lifecycle integration, and protocol-version validation still require implementation and real-client integration testing.
 
+### Mob movement physics
+
+Ground-bound mobs receive server-side gravity, collision-resolved falling, and damped knockback velocity. Flying species (allays, bats, bees, blazes, ghasts, phantoms, vexes, parrots, and the ender dragon) use three-dimensional target movement and do not receive ground gravity. This is a first physics layer; fall damage, fluids, climbing, jumping, and species-specific flight animation still need dedicated implementation.
+
 ### Mob combat and rewards
 
 The generic AI uses species profiles for selected movement speeds, melee reach, and attack damage. Ranged bow users and creepers keep dedicated behavior paths; wither skeletons remain melee attackers. The deterministic reward table covers common drops and XP for several hostile and passive families, with Looting applied as a bounded stack bonus. Items absent from the active item registry are skipped safely rather than creating unknown inventory entries.

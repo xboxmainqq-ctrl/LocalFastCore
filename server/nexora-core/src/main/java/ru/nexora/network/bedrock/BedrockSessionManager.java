@@ -1332,10 +1332,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     private void handleAiChat(String networkId, SessionState state, String prompt, boolean admin) {
         if (prompt.equalsIgnoreCase("help")) {
-            sendAiMessage(networkId, "§b[NEXORA AI] §fКоманды: /ai — открыть чат; /ai <вопрос> — задать вопрос; "
-                    + "/ai clear — очистить контекст; /ai admin — диагностика для операторов; /equipment — магическая экипировка.");
+            sendAiMessage(networkId, "§b[NEXORA AI] §fКоманды: /ai, /ai <вопрос>, /ai clear; "
+                    + "операторам: /ai admin, /ai admin plan <проблема>, /ai admin proposals, "
+                    + "/ai admin proposal <id>, /ai admin approve <id>, /ai admin reject <id>.");
             return;
         }
+        if (admin && handleAiAdminProposalCommand(networkId, state, prompt)) return;
         if (prompt.equalsIgnoreCase("clear") || prompt.equalsIgnoreCase("reset")) {
             String conversationId = state.identity != null && state.identity.xuid() != null
                     && !state.identity.xuid().isBlank() ? state.identity.xuid() : networkId;
@@ -1385,6 +1387,118 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         } else {
             sendAiMessage(networkId, "§b[NEXORA AI] §fИИ не настроен.");
         }
+    }
+
+    private boolean handleAiAdminProposalCommand(String networkId, SessionState state, String prompt) {
+        if (!prompt.equalsIgnoreCase("proposals")
+                && !prompt.toLowerCase(Locale.ROOT).startsWith("plan ")
+                && !prompt.toLowerCase(Locale.ROOT).startsWith("proposal ")
+                && !prompt.toLowerCase(Locale.ROOT).startsWith("approve ")
+                && !prompt.toLowerCase(Locale.ROOT).startsWith("reject ")) {
+            return false;
+        }
+        if (!isAiAdmin(state)) {
+            sendAiMessage(networkId, "§c[NEXORA AI] Нет доступа к предложениям исправлений.");
+            return true;
+        }
+        ru.nexora.ai.NexoraAiAssistant assistant = aiAssistant;
+        if (assistant == null || !assistant.isEnabled()) {
+            sendAiMessage(networkId, "§b[NEXORA AI] §fСначала настрой NEXORA_AI_API_KEY.");
+            return true;
+        }
+
+        String normalized = prompt.trim();
+        String lower = normalized.toLowerCase(Locale.ROOT);
+        if (lower.equals("proposals")) {
+            java.util.List<ru.nexora.ai.NexoraAiRepairProposals.Proposal> proposals =
+                    assistant.repairProposals();
+            if (proposals.isEmpty()) {
+                sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §fПредложений пока нет.");
+                return true;
+            }
+            StringBuilder listing = new StringBuilder("§b[NEXORA AI ADMIN] §fПредложения:");
+            for (ru.nexora.ai.NexoraAiRepairProposals.Proposal proposal : proposals.stream().limit(8).toList()) {
+                listing.append("\n").append(proposal.id()).append(" — ")
+                        .append(repairProposalStatus(proposal.status()));
+            }
+            sendAiMessage(networkId, listing.toString());
+            return true;
+        }
+
+        if (lower.startsWith("plan ")) {
+            String issue = normalized.substring(5).trim();
+            if (issue.isEmpty() || issue.length() > 300) {
+                sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §fУкажи проблему (1–300 символов).");
+                return true;
+            }
+            String xuid = state.identity.xuid();
+            String operatorName = state.identity.displayName() == null ? "Оператор" : state.identity.displayName();
+            ru.nexora.ai.NexoraAiAssistant.AskResult result = assistant.createRepairProposal(
+                    xuid, operatorName, issue, proposal -> {
+                        SessionState current = sessions.get(networkId);
+                        if (current != state || !current.loginAuthenticated || !current.clientInitialized) return;
+                        if (proposal == null) {
+                            sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §fНе удалось создать план. Проверь ответ провайдера и повтори позже.");
+                        } else {
+                            sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §fСоздано " + proposal.id()
+                                    + " (ожидает проверки). Одобрение не применяет изменения. "
+                                    + "Посмотреть: /ai admin proposal " + proposal.id());
+                        }
+                    });
+            if (result == ru.nexora.ai.NexoraAiAssistant.AskResult.RATE_LIMITED) {
+                sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §fПодожди несколько секунд.");
+            } else if (result == ru.nexora.ai.NexoraAiAssistant.AskResult.ACCEPTED) {
+                sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §fГотовлю план. Он будет только рекомендацией.");
+            } else {
+                sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §fИИ не настроен.");
+            }
+            return true;
+        }
+
+        String[] parts = normalized.split("\\s+", 2);
+        if (parts.length != 2 || parts[1].isBlank()) {
+            sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §fУкажи ID предложения.");
+            return true;
+        }
+        String id = parts[1].trim();
+        if (lower.startsWith("proposal ")) {
+            ru.nexora.ai.NexoraAiRepairProposals.Proposal proposal =
+                    assistant.repairProposal(id).orElse(null);
+            if (proposal == null) {
+                sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §fПредложение не найдено или истекло.");
+            } else {
+                sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §f" + proposal.id() + " — "
+                        + repairProposalStatus(proposal.status()) + "\nПроблема: " + proposal.issue()
+                        + "\nПлан: " + proposal.plan());
+            }
+            return true;
+        }
+        if (lower.startsWith("approve ")) {
+            ru.nexora.ai.NexoraAiRepairProposals.Proposal proposal =
+                    assistant.approveRepairProposal(id).orElse(null);
+            sendAiMessage(networkId, proposal == null
+                    ? "§b[NEXORA AI ADMIN] §fНе удалось одобрить: проверь ID и статус."
+                    : "§b[NEXORA AI ADMIN] §f" + proposal.id()
+                    + " одобрено только для ручной проверки. Ничего не применено.");
+            return true;
+        }
+        if (lower.startsWith("reject ")) {
+            ru.nexora.ai.NexoraAiRepairProposals.Proposal proposal =
+                    assistant.rejectRepairProposal(id).orElse(null);
+            sendAiMessage(networkId, proposal == null
+                    ? "§b[NEXORA AI ADMIN] §fНе удалось отклонить: проверь ID и статус."
+                    : "§b[NEXORA AI ADMIN] §f" + proposal.id() + " отклонено.");
+            return true;
+        }
+        return false;
+    }
+
+    private static String repairProposalStatus(ru.nexora.ai.NexoraAiRepairProposals.Status status) {
+        return switch (status) {
+            case PENDING_REVIEW -> "ожидает проверки";
+            case APPROVED_FOR_MANUAL_REVIEW -> "одобрено для ручной проверки";
+            case REJECTED -> "отклонено";
+        };
     }
 
     private void sendAiMessage(String networkId, String message) {

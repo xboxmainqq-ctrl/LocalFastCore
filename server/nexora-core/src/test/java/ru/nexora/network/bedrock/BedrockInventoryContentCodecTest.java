@@ -1,7 +1,7 @@
 package ru.nexora.network.bedrock;
 
 import org.junit.jupiter.api.Test;
-import ru.nexora.inventory.ItemStack;
+import ru.nexora.inventory.ItemStack;\nimport ru.nexora.inventory.ContainerInventory;
 import ru.nexora.inventory.PlayerInventory;
 
 import java.util.Arrays;
@@ -75,6 +75,55 @@ class BedrockInventoryContentCodecTest {
                 (byte) 0xd2, 9,// block runtime ID 1234
                 2, 1, 2        // user data string
         }, Arrays.copyOfRange(packet.payload(), 2, 14));
+    }
+
+    @Test
+    void encodesTwentySevenEmptyContainerSlotsWithLevelEntityName() {
+        BedrockPacket packet = BedrockInventoryContentCodec.createContainerInventory(
+                7, new ContainerInventory(), ignored -> fail("Empty chest must not resolve item IDs"));
+
+        assertEquals(0x31, packet.packetId());
+        byte[] payload = packet.payload();
+        assertEquals(255, payload.length);
+        assertEquals(7, Byte.toUnsignedInt(payload[0])); // window/container ID
+        assertEquals(27, Byte.toUnsignedInt(payload[1]));
+        for (int slot = 0; slot < 27; slot++) {
+            int offset = 2 + slot * 9;
+            assertArrayEquals(new byte[9], Arrays.copyOfRange(payload, offset, offset + 9),
+                    "chest slot " + slot + " must be empty");
+        }
+        assertEquals(7, Byte.toUnsignedInt(payload[payload.length - 10])); // LEVEL_ENTITY
+        assertEquals(0, Byte.toUnsignedInt(payload[payload.length - 9])); // no dynamic ID
+        assertArrayEquals(new byte[8], Arrays.copyOfRange(payload, payload.length - 8, payload.length));
+    }
+
+    @Test
+    void encodesContainerItemsUsingResolvedBedrockDefinitions() {
+        ContainerInventory chest = new ContainerInventory();
+        chest.setSlot(2, new ItemStack("minecraft:iron_ingot", 4, 64));
+
+        BedrockPacket packet = BedrockInventoryContentCodec.createContainerInventory(
+                11, chest, itemId -> {
+                    assertEquals("minecraft:iron_ingot", itemId);
+                    return new BedrockInventoryContentCodec.ItemDefinition(265, 0, 0, new byte[0]);
+                });
+
+        byte[] payload = packet.payload();
+        assertEquals(11, Byte.toUnsignedInt(payload[0]));
+        int offset = 2 + 2 * 9;
+        assertArrayEquals(new byte[] {2, 9, 1, 4, 0, 0, 0, 0, 0},
+                Arrays.copyOfRange(payload, offset, offset + 9));
+    }
+
+    @Test
+    void rejectsInvalidContainerWindowIdsAndUnregisteredItems() {
+        assertThrows(IllegalArgumentException.class, () ->
+                BedrockInventoryContentCodec.createContainerInventory(
+                        101, new ContainerInventory(), ignored -> null));
+        ContainerInventory chest = new ContainerInventory();
+        chest.setSlot(0, new ItemStack("minecraft:iron_ingot", 1, 64));
+        assertThrows(IllegalArgumentException.class, () ->
+                BedrockInventoryContentCodec.createContainerInventory(1, chest, ignored -> null));
     }
 
     @Test

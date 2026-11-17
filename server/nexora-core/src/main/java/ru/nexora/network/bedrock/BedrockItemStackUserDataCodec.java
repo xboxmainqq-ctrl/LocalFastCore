@@ -47,7 +47,7 @@ public final class BedrockItemStackUserDataCodec {
         Objects.requireNonNull(stack, "stack");
         Objects.requireNonNull(registeredUserData, "registeredUserData");
         if (stack.enchantments().isEmpty() && stack.repairCost() == 0 && stack.durabilityDamage() == 0) return registeredUserData.clone();
-        if (registeredUserData.length != 0) {
+        if (!isEmptyNetworkNbt(registeredUserData)) {
             throw new IllegalArgumentException("Cannot combine NEXORA metadata with custom Bedrock item user data yet");
         }
 
@@ -94,7 +94,7 @@ public final class BedrockItemStackUserDataCodec {
         Objects.requireNonNull(userData, "userData");
         Objects.requireNonNull(registeredUserData, "registeredUserData");
         if (java.util.Arrays.equals(userData, registeredUserData)) return new DecodedMetadata(Map.of(), 0, 0);
-        if (registeredUserData.length != 0) throw new IllegalArgumentException("Unexpected custom Bedrock item user data");
+        if (!isEmptyNetworkNbt(registeredUserData)) throw new IllegalArgumentException("Unexpected custom Bedrock item user data");
 
         Reader in = new Reader(userData);
         if (in.unsignedShort() != 0xffff || in.unsignedByte() != 1
@@ -156,6 +156,11 @@ public final class BedrockItemStackUserDataCodec {
             if (repairCost < 0 || repairCost > 31) throw new IllegalArgumentException("Invalid repair cost");
             if (durabilityDamage < 0 || durabilityDamage > 65_535) throw new IllegalArgumentException("Invalid durability damage");
         }
+    }
+
+    private static boolean isEmptyNetworkNbt(byte[] userData) {
+        return userData.length == 0
+                || java.util.Arrays.equals(userData, new byte[] {10, 0, 0, 0});
     }
 
     private static void writeShort(ByteArrayOutputStream out, int value) {

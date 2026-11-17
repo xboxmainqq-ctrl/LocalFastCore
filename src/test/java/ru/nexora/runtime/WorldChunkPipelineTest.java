@@ -161,6 +161,33 @@ class WorldChunkPipelineTest {
         }
     }
 
+    @Test
+    void completesAsyncWaiterWhenFailureHandlerThrows() throws Exception {
+        InMemoryWorld world = new InMemoryWorld("overworld", new WorldHeight(0, 64));
+        TickScheduler scheduler = new TickScheduler();
+        AsyncChunkGenerationService generation = new AsyncChunkGenerationService(
+                (position, height, seed) -> { throw new IllegalStateException("generation failed"); },
+                world.height(), 1L, 1, 2, 2
+        );
+        WorldChunkPipeline pipeline = new WorldChunkPipeline(
+                world, scheduler, generation, 2,
+                failure -> { throw new IllegalStateException("failure reporter failed"); }
+        );
+        pipeline.start();
+        try {
+            java.util.concurrent.CompletableFuture<Boolean> waiter =
+                    pipeline.requestAsync(new ChunkPosition(2, -3));
+            await(() -> generation.completedCount() == 1);
+
+            assertThrows(IllegalStateException.class, scheduler::tick);
+            assertFalse(waiter.isCompletedExceptionally());
+            assertFalse(waiter.join(), "failed generation must resolve the waiter as unavailable");
+            assertEquals(0, pipeline.pendingCount());
+        } finally {
+            pipeline.stop();
+        }
+    }
+
     private static FlatChunkGenerator generator() {
         return new FlatChunkGenerator(
                 5, 2,

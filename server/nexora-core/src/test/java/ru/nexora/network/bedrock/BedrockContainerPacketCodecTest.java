@@ -31,6 +31,19 @@ class BedrockContainerPacketCodecTest {
     }
 
     @Test
+    void encodesBlastFurnaceAndSmokerContainerTypes() {
+        BedrockPacket blast = BedrockContainerPacketCodec.createOpen(
+                9, BedrockContainerPacketCodec.BLAST_FURNACE_TYPE, 1, 64, 2,
+                BedrockContainerPacketCodec.BLOCK_CONTAINER_ENTITY_ID);
+        BedrockPacket smoker = BedrockContainerPacketCodec.createOpen(
+                10, BedrockContainerPacketCodec.SMOKER_TYPE, 3, 64, 4,
+                BedrockContainerPacketCodec.BLOCK_CONTAINER_ENTITY_ID);
+
+        assertEquals(27, Byte.toUnsignedInt(blast.payload()[1]));
+        assertEquals(28, Byte.toUnsignedInt(smoker.payload()[1]));
+    }
+
+    @Test
     void encodesCloseWithProtocol2225TypeAndServerFlag() {
         BedrockPacket packet = BedrockContainerPacketCodec.createClose(7, 0, true);
 

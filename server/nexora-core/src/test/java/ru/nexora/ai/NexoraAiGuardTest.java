@@ -138,6 +138,54 @@ class NexoraAiGuardTest {
     }
 
     @Test
+    void flagsOnlyHighRateMultiTargetValidatedAttacksAndKeepsPrivateCaseSummary() {
+        List<NexoraAiGuard.GuardEvent> events = new ArrayList<>();
+        NexoraAiGuard guard = new NexoraAiGuard(1_000, 100, 10_000, 8, events::add);
+        for (int i = 0; i < 44; i++) {
+            guard.recordSuccessfulAttack("private-xuid", "PlayerOne",
+                    "target-" + (i % 4), i * 50_000_000L);
+        }
+        assertTrue(events.isEmpty());
+        guard.recordSuccessfulAttack("private-xuid", "PlayerOne",
+                "target-3", 44 * 50_000_000L);
+        assertEquals(1, events.size());
+        assertTrue(events.getFirst().reason().contains("possible KillAura"));
+        String summary = guard.combatReviewSummary(44 * 50_000_000L);
+        assertTrue(summary.contains("PlayerOne"));
+        assertTrue(summary.contains("45 hits"));
+        assertFalse(summary.contains("private-xuid"));
+        assertFalse(summary.contains("target-"));
+        assertTrue(summary.contains("No automatic punishment"));
+    }
+
+    @Test
+    void killAuraWindowResetsAndCaseExpiresAndDisconnectClearsActiveWindow() {
+        NexoraAiGuard guard = new NexoraAiGuard(1_000, 100, 10_000, 8, ignored -> { });
+        for (int i = 0; i < 30; i++) {
+            guard.recordSuccessfulAttack("xuid-a", "A", "target-" + (i % 3), i * 50_000_000L);
+        }
+        guard.recordSuccessfulAttack("xuid-a", "A", "target-1", 5_000_000_000L);
+        assertTrue(guard.combatReviewSummary(5_000_000_000L).contains("no confirmed"));
+        for (int i = 0; i < 45; i++) {
+            guard.recordSuccessfulAttack("xuid-a", "A", "target-" + (i % 4),
+                    5_000_000_000L + i * 50_000_000L);
+        }
+        assertTrue(guard.combatReviewSummary(7_200_000_000L).contains("A"));
+        assertTrue(guard.combatReviewSummary(1_900_000_000_000L).contains("no confirmed"));
+        guard.recordSuccessfulAttack("xuid-b", "B", "target-1", 2_000_000_000_000L);
+        guard.onPlayerDisconnected("xuid-b");
+    }
+
+    @Test
+    void rejectsInvalidAttackEvidence() {
+        NexoraAiGuard guard = new NexoraAiGuard();
+        assertThrows(IllegalArgumentException.class,
+                () -> guard.recordSuccessfulAttack(" ", "name", "target", 0));
+        assertThrows(IllegalArgumentException.class,
+                () -> guard.recordSuccessfulAttack("xuid", "name", " ", 0));
+    }
+
+    @Test
     void rejectsInvalidLimitsAndFrames() {
         assertThrows(IllegalArgumentException.class,
                 () -> new NexoraAiGuard(0, 1, 1, 1, ignored -> { }));

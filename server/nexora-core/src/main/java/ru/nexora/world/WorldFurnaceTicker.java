@@ -7,17 +7,26 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.function.LongConsumer;
 
 /** Advances loaded furnaces at 20 server ticks per second. */
 public final class WorldFurnaceTicker implements AutoCloseable {
     private final World world;
     private final Consumer<RuntimeException> errorHandler;
+    private final LongConsumer executionObserver;
     private final ScheduledExecutorService executor;
     private final AtomicBoolean closed = new AtomicBoolean();
 
     public WorldFurnaceTicker(World world, Consumer<RuntimeException> errorHandler) {
+        this(world, errorHandler, ignored -> {});
+    }
+
+    public WorldFurnaceTicker(
+            World world, Consumer<RuntimeException> errorHandler, LongConsumer executionObserver
+    ) {
         this.world = Objects.requireNonNull(world, "world");
         this.errorHandler = Objects.requireNonNull(errorHandler, "errorHandler");
+        this.executionObserver = Objects.requireNonNull(executionObserver, "executionObserver");
         executor = Executors.newSingleThreadScheduledExecutor(task -> {
             Thread thread = new Thread(task, "nexora-furnace-ticker");
             thread.setDaemon(true);
@@ -28,12 +37,18 @@ public final class WorldFurnaceTicker implements AutoCloseable {
 
     private void tickSafely() {
         if (closed.get()) return;
+        long started = System.nanoTime();
         try {
             world.furnaces().ifPresent(manager -> manager.tickAll(1));
         } catch (RuntimeException exception) {
             try { errorHandler.accept(exception); }
             catch (RuntimeException ignored) {
                 // A logging callback must not terminate the furnace ticker.
+            }
+        } finally {
+            try { executionObserver.accept(Math.max(0L, System.nanoTime() - started)); }
+            catch (RuntimeException ignored) {
+                // Diagnostics must not terminate the furnace ticker.
             }
         }
     }

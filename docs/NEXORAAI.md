@@ -1,88 +1,71 @@
-package ru.nexora.world;
+# NexoraAI — Nerox 0.12.0
 
-import org.junit.jupiter.api.Test;
+NexoraAI is the built-in diagnostics and operator-assistance layer of the Nerox server core. It is designed to observe server subsystems, explain evidence, and support human-reviewed decisions. It must not silently punish players or apply risky runtime/source changes.
 
-import static org.junit.jupiter.api.Assertions.*;
+## Safety principles
 
-class MobPathCacheTest {
-    @Test
-    void reusesARecentPathForTheSameMobAndRequest() {
-        World world = new World("mob-path-cache", 0L, new FlatWorldGenerator());
-        MobPathCache cache = new MobPathCache(8, 150);
+- Operator-only commands use the authenticated Xbox XUID allowlist.
+- Diagnostic output is bounded and avoids exposing XUIDs, tokens, or private payloads.
+- AI suspicion is evidence, not proof. Moderation decisions remain human-reviewed.
+- Guard case confirmation records a moderator decision; it does not automatically ban, kick, or mute.
+- Subsystem latency is not server TPS or CPU utilization.
 
-        var first = cache.findNextStep(7L, world, 0.5, 65, 0.5, 3.5, 0.5, 1_000);
-        var second = cache.findNextStep(7L, world, 0.5, 65, 0.5, 3.5, 0.5, 1_050);
+## Operator commands
 
-        assertEquals(first, second);
-        assertEquals(1, cache.size());
-    }
+### General AI and diagnostics
 
-    @Test
-    void revalidatesCachedWaypointWhenWorldChanges() {
-        World world = new World("mob-path-cache-change", 0L, new FlatWorldGenerator());
-        MobPathCache cache = new MobPathCache(8, 150);
-        var original = cache.findNextStep(9L, world, 0.5, 65, 0.5, 3.5, 0.5, 2_000)
-                .orElseThrow();
+- `/ai` — open the assistant when configured.
+- `/ai admin` — show assistant/operator status.
+- `/ai mob` and `/ai mob stats` — inspect mob path-cache, stuck-tracker, load-controller, spawner, and recent mob subsystem metrics.
+- `/ai mob stuck` — show a bounded list of mobs with sustained blocked movement.
+- `/ai spawner help` — show operator spawner commands.
+- `/ai spawner list` — list tracked spawners.
+- `/ai spawner place <x> <y> <z> [mob] [delay]` — place and configure a spawner for testing.
+- `/ai spawner set <x> <y> <z> <mob> <delay>` — change a tracked spawner.
+- `/ai spawner remove <x> <y> <z>` — remove a spawner.
 
-        world.setBlock((int) Math.floor(original.x()), 65,
-                (int) Math.floor(original.z()), BlockType.STONE);
+Spawner commands are operator-only. At this stage, command placement is an administrative/testing path; it does not yet mean the survival spawner item, loot, crafting, or full vanilla block-entity visuals are implemented.
 
-        var replacement = cache.findNextStep(9L, world, 0.5, 65, 0.5, 3.5, 0.5, 2_050)
-                .orElseThrow();
+### NexoraAI Guard
 
-        assertNotEquals(original, replacement);
-        assertTrue(WorldCollision.canMove(world, 0.5, 65, 0.5,
-                replacement.x(), 65, replacement.z()));
-    }
+- `/ai guard` — show Guard status and review summary.
+- `/ai guard cases` — list recent bounded combat cases.
+- `/ai guard case <ID>` — inspect a case.
+- `/ai guard confirm <ID>` — record a moderator confirmation.
+- `/ai guard dismiss <ID>` — record a false-positive dismissal.
+- `/ai guard help` — show commands.
 
-    @Test
-    void doesNotCacheNoPathResultsWhenTerrainCanChange() {
-        World world = new World("mob-path-cache-open", 0L, new FlatWorldGenerator());
-        world.setBlock(1, 65, 0, BlockType.STONE);
-        world.setBlock(-1, 65, 0, BlockType.STONE);
-        world.setBlock(0, 65, 1, BlockType.STONE);
-        world.setBlock(0, 65, -1, BlockType.STONE);
-        MobPathCache cache = new MobPathCache(8, 150);
+## Mob AI diagnostics and optimization
 
-        assertTrue(cache.findNextStep(11L, world, 0.5, 65, 0.5, 3.5, 0.5, 3_000).isEmpty());
-        assertEquals(0, cache.size());
+### Path cache
 
-        world.setBlock(1, 65, 0, BlockType.AIR);
-        assertTrue(cache.findNextStep(11L, world, 0.5, 65, 0.5, 3.5, 0.5, 3_050).isPresent());
-    }
+Mob navigation uses a bounded LRU path cache with a 150 ms TTL and a 1,024-entry limit. Cached waypoints are collision-checked before reuse. Empty/no-path results are not cached, allowing terrain changes to be observed. Cache counters include hits, misses, recomputations, blocked waypoints, evictions, and current entries.
 
-    @Test
-    void expiresEntriesAndKeepsTheCacheBounded() {
-        World world = new World("mob-path-cache-bound", 0L, new FlatWorldGenerator());
-        MobPathCache cache = new MobPathCache(2, 10);
+### Stuck-mob tracker
 
-        cache.findNextStep(1L, world, 0.5, 65, 0.5, 3.5, 0.5, 100);
-        cache.findNextStep(2L, world, 0.5, 65, 1.5, 3.5, 1.5, 100);
-        cache.findNextStep(3L, world, 0.5, 65, 2.5, 3.5, 2.5, 100);
-        assertEquals(2, cache.size());
+The diagnostic tracker reports repeated blocked movement after two seconds without meaningful positional progress. It is bounded to 5,000 runtime IDs. Successful movement, idle behavior, and special behavior clear tracking. It does not teleport, despawn, damage, or otherwise modify mobs.
 
-        cache.findNextStep(3L, world, 0.5, 65, 2.5, 3.5, 2.5, 111);
-        assertEquals(2, cache.size());
-        cache.remove(3L);
-        assertEquals(1, cache.size());
-    }
-}
+### Mob AI load controller
 
+Mobs within 24 blocks of a player and mobs with an active aggro target are updated at full rate. Only distant, unprovoked mobs are deterministically staggered, with a conservative two-tick interval. Creeper and ranged special behavior is processed before the generic scheduler. Counters report full-rate and deferred decisions; they do not claim measured CPU or TPS improvement.
 
-## Mob path cache metrics
+## Mob spawner simulation
 
-Each `MobPathCache` instance exposes a cumulative, thread-safe `stats()` snapshot: cache hits, misses, path recomputations, cached waypoints rejected by collision revalidation, LRU evictions, and current entry count. The snapshot also provides request count and hit rate. Counters are instance-local and do not claim TPS or CPU savings; compare them with pathfinding latency under a controlled mob load. No-path results remain uncached so terrain changes can be observed immediately.
+The current server-side spawner implementation provides:
 
+- A dedicated internal `SPAWNER` block and Bedrock runtime-state mapping for the protocol palette used by this branch.
+- A 16-block player activation radius.
+- A default 200-tick delay, configurable from 20 to 800 ticks.
+- Up to four spawn-position attempts per activation cycle.
+- A same-type nearby cap of six mobs in the local 9-block volume.
+- Basic spawn-space checks for two air blocks above a non-air floor.
+- A bounded registry of 10,000 spawners.
+- Atomic, checksummed persistence of spawner type, delay, coordinates, and next-spawn timer alongside world storage.
+- Server-side entity creation and AddActor replication to initialized Bedrock clients.
+- Operator commands for placing, configuring, listing, and removing spawners.
 
-## Operator Mob AI diagnostics
+This is an initial vanilla-style simulation, not yet a claim of complete Minecraft parity. Survival item acquisition/placement, mob-spawner block-entity NBT/visual animation, exact vanilla spawn rules, chunk activation/unload semantics, and protocol-version validation still require implementation and integration testing.
 
-Allowlisted operators can run `/ai mob` or `/ai mob stats` to inspect aggregate navigation-cache counters and the recent `mob-ai` / `mob-pathfinding` latency samples. The output includes cache hits, misses, hit rate, path recomputations, collision-blocked cached waypoints, LRU evictions, current entries, and available average/p95/maximum subsystem execution times.
+## Performance verification
 
-The command is read-only, uses the existing authenticated Xbox XUID operator allowlist, and does not scan entities or expose player identifiers. Cache counters are cumulative for the cache instance; latency values summarize the most recent bounded sample window. These are subsystem measurements, not server TPS or CPU utilization.
-
-
-## Mob stuck detection
-
-The operator command `/ai mob stuck` reports up to five mobs with sustained blocked movement. A mob is considered stuck only after at least 2 seconds without meaningful positional progress while the AI continues to request movement. Progress resets the timer; successful movement, idle behavior, and special mob behavior clear the observation. The tracker is bounded to 5,000 runtime IDs and reports aggregate tracked/stuck counts plus eviction count in `/ai mob stats`.
-
-This is diagnostic-only: it does not teleport, despawn, damage, or otherwise modify mobs. A reported mob may be blocked by terrain or another gameplay constraint; the signal is not proof of a navigation defect.
+Use controlled tests to compare entity counts, path-cache hit rate, deferred AI decisions, spawner attempts, and subsystem latency. Do not report a TPS or CPU gain unless measured with a valid server tick source and a repeatable real-server profile. MCPEhost deployment compatibility must be verified on the target plan before production use.

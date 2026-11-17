@@ -54,7 +54,7 @@ class BedrockChunkRadiusIntegrationTest {
             List<BedrockPacket> firstBatch = packetsFor(outbound, "viewer");
             assertEquals(BedrockChunkRadiusCodec.UPDATED_PACKET_ID, firstBatch.getFirst().packetId());
             assertEquals(0x79, firstBatch.get(1).packetId());
-            assertEquals(112, Byte.toUnsignedInt(firstBatch.get(1).payload()[3]));
+            assertEquals(112, Byte.toUnsignedInt(firstBatch.get(1).payload()[4]));
             assertEquals(49, firstBatch.stream()
                     .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
                     .count());
@@ -71,7 +71,7 @@ class BedrockChunkRadiusIntegrationTest {
             List<BedrockPacket> publisherUpdates = allPackets.stream()
                     .filter(packet -> packet.packetId() == 0x79).toList();
             assertEquals(2, publisherUpdates.size());
-            assertEquals(48, Byte.toUnsignedInt(publisherUpdates.get(1).payload()[3]));
+            assertEquals(48, Byte.toUnsignedInt(publisherUpdates.get(1).payload()[4]));
             assertEquals(49, allPackets.stream()
                     .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
                     .count());

@@ -32,8 +32,8 @@ public final class NexoraAiGuard {
     private final LinkedHashMap<String, CombatCase> combatCases = new LinkedHashMap<>();
     private static final long COMBAT_WINDOW_NANOS = 5_000_000_000L;
     private static final long CASE_TTL_NANOS = 1_800_000_000_000L;
-    private static final int KILLAURA_HIT_THRESHOLD = 45;
-    private static final int KILLAURA_TARGET_SWITCH_THRESHOLD = 3;
+    private static final int KILLAURA_HIT_THRESHOLD = 65;
+    private static final int KILLAURA_TARGET_SWITCH_THRESHOLD = 4;
     private long totalSignals;
 
     public NexoraAiGuard() {

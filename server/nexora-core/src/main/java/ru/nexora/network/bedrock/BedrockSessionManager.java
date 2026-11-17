@@ -2462,6 +2462,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case OAK_PLANKS -> "minecraft:oak_planks";
             case CRAFTING_TABLE -> "minecraft:crafting_table";
             case FURNACE -> "minecraft:furnace";
+            case BLAST_FURNACE -> "minecraft:blast_furnace";
+            case SMOKER -> "minecraft:smoker";
         };
     }
 

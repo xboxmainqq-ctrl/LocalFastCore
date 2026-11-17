@@ -61,7 +61,11 @@ public final class MobClimbController {
         return new Stats(climbs, rejected);
     }
 
-    public record Stats(long climbs, long rejected) { }
+    public record Stats(long climbs, long rejected) {
+        public String summary() {
+            return "climbs=" + climbs + ", rejected=" + rejected;
+        }
+    }
 
     public static boolean isClimber(String identifier) {
         return "minecraft:spider".equals(identifier) || "minecraft:cave_spider".equals(identifier);

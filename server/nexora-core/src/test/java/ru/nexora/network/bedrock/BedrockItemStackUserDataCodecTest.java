@@ -1,0 +1,69 @@
+package ru.nexora.network.bedrock;
+
+import org.junit.jupiter.api.Test;
+import ru.nexora.inventory.ItemStack;
+
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class BedrockItemStackUserDataCodecTest {
+    @Test
+    void roundTripsEnchantmentListUsingBedrockNbtIds() {
+        ItemStack stack = new ItemStack("minecraft:diamond_sword", 1, 1,
+                Map.of("minecraft:sharpness", 5, "minecraft:unbreaking", 3), 0);
+
+        byte[] encoded = BedrockItemStackUserDataCodec.encode(stack, new byte[0]);
+        var decoded = BedrockItemStackUserDataCodec.decode(encoded, new byte[0]);
+
+        assertEquals(stack.enchantments(), decoded.enchantments());
+        assertEquals(0, decoded.repairCost());
+        assertEquals(0xff, Byte.toUnsignedInt(encoded[0]));
+        assertEquals(0xff, Byte.toUnsignedInt(encoded[1]));
+        assertEquals(1, Byte.toUnsignedInt(encoded[2]));
+    }
+
+    @Test
+    void roundTripsRepairCostWithoutEnchantments() {
+        ItemStack stack = new ItemStack("minecraft:diamond_sword", 1, 1, Map.of(), 7);
+
+        var decoded = BedrockItemStackUserDataCodec.decode(
+                BedrockItemStackUserDataCodec.encode(stack, new byte[0]), new byte[0]);
+
+        assertTrue(decoded.enchantments().isEmpty());
+        assertEquals(7, decoded.repairCost());
+    }
+
+    @Test
+    void leavesPlainItemUserDataUnchanged() {
+        byte[] registered = {1, 2, 3};
+        byte[] encoded = BedrockItemStackUserDataCodec.encode(
+                new ItemStack("minecraft:stone", 1, 64), registered);
+        assertArrayEquals(registered, encoded);
+        assertTrue(BedrockItemStackUserDataCodec.decode(encoded, registered).enchantments().isEmpty());
+    }
+
+    @Test
+    void rejectsUnknownEnchantmentsAndCustomDataCombination() {
+        ItemStack unsupported = new ItemStack("minecraft:diamond_sword", 1, 1,
+                Map.of("minecraft:unknown_enchantment", 1), 0);
+        assertThrows(IllegalArgumentException.class,
+                () -> BedrockItemStackUserDataCodec.encode(unsupported, new byte[0]));
+        assertThrows(IllegalArgumentException.class,
+                () -> BedrockItemStackUserDataCodec.encode(
+                        new ItemStack("minecraft:diamond_sword", 1, 1,
+                                Map.of("minecraft:sharpness", 1), 0), new byte[] {1}));
+    }
+
+    @Test
+    void rejectsTruncatedAndMalformedUserData() {
+        assertThrows(IllegalArgumentException.class,
+                () -> BedrockItemStackUserDataCodec.decode(new byte[] {(byte) 0xff}, new byte[0]));
+        byte[] encoded = BedrockItemStackUserDataCodec.encode(
+                new ItemStack("minecraft:diamond_sword", 1, 1,
+                        Map.of("minecraft:sharpness", 2), 0), new byte[0]);
+        encoded[encoded.length - 1] = 1;
+        assertThrows(IllegalArgumentException.class,
+                () -> BedrockItemStackUserDataCodec.decode(encoded, new byte[0]));
+    }
+}

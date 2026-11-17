@@ -54,6 +54,14 @@ Work only on engine/server foundations:
 - Verification: changes committed; no passing CI result is claimed until a runner executes the workflow.
 - Commit references: `d24710b1159bb676398b0f8bde46c27f794bb4b1` (fix), `904b40286f209ee9aa6d7b4a881f82407846dc76` (test).
 
+
+### 2026-11-17 — serialize chunk completion and new requests
+- Continued the audit of chunk request/delivery races.
+- Found a narrow race on failed generation: a new network-side request could arrive after the old async waiter had been removed but before the generation service released its in-flight reservation. That request could attach to an already-finishing generation and never receive a completion.
+- Serialized the game-tick drain operation on the pipeline monitor, matching the existing synchronization of request, cancel and stop operations. A new request can no longer interleave with result delivery and waiter resolution.
+- Commit: `49b64cbebbea657c2a96abf5723ddc91e5f09e19`.
+- Verification: source change committed; full tests still await a functioning GitHub Actions runner.
+
 ## Next tasks — in order
 
 1. **Verify current CI** for the active branch and fix any compilation/test failures before adding more code.
@@ -69,7 +77,7 @@ Do not start magic/RPG implementation until the dedicated core can pass automate
 
 ## Session hand-off template
 
-- Completed: added `.nxw` future-version, truncation and trailing-byte rejection tests; reviewed world lifecycle rollback/retry coverage; reviewed chunk pipeline against public Nukkit/PowerNukkitX architecture references; fixed async waiter completion when the failure reporter throws and when the generator throws a fatal `Error`, with regression tests for both.
+- Completed: added `.nxw` future-version, truncation and trailing-byte rejection tests; reviewed world lifecycle rollback/retry coverage; reviewed chunk pipeline against public Nukkit/PowerNukkitX architecture references; fixed async waiter completion when the failure reporter throws and when the generator throws a fatal `Error`, with regression tests for both; serialized result delivery against new requests to close a completion race.
 - Tests/CI: tests are committed but not confirmed passing; workflow runs fail before runner allocation and logs/annotations are inaccessible through the current GitHub connection.
 - Not completed / blockers: CI infrastructure/dispatch failure of unknown cause; no evidence yet of a code compilation failure.
 - Next exact task: restore a working CI runner/verification path; continue the chunk lifecycle audit with worker interruption, cancellation races, retry semantics and shutdown behavior; then define NEXORA's explicit chunk lifecycle state machine before expanding streaming behavior.

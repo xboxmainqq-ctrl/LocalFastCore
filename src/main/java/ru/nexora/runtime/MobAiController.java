@@ -26,12 +26,14 @@ public final class MobAiController {
     private static final double DEFAULT_ATTACK_RANGE = 1.6;
     private static final double DEFAULT_MOVE_SPEED = 0.10;
     private static final int MAX_PATH_NODES = 512;
+    private static final long TARGET_MEMORY_TICKS = 100;
     private static final int[][] PATH_NEIGHBORS = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
 
     private final Map<UUID, Behavior> behaviors = new HashMap<>();
     private final Map<UUID, UUID> provokedTargets = new HashMap<>();
     private final Map<UUID, Decision> decisions = new HashMap<>();
     private final Map<UUID, NavigationState> navigation = new HashMap<>();
+    private final Map<UUID, TargetMemory> targetMemory = new HashMap<>();
     private final double detectionRange;
     private final double attackRange;
     private final double moveSpeed;
@@ -59,6 +61,10 @@ public final class MobAiController {
         decisions.remove(mobId);
         if (behavior != Behavior.NEUTRAL) {
             provokedTargets.remove(mobId);
+        }
+        if (behavior != Behavior.HOSTILE) {
+            targetMemory.remove(mobId);
+            navigation.remove(mobId);
         }
     }
 
@@ -100,9 +106,27 @@ public final class MobAiController {
             return remember(mob.id(), new Decision(State.IDLE, null, false, false));
         }
 
-        WorldEntity target = behavior == Behavior.HOSTILE
-                ? nearestVisiblePlayer(mob, entities, world)
-                : provokedPlayer(mob, entities);
+        boolean targetVisible = true;
+        WorldEntity target;
+        if (behavior == Behavior.HOSTILE) {
+            target = nearestVisiblePlayer(mob, entities, world);
+            if (target != null) {
+                targetMemory.put(mob.id(), new TargetMemory(target, tick));
+            } else {
+                TargetMemory memory = targetMemory.get(mob.id());
+                if (memory == null || tick - memory.lastSeenTick > TARGET_MEMORY_TICKS
+                        || entities.find(memory.lastSeenTarget.id()).isEmpty()) {
+                    targetMemory.remove(mob.id());
+                    navigation.remove(mob.id());
+                    return remember(mob.id(), new Decision(State.IDLE, null, false, false));
+                }
+                target = memory.lastSeenTarget;
+                targetVisible = false;
+            }
+        } else {
+            target = provokedPlayer(mob, entities);
+        }
+
         if (target == null) {
             if (behavior == Behavior.NEUTRAL) {
                 provokedTargets.remove(mob.id());
@@ -115,7 +139,10 @@ public final class MobAiController {
         double dz = target.z() - mob.z();
         double distanceSquared = dx * dx + dy * dy + dz * dz;
         if (distanceSquared <= attackRange * attackRange) {
-            return remember(mob.id(), new Decision(State.ATTACK, target.id(), false, true));
+            if (targetVisible) {
+                return remember(mob.id(), new Decision(State.ATTACK, target.id(), false, true));
+            }
+            return remember(mob.id(), new Decision(State.SEARCH, target.id(), false, false));
         }
 
         return navigateToward(mob, target, entities, world);
@@ -128,6 +155,8 @@ public final class MobAiController {
         provokedTargets.keySet().removeIf(id -> entities.find(id).isEmpty());
         decisions.keySet().removeIf(id -> entities.find(id).isEmpty());
         navigation.keySet().removeIf(id -> entities.find(id).isEmpty());
+        targetMemory.keySet().removeIf(id -> entities.find(id).isEmpty()
+                || entities.find(targetMemory.get(id).lastSeenTarget.id()).isEmpty());
     }
 
     /**
@@ -337,6 +366,9 @@ public final class MobAiController {
         return (int) Math.floor(value);
     }
 
+    private record TargetMemory(WorldEntity lastSeenTarget, long lastSeenTick) {
+    }
+
     private record PathNode(int x, int z) {
     }
 
@@ -368,6 +400,7 @@ public final class MobAiController {
         IDLE,
         CHASE,
         ATTACK,
+        SEARCH,
         STUCK
     }
 

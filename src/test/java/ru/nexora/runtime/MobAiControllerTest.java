@@ -116,6 +116,36 @@ class MobAiControllerTest {
     }
 
     @Test
+    void hostileMobUsesLastKnownTargetToNavigateAfterLineOfSightBreaks() {
+        InMemoryWorld world = groundedWorld();
+        EntityRegistry entities = new EntityRegistry();
+        UUID mobId = UUID.randomUUID();
+        UUID playerId = UUID.randomUUID();
+        entities.spawn(new WorldEntity(mobId, WorldEntity.Type.MOB, "Zombie", 0.5, 64, 0.5, 0, -1));
+        entities.spawn(WorldEntity.player(playerId, "Player", 5.5, 64, 0.5, 180, 0));
+        EntityTickEngine engine = new EntityTickEngine(entities, world);
+        engine.mobAi().setBehavior(mobId, MobAiController.Behavior.HOSTILE);
+
+        engine.tick();
+        world.setBlock(new BlockPosition(2, 64, 0), new BlockState("minecraft:stone"));
+        world.setBlock(new BlockPosition(2, 65, 0), new BlockState("minecraft:stone"));
+
+        boolean movedSideways = false;
+        for (int i = 0; i < 80; i++) {
+            engine.tick();
+            WorldEntity current = entities.find(mobId).orElseThrow();
+            movedSideways |= Math.abs(current.z() - 0.5) > 0.1;
+        }
+
+        WorldEntity mob = entities.find(mobId).orElseThrow();
+        assertTrue(movedSideways, "mob should route around the wall using its last known target");
+        assertTrue(mob.x() > 1.0, "mob should continue toward the last known target position");
+        assertNotEquals(MobAiController.State.ATTACK,
+                engine.mobAi().lastDecision(mobId).orElseThrow().state(),
+                "a remembered, non-visible target must not produce an attack intent");
+    }
+
+    @Test
     void hostileMobReportsStuckWhenEveryAdjacentGroundCellIsBlocked() {
         InMemoryWorld world = groundedWorld();
         world.setBlock(new BlockPosition(1, 64, 0), new BlockState("minecraft:stone"));

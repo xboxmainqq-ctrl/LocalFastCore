@@ -2715,14 +2715,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             long nowMillis,
             long tick
     ) {
-        ru.nexora.combat.LivingEntityAiService.PlayerTarget nearest = targets.stream()
-                .filter(Objects::nonNull)
-                .min(java.util.Comparator.comparingDouble(player -> {
-                    double dx = player.x() - creeper.x();
-                    double dy = player.y() - creeper.y();
-                    double dz = player.z() - creeper.z();
-                    return dx * dx + dy * dy + dz * dz;
-                })).orElse(null);
+        ru.nexora.combat.LivingEntityAiService.PlayerTarget nearest =
+                ru.nexora.combat.LivingEntityAiService.nearestAlivePlayer(creeper, targets);
         if (nearest == null) {
             creeperFuseStartedMillis.remove(creeper.runtimeId());
             return false;

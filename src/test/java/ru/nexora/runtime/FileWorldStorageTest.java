@@ -115,4 +115,48 @@ class FileWorldStorageTest {
         }
         assertThrows(IOException.class, () -> storage.load("linked"));
     }
+
+    @Test
+    void rejectsUnsupportedFutureWorldFormatVersion() throws IOException {
+        FileWorldStorage storage = new FileWorldStorage(temporaryDirectory);
+        InMemoryWorld world = new InMemoryWorld("future", new WorldHeight(0, 32));
+        storage.save(world);
+
+        Path file = temporaryDirectory.resolve("future.nxw");
+        byte[] bytes = Files.readAllBytes(file);
+        // Header: four-byte signature followed by the two-byte format version.
+        bytes[4] = 0;
+        bytes[5] = 99;
+        Files.write(file, bytes);
+
+        IOException error = assertThrows(IOException.class, () -> storage.load("future"));
+        assertTrue(error.getMessage().contains("Unsupported"));
+    }
+
+    @Test
+    void rejectsTruncatedWorldFile() throws IOException {
+        FileWorldStorage storage = new FileWorldStorage(temporaryDirectory);
+        InMemoryWorld world = new InMemoryWorld("truncated", new WorldHeight(0, 32));
+        storage.save(world);
+
+        Path file = temporaryDirectory.resolve("truncated.nxw");
+        byte[] bytes = Files.readAllBytes(file);
+        Files.write(file, java.util.Arrays.copyOf(bytes, bytes.length - 1));
+
+        assertThrows(IOException.class, () -> storage.load("truncated"));
+    }
+
+    @Test
+    void rejectsTrailingBytesAfterWorldChecksum() throws IOException {
+        FileWorldStorage storage = new FileWorldStorage(temporaryDirectory);
+        InMemoryWorld world = new InMemoryWorld("trailing", new WorldHeight(0, 32));
+        storage.save(world);
+
+        Path file = temporaryDirectory.resolve("trailing.nxw");
+        Files.write(file, new byte[] { 0x45 }, java.nio.file.StandardOpenOption.APPEND);
+
+        IOException error = assertThrows(IOException.class, () -> storage.load("trailing"));
+        assertTrue(error.getMessage().contains("trailing"));
+    }
+
 }

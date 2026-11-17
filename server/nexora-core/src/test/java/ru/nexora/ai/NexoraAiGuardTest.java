@@ -111,9 +111,11 @@ class NexoraAiGuardTest {
         guard.recordMovementDiscrepancy("player-a", 1.0, 0.0, 0);
         guard.recordMovementDiscrepancy("player-b", 1.0, 0.0, 0);
         guard.recordMovementDiscrepancy("player-c", 1.0, 0.0, 0);
+        assertEquals(2, guard.snapshot().trackedPlayers());
         guard.onPlayerDisconnected("player-c");
 
-        assertEquals(0, guard.snapshot().signalledPeers());
+        assertEquals(1, guard.snapshot().trackedPlayers());
+        assertEquals(0, guard.snapshot().flaggedPlayers());
     }
 
     @Test

@@ -84,7 +84,8 @@ public final class LivingEntityAiService {
         double dy = target.y() - mob.y();
         double dz = target.z() - mob.z();
         double horizontal = Math.hypot(dx, dz);
-        if (dx * dx + dy * dy + dz * dz <= ATTACK_RANGE * ATTACK_RANGE) {
+        double attackRange = attackRangeFor(mob.identifier());
+        if (dx * dx + dy * dy + dz * dz <= attackRange * attackRange) {
             if (nowMillis >= nextAttackAtMillis) {
                 return new Decision(mob.runtimeId(), target.networkId(), 0, 0, 0,
                         attackDamageFor(mob.identifier()), true);
@@ -92,7 +93,7 @@ public final class LivingEntityAiService {
             return Decision.idle(mob.runtimeId());
         }
         if (horizontal < 0.0001) return Decision.idle(mob.runtimeId());
-        double step = Math.min(WALK_SPEED_PER_TICK, Math.max(0, horizontal - 1.0));
+        double step = Math.min(movementSpeedFor(mob.identifier()), Math.max(0, horizontal - 1.0));
         return new Decision(mob.runtimeId(), target.networkId(),
                 dx / horizontal * step, 0, dz / horizontal * step, 0, false);
     }
@@ -108,8 +109,8 @@ public final class LivingEntityAiService {
             length = 1.0;
         }
         return new Decision(mob.runtimeId(), threat.networkId(),
-                dx / length * WALK_SPEED_PER_TICK, 0,
-                dz / length * WALK_SPEED_PER_TICK, 0, false);
+                dx / length * movementSpeedFor(mob.identifier()), 0,
+                dz / length * movementSpeedFor(mob.identifier()), 0, false);
     }
 
     private Decision wander(WorldLivingEntity mob, long nowMillis) {
@@ -117,8 +118,8 @@ public final class LivingEntityAiService {
         long seed = mob.runtimeId() * 31L + interval * 0x9E3779B97F4A7C15L;
         double angle = stableAngle(seed);
         return new Decision(mob.runtimeId(), null,
-                Math.cos(angle) * WALK_SPEED_PER_TICK * 0.55, 0,
-                Math.sin(angle) * WALK_SPEED_PER_TICK * 0.55, 0, false);
+                Math.cos(angle) * movementSpeedFor(mob.identifier()) * 0.55, 0,
+                Math.sin(angle) * movementSpeedFor(mob.identifier()) * 0.55, 0, false);
     }
 
     private static double stableAngle(long seed) {
@@ -128,12 +129,38 @@ public final class LivingEntityAiService {
         return (mixed & 0x1fffffffffffffL) / (double) 0x20000000000000L * Math.PI * 2.0;
     }
 
+    /** Species-specific melee reach, measured in blocks. */
+    public static double attackRangeFor(String identifier) {
+        return switch (identifier) {
+            case "minecraft:enderman" -> 3.0;
+            case "minecraft:iron_golem", "minecraft:ravager", "minecraft:warden",
+                    "minecraft:zoglin", "minecraft:hoglin" -> 2.5;
+            default -> ATTACK_RANGE;
+        };
+    }
+
+    /** Species-specific horizontal movement speed in blocks per AI update. */
+    public static double movementSpeedFor(String identifier) {
+        return switch (identifier) {
+            case "minecraft:enderman", "minecraft:horse", "minecraft:donkey",
+                    "minecraft:mule", "minecraft:camel" -> 0.30;
+            case "minecraft:spider", "minecraft:cave_spider", "minecraft:fox",
+                    "minecraft:ocelot", "minecraft:cat" -> 0.27;
+            case "minecraft:iron_golem", "minecraft:ravager", "minecraft:turtle" -> 0.16;
+            case "minecraft:slime", "minecraft:magma_cube" -> 0.20;
+            default -> WALK_SPEED_PER_TICK;
+        };
+    }
+
     public static float attackDamageFor(String identifier) {
         return switch (identifier) {
             case "minecraft:silverfish" -> 1.0f;
-            case "minecraft:spider", "minecraft:cave_spider", "minecraft:endermite" -> 2.0f;
-            case "minecraft:zombified_piglin", "minecraft:piglin" -> 5.0f;
-            case "minecraft:zoglin", "minecraft:ravager", "minecraft:warden" -> 6.0f;
+            case "minecraft:spider", "minecraft:cave_spider", "minecraft:endermite",
+                    "minecraft:bee" -> 2.0f;
+            case "minecraft:zombified_piglin", "minecraft:piglin", "minecraft:blaze",
+                    "minecraft:guardian", "minecraft:wolf" -> 5.0f;
+            case "minecraft:zoglin", "minecraft:ravager", "minecraft:warden",
+                    "minecraft:hoglin", "minecraft:polar_bear", "minecraft:piglin_brute" -> 6.0f;
             case "minecraft:iron_golem", "minecraft:elder_guardian" -> 6.0f;
             default -> BASE_ATTACK_DAMAGE;
         };

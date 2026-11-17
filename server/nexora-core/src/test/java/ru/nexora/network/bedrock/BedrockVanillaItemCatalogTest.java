@@ -10,6 +10,10 @@ class BedrockVanillaItemCatalogTest {
         BedrockItemRegistry registry = BedrockVanillaItemCatalog.createRegistry();
         assertTrue(registry.size() >= 60);
 
+        assertEquals(263, registry.findByIdentifier("minecraft:coal").networkDefinition().runtimeItemId());
+        assertEquals(61, registry.findByIdentifier("minecraft:furnace").networkDefinition().runtimeItemId());
+        assertEquals(Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.FURNACE)),
+                registry.findByIdentifier("minecraft:furnace").networkDefinition().blockRuntimeId());
         assertEquals(306, registry.findByIdentifier("minecraft:diamond")
                 .networkDefinition().runtimeItemId());
         assertEquals(425, registry.findByIdentifier("minecraft:ender_pearl")

@@ -50,6 +50,7 @@ public final class FurnaceService {
                 if (burnTime == null) break;
                 inventory.setSlot(FUEL_SLOT, fuel.count() == 1 ? null : fuel.withCount(fuel.count() - 1));
                 state.burnTicksRemaining = burnTime;
+                state.burnTicksTotal = burnTime;
                 changed = true;
             }
             if (state.burnTicksRemaining == 0) break;
@@ -75,17 +76,25 @@ public final class FurnaceService {
     }
 
     public synchronized void restoreState(int x, int y, int z, int burnTicksRemaining, int cookProgress) {
+        restoreState(x, y, z, burnTicksRemaining, cookProgress, burnTicksRemaining);
+    }
+
+    public synchronized void restoreState(
+            int x, int y, int z, int burnTicksRemaining, int cookProgress, int burnTicksTotal
+    ) {
         if (burnTicksRemaining < 0 || burnTicksRemaining > 2400
-                || cookProgress < 0 || cookProgress >= COOK_TIME_TICKS) {
+                || cookProgress < 0 || cookProgress >= COOK_TIME_TICKS
+                || burnTicksTotal < burnTicksRemaining || burnTicksTotal > 2400) {
             throw new IllegalArgumentException("Invalid persisted furnace state");
         }
-        states.put(new Position(x, y, z), new FurnaceState(burnTicksRemaining, cookProgress));
+        states.put(new Position(x, y, z),
+                new FurnaceState(burnTicksRemaining, cookProgress, burnTicksTotal));
     }
 
     public synchronized FurnaceStateSnapshot snapshotState(int x, int y, int z) {
         FurnaceState state = states.get(new Position(x, y, z));
-        return state == null ? new FurnaceStateSnapshot(0, 0)
-                : new FurnaceStateSnapshot(state.burnTicksRemaining, state.cookProgress);
+        return state == null ? new FurnaceStateSnapshot(0, 0, 0)
+                : new FurnaceStateSnapshot(state.burnTicksRemaining, state.cookProgress, state.burnTicksTotal);
     }
 
     public synchronized void remove(int x, int y, int z) {
@@ -94,7 +103,8 @@ public final class FurnaceService {
 
     private static TickResult result(FurnaceState state, boolean changed) {
         return new TickResult(state.burnTicksRemaining, state.cookProgress,
-                (int) Math.round(state.cookProgress * 100.0 / COOK_TIME_TICKS), changed);
+                (int) Math.round(state.cookProgress * 100.0 / COOK_TIME_TICKS), changed,
+                state.burnTicksTotal);
     }
 
     private static boolean canAcceptOutput(ContainerInventory inventory, ItemStack result) {
@@ -136,14 +146,17 @@ public final class FurnaceService {
     private static final class FurnaceState {
         private int burnTicksRemaining;
         private int cookProgress;
+        private int burnTicksTotal;
 
         private FurnaceState() { }
-        private FurnaceState(int burnTicksRemaining, int cookProgress) {
+        private FurnaceState(int burnTicksRemaining, int cookProgress, int burnTicksTotal) {
             this.burnTicksRemaining = burnTicksRemaining;
             this.cookProgress = cookProgress;
+            this.burnTicksTotal = burnTicksTotal;
         }
     }
 
-    public record FurnaceStateSnapshot(int burnTicksRemaining, int cookProgress) { }
-    public record TickResult(int burnTicksRemaining, int cookProgress, int cookPercent, boolean inventoryChanged) { }
+    public record FurnaceStateSnapshot(int burnTicksRemaining, int cookProgress, int burnTicksTotal) { }
+    public record TickResult(int burnTicksRemaining, int cookProgress, int cookPercent, boolean inventoryChanged,
+                             int burnTicksTotal) { }
 }

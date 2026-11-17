@@ -158,4 +158,30 @@ class LivingEntityAiServiceTest {
         assertThrows(IllegalArgumentException.class,
                 () -> new LivingEntityAiService.PlayerTarget("", 0, 64, 0, true));
     }
+    @Test
+    void passivePreyFleesFromNearbyPlayers() {
+        WorldLivingEntity cow = new WorldLivingEntityManager().spawn(
+                "minecraft:cow", 10, 0, 64, 0);
+        var nearby = new LivingEntityAiService.PlayerTarget("player", 2, 64, 0, true);
+
+        var decision = ai.decide(cow, List.of(nearby), 1_000, 0);
+
+        assertTrue(decision.moving());
+        assertTrue(decision.moveX() < 0);
+        assertNull(decision.targetNetworkId());
+    }
+
+    @Test
+    void neutralArthropodOnlyRetaliatesAgainstItsProvoker() {
+        WorldLivingEntity bee = new WorldLivingEntityManager().spawn(
+                "minecraft:bee", 10, 0, 64, 0);
+        var attacker = new LivingEntityAiService.PlayerTarget("attacker", 1, 64, 0, true);
+        var bystander = new LivingEntityAiService.PlayerTarget("bystander", 1.5, 64, 0, true);
+
+        assertFalse(ai.decide(bee, List.of(attacker), 1_000, 0).attack());
+        assertTrue(ai.decide(bee, List.of(attacker, bystander), 2_000, 0, "attacker").attack());
+        assertEquals("attacker",
+                ai.decide(bee, List.of(attacker, bystander), 2_000, 0, "attacker").targetNetworkId());
+    }
+
 }

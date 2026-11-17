@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -149,8 +150,8 @@ public final class NexoraAiAssistant {
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(json))
                 .build();
-        CompletableFuture<HttpResponse<String>> future = client.sendAsync(
-                request, HttpResponse.BodyHandlers.ofString());
+        CompletableFuture<HttpResponse<InputStream>> future = client.sendAsync(
+                request, HttpResponse.BodyHandlers.ofInputStream());
         future.whenComplete((response, failure) -> {
             if (failure != null) {
                 diagnostics.recordFailure(failure);
@@ -158,12 +159,23 @@ public final class NexoraAiAssistant {
                 return;
             }
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                diagnostics.recordFailure(new IOException("AI provider returned HTTP " + response.statusCode()));
-                reply.accept("ИИ временно недоступен (ошибка провайдера " + response.statusCode() + ").");
+                try (InputStream ignored = response.body()) {
+                    diagnostics.recordFailure(new IOException("AI provider returned HTTP " + response.statusCode()));
+                    reply.accept("ИИ временно недоступен (ошибка провайдера " + response.statusCode() + ").");
+                } catch (IOException closeFailure) {
+                    diagnostics.recordFailure(closeFailure);
+                    reply.accept("ИИ временно недоступен.");
+                }
                 return;
             }
-            try {
-                JsonNode root = MAPPER.readTree(response.body());
+            try (InputStream bodyStream = response.body()) {
+                byte[] body = bodyStream.readNBytes(65_537);
+                if (body.length > 65_536) {
+                    diagnostics.recordFailure(new IOException("AI provider response exceeded 64 KiB"));
+                    reply.accept("Ответ ИИ превысил допустимый размер.");
+                    return;
+                }
+                JsonNode root = MAPPER.readTree(body);
                 String answer = root.path("choices").path(0).path("message").path("content").asText("");
                 if (answer.isBlank()) {
                     reply.accept("ИИ вернул пустой ответ. Попробуй переформулировать вопрос.");

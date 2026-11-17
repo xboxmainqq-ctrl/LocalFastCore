@@ -36,6 +36,7 @@ public final class NexoraAiAssistant {
     private final Set<String> adminXuids;
     private final HttpClient client;
     private final ConcurrentMap<String, Long> lastRequest = new ConcurrentHashMap<>();
+    private final NexoraAiConversationMemory conversationMemory = new NexoraAiConversationMemory();
 
     public NexoraAiAssistant(String apiKey, String model, URI endpoint,
                              Duration timeout, NexoraAiDiagnostics diagnostics) {
@@ -132,8 +133,11 @@ public final class NexoraAiAssistant {
         body.put("temperature", 0.5);
         ArrayNode messages = body.putArray("messages");
         messages.addObject().put("role", "system").put("content", systemPrompt(admin));
-        messages.addObject().put("role", "user")
-                .put("content", "Игрок " + playerName + " спрашивает: " + prompt);
+        for (NexoraAiConversationMemory.Message message : conversationMemory.history(playerId, admin)) {
+            messages.addObject().put("role", message.role()).put("content", message.content());
+        }
+        String userMessage = "Игрок " + playerName + " спрашивает: " + prompt;
+        messages.addObject().put("role", "user").put("content", userMessage);
 
         final String json;
         try {
@@ -183,6 +187,7 @@ public final class NexoraAiAssistant {
                 }
                 answer = answer.replaceAll("[\\p{Cntrl}&&[^\\n\\t]]", " ").trim();
                 if (answer.length() > 1200) answer = answer.substring(0, 1200) + "…";
+                conversationMemory.recordExchange(playerId, admin, userMessage, answer);
                 reply.accept(answer);
             } catch (IOException | RuntimeException exception) {
                 diagnostics.recordFailure(exception);

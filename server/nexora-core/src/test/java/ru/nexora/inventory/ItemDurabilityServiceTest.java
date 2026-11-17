@@ -27,9 +27,9 @@ class ItemDurabilityServiceTest {
     @Test
     void appliesWearAndBreaksItemAtItsMaximumDamage() {
         ItemStack sword = new ItemStack("minecraft:wooden_sword", 1, 1)
-                .withDurabilityDamage(58);
+                .withDurabilityDamage(57);
         ItemStack damaged = ItemDurabilityService.applyWear(sword, 1, new Random(1)).orElseThrow();
-        assertEquals(59, damaged.durabilityDamage());
+        assertEquals(58, damaged.durabilityDamage());
         assertTrue(ItemDurabilityService.applyWear(damaged, 1, new Random(1)).isEmpty());
     }
 

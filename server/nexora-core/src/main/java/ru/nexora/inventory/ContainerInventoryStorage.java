@@ -24,14 +24,14 @@ public final class ContainerInventoryStorage {
     private static final int FORMAT_VERSION = 1;
     private static final int MAX_FILE_BYTES = 16_384;
     private static final int MAX_ITEM_ID_BYTES = 128;
-    private static final Pattern SAFE_WORLD_NAME = Pattern.compile("[A-Za-z0-9_-]{1,64}");
+    private static final Pattern SAFE_WORLD_NAME = Pattern.compile("[A-Za-z0-9 _-]{1,64}");
 
     private final Path containersDirectory;
 
     public ContainerInventoryStorage(Path rootDirectory, String worldName) throws IOException {
         Objects.requireNonNull(rootDirectory, "rootDirectory");
         if (worldName == null || !SAFE_WORLD_NAME.matcher(worldName).matches()) {
-            throw new IllegalArgumentException("World name must contain only letters, digits, '_' or '-'");
+            throw new IllegalArgumentException("World name must contain only letters, digits, spaces, '_' or '-'");
         }
         Path root = rootDirectory.toAbsolutePath().normalize();
         Files.createDirectories(root);

@@ -151,15 +151,16 @@ public final class BedrockInventoryTransactionCodec {
             throw new IllegalArgumentException("Unknown Bedrock runtime item ID: " + runtimeItemId);
         }
         BedrockInventoryContentCodec.ItemDefinition definition = entry.networkDefinition();
-        if (definition.auxValue() != auxValue
-                || definition.blockRuntimeId() != blockRuntimeId
-                || !Arrays.equals(definition.userData(), userData)) {
+        if (definition.auxValue() != auxValue || definition.blockRuntimeId() != blockRuntimeId) {
             throw new IllegalArgumentException("Client item descriptor does not match the registered item definition");
         }
+        BedrockItemStackUserDataCodec.DecodedMetadata metadata =
+                BedrockItemStackUserDataCodec.decode(userData, definition.userData());
         if (count > entry.maxStackSize()) {
             throw new IllegalArgumentException("Item stack exceeds its registered maximum stack size");
         }
-        return Optional.of(new ItemStack(entry.namespacedId(), count, entry.maxStackSize()));
+        return Optional.of(new ItemStack(entry.namespacedId(), count, entry.maxStackSize(),
+                metadata.enchantments(), metadata.repairCost()));
     }
 
     public record DecodedTransaction(int transactionType, List<InventoryTransactionService.Action> actions) {

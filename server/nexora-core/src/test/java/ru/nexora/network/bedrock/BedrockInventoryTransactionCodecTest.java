@@ -87,6 +87,7 @@ class BedrockInventoryTransactionCodecTest {
         assertEquals(0, decoded.hotbarSlot());
         assertEquals("minecraft:bread", decoded.heldItem().orElseThrow().itemId());
         assertEquals(66.62f, decoded.headY(), 0.0001f);
+        assertEquals(0, decoded.hand());
     }
 
     @Test
@@ -315,6 +316,7 @@ class BedrockInventoryTransactionCodecTest {
         writeVarUInt(out, 0); // block runtime ID
         writeVarUInt(out, 0); // user data
         writeFloat(out, headX); writeFloat(out, headY); writeFloat(out, headZ);
+        out.write(0); // protocol 2225 main hand
         return out.toByteArray();
     }
 

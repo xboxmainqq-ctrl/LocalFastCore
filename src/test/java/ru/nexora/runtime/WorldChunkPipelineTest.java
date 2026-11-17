@@ -131,6 +131,40 @@ class WorldChunkPipelineTest {
     }
 
     @Test
+    void cancellationAfterGenerationButBeforeCommitDiscardsResultAndAllowsRetry() throws Exception {
+        InMemoryWorld world = new InMemoryWorld("overworld", new WorldHeight(0, 64));
+        TickScheduler scheduler = new TickScheduler();
+        AsyncChunkGenerationService generation = new AsyncChunkGenerationService(
+                generator(), world.height(), 19L, 1, 2, 2
+        );
+        WorldChunkPipeline pipeline = new WorldChunkPipeline(
+                world, scheduler, generation, 1, failure -> fail(failure)
+        );
+        pipeline.start();
+        try {
+            ChunkPosition position = new ChunkPosition(5, -2);
+            java.util.concurrent.CompletableFuture<Boolean> first = pipeline.requestAsync(position);
+            await(() -> pipeline.completedCount() == 1);
+
+            assertTrue(pipeline.cancel(position));
+            assertFalse(first.join());
+            assertEquals(0, pipeline.completedCount());
+            scheduler.tick();
+            assertFalse(world.isChunkLoaded(position));
+
+            java.util.concurrent.CompletableFuture<Boolean> retry = pipeline.requestAsync(position);
+            await(() -> pipeline.completedCount() == 1);
+            scheduler.tick();
+
+            assertTrue(retry.get(1, java.util.concurrent.TimeUnit.SECONDS));
+            assertTrue(world.isChunkLoaded(position));
+            assertEquals(1L, pipeline.loadedChunkCount());
+        } finally {
+            pipeline.stop();
+        }
+    }
+
+    @Test
     void reportsGenerationFailuresWithoutStoppingThePipeline() throws Exception {
         InMemoryWorld world = new InMemoryWorld("overworld", new WorldHeight(0, 64));
         TickScheduler scheduler = new TickScheduler();

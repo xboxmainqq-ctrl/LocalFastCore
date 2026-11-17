@@ -19,6 +19,8 @@ import ru.nexora.inventory.EquipmentStats;
 import ru.nexora.inventory.InventoryTransactionService;
 import ru.nexora.inventory.ContainerInventory;
 import ru.nexora.inventory.ContainerInventoryTransactionService;
+import ru.nexora.inventory.CraftingRecipeRegistry;
+import ru.nexora.inventory.CraftingService;
 import ru.nexora.world.FlatWorldGenerator;
 import ru.nexora.world.BlockType;
 import ru.nexora.world.World;
@@ -80,6 +82,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final InventoryTransactionService inventoryTransactionService = new InventoryTransactionService();
     private final ContainerInventoryTransactionService containerTransactionService =
             new ContainerInventoryTransactionService();
+    private final CraftingRecipeRegistry craftingRecipes = CraftingRecipeRegistry.vanillaSubset();
+    private final CraftingService craftingService = new CraftingService();
     private final PlayerEquipmentService playerEquipmentService = new PlayerEquipmentService();
     private final OutboundFrameSender outbound;
     private final Consumer<PacketEvent> packetSink;
@@ -541,6 +545,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             handleInventoryTransaction(message, state, packet);
                     case BedrockContainerPacketCodec.CONTAINER_CLOSE_PACKET_ID ->
                             handleContainerClose(message, state, packet);
+                    case BedrockCraftingEventCodec.CRAFTING_EVENT_PACKET_ID ->
+                            handleCraftingEvent(message, state, packet);
                     case BedrockMobEquipmentCodec.MOB_EQUIPMENT_PACKET_ID ->
                             handleMobEquipment(message, state, packet);
                     case BedrockCommandRequestCodec.COMMAND_REQUEST_PACKET_ID ->

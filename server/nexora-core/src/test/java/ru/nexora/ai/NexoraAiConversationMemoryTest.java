@@ -60,4 +60,16 @@ class NexoraAiConversationMemoryTest {
         assertThrows(IllegalArgumentException.class,
                 () -> memory.recordExchange("player", false, "question", "x".repeat(1201)));
     }
+    @Test
+    void clearRemovesOnlyTheSelectedConversation() {
+        NexoraAiConversationMemory memory = new NexoraAiConversationMemory();
+        memory.recordExchange("player-1", false, "player question", "player answer");
+        memory.recordExchange("player-1", true, "operator question", "operator answer");
+
+        memory.clear("player-1", false);
+
+        assertTrue(memory.history("player-1", false).isEmpty());
+        assertEquals("operator question", memory.history("player-1", true).get(0).content());
+    }
+
 }

@@ -83,4 +83,12 @@ class MobPathCacheTest {
         assertEquals(0.0, cache.stats().hitRate());
         assertEquals(0, cache.stats().requests());
     }
+
+    @Test
+    void statsSummaryIsCompactAndContainsOnlyAggregateCounters() {
+        MobPathCache.Stats stats = new MobPathCache.Stats(9, 1, 1, 0, 0, 1);
+
+        assertEquals("hits=9, misses=1, hitRate=90.0%, recomputations=1, blocked=0, evictions=0, entries=1",
+                stats.summary());
+    }
 }

@@ -1676,7 +1676,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         var damage = world.livingEntities().damage(target.runtimeId(), effect.damage()).orElse(null);
         if (damage == null) return;
         if (damage.killed()) {
-            grantMobRewards(attackerNetworkId, attacker, target, weapon.enchantments().getOrDefault("minecraft:looting", 0));
+            grantMobRewards(attackerNetworkId, attacker, target, weapon == null ? 0 : weapon.enchantments().getOrDefault("minecraft:looting", 0));
             nextMobAttackMillis.remove(target.runtimeId());
             broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(target.uniqueId()));
             return;

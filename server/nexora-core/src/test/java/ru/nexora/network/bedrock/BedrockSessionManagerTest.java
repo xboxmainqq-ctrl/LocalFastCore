@@ -156,9 +156,11 @@ class BedrockSessionManagerTest {
         invokeActorAttack(manager, "reward-killer", attack);
 
         assertTrue(combatWorld.livingEntities().find(zombie.runtimeId()).isEmpty());
-        assertEquals(5_000L, (long) getSessionField(
-                manager, "reward-killer", "experiencePoints") * 1000L
-                + (int) getSessionField(manager, "reward-killer", "experienceRemainderMilli"));
+        long experienceMilli = ((Number) getSessionField(
+                manager, "reward-killer", "experiencePoints")).longValue() * 1000L
+                + ((Number) getSessionField(
+                        manager, "reward-killer", "experienceRemainderMilli")).longValue();
+        assertEquals(5_000L, experienceMilli);
         assertTrue(outboundFrames.stream().flatMap(frame -> decodeOutboundAll(frame, true).stream())
                 .anyMatch(packet -> packet.packetId() == BedrockAddItemActorCodec.REMOVE_ACTOR_PACKET_ID));
         manager.close();

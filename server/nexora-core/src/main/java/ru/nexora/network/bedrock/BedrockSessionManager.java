@@ -1832,6 +1832,34 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 if (mitigatedDamage > 0.0f) {
                     applyDamage(networkId, target, mitigatedDamage, tick, "death.attack.mob");
                 }
+                if (!target.vitals.dead() && !armor.isEmpty()) {
+                    double[] rolls = new double[armor.size()];
+                    int[] damageRolls = new int[armor.size()];
+                    java.util.concurrent.ThreadLocalRandom random =
+                            java.util.concurrent.ThreadLocalRandom.current();
+                    for (int i = 0; i < armor.size(); i++) {
+                        rolls[i] = random.nextDouble();
+                        damageRolls[i] = random.nextInt(1, 5);
+                    }
+                    int reflected = ru.nexora.combat.EnchantmentCombatService
+                            .resolveThornsDamage(armor, rolls, damageRolls);
+                    if (reflected > 0) {
+                        var thornsDamage = world.livingEntities().damage(mob.runtimeId(), reflected).orElse(null);
+                        if (thornsDamage != null) {
+                            if (thornsDamage.killed()) {
+                                grantMobRewards(networkId, target, mob);
+                                nextMobAttackMillis.remove(mob.runtimeId());
+                                broadcastLivingActorPacket(
+                                        BedrockAddItemActorCodec.createRemoveActor(mob.uniqueId()));
+                            } else {
+                                WorldLivingEntity thornsTarget = thornsDamage.current();
+                                broadcastLivingActorPacket(BedrockVitalsCodec.createActorHealthUpdate(
+                                        thornsTarget.runtimeId(), thornsTarget.health(),
+                                        thornsTarget.maxHealth(), Math.max(0, tick)));
+                            }
+                        }
+                    }
+                }
                 double dx = target.positionX - mob.x();
                 double dz = target.positionZ - mob.z();
                 double length = Math.hypot(dx, dz);

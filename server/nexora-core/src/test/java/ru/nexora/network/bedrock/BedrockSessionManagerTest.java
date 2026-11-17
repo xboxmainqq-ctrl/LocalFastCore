@@ -157,8 +157,8 @@ class BedrockSessionManagerTest {
                         "minecraft:knockback", 2, "minecraft:fire_aspect", 1));
         manager.playerInventory("mob-attacker").orElseThrow().setSlot(0, sword);
         var zombie = manager.spawnLivingEntity(
-                "minecraft:zombie", ru.nexora.world.WorldLivingEntity.Family.UNDEAD,
-                20.0f, 2.0, 65.0, 0.0);
+                "minecraft:zombie", 20.0f, 2.0, 65.0, 0.0);
+        assertEquals(ru.nexora.world.WorldLivingEntity.Family.UNDEAD, zombie.family());
         assertTrue(outboundFrames.stream().flatMap(frame -> decodeOutboundAll(frame, true).stream())
                 .anyMatch(packet -> packet.packetId() == BedrockAddActorCodec.ADD_ACTOR_PACKET_ID));
 

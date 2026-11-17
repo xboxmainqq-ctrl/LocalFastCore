@@ -67,6 +67,7 @@ public final class MobSpawnerManager {
         else if (change.previous() == BlockType.SPAWNER) remove(change.x(), change.y(), change.z());
     }
     private long spawnCount;
+    private long spawnAttempts;
     private long cappedAttempts;
     private long inactiveTicks;
     private long invalidPositionAttempts;
@@ -167,6 +168,7 @@ public final class MobSpawnerManager {
         }
         synchronized (this) {
             spawnCount += spawned;
+            spawnAttempts += attempts;
             cappedAttempts += capped;
             invalidPositionAttempts += invalid;
         }
@@ -181,7 +183,7 @@ public final class MobSpawnerManager {
     }
 
     public synchronized Stats stats() {
-        return new Stats(spawners.size(), spawnCount, cappedAttempts, inactiveTicks,
+        return new Stats(spawners.size(), spawnCount, spawnAttempts, cappedAttempts, inactiveTicks,
                 invalidPositionAttempts);
     }
 
@@ -283,11 +285,12 @@ public final class MobSpawnerManager {
     public record TickResult(int trackedSpawners, int activeSpawners, int attempts,
                              int spawned, int capped, int invalidPositions) { }
 
-    public record Stats(int trackedSpawners, long spawned, long cappedAttempts,
-                        long inactiveTicks, long invalidPositionAttempts) {
+    public record Stats(int trackedSpawners, long spawned, long spawnAttempts,
+                        long cappedAttempts, long inactiveTicks, long invalidPositionAttempts) {
         public String summary() {
             return "tracked=" + trackedSpawners + ", spawned=" + spawned
-                    + ", capped=" + cappedAttempts + ", inactiveTicks=" + inactiveTicks
+                    + ", attempts=" + spawnAttempts + ", capped=" + cappedAttempts
+                    + ", inactiveTicks=" + inactiveTicks
                     + ", invalidPositions=" + invalidPositionAttempts;
         }
     }

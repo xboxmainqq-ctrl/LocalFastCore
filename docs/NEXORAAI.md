@@ -63,8 +63,8 @@ The current server-side spawner implementation provides:
 - Up to four spawn-position attempts per activation cycle.
 - A same-type nearby cap of six mobs in the local 9-block volume.
 - Basic spawn-space checks for two air blocks above a non-air floor; candidate validation never forces a neighboring chunk to load.
-- A bounded registry of 10,000 spawners.
-- Atomic, checksummed persistence of spawner type, delay, coordinates, and next-spawn timer alongside world storage.
+- A bounded registry of 10,000 spawners, a 128-spawner per-tick round-robin work budget, and a guard against duplicate processing in the same server tick.
+- Atomic, checksummed persistence of spawner type, delay, coordinates, and remaining timer alongside world storage, so server downtime does not consume the countdown.
 - Server-side entity creation and AddActor replication to initialized Bedrock clients; operator placement/removal sends a Bedrock block update.
 - Operator commands for placing, configuring, listing, and removing spawners.
 

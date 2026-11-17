@@ -156,19 +156,22 @@ public final class WorldChunkPipeline implements RuntimeModule {
         }
         generation.drainCompleted(maximumLoadsPerTick, result -> {
             boolean available = false;
-            if (!result.succeeded()) {
-                failureHandler.accept(result.failure());
-            } else {
-                try {
+            try {
+                if (!result.succeeded()) {
+                    failureHandler.accept(result.failure());
+                } else {
                     boolean alreadyLoaded = world.isChunkLoaded(result.position());
                     available = alreadyLoaded || world.loadChunk(result.chunk());
                     if (available && !alreadyLoaded) loadedChunks.incrementAndGet();
-                } catch (RuntimeException failure) {
-                    failureHandler.accept(failure);
                 }
+            } catch (RuntimeException failure) {
+                failureHandler.accept(failure);
+            } finally {
+                // A waiter must always be released, even if the failure handler
+                // itself throws while reporting a generation or commit failure.
+                CompletableFuture<Boolean> waiter = asyncWaiters.remove(result.position());
+                if (waiter != null) waiter.complete(available);
             }
-            CompletableFuture<Boolean> waiter = asyncWaiters.remove(result.position());
-            if (waiter != null) waiter.complete(available);
         });
     }
 

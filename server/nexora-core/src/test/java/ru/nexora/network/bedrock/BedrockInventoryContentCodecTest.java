@@ -79,6 +79,25 @@ class BedrockInventoryContentCodecTest {
     }
 
     @Test
+    void includesPerStackEnchantmentsAndRepairCostInInventoryDescriptor() {
+        PlayerInventory inventory = new PlayerInventory();
+        inventory.setSlot(0, new ItemStack("minecraft:diamond_sword", 1, 1,
+                java.util.Map.of("minecraft:sharpness", 5), 3));
+
+        BedrockPacket packet = BedrockInventoryContentCodec.createPlayerInventory(
+                inventory, ignored -> new BedrockInventoryContentCodec.ItemDefinition(276, 0, 0, new byte[0]));
+
+        byte[] payload = packet.payload();
+        int offset = 2 + 1 + 2 + 2 + 1 + 1 + 1;
+        int userDataLength = Byte.toUnsignedInt(payload[offset++]);
+        byte[] userData = Arrays.copyOfRange(payload, offset, offset + userDataLength);
+        var metadata = BedrockItemStackUserDataCodec.decode(userData, new byte[0]);
+
+        assertEquals(java.util.Map.of("minecraft:sharpness", 5), metadata.enchantments());
+        assertEquals(3, metadata.repairCost());
+    }
+
+    @Test
     void encodesPlayerUiCraftingGridWithCraftingInputContainerName() {
         ContainerInventory ui = new ContainerInventory(BedrockInventoryContentCodec.PLAYER_UI_SIZE);
         ui.setSlot(28, new ItemStack("minecraft:oak_planks", 2, 64));

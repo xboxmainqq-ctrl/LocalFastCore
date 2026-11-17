@@ -80,7 +80,7 @@ Ordinary passive mobs wander without fleeing from every nearby player. Rabbits, 
 
 ### Mob combat and rewards
 
-The generic AI uses species profiles for selected movement speeds, melee reach, and attack damage. Ranged bow users and creepers keep dedicated behavior paths; wither skeletons remain melee attackers. Cave-spider melee hits apply a four-second poison effect that ticks once per second and cannot reduce player health below one. The deterministic reward table covers common drops and XP for several hostile and passive families, with Looting applied as a bounded stack bonus. Items absent from the active item registry are skipped safely rather than creating unknown inventory entries.
+The generic AI uses species profiles for selected movement speeds, melee reach, and attack damage. Ranged bow users and creepers keep dedicated behavior paths; wither skeletons remain melee attackers. Cave-spider melee hits and bogged arrows apply a four-second poison effect that ticks once per second and cannot reduce player health below one. The deterministic reward table covers common drops and XP for several hostile and passive families, with Looting applied as a bounded stack bonus. Items absent from the active item registry are skipped safely rather than creating unknown inventory entries.
 
 ### Natural despawn
 

@@ -439,7 +439,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     /** Read-only mob navigation/cache diagnostics for allowlisted operators. */
     public String mobAiDiagnosticsSummary() {
         ru.nexora.world.MobPathCache.Stats cache = mobPathCache.stats();
-        ru.nexora.combat.MobStuckTracker.Stats stuck = mobStuckTracker.stats(System.currentTimeMillis());
+        ru.nexora.combat.MobStuckTracker.Stats stuck = mobStuckTracker.stats(Math.max(0L, nanoTime.getAsLong() / 1_000_000L));
         StringBuilder result = new StringBuilder("Mob path cache: ")
                 .append("hits=").append(cache.hits())
                 .append(", misses=").append(cache.misses())
@@ -476,7 +476,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     /** Lists a small, bounded set of mobs that have made no meaningful movement progress. */
     public String mobAiStuckSummary() {
-        long now = System.currentTimeMillis();
+        long now = Math.max(0L, nanoTime.getAsLong() / 1_000_000L);
         ru.nexora.combat.MobStuckTracker.Stats stats = mobStuckTracker.stats(now);
         StringBuilder result = new StringBuilder("Застрявшие мобы: ")
                 .append(stats.stuck()).append(" (отслеживается ").append(stats.tracked()).append(')');
@@ -532,7 +532,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         : ru.nexora.world.MobSpawnerState.DEFAULT_DELAY_TICKS;
                 world.setBlock(x, y, z, ru.nexora.world.BlockType.SPAWNER);
                 if (!world.mobSpawners().configure(x, y, z, identifier, delay,
-                        System.currentTimeMillis() / 50L)) {
+                        Math.max(0L, nanoTime.getAsLong() / 50_000_000L))) {
                     sendAiMessage(networkId, "§c[NEXORA SPAWNER] Не удалось настроить спавнер.");
                     return;
                 }

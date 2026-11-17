@@ -17,7 +17,8 @@ public final class WorldFurnaceManager {
     private final ContainerInventoryStorage inventoryStorage;
     private final FurnaceStateStorage stateStorage;
     private final FurnaceService service = new FurnaceService();
-    private final Map<Position, ContainerInventory> loaded = new HashMap<>();\n    private final Map<Position, FurnaceService.Kind> kinds = new HashMap<>();
+    private final Map<Position, ContainerInventory> loaded = new HashMap<>();
+    private final Map<Position, FurnaceService.Kind> kinds = new HashMap<>();
     private final CopyOnWriteArrayList<Consumer<FurnaceUpdate>> updateListeners = new CopyOnWriteArrayList<>();
 
     public WorldFurnaceManager(ContainerInventoryStorage inventoryStorage, FurnaceStateStorage stateStorage) {
@@ -26,25 +27,41 @@ public final class WorldFurnaceManager {
     }
 
     public synchronized ContainerInventory getOrCreate(int x, int y, int z) throws IOException {
+        return getOrCreate(x, y, z, FurnaceService.Kind.FURNACE);
+    }
+
+    public synchronized ContainerInventory getOrCreate(
+            int x, int y, int z, FurnaceService.Kind kind
+    ) throws IOException {
+        Objects.requireNonNull(kind, "kind");
         Position position = new Position(x, y, z);
         ContainerInventory existing = loaded.get(position);
-        if (existing != null) return existing;
+        if (existing != null) {
+            kinds.put(position, kind);
+            return existing;
+        }
         ContainerInventory inventory = inventoryStorage.load(x, y, z)
                 .orElseGet(() -> new ContainerInventory(3));
         if (inventory.size() != 3) throw new IOException("Stored furnace inventory must contain exactly 3 slots");
         stateStorage.load(x, y, z).ifPresent(state ->
                 service.restoreState(x, y, z, state.burnTicksRemaining(), state.cookProgress(), state.burnTicksTotal()));
         loaded.put(position, inventory);
+        kinds.put(position, kind);
         return inventory;
     }
 
     /** Advances one loaded furnace in memory; save() or world autosave persists its inventory and timers. */
-    public FurnaceService.TickResult tick(int x, int y, int z, long elapsedTicks)
-            throws IOException {
+    public FurnaceService.TickResult tick(int x, int y, int z, long elapsedTicks) throws IOException {
+        return tick(x, y, z, FurnaceService.Kind.FURNACE, elapsedTicks);
+    }
+
+    public FurnaceService.TickResult tick(
+            int x, int y, int z, FurnaceService.Kind kind, long elapsedTicks
+    ) throws IOException {
         FurnaceUpdate update;
         FurnaceService.TickResult result;
         synchronized (this) {
-            ContainerInventory inventory = getOrCreate(x, y, z);
+            ContainerInventory inventory = getOrCreate(x, y, z, kind);
             FurnaceService.FurnaceStateSnapshot before = service.snapshotState(x, y, z);
             result = service.tick(x, y, z, inventory, kind, elapsedTicks);
             update = updateIfChanged(x, y, z, inventory, before, result);
@@ -59,9 +76,10 @@ public final class WorldFurnaceManager {
         synchronized (this) {
             for (var entry : loaded.entrySet()) {
                 Position p = entry.getKey();
+                FurnaceService.Kind kind = kinds.getOrDefault(p, FurnaceService.Kind.FURNACE);
                 FurnaceService.FurnaceStateSnapshot before = service.snapshotState(p.x(), p.y(), p.z());
                 FurnaceService.TickResult result =
-                        service.tick(p.x(), p.y(), p.z(), entry.getValue(), elapsedTicks);
+                        service.tick(p.x(), p.y(), p.z(), entry.getValue(), kind, elapsedTicks);
                 FurnaceUpdate update = updateIfChanged(p.x(), p.y(), p.z(), entry.getValue(), before, result);
                 if (update != null) updates.add(update);
             }
@@ -121,6 +139,7 @@ public final class WorldFurnaceManager {
     public synchronized void remove(int x, int y, int z) throws IOException {
         Position p = new Position(x, y, z);
         loaded.remove(p);
+        kinds.remove(p);
         service.remove(x, y, z);
         inventoryStorage.delete(x, y, z);
         stateStorage.delete(x, y, z);

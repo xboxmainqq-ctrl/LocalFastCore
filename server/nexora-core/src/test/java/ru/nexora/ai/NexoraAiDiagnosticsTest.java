@@ -57,6 +57,18 @@ class NexoraAiDiagnosticsTest {
     }
 
     @Test
+    void guardSignalsAreIncludedAsBoundedIdentifierFreeEvidence() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+
+        diagnostics.recordGuardSignal("frame-rate threshold exceeded: 301 frames, 12000 bytes");
+
+        String evidence = diagnostics.recentEvidence();
+        assertTrue(evidence.contains("[GUARD]"));
+        assertTrue(evidence.contains("frame-rate threshold exceeded"));
+        assertFalse(evidence.contains("peer-xuid"));
+    }
+
+    @Test
     void operationWithinBudgetIsNotReported() {
         NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
 

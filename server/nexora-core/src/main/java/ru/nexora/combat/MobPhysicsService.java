@@ -1,0 +1,77 @@
+package ru.nexora.combat;
+
+import ru.nexora.world.World;
+import ru.nexora.world.WorldCollision;
+import ru.nexora.world.WorldLivingEntity;
+
+/**
+ * Small bounded per-tick actor physics for gravity and knockback.
+ * Flying species do not receive ground gravity; all movement remains server-authoritative.
+ */
+public final class MobPhysicsService {
+    public static final double GRAVITY_PER_TICK = 0.08;
+    public static final double TERMINAL_FALL_SPEED = -3.92;
+    public static final double GROUND_DRAG = 0.60;
+    public static final double AIR_DRAG = 0.91;
+    public static final double VERTICAL_DRAG = 0.98;
+    private static final double STOP_EPSILON = 0.003;
+
+    public Result tick(World world, WorldLivingEntity entity) {
+        if (world == null || entity == null) throw new NullPointerException();
+        if (entity.health() <= 0) return new Result(entity, false, false);
+
+        boolean flying = LivingEntityAiService.isFlyingMob(entity.identifier());
+        boolean grounded = !flying && WorldCollision.isOnGround(
+                world, entity.x(), entity.y(), entity.z());
+
+        double vx = entity.velocityX();
+        double vy = entity.velocityY();
+        double vz = entity.velocityZ();
+        if (!flying) {
+            if (grounded && vy < 0) vy = 0;
+            else if (!grounded) vy = Math.max(TERMINAL_FALL_SPEED, vy - GRAVITY_PER_TICK);
+        }
+
+        double x = entity.x();
+        double y = entity.y();
+        double z = entity.z();
+        if (Math.abs(vx) > STOP_EPSILON) {
+            if (WorldCollision.canMove(world, x, y, z, x + vx, y, z)) x += vx;
+            else vx = 0;
+        } else vx = 0;
+
+        if (Math.abs(vz) > STOP_EPSILON) {
+            if (WorldCollision.canMove(world, x, y, z, x, y, z + vz)) z += vz;
+            else vz = 0;
+        } else vz = 0;
+
+        if (Math.abs(vy) > STOP_EPSILON) {
+            if (WorldCollision.canMove(world, x, y, z, x, y + vy, z)) y += vy;
+            else vy = 0;
+        } else vy = 0;
+
+        double drag = grounded ? GROUND_DRAG : AIR_DRAG;
+        vx = damp(vx * drag);
+        vz = damp(vz * drag);
+        vy = flying ? damp(vy * AIR_DRAG) : damp(vy * VERTICAL_DRAG);
+
+        boolean moved = x != entity.x() || y != entity.y() || z != entity.z();
+        boolean velocityChanged = vx != entity.velocityX()
+                || vy != entity.velocityY() || vz != entity.velocityZ();
+        WorldLivingEntity updated = entity;
+        if (velocityChanged) {
+            updated = world.livingEntities().setVelocity(entity.runtimeId(), vx, vy, vz)
+                    .orElse(updated);
+        }
+        if (moved) {
+            updated = world.livingEntities().move(entity.runtimeId(), x, y, z).orElse(updated);
+        }
+        return new Result(updated, moved, grounded);
+    }
+
+    private static double damp(double value) {
+        return Math.abs(value) < STOP_EPSILON ? 0 : value;
+    }
+
+    public record Result(WorldLivingEntity entity, boolean moved, boolean grounded) { }
+}

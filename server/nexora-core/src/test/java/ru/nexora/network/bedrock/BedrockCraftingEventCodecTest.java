@@ -43,7 +43,7 @@ class BedrockCraftingEventCodecTest {
         assertThrows(IllegalArgumentException.class, () ->
                 BedrockCraftingEventCodec.decode(new BedrockPacket(0x35, 0, 0, unknownItem), items));
 
-        byte[] mismatchedOutput = BedrockCraftingDataCodecTest.craftingEvent(recipe.uuid(), 307, 1, 429, 9);
+        byte[] mismatchedOutput = BedrockCraftingDataCodecTest.craftingEvent(recipe.uuid(), 307, 1, 32759, 9);
         assertThrows(IllegalArgumentException.class, () ->
                 BedrockCraftingEventCodec.decode(new BedrockPacket(0x35, 0, 0, mismatchedOutput), items));
 

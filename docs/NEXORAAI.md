@@ -74,6 +74,10 @@ This is an initial vanilla-style simulation, not yet a claim of complete Minecra
 
 Ground-bound mobs receive server-side gravity, collision-resolved falling, and damped knockback velocity. Flying species (allays, bats, bees, blazes, ghasts, phantoms, vexes, parrots, and the ender dragon) use three-dimensional target movement and do not receive ground gravity. This is a first physics layer with bounded fall-distance tracking and landing damage. Ground-bound mobs can jump over a single-block obstacle when headroom is clear, with cooldown and loaded-chunk checks. Slimes and magma cubes bounce on landing and are exempt from fall damage. Spiders and cave spiders can climb walls when the next horizontal step is blocked and vertical headroom is clear. Fluids and species-specific flight animation still need dedicated implementation.
 
+### Passive and neutral behavior
+
+Ordinary passive mobs wander without fleeing from every nearby player. Rabbits, foxes, ocelots, and bats are naturally timid; other passive mobs flee when provoked by a player. Neutral mobs retaliate only while a bounded ten-second provocation window remains active.
+
 ### Mob combat and rewards
 
 The generic AI uses species profiles for selected movement speeds, melee reach, and attack damage. Ranged bow users and creepers keep dedicated behavior paths; wither skeletons remain melee attackers. The deterministic reward table covers common drops and XP for several hostile and passive families, with Looting applied as a bounded stack bonus. Items absent from the active item registry are skipped safely rather than creating unknown inventory entries.

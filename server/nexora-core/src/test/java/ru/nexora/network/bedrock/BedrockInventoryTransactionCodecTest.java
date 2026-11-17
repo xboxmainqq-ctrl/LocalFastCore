@@ -48,6 +48,21 @@ class BedrockInventoryTransactionCodecTest {
     }
 
     @Test
+    void decodesEnchantedItemMetadataFromClientInventoryTransaction() {
+        ItemStack enchanted = new ItemStack("nexora:mana_crystal", 1, 64,
+                java.util.Map.of("minecraft:unbreaking", 2), 4);
+        byte[] userData = BedrockItemStackUserDataCodec.encode(enchanted, new byte[0]);
+        byte[] payload = transaction(action(0, 0, 0, empty(), stack(257, 1, 0, 0, userData)));
+
+        var decoded = BedrockInventoryTransactionCodec.decode(
+                new BedrockPacket(0x1e, 0, 0, payload), REGISTRY);
+        ItemStack result = decoded.actions().getFirst().to().orElseThrow();
+
+        assertEquals(enchanted.enchantments(), result.enchantments());
+        assertEquals(4, result.repairCost());
+    }
+
+    @Test
     void rejectsNonZeroLegacyRequestIdAndUnsupportedTransactionVariants() {
         byte[] legacy = new byte[] {2, 0, 0}; // ZigZag(1), then unused bytes
         assertThrows(UnsupportedOperationException.class,

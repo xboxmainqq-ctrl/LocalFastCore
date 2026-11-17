@@ -21,6 +21,7 @@ import java.util.Optional;
 public final class BedrockInventoryTransactionCodec {
     public static final int INVENTORY_TRANSACTION_PACKET_ID = 0x1e;
     private static final int NORMAL_TRANSACTION_TYPE = 0;
+    private static final int ITEM_USE_ON_ACTOR_TRANSACTION_TYPE = 3;
     private static final int SOURCE_CONTAINER = 0;
     private static final int MAX_ACTIONS = InventoryTransactionService.MAX_ACTIONS;
     private static final int MAX_USER_DATA_BYTES = 1_048_576;
@@ -93,6 +94,55 @@ public final class BedrockInventoryTransactionCodec {
         int legacyRequestId = in.varInt32();
         if (legacyRequestId != 0) throw new UnsupportedOperationException("Legacy inventory requests are not supported");
         return in.varInt32();
+    }
+
+    /**
+     * Decodes protocol-2225 ItemUseOnActor transaction data. Protocol 2225
+     * includes the Hand byte between Slot and Item (added in 1.26.60).
+     * Inventory action deltas are deliberately rejected until actor combat can
+     * atomically validate and apply them with the authoritative inventory.
+     */
+    public static DecodedUseOnActor decodeUseOnActor(BedrockPacket packet, BedrockItemRegistry registry) {
+        if (packet == null || packet.packetId() != INVENTORY_TRANSACTION_PACKET_ID) {
+            throw new IllegalArgumentException("Expected InventoryTransaction packet 0x1e");
+        }
+        if (registry == null) throw new NullPointerException("registry");
+        Reader in = new Reader(packet.payload());
+        if (in.varInt32() != 0) {
+            throw new UnsupportedOperationException("Legacy inventory requests are not supported");
+        }
+        if (in.varInt32() != ITEM_USE_ON_ACTOR_TRANSACTION_TYPE) {
+            throw new IllegalArgumentException("Expected ItemUseOnActor transaction type");
+        }
+        int actionCount = in.varUInt32Int();
+        if (actionCount != 0) {
+            throw new UnsupportedOperationException("ItemUseOnActor inventory action arrays are not supported");
+        }
+        long runtimeEntityId = in.varUInt64();
+        int actionType = in.varInt32();
+        int slot = in.varInt32();
+        int hand = in.int8();
+        Optional<ItemStack> item = readItemStack(in, registry);
+        float fromX = in.float32();
+        float fromY = in.float32();
+        float fromZ = in.float32();
+        float hitX = in.float32();
+        float hitY = in.float32();
+        float hitZ = in.float32();
+        if (runtimeEntityId <= 0 || actionType < 0 || actionType > 2
+                || slot < -1 || slot >= 36 || hand < 0 || hand > 1
+                || !finiteVector(fromX, fromY, fromZ, 30_000_000.0f)
+                || !finiteVector(hitX, hitY, hitZ, 1_000_000.0f)) {
+            throw new IllegalArgumentException("Invalid ItemUseOnActor transaction fields");
+        }
+        in.requireExhausted();
+        return new DecodedUseOnActor(runtimeEntityId, actionType, slot, hand, item,
+                fromX, fromY, fromZ, hitX, hitY, hitZ);
+    }
+
+    private static boolean finiteVector(float x, float y, float z, float limit) {
+        return Float.isFinite(x) && Float.isFinite(y) && Float.isFinite(z)
+                && Math.abs(x) <= limit && Math.abs(y) <= limit && Math.abs(z) <= limit;
     }
 
     /** Decodes the supported ItemRelease consume/cancel subset used to finish food use. */
@@ -169,6 +219,16 @@ public final class BedrockInventoryTransactionCodec {
         }
     }
 
+    public record DecodedUseOnActor(
+            long runtimeEntityId, int actionType, int slot, int hand, Optional<ItemStack> item,
+            float fromX, float fromY, float fromZ, float hitX, float hitY, float hitZ
+    ) {
+        public DecodedUseOnActor {
+            if (runtimeEntityId <= 0) throw new IllegalArgumentException("Invalid target runtime entity ID");
+            Objects.requireNonNull(item, "item");
+        }
+    }
+
     public record DecodedItemRelease(
             int actionType, int hotbarSlot, Optional<ItemStack> heldItem,
             float headX, float headY, float headZ
@@ -230,6 +290,23 @@ public final class BedrockInventoryTransactionCodec {
                 throw new IllegalArgumentException("InventoryTransaction integer exceeds supported range");
             }
             return (int) value;
+        }
+
+        long varUInt64() {
+            long value = 0;
+            for (int i = 0; i < 10; i++) {
+                require(1);
+                int current = Byte.toUnsignedInt(buffer.get());
+                if (i == 9 && (current & 0xfe) != 0) {
+                    throw new IllegalArgumentException("InventoryTransaction VarUInt64 overflow");
+                }
+                value |= (long) (current & 0x7f) << (7 * i);
+                if ((current & 0x80) == 0) {
+                    if (value < 0) throw new IllegalArgumentException("Runtime entity ID exceeds signed long range");
+                    return value;
+                }
+            }
+            throw new IllegalArgumentException("InventoryTransaction VarUInt64 is too long");
         }
 
         int varInt32() {

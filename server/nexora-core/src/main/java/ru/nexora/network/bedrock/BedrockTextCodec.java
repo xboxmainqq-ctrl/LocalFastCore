@@ -34,8 +34,8 @@ public final class BedrockTextCodec {
     ) {
         requireText(sourceName, 256, "Chat source name");
         requireText(message, MAX_CHAT_BYTES, "Chat message");
-        requireText(xuid == null ? "" : xuid, 128, "Chat XUID");
-        requireText(platformChatId == null ? "" : platformChatId, 128, "Platform chat ID");
+        requireOptionalText(xuid, 128, "Chat XUID");
+        requireOptionalText(platformChatId, 128, "Platform chat ID");
         ByteArrayOutputStream out = new ByteArrayOutputStream(message.length() + sourceName.length() + 24);
         out.write(0); // Localize = false
         out.write(BODY_AUTHORED_MESSAGE);
@@ -79,6 +79,12 @@ public final class BedrockTextCodec {
     private static void requireText(String value, int maxBytes, String label) {
         if (value == null || value.isBlank()) throw new IllegalArgumentException(label + " must not be blank");
         if (value.getBytes(StandardCharsets.UTF_8).length > maxBytes) {
+            throw new IllegalArgumentException(label + " exceeds size limit");
+        }
+    }
+
+    private static void requireOptionalText(String value, int maxBytes, String label) {
+        if (value != null && value.getBytes(StandardCharsets.UTF_8).length > maxBytes) {
             throw new IllegalArgumentException(label + " exceeds size limit");
         }
     }

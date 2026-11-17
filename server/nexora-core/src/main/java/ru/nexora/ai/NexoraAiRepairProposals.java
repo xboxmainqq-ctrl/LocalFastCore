@@ -1,5 +1,6 @@
 package ru.nexora.ai;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
@@ -24,6 +25,15 @@ public final class NexoraAiRepairProposals {
 
     private final AtomicLong sequence = new AtomicLong();
     private final LinkedHashMap<String, Proposal> proposals = new LinkedHashMap<>();
+    private final Clock clock;
+
+    public NexoraAiRepairProposals() {
+        this(Clock.systemUTC());
+    }
+
+    NexoraAiRepairProposals(Clock clock) {
+        this.clock = Objects.requireNonNull(clock, "clock");
+    }
 
     public synchronized Proposal create(String requesterXuid, String issue, String plan) {
         String requester = requireText(requesterXuid, "requesterXuid", 256);
@@ -34,7 +44,7 @@ public final class NexoraAiRepairProposals {
         if (next < 1) throw new IllegalStateException("Repair proposal ID space exhausted");
         String id = String.format(Locale.ROOT, "R-%06d", next);
         Proposal proposal = new Proposal(id, requester, problem, proposalPlan,
-                Status.PENDING_REVIEW, Instant.now(), null, null);
+                Status.PENDING_REVIEW, Instant.now(clock), null, null);
         proposals.put(id, proposal);
         while (proposals.size() > MAX_PROPOSALS) {
             String oldest = proposals.keySet().iterator().next();
@@ -74,13 +84,13 @@ public final class NexoraAiRepairProposals {
         Proposal current = proposals.get(key);
         if (current == null || current.status() != expected) return Optional.empty();
         Proposal updated = new Proposal(current.id(), current.requesterXuid(), current.issue(),
-                current.plan(), target, current.createdAt(), reviewer, Instant.now());
+                current.plan(), target, current.createdAt(), reviewer, Instant.now(clock));
         proposals.put(key, updated);
         return Optional.of(updated);
     }
 
     private void purgeExpired() {
-        Instant cutoff = Instant.now().minus(TTL);
+        Instant cutoff = Instant.now(clock).minus(TTL);
         proposals.values().removeIf(proposal -> proposal.createdAt().isBefore(cutoff));
     }
 

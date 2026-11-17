@@ -157,4 +157,59 @@ class CraftingServiceTest {
         assertThrows(IllegalArgumentException.class,
                 () -> new CraftingRecipeRegistry(java.util.List.of(recipe, recipe)));
     }
+
+    @Test
+    void craftsShapedThreeByThreeRecipeFromOffsetGrid() {
+        PlayerInventory player = new PlayerInventory();
+        ContainerInventory ui = new ContainerInventory(51);
+        CraftingRecipe recipe = CraftingRecipe.shaped(
+                "minecraft:test_three_by_three",
+                java.util.List.of("PPP", " S ", " S "),
+                java.util.Map.of('P', "minecraft:oak_planks", 'S', "minecraft:stick"),
+                new ItemStack("minecraft:oak_boat", 1, 1));
+        ui.setSlot(10, new ItemStack("minecraft:oak_planks", 1, 64));
+        ui.setSlot(11, new ItemStack("minecraft:oak_planks", 1, 64));
+        ui.setSlot(12, new ItemStack("minecraft:oak_planks", 1, 64));
+        ui.setSlot(14, new ItemStack("minecraft:stick", 1, 64));
+        ui.setSlot(17, new ItemStack("minecraft:stick", 1, 64));
+
+        assertEquals(CraftingService.Result.CRAFTED,
+                service.craftFromGrid(player, ui, 10, 3, 3, recipe));
+        assertEquals(1, player.count("minecraft:oak_boat"));
+        for (int slot = 10; slot < 19; slot++) assertTrue(ui.getSlot(slot).isEmpty());
+    }
+
+    @Test
+    void rejectsIncorrectShapedThreeByThreePlacementWithoutConsumingItems() {
+        PlayerInventory player = new PlayerInventory();
+        ContainerInventory ui = new ContainerInventory(51);
+        CraftingRecipe recipe = CraftingRecipe.shaped(
+                "minecraft:test_three_by_three",
+                java.util.List.of("PPP", " S ", " S "),
+                java.util.Map.of('P', "minecraft:oak_planks", 'S', "minecraft:stick"),
+                new ItemStack("minecraft:oak_boat", 1, 1));
+        ui.setSlot(10, new ItemStack("minecraft:oak_planks", 1, 64));
+        ui.setSlot(11, new ItemStack("minecraft:oak_planks", 1, 64));
+        ui.setSlot(12, new ItemStack("minecraft:oak_planks", 1, 64));
+        ui.setSlot(14, new ItemStack("minecraft:stick", 1, 64));
+        ui.setSlot(16, new ItemStack("minecraft:stick", 1, 64));
+        var before = ui.snapshot();
+
+        assertEquals(CraftingService.Result.INSUFFICIENT_INGREDIENTS,
+                service.craftFromGrid(player, ui, 10, 3, 3, recipe));
+        assertEquals(before, ui.snapshot());
+        assertEquals(0, player.count("minecraft:oak_boat"));
+    }
+
+    @Test
+    void rejectsThreeByThreeGridOutsideContainerBounds() {
+        PlayerInventory player = new PlayerInventory();
+        ContainerInventory ui = new ContainerInventory(32);
+        var recipe = recipes.find("minecraft:crafting_table_from_oak_planks");
+
+        assertEquals(CraftingService.Result.INVALID_GRID,
+                service.craftFromGrid(player, ui, 28, 3, 3, recipe));
+        assertEquals(CraftingService.Result.INVALID_GRID,
+                service.craftFromGrid(player, ui, 0, 4, 3, recipe));
+    }
 }

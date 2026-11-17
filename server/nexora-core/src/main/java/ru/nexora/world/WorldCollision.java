@@ -49,9 +49,20 @@ public final class WorldCollision {
      * small contact tolerance. This is a geometry query, not a jump/gravity simulation.
      */
     public static boolean isOnGround(World world, double x, double feetY, double z) {
-        if (world == null || !finite(x, feetY, z)
+        return isOnGround(world, x, feetY, z, 0.05);
+    }
+
+    /**
+     * Ground-contact query with an explicit tolerance for callers whose movement is sampled.
+     * The default player probe remains tight; mob physics uses its bounded sweep spacing.
+     */
+    public static boolean isOnGround(
+            World world, double x, double feetY, double z, double contactTolerance
+    ) {
+        if (world == null || !finite(x, feetY, z, contactTolerance)
+                || contactTolerance <= 0.0 || contactTolerance > 1.0
                 || feetY <= WorldChunk.MIN_Y || feetY > WorldChunk.MAX_Y + 1.0) return false;
-        double probeY = feetY - 0.05;
+        double probeY = feetY - contactTolerance;
         int supportY = (int) Math.floor(probeY);
         if (supportY < WorldChunk.MIN_Y || supportY > WorldChunk.MAX_Y) return false;
 

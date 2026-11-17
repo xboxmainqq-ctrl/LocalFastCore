@@ -16,6 +16,8 @@ public final class MobPhysicsService {
     public static final double AIR_DRAG = 0.91;
     public static final double VERTICAL_DRAG = 0.98;
     private static final double STOP_EPSILON = 0.003;
+    // Vertical collision sweeps sample at 0.2-block intervals and can stop within that gap.
+    private static final double GROUND_CONTACT_TOLERANCE = 0.2;
 
     public Result tick(World world, WorldLivingEntity entity) {
         if (world == null || entity == null) throw new NullPointerException();
@@ -23,7 +25,7 @@ public final class MobPhysicsService {
 
         boolean flying = LivingEntityAiService.isFlyingMob(entity.identifier());
         boolean groundedBeforeMove = !flying && WorldCollision.isOnGround(
-                world, entity.x(), entity.y(), entity.z());
+                world, entity.x(), entity.y(), entity.z(), GROUND_CONTACT_TOLERANCE);
 
         double vx = entity.velocityX();
         double vy = entity.velocityY();
@@ -79,7 +81,7 @@ public final class MobPhysicsService {
         if (moved) {
             updated = world.livingEntities().move(entity.runtimeId(), x, y, z).orElse(updated);
         }
-        boolean groundedAfterMove = !flying && WorldCollision.isOnGround(world, x, y, z);
+        boolean groundedAfterMove = !flying && WorldCollision.isOnGround(world, x, y, z, GROUND_CONTACT_TOLERANCE);
         return new Result(updated, moved, groundedAfterMove);
     }
 

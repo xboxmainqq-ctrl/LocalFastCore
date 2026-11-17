@@ -66,4 +66,38 @@ class ModerationAiAssistantTest {
         assertThrows(IllegalArgumentException.class,
                 () -> new ModerationSignalAnalyzer(1, 1, 0, 0));
     }
+    @Test
+    void optionalModelExplainsOnlySignalMetadataAndNeverReceivesRawChat() {
+        java.util.concurrent.atomic.AtomicReference<AiModelProvider.Prompt> received =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        AiModelProvider provider = prompt -> {
+            received.set(prompt);
+            return new AiModelProvider.Completion("Review repetition evidence before acting.");
+        };
+        ModerationAiAssistant assistant = new ModerationAiAssistant(
+                new ModerationSignalAnalyzer(8, 2, 100, 16), provider);
+        UUID playerId = UUID.randomUUID();
+        assistant.reviewChat(playerId, "private raw message", 1);
+        ModerationSignalAnalyzer.Assessment assessment =
+                assistant.reviewChat(playerId, "private raw message", 2);
+
+        ModerationAiAssistant.Summary summary = assistant.explain(assessment);
+
+        assertEquals(ModerationAiAssistant.SummaryStatus.SUCCESS, summary.status());
+        assertEquals("Review repetition evidence before acting.", summary.text());
+        assertFalse(received.get().question().contains("private raw message"));
+        assertFalse(received.get().context().containsKey("playerId"));
+        assertTrue(received.get().context().containsKey("signals"));
+    }
+
+    @Test
+    void moderationAssistantWorksWithoutModelProvider() {
+        ModerationAiAssistant assistant = new ModerationAiAssistant(new ModerationSignalAnalyzer());
+        ModerationSignalAnalyzer.Assessment assessment =
+                assistant.reviewChat(UUID.randomUUID(), "hello", 1);
+        assertEquals(ModerationAiAssistant.SummaryStatus.UNAVAILABLE,
+                assistant.explain(assessment).status());
+    }
+
 }
+

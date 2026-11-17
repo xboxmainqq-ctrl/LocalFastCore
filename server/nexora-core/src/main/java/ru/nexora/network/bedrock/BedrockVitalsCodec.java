@@ -26,15 +26,25 @@ public final class BedrockVitalsCodec {
     }
 
     public static BedrockPacket createUpdateAttributes(long runtimeEntityId, PlayerVitals vitals, long inputTick) {
+        return createUpdateAttributes(runtimeEntityId, vitals, 0, 0.0f, inputTick);
+    }
+
+    public static BedrockPacket createUpdateAttributes(
+            long runtimeEntityId, PlayerVitals vitals, int experienceLevel,
+            float experienceProgress, long inputTick
+    ) {
         Objects.requireNonNull(vitals, "vitals");
-        if (runtimeEntityId <= 0 || inputTick < 0) {
+        if (runtimeEntityId <= 0 || inputTick < 0 || experienceLevel < 0 || experienceLevel > 24_791
+                || !Float.isFinite(experienceProgress) || experienceProgress < 0 || experienceProgress > 1) {
             throw new IllegalArgumentException("Invalid player attribute target or tick");
         }
         List<Attribute> attributes = List.of(
                 new Attribute(0, 20, vitals.health(), 0, 20, 20, "minecraft:health"),
                 new Attribute(0, 20, vitals.hunger(), 0, 20, 20, "minecraft:player.hunger"),
                 new Attribute(0, 20, vitals.saturation(), 0, 20, 5, "minecraft:player.saturation"),
-                new Attribute(0, 4, vitals.exhaustion(), 0, 4, 0, "minecraft:player.exhaustion")
+                new Attribute(0, 4, vitals.exhaustion(), 0, 4, 0, "minecraft:player.exhaustion"),
+                new Attribute(0, 24791, experienceLevel, 0, 24791, 0, "minecraft:player.level"),
+                new Attribute(0, 1, experienceProgress, 0, 1, 0, "minecraft:player.experience")
         );
         Writer out = new Writer();
         out.varUInt64(runtimeEntityId);

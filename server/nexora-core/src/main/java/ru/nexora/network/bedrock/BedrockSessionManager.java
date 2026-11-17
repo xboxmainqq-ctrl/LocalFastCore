@@ -2638,7 +2638,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     private static boolean isRangedMob(String identifier) {
         return switch (identifier) {
-            case "minecraft:skeleton", "minecraft:stray", "minecraft:wither_skeleton",
+            case "minecraft:skeleton", "minecraft:stray",
                     "minecraft:bogged", "minecraft:pillager" -> true;
             default -> false;
         };

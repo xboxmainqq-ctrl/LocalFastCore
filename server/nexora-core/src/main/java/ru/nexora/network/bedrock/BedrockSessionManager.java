@@ -2487,6 +2487,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             boolean velocityChanged = beforePhysics.velocityX() != mob.velocityX()
                     || beforePhysics.velocityY() != mob.velocityY()
                     || beforePhysics.velocityZ() != mob.velocityZ();
+            if (physics.moved()) mobStuckTracker.clear(mob.runtimeId());
             if (physics.moved() || velocityChanged) {
                 float physicsYaw = (float) Math.toDegrees(
                         Math.atan2(-mob.velocityX(), mob.velocityZ()));

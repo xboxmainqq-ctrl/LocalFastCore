@@ -212,7 +212,8 @@ public final class NexoraAiAssistant {
         for (NexoraAiConversationMemory.Message message : history.messages()) {
             messages.addObject().put("role", message.role()).put("content", message.content());
         }
-        String userMessage = "Игрок " + playerName + " спрашивает: " + prompt;
+        String safePlayerName = playerName.length() > 64 ? playerName.substring(0, 64) : playerName;
+        String userMessage = "Игрок " + safePlayerName + " спрашивает: " + prompt;
         messages.addObject().put("role", "user").put("content", userMessage);
 
         final String json;

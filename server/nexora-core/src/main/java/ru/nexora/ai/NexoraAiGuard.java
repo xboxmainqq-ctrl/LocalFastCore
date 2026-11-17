@@ -131,6 +131,42 @@ public final class NexoraAiGuard {
         publish(event);
     }
 
+    /** Records repeated attack attempts that exceed the server's configured weapon reach. */
+    public void recordOutOfReachAttack(
+            String playerKey, double observedDistance, double allowedReach, long nowNanos
+    ) {
+        Objects.requireNonNull(playerKey, "playerKey");
+        if (playerKey.isBlank() || !Double.isFinite(observedDistance)
+                || !Double.isFinite(allowedReach) || observedDistance < 0 || allowedReach < 0) {
+            throw new IllegalArgumentException("Invalid reach evidence");
+        }
+        GuardEvent event = null;
+        synchronized (this) {
+            PlayerSignals signals = playerSignals.get(playerKey);
+            if (signals == null) {
+                if (playerSignals.size() >= maxTrackedPeers) {
+                    playerSignals.remove(playerSignals.keySet().iterator().next());
+                }
+                signals = new PlayerSignals(nowNanos);
+                playerSignals.put(playerKey, signals);
+            } else if (nowNanos < signals.movementStartedAtNanos
+                    || nowNanos - signals.movementStartedAtNanos >= MOVEMENT_WINDOW_NANOS) {
+                signals.resetMovement(nowNanos);
+            }
+            if (observedDistance > allowedReach + MOVEMENT_ERROR_THRESHOLD
+                    && !signals.reachSignalled) {
+                signals.reachAttempts++;
+                if (signals.reachAttempts >= 5) {
+                    signals.reachSignalled = true;
+                    totalSignals++;
+                    event = new GuardEvent(signals.reachAttempts, 0,
+                            "repeated out-of-range attack attempts (possible reach)");
+                }
+            }
+        }
+        publish(event);
+    }
+
     private void publish(GuardEvent event) {
         if (event == null) return;
         try {
@@ -163,7 +199,7 @@ public final class NexoraAiGuard {
             if (peer.signalled) signalledPeers++;
         }
         for (PlayerSignals player : playerSignals.values()) {
-            if (player.horizontalSignalled || player.verticalSignalled) flaggedPlayers++;
+            if (player.horizontalSignalled || player.verticalSignalled || player.reachSignalled) flaggedPlayers++;
         }
         return new Snapshot(peers.size(), signalledPeers, playerSignals.size(),
                 flaggedPlayers, frames, bytes, totalSignals);
@@ -194,8 +230,10 @@ public final class NexoraAiGuard {
         private long movementStartedAtNanos;
         private int horizontalCorrections;
         private int verticalCorrections;
+        private int reachAttempts;
         private boolean horizontalSignalled;
         private boolean verticalSignalled;
+        private boolean reachSignalled;
 
         private PlayerSignals(long startedAtNanos) {
             movementStartedAtNanos = startedAtNanos;
@@ -205,8 +243,10 @@ public final class NexoraAiGuard {
             movementStartedAtNanos = nowNanos;
             horizontalCorrections = 0;
             verticalCorrections = 0;
+            reachAttempts = 0;
             horizontalSignalled = false;
             verticalSignalled = false;
+            reachSignalled = false;
         }
     }
 

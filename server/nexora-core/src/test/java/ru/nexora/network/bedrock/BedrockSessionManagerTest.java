@@ -130,6 +130,44 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void lethalThornsReflectionKillsMobAndAwardsDefenderLootAndExperience() throws Exception {
+        AtomicLong clock = new AtomicLong(100_000_000L);
+        ru.nexora.world.World combatWorld = new ru.nexora.world.World(
+                "thorns-kill-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                combatWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
+        manager.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
+        manager.onIdentity("thorns-killer", new NetherNetClientIdentity(
+                "thorns-kill-token", new byte[] {8}, "thorns-kill-xuid",
+                "ThornsKiller", "playfab-thorns-kill", "20CA2", null));
+        setSessionField(manager, "thorns-killer", "loginAuthenticated", true);
+        setSessionField(manager, "thorns-killer", "clientInitialized", true);
+        setSessionField(manager, "thorns-killer", "positionInitialized", true);
+        setSessionField(manager, "thorns-killer", "entityId", 108L);
+        setSessionField(manager, "thorns-killer", "positionX", 1.0f);
+        setSessionField(manager, "thorns-killer", "positionY", 65.0f);
+        setSessionField(manager, "thorns-killer", "positionZ", 0.0f);
+        manager.playerEquipment("thorns-killer").orElseThrow().setArmor(0,
+                new ItemStack("minecraft:iron_chestplate", 1, 1,
+                        java.util.Map.of("minecraft:thorns", 10)));
+
+        var zombie = manager.spawnLivingEntity("minecraft:zombie", 1.0f, 0.0, 65.0, 0.0);
+        invokeLivingActorTick(manager, 1L);
+
+        assertTrue(combatWorld.livingEntities().find(zombie.runtimeId()).isEmpty());
+        assertEquals(1, combatWorld.itemEntities().snapshot().size());
+        assertEquals("minecraft:rotten_flesh",
+                combatWorld.itemEntities().snapshot().getFirst().stack().itemId());
+        long experienceMilli = ((Number) getSessionField(
+                manager, "thorns-killer", "experiencePoints")).longValue() * 1000L
+                + ((Number) getSessionField(
+                        manager, "thorns-killer", "experienceRemainderMilli")).longValue();
+        assertEquals(5_000L, experienceMilli);
+        manager.close();
+    }
+
+    @Test
     void fireAspectKillRetainsPlayerCreditAndAwardsMobExperience() throws Exception {
         AtomicLong clock = new AtomicLong(100_000_000L);
         ru.nexora.world.World combatWorld = new ru.nexora.world.World(

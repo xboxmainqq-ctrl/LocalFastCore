@@ -1251,8 +1251,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         form.put("title", "NEXORA — Экипировка");
         StringBuilder description = new StringBuilder("Магическая экипировка персонажа.");
         if (status != null && !status.isBlank()) description.append("\n").append(status);
-        description.append("
-Выбери слот:");
+        description.append("\nВыбери слот:");
         form.put("content", description.toString());
         com.fasterxml.jackson.databind.node.ArrayNode buttons = form.putArray("buttons");
         for (EquipmentSlot slot : EquipmentSlot.values()) {

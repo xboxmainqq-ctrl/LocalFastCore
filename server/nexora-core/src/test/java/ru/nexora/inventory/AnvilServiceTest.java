@@ -95,6 +95,22 @@ class AnvilServiceTest {
                 service.combine(sword, helmetBook, 39).status());
     }
 
+    @Test
+    void supportsQuickChargeSoulSpeedAndSwiftSneakOnCorrectEquipment() {
+        var crossbow = item("minecraft:crossbow", Map.of(), 0);
+        var quickCharge = item("minecraft:enchanted_book", Map.of("minecraft:quick_charge", 3), 0);
+        var boots = item("minecraft:diamond_boots", Map.of(), 0);
+        var soulSpeed = item("minecraft:enchanted_book", Map.of("minecraft:soul_speed", 3), 0);
+        var leggings = item("minecraft:diamond_leggings", Map.of(), 0);
+        var swiftSneak = item("minecraft:enchanted_book", Map.of("minecraft:swift_sneak", 3), 0);
+
+        assertTrue(service.combine(crossbow, quickCharge, 39).successful());
+        assertTrue(service.combine(boots, soulSpeed, 39).successful());
+        assertTrue(service.combine(leggings, swiftSneak, 39).successful());
+        assertEquals(AnvilService.Status.INCOMPATIBLE_ENCHANTMENT,
+                service.combine(boots, swiftSneak, 39).status());
+    }
+
     private static AnvilService.EnchantedItem item(String id, Map<String, Integer> enchantments, int penalty) {
         return new AnvilService.EnchantedItem(id, 1, enchantments, penalty);
     }

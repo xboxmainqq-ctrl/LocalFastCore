@@ -149,6 +149,7 @@ public final class BedrockCraftingEventCodec {
             if (length > maximumLength || length > input.available()) {
                 throw new IllegalArgumentException("Invalid crafting item user-data length");
             }
+            if (length == 0) return new byte[0];
             byte[] result = new byte[length];
             int read = input.read(result, 0, length);
             if (read != length) throw new IllegalArgumentException("Truncated crafting item user data");

@@ -83,6 +83,24 @@ public final class WorldPathfinder {
         return true;
     }
 
+    /** Checks a bounded movement segment without loading any chunk along the way. */
+    public static boolean isMobMovementAreaLoaded(
+            World world, double fromX, double fromZ, double toX, double toZ
+    ) {
+        if (world == null || !Double.isFinite(fromX) || !Double.isFinite(fromZ)
+                || !Double.isFinite(toX) || !Double.isFinite(toZ)) return false;
+        double distance = Math.hypot(toX - fromX, toZ - fromZ);
+        if (!Double.isFinite(distance) || distance > 256.0) return false;
+        int samples = Math.max(1, (int) Math.ceil(distance / 4.0));
+        for (int i = 0; i <= samples; i++) {
+            double fraction = (double) i / samples;
+            if (!isMobFootprintLoaded(world,
+                    fromX + (toX - fromX) * fraction,
+                    fromZ + (toZ - fromZ) * fraction)) return false;
+        }
+        return true;
+    }
+
     /** Checks all chunks touched by the mob's horizontal 0.6-block footprint without loading any. */
     public static boolean isMobFootprintLoaded(World world, double x, double z) {
         if (world == null || !Double.isFinite(x) || !Double.isFinite(z)) return false;

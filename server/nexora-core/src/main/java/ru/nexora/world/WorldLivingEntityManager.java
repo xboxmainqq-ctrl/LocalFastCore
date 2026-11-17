@@ -67,6 +67,10 @@ public final class WorldLivingEntityManager {
     public synchronized Optional<WorldLivingEntity> setVelocity(
             long runtimeId, double velocityX, double velocityY, double velocityZ
     ) {
+        if (!Double.isFinite(velocityX) || !Double.isFinite(velocityY) || !Double.isFinite(velocityZ)
+                || Math.abs(velocityX) > 100 || Math.abs(velocityY) > 100 || Math.abs(velocityZ) > 100) {
+            throw new IllegalArgumentException("Living actor velocity is outside supported bounds");
+        }
         WorldLivingEntity entity = entities.get(runtimeId);
         if (entity == null) return Optional.empty();
         WorldLivingEntity updated = entity.withVelocity(velocityX, velocityY, velocityZ);

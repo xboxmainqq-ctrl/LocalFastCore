@@ -128,7 +128,7 @@ public final class EntityTickEngine {
         if (!isChunkLoaded(mob.x(), mob.z())) {
             return false;
         }
-        if (mobAi.hasBehavior(mob.id())) {
+        if (mobAi.controlsBehavior(mob.id())) {
             return mobAi.tick(mob, currentTick, entities, world).moved();
         }
         MobState state = mobStates.computeIfAbsent(mob.id(), ignored -> new MobState());

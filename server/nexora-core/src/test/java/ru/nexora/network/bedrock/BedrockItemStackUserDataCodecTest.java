@@ -35,6 +35,15 @@ class BedrockItemStackUserDataCodecTest {
     }
 
     @Test
+    void roundTripsAdditionalVanillaEnchantmentIds() {
+        ItemStack stack = new ItemStack("minecraft:diamond_helmet", 1, 1,
+                Map.of("minecraft:thorns", 3, "minecraft:respiration", 3, "minecraft:aqua_affinity", 1), 0);
+        var decoded = BedrockItemStackUserDataCodec.decode(
+                BedrockItemStackUserDataCodec.encode(stack, new byte[0]), new byte[0]);
+        assertEquals(stack.enchantments(), decoded.enchantments());
+    }
+
+    @Test
     void leavesPlainItemUserDataUnchanged() {
         byte[] registered = {1, 2, 3};
         byte[] encoded = BedrockItemStackUserDataCodec.encode(

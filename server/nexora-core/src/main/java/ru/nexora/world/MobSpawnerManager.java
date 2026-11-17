@@ -335,7 +335,7 @@ public final class MobSpawnerManager {
         return switch (identifier) {
             case "minecraft:allay", "minecraft:bat", "minecraft:bee", "minecraft:blaze",
                     "minecraft:ghast", "minecraft:phantom", "minecraft:vex",
-                    "minecraft:parrot", "minecraft:ender_dragon" -> false;
+                    "minecraft:parrot", "minecraft:ender_dragon", "minecraft:wither" -> false;
             default -> true;
         };
     }
@@ -343,7 +343,7 @@ public final class MobSpawnerManager {
     private static int spawnHeightBlocks(String identifier) {
         return switch (identifier) {
             case "minecraft:ender_dragon" -> 8;
-            case "minecraft:ghast" -> 4;
+            case "minecraft:ghast", "minecraft:wither" -> 4;
             case "minecraft:warden", "minecraft:iron_golem", "minecraft:ravager",
                     "minecraft:camel" -> 3;
             default -> 2;

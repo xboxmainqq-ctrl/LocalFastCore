@@ -11,7 +11,7 @@ NexoraAI is an in-core operations observer and optional in-game assistant for NE
 - process uptime;
 - bounded summaries of failures explicitly reported to the service.
 
-`NexoraAiMonitor` samples these metrics every 30 seconds and writes warnings to the server console. It does not change server state. The Bedrock mob-AI update is also timed; executions taking longer than 50 ms are counted and exposed in operator diagnostics. This is a subsystem execution warning, not a server-wide TPS measurement or a complete hang detector.
+`NexoraAiMonitor` samples these metrics every 30 seconds and writes warnings to the server console. It does not change server state. The Bedrock mob-AI update and furnace tick are timed; executions taking longer than 50 ms are counted. Periodic world/player autosaves taking longer than 1 second are also counted. These are subsystem execution warnings, not a server-wide TPS measurement or a complete hang detector.
 
 ## In-game assistant
 

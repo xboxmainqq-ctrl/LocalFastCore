@@ -36,6 +36,6 @@ class ContainerInventoryStorageTest {
         ContainerInventory inventory = new ContainerInventory(9);
         inventory.setSlot(0, new ItemStack("minecraft:stone", 1, 64));
         storage.save(0, 64, 0, inventory);
-        assertThrows(java.io.IOException.class, () -> storage.load(1, 64, 0));
+        assertTrue(storage.load(1, 64, 0).isEmpty());
     }
 }

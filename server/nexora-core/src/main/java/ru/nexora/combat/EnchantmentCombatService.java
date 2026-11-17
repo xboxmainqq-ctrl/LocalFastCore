@@ -82,7 +82,9 @@ public final class EnchantmentCombatService {
             Objects.requireNonNull(piece, "armor piece");
             armorPoints += armorPointsForPiece(piece.itemId());
         }
-        double armorReduction = Math.min(0.80, armorPoints * 0.04);
+        // Armor points do not mitigate fire or fall damage; their matching enchantments still do.
+        double armorReduction = damageType == DamageType.FIRE || damageType == DamageType.FALL
+                ? 0.0 : Math.min(0.80, armorPoints * 0.04);
         float afterArmor = (float) (incomingDamage * (1.0 - armorReduction));
         return applyEnchantmentProtection(afterArmor, armor, damageType);
     }

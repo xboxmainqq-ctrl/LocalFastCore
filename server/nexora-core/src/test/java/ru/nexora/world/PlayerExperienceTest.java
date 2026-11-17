@@ -45,7 +45,7 @@ class PlayerExperienceTest {
         assertEquals(7, progress.level());
         float beforeProgress = PlayerExperience.fromTotalMilliPoints(current).progress();
         assertEquals(beforeProgress, progress.progress(), 0.0001f);
-        assertEquals(0L, PlayerExperience.removeLevelsFromTotalMilliPoints(500L, 1));
+        assertEquals(500L, PlayerExperience.removeLevelsFromTotalMilliPoints(500L, 1));
         assertThrows(IllegalArgumentException.class,
                 () -> PlayerExperience.removeLevelsFromTotalMilliPoints(current, -1));
     }

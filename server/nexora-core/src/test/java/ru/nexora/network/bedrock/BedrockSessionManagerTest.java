@@ -1036,7 +1036,9 @@ class BedrockSessionManagerTest {
 
         var landed = mobWorld.livingEntities().find(zombie.runtimeId()).orElseThrow();
         assertTrue(landed.y() <= 65.1 && landed.y() >= 64.9);
-        assertTrue(landed.health() < 20.0f);
+        assertTrue(landed.health() < 20.0f,
+                "Fall tracking did not apply damage: " + manager.mobAiDiagnosticsSummary()
+                        + "; mobY=" + landed.y() + "; velocityY=" + landed.velocityY());
         manager.close();
     }
 

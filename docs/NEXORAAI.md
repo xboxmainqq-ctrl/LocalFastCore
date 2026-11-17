@@ -2,6 +2,8 @@
 
 NexoraAI is an in-core operations observer and optional in-game assistant for NEXORA.
 
+The ongoing LocalFastCore and NexoraAI development priorities are tracked in [`ROADMAP.md`](ROADMAP.md). The roadmap is the source of truth for planned core stability, performance, AI diagnostics, safe repair, mob AI, and moderation work; planned items are not claims of implementation.
+
 ## Runtime diagnostics
 
 `ru.nexora.ai.NexoraAiDiagnostics` provides a read-only JVM snapshot:

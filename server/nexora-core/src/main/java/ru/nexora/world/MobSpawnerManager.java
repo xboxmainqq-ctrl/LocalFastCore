@@ -198,7 +198,7 @@ public final class MobSpawnerManager {
                         || world.getBlock(state.x(), state.y(), state.z()) != BlockType.SPAWNER) break;
                 attempts++;
                 SpawnRequest request = candidate(state, currentTick, attempt);
-                if (!validSpawnPosition(world, request, players, livingByChunk, spawnedThisTick)) {
+                if (!validSpawnPosition(world, request)) {
                     invalid++;
                     continue;
                 }

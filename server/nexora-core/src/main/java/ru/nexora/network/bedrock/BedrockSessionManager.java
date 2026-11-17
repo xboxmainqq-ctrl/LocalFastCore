@@ -1682,7 +1682,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             return;
         }
         if (effect.fireDurationSeconds() > 0) {
-            livingEntityKillCredit.put(target.runtimeId(), new MobKillCredit(attackerNetworkId,\n                    weapon.enchantments().getOrDefault("minecraft:looting", 0)));
+            livingEntityKillCredit.put(target.runtimeId(), new MobKillCredit(attackerNetworkId,
+                    weapon.enchantments().getOrDefault("minecraft:looting", 0)));
         }
         WorldLivingEntity updated = damage.current();
         broadcastLivingActorPacket(BedrockVitalsCodec.createActorHealthUpdate(

@@ -23,6 +23,13 @@ public record PlayerData(
     ) {
         this(xuid, displayName, worldName, x, y, z, yaw, pitch, lastSeenEpochMillis, PlayerVitals.DEFAULT);
     }
+    public PlayerData(
+            String xuid, String displayName, String worldName,
+            float x, float y, float z, float yaw, float pitch, long lastSeenEpochMillis,
+            PlayerVitals vitals
+    ) {
+        this(xuid, displayName, worldName, x, y, z, yaw, pitch, lastSeenEpochMillis, vitals, 0);
+    }
     private static final Pattern SAFE_XUID = Pattern.compile("[A-Za-z0-9_-]{1,64}");
 
     public PlayerData {
@@ -41,6 +48,9 @@ public record PlayerData(
         }
         if (lastSeenEpochMillis < 0) throw new IllegalArgumentException("Invalid last-seen timestamp");
         Objects.requireNonNull(vitals, "vitals");
+        if (experiencePoints < 0 || experiencePoints > 2_000_000_000) {
+            throw new IllegalArgumentException("Invalid player experience points");
+        }
     }
 
     private static void validateText(String value, String field, int maxBytes) {

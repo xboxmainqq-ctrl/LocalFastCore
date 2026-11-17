@@ -79,6 +79,38 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void fireAspectTicksRespectFireProtectionAndExpire() throws Exception {
+        AtomicLong clock = new AtomicLong();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("combat-world", 0L,
+                        new ru.nexora.world.FlatWorldGenerator()),
+                (networkId, label, frame) -> {}, event -> {}, clock::get);
+        manager.onIdentity("fire-target", new NetherNetClientIdentity(
+                "fire-token", new byte[] {3}, "fire-xuid", "FireTarget", "playfab-fire", "20CA2", null));
+        setSessionField(manager, "fire-target", "loginAuthenticated", true);
+        setSessionField(manager, "fire-target", "clientInitialized", true);
+        setSessionField(manager, "fire-target", "fireUntilNanos", 5_000_000_000L);
+        setSessionField(manager, "fire-target", "nextFireDamageNanos", 1_000_000_000L);
+        manager.playerEquipment("fire-target").orElseThrow().setArmor(0,
+                new ItemStack("minecraft:iron_chestplate", 1, 1,
+                        java.util.Map.of("minecraft:fire_protection", 4)));
+
+        clock.set(1_000_000_000L);
+        invokeFireTick(manager, "fire-target", 1L);
+        assertEquals(19.32f, manager.playerVitals("fire-target").orElseThrow().health(), 0.0001f);
+
+        clock.set(2_000_000_000L);
+        invokeFireTick(manager, "fire-target", 2L);
+        assertEquals(18.64f, manager.playerVitals("fire-target").orElseThrow().health(), 0.0001f);
+
+        clock.set(5_000_000_000L);
+        invokeFireTick(manager, "fire-target", 3L);
+        assertEquals(18.64f, manager.playerVitals("fire-target").orElseThrow().health(), 0.0001f);
+        manager.close();
+    }
+
+    @Test
     void negotiatesNetworkSettingsThenDecodesCompressedGameBatch() {
         List<byte[]> outboundFrames = new ArrayList<>();
         AtomicReference<BedrockSessionManager.PacketEvent> received = new AtomicReference<>();
@@ -1418,6 +1450,22 @@ class BedrockSessionManagerTest {
         java.lang.reflect.Field field = state.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         field.set(state, value);
+    }
+
+    private static void invokeFireTick(
+            BedrockSessionManager manager, String networkId, long tick
+    ) throws Exception {
+        java.lang.reflect.Field sessionsField =
+                BedrockSessionManager.class.getDeclaredField("sessions");
+        sessionsField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> sessions =
+                (java.util.Map<String, Object>) sessionsField.get(manager);
+        Object state = sessions.get(networkId);
+        java.lang.reflect.Method method = BedrockSessionManager.class.getDeclaredMethod(
+                "tickPlayerFire", String.class, state.getClass(), long.class);
+        method.setAccessible(true);
+        method.invoke(manager, networkId, state, tick);
     }
 
     private static void invokeActorAttack(

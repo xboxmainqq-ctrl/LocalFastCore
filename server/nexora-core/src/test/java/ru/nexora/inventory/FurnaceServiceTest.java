@@ -14,7 +14,7 @@ class FurnaceServiceTest {
 
         FurnaceService.TickResult result = service.tick(4, 65, 8, furnace, 200);
 
-        assertEquals(100, result.cookPercent());
+        assertEquals(0, result.cookPercent()); // The 200-tick cooking cycle has completed.
         assertEquals(new ItemStack("minecraft:iron_ingot", 1, 64),
                 furnace.getSlot(FurnaceService.OUTPUT_SLOT).orElseThrow());
         assertTrue(furnace.getSlot(FurnaceService.INPUT_SLOT).isEmpty());

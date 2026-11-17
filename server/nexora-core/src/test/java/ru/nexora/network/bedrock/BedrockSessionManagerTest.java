@@ -38,6 +38,47 @@ class BedrockSessionManagerTest {
     @TempDir
     Path temporaryDirectory;
     @Test
+    void appliesServerValidatedPlayerAttackWithSharpnessAndHurtImmunity() throws Exception {
+        List<byte[]> outboundFrames = new ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, (networkId, label, frame) -> outboundFrames.add(frame), event -> {});
+        manager.onIdentity("combat-attacker", new NetherNetClientIdentity(
+                "attacker-token", new byte[] {1}, "attacker-xuid", "Attacker", "playfab-a", "20CA2", null));
+        manager.onIdentity("combat-target", new NetherNetClientIdentity(
+                "target-token", new byte[] {2}, "target-xuid", "Target", "playfab-b", "20CA2", null));
+
+        setSessionField(manager, "combat-attacker", "loginAuthenticated", true);
+        setSessionField(manager, "combat-attacker", "clientInitialized", true);
+        setSessionField(manager, "combat-attacker", "entityId", 100L);
+        setSessionField(manager, "combat-attacker", "positionX", 0.0f);
+        setSessionField(manager, "combat-attacker", "positionY", 65.0f);
+        setSessionField(manager, "combat-attacker", "positionZ", 0.0f);
+        setSessionField(manager, "combat-target", "loginAuthenticated", true);
+        setSessionField(manager, "combat-target", "clientInitialized", true);
+        setSessionField(manager, "combat-target", "entityId", 101L);
+        setSessionField(manager, "combat-target", "positionX", 2.0f);
+        setSessionField(manager, "combat-target", "positionY", 65.0f);
+        setSessionField(manager, "combat-target", "positionZ", 0.0f);
+
+        ItemStack sword = new ItemStack("minecraft:diamond_sword", 1, 1,
+                java.util.Map.of("minecraft:sharpness", 3));
+        manager.playerInventory("combat-attacker").orElseThrow().setSlot(0, sword);
+        var transaction = new BedrockInventoryTransactionCodec.DecodedUseOnActor(
+                101L, 1, 0, 0, java.util.Optional.of(sword),
+                0.0f, 65.0f, 0.0f, 0.0f, 1.0f, 0.0f);
+
+        invokeActorAttack(manager, "combat-attacker", transaction);
+        assertEquals(8.25f, manager.playerVitals("combat-target").orElseThrow().health(), 0.0001f);
+        assertEquals(20.0f, manager.playerVitals("combat-attacker").orElseThrow().health(), 0.0001f);
+        assertFalse(outboundFrames.isEmpty());
+
+        // Bedrock's short hurt-immunity window prevents packet spam from multiplying one hit.
+        invokeActorAttack(manager, "combat-attacker", transaction);
+        assertEquals(8.25f, manager.playerVitals("combat-target").orElseThrow().health(), 0.0001f);
+        manager.close();
+    }
+
+    @Test
     void negotiatesNetworkSettingsThenDecodesCompressedGameBatch() {
         List<byte[]> outboundFrames = new ArrayList<>();
         AtomicReference<BedrockSessionManager.PacketEvent> received = new AtomicReference<>();
@@ -1361,6 +1402,40 @@ class BedrockSessionManagerTest {
             value >>>= 7;
             out.write(value == 0 ? next : next | 0x80);
         } while (value != 0);
+    }
+
+    private static void setSessionField(
+            BedrockSessionManager manager, String networkId, String fieldName, Object value
+    ) throws Exception {
+        java.lang.reflect.Field sessionsField =
+                BedrockSessionManager.class.getDeclaredField("sessions");
+        sessionsField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> sessions =
+                (java.util.Map<String, Object>) sessionsField.get(manager);
+        Object state = sessions.get(networkId);
+        assertNotNull(state);
+        java.lang.reflect.Field field = state.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(state, value);
+    }
+
+    private static void invokeActorAttack(
+            BedrockSessionManager manager, String networkId,
+            BedrockInventoryTransactionCodec.DecodedUseOnActor transaction
+    ) throws Exception {
+        java.lang.reflect.Field sessionsField =
+                BedrockSessionManager.class.getDeclaredField("sessions");
+        sessionsField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> sessions =
+                (java.util.Map<String, Object>) sessionsField.get(manager);
+        Object attacker = sessions.get(networkId);
+        java.lang.reflect.Method method = BedrockSessionManager.class.getDeclaredMethod(
+                "handleUseOnActorTransaction", String.class,
+                attacker.getClass(), BedrockInventoryTransactionCodec.DecodedUseOnActor.class);
+        method.setAccessible(true);
+        method.invoke(manager, networkId, attacker, transaction);
     }
 
     private static void sendClientBatch(BedrockSessionManager manager, String id, byte[] batch) {

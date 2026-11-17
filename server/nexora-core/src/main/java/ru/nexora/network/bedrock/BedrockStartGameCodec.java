@@ -187,8 +187,8 @@ public final class BedrockStartGameCodec {
                 packet(0x3b, new byte[] {1}),
                 packet(0x2b, setSpawnPositionPayload(spawnBlockX, spawnBlockY, spawnBlockZ)),
                 packet(0x3e, varIntPayload(0)),
-                packet(0x79, chunkPublisherPayload(
-                        (int) Math.floor(spawnX), (int) Math.floor(spawnY), (int) Math.floor(spawnZ)))
+                createChunkPublisherUpdate(
+                        (int) Math.floor(spawnX), (int) Math.floor(spawnY), (int) Math.floor(spawnZ))
         );
     }
 

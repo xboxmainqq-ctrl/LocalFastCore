@@ -2281,8 +2281,18 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             if (!WorldCollision.canMove(world, mob.x(), mob.y(), mob.z(), nextX, nextY, nextZ)) {
                 double desiredX = mob.x() + decision.moveX() * 8.0;
                 double desiredZ = mob.z() + decision.moveZ() * 8.0;
-                WorldPathfinder.Step waypoint = WorldPathfinder.findNextStep(
-                        world, mob.x(), mob.y(), mob.z(), desiredX, desiredZ).orElse(null);
+                long pathStartedNanos = nanoTime.getAsLong();
+                WorldPathfinder.Step waypoint;
+                try {
+                    waypoint = WorldPathfinder.findNextStep(
+                            world, mob.x(), mob.y(), mob.z(), desiredX, desiredZ).orElse(null);
+                } finally {
+                    ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
+                    if (diagnostics != null) {
+                        diagnostics.recordSlowOperation("mob-pathfinding",
+                                Math.max(0L, nanoTime.getAsLong() - pathStartedNanos), 5_000_000L);
+                    }
+                }
                 if (waypoint == null) continue;
                 double dx = waypoint.x() - mob.x();
                 double dz = waypoint.z() - mob.z();

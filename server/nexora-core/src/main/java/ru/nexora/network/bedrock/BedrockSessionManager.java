@@ -2873,16 +2873,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             String networkId, SessionState state,
             BedrockInventoryTransactionCodec.DecodedItemRelease release
     ) {
-        if (release.actionType() == 0) {
-            clearSpearCharge(state);
-        } else if (release.actionType() == 1
+        if (release.actionType() == 0
                 && state.spearChargeStartedNanos != Long.MIN_VALUE) {
             ItemStack chargeItem = state.inventory.getSlot(state.spearChargeSlot).orElse(null);
             ItemStack releasedItem = release.heldItem().orElse(null);
             double headDx = release.headX() - state.positionX;
             double headDy = release.headY() - (state.positionY + 1.62);
             double headDz = release.headZ() - state.positionZ;
-            boolean validChargeRelease = state.spearChargeSlot == release.hotbarSlot()
+            boolean validChargeRelease = release.hand() == 0
+                    && state.spearChargeSlot == release.hotbarSlot()
                     && state.spearChargeSlot == state.inventory.selectedHotbarSlot()
                     && chargeItem != null && isSpear(chargeItem)
                     && chargeItem.itemId().equals(state.spearChargeItemId)

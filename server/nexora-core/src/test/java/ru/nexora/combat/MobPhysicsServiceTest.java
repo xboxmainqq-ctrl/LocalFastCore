@@ -59,4 +59,19 @@ class MobPhysicsServiceTest {
         assertEquals(70, result.entity().y(), 0.0001);
         assertEquals(0, result.entity().velocityY(), 0.0001);
     }
+    @Test
+    void knockbackDoesNotLoadAnUnloadedNeighborChunk() {
+        World world = new World("mob-physics-chunk-edge", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
+        var mob = world.livingEntities().spawn("minecraft:zombie", 20, 15.5, 65, 0.5);
+        mob = world.livingEntities().setVelocity(mob.runtimeId(), 1.0, 0, 0).orElseThrow();
+
+        var result = physics.tick(world, mob);
+
+        assertFalse(result.moved());
+        assertEquals(15.5, result.entity().x(), 0.0001);
+        assertEquals(0, result.entity().velocityX(), 0.0001);
+        assertFalse(world.isChunkLoadedAt(1, 0));
+    }
+
 }

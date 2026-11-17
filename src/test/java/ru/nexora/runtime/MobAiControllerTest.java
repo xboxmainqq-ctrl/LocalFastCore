@@ -175,6 +175,41 @@ class MobAiControllerTest {
     }
 
     @Test
+    void mobPathfindingUsesSharedPerTickBudgetAndDefersRemainingMobs() {
+        InMemoryWorld world = groundedWorld();
+        EntityRegistry entities = new EntityRegistry();
+        UUID playerId = UUID.randomUUID();
+        entities.spawn(WorldEntity.player(playerId, "Player", 5.5, 64, 0.5, 180, 0));
+        EntityTickEngine engine = new EntityTickEngine(entities, world);
+        UUID[] mobIds = new UUID[9];
+        for (int i = 0; i < mobIds.length; i++) {
+            UUID mobId = UUID.randomUUID();
+            mobIds[i] = mobId;
+            entities.spawn(new WorldEntity(mobId, WorldEntity.Type.MOB, "Zombie",
+                    0.5, 64, -3.5 + i, 0, -1));
+            engine.mobAi().setBehavior(mobId, MobAiController.Behavior.HOSTILE);
+        }
+
+        engine.tick();
+
+        long waitingAfterFirstTick = java.util.Arrays.stream(mobIds)
+                .map(id -> engine.mobAi().lastDecision(id).orElseThrow())
+                .filter(decision -> decision.state() == MobAiController.State.WAITING)
+                .count();
+        assertEquals(1, waitingAfterFirstTick,
+                "the shared path budget should defer a ninth new route in the same tick");
+
+        engine.tick();
+
+        long waitingAfterSecondTick = java.util.Arrays.stream(mobIds)
+                .map(id -> engine.mobAi().lastDecision(id).orElseThrow())
+                .filter(decision -> decision.state() == MobAiController.State.WAITING)
+                .count();
+        assertEquals(0, waitingAfterSecondTick,
+                "cached routes should let the deferred mob receive the next tick's budget");
+    }
+
+    @Test
     void hostileMobReportsStuckWhenEveryAdjacentGroundCellIsBlocked() {
         InMemoryWorld world = groundedWorld();
         world.setBlock(new BlockPosition(1, 64, 0), new BlockState("minecraft:stone"));

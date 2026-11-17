@@ -26,6 +26,7 @@ public final class MobAiController {
     private static final double DEFAULT_ATTACK_RANGE = 1.6;
     private static final double DEFAULT_MOVE_SPEED = 0.10;
     private static final int MAX_PATH_NODES = 512;
+    private static final int MAX_PATH_NODES_PER_TICK = 4_096;
     private static final long TARGET_MEMORY_TICKS = 100;
     private static final int[][] PATH_NEIGHBORS = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
 
@@ -37,6 +38,8 @@ public final class MobAiController {
     private final double detectionRange;
     private final double attackRange;
     private final double moveSpeed;
+    private long pathBudgetTick = Long.MIN_VALUE;
+    private int remainingPathNodes = MAX_PATH_NODES_PER_TICK;
 
     public MobAiController() {
         this(DEFAULT_DETECTION_RANGE, DEFAULT_ATTACK_RANGE, DEFAULT_MOVE_SPEED);
@@ -99,6 +102,11 @@ public final class MobAiController {
         Objects.requireNonNull(world, "world");
         if (mob.type() != WorldEntity.Type.MOB || tick < 1) {
             throw new IllegalArgumentException("Mob AI requires a mob entity and a positive server tick");
+        }
+
+        if (pathBudgetTick != tick) {
+            pathBudgetTick = tick;
+            remainingPathNodes = MAX_PATH_NODES_PER_TICK;
         }
 
         Behavior behavior = behaviors.getOrDefault(mob.id(), Behavior.PASSIVE);
@@ -169,6 +177,10 @@ public final class MobAiController {
         int targetZ = floor(target.z());
         NavigationState route = navigation.get(mob.id());
         if (route == null || route.targetX != targetX || route.targetZ != targetZ) {
+            if (remainingPathNodes < MAX_PATH_NODES) {
+                return remember(mob.id(), new Decision(State.WAITING, target.id(), false, false));
+            }
+            remainingPathNodes -= MAX_PATH_NODES;
             route = findPath(mob, target, world);
             if (route == null) {
                 navigation.remove(mob.id());
@@ -401,6 +413,7 @@ public final class MobAiController {
         CHASE,
         ATTACK,
         SEARCH,
+        WAITING,
         STUCK
     }
 

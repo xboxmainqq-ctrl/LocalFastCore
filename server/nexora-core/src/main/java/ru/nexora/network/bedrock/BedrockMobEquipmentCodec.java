@@ -79,13 +79,14 @@ public final class BedrockMobEquipmentCodec {
         BedrockItemRegistry.Entry entry = registry.findByRuntimeItemId(runtimeItemId);
         if (entry == null) throw new IllegalArgumentException("Unknown equipment runtime item ID");
         BedrockInventoryContentCodec.ItemDefinition definition = entry.networkDefinition();
-        if (auxValue != definition.auxValue()
-                || blockRuntimeId != definition.blockRuntimeId()
-                || !Arrays.equals(userData, BedrockItemStackUserDataCodec.encode(stack, definition.userData()))) {
+        if (auxValue != definition.auxValue() || blockRuntimeId != definition.blockRuntimeId()) {
             throw new IllegalArgumentException("Equipment item descriptor does not match registry");
         }
+        BedrockItemStackUserDataCodec.DecodedMetadata metadata =
+                BedrockItemStackUserDataCodec.decode(userData, definition.userData());
         if (count > entry.maxStackSize()) throw new IllegalArgumentException("Equipment stack exceeds maximum size");
-        return Optional.of(new ItemStack(entry.namespacedId(), count, entry.maxStackSize()));
+        return Optional.of(new ItemStack(entry.namespacedId(), count, entry.maxStackSize(),
+                metadata.enchantments(), metadata.repairCost()));
     }
 
     private static void writeItem(Writer out, Optional<ItemStack> optional, BedrockItemRegistry registry) {

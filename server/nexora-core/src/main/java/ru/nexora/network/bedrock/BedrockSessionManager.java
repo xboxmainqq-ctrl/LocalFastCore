@@ -1692,6 +1692,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case GOLD_BLOCK -> "minecraft:gold_block";
             case DIAMOND_BLOCK -> "minecraft:diamond_block";
             case EMERALD_BLOCK -> "minecraft:emerald_block";
+            case CHEST -> "minecraft:chest";
         };
     }
 
@@ -1729,6 +1730,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     DIAMOND_BLOCK, EMERALD_BLOCK -> 7_500_000_000L;
             case END_STONE -> 9_000_000_000L;
             case OBSIDIAN -> 250_000_000_000L;
+            case CHEST -> 2_500_000_000L;
         };
     }
 

@@ -85,8 +85,6 @@ public final class LivingEntityAiService {
         long interval = nowMillis / WANDER_INTERVAL_MILLIS;
         long seed = mob.runtimeId() * 31L + interval * 0x9E3779B97F4A7C15L;
         double angle = stableAngle(seed);
-        // A short pause between wander steps keeps passive mobs from looking mechanical.
-        if (Math.floorMod(seed, 5) == 0) return Decision.idle(mob.runtimeId());
         return new Decision(mob.runtimeId(), null,
                 Math.cos(angle) * WALK_SPEED_PER_TICK * 0.55, 0,
                 Math.sin(angle) * WALK_SPEED_PER_TICK * 0.55, 0, false);
@@ -124,7 +122,7 @@ public final class LivingEntityAiService {
                     "minecraft:evoker", "minecraft:pillager", "minecraft:ravager",
                     "minecraft:hoglin", "minecraft:piglin", "minecraft:piglin_brute",
                     "minecraft:warden", "minecraft:breeze",
-                    "minecraft:bogged", "minecraft:breeze" -> true;
+                    "minecraft:bogged" -> true;
             default -> false;
         };
     }

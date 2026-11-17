@@ -32,8 +32,8 @@ public final class NexoraAiDiagnostics {
         String message = failure.getMessage();
         String description = failure.getClass().getSimpleName()
                 + (message == null || message.isBlank() ? "" : ": " + message);
-        lastFailure = bound(description, MAX_FAILURE_DESCRIPTION_LENGTH);
-        recordEvent("FAILURE", lastFailure);
+        lastFailure = bound(sanitize(description), MAX_FAILURE_DESCRIPTION_LENGTH);
+        appendEvent("FAILURE", lastFailure);
     }
 
     /** Records an operation that exceeded its expected execution budget. */
@@ -45,7 +45,7 @@ public final class NexoraAiDiagnostics {
         if (elapsedNanos <= thresholdNanos) return;
         slowOperationCount.incrementAndGet();
         lastSlowOperation = subsystem + " took " + (elapsedNanos / 1_000_000L) + " ms";
-        recordEvent("SLOW", lastSlowOperation);
+        appendEvent("SLOW", lastSlowOperation);
     }
 
     /**
@@ -69,7 +69,18 @@ public final class NexoraAiDiagnostics {
     }
 
     private void recordEvent(String type, String description) {
-        String safeDescription = bound(description.replaceAll("[\\p{Cntrl}&&[^\\n\\t]]", " "), 240);
+        String safeDescription = bound(sanitize(description), 240);
+    }
+
+    private static String sanitize(String value) {
+        return value
+                .replaceAll("(?i)(bearer\\s+)[A-Za-z0-9._~+/-]+=*", "$1[REDACTED]")
+                .replaceAll("(?i)((?:api[_-]?key|access[_-]?token|refresh[_-]?token)\\s*[=:]\\s*)[^\\s,;]+", "$1[REDACTED]")
+                .replaceAll("[\\p{Cntrl}&&[^\\n\\t]]", " ");
+    }
+
+    private void appendEvent(String type, String description) {
+        String safeDescription = bound(description, 240);
         events.addFirst(new DiagnosticEvent(Instant.now().toString(), type, safeDescription));
         while (events.size() > MAX_EVENTS) events.pollLast();
     }

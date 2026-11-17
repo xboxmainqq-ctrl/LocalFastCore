@@ -20,7 +20,7 @@ public final class FurnaceStateStorage {
 
     public FurnaceStateStorage(Path rootDirectory, String worldName) throws IOException {
         if (rootDirectory == null) throw new NullPointerException("rootDirectory");
-        if (worldName == null || !worldName.matches("[A-Za-z0-9_-]{1,64}")) {
+        if (worldName == null || !worldName.matches("[A-Za-z0-9 _-]{1,64}")) {
             throw new IllegalArgumentException("Unsafe world name");
         }
         Path root = rootDirectory.toAbsolutePath().normalize();

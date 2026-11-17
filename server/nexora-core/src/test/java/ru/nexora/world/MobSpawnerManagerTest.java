@@ -114,6 +114,26 @@ class MobSpawnerManagerTest {
     }
 
     @Test
+    void stopsFurtherAttemptsWhenSpawnerIsRemovedDuringSpawnCallback() {
+        World world = createWorld();
+        MobSpawnerManager manager = world.mobSpawners();
+        AtomicInteger spawned = new AtomicInteger();
+        long due = manager.snapshot().get(0).nextSpawnTick();
+
+        var result = manager.tick(world, due,
+                List.of(new MobSpawnerManager.PlayerPosition(0.5, 65, 0.5)),
+                request -> {
+                    spawned.incrementAndGet();
+                    world.setBlock(0, 65, 0, BlockType.AIR);
+                    return true;
+                });
+
+        assertEquals(1, spawned.get());
+        assertEquals(1, result.spawned());
+        assertTrue(manager.snapshot().isEmpty());
+    }
+
+    @Test
     void configurationAndRemovalAreValidated() {
         MobSpawnerManager manager = new MobSpawnerManager();
         assertTrue(manager.register(1, 65, 1, 10));

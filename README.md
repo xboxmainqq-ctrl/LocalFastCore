@@ -2,7 +2,7 @@
 
 > **Current product direction (2026-11-17):** NEXORA is a standalone, general-purpose block-world engine and dedicated server. There is no Android client product and no separate RPG server/product in the active roadmap. The three confirmed AI systems are native Mob AI, an optional Core AI Assistant for operators, and an optional Moderation AI Assistant. AI mods are out of scope. Older Android/RPG material later in this README is historical repository context, not current scope.
 
-The current build priority is server lifecycle, world/chunk persistence, entity simulation, physics, networking, security, server operations and a versioned extension API. Mob AI builds on the entity simulation; the two operator assistants follow after a stable permissioned diagnostics/tool API. The Core must run normally with all AI features disabled or without a configured model provider.
+The current build priority is server lifecycle, world/chunk persistence, entity simulation, physics, networking, security, server operations and a versioned extension API. The repository now contains an initial Mob AI controller, a permissioned/audited Core AI tool boundary with an optional model-provider SPI, and privacy-conscious moderation signals with optional metadata-only summaries. These are foundations, not finished AI products. The Core must run normally with all AI features disabled or without a configured model provider.
 
 See [current project context](docs/PROJECT_CONTEXT.md), [Core development log](docs/CORE_DEVELOPMENT_LOG.md) and [AI systems roadmap](docs/NEXORA_AI_SYSTEMS_ROADMAP.md).
 

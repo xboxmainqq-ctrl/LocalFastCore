@@ -470,6 +470,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 .append("\nMob fall tracker: ").append(mobFallTracker.stats().summary())
                 .append("\nMob jump controller: ").append(mobJumpController.stats().summary())
                 .append("\nMob climb controller: ").append(mobClimbController.stats().summary())
+                .append("\nMob spawners: ").append(world.mobSpawners().stats().summary())
                 .append("\nMob despawn tracker: tracked=").append(mobDespawnTracker.stats().tracked())
                 .append(", evictions=").append(mobDespawnTracker.stats().evictions());
         ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;

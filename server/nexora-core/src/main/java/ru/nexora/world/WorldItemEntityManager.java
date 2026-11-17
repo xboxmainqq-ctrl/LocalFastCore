@@ -282,8 +282,7 @@ public final class WorldItemEntityManager {
     }
 
     private static boolean canMerge(WorldItemEntity first, WorldItemEntity second) {
-        return first.stack().itemId().equals(second.stack().itemId())
-                && first.stack().maxStackSize() == second.stack().maxStackSize()
+        return first.stack().canStackWith(second.stack())
                 && Objects.equals(first.ownerXuid(), second.ownerXuid());
     }
 

@@ -1198,8 +1198,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             throw new SecurityException("Malformed Bedrock InventoryTransaction", exception);
         }
 
-        if (decoded.actions().stream().anyMatch(
-                action -> action.containerId() == BedrockInventoryContentCodec.PLAYER_UI_CONTAINER_ID)) {
+        if (decoded.actions().stream().anyMatch(action ->
+                action.containerId() == BedrockInventoryContentCodec.PLAYER_UI_CONTAINER_ID
+                        && action.slot() >= 28 && action.slot() <= 31)) {
             handleCraftingUiTransaction(networkId, state, decoded.actions());
             return;
         }

@@ -63,6 +63,29 @@ public final class BedrockVitalsCodec {
         return new BedrockPacket(UPDATE_ATTRIBUTES_PACKET_ID, 0, 0, out.toByteArray());
     }
 
+    /** Sends the health attribute for a non-player living actor. */
+    public static BedrockPacket createActorHealthUpdate(
+            long runtimeEntityId, float health, float maxHealth, long inputTick
+    ) {
+        if (runtimeEntityId <= 0 || inputTick < 0 || !Float.isFinite(health)
+                || !Float.isFinite(maxHealth) || maxHealth <= 0 || health < 0 || health > maxHealth) {
+            throw new IllegalArgumentException("Invalid living actor health update");
+        }
+        Writer out = new Writer();
+        out.varUInt64(runtimeEntityId);
+        out.varUInt32(1);
+        out.float32(0.0f);
+        out.float32(maxHealth);
+        out.float32(health);
+        out.float32(0.0f);
+        out.float32(maxHealth);
+        out.float32(maxHealth);
+        out.string("minecraft:health");
+        out.varUInt32(0);
+        out.varUInt64(inputTick);
+        return new BedrockPacket(UPDATE_ATTRIBUTES_PACKET_ID, 0, 0, out.toByteArray());
+    }
+
     private record Attribute(
             float min, float max, float current,
             float defaultMin, float defaultMax, float defaultValue, String name

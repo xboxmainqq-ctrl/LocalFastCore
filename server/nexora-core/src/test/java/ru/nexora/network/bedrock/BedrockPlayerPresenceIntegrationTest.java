@@ -80,6 +80,7 @@ class BedrockPlayerPresenceIntegrationTest {
             prepareSession(leaving, entry("00000000-0000-0000-0000-000000000202", 202, "LeavingPlayer"));
             set(remaining, "playerListAdvertised", true);
             set(leaving, "playerListAdvertised", true);
+            visibleActors(remaining).add(202L);
 
             manager.onDisconnected("leaving");
 
@@ -145,6 +146,18 @@ class BedrockPlayerPresenceIntegrationTest {
         set(session, "buildPlatform", 8);
         set(session, "playerDeviceId", "");
         set(session, "platformChatId", "");
+        // Both fixtures spawn at block 0,0; publish the center chunk for visibility tests.
+        sentChunks(session).add(0L);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static java.util.Set<Long> sentChunks(Object session) throws Exception {
+        return (java.util.Set<Long>) field(session, "sentChunkKeys");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static java.util.Set<Long> visibleActors(Object session) throws Exception {
+        return (java.util.Set<Long>) field(session, "visiblePlayerEntityIds");
     }
 
     @SuppressWarnings("unchecked")

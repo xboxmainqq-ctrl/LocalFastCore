@@ -311,6 +311,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     public void onDisconnected(String networkId) {
         SessionState state = sessions.get(networkId);
         if (state != null) {
+            if (state.identity != null) aiGuard.onPlayerDisconnected(state.identity.xuid());
             state.combatLock.lock();
             try {
                 synchronized (state) {

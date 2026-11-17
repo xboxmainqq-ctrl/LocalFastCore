@@ -1,6 +1,8 @@
 package ru.nexora.ai;
 
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Optional;
 import java.util.Objects;
 import java.util.function.Consumer;
 
@@ -35,6 +37,7 @@ public final class NexoraAiGuard {
     private static final int KILLAURA_HIT_THRESHOLD = 65;
     private static final int KILLAURA_TARGET_SWITCH_THRESHOLD = 4;
     private long totalSignals;
+    private long nextCombatCaseId = 1;
 
     public NexoraAiGuard() {
         this(DEFAULT_WINDOW_NANOS, DEFAULT_MAX_FRAMES_PER_WINDOW,
@@ -209,8 +212,9 @@ public final class NexoraAiGuard {
                 window.signalled = true;
                 totalSignals++;
                 String safeName = sanitizePlayerName(displayName);
-                combatCases.put(playerKey, new CombatCase(safeName, window.hits,
-                        window.targetSwitches, nowNanos));
+                combatCases.put(playerKey, new CombatCase(
+                        String.format(java.util.Locale.ROOT, "K-%06d", nextCombatCaseId++),
+                        safeName, window.hits, window.targetSwitches, nowNanos));
                 while (combatCases.size() > 64) {
                     combatCases.remove(combatCases.keySet().iterator().next());
                 }
@@ -234,11 +238,58 @@ public final class NexoraAiGuard {
                 .sorted((left, right) -> Long.compare(right.lastSeenNanos, left.lastSeenNanos))
                 .limit(8)
                 .forEach(value -> result.append("\n")
-                        .append(value.displayName)
+                        .append(value.id).append(" — ").append(value.displayName)
                         .append(" — ").append(value.hits).append(" hits / 5s, ")
-                        .append(value.targetSwitches).append(" target switches"));
+                        .append(value.targetSwitches).append(" target switches [")
+                        .append(value.status).append("]"));
         return result.append("\nNo automatic punishment is applied.").toString();
     }
+
+    /** Returns bounded KillAura cases for the authenticated moderator panel. */
+    public synchronized List<CombatCaseView> combatCases(long nowNanos) {
+        expireCombatCases(nowNanos);
+        return combatCases.values().stream()
+                .sorted((left, right) -> Long.compare(right.lastSeenNanos, left.lastSeenNanos))
+                .limit(64)
+                .map(CombatCase::view)
+                .toList();
+    }
+
+    public synchronized Optional<CombatCaseView> findCombatCase(String caseId, long nowNanos) {
+        if (caseId == null || caseId.isBlank()) return Optional.empty();
+        expireCombatCases(nowNanos);
+        return combatCases.values().stream()
+                .filter(value -> value.id.equalsIgnoreCase(caseId.trim()))
+                .findFirst()
+                .map(CombatCase::view);
+    }
+
+    /** Records a moderator decision only. It never bans, kicks, mutes, or changes player state. */
+    public synchronized Optional<CombatCaseView> reviewCombatCase(
+            String caseId, String reviewerXuid, boolean confirmed, long nowNanos
+    ) {
+        if (reviewerXuid == null || reviewerXuid.isBlank()) {
+            throw new IllegalArgumentException("Reviewer identity is required");
+        }
+        if (caseId == null || caseId.isBlank()) return Optional.empty();
+        expireCombatCases(nowNanos);
+        CombatCase selected = combatCases.values().stream()
+                .filter(value -> value.id.equalsIgnoreCase(caseId.trim()))
+                .findFirst().orElse(null);
+        if (selected == null || !"OPEN".equals(selected.status)) return Optional.empty();
+        selected.status = confirmed ? "CONFIRMED" : "DISMISSED";
+        selected.reviewedByXuid = reviewerXuid;
+        selected.reviewedAtNanos = nowNanos;
+        return Optional.of(selected.view());
+    }
+
+    private void expireCombatCases(long nowNanos) {
+        combatCases.entrySet().removeIf(entry -> nowNanos < entry.getValue().lastSeenNanos
+                || nowNanos - entry.getValue().lastSeenNanos >= CASE_TTL_NANOS);
+    }
+
+    public record CombatCaseView(String id, String displayName, int hits,
+                                 int targetSwitches, String status, boolean reviewed) { }
 
     private static String sanitizePlayerName(String displayName) {
         if (displayName == null || displayName.isBlank()) return "unknown player";
@@ -314,7 +365,30 @@ public final class NexoraAiGuard {
         }
     }
 
-    private record CombatCase(String displayName, int hits, int targetSwitches, long lastSeenNanos) { }
+    private static final class CombatCase {
+        private final String id;
+        private final String displayName;
+        private final int hits;
+        private final int targetSwitches;
+        private final long lastSeenNanos;
+        private String status = "OPEN";
+        private String reviewedByXuid;
+        private long reviewedAtNanos;
+
+        private CombatCase(String id, String displayName, int hits,
+                           int targetSwitches, long lastSeenNanos) {
+            this.id = id;
+            this.displayName = displayName;
+            this.hits = hits;
+            this.targetSwitches = targetSwitches;
+            this.lastSeenNanos = lastSeenNanos;
+        }
+
+        private CombatCaseView view() {
+            return new CombatCaseView(id, displayName, hits, targetSwitches,
+                    status, reviewedByXuid != null && reviewedAtNanos > 0);
+        }
+    }
 
     private static final class CombatWindow {
         private long startedAtNanos;

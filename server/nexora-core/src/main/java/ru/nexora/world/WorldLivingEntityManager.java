@@ -14,6 +14,13 @@ public final class WorldLivingEntityManager {
     private final ConcurrentMap<Long, WorldLivingEntity> entities = new ConcurrentHashMap<>();
 
     public WorldLivingEntity spawn(
+            String identifier, float maxHealth, double x, double y, double z
+    ) {
+        return spawn(identifier, WorldLivingEntity.familyForIdentifier(identifier),
+                maxHealth, x, y, z);
+    }
+
+    public WorldLivingEntity spawn(
             String identifier, WorldLivingEntity.Family family,
             float maxHealth, double x, double y, double z
     ) {

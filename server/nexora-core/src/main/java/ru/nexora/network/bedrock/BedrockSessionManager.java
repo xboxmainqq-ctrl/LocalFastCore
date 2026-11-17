@@ -2773,7 +2773,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             if (damage > 0.0f) {
                                 applyDamage(playerEntry.getKey(), player, damage, tick, "death.attack.arrow");
                             }
-                            if (poisonMobArrows.contains(entry.getKey())) applyPoison(player);
+                            if (poisonMobArrows.contains(entry.getKey())
+                                    && !player.dead && !player.vitals.dead()) applyPoison(player);
                         }
                     } finally {
                         player.combatLock.unlock();

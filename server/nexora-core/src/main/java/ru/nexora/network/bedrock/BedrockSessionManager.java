@@ -1296,8 +1296,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 sendAiMessage(message.networkId(), "§c[NEXORA AI] Нет доступа к панели Guard.");
             } else {
                 sendAiMessage(message.networkId(), "§b[NEXORA AI GUARD] §f" + guardSummary()
-                        + "\\n" + guardReviewSummary()
-                        + "\\nИстория доступна только для проверки модератором.");
+                        + "\n" + guardReviewSummary()
+                        + "\nИстория доступна только для проверки модератором.");
             }
             return;
         }

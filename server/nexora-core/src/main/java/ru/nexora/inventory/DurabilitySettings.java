@@ -4,9 +4,9 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Central durability policy. Durability is deliberately disabled by default;
- * the environment switch is reserved for enabling wear once item durability
- * is implemented by the inventory/combat pipeline.
+ * Central durability policy. Durability is deliberately disabled by default.
+ * When enabled, successful melee attacks wear the held weapon and melee hits
+ * wear equipped armor; Unbreaking is respected and damage is persisted.
  */
 public record DurabilitySettings(boolean enabled) {
     public static final String ENVIRONMENT_VARIABLE = "NEXORA_DURABILITY_ENABLED";

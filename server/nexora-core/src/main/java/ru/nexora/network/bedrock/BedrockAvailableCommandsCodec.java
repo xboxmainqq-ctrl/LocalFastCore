@@ -5,7 +5,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 
-/** Minimal protocol-2225 AvailableCommands packet advertising NEXORA's equipment command. */
+/** Minimal protocol-2225 AvailableCommands packet advertising NEXORA commands. */
 public final class BedrockAvailableCommandsCodec {
     public static final int AVAILABLE_COMMANDS_PACKET_ID = 0x4c;
 
@@ -20,20 +20,25 @@ public final class BedrockAvailableCommandsCodec {
         writeArrayCount(out, 0); // Enum Data
         writeArrayCount(out, 0); // Chained Subcommand Data
 
-        writeArrayCount(out, 1); // Commands
-        writeString(out, "equipment");
-        writeString(out, "Open the NEXORA magical equipment menu");
+        writeArrayCount(out, 2); // Commands
+        writeCommand(out, "equipment", "Open the NEXORA magical equipment menu");
+        writeCommand(out, "ai", "Open the NEXORA AI assistant");
+
+        writeArrayCount(out, 0); // Soft Enums
+        writeArrayCount(out, 0); // Constraints
+        return new BedrockPacket(AVAILABLE_COMMANDS_PACKET_ID, 0, 0, out.toByteArray());
+    }
+
+    private static void writeCommand(ByteArrayOutputStream out, String name, String description) {
+        writeString(out, name);
+        writeString(out, description);
         writeUInt16(out, 0); // Flags
         writeString(out, "Any"); // Permission Level
         writeInt32(out, -1); // No alias enum
         writeArrayCount(out, 0); // Chained subcommand indexes
         writeArrayCount(out, 1); // Overloads
         out.write(0); // IsChaining
-        writeArrayCount(out, 0); // Parameter Data (no arguments)
-
-        writeArrayCount(out, 0); // Soft Enums
-        writeArrayCount(out, 0); // Constraints
-        return new BedrockPacket(AVAILABLE_COMMANDS_PACKET_ID, 0, 0, out.toByteArray());
+        writeArrayCount(out, 0); // Parameter Data
     }
 
     private static void writeArrayCount(ByteArrayOutputStream out, int count) {

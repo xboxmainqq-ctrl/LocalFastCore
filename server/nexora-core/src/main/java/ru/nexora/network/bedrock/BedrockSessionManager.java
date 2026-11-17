@@ -3013,6 +3013,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         nextMobAttackMillis.remove(runtimeId);
         mobPathCache.remove(runtimeId);
         mobStuckTracker.clear(runtimeId);
+        mobFallTracker.clear(runtimeId);
         mobDespawnTracker.clear(runtimeId);
         creeperFuseStartedMillis.remove(runtimeId);
         endermanTeleportCooldownMillis.remove(runtimeId);

@@ -320,11 +320,11 @@ public final class MobSpawnerManager {
         int x = (int) Math.floor(request.x());
         int y = (int) Math.floor(request.y());
         int z = (int) Math.floor(request.z());
-        if (y <= WorldChunk.MIN_Y || y >= WorldChunk.MAX_Y - 1
+        int requiredAirBlocks = spawnHeightBlocks(request.identifier());
+        if (y <= WorldChunk.MIN_Y || y > WorldChunk.MAX_Y - requiredAirBlocks
                 || !WorldPathfinder.isMobFootprintLoaded(world, request.x(), request.z())) return false;
         if (requiresSolidFloor(request.identifier())
                 && world.getBlock(x, y - 1, z) == BlockType.AIR) return false;
-        int requiredAirBlocks = spawnHeightBlocks(request.identifier());
         for (int offset = 0; offset < requiredAirBlocks; offset++) {
             if (world.getBlock(x, y + offset, z) != BlockType.AIR) return false;
         }

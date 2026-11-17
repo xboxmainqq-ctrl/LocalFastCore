@@ -22,15 +22,15 @@ public final class MobPhysicsService {
         if (entity.health() <= 0) return new Result(entity, false, false);
 
         boolean flying = LivingEntityAiService.isFlyingMob(entity.identifier());
-        boolean grounded = !flying && WorldCollision.isOnGround(
+        boolean groundedBeforeMove = !flying && WorldCollision.isOnGround(
                 world, entity.x(), entity.y(), entity.z());
 
         double vx = entity.velocityX();
         double vy = entity.velocityY();
         double vz = entity.velocityZ();
         if (!flying) {
-            if (grounded && vy < 0) vy = 0;
-            else if (!grounded) vy = Math.max(TERMINAL_FALL_SPEED, vy - GRAVITY_PER_TICK);
+            if (groundedBeforeMove && vy < 0) vy = 0;
+            else if (!groundedBeforeMove) vy = Math.max(TERMINAL_FALL_SPEED, vy - GRAVITY_PER_TICK);
         }
 
         double x = entity.x();
@@ -54,7 +54,7 @@ public final class MobPhysicsService {
             else vy = 0;
         } else vy = 0;
 
-        double drag = grounded ? GROUND_DRAG : AIR_DRAG;
+        double drag = groundedBeforeMove ? GROUND_DRAG : AIR_DRAG;
         vx = damp(vx * drag);
         vz = damp(vz * drag);
         vy = flying ? damp(vy * AIR_DRAG) : damp(vy * VERTICAL_DRAG);
@@ -70,7 +70,8 @@ public final class MobPhysicsService {
         if (moved) {
             updated = world.livingEntities().move(entity.runtimeId(), x, y, z).orElse(updated);
         }
-        return new Result(updated, moved, grounded);
+        boolean groundedAfterMove = !flying && WorldCollision.isOnGround(world, x, y, z);
+        return new Result(updated, moved, groundedAfterMove);
     }
 
     private static double damp(double value) {

@@ -93,9 +93,9 @@ class BedrockInventoryContentCodecTest {
         assertEquals(124, Byte.toUnsignedInt(payload[0])); // UI container
         assertEquals(51, Byte.toUnsignedInt(payload[1]));
         assertArrayEquals(new byte[] {
-                2, 2, 5, 0, 2, 0, 0, 0,
+                2, 5, 0, 2, 0, 0, 0,
                 (byte) 0xcf, (byte) 0x9a, (byte) 0xaf, (byte) 0xbd, 3, 0
-        }, Arrays.copyOfRange(payload, 2 + 28 * 9, 2 + 28 * 9 + 14));
+        }, Arrays.copyOfRange(payload, 2 + 28 * 9, 2 + 28 * 9 + 13));
         assertEquals(13, Byte.toUnsignedInt(payload[payload.length - 10])); // CRAFTING_INPUT
         assertEquals(0, Byte.toUnsignedInt(payload[payload.length - 9])); // no dynamic ID
         assertArrayEquals(new byte[8], Arrays.copyOfRange(payload, payload.length - 8, payload.length));

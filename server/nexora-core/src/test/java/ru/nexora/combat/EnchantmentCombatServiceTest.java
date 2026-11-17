@@ -69,6 +69,19 @@ class EnchantmentCombatServiceTest {
     }
 
     @Test
+    void appliesFireAndFallSpecificProtectionFactors() {
+        ItemStack fireArmor = new ItemStack("minecraft:iron_chestplate", 1, 1,
+                Map.of("minecraft:fire_protection", 4));
+        ItemStack fallArmor = new ItemStack("minecraft:iron_boots", 1, 1,
+                Map.of("minecraft:feather_falling", 4, "minecraft:protection", 4));
+
+        assertEquals(0.68f, EnchantmentCombatService.applyEnchantmentProtection(
+                1.0f, List.of(fireArmor), EnchantmentCombatService.DamageType.FIRE), 0.0001f);
+        assertEquals(3.6f, EnchantmentCombatService.applyEnchantmentProtection(
+                10.0f, List.of(fallArmor), EnchantmentCombatService.DamageType.FALL), 0.0001f);
+    }
+
+    @Test
     void rejectsInvalidArmorDamageAndNullPieces() {
         assertThrows(IllegalArgumentException.class, () ->
                 EnchantmentCombatService.applyArmorReduction(Float.POSITIVE_INFINITY, List.of()));

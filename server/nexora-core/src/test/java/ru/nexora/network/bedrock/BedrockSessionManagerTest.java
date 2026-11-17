@@ -885,6 +885,43 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void fireDeathClearsTransientMobAiState() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(2_000_000_000L);
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "mob-fire-cleanup-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
+        var zombie = manager.spawnLivingEntity("minecraft:zombie", 1.0f, 0.5, 65.0, 0.5);
+        assertTrue(mobWorld.livingEntities().ignite(zombie.runtimeId(), 5, 1_000).isPresent());
+
+        @SuppressWarnings("unchecked")
+        java.util.Map<Long, Long> attacks =
+                (java.util.Map<Long, Long>) getManagerField(manager, "nextMobAttackMillis");
+        @SuppressWarnings("unchecked")
+        java.util.Map<Long, String> aggro =
+                (java.util.Map<Long, String>) getManagerField(manager, "livingEntityAggroTargets");
+        attacks.put(zombie.runtimeId(), 5_000L);
+        aggro.put(zombie.runtimeId(), "test-player");
+        ru.nexora.world.MobPathCache cache =
+                (ru.nexora.world.MobPathCache) getManagerField(manager, "mobPathCache");
+        ru.nexora.combat.MobStuckTracker stuck =
+                (ru.nexora.combat.MobStuckTracker) getManagerField(manager, "mobStuckTracker");
+        cache.findNextStep(zombie.runtimeId(), mobWorld, 0.5, 65, 0.5, 3.5, 0.5, 1_000);
+        stuck.recordBlockedAttempt(zombie.runtimeId(), 0.5, 65, 0.5, 1_000);
+
+        invokeLivingActorTick(manager, 40L);
+
+        assertTrue(mobWorld.livingEntities().find(zombie.runtimeId()).isEmpty());
+        assertFalse(attacks.containsKey(zombie.runtimeId()));
+        assertFalse(aggro.containsKey(zombie.runtimeId()));
+        assertEquals(0, cache.size());
+        assertEquals(0, stuck.stats(2_001).tracked());
+        manager.close();
+    }
+
+    @Test
     void despawningMobClearsAllTransientAiState() throws Exception {
         ru.nexora.world.World mobWorld = new ru.nexora.world.World(
                 "mob-cleanup-world", 0L, new ru.nexora.world.FlatWorldGenerator());

@@ -151,6 +151,15 @@ class BedrockSessionManagerTest {
         assertEquals(3.0f, vitals.saturation(), 0.0001f);
         assertEquals(20, vitals.hunger());
         assertEquals(0.0f, vitals.exhaustion(), 0.0001f);
+
+        // A second jab inside the diamond spear's 1.05 s cooldown is rejected.
+        invokeActorAttack(manager, "lunge-attacker", attack);
+        assertEquals(15.0f,
+                combatWorld.livingEntities().find(zombie.runtimeId()).orElseThrow().health(), 0.0001f);
+        var unchangedPhysics = (ru.nexora.world.PlayerPhysics.State) getSessionField(
+                manager, "lunge-attacker", "physicsState");
+        assertEquals(18.32, unchangedPhysics.velocityZ(), 0.0001);
+        assertEquals(3.0f, manager.playerVitals("lunge-attacker").orElseThrow().saturation(), 0.0001f);
         manager.close();
     }
 

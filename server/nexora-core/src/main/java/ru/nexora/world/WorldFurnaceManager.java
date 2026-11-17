@@ -39,17 +39,8 @@ public final class WorldFurnaceManager {
     public synchronized FurnaceService.TickResult tick(int x, int y, int z, long elapsedTicks)
             throws IOException {
         ContainerInventory inventory = getOrCreate(x, y, z);
-        FurnaceService.FurnaceStateSnapshot before = service.snapshotState(x, y, z);
-        FurnaceService.TickResult result = service.tick(x, y, z, inventory, elapsedTicks);
-        FurnaceService.FurnaceStateSnapshot after = service.snapshotState(x, y, z);
-        try {
-            inventoryStorage.save(x, y, z, inventory);
-            stateStorage.save(x, y, z, after);
-        } catch (IOException exception) {
-            // Keep the in-memory result available for a later save attempt; callers must log the failure.
-            throw exception;
-        }
-        return result;
+        // Processing stays in memory; World.saveAll() flushes all furnace state in one autosave pass.
+        return service.tick(x, y, z, inventory, elapsedTicks);
     }
 
     public synchronized void saveAll() throws IOException {

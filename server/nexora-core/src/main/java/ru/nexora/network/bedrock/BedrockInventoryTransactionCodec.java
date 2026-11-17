@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.Objects;
 
 /**
  * Strict protocol-2225 decoder for the normal InventoryTransaction subset.

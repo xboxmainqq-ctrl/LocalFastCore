@@ -111,6 +111,35 @@ class AnvilServiceTest {
                 service.combine(boots, swiftSneak, 39).status());
     }
 
+    @Test
+    void supportsMaceSpearAndCurseEnchantmentsWithCorrectCompatibility() {
+        var mace = item("minecraft:mace", Map.of(), 0);
+        var density = item("minecraft:enchanted_book", Map.of("minecraft:density", 5), 0);
+        var windBurst = item("minecraft:enchanted_book", Map.of("minecraft:wind_burst", 3), 0);
+        var breach = item("minecraft:enchanted_book", Map.of("minecraft:breach", 4), 0);
+        var smite = item("minecraft:enchanted_book", Map.of("minecraft:smite", 5), 0);
+        var spear = item("minecraft:diamond_spear", Map.of(), 0);
+        var lunge = item("minecraft:enchanted_book", Map.of("minecraft:lunge", 3), 0);
+        var sharpness = item("minecraft:enchanted_book", Map.of("minecraft:sharpness", 5), 0);
+        var vanishing = item("minecraft:enchanted_book", Map.of("minecraft:vanishing", 1), 0);
+        var helmet = item("minecraft:diamond_helmet", Map.of(), 0);
+        var binding = item("minecraft:enchanted_book", Map.of("minecraft:binding", 1), 0);
+
+        assertTrue(service.combine(mace, density, 39).successful());
+        assertTrue(service.combine(mace, windBurst, 39).successful());
+        assertTrue(service.combine(mace, breach, 39).successful());
+        assertTrue(service.combine(spear, lunge, 39).successful());
+        assertTrue(service.combine(spear, sharpness, 39).successful());
+        assertTrue(service.combine(spear, vanishing, 39).successful());
+        assertTrue(service.combine(helmet, binding, 39).successful());
+        assertEquals(AnvilService.Status.INCOMPATIBLE_ENCHANTMENT,
+                service.combine(item("minecraft:diamond_sword", Map.of(), 0), density, 39).status());
+        assertEquals(AnvilService.Status.CONFLICTING_ENCHANTMENTS,
+                service.combine(item("minecraft:mace", Map.of("minecraft:density", 3), 0), breach, 39).status());
+        assertEquals(AnvilService.Status.CONFLICTING_ENCHANTMENTS,
+                service.combine(item("minecraft:mace", Map.of("minecraft:density", 3), 0), smite, 39).status());
+    }
+
     private static AnvilService.EnchantedItem item(String id, Map<String, Integer> enchantments, int penalty) {
         return new AnvilService.EnchantedItem(id, 1, enchantments, penalty);
     }

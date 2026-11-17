@@ -27,12 +27,15 @@ public final class BedrockItemStackUserDataCodec {
             Map.entry("minecraft:punch", 20), Map.entry("minecraft:flame", 21),
             Map.entry("minecraft:infinity", 22), Map.entry("minecraft:luck_of_the_sea", 23),
             Map.entry("minecraft:lure", 24), Map.entry("minecraft:frost_walker", 25),
-            Map.entry("minecraft:mending", 26), Map.entry("minecraft:impaling", 29),
+            Map.entry("minecraft:mending", 26), Map.entry("minecraft:binding", 27),
+            Map.entry("minecraft:vanishing", 28), Map.entry("minecraft:impaling", 29),
             Map.entry("minecraft:riptide", 30),
             Map.entry("minecraft:loyalty", 31), Map.entry("minecraft:channeling", 32),
             Map.entry("minecraft:multishot", 33), Map.entry("minecraft:piercing", 34),
             Map.entry("minecraft:quick_charge", 35), Map.entry("minecraft:soul_speed", 36),
-            Map.entry("minecraft:swift_sneak", 37)
+            Map.entry("minecraft:swift_sneak", 37), Map.entry("minecraft:wind_burst", 38),
+            Map.entry("minecraft:density", 39), Map.entry("minecraft:breach", 40),
+            Map.entry("minecraft:lunge", 41)
     );
     private static final Map<Integer, String> ENCHANTMENTS_BY_ID;
     static {

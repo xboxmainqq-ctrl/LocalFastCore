@@ -60,6 +60,28 @@ class BedrockItemStackUserDataCodecTest {
     }
 
     @Test
+    void roundTripsCursesMaceAndSpearEnchantmentIds() {
+        ItemStack helmet = new ItemStack("minecraft:diamond_helmet", 1, 1,
+                Map.of("minecraft:binding", 1));
+        ItemStack sword = new ItemStack("minecraft:diamond_sword", 1, 1,
+                Map.of("minecraft:vanishing", 1));
+        ItemStack mace = new ItemStack("minecraft:mace", 1, 1,
+                Map.of("minecraft:wind_burst", 3));
+        ItemStack densityMace = new ItemStack("minecraft:mace", 1, 1,
+                Map.of("minecraft:density", 5));
+        ItemStack breachMace = new ItemStack("minecraft:mace", 1, 1,
+                Map.of("minecraft:breach", 4));
+        ItemStack spear = new ItemStack("minecraft:diamond_spear", 1, 1,
+                Map.of("minecraft:lunge", 3));
+
+        for (ItemStack stack : java.util.List.of(helmet, sword, mace, densityMace, breachMace, spear)) {
+            var decoded = BedrockItemStackUserDataCodec.decode(
+                    BedrockItemStackUserDataCodec.encode(stack, new byte[0]), new byte[0]);
+            assertEquals(stack.enchantments(), decoded.enchantments());
+        }
+    }
+
+    @Test
     void leavesPlainItemUserDataUnchanged() {
         byte[] registered = {1, 2, 3};
         byte[] encoded = BedrockItemStackUserDataCodec.encode(

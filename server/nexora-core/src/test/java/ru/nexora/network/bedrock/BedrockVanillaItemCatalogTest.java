@@ -12,6 +12,12 @@ class BedrockVanillaItemCatalogTest {
 
         assertEquals(263, registry.findByIdentifier("minecraft:coal").networkDefinition().runtimeItemId());
         assertEquals(61, registry.findByIdentifier("minecraft:furnace").networkDefinition().runtimeItemId());
+        assertEquals(-196, registry.findByIdentifier("minecraft:blast_furnace").networkDefinition().runtimeItemId());
+        assertEquals(-198, registry.findByIdentifier("minecraft:smoker").networkDefinition().runtimeItemId());
+        assertEquals(Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.BLAST_FURNACE)),
+                registry.findByIdentifier("minecraft:blast_furnace").networkDefinition().blockRuntimeId());
+        assertEquals(Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.SMOKER)),
+                registry.findByIdentifier("minecraft:smoker").networkDefinition().blockRuntimeId());
         assertEquals(Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.FURNACE)),
                 registry.findByIdentifier("minecraft:furnace").networkDefinition().blockRuntimeId());
         assertEquals(306, registry.findByIdentifier("minecraft:diamond")

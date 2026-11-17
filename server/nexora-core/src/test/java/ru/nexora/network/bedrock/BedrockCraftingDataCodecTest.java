@@ -88,8 +88,11 @@ class BedrockCraftingDataCodecTest {
         out.write(0); // inventory window
         writeVarInt(out, 0); // shapeless
         writeUuidLittleEndian(out, id);
-        writeVarUInt(out, 1); // one input slot
+        writeVarUInt(out, 4); // small inventory crafting grid
         writeStack(out, inputRuntimeId, inputCount);
+        writeStack(out, 0, 0);
+        writeStack(out, 0, 0);
+        writeStack(out, 0, 0);
         writeVarUInt(out, 1); // one output
         writeStack(out, outputRuntimeId, outputCount);
         return out.toByteArray();

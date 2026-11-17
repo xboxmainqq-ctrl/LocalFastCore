@@ -129,6 +129,10 @@ class MobAiControllerTest {
         engine.tick();
         world.setBlock(new BlockPosition(2, 64, 0), new BlockState("minecraft:stone"));
         world.setBlock(new BlockPosition(2, 65, 0), new BlockState("minecraft:stone"));
+        engine.tick();
+        assertEquals(MobAiController.State.CHASE,
+                engine.mobAi().lastDecision(mobId).orElseThrow().state(),
+                "mob should continue toward the last known position after losing sight");
 
         boolean movedSideways = false;
         for (int i = 0; i < 80; i++) {
@@ -140,9 +144,6 @@ class MobAiControllerTest {
         WorldEntity mob = entities.find(mobId).orElseThrow();
         assertTrue(movedSideways, "mob should route around the wall using its last known target");
         assertTrue(mob.x() > 1.0, "mob should continue toward the last known target position");
-        assertNotEquals(MobAiController.State.ATTACK,
-                engine.mobAi().lastDecision(mobId).orElseThrow().state(),
-                "a remembered, non-visible target must not produce an attack intent");
     }
 
     @Test
@@ -157,8 +158,14 @@ class MobAiControllerTest {
         engine.mobAi().setBehavior(mobId, MobAiController.Behavior.HOSTILE);
 
         engine.tick();
-        world.setBlock(new BlockPosition(2, 64, 0), new BlockState("minecraft:stone"));
-        world.setBlock(new BlockPosition(2, 65, 0), new BlockState("minecraft:stone"));
+        for (int x : new int[]{-1, 1}) {
+            world.setBlock(new BlockPosition(x, 64, 0), new BlockState("minecraft:stone"));
+            world.setBlock(new BlockPosition(x, 65, 0), new BlockState("minecraft:stone"));
+        }
+        for (int z : new int[]{-1, 1}) {
+            world.setBlock(new BlockPosition(0, 64, z), new BlockState("minecraft:stone"));
+            world.setBlock(new BlockPosition(0, 65, z), new BlockState("minecraft:stone"));
+        }
         for (int i = 0; i < 101; i++) {
             engine.tick();
         }

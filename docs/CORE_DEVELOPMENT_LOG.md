@@ -55,6 +55,12 @@ Work only on engine/server foundations:
 - Commit references: `d24710b1159bb676398b0f8bde46c27f794bb4b1` (fix), `904b40286f209ee9aa6d7b4a881f82407846dc76` (test).
 
 
+### 2026-11-17 — cancellation after generation
+- Added a deterministic regression test for cancelling a chunk after its worker has finished but before the game tick commits the result.
+- The test verifies that cancellation resolves the async waiter with `false`, removes the queued completion without mutating the world, and allows a fresh request for the same chunk to generate and commit successfully.
+- Test commit: `78eeb3257f26378abf30746310d922c2225ab0e7`.
+- Verification: committed test only; CI has not yet provided a successful run, so execution remains unconfirmed.
+
 ### 2026-11-17 — serialize chunk completion and new requests
 - Continued the audit of chunk request/delivery races.
 - Found a narrow race on failed generation: a new network-side request could arrive after the old async waiter had been removed but before the generation service released its in-flight reservation. That request could attach to an already-finishing generation and never receive a completion.

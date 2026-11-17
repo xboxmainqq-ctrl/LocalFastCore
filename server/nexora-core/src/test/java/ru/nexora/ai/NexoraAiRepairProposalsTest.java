@@ -93,9 +93,15 @@ class NexoraAiRepairProposalsTest {
 
     private static final class MutableClock extends Clock {
         private final AtomicReference<Instant> now;
+        private final ZoneId zone;
 
         private MutableClock(Instant initial) {
+            this(initial, ZoneId.of("UTC"));
+        }
+
+        private MutableClock(Instant initial, ZoneId zone) {
             this.now = new AtomicReference<>(initial);
+            this.zone = zone;
         }
 
         void advance(Duration duration) {
@@ -104,12 +110,12 @@ class NexoraAiRepairProposalsTest {
 
         @Override
         public ZoneId getZone() {
-            return ZoneId.of("UTC");
+            return zone;
         }
 
         @Override
         public Clock withZone(ZoneId zone) {
-            return this;
+            return new MutableClock(now.get(), zone);
         }
 
         @Override

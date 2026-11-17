@@ -5,7 +5,7 @@ import ru.nexora.inventory.ItemStack;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Small deterministic vanilla-style loot and XP table for the currently supported hostile mobs. */
+/** Deterministic loot and XP table for supported hostile and passive mob families. */
 public final class MobLootService {
     private MobLootService() {
     }

@@ -12,7 +12,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -58,6 +57,41 @@ class BedrockPlayerPresenceIntegrationTest {
             // The existing client receives the new player's list entry before its actor.
             assertEquals(1, Byte.toUnsignedInt(forExisting.get(0).payload()[0]));
             assertTrue((boolean) field(joining, "playerListAdvertised"));
+        } finally {
+            manager.close();
+        }
+    }
+
+
+    @Test
+    void removesRemoteActorBeforeRemovingPlayerListEntryOnDisconnect() throws Exception {
+        List<Outbound> outbound = new ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new World("player-disconnect-test", 0L, new FlatWorldGenerator()),
+                (networkId, label, frame) -> outbound.add(new Outbound(networkId, frame)),
+                event -> { });
+
+        try {
+            manager.onIdentity("remaining", identity("remaining", "RemainingPlayer"));
+            manager.onIdentity("leaving", identity("leaving", "LeavingPlayer"));
+            Object remaining = session(manager, "remaining");
+            Object leaving = session(manager, "leaving");
+            prepareSession(remaining, entry("00000000-0000-0000-0000-000000000201", 201, "RemainingPlayer"));
+            prepareSession(leaving, entry("00000000-0000-0000-0000-000000000202", 202, "LeavingPlayer"));
+            set(remaining, "playerListAdvertised", true);
+            set(leaving, "playerListAdvertised", true);
+
+            manager.onDisconnected("leaving");
+
+            List<BedrockPacket> packets = packetsFor(outbound, "remaining");
+            assertEquals(List.of(
+                    BedrockAddItemActorCodec.REMOVE_ACTOR_PACKET_ID,
+                    BedrockPlayerListCodec.PLAYER_LIST_PACKET_ID),
+                    packetIds(packets));
+            assertEquals(1, Byte.toUnsignedInt(packets.get(1).payload()[0]));
+            assertFalse((boolean) field(leaving, "playerListAdvertised"));
+            assertNull(session(manager, "leaving"));
         } finally {
             manager.close();
         }

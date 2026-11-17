@@ -40,6 +40,27 @@ class MobSpawnerStorageTest {
     }
 
     @Test
+    void restartRestoresExpiredAndShortRemainingDelays(@TempDir Path directory) throws Exception {
+        WorldStorage storage = new WorldStorage(directory, "short-spawner-delay");
+        World first = new World("short-spawner-delay", 1L, new FlatWorldGenerator(),
+                0, 65, 0, storage);
+        first.setBlock(1, 65, 1, BlockType.SPAWNER);
+        first.setBlock(3, 65, 3, BlockType.SPAWNER);
+        long now = Math.max(20L, System.nanoTime() / 50_000_000L);
+        assertTrue(first.mobSpawners().configure(1, 65, 1, "minecraft:zombie", 20, now - 20));
+        assertTrue(first.mobSpawners().configure(3, 65, 3, "minecraft:skeleton", 20, now - 10));
+        first.saveAll();
+
+        World restarted = new World("short-spawner-delay", 1L, new FlatWorldGenerator(),
+                0, 65, 0, new WorldStorage(directory, "short-spawner-delay"));
+        long afterRestart = Math.max(0L, System.nanoTime() / 50_000_000L);
+        var states = restarted.mobSpawners().snapshot();
+        assertEquals(2, states.size());
+        assertTrue(states.get(0).nextSpawnTick() - afterRestart <= 1);
+        assertTrue(states.get(1).nextSpawnTick() - afterRestart <= 10);
+    }
+
+    @Test
     void storageRejectsChecksumCorruption() throws Exception {
         MobSpawnerStorage storage = new MobSpawnerStorage(temporaryDirectory);
         storage.save(java.util.List.of(new MobSpawnerState(

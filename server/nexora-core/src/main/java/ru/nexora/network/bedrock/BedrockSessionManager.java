@@ -458,7 +458,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 .append(", stuck=").append(stuck.stuck())
                 .append(", evictions=").append(stuck.evictions())
                 .append("\nMob AI load controller: ").append(mobAiLoadController.stats().summary())
-                .append("\nMob fall tracker: ").append(mobFallTracker.stats().summary());
+                .append("\nMob fall tracker: ").append(mobFallTracker.stats().summary())
+                .append("\nMob despawn tracker: tracked=").append(mobDespawnTracker.stats().tracked())
+                .append(", evictions=").append(mobDespawnTracker.stats().evictions());
         ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
         if (diagnostics == null) {
             result.append("\nMob AI latency: diagnostics unavailable");

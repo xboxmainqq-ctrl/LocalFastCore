@@ -2365,7 +2365,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
         }
 
-        if (current == BlockType.FURNACE) {
+        if (furnaceKind(current) != null) {
             WorldFurnaceManager manager = world.furnaces().orElse(null);
             if (manager == null) {
                 state.breakTarget = null;

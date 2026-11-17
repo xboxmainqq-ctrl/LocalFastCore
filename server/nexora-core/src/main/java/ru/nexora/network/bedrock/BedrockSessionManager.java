@@ -359,7 +359,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     private void saveInventory(SessionState state) throws IOException {
         if (inventoryStorage == null || !state.loginAuthenticated || state.identity == null) return;
-        inventoryStorage.save(state.identity.xuid(), state.inventory);
+        inventoryStorage.save(state.identity.xuid(), state.inventory, state.craftingUiInventory);
     }
 
     private void saveEquipment(SessionState state) throws IOException {
@@ -1347,7 +1347,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         verifyClientDataToken(login.rawClientDataToken(), state.identity);
         if (inventoryStorage != null) {
             try {
-                state.inventory = inventoryStorage.load(state.identity.xuid()).orElseGet(PlayerInventory::new);
+                var restored = inventoryStorage.loadState(state.identity.xuid());
+                if (restored.isPresent()) {
+                    state.inventory = restored.orElseThrow().inventory();
+                    state.craftingUiInventory.restore(
+                            restored.orElseThrow().craftingUiInventory().snapshot());
+                }
             } catch (IOException | RuntimeException exception) {
                 state.rejected = true;
                 throw new SecurityException("Unable to safely restore authenticated player inventory", exception);

@@ -35,6 +35,10 @@ public final class WorldRaycast {
             return false;
         }
 
+        if (requireLoadedChunks
+                && (!world.isChunkLoadedAt((int) Math.floor(startX), (int) Math.floor(startZ))
+                || !world.isChunkLoadedAt(targetX, targetZ))) return false;
+
         double endX = targetX + 0.5;
         double endY = targetY + 0.5;
         double endZ = targetZ + 0.5;

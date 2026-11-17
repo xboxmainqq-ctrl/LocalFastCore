@@ -1027,6 +1027,18 @@ public final class LocalFastCore extends PluginBase implements Listener {
             event.setDamage(event.getDamage(EntityDamageEvent.DamageModifier.BASE) + bonusDamage,
                     EntityDamageEvent.DamageModifier.BASE);
         }
+
+        // Soul Pendant's Soul Leech is a passive PvE enchantment: restore 5% of
+        // the damage dealt, capped at 2 HP per hit. It never triggers in PvP.
+        if (event.getEntity() instanceof EntityCreature
+                && !(event.getEntity() instanceof Player)
+                && hasMagicRelic(attacker, "soul_pendant")) {
+            float leech = Math.min(2.0f, Math.max(0.0f, event.getFinalDamage() * 0.05f));
+            if (leech >= 0.1f && attacker.getHealth() < attacker.getMaxHealth()) {
+                attacker.heal(Math.min(leech, attacker.getMaxHealth() - attacker.getHealth()));
+            }
+        }
+
         if (event.getDamager() instanceof Player && event.getEntity() instanceof Player) {
             Player killer = (Player) event.getDamager();
             Player victim = (Player) event.getEntity();
@@ -4031,7 +4043,7 @@ public final class LocalFastCore extends PluginBase implements Listener {
             case "swift_ring": return "§7Активно: ускорение на 12 секунд.";
             case "chrono_talisman": return "§7+1 мана/сек. и -10% перезарядки заклинаний. Активно: ускорить восстановление.";
             case "rune_focus": return "§7+15% к получаемому опыту магии. Активно: получить 60 опыта магии.";
-            case "soul_pendant": return "§7Активно: восстановить здоровье и ману.";
+            case "soul_pendant": return "§7Пассивно: возвращает 5% нанесённого урона здоровьем (до 2 HP за удар). Активно: восстановить здоровье и ману.";
             case "storm_seal": return "§7+8% к силе заклинаний. Активно: грозовой удар по области.";
             default: return "§7Нет описания.";
         }

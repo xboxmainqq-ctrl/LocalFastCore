@@ -15,13 +15,14 @@ public record PlayerData(
         float yaw,
         float pitch,
         long lastSeenEpochMillis,
-        PlayerVitals vitals
+        PlayerVitals vitals,
+        int experiencePoints
 ) {
     public PlayerData(
             String xuid, String displayName, String worldName,
             float x, float y, float z, float yaw, float pitch, long lastSeenEpochMillis
     ) {
-        this(xuid, displayName, worldName, x, y, z, yaw, pitch, lastSeenEpochMillis, PlayerVitals.DEFAULT);
+        this(xuid, displayName, worldName, x, y, z, yaw, pitch, lastSeenEpochMillis, PlayerVitals.DEFAULT, 0);
     }
     public PlayerData(
             String xuid, String displayName, String worldName,

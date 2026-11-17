@@ -2651,6 +2651,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case "minecraft:chicken", "minecraft:snow_golem" -> 4.0f;
             case "minecraft:cod", "minecraft:tropical_fish", "minecraft:salmon",
                     "minecraft:pufferfish", "minecraft:rabbit" -> 3.0f;
+            case "minecraft:silverfish", "minecraft:endermite" -> 8.0f;
+            case "minecraft:sheep" -> 8.0f;
+            case "minecraft:tadpole" -> 6.0f;
             case "minecraft:bat", "minecraft:parrot" -> 6.0f;
             case "minecraft:wolf" -> 8.0f;
             case "minecraft:bee", "minecraft:cat", "minecraft:ocelot",
@@ -2659,10 +2662,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     "minecraft:glow_squid", "minecraft:squid" -> 10.0f;
             case "minecraft:armadillo" -> 12.0f;
             case "minecraft:axolotl" -> 14.0f;
-            case "minecraft:vex", "minecraft:donkey", "minecraft:mule",
-                    "minecraft:llama", "minecraft:trader_llama" -> 15.0f;
-            case "minecraft:piglin", "minecraft:polar_bear", "minecraft:panda",
-                    "minecraft:blaze", "minecraft:bogged" -> 16.0f;
+            case "minecraft:vex" -> 14.0f;
+            case "minecraft:donkey", "minecraft:mule", "minecraft:llama",
+                    "minecraft:trader_llama" -> 15.0f;
+            case "minecraft:piglin", "minecraft:bogged" -> 16.0f;
+            case "minecraft:panda", "minecraft:blaze" -> 20.0f;
+            case "minecraft:polar_bear" -> 30.0f;
             case "minecraft:horse", "minecraft:allay", "minecraft:strider" -> 20.0f;
             case "minecraft:camel" -> 32.0f;
             case "minecraft:turtle" -> 30.0f;

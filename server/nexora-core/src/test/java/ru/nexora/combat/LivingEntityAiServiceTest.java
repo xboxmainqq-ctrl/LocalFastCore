@@ -201,4 +201,30 @@ class LivingEntityAiServiceTest {
                 ai.decide(bee, List.of(attacker, bystander), 2_000, 0, "attacker").targetNetworkId());
     }
 
+    @Test
+    void flyingHostileMobUsesThreeDimensionalPursuit() {
+        WorldLivingEntity phantom = new WorldLivingEntityManager().spawn(
+                "minecraft:phantom", 20, 0, 64, 0);
+        var player = new LivingEntityAiService.PlayerTarget("player", 4, 70, 0, true);
+
+        var decision = ai.decide(phantom, List.of(player), 1_000, 0);
+
+        assertTrue(LivingEntityAiService.isFlyingMob("minecraft:phantom"));
+        assertTrue(decision.moving());
+        assertTrue(decision.moveX() > 0);
+        assertTrue(decision.moveY() > 0);
+    }
+
+    @Test
+    void flyingPassiveMobCanFleeInThreeDimensions() {
+        WorldLivingEntity bat = new WorldLivingEntityManager().spawn(
+                "minecraft:bat", 6, 0, 70, 0);
+        var player = new LivingEntityAiService.PlayerTarget("player", 1, 64, 0, true);
+
+        var decision = ai.decide(bat, List.of(player), 1_000, 0);
+
+        assertTrue(decision.moving());
+        assertTrue(decision.moveY() > 0);
+    }
+
 }

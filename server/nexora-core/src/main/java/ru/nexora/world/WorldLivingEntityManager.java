@@ -71,6 +71,21 @@ public final class WorldLivingEntityManager {
         return Optional.of(updated);
     }
 
+    public synchronized Optional<WorldLivingEntity> move(
+            long runtimeId, double x, double y, double z
+    ) {
+        if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
+                || Math.abs(x) > 30_000_000 || Math.abs(z) > 30_000_000
+                || y < WorldChunk.MIN_Y || y > WorldChunk.MAX_Y) {
+            throw new IllegalArgumentException("Living actor position is outside supported bounds");
+        }
+        WorldLivingEntity entity = entities.get(runtimeId);
+        if (entity == null) return Optional.empty();
+        WorldLivingEntity updated = entity.withPosition(x, y, z);
+        entities.replace(runtimeId, entity, updated);
+        return Optional.of(updated);
+    }
+
     public synchronized Optional<WorldLivingEntity> setVelocity(
             long runtimeId, double velocityX, double velocityY, double velocityZ
     ) {

@@ -49,6 +49,19 @@ class MobPhysicsServiceTest {
     }
 
     @Test
+    void slimeBouncesWhenItsDownwardMotionHitsTheGround() {
+        World world = new World("mob-physics-slime-bounce", 0L, new FlatWorldGenerator());
+        var slime = world.livingEntities().spawn("minecraft:slime", 20, 0.5, 65.1, 0.5);
+        slime = world.livingEntities().setVelocity(slime.runtimeId(), 0, -3.0, 0).orElseThrow();
+
+        var result = physics.tick(world, slime);
+
+        assertFalse(result.moved());
+        assertTrue(result.grounded());
+        assertTrue(result.entity().velocityY() > 0);
+    }
+
+    @Test
     void flyingMobDoesNotReceiveGroundGravity() {
         World world = new World("mob-physics-flight", 0L, new FlatWorldGenerator());
         var bat = world.livingEntities().spawn("minecraft:bat", 6, 0.5, 70, 0.5);

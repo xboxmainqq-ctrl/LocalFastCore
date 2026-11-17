@@ -644,6 +644,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private void handleCompleteMessage(NetherNetInboundPipeline.InboundMessage message) {
+        long processingStartedNanos = nanoTime.getAsLong();
         SessionState state = sessions.computeIfAbsent(message.networkId(), ignored -> new SessionState());
         state.combatLock.lock();
         try {
@@ -692,6 +693,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
           }
         } finally {
             state.combatLock.unlock();
+            ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
+            if (diagnostics != null) {
+                diagnostics.recordSlowOperation("bedrock-inbound",
+                        Math.max(0L, nanoTime.getAsLong() - processingStartedNanos), 50_000_000L);
+            }
         }
     }
 

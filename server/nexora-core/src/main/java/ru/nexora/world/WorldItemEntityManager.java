@@ -194,6 +194,7 @@ public final class WorldItemEntityManager {
         List<WorldItemEntity> moved = new ArrayList<>();
         List<WorldItemEntity> removed = new ArrayList<>();
         boolean changed = false;
+        boolean durableChanged = false;
         try {
             for (WorldItemEntity current : before) {
                 if (nowMillis >= 0 && nowMillis >= current.pickupAvailableAtMillis()
@@ -201,6 +202,7 @@ public final class WorldItemEntityManager {
                     if (entities.remove(current.runtimeId(), current)) {
                         removed.add(current);
                         changed = true;
+                        durableChanged = true;
                     }
                     continue;
                 }
@@ -259,14 +261,17 @@ public final class WorldItemEntityManager {
                             Math.max(currentFirst.pickupAvailableAtMillis(), currentSecond.pickupAvailableAtMillis()),
                             currentFirst.ownerXuid());
                     entities.put(currentFirst.runtimeId(), currentFirst);
-                    if (entities.remove(currentSecond.runtimeId(), currentSecond)) removed.add(currentSecond);
+                    if (entities.remove(currentSecond.runtimeId(), currentSecond)) {
+                        removed.add(currentSecond);
+                        durableChanged = true;
+                    }
                     long mergedRuntimeId = currentFirst.runtimeId();
                     moved.removeIf(entity -> entity.runtimeId() == mergedRuntimeId);
                     moved.add(currentFirst);
                     changed = true;
                 }
             }
-            if (changed) persist();
+            if (durableChanged) persist();
             removedByTick.addAll(removed);
             return List.copyOf(moved);
         } catch (RuntimeException exception) {

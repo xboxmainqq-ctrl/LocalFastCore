@@ -1087,6 +1087,15 @@ class BedrockSessionManagerTest {
                 (java.util.Map<Long, String>) getManagerField(manager, "livingEntityAggroTargets");
         attacks.put(zombie.runtimeId(), 5_000L);
         aggro.put(zombie.runtimeId(), "test-player");
+        @SuppressWarnings("unchecked")
+        java.util.Map<Long, ru.nexora.combat.ArrowProjectile> arrows =
+                (java.util.Map<Long, ru.nexora.combat.ArrowProjectile>) getManagerField(manager, "mobArrows");
+        arrows.put(77L, new ru.nexora.combat.ArrowProjectile(
+                -77L, 77L, "mob:" + zombie.runtimeId(),
+                0.5, 66, 0.5, 0.1, 0.1, 0.1, 0));
+        ru.nexora.combat.MobFallTracker falls =
+                (ru.nexora.combat.MobFallTracker) getManagerField(manager, "mobFallTracker");
+        falls.update(zombie.runtimeId(), 80, false, false);
         ru.nexora.world.MobPathCache cache =
                 (ru.nexora.world.MobPathCache) getManagerField(manager, "mobPathCache");
         ru.nexora.combat.MobStuckTracker stuck =
@@ -1149,6 +1158,9 @@ class BedrockSessionManagerTest {
         @SuppressWarnings("unchecked")
         java.util.Map<Long, String> aggro =
                 (java.util.Map<Long, String>) getManagerField(manager, "livingEntityAggroTargets");
+        ru.nexora.combat.MobFallTracker falls =
+                (ru.nexora.combat.MobFallTracker) getManagerField(manager, "mobFallTracker");
+        falls.update(zombie.runtimeId(), 80, false, false);
         attacks.put(zombie.runtimeId(), 100L);
         fuses.put(zombie.runtimeId(), 100L);
         teleports.put(zombie.runtimeId(), 100L);

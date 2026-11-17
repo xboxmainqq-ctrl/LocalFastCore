@@ -103,6 +103,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final AtomicLong nextEntityId = new AtomicLong(1);
     private final AtomicLong nextFormId = new AtomicLong(1);
     private final AtomicLong lastItemActorTickNanos = new AtomicLong(Long.MIN_VALUE);
+    private final AtomicLong lastLivingAiTickMillis = new AtomicLong(Long.MIN_VALUE);
+    private final Map<Long, Long> nextMobAttackMillis = new ConcurrentHashMap<>();
+    private final ru.nexora.combat.LivingEntityAiService livingEntityAi =
+            new ru.nexora.combat.LivingEntityAiService();
     private volatile boolean serverAuthoritativeMovement;
     private final NetherNetInboundPipeline inbound;
 
@@ -1701,11 +1705,91 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         for (WorldLivingEntityManager.DamageResult result : world.livingEntities().tickFire(nowMillis)) {
             WorldLivingEntity entity = result.current();
             if (result.killed()) {
+                nextMobAttackMillis.remove(entity.runtimeId());
                 broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()));
             } else {
                 broadcastLivingActorPacket(BedrockVitalsCodec.createActorHealthUpdate(
                         entity.runtimeId(), entity.health(), entity.maxHealth(), Math.max(0, tick)));
             }
+        }
+
+        long previousTick = lastLivingAiTickMillis.get();
+        if (previousTick != Long.MIN_VALUE && nowMillis - previousTick < 50) return;
+        if (!lastLivingAiTickMillis.compareAndSet(previousTick, nowMillis)) return;
+        tickLivingEntityAi(nowMillis, tick);
+    }
+
+    private void tickLivingEntityAi(long nowMillis, long tick) {
+        List<ru.nexora.combat.LivingEntityAiService.PlayerTarget> targets = new ArrayList<>();
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            SessionState player = entry.getValue();
+            if (!player.loginAuthenticated || !player.clientInitialized || !player.positionInitialized
+                    || player.dead || player.vitals.dead()) continue;
+            targets.add(new ru.nexora.combat.LivingEntityAiService.PlayerTarget(
+                    entry.getKey(), player.positionX, player.positionY, player.positionZ, true));
+        }
+        if (targets.isEmpty()) return;
+
+        for (WorldLivingEntity mob : world.livingEntities().snapshot()) {
+            long nextAttackAt = nextMobAttackMillis.getOrDefault(mob.runtimeId(), 0L);
+            ru.nexora.combat.LivingEntityAiService.Decision decision =
+                    livingEntityAi.decide(mob, targets, nowMillis, nextAttackAt);
+            if (decision.attack()) {
+                nextMobAttackMillis.put(mob.runtimeId(),
+                        nowMillis + ru.nexora.combat.LivingEntityAiService.ATTACK_COOLDOWN_MILLIS);
+                damagePlayerFromMob(decision.targetNetworkId(), mob, decision.attackDamage(), tick);
+                continue;
+            }
+            if (!decision.moving()) continue;
+            double nextX = mob.x() + decision.moveX();
+            double nextY = mob.y() + decision.moveY();
+            double nextZ = mob.z() + decision.moveZ();
+            if (!WorldCollision.canMove(world, mob.x(), mob.y(), mob.z(), nextX, nextY, nextZ)) continue;
+            WorldLivingEntity moved = world.livingEntities().move(
+                    mob.runtimeId(), nextX, nextY, nextZ).orElse(null);
+            if (moved == null) continue;
+            ru.nexora.combat.LivingEntityAiService.PlayerTarget target = targets.stream()
+                    .filter(candidate -> candidate.networkId().equals(decision.targetNetworkId()))
+                    .findFirst().orElse(null);
+            float yaw = target == null ? 0.0f
+                    : (float) Math.toDegrees(Math.atan2(-(target.x() - moved.x()), target.z() - moved.z()));
+            broadcastLivingActorPacket(BedrockMoveActorAbsoluteCodec.create(
+                    moved.runtimeId(), moved.x(), moved.y(), moved.z(), 0.0f, yaw, yaw,
+                    WorldCollision.isOnGround(world, moved.x(), moved.y(), moved.z())));
+        }
+    }
+
+    private void damagePlayerFromMob(String networkId, WorldLivingEntity mob, float amount, long tick) {
+        SessionState target = sessions.get(networkId);
+        if (target == null) return;
+        target.combatLock.lock();
+        try {
+            synchronized (target) {
+                if (!target.loginAuthenticated || !target.clientInitialized
+                        || target.dead || target.vitals.dead()) return;
+                applyDamage(networkId, target, amount, tick, "death.attack.mob");
+                double dx = target.positionX - mob.x();
+                double dz = target.positionZ - mob.z();
+                double length = Math.hypot(dx, dz);
+                if (length > 0.0001) {
+                    double vx = dx / length * 0.35;
+                    double vz = dz / length * 0.35;
+                    if (target.physicsState != null) {
+                        PlayerPhysics.State current = target.physicsState;
+                        target.physicsState = new PlayerPhysics.State(
+                                current.x(), current.y(), current.z(),
+                                current.velocityX() + vx, Math.max(current.velocityY(), 0.12),
+                                current.velocityZ() + vz, current.onGround(),
+                                current.fallDistance(), current.landedDistance());
+                        sendMovementCorrection(networkId, target, tick);
+                    } else {
+                        sendPacket(networkId, BedrockActorMotionCodec.createSetActorMotion(
+                                target.entityId, vx, 0.12, vz, Math.max(0, tick)), true);
+                    }
+                }
+            }
+        } finally {
+            target.combatLock.unlock();
         }
     }
 

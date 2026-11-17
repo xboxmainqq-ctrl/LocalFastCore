@@ -116,6 +116,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             new ru.nexora.combat.LivingEntityAiService();
     private volatile boolean serverAuthoritativeMovement;
     private volatile ru.nexora.ai.NexoraAiAssistant aiAssistant;
+    private volatile ru.nexora.ai.NexoraAiDiagnostics aiDiagnostics;
     private final NetherNetInboundPipeline inbound;
 
     public BedrockSessionManager(
@@ -1283,6 +1284,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         packetSink.accept(new PacketEvent(message.networkId(), message.channelLabel(), packet));
     }
 
+    /** Installs the optional runtime diagnostics observer. */
+    public void setAiDiagnostics(ru.nexora.ai.NexoraAiDiagnostics diagnostics) {
+        this.aiDiagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
+    }
+
     /** Installs the optional in-game assistant. */
     public void setAiAssistant(ru.nexora.ai.NexoraAiAssistant assistant) {
         this.aiAssistant = Objects.requireNonNull(assistant, "assistant");
@@ -1967,7 +1973,20 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         long previousTick = lastLivingAiTickMillis.get();
         if (previousTick != Long.MIN_VALUE && nowMillis - previousTick < 50) return;
         if (!lastLivingAiTickMillis.compareAndSet(previousTick, nowMillis)) return;
-        tickLivingEntityAi(nowMillis, tick);
+        long aiStartedNanos = nanoTime.getAsLong();
+        try {
+            tickLivingEntityAi(nowMillis, tick);
+        } catch (RuntimeException failure) {
+            ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
+            if (diagnostics != null) diagnostics.recordFailure(failure);
+            throw failure;
+        } finally {
+            ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
+            if (diagnostics != null) {
+                diagnostics.recordSlowOperation("mob-ai",
+                        Math.max(0L, nanoTime.getAsLong() - aiStartedNanos), 50_000_000L);
+            }
+        }
     }
 
     private void tickLivingEntityAi(long nowMillis, long tick) {

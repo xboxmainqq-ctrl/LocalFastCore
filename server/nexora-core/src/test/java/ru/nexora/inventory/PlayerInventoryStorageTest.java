@@ -35,7 +35,7 @@ class PlayerInventoryStorageTest {
     }
 
     @Test
-    void atomicallyRoundTripsPlayerUiCraftingGridInVersionFourFormat() throws Exception {
+    void atomicallyRoundTripsPlayerUiCraftingGridInVersionFiveFormat() throws Exception {
         PlayerInventoryStorage storage = new PlayerInventoryStorage(temporaryDirectory);
         PlayerInventory inventory = new PlayerInventory();
         inventory.setSlot(0, new ItemStack("minecraft:iron_nugget", 9, 64));

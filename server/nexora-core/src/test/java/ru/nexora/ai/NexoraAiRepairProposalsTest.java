@@ -24,10 +24,12 @@ class NexoraAiRepairProposalsTest {
                 store.create("operator-xuid", "Slow autosave", "Proposed investigation.");
 
         NexoraAiRepairProposals.Proposal approved =
-                store.approveForManualReview(created.id()).orElseThrow();
+                store.approveForManualReview(created.id(), "reviewer-xuid").orElseThrow();
 
         assertEquals(NexoraAiRepairProposals.Status.APPROVED_FOR_MANUAL_REVIEW, approved.status());
         assertEquals(created.plan(), approved.plan());
+        assertEquals("reviewer-xuid", approved.reviewedByXuid());
+        assertNotNull(approved.reviewedAt());
         assertTrue(store.approveForManualReview(created.id()).isEmpty());
     }
 
@@ -38,7 +40,7 @@ class NexoraAiRepairProposalsTest {
                 store.create("operator-xuid", "Mob AI stall", "Proposed investigation.");
 
         assertEquals(NexoraAiRepairProposals.Status.REJECTED,
-                store.reject(created.id()).orElseThrow().status());
+                store.reject(created.id(), "reviewer-xuid").orElseThrow().status());
         assertTrue(store.approveForManualReview(created.id()).isEmpty());
     }
 

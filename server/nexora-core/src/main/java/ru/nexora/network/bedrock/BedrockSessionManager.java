@@ -114,6 +114,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final Map<Long, Long> endermanTeleportCooldownMillis = new ConcurrentHashMap<>();
     private final ru.nexora.combat.LivingEntityAiService livingEntityAi =
             new ru.nexora.combat.LivingEntityAiService();
+    private final ru.nexora.world.MobPathCache mobPathCache =
+            new ru.nexora.world.MobPathCache();
     private volatile boolean serverAuthoritativeMovement;
     private volatile ru.nexora.ai.NexoraAiAssistant aiAssistant;
     private volatile ru.nexora.ai.NexoraAiDiagnostics aiDiagnostics;
@@ -2284,8 +2286,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 long pathStartedNanos = nanoTime.getAsLong();
                 WorldPathfinder.Step waypoint;
                 try {
-                    waypoint = WorldPathfinder.findNextStep(
-                            world, mob.x(), mob.y(), mob.z(), desiredX, desiredZ).orElse(null);
+                    waypoint = mobPathCache.findNextStep(mob.runtimeId(), world,
+                            mob.x(), mob.y(), mob.z(), desiredX, desiredZ, nowMillis).orElse(null);
                 } finally {
                     ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
                     if (diagnostics != null) {
@@ -2676,6 +2678,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         WorldLivingEntity entity = world.livingEntities().find(runtimeId).orElse(null);
         if (entity == null || !world.livingEntities().remove(runtimeId)) return false;
         nextMobAttackMillis.remove(runtimeId);
+        mobPathCache.remove(runtimeId);
         creeperFuseStartedMillis.remove(runtimeId);
         endermanTeleportCooldownMillis.remove(runtimeId);
         livingEntityAggroTargets.remove(runtimeId);

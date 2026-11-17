@@ -40,8 +40,11 @@ class BedrockSessionManagerTest {
     @Test
     void appliesServerValidatedPlayerAttackWithSharpnessAndHurtImmunity() throws Exception {
         List<byte[]> outboundFrames = new ArrayList<>();
+        ru.nexora.world.World combatWorld = new ru.nexora.world.World(
+                "combat-world", 0L, new ru.nexora.world.FlatWorldGenerator());
         BedrockSessionManager manager = new BedrockSessionManager(
-                2225, (networkId, label, frame) -> outboundFrames.add(frame), event -> {});
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                combatWorld, (networkId, label, frame) -> outboundFrames.add(frame), event -> {});
         manager.onIdentity("combat-attacker", new NetherNetClientIdentity(
                 "attacker-token", new byte[] {1}, "attacker-xuid", "Attacker", "playfab-a", "20CA2", null));
         manager.onIdentity("combat-target", new NetherNetClientIdentity(
@@ -73,6 +76,11 @@ class BedrockSessionManagerTest {
         var transaction = new BedrockInventoryTransactionCodec.DecodedUseOnActor(
                 101L, 1, 0, 0, java.util.Optional.of(sword),
                 0.0f, 65.0f, 0.0f, 0.0f, 1.0f, 0.0f);
+
+        combatWorld.setBlock(1, 66, 0, ru.nexora.world.BlockType.STONE);
+        invokeActorAttack(manager, "combat-attacker", transaction);
+        assertEquals(20.0f, manager.playerVitals("combat-target").orElseThrow().health(), 0.0001f);
+        combatWorld.setBlock(1, 66, 0, ru.nexora.world.BlockType.AIR);
 
         invokeActorAttack(manager, "combat-attacker", transaction);
         assertEquals(12.01f, manager.playerVitals("combat-target").orElseThrow().health(), 0.0001f);

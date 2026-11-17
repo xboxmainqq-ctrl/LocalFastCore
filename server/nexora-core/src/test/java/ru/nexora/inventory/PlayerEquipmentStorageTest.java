@@ -22,7 +22,8 @@ class PlayerEquipmentStorageTest {
     void roundTripsArmorOffhandCursorAndAllMagicalSlots() throws Exception {
         PlayerEquipmentStorage storage = new PlayerEquipmentStorage(directory);
         PlayerEquipment equipment = new PlayerEquipment();
-        equipment.setArmor(0, new ItemStack("minecraft:diamond", 1, 64));
+        equipment.setArmor(0, new ItemStack("minecraft:diamond_chestplate", 1, 1,
+                java.util.Map.of("minecraft:unbreaking", 2), 4, 87));
         equipment.setArmor(3, new ItemStack("minecraft:iron_ingot", 2, 64));
         equipment.setOffhand(new ItemStack("minecraft:ender_pearl", 4, 16));
         equipment.setCursor(new ItemStack("minecraft:bread", 1, 64));
@@ -37,6 +38,10 @@ class PlayerEquipmentStorageTest {
         storage.save("equipment-player", equipment);
         PlayerEquipment loaded = storage.load("equipment-player").orElseThrow();
         assertEquals(equipment.snapshot(), loaded.snapshot());
+        assertEquals(87, loaded.armor(0).orElseThrow().durabilityDamage());
+        assertEquals(java.util.Map.of("minecraft:unbreaking", 2),
+                loaded.armor(0).orElseThrow().enchantments());
+        assertEquals(4, loaded.armor(0).orElseThrow().repairCost());
         assertTrue(loaded.armor(1).isEmpty());
         assertEquals("nexora:ember_staff",
                 loaded.magicSlot(EquipmentSlot.MAGIC_STAFF).orElseThrow().itemId());

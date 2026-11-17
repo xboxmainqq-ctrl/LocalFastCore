@@ -3028,6 +3028,23 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
+    /**
+     * Explicitly prepares every chunk touched by an actor's 0.6-block horizontal footprint.
+     * This is called only when an actor is spawned or placed; collision and movement queries
+     * never load chunks as a side effect.
+     */
+    private void ensureActorFootprintChunksLoaded(double x, double z) {
+        int minChunkX = Math.floorDiv((int) Math.floor(x - 0.3), 16);
+        int maxChunkX = Math.floorDiv((int) Math.floor(x + 0.3), 16);
+        int minChunkZ = Math.floorDiv((int) Math.floor(z - 0.3), 16);
+        int maxChunkZ = Math.floorDiv((int) Math.floor(z + 0.3), 16);
+        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+                world.getChunk(chunkX, chunkZ);
+            }
+        }
+    }
+
     /** Spawns a server-owned living actor and publishes it to every initialized client. */
     public WorldLivingEntity spawnLivingEntity(
             String identifier, WorldLivingEntity.Family family,
@@ -3038,8 +3055,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 || y < WorldChunk.MIN_Y || y > WorldChunk.MAX_Y) {
             throw new IllegalArgumentException("Living actor position is outside supported bounds");
         }
-        world.getChunk(Math.floorDiv((int) Math.floor(x), 16),
-                Math.floorDiv((int) Math.floor(z), 16));
+        ensureActorFootprintChunksLoaded(x, z);
         WorldLivingEntity entity = world.livingEntities().spawn(identifier, family, maxHealth, x, y, z);
         broadcastLivingActorPacket(BedrockAddActorCodec.createAddActor(entity));
         return entity;
@@ -3484,6 +3500,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         }
                         state.positionInitialized = true;
                     }
+                    // Loading the player's destination is an explicit spawn operation.
+                    // Collision probes themselves remain read-only and never generate chunks.
+                    ensureActorFootprintChunksLoaded(state.positionX, state.positionZ);
                     if (serverAuthoritativeMovement) {
                         state.physicsState = PlayerPhysics.spawn(
                                 world, state.positionX, state.positionY, state.positionZ);

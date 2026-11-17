@@ -1614,7 +1614,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
                 attacker.lastAttackNanos = now;
                 target.lastCombatDamageNanos = now;
-                float baseDamage = baseAttackDamage(weapon);
+                PlayerPhysics.State targetPhysics = target.physicsState;
+                var chargeEffect = consumeSpearCharge(attacker, weapon,
+                        targetPhysics == null ? 0.0 : targetPhysics.velocityX(),
+                        targetPhysics == null ? 0.0 : targetPhysics.velocityY(),
+                        targetPhysics == null ? 0.0 : targetPhysics.velocityZ(), now);
+                float baseDamage = chargeEffect != null && chargeEffect.hit()
+                        ? chargeEffect.damage() : baseAttackDamage(weapon);
                 ru.nexora.combat.EnchantmentCombatService.AttackEffect effect =
                         ru.nexora.combat.EnchantmentCombatService.resolveAttack(
                                 baseDamage, weapon,
@@ -1631,7 +1637,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     applyDamage(targetNetworkId, target, finalDamage,
                             target.lastInputTick, "death.attack.generic");
                 }
-                applyKnockback(targetNetworkId, target, attacker, effect.knockbackLevel());
+                applyKnockback(targetNetworkId, target, attacker,
+                        Math.max(effect.knockbackLevel(),
+                                chargeEffect != null && chargeEffect.knockback() ? 1 : 0));
                 applySpearLunge(networkId, attacker, weapon);
                 if (effect.fireDurationSeconds() > 0) {
                     if (target.fireUntilNanos <= now) {
@@ -1687,6 +1695,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 targetBlockX, targetBlockY, targetBlockZ)) return;
 
         attacker.lastAttackNanos = nowNanos;
+        var chargeEffect = consumeSpearCharge(attacker, weapon,
+                target.velocityX(), target.velocityY(), target.velocityZ(), nowNanos);
         ru.nexora.combat.EnchantmentCombatService.TargetType targetType = switch (target.family()) {
             case NORMAL -> ru.nexora.combat.EnchantmentCombatService.TargetType.NORMAL;
             case UNDEAD -> ru.nexora.combat.EnchantmentCombatService.TargetType.UNDEAD;
@@ -1694,7 +1704,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         };
         ru.nexora.combat.EnchantmentCombatService.AttackEffect effect =
                 ru.nexora.combat.EnchantmentCombatService.resolveAttack(
-                        baseAttackDamage(weapon), weapon, targetType,
+                        chargeEffect != null && chargeEffect.hit()
+                                ? chargeEffect.damage() : baseAttackDamage(weapon),
+                        weapon, targetType,
                         attacker.physicsState == null ? 0.0f
                                 : (float) attacker.physicsState.fallDistance());
         var damage = world.livingEntities().damage(target.runtimeId(), effect.damage()).orElse(null);
@@ -1723,10 +1735,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             updated = world.livingEntities().ignite(updated.runtimeId(), effect.fireDurationSeconds(),
                     Math.max(0, nowNanos / 1_000_000L)).orElse(updated);
         }
-        if (effect.knockbackLevel() > 0) {
+        int chargeKnockbackLevel = Math.max(effect.knockbackLevel(),
+                chargeEffect != null && chargeEffect.knockback() ? 1 : 0);
+        if (chargeKnockbackLevel > 0) {
             double horizontal = Math.hypot(dx, dz);
             if (horizontal > 0.0001) {
-                double strength = 0.4 + 0.1 * effect.knockbackLevel();
+                double strength = 0.4 + 0.1 * chargeKnockbackLevel;
                 updated = world.livingEntities().setVelocity(updated.runtimeId(),
                         updated.velocityX() + dx / horizontal * strength,
                         Math.max(updated.velocityY(), 0.1),
@@ -2774,8 +2788,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         boolean jumping = input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.START_JUMPING)
                 || input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.JUMP_PRESSED_RAW)
                 || input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.JUMPING);
-        if (state.usingItem && nanoTime.getAsLong() - state.usingItemStartedNanos > 3_000_000_000L) {
-            state.usingItem = false;
+        long inputNowNanos = nanoTime.getAsLong();
+        if (state.usingItem && inputNowNanos - state.usingItemStartedNanos > 3_000_000_000L) {
+            clearUsingItem(state);
+        }
+        if (state.spearChargeStartedNanos != Long.MIN_VALUE
+                && inputNowNanos - state.spearChargeStartedNanos > 10_000_000_000L) {
+            clearSpearCharge(state);
         }
         float movementX = state.usingItem ? input.motionX() * 0.2f : input.motionX();
         float movementZ = state.usingItem ? input.motionZ() * 0.2f : input.motionZ();

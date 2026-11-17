@@ -64,6 +64,8 @@ public final class WorldCollision {
 
         for (int blockX = (int) Math.floor(minX); blockX <= (int) Math.floor(maxX); blockX++) {
             for (int blockZ = (int) Math.floor(minZ); blockZ <= (int) Math.floor(maxZ); blockZ++) {
+                // Collision probes must never generate/load chunks as a side effect.
+                if (!world.isChunkLoadedAt(blockX, blockZ)) return false;
                 if (world.getBlock(blockX, supportY, blockZ) != BlockType.AIR) return true;
             }
         }
@@ -90,7 +92,9 @@ public final class WorldCollision {
         for (int blockX = firstX; blockX <= lastX; blockX++) {
             for (int blockY = firstY; blockY <= lastY; blockY++) {
                 for (int blockZ = firstZ; blockZ <= lastZ; blockZ++) {
-                    if (world.getBlock(blockX, blockY, blockZ) != BlockType.AIR) return false;
+                    // Only inspect resident chunks; movement must not trigger terrain generation.
+                    if (!world.isChunkLoadedAt(blockX, blockZ)
+                            || world.getBlock(blockX, blockY, blockZ) != BlockType.AIR) return false;
                 }
             }
         }

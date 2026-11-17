@@ -35,6 +35,72 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockSessionManagerTest {
+    @Test
+    void relaysAuthenticatedChatUsingServerOwnedPlayerName() throws Exception {
+        java.util.List<String> recipients = new java.util.ArrayList<>();
+        java.util.List<byte[]> frames = new java.util.ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("chat-test", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                (networkId, label, frame) -> {
+                    recipients.add(networkId);
+                    frames.add(frame);
+                }, event -> {});
+        manager.onIdentity("chat-sender", new NetherNetClientIdentity(
+                "sender-token", new byte[] {1}, "sender-xuid",
+                "RealSender", "sender-playfab", "20CA2", null));
+        manager.onIdentity("chat-recipient", new NetherNetClientIdentity(
+                "recipient-token", new byte[] {2}, "recipient-xuid",
+                "Recipient", "recipient-playfab", "20CA2", null));
+        for (String id : java.util.List.of("chat-sender", "chat-recipient")) {
+            setSessionField(manager, id, "compressionNegotiated", true);
+            setSessionField(manager, id, "loginAuthenticated", true);
+            setSessionField(manager, id, "clientInitialized", true);
+        }
+
+        BedrockPacket clientChat = BedrockTextCodec.createChatMessage(
+                "SpoofedName", "Hello NEXORA", "sender-xuid", "");
+        sendClientBatch(manager, "chat-sender",
+                BedrockBatchCodec.encode(java.util.List.of(clientChat), true, 256));
+
+        assertTrue(recipients.contains("chat-sender"));
+        assertTrue(recipients.contains("chat-recipient"));
+        boolean recipientReceivedChat = false;
+        for (int i = 0; i < frames.size(); i++) {
+            if (!"chat-recipient".equals(recipients.get(i))) continue;
+            for (BedrockPacket outbound : decodeOutboundPackets(frames.get(i), true)) {
+                if (outbound.packetId() != BedrockTextCodec.TEXT_PACKET_ID) continue;
+                var decoded = BedrockTextCodec.decodeChat(outbound);
+                assertEquals("RealSender", decoded.sourceName());
+                assertEquals("Hello NEXORA", decoded.message());
+                assertEquals("", decoded.xuid());
+                recipientReceivedChat = true;
+            }
+        }
+        assertTrue(recipientReceivedChat);
+        manager.close();
+    }
+
+    @Test
+    void rejectsChatWithForgedXboxIdentity() throws Exception {
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("chat-forgery-test", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                (networkId, label, frame) -> {}, event -> {});
+        manager.onIdentity("chat-forgery", new NetherNetClientIdentity(
+                "sender-token", new byte[] {1}, "real-xuid",
+                "RealSender", "sender-playfab", "20CA2", null));
+        setSessionField(manager, "chat-forgery", "compressionNegotiated", true);
+        setSessionField(manager, "chat-forgery", "loginAuthenticated", true);
+        setSessionField(manager, "chat-forgery", "clientInitialized", true);
+
+        BedrockPacket forged = BedrockTextCodec.createChatMessage(
+                "RealSender", "forged", "other-xuid", "");
+        assertThrows(SecurityException.class, () -> sendClientBatch(manager, "chat-forgery",
+                BedrockBatchCodec.encode(java.util.List.of(forged), true, 256)));
+        manager.close();
+    }
+
     @TempDir
     Path temporaryDirectory;
     @Test
@@ -2417,6 +2483,12 @@ class BedrockSessionManagerTest {
     }
 
     private static List<BedrockPacket> decodeOutboundAll(byte[] frame, boolean compressed) {
+        NetherNetMessageFramer.Reassembler reassembler = new NetherNetMessageFramer.Reassembler();
+        byte[] payload = reassembler.accept(frame, true).orElseThrow();
+        return BedrockBatchCodec.decode(payload, compressed);
+    }
+
+    private static List<BedrockPacket> decodeOutboundPackets(byte[] frame, boolean compressed) {
         NetherNetMessageFramer.Reassembler reassembler = new NetherNetMessageFramer.Reassembler();
         byte[] payload = reassembler.accept(frame, true).orElseThrow();
         return BedrockBatchCodec.decode(payload, compressed);

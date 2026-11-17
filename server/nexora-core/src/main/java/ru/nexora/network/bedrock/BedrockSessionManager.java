@@ -110,6 +110,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final Map<Long, String> livingEntityAggroTargets = new ConcurrentHashMap<>();
     private final Map<Long, Long> livingEntityAggroExpiresAtMillis = new ConcurrentHashMap<>();
     private static final long MOB_AGGRO_RETENTION_MILLIS = 10_000L;
+    private static final long CHAT_RATE_WINDOW_NANOS = 5_000_000_000L;
+    private static final int MAX_CHAT_MESSAGES_PER_WINDOW = 5;
     private final Map<Long, ru.nexora.combat.ArrowProjectile> mobArrows = new ConcurrentHashMap<>();
     private final Set<Long> poisonMobArrows = ConcurrentHashMap.newKeySet();
     private final AtomicLong nextMobArrowRuntimeId = new AtomicLong(4_000_000L);
@@ -1530,6 +1532,70 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         sendPacket(networkId, BedrockStartGameCodec.createChunkPublisherUpdate(
                 (int) Math.floor(x), (int) Math.floor(y), (int) Math.floor(z)), true);
         sendChunkArea(networkId, state, chunkX, chunkZ);
+    }
+
+    private void handleChatMessage(
+            NetherNetInboundPipeline.InboundMessage message, SessionState state, BedrockPacket packet
+    ) {
+        if (!message.reliable()) {
+            throw new SecurityException("TextPacket chat must arrive on ReliableDataChannel");
+        }
+        if (!state.loginAuthenticated || !state.clientInitialized || state.dead || state.vitals.dead()
+                || state.identity == null) {
+            throw new SecurityException("Chat arrived before the authenticated player was ready");
+        }
+
+        BedrockTextCodec.DecodedChat chat;
+        try {
+            chat = BedrockTextCodec.decodeChat(packet);
+        } catch (IllegalArgumentException exception) {
+            state.rejected = true;
+            throw new SecurityException("Malformed Bedrock chat TextPacket", exception);
+        }
+        if (!chat.xuid().isBlank() && !chat.xuid().equals(state.identity.xuid())) {
+            state.rejected = true;
+            throw new SecurityException("Chat XUID does not match the authenticated player");
+        }
+
+        String cleanMessage = sanitizeChatMessage(chat.message());
+        if (cleanMessage.isEmpty()) return;
+        long now = nanoTime.getAsLong();
+        if (!allowChatMessage(state, now)) return;
+
+        String displayName = state.identity.displayName();
+        if (displayName == null || displayName.isBlank()) displayName = "Player";
+        // XUID is intentionally empty in the outgoing packet until player-list replication
+        // is implemented; Bedrock clients otherwise may hide chat from unknown XUIDs.
+        BedrockPacket outgoing = BedrockTextCodec.createChatMessage(displayName, cleanMessage, "", "");
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            SessionState recipient = entry.getValue();
+            if (recipient.clientInitialized && !recipient.rejected) {
+                sendPacket(entry.getKey(), outgoing, true);
+            }
+        }
+    }
+
+    private static String sanitizeChatMessage(String message) {
+        StringBuilder clean = new StringBuilder(message.length());
+        message.codePoints().filter(codePoint -> !Character.isISOControl(codePoint))
+                .forEach(clean::appendCodePoint);
+        String result = clean.toString().strip();
+        if (result.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 512) {
+            throw new SecurityException("Chat message exceeds 512 UTF-8 bytes");
+        }
+        return result;
+    }
+
+    private static boolean allowChatMessage(SessionState state, long nowNanos) {
+        if (state.chatWindowStartedNanos == Long.MIN_VALUE
+                || nowNanos < state.chatWindowStartedNanos
+                || nowNanos - state.chatWindowStartedNanos >= CHAT_RATE_WINDOW_NANOS) {
+            state.chatWindowStartedNanos = nowNanos;
+            state.chatMessagesInWindow = 0;
+        }
+        if (state.chatMessagesInWindow >= MAX_CHAT_MESSAGES_PER_WINDOW) return false;
+        state.chatMessagesInWindow++;
+        return true;
     }
 
     private void handleCommandRequest(
@@ -4994,6 +5060,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private static final class SessionState {
         private final ReentrantLock combatLock = new ReentrantLock();
         private long lastAttackNanos = Long.MIN_VALUE;
+        private long chatWindowStartedNanos = Long.MIN_VALUE;
+        private int chatMessagesInWindow;
         private long lastCombatDamageNanos = Long.MIN_VALUE;
         private long spearChargeStartedNanos = Long.MIN_VALUE;
         private long spearChargeReleasedNanos = Long.MIN_VALUE;

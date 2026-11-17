@@ -85,12 +85,12 @@ Safety and privacy requirements:
 
 ### Implemented foundations
 - **Mob AI:** initial profile-based controller is wired into `EntityTickEngine`. PASSIVE mobs retain the existing deterministic wander behavior; configured NEUTRAL mobs wait for provocation; configured HOSTILE mobs detect visible nearby players and pursue them on authoritative server ticks. Attack-range decisions emit intent only; no damage is applied yet.
-- **Core AI Assistant:** `AiToolRegistry` and `CoreAiAssistant` provide a provider-neutral tool boundary with per-tool permissions, explicit approval for mutating tools, and audit events that omit arguments. There is no LLM/provider adapter or natural-language runtime yet.
-- **Moderation AI Assistant:** `ModerationSignalAnalyzer` and `ModerationAiAssistant` provide bounded chat-rate/repetition signals, retain only SHA-256 fingerprints rather than raw chat, support data deletion, and always mark results for human review. This is a deterministic signal foundation, not a trained/model-based classifier and it does not punish players.
+- **Core AI Assistant:** `AiToolRegistry` and `CoreAiAssistant` provide a provider-neutral tool boundary with per-tool permissions, explicit approval for mutating tools, and audit events that omit arguments. `AiModelProvider` is an optional provider SPI; prompts and context are bounded, sensitive context keys are rejected, and Core remains usable without a provider. A production provider and full operator conversation/tool-planning workflow are not yet included.
+- **Moderation AI Assistant:** `ModerationSignalAnalyzer` and `ModerationAiAssistant` provide bounded chat-rate/repetition signals, retain only SHA-256 fingerprints rather than raw chat, support data deletion, and always mark results for human review. An optional model summary receives only risk/score/reason metadata, never raw chat or player IDs. This is a deterministic signal foundation, not a trained/model-based classifier and it does not punish players.
 
 ### Not yet implemented
 - Mob pathfinding around obstacles, combat/damage, additional goals, vertical navigation, persistent profiles and load testing.
-- AI model/provider adapters, operator-facing conversation workflow, live diagnostics catalogue and secure context redaction pipeline.
-- Moderation case management, report ingestion, policy-aware recommendations, audit persistence, appeals and model-based review.
+- Production AI provider adapters, operator-facing conversation workflow, live diagnostics catalogue, provider lifecycle/rate limits and a broader secure context redaction pipeline.
+- Moderation case management, report ingestion, policy-aware recommendations, durable audit storage, appeals and model-based review.
 
 The current engineering priority remains Core reliability and confirmed CI verification. Do not describe these foundations as complete AI assistants or complete mob behavior until the missing capabilities and integration tests are delivered.

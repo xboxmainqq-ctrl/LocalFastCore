@@ -2648,28 +2648,32 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     private static float mobMaxHealth(String identifier) {
         return switch (identifier) {
-            case "minecraft:chicken", "minecraft:cod", "minecraft:tropical_fish",
-                    "minecraft:salmon", "minecraft:pufferfish", "minecraft:tadpole",
-                    "minecraft:bat", "minecraft:parrot", "minecraft:allay",
-                    "minecraft:snow_golem" -> 4.0f;
-            case "minecraft:rabbit", "minecraft:cat", "minecraft:ocelot",
-                    "minecraft:wolf", "minecraft:bee", "minecraft:fox" -> 8.0f;
-            case "minecraft:pig", "minecraft:cow", "minecraft:sheep", "minecraft:goat",
-                    "minecraft:mooshroom", "minecraft:armadillo", "minecraft:camel",
-                    "minecraft:donkey", "minecraft:horse", "minecraft:mule",
-                    "minecraft:llama", "minecraft:trader_llama", "minecraft:turtle",
-                    "minecraft:axolotl", "minecraft:frog", "minecraft:strider",
+            case "minecraft:chicken", "minecraft:snow_golem" -> 4.0f;
+            case "minecraft:cod", "minecraft:tropical_fish", "minecraft:salmon",
+                    "minecraft:pufferfish", "minecraft:rabbit" -> 3.0f;
+            case "minecraft:bat", "minecraft:parrot" -> 6.0f;
+            case "minecraft:wolf" -> 8.0f;
+            case "minecraft:bee", "minecraft:cat", "minecraft:ocelot",
+                    "minecraft:fox", "minecraft:pig", "minecraft:cow",
+                    "minecraft:mooshroom", "minecraft:goat", "minecraft:frog",
                     "minecraft:glow_squid", "minecraft:squid" -> 10.0f;
-            case "minecraft:cave_spider" -> 12.0f;
-            case "minecraft:spider", "minecraft:polar_bear", "minecraft:panda",
+            case "minecraft:armadillo" -> 12.0f;
+            case "minecraft:axolotl" -> 14.0f;
+            case "minecraft:vex", "minecraft:donkey", "minecraft:mule",
+                    "minecraft:llama", "minecraft:trader_llama" -> 15.0f;
+            case "minecraft:piglin", "minecraft:polar_bear", "minecraft:panda",
                     "minecraft:blaze", "minecraft:bogged" -> 16.0f;
-            case "minecraft:vex" -> 14.0f;
+            case "minecraft:horse", "minecraft:allay", "minecraft:strider" -> 20.0f;
+            case "minecraft:camel" -> 32.0f;
+            case "minecraft:turtle" -> 30.0f;
+            case "minecraft:cave_spider" -> 12.0f;
             case "minecraft:guardian", "minecraft:shulker", "minecraft:breeze" -> 30.0f;
+            case "minecraft:witch" -> 26.0f;
+            case "minecraft:pillager", "minecraft:vindicator", "minecraft:evoker" -> 24.0f;
+            case "minecraft:slime", "minecraft:magma_cube" -> 1.0f;
             case "minecraft:creeper", "minecraft:skeleton", "minecraft:stray",
                     "minecraft:husk", "minecraft:drowned", "minecraft:zombie",
-                    "minecraft:zombie_villager", "minecraft:witch", "minecraft:piglin",
-                    "minecraft:pillager", "minecraft:vindicator", "minecraft:evoker",
-                    "minecraft:phantom", "minecraft:slime", "minecraft:magma_cube",
+                    "minecraft:zombie_villager", "minecraft:phantom",
                     "minecraft:wither_skeleton" -> 20.0f;
             case "minecraft:enderman", "minecraft:hoglin", "minecraft:zoglin" -> 40.0f;
             case "minecraft:ravager", "minecraft:iron_golem" -> 100.0f;

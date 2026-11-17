@@ -95,6 +95,22 @@ class FurnaceServiceTest {
     }
 
     @Test
+    void supportsWoodAndCoalBlockAsFuel() {
+        FurnaceService service = new FurnaceService();
+        String[] fuels = {"minecraft:oak_log", "minecraft:oak_planks", "minecraft:coal_block"};
+        int[] durations = {300, 300, 16000};
+
+        for (int i = 0; i < fuels.length; i++) {
+            ContainerInventory furnace = new ContainerInventory(3);
+            furnace.setSlot(FurnaceService.INPUT_SLOT, new ItemStack("minecraft:raw_iron", 1, 64));
+            furnace.setSlot(FurnaceService.FUEL_SLOT, new ItemStack(fuels[i], 1, 64));
+            FurnaceService.TickResult result = service.tick(i, 64, 20, furnace, 1);
+            assertEquals(durations[i] - 1, result.burnTicksRemaining(), fuels[i]);
+            assertTrue(furnace.getSlot(FurnaceService.FUEL_SLOT).isEmpty(), fuels[i]);
+        }
+    }
+
+    @Test
     void blastFurnaceSmeltsMetalsTwiceAsFastAndRejectsFood() {
         FurnaceService service = new FurnaceService();
         ContainerInventory furnace = new ContainerInventory(3);

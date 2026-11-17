@@ -97,4 +97,18 @@ class NexoraAiAssistantTest {
         assertTrue(assistant.rejectRepairProposal("operator-xuid", "R-000001").isEmpty());
     }
 
+    @Test
+    void operatorStatusIncludesRecentDiagnosticEvidence() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        diagnostics.recordFailure(new IllegalStateException("world autosave failed"));
+        NexoraAiAssistant assistant = new NexoraAiAssistant(
+                "", "gpt-4o-mini", java.net.URI.create("https://api.openai.com/v1/chat/completions"),
+                java.time.Duration.ofSeconds(30), diagnostics);
+
+        String status = assistant.adminStatus();
+
+        assertTrue(status.contains("Недавние события"));
+        assertTrue(status.contains("[FAILURE] IllegalStateException: world autosave failed"));
+    }
+
 }

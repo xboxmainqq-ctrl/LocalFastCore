@@ -60,7 +60,7 @@ The current server-side spawner implementation provides:
 - A dedicated internal `SPAWNER` block and Bedrock runtime-state mapping for the protocol palette used by this branch.
 - A 16-block player activation radius; inactive spawners and spawners in unloaded chunks pause their countdown.
 - A default 200-tick delay, configurable from 20 to 800 ticks.
-- Up to four spawn-position attempts per activation cycle.
+- Up to four spawn-position attempts per activation cycle with a small vertical range; candidates require two air blocks, a solid floor, resident chunks, and no overlapping player or living actor.
 - A same-type nearby cap of six mobs in the local 9-block volume.
 - Entity-height-aware spawn-space checks (two air blocks for ordinary mobs, more for tall mobs); ground mobs require support while flying mobs may spawn in open air. Candidate validation never forces a neighboring chunk to load.
 - A bounded registry of 10,000 spawners, a 128-spawner per-tick round-robin work budget, and a guard against duplicate processing in the same server tick.

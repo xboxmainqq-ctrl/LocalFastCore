@@ -95,6 +95,54 @@ class FurnaceServiceTest {
     }
 
     @Test
+    void blastFurnaceSmeltsMetalsTwiceAsFastAndRejectsFood() {
+        FurnaceService service = new FurnaceService();
+        ContainerInventory furnace = new ContainerInventory(3);
+        furnace.setSlot(FurnaceService.INPUT_SLOT, new ItemStack("minecraft:raw_iron", 1, 64));
+        furnace.setSlot(FurnaceService.FUEL_SLOT, new ItemStack("minecraft:coal", 1, 64));
+
+        FurnaceService.TickResult result = service.tick(
+                10, 64, 10, furnace, FurnaceService.Kind.BLAST_FURNACE, 100);
+
+        assertEquals(0, result.cookProgress());
+        assertEquals(new ItemStack("minecraft:iron_ingot", 1, 64),
+                furnace.getSlot(FurnaceService.OUTPUT_SLOT).orElseThrow());
+
+        ContainerInventory food = new ContainerInventory(3);
+        food.setSlot(FurnaceService.INPUT_SLOT, new ItemStack("minecraft:beef", 1, 64));
+        food.setSlot(FurnaceService.FUEL_SLOT, new ItemStack("minecraft:coal", 1, 64));
+        FurnaceService.TickResult rejected = service.tick(
+                11, 64, 10, food, FurnaceService.Kind.BLAST_FURNACE, 100);
+        assertEquals(0, rejected.burnTicksRemaining());
+        assertTrue(food.getSlot(FurnaceService.FUEL_SLOT).isPresent());
+        assertTrue(food.getSlot(FurnaceService.INPUT_SLOT).isPresent());
+    }
+
+    @Test
+    void smokerCooksFoodTwiceAsFastAndRejectsMetals() {
+        FurnaceService service = new FurnaceService();
+        ContainerInventory smoker = new ContainerInventory(3);
+        smoker.setSlot(FurnaceService.INPUT_SLOT, new ItemStack("minecraft:beef", 1, 64));
+        smoker.setSlot(FurnaceService.FUEL_SLOT, new ItemStack("minecraft:coal", 1, 64));
+
+        FurnaceService.TickResult result = service.tick(
+                12, 64, 10, smoker, FurnaceService.Kind.SMOKER, 100);
+
+        assertEquals(new ItemStack("minecraft:cooked_beef", 1, 64),
+                smoker.getSlot(FurnaceService.OUTPUT_SLOT).orElseThrow());
+        assertEquals(0, result.cookProgress());
+
+        ContainerInventory metal = new ContainerInventory(3);
+        metal.setSlot(FurnaceService.INPUT_SLOT, new ItemStack("minecraft:raw_gold", 1, 64));
+        metal.setSlot(FurnaceService.FUEL_SLOT, new ItemStack("minecraft:coal", 1, 64));
+        FurnaceService.TickResult rejected = service.tick(
+                13, 64, 10, metal, FurnaceService.Kind.SMOKER, 100);
+        assertEquals(0, rejected.burnTicksRemaining());
+        assertTrue(metal.getSlot(FurnaceService.FUEL_SLOT).isPresent());
+        assertTrue(metal.getSlot(FurnaceService.INPUT_SLOT).isPresent());
+    }
+
+    @Test
     void rejectsUnsupportedFuelAndInvalidElapsedTicks() {
         FurnaceService service = new FurnaceService();
         ContainerInventory furnace = new ContainerInventory(3);

@@ -2387,8 +2387,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         for (WorldLivingEntityManager.DamageResult result : world.livingEntities().tickFire(nowMillis)) {
             WorldLivingEntity entity = result.current();
             if (result.killed()) {
+                MobKillCredit credit = livingEntityKillCredit.get(entity.runtimeId());
                 cleanupLivingEntityRuntimeState(entity.runtimeId());
-                MobKillCredit credit = livingEntityKillCredit.remove(entity.runtimeId());
                 SessionState killer = credit == null ? null : sessions.get(credit.networkId());
                 if (killer != null) {
                     killer.combatLock.lock();

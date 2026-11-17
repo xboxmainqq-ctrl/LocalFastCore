@@ -134,6 +134,56 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void spawnsAndDamagesUndeadActorsWithSmiteFireAndKnockback() throws Exception {
+        AtomicLong clock = new AtomicLong();
+        List<byte[]> outboundFrames = new ArrayList<>();
+        ru.nexora.world.World combatWorld = new ru.nexora.world.World(
+                "mob-combat-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                combatWorld, (networkId, label, frame) -> outboundFrames.add(frame),
+                event -> {}, clock::get);
+        manager.onIdentity("mob-attacker", new NetherNetClientIdentity(
+                "mob-token", new byte[] {4}, "mob-attacker-xuid", "MobAttacker", "playfab-mob", "20CA2", null));
+        setSessionField(manager, "mob-attacker", "loginAuthenticated", true);
+        setSessionField(manager, "mob-attacker", "clientInitialized", true);
+        setSessionField(manager, "mob-attacker", "entityId", 104L);
+        setSessionField(manager, "mob-attacker", "positionX", 0.0f);
+        setSessionField(manager, "mob-attacker", "positionY", 65.0f);
+        setSessionField(manager, "mob-attacker", "positionZ", 0.0f);
+
+        ItemStack sword = new ItemStack("minecraft:diamond_sword", 1, 1,
+                java.util.Map.of("minecraft:smite", 3,
+                        "minecraft:knockback", 2, "minecraft:fire_aspect", 1));
+        manager.playerInventory("mob-attacker").orElseThrow().setSlot(0, sword);
+        var zombie = manager.spawnLivingEntity(
+                "minecraft:zombie", ru.nexora.world.WorldLivingEntity.Family.UNDEAD,
+                20.0f, 2.0, 65.0, 0.0);
+        assertTrue(outboundFrames.stream().flatMap(frame -> decodeOutboundAll(frame, true).stream())
+                .anyMatch(packet -> packet.packetId() == BedrockAddActorCodec.ADD_ACTOR_PACKET_ID));
+
+        var attack = new BedrockInventoryTransactionCodec.DecodedUseOnActor(
+                zombie.runtimeId(), 1, 0, 0, java.util.Optional.of(sword),
+                0.0f, 65.0f, 0.0f, 0.0f, 1.0f, 0.0f);
+        invokeActorAttack(manager, "mob-attacker", attack);
+
+        var damaged = combatWorld.livingEntities().find(zombie.runtimeId()).orElseThrow();
+        assertEquals(4.5f, damaged.health(), 0.0001f); // diamond sword 8 + Smite III 7.5
+        assertEquals(0.6, damaged.velocityX(), 0.0001);
+        assertEquals(4_000L, damaged.fireUntilMillis());
+        assertTrue(outboundFrames.stream().flatMap(frame -> decodeOutboundAll(frame, true).stream())
+                .anyMatch(packet -> packet.packetId() == BedrockActorMotionCodec.SET_ACTOR_MOTION_PACKET_ID));
+
+        clock.set(1_000_000_000L);
+        invokeLivingActorTick(manager, 1L);
+        assertEquals(3.5f,
+                combatWorld.livingEntities().find(zombie.runtimeId()).orElseThrow().health(), 0.0001f);
+        assertTrue(manager.despawnLivingEntity(zombie.runtimeId()));
+        assertTrue(combatWorld.livingEntities().find(zombie.runtimeId()).isEmpty());
+        manager.close();
+    }
+
+    @Test
     void negotiatesNetworkSettingsThenDecodesCompressedGameBatch() {
         List<byte[]> outboundFrames = new ArrayList<>();
         AtomicReference<BedrockSessionManager.PacketEvent> received = new AtomicReference<>();
@@ -1473,6 +1523,15 @@ class BedrockSessionManagerTest {
         java.lang.reflect.Field field = state.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         field.set(state, value);
+    }
+
+    private static void invokeLivingActorTick(
+            BedrockSessionManager manager, long tick
+    ) throws Exception {
+        java.lang.reflect.Method method = BedrockSessionManager.class.getDeclaredMethod(
+                "tickWorldLivingActors", long.class);
+        method.setAccessible(true);
+        method.invoke(manager, tick);
     }
 
     private static Object getSessionField(

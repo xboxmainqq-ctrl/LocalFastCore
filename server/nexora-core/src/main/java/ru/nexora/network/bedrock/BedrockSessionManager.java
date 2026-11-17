@@ -1646,6 +1646,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case "minecraft:diamond_block" -> BlockType.DIAMOND_BLOCK;
             case "minecraft:emerald_block" -> BlockType.EMERALD_BLOCK;
             case "minecraft:chest" -> BlockType.CHEST;
+            case "minecraft:oak_log" -> BlockType.OAK_LOG;
+            case "minecraft:oak_planks" -> BlockType.OAK_PLANKS;
             default -> null;
         };
         if (placedType == null) return;
@@ -2014,6 +2016,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case DIAMOND_BLOCK -> "minecraft:diamond_block";
             case EMERALD_BLOCK -> "minecraft:emerald_block";
             case CHEST -> "minecraft:chest";
+            case OAK_LOG -> "minecraft:oak_log";
+            case OAK_PLANKS -> "minecraft:oak_planks";
         };
     }
 
@@ -2052,6 +2056,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case END_STONE -> 9_000_000_000L;
             case OBSIDIAN -> 250_000_000_000L;
             case CHEST -> 2_500_000_000L;
+            case OAK_LOG -> 2_000_000_000L;
+            case OAK_PLANKS -> 2_000_000_000L;
         };
     }
 

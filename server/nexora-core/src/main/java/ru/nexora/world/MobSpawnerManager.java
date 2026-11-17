@@ -49,6 +49,7 @@ public final class MobSpawnerManager {
     private long cappedAttempts;
     private long inactiveTicks;
     private long invalidPositionAttempts;
+    private long lastProcessedTick = Long.MIN_VALUE;
 
     public synchronized boolean register(int x, int y, int z, long currentTick) {
         if (currentTick < 0 || (spawners.size() >= MAX_TRACKED_SPAWNERS
@@ -87,7 +88,13 @@ public final class MobSpawnerManager {
         if (currentTick < 0) throw new IllegalArgumentException("currentTick must be non-negative");
 
         List<MobSpawnerState> snapshot;
-        synchronized (this) { snapshot = List.copyOf(spawners.values()); }
+        long elapsedTicks;
+        synchronized (this) {
+            elapsedTicks = lastProcessedTick == Long.MIN_VALUE ? 1L
+                    : Math.max(0L, currentTick - lastProcessedTick);
+            lastProcessedTick = currentTick;
+            snapshot = List.copyOf(spawners.values());
+        }
         List<WorldLivingEntity> livingSnapshot = world.livingEntities().snapshot();
         List<SpawnRequest> spawnedThisTick = new ArrayList<>();
         int active = 0;
@@ -97,7 +104,7 @@ public final class MobSpawnerManager {
         int invalid = 0;
         for (MobSpawnerState state : snapshot) {
             if (!world.isChunkLoadedAt(state.x(), state.z())) {
-                pauseTimer(state, currentTick);
+                pauseTimer(state, elapsedTicks);
                 continue;
             }
             if (world.getBlock(state.x(), state.y(), state.z()) != BlockType.SPAWNER) {
@@ -159,11 +166,14 @@ public final class MobSpawnerManager {
     }
 
     /** Pauses the countdown while the chunk is unloaded or no player activates the spawner. */
-    private synchronized void pauseTimer(MobSpawnerState state, long currentTick) {
+    private synchronized void pauseTimer(MobSpawnerState state, long elapsedTicks) {
+        if (elapsedTicks <= 0) return;
         Position key = new Position(state.x(), state.y(), state.z());
         MobSpawnerState current = spawners.get(key);
         if (current == null || current.nextSpawnTick() == Long.MAX_VALUE) return;
-        spawners.put(key, current.withNextSpawnTick(current.nextSpawnTick() + 1));
+        long pausedUntil = current.nextSpawnTick() > Long.MAX_VALUE - elapsedTicks
+                ? Long.MAX_VALUE : current.nextSpawnTick() + elapsedTicks;
+        spawners.put(key, current.withNextSpawnTick(pausedUntil));
     }
 
     private synchronized boolean isCurrent(MobSpawnerState expected) {

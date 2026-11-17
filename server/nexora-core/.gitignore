@@ -1,0 +1,10 @@
+# Maven build output
+/target/
+/.m2/
+
+# Runtime world, player and identity data
+/data/
+
+# NetherNet private identity material
+*.pk8
+*.x509

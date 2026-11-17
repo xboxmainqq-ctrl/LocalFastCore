@@ -1269,7 +1269,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             return;
         }
         if (normalized.equals("/ai")) {
-            openAiForm(message.networkId(), state);
+            if (aiAssistant == null || !aiAssistant.isEnabled()) {
+                sendAiMessage(message.networkId(), "§b[NEXORA AI] §fИИ пока не настроен. Администратору нужно задать NEXORA_AI_API_KEY.");
+            } else {
+                openAiForm(message.networkId(), state);
+            }
             return;
         }
         if (normalized.startsWith("/ai ")) {

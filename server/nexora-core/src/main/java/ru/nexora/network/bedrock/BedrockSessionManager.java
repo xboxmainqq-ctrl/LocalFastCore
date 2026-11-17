@@ -469,6 +469,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
             if (!found) result.append("\nMob AI latency: waiting for measurements");
         }
+        result.append("\nMob spawners: ").append(world.mobSpawners().stats().summary());
         result.append("\nЭто накопительные счётчики и время подсистем, не TPS и не CPU.");
         return result.toString();
     }
@@ -492,6 +493,96 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         result.append("\nОбнаружение только сообщает о проблеме; мобов система не телепортирует.");
         return result.toString();
+    }
+
+    private void handleMobSpawnerCommand(String networkId, String arguments) {
+        String[] parts = arguments.isBlank() ? new String[0] : arguments.split("\\s+");
+        if (parts.length == 0 || parts[0].equalsIgnoreCase("list")) {
+            List<ru.nexora.world.MobSpawnerState> spawners = world.mobSpawners().snapshot();
+            if (spawners.isEmpty()) {
+                sendAiMessage(networkId, "§b[NEXORA SPAWNER] §fСпавнеров пока нет. "
+                        + "Создать: /ai spawner place <x> <y> <z> [mob] [delay]");
+                return;
+            }
+            StringBuilder result = new StringBuilder("§b[NEXORA SPAWNER] §fСпавнеры: ")
+                    .append(spawners.size());
+            for (ru.nexora.world.MobSpawnerState spawner : spawners.stream().limit(10).toList()) {
+                result.append("\\n").append(spawner.entityIdentifier()).append(" @ ")
+                        .append(spawner.x()).append(' ').append(spawner.y()).append(' ')
+                        .append(spawner.z()).append(" delay=").append(spawner.delayTicks());
+            }
+            sendAiMessage(networkId, result.toString());
+            return;
+        }
+        String action = parts[0].toLowerCase(Locale.ROOT);
+        if (action.equals("help")) {
+            sendAiMessage(networkId, "§b[NEXORA SPAWNER] §fКоманды: /ai spawner list; "
+                    + "/ai spawner place <x> <y> <z> [mob] [delay]; "
+                    + "/ai spawner set <x> <y> <z> <mob> <delay>; "
+                    + "/ai spawner remove <x> <y> <z>. Только для операторов.");
+            return;
+        }
+        try {
+            if (action.equals("place") && (parts.length == 4 || parts.length == 5 || parts.length == 6)) {
+                int x = Integer.parseInt(parts[1]);
+                int y = Integer.parseInt(parts[2]);
+                int z = Integer.parseInt(parts[3]);
+                String identifier = parts.length >= 5 ? normalizeSpawnerIdentifier(parts[4]) : "minecraft:zombie";
+                int delay = parts.length == 6 ? Integer.parseInt(parts[5])
+                        : ru.nexora.world.MobSpawnerState.DEFAULT_DELAY_TICKS;
+                world.setBlock(x, y, z, ru.nexora.world.BlockType.SPAWNER);
+                if (!world.mobSpawners().configure(x, y, z, identifier, delay,
+                        System.currentTimeMillis() / 50L)) {
+                    sendAiMessage(networkId, "§c[NEXORA SPAWNER] Не удалось настроить спавнер.");
+                    return;
+                }
+                sendAiMessage(networkId, "§a[NEXORA SPAWNER] Спавнер установлен: " + identifier
+                        + " (" + x + " " + y + " " + z + "), задержка " + delay + " тиков.");
+                return;
+            }
+            if (action.equals("set") && parts.length == 6) {
+                int x = Integer.parseInt(parts[1]);
+                int y = Integer.parseInt(parts[2]);
+                int z = Integer.parseInt(parts[3]);
+                String identifier = normalizeSpawnerIdentifier(parts[4]);
+                int delay = Integer.parseInt(parts[5]);
+                if (!world.mobSpawners().configure(x, y, z, identifier, delay,
+                        System.currentTimeMillis() / 50L)) {
+                    sendAiMessage(networkId, "§c[NEXORA SPAWNER] Спавнер не найден или параметры неверны.");
+                    return;
+                }
+                sendAiMessage(networkId, "§a[NEXORA SPAWNER] Настройки обновлены.");
+                return;
+            }
+            if (action.equals("remove") && parts.length == 4) {
+                int x = Integer.parseInt(parts[1]);
+                int y = Integer.parseInt(parts[2]);
+                int z = Integer.parseInt(parts[3]);
+                if (world.getBlock(x, y, z) != ru.nexora.world.BlockType.SPAWNER) {
+                    sendAiMessage(networkId, "§c[NEXORA SPAWNER] В этой точке нет спавнера.");
+                    return;
+                }
+                world.setBlock(x, y, z, ru.nexora.world.BlockType.AIR);
+                sendAiMessage(networkId, "§a[NEXORA SPAWNER] Спавнер удалён.");
+                return;
+            }
+        } catch (IllegalArgumentException exception) {
+            sendAiMessage(networkId, "§c[NEXORA SPAWNER] Неверные координаты, тип моба или задержка.");
+            return;
+        }
+        sendAiMessage(networkId, "§b[NEXORA SPAWNER] §fИспользуй /ai spawner help.");
+    }
+
+    private static String normalizeSpawnerIdentifier(String value) {
+        String identifier = value.contains(":") ? value.toLowerCase(Locale.ROOT)
+                : "minecraft:" + value.toLowerCase(Locale.ROOT);
+        if (!java.util.Set.of("minecraft:zombie", "minecraft:skeleton", "minecraft:creeper",
+                "minecraft:spider", "minecraft:cave_spider", "minecraft:husk", "minecraft:drowned",
+                "minecraft:stray", "minecraft:enderman", "minecraft:pig", "minecraft:cow",
+                "minecraft:sheep", "minecraft:chicken", "minecraft:iron_golem").contains(identifier)) {
+            throw new IllegalArgumentException("Unsupported spawner mob");
+        }
+        return identifier;
     }
 
     private void handleAiGuardCommand(String networkId, SessionState state, String arguments) {
@@ -1423,6 +1514,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         String normalized = command.command().trim().toLowerCase(Locale.ROOT);
         if (normalized.equals("/equipment") || normalized.equals("/equip")) {
             openEquipmentMenu(message.networkId(), state, "");
+            return;
+        }
+        if (normalized.equals("/ai spawner") || normalized.startsWith("/ai spawner ")) {
+            if (!isAiAdmin(state)) {
+                sendAiMessage(message.networkId(), "§c[NEXORA AI] Нет доступа к управлению спавнерами.");
+            } else {
+                handleMobSpawnerCommand(message.networkId(), command.command().trim()
+                        .substring("/ai spawner".length()).trim());
+            }
             return;
         }
         if (normalized.equals("/ai mob") || normalized.equals("/ai mob stats")

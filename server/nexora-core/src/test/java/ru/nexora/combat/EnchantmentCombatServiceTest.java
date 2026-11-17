@@ -87,8 +87,13 @@ class EnchantmentCombatServiceTest {
                 Map.of("minecraft:protection", 1, "minecraft:fire_protection", 2));
 
         // 6 armor points reduce 100 to 76; EPF (1 + 2*2 = 5) then reduces by 20%.
-        assertEquals(60.8f, EnchantmentCombatService.applyIncomingDamage(
+        assertEquals(80.0f, EnchantmentCombatService.applyIncomingDamage(
                 100.0f, List.of(fireChestplate), EnchantmentCombatService.DamageType.FIRE), 0.0001f);
+
+        ItemStack featherFallingBoots = new ItemStack("minecraft:iron_boots", 1, 1,
+                Map.of("minecraft:feather_falling", 4));
+        assertEquals(5.2f, EnchantmentCombatService.applyIncomingDamage(
+                10.0f, List.of(featherFallingBoots), EnchantmentCombatService.DamageType.FALL), 0.0001f);
 
         // The generic path remains backward-compatible with applyArmorReduction.
         assertEquals(EnchantmentCombatService.applyArmorReduction(100.0f, List.of(fireChestplate)),

@@ -283,16 +283,21 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     public void onDisconnected(String networkId) {
         SessionState state = sessions.get(networkId);
         if (state != null) {
-            synchronized (state) {
-                saveAndClearContainerWindow(state);
-                try {
-                    returnCraftingGridItems(state);
-                    savePlayer(state);
-                    saveInventory(state);
-                    saveEquipment(state);
-                } catch (IOException | RuntimeException exception) {
-                    System.err.println("NEXORA: unable to save disconnected player: " + exception.getMessage());
+            state.combatLock.lock();
+            try {
+                synchronized (state) {
+                    saveAndClearContainerWindow(state);
+                    try {
+                        returnCraftingGridItems(state);
+                        savePlayer(state);
+                        saveInventory(state);
+                        saveEquipment(state);
+                    } catch (IOException | RuntimeException exception) {
+                        System.err.println("NEXORA: unable to save disconnected player: " + exception.getMessage());
+                    }
                 }
+            } finally {
+                state.combatLock.unlock();
             }
             sessions.remove(networkId, state);
         }

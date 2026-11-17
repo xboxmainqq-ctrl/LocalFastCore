@@ -864,7 +864,7 @@ class BedrockSessionManagerTest {
 
         int beforeConsume = outboundFrames.size();
         BedrockPacket finishEating = new BedrockPacket(0x1e, 0, 0,
-                itemReleasePayload(1, 0, 261, 1, 0.5f, 66.62f, 0.5f));
+                itemReleasePayload(1, 0, 261, 1, 0.5f, 65.0f, 0.5f));
         sendClientBatch(manager, "food-client", BedrockBatchCodec.encode(List.of(finishEating), true, 256));
         assertEquals(0, manager.playerInventory("food-client").orElseThrow().count("minecraft:bread"));
         assertEquals(15, manager.playerVitals("food-client").orElseThrow().hunger());
@@ -1573,7 +1573,7 @@ class BedrockSessionManagerTest {
         out.write(0); // no StackNetId
         writeVarUInt(out, 0); // block runtime ID
         writeVarUInt(out, 0); // user data
-        writeFloat32(out, headX); writeFloat32(out, headY); writeFloat32(out, headZ);
+        writeFloat32(out, headX); writeFloat32(out, headY); writeFloat32(out, headZ); // protocol From Position
         out.write(0); // protocol 2225 main hand
         return out.toByteArray();
     }

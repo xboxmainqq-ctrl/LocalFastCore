@@ -20,6 +20,7 @@ NexoraAI is an in-core operations observer and optional in-game assistant for NE
 - `/ai help` lists available commands; `/ai status` shows whether the provider is configured.
 - The assistant answers asynchronously through an OpenAI-compatible Chat Completions endpoint.
 - Per-player requests are rate-limited and prompts/replies are bounded.
+- The assistant keeps up to 8 completed exchanges per authenticated player for 15 minutes of inactivity; player and operator histories are separate. Context is memory-only and is not written to disk.
 - The model receives a small read-only JVM status snapshot. It is explicitly instructed not to claim it can execute commands or modify the server.
 
 Configuration is read from the server process environment:

@@ -82,11 +82,29 @@ class EnchantmentCombatServiceTest {
     }
 
     @Test
+    void combinesArmorPointsWithDamageTypeSpecificProtectionExactlyOnce() {
+        ItemStack fireChestplate = new ItemStack("minecraft:iron_chestplate", 1, 1,
+                Map.of("minecraft:protection", 1, "minecraft:fire_protection", 2));
+
+        // 6 armor points reduce 100 to 76; EPF (1 + 2*2 = 5) then reduces by 20%.
+        assertEquals(60.8f, EnchantmentCombatService.applyIncomingDamage(
+                100.0f, List.of(fireChestplate), EnchantmentCombatService.DamageType.FIRE), 0.0001f);
+
+        // The generic path remains backward-compatible with applyArmorReduction.
+        assertEquals(EnchantmentCombatService.applyArmorReduction(100.0f, List.of(fireChestplate)),
+                EnchantmentCombatService.applyIncomingDamage(
+                        100.0f, List.of(fireChestplate), EnchantmentCombatService.DamageType.GENERIC),
+                0.0001f);
+    }
+
+    @Test
     void rejectsInvalidArmorDamageAndNullPieces() {
         assertThrows(IllegalArgumentException.class, () ->
                 EnchantmentCombatService.applyArmorReduction(Float.POSITIVE_INFINITY, List.of()));
         assertThrows(NullPointerException.class, () ->
                 EnchantmentCombatService.applyArmorReduction(4.0f, java.util.Arrays.asList((ItemStack) null)));
+        assertThrows(NullPointerException.class, () ->
+                EnchantmentCombatService.applyIncomingDamage(4.0f, List.of(), null));
     }
 
     @Test

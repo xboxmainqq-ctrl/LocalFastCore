@@ -737,11 +737,45 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         if (state.openContainerWindowId == 0
                 || close.windowId() != state.openContainerWindowId
-                || close.type() != BedrockContainerPacketCodec.CONTAINER_TYPE) {
+                || close.type() != state.openContainerType) {
             return;
         }
 
         saveAndClearContainerWindow(state);
+    }
+
+    private void openCraftingTableWindow(String networkId, SessionState state, int x, int y, int z) {
+        if (world.getBlock(x, y, z) != BlockType.CRAFTING_TABLE || !isWithinBlockReach(state, x, y, z)) return;
+        if (state.openContainerWindowId != 0) closeContainerWindow(networkId, state, true);
+
+        int windowId = nextContainerWindowId(state);
+        try {
+            ContainerInventory grid = new ContainerInventory(9);
+            BedrockPacket open = BedrockContainerPacketCodec.createOpen(
+                    windowId, BedrockContainerPacketCodec.WORKBENCH_TYPE, x, y, z,
+                    BedrockContainerPacketCodec.BLOCK_CONTAINER_ENTITY_ID);
+            BedrockPacket content = BedrockInventoryContentCodec.createContainerInventory(
+                    windowId, grid, itemRegistry);
+            sendPackets(networkId, List.of(open, content), true);
+            state.openContainerWindowId = windowId;
+            state.openContainerType = BedrockContainerPacketCodec.WORKBENCH_TYPE;
+            state.openContainerIsCraftingTable = true;
+            state.openContainerX = x;
+            state.openContainerY = y;
+            state.openContainerZ = z;
+            state.openContainerInventory = grid;
+        } catch (RuntimeException exception) {
+            System.err.println("NEXORA: unable to open crafting table at " + x + "," + y + "," + z
+                    + ": " + exception.getMessage());
+        }
+    }
+
+    private static int nextContainerWindowId(SessionState state) {
+        int windowId = state.nextContainerWindowId++;
+        if (state.nextContainerWindowId > ContainerInventoryTransactionService.MAX_CONTAINER_WINDOW_ID) {
+            state.nextContainerWindowId = 1;
+        }
+        return windowId;
     }
 
     private void openChestWindow(String networkId, SessionState state, int x, int y, int z) {
@@ -753,10 +787,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             closeContainerWindow(networkId, state, true);
         }
 
-        int windowId = state.nextContainerWindowId++;
-        if (state.nextContainerWindowId > ContainerInventoryTransactionService.MAX_CONTAINER_WINDOW_ID) {
-            state.nextContainerWindowId = 1;
-        }
+        int windowId = nextContainerWindowId(state);
 
         try {
             ContainerInventory inventory = manager.getOrCreate(x, y, z);
@@ -765,6 +796,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             BedrockPacket open = BedrockContainerPacketCodec.createChestOpen(windowId, x, y, z);
             sendPackets(networkId, List.of(open, content), true);
             state.openContainerWindowId = windowId;
+            state.openContainerType = BedrockContainerPacketCodec.CONTAINER_TYPE;
+            state.openContainerIsCraftingTable = false;
             state.openContainerX = x;
             state.openContainerY = y;
             state.openContainerZ = z;
@@ -791,7 +824,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         try {
             sendPacket(networkId, BedrockContainerPacketCodec.createClose(
-                    windowId, BedrockContainerPacketCodec.CONTAINER_TYPE, serverInitiated), true);
+                    windowId, state.openContainerType, serverInitiated), true);
         } finally {
             clearContainerWindow(state);
         }
@@ -799,6 +832,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     private void saveAndClearContainerWindow(SessionState state) {
         if (state.openContainerWindowId == 0) return;
+        if (state.openContainerIsCraftingTable) {
+            returnCraftingTableGridItems(state);
+            clearContainerWindow(state);
+            return;
+        }
         try {
             WorldContainerManager manager = world.containers().orElse(null);
             if (manager != null) {
@@ -811,8 +849,45 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
+    private void returnCraftingTableGridItems(SessionState state) {
+        ContainerInventory grid = state.openContainerInventory;
+        if (grid == null) return;
+        List<Optional<ItemStack>> playerBefore = state.inventory.snapshot();
+        int selectedSlot = state.inventory.selectedHotbarSlot();
+        List<Optional<ItemStack>> gridBefore = grid.snapshot();
+        List<Long> spawned = new ArrayList<>();
+        try {
+            for (int slot = 0; slot < grid.size(); slot++) {
+                ItemStack stack = grid.getSlot(slot).orElse(null);
+                if (stack == null) continue;
+                int overflow = state.inventory.add(stack);
+                if (overflow > 0) {
+                    var dropped = world.itemEntities().spawn(
+                            new ItemStack(stack.itemId(), overflow, stack.maxStackSize()),
+                            state.positionX, state.positionY + 0.5, state.positionZ,
+                            0, 0.15, 0, System.currentTimeMillis(),
+                            WorldItemEntityManager.DEFAULT_PICKUP_DELAY_MILLIS,
+                            state.identity == null ? null : state.identity.xuid());
+                    spawned.add(dropped.runtimeId());
+                }
+                grid.setSlot(slot, null);
+            }
+            saveInventory(state);
+        } catch (IOException | RuntimeException exception) {
+            state.inventory.restore(playerBefore, selectedSlot);
+            grid.restore(gridBefore);
+            for (long runtimeId : spawned) {
+                try { world.itemEntities().remove(runtimeId); }
+                catch (RuntimeException rollbackFailure) { exception.addSuppressed(rollbackFailure); }
+            }
+            System.err.println("NEXORA: crafting table grid return failed: " + exception.getMessage());
+        }
+    }
+
     private static void clearContainerWindow(SessionState state) {
         state.openContainerWindowId = 0;
+        state.openContainerType = BedrockContainerPacketCodec.CONTAINER_TYPE;
+        state.openContainerIsCraftingTable = false;
         state.openContainerInventory = null;
         state.openContainerX = 0;
         state.openContainerY = 0;
@@ -1270,21 +1345,25 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (result == ContainerInventoryTransactionService.Result.APPLIED) {
             try {
                 saveInventory(state);
-                WorldContainerManager manager = world.containers().orElseThrow(
-                        () -> new IllegalStateException("World container storage is not configured"));
-                manager.save(state.openContainerX, state.openContainerY, state.openContainerZ);
+                if (!state.openContainerIsCraftingTable) {
+                    WorldContainerManager manager = world.containers().orElseThrow(
+                            () -> new IllegalStateException("World container storage is not configured"));
+                    manager.save(state.openContainerX, state.openContainerY, state.openContainerZ);
+                }
             } catch (IOException | RuntimeException exception) {
                 state.inventory.restore(previousPlayer, previousSelectedSlot);
                 container.restore(previousContainer);
                 try {
                     saveInventory(state);
-                    world.containers().ifPresent(manager -> {
-                        try {
-                            manager.save(state.openContainerX, state.openContainerY, state.openContainerZ);
-                        } catch (IOException rollbackFailure) {
-                            throw new java.io.UncheckedIOException(rollbackFailure);
-                        }
-                    });
+                    if (!state.openContainerIsCraftingTable) {
+                        world.containers().ifPresent(manager -> {
+                            try {
+                                manager.save(state.openContainerX, state.openContainerY, state.openContainerZ);
+                            } catch (IOException rollbackFailure) {
+                                throw new java.io.UncheckedIOException(rollbackFailure);
+                            }
+                        });
+                    }
                 } catch (IOException | RuntimeException rollbackFailure) {
                     exception.addSuppressed(rollbackFailure);
                 }
@@ -1727,6 +1806,18 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             int targetX = transaction.x();
             int targetY = transaction.y();
             int targetZ = transaction.z();
+            if (heldDescriptorMatches && world.getBlock(targetX, targetY, targetZ) == BlockType.CRAFTING_TABLE
+                    && transaction.targetBlockId()
+                    == Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(BlockType.CRAFTING_TABLE))
+                    && isWithinBlockReach(state, targetX, targetY, targetZ)) {
+                double dx = transaction.fromX() - state.positionX;
+                double dy = transaction.fromY() - state.positionY;
+                double dz = transaction.fromZ() - state.positionZ;
+                if (dx * dx + dy * dy + dz * dz <= 2.25) {
+                    openCraftingTableWindow(networkId, state, targetX, targetY, targetZ);
+                    return;
+                }
+            }
             if (heldDescriptorMatches && world.getBlock(targetX, targetY, targetZ) == BlockType.CHEST
                     && transaction.targetBlockId()
                     == Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(BlockType.CHEST))
@@ -2683,6 +2774,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private PendingEquipmentForm pendingEquipmentForm;
         private int nextContainerWindowId = 1;
         private int openContainerWindowId;
+        private int openContainerType = BedrockContainerPacketCodec.CONTAINER_TYPE;
+        private boolean openContainerIsCraftingTable;
         private int openContainerX;
         private int openContainerY;
         private int openContainerZ;

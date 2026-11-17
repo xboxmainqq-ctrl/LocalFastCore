@@ -11,10 +11,10 @@ class PlayerExperienceTest {
                 PlayerExperience.fromTotalPoints(0));
         assertEquals(7, PlayerExperience.pointsToNextLevel(0));
         assertEquals(7, PlayerExperience.fromTotalPoints(7).level());
-        assertEquals(17, PlayerExperience.pointsToNextLevel(16));
-        assertEquals(31, PlayerExperience.pointsToNextLevel(30));
-        assertEquals(32, PlayerExperience.pointsAtLevelStart(16));
-        assertEquals(394, PlayerExperience.pointsAtLevelStart(30));
+        assertEquals(42, PlayerExperience.pointsToNextLevel(16));
+        assertEquals(112, PlayerExperience.pointsToNextLevel(30));
+        assertEquals(352, PlayerExperience.pointsAtLevelStart(16));
+        assertEquals(1395, PlayerExperience.pointsAtLevelStart(30));
     }
 
     @Test

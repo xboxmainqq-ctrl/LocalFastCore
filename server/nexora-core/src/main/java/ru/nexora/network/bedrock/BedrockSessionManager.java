@@ -1577,8 +1577,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         + exception.getMessage());
             }
             if (claimedExperienceMilli > 0) {
-                int experiencePoints = Math.max(0, Math.round(claimedExperienceMilli / 1000.0f));
-                state.experiencePoints = PlayerExperience.addPoints(state.experiencePoints, experiencePoints);
+                long currentMilli = (long) state.experiencePoints * 1000L + state.experienceRemainderMilli;
+                long updatedMilli = Math.min(2_000_000_000_000L, currentMilli + claimedExperienceMilli);
+                state.experiencePoints = (int) (updatedMilli / 1000L);
+                state.experienceRemainderMilli = (int) (updatedMilli % 1000L);
                 sendPacket(networkId, createPlayerAttributes(state, Math.max(0, state.lastInputTick)), true);
             }
         }

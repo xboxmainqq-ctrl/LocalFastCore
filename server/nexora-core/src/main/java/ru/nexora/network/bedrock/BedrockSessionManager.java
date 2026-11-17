@@ -1325,7 +1325,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private void handleAiChat(String networkId, SessionState state, String prompt, boolean admin) {
         if (prompt.equalsIgnoreCase("help")) {
             sendAiMessage(networkId, "§b[NEXORA AI] §fКоманды: /ai — открыть чат; /ai <вопрос> — задать вопрос; "
-                    + "/ai admin — диагностика для операторов; /equipment — магическая экипировка.");
+                    + "/ai clear — очистить контекст; /ai admin — диагностика для операторов; /equipment — магическая экипировка.");
+            return;
+        }
+        if (prompt.equalsIgnoreCase("clear") || prompt.equalsIgnoreCase("reset")) {
+            String conversationId = state.identity != null && state.identity.xuid() != null
+                    && !state.identity.xuid().isBlank() ? state.identity.xuid() : networkId;
+            ru.nexora.ai.NexoraAiAssistant assistant = aiAssistant;
+            if (assistant != null) assistant.clearConversation(conversationId, admin);
+            sendAiMessage(networkId, "§b[NEXORA AI] §fКонтекст этого диалога очищен.");
             return;
         }
         if (prompt.equalsIgnoreCase("status")) {

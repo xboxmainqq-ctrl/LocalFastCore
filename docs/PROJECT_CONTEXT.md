@@ -157,3 +157,12 @@ The user explicitly changed the immediate priority: **finish the independently i
 5. Verify the server artifact and acceptance tests on CI, including fresh install, startup, world generation, save/restart and configuration validation.
 6. Only after the server milestone is verified, resume NEXORA Client work: connect to the dedicated server, then build visual/content editors and resource-pack workflows.
 7. Add the optional Bedrock compatibility gateway after the NEXORA client/server path is reliable.
+
+
+## Current implementation priority — Core first (confirmed 2026-11-17)
+
+The user clarified that RPG is not the current task: **finish and stabilize the general-purpose NEXORA Core first; magic and RPG systems come later and must build on that core.** Do not implement or expand RPG classes, progression, magic, spells, abilities, quests, bosses or RPG plugins during the core-first phase. Existing RPG files may remain untouched.
+
+Immediate engineering focus: server reliability and configuration, world lifecycle and persistence, chunks and bounded async generation, block/entity simulation, player sessions and authoritative interactions, safe networking, extension API and standalone distribution.
+
+The active work log and ordered task list are [CORE_DEVELOPMENT_LOG.md](CORE_DEVELOPMENT_LOG.md). Update it after every meaningful implementation change with completed work, test/CI evidence, blockers and the next exact task. Never claim tests pass without a confirmed CI result.

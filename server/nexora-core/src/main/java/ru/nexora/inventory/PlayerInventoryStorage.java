@@ -171,10 +171,10 @@ public final class PlayerInventoryStorage {
             readSlots(input, playerSize, inventory::setSlot);
             inventory.selectHotbarSlot(selectedSlot);
 
-            ContainerInventory uiInventory = new ContainerInventory(BedrockCraftingUiSlots.SIZE);
+            ContainerInventory uiInventory = new ContainerInventory(CRAFTING_UI_SLOT_COUNT);
             if (version == CRAFTING_UI_FORMAT_VERSION) {
                 int uiSize = input.readUnsignedShort();
-                if (uiSize != BedrockCraftingUiSlots.SIZE) {
+                if (uiSize != CRAFTING_UI_SLOT_COUNT) {
                     throw new IOException("Invalid NEXORA player crafting UI slot count");
                 }
                 readSlots(input, uiSize, uiInventory::setSlot);

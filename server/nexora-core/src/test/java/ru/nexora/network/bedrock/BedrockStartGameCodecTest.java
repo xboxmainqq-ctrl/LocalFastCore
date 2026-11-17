@@ -60,7 +60,7 @@ class BedrockStartGameCodecTest {
         BedrockPacket packet = BedrockStartGameCodec.createChunkPublisherUpdate(0, 65, 0, 2);
 
         assertEquals(0x79, packet.packetId());
-        assertArrayEquals(new byte[] {0, (byte) 0x82, 1, 0x50, 0, 0, 0, 0}, packet.payload());
+        assertArrayEquals(new byte[] {0, (byte) 0x82, 1, 0, 0x50, 0, 0, 0, 0}, packet.payload());
         assertThrows(IllegalArgumentException.class,
                 () -> BedrockStartGameCodec.createChunkPublisherUpdate(0, 65, 0, 0));
     }

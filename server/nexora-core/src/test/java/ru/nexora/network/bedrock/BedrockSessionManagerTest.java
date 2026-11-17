@@ -104,6 +104,7 @@ class BedrockSessionManagerTest {
                 "fire-token", new byte[] {3}, "fire-xuid", "FireTarget", "playfab-fire", "20CA2", null));
         setSessionField(manager, "fire-target", "loginAuthenticated", true);
         setSessionField(manager, "fire-target", "clientInitialized", true);
+        setSessionField(manager, "fire-target", "entityId", 103L);
         setSessionField(manager, "fire-target", "fireUntilNanos", 5_000_000_000L);
         setSessionField(manager, "fire-target", "nextFireDamageNanos", 1_000_000_000L);
         manager.playerEquipment("fire-target").orElseThrow().setArmor(0,

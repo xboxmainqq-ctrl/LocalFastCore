@@ -2519,7 +2519,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     continue;
                 }
                 double step = Math.min(
-                        ru.nexora.combat.LivingEntityAiService.WALK_SPEED_PER_TICK, length);
+                        ru.nexora.combat.LivingEntityAiService.movementSpeedFor(mob.identifier()), length);
                 nextX = mob.x() + dx / length * step;
                 nextZ = mob.z() + dz / length * step;
                 if (!WorldCollision.canMove(world, mob.x(), mob.y(), mob.z(), nextX, nextY, nextZ)) {

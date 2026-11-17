@@ -9,6 +9,8 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 
 /** World-scoped furnace inventories and processing state with durable storage. */
 public final class WorldFurnaceManager {
@@ -16,6 +18,7 @@ public final class WorldFurnaceManager {
     private final FurnaceStateStorage stateStorage;
     private final FurnaceService service = new FurnaceService();
     private final Map<Position, ContainerInventory> loaded = new HashMap<>();
+    private final CopyOnWriteArrayList<Consumer<FurnaceUpdate>> updateListeners = new CopyOnWriteArrayList<>();
 
     public WorldFurnaceManager(ContainerInventoryStorage inventoryStorage, FurnaceStateStorage stateStorage) {
         this.inventoryStorage = Objects.requireNonNull(inventoryStorage, "inventoryStorage");
@@ -39,15 +42,40 @@ public final class WorldFurnaceManager {
     public synchronized FurnaceService.TickResult tick(int x, int y, int z, long elapsedTicks)
             throws IOException {
         ContainerInventory inventory = getOrCreate(x, y, z);
-        // Processing stays in memory; World.saveAll() flushes all furnace state in one autosave pass.
-        return service.tick(x, y, z, inventory, elapsedTicks);
+        FurnaceService.FurnaceStateSnapshot before = service.snapshotState(x, y, z);
+        FurnaceService.TickResult result = service.tick(x, y, z, inventory, elapsedTicks);
+        publishIfChanged(x, y, z, inventory, before, result);
+        return result;
     }
 
     /** Advances every loaded furnace by the supplied number of server ticks. */
     public synchronized void tickAll(long elapsedTicks) {
         for (var entry : loaded.entrySet()) {
             Position p = entry.getKey();
-            service.tick(p.x(), p.y(), p.z(), entry.getValue(), elapsedTicks);
+            FurnaceService.FurnaceStateSnapshot before = service.snapshotState(p.x(), p.y(), p.z());
+            FurnaceService.TickResult result =
+                    service.tick(p.x(), p.y(), p.z(), entry.getValue(), elapsedTicks);
+            publishIfChanged(p.x(), p.y(), p.z(), entry.getValue(), before, result);
+        }
+    }
+
+    public AutoCloseable addUpdateListener(Consumer<FurnaceUpdate> listener) {
+        Objects.requireNonNull(listener, "listener");
+        updateListeners.add(listener);
+        return () -> updateListeners.remove(listener);
+    }
+
+    private void publishIfChanged(int x, int y, int z, ContainerInventory inventory,
+                                  FurnaceService.FurnaceStateSnapshot before,
+                                  FurnaceService.TickResult result) {
+        FurnaceService.FurnaceStateSnapshot after = service.snapshotState(x, y, z);
+        if (before.equals(after) && !result.inventoryChanged()) return;
+        FurnaceUpdate update = new FurnaceUpdate(x, y, z, inventory, result);
+        for (Consumer<FurnaceUpdate> listener : updateListeners) {
+            try { listener.accept(update); }
+            catch (RuntimeException exception) {
+                System.err.println("NEXORA: furnace update listener failed: " + exception.getMessage());
+            }
         }
     }
 
@@ -85,6 +113,14 @@ public final class WorldFurnaceManager {
     }
 
     public synchronized int loadedCount() { return loaded.size(); }
+
+    public record FurnaceUpdate(int x, int y, int z, ContainerInventory inventory,
+                                FurnaceService.TickResult result) {
+        public FurnaceUpdate {
+            Objects.requireNonNull(inventory, "inventory");
+            Objects.requireNonNull(result, "result");
+        }
+    }
 
     private record Position(int x, int y, int z) { }
 }

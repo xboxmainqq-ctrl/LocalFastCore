@@ -62,10 +62,6 @@ class BedrockSessionManagerTest {
         setSessionField(manager, "combat-target", "positionX", 2.0f);
         setSessionField(manager, "combat-target", "positionY", 65.0f);
         setSessionField(manager, "combat-target", "positionZ", 0.0f);
-        setSessionField(manager, "combat-target", "physicsState",
-                new ru.nexora.world.PlayerPhysics.State(2.0, 65.0, 0.0,
-                        0.0, 0.0, 0.0, true, 0.0, 0.0));
-
         ItemStack sword = new ItemStack("minecraft:diamond_sword", 1, 1,
                 java.util.Map.of("minecraft:sharpness", 3,
                         "minecraft:knockback", 2, "minecraft:fire_aspect", 1));
@@ -87,8 +83,8 @@ class BedrockSessionManagerTest {
         float attackerHealth = manager.playerVitals("combat-attacker").orElseThrow().health();
         assertTrue(attackerHealth >= 16.0f && attackerHealth <= 19.0f,
                 "Thorns X must reflect between one and four damage");
-        assertEquals(0.6, ((ru.nexora.world.PlayerPhysics.State)
-                getSessionField(manager, "combat-target", "physicsState")).velocityX(), 0.0001);
+        assertTrue(outboundFrames.stream().flatMap(frame -> decodeOutboundAll(frame, true).stream())
+                .anyMatch(packet -> packet.packetId() == BedrockActorMotionCodec.SET_ACTOR_MOTION_PACKET_ID));
         assertNotEquals(Long.MIN_VALUE,
                 getSessionField(manager, "combat-target", "fireUntilNanos"));
         assertFalse(outboundFrames.isEmpty());

@@ -23,6 +23,8 @@ import ru.nexora.inventory.PlayerEquipmentStorage;
 import ru.nexora.inventory.VanillaArmorSlotCatalog;
 import ru.nexora.inventory.NexoraMagicEquipmentCatalog;
 import ru.nexora.inventory.DurabilitySettings;
+import ru.nexora.ai.NexoraAiDiagnostics;
+import ru.nexora.ai.NexoraAiMonitor;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -70,6 +72,14 @@ public final class NexoraServer {
         );
 
         DurabilitySettings durabilitySettings = DurabilitySettings.fromEnvironment(System.getenv());
+        NexoraAiDiagnostics aiDiagnostics = new NexoraAiDiagnostics();
+        NexoraAiMonitor aiMonitor = new NexoraAiMonitor(aiDiagnostics, snapshot -> {
+            if (snapshot.health() == NexoraAiDiagnostics.Health.WARNING) {
+                System.err.printf("NEXORA AI: runtime warning: %s (heap %.1f%%, threads %d, failures %d)%n",
+                        snapshot.reason(), snapshot.heapUsageRatio() * 100.0,
+                        snapshot.liveThreadCount(), snapshot.recordedFailures());
+            }
+        });
         String dataDirectory = System.getenv().getOrDefault("NEXORA_DATA_DIR", "data");
         DefaultNetherNetIdentityService identityService =
                 new DefaultNetherNetIdentityService(Path.of(dataDirectory, "identity"));
@@ -142,7 +152,9 @@ public final class NexoraServer {
         try {
             discovery.start();
             signaling.start();
+            aiMonitor.start();
         } catch (Exception exception) {
+            aiMonitor.close();
             signaling.close();
             negotiator.close();
             try {
@@ -161,6 +173,7 @@ public final class NexoraServer {
         }
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            aiMonitor.close();
             signaling.close();
             negotiator.close();
             try {

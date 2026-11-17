@@ -200,8 +200,7 @@ class BedrockSessionManagerTest {
                 BedrockPlayerAuthInputCodecTest.movementPayload(
                         0.5f, 65.0f, 0.5f, 0.0f, 1L, false,
                         BedrockPlayerAuthInputCodec.InputAction.START_USING_ITEM));
-        sendClientBatch(manager, "charge-mob-attacker",
-                BedrockBatchCodec.encode(List.of(startUse), true, 256));
+        invokePlayerAuthInput(manager, "charge-mob-attacker", startUse);
         assertNotEquals(Long.MIN_VALUE,
                 getSessionField(manager, "charge-mob-attacker", "spearChargeStartedNanos"));
 
@@ -212,8 +211,8 @@ class BedrockSessionManagerTest {
                 itemReleasePayload(0, 0,
                         spearDefinition.networkDefinition().runtimeItemId(), 1,
                         0.5f, 65.0f, 0.5f));
-        sendClientBatch(manager, "charge-mob-attacker",
-                BedrockBatchCodec.encode(List.of(release), true, 256));
+        var decodedRelease = BedrockInventoryTransactionCodec.decodeItemRelease(release, registry);
+        invokeItemRelease(manager, "charge-mob-attacker", decodedRelease);
         assertEquals(clock.get(),
                 getSessionField(manager, "charge-mob-attacker", "spearChargeReleasedNanos"));
 
@@ -1931,6 +1930,40 @@ class BedrockSessionManagerTest {
                 "tickPlayerFire", String.class, state.getClass(), long.class);
         method.setAccessible(true);
         method.invoke(manager, networkId, state, tick);
+    }
+
+    private static void invokePlayerAuthInput(
+            BedrockSessionManager manager, String networkId, BedrockPacket packet
+    ) throws Exception {
+        Object state = sessionState(manager, networkId);
+        java.lang.reflect.Method method = BedrockSessionManager.class.getDeclaredMethod(
+                "handlePlayerAuthInput", String.class, state.getClass(), BedrockPacket.class);
+        method.setAccessible(true);
+        method.invoke(manager, networkId, state, packet);
+    }
+
+    private static void invokeItemRelease(
+            BedrockSessionManager manager, String networkId,
+            BedrockInventoryTransactionCodec.DecodedItemRelease release
+    ) throws Exception {
+        Object state = sessionState(manager, networkId);
+        java.lang.reflect.Method method = BedrockSessionManager.class.getDeclaredMethod(
+                "handleItemRelease", String.class, state.getClass(),
+                BedrockInventoryTransactionCodec.DecodedItemRelease.class);
+        method.setAccessible(true);
+        method.invoke(manager, networkId, state, release);
+    }
+
+    private static Object sessionState(BedrockSessionManager manager, String networkId) throws Exception {
+        java.lang.reflect.Field sessionsField =
+                BedrockSessionManager.class.getDeclaredField("sessions");
+        sessionsField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> sessions =
+                (java.util.Map<String, Object>) sessionsField.get(manager);
+        Object state = sessions.get(networkId);
+        assertNotNull(state);
+        return state;
     }
 
     private static void invokeActorAttack(

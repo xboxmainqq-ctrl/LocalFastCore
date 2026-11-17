@@ -55,6 +55,10 @@ final class NexoraAiConversationMemory {
         return result;
     }
 
+    void clear(String playerId, boolean admin) {
+        conversations.remove(key(playerId, admin));
+    }
+
     void recordExchange(String playerId, boolean admin, String userMessage, String assistantMessage) {
         String key = key(playerId, admin);
         Objects.requireNonNull(userMessage, "userMessage");

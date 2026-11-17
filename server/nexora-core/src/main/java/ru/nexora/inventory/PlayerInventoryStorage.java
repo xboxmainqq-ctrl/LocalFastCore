@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.zip.CRC32C;
@@ -23,6 +24,9 @@ public final class PlayerInventoryStorage {
     private static final int MAGIC = 0x4e584956; // NXIV
     private static final int FORMAT_VERSION = 1;
     private static final int CRAFTING_UI_FORMAT_VERSION = 2;
+    private static final int ITEM_METADATA_FORMAT_VERSION = 3;
+    private static final int MAX_ENCHANTMENTS_PER_ITEM = 32;
+    private static final int MAX_ENCHANTMENT_ID_BYTES = 128;
     private static final int MAX_FILE_BYTES = 32_768;
     private static final int MAX_ITEM_ID_BYTES = 128;
     private static final int CRAFTING_UI_SLOT_COUNT = 51;
@@ -46,7 +50,7 @@ public final class PlayerInventoryStorage {
             snapshot = inventory.snapshot();
             selectedHotbarSlot = inventory.selectedHotbarSlot();
         }
-        writeFile(xuid, FORMAT_VERSION, snapshot, selectedHotbarSlot, null);
+        writeFile(xuid, ITEM_METADATA_FORMAT_VERSION, snapshot, selectedHotbarSlot, null);
     }
 
     /** Atomically saves player inventory and the non-persistent-in-world player crafting UI grid. */
@@ -67,7 +71,7 @@ public final class PlayerInventoryStorage {
                 uiSnapshot = craftingUiInventory.snapshot();
             }
         }
-        writeFile(xuid, CRAFTING_UI_FORMAT_VERSION, playerSnapshot, selectedHotbarSlot, uiSnapshot);
+        writeFile(xuid, ITEM_METADATA_FORMAT_VERSION, playerSnapshot, selectedHotbarSlot, uiSnapshot);
     }
 
     private void writeFile(String xuid, int version, List<Optional<ItemStack>> playerSlots,
@@ -81,7 +85,7 @@ public final class PlayerInventoryStorage {
             output.writeShort(playerSlots.size());
             output.writeByte(selectedHotbarSlot);
             writeSlots(output, playerSlots);
-            if (version == CRAFTING_UI_FORMAT_VERSION) {
+            if (version >= CRAFTING_UI_FORMAT_VERSION) {
                 output.writeShort(uiSlots.size());
                 writeSlots(output, uiSlots);
             }
@@ -126,6 +130,19 @@ public final class PlayerInventoryStorage {
             output.write(itemId);
             output.writeByte(stack.count());
             output.writeByte(stack.maxStackSize());
+            if (version >= ITEM_METADATA_FORMAT_VERSION) {
+                output.writeByte(stack.enchantments().size());
+                for (var enchantment : stack.enchantments().entrySet()) {
+                    byte[] enchantmentId = enchantment.getKey().getBytes(StandardCharsets.UTF_8);
+                    if (enchantmentId.length > MAX_ENCHANTMENT_ID_BYTES) {
+                        throw new IOException("NEXORA enchantment identifier exceeds storage limit");
+                    }
+                    output.writeByte(enchantmentId.length);
+                    output.write(enchantmentId);
+                    output.writeByte(enchantment.getValue());
+                }
+                output.writeByte(stack.repairCost());
+            }
         }
     }
 
@@ -156,7 +173,8 @@ public final class PlayerInventoryStorage {
         try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(bytes, 0, bodyLength))) {
             if (input.readInt() != MAGIC) throw new IOException("Invalid NEXORA player inventory magic");
             int version = input.readUnsignedByte();
-            if (version != FORMAT_VERSION && version != CRAFTING_UI_FORMAT_VERSION) {
+            if (version != FORMAT_VERSION && version != CRAFTING_UI_FORMAT_VERSION
+                    && version != ITEM_METADATA_FORMAT_VERSION) {
                 throw new IOException("Unsupported NEXORA player inventory version: " + version);
             }
             int playerSize = input.readUnsignedShort();
@@ -168,16 +186,16 @@ public final class PlayerInventoryStorage {
                 throw new IOException("Invalid NEXORA selected hotbar slot");
             }
             PlayerInventory inventory = new PlayerInventory(playerSize);
-            readSlots(input, playerSize, inventory::setSlot);
+            readSlots(input, playerSize, version, inventory::setSlot);
             inventory.selectHotbarSlot(selectedSlot);
 
             ContainerInventory uiInventory = new ContainerInventory(CRAFTING_UI_SLOT_COUNT);
-            if (version == CRAFTING_UI_FORMAT_VERSION) {
+            if (version >= CRAFTING_UI_FORMAT_VERSION) {
                 int uiSize = input.readUnsignedShort();
                 if (uiSize != CRAFTING_UI_SLOT_COUNT) {
                     throw new IOException("Invalid NEXORA player crafting UI slot count");
                 }
-                readSlots(input, uiSize, uiInventory::setSlot);
+                readSlots(input, uiSize, version, uiInventory::setSlot);
             }
             if (input.available() != 0) throw new IOException("Trailing data in NEXORA player inventory");
             return Optional.of(new PlayerInventoryState(inventory, uiInventory));
@@ -186,7 +204,7 @@ public final class PlayerInventoryStorage {
         }
     }
 
-    private static void readSlots(DataInputStream input, int size, SlotSetter setter) throws IOException {
+    private static void readSlots(DataInputStream input, int size, int version, SlotSetter setter) throws IOException {
         for (int slot = 0; slot < size; slot++) {
             if (!input.readBoolean()) continue;
             int idLength = input.readUnsignedByte();
@@ -206,8 +224,38 @@ public final class PlayerInventoryStorage {
             }
             int count = input.readUnsignedByte();
             int maxStackSize = input.readUnsignedByte();
+            Map<String, Integer> enchantments = new java.util.LinkedHashMap<>();
+            int repairCost = 0;
+            if (version >= ITEM_METADATA_FORMAT_VERSION) {
+                int enchantmentCount = input.readUnsignedByte();
+                if (enchantmentCount > MAX_ENCHANTMENTS_PER_ITEM) {
+                    throw new IOException("Too many enchantments in NEXORA inventory item");
+                }
+                for (int i = 0; i < enchantmentCount; i++) {
+                    int enchantmentIdLength = input.readUnsignedByte();
+                    if (enchantmentIdLength < 3 || enchantmentIdLength > MAX_ENCHANTMENT_ID_BYTES) {
+                        throw new IOException("Invalid NEXORA enchantment identifier length");
+                    }
+                    byte[] enchantmentBytes = new byte[enchantmentIdLength];
+                    input.readFully(enchantmentBytes);
+                    String enchantmentId;
+                    try {
+                        enchantmentId = StandardCharsets.UTF_8.newDecoder()
+                                .onMalformedInput(CodingErrorAction.REPORT)
+                                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                                .decode(ByteBuffer.wrap(enchantmentBytes)).toString();
+                    } catch (CharacterCodingException exception) {
+                        throw new IOException("Invalid UTF-8 enchantment identifier", exception);
+                    }
+                    int level = input.readUnsignedByte();
+                    if (enchantments.putIfAbsent(enchantmentId, level) != null) {
+                        throw new IOException("Duplicate enchantment identifier in NEXORA inventory item");
+                    }
+                }
+                repairCost = input.readUnsignedByte();
+            }
             try {
-                setter.set(slot, new ItemStack(itemId, count, maxStackSize));
+                setter.set(slot, new ItemStack(itemId, count, maxStackSize, enchantments, repairCost));
             } catch (IllegalArgumentException exception) {
                 throw new IOException("Invalid item stack in NEXORA inventory", exception);
             }

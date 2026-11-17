@@ -147,5 +147,16 @@ public final class MobPathCache {
             long total = requests();
             return total == 0 ? 0.0 : (double) hits / total;
         }
+
+        /** Compact operator-safe representation; contains aggregate counters only. */
+        public String summary() {
+            return "hits=" + hits
+                    + ", misses=" + misses
+                    + ", hitRate=" + (Math.round(hitRate() * 1000.0) / 10.0) + "%"
+                    + ", recomputations=" + recomputations
+                    + ", blocked=" + blockedWaypoints
+                    + ", evictions=" + evictions
+                    + ", entries=" + entries;
+        }
     }
 }

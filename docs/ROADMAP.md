@@ -46,13 +46,13 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 
 ## Priority 5 — Vanilla-style mob spawners
 
-- [ ] Add a dedicated spawner block and Bedrock runtime-state mapping without breaking existing chunk formats.
-- [ ] Implement activation radius, spawn delay, spawn attempts, valid spawn-position checks, nearby-mob caps, and bounded per-spawner work.
-- [ ] Persist spawner block-entity configuration and timer state across world saves/restarts.
-- [ ] Replicate spawned mobs and spawner block updates to Bedrock clients; verify protocol compatibility.
-- [ ] Add operator setup/inspection commands and permission checks; do not require commands for normal player use once placement/items are supported.
-- [ ] Add deterministic unit, persistence, and integration tests for unloaded/inactive areas, caps, invalid positions, and restart recovery.
-- [ ] Verify that Mob AI load scheduling never prevents a spawner from producing mobs or removes spawned entities.
+- [x] Add a dedicated internal spawner block and Bedrock runtime-state mapping without changing the existing chunk file format.
+- [x] Implement 16-block player activation, configurable 20–800 tick delay, bounded spawn attempts, basic valid-position checks, shared nearby same-type caps, and bounded registry/work.
+- [x] Persist spawner type, delay, coordinates, and next-spawn timer atomically with checksum validation across world saves/restarts.
+- [x] Replicate spawned actors and operator-driven spawner block updates to initialized Bedrock clients; protocol compatibility still needs real-client verification.
+- [x] Add allowlisted operator setup/inspection/configuration/removal commands; survival item placement and loot are still pending.
+- [x] Add unit and persistence tests for unloaded/inactive areas, caps, invalid positions, corrupted data, timer pause, and restart recovery; CI verification is pending.
+- [ ] Verify on a real Bedrock client/server that Mob AI load scheduling never prevents a spawner from producing mobs or removes spawned entities.
 
 ## Priority 6 — Security and moderation intelligence
 

@@ -59,9 +59,13 @@ class BedrockSessionManagerTest {
         setSessionField(manager, "combat-target", "positionX", 2.0f);
         setSessionField(manager, "combat-target", "positionY", 65.0f);
         setSessionField(manager, "combat-target", "positionZ", 0.0f);
+        setSessionField(manager, "combat-target", "physicsState",
+                new ru.nexora.world.PlayerPhysics.State(2.0, 65.0, 0.0,
+                        0.0, 0.0, 0.0, true, 0.0, 0.0));
 
         ItemStack sword = new ItemStack("minecraft:diamond_sword", 1, 1,
-                java.util.Map.of("minecraft:sharpness", 3));
+                java.util.Map.of("minecraft:sharpness", 3,
+                        "minecraft:knockback", 2, "minecraft:fire_aspect", 1));
         manager.playerInventory("combat-attacker").orElseThrow().setSlot(0, sword);
         var transaction = new BedrockInventoryTransactionCodec.DecodedUseOnActor(
                 101L, 1, 0, 0, java.util.Optional.of(sword),
@@ -70,6 +74,10 @@ class BedrockSessionManagerTest {
         invokeActorAttack(manager, "combat-attacker", transaction);
         assertEquals(8.25f, manager.playerVitals("combat-target").orElseThrow().health(), 0.0001f);
         assertEquals(20.0f, manager.playerVitals("combat-attacker").orElseThrow().health(), 0.0001f);
+        assertEquals(0.6, ((ru.nexora.world.PlayerPhysics.State)
+                getSessionField(manager, "combat-target", "physicsState")).velocityX(), 0.0001);
+        assertNotEquals(Long.MIN_VALUE,
+                getSessionField(manager, "combat-target", "fireUntilNanos"));
         assertFalse(outboundFrames.isEmpty());
 
         // Bedrock's short hurt-immunity window prevents packet spam from multiplying one hit.
@@ -1450,6 +1458,22 @@ class BedrockSessionManagerTest {
         java.lang.reflect.Field field = state.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         field.set(state, value);
+    }
+
+    private static Object getSessionField(
+            BedrockSessionManager manager, String networkId, String fieldName
+    ) throws Exception {
+        java.lang.reflect.Field sessionsField =
+                BedrockSessionManager.class.getDeclaredField("sessions");
+        sessionsField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> sessions =
+                (java.util.Map<String, Object>) sessionsField.get(manager);
+        Object state = sessions.get(networkId);
+        assertNotNull(state);
+        java.lang.reflect.Field field = state.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return field.get(state);
     }
 
     private static void invokeFireTick(

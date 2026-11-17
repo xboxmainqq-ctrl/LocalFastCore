@@ -130,6 +130,47 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void fireAspectKillRetainsPlayerCreditAndAwardsMobExperience() throws Exception {
+        AtomicLong clock = new AtomicLong(100_000_000L);
+        ru.nexora.world.World combatWorld = new ru.nexora.world.World(
+                "mob-fire-reward-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                combatWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
+        manager.onIdentity("fire-killer", new NetherNetClientIdentity(
+                "fire-reward-token", new byte[] {7}, "fire-reward-xuid",
+                "FireKiller", "playfab-fire-reward", "20CA2", null));
+        setSessionField(manager, "fire-killer", "loginAuthenticated", true);
+        setSessionField(manager, "fire-killer", "clientInitialized", true);
+        setSessionField(manager, "fire-killer", "positionInitialized", true);
+        setSessionField(manager, "fire-killer", "entityId", 107L);
+        setSessionField(manager, "fire-killer", "positionX", 0.0f);
+        setSessionField(manager, "fire-killer", "positionY", 65.0f);
+        setSessionField(manager, "fire-killer", "positionZ", 0.0f);
+
+        ItemStack sword = new ItemStack("minecraft:wooden_sword", 1, 1,
+                java.util.Map.of("minecraft:fire_aspect", 1));
+        manager.playerInventory("fire-killer").orElseThrow().setSlot(0, sword);
+        var zombie = manager.spawnLivingEntity("minecraft:zombie", 6.0f, 2.0, 65.0, 0.0);
+        var attack = new BedrockInventoryTransactionCodec.DecodedUseOnActor(
+                zombie.runtimeId(), 1, 0, 0, java.util.Optional.of(sword),
+                0.0f, 65.0f, 0.0f, 0.0f, 1.0f, 0.0f);
+        invokeActorAttack(manager, "fire-killer", attack);
+        assertEquals(1.0f,
+                combatWorld.livingEntities().find(zombie.runtimeId()).orElseThrow().health(), 0.0001f);
+
+        clock.addAndGet(1_000_000_000L);
+        invokeLivingActorTick(manager, 2L);
+        assertTrue(combatWorld.livingEntities().find(zombie.runtimeId()).isEmpty());
+        long experienceMilli = ((Number) getSessionField(
+                manager, "fire-killer", "experiencePoints")).longValue() * 1000L
+                + ((Number) getSessionField(
+                        manager, "fire-killer", "experienceRemainderMilli")).longValue();
+        assertEquals(5_000L, experienceMilli);
+        manager.close();
+    }
+
+    @Test
     void killingHostileMobAwardsVanillaExperienceAndRemovesActor() throws Exception {
         List<byte[]> outboundFrames = new ArrayList<>();
         ru.nexora.world.World combatWorld = new ru.nexora.world.World(

@@ -81,7 +81,7 @@ public final class BedrockMobEquipmentCodec {
         BedrockInventoryContentCodec.ItemDefinition definition = entry.networkDefinition();
         if (auxValue != definition.auxValue()
                 || blockRuntimeId != definition.blockRuntimeId()
-                || !Arrays.equals(userData, definition.userData())) {
+                || !Arrays.equals(userData, BedrockItemStackUserDataCodec.encode(stack, definition.userData()))) {
             throw new IllegalArgumentException("Equipment item descriptor does not match registry");
         }
         if (count > entry.maxStackSize()) throw new IllegalArgumentException("Equipment stack exceeds maximum size");
@@ -110,7 +110,7 @@ public final class BedrockMobEquipmentCodec {
         out.varUInt32(definition.auxValue());
         out.byteValue(0); // hasStackNetId = false while ItemStackNetManager is disabled
         out.varUInt32(definition.blockRuntimeId());
-        out.byteArray(definition.userData());
+        out.byteArray(BedrockItemStackUserDataCodec.encode(stack, definition.userData()));
     }
 
     public record DecodedEquipment(

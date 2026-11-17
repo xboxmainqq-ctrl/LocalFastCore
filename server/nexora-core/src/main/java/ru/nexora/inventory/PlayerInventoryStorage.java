@@ -25,6 +25,7 @@ public final class PlayerInventoryStorage {
     private static final int CRAFTING_UI_FORMAT_VERSION = 2;
     private static final int MAX_FILE_BYTES = 32_768;
     private static final int MAX_ITEM_ID_BYTES = 128;
+    private static final int CRAFTING_UI_SLOT_COUNT = 51;
 
     private final Path inventoriesDirectory;
 
@@ -53,7 +54,7 @@ public final class PlayerInventoryStorage {
             throws IOException {
         Objects.requireNonNull(inventory, "inventory");
         Objects.requireNonNull(craftingUiInventory, "craftingUiInventory");
-        if (craftingUiInventory.size() != BedrockCraftingUiSlots.SIZE) {
+        if (craftingUiInventory.size() != CRAFTING_UI_SLOT_COUNT) {
             throw new IllegalArgumentException("Invalid player crafting UI inventory size");
         }
         List<Optional<ItemStack>> playerSnapshot;
@@ -238,7 +239,4 @@ public final class PlayerInventoryStorage {
         }
     }
 
-    private static final class BedrockCraftingUiSlots {
-        private static final int SIZE = 51;
-    }
 }

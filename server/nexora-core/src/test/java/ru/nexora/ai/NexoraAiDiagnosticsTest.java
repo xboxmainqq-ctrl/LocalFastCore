@@ -126,4 +126,42 @@ class NexoraAiDiagnosticsTest {
         assertTrue(evidence.contains("[REDACTED]"));
     }
 
+    @Test
+    void repeatedFailuresAreGroupedBySubsystemAndExceptionType() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        diagnostics.recordFailure("world-autosave", new IllegalStateException("disk busy"));
+        diagnostics.recordFailure("world-autosave", new IllegalStateException("disk full"));
+        diagnostics.recordFailure("furnace-tick", new IllegalStateException("tick failed"));
+
+        String evidence = diagnostics.recentEvidence();
+        assertTrue(evidence.contains("Повторяющиеся события с момента запуска:"));
+        assertTrue(evidence.contains("FAILURE:world-autosave:IllegalStateException — 2 раз"));
+        assertFalse(evidence.contains("FAILURE:furnace-tick:IllegalStateException — 2 раз"));
+    }
+
+    @Test
+    void repeatedSlowOperationsAreGroupedBySubsystem() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        diagnostics.recordSlowOperation("mob-ai", 80_000_000L, 50_000_000L);
+        diagnostics.recordSlowOperation("mob-ai", 90_000_000L, 50_000_000L);
+        diagnostics.recordSlowOperation("furnace-tick", 70_000_000L, 50_000_000L);
+
+        String evidence = diagnostics.recentEvidence();
+        assertTrue(evidence.contains("SLOW:mob-ai — 2 раз"));
+        assertFalse(evidence.contains("SLOW:furnace-tick — 2 раз"));
+    }
+
+    @Test
+    void repeatedSignatureStorageIsBounded() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        for (int i = 0; i < 24; i++) {
+            diagnostics.recordFailure("subsystem-" + i, new IllegalStateException("failed"));
+        }
+        diagnostics.recordFailure("subsystem-0", new IllegalStateException("failed again"));
+
+        String evidence = diagnostics.recentEvidence();
+        assertTrue(evidence.length() <= 1_900);
+        assertTrue(evidence.contains("FAILURE:subsystem-0:IllegalStateException — 2 раз"));
+    }
+
 }

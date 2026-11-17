@@ -1468,8 +1468,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §fПредложение не найдено или истекло.");
             } else {
                 sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §f" + proposal.id() + " — "
-                        + repairProposalStatus(proposal.status()) + "\nПроблема: " + proposal.issue()
-                        + "\nПлан: " + proposal.plan());
+                        + repairProposalStatus(proposal.status()) + "\nСоздал: " + proposal.requesterXuid()
+                        + "\nРешение: " + (proposal.reviewedByXuid() == null ? "ещё не принято"
+                        : proposal.reviewedByXuid() + " в " + proposal.reviewedAt())
+                        + "\nПроблема: " + proposal.issue() + "\nПлан: " + proposal.plan());
             }
             return true;
         }

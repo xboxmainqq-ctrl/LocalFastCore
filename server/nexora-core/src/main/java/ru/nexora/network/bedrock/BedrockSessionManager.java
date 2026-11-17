@@ -418,6 +418,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return sessions.values().stream().filter(state -> state.resourcePacksCompleted).count();
     }
 
+    /** Read-only aggregate world/session counters for the authenticated operator assistant. */
+    public String adminRuntimeSummary() {
+        return "players=" + authenticatedPlayerCount()
+                + ", sessions=" + activeSessionCount()
+                + ", mobs=" + world.livingEntities().snapshot().size()
+                + ", droppedItems=" + world.itemEntities().snapshot().size();
+    }
+
     /**
      * Server-authoritative anvil entry point. The screen/controller can call this after
      * validating its two input slots; failed combinations never mutate inventory or XP.

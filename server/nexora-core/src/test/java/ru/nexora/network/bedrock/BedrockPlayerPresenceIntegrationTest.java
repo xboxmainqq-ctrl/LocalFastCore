@@ -97,6 +97,34 @@ class BedrockPlayerPresenceIntegrationTest {
         }
     }
 
+
+    @Test
+    void doesNotAdvertiseSessionAlreadyMarkedRejected() throws Exception {
+        List<Outbound> outbound = new ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new World("player-rejected-test", 0L, new FlatWorldGenerator()),
+                (networkId, label, frame) -> outbound.add(new Outbound(networkId, frame)),
+                event -> { });
+
+        try {
+            manager.onIdentity("rejected", identity("rejected", "RejectedPlayer"));
+            Object rejected = session(manager, "rejected");
+            prepareSession(rejected, entry("00000000-0000-0000-0000-000000000301", 301, "RejectedPlayer"));
+            set(rejected, "rejected", true);
+
+            Method advertise = BedrockSessionManager.class.getDeclaredMethod(
+                    "advertisePlayerList", String.class, rejected.getClass());
+            advertise.setAccessible(true);
+            advertise.invoke(manager, "rejected", rejected);
+
+            assertTrue(outbound.isEmpty());
+            assertFalse((boolean) field(rejected, "playerListAdvertised"));
+        } finally {
+            manager.close();
+        }
+    }
+
     private static NetherNetClientIdentity identity(String id, String name) {
         return new NetherNetClientIdentity(
                 id + "-token", new byte[] {1, 2, 3}, id + "-xuid",

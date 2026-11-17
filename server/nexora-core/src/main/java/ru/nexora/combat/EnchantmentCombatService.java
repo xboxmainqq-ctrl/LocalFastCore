@@ -34,6 +34,35 @@ public final class EnchantmentCombatService {
     }
 
     /**
+     * Applies vanilla armor protection enchantments to incoming damage.
+     * Protection contributes 4% per level; the matching specialized protection
+     * enchantment contributes 8% per level. Combined reduction is capped at 80%.
+     */
+    public static float resolveIncomingDamage(float baseDamage, List<ItemStack> armor, DamageType damageType) {
+        if (!Float.isFinite(baseDamage) || baseDamage < 0) {
+            throw new IllegalArgumentException("baseDamage must be finite and non-negative");
+        }
+        Objects.requireNonNull(armor, "armor");
+        Objects.requireNonNull(damageType, "damageType");
+
+        int protectionPoints = 0;
+        for (ItemStack piece : armor) {
+            protectionPoints += level(piece, "minecraft:protection");
+            String specialized = switch (damageType) {
+                case FIRE -> "minecraft:fire_protection";
+                case EXPLOSION -> "minecraft:blast_protection";
+                case PROJECTILE -> "minecraft:projectile_protection";
+                case FALL -> "minecraft:feather_falling";
+                case NORMAL -> null;
+            };
+            if (specialized != null) protectionPoints += 2 * level(piece, specialized);
+        }
+
+        int cappedPoints = Math.min(20, protectionPoints);
+        return baseDamage * (1.0f - cappedPoints * 0.04f);
+    }
+
+    /**
      * Resolves Thorns independently for each worn armor piece.
      * Rolls must contain one value in [0,1) per armor slot; damage rolls are 1..4.
      */
@@ -67,6 +96,14 @@ public final class EnchantmentCombatService {
         NORMAL,
         UNDEAD,
         ARTHROPOD
+    }
+
+    public enum DamageType {
+        NORMAL,
+        FIRE,
+        EXPLOSION,
+        PROJECTILE,
+        FALL
     }
 
     public record AttackEffect(float damage, int knockbackLevel, int fireDurationSeconds) {

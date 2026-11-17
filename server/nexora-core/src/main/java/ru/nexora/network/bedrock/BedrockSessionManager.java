@@ -19,6 +19,7 @@ import ru.nexora.inventory.EquipmentStats;
 import ru.nexora.inventory.InventoryTransactionService;
 import ru.nexora.inventory.ContainerInventory;
 import ru.nexora.inventory.ContainerInventoryTransactionService;
+import ru.nexora.inventory.CraftingRecipe;
 import ru.nexora.inventory.CraftingRecipeRegistry;
 import ru.nexora.inventory.CraftingService;
 import ru.nexora.world.FlatWorldGenerator;

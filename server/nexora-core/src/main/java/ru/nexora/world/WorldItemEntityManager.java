@@ -255,7 +255,7 @@ public final class WorldItemEntityManager {
                     double dz = currentFirst.z() - currentSecond.z();
                     if (dx * dx + dy * dy + dz * dz > DEFAULT_MERGE_RADIUS * DEFAULT_MERGE_RADIUS) continue;
                     currentFirst = new WorldItemEntity(currentFirst.uniqueId(), currentFirst.runtimeId(),
-                            new ItemStack(currentFirst.stack().itemId(), combined, currentFirst.stack().maxStackSize()),
+                            currentFirst.stack().withCount(combined),
                             currentFirst.x(), currentFirst.y(), currentFirst.z(),
                             currentFirst.velocityX(), currentFirst.velocityY(), currentFirst.velocityZ(),
                             Math.max(currentFirst.pickupAvailableAtMillis(), currentSecond.pickupAvailableAtMillis()),

@@ -81,8 +81,8 @@ class WorldItemEntityManagerTest {
     void persistsDroppedItemsAcrossRestartAndPersistsPickup() throws IOException {
         WorldItemEntityStorage storage = new WorldItemEntityStorage(temporaryDirectory, "test-world");
         WorldItemEntityManager first = new WorldItemEntityManager(storage);
-        WorldItemEntity dropped = first.spawn(new ItemStack("minecraft:diamond", 4, 64,
-                        java.util.Map.of("minecraft:unbreaking", 3), 7),
+        WorldItemEntity dropped = first.spawn(new ItemStack("minecraft:diamond_sword", 1, 1,
+                        java.util.Map.of("minecraft:unbreaking", 3), 7, 123),
                 2.5, 65.0, -1.5, 0.1, 0.2, -0.1, 10_000, 500, "owner-xuid");
 
         WorldItemEntityManager afterRestart = new WorldItemEntityManager(storage);
@@ -90,6 +90,7 @@ class WorldItemEntityManagerTest {
         assertEquals(dropped, restored);
         assertEquals(java.util.Map.of("minecraft:unbreaking", 3), restored.stack().enchantments());
         assertEquals(7, restored.stack().repairCost());
+        assertEquals(123, restored.stack().durabilityDamage());
         WorldItemEntity next = afterRestart.spawn(new ItemStack("minecraft:iron_ingot", 2, 64),
                 0, 65, 0, 0, 0, 0, 10_000, 0, null);
         assertTrue(next.runtimeId() > dropped.runtimeId());

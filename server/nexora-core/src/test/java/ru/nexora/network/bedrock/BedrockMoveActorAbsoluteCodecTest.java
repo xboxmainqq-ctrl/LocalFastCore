@@ -26,6 +26,17 @@ class BedrockMoveActorAbsoluteCodecTest {
     }
 
     @Test
+    void encodesTeleportFlagIndependentlyFromGroundFlag() {
+        BedrockPacket packet = BedrockMoveActorAbsoluteCodec.create(
+                2_000_002, 12.5, 65.0, 8.5, 0, 45, 45, true, true);
+        ByteBuffer in = ByteBuffer.wrap(packet.payload()).order(ByteOrder.LITTLE_ENDIAN);
+        readVarUInt64(in);
+        assertEquals(BedrockMoveActorAbsoluteCodec.FLAG_ON_GROUND
+                        | BedrockMoveActorAbsoluteCodec.FLAG_TELEPORTED,
+                Byte.toUnsignedInt(in.get()));
+    }
+
+    @Test
     void rejectsInvalidActorPositionAndAngles() {
         assertThrows(IllegalArgumentException.class,
                 () -> BedrockMoveActorAbsoluteCodec.create(0, 0, 64, 0, 0, 0, 0, false));

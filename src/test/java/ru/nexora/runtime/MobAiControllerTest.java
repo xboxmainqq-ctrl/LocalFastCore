@@ -231,6 +231,12 @@ class MobAiControllerTest {
         assertEquals(MobAiController.State.STUCK,
                 engine.mobAi().lastDecision(mobId).orElseThrow().state());
         assertEquals(0.5, entities.find(mobId).orElseThrow().x(), 0.0001);
+
+        engine.tick();
+
+        assertEquals(MobAiController.State.WAITING,
+                engine.mobAi().lastDecision(mobId).orElseThrow().state(),
+                "a mob with an unreachable route should respect the retry backoff");
     }
 
     @Test

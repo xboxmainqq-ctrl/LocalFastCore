@@ -38,6 +38,47 @@ class BedrockSessionManagerTest {
     @TempDir
     Path temporaryDirectory;
     @Test
+    void breachSwordWeakensArmorDuringLivePlayerCombat() throws Exception {
+        ru.nexora.world.World combatWorld = new ru.nexora.world.World(
+                "breach-player-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                combatWorld, (networkId, label, frame) -> {}, event -> {});
+        manager.onIdentity("breach-attacker", new NetherNetClientIdentity(
+                "breach-a-token", new byte[] {13}, "breach-a-xuid",
+                "BreachAttacker", "playfab-breach-a", "20CA2", null));
+        manager.onIdentity("breach-target", new NetherNetClientIdentity(
+                "breach-t-token", new byte[] {14}, "breach-t-xuid",
+                "BreachTarget", "playfab-breach-t", "20CA2", null));
+        for (String id : List.of("breach-attacker", "breach-target")) {
+            setSessionField(manager, id, "loginAuthenticated", true);
+            setSessionField(manager, id, "clientInitialized", true);
+        }
+        setSessionField(manager, "breach-attacker", "entityId", 113L);
+        setSessionField(manager, "breach-attacker", "positionX", 0.0f);
+        setSessionField(manager, "breach-attacker", "positionY", 65.0f);
+        setSessionField(manager, "breach-attacker", "positionZ", 0.0f);
+        setSessionField(manager, "breach-target", "entityId", 114L);
+        setSessionField(manager, "breach-target", "positionX", 2.0f);
+        setSessionField(manager, "breach-target", "positionY", 65.0f);
+        setSessionField(manager, "breach-target", "positionZ", 0.0f);
+        ItemStack sword = new ItemStack("minecraft:diamond_sword", 1, 1,
+                java.util.Map.of("minecraft:breach", 4));
+        manager.playerInventory("breach-attacker").orElseThrow().setSlot(0, sword);
+        manager.playerEquipment("breach-target").orElseThrow().setArmor(1,
+                new ItemStack("minecraft:iron_chestplate", 1, 1));
+        var attack = new BedrockInventoryTransactionCodec.DecodedUseOnActor(
+                114L, 1, 0, 0, java.util.Optional.of(sword),
+                0.0f, 65.0f, 0.0f, 0.0f, 1.0f, 0.0f);
+
+        invokeActorAttack(manager, "breach-attacker", attack);
+
+        assertEquals(12.768f,
+                manager.playerVitals("breach-target").orElseThrow().health(), 0.0001f);
+        manager.close();
+    }
+
+    @Test
     void densityMaceUsesServerFallDistanceWhenDamagingMob() throws Exception {
         ru.nexora.world.World combatWorld = new ru.nexora.world.World(
                 "density-mace-world", 0L, new ru.nexora.world.FlatWorldGenerator());

@@ -53,6 +53,7 @@ class BedrockSessionManagerTest {
         for (String id : List.of("breach-attacker", "breach-target")) {
             setSessionField(manager, id, "loginAuthenticated", true);
             setSessionField(manager, id, "clientInitialized", true);
+            setSessionField(manager, id, "compressionNegotiated", true);
         }
         setSessionField(manager, "breach-attacker", "entityId", 113L);
         setSessionField(manager, "breach-attacker", "positionX", 0.0f);
@@ -179,6 +180,7 @@ class BedrockSessionManagerTest {
                 "ChargeMobAttacker", "playfab-charge-mob", "20CA2", null));
         setSessionField(manager, "charge-mob-attacker", "loginAuthenticated", true);
         setSessionField(manager, "charge-mob-attacker", "clientInitialized", true);
+        setSessionField(manager, "charge-mob-attacker", "compressionNegotiated", true);
         setSessionField(manager, "charge-mob-attacker", "positionInitialized", true);
         setSessionField(manager, "charge-mob-attacker", "entityId", 121L);
         setSessionField(manager, "charge-mob-attacker", "positionX", 0.5f);
@@ -200,7 +202,8 @@ class BedrockSessionManagerTest {
                 BedrockPlayerAuthInputCodecTest.movementPayload(
                         0.5f, 65.0f, 0.5f, 0.0f, 1L, false,
                         BedrockPlayerAuthInputCodec.InputAction.START_USING_ITEM));
-        invokePlayerAuthInput(manager, "charge-mob-attacker", startUse);
+        sendClientBatch(manager, "charge-mob-attacker",
+                BedrockBatchCodec.encode(List.of(startUse), true, 256));
         assertNotEquals(Long.MIN_VALUE,
                 getSessionField(manager, "charge-mob-attacker", "spearChargeStartedNanos"));
 
@@ -211,8 +214,8 @@ class BedrockSessionManagerTest {
                 itemReleasePayload(0, 0,
                         spearDefinition.networkDefinition().runtimeItemId(), 1,
                         0.5f, 65.0f, 0.5f));
-        var decodedRelease = BedrockInventoryTransactionCodec.decodeItemRelease(release, registry);
-        invokeItemRelease(manager, "charge-mob-attacker", decodedRelease);
+        sendClientBatch(manager, "charge-mob-attacker",
+                BedrockBatchCodec.encode(List.of(release), true, 256));
         assertEquals(clock.get(),
                 getSessionField(manager, "charge-mob-attacker", "spearChargeReleasedNanos"));
 
@@ -277,7 +280,8 @@ class BedrockSessionManagerTest {
         BedrockPacket startUse = new BedrockPacket(
                 BedrockPlayerActionCodec.PLAYER_ACTION_PACKET_ID, 0, 0,
                 playerActionPayload(122L, BedrockPlayerActionCodec.ACTION_START_USING_ITEM));
-        invokePlayerAction(manager, "charge-pvp-attacker", startUse);
+        sendClientBatch(manager, "charge-pvp-attacker",
+                BedrockBatchCodec.encode(List.of(startUse), true, 256));
         assertNotEquals(Long.MIN_VALUE,
                 getSessionField(manager, "charge-pvp-attacker", "spearChargeStartedNanos"));
 
@@ -287,8 +291,8 @@ class BedrockSessionManagerTest {
                 itemReleasePayload(0, 0,
                         spearDefinition.networkDefinition().runtimeItemId(), 1,
                         0.5f, 65.0f, 0.5f));
-        invokeItemRelease(manager, "charge-pvp-attacker",
-                BedrockInventoryTransactionCodec.decodeItemRelease(release, registry));
+        sendClientBatch(manager, "charge-pvp-attacker",
+                BedrockBatchCodec.encode(List.of(release), true, 256));
 
         var attack = new BedrockInventoryTransactionCodec.DecodedUseOnActor(
                 123L, 1, 0, 0, java.util.Optional.of(spear),
@@ -2001,52 +2005,6 @@ class BedrockSessionManagerTest {
                 "tickPlayerFire", String.class, state.getClass(), long.class);
         method.setAccessible(true);
         method.invoke(manager, networkId, state, tick);
-    }
-
-    private static void invokePlayerAction(
-            BedrockSessionManager manager, String networkId, BedrockPacket packet
-    ) throws Exception {
-        Object state = sessionState(manager, networkId);
-        var message = new ru.nexora.network.nethernet.NetherNetInboundPipeline.InboundMessage(
-                networkId, "ReliableDataChannel", true, new byte[0]);
-        java.lang.reflect.Method method = BedrockSessionManager.class.getDeclaredMethod(
-                "handlePlayerAction", message.getClass(), state.getClass(), BedrockPacket.class);
-        method.setAccessible(true);
-        method.invoke(manager, message, state, packet);
-    }
-
-    private static void invokePlayerAuthInput(
-            BedrockSessionManager manager, String networkId, BedrockPacket packet
-    ) throws Exception {
-        Object state = sessionState(manager, networkId);
-        java.lang.reflect.Method method = BedrockSessionManager.class.getDeclaredMethod(
-                "handlePlayerAuthInput", String.class, state.getClass(), BedrockPacket.class);
-        method.setAccessible(true);
-        method.invoke(manager, networkId, state, packet);
-    }
-
-    private static void invokeItemRelease(
-            BedrockSessionManager manager, String networkId,
-            BedrockInventoryTransactionCodec.DecodedItemRelease release
-    ) throws Exception {
-        Object state = sessionState(manager, networkId);
-        java.lang.reflect.Method method = BedrockSessionManager.class.getDeclaredMethod(
-                "handleItemRelease", String.class, state.getClass(),
-                BedrockInventoryTransactionCodec.DecodedItemRelease.class);
-        method.setAccessible(true);
-        method.invoke(manager, networkId, state, release);
-    }
-
-    private static Object sessionState(BedrockSessionManager manager, String networkId) throws Exception {
-        java.lang.reflect.Field sessionsField =
-                BedrockSessionManager.class.getDeclaredField("sessions");
-        sessionsField.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        java.util.Map<String, Object> sessions =
-                (java.util.Map<String, Object>) sessionsField.get(manager);
-        Object state = sessions.get(networkId);
-        assertNotNull(state);
-        return state;
     }
 
     private static void invokeActorAttack(

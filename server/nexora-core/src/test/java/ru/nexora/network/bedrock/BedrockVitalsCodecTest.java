@@ -77,6 +77,25 @@ class BedrockVitalsCodecTest {
     }
 
     @Test
+    void encodesSingleHealthAttributeForLivingMob() {
+        BedrockPacket packet = BedrockVitalsCodec.createActorHealthUpdate(9001, 7.5f, 20.0f, 55);
+        assertEquals(BedrockVitalsCodec.UPDATE_ATTRIBUTES_PACKET_ID, packet.packetId());
+        Reader in = new Reader(packet.payload());
+        assertEquals(9001, in.varUInt64());
+        assertEquals(1, in.varUInt32());
+        assertEquals(0.0f, in.float32());
+        assertEquals(20.0f, in.float32());
+        assertEquals(7.5f, in.float32());
+        assertEquals(0.0f, in.float32());
+        assertEquals(20.0f, in.float32());
+        assertEquals(20.0f, in.float32());
+        assertEquals("minecraft:health", in.string());
+        assertEquals(0, in.varUInt32());
+        assertEquals(55, in.varUInt64());
+        assertTrue(in.exhausted());
+    }
+
+    @Test
     void rejectsInvalidEntityOrTick() {
         assertThrows(IllegalArgumentException.class, () ->
                 BedrockVitalsCodec.createUpdateAttributes(0, PlayerVitals.DEFAULT, 1));

@@ -3091,28 +3091,97 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private void sendExistingLivingActors(String networkId) {
-        for (ru.nexora.combat.ArrowProjectile arrow : mobArrows.values()) {
-            try {
-                sendPacket(networkId, BedrockArrowActorCodec.createSpawn(arrow), true);
-            } catch (RuntimeException exception) {
-                System.err.println("NEXORA: unable to send existing arrow to " + networkId
-                        + ": " + exception.getMessage());
-            }
+        SessionState recipient = sessions.get(networkId);
+        if (recipient != null) syncVisibleWorldActors(networkId, recipient);
+    }
+
+    /**
+     * Routes mob and projectile packets only to clients that currently track the actor.
+     * If an actor crosses into a subscribed chunk it is spawned there; when it leaves,
+     * clients receive RemoveActor instead of continuing to receive global movement updates.
+     */
+    private void broadcastLivingActorPacket(BedrockPacket packet) {
+        int packetId = packet.packetId();
+        if (packetId != BedrockAddActorCodec.ADD_ACTOR_PACKET_ID
+                && packetId != BedrockAddItemActorCodec.REMOVE_ACTOR_PACKET_ID
+                && packetId != BedrockMoveActorAbsoluteCodec.MOVE_ACTOR_ABSOLUTE_PACKET_ID
+                && packetId != BedrockVitalsCodec.UPDATE_ATTRIBUTES_PACKET_ID
+                && packetId != BedrockActorMotionCodec.SET_ACTOR_MOTION_PACKET_ID) {
+            broadcastPacket(packet);
+            return;
         }
-        for (WorldLivingEntity entity : world.livingEntities().snapshot()) {
+
+        boolean uniqueIdEncoded = packetId == BedrockAddActorCodec.ADD_ACTOR_PACKET_ID
+                || packetId == BedrockAddItemActorCodec.REMOVE_ACTOR_PACKET_ID;
+        long encodedId = readFirstVarLong(packet.payload());
+        long runtimeId = uniqueIdEncoded ? Math.abs((encodedId >>> 1) ^ -(encodedId & 1L)) : encodedId;
+        if (runtimeId <= 0) return;
+
+        if (packetId == BedrockAddItemActorCodec.REMOVE_ACTOR_PACKET_ID) {
+            for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+                SessionState recipient = entry.getValue();
+                boolean wasVisible = recipient.visibleLivingEntityIds.remove(runtimeId)
+                        | recipient.visibleArrowEntityIds.remove(runtimeId);
+                if (wasVisible && recipient.clientInitialized && !recipient.rejected) {
+                    sendPacket(entry.getKey(), packet, true);
+                }
+            }
+            return;
+        }
+
+        WorldLivingEntity entity = world.livingEntities().find(runtimeId).orElse(null);
+        ru.nexora.combat.ArrowProjectile arrow = mobArrows.get(runtimeId);
+        if (entity == null && arrow == null) {
+            // Keep unknown actor packet types safe rather than silently dropping them.
+            broadcastPacket(packet);
+            return;
+        }
+
+        double x = entity != null ? entity.x() : arrow.x();
+        double z = entity != null ? entity.z() : arrow.z();
+        long uniqueId = entity != null ? entity.uniqueId() : arrow.uniqueId();
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            SessionState recipient = entry.getValue();
+            if (!recipient.clientInitialized || recipient.rejected) continue;
+            Set<Long> visibleIds = entity != null
+                    ? recipient.visibleLivingEntityIds : recipient.visibleArrowEntityIds;
+            boolean visibleNow = isWorldPositionVisible(recipient, x, z);
+            boolean alreadyVisible = visibleIds.contains(runtimeId);
             try {
-                sendPacket(networkId, BedrockAddActorCodec.createAddActor(entity), true);
+                if (visibleNow && !alreadyVisible) {
+                    visibleIds.add(runtimeId);
+                    BedrockPacket spawn = entity != null
+                            ? BedrockAddActorCodec.createAddActor(entity)
+                            : BedrockArrowActorCodec.createSpawn(arrow);
+                    sendPacket(entry.getKey(), spawn, true);
+                } else if (visibleNow) {
+                    sendPacket(entry.getKey(), packet, true);
+                } else if (alreadyVisible) {
+                    visibleIds.remove(runtimeId);
+                    sendPacket(entry.getKey(),
+                            BedrockAddItemActorCodec.createRemoveActor(uniqueId), true);
+                }
             } catch (RuntimeException exception) {
-                System.err.println("NEXORA: unable to send existing living actor to " + networkId
-                        + ": " + exception.getMessage());
+                if (visibleNow && !alreadyVisible) visibleIds.remove(runtimeId);
+                System.err.println("NEXORA: unable to sync actor " + runtimeId + " to "
+                        + entry.getKey() + ": " + exception.getMessage());
             }
         }
     }
 
-    private void broadcastLivingActorPacket(BedrockPacket packet) {
-        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
-            if (entry.getValue().clientInitialized) sendPacket(entry.getKey(), packet, true);
+    private static long readFirstVarLong(byte[] payload) {
+        long value = 0;
+        int shift = 0;
+        for (int index = 0; index < Math.min(payload.length, 10); index++) {
+            int current = Byte.toUnsignedInt(payload[index]);
+            if (index == 9 && (current & 0xfe) != 0) {
+                throw new IllegalArgumentException("Actor ID VarLong exceeds 64 bits");
+            }
+            value |= (long) (current & 0x7f) << shift;
+            if ((current & 0x80) == 0) return value;
+            shift += 7;
         }
+        throw new IllegalArgumentException("Truncated actor ID VarLong");
     }
 
     /**
@@ -4745,6 +4814,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.lastChunkX = centerX;
         state.lastChunkZ = centerZ;
         syncVisiblePlayerActors(networkId, state);
+        syncVisibleWorldActors(networkId, state);
     }
 
     /** Reconciles remote player actors whenever a client's published chunk view changes. */
@@ -4773,6 +4843,60 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 }
             }
         }
+    }
+
+    /** Reconciles server-owned mobs and projectiles against the recipient's loaded chunk set. */
+    private void syncVisibleWorldActors(String recipientNetworkId, SessionState recipient) {
+        if (!recipient.clientInitialized || recipient.rejected) return;
+        for (WorldLivingEntity entity : world.livingEntities().snapshot()) {
+            boolean visible = isWorldPositionVisible(recipient, entity.x(), entity.z());
+            if (visible && recipient.visibleLivingEntityIds.add(entity.runtimeId())) {
+                try {
+                    sendPacket(recipientNetworkId, BedrockAddActorCodec.createAddActor(entity), true);
+                } catch (RuntimeException exception) {
+                    recipient.visibleLivingEntityIds.remove(entity.runtimeId());
+                    System.err.println("NEXORA: unable to add living actor entering chunk view: "
+                            + exception.getMessage());
+                }
+            } else if (!visible && recipient.visibleLivingEntityIds.remove(entity.runtimeId())) {
+                try {
+                    sendPacket(recipientNetworkId,
+                            BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()), true);
+                } catch (RuntimeException exception) {
+                    System.err.println("NEXORA: unable to remove living actor leaving chunk view: "
+                            + exception.getMessage());
+                }
+            }
+        }
+        for (ru.nexora.combat.ArrowProjectile arrow : mobArrows.values()) {
+            boolean visible = isWorldPositionVisible(recipient, arrow.x(), arrow.z());
+            if (visible && recipient.visibleArrowEntityIds.add(arrow.runtimeId())) {
+                try {
+                    sendPacket(recipientNetworkId, BedrockArrowActorCodec.createSpawn(arrow), true);
+                } catch (RuntimeException exception) {
+                    recipient.visibleArrowEntityIds.remove(arrow.runtimeId());
+                    System.err.println("NEXORA: unable to add projectile entering chunk view: "
+                            + exception.getMessage());
+                }
+            } else if (!visible && recipient.visibleArrowEntityIds.remove(arrow.runtimeId())) {
+                try {
+                    sendPacket(recipientNetworkId,
+                            BedrockAddItemActorCodec.createRemoveActor(arrow.uniqueId()), true);
+                } catch (RuntimeException exception) {
+                    System.err.println("NEXORA: unable to remove projectile leaving chunk view: "
+                            + exception.getMessage());
+                }
+            }
+        }
+    }
+
+    private static boolean isWorldPositionVisible(SessionState recipient, double x, double z) {
+        if (!Double.isFinite(x) || !Double.isFinite(z)
+                || Math.abs(x) > 30_000_000 || Math.abs(z) > 30_000_000) return false;
+        int chunkX = Math.floorDiv((int) Math.floor(x), 16);
+        int chunkZ = Math.floorDiv((int) Math.floor(z), 16);
+        long key = ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
+        return recipient.sentChunkKeys.contains(key);
     }
 
     private static boolean isPlayerChunkVisible(SessionState recipient, SessionState player) {
@@ -5455,6 +5579,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private volatile int chunkViewRadius = BedrockChunkRadiusCodec.DEFAULT_RADIUS;
         private final Set<Long> sentChunkKeys = ConcurrentHashMap.newKeySet();
         private final Set<Long> visiblePlayerEntityIds = ConcurrentHashMap.newKeySet();
+        private final Set<Long> visibleLivingEntityIds = ConcurrentHashMap.newKeySet();
+        private final Set<Long> visibleArrowEntityIds = ConcurrentHashMap.newKeySet();
         private BreakTarget breakTarget;
         private long entityId;
         private volatile boolean rejected;

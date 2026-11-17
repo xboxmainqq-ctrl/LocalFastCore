@@ -1201,6 +1201,53 @@ class BedrockSessionManagerTest {
         } while (value != 0);
     }
 
+    private record StackRef(int runtimeItemId, int count, long blockRuntimeId) {
+        static StackRef empty() { return new StackRef(0, 0, 0); }
+        static StackRef of(BedrockInventoryContentCodec.ItemDefinition definition, int count) {
+            return new StackRef(definition.runtimeItemId(), count, definition.blockRuntimeId());
+        }
+    }
+
+    private record SlotAction(int containerId, int slot, StackRef from, StackRef to) {
+    }
+
+    private static void sendCraftingGridTransfer(
+            BedrockSessionManager manager, String networkId, SlotAction... actions
+    ) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        writeVarInt(out, 0); // no legacy request
+        writeVarInt(out, 0); // normal transaction
+        writeVarUInt(out, actions.length);
+        for (SlotAction action : actions) {
+            writeVarInt(out, 0); // container source
+            out.write(1); // container ID present
+            out.write(action.containerId());
+            out.write(0); // no world-interaction flags
+            writeVarUInt(out, action.slot());
+            writeItemDescriptor(out, action.from());
+            writeItemDescriptor(out, action.to());
+        }
+        sendClientBatch(manager, networkId, BedrockBatchCodec.encode(List.of(
+                new BedrockPacket(BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID,
+                        0, 0, out.toByteArray())), true, 256));
+    }
+
+    private static void writeItemDescriptor(ByteArrayOutputStream out, StackRef stack) {
+        writeLittleEndianShort(out, stack.runtimeItemId());
+        writeLittleEndianShort(out, stack.count());
+        writeVarUInt(out, 0); // aux
+        out.write(0); // no stack net ID
+        writeVarUInt(out, stack.blockRuntimeId());
+        writeVarUInt(out, 0); // no user data
+    }
+
+    private static int findInventorySlot(PlayerInventory inventory, String itemId) {
+        for (int slot = 0; slot < inventory.size(); slot++) {
+            if (inventory.getSlot(slot).filter(stack -> stack.itemId().equals(itemId)).isPresent()) return slot;
+        }
+        throw new AssertionError("Item not found in player inventory: " + itemId);
+    }
+
     private static void writeVarInt(ByteArrayOutputStream out, int value) {
         long encoded = Integer.toUnsignedLong((value << 1) ^ (value >> 31));
         do {

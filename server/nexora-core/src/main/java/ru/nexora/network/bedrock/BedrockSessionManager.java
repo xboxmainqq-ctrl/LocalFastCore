@@ -30,6 +30,8 @@ import ru.nexora.world.WorldContainerManager;
 import ru.nexora.world.WorldFurnaceManager;
 import ru.nexora.world.WorldItemEntity;
 import ru.nexora.world.WorldItemEntityManager;
+import ru.nexora.world.WorldLivingEntity;
+import ru.nexora.world.WorldLivingEntityManager;
 import ru.nexora.world.WorldChunk;
 import ru.nexora.world.WorldCollision;
 import ru.nexora.world.WorldRaycast;

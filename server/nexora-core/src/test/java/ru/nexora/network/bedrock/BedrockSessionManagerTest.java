@@ -192,6 +192,8 @@ class BedrockSessionManagerTest {
         setSessionField(manager, "ai-player", "positionX", 4.0f);
         setSessionField(manager, "ai-player", "positionY", 65.0f);
         setSessionField(manager, "ai-player", "positionZ", 0.0f);
+        manager.playerEquipment("ai-player").orElseThrow().setArmor(0,
+                new ItemStack("minecraft:iron_chestplate", 1, 1));
 
         var zombie = manager.spawnLivingEntity("minecraft:zombie", 20.0f, 0.0, 65.0, 0.0);
         invokeLivingActorTick(manager, 1L);
@@ -205,7 +207,7 @@ class BedrockSessionManagerTest {
         setSessionField(manager, "ai-player", "positionX", 1.0f);
         clock.addAndGet(100_000_000L);
         invokeLivingActorTick(manager, 2L);
-        assertEquals(17.0f, manager.playerVitals("ai-player").orElseThrow().health(), 0.0001f);
+        assertEquals(17.72f, manager.playerVitals("ai-player").orElseThrow().health(), 0.0001f);
         assertTrue(outboundFrames.stream().flatMap(frame -> decodeOutboundAll(frame, true).stream())
                 .anyMatch(packet -> packet.packetId()
                         == BedrockActorMotionCodec.SET_ACTOR_MOTION_PACKET_ID));

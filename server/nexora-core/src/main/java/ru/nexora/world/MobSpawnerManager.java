@@ -160,8 +160,7 @@ public final class MobSpawnerManager {
     private synchronized void pauseTimer(MobSpawnerState state, long currentTick) {
         Position key = new Position(state.x(), state.y(), state.z());
         MobSpawnerState current = spawners.get(key);
-        if (current == null || currentTick < current.nextSpawnTick()) return;
-        if (current.nextSpawnTick() == Long.MAX_VALUE) return;
+        if (current == null || current.nextSpawnTick() == Long.MAX_VALUE) return;
         spawners.put(key, current.withNextSpawnTick(current.nextSpawnTick() + 1));
     }
 

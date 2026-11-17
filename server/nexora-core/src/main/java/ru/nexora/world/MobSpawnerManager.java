@@ -134,7 +134,7 @@ public final class MobSpawnerManager {
             }
             if (!isPlayerNearby(state, players)) {
                 synchronized (this) { inactiveTicks++; }
-                pauseTimer(state, currentTick);
+                pauseTimer(state, elapsedTicks);
                 continue;
             }
             active++;

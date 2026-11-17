@@ -1,62 +1,74 @@
-# NexoraAI
+package ru.nexora.world;
 
-NexoraAI is an in-core operations observer and optional in-game assistant for NEXORA.
+import org.junit.jupiter.api.Test;
 
-The ongoing Nerox and NexoraAI development priorities are tracked in [`ROADMAP.md`](ROADMAP.md). The roadmap is the source of truth for planned core stability, performance, AI diagnostics, safe repair, mob AI, and moderation work; planned items are not claims of implementation.
+import static org.junit.jupiter.api.Assertions.*;
 
-## Runtime diagnostics
+class MobPathCacheTest {
+    @Test
+    void reusesARecentPathForTheSameMobAndRequest() {
+        World world = new World("mob-path-cache", 0L, new FlatWorldGenerator());
+        MobPathCache cache = new MobPathCache(8, 150);
 
-`ru.nexora.ai.NexoraAiDiagnostics` provides a read-only JVM snapshot:
-- heap usage and configured maximum;
-- live thread count and available processors;
-- system load average when provided by the JVM;
-- process uptime;
-- bounded summaries of failures explicitly reported to the service;
-- a newest-first ring buffer of up to 12 timestamped failure/slow-operation events, with descriptions capped at 240 characters and common bearer/API/access-token patterns redacted; repeated failure signatures are grouped by subsystem and exception type, and slow operations by subsystem. Signature storage is capped at 16 groups.
+        var first = cache.findNextStep(7L, world, 0.5, 65, 0.5, 3.5, 0.5, 1_000);
+        var second = cache.findNextStep(7L, world, 0.5, 65, 0.5, 3.5, 0.5, 1_050);
 
-`NexoraAiMonitor` samples these metrics every 30 seconds and writes warnings to the server console. `NexoraAiDiagnostics` also keeps a bounded rolling window of the latest 60 execution-time samples for up to 16 named subsystems; `latencySummaries()` exposes sample count, average, p95, and maximum. Both within-budget and over-budget measurements are retained, while the existing slow-operation counter still counts only measurements above their configured threshold. These are subsystem execution-time summaries, not server TPS. It does not change server state. The Bedrock mob-AI update and furnace tick are timed; executions taking longer than 50 ms are counted. Mob pathfinding is measured separately as `mob-pathfinding`, with calls taking longer than 5 ms counted; this helps distinguish navigation cost from the rest of mob AI. A per-world `MobPathCache` reuses each mob's recent first waypoint for up to 150 ms (maximum 1,024 entries); cached waypoints are collision-checked before reuse and entries are removed when a mob despawns. This bounds memory and avoids blindly following a route after a block changes. Periodic world/player autosaves taking longer than 1 second are also counted. Bedrock inbound message handling is also timed from before per-session lock acquisition through packet dispatch; processing taking longer than 50 ms is grouped as `bedrock-inbound`. This includes time waiting for that session's lock and is not a packet-rate or network-bandwidth measurement. The current core does not expose one centralized fixed-rate server tick loop: player movement is processed from Bedrock `PlayerAuthInput`, while mob AI is throttled to at most one update per 50 ms when player input is handled. Therefore inbound processing latency is measured as its own signal rather than mislabeled as TPS. These are subsystem execution warnings, not a server-wide TPS measurement or a complete hang detector.
+        assertEquals(first, second);
+        assertEquals(1, cache.size());
+    }
 
-## NexoraAI Guard (network observer)
+    @Test
+    void revalidatesCachedWaypointWhenWorldChanges() {
+        World world = new World("mob-path-cache-change", 0L, new FlatWorldGenerator());
+        MobPathCache cache = new MobPathCache(8, 150);
+        var original = cache.findNextStep(9L, world, 0.5, 65, 0.5, 3.5, 0.5, 2_000)
+                .orElseThrow();
 
-- The first Guard stage observes inbound NetherNet transport frames per peer using monotonic 5-second windows.
-- Default review thresholds are more than 300 frames or more than 1 MiB per peer per window. A peer produces at most one signal per window.
-- Per-peer state is capped at 1,024 entries and removed on disconnect; when full, the oldest tracked entry is evicted.
-- Aggregate Guard status is included in the operator runtime context without exposing peer identifiers. Threshold crossings are also added to the bounded diagnostic evidence ring as identifier-free `GUARD` events for operator status and repair-plan context.
-- Signals are evidence for review only. This stage does not throttle, disconnect, mute, or ban players.
-- These are application-observed per-peer frame/byte thresholds, not proof of a DDoS attack. They cannot observe traffic dropped upstream or protect a saturated network link; host/network-level filtering is still required.
-- When server-authoritative movement is enabled, Guard observes client/server reconciliation errors. Four horizontal discrepancies above 0.75 blocks in a 10-second window produce a possible-speed review signal; the same threshold for vertical discrepancies produces a possible-fly signal.
-- Player-versus-player and player-versus-mob attack attempts beyond the server weapon reach by more than 0.75 blocks are counted; five such attempts in a 10-second window produce a possible-reach review signal.
-- Movement and reach evidence is bounded to 1,024 player keys, reset by a 10-second monotonic window, and cleared when the authenticated player disconnects. Aggregate status reports tracked and suspicious players without exposing XUIDs.
-- These signals are heuristics, not proof: latency, prediction differences, server load, or legitimate edge cases can cause movement corrections; repeated out-of-range attempts can also be accidental. Review evidence before taking action.
-- KillAura review detects a high-rate multi-target pattern only after 65 server-validated hits and at least 4 target switches in a 5-second monotonic window. PvP hits are recorded only after cooldown, reach, line-of-sight, and damage checks; mob hits are recorded after the authoritative world damage operation succeeds. Each detection receives a case ID (`K-000001` etc.); up to 64 cases are kept in memory for 30 minutes, including multiple cases for one player. Player names are sanitized and XUIDs/target identifiers are never shown in the panel. `/ai guard` is restricted to the existing authenticated operator XUID allowlist. `/ai guard cases` lists recent cases, `/ai guard case <ID>` shows evidence, `/ai guard confirm <ID>` records a moderator-confirmed case, and `/ai guard dismiss <ID>` marks a false positive. A decision is recorded once and cannot be overwritten; the private reviewer XUID is retained only in memory and is not displayed. Confirmation does not execute a ban, kick, mute, or any other punishment. Cases are heuristics for moderator review, not proof of cheating; no automatic punishment is applied. The review list is memory-only and is cleared on server restart.
+        world.setBlock((int) Math.floor(original.x()), 65,
+                (int) Math.floor(original.z()), BlockType.STONE);
 
-## In-game assistant
+        var replacement = cache.findNextStep(9L, world, 0.5, 65, 0.5, 3.5, 0.5, 2_050)
+                .orElseThrow();
 
-- `/ai` opens a Bedrock input form.
-- `/ai <question>` sends a direct question.
-- `/ai help` lists available commands; `/ai status` shows whether the provider is configured; `/ai clear` clears the current player's conversation context.
-- The assistant answers asynchronously through an OpenAI-compatible Chat Completions endpoint.
-- Per-player requests are rate-limited and prompts/replies are bounded.
-- The assistant keeps up to 8 completed exchanges per authenticated player for 15 minutes of inactivity; player and operator histories are separate. Context is memory-only and is not written to disk.
-- The model receives a small read-only JVM status snapshot. Operator requests also include aggregate player/session, living-entity, and dropped-item counts, without player inventory or private profile data. It is explicitly instructed not to claim it can execute commands or modify the server.
+        assertNotEquals(original, replacement);
+        assertTrue(WorldCollision.canMove(world, 0.5, 65, 0.5,
+                replacement.x(), 65, replacement.z()));
+    }
 
-Configuration is read from the server process environment:
-- `NEXORA_AI_API_KEY` — provider key; without it the chat stays disabled.
-- `NEXORA_AI_MODEL` — optional model name; default `gpt-4o-mini`.
-- `NEXORA_AI_ENDPOINT` — optional full Chat Completions URL; default OpenAI endpoint.
-- `NEXORA_AI_TIMEOUT_SECONDS` — request timeout; default 30.
-- `NEXORA_AI_ADMIN_XUIDS` — comma-separated Xbox XUID allowlist for operator mode.
+    @Test
+    void doesNotCacheNoPathResultsWhenTerrainCanChange() {
+        World world = new World("mob-path-cache-open", 0L, new FlatWorldGenerator());
+        world.setBlock(1, 65, 0, BlockType.STONE);
+        world.setBlock(-1, 65, 0, BlockType.STONE);
+        world.setBlock(0, 65, 1, BlockType.STONE);
+        world.setBlock(0, 65, -1, BlockType.STONE);
+        MobPathCache cache = new MobPathCache(8, 150);
 
-Only HTTPS endpoints are accepted, except HTTP on localhost for private development providers. API keys are never written to source files or logs. Player questions, operator repair-plan descriptions, the player's display name, bounded recent conversation context, and (for repair plans) up to 12 timestamped diagnostic summaries and bounded repeat counts (with common credential patterns redacted) are sent to the configured AI provider; operators should disclose this to players and must not invite them to submit passwords, tokens, or other secrets.
+        assertTrue(cache.findNextStep(11L, world, 0.5, 65, 0.5, 3.5, 0.5, 3_000).isEmpty());
+        assertEquals(0, cache.size());
 
-## Operator mode
+        world.setBlock(1, 65, 0, BlockType.AIR);
+        assertTrue(cache.findNextStep(11L, world, 0.5, 65, 0.5, 3.5, 0.5, 3_050).isPresent());
+    }
 
-- `/ai admin` shows a read-only runtime snapshot and the newest bounded diagnostic events. It also includes aggregate player/session, living-entity, and dropped-item counts; no player inventory or private profile data is exposed.
-- `/ai admin <question>` asks the assistant in operator context.
-- Access is granted only when the authenticated Xbox XUID is present in `NEXORA_AI_ADMIN_XUIDS`.
-- `/ai admin plan <problem>` asks the configured provider for a repair plan using the operator's description plus up to 12 recent timestamped diagnostic summaries. The model is told to separate observed facts from hypotheses and unknowns; `/ai admin proposals` lists saved proposals; `/ai admin proposal <id>` shows one; `/ai admin approve <id>` approves it for manual review; `/ai admin reject <id>` rejects it.
-- Proposals are bounded, held in memory only, and expire after 24 hours. The proposal text and issue description are visible to allowlisted operators on the server. Approval is a review-state change only and records the reviewing operator XUID and timestamp; it does not execute commands, apply patches, edit files, restart services, or mutate worlds.
+    @Test
+    void expiresEntriesAndKeepsTheCacheBounded() {
+        World world = new World("mob-path-cache-bound", 0L, new FlatWorldGenerator());
+        MobPathCache cache = new MobPathCache(2, 10);
 
-## Safety and roadmap
+        cache.findNextStep(1L, world, 0.5, 65, 0.5, 3.5, 0.5, 100);
+        cache.findNextStep(2L, world, 0.5, 65, 1.5, 3.5, 1.5, 100);
+        cache.findNextStep(3L, world, 0.5, 65, 2.5, 3.5, 2.5, 100);
+        assertEquals(2, cache.size());
 
-The current release is observe-and-explain plus non-executable repair planning. NexoraAI can draft a proposed investigation and validation/backup/rollback checklist, but it does not inspect or modify source files, run tests, create backups, or apply changes. Operator approval only marks a proposal for manual review. Any future automated repair workflow must independently verify the target, run tests, preserve a backup, require explicit operator approval, and support rollback before a change can be applied.
+        cache.findNextStep(3L, world, 0.5, 65, 2.5, 3.5, 2.5, 111);
+        assertEquals(2, cache.size());
+        cache.remove(3L);
+        assertEquals(1, cache.size());
+    }
+}
+
+
+## Mob path cache metrics
+
+Each `MobPathCache` instance exposes a cumulative, thread-safe `stats()` snapshot: cache hits, misses, path recomputations, cached waypoints rejected by collision revalidation, LRU evictions, and current entry count. The snapshot also provides request count and hit rate. Counters are instance-local and do not claim TPS or CPU savings; compare them with pathfinding latency under a controlled mob load. No-path results remain uncached so terrain changes can be observed immediately.

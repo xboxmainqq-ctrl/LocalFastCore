@@ -29,6 +29,8 @@ public final class BedrockBlockRuntimeIds {
             case DIAMOND_BLOCK -> hashState("minecraft:diamond_block");
             case EMERALD_BLOCK -> hashState("minecraft:emerald_block");
             case CHEST -> hashState("minecraft:chest", "minecraft:cardinal_direction", "north");
+            case OAK_LOG -> hashState("minecraft:log", Map.of("old_log_type", "oak", "pillar_axis", "y"));
+            case OAK_PLANKS -> hashState("minecraft:planks", Map.of("wood_type", "oak"));
         };
     }
 
@@ -41,6 +43,10 @@ public final class BedrockBlockRuntimeIds {
     }
 
     static int hashState(String name, String property, String value) {
+        return hashState(name, property == null ? Map.of() : Map.of(property, value));
+    }
+
+    static int hashState(String name, Map<String, String> properties) {
         ByteArrayOutputStream nbt = new ByteArrayOutputStream(128);
         nbt.write(10); // Root TAG_Compound
         writeString(nbt, "");
@@ -49,11 +55,11 @@ public final class BedrockBlockRuntimeIds {
         writeString(nbt, name);
         nbt.write(10); // TAG_Compound "states"
         writeString(nbt, "states");
-        if (property != null) {
+        properties.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
             nbt.write(8); // TAG_String block-state property
-            writeString(nbt, property);
-            writeString(nbt, value);
-        }
+            writeString(nbt, entry.getKey());
+            writeString(nbt, entry.getValue());
+        });
         nbt.write(0); // End states compound
         nbt.write(0); // End root compound
 

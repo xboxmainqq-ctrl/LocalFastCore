@@ -118,7 +118,7 @@ public final class World {
         this.furnaces = containerStorage == null || furnaceStateStorage == null ? null
                 : new WorldFurnaceManager(containerStorage, furnaceStateStorage);
         this.mobSpawners = createMobSpawnerManager(storage);
-        addBlockChangeListener(change -> mobSpawners.onBlockChanged(change, System.currentTimeMillis() / 50L));
+        addBlockChangeListener(change -> mobSpawners.onBlockChanged(change, Math.max(0L, System.nanoTime() / 50_000_000L)));
     }
 
     public String name() {

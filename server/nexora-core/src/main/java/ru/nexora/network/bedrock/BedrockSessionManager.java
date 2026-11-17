@@ -1411,7 +1411,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         String lower = normalized.toLowerCase(Locale.ROOT);
         if (lower.equals("proposals")) {
             java.util.List<ru.nexora.ai.NexoraAiRepairProposals.Proposal> proposals =
-                    assistant.repairProposals();
+                    assistant.repairProposals(state.identity.xuid());
             if (proposals.isEmpty()) {
                 sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §fПредложений пока нет.");
                 return true;
@@ -1463,7 +1463,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         String id = parts[1].trim();
         if (lower.startsWith("proposal ")) {
             ru.nexora.ai.NexoraAiRepairProposals.Proposal proposal =
-                    assistant.repairProposal(id).orElse(null);
+                    assistant.repairProposal(state.identity.xuid(), id).orElse(null);
             if (proposal == null) {
                 sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §fПредложение не найдено или истекло.");
             } else {
@@ -1475,7 +1475,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         if (lower.startsWith("approve ")) {
             ru.nexora.ai.NexoraAiRepairProposals.Proposal proposal =
-                    assistant.approveRepairProposal(id).orElse(null);
+                    assistant.approveRepairProposal(state.identity.xuid(), id).orElse(null);
             sendAiMessage(networkId, proposal == null
                     ? "§b[NEXORA AI ADMIN] §fНе удалось одобрить: проверь ID и статус."
                     : "§b[NEXORA AI ADMIN] §f" + proposal.id()
@@ -1484,7 +1484,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         if (lower.startsWith("reject ")) {
             ru.nexora.ai.NexoraAiRepairProposals.Proposal proposal =
-                    assistant.rejectRepairProposal(id).orElse(null);
+                    assistant.rejectRepairProposal(state.identity.xuid(), id).orElse(null);
             sendAiMessage(networkId, proposal == null
                     ? "§b[NEXORA AI ADMIN] §fНе удалось отклонить: проверь ID и статус."
                     : "§b[NEXORA AI ADMIN] §f" + proposal.id() + " отклонено.");

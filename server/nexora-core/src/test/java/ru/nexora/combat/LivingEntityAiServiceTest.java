@@ -65,7 +65,7 @@ class LivingEntityAiServiceTest {
         assertTrue(ghastDecision.moveY() > 0);
 
         WorldLivingEntity bat = new WorldLivingEntityManager().spawn(
-                "minecraft:bat", 0.5, 65, 0.5);
+                "minecraft:bat", 6, 0.5, 65, 0.5);
         var above = new LivingEntityAiService.PlayerTarget("player", 0.5, 69, 0.5, true);
         var batDecision = ai.decide(bat, List.of(above), 1_000, 0);
         assertTrue(batDecision.moving());

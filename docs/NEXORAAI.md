@@ -62,7 +62,7 @@ The current server-side spawner implementation provides:
 - A default 200-tick delay, configurable from 20 to 800 ticks.
 - Up to four spawn-position attempts per activation cycle.
 - A same-type nearby cap of six mobs in the local 9-block volume.
-- Basic spawn-space checks for two air blocks above a non-air floor; candidate validation never forces a neighboring chunk to load.
+- Entity-height-aware spawn-space checks above a non-air floor (two air blocks for ordinary mobs, more for tall mobs); candidate validation never forces a neighboring chunk to load.
 - A bounded registry of 10,000 spawners, a 128-spawner per-tick round-robin work budget, and a guard against duplicate processing in the same server tick.
 - Atomic, checksummed persistence of spawner type, delay, coordinates, and remaining timer alongside world storage, so server downtime does not consume the countdown.
 - Server-side entity creation and AddActor replication to initialized Bedrock clients; operator placement/removal sends a Bedrock block update.

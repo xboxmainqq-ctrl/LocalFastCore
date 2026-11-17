@@ -188,6 +188,36 @@ class WorldChunkPipelineTest {
         }
     }
 
+    @Test
+    void completesAsyncWaiterWhenGeneratorThrowsFatalError() throws Exception {
+        InMemoryWorld world = new InMemoryWorld("overworld", new WorldHeight(0, 64));
+        TickScheduler scheduler = new TickScheduler();
+        AsyncChunkGenerationService generation = new AsyncChunkGenerationService(
+                (position, height, seed) -> { throw new AssertionError("fatal generator failure"); },
+                world.height(), 1L, 1, 2, 2
+        );
+        java.util.concurrent.atomic.AtomicReference<RuntimeException> reported =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        WorldChunkPipeline pipeline = new WorldChunkPipeline(
+                world, scheduler, generation, 2, reported::set
+        );
+        pipeline.start();
+        try {
+            java.util.concurrent.CompletableFuture<Boolean> waiter =
+                    pipeline.requestAsync(new ChunkPosition(-4, 7));
+            await(() -> generation.completedCount() == 1);
+
+            scheduler.tick();
+            assertFalse(waiter.isCompletedExceptionally());
+            assertFalse(waiter.join(), "fatal generation failure must resolve as unavailable");
+            assertNotNull(reported.get());
+            assertInstanceOf(AssertionError.class, reported.get().getCause());
+            assertEquals(0, pipeline.pendingCount());
+        } finally {
+            pipeline.stop();
+        }
+    }
+
     private static FlatChunkGenerator generator() {
         return new FlatChunkGenerator(
                 5, 2,

@@ -13,6 +13,7 @@ import ru.nexora.world.World;
 import ru.nexora.world.WorldStorage;
 import ru.nexora.world.WorldItemEntityStorage;
 import ru.nexora.inventory.ContainerInventoryStorage;
+import ru.nexora.inventory.FurnaceStateStorage;
 import ru.nexora.world.WorldAutosave;
 import ru.nexora.world.PlayerDataStorage;
 import ru.nexora.inventory.PlayerInventoryStorage;
@@ -73,9 +74,11 @@ public final class NexoraServer {
                 Path.of(dataDirectory, "worlds"), "NEXORA World");
         ContainerInventoryStorage containerStorage = new ContainerInventoryStorage(
                 Path.of(dataDirectory, "worlds"), "NEXORA World");
+        FurnaceStateStorage furnaceStateStorage = new FurnaceStateStorage(
+                Path.of(dataDirectory, "worlds"), "NEXORA World");
         World world = new World(
                 "NEXORA World", 0L, new FlatWorldGenerator(), 0, 65, 0,
-                worldStorage, itemStorage, containerStorage);
+                worldStorage, itemStorage, containerStorage, furnaceStateStorage);
         PlayerDataStorage playerStorage = new PlayerDataStorage(Path.of(dataDirectory, "players"));
         PlayerInventoryStorage inventoryStorage = new PlayerInventoryStorage(Path.of(dataDirectory, "inventories"));
         PlayerEquipmentStorage equipmentStorage = new PlayerEquipmentStorage(Path.of(dataDirectory, "equipment"));
@@ -171,6 +174,7 @@ public final class NexoraServer {
         System.out.println("Player armor, offhand, cursor and magical equipment use checksummed files under " + Path.of(dataDirectory, "equipment").toAbsolutePath());
         System.out.println("Dropped world items use checksummed storage under " + Path.of(dataDirectory, "worlds", "NEXORA World", "items").toAbsolutePath());
         System.out.println("Block-container inventories use checksummed storage under " + Path.of(dataDirectory, "worlds", "NEXORA World", "containers").toAbsolutePath());
+        System.out.println("Furnace inventories and burn/cook progress use checksummed storage under " + Path.of(dataDirectory, "worlds", "NEXORA World", "furnaces").toAbsolutePath());
         System.out.println("Server-authoritative movement, block drops, item pickups, fall damage, death/respawn, food use and persisted survival vitals are enabled.");
         System.out.println("Players can open the magical equipment interface with /equipment.");
         System.out.printf("World autosave interval: %d seconds%n", autosaveSeconds);

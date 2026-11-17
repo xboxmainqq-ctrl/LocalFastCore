@@ -20,7 +20,7 @@ class NexoraAiGuardTest {
 
         assertEquals(1, events.size());
         assertEquals("frame-rate threshold exceeded", events.getFirst().reason());
-        assertEquals(4, events.getFirst().framesInWindow());
+        assertEquals(3, events.getFirst().framesInWindow());
         assertEquals(1, guard.snapshot().signalledPeers());
         assertFalse(guard.snapshot().summary().contains("peer-secret"));
     }

@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - nexora/compatibility-edition
+      - nexora/powernukkitx-rpg-foundation
     paths:
       - "src/**"
       - "pom.xml"

@@ -40,6 +40,7 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 - [ ] Bound AI work per update and avoid repeated expensive path calculations.
 - [ ] Add a conservative Mob AI load controller: keep mobs near players and mobs with active targets at full update rate; stagger only distant idle mobs, with deterministic tests and operator metrics.
 - [ ] Add deterministic tests for targeting, movement, despawn, and edge cases.
+- [x] Add conservative deterministic Mob AI scheduling: nearby mobs and mobs with active aggro remain full-rate; distant unprovoked mobs are staggered across ticks. Expose aggregate counters in `/ai mob stats`.
 - [x] Add bounded, diagnostic-only stuck-mob detection with a 2-second no-progress threshold and operator report (`/ai mob stuck`); no automatic teleport or punishment.
 - [x] Expose read-only Mob AI cache counters and recent mob-ai/mob-pathfinding latency summaries through the allowlisted `/ai mob stats` operator command.
 
@@ -69,6 +70,10 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 - [ ] Add permission checks to every command and panel action; test unauthorized access.
 - [ ] Keep outputs concise, paginated, and safe for Bedrock chat/UI limits.
 
+## Mob-system completion gate (freeze after sign-off)
+
+Do not consider the mob system finished after the load controller alone. Complete and verify the full mob workstream before moving to unrelated features: hostile/passive behavior, targeting, navigation/path caching, stuck diagnostics, combat and special mob behavior, lifecycle cleanup, vanilla-style spawners, persistence, Bedrock replication, and load testing. Add/update regression tests and docs for every behavior change. Once the user receives the final added/changed/removed inventory and accepts the completed stage, freeze mob-related code; do not refactor or change mob behavior in later stages unless the user explicitly reopens the mob workstream or a critical defect is found and approved.
+
 ## Delivery rules
 
 1. Inspect the current implementation before changing it.
@@ -80,8 +85,8 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 
 ## Current next steps
 
-1. Implement the conservative Mob AI load controller and verify that combat/near-player behavior remains full-rate.
-2. Implement the spawner block and server-side spawn lifecycle, then add durable block-entity state and Bedrock client replication.
+1. Complete Mob AI behavior and lifecycle regression coverage, including target acquisition, combat, special mobs, navigation, and despawn cleanup.
+2. Implement vanilla-style spawner blocks, activation/delay/caps/valid positions, persistence, and Bedrock client replication.
 3. Test spawners with multiple players, nearby-mob caps, restart recovery, and the Mob AI load controller.
-4. Build a trustworthy performance baseline on a real server; current mob-AI timing is subsystem latency, not TPS.
-5. Continue the security/moderation roadmap after core gameplay and stability baselines are verified.
+4. Run controlled entity-load tests and then verify on a real compatible Bedrock host; do not claim performance gains from synthetic tests alone.
+5. Publish a final mob-system change inventory (added, changed, removed) and freeze mob code before starting unrelated feature work.

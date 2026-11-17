@@ -74,7 +74,7 @@ public record WorldLivingEntity(
                     "minecraft:zombie_villager", "minecraft:zombie_villager_v2",
                     "minecraft:skeleton", "minecraft:stray", "minecraft:wither_skeleton",
                     "minecraft:wither", "minecraft:phantom", "minecraft:zombified_piglin",
-                    "minecraft:zoglin" -> Family.UNDEAD;
+                    "minecraft:zoglin", "minecraft:bogged" -> Family.UNDEAD;
             case "minecraft:spider", "minecraft:cave_spider",
                     "minecraft:silverfish", "minecraft:endermite", "minecraft:bee" -> Family.ARTHROPOD;
             default -> Family.NORMAL;

@@ -224,6 +224,11 @@ public final class World {
         return chunks.size();
     }
 
+    /** Checks residency without causing a chunk load. */
+    public boolean isChunkLoadedAt(int blockX, int blockZ) {
+        return chunks.containsKey(chunkKey(Math.floorDiv(blockX, 16), Math.floorDiv(blockZ, 16)));
+    }
+
     public void saveAll() throws IOException {
         if (storage != null) {
             for (WorldChunk chunk : chunks.values()) storage.saveChunk(chunk);

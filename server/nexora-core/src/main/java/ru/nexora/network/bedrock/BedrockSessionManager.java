@@ -1163,7 +1163,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             return;
         }
         if (action.action() == BedrockPlayerActionCodec.ACTION_START_USING_ITEM && !state.dead) {
-            ItemStack held = state.inventory.heldItem().orElse(null);
             startSpearChargeIfHeld(state);
             return;
         }
@@ -2879,16 +2878,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 && state.spearChargeStartedNanos != Long.MIN_VALUE) {
             ItemStack chargeItem = state.inventory.getSlot(state.spearChargeSlot).orElse(null);
             ItemStack releasedItem = release.heldItem().orElse(null);
-            double headDx = release.headX() - state.positionX;
-            double headDy = release.headY() - (state.positionY + 1.62);
-            double headDz = release.headZ() - state.positionZ;
+            double fromDx = release.fromX() - state.positionX;
+            double fromDy = release.fromY() - state.positionY;
+            double fromDz = release.fromZ() - state.positionZ;
             boolean validChargeRelease = release.hand() == 0
                     && state.spearChargeSlot == release.hotbarSlot()
                     && state.spearChargeSlot == state.inventory.selectedHotbarSlot()
                     && chargeItem != null && isSpear(chargeItem)
                     && chargeItem.itemId().equals(state.spearChargeItemId)
                     && chargeItem.equals(releasedItem)
-                    && headDx * headDx + headDy * headDy + headDz * headDz <= 4.0;
+                    && fromDx * fromDx + fromDy * fromDy + fromDz * fromDz <= 2.25;
             if (validChargeRelease) {
                 state.spearChargeReleasedNanos = nanoTime.getAsLong();
             } else {
@@ -2915,10 +2914,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             clearUsingItem(state);
             return;
         }
-        double headDx = release.headX() - state.positionX;
-        double headDy = release.headY() - (state.positionY + 1.62);
-        double headDz = release.headZ() - state.positionZ;
-        if (headDx * headDx + headDy * headDy + headDz * headDz > 4.0) {
+        double fromDx = release.fromX() - state.positionX;
+        double fromDy = release.fromY() - state.positionY;
+        double fromDz = release.fromZ() - state.positionZ;
+        if (fromDx * fromDx + fromDy * fromDy + fromDz * fromDz > 2.25) {
             clearUsingItem(state);
             return;
         }

@@ -217,7 +217,9 @@ public final class NexoraServer {
         System.out.println("Server-authoritative movement, block drops, item pickups, fall damage, death/respawn, food use and persisted survival vitals are enabled.");
         System.out.println("Players can open the magical equipment interface with /equipment.");
         System.out.println("NexoraAI chat command /ai is available; provider configured: "
-                + !System.getenv().getOrDefault("NEXORA_AI_API_KEY", "").isBlank());
+                + !System.getenv().getOrDefault("NEXORA_AI_API_KEY", "").isBlank()
+                + "; operator allowlist configured: "
+                + !System.getenv().getOrDefault("NEXORA_AI_ADMIN_XUIDS", "").isBlank());
         System.out.println("Weapon and armor durability wear is disabled by default; NEXORA_DURABILITY_ENABLED="
                 + durabilitySettings.enabled() + " (wear processing is not implemented yet).");
         System.out.printf("World autosave interval: %d seconds%n", autosaveSeconds);

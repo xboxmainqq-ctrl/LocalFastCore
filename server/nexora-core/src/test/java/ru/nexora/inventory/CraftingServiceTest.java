@@ -52,7 +52,7 @@ class CraftingServiceTest {
     @Test
     void rollsBackIngredientsWhenOutputCannotFit() {
         PlayerInventory inventory = new PlayerInventory();
-        inventory.setSlot(0, new ItemStack("minecraft:iron_ingot", 1, 64));
+        inventory.setSlot(0, new ItemStack("minecraft:iron_ingot", 64, 64));
         for (int slot = 1; slot < inventory.size(); slot++) {
             inventory.setSlot(slot, new ItemStack("minecraft:diamond", 64, 64));
         }
@@ -60,7 +60,7 @@ class CraftingServiceTest {
         int selected = inventory.selectedHotbarSlot();
 
         assertEquals(CraftingService.Result.INVENTORY_FULL,
-                service.craft(inventory, recipes, "minecraft:iron_nuggets_from_iron_ingot", 1));
+                service.craft(inventory, recipes, "minecraft:iron_nuggets_from_iron_ingot", 64));
         assertEquals(before, inventory.snapshot());
         assertEquals(selected, inventory.selectedHotbarSlot());
     }

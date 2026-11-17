@@ -111,6 +111,30 @@ class LivingEntityAiServiceTest {
     }
 
     @Test
+    void precomputedNearestPlayerProducesTheSameDecisionWithoutRescanning() {
+        WorldLivingEntity zombie = new WorldLivingEntityManager().spawn(
+                "minecraft:zombie", 20, 0, 64, 0);
+        var nearest = new LivingEntityAiService.PlayerTarget("nearest", 2, 64, 0, true);
+        var players = List.of(
+                new LivingEntityAiService.PlayerTarget("far", 8, 64, 0, true), nearest);
+        var normal = ai.decide(zombie, players, 1_000, 0, null);
+        var precomputed = ai.decide(zombie, players, 1_000, 0, null,
+                LivingEntityAiService.nearestAlivePlayer(zombie, players));
+
+        assertEquals(normal, precomputed);
+    }
+
+    @Test
+    void precomputedNearestPlayerMustBeAlive() {
+        WorldLivingEntity zombie = new WorldLivingEntityManager().spawn(
+                "minecraft:zombie", 20, 0, 64, 0);
+        var dead = new LivingEntityAiService.PlayerTarget("dead", 1, 64, 0, false);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> ai.decide(zombie, List.of(dead), 1_000, 0, null, dead));
+    }
+
+    @Test
     void rejectsInvalidTimeAndTarget() {
         WorldLivingEntity zombie = new WorldLivingEntityManager().spawn(
                 "minecraft:zombie", 20, 0, 64, 0);

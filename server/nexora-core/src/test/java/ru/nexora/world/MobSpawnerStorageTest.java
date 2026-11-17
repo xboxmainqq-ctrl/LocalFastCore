@@ -4,6 +4,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.nio.file.Files;
+import java.util.zip.CRC32C;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -47,4 +51,33 @@ class MobSpawnerStorageTest {
 
         assertThrows(java.io.IOException.class, storage::load);
     }
+    @Test
+    void migratesLegacyAbsoluteTimerToConfiguredRemainingDelay() throws Exception {
+        ByteArrayOutputStream bodyBytes = new ByteArrayOutputStream();
+        try (DataOutputStream out = new DataOutputStream(bodyBytes)) {
+            out.writeInt(0x4e585350);
+            out.writeByte(1);
+            out.writeInt(1);
+            out.writeInt(4);
+            out.writeInt(65);
+            out.writeInt(7);
+            out.writeUTF("minecraft:zombie");
+            out.writeInt(200);
+            out.writeLong(987_654_321L);
+        }
+        byte[] body = bodyBytes.toByteArray();
+        CRC32C crc = new CRC32C();
+        crc.update(body, 0, body.length);
+        ByteArrayOutputStream fileBytes = new ByteArrayOutputStream();
+        fileBytes.writeBytes(body);
+        try (DataOutputStream out = new DataOutputStream(fileBytes)) {
+            out.writeInt((int) crc.getValue());
+        }
+        Files.write(temporaryDirectory.resolve("mob-spawners.dat"), fileBytes.toByteArray());
+
+        MobSpawnerStorage storage = new MobSpawnerStorage(temporaryDirectory);
+        MobSpawnerState migrated = storage.load().get(0);
+        assertEquals(200, migrated.nextSpawnTick());
+    }
+
 }

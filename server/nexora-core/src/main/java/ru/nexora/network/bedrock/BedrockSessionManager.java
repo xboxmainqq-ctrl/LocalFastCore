@@ -1820,6 +1820,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             synchronized (target) {
                 if (!target.loginAuthenticated || !target.clientInitialized
                         || target.dead || target.vitals.dead()) return;
+                int targetBlockX = (int) Math.floor(target.positionX);
+                int targetBlockY = (int) Math.floor(target.positionY + 1.0);
+                int targetBlockZ = (int) Math.floor(target.positionZ);
+                if (!WorldRaycast.hasLineOfSight(world, mob.x(), mob.y() + 1.2, mob.z(),
+                        targetBlockX, targetBlockY, targetBlockZ)) return;
                 List<ItemStack> armor = target.equipment.armorSnapshot().stream()
                         .flatMap(Optional::stream).toList();
                 float mitigatedDamage = ru.nexora.combat.EnchantmentCombatService

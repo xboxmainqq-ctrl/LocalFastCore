@@ -2288,7 +2288,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         applySpearLunge(attackerNetworkId, attacker, weapon);
         if (damage.killed()) {
             grantMobRewards(attackerNetworkId, attacker, target, weapon == null ? 0 : weapon.enchantments().getOrDefault("minecraft:looting", 0));
-            nextMobAttackMillis.remove(target.runtimeId());
+            cleanupLivingEntityRuntimeState(target.runtimeId());
             broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(target.uniqueId()));
             return;
         }
@@ -2387,8 +2387,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         for (WorldLivingEntityManager.DamageResult result : world.livingEntities().tickFire(nowMillis)) {
             WorldLivingEntity entity = result.current();
             if (result.killed()) {
-                nextMobAttackMillis.remove(entity.runtimeId());
-                mobPathCache.remove(entity.runtimeId());
+                cleanupLivingEntityRuntimeState(entity.runtimeId());
                 MobKillCredit credit = livingEntityKillCredit.remove(entity.runtimeId());
                 SessionState killer = credit == null ? null : sessions.get(credit.networkId());
                 if (killer != null) {
@@ -2765,10 +2764,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
         }
         if (world.livingEntities().remove(creeper.runtimeId())) {
-            nextMobAttackMillis.remove(creeper.runtimeId());
-            mobPathCache.remove(creeper.runtimeId());
-            livingEntityKillCredit.remove(creeper.runtimeId());
-            livingEntityAggroTargets.remove(creeper.runtimeId());
+            cleanupLivingEntityRuntimeState(creeper.runtimeId());
             broadcastLivingActorPacket(
                     BedrockAddItemActorCodec.createRemoveActor(creeper.uniqueId()));
         }
@@ -2820,11 +2816,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         var thornsDamage = world.livingEntities().damage(mob.runtimeId(), reflected).orElse(null);
                         if (thornsDamage != null) {
                             if (thornsDamage.killed()) {
-                                livingEntityKillCredit.remove(mob.runtimeId());
-                                livingEntityAggroTargets.remove(mob.runtimeId());
                                 grantMobRewards(networkId, target, mob, 0);
-                                nextMobAttackMillis.remove(mob.runtimeId());
-                                mobPathCache.remove(mob.runtimeId());
+                                cleanupLivingEntityRuntimeState(mob.runtimeId());
                                 broadcastLivingActorPacket(
                                         BedrockAddItemActorCodec.createRemoveActor(mob.uniqueId()));
                             } else {
@@ -2910,20 +2903,27 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     public boolean despawnLivingEntity(long runtimeId) {
         WorldLivingEntity entity = world.livingEntities().find(runtimeId).orElse(null);
         if (entity == null || !world.livingEntities().remove(runtimeId)) return false;
+        cleanupLivingEntityRuntimeState(runtimeId);
+        broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()));
+        return true;
+    }
+
+    /** Clears every transient subsystem reference when a mob dies or is despawned. */
+    private void cleanupLivingEntityRuntimeState(long runtimeId) {
         nextMobAttackMillis.remove(runtimeId);
         mobPathCache.remove(runtimeId);
         mobStuckTracker.clear(runtimeId);
         creeperFuseStartedMillis.remove(runtimeId);
         endermanTeleportCooldownMillis.remove(runtimeId);
         livingEntityAggroTargets.remove(runtimeId);
+        livingEntityKillCredit.remove(runtimeId);
         for (var entry : mobArrows.entrySet()) {
-            if (entry.getValue().ownerNetworkId().equals("mob:" + runtimeId)) {
-                mobArrows.remove(entry.getKey(), entry.getValue());
+            if (entry.getValue().ownerNetworkId().equals("mob:" + runtimeId)
+                    && mobArrows.remove(entry.getKey(), entry.getValue())) {
+                broadcastLivingActorPacket(
+                        BedrockAddItemActorCodec.createRemoveActor(entry.getValue().uniqueId()));
             }
         }
-        livingEntityKillCredit.remove(runtimeId);
-        broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()));
-        return true;
     }
 
     /**

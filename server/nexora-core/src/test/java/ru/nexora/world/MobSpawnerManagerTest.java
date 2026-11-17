@@ -89,6 +89,7 @@ class MobSpawnerManagerTest {
         World world = createWorld();
         for (int x = -4; x <= 4; x++) {
             for (int z = -4; z <= 4; z++) {
+                world.setBlock(x, 66, z, BlockType.STONE);
                 if (x == 0 && z == 0) continue;
                 world.setBlock(x, 65, z, BlockType.STONE);
             }

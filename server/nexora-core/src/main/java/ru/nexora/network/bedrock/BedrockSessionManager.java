@@ -1892,7 +1892,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             runtimeId = nextMobArrowRuntimeId.getAndIncrement();
         }
         ru.nexora.combat.ArrowProjectile arrow = new ru.nexora.combat.ArrowProjectile(
-                -runtimeId, runtimeId, nearest.networkId(),
+                -runtimeId, runtimeId, "mob:" + mob.runtimeId(),
                 mob.x(), mob.y() + 1.2, mob.z(),
                 dx / aimLength * speed, aimY / aimLength * speed, dz / aimLength * speed, 0);
         mobArrows.put(runtimeId, arrow);
@@ -2179,7 +2179,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         creeperFuseStartedMillis.remove(runtimeId);
         livingEntityAggroTargets.remove(runtimeId);
         for (var entry : mobArrows.entrySet()) {
-            if (entry.getValue().ownerNetworkId().equals(Long.toString(runtimeId))) {
+            if (entry.getValue().ownerNetworkId().equals("mob:" + runtimeId)) {
                 mobArrows.remove(entry.getKey(), entry.getValue());
             }
         }

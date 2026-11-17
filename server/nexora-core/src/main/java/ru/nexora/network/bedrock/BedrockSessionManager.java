@@ -1675,13 +1675,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         baseAttackDamage(weapon), weapon, targetType);
         var damage = world.livingEntities().damage(target.runtimeId(), effect.damage()).orElse(null);
         if (damage == null) return;
-        livingEntityKillCredit.put(target.runtimeId(), attackerNetworkId);
         if (damage.killed()) {
-            livingEntityKillCredit.remove(target.runtimeId());
             grantMobRewards(attackerNetworkId, attacker, target);
             nextMobAttackMillis.remove(target.runtimeId());
             broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(target.uniqueId()));
             return;
+        }
+        if (effect.fireDurationSeconds() > 0) {
+            livingEntityKillCredit.put(target.runtimeId(), attackerNetworkId);
         }
         WorldLivingEntity updated = damage.current();
         broadcastLivingActorPacket(BedrockVitalsCodec.createActorHealthUpdate(
@@ -1877,7 +1878,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     int reflected = ru.nexora.combat.EnchantmentCombatService
                             .resolveThornsDamage(armor, rolls, damageRolls);
                     if (reflected > 0) {
-                        livingEntityKillCredit.put(mob.runtimeId(), networkId);
+                        if (reflected >= mob.health()) {
+                            livingEntityKillCredit.put(mob.runtimeId(), networkId);
+                        }
                         var thornsDamage = world.livingEntities().damage(mob.runtimeId(), reflected).orElse(null);
                         if (thornsDamage != null) {
                             if (thornsDamage.killed()) {

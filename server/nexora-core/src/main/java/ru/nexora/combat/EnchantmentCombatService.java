@@ -59,21 +59,32 @@ public final class EnchantmentCombatService {
         return total;
     }
 
-    /** Applies Bedrock armor-point and Protection-enchantment damage reduction. */
+    /** Applies Bedrock armor points and generic Protection enchantments. */
     public static float applyArmorReduction(float incomingDamage, List<ItemStack> armor) {
+        return applyIncomingDamage(incomingDamage, armor, DamageType.GENERIC);
+    }
+
+    /**
+     * Applies armor points and the matching Protection enchantments in one authoritative
+     * calculation. Armor points reduce 4% each (capped at 80%); the Bedrock enchantment
+     * protection factor is then applied to the remaining damage (also capped at 80%).
+     */
+    public static float applyIncomingDamage(
+            float incomingDamage, List<ItemStack> armor, DamageType damageType
+    ) {
         if (!Float.isFinite(incomingDamage) || incomingDamage < 0.0f) {
             throw new IllegalArgumentException("incomingDamage must be finite and non-negative");
         }
         Objects.requireNonNull(armor, "armor");
+        Objects.requireNonNull(damageType, "damageType");
         int armorPoints = 0;
         for (ItemStack piece : armor) {
             Objects.requireNonNull(piece, "armor piece");
             armorPoints += armorPointsForPiece(piece.itemId());
         }
-        // Bedrock armor reduces 4% per armor point, up to 80%.
         double armorReduction = Math.min(0.80, armorPoints * 0.04);
-        return applyEnchantmentProtection(
-                (float) (incomingDamage * (1.0 - armorReduction)), armor, DamageType.GENERIC);
+        float afterArmor = (float) (incomingDamage * (1.0 - armorReduction));
+        return applyEnchantmentProtection(afterArmor, armor, damageType);
     }
 
     /** Applies the Bedrock Enchantment Protection Factor for a specific damage type. */

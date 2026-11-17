@@ -44,9 +44,10 @@ class PlayerDataStorageTest {
     void persistsPlayerExperiencePoints() throws Exception {
         PlayerDataStorage storage = new PlayerDataStorage(temporaryDirectory);
         PlayerData player = new PlayerData("xp-player", "XpPlayer", "NEXORA",
-                0, 65, 0, 0, 0, 3, PlayerVitals.DEFAULT, 9876);
+                0, 65, 0, 0, 0, 3, PlayerVitals.DEFAULT, 9876, 350);
         storage.save(player);
         assertEquals(9876, storage.load("xp-player").orElseThrow().experiencePoints());
+        assertEquals(350, storage.load("xp-player").orElseThrow().experienceRemainderMilli());
     }
 
     @Test

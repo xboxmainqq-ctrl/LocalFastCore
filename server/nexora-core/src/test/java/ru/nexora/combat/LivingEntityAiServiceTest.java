@@ -57,6 +57,8 @@ class LivingEntityAiServiceTest {
 
     @Test
     void flyingHostilesPursueInThreeDimensionsAndPassiveFlyingMobsFleeVertically() {
+        assertTrue(LivingEntityAiService.isHostile("minecraft:vex"));
+        assertTrue(LivingEntityAiService.isFlyingMob("minecraft:vex"));
         WorldLivingEntity ghast = new WorldLivingEntityManager().spawn(
                 "minecraft:ghast", 10, 0, 64, 0);
         var elevated = new LivingEntityAiService.PlayerTarget("player", 8, 74, 0, true);

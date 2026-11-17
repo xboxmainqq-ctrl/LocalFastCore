@@ -1611,9 +1611,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 target.lastCombatDamageNanos = now;
                 PlayerPhysics.State targetPhysics = target.physicsState;
                 var chargeEffect = consumeSpearCharge(attacker, weapon,
-                        targetPhysics == null ? 0.0 : targetPhysics.velocityX(),
-                        targetPhysics == null ? 0.0 : targetPhysics.velocityY(),
-                        targetPhysics == null ? 0.0 : targetPhysics.velocityZ(), now);
+                        targetPhysics == null ? target.velocityX : targetPhysics.velocityX(),
+                        targetPhysics == null ? target.velocityY : targetPhysics.velocityY(),
+                        targetPhysics == null ? target.velocityZ : targetPhysics.velocityZ(), now);
                 float baseDamage = chargeEffect != null && chargeEffect.hit()
                         ? chargeEffect.damage() : baseAttackDamage(weapon);
                 ru.nexora.combat.EnchantmentCombatService.AttackEffect effect =
@@ -2738,6 +2738,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             return; // Reject movement that clips through solid world blocks.
         }
         state.movementBudget = movementBudget - distance;
+        double velocitySeconds = Math.max(0.05, Math.min(0.25, elapsedNanos / 1_000_000_000.0));
+        state.velocityX = dx / velocitySeconds;
+        state.velocityY = dy / velocitySeconds;
+        state.velocityZ = dz / velocitySeconds;
         state.lastMovementNanos = nowNanos;
         state.hasReceivedInput = true;
         state.positionX = input.x();
@@ -2983,9 +2987,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             return null;
         }
         PlayerPhysics.State physics = attacker.physicsState;
-        double attackerVelocityX = physics == null ? 0.0 : physics.velocityX();
-        double attackerVelocityY = physics == null ? 0.0 : physics.velocityY();
-        double attackerVelocityZ = physics == null ? 0.0 : physics.velocityZ();
+        double attackerVelocityX = physics == null ? attacker.velocityX : physics.velocityX();
+        double attackerVelocityY = physics == null ? attacker.velocityY : physics.velocityY();
+        double attackerVelocityZ = physics == null ? attacker.velocityZ : physics.velocityZ();
         double yaw = Math.toRadians(attacker.yaw);
         double pitch = Math.toRadians(attacker.pitch);
         double horizontalLook = Math.cos(pitch);
@@ -4088,6 +4092,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private float positionX;
         private float positionY;
         private float positionZ;
+        private double velocityX;
+        private double velocityY;
+        private double velocityZ;
         private float yaw;
         private float pitch;
         private PlayerPhysics.State physicsState;

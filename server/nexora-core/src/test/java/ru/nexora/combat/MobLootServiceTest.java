@@ -26,6 +26,19 @@ class MobLootServiceTest {
     }
 
     @Test
+    void lootingBonusIncreasesEligibleDropStackWithinVanillaLevelCap() {
+        var base = MobLootService.dropsFor("minecraft:zombie");
+        var looting = MobLootService.dropsFor("minecraft:zombie", 3, 2);
+        assertEquals(1, base.drops().getFirst().count());
+        assertEquals(3, looting.drops().getFirst().count());
+        assertEquals(base.experienceMilliPoints(), looting.experienceMilliPoints());
+        assertThrows(IllegalArgumentException.class,
+                () -> MobLootService.dropsFor("minecraft:zombie", 4, 0));
+        assertThrows(IllegalArgumentException.class,
+                () -> MobLootService.dropsFor("minecraft:zombie", 2, 3));
+    }
+
+    @Test
     void unknownMobsHaveNoLootOrExperience() {
         assertEquals(MobLootService.Loot.EMPTY, MobLootService.dropsFor("minecraft:cow"));
     }

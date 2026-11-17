@@ -56,16 +56,32 @@ public final class CraftingService {
     }
 
     /**
-     * Settles one recipe from the server-owned 2x2 crafting grid into the player inventory.
-     * The grid offset is 28 for the inventory crafting grid and the grid itself is not persisted.
+     * Settles one recipe from the legacy 2x2 player crafting grid (slots 28..31).
+     * Kept for callers that explicitly use the inventory-screen grid.
      */
     public Result craftFromGrid(
             PlayerInventory player, ContainerInventory grid, int gridOffset, CraftingRecipe recipe
     ) {
+        return craftFromGrid(player, grid, gridOffset, 2, 2, recipe);
+    }
+
+    /**
+     * Settles one recipe from a server-owned crafting grid of up to 3x3 cells.
+     * Shaped recipes must match their exact pattern and position; shapeless recipes
+     * are matched by ingredient counts. Every input cell is checked, so extra items
+     * can never be silently consumed or ignored.
+     */
+    public Result craftFromGrid(
+            PlayerInventory player, ContainerInventory grid, int gridOffset,
+            int gridWidth, int gridHeight, CraftingRecipe recipe
+    ) {
         Objects.requireNonNull(player, "player");
         Objects.requireNonNull(grid, "grid");
         Objects.requireNonNull(recipe, "recipe");
-        if (gridOffset < 0 || gridOffset + 4 > grid.size()) return Result.INVALID_GRID;
+        if (gridWidth < 1 || gridWidth > 3 || gridHeight < 1 || gridHeight > 3
+                || gridOffset < 0 || gridOffset + gridWidth * gridHeight > grid.size()) {
+            return Result.INVALID_GRID;
+        }
 
         synchronized (player) {
             synchronized (grid) {
@@ -73,19 +89,16 @@ public final class CraftingService {
                 int selectedSlot = player.selectedHotbarSlot();
                 List<Optional<ItemStack>> gridBefore = grid.snapshot();
 
-                java.util.Map<String, Integer> actual = new java.util.HashMap<>();
-                for (int slot = 0; slot < 4; slot++) {
-                    Optional<ItemStack> item = grid.getSlot(gridOffset + slot);
-                    if (item.isPresent()) actual.merge(item.orElseThrow().itemId(), 1, Integer::sum);
+                if (!matchesGrid(grid, gridOffset, gridWidth, gridHeight, recipe)) {
+                    return Result.INSUFFICIENT_INGREDIENTS;
                 }
-                if (!actual.equals(recipe.ingredients())) return Result.INSUFFICIENT_INGREDIENTS;
 
-                for (int slot = 0; slot < 4; slot++) {
-                    int gridSlot = gridOffset + slot;
+                for (int cell = 0; cell < gridWidth * gridHeight; cell++) {
+                    int gridSlot = gridOffset + cell;
                     ItemStack item = grid.getSlot(gridSlot).orElse(null);
                     if (item == null) continue;
                     grid.setSlot(gridSlot, item.count() == 1 ? null
-                            : new ItemStack(item.itemId(), item.count() - 1, item.maxStackSize()));
+                            : item.withCount(item.count() - 1));
                 }
 
                 int remaining = recipe.result().count();
@@ -103,6 +116,49 @@ public final class CraftingService {
                 return Result.CRAFTED;
             }
         }
+    }
+
+    private static boolean matchesGrid(
+            ContainerInventory grid, int offset, int width, int height, CraftingRecipe recipe
+    ) {
+        if (!recipe.isShaped()) {
+            java.util.Map<String, Integer> actual = new java.util.HashMap<>();
+            for (int cell = 0; cell < width * height; cell++) {
+                grid.getSlot(offset + cell).ifPresent(item ->
+                        actual.merge(item.itemId(), 1, Integer::sum));
+            }
+            return actual.equals(recipe.ingredients());
+        }
+
+        int recipeWidth = recipe.width();
+        int recipeHeight = recipe.height();
+        if (recipeWidth > width || recipeHeight > height) return false;
+
+        for (int top = 0; top <= height - recipeHeight; top++) {
+            for (int left = 0; left <= width - recipeWidth; left++) {
+                boolean matches = true;
+                for (int row = 0; row < height && matches; row++) {
+                    for (int column = 0; column < width; column++) {
+                        String expected = null;
+                        int recipeRow = row - top;
+                        int recipeColumn = column - left;
+                        if (recipeRow >= 0 && recipeRow < recipeHeight
+                                && recipeColumn >= 0 && recipeColumn < recipeWidth) {
+                            char symbol = recipe.pattern().get(recipeRow).charAt(recipeColumn);
+                            if (symbol != ' ') expected = recipe.key().get(symbol);
+                        }
+                        ItemStack actual = grid.getSlot(offset + row * width + column).orElse(null);
+                        if (expected == null ? actual != null
+                                : actual == null || !expected.equals(actual.itemId())) {
+                            matches = false;
+                            break;
+                        }
+                    }
+                }
+                if (matches) return true;
+            }
+        }
+        return false;
     }
 
     public enum Result {

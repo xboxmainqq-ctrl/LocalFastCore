@@ -56,6 +56,23 @@ class LivingEntityAiServiceTest {
     }
 
     @Test
+    void flyingHostilesPursueInThreeDimensionsAndPassiveFlyingMobsFleeVertically() {
+        WorldLivingEntity ghast = new WorldLivingEntityManager().spawn(
+                "minecraft:ghast", 10, 0, 64, 0);
+        var elevated = new LivingEntityAiService.PlayerTarget("player", 8, 74, 0, true);
+        var ghastDecision = ai.decide(ghast, List.of(elevated), 1_000, 0);
+        assertTrue(ghastDecision.moving());
+        assertTrue(ghastDecision.moveY() > 0);
+
+        WorldLivingEntity bat = new WorldLivingEntityManager().spawn(
+                "minecraft:bat", 0.5, 65, 0.5);
+        var above = new LivingEntityAiService.PlayerTarget("player", 0.5, 69, 0.5, true);
+        var batDecision = ai.decide(bat, List.of(above), 1_000, 0);
+        assertTrue(batDecision.moving());
+        assertTrue(batDecision.moveY() < 0);
+    }
+
+    @Test
     void speciesProfilesAdjustMovementSpeedReachAndDamage() {
         assertTrue(LivingEntityAiService.movementSpeedFor("minecraft:horse")
                 > LivingEntityAiService.movementSpeedFor("minecraft:turtle"));

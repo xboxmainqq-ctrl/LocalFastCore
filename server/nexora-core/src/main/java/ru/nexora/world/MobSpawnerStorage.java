@@ -16,7 +16,7 @@ import java.util.zip.CRC32C;
 /** Atomic, checksummed persistence for mob-spawner configuration and delay timers. */
 public final class MobSpawnerStorage {
     private static final int MAGIC = 0x4e585350; // NXSP
-    private static final int VERSION = 1;
+    private static final int VERSION = 2;
     private static final int MAX_ENTRIES = MobSpawnerManager.MAX_TRACKED_SPAWNERS;
     private final Path file;
 

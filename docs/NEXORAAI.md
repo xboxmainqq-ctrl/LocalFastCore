@@ -19,7 +19,7 @@ NexoraAI is an in-core operations observer and optional in-game assistant for NE
 - The first Guard stage observes inbound NetherNet transport frames per peer using monotonic 5-second windows.
 - Default review thresholds are more than 300 frames or more than 1 MiB per peer per window. A peer produces at most one signal per window.
 - Per-peer state is capped at 1,024 entries and removed on disconnect; when full, the oldest tracked entry is evicted.
-- Aggregate Guard status is included in the operator runtime context without exposing peer identifiers.
+- Aggregate Guard status is included in the operator runtime context without exposing peer identifiers. Threshold crossings are also added to the bounded diagnostic evidence ring as identifier-free `GUARD` events for operator status and repair-plan context.
 - Signals are evidence for review only. This stage does not throttle, disconnect, mute, or ban players.
 - These are application-observed per-peer frame/byte thresholds, not proof of a DDoS attack. They cannot observe traffic dropped upstream or protect a saturated network link; host/network-level filtering is still required.
 - Movement/combat cheat detection and a moderator case-review interface are not implemented yet.

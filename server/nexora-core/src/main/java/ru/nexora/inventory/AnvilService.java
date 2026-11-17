@@ -237,5 +237,10 @@ public final class AnvilService {
         public boolean successful() {
             return status == Status.SUCCESS;
         }
+
+        public ItemStack resultStack() {
+            if (!successful()) throw new IllegalStateException("Anvil operation did not succeed");
+            return new ItemStack(result.itemId(), 1, 1, result.enchantments(), result.repairCost());
+        }
     }
 }

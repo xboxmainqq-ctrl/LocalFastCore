@@ -39,7 +39,7 @@ public final class LivingEntityAiService {
         if (distanceSquared <= ATTACK_RANGE * ATTACK_RANGE) {
             if (nowMillis >= nextAttackAtMillis) {
                 return new Decision(mob.runtimeId(), target.networkId(), 0, 0, 0,
-                        BASE_ATTACK_DAMAGE, true);
+                        attackDamageFor(mob.identifier()), true);
             }
             return Decision.idle(mob.runtimeId());
         }
@@ -48,6 +48,16 @@ public final class LivingEntityAiService {
         double moveX = dx / horizontal * step;
         double moveZ = dz / horizontal * step;
         return new Decision(mob.runtimeId(), target.networkId(), moveX, 0, moveZ, 0, false);
+    }
+
+    public static float attackDamageFor(String identifier) {
+        return switch (identifier) {
+            case "minecraft:silverfish" -> 1.0f;
+            case "minecraft:spider", "minecraft:cave_spider", "minecraft:endermite" -> 2.0f;
+            case "minecraft:zombified_piglin" -> 5.0f;
+            case "minecraft:zoglin" -> 6.0f;
+            default -> BASE_ATTACK_DAMAGE;
+        };
     }
 
     public static boolean isSupportedHostile(String identifier) {

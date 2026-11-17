@@ -44,7 +44,7 @@ public final class WorldFurnaceManager {
                         state.cookProgress() * (double) kind.cookTimeTicks() / previousKind.cookTimeTicks());
                 scaledProgress = Math.min(kind.cookTimeTicks() - 1, scaledProgress);
                 service.restoreState(x, y, z, state.burnTicksRemaining(),
-                        scaledProgress, state.burnTicksTotal());
+                        scaledProgress, state.burnTicksTotal(), state.pendingExperienceMilli());
             }
             return existing;
         }
@@ -52,7 +52,7 @@ public final class WorldFurnaceManager {
                 .orElseGet(() -> new ContainerInventory(3));
         if (inventory.size() != 3) throw new IOException("Stored furnace inventory must contain exactly 3 slots");
         stateStorage.load(x, y, z).ifPresent(state ->
-                service.restoreState(x, y, z, state.burnTicksRemaining(), state.cookProgress(), state.burnTicksTotal()));
+                service.restoreState(x, y, z, state.burnTicksRemaining(), state.cookProgress(),\n                        state.burnTicksTotal(), state.pendingExperienceMilli()));
         loaded.put(position, inventory);
         kinds.put(position, kind);
         return inventory;
@@ -93,6 +93,16 @@ public final class WorldFurnaceManager {
             }
         }
         updates.forEach(this::publish);
+    }
+
+    /** Claims the pending smelting experience for items removed from the output slot. */
+    public synchronized int collectExperience(int x, int y, int z, int removedItems, int previousOutputCount) {
+        return service.collectExperience(x, y, z, removedItems, previousOutputCount);
+    }
+
+    /** Restores claimed experience when the corresponding inventory transaction is rolled back. */
+    public synchronized void restorePendingExperience(int x, int y, int z, int amount) {
+        service.restorePendingExperience(x, y, z, amount);
     }
 
     public AutoCloseable addUpdateListener(Consumer<FurnaceUpdate> listener) {

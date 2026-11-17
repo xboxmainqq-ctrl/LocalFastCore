@@ -216,10 +216,12 @@ public final class FurnaceService {
         private int pendingExperienceMilli;
 
         private FurnaceState() { }
-        private FurnaceState(int burnTicksRemaining, int cookProgress, int burnTicksTotal) {
+        private FurnaceState(int burnTicksRemaining, int cookProgress, int burnTicksTotal,
+                             int pendingExperienceMilli) {
             this.burnTicksRemaining = burnTicksRemaining;
             this.cookProgress = cookProgress;
             this.burnTicksTotal = burnTicksTotal;
+            this.pendingExperienceMilli = pendingExperienceMilli;
         }
     }
 

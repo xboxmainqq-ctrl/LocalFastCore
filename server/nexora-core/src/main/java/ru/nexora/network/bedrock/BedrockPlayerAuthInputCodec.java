@@ -303,8 +303,8 @@ public final class BedrockPlayerAuthInputCodec {
         }
 
         int varInt32() {
-            int value = varUInt32();
-            return (value >>> 1) ^ -(value & 1);
+            long encoded = varUInt32Long();
+            return (int) ((encoded >>> 1) ^ -(encoded & 1));
         }
 
         byte[] byteArray(int maximumLength) {

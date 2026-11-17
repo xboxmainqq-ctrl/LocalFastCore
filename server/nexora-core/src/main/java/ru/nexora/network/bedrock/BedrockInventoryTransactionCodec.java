@@ -65,9 +65,12 @@ public final class BedrockInventoryTransactionCodec {
             if (sourceType == SOURCE_CONTAINER) {
                 // Parse known player containers structurally. The authoritative transaction
                 // service validates main inventory, armor, offhand and cursor changes separately.
-                if (!hasContainerId || (containerId != 0 && containerId != 119
-                        && containerId != 120 && containerId != 124) || hasFlags) {
-                    throw new IllegalArgumentException("Malformed player inventory source");
+                boolean playerUiContainer = containerId == 0 || containerId == 119
+                        || containerId == 120 || containerId == 124;
+                boolean blockContainerWindow = containerId >= 1
+                        && containerId <= 100;
+                if (!hasContainerId || (!playerUiContainer && !blockContainerWindow) || hasFlags) {
+                    throw new IllegalArgumentException("Malformed inventory container source");
                 }
             }
 

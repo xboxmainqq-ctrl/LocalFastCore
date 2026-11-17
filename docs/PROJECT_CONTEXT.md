@@ -97,8 +97,7 @@ The user confirmed on 2026-11-15 that NEXORA is intended to become a mobile RPG 
 - **Android-first:** the first player-facing client is an installable Android app designed for phones/tablets, touch controls and real-device performance. The user primarily works from an Android phone and has no PC.
 - **Network model:** a central lobby and player identity/profile experience, persistent characters and progression, and eventually multiple RPG worlds/instances managed by NEXORA network services.
 - **Game servers:** each RPG world/instance is authoritative on a dedicated NEXORA server. Keep real-time simulation in NEXORA Core and account/routing/orchestration services separate.
-- **Single-player:** offline mode must start the exact same NEXORA Core used by the dedicated RPG server, not a separate simplified game implementation.
-- **RPG scope:** character creation, classes, stats, levels, skills/abilities, equipment, mobs, bosses, quests, dungeons, loot, economy, parties/social features and optional PvP integrated into the RPG experience.
+- **Single-player:** offline mode must start the exact same NEXORA Core used by the dedicated RPG server, not a separate simplified game implementation.- **RPG scope:** character creation, classes, stats, levels, skills/abilities, equipment, mobs, bosses, quests, dungeons, loot, economy, parties/social features and optional PvP integrated into the RPG experience.
 - **Build order:** finish one genuinely playable offline Android RPG world first; then prove one online dedicated server with two Android clients; then expand to lobby, multiple worlds/instances and network services. Do not prematurely build a distributed cluster.
 - Detailed product brief: [PRODUCT_VISION_RPG_NETWORK.md](PRODUCT_VISION_RPG_NETWORK.md).
 
@@ -166,3 +165,21 @@ The user clarified that RPG is not the current task: **finish and stabilize the 
 Immediate engineering focus: server reliability and configuration, world lifecycle and persistence, chunks and bounded async generation, block/entity simulation, player sessions and authoritative interactions, safe networking, extension API and standalone distribution.
 
 The active work log and ordered task list are [CORE_DEVELOPMENT_LOG.md](CORE_DEVELOPMENT_LOG.md). Update it after every meaningful implementation change with completed work, test/CI evidence, blockers and the next exact task. Never claim tests pass without a confirmed CI result.
+
+---
+
+## OVERRIDING PRODUCT DECISION — 2026-11-17
+
+This section is the latest user-confirmed direction and overrides every conflicting historical roadmap section above. Older sections are retained as project history only; do not use them as current requirements.
+
+- **No NEXORA Android client.** Do not plan, build, package or prioritize an Android player client.
+- **No separate RPG server/product.** Do not plan an RPG-specific server/network or RPG gameplay roadmap.
+- **NEXORA remains a standalone, general-purpose block-world Core and dedicated server.** Server-side runtime and distribution are still in scope; the removed item is the separate RPG server product.
+- The user explicitly wants three AI capabilities retained in the NEXORA direction:
+  1. **NEXORA Mob AI:** server-authoritative AI for mobs/entities: perception, target selection, navigation/pathfinding, combat/avoidance, environmental reactions, configurable behavior and deterministic/budgeted ticking.
+  2. **NEXORA Core AI Assistant:** an optional built-in operator/developer assistant for explaining diagnostics, logs, configuration, performance and operational state. It must use explicit, permission-checked tools; no unrestricted shell/code execution or autonomous destructive changes.
+  3. **NEXORA Moderation AI Assistant:** a separate moderation support module that summarizes reports/evidence, detects suspicious patterns and recommends actions. It must respect privacy, permissions, audit logs and human review; automatic punishments are not enabled by default.
+- These are **AI systems, not AI mods**. The user cancelled AI mods; do not revive a mod marketplace or user-installed AI-mod direction from that phrase.
+- Build order: first stabilize the general Core and server; then implement Mob AI as a native entity/simulation subsystem; then add the Core AI Assistant and Moderation AI as isolated optional modules using a stable, permissioned API. Keep all three in the product roadmap, but do not destabilize core lifecycle, networking or simulation to rush AI features.
+- Existing repository code and older documents may contain Android/RPG/Bedrock experiments. Do not infer they remain product goals; preserve useful code until reviewed, but do not extend removed directions.
+- See [NEXORA AI systems roadmap](NEXORA_AI_SYSTEMS_ROADMAP.md) for the current AI scope and staged acceptance criteria.

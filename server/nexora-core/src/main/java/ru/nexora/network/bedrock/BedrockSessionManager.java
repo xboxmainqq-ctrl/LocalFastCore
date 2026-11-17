@@ -124,6 +124,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             new ru.nexora.combat.MobFallTracker();
     private final ru.nexora.combat.MobJumpController mobJumpController =
             new ru.nexora.combat.MobJumpController();
+    private final ru.nexora.combat.MobClimbController mobClimbController =
+            new ru.nexora.combat.MobClimbController();
     private final ru.nexora.combat.MobDespawnTracker mobDespawnTracker =
             new ru.nexora.combat.MobDespawnTracker();
     private final ru.nexora.combat.MobAiLoadController mobAiLoadController =

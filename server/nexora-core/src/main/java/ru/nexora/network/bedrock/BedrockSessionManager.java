@@ -1402,8 +1402,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             return true;
         }
         ru.nexora.ai.NexoraAiAssistant assistant = aiAssistant;
-        if (assistant == null || !assistant.isEnabled()) {
-            sendAiMessage(networkId, "§b[NEXORA AI] §fСначала настрой NEXORA_AI_API_KEY.");
+        if (assistant == null) {
+            sendAiMessage(networkId, "§b[NEXORA AI] §fСервис NexoraAI недоступен.");
             return true;
         }
 
@@ -1426,6 +1426,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
 
         if (lower.startsWith("plan ")) {
+            if (!assistant.isEnabled()) {
+                sendAiMessage(networkId, "§b[NEXORA AI] §fДля создания плана настрой NEXORA_AI_API_KEY.");
+                return true;
+            }
             String issue = normalized.substring(5).trim();
             if (issue.isEmpty() || issue.length() > 300) {
                 sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §fУкажи проблему (1–300 символов).");

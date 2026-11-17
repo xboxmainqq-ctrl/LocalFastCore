@@ -39,6 +39,45 @@ class EnchantmentCombatServiceTest {
     }
 
     @Test
+    void densityAddsDamageFromServerMeasuredFallDistanceOnlyForMaces() {
+        ItemStack mace = new ItemStack("minecraft:mace", 1, 1,
+                Map.of("minecraft:density", 3));
+        ItemStack sword = new ItemStack("minecraft:diamond_sword", 1, 1,
+                Map.of("minecraft:density", 3));
+
+        var smash = EnchantmentCombatService.resolveAttack(
+                6.0f, mace, EnchantmentCombatService.TargetType.NORMAL, 4.0f);
+        assertEquals(12.0f, smash.damage(), 0.0001f);
+        assertEquals(0, EnchantmentCombatService.resolveAttack(
+                6.0f, mace, EnchantmentCombatService.TargetType.NORMAL).damage() - 6.0f, 0.0001f);
+        assertEquals(6.0f, EnchantmentCombatService.resolveAttack(
+                6.0f, sword, EnchantmentCombatService.TargetType.NORMAL, 4.0f).damage(), 0.0001f);
+        assertThrows(IllegalArgumentException.class, () ->
+                EnchantmentCombatService.resolveAttack(
+                        6.0f, mace, EnchantmentCombatService.TargetType.NORMAL, Float.NaN));
+    }
+
+    @Test
+    void breachWeakensArmorPointsWithoutRemovingProtectionEnchantmentFactor() {
+        List<ItemStack> ironArmor = List.of(
+                new ItemStack("minecraft:iron_chestplate", 1, 1));
+        List<ItemStack> protectedArmor = List.of(
+                new ItemStack("minecraft:iron_chestplate", 1, 1,
+                        Map.of("minecraft:protection", 4)));
+
+        assertEquals(7.6f, EnchantmentCombatService.applyIncomingDamage(
+                10.0f, ironArmor, EnchantmentCombatService.DamageType.GENERIC, 0), 0.0001f);
+        assertEquals(9.04f, EnchantmentCombatService.applyIncomingDamage(
+                10.0f, ironArmor, EnchantmentCombatService.DamageType.GENERIC, 4), 0.0001f);
+        // Breach changes armor points only; Protection EPF still reduces the remaining damage.
+        assertEquals(7.5936f, EnchantmentCombatService.applyIncomingDamage(
+                10.0f, protectedArmor, EnchantmentCombatService.DamageType.GENERIC, 4), 0.0001f);
+        assertThrows(IllegalArgumentException.class, () ->
+                EnchantmentCombatService.applyIncomingDamage(
+                        10.0f, ironArmor, EnchantmentCombatService.DamageType.GENERIC, 5));
+    }
+
+    @Test
     void rollsThornsPerArmorPieceAndReturnsCombinedReflectionDamage() {
         ItemStack thornsOne = new ItemStack("minecraft:diamond_chestplate", 1, 1,
                 Map.of("minecraft:thorns", 2));

@@ -8,6 +8,7 @@ public final class BedrockPlayerActionCodec {
     public static final int PLAYER_ACTION_PACKET_ID = 0x24;
     public static final int ACTION_DROP_ITEM = 4;
     public static final int ACTION_RESPAWN = 7;
+    public static final int ACTION_START_USING_ITEM = 37;
 
     private BedrockPlayerActionCodec() {
     }

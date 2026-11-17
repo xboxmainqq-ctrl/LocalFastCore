@@ -140,7 +140,7 @@ public final class LivingEntityAiService {
                     "minecraft:salmon", "minecraft:sheep", "minecraft:sniffer",
                     "minecraft:squid", "minecraft:strider",
                     "minecraft:tadpole", "minecraft:trader_llama", "minecraft:tropical_fish",
-                    "minecraft:turtle", "minecraft:villager", "minecraft:wandering_trader" -> true;
+                    "minecraft:turtle" -> true;
             default -> false;
         };
     }

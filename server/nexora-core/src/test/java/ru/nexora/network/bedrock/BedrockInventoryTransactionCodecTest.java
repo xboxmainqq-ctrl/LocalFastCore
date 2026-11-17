@@ -78,7 +78,7 @@ class BedrockInventoryTransactionCodecTest {
     @Test
     void decodesFoodItemReleaseConsumeTransaction() {
         BedrockItemRegistry foods = BedrockVanillaItemCatalog.createRegistry();
-        byte[] payload = itemRelease(1, 0, 261, 1, 0.5f, 66.62f, 0.5f);
+        byte[] payload = itemRelease(1, 0, 261, 1, 0.5f, 65.0f, 0.5f);
         BedrockPacket packet = new BedrockPacket(0x1e, 0, 0, payload);
 
         assertEquals(4, BedrockInventoryTransactionCodec.transactionType(packet));
@@ -86,7 +86,8 @@ class BedrockInventoryTransactionCodecTest {
         assertEquals(1, decoded.actionType());
         assertEquals(0, decoded.hotbarSlot());
         assertEquals("minecraft:bread", decoded.heldItem().orElseThrow().itemId());
-        assertEquals(66.62f, decoded.headY(), 0.0001f);
+        assertEquals(65.0f, decoded.fromY(), 0.0001f);
+        assertEquals(0, decoded.hand());
     }
 
     @Test
@@ -314,7 +315,8 @@ class BedrockInventoryTransactionCodecTest {
         out.write(0); // has StackNetId
         writeVarUInt(out, 0); // block runtime ID
         writeVarUInt(out, 0); // user data
-        writeFloat(out, headX); writeFloat(out, headY); writeFloat(out, headZ);
+        writeFloat(out, headX); writeFloat(out, headY); writeFloat(out, headZ); // protocol From Position
+        out.write(0); // protocol 2225 main hand
         return out.toByteArray();
     }
 

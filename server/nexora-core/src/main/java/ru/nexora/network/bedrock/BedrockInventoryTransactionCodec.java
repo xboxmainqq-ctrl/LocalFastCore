@@ -162,17 +162,19 @@ public final class BedrockInventoryTransactionCodec {
         int actionType = in.varInt32();
         int hotbarSlot = in.varInt32();
         Optional<ItemStack> heldItem = readItemStack(in, registry);
-        float headX = in.float32();
-        float headY = in.float32();
-        float headZ = in.float32();
+        float fromX = in.float32();
+        float fromY = in.float32();
+        float fromZ = in.float32();
+        int hand = in.int8();
         if (actionType < 0 || actionType > 1 || hotbarSlot < 0 || hotbarSlot >= 9
-                || !Float.isFinite(headX) || !Float.isFinite(headY) || !Float.isFinite(headZ)
-                || Math.abs(headX) > 30_000_000 || Math.abs(headZ) > 30_000_000
-                || headY < -2048 || headY > 2048) {
+                || hand < 0 || hand > 1
+                || !Float.isFinite(fromX) || !Float.isFinite(fromY) || !Float.isFinite(fromZ)
+                || Math.abs(fromX) > 30_000_000 || Math.abs(fromZ) > 30_000_000
+                || fromY < -2048 || fromY > 2048) {
             throw new IllegalArgumentException("Invalid ItemRelease transaction fields");
         }
         in.requireExhausted();
-        return new DecodedItemRelease(actionType, hotbarSlot, heldItem, headX, headY, headZ);
+        return new DecodedItemRelease(actionType, hotbarSlot, heldItem, fromX, fromY, fromZ, hand);
     }
 
     private static Optional<ItemStack> readItemStack(Reader in, BedrockItemRegistry registry) {
@@ -232,7 +234,7 @@ public final class BedrockInventoryTransactionCodec {
 
     public record DecodedItemRelease(
             int actionType, int hotbarSlot, Optional<ItemStack> heldItem,
-            float headX, float headY, float headZ
+            float fromX, float fromY, float fromZ, int hand
     ) {
         public DecodedItemRelease {
             heldItem = Optional.ofNullable(heldItem).orElse(Optional.empty());

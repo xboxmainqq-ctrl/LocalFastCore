@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockVanillaItemCatalogTest {
     @Test
-    void registersOnlyVerifiedProtocol2225StackableItems() {
+    void registersVerifiedProtocol2225ItemsIncludingComponentBasedSpears() {
         BedrockItemRegistry registry = BedrockVanillaItemCatalog.createRegistry();
         assertTrue(registry.size() >= 60);
 
@@ -76,8 +76,29 @@ class BedrockVanillaItemCatalogTest {
         assertNull(registry.findByIdentifier("minecraft:air"));
         assertNull(registry.findByIdentifier("minecraft:apple")); // component-based; not yet catalogued
 
+        int[][] spearIds = {
+                {855, 1}, {856, 1}, {857, 1}, {858, 1}, {859, 1}, {860, 1}, {861, 1}
+        };
+        String[] spearNames = {
+                "copper_spear", "diamond_spear", "golden_spear", "iron_spear",
+                "netherite_spear", "stone_spear", "wooden_spear"
+        };
+        for (int i = 0; i < spearNames.length; i++) {
+            BedrockItemRegistry.Entry spear = registry.findByIdentifier("minecraft:" + spearNames[i]);
+            assertNotNull(spear);
+            assertEquals(spearIds[i][0], spear.networkDefinition().runtimeItemId());
+            assertEquals(1, spear.itemVersion());
+            assertTrue(spear.componentBased());
+            assertEquals(1, spear.maxStackSize());
+        }
+
         for (BedrockItemRegistry.Entry entry : registry.entries()) {
-            assertFalse(entry.componentBased());
+            if (entry.namespacedId().endsWith("_spear")) {
+                assertTrue(entry.componentBased());
+                assertEquals(1, entry.itemVersion());
+            } else {
+                assertFalse(entry.componentBased());
+            }
             assertEquals(4, entry.componentData().length);
         }
     }

@@ -1162,6 +1162,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             respawnPlayer(message.networkId(), state);
             return;
         }
+        if (action.action() == BedrockPlayerActionCodec.ACTION_START_USING_ITEM && !state.dead) {
+            startSpearChargeIfHeld(state);
+            return;
+        }
         if (action.action() == BedrockPlayerActionCodec.ACTION_DROP_ITEM && !state.dead) {
             // The protocol-2225 PlayerAction DROP_ITEM action drops one item from
             // the selected hotbar slot. The client never chooses the item/count:
@@ -1547,6 +1551,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         List<BedrockPacket> reconciliation = new java.util.ArrayList<>();
         reconciliation.add(authoritativeContent);
         reconciliation.addAll(createEquipmentReconciliationPackets(state));
+        clearSpearChargeIfItemChanged(state);
         sendPackets(networkId, reconciliation, true);
     }
 
@@ -1575,7 +1580,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
         long now = nanoTime.getAsLong();
         if (attacker.lastAttackNanos != Long.MIN_VALUE
-                && now - attacker.lastAttackNanos < 50_000_000L) return;
+                && now - attacker.lastAttackNanos < weaponAttackCooldownNanos(weapon)) return;
 
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
             String targetNetworkId = entry.getKey();
@@ -1593,7 +1598,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 double dx = target.positionX - attacker.positionX;
                 double dy = target.positionY - attacker.positionY;
                 double dz = target.positionZ - attacker.positionZ;
-                if (dx * dx + dy * dy + dz * dz > 3.5 * 3.5) return;
+                double distanceSquared = dx * dx + dy * dy + dz * dz;
+                if (!isWithinWeaponReach(weapon, distanceSquared)) return;
                 int targetBlockX = (int) Math.floor(target.positionX);
                 int targetBlockY = (int) Math.floor(target.positionY + 1.0);
                 int targetBlockZ = (int) Math.floor(target.positionZ);
@@ -1603,21 +1609,35 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
                 attacker.lastAttackNanos = now;
                 target.lastCombatDamageNanos = now;
-                float baseDamage = baseAttackDamage(weapon);
+                broadcastPacketExcept(networkId,
+                        BedrockAnimateCodec.createSwing(attacker.entityId, BedrockAnimateCodec.MAIN_HAND));
+                PlayerPhysics.State targetPhysics = target.physicsState;
+                var chargeEffect = consumeSpearCharge(attacker, weapon,
+                        targetPhysics == null ? target.velocityX : targetPhysics.velocityX(),
+                        targetPhysics == null ? target.velocityY : targetPhysics.velocityY(),
+                        targetPhysics == null ? target.velocityZ : targetPhysics.velocityZ(), now);
+                float baseDamage = chargeEffect != null && chargeEffect.hit()
+                        ? chargeEffect.damage() : baseAttackDamage(weapon);
                 ru.nexora.combat.EnchantmentCombatService.AttackEffect effect =
                         ru.nexora.combat.EnchantmentCombatService.resolveAttack(
                                 baseDamage, weapon,
-                                ru.nexora.combat.EnchantmentCombatService.TargetType.NORMAL);
+                                ru.nexora.combat.EnchantmentCombatService.TargetType.NORMAL,
+                                attacker.physicsState == null ? 0.0f
+                                        : (float) attacker.physicsState.fallDistance());
                 List<ItemStack> targetArmor = target.equipment.armorSnapshot().stream()
                         .flatMap(Optional::stream).toList();
                 float finalDamage = ru.nexora.combat.EnchantmentCombatService
                         .applyIncomingDamage(effect.damage(), targetArmor,
-                                ru.nexora.combat.EnchantmentCombatService.DamageType.GENERIC);
+                                ru.nexora.combat.EnchantmentCombatService.DamageType.GENERIC,
+                                effect.breachLevel());
                 if (finalDamage > 0.0f) {
                     applyDamage(targetNetworkId, target, finalDamage,
                             target.lastInputTick, "death.attack.generic");
                 }
-                applyKnockback(targetNetworkId, target, attacker, effect.knockbackLevel());
+                applyKnockback(targetNetworkId, target, attacker,
+                        Math.max(effect.knockbackLevel(),
+                                chargeEffect != null && chargeEffect.knockback() ? 1 : 0));
+                applySpearLunge(networkId, attacker, weapon);
                 if (effect.fireDurationSeconds() > 0) {
                     if (target.fireUntilNanos <= now) {
                         target.nextFireDamageNanos = now + 1_000_000_000L;
@@ -1662,7 +1682,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         double dx = target.x() - attacker.positionX;
         double dy = target.y() - attacker.positionY;
         double dz = target.z() - attacker.positionZ;
-        if (dx * dx + dy * dy + dz * dz > 3.5 * 3.5) return;
+        double distanceSquared = dx * dx + dy * dy + dz * dz;
+        if (!isWithinWeaponReach(weapon, distanceSquared)) return;
         int targetBlockX = (int) Math.floor(target.x());
         int targetBlockY = (int) Math.floor(target.y() + 1.0);
         int targetBlockZ = (int) Math.floor(target.z());
@@ -1671,6 +1692,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 targetBlockX, targetBlockY, targetBlockZ)) return;
 
         attacker.lastAttackNanos = nowNanos;
+        var chargeEffect = consumeSpearCharge(attacker, weapon,
+                target.velocityX(), target.velocityY(), target.velocityZ(), nowNanos);
         ru.nexora.combat.EnchantmentCombatService.TargetType targetType = switch (target.family()) {
             case NORMAL -> ru.nexora.combat.EnchantmentCombatService.TargetType.NORMAL;
             case UNDEAD -> ru.nexora.combat.EnchantmentCombatService.TargetType.UNDEAD;
@@ -1678,9 +1701,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         };
         ru.nexora.combat.EnchantmentCombatService.AttackEffect effect =
                 ru.nexora.combat.EnchantmentCombatService.resolveAttack(
-                        baseAttackDamage(weapon), weapon, targetType);
+                        chargeEffect != null && chargeEffect.hit()
+                                ? chargeEffect.damage() : baseAttackDamage(weapon),
+                        weapon, targetType,
+                        attacker.physicsState == null ? 0.0f
+                                : (float) attacker.physicsState.fallDistance());
         var damage = world.livingEntities().damage(target.runtimeId(), effect.damage()).orElse(null);
         if (damage == null) return;
+        broadcastPacketExcept(attackerNetworkId,
+                BedrockAnimateCodec.createSwing(attacker.entityId, BedrockAnimateCodec.MAIN_HAND));
+        applySpearLunge(attackerNetworkId, attacker, weapon);
         if (damage.killed()) {
             grantMobRewards(attackerNetworkId, attacker, target, weapon == null ? 0 : weapon.enchantments().getOrDefault("minecraft:looting", 0));
             nextMobAttackMillis.remove(target.runtimeId());
@@ -1704,10 +1734,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             updated = world.livingEntities().ignite(updated.runtimeId(), effect.fireDurationSeconds(),
                     Math.max(0, nowNanos / 1_000_000L)).orElse(updated);
         }
-        if (effect.knockbackLevel() > 0) {
+        int chargeKnockbackLevel = Math.max(effect.knockbackLevel(),
+                chargeEffect != null && chargeEffect.knockback() ? 1 : 0);
+        if (chargeKnockbackLevel > 0) {
             double horizontal = Math.hypot(dx, dz);
             if (horizontal > 0.0001) {
-                double strength = 0.4 + 0.1 * effect.knockbackLevel();
+                double strength = 0.4 + 0.1 * chargeKnockbackLevel;
                 updated = world.livingEntities().setVelocity(updated.runtimeId(),
                         updated.velocityX() + dx / horizontal * strength,
                         Math.max(updated.velocityY(), 0.1),
@@ -2243,6 +2275,33 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return true;
     }
 
+    /**
+     * Lunge is triggered by a successful spear jab. Exhaustion converts to saturation
+     * and then hunger using the same survival rules as normal movement.
+     *
+     * The current world model has no water blocks or item durability state, so those
+     * two vanilla Lunge restrictions/costs cannot yet be represented here.
+     */
+    private void applySpearLunge(String networkId, SessionState attacker, ItemStack weapon) {
+        if (weapon == null || !weapon.itemId().endsWith("_spear")
+                || attacker.vitals.hunger() <= 5 || attacker.physicsState == null) return;
+        int level = weapon.enchantments().getOrDefault("minecraft:lunge", 0);
+        if (level <= 0) return;
+
+        PlayerPhysics.State current = attacker.physicsState;
+        double radians = Math.toRadians(attacker.yaw);
+        double impulse = 0.458 * 20.0 * level;
+        double velocityX = current.velocityX() - Math.sin(radians) * impulse;
+        double velocityZ = current.velocityZ() + Math.cos(radians) * impulse;
+        attacker.physicsState = new PlayerPhysics.State(
+                current.x(), current.y(), current.z(),
+                velocityX, current.velocityY(), velocityZ,
+                current.onGround(), current.fallDistance(), current.landedDistance());
+        attacker.vitals = attacker.vitals.addExhaustion(4.0f * level);
+        sendMovementCorrection(networkId, attacker, attacker.lastInputTick);
+        sendPacket(networkId, createPlayerAttributes(attacker, Math.max(0, attacker.lastInputTick)), true);
+    }
+
     private void applyKnockback(
             String targetNetworkId, SessionState target, SessionState attacker, int level
     ) {
@@ -2270,6 +2329,24 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
+    private static boolean isSpear(ItemStack weapon) {
+        return weapon != null && weapon.itemId().endsWith("_spear");
+    }
+
+    /** Bedrock spear jab cooldowns are tier-specific; other weapons keep the existing gate. */
+    private static long weaponAttackCooldownNanos(ItemStack weapon) {
+        return ru.nexora.combat.SpearCombatStats.forItem(weapon)
+                .map(ru.nexora.combat.SpearCombatStats.Profile::jabCooldownNanos)
+                .orElse(50_000_000L);
+    }
+
+    /** Spears require 2 blocks of minimum reach and have a 4.5 block maximum reach. */
+    private static boolean isWithinWeaponReach(ItemStack weapon, double distanceSquared) {
+        var spearProfile = ru.nexora.combat.SpearCombatStats.forItem(weapon);
+        return spearProfile.map(profile -> profile.isWithinReach(distanceSquared))
+                .orElse(distanceSquared <= 3.5 * 3.5);
+    }
+
     private static float baseAttackDamage(ItemStack weapon) {
         if (weapon == null) return 1.0f;
         return switch (weapon.itemId()) {
@@ -2278,7 +2355,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case "minecraft:iron_sword" -> 7.0f;
             case "minecraft:diamond_sword" -> 8.0f;
             case "minecraft:netherite_sword" -> 9.0f;
-            default -> 1.0f;
+            case "minecraft:mace" -> 6.0f;
+            default -> ru.nexora.combat.SpearCombatStats.forItem(weapon)
+                    .map(ru.nexora.combat.SpearCombatStats.Profile::jabDamage)
+                    .orElse(1.0f);
         };
     }
 
@@ -2307,6 +2387,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         + exception.getMessage());
             }
         }
+        clearSpearChargeIfItemChanged(state);
         sendInventoryAndEquipmentState(networkId, state);
     }
 
@@ -2405,6 +2486,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
         }
 
+        clearSpearChargeIfItemChanged(state);
         // Always reconcile both inventories so a rejected or stale client prediction cannot linger.
         sendContainerReconciliation(networkId, state);
     }
@@ -2620,6 +2702,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (state.dead) return;
         BedrockPlayerAuthInputCodec.PlayerInput input = BedrockPlayerAuthInputCodec.decode(packet);
         if (state.hasReceivedInput && input.tick() <= state.lastInputTick) return;
+        long inputNowNanos = nanoTime.getAsLong();
+        if (state.spearChargeStartedNanos != Long.MIN_VALUE
+                && (inputNowNanos < state.spearChargeStartedNanos
+                || inputNowNanos - state.spearChargeStartedNanos > 10_000_000_000L)) {
+            clearSpearCharge(state);
+        }
+        if (input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.START_USING_ITEM)) {
+            startSpearChargeIfHeld(state);
+        }
         tickPlayerFire(networkId, state, input.tick());
         tickWorldLivingActors(input.tick());
 
@@ -2649,6 +2740,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             return; // Reject movement that clips through solid world blocks.
         }
         state.movementBudget = movementBudget - distance;
+        double velocitySeconds = Math.max(0.05, Math.min(0.25, elapsedNanos / 1_000_000_000.0));
+        state.velocityX = dx / velocitySeconds;
+        state.velocityY = dy / velocitySeconds;
+        state.velocityZ = dz / velocitySeconds;
         state.lastMovementNanos = nowNanos;
         state.hasReceivedInput = true;
         state.positionX = input.x();
@@ -2697,8 +2792,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         boolean jumping = input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.START_JUMPING)
                 || input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.JUMP_PRESSED_RAW)
                 || input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.JUMPING);
-        if (state.usingItem && nanoTime.getAsLong() - state.usingItemStartedNanos > 3_000_000_000L) {
-            state.usingItem = false;
+        long inputNowNanos = nanoTime.getAsLong();
+        if (state.usingItem && inputNowNanos - state.usingItemStartedNanos > 3_000_000_000L) {
+            clearUsingItem(state);
+        }
+        if (state.spearChargeStartedNanos != Long.MIN_VALUE
+                && inputNowNanos - state.spearChargeStartedNanos > 10_000_000_000L) {
+            clearSpearCharge(state);
         }
         float movementX = state.usingItem ? input.motionX() * 0.2f : input.motionX();
         float movementZ = state.usingItem ? input.motionZ() * 0.2f : input.motionZ();
@@ -2777,6 +2877,32 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             String networkId, SessionState state,
             BedrockInventoryTransactionCodec.DecodedItemRelease release
     ) {
+        if (release.actionType() == 0
+                && state.spearChargeStartedNanos != Long.MIN_VALUE) {
+            ItemStack chargeItem = state.inventory.getSlot(state.spearChargeSlot).orElse(null);
+            ItemStack releasedItem = release.heldItem().orElse(null);
+            long releaseNow = nanoTime.getAsLong();
+            double fromDx = release.fromX() - state.positionX;
+            double fromDy = release.fromY() - state.positionY;
+            double fromDz = release.fromZ() - state.positionZ;
+            boolean validChargeRelease = release.hand() == 0
+                    && state.spearChargeSlot == release.hotbarSlot()
+                    && state.spearChargeSlot == state.inventory.selectedHotbarSlot()
+                    && chargeItem != null && isSpear(chargeItem)
+                    && chargeItem.itemId().equals(state.spearChargeItemId)
+                    && chargeItem.equals(state.spearChargeItemSnapshot)
+                    && chargeItem.equals(releasedItem)
+                    && releaseNow >= state.spearChargeStartedNanos
+                    && releaseNow - state.spearChargeStartedNanos <= 10_000_000_000L
+                    && fromDx * fromDx + fromDy * fromDy + fromDz * fromDz <= 2.25;
+            if (validChargeRelease) {
+                state.spearChargeReleasedNanos = releaseNow;
+            } else {
+                clearSpearCharge(state);
+            }
+        } else {
+            clearSpearCharge(state);
+        }
         if (!state.usingItem) return;
         if (release.actionType() == 0) {
             clearUsingItem(state);
@@ -2795,10 +2921,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             clearUsingItem(state);
             return;
         }
-        double headDx = release.headX() - state.positionX;
-        double headDy = release.headY() - (state.positionY + 1.62);
-        double headDz = release.headZ() - state.positionZ;
-        if (headDx * headDx + headDy * headDy + headDz * headDz > 4.0) {
+        double fromDx = release.fromX() - state.positionX;
+        double fromDy = release.fromY() - state.positionY;
+        double fromDz = release.fromZ() - state.positionZ;
+        if (fromDx * fromDx + fromDy * fromDy + fromDz * fromDz > 2.25) {
             clearUsingItem(state);
             return;
         }
@@ -2827,10 +2953,78 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private static void clearUsingItem(SessionState state) {
+        clearSpearCharge(state);
         state.usingItem = false;
         state.usingItemSlot = -1;
         state.usingItemRuntimeId = 0;
         state.usingItemStartedNanos = 0;
+    }
+
+    private void startSpearChargeIfHeld(SessionState state) {
+        ItemStack held = state.inventory.heldItem().orElse(null);
+        if (!isSpear(held)) return;
+        long now = nanoTime.getAsLong();
+        if (state.spearChargeStartedNanos != Long.MIN_VALUE
+                && state.spearChargeReleasedNanos == Long.MIN_VALUE
+                && state.spearChargeSlot == state.inventory.selectedHotbarSlot()
+                && held.equals(state.spearChargeItemSnapshot)
+                && now >= state.spearChargeStartedNanos
+                && now - state.spearChargeStartedNanos <= 10_000_000_000L) return;
+        clearSpearCharge(state);
+        state.spearChargeStartedNanos = now;
+        state.spearChargeSlot = state.inventory.selectedHotbarSlot();
+        state.spearChargeItemId = held.itemId();
+        state.spearChargeItemSnapshot = held;
+    }
+
+    private static void clearSpearChargeIfItemChanged(SessionState state) {
+        if (state.spearChargeSlot < 0 || state.spearChargeItemSnapshot == null) return;
+        ItemStack current = state.inventory.getSlot(state.spearChargeSlot).orElse(null);
+        if (!Objects.equals(current, state.spearChargeItemSnapshot)) clearSpearCharge(state);
+    }
+
+    private static void clearSpearCharge(SessionState state) {
+        state.spearChargeStartedNanos = Long.MIN_VALUE;
+        state.spearChargeReleasedNanos = Long.MIN_VALUE;
+        state.spearChargeSlot = -1;
+        state.spearChargeItemId = null;
+        state.spearChargeItemSnapshot = null;
+    }
+
+    private static ru.nexora.combat.SpearChargeCombatService.ChargeEffect consumeSpearCharge(
+            SessionState attacker, ItemStack weapon,
+            double targetVelocityX, double targetVelocityY, double targetVelocityZ, long nowNanos
+    ) {
+        if (!isSpear(weapon) || attacker.spearChargeStartedNanos == Long.MIN_VALUE
+                || attacker.spearChargeReleasedNanos == Long.MIN_VALUE
+                || attacker.spearChargeSlot != attacker.inventory.selectedHotbarSlot()
+                || !weapon.itemId().equals(attacker.spearChargeItemId)
+                || !weapon.equals(attacker.spearChargeItemSnapshot)
+                || nowNanos < attacker.spearChargeReleasedNanos
+                || nowNanos - attacker.spearChargeReleasedNanos > 750_000_000L
+                || nowNanos < attacker.spearChargeStartedNanos
+                || nowNanos - attacker.spearChargeStartedNanos > 10_000_000_000L
+                || nowNanos - attacker.spearChargeStartedNanos < 50_000_000L) {
+            return null;
+        }
+        PlayerPhysics.State physics = attacker.physicsState;
+        double attackerVelocityX = physics == null ? attacker.velocityX : physics.velocityX();
+        double attackerVelocityY = physics == null ? attacker.velocityY : physics.velocityY();
+        double attackerVelocityZ = physics == null ? attacker.velocityZ : physics.velocityZ();
+        double yaw = Math.toRadians(attacker.yaw);
+        double pitch = Math.toRadians(attacker.pitch);
+        double horizontalLook = Math.cos(pitch);
+        var effect = ru.nexora.combat.SpearChargeCombatService.resolve(
+                weapon,
+                new ru.nexora.combat.SpearChargeCombatService.Vector(
+                        attackerVelocityX, attackerVelocityY, attackerVelocityZ),
+                new ru.nexora.combat.SpearChargeCombatService.Vector(
+                        targetVelocityX, targetVelocityY, targetVelocityZ),
+                new ru.nexora.combat.SpearChargeCombatService.Vector(
+                        -Math.sin(yaw) * horizontalLook, -Math.sin(pitch),
+                        Math.cos(yaw) * horizontalLook));
+        clearSpearCharge(attacker);
+        return effect;
     }
 
     private void handleItemUseTransaction(
@@ -3658,6 +3852,20 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
+    private void broadcastPacketExcept(String excludedNetworkId, BedrockPacket packet) {
+        for (var entry : sessions.entrySet()) {
+            if (entry.getKey().equals(excludedNetworkId)) continue;
+            SessionState recipient = entry.getValue();
+            if (!recipient.clientInitialized || recipient.rejected) continue;
+            try {
+                sendPacket(entry.getKey(), packet, true);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to broadcast combat animation to " + entry.getKey()
+                        + ": " + exception.getMessage());
+            }
+        }
+    }
+
     private void handleMobEquipment(
             NetherNetInboundPipeline.InboundMessage message, SessionState state, BedrockPacket packet
     ) {
@@ -3699,6 +3907,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             reconciliation.addAll(createEquipmentReconciliationPackets(state));
             sendPackets(networkId, reconciliation, true);
             return;
+        }
+        if (state.spearChargeSlot != -1 && state.spearChargeSlot != equipment.hotbarSlot()) {
+            clearSpearCharge(state);
         }
         state.inventory.selectHotbarSlot(equipment.hotbarSlot());
     }
@@ -3886,6 +4097,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private final ReentrantLock combatLock = new ReentrantLock();
         private long lastAttackNanos = Long.MIN_VALUE;
         private long lastCombatDamageNanos = Long.MIN_VALUE;
+        private long spearChargeStartedNanos = Long.MIN_VALUE;
+        private long spearChargeReleasedNanos = Long.MIN_VALUE;
+        private int spearChargeSlot = -1;
+        private String spearChargeItemId;
+        private ItemStack spearChargeItemSnapshot;
         private long fireUntilNanos = Long.MIN_VALUE;
         private long nextFireDamageNanos = Long.MIN_VALUE;
         private PlayerInventory inventory = new PlayerInventory();
@@ -3912,6 +4128,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private float positionX;
         private float positionY;
         private float positionZ;
+        private double velocityX;
+        private double velocityY;
+        private double velocityZ;
         private float yaw;
         private float pitch;
         private PlayerPhysics.State physicsState;

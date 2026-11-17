@@ -81,6 +81,23 @@ class LivingEntityAiServiceTest {
     }
 
     @Test
+    void villagersAndWanderingTradersDoNotFleeFromPlayers() {
+        WorldLivingEntity villager = new WorldLivingEntityManager().spawn(
+                "minecraft:villager", 20, 0, 64, 0);
+        WorldLivingEntity trader = new WorldLivingEntityManager().spawn(
+                "minecraft:wandering_trader", 20, 0, 64, 0);
+        var nearby = new LivingEntityAiService.PlayerTarget("player", 2, 64, 0, true);
+
+        var villagerDecision = ai.decide(villager, List.of(nearby), 1_000, 0);
+        var traderDecision = ai.decide(trader, List.of(nearby), 1_000, 0);
+
+        assertTrue(villagerDecision.moving());
+        assertTrue(traderDecision.moving());
+        assertNull(villagerDecision.targetNetworkId());
+        assertNull(traderDecision.targetNetworkId());
+    }
+
+    @Test
     void rejectsInvalidTimeAndTarget() {
         WorldLivingEntity zombie = new WorldLivingEntityManager().spawn(
                 "minecraft:zombie", 20, 0, 64, 0);

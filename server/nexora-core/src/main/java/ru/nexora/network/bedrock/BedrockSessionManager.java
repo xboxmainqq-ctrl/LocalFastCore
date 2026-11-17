@@ -118,6 +118,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             new ru.nexora.world.MobPathCache();
     private final ru.nexora.combat.MobStuckTracker mobStuckTracker =
             new ru.nexora.combat.MobStuckTracker();
+    private final ru.nexora.combat.MobAiLoadController mobAiLoadController =
+            new ru.nexora.combat.MobAiLoadController();
     private volatile boolean serverAuthoritativeMovement;
     private volatile ru.nexora.ai.NexoraAiAssistant aiAssistant;
     private volatile ru.nexora.ai.NexoraAiDiagnostics aiDiagnostics;
@@ -448,7 +450,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 .append(", entries=").append(cache.entries())
                 .append("\nMob stuck tracker: tracked=").append(stuck.tracked())
                 .append(", stuck=").append(stuck.stuck())
-                .append(", evictions=").append(stuck.evictions());
+                .append(", evictions=").append(stuck.evictions())
+                .append("\nMob AI load controller: ").append(mobAiLoadController.stats().summary());
         ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
         if (diagnostics == null) {
             result.append("\nMob AI latency: diagnostics unavailable");
@@ -2340,6 +2343,19 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 mobStuckTracker.clear(mob.runtimeId());
                 continue;
             }
+            double nearestPlayerDistanceSquared = Double.POSITIVE_INFINITY;
+            for (ru.nexora.combat.LivingEntityAiService.PlayerTarget player : targets) {
+                double dx = player.x() - mob.x();
+                double dy = player.y() - mob.y();
+                double dz = player.z() - mob.z();
+                nearestPlayerDistanceSquared = Math.min(nearestPlayerDistanceSquared,
+                        dx * dx + dy * dy + dz * dz);
+            }
+            boolean hasActiveTarget = livingEntityAggroTargets.containsKey(mob.runtimeId());
+            if (!mobAiLoadController.shouldUpdate(mob.runtimeId(), tick,
+                    nearestPlayerDistanceSquared, hasActiveTarget)) {
+                continue;
+            }
             long nextAttackAt = nextMobAttackMillis.getOrDefault(mob.runtimeId(), 0L);
             ru.nexora.combat.LivingEntityAiService.Decision decision =
                     livingEntityAi.decide(mob, targets, nowMillis, nextAttackAt,
@@ -2773,6 +2789,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (entity == null || !world.livingEntities().remove(runtimeId)) return false;
         nextMobAttackMillis.remove(runtimeId);
         mobPathCache.remove(runtimeId);
+        mobStuckTracker.clear(runtimeId);
         creeperFuseStartedMillis.remove(runtimeId);
         endermanTeleportCooldownMillis.remove(runtimeId);
         livingEntityAggroTargets.remove(runtimeId);

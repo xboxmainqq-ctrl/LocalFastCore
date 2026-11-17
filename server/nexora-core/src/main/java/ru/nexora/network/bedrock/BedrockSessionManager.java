@@ -22,6 +22,7 @@ import ru.nexora.inventory.ContainerInventoryTransactionService;
 import ru.nexora.inventory.CraftingRecipe;
 import ru.nexora.inventory.CraftingRecipeRegistry;
 import ru.nexora.inventory.CraftingService;
+import ru.nexora.inventory.FurnaceService;
 import ru.nexora.world.FlatWorldGenerator;
 import ru.nexora.world.BlockType;
 import ru.nexora.world.World;
@@ -866,25 +867,33 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private void openFurnaceWindow(String networkId, SessionState state, int x, int y, int z) {
-        if (world.getBlock(x, y, z) != BlockType.FURNACE || !isWithinBlockReach(state, x, y, z)) return;
+        openFurnaceWindow(networkId, state, x, y, z, BlockType.FURNACE);
+    }
+
+    private void openFurnaceWindow(
+            String networkId, SessionState state, int x, int y, int z, BlockType blockType
+    ) {
+        FurnaceService.Kind kind = furnaceKind(blockType);
+        if (kind == null || world.getBlock(x, y, z) != blockType || !isWithinBlockReach(state, x, y, z)) return;
         WorldFurnaceManager manager = world.furnaces().orElse(null);
         if (manager == null) return;
         if (state.openContainerWindowId != 0) closeContainerWindow(networkId, state, true);
         int windowId = nextContainerWindowId(state);
         try {
-            ContainerInventory inventory = manager.getOrCreate(x, y, z);
+            ContainerInventory inventory = manager.getOrCreate(x, y, z, kind);
+            int containerType = furnaceContainerType(blockType);
             BedrockPacket open = BedrockContainerPacketCodec.createOpen(
-                    windowId, BedrockContainerPacketCodec.FURNACE_TYPE, x, y, z,
+                    windowId, containerType, x, y, z,
                     BedrockContainerPacketCodec.BLOCK_CONTAINER_ENTITY_ID);
             BedrockPacket content = BedrockInventoryContentCodec.createContainerInventory(
                     windowId, inventory, itemRegistry);
-            var furnaceState = manager.tick(x, y, z, 0);
+            var furnaceState = manager.tick(x, y, z, kind, 0);
             sendPackets(networkId, List.of(open, content,
                     BedrockContainerSetDataCodec.create(windowId, 0, furnaceState.cookProgress()),
                     BedrockContainerSetDataCodec.create(windowId, 1, furnaceState.burnTicksRemaining()),
                     BedrockContainerSetDataCodec.create(windowId, 2, furnaceState.burnTicksTotal())), true);
             state.openContainerWindowId = windowId;
-            state.openContainerType = BedrockContainerPacketCodec.FURNACE_TYPE;
+            state.openContainerType = containerType;
             state.openContainerIsCraftingTable = false;
             state.openContainerIsFurnace = true;
             state.openContainerX = x;
@@ -892,9 +901,27 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             state.openContainerZ = z;
             state.openContainerInventory = inventory;
         } catch (IOException | RuntimeException exception) {
-            System.err.println("NEXORA: unable to open furnace at " + x + "," + y + "," + z
-                    + ": " + exception.getMessage());
+            System.err.println("NEXORA: unable to open " + blockType.name().toLowerCase(Locale.ROOT)
+                    + " at " + x + "," + y + "," + z + ": " + exception.getMessage());
         }
+    }
+
+    private static FurnaceService.Kind furnaceKind(BlockType blockType) {
+        return switch (blockType) {
+            case FURNACE -> FurnaceService.Kind.FURNACE;
+            case BLAST_FURNACE -> FurnaceService.Kind.BLAST_FURNACE;
+            case SMOKER -> FurnaceService.Kind.SMOKER;
+            default -> null;
+        };
+    }
+
+    private static int furnaceContainerType(BlockType blockType) {
+        return switch (blockType) {
+            case FURNACE -> BedrockContainerPacketCodec.FURNACE_TYPE;
+            case BLAST_FURNACE -> BedrockContainerPacketCodec.BLAST_FURNACE_TYPE;
+            case SMOKER -> BedrockContainerPacketCodec.SMOKER_TYPE;
+            default -> throw new IllegalArgumentException("Block is not a furnace: " + blockType);
+        };
     }
 
     private void closeContainerWindow(String networkId, SessionState state, boolean serverInitiated) {
@@ -1972,15 +1999,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     return;
                 }
             }
-            if (heldDescriptorMatches && world.getBlock(targetX, targetY, targetZ) == BlockType.FURNACE
+            BlockType clickedBlock = world.getBlock(targetX, targetY, targetZ);
+            if (heldDescriptorMatches && furnaceKind(clickedBlock) != null
                     && transaction.targetBlockId()
-                    == Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(BlockType.FURNACE))
+                    == Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(clickedBlock))
                     && isWithinBlockReach(state, targetX, targetY, targetZ)) {
                 double dx = transaction.fromX() - state.positionX;
                 double dy = transaction.fromY() - state.positionY;
                 double dz = transaction.fromZ() - state.positionZ;
                 if (dx * dx + dy * dy + dz * dz <= 2.25) {
-                    openFurnaceWindow(networkId, state, targetX, targetY, targetZ);
+                    openFurnaceWindow(networkId, state, targetX, targetY, targetZ, clickedBlock);
                     return;
                 }
             }
@@ -2023,6 +2051,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case "minecraft:oak_planks" -> BlockType.OAK_PLANKS;
             case "minecraft:crafting_table" -> BlockType.CRAFTING_TABLE;
             case "minecraft:furnace" -> BlockType.FURNACE;
+            case "minecraft:blast_furnace" -> BlockType.BLAST_FURNACE;
+            case "minecraft:smoker" -> BlockType.SMOKER;
             default -> null;
         };
         if (placedType == null) return;
@@ -2344,7 +2374,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 return;
             }
             try {
-                ContainerInventory furnace = manager.getOrCreate(target.x(), target.y(), target.z());
+                ContainerInventory furnace = manager.getOrCreate(\n                        target.x(), target.y(), target.z(), furnaceKind(current));
                 if (furnace.snapshot().stream().anyMatch(Optional::isPresent)) {
                     state.breakTarget = null;
                     sendPacket(networkId, BedrockBlockUpdateCodec.createPacket(

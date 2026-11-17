@@ -45,6 +45,15 @@ Work only on engine/server foundations:
 - Verification: code and test are committed; CI has not yet been confirmed. The previously observed runner-allocation failure remains an infrastructure blocker, so no passing-test claim is made.
 - Commit references: `6a1bd82c7d3cb943262a646b08490b01a37be506` (fix), `e6a9f31430cca5ee01736b0eef0b42deaba262d4` (regression test).
 
+
+### 2026-11-17 — fatal chunk-generator failure path
+- Continued the chunk pipeline audit without waiting for another prompt.
+- Found a second unresolved-request path: `AsyncChunkGenerationService` previously removed an in-flight reservation and rethrew a fatal `Error` without publishing a completion. Any `requestAsync` waiter for that chunk could then remain incomplete indefinitely.
+- Changed the service to publish a bounded failure result (retaining the original fatal error as the cause) before rethrowing it. The game-thread pipeline can now report the failure and complete the waiter with `false`.
+- Added a regression test proving that fatal generator errors are surfaced and the asynchronous waiter resolves.
+- Verification: changes committed; no passing CI result is claimed until a runner executes the workflow.
+- Commit references: `d24710b1159bb676398b0f8bde46c27f794bb4b1` (fix), `904b40286f209ee9aa6d7b4a881f82407846dc76` (test).
+
 ## Next tasks — in order
 
 1. **Verify current CI** for the active branch and fix any compilation/test failures before adding more code.
@@ -60,8 +69,8 @@ Do not start magic/RPG implementation until the dedicated core can pass automate
 
 ## Session hand-off template
 
-- Completed: added `.nxw` future-version, truncation and trailing-byte rejection tests; reviewed world lifecycle rollback/retry coverage; reviewed chunk pipeline against public Nukkit/PowerNukkitX architecture references; fixed async waiter completion when the failure reporter throws and added a regression test.
+- Completed: added `.nxw` future-version, truncation and trailing-byte rejection tests; reviewed world lifecycle rollback/retry coverage; reviewed chunk pipeline against public Nukkit/PowerNukkitX architecture references; fixed async waiter completion when the failure reporter throws and when the generator throws a fatal `Error`, with regression tests for both.
 - Tests/CI: tests are committed but not confirmed passing; workflow runs fail before runner allocation and logs/annotations are inaccessible through the current GitHub connection.
 - Not completed / blockers: CI infrastructure/dispatch failure of unknown cause; no evidence yet of a code compilation failure.
-- Next exact task: restore a working CI runner/verification path, then define and test NEXORA's explicit chunk lifecycle state machine before expanding streaming behavior.
+- Next exact task: restore a working CI runner/verification path; continue the chunk lifecycle audit with worker interruption, cancellation races, retry semantics and shutdown behavior; then define NEXORA's explicit chunk lifecycle state machine before expanding streaming behavior.
 - Commit SHA:

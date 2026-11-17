@@ -1543,7 +1543,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             String networkId, SessionState attacker,
             BedrockInventoryTransactionCodec.DecodedUseOnActor transaction
     ) {
-        if (!attacker.loginAuthenticated || !attacker.clientInitialized || attacker.dead
+        if (!attacker.loginAuthenticated || !attacker.clientInitialized
+                || attacker.dead || attacker.vitals.dead()
                 || transaction.actionType() != 1 || transaction.hand() != 0
                 || transaction.slot() != attacker.inventory.selectedHotbarSlot()) {
             return;

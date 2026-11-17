@@ -242,9 +242,13 @@ public final class NexoraAiGuard {
 
     private static String sanitizePlayerName(String displayName) {
         if (displayName == null || displayName.isBlank()) return "unknown player";
-        String safe = displayName.replaceAll("[\\\\p{Cntrl}§]", "").trim();
-        if (safe.isEmpty()) return "unknown player";
-        return safe.length() <= 24 ? safe : safe.substring(0, 24);
+        StringBuilder cleaned = new StringBuilder();
+        displayName.codePoints()
+                .filter(codePoint -> !Character.isISOControl(codePoint) && codePoint != '§')
+                .limit(24)
+                .forEach(cleaned::appendCodePoint);
+        String safe = cleaned.toString().trim();
+        return safe.isEmpty() ? "unknown player" : safe;
     }
 
     private void publish(GuardEvent event) {

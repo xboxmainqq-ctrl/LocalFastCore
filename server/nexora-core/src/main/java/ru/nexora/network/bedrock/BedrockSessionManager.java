@@ -2695,7 +2695,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 int blockY = (int) Math.floor(candidateY);
                 int blockZ = (int) Math.floor(candidateZ);
                 if (blockY <= WorldChunk.MIN_Y || blockY + 2 > WorldChunk.MAX_Y
-                        || !world.isChunkLoadedAt(blockX, blockZ)) continue;
+                        || !ru.nexora.world.WorldPathfinder.isMobFootprintLoaded(world, candidateX, candidateZ)) continue;
                 if (world.getBlock(blockX, blockY - 1, blockZ) == BlockType.AIR
                         || world.getBlock(blockX, blockY, blockZ) != BlockType.AIR
                         || world.getBlock(blockX, blockY + 1, blockZ) != BlockType.AIR

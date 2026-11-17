@@ -22,6 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /** Optional OpenAI-compatible chat adapter. API credentials are read only from environment variables. */
 public final class NexoraAiAssistant {
@@ -37,6 +38,7 @@ public final class NexoraAiAssistant {
     private final HttpClient client;
     private final ConcurrentMap<String, Long> lastRequest = new ConcurrentHashMap<>();
     private final NexoraAiConversationMemory conversationMemory = new NexoraAiConversationMemory();
+    private volatile Supplier<String> adminRuntimeSnapshotProvider = () -> "unavailable";
 
     public NexoraAiAssistant(String apiKey, String model, URI endpoint,
                              Duration timeout, NexoraAiDiagnostics diagnostics) {
@@ -96,7 +98,13 @@ public final class NexoraAiAssistant {
                 + "; load " + load + "; uptime " + s.uptimeMillis() + " ms"
                 + "; ошибок " + s.recordedFailures() + "; последняя: " + s.lastFailure()
                 + "; медленных операций " + s.slowOperationCount()
-                + "; последняя медленная: " + s.lastSlowOperation();
+                + "; последняя медленная: " + s.lastSlowOperation()
+                + "; мир: " + adminRuntimeSnapshot();
+    }
+
+    /** Installs a read-only provider for aggregate world/session counters shown only to operators. */
+    public void setAdminRuntimeSnapshotProvider(Supplier<String> provider) {
+        this.adminRuntimeSnapshotProvider = Objects.requireNonNull(provider, "provider");
     }
 
     /** Clears only this player's selected player/operator conversation context. */
@@ -217,8 +225,19 @@ public final class NexoraAiAssistant {
                 + s.health() + ", heap=" + heap + ", threads=" + s.liveThreadCount()
                 + ", uptimeMs=" + s.uptimeMillis() + ", reportedFailures=" + s.recordedFailures()
                 + ". Это не полная диагностика TPS или игровых подсистем."
-                + (admin ? " Ты отвечаешь администратору сервера. Можно подробно объяснять показатели диагностики, "
+                + (admin ? " Текущая сводка мира и сессий: " + adminRuntimeSnapshot() + ". "
+                + "Ты отвечаешь администратору сервера. Можно подробно объяснять показатели диагностики, "
                 + "но нельзя выполнять команды, менять настройки, файлы, мир или процессы." : "");
+    }
+
+    private String adminRuntimeSnapshot() {
+        try {
+            String snapshot = adminRuntimeSnapshotProvider.get();
+            if (snapshot == null || snapshot.isBlank()) return "unavailable";
+            return snapshot.length() <= 400 ? snapshot : snapshot.substring(0, 400);
+        } catch (RuntimeException ignored) {
+            return "unavailable";
+        }
     }
 
     private static URI validateEndpoint(URI uri) {

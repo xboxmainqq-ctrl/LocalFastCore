@@ -4,6 +4,10 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryUsage;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.Map;
@@ -21,12 +25,15 @@ public final class NexoraAiDiagnostics {
     private static final int MAX_EVENTS = 12;
     private static final int MAX_EVIDENCE_LENGTH = 1_800;
     private static final int MAX_SIGNATURES = 16;
+    private static final int MAX_LATENCY_SUBSYSTEMS = 16;
+    private static final int LATENCY_SAMPLES_PER_SUBSYSTEM = 60;
 
     private final long startedAtNanos = System.nanoTime();
     private final AtomicLong recordedFailures = new AtomicLong();
     private final AtomicLong slowOperationCount = new AtomicLong();
     private final ConcurrentLinkedDeque<DiagnosticEvent> events = new ConcurrentLinkedDeque<>();
     private final ConcurrentHashMap<String, AtomicLong> repeatedSignatures = new ConcurrentHashMap<>();
+    private final Map<String, ArrayDeque<Long>> latencySamples = new java.util.LinkedHashMap<>();
     private volatile String lastFailure = "none";
     private volatile String lastSlowOperation = "none";
 
@@ -66,12 +73,44 @@ public final class NexoraAiDiagnostics {
         if (subsystem.isBlank() || subsystem.length() > 64 || elapsedNanos < 0 || thresholdNanos < 1) {
             throw new IllegalArgumentException("Invalid slow operation measurement");
         }
-        if (elapsedNanos <= thresholdNanos) return;
         String safeSubsystem = bound(sanitize(subsystem), 64);
+        recordLatencySample(safeSubsystem, elapsedNanos);
+        if (elapsedNanos <= thresholdNanos) return;
         slowOperationCount.incrementAndGet();
         incrementSignature("SLOW:" + safeSubsystem);
         lastSlowOperation = safeSubsystem + " took " + (elapsedNanos / 1_000_000L) + " ms";
         appendEvent("SLOW", lastSlowOperation);
+    }
+
+    private synchronized void recordLatencySample(String subsystem, long elapsedNanos) {
+        ArrayDeque<Long> samples = latencySamples.get(subsystem);
+        if (samples == null) {
+            if (latencySamples.size() >= MAX_LATENCY_SUBSYSTEMS) {
+                latencySamples.remove(latencySamples.keySet().iterator().next());
+            }
+            samples = new ArrayDeque<>(LATENCY_SAMPLES_PER_SUBSYSTEM);
+            latencySamples.put(subsystem, samples);
+        }
+        if (samples.size() == LATENCY_SAMPLES_PER_SUBSYSTEM) samples.removeFirst();
+        samples.addLast(elapsedNanos);
+    }
+
+    /** Returns bounded rolling latency summaries; values are subsystem execution times, not server TPS. */
+    public synchronized List<LatencySummary> latencySummaries() {
+        List<LatencySummary> summaries = new ArrayList<>();
+        latencySamples.forEach((subsystem, samples) -> {
+            if (samples.isEmpty()) return;
+            List<Long> sorted = new ArrayList<>(samples);
+            Collections.sort(sorted);
+            long total = 0L;
+            for (long sample : samples) total = total > Long.MAX_VALUE - sample
+                    ? Long.MAX_VALUE : total + sample;
+            long average = total / samples.size();
+            long p95 = sorted.get(Math.max(0, (int) Math.ceil(sorted.size() * 0.95) - 1));
+            summaries.add(new LatencySummary(subsystem, samples.size(), average,
+                    p95, sorted.get(sorted.size() - 1)));
+        });
+        return List.copyOf(summaries);
     }
 
     /**
@@ -94,6 +133,17 @@ public final class NexoraAiDiagnostics {
         String repeats = repeatedEvidence();
         if (!repeats.isEmpty() && result.length() < MAX_EVIDENCE_LENGTH) {
             result.append("\n").append(repeats);
+        }
+        List<LatencySummary> latency = latencySummaries();
+        if (!latency.isEmpty() && result.length() < MAX_EVIDENCE_LENGTH) {
+            result.append("\nПоследние замеры длительности подсистем (не TPS):");
+            for (LatencySummary summary : latency) {
+                result.append("\n- ").append(summary.subsystem()).append(": n=")
+                        .append(summary.sampleCount()).append(", avg=")
+                        .append(summary.averageNanos() / 1_000_000L).append(" ms, p95=")
+                        .append(summary.p95Nanos() / 1_000_000L).append(" ms, max=")
+                        .append(summary.maxNanos() / 1_000_000L).append(" ms");
+            }
         }
         if (result.length() > MAX_EVIDENCE_LENGTH) {
             result.setLength(MAX_EVIDENCE_LENGTH);
@@ -176,6 +226,17 @@ public final class NexoraAiDiagnostics {
     }
 
     private record DiagnosticEvent(String timestamp, String type, String description) {
+    }
+
+    public record LatencySummary(String subsystem, int sampleCount,
+                                  long averageNanos, long p95Nanos, long maxNanos) {
+        public LatencySummary {
+            Objects.requireNonNull(subsystem, "subsystem");
+            if (subsystem.isBlank() || sampleCount < 1 || averageNanos < 0
+                    || p95Nanos < 0 || maxNanos < 0) {
+                throw new IllegalArgumentException("Invalid latency summary");
+            }
+        }
     }
 
     public enum Health {

@@ -1557,7 +1557,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             throw new SecurityException("Chat XUID does not match the authenticated player");
         }
 
-        String cleanMessage = sanitizeChatMessage(chat.message());
+        String cleanMessage;
+        try {
+            cleanMessage = sanitizeChatMessage(chat.message());
+        } catch (SecurityException exception) {
+            state.rejected = true;
+            throw exception;
+        }
         if (cleanMessage.isEmpty()) return;
         long now = nanoTime.getAsLong();
         if (!allowChatMessage(state, now)) return;
@@ -1569,8 +1575,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         BedrockPacket outgoing = BedrockTextCodec.createChatMessage(displayName, cleanMessage, "", "");
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
             SessionState recipient = entry.getValue();
-            if (recipient.clientInitialized && !recipient.rejected) {
+            if (!recipient.loginAuthenticated || !recipient.clientInitialized || recipient.rejected) continue;
+            try {
                 sendPacket(entry.getKey(), outgoing, true);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to deliver chat message to " + entry.getKey()
+                        + ": " + exception.getMessage());
             }
         }
     }
@@ -1596,57 +1606,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (state.chatMessagesInWindow >= MAX_CHAT_MESSAGES_PER_WINDOW) return false;
         state.chatMessagesInWindow++;
         return true;
-    }
-
-    private void handleChatMessage(
-            NetherNetInboundPipeline.InboundMessage message, SessionState state, BedrockPacket packet
-    ) {
-        if (!message.reliable()) {
-            throw new SecurityException("TextPacket chat must arrive on ReliableDataChannel");
-        }
-        if (!state.loginAuthenticated || !state.clientInitialized || state.identity == null
-                || state.dead || state.vitals.dead()) {
-            throw new SecurityException("Chat arrived before authenticated player initialization");
-        }
-
-        BedrockTextCodec.DecodedChat chat;
-        try {
-            chat = BedrockTextCodec.decodeChat(packet);
-        } catch (IllegalArgumentException exception) {
-            throw new SecurityException("Malformed Bedrock chat TextPacket", exception);
-        }
-
-        String text = chat.message().strip();
-        if (text.isEmpty()) return;
-        long now = nanoTime.getAsLong();
-        long window = Duration.ofSeconds(5).toNanos();
-        if (state.chatWindowStartedNanos == Long.MIN_VALUE
-                || now < state.chatWindowStartedNanos
-                || now - state.chatWindowStartedNanos >= window) {
-            state.chatWindowStartedNanos = now;
-            state.chatMessagesInWindow = 0;
-        }
-        if (state.chatMessagesInWindow >= 5) {
-            sendAiMessage(message.networkId(), "§cНе отправляй сообщения так часто.");
-            return;
-        }
-        state.chatMessagesInWindow++;
-
-        // Never trust the sender name or XUID embedded in a client TextPacket.
-        String displayName = state.identity.displayName();
-        if (displayName == null || displayName.isBlank()) displayName = "Player";
-        BedrockPacket outgoing = BedrockTextCodec.createChatMessage(
-                displayName, text, state.identity.xuid(), "");
-        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
-            SessionState recipient = entry.getValue();
-            if (!recipient.loginAuthenticated || !recipient.clientInitialized || recipient.rejected) continue;
-            try {
-                sendPacket(entry.getKey(), outgoing, true);
-            } catch (RuntimeException exception) {
-                System.err.println("NEXORA: unable to deliver chat message to " + entry.getKey()
-                        + ": " + exception.getMessage());
-            }
-        }
     }
 
     private void handleCommandRequest(

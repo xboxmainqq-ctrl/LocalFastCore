@@ -590,6 +590,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         ? BedrockCraftingEventCodec.TYPE_SHAPED : BedrockCraftingEventCodec.TYPE_SHAPELESS)
                 || !event.output().getFirst().orElseThrow().itemId().equals(recipe.result().itemId())
                 || event.output().getFirst().orElseThrow().count() != recipe.result().count()
+                || !craftingUiGridMatches(state, event.input())
                 || !(recipe.isShaped()
                         ? matchesShapedCraftingInput(recipe, event.input())
                         : matchesShapelessCraftingInput(recipe, event.input()))) {
@@ -599,13 +600,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
         List<Optional<ru.nexora.inventory.ItemStack>> before = state.inventory.snapshot();
         int selectedSlot = state.inventory.selectedHotbarSlot();
-        CraftingService.Result result = craftingService.craft(
-                state.inventory, craftingRecipes, recipe.id(), 1);
+        List<Optional<ru.nexora.inventory.ItemStack>> beforeGrid = state.craftingUiInventory.snapshot();
+        CraftingService.Result result = craftingService.craftFromGrid(
+                state.inventory, state.craftingUiInventory, 28, recipe);
         if (result == CraftingService.Result.CRAFTED) {
             try {
                 saveInventory(state);
             } catch (IOException | RuntimeException exception) {
                 state.inventory.restore(before, selectedSlot);
+                state.craftingUiInventory.restore(beforeGrid);
                 try {
                     saveInventory(state);
                 } catch (IOException | RuntimeException rollbackFailure) {
@@ -618,6 +621,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             System.err.println("NEXORA: rejected crafting event for " + recipe.id() + ": " + result);
         }
         sendInventoryAndEquipmentState(networkId, state);
+    }
+
+    private static boolean craftingUiGridMatches(
+            SessionState state, List<Optional<ru.nexora.inventory.ItemStack>> input
+    ) {
+        List<Optional<ru.nexora.inventory.ItemStack>> ui = state.craftingUiInventory.snapshot();
+        return input.equals(ui.subList(28, 32));
     }
 
     private static boolean matchesShapelessCraftingInput(

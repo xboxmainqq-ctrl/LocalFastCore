@@ -1611,7 +1611,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 List<ItemStack> targetArmor = target.equipment.armorSnapshot().stream()
                         .flatMap(Optional::stream).toList();
                 float finalDamage = ru.nexora.combat.EnchantmentCombatService
-                        .applyArmorReduction(effect.damage(), targetArmor);
+                        .applyIncomingDamage(effect.damage(), targetArmor,
+                                ru.nexora.combat.EnchantmentCombatService.DamageType.GENERIC);
                 if (finalDamage > 0.0f) {
                     applyDamage(targetNetworkId, target, finalDamage,
                             target.lastInputTick, "death.attack.generic");
@@ -1945,7 +1946,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             List<ItemStack> armor = player.equipment.armorSnapshot().stream()
                                     .flatMap(Optional::stream).toList();
                             float damage = ru.nexora.combat.EnchantmentCombatService
-                                    .applyArmorReduction(4.0f, armor);
+                                    .applyIncomingDamage(4.0f, armor,
+                                            ru.nexora.combat.EnchantmentCombatService.DamageType.PROJECTILE);
                             if (damage > 0.0f) {
                                 applyDamage(playerEntry.getKey(), player, damage, tick, "death.attack.arrow");
                             }
@@ -2073,7 +2075,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     List<ItemStack> armor = player.equipment.armorSnapshot().stream()
                             .flatMap(Optional::stream).toList();
                     float damage = ru.nexora.combat.EnchantmentCombatService
-                            .applyArmorReduction(rawDamage, armor);
+                            .applyIncomingDamage(rawDamage, armor,
+                                    ru.nexora.combat.EnchantmentCombatService.DamageType.EXPLOSION);
                     if (damage > 0.0f) {
                         applyDamage(entry.getKey(), player, damage, tick, "death.attack.explosion");
                     }
@@ -2114,7 +2117,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 List<ItemStack> armor = target.equipment.armorSnapshot().stream()
                         .flatMap(Optional::stream).toList();
                 float mitigatedDamage = ru.nexora.combat.EnchantmentCombatService
-                        .applyArmorReduction(amount, armor);
+                        .applyIncomingDamage(amount, armor,
+                                ru.nexora.combat.EnchantmentCombatService.DamageType.GENERIC);
                 if (mitigatedDamage > 0.0f) {
                     applyDamage(networkId, target, mitigatedDamage, tick, "death.attack.mob");
                 }
@@ -2734,7 +2738,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             float fallDamage = (float) Math.ceil(next.landedDistance() - 3.0);
             List<ItemStack> armor = state.equipment.armorSnapshot().stream()
                     .flatMap(Optional::stream).toList();
-            fallDamage = ru.nexora.combat.EnchantmentCombatService.applyEnchantmentProtection(
+            fallDamage = ru.nexora.combat.EnchantmentCombatService.applyIncomingDamage(
                     fallDamage, armor,
                     ru.nexora.combat.EnchantmentCombatService.DamageType.FALL);
             if (fallDamage > 0.0f) {
@@ -3099,7 +3103,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             state.nextFireDamageNanos = now + 1_000_000_000L;
             List<ItemStack> armor = state.equipment.armorSnapshot().stream()
                     .flatMap(Optional::stream).toList();
-            float fireDamage = ru.nexora.combat.EnchantmentCombatService.applyEnchantmentProtection(
+            float fireDamage = ru.nexora.combat.EnchantmentCombatService.applyIncomingDamage(
                     1.0f, armor, ru.nexora.combat.EnchantmentCombatService.DamageType.FIRE);
             if (fireDamage > 0.0f) {
                 applyDamage(networkId, state, fireDamage, tick, "death.attack.onFire");

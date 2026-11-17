@@ -82,11 +82,51 @@ class EnchantmentCombatServiceTest {
     }
 
     @Test
+    void combinesArmorPointsWithDamageTypeSpecificProtectionExactlyOnce() {
+        ItemStack fireChestplate = new ItemStack("minecraft:iron_chestplate", 1, 1,
+                Map.of("minecraft:protection", 1, "minecraft:fire_protection", 2));
+
+        // 6 armor points reduce 100 to 76; EPF (1 + 2*2 = 5) then reduces by 20%.
+        assertEquals(80.0f, EnchantmentCombatService.applyIncomingDamage(
+                100.0f, List.of(fireChestplate), EnchantmentCombatService.DamageType.FIRE), 0.0001f);
+
+        ItemStack featherFallingBoots = new ItemStack("minecraft:iron_boots", 1, 1,
+                Map.of("minecraft:feather_falling", 4));
+        assertEquals(5.2f, EnchantmentCombatService.applyIncomingDamage(
+                10.0f, List.of(featherFallingBoots), EnchantmentCombatService.DamageType.FALL), 0.0001f);
+
+        // The generic path remains backward-compatible with applyArmorReduction.
+        assertEquals(EnchantmentCombatService.applyArmorReduction(100.0f, List.of(fireChestplate)),
+                EnchantmentCombatService.applyIncomingDamage(
+                        100.0f, List.of(fireChestplate), EnchantmentCombatService.DamageType.GENERIC),
+                0.0001f);
+    }
+
+    @Test
+    void appliesProjectileAndExplosionProtectionAlongsideArmorPoints() {
+        ItemStack projectileLeggings = new ItemStack("minecraft:iron_leggings", 1, 1,
+                Map.of("minecraft:projectile_protection", 3));
+        ItemStack blastChestplate = new ItemStack("minecraft:diamond_chestplate", 1, 1,
+                Map.of("minecraft:blast_protection", 2));
+
+        // Iron leggings: 5 armor points (20%), then EPF 6 (24%).
+        assertEquals(60.8f, EnchantmentCombatService.applyIncomingDamage(
+                100.0f, List.of(projectileLeggings),
+                EnchantmentCombatService.DamageType.PROJECTILE), 0.0001f);
+        // Diamond chestplate: 8 armor points (32%), then EPF 4 (16%).
+        assertEquals(57.12f, EnchantmentCombatService.applyIncomingDamage(
+                100.0f, List.of(blastChestplate),
+                EnchantmentCombatService.DamageType.EXPLOSION), 0.0001f);
+    }
+
+    @Test
     void rejectsInvalidArmorDamageAndNullPieces() {
         assertThrows(IllegalArgumentException.class, () ->
                 EnchantmentCombatService.applyArmorReduction(Float.POSITIVE_INFINITY, List.of()));
         assertThrows(NullPointerException.class, () ->
                 EnchantmentCombatService.applyArmorReduction(4.0f, java.util.Arrays.asList((ItemStack) null)));
+        assertThrows(NullPointerException.class, () ->
+                EnchantmentCombatService.applyIncomingDamage(4.0f, List.of(), null));
     }
 
     @Test

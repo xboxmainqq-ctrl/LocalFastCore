@@ -1162,6 +1162,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             respawnPlayer(message.networkId(), state);
             return;
         }
+        if (action.action() == BedrockPlayerActionCodec.ACTION_START_USING_ITEM && !state.dead) {
+            ItemStack held = state.inventory.heldItem().orElse(null);
+            if (isSpear(held)) {
+                clearSpearCharge(state);
+                state.spearChargeStartedNanos = nanoTime.getAsLong();
+                state.spearChargeSlot = state.inventory.selectedHotbarSlot();
+                state.spearChargeItemId = held.itemId();
+            }
+            return;
+        }
         if (action.action() == BedrockPlayerActionCodec.ACTION_DROP_ITEM && !state.dead) {
             // The protocol-2225 PlayerAction DROP_ITEM action drops one item from
             // the selected hotbar slot. The client never chooses the item/count:
@@ -2844,6 +2854,29 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             String networkId, SessionState state,
             BedrockInventoryTransactionCodec.DecodedItemRelease release
     ) {
+        if (release.actionType() == 0) {
+            clearSpearCharge(state);
+        } else if (release.actionType() == 1
+                && state.spearChargeStartedNanos != Long.MIN_VALUE) {
+            ItemStack chargeItem = state.inventory.getSlot(state.spearChargeSlot).orElse(null);
+            ItemStack releasedItem = release.heldItem().orElse(null);
+            double headDx = release.headX() - state.positionX;
+            double headDy = release.headY() - (state.positionY + 1.62);
+            double headDz = release.headZ() - state.positionZ;
+            boolean validChargeRelease = state.spearChargeSlot == release.hotbarSlot()
+                    && state.spearChargeSlot == state.inventory.selectedHotbarSlot()
+                    && chargeItem != null && isSpear(chargeItem)
+                    && chargeItem.itemId().equals(state.spearChargeItemId)
+                    && chargeItem.equals(releasedItem)
+                    && headDx * headDx + headDy * headDy + headDz * headDz <= 4.0;
+            if (validChargeRelease) {
+                state.spearChargeReleasedNanos = nanoTime.getAsLong();
+            } else {
+                clearSpearCharge(state);
+            }
+        } else {
+            clearSpearCharge(state);
+        }
         if (!state.usingItem) return;
         if (release.actionType() == 0) {
             clearUsingItem(state);
@@ -2894,10 +2927,51 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private static void clearUsingItem(SessionState state) {
+        clearSpearCharge(state);
         state.usingItem = false;
         state.usingItemSlot = -1;
         state.usingItemRuntimeId = 0;
         state.usingItemStartedNanos = 0;
+    }
+
+    private static void clearSpearCharge(SessionState state) {
+        state.spearChargeStartedNanos = Long.MIN_VALUE;
+        state.spearChargeReleasedNanos = Long.MIN_VALUE;
+        state.spearChargeSlot = -1;
+        state.spearChargeItemId = null;
+    }
+
+    private static ru.nexora.combat.SpearChargeCombatService.ChargeEffect consumeSpearCharge(
+            SessionState attacker, ItemStack weapon,
+            double targetVelocityX, double targetVelocityY, double targetVelocityZ, long nowNanos
+    ) {
+        if (!isSpear(weapon) || attacker.spearChargeStartedNanos == Long.MIN_VALUE
+                || attacker.spearChargeReleasedNanos == Long.MIN_VALUE
+                || attacker.spearChargeSlot != attacker.inventory.selectedHotbarSlot()
+                || !weapon.itemId().equals(attacker.spearChargeItemId)
+                || nowNanos < attacker.spearChargeReleasedNanos
+                || nowNanos - attacker.spearChargeReleasedNanos > 750_000_000L
+                || nowNanos - attacker.spearChargeStartedNanos < 50_000_000L) {
+            return null;
+        }
+        PlayerPhysics.State physics = attacker.physicsState;
+        double attackerVelocityX = physics == null ? 0.0 : physics.velocityX();
+        double attackerVelocityY = physics == null ? 0.0 : physics.velocityY();
+        double attackerVelocityZ = physics == null ? 0.0 : physics.velocityZ();
+        double yaw = Math.toRadians(attacker.yaw);
+        double pitch = Math.toRadians(attacker.pitch);
+        double horizontalLook = Math.cos(pitch);
+        var effect = ru.nexora.combat.SpearChargeCombatService.resolve(
+                weapon,
+                new ru.nexora.combat.SpearChargeCombatService.Vector(
+                        attackerVelocityX, attackerVelocityY, attackerVelocityZ),
+                new ru.nexora.combat.SpearChargeCombatService.Vector(
+                        targetVelocityX, targetVelocityY, targetVelocityZ),
+                new ru.nexora.combat.SpearChargeCombatService.Vector(
+                        -Math.sin(yaw) * horizontalLook, -Math.sin(pitch),
+                        Math.cos(yaw) * horizontalLook));
+        clearSpearCharge(attacker);
+        return effect;
     }
 
     private void handleItemUseTransaction(
@@ -3767,6 +3841,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             sendPackets(networkId, reconciliation, true);
             return;
         }
+        if (state.spearChargeSlot != -1 && state.spearChargeSlot != equipment.hotbarSlot()) {
+            clearSpearCharge(state);
+        }
         state.inventory.selectHotbarSlot(equipment.hotbarSlot());
     }
 
@@ -3953,6 +4030,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private final ReentrantLock combatLock = new ReentrantLock();
         private long lastAttackNanos = Long.MIN_VALUE;
         private long lastCombatDamageNanos = Long.MIN_VALUE;
+        private long spearChargeStartedNanos = Long.MIN_VALUE;
+        private long spearChargeReleasedNanos = Long.MIN_VALUE;
+        private int spearChargeSlot = -1;
+        private String spearChargeItemId;
         private long fireUntilNanos = Long.MIN_VALUE;
         private long nextFireDamageNanos = Long.MIN_VALUE;
         private PlayerInventory inventory = new PlayerInventory();

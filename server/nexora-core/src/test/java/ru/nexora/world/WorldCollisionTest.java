@@ -5,6 +5,11 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class WorldCollisionTest {
+    private World world() {
+        World world = world();
+        world.getChunk(0, 0);
+        return world;
+    }
     @Test
     void allowsWalkingOnTopOfGeneratedGround() {
         World world = new World("NEXORA", 1L, new FlatWorldGenerator());

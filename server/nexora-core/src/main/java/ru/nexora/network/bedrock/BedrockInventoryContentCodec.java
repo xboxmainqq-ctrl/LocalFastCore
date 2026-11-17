@@ -16,6 +16,9 @@ import java.util.Objects;
 public final class BedrockInventoryContentCodec {
     public static final int INVENTORY_CONTENT_PACKET_ID = 0x31;
     public static final int PLAYER_INVENTORY_CONTAINER_ID = 0;
+    public static final int PLAYER_UI_CONTAINER_ID = 124;
+    public static final int PLAYER_UI_SIZE = 51;
+    public static final int CRAFTING_INPUT_SLOT_TYPE = 13;
     public static final int PLAYER_INVENTORY_CONTAINER_NAME = 29; // InventoryContainer
 
     private BedrockInventoryContentCodec() {
@@ -53,6 +56,45 @@ public final class BedrockInventoryContentCodec {
         out.byteValue(12); // HOTBAR_AND_INVENTORY
         out.byteValue(1);  // dynamic ID is present, including the player container ID 0
         out.int32(PLAYER_INVENTORY_CONTAINER_ID);
+        writeEmptyStorageItem(out);
+        return new BedrockPacket(INVENTORY_CONTENT_PACKET_ID, 0, 0, out.toByteArray());
+    }
+
+    /**
+     * Encodes the 51-slot player UI inventory, including the 2x2 crafting grid at slots 28..31.
+     * The FullContainerName is CRAFTING_INPUT (13), matching Bedrock's player UI inventory.
+     */
+    public static BedrockPacket createPlayerUiInventory(
+            ru.nexora.inventory.ContainerInventory inventory,
+            ItemDefinitionResolver itemDefinitionResolver
+    ) {
+        Objects.requireNonNull(inventory, "inventory");
+        Objects.requireNonNull(itemDefinitionResolver, "itemDefinitionResolver");
+        if (inventory.size() != PLAYER_UI_SIZE) {
+            throw new IllegalArgumentException("Player UI inventory must contain 51 slots");
+        }
+
+        var slots = inventory.snapshot();
+        Writer out = new Writer();
+        out.varUInt32(PLAYER_UI_CONTAINER_ID);
+        out.varUInt32(slots.size());
+        for (var optionalStack : slots) {
+            ItemStack stack = optionalStack.orElse(null);
+            out.varInt32(stack == null ? 0 : 1);
+            if (stack == null) {
+                writeStack(out, 0, 0, 0, 0, new byte[0]);
+            } else {
+                ItemDefinition definition = itemDefinitionResolver.resolve(stack.itemId());
+                if (definition == null) {
+                    throw new IllegalArgumentException(
+                            "No Bedrock item definition registered for " + stack.itemId());
+                }
+                writeStack(out, definition.runtimeItemId(), stack.count(),
+                        definition.auxValue(), definition.blockRuntimeId(), definition.userData());
+            }
+        }
+        out.byteValue(CRAFTING_INPUT_SLOT_TYPE);
+        out.byteValue(0); // dynamic ID is absent
         writeEmptyStorageItem(out);
         return new BedrockPacket(INVENTORY_CONTENT_PACKET_ID, 0, 0, out.toByteArray());
     }

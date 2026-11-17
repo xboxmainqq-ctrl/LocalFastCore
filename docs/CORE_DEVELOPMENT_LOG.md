@@ -135,3 +135,8 @@ The Core is ready only after automated tests cover clean installation, world cre
 - Added a regression test with nine hostile mobs: eight can begin new routes in the first tick, the ninth is deferred, and the deferred mob gets a route on the next tick after cached paths stop consuming search budget.
 - Commit: 4fd102078a5b4f0e8c60049f2693eeafc7d81ec6.
 - Verification: committed but not executed because GitHub Actions still fails before allocating a runner (runner_id=0, empty step list). Load testing of the budget remains outstanding.
+### 2026-11-17 — failed-route backoff and budget regression coverage
+- Added a ten-tick retry backoff for unreachable paths so mobs trapped by permanent obstacles do not consume a new 512-node search reservation every tick. If a cached waypoint becomes blocked, the controller retries on the next server tick; a changed target block bypasses the old target's backoff.
+- Added an explicit assertion that a remembered but unseen target never produces an attack intent.
+- Commits: ae26b762b3f8204bbfe1092346949bab43551945 (route backoff), 4715d507445bd4f53d2e38813ec5cfd43d1c222b (memory safety assertion).
+- The shared 4,096-reserved-node per-tick budget and nine-mob deferral test are in commit 4fd102078a5b4f0e8c60049f2693eeafc7d81ec6. Aggregate load tests remain outstanding.

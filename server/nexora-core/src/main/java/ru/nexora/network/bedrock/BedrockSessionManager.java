@@ -1882,6 +1882,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             return false;
         }
         if (nowMillis < nextMobAttackMillis.getOrDefault(mob.runtimeId(), 0L)) return true;
+        if (mobArrows.size() >= 2_000) return true;
         double speed = 1.8;
         double aimY = dy + distance * 0.025;
         double aimLength = Math.sqrt(dx * dx + aimY * aimY + dz * dz);

@@ -30,7 +30,9 @@ public final class BedrockItemStackUserDataCodec {
             Map.entry("minecraft:mending", 26), Map.entry("minecraft:impaling", 29),
             Map.entry("minecraft:riptide", 30),
             Map.entry("minecraft:loyalty", 31), Map.entry("minecraft:channeling", 32),
-            Map.entry("minecraft:multishot", 33), Map.entry("minecraft:piercing", 34)
+            Map.entry("minecraft:multishot", 33), Map.entry("minecraft:piercing", 34),
+            Map.entry("minecraft:quick_charge", 35), Map.entry("minecraft:soul_speed", 36),
+            Map.entry("minecraft:swift_sneak", 37)
     );
     private static final Map<Integer, String> ENCHANTMENTS_BY_ID;
     static {

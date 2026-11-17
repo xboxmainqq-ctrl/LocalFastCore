@@ -130,6 +130,45 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void hostileMobMovesTowardPlayerAndDealsMeleeDamage() throws Exception {
+        AtomicLong clock = new AtomicLong(100_000_000L);
+        List<byte[]> outboundFrames = new ArrayList<>();
+        ru.nexora.world.World combatWorld = new ru.nexora.world.World(
+                "hostile-ai-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                combatWorld, (networkId, label, frame) -> outboundFrames.add(frame),
+                event -> {}, clock::get);
+        manager.onIdentity("ai-player", new NetherNetClientIdentity(
+                "ai-token", new byte[] {5}, "ai-xuid", "AiPlayer", "playfab-ai", "20CA2", null));
+        setSessionField(manager, "ai-player", "loginAuthenticated", true);
+        setSessionField(manager, "ai-player", "clientInitialized", true);
+        setSessionField(manager, "ai-player", "positionInitialized", true);
+        setSessionField(manager, "ai-player", "entityId", 105L);
+        setSessionField(manager, "ai-player", "positionX", 4.0f);
+        setSessionField(manager, "ai-player", "positionY", 65.0f);
+        setSessionField(manager, "ai-player", "positionZ", 0.0f);
+
+        var zombie = manager.spawnLivingEntity("minecraft:zombie", 20.0f, 0.0, 65.0, 0.0);
+        invokeLivingActorTick(manager, 1L);
+        var moved = combatWorld.livingEntities().find(zombie.runtimeId()).orElseThrow();
+        assertEquals(0.23, moved.x(), 0.0001);
+        assertTrue(outboundFrames.stream().flatMap(frame -> decodeOutboundAll(frame, true).stream())
+                .anyMatch(packet -> packet.packetId()
+                        == BedrockMoveActorAbsoluteCodec.MOVE_ACTOR_ABSOLUTE_PACKET_ID));
+
+        // Bring the player into melee reach; the next world AI tick must damage them.
+        setSessionField(manager, "ai-player", "positionX", 1.0f);
+        clock.addAndGet(100_000_000L);
+        invokeLivingActorTick(manager, 2L);
+        assertEquals(17.0f, manager.playerVitals("ai-player").orElseThrow().health(), 0.0001f);
+        assertTrue(outboundFrames.stream().flatMap(frame -> decodeOutboundAll(frame, true).stream())
+                .anyMatch(packet -> packet.packetId()
+                        == BedrockActorMotionCodec.SET_ACTOR_MOTION_PACKET_ID));
+        manager.close();
+    }
+
+    @Test
     void spawnsAndDamagesUndeadActorsWithSmiteFireAndKnockback() throws Exception {
         AtomicLong clock = new AtomicLong();
         List<byte[]> outboundFrames = new ArrayList<>();

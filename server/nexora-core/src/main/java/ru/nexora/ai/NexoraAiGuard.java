@@ -154,6 +154,7 @@ public final class NexoraAiGuard {
     /** Aggregate-only status suitable for operator diagnostics; no peer identifiers are exposed. */
     public synchronized Snapshot snapshot() {
         int signalledPeers = 0;
+        int flaggedPlayers = 0;
         long frames = 0;
         long bytes = 0;
         for (PeerWindow peer : peers.values()) {
@@ -161,7 +162,11 @@ public final class NexoraAiGuard {
             bytes += peer.bytes;
             if (peer.signalled) signalledPeers++;
         }
-        return new Snapshot(peers.size(), signalledPeers, frames, bytes, totalSignals);
+        for (PlayerSignals player : playerSignals.values()) {
+            if (player.horizontalSignalled || player.verticalSignalled) flaggedPlayers++;
+        }
+        return new Snapshot(peers.size(), signalledPeers, playerSignals.size(),
+                flaggedPlayers, frames, bytes, totalSignals);
     }
 
     public record GuardEvent(long framesInWindow, long bytesInWindow, String reason) {
@@ -170,11 +175,14 @@ public final class NexoraAiGuard {
         }
     }
 
-    public record Snapshot(int trackedPeers, int signalledPeers, long framesInCurrentWindows,
+    public record Snapshot(int trackedPeers, int signalledPeers, int trackedPlayers,
+                           int flaggedPlayers, long framesInCurrentWindows,
                            long bytesInCurrentWindows, long totalSignalsSinceStart) {
         public String summary() {
             return "NexoraAI Guard network observer: tracked=" + trackedPeers
                     + ", flagged=" + signalledPeers
+                    + ", trackedPlayers=" + trackedPlayers
+                    + ", suspiciousPlayers=" + flaggedPlayers
                     + ", frames(current windows)=" + framesInCurrentWindows
                     + ", bytes(current windows)=" + bytesInCurrentWindows
                     + ", signals since start=" + totalSignalsSinceStart

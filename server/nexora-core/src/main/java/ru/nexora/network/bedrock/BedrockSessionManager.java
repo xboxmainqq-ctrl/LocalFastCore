@@ -1743,20 +1743,28 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private void applyKnockback(
             String targetNetworkId, SessionState target, SessionState attacker, int level
     ) {
-        if (level <= 0 || target.physicsState == null) return;
+        if (level <= 0) return;
         double dx = target.positionX - attacker.positionX;
         double dz = target.positionZ - attacker.positionZ;
         double length = Math.hypot(dx, dz);
         if (length < 0.0001) return;
         double strength = 0.4 + 0.1 * level;
-        PlayerPhysics.State current = target.physicsState;
-        target.physicsState = new PlayerPhysics.State(
-                current.x(), current.y(), current.z(),
-                current.velocityX() + dx / length * strength,
-                Math.max(current.velocityY(), 0.1),
-                current.velocityZ() + dz / length * strength,
-                current.onGround(), current.fallDistance(), current.landedDistance());
-        sendMovementCorrection(targetNetworkId, target, target.lastInputTick);
+        double velocityX = dx / length * strength;
+        double velocityZ = dz / length * strength;
+        if (target.physicsState != null) {
+            PlayerPhysics.State current = target.physicsState;
+            target.physicsState = new PlayerPhysics.State(
+                    current.x(), current.y(), current.z(),
+                    current.velocityX() + velocityX,
+                    Math.max(current.velocityY(), 0.1),
+                    current.velocityZ() + velocityZ,
+                    current.onGround(), current.fallDistance(), current.landedDistance());
+            sendMovementCorrection(targetNetworkId, target, target.lastInputTick);
+        } else {
+            sendPacket(targetNetworkId, BedrockActorMotionCodec.createSetActorMotion(
+                    target.entityId, velocityX, 0.1, velocityZ,
+                    Math.max(0, target.lastInputTick)), true);
+        }
     }
 
     private static float baseAttackDamage(ItemStack weapon) {

@@ -41,7 +41,7 @@ public final class WorldLivingEntityManager {
                 maxHealth, x, y, z);
     }
 
-    public WorldLivingEntity spawn(
+    public synchronized WorldLivingEntity spawn(
             String identifier, WorldLivingEntity.Family family,
             float maxHealth, double x, double y, double z
     ) {

@@ -47,7 +47,7 @@ The diagnostic tracker reports repeated blocked movement after two seconds witho
 
 ### Mob AI load controller
 
-Mobs within 24 blocks of a player and mobs with an active aggro target are updated at full rate. Only distant, unprovoked mobs are deterministically staggered, with a conservative two-tick interval. Creeper and ranged special behavior is processed before the generic scheduler. Counters report full-rate and deferred decisions; they do not claim measured CPU or TPS improvement.
+Mobs within 24 blocks of a player and mobs with an active aggro target are updated at full rate. Only distant, unprovoked mobs are deterministically staggered, with a conservative two-tick interval. Creeper and ranged special behavior is processed before the generic scheduler. The scheduler shares its nearest-player result with generic decisions to avoid duplicate target scans. Species profiles adjust movement speed, melee reach, and attack damage for selected mobs. Counters report full-rate and deferred decisions; they do not claim measured CPU or TPS improvement.
 
 ## Mob spawner simulation
 
@@ -65,6 +65,10 @@ The current server-side spawner implementation provides:
 - Operator commands for placing, configuring, listing, and removing spawners.
 
 This is an initial vanilla-style simulation, not yet a claim of complete Minecraft parity. Survival item acquisition/placement, mob-spawner block-entity NBT/visual animation, exact vanilla spawn rules, full chunk lifecycle integration, and protocol-version validation still require implementation and real-client integration testing.
+
+### Mob lifecycle cleanup
+
+Manual despawn, melee death, fire death, creeper explosion, and thorns-reflection death all clear transient AI state, navigation cache entries, aggro/fuse/cooldown tracking, kill-credit references, and owned mob projectiles. Projectile despawn packets are sent so clients do not retain orphaned arrows.
 
 ## Performance verification
 

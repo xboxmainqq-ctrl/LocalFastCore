@@ -1,6 +1,8 @@
 package ru.nexora.world;
 
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Objects;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -10,8 +12,27 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /** Thread-safe registry and lifecycle owner for server-created living actors. */
 public final class WorldLivingEntityManager {
+    private static final int MAX_ENTITIES = 5_000;
     private final AtomicLong nextRuntimeId = new AtomicLong(2_000_000L);
     private final ConcurrentMap<Long, WorldLivingEntity> entities = new ConcurrentHashMap<>();
+    private final WorldLivingEntityStorage storage;
+
+    public WorldLivingEntityManager() {
+        this.storage = null;
+    }
+
+    public WorldLivingEntityManager(WorldLivingEntityStorage storage) throws IOException {
+        this.storage = Objects.requireNonNull(storage, "storage");
+        long highestRuntimeId = 1_999_999L;
+        for (WorldLivingEntity entity : storage.load()) {
+            if (entity.runtimeId() == Long.MAX_VALUE
+                    || entities.putIfAbsent(entity.runtimeId(), entity) != null) {
+                throw new IOException("Invalid or duplicate persisted living actor runtime ID");
+            }
+            highestRuntimeId = Math.max(highestRuntimeId, entity.runtimeId());
+        }
+        nextRuntimeId.set(highestRuntimeId + 1);
+    }
 
     public WorldLivingEntity spawn(
             String identifier, float maxHealth, double x, double y, double z
@@ -24,6 +45,9 @@ public final class WorldLivingEntityManager {
             String identifier, WorldLivingEntity.Family family,
             float maxHealth, double x, double y, double z
     ) {
+        if (entities.size() >= MAX_ENTITIES) {
+            throw new IllegalStateException("Living actor world cap reached");
+        }
         long runtimeId = nextRuntimeId.getAndIncrement();
         if (runtimeId <= 0 || runtimeId == Long.MAX_VALUE) {
             throw new IllegalStateException("Living actor runtime ID space exhausted");
@@ -134,6 +158,11 @@ public final class WorldLivingEntityManager {
 
     public int size() {
         return entities.size();
+    }
+
+    /** Flushes living actors to durable storage; a no-storage manager is a no-op. */
+    public synchronized void save() throws IOException {
+        if (storage != null) storage.save(snapshot());
     }
 
     public record DamageResult(

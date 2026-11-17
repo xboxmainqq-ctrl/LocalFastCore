@@ -1720,7 +1720,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         (i - (loot.drops().size() - 1) / 2.0) * 0.12, 0.18, 0.08,
                         nowMillis, WorldItemEntityManager.DEFAULT_PICKUP_DELAY_MILLIS, ownerXuid);
                 broadcastItemActor(entity, BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry));
-            } catch (IOException | RuntimeException exception) {
+            } catch (RuntimeException exception) {
                 if (entity != null) {
                     try {
                         world.itemEntities().remove(entity.runtimeId());

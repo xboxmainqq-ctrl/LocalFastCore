@@ -7,6 +7,8 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -22,10 +24,11 @@ public final class ModerationSignalAnalyzer {
     private final int duplicateThreshold;
     private final int windowTicks;
     private final int maximumHistoryPerPlayer;
-    private final Map<UUID, ArrayDeque<MessageSignal>> history = new java.util.HashMap<>();
+    private final int maximumTrackedPlayers;
+    private final Map<UUID, ArrayDeque<MessageSignal>> history = new LinkedHashMap<>();
 
     public ModerationSignalAnalyzer() {
-        this(8, 3, 200, 32);
+        this(8, 3, 200, 32, 10_000);
     }
 
     public ModerationSignalAnalyzer(
@@ -34,16 +37,28 @@ public final class ModerationSignalAnalyzer {
             int windowTicks,
             int maximumHistoryPerPlayer
     ) {
+        this(maximumMessagesPerWindow, duplicateThreshold, windowTicks, maximumHistoryPerPlayer, 10_000);
+    }
+
+    public ModerationSignalAnalyzer(
+            int maximumMessagesPerWindow,
+            int duplicateThreshold,
+            int windowTicks,
+            int maximumHistoryPerPlayer,
+            int maximumTrackedPlayers
+    ) {
         if (maximumMessagesPerWindow < 2 || maximumMessagesPerWindow > 100
                 || duplicateThreshold < 2 || duplicateThreshold > maximumHistoryPerPlayer
                 || windowTicks < 1 || maximumHistoryPerPlayer < maximumMessagesPerWindow
-                || maximumHistoryPerPlayer > 256) {
+                || maximumHistoryPerPlayer > 256 || maximumTrackedPlayers < 1
+                || maximumTrackedPlayers > 100_000) {
             throw new IllegalArgumentException("Invalid moderation analysis limits");
         }
         this.maximumMessagesPerWindow = maximumMessagesPerWindow;
         this.duplicateThreshold = duplicateThreshold;
         this.windowTicks = windowTicks;
         this.maximumHistoryPerPlayer = maximumHistoryPerPlayer;
+        this.maximumTrackedPlayers = maximumTrackedPlayers;
     }
 
     public synchronized Assessment recordChatMessage(UUID playerId, String message, long serverTick) {
@@ -53,10 +68,24 @@ public final class ModerationSignalAnalyzer {
             throw new IllegalArgumentException("Invalid moderation event");
         }
 
-        ArrayDeque<MessageSignal> events = history.computeIfAbsent(playerId, ignored -> new ArrayDeque<>());
-        if (!events.isEmpty() && serverTick < events.getLast().tick()) {
+        ArrayDeque<MessageSignal> events = history.get(playerId);
+        if (events != null && !events.isEmpty() && serverTick < events.getLast().tick()) {
             throw new IllegalArgumentException("Moderation events must be ordered by server tick");
         }
+        if (events == null) {
+            if (history.size() >= maximumTrackedPlayers) {
+                Iterator<UUID> oldest = history.keySet().iterator();
+                if (oldest.hasNext()) {
+                    oldest.next();
+                    oldest.remove();
+                }
+            }
+            events = new ArrayDeque<>();
+        } else {
+            history.remove(playerId);
+        }
+        // LinkedHashMap order is used as a bounded least-recently-used player cache.
+        history.put(playerId, events);
         events.addLast(new MessageSignal(serverTick, fingerprint(message)));
         while (events.size() > maximumHistoryPerPlayer) {
             events.removeFirst();

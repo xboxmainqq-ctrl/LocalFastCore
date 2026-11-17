@@ -3,6 +3,7 @@ name: NEXORA Core
 on:
   push:
     branches:
+      - work/nexora-ai-foundation
       - nexora/compatibility-edition
     paths:
       - "server/nexora-core/**"
@@ -18,6 +19,7 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+      - name: Set up Java 21
       - name: Set up Java 21
         uses: actions/setup-java@v4
         with:

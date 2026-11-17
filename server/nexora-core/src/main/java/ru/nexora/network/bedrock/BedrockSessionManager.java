@@ -1609,6 +1609,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
                 attacker.lastAttackNanos = now;
                 target.lastCombatDamageNanos = now;
+                broadcastPacketExcept(networkId,
+                        BedrockAnimateCodec.createSwing(attacker.entityId, BedrockAnimateCodec.MAIN_HAND));
                 PlayerPhysics.State targetPhysics = target.physicsState;
                 var chargeEffect = consumeSpearCharge(attacker, weapon,
                         targetPhysics == null ? target.velocityX : targetPhysics.velocityX(),
@@ -1706,6 +1708,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                                 : (float) attacker.physicsState.fallDistance());
         var damage = world.livingEntities().damage(target.runtimeId(), effect.damage()).orElse(null);
         if (damage == null) return;
+        broadcastPacketExcept(attackerNetworkId,
+                BedrockAnimateCodec.createSwing(attacker.entityId, BedrockAnimateCodec.MAIN_HAND));
         applySpearLunge(attackerNetworkId, attacker, weapon);
         if (damage.killed()) {
             grantMobRewards(attackerNetworkId, attacker, target, weapon == null ? 0 : weapon.enchantments().getOrDefault("minecraft:looting", 0));
@@ -3843,6 +3847,20 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 sendPacket(entry.getKey(), packet, true);
             } catch (RuntimeException exception) {
                 System.err.println("NEXORA: unable to broadcast actor packet to " + entry.getKey()
+                        + ": " + exception.getMessage());
+            }
+        }
+    }
+
+    private void broadcastPacketExcept(String excludedNetworkId, BedrockPacket packet) {
+        for (var entry : sessions.entrySet()) {
+            if (entry.getKey().equals(excludedNetworkId)) continue;
+            SessionState recipient = entry.getValue();
+            if (!recipient.clientInitialized || recipient.rejected) continue;
+            try {
+                sendPacket(entry.getKey(), packet, true);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to broadcast combat animation to " + entry.getKey()
                         + ": " + exception.getMessage());
             }
         }

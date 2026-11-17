@@ -24,10 +24,12 @@ public final class FurnaceStateStorage {
         Path root = rootDirectory.toAbsolutePath().normalize();
         Files.createDirectories(root);
         rejectSymlink(root);
-        directory = root.resolve(worldName).resolve("furnaces").normalize();
-        if (!directory.startsWith(root)) throw new IOException("Furnace path escapes storage root");
+        Path worldDirectory = root.resolve(worldName).normalize();
+        if (!worldDirectory.startsWith(root)) throw new IOException("Furnace path escapes storage root");
+        Files.createDirectories(worldDirectory);
+        rejectSymlink(worldDirectory);
+        directory = worldDirectory.resolve("furnaces");
         Files.createDirectories(directory);
-        rejectSymlink(root.resolve(worldName));
         rejectSymlink(directory);
     }
 

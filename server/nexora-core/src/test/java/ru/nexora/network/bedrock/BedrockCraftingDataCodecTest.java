@@ -84,26 +84,31 @@ class BedrockCraftingDataCodecTest {
 
     static byte[] craftingEvent(UUID id, int inputRuntimeId, int inputCount,
                                 int outputRuntimeId, int outputCount) {
+        return craftingEvent(id, inputRuntimeId, inputCount, 0, outputRuntimeId, outputCount, 0);
+    }
+
+    static byte[] craftingEvent(UUID id, int inputRuntimeId, int inputCount, long inputBlockRuntimeId,
+                                int outputRuntimeId, int outputCount, long outputBlockRuntimeId) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         out.write(0); // inventory window
         writeVarInt(out, 0); // shapeless
         writeUuidLittleEndian(out, id);
         writeVarUInt(out, 4); // small inventory crafting grid
-        writeStack(out, inputRuntimeId, inputCount);
-        writeStack(out, 0, 0);
-        writeStack(out, 0, 0);
-        writeStack(out, 0, 0);
+        writeStack(out, inputRuntimeId, inputCount, inputBlockRuntimeId);
+        writeStack(out, 0, 0, 0);
+        writeStack(out, 0, 0, 0);
+        writeStack(out, 0, 0, 0);
         writeVarUInt(out, 1); // one output
-        writeStack(out, outputRuntimeId, outputCount);
+        writeStack(out, outputRuntimeId, outputCount, outputBlockRuntimeId);
         return out.toByteArray();
     }
 
-    private static void writeStack(ByteArrayOutputStream out, int runtimeId, int count) {
+    private static void writeStack(ByteArrayOutputStream out, int runtimeId, int count, long blockRuntimeId) {
         writeShort(out, runtimeId);
         writeShort(out, count);
         writeVarUInt(out, 0); // aux
         out.write(0); // no stack net ID
-        writeVarUInt(out, 0); // block runtime ID
+        writeVarUInt(out, blockRuntimeId);
         writeVarUInt(out, 0); // user data
     }
 

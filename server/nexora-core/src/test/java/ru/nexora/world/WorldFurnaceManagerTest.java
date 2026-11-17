@@ -107,6 +107,27 @@ class WorldFurnaceManagerTest {
     }
 
     @Test
+    void preservesPendingExperienceAcrossRestartAndOutputCollection() throws Exception {
+        ContainerInventoryStorage inventoryStorage =
+                new ContainerInventoryStorage(temporaryDirectory, "NEXORA");
+        FurnaceStateStorage stateStorage = new FurnaceStateStorage(temporaryDirectory, "NEXORA");
+        WorldFurnaceManager first = new WorldFurnaceManager(inventoryStorage, stateStorage);
+        var furnace = first.getOrCreate(8, 64, 1, FurnaceService.Kind.BLAST_FURNACE);
+        furnace.setSlot(0, new ItemStack("minecraft:raw_iron", 1, 64));
+        furnace.setSlot(1, new ItemStack("minecraft:coal", 1, 64));
+        first.tick(8, 64, 1, FurnaceService.Kind.BLAST_FURNACE, 100);
+        first.saveAll();
+
+        WorldFurnaceManager restarted = new WorldFurnaceManager(inventoryStorage, stateStorage);
+        restarted.getOrCreate(8, 64, 1, FurnaceService.Kind.BLAST_FURNACE);
+        assertEquals(700, restarted.collectExperience(8, 64, 1, 1, 1));
+        restarted.save(8, 64, 1);
+        WorldFurnaceManager afterClaim = new WorldFurnaceManager(inventoryStorage, stateStorage);
+        afterClaim.getOrCreate(8, 64, 1, FurnaceService.Kind.BLAST_FURNACE);
+        assertEquals(0, afterClaim.collectExperience(8, 64, 1, 1, 1));
+    }
+
+    @Test
     void removeDeletesBothInventoryAndProgress() throws Exception {
         ContainerInventoryStorage inventoryStorage =
                 new ContainerInventoryStorage(temporaryDirectory, "NEXORA");

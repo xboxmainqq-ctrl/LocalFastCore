@@ -24,6 +24,31 @@ class SpearChargeCombatServiceTest {
     }
 
     @Test
+    void allSevenSpearTiersHaveExplicitChargeDamageValues() {
+        String[] tiers = {
+                "wooden", "golden", "stone", "copper", "iron", "diamond", "netherite"
+        };
+        float[] expectedDamage = {
+                4.20f, 4.20f, 4.92f, 4.92f, 5.70f, 6.45f, 7.20f
+        };
+        double[] expectedMultipliers = {
+                0.70, 0.70, 0.82, 0.82, 0.95, 1.075, 1.20
+        };
+
+        for (int i = 0; i < tiers.length; i++) {
+            ItemStack weapon = spear(tiers[i]);
+            assertEquals(expectedMultipliers[i], SpearChargeCombatService.multiplier(weapon), 0.0001,
+                    tiers[i] + " spear multiplier");
+            var effect = SpearChargeCombatService.resolve(
+                    weapon, new Vector(6, 0, 0), STILL, FORWARD);
+            assertEquals(expectedDamage[i], effect.damage(), 0.0001f,
+                    tiers[i] + " spear charge damage at 6 blocks/sec");
+            assertTrue(effect.hit(), tiers[i] + " spear should cross the damage threshold");
+            assertTrue(effect.knockback(), tiers[i] + " spear should cross the knockback threshold");
+        }
+    }
+
+    @Test
     void targetMovingTowardAttackerContributesToClosingSpeed() {
         ItemStack iron = spear("iron");
         var effect = SpearChargeCombatService.resolve(

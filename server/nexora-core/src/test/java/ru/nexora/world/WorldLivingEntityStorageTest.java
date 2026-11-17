@@ -40,6 +40,20 @@ class WorldLivingEntityStorageTest {
     }
 
     @Test
+    void worldAutosaveFlushesAndRestoresLivingActors() throws Exception {
+        WorldLivingEntityStorage storage = new WorldLivingEntityStorage(temp, "autosave-world");
+        World world = new World("autosave-world", 0L, new FlatWorldGenerator(),
+                0, 65, 0, null, null, null, null, storage);
+        WorldLivingEntity zombie = world.livingEntities().spawn(
+                "minecraft:zombie", 20, 8, 65, -4);
+        world.saveAll();
+
+        World restored = new World("autosave-world", 0L, new FlatWorldGenerator(),
+                0, 65, 0, null, null, null, null, storage);
+        assertEquals(zombie, restored.livingEntities().find(zombie.runtimeId()).orElseThrow());
+    }
+
+    @Test
     void rejectsChecksumCorruption() throws Exception {
         WorldLivingEntityStorage storage = new WorldLivingEntityStorage(temp, "corrupt-world");
         WorldLivingEntityManager manager = new WorldLivingEntityManager(storage);

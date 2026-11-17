@@ -144,6 +144,79 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void sendsCraftingRecipesAndSettlesOnlyValidatedCraftingEvents() throws Exception {
+        var world = new ru.nexora.world.World(
+                "NEXORA World", 0L, new ru.nexora.world.FlatWorldGenerator(), 0, 65, 0);
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
+        generator.initialize(new ECGenParameterSpec("secp384r1"));
+        KeyPair clientKey = generator.generateKeyPair();
+        List<byte[]> outboundFrames = new ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                world, null, null, null,
+                (networkId, label, frame) -> outboundFrames.add(frame), event -> {}, () -> 0L);
+        var itemRegistry = BedrockVanillaItemCatalog.createRegistry();
+        manager.setItemRegistry(itemRegistry);
+        manager.onIdentity("craft-client", new NetherNetClientIdentity(
+                "craft-game-token", clientKey.getPublic().getEncoded(), "craft-xuid",
+                "CraftPlayer", "craft-playfab", "20CA2", null));
+
+        byte[] protocol = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(2225).array();
+        BedrockPacket settings = new BedrockPacket(
+                BedrockBatchCodec.REQUEST_NETWORK_SETTINGS_PACKET_ID, 0, 0, protocol);
+        sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(settings), false, 256));
+
+        String rawClientDataToken = signClientDataToken(clientKey);
+        String certificate = "{\"chain\":[]}";
+        String chainJson = "{\"Certificate\":\"" + certificate.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                + "\",\"AuthenticationType\":0,\"Token\":\"craft-game-token\"}";
+        BedrockPacket login = new BedrockPacket(1, 0, 0,
+                loginPayload(2225, connectionRequest(chainJson, rawClientDataToken)));
+        sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(login), true, 256));
+        manager.playerInventory("craft-client").orElseThrow()
+                .setSlot(0, new ItemStack("minecraft:iron_ingot", 1, 64));
+        sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(
+                new BedrockPacket(BedrockBatchCodec.CLIENT_TO_SERVER_HANDSHAKE_PACKET_ID, 0, 0, new byte[0])
+        ), true, 256));
+        sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(
+                List.of(resourcePackResponse(2, "downloadingfinished")), true, 256));
+        sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(
+                List.of(resourcePackResponse(3, "resourcepackstackfinished")), true, 256));
+        int beforeInit = outboundFrames.size();
+        sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(
+                List.of(new BedrockPacket(0x71, 0, 0, new byte[] {1})), true, 256));
+        List<BedrockPacket> initialPackets = outboundFrames.subList(beforeInit, outboundFrames.size()).stream()
+                .flatMap(frame -> decodeOutboundAll(frame, true).stream()).toList();
+        assertTrue(initialPackets.stream().anyMatch(packet ->
+                packet.packetId() == BedrockCraftingDataCodec.CRAFTING_DATA_PACKET_ID));
+
+        var recipe = ru.nexora.inventory.CraftingRecipeRegistry.vanillaSubset()
+                .find("minecraft:iron_nuggets_from_iron_ingot");
+        int ironId = itemRegistry.findByIdentifier("minecraft:iron_ingot").networkDefinition().runtimeItemId();
+        int nuggetId = itemRegistry.findByIdentifier("minecraft:iron_nugget").networkDefinition().runtimeItemId();
+        BedrockPacket validCraft = new BedrockPacket(
+                BedrockCraftingEventCodec.CRAFTING_EVENT_PACKET_ID, 0, 0,
+                BedrockCraftingDataCodecTest.craftingEvent(recipe.uuid(), ironId, 1, nuggetId, 9));
+        sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(validCraft), true, 256));
+
+        var inventory = manager.playerInventory("craft-client").orElseThrow();
+        assertEquals(0, inventory.count("minecraft:iron_ingot"));
+        assertEquals(9, inventory.count("minecraft:iron_nugget"));
+
+        int goldNuggetId = itemRegistry.findByIdentifier("minecraft:gold_nugget")
+                .networkDefinition().runtimeItemId();
+        BedrockPacket forgedOutput = new BedrockPacket(
+                BedrockCraftingEventCodec.CRAFTING_EVENT_PACKET_ID, 0, 0,
+                BedrockCraftingDataCodecTest.craftingEvent(recipe.uuid(), ironId, 1, goldNuggetId, 9));
+        sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(forgedOutput), true, 256));
+        assertEquals(0, inventory.count("minecraft:iron_ingot"));
+        assertEquals(9, inventory.count("minecraft:iron_nugget"));
+        assertEquals(0, inventory.count("minecraft:gold_nugget"));
+        manager.close();
+    }
+
+    @Test
     void opensChestAndRoutesPersistedBedrockContainerTransactions() throws Exception {
         var containerStorage = new ContainerInventoryStorage(
                 temporaryDirectory.resolve("chest-storage"), "NEXORA_World");

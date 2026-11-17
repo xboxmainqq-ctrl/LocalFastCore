@@ -66,6 +66,26 @@ class WorldFurnaceManagerTest {
     }
 
     @Test
+    void tickAllUsesTheSpecializedFurnaceCookingProfiles() throws Exception {
+        ContainerInventoryStorage inventoryStorage =
+                new ContainerInventoryStorage(temporaryDirectory, "NEXORA");
+        FurnaceStateStorage stateStorage = new FurnaceStateStorage(temporaryDirectory, "NEXORA");
+        WorldFurnaceManager manager = new WorldFurnaceManager(inventoryStorage, stateStorage);
+
+        var blast = manager.getOrCreate(4, 64, 0, FurnaceService.Kind.BLAST_FURNACE);
+        blast.setSlot(0, new ItemStack("minecraft:raw_iron", 1, 64));
+        blast.setSlot(1, new ItemStack("minecraft:coal", 1, 64));
+        var smoker = manager.getOrCreate(5, 64, 0, FurnaceService.Kind.SMOKER);
+        smoker.setSlot(0, new ItemStack("minecraft:beef", 1, 64));
+        smoker.setSlot(1, new ItemStack("minecraft:coal", 1, 64));
+
+        manager.tickAll(100);
+
+        assertEquals(new ItemStack("minecraft:iron_ingot", 1, 64), blast.getSlot(2).orElseThrow());
+        assertEquals(new ItemStack("minecraft:cooked_beef", 1, 64), smoker.getSlot(2).orElseThrow());
+    }
+
+    @Test
     void removeDeletesBothInventoryAndProgress() throws Exception {
         ContainerInventoryStorage inventoryStorage =
                 new ContainerInventoryStorage(temporaryDirectory, "NEXORA");

@@ -810,6 +810,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             state.openContainerWindowId = windowId;
             state.openContainerType = BedrockContainerPacketCodec.WORKBENCH_TYPE;
             state.openContainerIsCraftingTable = true;
+            state.openContainerIsFurnace = false;
             state.openContainerX = x;
             state.openContainerY = y;
             state.openContainerZ = z;
@@ -848,6 +849,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             state.openContainerWindowId = windowId;
             state.openContainerType = BedrockContainerPacketCodec.CONTAINER_TYPE;
             state.openContainerIsCraftingTable = false;
+            state.openContainerIsFurnace = false;
             state.openContainerX = x;
             state.openContainerY = y;
             state.openContainerZ = z;
@@ -858,10 +860,47 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
+    private void openFurnaceWindow(String networkId, SessionState state, int x, int y, int z) {
+        if (world.getBlock(x, y, z) != BlockType.FURNACE || !isWithinBlockReach(state, x, y, z)) return;
+        WorldFurnaceManager manager = world.furnaces().orElse(null);
+        if (manager == null) return;
+        if (state.openContainerWindowId != 0) closeContainerWindow(networkId, state, true);
+        int windowId = nextContainerWindowId(state);
+        try {
+            ContainerInventory inventory = manager.getOrCreate(x, y, z);
+            BedrockPacket open = BedrockContainerPacketCodec.createOpen(
+                    windowId, BedrockContainerPacketCodec.FURNACE_TYPE, x, y, z,
+                    BedrockContainerPacketCodec.BLOCK_CONTAINER_ENTITY_ID);
+            BedrockPacket content = BedrockInventoryContentCodec.createContainerInventory(
+                    windowId, inventory, itemRegistry);
+            sendPackets(networkId, List.of(open, content), true);
+            state.openContainerWindowId = windowId;
+            state.openContainerType = BedrockContainerPacketCodec.FURNACE_TYPE;
+            state.openContainerIsCraftingTable = false;
+            state.openContainerIsFurnace = true;
+            state.openContainerX = x;
+            state.openContainerY = y;
+            state.openContainerZ = z;
+            state.openContainerInventory = inventory;
+        } catch (IOException | RuntimeException exception) {
+            System.err.println("NEXORA: unable to open furnace at " + x + "," + y + "," + z
+                    + ": " + exception.getMessage());
+        }
+    }
+
     private void closeContainerWindow(String networkId, SessionState state, boolean serverInitiated) {
         if (state.openContainerWindowId == 0) return;
         int windowId = state.openContainerWindowId;
-        if (!state.openContainerIsCraftingTable) {
+        if (state.openContainerIsFurnace) {
+            try {
+                world.furnaces().ifPresent(manager -> {
+                    try { manager.save(state.openContainerX, state.openContainerY, state.openContainerZ); }
+                    catch (IOException exception) { throw new java.io.UncheckedIOException(exception); }
+                });
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to save furnace while closing: " + exception.getMessage());
+            }
+        } else if (!state.openContainerIsCraftingTable) {
             try {
                 world.containers().ifPresent(manager -> {
                     try {
@@ -891,12 +930,17 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             return;
         }
         try {
-            WorldContainerManager manager = world.containers().orElse(null);
-            if (manager != null) {
-                manager.save(state.openContainerX, state.openContainerY, state.openContainerZ);
+            if (state.openContainerIsFurnace) {
+                world.furnaces().ifPresent(manager -> {
+                    try { manager.save(state.openContainerX, state.openContainerY, state.openContainerZ); }
+                    catch (IOException exception) { throw new java.io.UncheckedIOException(exception); }
+                });
+            } else {
+                WorldContainerManager manager = world.containers().orElse(null);
+                if (manager != null) manager.save(state.openContainerX, state.openContainerY, state.openContainerZ);
             }
-        } catch (IOException exception) {
-            System.err.println("NEXORA: unable to save closed chest: " + exception.getMessage());
+        } catch (IOException | RuntimeException exception) {
+            System.err.println("NEXORA: unable to save closed container: " + exception.getMessage());
         } finally {
             clearContainerWindow(state);
         }
@@ -941,6 +985,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.openContainerWindowId = 0;
         state.openContainerType = BedrockContainerPacketCodec.CONTAINER_TYPE;
         state.openContainerIsCraftingTable = false;
+        state.openContainerIsFurnace = false;
         state.openContainerInventory = null;
         state.openContainerX = 0;
         state.openContainerY = 0;
@@ -1398,7 +1443,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (result == ContainerInventoryTransactionService.Result.APPLIED) {
             try {
                 saveInventory(state);
-                if (!state.openContainerIsCraftingTable) {
+                if (state.openContainerIsFurnace) {
+                    WorldFurnaceManager manager = world.furnaces().orElseThrow(
+                            () -> new IllegalStateException("World furnace storage is not configured"));
+                    manager.save(state.openContainerX, state.openContainerY, state.openContainerZ);
+                } else if (!state.openContainerIsCraftingTable) {
                     WorldContainerManager manager = world.containers().orElseThrow(
                             () -> new IllegalStateException("World container storage is not configured"));
                     manager.save(state.openContainerX, state.openContainerY, state.openContainerZ);
@@ -1408,7 +1457,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 container.restore(previousContainer);
                 try {
                     saveInventory(state);
-                    if (!state.openContainerIsCraftingTable) {
+                    if (state.openContainerIsFurnace) {
+                        world.furnaces().ifPresent(manager -> {
+                            try { manager.save(state.openContainerX, state.openContainerY, state.openContainerZ); }
+                            catch (IOException rollbackFailure) { throw new java.io.UncheckedIOException(rollbackFailure); }
+                        });
+                    } else if (!state.openContainerIsCraftingTable) {
                         world.containers().ifPresent(manager -> {
                             try {
                                 manager.save(state.openContainerX, state.openContainerY, state.openContainerZ);
@@ -1883,6 +1937,18 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     return;
                 }
             }
+            if (heldDescriptorMatches && world.getBlock(targetX, targetY, targetZ) == BlockType.FURNACE
+                    && transaction.targetBlockId()
+                    == Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(BlockType.FURNACE))
+                    && isWithinBlockReach(state, targetX, targetY, targetZ)) {
+                double dx = transaction.fromX() - state.positionX;
+                double dy = transaction.fromY() - state.positionY;
+                double dz = transaction.fromZ() - state.positionZ;
+                if (dx * dx + dy * dy + dz * dz <= 2.25) {
+                    openFurnaceWindow(networkId, state, targetX, targetY, targetZ);
+                    return;
+                }
+            }
         }
         if (held == null || !matchesRegisteredItem(transaction.item(), held)
                 || !itemUseActionsMatch(transaction, held)) return;
@@ -1921,6 +1987,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case "minecraft:oak_log" -> BlockType.OAK_LOG;
             case "minecraft:oak_planks" -> BlockType.OAK_PLANKS;
             case "minecraft:crafting_table" -> BlockType.CRAFTING_TABLE;
+            case "minecraft:furnace" -> BlockType.FURNACE;
             default -> null;
         };
         if (placedType == null) return;
@@ -2829,6 +2896,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private int openContainerWindowId;
         private int openContainerType = BedrockContainerPacketCodec.CONTAINER_TYPE;
         private boolean openContainerIsCraftingTable;
+        private boolean openContainerIsFurnace;
         private int openContainerX;
         private int openContainerY;
         private int openContainerZ;

@@ -41,7 +41,7 @@ class NexoraAiRepairProposalsTest {
 
         assertEquals(NexoraAiRepairProposals.Status.REJECTED,
                 store.reject(created.id(), "reviewer-xuid").orElseThrow().status());
-        assertTrue(store.approveForManualReview(created.id()).isEmpty());
+        assertTrue(store.approveForManualReview(created.id(), "reviewer-xuid").isEmpty());
     }
 
     @Test

@@ -99,6 +99,11 @@ public final class NexoraAiAssistant {
                 + "; последняя медленная: " + s.lastSlowOperation();
     }
 
+    /** Clears only this player's selected player/operator conversation context. */
+    public void clearConversation(String playerId, boolean admin) {
+        conversationMemory.clear(playerId, admin);
+    }
+
     public AskResult ask(String playerId, String playerName, String prompt, Consumer<String> reply) {
         return ask(playerId, playerName, prompt, false, reply);
     }

@@ -20,7 +20,7 @@ class BedrockCraftingDataCodecTest {
 
         Reader in = new Reader(packet.payload());
         assertEquals(0, in.varUInt());
-        assertEquals(2, in.varUInt());
+        assertEquals(3, in.varUInt());
         for (CraftingRecipe recipe : recipes.recipes()) {
             assertEquals(recipe.id(), in.string());
             assertEquals(1, in.varUInt());

@@ -562,6 +562,71 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
+    private void handleCraftingEvent(
+            NetherNetInboundPipeline.InboundMessage message, SessionState state, BedrockPacket packet
+    ) {
+        String networkId = message.networkId();
+        if (!message.reliable()) {
+            throw new SecurityException("CraftingEvent must arrive on ReliableDataChannel");
+        }
+        if (!state.loginAuthenticated || !state.clientInitialized || state.dead) {
+            throw new SecurityException("CraftingEvent arrived before the player was ready");
+        }
+
+        BedrockCraftingEventCodec.DecodedEvent event;
+        try {
+            event = BedrockCraftingEventCodec.decode(packet, itemRegistry);
+        } catch (IllegalArgumentException exception) {
+            state.rejected = true;
+            throw new SecurityException("Malformed Bedrock CraftingEvent", exception);
+        }
+
+        CraftingRecipe recipe = craftingRecipes.findByUuid(event.recipeId());
+        if (event.windowId() != 0 || event.type() != BedrockCraftingEventCodec.TYPE_SHAPELESS
+                || recipe == null || (event.input().size() != 4 && event.input().size() != 9)
+                || event.output().size() != 1
+                || event.output().getFirst().isEmpty()
+                || !event.output().getFirst().orElseThrow().itemId().equals(recipe.result().itemId())
+                || event.output().getFirst().orElseThrow().count() != recipe.result().count()
+                || !matchesCraftingInput(recipe, event.input())) {
+            sendInventoryAndEquipmentState(networkId, state);
+            return;
+        }
+
+        List<Optional<ru.nexora.inventory.ItemStack>> before = state.inventory.snapshot();
+        int selectedSlot = state.inventory.selectedHotbarSlot();
+        CraftingService.Result result = craftingService.craft(
+                state.inventory, craftingRecipes, recipe.id(), 1);
+        if (result == CraftingService.Result.CRAFTED) {
+            try {
+                saveInventory(state);
+            } catch (IOException | RuntimeException exception) {
+                state.inventory.restore(before, selectedSlot);
+                try {
+                    saveInventory(state);
+                } catch (IOException | RuntimeException rollbackFailure) {
+                    exception.addSuppressed(rollbackFailure);
+                }
+                System.err.println("NEXORA: crafting transaction rolled back because persistence failed: "
+                        + exception.getMessage());
+            }
+        } else {
+            System.err.println("NEXORA: rejected crafting event for " + recipe.id() + ": " + result);
+        }
+        sendInventoryAndEquipmentState(networkId, state);
+    }
+
+    private static boolean matchesCraftingInput(
+            ru.nexora.inventory.CraftingRecipe recipe,
+            List<Optional<ru.nexora.inventory.ItemStack>> input
+    ) {
+        java.util.Map<String, Integer> actual = new java.util.HashMap<>();
+        for (Optional<ru.nexora.inventory.ItemStack> slot : input) {
+            if (slot.isPresent()) actual.merge(slot.orElseThrow().itemId(), 1, Integer::sum);
+        }
+        return actual.equals(recipe.ingredients());
+    }
+
     private void handleContainerClose(
             NetherNetInboundPipeline.InboundMessage message, SessionState state, BedrockPacket packet
     ) {

@@ -58,6 +58,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.UUID;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
@@ -332,6 +334,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     public void onDisconnected(String networkId) {
         SessionState state = sessions.get(networkId);
         if (state != null) {
+            removePlayerListEntry(networkId, state);
             if (state.identity != null) aiGuard.onPlayerDisconnected(state.identity.xuid());
             state.combatLock.lock();
             try {
@@ -3459,7 +3462,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (!state.identity.gameServerToken().equals(login.multiplayerToken())) {
             throw new SecurityException("Login GameServerToken does not match the verified NetherNet identity");
         }
-        verifyClientDataToken(login.rawClientDataToken(), state.identity);
+        JsonNode clientData = verifyClientDataToken(login.rawClientDataToken(), state.identity);
         if (inventoryStorage != null) {
             try {
                 var restored = inventoryStorage.loadState(state.identity.xuid());
@@ -3487,6 +3490,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.entityId = nextEntityId.getAndIncrement();
         if (state.entityId < 1) {
             throw new IllegalStateException("NEXORA entity ID space exhausted");
+        }
+        try {
+            state.playerListEntry = createPlayerListEntry(state.identity, clientData, state.entityId);
+        } catch (RuntimeException exception) {
+            // Cosmetic data must never prevent an otherwise authenticated player from joining.
+            state.playerListEntry = null;
+            System.err.println("NEXORA: player-list skin data rejected for " + state.identity.xuid()
+                    + ": " + exception.getMessage());
         }
 
         String displayName = state.identity.displayName() == null
@@ -4641,6 +4652,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             throw new SecurityException("SetLocalPlayerAsInitialized runtime ID does not match this player");
         }
         state.clientInitialized = true;
+        advertisePlayerList(message.networkId(), state);
         sendPacket(message.networkId(), BedrockBatchCodec.createPlayStatus(3), true);
         sendInitialPlayerInventory(message.networkId(), state);
         sendExistingLivingActors(message.networkId());
@@ -4908,6 +4920,87 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         throw new IllegalArgumentException("Unsigned VarLong is too long");
     }
 
+    private BedrockPlayerListCodec.AddEntry createPlayerListEntry(
+            NetherNetClientIdentity identity, JsonNode clientData, long actorUniqueId
+    ) {
+        UUID playerUuid;
+        try {
+            playerUuid = UUID.fromString(identity.identityUuid());
+        } catch (RuntimeException exception) {
+            playerUuid = UUID.nameUUIDFromBytes(
+                    ("NEXORA:" + identity.xuid()).getBytes(StandardCharsets.UTF_8));
+        }
+        String playerName = identity.displayName() == null || identity.displayName().isBlank()
+                ? "Player" : identity.displayName();
+        return new BedrockPlayerListCodec.AddEntry(
+                playerUuid,
+                actorUniqueId,
+                playerName,
+                identity.xuid(),
+                identity.playFabId(),
+                clientData.path("PlatformOnlineId").asText(""),
+                BedrockPlayerSkinCodec.buildPlatform(clientData),
+                BedrockPlayerSkinCodec.encode(clientData),
+                false,
+                false,
+                false,
+                0);
+    }
+
+    /** Sends the current player-list snapshot, then advertises this player to existing clients. */
+    private synchronized void advertisePlayerList(String networkId, SessionState joining) {
+        if (joining.playerListAdvertised || joining.playerListEntry == null) return;
+        List<BedrockPlayerListCodec.AddEntry> snapshot = new ArrayList<>();
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            if (entry.getKey().equals(networkId)) continue;
+            SessionState existing = entry.getValue();
+            if (existing.clientInitialized && existing.playerListAdvertised
+                    && existing.playerListEntry != null) {
+                snapshot.add(existing.playerListEntry);
+            }
+        }
+        snapshot.add(joining.playerListEntry);
+        try {
+            sendPacket(networkId, BedrockPlayerListCodec.createAdd(snapshot), true);
+            joining.playerListAdvertised = true;
+        } catch (RuntimeException exception) {
+            System.err.println("NEXORA: unable to send player-list snapshot to " + networkId
+                    + ": " + exception.getMessage());
+            return;
+        }
+        BedrockPacket add = BedrockPlayerListCodec.createAdd(List.of(joining.playerListEntry));
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            if (entry.getKey().equals(networkId)) continue;
+            SessionState recipient = entry.getValue();
+            if (!recipient.clientInitialized || !recipient.playerListAdvertised) continue;
+            try {
+                sendPacket(entry.getKey(), add, true);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to advertise joining player to " + entry.getKey()
+                        + ": " + exception.getMessage());
+            }
+        }
+    }
+
+    /** Removes a disconnected player from every remaining initialized client's list. */
+    private synchronized void removePlayerListEntry(String networkId, SessionState leaving) {
+        if (!leaving.playerListAdvertised || leaving.playerListEntry == null) return;
+        leaving.playerListAdvertised = false;
+        BedrockPacket remove = BedrockPlayerListCodec.createRemove(
+                List.of(leaving.playerListEntry.uuid()));
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            if (entry.getKey().equals(networkId)) continue;
+            SessionState recipient = entry.getValue();
+            if (!recipient.clientInitialized || !recipient.playerListAdvertised) continue;
+            try {
+                sendPacket(entry.getKey(), remove, true);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to remove disconnected player from " + entry.getKey()
+                        + ": " + exception.getMessage());
+            }
+        }
+    }
+
     private void sendPacket(String networkId, BedrockPacket packet, boolean compressionNegotiated) {
         sendPackets(networkId, List.of(packet), compressionNegotiated);
     }
@@ -4926,7 +5019,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
-    private static void verifyClientDataToken(String token, NetherNetClientIdentity identity) {
+    private static JsonNode verifyClientDataToken(String token, NetherNetClientIdentity identity) {
         try {
             String[] parts = token.split("\\.", -1);
             if (parts.length != 3 || parts[2].isEmpty()) {
@@ -4965,6 +5058,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             if (notBefore != null && (!notBefore.canConvertToLong() || now + 30 < notBefore.asLong())) {
                 throw new SecurityException("Client-data JWT is not active yet");
             }
+            return claims;
         } catch (SecurityException exception) {
             throw exception;
         } catch (Exception exception) {
@@ -5137,5 +5231,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 new ContainerInventory(BedrockInventoryContentCodec.PLAYER_UI_SIZE);
         private int clientProtocol;
         private NetherNetClientIdentity identity;
+        private BedrockPlayerListCodec.AddEntry playerListEntry;
+        private boolean playerListAdvertised;
     }
 }

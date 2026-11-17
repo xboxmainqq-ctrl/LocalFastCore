@@ -2698,6 +2698,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (state.dead) return;
         BedrockPlayerAuthInputCodec.PlayerInput input = BedrockPlayerAuthInputCodec.decode(packet);
         if (state.hasReceivedInput && input.tick() <= state.lastInputTick) return;
+        long inputNowNanos = nanoTime.getAsLong();
+        if (state.spearChargeStartedNanos != Long.MIN_VALUE
+                && (inputNowNanos < state.spearChargeStartedNanos
+                || inputNowNanos - state.spearChargeStartedNanos > 10_000_000_000L)) {
+            clearSpearCharge(state);
+        }
         if (input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.START_USING_ITEM)) {
             startSpearChargeIfHeld(state);
         }

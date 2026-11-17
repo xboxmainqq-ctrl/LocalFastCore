@@ -35,7 +35,7 @@ class PlayerInventoryStorageTest {
     }
 
     @Test
-    void atomicallyRoundTripsPlayerUiCraftingGridInVersionTwoFormat() throws Exception {
+    void atomicallyRoundTripsPlayerUiCraftingGridInVersionFourFormat() throws Exception {
         PlayerInventoryStorage storage = new PlayerInventoryStorage(temporaryDirectory);
         PlayerInventory inventory = new PlayerInventory();
         inventory.setSlot(0, new ItemStack("minecraft:iron_nugget", 9, 64));
@@ -53,7 +53,7 @@ class PlayerInventoryStorageTest {
                 loaded.craftingUiInventory().getSlot(28).orElseThrow());
         assertEquals(new ItemStack("minecraft:oak_log", 1, 64),
                 loaded.craftingUiInventory().getSlot(31).orElseThrow());
-        assertEquals(2, Byte.toUnsignedInt(Files.readAllBytes(
+        assertEquals(4, Byte.toUnsignedInt(Files.readAllBytes(
                 temporaryDirectory.resolve("craft-player.nxi"))[4]));
         assertEquals(9, storage.load("craft-player").orElseThrow().count("minecraft:iron_nugget"));
     }

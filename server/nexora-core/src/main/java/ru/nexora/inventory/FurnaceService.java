@@ -14,6 +14,7 @@ public final class FurnaceService {
     public static final int OUTPUT_SLOT = 2;
     public static final int COOK_TIME_TICKS = 200;
     public static final int MAX_BURN_TICKS = 16_000;
+    public static final int MAX_PENDING_EXPERIENCE_MILLI = 10_000_000;
 
     public enum Kind {
         FURNACE(200, RecipeGroup.ALL),
@@ -98,6 +99,8 @@ public final class FurnaceService {
                     consumeOneInput(inventory);
                     addOutput(inventory, recipe.result());
                     state.cookProgress = 0;
+                    state.pendingExperienceMilli = Math.min(MAX_PENDING_EXPERIENCE_MILLI,
+                            state.pendingExperienceMilli + recipe.experienceMilli());
                     changed = true;
                 }
             } else {
@@ -116,20 +119,20 @@ public final class FurnaceService {
     ) {
         if (burnTicksRemaining < 0 || burnTicksRemaining > MAX_BURN_TICKS
                 || cookProgress < 0 || cookProgress >= COOK_TIME_TICKS
-                || burnTicksTotal < burnTicksRemaining || burnTicksTotal > MAX_BURN_TICKS) {
+                || burnTicksTotal < burnTicksRemaining || burnTicksTotal > MAX_BURN_TICKS\n                || pendingExperienceMilli < 0 || pendingExperienceMilli > MAX_PENDING_EXPERIENCE_MILLI) {
             throw new IllegalArgumentException("Invalid persisted furnace state");
         }
         states.put(new Position(x, y, z),
-                new FurnaceState(burnTicksRemaining, cookProgress, burnTicksTotal));
+                new FurnaceState(burnTicksRemaining, cookProgress, burnTicksTotal, pendingExperienceMilli));
     }
 
     public synchronized FurnaceStateSnapshot snapshotState(int x, int y, int z) {
         FurnaceState state = states.get(new Position(x, y, z));
         return state == null ? new FurnaceStateSnapshot(0, 0, 0)
-                : new FurnaceStateSnapshot(state.burnTicksRemaining, state.cookProgress, state.burnTicksTotal);
+                : new FurnaceStateSnapshot(state.burnTicksRemaining, state.cookProgress, state.burnTicksTotal,\n                        state.pendingExperienceMilli);
     }
 
-    public synchronized void remove(int x, int y, int z) {
+    public synchronized int collectExperience(int x, int y, int z, int removedItems, int previousOutputCount) {\n        if (removedItems <= 0 || previousOutputCount <= 0) return 0;\n        FurnaceState state = states.get(new Position(x, y, z));\n        if (state == null || state.pendingExperienceMilli == 0) return 0;\n        int collected = removedItems >= previousOutputCount ? state.pendingExperienceMilli\n                : (int) ((long) state.pendingExperienceMilli * removedItems / previousOutputCount);\n        state.pendingExperienceMilli -= collected;\n        return collected;\n    }\n\n    public synchronized void restorePendingExperience(int x, int y, int z, int amount) {\n        if (amount < 0) throw new IllegalArgumentException("Experience rollback amount cannot be negative");\n        FurnaceState state = states.computeIfAbsent(new Position(x, y, z), ignored -> new FurnaceState());\n        state.pendingExperienceMilli = Math.min(MAX_PENDING_EXPERIENCE_MILLI,\n                state.pendingExperienceMilli + amount);\n    }\n\n    public synchronized void remove(int x, int y, int z) {
         states.remove(new Position(x, y, z));
     }
 
@@ -157,16 +160,16 @@ public final class FurnaceService {
 
     private static Map<String, SmeltingRecipe> recipes() {
         Map<String, SmeltingRecipe> recipes = new HashMap<>();
-        addRecipe(recipes, "minecraft:raw_iron", "minecraft:iron_ingot", RecipeGroup.METALS);
-        addRecipe(recipes, "minecraft:raw_gold", "minecraft:gold_ingot", RecipeGroup.METALS);
-        addRecipe(recipes, "minecraft:raw_copper", "minecraft:copper_ingot", RecipeGroup.METALS);
-        addRecipe(recipes, "minecraft:potato", "minecraft:baked_potato", RecipeGroup.FOOD);
-        addRecipe(recipes, "minecraft:beef", "minecraft:cooked_beef", RecipeGroup.FOOD);
-        addRecipe(recipes, "minecraft:chicken", "minecraft:cooked_chicken", RecipeGroup.FOOD);
-        addRecipe(recipes, "minecraft:salmon", "minecraft:cooked_salmon", RecipeGroup.FOOD);
-        addRecipe(recipes, "minecraft:cod", "minecraft:cooked_cod", RecipeGroup.FOOD);
-        addRecipe(recipes, "minecraft:rabbit", "minecraft:cooked_rabbit", RecipeGroup.FOOD);
-        addRecipe(recipes, "minecraft:mutton", "minecraft:cooked_mutton", RecipeGroup.FOOD);
+        addRecipe(recipes, "minecraft:raw_iron", "minecraft:iron_ingot", RecipeGroup.METALS, 700);
+        addRecipe(recipes, "minecraft:raw_gold", "minecraft:gold_ingot", RecipeGroup.METALS, 1000);
+        addRecipe(recipes, "minecraft:raw_copper", "minecraft:copper_ingot", RecipeGroup.METALS, 700);
+        addRecipe(recipes, "minecraft:potato", "minecraft:baked_potato", RecipeGroup.FOOD, 350);
+        addRecipe(recipes, "minecraft:beef", "minecraft:cooked_beef", RecipeGroup.FOOD, 350);
+        addRecipe(recipes, "minecraft:chicken", "minecraft:cooked_chicken", RecipeGroup.FOOD, 350);
+        addRecipe(recipes, "minecraft:salmon", "minecraft:cooked_salmon", RecipeGroup.FOOD, 350);
+        addRecipe(recipes, "minecraft:cod", "minecraft:cooked_cod", RecipeGroup.FOOD, 350);
+        addRecipe(recipes, "minecraft:rabbit", "minecraft:cooked_rabbit", RecipeGroup.FOOD, 350);
+        addRecipe(recipes, "minecraft:mutton", "minecraft:cooked_mutton", RecipeGroup.FOOD, 350);
         return Map.copyOf(recipes);
     }
 
@@ -177,12 +180,12 @@ public final class FurnaceService {
     }
 
     private record Position(int x, int y, int z) { }
-    private record SmeltingRecipe(String input, ItemStack result, RecipeGroup group) { }
+    private record SmeltingRecipe(String input, ItemStack result, RecipeGroup group, int experienceMilli) { }
 
     private static final class FurnaceState {
         private int burnTicksRemaining;
         private int cookProgress;
-        private int burnTicksTotal;
+        private int burnTicksTotal;\n        private int pendingExperienceMilli;
 
         private FurnaceState() { }
         private FurnaceState(int burnTicksRemaining, int cookProgress, int burnTicksTotal) {
@@ -192,7 +195,7 @@ public final class FurnaceService {
         }
     }
 
-    public record FurnaceStateSnapshot(int burnTicksRemaining, int cookProgress, int burnTicksTotal) { }
+    public record FurnaceStateSnapshot(int burnTicksRemaining, int cookProgress, int burnTicksTotal,\n                                       int pendingExperienceMilli) {\n        public FurnaceStateSnapshot(int burnTicksRemaining, int cookProgress, int burnTicksTotal) {\n            this(burnTicksRemaining, cookProgress, burnTicksTotal, 0);\n        }\n    }
     public record TickResult(int burnTicksRemaining, int cookProgress, int cookPercent, boolean inventoryChanged,
                              int burnTicksTotal) { }
 }

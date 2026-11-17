@@ -20,6 +20,17 @@ class BedrockContainerPacketCodecTest {
     }
 
     @Test
+    void encodesFurnaceWindowWithProtocolContainerType() {
+        BedrockPacket packet = BedrockContainerPacketCodec.createOpen(
+                8, BedrockContainerPacketCodec.FURNACE_TYPE, 12, 64, -4,
+                BedrockContainerPacketCodec.BLOCK_CONTAINER_ENTITY_ID);
+
+        assertEquals(0x2e, packet.packetId());
+        assertEquals(8, Byte.toUnsignedInt(packet.payload()[0]));
+        assertEquals(2, Byte.toUnsignedInt(packet.payload()[1]));
+    }
+
+    @Test
     void encodesCloseWithProtocol2225TypeAndServerFlag() {
         BedrockPacket packet = BedrockContainerPacketCodec.createClose(7, 0, true);
 

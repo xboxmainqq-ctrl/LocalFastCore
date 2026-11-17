@@ -44,6 +44,12 @@ class BedrockVanillaItemCatalogTest {
         assertEquals(54, registry.findByIdentifier("minecraft:chest").networkDefinition().runtimeItemId());
         assertEquals(Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.CHEST)),
                 registry.findByIdentifier("minecraft:chest").networkDefinition().blockRuntimeId());
+        assertEquals(17, registry.findByIdentifier("minecraft:oak_log").networkDefinition().runtimeItemId());
+        assertEquals(Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.OAK_LOG)),
+                registry.findByIdentifier("minecraft:oak_log").networkDefinition().blockRuntimeId());
+        assertEquals(5, registry.findByIdentifier("minecraft:oak_planks").networkDefinition().runtimeItemId());
+        assertEquals(Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.OAK_PLANKS)),
+                registry.findByIdentifier("minecraft:oak_planks").networkDefinition().blockRuntimeId());
         assertEquals(Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.COBBLESTONE)),
                 registry.findByIdentifier("minecraft:cobblestone").networkDefinition().blockRuntimeId());
 

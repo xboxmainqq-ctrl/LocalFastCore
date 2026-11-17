@@ -56,6 +56,21 @@ class LivingEntityAiServiceTest {
     }
 
     @Test
+    void speciesProfilesAdjustMovementSpeedReachAndDamage() {
+        assertTrue(LivingEntityAiService.movementSpeedFor("minecraft:horse")
+                > LivingEntityAiService.movementSpeedFor("minecraft:turtle"));
+        assertEquals(3.0, LivingEntityAiService.attackRangeFor("minecraft:enderman"));
+        assertEquals(2.5, LivingEntityAiService.attackRangeFor("minecraft:iron_golem"));
+        assertEquals(6.0f, LivingEntityAiService.attackDamageFor("minecraft:ravager"));
+        assertEquals(2.0f, LivingEntityAiService.attackDamageFor("minecraft:bee"));
+
+        WorldLivingEntity enderman = new WorldLivingEntityManager().spawn(
+                "minecraft:enderman", 40, 0, 64, 0);
+        var player = new LivingEntityAiService.PlayerTarget("player", 2.5, 64, 0, true);
+        assertTrue(ai.decide(enderman, List.of(player), 1_000, 0).attack());
+    }
+
+    @Test
     void passiveMobsAndPlayersOutsideAcquireRangeRemainIdle() {
         WorldLivingEntity cow = new WorldLivingEntityManager().spawn(
                 "minecraft:cow", 10, 0, 64, 0);

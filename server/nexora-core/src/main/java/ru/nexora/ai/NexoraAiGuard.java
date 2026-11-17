@@ -1,0 +1,132 @@
+package ru.nexora.ai;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Consumer;
+
+/**
+ * Bounded, provider-independent network anomaly observer.
+ *
+ * It records per-peer inbound frame/byte volume in fixed monotonic windows.
+ * Signals are evidence for human review only: this class never disconnects,
+ * throttles, or punishes a peer.
+ */
+public final class NexoraAiGuard {
+    public static final long DEFAULT_WINDOW_NANOS = 5_000_000_000L;
+    public static final int DEFAULT_MAX_FRAMES_PER_WINDOW = 300;
+    public static final long DEFAULT_MAX_BYTES_PER_WINDOW = 1_048_576L;
+    public static final int DEFAULT_MAX_TRACKED_PEERS = 1_024;
+
+    private final long windowNanos;
+    private final int maxFramesPerWindow;
+    private final long maxBytesPerWindow;
+    private final int maxTrackedPeers;
+    private final Consumer<GuardEvent> eventSink;
+    private final LinkedHashMap<String, PeerWindow> peers = new LinkedHashMap<>();
+    private long totalSignals;
+
+    public NexoraAiGuard() {
+        this(DEFAULT_WINDOW_NANOS, DEFAULT_MAX_FRAMES_PER_WINDOW,
+                DEFAULT_MAX_BYTES_PER_WINDOW, DEFAULT_MAX_TRACKED_PEERS, ignored -> { });
+    }
+
+    public NexoraAiGuard(long windowNanos, int maxFramesPerWindow, long maxBytesPerWindow,
+                         int maxTrackedPeers, Consumer<GuardEvent> eventSink) {
+        if (windowNanos < 1 || maxFramesPerWindow < 1 || maxBytesPerWindow < 1
+                || maxTrackedPeers < 1) {
+            throw new IllegalArgumentException("Guard limits must be positive");
+        }
+        this.windowNanos = windowNanos;
+        this.maxFramesPerWindow = maxFramesPerWindow;
+        this.maxBytesPerWindow = maxBytesPerWindow;
+        this.maxTrackedPeers = maxTrackedPeers;
+        this.eventSink = Objects.requireNonNull(eventSink, "eventSink");
+    }
+
+    /** Records one received transport frame. The peer key is never included in aggregate summaries. */
+    public void recordInboundFrame(String peerId, int frameBytes, long nowNanos) {
+        Objects.requireNonNull(peerId, "peerId");
+        if (peerId.isBlank() || frameBytes < 0) throw new IllegalArgumentException("Invalid inbound frame");
+        GuardEvent event = null;
+        synchronized (this) {
+            PeerWindow window = peers.get(peerId);
+            if (window == null) {
+                if (peers.size() >= maxTrackedPeers) {
+                    String eldest = peers.keySet().iterator().next();
+                    peers.remove(eldest);
+                }
+                window = new PeerWindow(nowNanos);
+                peers.put(peerId, window);
+            } else if (nowNanos < window.startedAtNanos
+                    || nowNanos - window.startedAtNanos >= windowNanos) {
+                window.reset(nowNanos);
+            }
+
+            window.frames++;
+            window.bytes += frameBytes;
+            if (!window.signalled && (window.frames > maxFramesPerWindow
+                    || window.bytes > maxBytesPerWindow)) {
+                window.signalled = true;
+                totalSignals++;
+                String reason = window.frames > maxFramesPerWindow
+                        ? "frame-rate threshold exceeded" : "inbound-byte threshold exceeded";
+                event = new GuardEvent(window.frames, window.bytes, reason);
+            }
+        }
+        if (event != null) eventSink.accept(event);
+    }
+
+    public synchronized void onDisconnected(String peerId) {
+        if (peerId != null) peers.remove(peerId);
+    }
+
+    /** Aggregate-only status suitable for operator diagnostics; no peer identifiers are exposed. */
+    public synchronized Snapshot snapshot() {
+        int signalledPeers = 0;
+        long frames = 0;
+        long bytes = 0;
+        for (PeerWindow peer : peers.values()) {
+            frames += peer.frames;
+            bytes += peer.bytes;
+            if (peer.signalled) signalledPeers++;
+        }
+        return new Snapshot(peers.size(), signalledPeers, frames, bytes, totalSignals);
+    }
+
+    public record GuardEvent(int framesInWindow, long bytesInWindow, String reason) {
+        public GuardEvent {
+            Objects.requireNonNull(reason, "reason");
+        }
+    }
+
+    public record Snapshot(int trackedPeers, int signalledPeers, long framesInCurrentWindows,
+                           long bytesInCurrentWindows, long totalSignalsSinceStart) {
+        public String summary() {
+            return "NexoraAI Guard network observer: tracked=" + trackedPeers
+                    + ", flagged=" + signalledPeers
+                    + ", frames(current windows)=" + framesInCurrentWindows
+                    + ", bytes(current windows)=" + bytesInCurrentWindows
+                    + ", signals since start=" + totalSignalsSinceStart
+                    + ". Signals are review-only; no automatic punishment is applied.";
+        }
+    }
+
+    private static final class PeerWindow {
+        private long startedAtNanos;
+        private int frames;
+        private long bytes;
+        private boolean signalled;
+
+        private PeerWindow(long startedAtNanos) {
+            this.startedAtNanos = startedAtNanos;
+        }
+
+        private void reset(long nowNanos) {
+            startedAtNanos = nowNanos;
+            frames = 0;
+            bytes = 0;
+            signalled = false;
+        }
+    }
+}

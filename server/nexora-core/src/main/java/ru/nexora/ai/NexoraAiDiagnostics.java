@@ -68,10 +68,6 @@ public final class NexoraAiDiagnostics {
         return result.toString();
     }
 
-    private void recordEvent(String type, String description) {
-        String safeDescription = bound(sanitize(description), 240);
-    }
-
     private static String sanitize(String value) {
         return value
                 .replaceAll("(?i)(bearer\\s+)[A-Za-z0-9._~+/-]+=*", "$1[REDACTED]")

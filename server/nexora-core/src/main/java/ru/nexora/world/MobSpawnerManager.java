@@ -33,9 +33,11 @@ public final class MobSpawnerManager {
         for (MobSpawnerState stored : storage.load()) {
             MobSpawnerState state;
             try {
-                state = stored.withNextSpawnTick(safeNextTick(nowTick,
-                        Math.toIntExact(Math.min(MobSpawnerState.MAX_DELAY_TICKS, stored.nextSpawnTick()))));
-            } catch (IllegalArgumentException | ArithmeticException exception) {
+                if (stored.nextSpawnTick() > stored.delayTicks()) {
+                    throw new IllegalArgumentException("Persisted remaining delay exceeds configured delay");
+                }
+                state = stored.withNextSpawnTick(safeNextTick(nowTick, (int) stored.nextSpawnTick()));
+            } catch (IllegalArgumentException exception) {
                 throw new IOException("Invalid persisted mob spawner timer", exception);
             }
             Position position = new Position(state.x(), state.y(), state.z());

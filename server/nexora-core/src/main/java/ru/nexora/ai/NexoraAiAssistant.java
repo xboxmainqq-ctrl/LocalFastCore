@@ -114,16 +114,14 @@ public final class NexoraAiAssistant {
         Objects.requireNonNull(issue, "issue");
         Objects.requireNonNull(reply, "reply");
         String normalizedIssue = issue.trim();
-        if (normalizedIssue.isEmpty() || normalizedIssue.length() > 350) {
-            throw new IllegalArgumentException("Repair issue must contain 1..350 characters");
+        if (normalizedIssue.isEmpty() || normalizedIssue.length() > 300) {
+            throw new IllegalArgumentException("Repair issue must contain 1..300 characters");
         }
-        String prompt = "Подготовь только план диагностики и возможного исправления, НЕ выполняй действия. "
-                + "Проблема: " + normalizedIssue
-                + ". Ответь краткими разделами: наблюдения и неизвестные факты; вероятная причина; "
-                + "предлагаемые изменения (только проверяемые пути/компоненты, не выдумывай файлы); "
-                + "тесты до и после; резервная копия; откат; риск. "
-                + "Не выводи команды для автоматического выполнения, секреты и готовые патчи. "
-                + "Явно отметь, что план требует проверки исходников и ручного одобрения.";
+        String prompt = "Составь безопасный план, ничего не выполняй. Проблема: "
+                + normalizedIssue
+                + ". Укажи: факты и неизвестное; вероятную причину; проверяемые места кода (не выдумывай файлы); "
+                + "предлагаемые изменения; тесты; резервную копию; откат; риски. "
+                + "Не пиши исполняемые команды, патчи или секреты. Только рекомендации для ручной проверки.";
         return ask(requesterXuid, operatorName, prompt, true, answer -> {
             if (isProviderFailure(answer)) {
                 reply.accept(null);

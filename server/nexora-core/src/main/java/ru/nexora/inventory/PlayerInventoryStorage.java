@@ -84,10 +84,10 @@ public final class PlayerInventoryStorage {
             output.writeByte(version);
             output.writeShort(playerSlots.size());
             output.writeByte(selectedHotbarSlot);
-            writeSlots(output, playerSlots);
+            writeSlots(output, playerSlots, version);
             if (version >= CRAFTING_UI_FORMAT_VERSION) {
                 output.writeShort(uiSlots.size());
-                writeSlots(output, uiSlots);
+                writeSlots(output, uiSlots, version);
             }
         }
 
@@ -117,7 +117,7 @@ public final class PlayerInventoryStorage {
         }
     }
 
-    private static void writeSlots(DataOutputStream output, List<Optional<ItemStack>> slots) throws IOException {
+    private static void writeSlots(DataOutputStream output, List<Optional<ItemStack>> slots, int version) throws IOException {
         for (var slot : slots) {
             output.writeBoolean(slot.isPresent());
             if (slot.isEmpty()) continue;

@@ -7,11 +7,8 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Server-authoritative first-stage anvil rules.
- *
- * This model intentionally stays separate from ItemStack until protocol-2225
- * item component/NBT round-tripping is implemented. Callers must not expose
- * these results as live inventory items before that integration is complete.
+ * Server-authoritative anvil combination rules for enchanted items and books.
+ * ItemStack overloads preserve enchantment and repair-penalty metadata.
  */
 public final class AnvilService {
     public static final int MAX_SURVIVAL_COST = 39;

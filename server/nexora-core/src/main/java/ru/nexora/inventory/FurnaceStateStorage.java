@@ -44,6 +44,10 @@ public final class FurnaceStateStorage {
         if (state.burnTicksTotal() < state.burnTicksRemaining() || state.burnTicksTotal() > FurnaceService.MAX_BURN_TICKS) {
             throw new IllegalArgumentException("Invalid total furnace burn duration");
         }
+        if (state.pendingExperienceMilli() < 0
+                || state.pendingExperienceMilli() > FurnaceService.MAX_PENDING_EXPERIENCE_MILLI) {
+            throw new IllegalArgumentException("Invalid pending furnace experience");
+        }
         ByteBuffer body = ByteBuffer.allocate(BODY_V3_BYTES);
         body.putInt(MAGIC).put((byte) VERSION).putInt(x).putInt(y).putInt(z)
                 .putShort((short) state.burnTicksRemaining()).putShort((short) state.cookProgress())
@@ -74,7 +78,8 @@ public final class FurnaceStateStorage {
         if (!Files.exists(file)) return Optional.empty();
         byte[] bytes = Files.readAllBytes(file);
         if (bytes.length != BODY_V1_BYTES + Integer.BYTES
-                && bytes.length != BODY_V2_BYTES + Integer.BYTES) {
+                && bytes.length != BODY_V2_BYTES + Integer.BYTES
+                && bytes.length != BODY_V3_BYTES + Integer.BYTES) {
             throw new IOException("Invalid furnace state file size");
         }
         ByteBuffer in = ByteBuffer.wrap(bytes);

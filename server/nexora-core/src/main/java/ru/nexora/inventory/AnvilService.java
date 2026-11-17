@@ -64,7 +64,7 @@ public final class AnvilService {
         if (cost > availableLevels) return Outcome.failure(Status.INSUFFICIENT_EXPERIENCE);
 
         int nextRepairCost = Math.min(31, Math.max(base.repairCost(), sacrifice.repairCost()) * 2 + 1);
-        EnchantedItem result = new EnchantedItem(base.itemId(), 1, merged, nextRepairCost);
+        EnchantedItem result = new EnchantedItem(base.itemId(), 1, merged, nextRepairCost, base.durabilityDamage());
         return new Outcome(Status.SUCCESS, result, cost);
     }
 
@@ -76,13 +76,13 @@ public final class AnvilService {
             return Outcome.failure(Status.INCOMPATIBLE_ITEMS);
         }
         Outcome outcome = combine(
-                new EnchantedItem(base.itemId(), 1, base.enchantments(), base.repairCost()),
-                new EnchantedItem(sacrifice.itemId(), 1, sacrifice.enchantments(), sacrifice.repairCost()),
+                new EnchantedItem(base.itemId(), 1, base.enchantments(), base.repairCost(), base.durabilityDamage()),
+                new EnchantedItem(sacrifice.itemId(), 1, sacrifice.enchantments(), sacrifice.repairCost(), sacrifice.durabilityDamage()),
                 availableLevels);
         if (!outcome.successful()) return outcome;
         EnchantedItem result = outcome.result();
         return new Outcome(Status.SUCCESS,
-                new EnchantedItem(result.itemId(), 1, result.enchantments(), result.repairCost()),
+                new EnchantedItem(result.itemId(), 1, result.enchantments(), result.repairCost(), result.durabilityDamage()),
                 outcome.levelCost());
     }
 
@@ -211,11 +211,16 @@ public final class AnvilService {
         }
     }
 
-    public record EnchantedItem(String itemId, int count, Map<String, Integer> enchantments, int repairCost) {
+    public record EnchantedItem(String itemId, int count, Map<String, Integer> enchantments,
+                                int repairCost, int durabilityDamage) {
+        public EnchantedItem(String itemId, int count, Map<String, Integer> enchantments, int repairCost) {
+            this(itemId, count, enchantments, repairCost, 0);
+        }
+
         public EnchantedItem {
             Objects.requireNonNull(itemId, "itemId");
             if (!itemId.matches("[a-z0-9_.-]+:[a-z0-9_./-]+") || count != 1
-                    || repairCost < 0 || repairCost > 31) {
+                    || repairCost < 0 || repairCost > 31 || durabilityDamage < 0 || durabilityDamage > 65_535) {
                 throw new IllegalArgumentException("Invalid anvil item");
             }
             Map<String, Integer> copy = new LinkedHashMap<>();
@@ -258,7 +263,7 @@ public final class AnvilService {
 
         public ItemStack resultStack() {
             if (!successful()) throw new IllegalStateException("Anvil operation did not succeed");
-            return new ItemStack(result.itemId(), 1, 1, result.enchantments(), result.repairCost());
+            return new ItemStack(result.itemId(), 1, 1, result.enchantments(), result.repairCost(), result.durabilityDamage());
         }
     }
 }

@@ -66,6 +66,23 @@ public final class BedrockLevelChunkCodec {
         return new BedrockPacket(LEVEL_CHUNK_PACKET_ID, 0, 0, packet.toByteArray());
     }
 
+    /**
+     * Serializes one non-empty Overworld subchunk for SubChunkPacket.
+     * Subchunk Y is absolute (block Y divided by 16), from -4 through 19.
+     * Returns null for an all-air section, which uses SuccessAllAir on the wire.
+     */
+    public static byte[] createSubChunkData(WorldChunk chunk, int subChunkY) {
+        if (chunk == null) throw new IllegalArgumentException("chunk must not be null");
+        if (subChunkY < -4 || subChunkY > 19) {
+            throw new IllegalArgumentException("Overworld subchunk Y must be between -4 and 19");
+        }
+        byte[] raw = chunk.copySectionRaw(subChunkY + NEGATIVE_SUB_CHUNKS);
+        if (raw == null || isEmpty(raw)) return null;
+        Writer out = new Writer();
+        writeSubChunk(out, subChunkY, raw);
+        return out.toByteArray();
+    }
+
     private static void writeEmptySubChunk(Writer out, int sectionY) {
         out.byteValue(9); // SubChunk version 9
         out.byteValue(0); // No block layers

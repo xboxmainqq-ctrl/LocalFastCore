@@ -44,6 +44,18 @@ class LivingEntityAiServiceTest {
     }
 
     @Test
+    void usesDifferentMeleeDamageForDifferentHostileSpecies() {
+        WorldLivingEntity spider = new WorldLivingEntityManager().spawn(
+                "minecraft:spider", 16, 0, 64, 0);
+        WorldLivingEntity silverfish = new WorldLivingEntityManager().spawn(
+                "minecraft:silverfish", 8, 0, 64, 0);
+        var player = new LivingEntityAiService.PlayerTarget("player", 1, 64, 0, true);
+
+        assertEquals(2.0f, ai.decide(spider, List.of(player), 1_000, 0).attackDamage());
+        assertEquals(1.0f, ai.decide(silverfish, List.of(player), 1_000, 0).attackDamage());
+    }
+
+    @Test
     void passiveMobsAndPlayersOutsideAcquireRangeRemainIdle() {
         WorldLivingEntity cow = new WorldLivingEntityManager().spawn(
                 "minecraft:cow", 10, 0, 64, 0);

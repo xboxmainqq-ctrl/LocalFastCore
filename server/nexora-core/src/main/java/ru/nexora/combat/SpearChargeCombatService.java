@@ -46,15 +46,9 @@ public final class SpearChargeCombatService {
     }
 
     public static double multiplier(ItemStack spear) {
-        if (spear == null) return 0.0;
-        return switch (spear.itemId()) {
-            case "minecraft:wooden_spear", "minecraft:golden_spear" -> 0.70;
-            case "minecraft:stone_spear", "minecraft:copper_spear" -> 0.82;
-            case "minecraft:iron_spear" -> 0.95;
-            case "minecraft:diamond_spear" -> 1.075;
-            case "minecraft:netherite_spear" -> 1.20;
-            default -> 0.0;
-        };
+        return SpearCombatStats.forItem(spear)
+                .map(SpearCombatStats.Profile::chargeDamageMultiplier)
+                .orElse(0.0);
     }
 
     public record Vector(double x, double y, double z) {

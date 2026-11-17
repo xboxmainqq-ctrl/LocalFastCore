@@ -123,3 +123,9 @@ The Core is ready only after automated tests cover clean installation, world cre
 - Commits: 13b3c74918b8f9f9bcec6f34f8dc24ef90ade544 (bounded pathfinding), 544bf3aec507a98f9de5b93dc43d558e4d2c02d4 (waypoint precision), 87645c8ad11db2a85703357d5bfeb488f6ded046 (route regression assertion).
 - Verification: source and tests are committed, but Maven execution is not yet confirmed. Previous Actions jobs failed before reporting steps; do not claim the tests pass until a runner executes them.
 - Next Mob AI tasks: navigation across height changes, safe handling of liquids/hazards, target retention after line-of-sight loss, combat integration, and aggregate per-tick pathfinding budgets.
+### 2026-11-17 — hostile target memory and safe search behavior
+- Extended the existing MobAiController with a bounded 100-server-tick memory of the last visible player position. If line of sight is broken, the mob can continue navigating toward the last known position rather than immediately forgetting the target.
+- A remembered position is a search destination only: it never produces an attack intent. If the player despawns or the memory window expires, the mob clears its target/navigation state and returns to IDLE.
+- Added regression coverage for continuing around a newly placed two-block wall without attacking an unseen target, and for forgetting the target after the memory window.
+- Commit: e761ad85fb43dfa380ec4ccb3ea9ef1b3eceae9e.
+- Verification remains blocked by GitHub Actions runner allocation: recent jobs finish with runner_id=0 and no steps. The new tests are committed but not yet executed.

@@ -34,7 +34,7 @@ Build NEXORA as an original, standalone block-world engine and dedicated server.
 - World registry, sparse chunk/block storage, generation and bounded asynchronous chunk pipeline.
 - Versioned NEXORA .nxw persistence with validation/checksums and atomic replacement.
 - Entity registry and authoritative entity tick simulation.
-- Existing MobAiController called by EntityTickEngine; PASSIVE/NEUTRAL/HOSTILE profiles, perception/line-of-sight, neutral provocation, deterministic passive wandering and bounded ground-plane A* pursuit are implemented foundations.
+- Existing MobAiController called by EntityTickEngine; PASSIVE/NEUTRAL/HOSTILE profiles, perception/line-of-sight, neutral provocation, deterministic passive wandering and bounded ground-plane A* pursuit and short-lived last-known-target memory are implemented foundations.
 - AiToolRegistry, optional CoreAiAssistant provider boundary and lifecycle module.
 - ModerationSignalAnalyzer, optional ModerationAiAssistant and lifecycle module.
 - Experimental Bedrock and NEXORA protocol/network adapters; not proof of production readiness.

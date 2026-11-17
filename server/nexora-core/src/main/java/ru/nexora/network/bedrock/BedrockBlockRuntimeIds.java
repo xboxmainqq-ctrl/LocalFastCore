@@ -34,6 +34,8 @@ public final class BedrockBlockRuntimeIds {
             case OAK_PLANKS -> hashState("minecraft:planks", Map.of("wood_type", "oak"));
             case CRAFTING_TABLE -> hashState("minecraft:crafting_table", (String) null, null);
             case FURNACE -> hashState("minecraft:furnace", "minecraft:cardinal_direction", "south");
+            case BLAST_FURNACE -> hashState("minecraft:blast_furnace", "minecraft:cardinal_direction", "south");
+            case SMOKER -> hashState("minecraft:smoker", "minecraft:cardinal_direction", "south");
         };
     }
 

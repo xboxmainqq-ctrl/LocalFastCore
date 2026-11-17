@@ -84,16 +84,25 @@ public final class LivingEntityAiService {
         double dy = target.y() - mob.y();
         double dz = target.z() - mob.z();
         double horizontal = Math.hypot(dx, dz);
+        double distanceSquared = dx * dx + dy * dy + dz * dz;
         double attackRange = attackRangeFor(mob.identifier());
-        if (dx * dx + dy * dy + dz * dz <= attackRange * attackRange) {
+        if (distanceSquared <= attackRange * attackRange) {
             if (nowMillis >= nextAttackAtMillis) {
                 return new Decision(mob.runtimeId(), target.networkId(), 0, 0, 0,
                         attackDamageFor(mob.identifier()), true);
             }
             return Decision.idle(mob.runtimeId());
         }
+        double speed = movementSpeedFor(mob.identifier());
+        if (isFlyingMob(mob.identifier())) {
+            double distance = Math.sqrt(distanceSquared);
+            if (distance < 0.0001) return Decision.idle(mob.runtimeId());
+            double step = Math.min(speed, Math.max(0, distance - 1.0));
+            return new Decision(mob.runtimeId(), target.networkId(),
+                    dx / distance * step, dy / distance * step, dz / distance * step, 0, false);
+        }
         if (horizontal < 0.0001) return Decision.idle(mob.runtimeId());
-        double step = Math.min(movementSpeedFor(mob.identifier()), Math.max(0, horizontal - 1.0));
+        double step = Math.min(speed, Math.max(0, horizontal - 1.0));
         return new Decision(mob.runtimeId(), target.networkId(),
                 dx / horizontal * step, 0, dz / horizontal * step, 0, false);
     }
@@ -108,18 +117,29 @@ public final class LivingEntityAiService {
             dz = Math.sin(angle);
             length = 1.0;
         }
+        double speed = movementSpeedFor(mob.identifier());
+        if (isFlyingMob(mob.identifier())) {
+            double vertical = mob.y() - threat.y();
+            double distance = Math.sqrt(dx * dx + vertical * vertical + dz * dz);
+            if (distance < 0.0001) return Decision.idle(mob.runtimeId());
+            return new Decision(mob.runtimeId(), threat.networkId(),
+                    dx / distance * speed, vertical / distance * speed,
+                    dz / distance * speed, 0, false);
+        }
         return new Decision(mob.runtimeId(), threat.networkId(),
-                dx / length * movementSpeedFor(mob.identifier()), 0,
-                dz / length * movementSpeedFor(mob.identifier()), 0, false);
+                dx / length * speed, 0, dz / length * speed, 0, false);
     }
 
     private Decision wander(WorldLivingEntity mob, long nowMillis) {
         long interval = nowMillis / WANDER_INTERVAL_MILLIS;
         long seed = mob.runtimeId() * 31L + interval * 0x9E3779B97F4A7C15L;
         double angle = stableAngle(seed);
+        double speed = movementSpeedFor(mob.identifier()) * 0.55;
+        double vertical = isFlyingMob(mob.identifier())
+                ? Math.sin(stableAngle(seed ^ 0x5DEECE66DL)) * speed * 0.35 : 0;
         return new Decision(mob.runtimeId(), null,
-                Math.cos(angle) * movementSpeedFor(mob.identifier()) * 0.55, 0,
-                Math.sin(angle) * movementSpeedFor(mob.identifier()) * 0.55, 0, false);
+                Math.cos(angle) * speed, vertical,
+                Math.sin(angle) * speed, 0, false);
     }
 
     private static double stableAngle(long seed) {
@@ -139,11 +159,25 @@ public final class LivingEntityAiService {
         };
     }
 
+    /** Vanilla species with free 3D movement rather than ground-bound navigation. */
+    public static boolean isFlyingMob(String identifier) {
+        return switch (identifier) {
+            case "minecraft:allay", "minecraft:bat", "minecraft:bee", "minecraft:blaze",
+                    "minecraft:ghast", "minecraft:phantom", "minecraft:vex",
+                    "minecraft:parrot", "minecraft:ender_dragon" -> true;
+            default -> false;
+        };
+    }
+
     /** Species-specific horizontal movement speed in blocks per AI update. */
     public static double movementSpeedFor(String identifier) {
         return switch (identifier) {
+            case "minecraft:phantom", "minecraft:vex", "minecraft:ender_dragon" -> 0.30;
             case "minecraft:enderman", "minecraft:horse", "minecraft:donkey",
                     "minecraft:mule", "minecraft:camel" -> 0.30;
+            case "minecraft:allay", "minecraft:bee", "minecraft:blaze",
+                    "minecraft:parrot", "minecraft:bat" -> 0.20;
+            case "minecraft:ghast" -> 0.12;
             case "minecraft:spider", "minecraft:cave_spider", "minecraft:fox",
                     "minecraft:ocelot", "minecraft:cat" -> 0.27;
             case "minecraft:iron_golem", "minecraft:ravager", "minecraft:turtle" -> 0.16;

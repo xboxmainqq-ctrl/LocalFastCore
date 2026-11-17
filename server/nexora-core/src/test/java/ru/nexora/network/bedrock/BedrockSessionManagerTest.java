@@ -137,6 +137,10 @@ class BedrockSessionManagerTest {
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
                 combatWorld, (networkId, label, frame) -> outboundFrames.add(frame), event -> {});
+        manager.setItemRegistry(new BedrockItemRegistry(List.of(
+                new BedrockItemRegistry.Entry("minecraft:rotten_flesh",
+                        new BedrockInventoryContentCodec.ItemDefinition(
+                                100, 0, 0, new byte[] {10, 0, 0, 0})))));
         manager.onIdentity("reward-killer", new NetherNetClientIdentity(
                 "reward-token", new byte[] {6}, "reward-xuid", "RewardKiller", "playfab-reward", "20CA2", null));
         setSessionField(manager, "reward-killer", "loginAuthenticated", true);
@@ -156,6 +160,9 @@ class BedrockSessionManagerTest {
         invokeActorAttack(manager, "reward-killer", attack);
 
         assertTrue(combatWorld.livingEntities().find(zombie.runtimeId()).isEmpty());
+        assertEquals(1, combatWorld.itemEntities().snapshot().size());
+        assertEquals("minecraft:rotten_flesh",
+                combatWorld.itemEntities().snapshot().getFirst().stack().itemId());
         long experienceMilli = ((Number) getSessionField(
                 manager, "reward-killer", "experiencePoints")).longValue() * 1000L
                 + ((Number) getSessionField(

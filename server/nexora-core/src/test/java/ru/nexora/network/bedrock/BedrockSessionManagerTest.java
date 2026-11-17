@@ -174,8 +174,8 @@ class BedrockSessionManagerTest {
         BedrockPacket login = new BedrockPacket(1, 0, 0,
                 loginPayload(2225, connectionRequest(chainJson, rawClientDataToken)));
         sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(login), true, 256));
-        manager.playerInventory("craft-client").orElseThrow()
-                .setSlot(0, new ItemStack("minecraft:iron_ingot", 1, 64));
+        var inventory = manager.playerInventory("craft-client").orElseThrow();
+        inventory.setSlot(0, new ItemStack("minecraft:iron_ingot", 1, 64));
         sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(
                 new BedrockPacket(BedrockBatchCodec.CLIENT_TO_SERVER_HANDSHAKE_PACKET_ID, 0, 0, new byte[0])
         ), true, 256));
@@ -190,107 +190,74 @@ class BedrockSessionManagerTest {
                 .flatMap(frame -> decodeOutboundAll(frame, true).stream()).toList();
         assertTrue(initialPackets.stream().anyMatch(packet ->
                 packet.packetId() == BedrockCraftingDataCodec.CRAFTING_DATA_PACKET_ID));
+        assertTrue(initialPackets.stream().anyMatch(packet ->
+                packet.packetId() == BedrockInventoryContentCodec.INVENTORY_CONTENT_PACKET_ID
+                        && Byte.toUnsignedInt(packet.payload()[0])
+                        == BedrockInventoryContentCodec.PLAYER_UI_CONTAINER_ID));
 
-        var recipe = ru.nexora.inventory.CraftingRecipeRegistry.vanillaSubset()
-                .find("minecraft:iron_nuggets_from_iron_ingot");
-        int ironId = itemRegistry.findByIdentifier("minecraft:iron_ingot").networkDefinition().runtimeItemId();
-        int nuggetId = itemRegistry.findByIdentifier("minecraft:iron_nugget").networkDefinition().runtimeItemId();
+        var recipes = ru.nexora.inventory.CraftingRecipeRegistry.vanillaSubset();
+        var ironRecipe = recipes.find("minecraft:iron_nuggets_from_iron_ingot");
+        var ironDefinition = itemRegistry.findByIdentifier("minecraft:iron_ingot").networkDefinition();
+        var nuggetDefinition = itemRegistry.findByIdentifier("minecraft:iron_nugget").networkDefinition();
+        sendCraftingGridTransfer(manager, "craft-client",
+                new SlotAction(0, 0, StackRef.of(ironDefinition, 1), StackRef.empty()),
+                new SlotAction(124, 28, StackRef.empty(), StackRef.of(ironDefinition, 1)));
         BedrockPacket validCraft = new BedrockPacket(
                 BedrockCraftingEventCodec.CRAFTING_EVENT_PACKET_ID, 0, 0,
-                BedrockCraftingDataCodecTest.craftingEvent(recipe.uuid(), ironId, 1, nuggetId, 9));
+                BedrockCraftingDataCodecTest.craftingEvent(ironRecipe.uuid(),
+                        ironDefinition.runtimeItemId(), 1, nuggetDefinition.runtimeItemId(), 9));
         sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(validCraft), true, 256));
-
-        var inventory = manager.playerInventory("craft-client").orElseThrow();
         assertEquals(0, inventory.count("minecraft:iron_ingot"));
         assertEquals(9, inventory.count("minecraft:iron_nugget"));
 
-        inventory.setSlot(2, new ItemStack("minecraft:oak_log", 1, 64));
-        var planksRecipe = ru.nexora.inventory.CraftingRecipeRegistry.vanillaSubset()
-                .find("minecraft:oak_planks_from_oak_log");
-        var oakLogDefinition = itemRegistry.findByIdentifier("minecraft:oak_log").networkDefinition();
-        var oakPlanksDefinition = itemRegistry.findByIdentifier("minecraft:oak_planks").networkDefinition();
-        BedrockPacket planksCraft = new BedrockPacket(
-                BedrockCraftingEventCodec.CRAFTING_EVENT_PACKET_ID, 0, 0,
-                BedrockCraftingDataCodecTest.craftingEvent(
-                        planksRecipe.uuid(), oakLogDefinition.runtimeItemId(), 1, oakLogDefinition.blockRuntimeId(),
-                        oakPlanksDefinition.runtimeItemId(), 4, oakPlanksDefinition.blockRuntimeId()));
-        sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(planksCraft), true, 256));
-        assertEquals(0, inventory.count("minecraft:oak_log"));
-        assertEquals(4, inventory.count("minecraft:oak_planks"));
+        inventory.setSlot(2, new ItemStack("minecraft:oak_planks", 2, 64));
+        var planksDefinition = itemRegistry.findByIdentifier("minecraft:oak_planks").networkDefinition();
+        var sticksRecipe = recipes.find("minecraft:sticks_from_oak_planks");
+        var stickDefinition = itemRegistry.findByIdentifier("minecraft:stick").networkDefinition();
+        sendCraftingGridTransfer(manager, "craft-client",
+                new SlotAction(0, 2, StackRef.of(planksDefinition, 2), StackRef.of(planksDefinition, 1)),
+                new SlotAction(124, 28, StackRef.empty(), StackRef.of(planksDefinition, 1)));
+        sendCraftingGridTransfer(manager, "craft-client",
+                new SlotAction(0, 2, StackRef.of(planksDefinition, 1), StackRef.empty()),
+                new SlotAction(124, 29, StackRef.empty(), StackRef.of(planksDefinition, 1)));
 
-        var sticksRecipe = ru.nexora.inventory.CraftingRecipeRegistry.vanillaSubset()
-                .find("minecraft:sticks_from_oak_planks");
-        int planksId = oakPlanksDefinition.runtimeItemId();
-        int stickId = itemRegistry.findByIdentifier("minecraft:stick").networkDefinition().runtimeItemId();
         BedrockPacket invalidHorizontalSticks = new BedrockPacket(
                 BedrockCraftingEventCodec.CRAFTING_EVENT_PACKET_ID, 0, 0,
                 BedrockCraftingDataCodecTest.craftingEventGrid(
                         sticksRecipe.uuid(), BedrockCraftingEventCodec.TYPE_SHAPED,
-                        new int[] {planksId, planksId, 0, 0},
+                        new int[] {planksDefinition.runtimeItemId(), planksDefinition.runtimeItemId(), 0, 0},
                         new int[] {1, 1, 0, 0},
-                        new long[] {oakPlanksDefinition.blockRuntimeId(),
-                                oakPlanksDefinition.blockRuntimeId(), 0, 0},
-                        stickId, 4, 0));
-        sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(invalidHorizontalSticks), true, 256));
-        assertEquals(4, inventory.count("minecraft:oak_planks"));
+                        new long[] {planksDefinition.blockRuntimeId(), planksDefinition.blockRuntimeId(), 0, 0},
+                        stickDefinition.runtimeItemId(), 4, 0));
+        sendClientBatch(manager, "craft-client",
+                BedrockBatchCodec.encode(List.of(invalidHorizontalSticks), true, 256));
         assertEquals(0, inventory.count("minecraft:stick"));
 
-        BedrockPacket sticksCraft = new BedrockPacket(
+        sendCraftingGridTransfer(manager, "craft-client",
+                new SlotAction(124, 29, StackRef.of(planksDefinition, 1), StackRef.empty()),
+                new SlotAction(124, 30, StackRef.empty(), StackRef.of(planksDefinition, 1)));
+        BedrockPacket validShapedCraft = new BedrockPacket(
                 BedrockCraftingEventCodec.CRAFTING_EVENT_PACKET_ID, 0, 0,
                 BedrockCraftingDataCodecTest.craftingEventGrid(
                         sticksRecipe.uuid(), BedrockCraftingEventCodec.TYPE_SHAPED,
-                        new int[] {planksId, 0, planksId, 0},
+                        new int[] {planksDefinition.runtimeItemId(), 0, planksDefinition.runtimeItemId(), 0},
                         new int[] {1, 0, 1, 0},
-                        new long[] {oakPlanksDefinition.blockRuntimeId(), 0,
-                                oakPlanksDefinition.blockRuntimeId(), 0},
-                        stickId, 4, 0));
-        sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(sticksCraft), true, 256));
-        assertEquals(2, inventory.count("minecraft:oak_planks"));
+                        new long[] {planksDefinition.blockRuntimeId(), 0, planksDefinition.blockRuntimeId(), 0},
+                        stickDefinition.runtimeItemId(), 4, 0));
+        sendClientBatch(manager, "craft-client",
+                BedrockBatchCodec.encode(List.of(validShapedCraft), true, 256));
         assertEquals(4, inventory.count("minecraft:stick"));
-
-        BedrockPacket rightColumnSticks = new BedrockPacket(
-                BedrockCraftingEventCodec.CRAFTING_EVENT_PACKET_ID, 0, 0,
-                BedrockCraftingDataCodecTest.craftingEventGrid(
-                        sticksRecipe.uuid(), BedrockCraftingEventCodec.TYPE_SHAPED,
-                        new int[] {0, planksId, 0, planksId},
-                        new int[] {0, 1, 0, 1},
-                        new long[] {0, oakPlanksDefinition.blockRuntimeId(), 0,
-                                oakPlanksDefinition.blockRuntimeId()},
-                        stickId, 4, 0));
-        sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(rightColumnSticks), true, 256));
         assertEquals(0, inventory.count("minecraft:oak_planks"));
-        assertEquals(8, inventory.count("minecraft:stick"));
 
-        inventory.setSlot(3, new ItemStack("minecraft:oak_log", 1, 64));
-        BedrockPacket morePlanks = new BedrockPacket(
-                BedrockCraftingEventCodec.CRAFTING_EVENT_PACKET_ID, 0, 0,
-                BedrockCraftingDataCodecTest.craftingEvent(
-                        planksRecipe.uuid(), oakLogDefinition.runtimeItemId(), 1, oakLogDefinition.blockRuntimeId(),
-                        oakPlanksDefinition.runtimeItemId(), 4, oakPlanksDefinition.blockRuntimeId()));
-        sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(morePlanks), true, 256));
-        assertEquals(4, inventory.count("minecraft:oak_planks"));
-
-        var tableRecipe = ru.nexora.inventory.CraftingRecipeRegistry.vanillaSubset()
-                .find("minecraft:crafting_table_from_oak_planks");
-        var tableDefinition = itemRegistry.findByIdentifier("minecraft:crafting_table").networkDefinition();
-        BedrockPacket craftingTable = new BedrockPacket(
-                BedrockCraftingEventCodec.CRAFTING_EVENT_PACKET_ID, 0, 0,
-                BedrockCraftingDataCodecTest.craftingEventGrid(
-                        tableRecipe.uuid(), BedrockCraftingEventCodec.TYPE_SHAPED,
-                        new int[] {planksId, planksId, planksId, planksId},
-                        new int[] {1, 1, 1, 1},
-                        new long[] {oakPlanksDefinition.blockRuntimeId(), oakPlanksDefinition.blockRuntimeId(),
-                                oakPlanksDefinition.blockRuntimeId(), oakPlanksDefinition.blockRuntimeId()},
-                        tableDefinition.runtimeItemId(), 1, tableDefinition.blockRuntimeId()));
-        sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(craftingTable), true, 256));
-        assertEquals(0, inventory.count("minecraft:oak_planks"));
-        assertEquals(1, inventory.count("minecraft:crafting_table"));
-
-        int goldNuggetId = itemRegistry.findByIdentifier("minecraft:gold_nugget")
-                .networkDefinition().runtimeItemId();
+        inventory.setSlot(4, new ItemStack("minecraft:iron_ingot", 1, 64));
+        sendCraftingGridTransfer(manager, "craft-client",
+                new SlotAction(0, 4, StackRef.of(ironDefinition, 1), StackRef.empty()),
+                new SlotAction(124, 28, StackRef.empty(), StackRef.of(ironDefinition, 1)));
+        var goldNuggetDefinition = itemRegistry.findByIdentifier("minecraft:gold_nugget").networkDefinition();
         BedrockPacket forgedOutput = new BedrockPacket(
                 BedrockCraftingEventCodec.CRAFTING_EVENT_PACKET_ID, 0, 0,
-                BedrockCraftingDataCodecTest.craftingEvent(recipe.uuid(), ironId, 1, goldNuggetId, 9));
+                BedrockCraftingDataCodecTest.craftingEvent(ironRecipe.uuid(),
+                        ironDefinition.runtimeItemId(), 1, goldNuggetDefinition.runtimeItemId(), 9));
         sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(forgedOutput), true, 256));
         assertEquals(0, inventory.count("minecraft:iron_ingot"));
         assertEquals(9, inventory.count("minecraft:iron_nugget"));

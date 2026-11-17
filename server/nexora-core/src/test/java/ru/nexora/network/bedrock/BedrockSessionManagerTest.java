@@ -54,7 +54,7 @@ class BedrockSessionManagerTest {
         setSessionField(manager, "chat-player", "clientInitialized", true);
 
         BedrockPacket clientChat = BedrockTextCodec.createChatMessage(
-                "SpoofedName", "Hello NEXORA", "spoofed-xuid", "spoofed-platform");
+                "SpoofedName", "Hello NEXORA", "trusted-xuid", "spoofed-platform");
         sendClientBatch(manager, "chat-player",
                 BedrockBatchCodec.encode(List.of(clientChat), true, 256));
 
@@ -66,7 +66,7 @@ class BedrockSessionManagerTest {
         BedrockTextCodec.DecodedChat decoded = BedrockTextCodec.decodeChat(chatPacket);
         assertEquals("TrustedPlayer", decoded.sourceName());
         assertEquals("Hello NEXORA", decoded.message());
-        assertEquals("trusted-xuid", decoded.xuid());
+        assertEquals("", decoded.xuid());
         assertEquals("", decoded.platformChatId());
         manager.close();
     }

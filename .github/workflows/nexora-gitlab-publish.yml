@@ -41,4 +41,4 @@ jobs:
           fi
           git -c http.extraheader="AUTHORIZATION: basic $(printf 'oauth2:%s' "$GITLAB_MIRROR_TOKEN" | base64 -w0)" \
             push https://gitlab.com/nerox-group4/Nerox-project.git \
-            "${SPLIT_SHA}:refs/heads/main"
+            "${SPLIT_SHA}:refs/heads/nexora-core-mirror"

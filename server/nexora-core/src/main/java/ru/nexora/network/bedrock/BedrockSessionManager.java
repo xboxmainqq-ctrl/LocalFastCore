@@ -2605,7 +2605,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         double dz = nearest.z() - mob.z();
         double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
         if (distance < 4.0 || distance > 16.0) return false;
-        if (!WorldRaycast.hasLineOfSight(world, mob.x(), mob.y() + 1.2, mob.z(),
+        if (!WorldRaycast.hasLineOfSightInLoadedChunks(world, mob.x(), mob.y() + 1.2, mob.z(),
                 (int) Math.floor(nearest.x()), (int) Math.floor(nearest.y() + 1.0),
                 (int) Math.floor(nearest.z()))) {
             return false;

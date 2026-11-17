@@ -82,6 +82,45 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void limitsAuthenticatedChatToFiveMessagesPerFiveSecondWindow() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(2_000_000_000L);
+        java.util.List<String> recipients = new java.util.ArrayList<>();
+        java.util.List<byte[]> frames = new java.util.ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("chat-rate-limit-test", 0L,
+                        new ru.nexora.world.FlatWorldGenerator()),
+                (networkId, label, frame) -> {
+                    recipients.add(networkId);
+                    frames.add(frame);
+                }, event -> {}, clock::get);
+        manager.onIdentity("rate-limited-sender", new NetherNetClientIdentity(
+                "rate-token", new byte[] {9}, "rate-xuid",
+                "RateLimited", "rate-playfab", "20CA2", null));
+        setSessionField(manager, "rate-limited-sender", "compressionNegotiated", true);
+        setSessionField(manager, "rate-limited-sender", "loginAuthenticated", true);
+        setSessionField(manager, "rate-limited-sender", "clientInitialized", true);
+
+        for (int index = 0; index < 6; index++) {
+            BedrockPacket chat = BedrockTextCodec.createChatMessage(
+                    "RateLimited", "message-" + index, "rate-xuid", "");
+            sendClientBatch(manager, "rate-limited-sender",
+                    BedrockBatchCodec.encode(java.util.List.of(chat), true, 256));
+            clock.addAndGet(100_000_000L);
+        }
+
+        long delivered = 0;
+        for (int index = 0; index < frames.size(); index++) {
+            if (!"rate-limited-sender".equals(recipients.get(index))) continue;
+            delivered += decodeOutboundPackets(frames.get(index), true).stream()
+                    .filter(packet -> packet.packetId() == BedrockTextCodec.TEXT_PACKET_ID).count();
+        }
+        assertEquals(5, delivered);
+        manager.close();
+    }
+
+    @Test
     void rejectsChatWithForgedXboxIdentity() throws Exception {
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,

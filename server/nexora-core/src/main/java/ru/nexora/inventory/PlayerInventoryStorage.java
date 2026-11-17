@@ -201,7 +201,7 @@ public final class PlayerInventoryStorage {
             inventory.selectHotbarSlot(selectedSlot);
 
             ContainerInventory uiInventory = new ContainerInventory(CRAFTING_UI_SLOT_COUNT);
-            if (version == OPTIONAL_CRAFTING_UI_FORMAT_VERSION) {
+            if (version == OPTIONAL_CRAFTING_UI_FORMAT_VERSION || version == ITEM_DURABILITY_FORMAT_VERSION) {
                 if (input.readBoolean()) {
                     int uiSize = input.readUnsignedShort();
                     if (uiSize != CRAFTING_UI_SLOT_COUNT) {

@@ -126,6 +126,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             new ru.nexora.combat.MobJumpController();
     private final ru.nexora.combat.MobClimbController mobClimbController =
             new ru.nexora.combat.MobClimbController();
+    private final ru.nexora.combat.MobClimbController mobClimbController =
+            new ru.nexora.combat.MobClimbController();
     private final ru.nexora.combat.MobDespawnTracker mobDespawnTracker =
             new ru.nexora.combat.MobDespawnTracker();
     private final ru.nexora.combat.MobAiLoadController mobAiLoadController =
@@ -464,6 +466,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 .append("\nMob AI load controller: ").append(mobAiLoadController.stats().summary())
                 .append("\nMob fall tracker: ").append(mobFallTracker.stats().summary())
                 .append("\nMob jump controller: ").append(mobJumpController.stats().summary())
+                .append("\nMob climb controller: ").append(mobClimbController.stats().summary())
                 .append("\nMob despawn tracker: tracked=").append(mobDespawnTracker.stats().tracked())
                 .append(", evictions=").append(mobDespawnTracker.stats().evictions());
         ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
@@ -2573,6 +2576,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 // Try a collision-checked one-block jump before spending work on pathfinding.
                 // The controller refuses flying mobs, unloaded chunks, and jumps without headroom.
                 if (mobJumpController.tryJump(world, mob, nextX, nextZ, nowMillis)) {
+                    mobStuckTracker.clear(mob.runtimeId());
+                    continue;
+                }
+                if (mobClimbController.tryClimb(world, mob, nextX, nextZ)) {
                     mobStuckTracker.clear(mob.runtimeId());
                     continue;
                 }

@@ -6,6 +6,9 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -50,4 +53,24 @@ class WorldAutosaveTest {
         assertThrows(IllegalArgumentException.class,
                 () -> new WorldAutosave(world, Duration.ofMillis(-1), ignored -> {}));
     }
+    @Test
+    void reportsPeriodicSaveExecutionDuration() throws Exception {
+        World world = new World("NEXORA", 1L, new FlatWorldGenerator());
+        AtomicLong elapsedNanos = new AtomicLong(-1L);
+        CountDownLatch observed = new CountDownLatch(1);
+        WorldAutosave autosave = new WorldAutosave(
+                world, Duration.ofMillis(10), ignored -> fail(ignored), () -> {},
+                elapsed -> {
+                    elapsedNanos.set(elapsed);
+                    observed.countDown();
+                });
+
+        try {
+            assertTrue(observed.await(2, TimeUnit.SECONDS));
+            assertTrue(elapsedNanos.get() >= 0L);
+        } finally {
+            autosave.close();
+        }
+    }
+
 }

@@ -1504,6 +1504,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         int windowId = state.openContainerWindowId;
         if (container == null || windowId == 0) return;
 
+        if (state.openContainerIsFurnace && actions.stream().anyMatch(action ->
+                action.containerId() == windowId && action.slot() == FurnaceService.OUTPUT_SLOT
+                        && action.to().isPresent())) {
+            sendContainerReconciliation(networkId, state);
+            return;
+        }
+
         List<Optional<ItemStack>> previousPlayer = state.inventory.snapshot();
         int previousSelectedSlot = state.inventory.selectedHotbarSlot();
         List<Optional<ItemStack>> previousContainer = container.snapshot();

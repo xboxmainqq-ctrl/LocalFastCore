@@ -8,6 +8,7 @@ class WorldPathfinderTest {
     @Test
     void findsDetourAroundSolidBlockInsteadOfWalkingIntoIt() {
         World world = new World("path-test", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
         world.setBlock(1, 65, 0, BlockType.STONE);
 
         var step = WorldPathfinder.findNextStep(world,
@@ -17,6 +18,16 @@ class WorldPathfinderTest {
                 "The first waypoint must not pass through the blocking block");
         assertTrue(WorldCollision.canMove(world,
                 0.5, 65.0, 0.5, step.x(), 65.0, step.z()));
+    }
+
+    @Test
+    void doesNotLoadNeighborChunksWhileSearchingForAPath() {
+        World world = new World("path-unloaded", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
+
+        assertTrue(WorldPathfinder.findNextStep(world,
+                15.5, 65.0, 0.5, 20.5, 0.5).isEmpty());
+        assertEquals(1, world.loadedChunkCount());
     }
 
     @Test

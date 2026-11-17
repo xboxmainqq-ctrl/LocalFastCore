@@ -142,7 +142,13 @@ public final class AnvilService {
                 "wooden_hoe", "stone_hoe", "iron_hoe", "golden_hoe", "diamond_hoe", "netherite_hoe",
                 "bow", "crossbow", "trident", "shield", "elytra", "fishing_rod",
                 "flint_and_steel", "shears", "carrot_on_a_stick", "warped_fungus_on_a_stick",
-                "brush", "mace");
+                "brush", "mace", "leather_helmet", "leather_chestplate", "leather_leggings",
+                "leather_boots", "chainmail_helmet", "chainmail_chestplate", "chainmail_leggings",
+                "chainmail_boots", "iron_helmet", "iron_chestplate", "iron_leggings", "iron_boots",
+                "golden_helmet", "golden_chestplate", "golden_leggings", "golden_boots",
+                "diamond_helmet", "diamond_chestplate", "diamond_leggings", "diamond_boots",
+                "netherite_helmet", "netherite_chestplate", "netherite_leggings", "netherite_boots",
+                "turtle_helmet");
         return Collections.unmodifiableMap(groups);
     }
 
@@ -182,6 +188,9 @@ public final class AnvilService {
                 if (definition == null || entry.getValue() == null
                         || entry.getValue() < 1 || entry.getValue() > definition.maxLevel()) {
                     throw new IllegalArgumentException("Unknown enchantment or invalid level: " + entry.getKey());
+                }
+                if (!definition.supports(itemId)) {
+                    throw new IllegalArgumentException("Enchantment does not apply to " + itemId + ": " + entry.getKey());
                 }
                 copy.put(entry.getKey(), entry.getValue());
             }

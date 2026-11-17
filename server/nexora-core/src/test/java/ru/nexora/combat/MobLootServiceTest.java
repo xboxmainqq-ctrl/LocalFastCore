@@ -51,6 +51,17 @@ class MobLootServiceTest {
     }
 
     @Test
+    void bossMobsHaveTheirSignatureRewards() {
+        var wither = MobLootService.dropsFor("minecraft:wither");
+        assertEquals("minecraft:nether_star", wither.drops().getFirst().itemId());
+        assertEquals(50_000, wither.experienceMilliPoints());
+
+        var dragon = MobLootService.dropsFor("minecraft:ender_dragon");
+        assertTrue(dragon.drops().isEmpty());
+        assertEquals(100_000, dragon.experienceMilliPoints());
+    }
+
+    @Test
     void unknownMobsHaveNoLootOrExperience() {
         assertEquals(MobLootService.Loot.EMPTY, MobLootService.dropsFor("minecraft:unknown_mob"));
     }

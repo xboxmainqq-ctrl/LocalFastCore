@@ -148,11 +148,13 @@ public final class MobAiController {
             navigation.put(mob.id(), route);
         }
 
-        int mobBlockX = floor(mob.x());
-        int mobBlockZ = floor(mob.z());
-        while (!route.path.isEmpty()
-                && route.path.peekFirst().x == mobBlockX
-                && route.path.peekFirst().z == mobBlockZ) {
+        while (!route.path.isEmpty()) {
+            PathNode reached = route.path.peekFirst();
+            double remainingX = reached.x + 0.5 - mob.x();
+            double remainingZ = reached.z + 0.5 - mob.z();
+            if (remainingX * remainingX + remainingZ * remainingZ > moveSpeed * moveSpeed * 0.25) {
+                break;
+            }
             route.path.removeFirst();
         }
         if (route.path.isEmpty()) {

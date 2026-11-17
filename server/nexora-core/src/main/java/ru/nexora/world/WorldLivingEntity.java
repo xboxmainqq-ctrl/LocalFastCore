@@ -55,6 +55,12 @@ public record WorldLivingEntity(
                 health, maxHealth, nextUntil, nextDamage);
     }
 
+    public WorldLivingEntity withPosition(double nextX, double nextY, double nextZ) {
+        return new WorldLivingEntity(uniqueId, runtimeId, identifier, family,
+                nextX, nextY, nextZ, velocityX, velocityY, velocityZ,
+                health, maxHealth, fireUntilMillis, nextFireDamageMillis);
+    }
+
     public WorldLivingEntity withVelocity(double nextX, double nextY, double nextZ) {
         return new WorldLivingEntity(uniqueId, runtimeId, identifier, family,
                 x, y, z, nextX, nextY, nextZ, health, maxHealth,

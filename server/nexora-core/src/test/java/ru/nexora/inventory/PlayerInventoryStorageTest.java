@@ -32,6 +32,30 @@ class PlayerInventoryStorageTest {
     }
 
     @Test
+    void atomicallyRoundTripsPlayerUiCraftingGridInVersionTwoFormat() throws Exception {
+        PlayerInventoryStorage storage = new PlayerInventoryStorage(temporaryDirectory);
+        PlayerInventory inventory = new PlayerInventory();
+        inventory.setSlot(0, new ItemStack("minecraft:iron_nugget", 9, 64));
+        inventory.selectHotbarSlot(2);
+        ContainerInventory ui = new ContainerInventory(51);
+        ui.setSlot(28, new ItemStack("minecraft:oak_planks", 2, 64));
+        ui.setSlot(31, new ItemStack("minecraft:oak_log", 1, 64));
+
+        storage.save("craft-player", inventory, ui);
+
+        var loaded = storage.loadState("craft-player").orElseThrow();
+        assertEquals(2, loaded.inventory().selectedHotbarSlot());
+        assertEquals(9, loaded.inventory().count("minecraft:iron_nugget"));
+        assertEquals(new ItemStack("minecraft:oak_planks", 2, 64),
+                loaded.craftingUiInventory().getSlot(28).orElseThrow());
+        assertEquals(new ItemStack("minecraft:oak_log", 1, 64),
+                loaded.craftingUiInventory().getSlot(31).orElseThrow());
+        assertEquals(2, Byte.toUnsignedInt(Files.readAllBytes(
+                temporaryDirectory.resolve("craft-player.nxi"))[4]));
+        assertEquals(9, storage.load("craft-player").orElseThrow().count("minecraft:iron_nugget"));
+    }
+
+    @Test
     void returnsEmptyWhenInventoryDoesNotExist() throws Exception {
         PlayerInventoryStorage storage = new PlayerInventoryStorage(temporaryDirectory);
         assertTrue(storage.load("unknown-player").isEmpty());

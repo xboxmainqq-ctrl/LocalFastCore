@@ -1899,6 +1899,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         if (thornsDamage != null) {
                             if (thornsDamage.killed()) {
                                 livingEntityKillCredit.remove(mob.runtimeId());
+                                livingEntityAggroTargets.remove(mob.runtimeId());
                                 grantMobRewards(networkId, target, mob, 0);
                                 nextMobAttackMillis.remove(mob.runtimeId());
                                 broadcastLivingActorPacket(

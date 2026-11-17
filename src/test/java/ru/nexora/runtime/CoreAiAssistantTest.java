@@ -34,6 +34,18 @@ class CoreAiAssistantTest {
     }
 
     @Test
+    void allowsNonSensitiveKeysContainingIpAsPartOfAnotherWord() {
+        CoreAiAssistant assistant = new CoreAiAssistant(
+                new AiToolRegistry(ignored -> { }),
+                prompt -> new AiModelProvider.Completion("ok"));
+
+        CoreAiAssistant.Answer answer = assistant.ask(
+                "Explain server", Map.of("membershipCount", "4"));
+
+        assertEquals(CoreAiAssistant.AnswerStatus.SUCCESS, answer.status());
+    }
+
+    @Test
     void rejectsSensitiveContextBeforeCallingProvider() {
         AtomicReference<Boolean> called = new AtomicReference<>(false);
         CoreAiAssistant assistant = new CoreAiAssistant(

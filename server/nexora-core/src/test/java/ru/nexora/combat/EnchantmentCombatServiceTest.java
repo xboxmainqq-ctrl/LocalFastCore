@@ -103,6 +103,23 @@ class EnchantmentCombatServiceTest {
     }
 
     @Test
+    void appliesProjectileAndExplosionProtectionAlongsideArmorPoints() {
+        ItemStack projectileLeggings = new ItemStack("minecraft:iron_leggings", 1, 1,
+                Map.of("minecraft:projectile_protection", 3));
+        ItemStack blastChestplate = new ItemStack("minecraft:diamond_chestplate", 1, 1,
+                Map.of("minecraft:blast_protection", 2));
+
+        // Iron leggings: 5 armor points (20%), then EPF 6 (24%).
+        assertEquals(60.8f, EnchantmentCombatService.applyIncomingDamage(
+                100.0f, List.of(projectileLeggings),
+                EnchantmentCombatService.DamageType.PROJECTILE), 0.0001f);
+        // Diamond chestplate: 8 armor points (32%), then EPF 4 (16%).
+        assertEquals(57.12f, EnchantmentCombatService.applyIncomingDamage(
+                100.0f, List.of(blastChestplate),
+                EnchantmentCombatService.DamageType.EXPLOSION), 0.0001f);
+    }
+
+    @Test
     void rejectsInvalidArmorDamageAndNullPieces() {
         assertThrows(IllegalArgumentException.class, () ->
                 EnchantmentCombatService.applyArmorReduction(Float.POSITIVE_INFINITY, List.of()));

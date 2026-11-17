@@ -23,6 +23,23 @@ class FurnaceServiceTest {
     }
 
     @Test
+    void coalBurnsForEightSmeltingOperations() {
+        FurnaceService service = new FurnaceService();
+        ContainerInventory furnace = new ContainerInventory(3);
+        furnace.setSlot(FurnaceService.INPUT_SLOT, new ItemStack("minecraft:raw_iron", 8, 64));
+        furnace.setSlot(FurnaceService.FUEL_SLOT, new ItemStack("minecraft:coal", 1, 64));
+
+        FurnaceService.TickResult result = service.tick(8, 64, 8, furnace, 1600);
+
+        assertEquals(0, result.cookProgress());
+        assertEquals(0, result.burnTicksRemaining());
+        assertEquals(new ItemStack("minecraft:iron_ingot", 8, 64),
+                furnace.getSlot(FurnaceService.OUTPUT_SLOT).orElseThrow());
+        assertTrue(furnace.getSlot(FurnaceService.INPUT_SLOT).isEmpty());
+        assertTrue(furnace.getSlot(FurnaceService.FUEL_SLOT).isEmpty());
+    }
+
+    @Test
     void preservesPartialProgressWhenFuelRunsOutAndCanRestoreIt() {
         FurnaceService first = new FurnaceService();
         ContainerInventory furnace = new ContainerInventory(3);

@@ -151,9 +151,11 @@ class BedrockSessionManagerTest {
         generator.initialize(new ECGenParameterSpec("secp384r1"));
         KeyPair clientKey = generator.generateKeyPair();
         List<byte[]> outboundFrames = new ArrayList<>();
+        var inventoryStorage = new ru.nexora.inventory.PlayerInventoryStorage(
+                temporaryDirectory.resolve("craft-inventory"));
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
-                world, null, null, null,
+                world, null, inventoryStorage, null,
                 (networkId, label, frame) -> outboundFrames.add(frame), event -> {}, () -> 0L);
         var itemRegistry = BedrockVanillaItemCatalog.createRegistry();
         manager.setItemRegistry(itemRegistry);
@@ -263,6 +265,7 @@ class BedrockSessionManagerTest {
         assertEquals(9, inventory.count("minecraft:iron_nugget"));
         assertEquals(0, inventory.count("minecraft:gold_nugget"));
         manager.close();
+        assertEquals(1, inventoryStorage.load("craft-xuid").orElseThrow().count("minecraft:iron_ingot"));
     }
 
     @Test

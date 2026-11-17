@@ -30,6 +30,9 @@ Work only on engine/server foundations:
 - Confirmed the existing `.nxw` reader already validates the magic signature, supported format range, world ID, bounded file size/counts, duplicate records, checksum and trailing data; the writer already stages a temporary snapshot and atomically replaces the destination where supported.
 - Added regression tests proving that future unsupported format versions, truncated snapshots and bytes appended after the checksum are rejected.
 - Test commit: `940cde47e246dcddcf042deef9cf835c6937cf15`.
+
+- Follow-up CI result for test commit `940cde47e246dcddcf042deef9cf835c6937cf15`: workflow run `44096227872` failed in about two seconds before a runner was allocated (`runner_id=0`, no job steps reported). The available GitHub connection could not retrieve annotations or logs, so this is an infrastructure/dispatch blocker of unknown cause, not evidence of a Java compilation or test failure. Do not mark tests as passed.
+
 - CI: the previous workflow run for configuration work (run 44095600935) ended in failure. GitHub exposed no job steps/log payload for that run, so its cause is not yet established. The new test commit triggers another verification run; record its result after it completes.
 
 ## Next tasks — in order

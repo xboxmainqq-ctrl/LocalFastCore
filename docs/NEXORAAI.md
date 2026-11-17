@@ -72,7 +72,7 @@ This is an initial vanilla-style simulation, not yet a claim of complete Minecra
 
 ### Mob movement physics
 
-Ground-bound mobs receive server-side gravity, collision-resolved falling, and damped knockback velocity. Flying species (allays, bats, bees, blazes, ghasts, phantoms, vexes, parrots, and the ender dragon) use three-dimensional target movement and do not receive ground gravity. This is a first physics layer with bounded fall-distance tracking and landing damage. Ground-bound mobs can jump over a single-block obstacle when headroom is clear, with cooldown and loaded-chunk checks. Slimes and magma cubes bounce on landing and are exempt from fall damage. Fluids, climbing, and species-specific flight animation still need dedicated implementation.
+Ground-bound mobs receive server-side gravity, collision-resolved falling, and damped knockback velocity. Flying species (allays, bats, bees, blazes, ghasts, phantoms, vexes, parrots, and the ender dragon) use three-dimensional target movement and do not receive ground gravity. This is a first physics layer with bounded fall-distance tracking and landing damage. Ground-bound mobs can jump over a single-block obstacle when headroom is clear, with cooldown and loaded-chunk checks. Slimes and magma cubes bounce on landing and are exempt from fall damage. Spiders and cave spiders can climb walls when the next horizontal step is blocked and vertical headroom is clear. Fluids and species-specific flight animation still need dedicated implementation.
 
 ### Mob combat and rewards
 

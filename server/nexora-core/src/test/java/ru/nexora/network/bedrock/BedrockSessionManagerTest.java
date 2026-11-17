@@ -314,6 +314,72 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void cancelledSpearUseAndChangedHeldItemDiscardTheCharge() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(2_500_000_000L);
+        ru.nexora.world.World combatWorld = new ru.nexora.world.World(
+                "spear-charge-cancel-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                combatWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
+        BedrockItemRegistry registry = BedrockVanillaItemCatalog.createRegistry();
+        manager.setItemRegistry(registry);
+        manager.onIdentity("charge-cancel-player", new NetherNetClientIdentity(
+                "charge-cancel-token", new byte[] {25}, "charge-cancel-xuid",
+                "ChargeCancelPlayer", "playfab-charge-cancel", "20CA2", null));
+        setSessionField(manager, "charge-cancel-player", "loginAuthenticated", true);
+        setSessionField(manager, "charge-cancel-player", "clientInitialized", true);
+        setSessionField(manager, "charge-cancel-player", "compressionNegotiated", true);
+        setSessionField(manager, "charge-cancel-player", "positionInitialized", true);
+        setSessionField(manager, "charge-cancel-player", "entityId", 125L);
+        setSessionField(manager, "charge-cancel-player", "positionX", 0.5f);
+        setSessionField(manager, "charge-cancel-player", "positionY", 65.0f);
+        setSessionField(manager, "charge-cancel-player", "positionZ", 0.5f);
+
+        ItemStack diamondSpear = new ItemStack("minecraft:diamond_spear", 1, 1);
+        ItemStack woodenSpear = new ItemStack("minecraft:wooden_spear", 1, 1);
+        manager.playerInventory("charge-cancel-player").orElseThrow().setSlot(0, diamondSpear);
+        BedrockPacket startUse = new BedrockPacket(
+                BedrockPlayerActionCodec.PLAYER_ACTION_PACKET_ID, 0, 0,
+                playerActionPayload(125L, BedrockPlayerActionCodec.ACTION_START_USING_ITEM));
+
+        sendClientBatch(manager, "charge-cancel-player",
+                BedrockBatchCodec.encode(List.of(startUse), true, 256));
+        assertNotEquals(Long.MIN_VALUE,
+                getSessionField(manager, "charge-cancel-player", "spearChargeStartedNanos"));
+
+        // ItemRelease action type 1 is an interrupted/cancelled use, not a completed charge.
+        clock.addAndGet(100_000_000L);
+        BedrockPacket cancelledRelease = new BedrockPacket(
+                BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID, 0, 0,
+                itemReleasePayload(1, 0, 856, 1, 0.5f, 65.0f, 0.5f));
+        sendClientBatch(manager, "charge-cancel-player",
+                BedrockBatchCodec.encode(List.of(cancelledRelease), true, 256));
+        assertEquals(Long.MIN_VALUE,
+                getSessionField(manager, "charge-cancel-player", "spearChargeStartedNanos"));
+        assertEquals(Long.MIN_VALUE,
+                getSessionField(manager, "charge-cancel-player", "spearChargeReleasedNanos"));
+
+        // A second hold cannot be released with a different item than the captured stack.
+        sendClientBatch(manager, "charge-cancel-player",
+                BedrockBatchCodec.encode(List.of(startUse), true, 256));
+        assertNotEquals(Long.MIN_VALUE,
+                getSessionField(manager, "charge-cancel-player", "spearChargeStartedNanos"));
+        clock.addAndGet(100_000_000L);
+        manager.playerInventory("charge-cancel-player").orElseThrow().setSlot(0, woodenSpear);
+        BedrockPacket changedItemRelease = new BedrockPacket(
+                BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID, 0, 0,
+                itemReleasePayload(0, 0, 861, 1, 0.5f, 65.0f, 0.5f));
+        sendClientBatch(manager, "charge-cancel-player",
+                BedrockBatchCodec.encode(List.of(changedItemRelease), true, 256));
+        assertEquals(Long.MIN_VALUE,
+                getSessionField(manager, "charge-cancel-player", "spearChargeStartedNanos"));
+        assertEquals(Long.MIN_VALUE,
+                getSessionField(manager, "charge-cancel-player", "spearChargeReleasedNanos"));
+        manager.close();
+    }
+
+    @Test
     void changingHotbarSlotCancelsAnActiveSpearCharge() throws Exception {
         java.util.concurrent.atomic.AtomicLong clock =
                 new java.util.concurrent.atomic.AtomicLong(3_000_000_000L);

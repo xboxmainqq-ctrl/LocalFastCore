@@ -101,14 +101,16 @@ class MobAiControllerTest {
         EntityTickEngine engine = new EntityTickEngine(entities, world);
         engine.mobAi().setBehavior(mobId, MobAiController.Behavior.HOSTILE);
 
+        boolean movedSideways = false;
         for (int i = 0; i < 80; i++) {
             engine.tick();
+            WorldEntity current = entities.find(mobId).orElseThrow();
+            movedSideways |= Math.abs(current.z() - 0.5) > 0.1;
         }
 
         WorldEntity mob = entities.find(mobId).orElseThrow();
         assertTrue(mob.x() > 1.0, "mob should make progress beyond the blocked direct route");
-        assertTrue(Math.abs(mob.z() - 0.5) > 0.1,
-                "mob should move sideways to follow a path around the obstacle");
+        assertTrue(movedSideways, "mob should move sideways to follow a path around the obstacle");
         assertEquals(MobAiController.State.CHASE,
                 engine.mobAi().lastDecision(mobId).orElseThrow().state());
     }

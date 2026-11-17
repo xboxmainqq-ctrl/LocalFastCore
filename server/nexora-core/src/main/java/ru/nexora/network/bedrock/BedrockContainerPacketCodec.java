@@ -16,6 +16,7 @@ public final class BedrockContainerPacketCodec {
     public static final int CONTAINER_CLOSE_PACKET_ID = 0x2f;
     public static final int CONTAINER_TYPE = 0;
     public static final int WORKBENCH_TYPE = 1;
+    public static final int FURNACE_TYPE = 2;
     public static final long BLOCK_CONTAINER_ENTITY_ID = -1L;
 
     private BedrockContainerPacketCodec() {

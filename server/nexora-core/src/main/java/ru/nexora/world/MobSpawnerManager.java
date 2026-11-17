@@ -224,7 +224,7 @@ public final class MobSpawnerManager {
         int y = (int) Math.floor(request.y());
         int z = (int) Math.floor(request.z());
         if (y <= WorldChunk.MIN_Y || y >= WorldChunk.MAX_Y - 1
-                || !world.isChunkLoadedAt(x, z)) return false;
+                || !WorldPathfinder.isMobFootprintLoaded(world, request.x(), request.z())) return false;
         return world.getBlock(x, y, z) == BlockType.AIR
                 && world.getBlock(x, y + 1, z) == BlockType.AIR
                 && world.getBlock(x, y - 1, z) != BlockType.AIR;

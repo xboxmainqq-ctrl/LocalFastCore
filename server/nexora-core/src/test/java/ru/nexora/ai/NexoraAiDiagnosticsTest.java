@@ -176,4 +176,45 @@ class NexoraAiDiagnosticsTest {
         assertTrue(evidence.contains("FAILURE:subsystem-0:IllegalStateException — 2 раз"));
     }
 
+
+    @Test
+    void rollingLatencySummaryIncludesFastAndSlowSamples() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        diagnostics.recordSlowOperation("mob-ai", 10, 100);
+        diagnostics.recordSlowOperation("mob-ai", 20, 100);
+        diagnostics.recordSlowOperation("mob-ai", 30, 100);
+        diagnostics.recordSlowOperation("mob-ai", 40, 100);
+
+        var summary = diagnostics.latencySummaries().getFirst();
+        assertEquals("mob-ai", summary.subsystem());
+        assertEquals(4, summary.sampleCount());
+        assertEquals(25, summary.averageNanos());
+        assertEquals(40, summary.p95Nanos());
+        assertEquals(40, summary.maxNanos());
+        assertEquals(0, diagnostics.inspect().slowOperationCount());
+    }
+
+    @Test
+    void rollingLatencyWindowRetainsOnlyTheMostRecentSixtySamples() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        for (int i = 1; i <= 61; i++) {
+            diagnostics.recordSlowOperation("bedrock-inbound", i, 100);
+        }
+
+        var summary = diagnostics.latencySummaries().getFirst();
+        assertEquals(60, summary.sampleCount());
+        assertEquals(31, summary.averageNanos());
+        assertEquals(58, summary.p95Nanos());
+        assertEquals(61, summary.maxNanos());
+    }
+
+    @Test
+    void latencyEvidenceIsExplicitlyNotServerTps() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        diagnostics.recordSlowOperation("world-autosave", 75_000_000L, 50_000_000L);
+
+        assertTrue(diagnostics.recentEvidence().contains("Последние замеры длительности подсистем (не TPS):"));
+        assertTrue(diagnostics.recentEvidence().contains("world-autosave"));
+    }
+
 }

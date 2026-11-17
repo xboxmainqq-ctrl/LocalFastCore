@@ -1,6 +1,6 @@
-# LocalFastCore + NexoraAI Roadmap
+# Nerox + NexoraAI Roadmap
 
-This is the continuing project plan for the LocalFastCore 0.12.0 line and NexoraAI. Keep this roadmap updated as work is completed; do not treat planned items as implemented until code, tests, and documentation are merged.
+This is the continuing project plan for the Nerox 0.12.0 line and NexoraAI. Keep this roadmap updated as work is completed; do not treat planned items as implemented until code, tests, and documentation are merged.
 
 ## Product direction
 
@@ -15,7 +15,7 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 - [ ] Audit chunk/world loading, entity lifecycle, and scheduled work for bounded cost and safe shutdown.
 - [ ] Improve autosave reliability: bounded work, clear failure reporting, and recovery tests.
 - [ ] Add regression/load tests for player movement, mob AI, world saves, and many concurrent Bedrock sessions.
-- [ ] Keep LocalFastCore 0.12.0 compatibility as the target unless the project explicitly changes version.
+- [ ] Keep Nerox 0.12.0 compatibility as the target unless the project explicitly changes version.
 
 ## Priority 2 — NexoraAI core observability
 

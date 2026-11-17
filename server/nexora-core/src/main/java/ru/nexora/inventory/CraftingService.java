@@ -17,9 +17,9 @@ public final class CraftingService {
         CraftingRecipe recipe = registry.find(recipeId);
         if (recipe == null) return Result.UNKNOWN_RECIPE;
 
-        List<Optional<ItemStack>> before = inventory.snapshot();
-        int selectedSlot = inventory.selectedHotbarSlot();
         synchronized (inventory) {
+            List<Optional<ItemStack>> before = inventory.snapshot();
+            int selectedSlot = inventory.selectedHotbarSlot();
             for (var ingredient : recipe.ingredients().entrySet()) {
                 int required;
                 try {

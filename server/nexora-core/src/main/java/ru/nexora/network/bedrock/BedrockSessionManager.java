@@ -3129,6 +3129,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         double errorY = input.y() - next.y();
         double errorZ = input.z() - next.z();
         boolean correctionNeeded = errorX * errorX + errorY * errorY + errorZ * errorZ > 0.0625;
+        aiGuard.recordMovementDiscrepancy(
+                state.identity == null ? networkId : state.identity.xuid(),
+                Math.hypot(errorX, errorZ), Math.abs(errorY), nanoTime.getAsLong());
         double previousX = state.positionX;
         double previousZ = state.positionZ;
         boolean sprinting = input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.SPRINTING);

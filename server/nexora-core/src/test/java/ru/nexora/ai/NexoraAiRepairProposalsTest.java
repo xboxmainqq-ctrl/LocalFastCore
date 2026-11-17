@@ -30,7 +30,7 @@ class NexoraAiRepairProposalsTest {
         assertEquals(created.plan(), approved.plan());
         assertEquals("reviewer-xuid", approved.reviewedByXuid());
         assertNotNull(approved.reviewedAt());
-        assertTrue(store.approveForManualReview(created.id()).isEmpty());
+        assertTrue(store.approveForManualReview(created.id(), "reviewer-xuid").isEmpty());
     }
 
     @Test

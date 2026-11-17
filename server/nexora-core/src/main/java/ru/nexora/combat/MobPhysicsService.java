@@ -3,6 +3,7 @@ package ru.nexora.combat;
 import ru.nexora.world.World;
 import ru.nexora.world.WorldCollision;
 import ru.nexora.world.WorldLivingEntity;
+import ru.nexora.world.WorldPathfinder;
 
 /**
  * Small bounded per-tick actor physics for gravity and knockback.
@@ -36,17 +37,20 @@ public final class MobPhysicsService {
         double y = entity.y();
         double z = entity.z();
         if (Math.abs(vx) > STOP_EPSILON) {
-            if (WorldCollision.canMove(world, x, y, z, x + vx, y, z)) x += vx;
+            if (WorldPathfinder.isMobFootprintLoaded(world, x + vx, z)
+                    && WorldCollision.canMove(world, x, y, z, x + vx, y, z)) x += vx;
             else vx = 0;
         } else vx = 0;
 
         if (Math.abs(vz) > STOP_EPSILON) {
-            if (WorldCollision.canMove(world, x, y, z, x, y, z + vz)) z += vz;
+            if (WorldPathfinder.isMobFootprintLoaded(world, x, z + vz)
+                    && WorldCollision.canMove(world, x, y, z, x, y, z + vz)) z += vz;
             else vz = 0;
         } else vz = 0;
 
         if (Math.abs(vy) > STOP_EPSILON) {
-            if (WorldCollision.canMove(world, x, y, z, x, y + vy, z)) y += vy;
+            if (WorldPathfinder.isMobFootprintLoaded(world, x, z)
+                    && WorldCollision.canMove(world, x, y, z, x, y + vy, z)) y += vy;
             else vy = 0;
         } else vy = 0;
 

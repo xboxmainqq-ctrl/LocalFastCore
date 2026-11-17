@@ -2497,7 +2497,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
             ru.nexora.combat.MobFallTracker.Result fall =
                     mobFallTracker.update(mob.runtimeId(), mob.y(), physics.grounded(),
-                            ru.nexora.combat.LivingEntityAiService.isFlyingMob(mob.identifier()));
+                            ru.nexora.combat.LivingEntityAiService.isFlyingMob(mob.identifier())
+                                    || "minecraft:slime".equals(mob.identifier())
+                                    || "minecraft:magma_cube".equals(mob.identifier()));
             if (fall.damage() > 0) {
                 WorldLivingEntityManager.DamageResult fallDamage =
                         world.livingEntities().damage(mob.runtimeId(), fall.damage()).orElse(null);

@@ -38,11 +38,22 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 - [ ] Profile mob AI update cost and entity counts under load.
 - [ ] Improve navigation/target selection without changing gameplay unexpectedly.
 - [ ] Bound AI work per update and avoid repeated expensive path calculations.
+- [ ] Add a conservative Mob AI load controller: keep mobs near players and mobs with active targets at full update rate; stagger only distant idle mobs, with deterministic tests and operator metrics.
 - [ ] Add deterministic tests for targeting, movement, despawn, and edge cases.
 - [x] Add bounded, diagnostic-only stuck-mob detection with a 2-second no-progress threshold and operator report (`/ai mob stuck`); no automatic teleport or punishment.
 - [x] Expose read-only Mob AI cache counters and recent mob-ai/mob-pathfinding latency summaries through the allowlisted `/ai mob stats` operator command.
 
-## Priority 5 — Security and moderation intelligence
+## Priority 5 — Vanilla-style mob spawners
+
+- [ ] Add a dedicated spawner block and Bedrock runtime-state mapping without breaking existing chunk formats.
+- [ ] Implement activation radius, spawn delay, spawn attempts, valid spawn-position checks, nearby-mob caps, and bounded per-spawner work.
+- [ ] Persist spawner block-entity configuration and timer state across world saves/restarts.
+- [ ] Replicate spawned mobs and spawner block updates to Bedrock clients; verify protocol compatibility.
+- [ ] Add operator setup/inspection commands and permission checks; do not require commands for normal player use once placement/items are supported.
+- [ ] Add deterministic unit, persistence, and integration tests for unloaded/inactive areas, caps, invalid positions, and restart recovery.
+- [ ] Verify that Mob AI load scheduling never prevents a spawner from producing mobs or removes spawned entities.
+
+## Priority 6 — Security and moderation intelligence
 
 - [ ] Continue server-authoritative detection for KillAura, Speed, Fly, and Reach; record evidence, not conclusions.
 - [ ] Add confidence levels, false-positive review, and moderator case history.
@@ -51,7 +62,7 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 - [ ] Keep moderation decisions human-reviewed; no automatic ban/kick/mute from AI suspicion.
 - [ ] Never expose XUIDs, authentication tokens, or private network details in player-facing output.
 
-## Priority 6 — Operator and moderator experience
+## Priority 7 — Operator and moderator experience
 
 - [ ] Build a clear operator health dashboard: core status, resource pressure, slow subsystems, recent incidents, and suggested actions.
 - [ ] Build a separate moderator workflow for evidence review and case decisions.
@@ -69,8 +80,8 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 
 ## Current next steps
 
-1. Finish and verify the NexoraAI Guard moderator case workflow and its CI run.
-2. Continue profiling the real update loops and build a trustworthy performance baseline; current mob-AI timing is available as subsystem latency, not TPS.
-3. Benchmark the bounded mob path cache under realistic entity counts; validate hit rate, pathfinding latency, and behavior after terrain changes before tuning its 150 ms TTL or 1,024-entry limit.
-4. Extend diagnostics with incident correlation and sustained-latency windows.
-5. Continue the security/moderation roadmap after the core baseline is stable.
+1. Implement the conservative Mob AI load controller and verify that combat/near-player behavior remains full-rate.
+2. Implement the spawner block and server-side spawn lifecycle, then add durable block-entity state and Bedrock client replication.
+3. Test spawners with multiple players, nearby-mob caps, restart recovery, and the Mob AI load controller.
+4. Build a trustworthy performance baseline on a real server; current mob-AI timing is subsystem latency, not TPS.
+5. Continue the security/moderation roadmap after core gameplay and stability baselines are verified.

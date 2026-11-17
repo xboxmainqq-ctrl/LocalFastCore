@@ -24,6 +24,15 @@ class FurnaceStateStorageTest {
     }
 
     @Test
+    void persistsCoalBlockBurnDuration() throws Exception {
+        FurnaceStateStorage storage = new FurnaceStateStorage(temporaryDirectory, "NEXORA");
+        FurnaceService.FurnaceStateSnapshot expected =
+                new FurnaceService.FurnaceStateSnapshot(15999, 50, 16000);
+        storage.save(2, 64, 2, expected);
+        assertEquals(expected, storage.load(2, 64, 2).orElseThrow());
+    }
+
+    @Test
     void rejectsCorruptedStateAndCanDeleteIt() throws Exception {
         FurnaceStateStorage storage = new FurnaceStateStorage(temporaryDirectory, "NEXORA");
         storage.save(1, 2, 3, new FurnaceService.FurnaceStateSnapshot(100, 50, 1600));
@@ -41,7 +50,7 @@ class FurnaceStateStorageTest {
     void rejectsInvalidStateValues() throws Exception {
         FurnaceStateStorage storage = new FurnaceStateStorage(temporaryDirectory, "NEXORA");
         assertThrows(IllegalArgumentException.class, () ->
-                storage.save(0, 0, 0, new FurnaceService.FurnaceStateSnapshot(2401, 0, 2401)));
+                storage.save(0, 0, 0, new FurnaceService.FurnaceStateSnapshot(16001, 0, 16001)));
         assertThrows(IllegalArgumentException.class, () ->
                 storage.save(0, 0, 0, new FurnaceService.FurnaceStateSnapshot(0, 200, 0)));
     }

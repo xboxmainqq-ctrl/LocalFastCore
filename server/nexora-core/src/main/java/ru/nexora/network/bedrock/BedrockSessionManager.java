@@ -2333,6 +2333,20 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             targets.add(new ru.nexora.combat.LivingEntityAiService.PlayerTarget(
                     entry.getKey(), player.positionX, player.positionY, player.positionZ, true));
         }
+        List<ru.nexora.world.MobSpawnerManager.PlayerPosition> spawnerPlayers = new ArrayList<>();
+        for (ru.nexora.combat.LivingEntityAiService.PlayerTarget player : targets) {
+            spawnerPlayers.add(new ru.nexora.world.MobSpawnerManager.PlayerPosition(
+                    player.x(), player.y(), player.z()));
+        }
+        world.mobSpawners().tick(world, Math.max(0L, nowMillis / 50L), spawnerPlayers, request -> {
+            try {
+                spawnLivingEntity(request.identifier(), mobMaxHealth(request.identifier()),
+                        request.x(), request.y(), request.z());
+                return true;
+            } catch (IllegalStateException capacityReached) {
+                return false;
+            }
+        });
         for (WorldLivingEntity mob : world.livingEntities().snapshot()) {
             if ("minecraft:creeper".equals(mob.identifier())
                     && tickCreeperBehavior(mob, targets, nowMillis, tick)) {
@@ -2423,6 +2437,17 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     WorldCollision.isOnGround(world, moved.x(), moved.y(), moved.z())));
         }
         tickMobArrows(tick);
+    }
+
+    private static float mobMaxHealth(String identifier) {
+        return switch (identifier) {
+            case "minecraft:spider", "minecraft:cave_spider" -> 16.0f;
+            case "minecraft:creeper", "minecraft:skeleton", "minecraft:stray",
+                    "minecraft:husk", "minecraft:drowned" -> 20.0f;
+            case "minecraft:enderman" -> 40.0f;
+            case "minecraft:iron_golem" -> 100.0f;
+            default -> 20.0f;
+        };
     }
 
     private boolean tickRangedMobBehavior(

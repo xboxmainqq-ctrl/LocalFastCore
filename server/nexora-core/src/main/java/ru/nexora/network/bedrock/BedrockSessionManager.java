@@ -1347,8 +1347,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         String playerName = state.identity == null || state.identity.displayName() == null
                 ? "Игрок" : state.identity.displayName();
+        String conversationId = state.identity != null && state.identity.xuid() != null
+                && !state.identity.xuid().isBlank() ? state.identity.xuid() : networkId;
         ru.nexora.ai.NexoraAiAssistant.AskResult result = assistant.ask(
-                networkId, playerName, prompt, admin, reply -> {
+                conversationId, playerName, prompt, admin, reply -> {
                     SessionState current = sessions.get(networkId);
                     if (current == state && current.loginAuthenticated && current.clientInitialized) {
                         sendAiMessage(networkId, "§b[NEXORA AI] §f" + reply);

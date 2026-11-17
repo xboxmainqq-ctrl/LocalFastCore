@@ -40,6 +40,22 @@ class BedrockMobEquipmentCodecTest {
     }
 
     @Test
+    void roundTripsEnchantedHeldItemThroughMobEquipmentPacket() {
+        BedrockItemRegistry registry = new BedrockItemRegistry(List.of(
+                new BedrockItemRegistry.Entry("minecraft:diamond_sword",
+                        new BedrockInventoryContentCodec.ItemDefinition(276, 0, 0, new byte[0]), 1)));
+        PlayerInventory inventory = new PlayerInventory();
+        ItemStack enchanted = new ItemStack("minecraft:diamond_sword", 1, 1,
+                java.util.Map.of("minecraft:sharpness", 4), 5);
+        inventory.setSlot(0, enchanted);
+
+        BedrockPacket packet = BedrockMobEquipmentCodec.createPlayerEquipment(55, inventory, registry);
+        var decoded = BedrockMobEquipmentCodec.decode(packet, registry);
+
+        assertEquals(enchanted, decoded.item().orElseThrow());
+    }
+
+    @Test
     void encodesAnEmptySelectedHotbarSlot() {
         PlayerInventory inventory = new PlayerInventory();
         inventory.selectHotbarSlot(4);

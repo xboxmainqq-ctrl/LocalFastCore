@@ -94,10 +94,14 @@ public final class AnvilService {
                 "minecraft:sharpness", "minecraft:bane_of_arthropods"));
         register(values, "minecraft:bane_of_arthropods", 5, 2, "sword", Set.of(
                 "minecraft:sharpness", "minecraft:smite"));
+        register(values, "minecraft:knockback", 2, 2, "sword", Set.of());
+        register(values, "minecraft:fire_aspect", 2, 2, "sword", Set.of());
+        register(values, "minecraft:looting", 3, 2, "sword", Set.of());
         register(values, "minecraft:efficiency", 5, 1, "tool", Set.of());
         register(values, "minecraft:unbreaking", 3, 1, "durable", Set.of());
         register(values, "minecraft:fortune", 3, 2, "tool", Set.of("minecraft:silk_touch"));
         register(values, "minecraft:silk_touch", 1, 4, "tool", Set.of("minecraft:fortune"));
+        register(values, "minecraft:thorns", 3, 4, "armor", Set.of());
         register(values, "minecraft:protection", 4, 1, "armor", Set.of(
                 "minecraft:fire_protection", "minecraft:blast_protection", "minecraft:projectile_protection"));
         register(values, "minecraft:fire_protection", 4, 2, "armor", Set.of(
@@ -117,6 +121,11 @@ public final class AnvilService {
         register(values, "minecraft:channeling", 1, 4, "trident", Set.of("minecraft:riptide"));
         register(values, "minecraft:multishot", 1, 2, "crossbow", Set.of("minecraft:piercing"));
         register(values, "minecraft:piercing", 4, 1, "crossbow", Set.of("minecraft:multishot"));
+        register(values, "minecraft:respiration", 3, 2, "helmet", Set.of());
+        register(values, "minecraft:aqua_affinity", 1, 2, "helmet", Set.of());
+        register(values, "minecraft:luck_of_the_sea", 3, 2, "fishing_rod", Set.of());
+        register(values, "minecraft:lure", 3, 2, "fishing_rod", Set.of());
+        register(values, "minecraft:impaling", 5, 2, "trident", Set.of());
         register(values, "minecraft:feather_falling", 4, 1, "boots", Set.of());
         register(values, "minecraft:depth_strider", 3, 2, "boots", Set.of("minecraft:frost_walker"));
         register(values, "minecraft:frost_walker", 2, 2, "boots", Set.of("minecraft:depth_strider"));
@@ -146,6 +155,9 @@ public final class AnvilService {
                 "turtle_helmet");
         add(groups, "boots", "leather_boots", "chainmail_boots", "iron_boots", "golden_boots",
                 "diamond_boots", "netherite_boots");
+        add(groups, "helmet", "leather_helmet", "chainmail_helmet", "iron_helmet",
+                "golden_helmet", "diamond_helmet", "netherite_helmet", "turtle_helmet");
+        add(groups, "fishing_rod", "fishing_rod");
         add(groups, "bow", "bow");
         add(groups, "crossbow", "crossbow");
         add(groups, "trident", "trident");

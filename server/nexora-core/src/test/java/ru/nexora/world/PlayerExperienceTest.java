@@ -38,6 +38,19 @@ class PlayerExperienceTest {
     }
 
     @Test
+    void deductsLevelsWithoutDiscardingFractionalProgress() {
+        long current = (long) PlayerExperience.pointsAtLevelStart(10) * 1000L + 1234L;
+        long after = PlayerExperience.removeLevelsFromTotalMilliPoints(current, 3);
+        PlayerExperience.Progress progress = PlayerExperience.fromTotalMilliPoints(after);
+        assertEquals(7, progress.level());
+        float beforeProgress = PlayerExperience.fromTotalMilliPoints(current).progress();
+        assertEquals(beforeProgress, progress.progress(), 0.0001f);
+        assertEquals(0L, PlayerExperience.removeLevelsFromTotalMilliPoints(500L, 1));
+        assertThrows(IllegalArgumentException.class,
+                () -> PlayerExperience.removeLevelsFromTotalMilliPoints(current, -1));
+    }
+
+    @Test
     void addsPointsWithoutOverflowAndRejectsInvalidValues() {
         assertEquals(15, PlayerExperience.addPoints(10, 5));
         assertEquals(2_000_000_000, PlayerExperience.addPoints(2_000_000_000, 100));

@@ -14,6 +14,9 @@ import static org.junit.jupiter.api.Assertions.*;
 class MobSpawnerManagerTest {
     private World createWorld() {
         World world = new World("mob-spawner-test", 0L, new FlatWorldGenerator());
+        for (int chunkX = -1; chunkX <= 1; chunkX++) {
+            for (int chunkZ = -1; chunkZ <= 1; chunkZ++) world.getChunk(chunkX, chunkZ);
+        }
         world.setBlock(0, 65, 0, BlockType.SPAWNER);
         return world;
     }

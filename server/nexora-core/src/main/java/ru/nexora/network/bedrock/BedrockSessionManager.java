@@ -434,8 +434,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         String[] parts = arguments.isBlank() ? new String[0] : arguments.split("\\s+", 2);
         if (parts.length == 0 || parts[0].equalsIgnoreCase("status")) {
             sendAiMessage(networkId, "§b[NEXORA AI GUARD] §f" + guardSummary()
-                    + "\\n" + guardReviewSummary()
-                    + "\\nДела: /ai guard cases; карточка: /ai guard case <ID>.");
+                    + "\n" + guardReviewSummary()
+                    + "\nДела: /ai guard cases; карточка: /ai guard case <ID>.");
             return;
         }
         String action = parts[0].toLowerCase(Locale.ROOT);
@@ -454,12 +454,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
             StringBuilder result = new StringBuilder("§b[NEXORA AI GUARD] §fПоследние дела:");
             for (ru.nexora.ai.NexoraAiGuard.CombatCaseView value : cases.stream().limit(8).toList()) {
-                result.append("\\n").append(value.id()).append(" — ").append(value.displayName())
+                result.append("\n").append(value.id()).append(" — ").append(value.displayName())
                         .append(": ").append(value.hits()).append(" hits / 5s, ")
                         .append(value.targetSwitches()).append(" переключений [")
                         .append(value.status()).append("]");
             }
-            result.append("\\nОткрыть: /ai guard case <ID>");
+            result.append("\nОткрыть: /ai guard case <ID>");
             sendAiMessage(networkId, result.toString());
             return;
         }
@@ -475,12 +475,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 sendAiMessage(networkId, "§b[NEXORA AI GUARD] §fДело не найдено или срок хранения истёк.");
             } else {
                 sendAiMessage(networkId, "§b[NEXORA AI GUARD] §fДело " + value.id()
-                        + "\\nИгрок: " + value.displayName()
-                        + "\\nСигнал: " + value.hits() + " успешных попаданий / 5 секунд; "
+                        + "\nИгрок: " + value.displayName()
+                        + "\nСигнал: " + value.hits() + " успешных попаданий / 5 секунд; "
                         + value.targetSwitches() + " переключений цели."
-                        + "\\nСтатус: " + value.status()
-                        + "\\nРешение модератора: " + (value.reviewed() ? "уже зафиксировано" : "не принято")
-                        + "\\nПодтверждение не запускает бан/кик и не меняет состояние игрока.");
+                        + "\nСтатус: " + value.status()
+                        + "\nРешение модератора: " + (value.reviewed() ? "уже зафиксировано" : "не принято")
+                        + "\nПодтверждение не запускает бан/кик и не меняет состояние игрока.");
             }
             return;
         }

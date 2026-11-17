@@ -79,6 +79,22 @@ class AnvilServiceTest {
                 () -> item("minecraft:diamond_sword", Map.of(), 32));
     }
 
+    @Test
+    void supportsAdditionalVanillaEnchantmentsOnTheirCorrectItemGroups() {
+        var sword = item("minecraft:diamond_sword", Map.of(), 0);
+        var swordBook = item("minecraft:enchanted_book", Map.of("minecraft:looting", 3), 0);
+        var helmet = item("minecraft:diamond_helmet", Map.of(), 0);
+        var helmetBook = item("minecraft:enchanted_book", Map.of("minecraft:respiration", 3), 0);
+        var rod = item("minecraft:fishing_rod", Map.of(), 0);
+        var rodBook = item("minecraft:enchanted_book", Map.of("minecraft:luck_of_the_sea", 3), 0);
+
+        assertTrue(service.combine(sword, swordBook, 39).successful());
+        assertTrue(service.combine(helmet, helmetBook, 39).successful());
+        assertTrue(service.combine(rod, rodBook, 39).successful());
+        assertEquals(AnvilService.Status.INCOMPATIBLE_ENCHANTMENT,
+                service.combine(sword, helmetBook, 39).status());
+    }
+
     private static AnvilService.EnchantedItem item(String id, Map<String, Integer> enchantments, int penalty) {
         return new AnvilService.EnchantedItem(id, 1, enchantments, penalty);
     }

@@ -27,3 +27,13 @@ jobs:
           cache: maven
       - name: Build and test
         run: mvn --batch-mode --no-transfer-progress -f server/nexora-core/pom.xml clean verify
+      - name: Upload runnable server package
+        if: success() && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexora-core-${{ github.sha }}
+          path: |
+            server/nexora-core/target/nexora-core-*.jar
+            server/nexora-core/target/lib/**
+          if-no-files-found: error
+          retention-days: 14

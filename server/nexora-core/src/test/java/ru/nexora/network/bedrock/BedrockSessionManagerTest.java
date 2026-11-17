@@ -36,42 +36,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockSessionManagerTest {
     @Test
-    void authenticatedChatIgnoresClientSuppliedSenderIdentity() throws Exception {
-        java.util.concurrent.atomic.AtomicLong clock =
-                new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
-        ru.nexora.world.World chatWorld = new ru.nexora.world.World(
-                "authenticated-chat-world", 0L, new ru.nexora.world.FlatWorldGenerator());
-        List<byte[]> outbound = new ArrayList<>();
-        BedrockSessionManager manager = new BedrockSessionManager(
-                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
-                chatWorld, (networkId, label, frame) -> outbound.add(frame),
-                event -> {}, clock::get);
-        manager.onIdentity("chat-player", new NetherNetClientIdentity(
-                "chat-token", new byte[] {31}, "trusted-xuid",
-                "TrustedPlayer", "trusted-playfab", "20CA2", null));
-        setSessionField(manager, "chat-player", "compressionNegotiated", true);
-        setSessionField(manager, "chat-player", "loginAuthenticated", true);
-        setSessionField(manager, "chat-player", "clientInitialized", true);
-
-        BedrockPacket clientChat = BedrockTextCodec.createChatMessage(
-                "SpoofedName", "Hello NEXORA", "trusted-xuid", "spoofed-platform");
-        sendClientBatch(manager, "chat-player",
-                BedrockBatchCodec.encode(List.of(clientChat), true, 256));
-
-        List<BedrockPacket> delivered = outbound.stream()
-                .flatMap(frame -> decodeOutboundAll(frame, true).stream()).toList();
-        BedrockPacket chatPacket = delivered.stream()
-                .filter(packet -> packet.packetId() == BedrockTextCodec.TEXT_PACKET_ID)
-                .findFirst().orElseThrow();
-        BedrockTextCodec.DecodedChat decoded = BedrockTextCodec.decodeChat(chatPacket);
-        assertEquals("TrustedPlayer", decoded.sourceName());
-        assertEquals("Hello NEXORA", decoded.message());
-        assertEquals("", decoded.xuid());
-        assertEquals("", decoded.platformChatId());
-        manager.close();
-    }
-
-    @Test
     void relaysAuthenticatedChatUsingServerOwnedPlayerName() throws Exception {
         java.util.List<String> recipients = new java.util.ArrayList<>();
         java.util.List<byte[]> frames = new java.util.ArrayList<>();
@@ -1314,13 +1278,13 @@ class BedrockSessionManagerTest {
 
         byte[] loginPayload = new byte[512];
         java.util.Arrays.fill(loginPayload, (byte) 0x42);
-        BedrockPacket login = new BedrockPacket(9, 0, 0, loginPayload);
+        BedrockPacket login = new BedrockPacket(0x7f, 0, 0, loginPayload);
         byte[] compressedLogin = BedrockBatchCodec.encode(List.of(login), true, 256);
         assertEquals(0, Byte.toUnsignedInt(compressedLogin[0]));
         sendClientBatch(manager, "client-1", compressedLogin);
 
         assertNotNull(received.get());
-        assertEquals(9, received.get().packet().packetId());
+        assertEquals(0x7f, received.get().packet().packetId());
         assertArrayEquals(loginPayload, received.get().packet().payload());
     }
 

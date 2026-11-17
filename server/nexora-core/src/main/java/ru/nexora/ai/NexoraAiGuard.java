@@ -233,11 +233,11 @@ public final class NexoraAiGuard {
         combatCases.values().stream()
                 .sorted((left, right) -> Long.compare(right.lastSeenNanos, left.lastSeenNanos))
                 .limit(8)
-                .forEach(value -> result.append("\\n")
+                .forEach(value -> result.append("\n")
                         .append(value.displayName)
                         .append(" — ").append(value.hits).append(" hits / 5s, ")
                         .append(value.targetSwitches).append(" target switches"));
-        return result.append("\\nNo automatic punishment is applied.").toString();
+        return result.append("\nNo automatic punishment is applied.").toString();
     }
 
     private static String sanitizePlayerName(String displayName) {

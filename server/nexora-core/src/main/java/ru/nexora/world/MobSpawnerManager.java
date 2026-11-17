@@ -2,6 +2,7 @@ package ru.nexora.world;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -144,7 +145,13 @@ public final class MobSpawnerManager {
                 nextSpawnerCursor = 0;
             }
         }
-        List<WorldLivingEntity> livingSnapshot = world.livingEntities().snapshot();
+        Map<Long, List<WorldLivingEntity>> livingByChunk = new HashMap<>();
+        for (WorldLivingEntity entity : world.livingEntities().snapshot()) {
+            int chunkX = Math.floorDiv((int) Math.floor(entity.x()), 16);
+            int chunkZ = Math.floorDiv((int) Math.floor(entity.z()), 16);
+            livingByChunk.computeIfAbsent(chunkKey(chunkX, chunkZ), ignored -> new ArrayList<>())
+                    .add(entity);
+        }
         List<SpawnRequest> spawnedThisTick = new ArrayList<>();
         int active = 0;
         int spawned = 0;
@@ -170,7 +177,7 @@ public final class MobSpawnerManager {
             active++;
             if (currentTick < state.nextSpawnTick()) continue;
 
-            int nearby = countNearby(livingSnapshot, spawnedThisTick, state);
+            int nearby = countNearby(livingByChunk, spawnedThisTick, state);
             if (nearby >= MAX_NEARBY_SAME_TYPE) {
                 capped++;
                 updateNext(state, currentTick);
@@ -259,14 +266,25 @@ public final class MobSpawnerManager {
         return false;
     }
 
-    private static int countNearby(List<WorldLivingEntity> entities, List<SpawnRequest> spawned,
-                                   MobSpawnerState state) {
+    private static int countNearby(
+            Map<Long, List<WorldLivingEntity>> entitiesByChunk,
+            List<SpawnRequest> spawned, MobSpawnerState state
+    ) {
         int count = 0;
-        for (WorldLivingEntity entity : entities) {
-            if (!entity.identifier().equals(state.entityIdentifier())) continue;
-            if (Math.abs(entity.x() - (state.x() + 0.5)) <= 4.5
-                    && Math.abs(entity.y() - (state.y() + 0.5)) <= 4.5
-                    && Math.abs(entity.z() - (state.z() + 0.5)) <= 4.5) count++;
+        int centerChunkX = Math.floorDiv(state.x(), 16);
+        int centerChunkZ = Math.floorDiv(state.z(), 16);
+        for (int offsetX = -1; offsetX <= 1; offsetX++) {
+            for (int offsetZ = -1; offsetZ <= 1; offsetZ++) {
+                List<WorldLivingEntity> entities = entitiesByChunk.get(
+                        chunkKey(centerChunkX + offsetX, centerChunkZ + offsetZ));
+                if (entities == null) continue;
+                for (WorldLivingEntity entity : entities) {
+                    if (!entity.identifier().equals(state.entityIdentifier())) continue;
+                    if (Math.abs(entity.x() - (state.x() + 0.5)) <= 4.5
+                            && Math.abs(entity.y() - (state.y() + 0.5)) <= 4.5
+                            && Math.abs(entity.z() - (state.z() + 0.5)) <= 4.5) count++;
+                }
+            }
         }
         for (SpawnRequest entity : spawned) {
             if (!entity.identifier().equals(state.entityIdentifier())) continue;
@@ -275,6 +293,10 @@ public final class MobSpawnerManager {
                     && Math.abs(entity.z() - (state.z() + 0.5)) <= 4.5) count++;
         }
         return count;
+    }
+
+    private static long chunkKey(int x, int z) {
+        return ((long) x << 32) | (z & 0xffff_ffffL);
     }
 
     private static SpawnRequest candidate(MobSpawnerState state, long tick, int attempt) {

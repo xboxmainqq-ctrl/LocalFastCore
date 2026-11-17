@@ -37,13 +37,13 @@ public final class MobPhysicsService {
         double y = entity.y();
         double z = entity.z();
         if (Math.abs(vx) > STOP_EPSILON) {
-            if (WorldPathfinder.isMobFootprintLoaded(world, x + vx, z)
+            if (WorldPathfinder.isMobMovementAreaLoaded(world, x, z, x + vx, z)
                     && WorldCollision.canMove(world, x, y, z, x + vx, y, z)) x += vx;
             else vx = 0;
         } else vx = 0;
 
         if (Math.abs(vz) > STOP_EPSILON) {
-            if (WorldPathfinder.isMobFootprintLoaded(world, x, z + vz)
+            if (WorldPathfinder.isMobMovementAreaLoaded(world, x, z, x, z + vz)
                     && WorldCollision.canMove(world, x, y, z, x, y, z + vz)) z += vz;
             else vz = 0;
         } else vz = 0;

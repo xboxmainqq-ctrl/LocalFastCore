@@ -150,9 +150,9 @@ class NexoraAiGuardTest {
                 "target-3", 64 * 50_000_000L);
         assertEquals(1, events.size());
         assertTrue(events.getFirst().reason().contains("possible KillAura"));
-        String summary = guard.combatReviewSummary(44 * 50_000_000L);
+        String summary = guard.combatReviewSummary(64 * 50_000_000L);
         assertTrue(summary.contains("PlayerOne"));
-        assertTrue(summary.contains("45 hits"));
+        assertTrue(summary.contains("65 hits"));
         assertFalse(summary.contains("private-xuid"));
         assertFalse(summary.contains("target-"));
         assertTrue(summary.contains("No automatic punishment"));
@@ -170,7 +170,7 @@ class NexoraAiGuardTest {
             guard.recordSuccessfulAttack("xuid-a", "A", "target-" + (i % 4),
                     5_000_000_000L + i * 50_000_000L);
         }
-        assertTrue(guard.combatReviewSummary(7_200_000_000L).contains("A"));
+        assertTrue(guard.combatReviewSummary(8_300_000_000L).contains("A"));
         assertTrue(guard.combatReviewSummary(1_900_000_000_000L).contains("no confirmed"));
         guard.recordSuccessfulAttack("xuid-b", "B", "target-1", 2_000_000_000_000L);
         guard.onPlayerDisconnected("xuid-b");

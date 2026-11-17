@@ -55,6 +55,23 @@ class ModerationAiAssistantTest {
     }
 
     @Test
+    void capsTrackedPlayersAndEvictsLeastRecentlyUsedHistory() {
+        ModerationSignalAnalyzer analyzer = new ModerationSignalAnalyzer(8, 2, 100, 16, 2);
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        UUID third = UUID.randomUUID();
+
+        analyzer.recordChatMessage(first, "repeat", 1);
+        analyzer.recordChatMessage(first, "repeat", 2);
+        analyzer.recordChatMessage(second, "hello", 1);
+        analyzer.recordChatMessage(third, "hello", 1);
+
+        ModerationSignalAnalyzer.Assessment freshHistory =
+                analyzer.recordChatMessage(first, "repeat", 3);
+        assertEquals(ModerationSignalAnalyzer.Risk.LOW, freshHistory.risk());
+    }
+
+    @Test
     void rejectsUnorderedOrOversizedEventsAndInvalidLimits() {
         ModerationSignalAnalyzer analyzer = new ModerationSignalAnalyzer();
         UUID playerId = UUID.randomUUID();

@@ -165,6 +165,52 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void serverCombatUsesConfiguredJabDamageForAllSevenSpearTiers() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(900_000_000L);
+        ru.nexora.world.World combatWorld = new ru.nexora.world.World(
+                "spear-tier-jab-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                combatWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
+        BedrockItemRegistry registry = BedrockVanillaItemCatalog.createRegistry();
+        manager.setItemRegistry(registry);
+        manager.onIdentity("spear-tier-attacker", new NetherNetClientIdentity(
+                "spear-tier-token", new byte[] {26}, "spear-tier-xuid",
+                "SpearTierAttacker", "playfab-spear-tier", "20CA2", null));
+        setSessionField(manager, "spear-tier-attacker", "loginAuthenticated", true);
+        setSessionField(manager, "spear-tier-attacker", "clientInitialized", true);
+        setSessionField(manager, "spear-tier-attacker", "compressionNegotiated", true);
+        setSessionField(manager, "spear-tier-attacker", "positionInitialized", true);
+        setSessionField(manager, "spear-tier-attacker", "entityId", 126L);
+        setSessionField(manager, "spear-tier-attacker", "positionX", 0.5f);
+        setSessionField(manager, "spear-tier-attacker", "positionY", 65.0f);
+        setSessionField(manager, "spear-tier-attacker", "positionZ", 0.5f);
+
+        String[] tiers = {
+                "wooden", "golden", "stone", "copper", "iron", "diamond", "netherite"
+        };
+        float[] expectedDamage = {2.0f, 2.0f, 3.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+        for (int i = 0; i < tiers.length; i++) {
+            String itemId = "minecraft:" + tiers[i] + "_spear";
+            var definition = registry.findByIdentifier(itemId);
+            assertNotNull(definition, itemId + " must be registered");
+            manager.playerInventory("spear-tier-attacker").orElseThrow()
+                    .setSlot(0, new ItemStack(itemId, 1, 1));
+            var zombie = manager.spawnLivingEntity(
+                    "minecraft:zombie", 20.0f, 0.5, 65.0, 3.5);
+            sendActorAttack(manager, "spear-tier-attacker", zombie.runtimeId(),
+                    definition.networkDefinition().runtimeItemId(), 0.5f, 65.0f, 0.5f);
+            assertEquals(20.0f - expectedDamage[i],
+                    combatWorld.livingEntities().find(zombie.runtimeId()).orElseThrow().health(),
+                    0.0001f, tiers[i] + " spear jab damage");
+            // Advance beyond the slowest tier cooldown before the next server hit.
+            clock.addAndGet(1_200_000_000L);
+        }
+        manager.close();
+    }
+
+    @Test
     void protocol2225StartUseReleaseAndChargedSpearHitDamageMob() throws Exception {
         java.util.concurrent.atomic.AtomicLong clock =
                 new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);

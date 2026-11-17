@@ -2469,17 +2469,17 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         });
         for (WorldLivingEntity mob : world.livingEntities().snapshot()) {
             if (!ru.nexora.world.WorldPathfinder.isMobFootprintLoaded(world, mob.x(), mob.z())) continue;
-            if ("minecraft:creeper".equals(mob.identifier())
-                    && tickCreeperBehavior(mob, targets, nowMillis, tick)) {
-                mobStuckTracker.clear(mob.runtimeId());
-                continue;
-            }
-            if (tickRangedMobBehavior(mob, targets, nowMillis)) {
-                mobStuckTracker.clear(mob.runtimeId());
-                continue;
-            }
             ru.nexora.combat.LivingEntityAiService.PlayerTarget nearestPlayer =
                     ru.nexora.combat.LivingEntityAiService.nearestAlivePlayer(mob, targets);
+            if ("minecraft:creeper".equals(mob.identifier())
+                    && tickCreeperBehavior(mob, nearestPlayer, nowMillis, tick)) {
+                mobStuckTracker.clear(mob.runtimeId());
+                continue;
+            }
+            if (tickRangedMobBehavior(mob, nearestPlayer, nowMillis)) {
+                mobStuckTracker.clear(mob.runtimeId());
+                continue;
+            }
             double nearestPlayerDistanceSquared = Double.POSITIVE_INFINITY;
             if (nearestPlayer != null) {
                 double dx = nearestPlayer.x() - mob.x();
@@ -2595,12 +2595,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     private boolean tickRangedMobBehavior(
             WorldLivingEntity mob,
-            List<ru.nexora.combat.LivingEntityAiService.PlayerTarget> targets,
+            ru.nexora.combat.LivingEntityAiService.PlayerTarget nearest,
             long nowMillis
     ) {
         if (!isRangedMob(mob.identifier())) return false;
-        ru.nexora.combat.LivingEntityAiService.PlayerTarget nearest =
-                ru.nexora.combat.LivingEntityAiService.nearestAlivePlayer(mob, targets);
         if (nearest == null) return false;
         double dx = nearest.x() - mob.x();
         double dy = nearest.y() + 1.0 - (mob.y() + 1.2);
@@ -2755,12 +2753,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     private boolean tickCreeperBehavior(
             WorldLivingEntity creeper,
-            List<ru.nexora.combat.LivingEntityAiService.PlayerTarget> targets,
+            ru.nexora.combat.LivingEntityAiService.PlayerTarget nearest,
             long nowMillis,
             long tick
     ) {
-        ru.nexora.combat.LivingEntityAiService.PlayerTarget nearest =
-                ru.nexora.combat.LivingEntityAiService.nearestAlivePlayer(creeper, targets);
         if (nearest == null) {
             creeperFuseStartedMillis.remove(creeper.runtimeId());
             return false;

@@ -90,6 +90,26 @@ class LivingEntityAiServiceTest {
     }
 
     @Test
+    void passiveMobsDoNotFleeFromOrdinaryPlayersUnlessTimidOrProvoked() {
+        var player = new LivingEntityAiService.PlayerTarget("player", 1, 64, 0, true);
+        WorldLivingEntity cow = new WorldLivingEntityManager().spawn(
+                "minecraft:cow", 10, 0, 64, 0);
+        var calmCow = ai.decide(cow, List.of(player), 1_000, 0);
+        assertTrue(calmCow.moving());
+        assertNull(calmCow.targetNetworkId());
+
+        var frightenedCow = ai.decide(cow, List.of(player), 1_000, 0, "player");
+        assertEquals("player", frightenedCow.targetNetworkId());
+        assertTrue(frightenedCow.moveX() < 0);
+
+        WorldLivingEntity rabbit = new WorldLivingEntityManager().spawn(
+                "minecraft:rabbit", 3, 0, 64, 0);
+        var rabbitDecision = ai.decide(rabbit, List.of(player), 1_000, 0);
+        assertEquals("player", rabbitDecision.targetNetworkId());
+        assertTrue(rabbitDecision.moveX() < 0);
+    }
+
+    @Test
     void passiveMobsAndPlayersOutsideAcquireRangeRemainIdle() {
         WorldLivingEntity cow = new WorldLivingEntityManager().spawn(
                 "minecraft:cow", 10, 0, 64, 0);

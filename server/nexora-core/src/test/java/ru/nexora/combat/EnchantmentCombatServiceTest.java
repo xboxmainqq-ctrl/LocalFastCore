@@ -55,6 +55,28 @@ class EnchantmentCombatServiceTest {
     }
 
     @Test
+    void appliesArmorToughnessAndProtectionToIncomingPlayerDamage() {
+        List<ItemStack> diamondArmor = List.of(
+                new ItemStack("minecraft:diamond_helmet", 1, 1),
+                new ItemStack("minecraft:diamond_chestplate", 1, 1,
+                        Map.of("minecraft:protection", 4)),
+                new ItemStack("minecraft:diamond_leggings", 1, 1),
+                new ItemStack("minecraft:diamond_boots", 1, 1));
+
+        float reduced = EnchantmentCombatService.applyArmorReduction(10.0f, diamondArmor);
+        assertEquals(3.024f, reduced, 0.001f);
+        assertEquals(10.0f, EnchantmentCombatService.applyArmorReduction(10.0f, List.of()), 0.0001f);
+    }
+
+    @Test
+    void rejectsInvalidArmorDamageAndNullPieces() {
+        assertThrows(IllegalArgumentException.class, () ->
+                EnchantmentCombatService.applyArmorReduction(Float.POSITIVE_INFINITY, List.of()));
+        assertThrows(NullPointerException.class, () ->
+                EnchantmentCombatService.applyArmorReduction(4.0f, java.util.Arrays.asList((ItemStack) null)));
+    }
+
+    @Test
     void rejectsInvalidDamageAndRandomInputs() {
         assertThrows(IllegalArgumentException.class, () ->
                 EnchantmentCombatService.resolveAttack(Float.NaN, null,

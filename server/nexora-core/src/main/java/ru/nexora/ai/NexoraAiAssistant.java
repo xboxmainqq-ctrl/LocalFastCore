@@ -111,6 +111,7 @@ public final class NexoraAiAssistant {
             String requesterXuid, String operatorName, String issue,
             Consumer<NexoraAiRepairProposals.Proposal> reply
     ) {
+        requireAdmin(requesterXuid);
         Objects.requireNonNull(issue, "issue");
         Objects.requireNonNull(reply, "reply");
         String normalizedIssue = issue.trim();
@@ -138,21 +139,29 @@ public final class NexoraAiAssistant {
         });
     }
 
-    public java.util.List<NexoraAiRepairProposals.Proposal> repairProposals() {
+    public java.util.List<NexoraAiRepairProposals.Proposal> repairProposals(String operatorXuid) {
+        requireAdmin(operatorXuid);
         return repairProposals.list();
     }
 
-    public java.util.Optional<NexoraAiRepairProposals.Proposal> repairProposal(String id) {
+    public java.util.Optional<NexoraAiRepairProposals.Proposal> repairProposal(String operatorXuid, String id) {
+        requireAdmin(operatorXuid);
         return repairProposals.find(id);
     }
 
     /** Approves a proposal for manual review only; this does not apply any changes. */
-    public java.util.Optional<NexoraAiRepairProposals.Proposal> approveRepairProposal(String id) {
+    public java.util.Optional<NexoraAiRepairProposals.Proposal> approveRepairProposal(String operatorXuid, String id) {
+        requireAdmin(operatorXuid);
         return repairProposals.approveForManualReview(id);
     }
 
-    public java.util.Optional<NexoraAiRepairProposals.Proposal> rejectRepairProposal(String id) {
+    public java.util.Optional<NexoraAiRepairProposals.Proposal> rejectRepairProposal(String operatorXuid, String id) {
+        requireAdmin(operatorXuid);
         return repairProposals.reject(id);
+    }
+
+    private void requireAdmin(String xuid) {
+        if (!isAdmin(xuid)) throw new SecurityException("NexoraAI operator access denied");
     }
 
     private static boolean isProviderFailure(String answer) {

@@ -43,6 +43,9 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 - [x] Add conservative deterministic Mob AI scheduling: nearby mobs and mobs with active aggro remain full-rate; distant unprovoked mobs are staggered across ticks. Expose aggregate counters in `/ai mob stats`.
 - [x] Add bounded, diagnostic-only stuck-mob detection with a 2-second no-progress threshold and operator report (`/ai mob stuck`); no automatic teleport or punishment.
 - [x] Expose read-only Mob AI cache counters and recent mob-ai/mob-pathfinding latency summaries through the allowlisted `/ai mob stats` operator command.
+- [x] Reuse nearest-player targeting results between scheduling and generic decisions; remove stream allocation from creeper target selection.
+- [x] Add selected species movement-speed, melee-reach, and attack-damage profiles with regression tests.
+- [x] Centralize transient AI/navigation/projectile cleanup across manual despawn and mob death paths.
 
 ## Priority 5 — Vanilla-style mob spawners
 

@@ -61,6 +61,6 @@ class MobJumpControllerTest {
         var mob = world.livingEntities().spawn("minecraft:zombie", 20, 15.5, 65, 0.5);
 
         assertFalse(new MobJumpController().tryJump(world, mob, 15.73, 0.5, 1_000));
-        assertFalse(world.isChunkLoadedAt(1, 0));
+        assertFalse(world.isChunkLoadedAt(16, 0));
     }
 }

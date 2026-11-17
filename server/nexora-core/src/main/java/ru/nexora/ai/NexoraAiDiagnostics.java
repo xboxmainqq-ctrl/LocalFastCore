@@ -44,7 +44,8 @@ public final class NexoraAiDiagnostics {
         }
         recordedFailures.incrementAndGet();
         String message = failure.getMessage();
-        String description = subsystem + ": " + failure.getClass().getSimpleName()
+        String description = (subsystem.equals("unknown") ? "" : subsystem + ": ")
+                + failure.getClass().getSimpleName()
                 + (message == null || message.isBlank() ? "" : ": " + message);
         lastFailure = bound(sanitize(description), MAX_FAILURE_DESCRIPTION_LENGTH);
         incrementSignature("FAILURE:" + subsystem + ":" + failure.getClass().getSimpleName());

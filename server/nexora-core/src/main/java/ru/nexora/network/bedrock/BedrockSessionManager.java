@@ -57,6 +57,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 
@@ -616,7 +617,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     private void handleCompleteMessage(NetherNetInboundPipeline.InboundMessage message) {
         SessionState state = sessions.computeIfAbsent(message.networkId(), ignored -> new SessionState());
-        synchronized (state) {
+        state.combatLock.lock();
+        try {
+          synchronized (state) {
             if (state.rejected) return;
 
             if (!state.compressionNegotiated) {
@@ -658,6 +661,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             message.networkId(), message.channelLabel(), packet));
                 }
             }
+          }
+        } finally {
+            state.combatLock.unlock();
         }
     }
 
@@ -1457,6 +1463,19 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             state.rejected = true;
             throw new SecurityException("Malformed Bedrock InventoryTransaction header", exception);
         }
+        if (transactionType == 3) {
+            try {
+                BedrockInventoryTransactionCodec.DecodedUseOnActor actor =
+                        BedrockInventoryTransactionCodec.decodeUseOnActor(packet, registry);
+                handleUseOnActorTransaction(networkId, state, actor);
+            } catch (UnsupportedOperationException exception) {
+                sendInventoryReconciliation(networkId, state, authoritativeContent);
+            } catch (IllegalArgumentException exception) {
+                state.rejected = true;
+                throw new SecurityException("Malformed Bedrock ItemUseOnActor transaction", exception);
+            }
+            return;
+        }
         if (transactionType == 4) {
             try {
                 BedrockInventoryTransactionCodec.DecodedItemRelease release =
@@ -1511,6 +1530,132 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         reconciliation.add(authoritativeContent);
         reconciliation.addAll(createEquipmentReconciliationPackets(state));
         sendPackets(networkId, reconciliation, true);
+    }
+
+    private void handleUseOnActorTransaction(
+            String networkId, SessionState attacker,
+            BedrockInventoryTransactionCodec.DecodedUseOnActor transaction
+    ) {
+        if (!attacker.loginAuthenticated || !attacker.clientInitialized || attacker.dead
+                || transaction.actionType() != 1 || transaction.hand() != 0
+                || transaction.slot() != attacker.inventory.selectedHotbarSlot()) {
+            return;
+        }
+
+        ItemStack weapon = attacker.inventory.heldItem().orElse(null);
+        if (weapon == null) {
+            if (transaction.item().isPresent()) return;
+        } else if (!transaction.item().filter(weapon::equals).isPresent()) {
+            return;
+        }
+
+        double originX = transaction.fromX() - attacker.positionX;
+        double originY = transaction.fromY() - attacker.positionY;
+        double originZ = transaction.fromZ() - attacker.positionZ;
+        if (originX * originX + originY * originY + originZ * originZ > 2.25) return;
+
+        long now = nanoTime.getAsLong();
+        if (attacker.lastAttackNanos != Long.MIN_VALUE
+                && now - attacker.lastAttackNanos < 250_000_000L) return;
+
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            String targetNetworkId = entry.getKey();
+            SessionState target = entry.getValue();
+            if (target == attacker || target.entityId != transaction.runtimeEntityId()
+                    || !target.loginAuthenticated || !target.clientInitialized || target.dead
+                    || target.vitals.dead()) continue;
+
+            // Never wait on another player's session lock while holding this one.
+            // Simultaneous reciprocal attacks are safely dropped rather than deadlocking.
+            if (!target.combatLock.tryLock()) return;
+            try {
+                double dx = target.positionX - attacker.positionX;
+                double dy = target.positionY - attacker.positionY;
+                double dz = target.positionZ - attacker.positionZ;
+                if (dx * dx + dy * dy + dz * dz > 3.5 * 3.5) return;
+
+                attacker.lastAttackNanos = now;
+                float baseDamage = baseAttackDamage(weapon);
+                ru.nexora.combat.EnchantmentCombatService.AttackEffect effect =
+                        ru.nexora.combat.EnchantmentCombatService.resolveAttack(
+                                baseDamage, weapon,
+                                ru.nexora.combat.EnchantmentCombatService.TargetType.NORMAL);
+                float finalDamage = applyPlayerArmor(target.equipment, effect.damage());
+                if (finalDamage > 0.0f) {
+                    applyDamage(targetNetworkId, target, finalDamage,
+                            target.lastInputTick, "death.attack.generic");
+                }
+
+                List<ItemStack> armor = target.equipment.armorSnapshot().stream()
+                        .flatMap(Optional::stream).toList();
+                if (!armor.isEmpty()) {
+                    double[] rolls = new double[armor.size()];
+                    int[] damageRolls = new int[armor.size()];
+                    java.util.concurrent.ThreadLocalRandom random =
+                            java.util.concurrent.ThreadLocalRandom.current();
+                    for (int i = 0; i < armor.size(); i++) {
+                        rolls[i] = random.nextDouble();
+                        damageRolls[i] = random.nextInt(1, 5);
+                    }
+                    int reflected = ru.nexora.combat.EnchantmentCombatService
+                            .resolveThornsDamage(armor, rolls, damageRolls);
+                    if (reflected > 0 && !attacker.vitals.dead()) {
+                        applyDamage(networkId, attacker, reflected,
+                                attacker.lastInputTick, "death.attack.thorns");
+                    }
+                }
+                return;
+            } finally {
+                target.combatLock.unlock();
+            }
+        }
+    }
+
+    private static float baseAttackDamage(ItemStack weapon) {
+        if (weapon == null) return 1.0f;
+        return switch (weapon.itemId()) {
+            case "minecraft:wooden_sword", "minecraft:golden_sword" -> 4.0f;
+            case "minecraft:stone_sword" -> 5.0f;
+            case "minecraft:iron_sword" -> 6.0f;
+            case "minecraft:diamond_sword" -> 7.0f;
+            case "minecraft:netherite_sword" -> 8.0f;
+            default -> 1.0f;
+        };
+    }
+
+    private static float applyPlayerArmor(PlayerEquipment equipment, float incomingDamage) {
+        int armorPoints = 0;
+        double toughness = 0.0;
+        int protectionLevels = 0;
+        for (Optional<ItemStack> optional : equipment.armorSnapshot()) {
+            ItemStack piece = optional.orElse(null);
+            if (piece == null) continue;
+            String id = piece.itemId();
+            int materialPoints = armorMaterialPoints(id);
+            if (id.endsWith("_helmet")) armorPoints += materialPoints == 0 ? 0 : materialPoints / 3;
+            else if (id.endsWith("_chestplate")) armorPoints += materialPoints * 2;
+            else if (id.endsWith("_leggings")) armorPoints += materialPoints * 3 / 2;
+            else if (id.endsWith("_boots")) armorPoints += materialPoints == 0 ? 0 : materialPoints / 3;
+            if (id.contains("diamond") || id.contains("netherite")) toughness += 0.5;
+            protectionLevels += piece.enchantments().getOrDefault("minecraft:protection", 0);
+        }
+        double armorReduction = 0.0;
+        if (armorPoints > 0) {
+            double effective = Math.min(20.0,
+                    Math.max(armorPoints / 5.0, armorPoints - incomingDamage / (2.0 + toughness / 4.0)));
+            armorReduction = effective / 25.0;
+        }
+        double enchantmentReduction = Math.min(0.80, protectionLevels * 0.04);
+        return (float) (incomingDamage * (1.0 - armorReduction) * (1.0 - enchantmentReduction));
+    }
+
+    private static int armorMaterialPoints(String itemId) {
+        if (itemId.contains("leather")) return 3;
+        if (itemId.contains("chainmail")) return 4;
+        if (itemId.contains("iron")) return 6;
+        if (itemId.contains("golden")) return 5;
+        if (itemId.contains("diamond") || itemId.contains("netherite")) return 8;
+        return 0;
     }
 
     private void handleCraftingUiTransaction(
@@ -2347,10 +2492,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     public boolean damagePlayer(String networkId, float amount) {
         SessionState state = sessions.get(networkId);
         if (state == null) return false;
-        synchronized (state) {
-            if (!state.loginAuthenticated || !state.clientInitialized || state.vitals.dead()) return false;
-            applyDamage(networkId, state, amount, state.lastInputTick, "death.attack.generic");
-            return true;
+        state.combatLock.lock();
+        try {
+            synchronized (state) {
+                if (!state.loginAuthenticated || !state.clientInitialized || state.vitals.dead()) return false;
+                applyDamage(networkId, state, amount, state.lastInputTick, "death.attack.generic");
+                return true;
+            }
+        } finally {
+            state.combatLock.unlock();
         }
     }
 
@@ -3066,6 +3216,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private static final class SessionState {
+        private final ReentrantLock combatLock = new ReentrantLock();
+        private long lastAttackNanos = Long.MIN_VALUE;
         private PlayerInventory inventory = new PlayerInventory();
         private PlayerEquipment equipment = new PlayerEquipment();
         private PlayerVitals vitals = PlayerVitals.DEFAULT;

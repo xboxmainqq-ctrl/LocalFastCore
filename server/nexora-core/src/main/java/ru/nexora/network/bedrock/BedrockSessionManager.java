@@ -1150,6 +1150,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             throw new SecurityException("Malformed Bedrock InventoryTransaction", exception);
         }
 
+        if (decoded.actions().stream().anyMatch(
+                action -> action.containerId() == BedrockInventoryContentCodec.PLAYER_UI_CONTAINER_ID)) {
+            handleCraftingUiTransaction(networkId, state, decoded.actions());
+            return;
+        }
+
         if (state.openContainerWindowId != 0 && state.openContainerInventory != null
                 && decoded.actions().stream().anyMatch(
                         action -> action.containerId() == state.openContainerWindowId)) {
@@ -1168,6 +1174,34 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         reconciliation.add(authoritativeContent);
         reconciliation.addAll(createEquipmentReconciliationPackets(state));
         sendPackets(networkId, reconciliation, true);
+    }
+
+    private void handleCraftingUiTransaction(
+            String networkId, SessionState state, List<InventoryTransactionService.Action> actions
+    ) {
+        List<Optional<ru.nexora.inventory.ItemStack>> previousPlayer = state.inventory.snapshot();
+        int previousSelectedSlot = state.inventory.selectedHotbarSlot();
+        List<Optional<ru.nexora.inventory.ItemStack>> previousUi = state.craftingUiInventory.snapshot();
+        ContainerInventoryTransactionService.Result result = containerTransactionService.apply(
+                state.inventory, state.craftingUiInventory,
+                BedrockInventoryContentCodec.PLAYER_UI_CONTAINER_ID, actions, Set.of(28, 29, 30, 31));
+
+        if (result == ContainerInventoryTransactionService.Result.APPLIED) {
+            try {
+                saveInventory(state);
+            } catch (IOException | RuntimeException exception) {
+                state.inventory.restore(previousPlayer, previousSelectedSlot);
+                state.craftingUiInventory.restore(previousUi);
+                try {
+                    saveInventory(state);
+                } catch (IOException | RuntimeException rollbackFailure) {
+                    exception.addSuppressed(rollbackFailure);
+                }
+                System.err.println("NEXORA: crafting-grid transaction rolled back because persistence failed: "
+                        + exception.getMessage());
+            }
+        }
+        sendInventoryAndEquipmentState(networkId, state);
     }
 
     private void handleOpenContainerTransaction(

@@ -65,6 +65,28 @@ class AiToolRegistryTest {
     }
 
     @Test
+    void rejectsOversizedToolArgumentsBeforeCallingTheTool() {
+        AtomicInteger calls = new AtomicInteger();
+        List<AiToolRegistry.AuditEvent> audit = new ArrayList<>();
+        AiToolRegistry registry = new AiToolRegistry(audit::add);
+        registry.register(new AiToolRegistry.Tool(
+                "server.inspect", "server.read", false,
+                arguments -> {
+                    calls.incrementAndGet();
+                    return "ok";
+                }
+        ));
+
+        AiToolRegistry.ToolResult result = registry.execute(
+                new AiToolRegistry.Principal("operator", Set.of("server.read")),
+                "server.inspect", Map.of("payload", "x".repeat(2049)), false);
+
+        assertEquals(AiToolRegistry.Status.DENIED, result.status());
+        assertEquals(0, calls.get());
+        assertEquals(AiToolRegistry.Status.DENIED, audit.getLast().status());
+    }
+
+    @Test
     void duplicateToolIdsAndInvalidDefinitionsAreRejected() {
         AiToolRegistry registry = new AiToolRegistry(ignored -> { });
         AiToolRegistry.Tool tool = new AiToolRegistry.Tool("world.inspect", "world.read", false, args -> "ok");

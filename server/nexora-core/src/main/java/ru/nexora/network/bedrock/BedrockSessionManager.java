@@ -1999,6 +1999,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (state.dead) return;
         BedrockPlayerAuthInputCodec.PlayerInput input = BedrockPlayerAuthInputCodec.decode(packet);
         if (state.hasReceivedInput && input.tick() <= state.lastInputTick) return;
+        tickPlayerFire(networkId, state, input.tick());
 
         if (serverAuthoritativeMovement) {
             handleServerAuthoritativeMovement(networkId, state, input);
@@ -2461,6 +2462,20 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
+    private void tickPlayerFire(String networkId, SessionState state, long tick) {
+        long now = nanoTime.getAsLong();
+        if (state.fireUntilNanos == Long.MIN_VALUE) return;
+        if (now >= state.fireUntilNanos) {
+            state.fireUntilNanos = Long.MIN_VALUE;
+            state.nextFireDamageNanos = Long.MIN_VALUE;
+            return;
+        }
+        if (now >= state.nextFireDamageNanos && !state.vitals.dead()) {
+            state.nextFireDamageNanos = now + 1_000_000_000L;
+            applyDamage(networkId, state, 1.0f, tick, "death.attack.onFire");
+        }
+    }
+
     private void updateSurvivalVitals(
             String networkId, SessionState state, long tick,
             double horizontalDistance, boolean sprinting, boolean jumpStarted
@@ -2470,14 +2485,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (jumpStarted) exhaustion += 0.2f;
         PlayerVitals updated = before.addExhaustion(exhaustion);
         long nowNanos = nanoTime.getAsLong();
-        if (state.fireUntilNanos != Long.MIN_VALUE && nowNanos >= state.fireUntilNanos) {
-            state.fireUntilNanos = Long.MIN_VALUE;
-            state.nextFireDamageNanos = Long.MIN_VALUE;
-        } else if (state.fireUntilNanos != Long.MIN_VALUE
-                && nowNanos >= state.nextFireDamageNanos && !updated.dead()) {
-            updated = updated.damage(1.0f);
-            state.nextFireDamageNanos = nowNanos + 1_000_000_000L;
-        }
         if (nowNanos >= state.nextNaturalVitalsNanos) {
             if (updated.hunger() >= 18 && updated.health() < PlayerVitals.MAX_HEALTH) {
                 updated = updated.heal(1.0f).addExhaustion(6.0f);

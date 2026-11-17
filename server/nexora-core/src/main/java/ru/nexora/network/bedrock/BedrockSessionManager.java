@@ -117,7 +117,19 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private volatile boolean serverAuthoritativeMovement;
     private volatile ru.nexora.ai.NexoraAiAssistant aiAssistant;
     private volatile ru.nexora.ai.NexoraAiDiagnostics aiDiagnostics;
-    private final ru.nexora.ai.NexoraAiGuard aiGuard = new ru.nexora.ai.NexoraAiGuard();
+    private final ru.nexora.ai.NexoraAiGuard aiGuard = new ru.nexora.ai.NexoraAiGuard(
+            ru.nexora.ai.NexoraAiGuard.DEFAULT_WINDOW_NANOS,
+            ru.nexora.ai.NexoraAiGuard.DEFAULT_MAX_FRAMES_PER_WINDOW,
+            ru.nexora.ai.NexoraAiGuard.DEFAULT_MAX_BYTES_PER_WINDOW,
+            ru.nexora.ai.NexoraAiGuard.DEFAULT_MAX_TRACKED_PEERS,
+            event -> {
+                ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
+                if (diagnostics != null) {
+                    diagnostics.recordGuardSignal(event.reason() + ": "
+                            + event.framesInWindow() + " frames, "
+                            + event.bytesInWindow() + " bytes in current window");
+                }
+            });
     private final NetherNetInboundPipeline inbound;
 
     public BedrockSessionManager(

@@ -24,7 +24,8 @@ public enum BlockType {
     CRAFTING_TABLE(19),
     FURNACE(20),
     BLAST_FURNACE(21),
-    SMOKER(22);
+    SMOKER(22),
+    SPAWNER(23);
 
     private final int internalId;
 

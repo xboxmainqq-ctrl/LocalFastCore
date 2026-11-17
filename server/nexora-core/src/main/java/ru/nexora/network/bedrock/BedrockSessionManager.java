@@ -2311,14 +2311,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             long nowMillis
     ) {
         if (!isRangedMob(mob.identifier())) return false;
-        ru.nexora.combat.LivingEntityAiService.PlayerTarget nearest = targets.stream()
-                .filter(Objects::nonNull)
-                .min(java.util.Comparator.comparingDouble(player -> {
-                    double dx = player.x() - mob.x();
-                    double dy = player.y() - mob.y();
-                    double dz = player.z() - mob.z();
-                    return dx * dx + dy * dy + dz * dz;
-                })).orElse(null);
+        ru.nexora.combat.LivingEntityAiService.PlayerTarget nearest =
+                ru.nexora.combat.LivingEntityAiService.nearestAlivePlayer(mob, targets);
         if (nearest == null) return false;
         double dx = nearest.x() - mob.x();
         double dy = nearest.y() + 1.0 - (mob.y() + 1.2);

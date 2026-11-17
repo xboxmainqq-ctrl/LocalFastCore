@@ -24,14 +24,14 @@ public final class WorldStorage {
     private static final int HEADER_BYTES = 4 + 1 + 4 + 4 + 1;
     private static final int MAX_FILE_BYTES =
             HEADER_BYTES + WorldChunk.SECTION_COUNT * (1 + ChunkSection.VOLUME) + Integer.BYTES;
-    private static final Pattern SAFE_WORLD_NAME = Pattern.compile("[A-Za-z0-9_-]{1,64}");
+    private static final Pattern SAFE_WORLD_NAME = Pattern.compile("[A-Za-z0-9 _-]{1,64}");
 
     private final Path chunksDirectory;
 
     public WorldStorage(Path rootDirectory, String worldName) throws IOException {
         Objects.requireNonNull(rootDirectory, "rootDirectory");
         if (worldName == null || !SAFE_WORLD_NAME.matcher(worldName).matches()) {
-            throw new IllegalArgumentException("World name must contain only letters, digits, '_' or '-'");
+            throw new IllegalArgumentException("World name must contain only letters, digits, spaces, '_' or '-'");
         }
         Path root = rootDirectory.toAbsolutePath().normalize();
         Files.createDirectories(root);

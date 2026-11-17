@@ -32,14 +32,14 @@ class MobSpawnerManagerTest {
                 request -> { spawned.incrementAndGet(); return true; });
         assertEquals(0, inactive.activeSpawners());
         assertEquals(0, spawned.get());
-        assertEquals(baseTick + 201, manager.snapshot().get(0).nextSpawnTick());
+        assertEquals(baseTick + 300, manager.snapshot().get(0).nextSpawnTick());
 
         var early = manager.tick(world, baseTick + 200,
                 List.of(new MobSpawnerManager.PlayerPosition(0.5, 65, 0.5)),
                 request -> { spawned.incrementAndGet(); return true; });
         assertEquals(0, early.spawned());
 
-        var due = manager.tick(world, baseTick + 201,
+        var due = manager.tick(world, baseTick + 300,
                 List.of(new MobSpawnerManager.PlayerPosition(0.5, 65, 0.5)),
                 request -> { spawned.incrementAndGet(); return true; });
         assertTrue(due.spawned() > 0);
@@ -55,12 +55,12 @@ class MobSpawnerManagerTest {
         manager.tick(world, 0, List.of(), request -> true);
         manager.tick(world, 1, List.of(), request -> true);
         manager.tick(world, 100, List.of(), request -> true);
-        assertEquals(301, manager.snapshot().get(0).nextSpawnTick());
+        assertEquals(300, manager.snapshot().get(0).nextSpawnTick());
 
-        var early = manager.tick(world, 300,
+        var early = manager.tick(world, 299,
                 List.of(new MobSpawnerManager.PlayerPosition(0.5, 65, 0.5)), request -> true);
         assertEquals(0, early.spawned());
-        var due = manager.tick(world, 301,
+        var due = manager.tick(world, 300,
                 List.of(new MobSpawnerManager.PlayerPosition(0.5, 65, 0.5)), request -> true);
         assertTrue(due.spawned() > 0);
     }

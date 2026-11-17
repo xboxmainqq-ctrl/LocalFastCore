@@ -52,14 +52,15 @@ final class NexoraAiConversationMemory {
             result = List.copyOf(conversation.messages);
         }
         trimIfNeeded(now);
-        return result;
+        return new History(result, conversation);
     }
 
     void clear(String playerId, boolean admin) {
         conversations.remove(key(playerId, admin));
     }
 
-    void recordExchange(String playerId, boolean admin, String userMessage, String assistantMessage) {
+    void recordExchange(String playerId, boolean admin, History history,
+                        String userMessage, String assistantMessage) {
         String key = key(playerId, admin);
         Objects.requireNonNull(userMessage, "userMessage");
         Objects.requireNonNull(assistantMessage, "assistantMessage");
@@ -67,18 +68,24 @@ final class NexoraAiConversationMemory {
                 || userMessage.length() > 800 || assistantMessage.length() > 1200) {
             throw new IllegalArgumentException("Conversation exchange is blank or oversized");
         }
-        long now = nanoTime.getAsLong();
-        Conversation conversation = conversations.compute(key, (ignored, existing) ->
-                existing == null || now - existing.lastAccessNanos >= ttlNanos
-                        ? new Conversation(now) : existing);
-        synchronized (conversation) {
-            conversation.messages.addLast(new Message("user", userMessage));
-            conversation.messages.addLast(new Message("assistant", assistantMessage));
-            while (conversation.messages.size() > maxExchanges * 2) {
-                conversation.messages.removeFirst();
-            }
-            conversation.lastAccessNanos = now;
+        Objects.requireNonNull(history, "history");
+        if (!(history.token() instanceof Conversation expected)) {
+            throw new IllegalArgumentException("Invalid conversation history token");
         }
+        long now = nanoTime.getAsLong();
+        conversations.computeIfPresent(key, (ignored, current) -> {
+            if (current != expected) return current;
+            synchronized (current) {
+                if (now - current.lastAccessNanos >= ttlNanos) return null;
+                current.messages.addLast(new Message("user", userMessage));
+                current.messages.addLast(new Message("assistant", assistantMessage));
+                while (current.messages.size() > maxExchanges * 2) {
+                    current.messages.removeFirst();
+                }
+                current.lastAccessNanos = now;
+            }
+            return current;
+        });
         trimIfNeeded(now);
     }
 
@@ -102,6 +109,13 @@ final class NexoraAiConversationMemory {
             throw new IllegalArgumentException("Invalid conversation player ID");
         }
         return (admin ? "admin:" : "player:") + playerId;
+    }
+
+    record History(List<Message> messages, Object token) {
+        History {
+            messages = List.copyOf(messages);
+            Objects.requireNonNull(token, "token");
+        }
     }
 
     record Message(String role, String content) {

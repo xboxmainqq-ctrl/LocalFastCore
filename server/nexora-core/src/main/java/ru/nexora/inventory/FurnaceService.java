@@ -40,17 +40,10 @@ public final class FurnaceService {
         long remainingTicks = elapsedTicks;
         while (remainingTicks > 0) {
             ItemStack input = inventory.getSlot(INPUT_SLOT).orElse(null);
-            if (input == null) {
-                state.cookProgress = 0;
-                break;
-            }
-            SmeltingRecipe recipe = RECIPES.get(input.itemId());
-            if (recipe == null || !canAcceptOutput(inventory, recipe.result())) {
-                state.cookProgress = 0;
-                break;
-            }
+            SmeltingRecipe recipe = input == null ? null : RECIPES.get(input.itemId());
+            boolean canSmelt = recipe != null && canAcceptOutput(inventory, recipe.result());
 
-            if (state.burnTicksRemaining == 0) {
+            if (state.burnTicksRemaining == 0 && canSmelt) {
                 ItemStack fuel = inventory.getSlot(FUEL_SLOT).orElse(null);
                 if (fuel == null) break;
                 Integer burnTime = FUELS.get(fuel.itemId());
@@ -59,18 +52,23 @@ public final class FurnaceService {
                 state.burnTicksRemaining = burnTime;
                 changed = true;
             }
+            if (state.burnTicksRemaining == 0) break;
 
-            long step = Math.min(remainingTicks,
-                    Math.min(state.burnTicksRemaining, COOK_TIME_TICKS - state.cookProgress));
+            int untilCooked = canSmelt ? COOK_TIME_TICKS - state.cookProgress : state.burnTicksRemaining;
+            long step = Math.min(remainingTicks, Math.min(state.burnTicksRemaining, untilCooked));
             state.burnTicksRemaining -= (int) step;
-            state.cookProgress += (int) step;
             remainingTicks -= step;
 
-            if (state.cookProgress >= COOK_TIME_TICKS) {
-                consumeOneInput(inventory);
-                addOutput(inventory, recipe.result());
+            if (canSmelt) {
+                state.cookProgress += (int) step;
+                if (state.cookProgress >= COOK_TIME_TICKS) {
+                    consumeOneInput(inventory);
+                    addOutput(inventory, recipe.result());
+                    state.cookProgress = 0;
+                    changed = true;
+                }
+            } else {
                 state.cookProgress = 0;
-                changed = true;
             }
         }
         return result(state, changed);

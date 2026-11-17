@@ -56,6 +56,7 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 
 - [x] Add a dedicated internal spawner block and Bedrock runtime-state mapping without changing the existing chunk file format.
 - [x] Implement 16-block player activation, configurable 20–800 tick delay, bounded spawn attempts, basic valid-position checks, shared nearby same-type caps, and bounded registry/work.
+- [x] Enforce a 128-spawner per-tick processing budget with round-robin fairness and make spawner processing idempotent within one server tick, even when multiple Bedrock input callbacks arrive.
 - [x] Persist spawner type, delay, coordinates, and next-spawn timer atomically with checksum validation across world saves/restarts.
 - [x] Replicate spawned actors and operator-driven spawner block updates to initialized Bedrock clients; protocol compatibility still needs real-client verification.
 - [x] Add allowlisted operator setup/inspection/configuration/removal commands; survival item placement and loot are still pending.

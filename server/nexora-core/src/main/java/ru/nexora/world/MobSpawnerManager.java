@@ -38,7 +38,7 @@ public final class MobSpawnerManager {
                 if (stored.nextSpawnTick() > stored.delayTicks()) {
                     throw new IllegalArgumentException("Persisted remaining delay exceeds configured delay");
                 }
-                state = stored.withNextSpawnTick(safeNextTick(nowTick, (int) stored.nextSpawnTick()));
+                state = stored.withNextSpawnTick(safeAddTicks(nowTick, stored.nextSpawnTick()));
             } catch (IllegalArgumentException exception) {
                 throw new IOException("Invalid persisted mob spawner timer", exception);
             }
@@ -287,11 +287,17 @@ public final class MobSpawnerManager {
     }
 
     private static long safeNextTick(long tick, int delay) {
-        if (delay < MobSpawnerState.MIN_DELAY_TICKS || delay > MobSpawnerState.MAX_DELAY_TICKS
-                || tick > Long.MAX_VALUE - delay) {
+        if (delay < MobSpawnerState.MIN_DELAY_TICKS || delay > MobSpawnerState.MAX_DELAY_TICKS) {
             throw new IllegalArgumentException("Invalid spawner delay or tick");
         }
-        return tick + delay;
+        return safeAddTicks(tick, delay);
+    }
+
+    private static long safeAddTicks(long tick, long ticks) {
+        if (tick < 0 || ticks < 0 || tick > Long.MAX_VALUE - ticks) {
+            throw new IllegalArgumentException("Invalid spawner timer");
+        }
+        return tick + ticks;
     }
 
     private record Position(int x, int y, int z) { }

@@ -2960,11 +2960,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private void startSpearChargeIfHeld(SessionState state) {
         ItemStack held = state.inventory.heldItem().orElse(null);
         if (!isSpear(held)) return;
+        long now = nanoTime.getAsLong();
         if (state.spearChargeStartedNanos != Long.MIN_VALUE
+                && state.spearChargeReleasedNanos == Long.MIN_VALUE
                 && state.spearChargeSlot == state.inventory.selectedHotbarSlot()
-                && held.itemId().equals(state.spearChargeItemId)) return;
+                && held.equals(state.spearChargeItemSnapshot)
+                && now >= state.spearChargeStartedNanos
+                && now - state.spearChargeStartedNanos <= 10_000_000_000L) return;
         clearSpearCharge(state);
-        state.spearChargeStartedNanos = nanoTime.getAsLong();
+        state.spearChargeStartedNanos = now;
         state.spearChargeSlot = state.inventory.selectedHotbarSlot();
         state.spearChargeItemId = held.itemId();
         state.spearChargeItemSnapshot = held;
@@ -2989,6 +2993,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 || !weapon.equals(attacker.spearChargeItemSnapshot)
                 || nowNanos < attacker.spearChargeReleasedNanos
                 || nowNanos - attacker.spearChargeReleasedNanos > 750_000_000L
+                || nowNanos < attacker.spearChargeStartedNanos
+                || nowNanos - attacker.spearChargeStartedNanos > 10_000_000_000L
                 || nowNanos - attacker.spearChargeStartedNanos < 50_000_000L) {
             return null;
         }

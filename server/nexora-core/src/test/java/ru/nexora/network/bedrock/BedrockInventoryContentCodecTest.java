@@ -79,6 +79,27 @@ class BedrockInventoryContentCodecTest {
     }
 
     @Test
+    void encodesPlayerUiCraftingGridWithCraftingInputContainerName() {
+        ContainerInventory ui = new ContainerInventory(BedrockInventoryContentCodec.PLAYER_UI_SIZE);
+        ui.setSlot(28, new ItemStack("minecraft:oak_planks", 2, 64));
+        BedrockPacket packet = BedrockInventoryContentCodec.createPlayerUiInventory(
+                ui, itemId -> {
+                    assertEquals("minecraft:oak_planks", itemId);
+                    return new BedrockInventoryContentCodec.ItemDefinition(5, 0, 0x37abcd4fL, new byte[0]);
+                });
+
+        assertEquals(0x31, packet.packetId());
+        byte[] payload = packet.payload();
+        assertEquals(124, Byte.toUnsignedInt(payload[0])); // UI container
+        assertEquals(51, Byte.toUnsignedInt(payload[1]));
+        assertArrayEquals(new byte[] {2, 5, 2, 0, 0, 0, 0, 0, 0},
+                Arrays.copyOfRange(payload, 2 + 28 * 9, 2 + 29 * 9));
+        assertEquals(13, Byte.toUnsignedInt(payload[payload.length - 10])); // CRAFTING_INPUT
+        assertEquals(0, Byte.toUnsignedInt(payload[payload.length - 9])); // no dynamic ID
+        assertArrayEquals(new byte[8], Arrays.copyOfRange(payload, payload.length - 8, payload.length));
+    }
+
+    @Test
     void encodesTwentySevenEmptyContainerSlotsWithLevelEntityName() {
         BedrockPacket packet = BedrockInventoryContentCodec.createContainerInventory(
                 7, new ContainerInventory(), ignored -> fail("Empty chest must not resolve item IDs"));

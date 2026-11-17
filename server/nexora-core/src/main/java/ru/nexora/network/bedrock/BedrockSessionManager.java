@@ -1929,9 +1929,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             if (elapsed < 50_000_000L) return;
             if (!lastItemActorTickNanos.compareAndSet(previous, nowNanos)) continue;
             double deltaSeconds = Math.min(0.1, elapsed / 1_000_000_000.0);
-            for (WorldItemEntity entity : world.itemEntities().tick(world, deltaSeconds)) {
+            for (WorldItemEntity entity : world.itemEntities().tick(
+                    world, deltaSeconds, System.currentTimeMillis())) {
                 broadcastItemActor(entity, BedrockItemActorCodec.createMove(
                         entity, Math.abs(entity.velocityY()) < 1.0e-6, Math.max(0, tick)));
+            }
+            for (WorldItemEntity removed : world.itemEntities().drainRemovedByTick()) {
+                broadcastItemActor(removed, BedrockItemActorCodec.createRemove(removed.uniqueId()));
             }
             return;
         }

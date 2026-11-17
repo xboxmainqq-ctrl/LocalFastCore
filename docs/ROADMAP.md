@@ -38,7 +38,7 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 - [ ] Profile mob AI update cost and entity counts under load.
 - [ ] Improve navigation/target selection without changing gameplay unexpectedly.
 - [ ] Bound AI work per update and avoid repeated expensive path calculations.
-- [ ] Add a conservative Mob AI load controller: keep mobs near players and mobs with active targets at full update rate; stagger only distant idle mobs, with deterministic tests and operator metrics.
+- [x] Add a conservative Mob AI load controller: keep mobs near players and mobs with active targets at full update rate; stagger only distant idle mobs, with deterministic tests and operator metrics.
 - [ ] Add deterministic tests for targeting, movement, despawn, and edge cases.
 - [x] Add conservative deterministic Mob AI scheduling: nearby mobs and mobs with active aggro remain full-rate; distant unprovoked mobs are staggered across ticks. Expose aggregate counters in `/ai mob stats`.
 - [x] Add bounded, diagnostic-only stuck-mob detection with a 2-second no-progress threshold and operator report (`/ai mob stuck`); no automatic teleport or punishment.
@@ -50,8 +50,8 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 - [x] Add server-side gravity, collision-resolved falling, knockback damping, and 3D flight targeting for selected flying species.
 - [x] Add bounded hostile-mob natural despawn after a 30-second grace period beyond 128 blocks; passive/neutral mobs are preserved.
 - [x] Add bounded fall-distance tracking and landing damage for ground-bound mobs.
-- [x] Add conservative one-block obstacle jumping with headroom checks, cooldowns, and loaded-chunk safety.
-- [ ] Add fluid movement, climbing, and species-specific special attacks.
+- [x] Add conservative one-block obstacle jumping with headroom checks, cooldowns, loaded-chunk safety, and invoke it from the live mob movement loop before pathfinding.
+- [ ] Add fluid movement, climbing, and complete species-specific special attacks. Water/lava behavior remains blocked by the current world block/fluid model and must not be simulated with unsafe guesses.
 
 ## Priority 5 — Vanilla-style mob spawners
 
@@ -63,6 +63,7 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 - [x] Add allowlisted operator setup/inspection/configuration/removal commands; survival item placement and loot are still pending.
 - [x] Add unit and persistence tests for unloaded/inactive areas, caps, invalid positions, corrupted data, timer pause, and restart recovery; CI verification is pending.
 - [ ] Verify on a real Bedrock client/server that Mob AI load scheduling never prevents a spawner from producing mobs or removes spawned entities.
+- [ ] Run integration/load tests with more than 128 active spawners, multiple players, and a full living-entity cap; record measured results rather than inferring TPS.
 
 ## Priority 6 — Security and moderation intelligence
 

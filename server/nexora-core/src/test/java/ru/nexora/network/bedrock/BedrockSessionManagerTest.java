@@ -308,6 +308,53 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void changingHotbarSlotCancelsAnActiveSpearCharge() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(3_000_000_000L);
+        ru.nexora.world.World combatWorld = new ru.nexora.world.World(
+                "spear-charge-slot-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                combatWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
+        BedrockItemRegistry registry = BedrockVanillaItemCatalog.createRegistry();
+        manager.setItemRegistry(registry);
+        manager.onIdentity("charge-slot-player", new NetherNetClientIdentity(
+                "charge-slot-token", new byte[] {24}, "charge-slot-xuid",
+                "ChargeSlotPlayer", "playfab-charge-slot", "20CA2", null));
+        setSessionField(manager, "charge-slot-player", "loginAuthenticated", true);
+        setSessionField(manager, "charge-slot-player", "clientInitialized", true);
+        setSessionField(manager, "charge-slot-player", "compressionNegotiated", true);
+        setSessionField(manager, "charge-slot-player", "positionInitialized", true);
+        setSessionField(manager, "charge-slot-player", "entityId", 124L);
+        setSessionField(manager, "charge-slot-player", "positionX", 0.5f);
+        setSessionField(manager, "charge-slot-player", "positionY", 65.0f);
+        setSessionField(manager, "charge-slot-player", "positionZ", 0.5f);
+        ItemStack spear = new ItemStack("minecraft:diamond_spear", 1, 1);
+        ItemStack alternate = new ItemStack("minecraft:wooden_spear", 1, 1);
+        manager.playerInventory("charge-slot-player").orElseThrow().setSlot(0, spear);
+        manager.playerInventory("charge-slot-player").orElseThrow().setSlot(1, alternate);
+
+        BedrockPacket startUse = new BedrockPacket(
+                BedrockPlayerActionCodec.PLAYER_ACTION_PACKET_ID, 0, 0,
+                playerActionPayload(124L, BedrockPlayerActionCodec.ACTION_START_USING_ITEM));
+        sendClientBatch(manager, "charge-slot-player",
+                BedrockBatchCodec.encode(List.of(startUse), true, 256));
+        assertNotEquals(Long.MIN_VALUE,
+                getSessionField(manager, "charge-slot-player", "spearChargeStartedNanos"));
+
+        BedrockPacket selectOtherSlot = new BedrockPacket(0x1f, 0, 0,
+                mobEquipmentPayload(124L, 861, 1, 1));
+        sendClientBatch(manager, "charge-slot-player",
+                BedrockBatchCodec.encode(List.of(selectOtherSlot), true, 256));
+        assertEquals(1, manager.playerInventory("charge-slot-player").orElseThrow().selectedHotbarSlot());
+        assertEquals(Long.MIN_VALUE,
+                getSessionField(manager, "charge-slot-player", "spearChargeStartedNanos"));
+        assertEquals(Long.MIN_VALUE,
+                getSessionField(manager, "charge-slot-player", "spearChargeReleasedNanos"));
+        manager.close();
+    }
+
+    @Test
     void appliesServerValidatedPlayerAttackWithSharpnessAndHurtImmunity() throws Exception {
         List<byte[]> outboundFrames = new ArrayList<>();
         ru.nexora.world.World combatWorld = new ru.nexora.world.World(

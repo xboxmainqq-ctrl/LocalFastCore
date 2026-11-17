@@ -57,7 +57,8 @@ public final class MobSpawnerManager {
         long nowTick = currentServerTick();
         List<MobSpawnerState> remaining = new ArrayList<>(spawners.size());
         for (MobSpawnerState state : spawners.values()) {
-            long remainingTicks = Math.max(0L, state.nextSpawnTick() - nowTick);
+            long remainingTicks = Math.min(state.delayTicks(),
+                    Math.max(0L, state.nextSpawnTick() - nowTick));
             remaining.add(state.withNextSpawnTick(remainingTicks));
         }
         storage.save(List.copyOf(remaining));

@@ -3,6 +3,8 @@ package ru.nexora.network.bedrock;
 import org.junit.jupiter.api.Test;
 import ru.nexora.network.nethernet.NetherNetClientIdentity;
 import ru.nexora.network.nethernet.NetherNetMessageFramer;
+import ru.nexora.inventory.ItemStack;
+import ru.nexora.world.WorldItemEntity;
 import ru.nexora.world.FlatWorldGenerator;
 import ru.nexora.world.World;
 import ru.nexora.world.WorldLivingEntity;
@@ -67,6 +69,61 @@ class BedrockActorVisibilityIntegrationTest {
         }
     }
 
+    @Test
+    void droppedItemsAreAddedAndRemovedAsTheyCrossChunkInterestBoundaries() throws Exception {
+        List<Outbound> outbound = new ArrayList<>();
+        World world = new World("item-visibility-test", 0L, new FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                world, (networkId, label, frame) -> outbound.add(new Outbound(networkId, frame)),
+                event -> { });
+        manager.setItemRegistry(new BedrockItemRegistry(List.of(new BedrockItemRegistry.Entry(
+                "minecraft:stone",
+                new BedrockInventoryContentCodec.ItemDefinition(1, 0, 0, new byte[0])))));
+
+        try {
+            manager.onIdentity("viewer", new NetherNetClientIdentity(
+                    "viewer-token", new byte[] {1, 2, 3}, "viewer-xuid",
+                    "Viewer", "viewer-playfab", "20CA2", null));
+            Object session = session(manager, "viewer");
+            set(session, "clientInitialized", true);
+            set(session, "compressionNegotiated", true);
+            sentChunks(session).add(chunkKey(0, 0));
+
+            WorldItemEntity item = world.itemEntities().spawn(
+                    new ItemStack("minecraft:stone", 1, 64),
+                    1.0, 65.0, 1.0, 0.0, 0.0, 0.0, 0L, 0L, null);
+            Method sync = BedrockSessionManager.class.getDeclaredMethod(
+                    "syncVisibleWorldActors", String.class, session.getClass());
+            sync.setAccessible(true);
+            sync.invoke(manager, "viewer", session);
+
+            assertTrue(visibleItems(session).contains(item.runtimeId()));
+            assertEquals(BedrockAddItemActorCodec.ADD_ITEM_ACTOR_PACKET_ID,
+                    packetsFor(outbound, "viewer").getLast().packetId());
+
+            WorldItemEntity moved = new WorldItemEntity(item.uniqueId(), item.runtimeId(), item.stack(),
+                    33.0, item.y(), item.z(), 0.0, 0.0, 0.0,
+                    item.pickupAvailableAtMillis(), item.ownerXuid());
+            Method broadcast = BedrockSessionManager.class.getDeclaredMethod(
+                    "broadcastItemActor", WorldItemEntity.class, BedrockPacket.class);
+            broadcast.setAccessible(true);
+            broadcast.invoke(manager, moved, BedrockItemActorCodec.createMove(moved, true, 1L));
+
+            assertFalse(visibleItems(session).contains(item.runtimeId()));
+            assertEquals(BedrockAddItemActorCodec.REMOVE_ACTOR_PACKET_ID,
+                    packetsFor(outbound, "viewer").getLast().packetId());
+
+            sentChunks(session).add(chunkKey(2, 0));
+            broadcast.invoke(manager, moved, BedrockItemActorCodec.createMove(moved, true, 2L));
+            assertTrue(visibleItems(session).contains(item.runtimeId()));
+            assertEquals(BedrockAddItemActorCodec.ADD_ITEM_ACTOR_PACKET_ID,
+                    packetsFor(outbound, "viewer").getLast().packetId());
+        } finally {
+            manager.close();
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private static Object session(BedrockSessionManager manager, String id) throws Exception {
         Field field = BedrockSessionManager.class.getDeclaredField("sessions");
@@ -92,6 +149,13 @@ class BedrockActorVisibilityIntegrationTest {
         Field field = target.getClass().getDeclaredField(name);
         field.setAccessible(true);
         field.set(target, value);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Set<Long> visibleItems(Object session) throws Exception {
+        Field field = session.getClass().getDeclaredField("visibleItemEntityIds");
+        field.setAccessible(true);
+        return (Set<Long>) field.get(session);
     }
 
     private static long chunkKey(int x, int z) {

@@ -21,7 +21,7 @@ NexoraAI is an in-core operations observer and optional in-game assistant for NE
 - The assistant answers asynchronously through an OpenAI-compatible Chat Completions endpoint.
 - Per-player requests are rate-limited and prompts/replies are bounded.
 - The assistant keeps up to 8 completed exchanges per authenticated player for 15 minutes of inactivity; player and operator histories are separate. Context is memory-only and is not written to disk.
-- The model receives a small read-only JVM status snapshot. It is explicitly instructed not to claim it can execute commands or modify the server.
+- The model receives a small read-only JVM status snapshot. Operator requests also include aggregate player/session, living-entity, and dropped-item counts, without player inventory or private profile data. It is explicitly instructed not to claim it can execute commands or modify the server.
 
 Configuration is read from the server process environment:
 - `NEXORA_AI_API_KEY` — provider key; without it the chat stays disabled.
@@ -30,7 +30,7 @@ Configuration is read from the server process environment:
 - `NEXORA_AI_TIMEOUT_SECONDS` — request timeout; default 30.
 - `NEXORA_AI_ADMIN_XUIDS` — comma-separated Xbox XUID allowlist for operator mode.
 
-Only HTTPS endpoints are accepted, except HTTP on localhost for private development providers. API keys are never written to source files or logs. Player questions and the player's display name are sent to the configured AI provider; operators should disclose this to players and must not invite them to submit passwords, tokens, or other secrets.
+Only HTTPS endpoints are accepted, except HTTP on localhost for private development providers. API keys are never written to source files or logs. Player questions, the player's display name, and bounded recent conversation context are sent to the configured AI provider; operators should disclose this to players and must not invite them to submit passwords, tokens, or other secrets.
 
 ## Operator mode
 

@@ -4779,15 +4779,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     private void sendChunkArea(String networkId, SessionState state, int centerX, int centerZ) {
         int radius = state.chunkViewRadius;
-        Map<Long, List<WorldItemEntity>> itemsByChunk = new java.util.HashMap<>();
-        if (itemRegistry != null) {
-            for (WorldItemEntity entity : world.itemEntities().snapshot()) {
-                int itemChunkX = Math.floorDiv((int) Math.floor(entity.x()), 16);
-                int itemChunkZ = Math.floorDiv((int) Math.floor(entity.z()), 16);
-                long itemChunkKey = ((long) itemChunkX << 32) | (itemChunkZ & 0xffff_ffffL);
-                itemsByChunk.computeIfAbsent(itemChunkKey, ignored -> new ArrayList<>()).add(entity);
-            }
-        }
         Set<Long> desiredChunks = new HashSet<>();
         for (int ring = 0; ring <= radius; ring++) {
             for (int offsetZ = -ring; offsetZ <= ring; offsetZ++) {
@@ -4800,12 +4791,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     if (state.sentChunkKeys.add(key)) {
                         WorldChunk chunk = world.getChunk(chunkX, chunkZ);
                         sendPacket(networkId, BedrockLevelChunkCodec.createPacket(chunk), true);
-                        if (itemRegistry != null) {
-                            for (WorldItemEntity entity : itemsByChunk.getOrDefault(key, List.of())) {
-                                sendPacket(networkId,
-                                        BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry), true);
-                            }
-                        }
                     }
                 }
             }
@@ -4865,6 +4850,29 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 } catch (RuntimeException exception) {
                     System.err.println("NEXORA: unable to remove living actor leaving chunk view: "
                             + exception.getMessage());
+                }
+            }
+        }
+        if (itemRegistry != null) {
+            for (WorldItemEntity entity : world.itemEntities().snapshot()) {
+                boolean visible = isWorldPositionVisible(recipient, entity.x(), entity.z());
+                if (visible && recipient.visibleItemEntityIds.add(entity.runtimeId())) {
+                    try {
+                        sendPacket(recipientNetworkId,
+                                BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry), true);
+                    } catch (RuntimeException exception) {
+                        recipient.visibleItemEntityIds.remove(entity.runtimeId());
+                        System.err.println("NEXORA: unable to add dropped item entering chunk view: "
+                                + exception.getMessage());
+                    }
+                } else if (!visible && recipient.visibleItemEntityIds.remove(entity.runtimeId())) {
+                    try {
+                        sendPacket(recipientNetworkId,
+                                BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()), true);
+                    } catch (RuntimeException exception) {
+                        System.err.println("NEXORA: unable to remove dropped item leaving chunk view: "
+                                + exception.getMessage());
+                    }
                 }
             }
         }
@@ -5083,16 +5091,30 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private void broadcastItemActor(WorldItemEntity entity, BedrockPacket packet) {
-        int chunkX = Math.floorDiv((int) Math.floor(entity.x()), 16);
-        int chunkZ = Math.floorDiv((int) Math.floor(entity.z()), 16);
-        long chunkKey = ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
+        boolean removing = packet.packetId() == BedrockItemActorCodec.REMOVE_ACTOR_PACKET_ID;
         for (var entry : sessions.entrySet()) {
             SessionState recipient = entry.getValue();
-            if (!recipient.clientInitialized || recipient.rejected
-                    || !recipient.sentChunkKeys.contains(chunkKey)) continue;
+            if (!recipient.clientInitialized || recipient.rejected) continue;
+            boolean wasVisible = recipient.visibleItemEntityIds.contains(entity.runtimeId());
+            boolean visibleNow = isWorldPositionVisible(recipient, entity.x(), entity.z());
             try {
-                sendPacket(entry.getKey(), packet, true);
+                if (removing) {
+                    if (recipient.visibleItemEntityIds.remove(entity.runtimeId())) {
+                        sendPacket(entry.getKey(), packet, true);
+                    }
+                } else if (visibleNow && !wasVisible) {
+                    if (itemRegistry == null) continue;
+                    recipient.visibleItemEntityIds.add(entity.runtimeId());
+                    sendPacket(entry.getKey(),
+                            BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry), true);
+                } else if (visibleNow) {
+                    sendPacket(entry.getKey(), packet, true);
+                } else if (wasVisible && recipient.visibleItemEntityIds.remove(entity.runtimeId())) {
+                    sendPacket(entry.getKey(),
+                            BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()), true);
+                }
             } catch (RuntimeException exception) {
+                if (visibleNow && !wasVisible) recipient.visibleItemEntityIds.remove(entity.runtimeId());
                 System.err.println("NEXORA: unable to sync item actor to " + entry.getKey()
                         + ": " + exception.getMessage());
             }
@@ -5581,6 +5603,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private final Set<Long> visiblePlayerEntityIds = ConcurrentHashMap.newKeySet();
         private final Set<Long> visibleLivingEntityIds = ConcurrentHashMap.newKeySet();
         private final Set<Long> visibleArrowEntityIds = ConcurrentHashMap.newKeySet();
+        private final Set<Long> visibleItemEntityIds = ConcurrentHashMap.newKeySet();
         private BreakTarget breakTarget;
         private long entityId;
         private volatile boolean rejected;

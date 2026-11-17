@@ -4855,6 +4855,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         if (itemRegistry != null) {
             for (WorldItemEntity entity : world.itemEntities().snapshot()) {
+                if (itemRegistry.findByIdentifier(entity.stack().itemId()) == null) continue;
                 boolean visible = isWorldPositionVisible(recipient, entity.x(), entity.z());
                 if (visible && recipient.visibleItemEntityIds.add(entity.runtimeId())) {
                     try {
@@ -5103,7 +5104,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         sendPacket(entry.getKey(), packet, true);
                     }
                 } else if (visibleNow && !wasVisible) {
-                    if (itemRegistry == null) continue;
+                    if (itemRegistry.findByIdentifier(entity.stack().itemId()) == null) continue;
                     recipient.visibleItemEntityIds.add(entity.runtimeId());
                     sendPacket(entry.getKey(),
                             BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry), true);

@@ -2534,7 +2534,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 continue;
             }
             boolean hasActiveTarget = livingEntityAggroTargets.containsKey(mob.runtimeId());
-            if (!mobAiLoadController.shouldUpdate(mob.runtimeId(), tick,
+            // Use the server's monotonic 50 ms AI cadence, not a client-provided input tick.
+            // Different players have independent input counters and must not perturb mob scheduling.
+            long serverAiTick = Math.max(0L, nowMillis / 50L);
+            if (!mobAiLoadController.shouldUpdate(mob.runtimeId(), serverAiTick,
                     nearestPlayerDistanceSquared, hasActiveTarget)) {
                 continue;
             }

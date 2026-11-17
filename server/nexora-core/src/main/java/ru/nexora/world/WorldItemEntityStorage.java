@@ -25,7 +25,7 @@ import java.util.zip.CRC32C;
 /** Versioned, checksummed persistence for dropped world item actors. */
 public final class WorldItemEntityStorage {
     private static final int MAGIC = 0x4e584549; // NXEI
-    private static final int VERSION = 2;
+    private static final int VERSION = 3;
     private static final int MAX_ENTITIES = 10_000;
     private static final int MAX_ITEM_ID_BYTES = 128;
     private static final int MAX_OWNER_BYTES = 64;
@@ -108,7 +108,7 @@ public final class WorldItemEntityStorage {
         try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(bytes, 0, bodyLength))) {
             if (in.readInt() != MAGIC) throw new IOException("Invalid dropped world item magic");
             int version = in.readUnsignedByte();
-            if (version != 1 && version != VERSION) throw new IOException("Unsupported dropped world item version: " + version);
+            if (version < 1 || version > VERSION) throw new IOException("Unsupported dropped world item version: " + version);
             int count = in.readInt();
             if (count < 0 || count > MAX_ENTITIES) throw new IOException("Invalid dropped world item count");
             List<WorldItemEntity> result = new ArrayList<>(count);
@@ -145,6 +145,7 @@ public final class WorldItemEntityStorage {
             out.writeByte(enchantment.getValue());
         }
         out.writeByte(entity.stack().repairCost());
+        out.writeShort(entity.stack().durabilityDamage());
         out.writeDouble(entity.x());
         out.writeDouble(entity.y());
         out.writeDouble(entity.z());
@@ -173,6 +174,7 @@ public final class WorldItemEntityStorage {
         int maxStackSize = in.readUnsignedByte();
         java.util.Map<String, Integer> enchantments = new java.util.LinkedHashMap<>();
         int repairCost = 0;
+        int durabilityDamage = 0;
         if (version >= 2) {
             int enchantmentCount = in.readUnsignedByte();
             if (enchantmentCount > 32) throw new IOException("Too many dropped item enchantments");
@@ -190,8 +192,9 @@ public final class WorldItemEntityStorage {
                 }
             }
             repairCost = in.readUnsignedByte();
+            if (version >= 3) durabilityDamage = in.readUnsignedShort();
         }
-        ItemStack stack = new ItemStack(itemId, count, maxStackSize, enchantments, repairCost);
+        ItemStack stack = new ItemStack(itemId, count, maxStackSize, enchantments, repairCost, durabilityDamage);
         double x = in.readDouble();
         double y = in.readDouble();
         double z = in.readDouble();

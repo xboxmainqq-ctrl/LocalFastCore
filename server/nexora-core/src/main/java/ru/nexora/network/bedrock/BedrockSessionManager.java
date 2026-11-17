@@ -115,6 +115,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final ru.nexora.combat.LivingEntityAiService livingEntityAi =
             new ru.nexora.combat.LivingEntityAiService();
     private volatile boolean serverAuthoritativeMovement;
+    private volatile ru.nexora.ai.NexoraAiAssistant aiAssistant;
     private final NetherNetInboundPipeline inbound;
 
     public BedrockSessionManager(
@@ -1251,7 +1252,87 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             openEquipmentMenu(message.networkId(), state, "");
             return;
         }
+        if (normalized.equals("/ai")) {
+            openAiForm(message.networkId(), state);
+            return;
+        }
+        if (normalized.startsWith("/ai ")) {
+            handleAiChat(message.networkId(), state, command.command().trim().substring(4).trim());
+            return;
+        }
         packetSink.accept(new PacketEvent(message.networkId(), message.channelLabel(), packet));
+    }
+
+    /** Installs the optional in-game assistant. */
+    public void setAiAssistant(ru.nexora.ai.NexoraAiAssistant assistant) {
+        this.aiAssistant = Objects.requireNonNull(assistant, "assistant");
+    }
+
+    private void openAiForm(String networkId, SessionState state) {
+        long next = nextFormId.getAndIncrement();
+        if (next < 1 || next > Integer.MAX_VALUE) {
+            throw new IllegalStateException("Bedrock form ID space exhausted");
+        }
+        com.fasterxml.jackson.databind.node.ObjectNode form = MAPPER.createObjectNode();
+        form.put("type", "custom_form");
+        form.put("title", "NEXORA AI");
+        com.fasterxml.jackson.databind.node.ArrayNode content = form.putArray("content");
+        content.addObject().put("type", "input")
+                .put("text", "Задай вопрос игровому помощнику")
+                .put("placeholder", "Например: как работает копьё?")
+                .put("default", "");
+        state.pendingAiFormId = (int) next;
+        try {
+            sendPacket(networkId, BedrockModalFormCodec.createRequest(
+                    (int) next, MAPPER.writeValueAsString(form)), true);
+        } catch (IOException exception) {
+            state.pendingAiFormId = 0;
+            throw new IllegalStateException("Unable to open NexoraAI chat form", exception);
+        }
+    }
+
+    private void handleAiChat(String networkId, SessionState state, String prompt) {
+        if (prompt.isBlank()) {
+            sendAiMessage(networkId, "§b[NEXORA AI] §fНапиши вопрос после /ai.");
+            return;
+        }
+        if (prompt.length() > 600) {
+            sendAiMessage(networkId, "§b[NEXORA AI] §fМаксимальная длина вопроса — 600 символов.");
+            return;
+        }
+        if (prompt.equalsIgnoreCase("admin") || prompt.toLowerCase(Locale.ROOT).startsWith("admin ")) {
+            sendAiMessage(networkId, "§b[NEXORA AI] §fРежим /ai admin закрыт до подключения системы прав администрации.");
+            return;
+        }
+        ru.nexora.ai.NexoraAiAssistant assistant = aiAssistant;
+        if (assistant == null || !assistant.isEnabled()) {
+            sendAiMessage(networkId, "§b[NEXORA AI] §fИИ не настроен. Задай NEXORA_AI_API_KEY в окружении сервера.");
+            return;
+        }
+        String playerName = state.identity == null || state.identity.displayName() == null
+                ? "Игрок" : state.identity.displayName();
+        ru.nexora.ai.NexoraAiAssistant.AskResult result = assistant.ask(
+                networkId, playerName, prompt, reply -> {
+                    SessionState current = sessions.get(networkId);
+                    if (current == state && current.loginAuthenticated && current.clientInitialized) {
+                        sendAiMessage(networkId, "§b[NEXORA AI] §f" + reply);
+                    }
+                });
+        if (result == ru.nexora.ai.NexoraAiAssistant.AskResult.RATE_LIMITED) {
+            sendAiMessage(networkId, "§b[NEXORA AI] §fПодожди несколько секунд перед следующим вопросом.");
+        } else if (result == ru.nexora.ai.NexoraAiAssistant.AskResult.ACCEPTED) {
+            sendAiMessage(networkId, "§b[NEXORA AI] §fДумаю...");
+        } else {
+            sendAiMessage(networkId, "§b[NEXORA AI] §fИИ не настроен.");
+        }
+    }
+
+    private void sendAiMessage(String networkId, String message) {
+        try {
+            sendPacket(networkId, BedrockTextCodec.createSystemMessage(message), true);
+        } catch (RuntimeException exception) {
+            System.err.println("NEXORA AI: unable to send reply: " + exception.getMessage());
+        }
     }
 
     private void handleModalFormResponse(
@@ -1268,6 +1349,19 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             response = BedrockModalFormCodec.decodeResponse(packet);
         } catch (IllegalArgumentException exception) {
             throw new SecurityException("Malformed Bedrock ModalFormResponse", exception);
+        }
+        if (state.pendingAiFormId != 0 && state.pendingAiFormId == response.formId()) {
+            state.pendingAiFormId = 0;
+            if (response.cancelled()) return;
+            try {
+                com.fasterxml.jackson.databind.JsonNode answer = MAPPER.readTree(response.responseJson());
+                if (answer != null && answer.isArray() && answer.size() > 0 && answer.get(0).isTextual()) {
+                    handleAiChat(message.networkId(), state, answer.get(0).asText().trim());
+                }
+            } catch (IOException exception) {
+                throw new SecurityException("Invalid JSON in NexoraAI form response", exception);
+            }
+            return;
         }
         PendingEquipmentForm pending = state.pendingEquipmentForm;
         if (pending == null || pending.formId() != response.formId()) return;
@@ -4145,6 +4239,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private long entityId;
         private boolean rejected;
         private PendingEquipmentForm pendingEquipmentForm;
+        private int pendingAiFormId;
         private int nextContainerWindowId = 1;
         private int openContainerWindowId;
         private int openContainerType = BedrockContainerPacketCodec.CONTAINER_TYPE;

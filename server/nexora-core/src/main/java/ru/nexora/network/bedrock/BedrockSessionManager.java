@@ -1685,6 +1685,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case "minecraft:chest" -> BlockType.CHEST;
             case "minecraft:oak_log" -> BlockType.OAK_LOG;
             case "minecraft:oak_planks" -> BlockType.OAK_PLANKS;
+            case "minecraft:crafting_table" -> BlockType.CRAFTING_TABLE;
             default -> null;
         };
         if (placedType == null) return;
@@ -2055,6 +2056,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case CHEST -> "minecraft:chest";
             case OAK_LOG -> "minecraft:oak_log";
             case OAK_PLANKS -> "minecraft:oak_planks";
+            case CRAFTING_TABLE -> "minecraft:crafting_table";
         };
     }
 
@@ -2095,6 +2097,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case CHEST -> 2_500_000_000L;
             case OAK_LOG -> 2_000_000_000L;
             case OAK_PLANKS -> 2_000_000_000L;
+            case CRAFTING_TABLE -> 2_500_000_000L;
         };
     }
 

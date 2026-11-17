@@ -1252,12 +1252,28 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             openEquipmentMenu(message.networkId(), state, "");
             return;
         }
+        if (normalized.equals("/ai admin")) {
+            if (!isAiAdmin(state)) {
+                sendAiMessage(message.networkId(), "§c[NEXORA AI] Нет доступа к режиму администрации.");
+            } else if (aiAssistant != null) {
+                sendAiMessage(message.networkId(), "§b[NEXORA AI ADMIN] §f" + aiAssistant.adminStatus());
+            }
+            return;
+        }
+        if (normalized.startsWith("/ai admin ")) {
+            if (!isAiAdmin(state)) {
+                sendAiMessage(message.networkId(), "§c[NEXORA AI] Нет доступа к режиму администрации.");
+            } else {
+                handleAiChat(message.networkId(), state, command.command().trim().substring(10).trim(), true);
+            }
+            return;
+        }
         if (normalized.equals("/ai")) {
             openAiForm(message.networkId(), state);
             return;
         }
         if (normalized.startsWith("/ai ")) {
-            handleAiChat(message.networkId(), state, command.command().trim().substring(4).trim());
+            handleAiChat(message.networkId(), state, command.command().trim().substring(4).trim(), false);
             return;
         }
         packetSink.accept(new PacketEvent(message.networkId(), message.channelLabel(), packet));
@@ -1291,7 +1307,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
-    private void handleAiChat(String networkId, SessionState state, String prompt) {
+    private boolean isAiAdmin(SessionState state) {
+        ru.nexora.ai.NexoraAiAssistant assistant = aiAssistant;
+        return assistant != null && state.identity != null && assistant.isAdmin(state.identity.xuid());
+    }
+
+    private void handleAiChat(String networkId, SessionState state, String prompt, boolean admin) {
         if (prompt.isBlank()) {
             sendAiMessage(networkId, "§b[NEXORA AI] §fНапиши вопрос после /ai.");
             return;
@@ -1300,8 +1321,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             sendAiMessage(networkId, "§b[NEXORA AI] §fМаксимальная длина вопроса — 600 символов.");
             return;
         }
-        if (prompt.equalsIgnoreCase("admin") || prompt.toLowerCase(Locale.ROOT).startsWith("admin ")) {
-            sendAiMessage(networkId, "§b[NEXORA AI] §fРежим /ai admin закрыт до подключения системы прав администрации.");
+        if (admin && !isAiAdmin(state)) {
+            sendAiMessage(networkId, "§c[NEXORA AI] Нет доступа к режиму администрации.");
             return;
         }
         ru.nexora.ai.NexoraAiAssistant assistant = aiAssistant;
@@ -1312,7 +1333,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         String playerName = state.identity == null || state.identity.displayName() == null
                 ? "Игрок" : state.identity.displayName();
         ru.nexora.ai.NexoraAiAssistant.AskResult result = assistant.ask(
-                networkId, playerName, prompt, reply -> {
+                networkId, playerName, prompt, admin, reply -> {
                     SessionState current = sessions.get(networkId);
                     if (current == state && current.loginAuthenticated && current.clientInitialized) {
                         sendAiMessage(networkId, "§b[NEXORA AI] §f" + reply);
@@ -1356,7 +1377,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             try {
                 com.fasterxml.jackson.databind.JsonNode answer = MAPPER.readTree(response.responseJson());
                 if (answer != null && answer.isArray() && answer.size() > 0 && answer.get(0).isTextual()) {
-                    handleAiChat(message.networkId(), state, answer.get(0).asText().trim());
+                    handleAiChat(message.networkId(), state, answer.get(0).asText().trim(), false);
                 }
             } catch (IOException exception) {
                 throw new SecurityException("Invalid JSON in NexoraAI form response", exception);

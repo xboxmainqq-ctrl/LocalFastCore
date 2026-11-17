@@ -55,6 +55,26 @@ public final class PlayerExperience {
         return (int) Math.min(MAX_TOTAL_POINTS, points);
     }
 
+    /** Deducts levels while retaining the same fractional progress through the current level. */
+    public static long removeLevelsFromTotalMilliPoints(long totalMilliPoints, int levels) {
+        if (levels < 0) throw new IllegalArgumentException("levels cannot be negative");
+        if (totalMilliPoints < 0 || totalMilliPoints > (long) MAX_TOTAL_POINTS * 1000L) {
+            throw new IllegalArgumentException("Experience must be within supported range");
+        }
+        if (levels == 0 || totalMilliPoints == 0) return totalMilliPoints;
+
+        int currentLevel = fromTotalMilliPoints(totalMilliPoints).level();
+        int targetLevel = Math.max(0, currentLevel - levels);
+        if (targetLevel == currentLevel) return totalMilliPoints;
+
+        long currentLevelStart = (long) pointsAtLevelStart(currentLevel) * 1000L;
+        long progressMilli = totalMilliPoints - currentLevelStart;
+        long currentLevelSpan = (long) pointsToNextLevel(currentLevel) * 1000L;
+        long targetLevelSpan = (long) pointsToNextLevel(targetLevel) * 1000L;
+        long targetProgressMilli = progressMilli * targetLevelSpan / currentLevelSpan;
+        return (long) pointsAtLevelStart(targetLevel) * 1000L + targetProgressMilli;
+    }
+
     public static int addPoints(int currentTotal, int points) {
         if (currentTotal < 0 || currentTotal > MAX_TOTAL_POINTS || points < 0) {
             throw new IllegalArgumentException("Invalid XP adjustment");

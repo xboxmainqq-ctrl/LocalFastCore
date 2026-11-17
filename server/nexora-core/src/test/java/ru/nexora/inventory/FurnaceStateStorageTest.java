@@ -27,9 +27,17 @@ class FurnaceStateStorageTest {
     void persistsCoalBlockBurnDuration() throws Exception {
         FurnaceStateStorage storage = new FurnaceStateStorage(temporaryDirectory, "NEXORA");
         FurnaceService.FurnaceStateSnapshot expected =
-                new FurnaceService.FurnaceStateSnapshot(15999, 50, 16000);
+                new FurnaceService.FurnaceStateSnapshot(15999, 50, 16000, 1750);
         storage.save(2, 64, 2, expected);
         assertEquals(expected, storage.load(2, 64, 2).orElseThrow());
+    }
+
+    @Test
+    void rejectsInvalidPendingExperience() throws Exception {
+        FurnaceStateStorage storage = new FurnaceStateStorage(temporaryDirectory, "NEXORA");
+        assertThrows(IllegalArgumentException.class, () -> storage.save(0, 0, 0,
+                new FurnaceService.FurnaceStateSnapshot(0, 0, 0,
+                        FurnaceService.MAX_PENDING_EXPERIENCE_MILLI + 1)));
     }
 
     @Test

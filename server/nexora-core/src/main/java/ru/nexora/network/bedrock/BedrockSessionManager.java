@@ -1551,6 +1551,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         List<BedrockPacket> reconciliation = new java.util.ArrayList<>();
         reconciliation.add(authoritativeContent);
         reconciliation.addAll(createEquipmentReconciliationPackets(state));
+        clearSpearChargeIfItemChanged(state);
         sendPackets(networkId, reconciliation, true);
     }
 
@@ -2382,6 +2383,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         + exception.getMessage());
             }
         }
+        clearSpearChargeIfItemChanged(state);
         sendInventoryAndEquipmentState(networkId, state);
     }
 
@@ -2480,6 +2482,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
         }
 
+        clearSpearChargeIfItemChanged(state);
         // Always reconcile both inventories so a rejected or stale client prediction cannot linger.
         sendContainerReconciliation(networkId, state);
     }
@@ -2962,6 +2965,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.spearChargeSlot = state.inventory.selectedHotbarSlot();
         state.spearChargeItemId = held.itemId();
         state.spearChargeItemSnapshot = held;
+    }
+
+    private static void clearSpearChargeIfItemChanged(SessionState state) {
+        if (state.spearChargeSlot < 0 || state.spearChargeItemSnapshot == null) return;
+        ItemStack current = state.inventory.getSlot(state.spearChargeSlot).orElse(null);
+        if (!Objects.equals(current, state.spearChargeItemSnapshot)) clearSpearCharge(state);
     }
 
     private static void clearSpearCharge(SessionState state) {

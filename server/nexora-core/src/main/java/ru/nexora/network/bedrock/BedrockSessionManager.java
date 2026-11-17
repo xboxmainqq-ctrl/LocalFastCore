@@ -1797,7 +1797,24 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             double nextX = mob.x() + decision.moveX();
             double nextY = mob.y() + decision.moveY();
             double nextZ = mob.z() + decision.moveZ();
-            if (!WorldCollision.canMove(world, mob.x(), mob.y(), mob.z(), nextX, nextY, nextZ)) continue;
+            if (!WorldCollision.canMove(world, mob.x(), mob.y(), mob.z(), nextX, nextY, nextZ)) {
+                ru.nexora.combat.LivingEntityAiService.PlayerTarget target = targets.stream()
+                        .filter(candidate -> candidate.networkId().equals(decision.targetNetworkId()))
+                        .findFirst().orElse(null);
+                if (target == null) continue;
+                ru.nexora.world.WorldPathfinder.Step waypoint = WorldPathfinder.findNextStep(
+                        world, mob.x(), mob.y(), mob.z(), target.x(), target.z()).orElse(null);
+                if (waypoint == null) continue;
+                double dx = waypoint.x() - mob.x();
+                double dz = waypoint.z() - mob.z();
+                double length = Math.hypot(dx, dz);
+                if (length < 0.0001) continue;
+                double step = Math.min(
+                        ru.nexora.combat.LivingEntityAiService.WALK_SPEED_PER_TICK, length);
+                nextX = mob.x() + dx / length * step;
+                nextZ = mob.z() + dz / length * step;
+                if (!WorldCollision.canMove(world, mob.x(), mob.y(), mob.z(), nextX, nextY, nextZ)) continue;
+            }
             WorldLivingEntity moved = world.livingEntities().move(
                     mob.runtimeId(), nextX, nextY, nextZ).orElse(null);
             if (moved == null) continue;

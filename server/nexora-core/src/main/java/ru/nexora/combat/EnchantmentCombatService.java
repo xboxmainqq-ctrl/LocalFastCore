@@ -66,17 +66,46 @@ public final class EnchantmentCombatService {
         }
         Objects.requireNonNull(armor, "armor");
         int armorPoints = 0;
-        int protectionLevels = 0;
         for (ItemStack piece : armor) {
             Objects.requireNonNull(piece, "armor piece");
             armorPoints += armorPointsForPiece(piece.itemId());
-            protectionLevels += level(piece, "minecraft:protection");
         }
         // Bedrock armor reduces 4% per armor point, up to 80%.
         double armorReduction = Math.min(0.80, armorPoints * 0.04);
-        // Protection contributes 4% per level, also capped at 80%.
-        double enchantmentReduction = Math.min(0.80, protectionLevels * 0.04);
-        return (float) (incomingDamage * (1.0 - armorReduction) * (1.0 - enchantmentReduction));
+        return applyEnchantmentProtection(
+                (float) (incomingDamage * (1.0 - armorReduction)), armor, DamageType.GENERIC);
+    }
+
+    /** Applies the Bedrock Enchantment Protection Factor for a specific damage type. */
+    public static float applyEnchantmentProtection(
+            float incomingDamage, List<ItemStack> armor, DamageType damageType
+    ) {
+        if (!Float.isFinite(incomingDamage) || incomingDamage < 0.0f) {
+            throw new IllegalArgumentException("incomingDamage must be finite and non-negative");
+        }
+        Objects.requireNonNull(armor, "armor");
+        Objects.requireNonNull(damageType, "damageType");
+        int epf = 0;
+        for (ItemStack piece : armor) {
+            Objects.requireNonNull(piece, "armor piece");
+            epf += level(piece, "minecraft:protection");
+            epf += switch (damageType) {
+                case FIRE -> 2 * level(piece, "minecraft:fire_protection");
+                case FALL -> 3 * level(piece, "minecraft:feather_falling");
+                case EXPLOSION -> 2 * level(piece, "minecraft:blast_protection");
+                case PROJECTILE -> 2 * level(piece, "minecraft:projectile_protection");
+                case GENERIC -> 0;
+            };
+        }
+        return incomingDamage * (1.0f - Math.min(20, epf) / 25.0f);
+    }
+
+    public enum DamageType {
+        GENERIC,
+        FIRE,
+        FALL,
+        EXPLOSION,
+        PROJECTILE
     }
 
     private static int armorPointsForPiece(String itemId) {

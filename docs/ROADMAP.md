@@ -39,7 +39,7 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 - [ ] Improve navigation/target selection without changing gameplay unexpectedly.
 - [ ] Bound AI work per update and avoid repeated expensive path calculations.
 - [ ] Add deterministic tests for targeting, movement, despawn, and edge cases.
-- [ ] Add optional diagnostics for stuck or repeatedly recalculating mobs.
+- [x] Add bounded, diagnostic-only stuck-mob detection with a 2-second no-progress threshold and operator report (`/ai mob stuck`); no automatic teleport or punishment.
 - [x] Expose read-only Mob AI cache counters and recent mob-ai/mob-pathfinding latency summaries through the allowlisted `/ai mob stats` operator command.
 
 ## Priority 5 — Security and moderation intelligence

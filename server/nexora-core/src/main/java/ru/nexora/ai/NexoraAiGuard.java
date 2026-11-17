@@ -74,7 +74,13 @@ public final class NexoraAiGuard {
                 event = new GuardEvent(window.frames, window.bytes, reason);
             }
         }
-        if (event != null) eventSink.accept(event);
+        if (event != null) {
+            try {
+                eventSink.accept(event);
+            } catch (RuntimeException ignored) {
+                // Security telemetry must never interrupt normal packet processing.
+            }
+        }
     }
 
     public synchronized void onDisconnected(String peerId) {

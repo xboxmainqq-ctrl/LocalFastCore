@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import ru.nexora.world.BlockType;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 class BedrockBlockRuntimeIdsTest {
     @Test

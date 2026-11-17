@@ -42,7 +42,7 @@ public final class MobFallTracker {
         FallState fall = airborne.remove(runtimeId);
         if (fall == null) return new Result(0.0, 0);
         double distance = Math.max(0.0, fall.highestY() - y);
-        int damage = Math.max(0, (int) Math.floor(distance - SAFE_FALL_DISTANCE));
+        int damage = Math.max(0, (int) Math.ceil(distance - SAFE_FALL_DISTANCE));
         if (distance > 0.0) completedFalls++;
         totalDamage += damage;
         return new Result(distance, damage);

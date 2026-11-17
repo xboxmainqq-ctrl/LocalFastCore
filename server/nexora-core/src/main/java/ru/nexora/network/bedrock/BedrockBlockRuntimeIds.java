@@ -4,6 +4,7 @@ import ru.nexora.world.BlockType;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 /** Protocol-2225 block network IDs: FNV-1a hashes of little-endian vanilla block-state NBT. */
 public final class BedrockBlockRuntimeIds {

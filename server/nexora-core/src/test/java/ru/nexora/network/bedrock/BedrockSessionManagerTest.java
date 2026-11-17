@@ -130,6 +130,41 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void killingHostileMobAwardsVanillaExperienceAndRemovesActor() throws Exception {
+        List<byte[]> outboundFrames = new ArrayList<>();
+        ru.nexora.world.World combatWorld = new ru.nexora.world.World(
+                "mob-reward-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                combatWorld, (networkId, label, frame) -> outboundFrames.add(frame), event -> {});
+        manager.onIdentity("reward-killer", new NetherNetClientIdentity(
+                "reward-token", new byte[] {6}, "reward-xuid", "RewardKiller", "playfab-reward", "20CA2", null));
+        setSessionField(manager, "reward-killer", "loginAuthenticated", true);
+        setSessionField(manager, "reward-killer", "clientInitialized", true);
+        setSessionField(manager, "reward-killer", "positionInitialized", true);
+        setSessionField(manager, "reward-killer", "entityId", 106L);
+        setSessionField(manager, "reward-killer", "positionX", 0.0f);
+        setSessionField(manager, "reward-killer", "positionY", 65.0f);
+        setSessionField(manager, "reward-killer", "positionZ", 0.0f);
+
+        ItemStack sword = new ItemStack("minecraft:diamond_sword", 1, 1);
+        manager.playerInventory("reward-killer").orElseThrow().setSlot(0, sword);
+        var zombie = manager.spawnLivingEntity("minecraft:zombie", 5.0f, 2.0, 65.0, 0.0);
+        var attack = new BedrockInventoryTransactionCodec.DecodedUseOnActor(
+                zombie.runtimeId(), 1, 0, 0, java.util.Optional.of(sword),
+                0.0f, 65.0f, 0.0f, 0.0f, 1.0f, 0.0f);
+        invokeActorAttack(manager, "reward-killer", attack);
+
+        assertTrue(combatWorld.livingEntities().find(zombie.runtimeId()).isEmpty());
+        assertEquals(5_000L, (long) getSessionField(
+                manager, "reward-killer", "experiencePoints") * 1000L
+                + (int) getSessionField(manager, "reward-killer", "experienceRemainderMilli"));
+        assertTrue(outboundFrames.stream().flatMap(frame -> decodeOutboundAll(frame, true).stream())
+                .anyMatch(packet -> packet.packetId() == BedrockAddItemActorCodec.REMOVE_ACTOR_PACKET_ID));
+        manager.close();
+    }
+
+    @Test
     void hostileMobMovesTowardPlayerAndDealsMeleeDamage() throws Exception {
         AtomicLong clock = new AtomicLong(100_000_000L);
         List<byte[]> outboundFrames = new ArrayList<>();

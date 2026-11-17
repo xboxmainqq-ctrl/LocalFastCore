@@ -153,7 +153,7 @@ public final class NexoraServer {
         long autosaveSeconds = Long.parseLong(System.getenv().getOrDefault("NEXORA_AUTOSAVE_SECONDS", "300"));
         WorldAutosave autosave = new WorldAutosave(world, Duration.ofSeconds(autosaveSeconds),
                 exception -> {
-                    aiDiagnostics.recordFailure(exception);
+                    aiDiagnostics.recordFailure("world-autosave", exception);
                     System.err.println("NEXORA: periodic world/player autosave failed: " + exception.getMessage());
                 },
                 bedrockSessions::savePlayers,
@@ -161,7 +161,7 @@ public final class NexoraServer {
                         "world-autosave", elapsed, Duration.ofSeconds(1).toNanos()));
         WorldFurnaceTicker furnaceTicker = new WorldFurnaceTicker(world,
                 exception -> {
-                    aiDiagnostics.recordFailure(exception);
+                    aiDiagnostics.recordFailure("furnace-tick", exception);
                     System.err.println("NEXORA: furnace tick failed: " + exception.getMessage());
                 },
                 elapsed -> aiDiagnostics.recordSlowOperation("furnace-tick", elapsed, 50_000_000L));

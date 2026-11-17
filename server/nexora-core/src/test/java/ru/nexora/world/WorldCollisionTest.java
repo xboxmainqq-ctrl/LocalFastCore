@@ -6,13 +6,13 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class WorldCollisionTest {
     private World world() {
-        World world = world();
+        World world = new World("NEXORA", 1L, new FlatWorldGenerator());
         world.getChunk(0, 0);
         return world;
     }
     @Test
     void allowsWalkingOnTopOfGeneratedGround() {
-        World world = new World("NEXORA", 1L, new FlatWorldGenerator());
+        World world = world();
         assertTrue(WorldCollision.canOccupy(world, 0.5, 65.0, 0.5));
         assertTrue(WorldCollision.canMove(world, 0.5, 65.0, 0.5, 8.5, 65.0, 0.5));
     }

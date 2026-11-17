@@ -35,6 +35,7 @@ import ru.nexora.world.WorldLivingEntityManager;
 import ru.nexora.world.WorldChunk;
 import ru.nexora.world.WorldCollision;
 import ru.nexora.world.WorldRaycast;
+import ru.nexora.world.WorldPathfinder;
 import ru.nexora.world.PlayerData;
 import ru.nexora.world.PlayerDataStorage;
 import ru.nexora.world.PlayerExperience;

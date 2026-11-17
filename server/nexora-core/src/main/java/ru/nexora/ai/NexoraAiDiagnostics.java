@@ -4,7 +4,10 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryUsage;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -17,22 +20,34 @@ public final class NexoraAiDiagnostics {
     private static final int MAX_FAILURE_DESCRIPTION_LENGTH = 240;
     private static final int MAX_EVENTS = 12;
     private static final int MAX_EVIDENCE_LENGTH = 1_800;
+    private static final int MAX_SIGNATURES = 16;
 
     private final long startedAtNanos = System.nanoTime();
     private final AtomicLong recordedFailures = new AtomicLong();
     private final AtomicLong slowOperationCount = new AtomicLong();
     private final ConcurrentLinkedDeque<DiagnosticEvent> events = new ConcurrentLinkedDeque<>();
+    private final ConcurrentHashMap<String, AtomicLong> repeatedSignatures = new ConcurrentHashMap<>();
     private volatile String lastFailure = "none";
     private volatile String lastSlowOperation = "none";
 
     /** Records a failure reported by a subsystem without retaining its Throwable or stack trace. */
     public void recordFailure(Throwable failure) {
+        recordFailure("unknown", failure);
+    }
+
+    /** Records a failure with its originating subsystem for repeat detection. */
+    public void recordFailure(String subsystem, Throwable failure) {
+        Objects.requireNonNull(subsystem, "subsystem");
         Objects.requireNonNull(failure, "failure");
+        if (subsystem.isBlank() || subsystem.length() > 64) {
+            throw new IllegalArgumentException("Invalid diagnostic subsystem");
+        }
         recordedFailures.incrementAndGet();
         String message = failure.getMessage();
-        String description = failure.getClass().getSimpleName()
+        String description = subsystem + ": " + failure.getClass().getSimpleName()
                 + (message == null || message.isBlank() ? "" : ": " + message);
         lastFailure = bound(sanitize(description), MAX_FAILURE_DESCRIPTION_LENGTH);
+        incrementSignature("FAILURE:" + subsystem + ":" + failure.getClass().getSimpleName());
         appendEvent("FAILURE", lastFailure);
     }
 
@@ -44,6 +59,7 @@ public final class NexoraAiDiagnostics {
         }
         if (elapsedNanos <= thresholdNanos) return;
         slowOperationCount.incrementAndGet();
+        incrementSignature("SLOW:" + subsystem);
         lastSlowOperation = subsystem + " took " + (elapsedNanos / 1_000_000L) + " ms";
         appendEvent("SLOW", lastSlowOperation);
     }
@@ -65,6 +81,38 @@ public final class NexoraAiDiagnostics {
             }
         }
         if (count == 0) result.append("\n- Нет зарегистрированных событий.");
+        String repeats = repeatedEvidence();
+        if (!repeats.isEmpty() && result.length() < MAX_EVIDENCE_LENGTH) {
+            result.append("\n").append(repeats);
+        }
+        if (result.length() > MAX_EVIDENCE_LENGTH) {
+            result.setLength(MAX_EVIDENCE_LENGTH);
+        }
+        return result.toString();
+    }
+
+    private synchronized void incrementSignature(String signature) {
+        AtomicLong counter = repeatedSignatures.get(signature);
+        if (counter == null) {
+            if (repeatedSignatures.size() >= MAX_SIGNATURES) return;
+            AtomicLong candidate = new AtomicLong();
+            AtomicLong existing = repeatedSignatures.putIfAbsent(signature, candidate);
+            counter = existing == null ? candidate : existing;
+        }
+        counter.incrementAndGet();
+    }
+
+    /** Repetition counts are process-lifetime totals, not a time-window or rate estimate. */
+    private String repeatedEvidence() {
+        Map<String, Long> repeated = new TreeMap<>();
+        repeatedSignatures.forEach((signature, count) -> {
+            long occurrences = count.get();
+            if (occurrences > 1) repeated.put(signature, occurrences);
+        });
+        if (repeated.isEmpty()) return "";
+        StringBuilder result = new StringBuilder("Повторяющиеся события с момента запуска:");
+        repeated.forEach((signature, count) -> result.append("\n- ")
+                .append(signature).append(" — ").append(count).append(" раз"));
         return result.toString();
     }
 

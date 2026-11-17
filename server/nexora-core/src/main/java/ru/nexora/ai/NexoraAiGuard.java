@@ -28,6 +28,12 @@ public final class NexoraAiGuard {
 
     private final LinkedHashMap<String, PeerWindow> peers = new LinkedHashMap<>();
     private final LinkedHashMap<String, PlayerSignals> playerSignals = new LinkedHashMap<>();
+    private final LinkedHashMap<String, CombatWindow> combatWindows = new LinkedHashMap<>();
+    private final LinkedHashMap<String, CombatCase> combatCases = new LinkedHashMap<>();
+    private static final long COMBAT_WINDOW_NANOS = 5_000_000_000L;
+    private static final long CASE_TTL_NANOS = 1_800_000_000_000L;
+    private static final int KILLAURA_HIT_THRESHOLD = 45;
+    private static final int KILLAURA_TARGET_SWITCH_THRESHOLD = 3;
     private long totalSignals;
 
     public NexoraAiGuard() {
@@ -167,6 +173,80 @@ public final class NexoraAiGuard {
         publish(event);
     }
 
+    /**
+     * Records a server-validated hit after cooldown, reach and line-of-sight checks.
+     * A KillAura review signal requires an unusually high hit rate and repeated
+     * target switching in the same monotonic window; it never applies punishment.
+     */
+    public void recordSuccessfulAttack(
+            String playerKey, String displayName, String targetKey, long nowNanos
+    ) {
+        Objects.requireNonNull(playerKey, "playerKey");
+        Objects.requireNonNull(targetKey, "targetKey");
+        if (playerKey.isBlank() || targetKey.isBlank()) {
+            throw new IllegalArgumentException("Attack identities must not be blank");
+        }
+        GuardEvent event = null;
+        synchronized (this) {
+            CombatWindow window = combatWindows.get(playerKey);
+            if (window == null) {
+                if (combatWindows.size() >= maxTrackedPeers) {
+                    combatWindows.remove(combatWindows.keySet().iterator().next());
+                }
+                window = new CombatWindow(nowNanos);
+                combatWindows.put(playerKey, window);
+            } else if (nowNanos < window.startedAtNanos
+                    || nowNanos - window.startedAtNanos >= COMBAT_WINDOW_NANOS) {
+                window.reset(nowNanos);
+            }
+            window.hits++;
+            if (window.lastTarget != null && !window.lastTarget.equals(targetKey)) {
+                window.targetSwitches++;
+            }
+            window.lastTarget = targetKey;
+            if (!window.signalled && window.hits >= KILLAURA_HIT_THRESHOLD
+                    && window.targetSwitches >= KILLAURA_TARGET_SWITCH_THRESHOLD) {
+                window.signalled = true;
+                totalSignals++;
+                String safeName = sanitizePlayerName(displayName);
+                combatCases.put(playerKey, new CombatCase(safeName, window.hits,
+                        window.targetSwitches, nowNanos));
+                while (combatCases.size() > 64) {
+                    combatCases.remove(combatCases.keySet().iterator().next());
+                }
+                event = new GuardEvent(window.hits, 0,
+                        "high-rate multi-target attacks (possible KillAura)");
+            }
+        }
+        publish(event);
+    }
+
+    /** Read-only, identifier-safe moderator view of recent KillAura review cases. */
+    public synchronized String combatReviewSummary(long nowNanos) {
+        combatCases.entrySet().removeIf(entry -> nowNanos < entry.getValue().lastSeenNanos
+                || nowNanos - entry.getValue().lastSeenNanos >= CASE_TTL_NANOS);
+        if (combatCases.isEmpty()) {
+            return "KillAura review: no confirmed high-rate multi-target patterns. "
+                    + "Only server-validated hits are counted; no automatic punishment.";
+        }
+        StringBuilder result = new StringBuilder("KillAura review cases (review-only):");
+        combatCases.values().stream()
+                .sorted((left, right) -> Long.compare(right.lastSeenNanos, left.lastSeenNanos))
+                .limit(8)
+                .forEach(value -> result.append("\\n")
+                        .append(value.displayName)
+                        .append(" — ").append(value.hits).append(" hits / 5s, ")
+                        .append(value.targetSwitches).append(" target switches"));
+        return result.append("\\nNo automatic punishment is applied.").toString();
+    }
+
+    private static String sanitizePlayerName(String displayName) {
+        if (displayName == null || displayName.isBlank()) return "unknown player";
+        String safe = displayName.replaceAll("[\\\\p{Cntrl}§]", "").trim();
+        if (safe.isEmpty()) return "unknown player";
+        return safe.length() <= 24 ? safe : safe.substring(0, 24);
+    }
+
     private void publish(GuardEvent event) {
         if (event == null) return;
         try {
@@ -180,11 +260,15 @@ public final class NexoraAiGuard {
         if (peerId != null) {
             peers.remove(peerId);
             playerSignals.remove(peerId);
+            combatWindows.remove(peerId);
         }
     }
 
     public synchronized void onPlayerDisconnected(String playerKey) {
-        if (playerKey != null) playerSignals.remove(playerKey);
+        if (playerKey != null) {
+            playerSignals.remove(playerKey);
+            combatWindows.remove(playerKey);
+        }
     }
 
     /** Aggregate-only status suitable for operator diagnostics; no peer identifiers are exposed. */
@@ -223,6 +307,25 @@ public final class NexoraAiGuard {
                     + ", bytes(current windows)=" + bytesInCurrentWindows
                     + ", signals since start=" + totalSignalsSinceStart
                     + ". Signals are review-only; no automatic punishment is applied.";
+        }
+    }
+
+    private record CombatCase(String displayName, int hits, int targetSwitches, long lastSeenNanos) { }
+
+    private static final class CombatWindow {
+        private long startedAtNanos;
+        private int hits;
+        private int targetSwitches;
+        private String lastTarget;
+        private boolean signalled;
+
+        private CombatWindow(long startedAtNanos) { this.startedAtNanos = startedAtNanos; }
+        private void reset(long nowNanos) {
+            startedAtNanos = nowNanos;
+            hits = 0;
+            targetSwitches = 0;
+            lastTarget = null;
+            signalled = false;
         }
     }
 

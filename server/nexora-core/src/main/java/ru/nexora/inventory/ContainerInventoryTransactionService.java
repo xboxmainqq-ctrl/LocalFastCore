@@ -28,12 +28,25 @@ public final class ContainerInventoryTransactionService {
             int activeWindowId,
             List<InventoryTransactionService.Action> actions
     ) {
+        return apply(player, container, activeWindowId, actions, null);
+    }
+
+    /**
+     * The UI crafting grid uses container ID 124 and only the caller-approved slot range.
+     */
+    public Result apply(
+            PlayerInventory player,
+            ContainerInventory container,
+            int activeWindowId,
+            List<InventoryTransactionService.Action> actions,
+            Set<Integer> allowedContainerSlots
+    ) {
         Objects.requireNonNull(player, "player");
         Objects.requireNonNull(container, "container");
         Objects.requireNonNull(actions, "actions");
-        if (activeWindowId < 1 || activeWindowId > MAX_CONTAINER_WINDOW_ID) {
-            return Result.INVALID_WINDOW;
-        }
+        boolean blockWindow = activeWindowId >= 1 && activeWindowId <= MAX_CONTAINER_WINDOW_ID;
+        boolean uiCraftingGrid = activeWindowId == 124 && allowedContainerSlots != null;
+        if (!blockWindow && !uiCraftingGrid) return Result.INVALID_WINDOW;
         if (actions.isEmpty() || actions.size() > MAX_ACTIONS) {
             return Result.INVALID_ACTION_COUNT;
         }
@@ -57,7 +70,10 @@ public final class ContainerInventoryTransactionService {
                     if (containerId == PLAYER_CONTAINER_ID) {
                         if (slot < 0 || slot >= player.size()) return Result.INVALID_SLOT;
                     } else if (containerId == activeWindowId) {
-                        if (slot < 0 || slot >= container.size()) return Result.INVALID_SLOT;
+                        if (slot < 0 || slot >= container.size()
+                                || (allowedContainerSlots != null && !allowedContainerSlots.contains(slot))) {
+                            return Result.INVALID_SLOT;
+                        }
                     } else {
                         return Result.UNSUPPORTED_CONTAINER;
                     }

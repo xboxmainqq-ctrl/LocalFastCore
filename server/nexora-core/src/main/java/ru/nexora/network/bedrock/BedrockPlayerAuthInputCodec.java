@@ -123,7 +123,8 @@ public final class BedrockPlayerAuthInputCodec {
         public static final int PERFORM_ITEM_STACK_REQUEST = 36;
         public static final int IS_IN_CLIENT_PREDICTED_VEHICLE = 45;
         public static final int START_JUMPING = 31;
-        public static final int START_USING_ITEM = 53;
+        public static final int START_USING_ITEM = 52;
+        public static final int START_SPIN_ATTACK = 53;
         public static final int JUMP_PRESSED_RAW = 60;
         public static final int JUMP_CURRENT_RAW = 61;
 

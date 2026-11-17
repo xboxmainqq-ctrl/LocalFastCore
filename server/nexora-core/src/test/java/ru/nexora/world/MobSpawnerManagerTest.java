@@ -133,6 +133,25 @@ class MobSpawnerManagerTest {
     }
 
     @Test
+    void processesSpawnersWithBoundedRoundRobinBudgetAndOnlyOncePerTick() {
+        World world = new World("spawner-budget-test", 0L, new FlatWorldGenerator());
+        MobSpawnerManager manager = new MobSpawnerManager();
+        for (int x = 0; x < MobSpawnerManager.MAX_SPAWNERS_PER_TICK + 2; x++) {
+            world.setBlock(x, 65, 0, BlockType.SPAWNER);
+            assertTrue(manager.register(x, 65, 0, 0));
+        }
+        var players = List.of(new MobSpawnerManager.PlayerPosition(64.5, 65, 0.5));
+
+        var first = manager.tick(world, 200, players, request -> true);
+        var duplicate = manager.tick(world, 200, players, request -> true);
+        var second = manager.tick(world, 201, players, request -> true);
+
+        assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK, first.processedSpawners());
+        assertEquals(0, duplicate.processedSpawners());
+        assertEquals(2, second.processedSpawners());
+    }
+
+    @Test
     void stopsFurtherAttemptsWhenSpawnerIsRemovedDuringSpawnCallback() {
         World world = createWorld();
         MobSpawnerManager manager = world.mobSpawners();

@@ -267,6 +267,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         SessionState state = sessions.get(networkId);
         if (state != null) {
             synchronized (state) {
+                saveAndClearContainerWindow(state);
                 try {
                     savePlayer(state);
                     saveInventory(state);

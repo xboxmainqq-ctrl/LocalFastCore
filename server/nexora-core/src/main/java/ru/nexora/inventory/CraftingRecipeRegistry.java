@@ -54,7 +54,7 @@ public final class CraftingRecipeRegistry {
 
     public int networkId(String recipeId) {
         for (int i = 0; i < ordered.size(); i++) {
-            if (ordered.get(i).id().equals(recipeId)) return i + 1;
+            if (ordered.get(i).id().equals(recipeId)) return 1001 + i;
         }
         return 0;
     }

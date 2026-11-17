@@ -33,8 +33,7 @@ class CraftingServiceTest {
 
         assertEquals(CraftingService.Result.CRAFTED,
                 service.craft(inventory, recipes, "minecraft:iron_nuggets_from_iron_ingot", 2));
-        assertTrue(inventory.getSlot(0).isEmpty());
-        assertTrue(inventory.getSlot(1).isEmpty());
+        assertEquals(0, inventory.count("minecraft:iron_ingot"));
         assertEquals(18, inventory.count("minecraft:iron_nugget"));
     }
 

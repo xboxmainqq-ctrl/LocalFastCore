@@ -1467,6 +1467,26 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 || transaction.slot() != state.inventory.selectedHotbarSlot()) return;
 
         ItemStack held = state.inventory.getSlot(transaction.slot()).orElse(null);
+        if (transaction.actionType() == 0 && hasNoInventoryMutation(transaction)) {
+            boolean heldDescriptorMatches = held == null
+                    ? isEmptyItemDescriptor(transaction.item())
+                    : matchesRegisteredItem(transaction.item(), held);
+            int targetX = transaction.x();
+            int targetY = transaction.y();
+            int targetZ = transaction.z();
+            if (heldDescriptorMatches && world.getBlock(targetX, targetY, targetZ) == BlockType.CHEST
+                    && transaction.targetBlockId()
+                    == Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(BlockType.CHEST))
+                    && isWithinBlockReach(state, targetX, targetY, targetZ)) {
+                double dx = transaction.fromX() - state.positionX;
+                double dy = transaction.fromY() - state.positionY;
+                double dz = transaction.fromZ() - state.positionZ;
+                if (dx * dx + dy * dy + dz * dz <= 2.25) {
+                    openChestWindow(networkId, state, targetX, targetY, targetZ);
+                    return;
+                }
+            }
+        }
         if (held == null || !matchesRegisteredItem(transaction.item(), held)
                 || !itemUseActionsMatch(transaction, held)) return;
 
@@ -1586,6 +1606,23 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case "minecraft:rabbit" -> new FoodStats(3, 0.3f);
             default -> null;
         };
+    }
+
+    private static boolean hasNoInventoryMutation(
+            BedrockPlayerAuthInputCodec.ItemUseTransaction transaction
+    ) {
+        List<BedrockPlayerAuthInputCodec.RawInventoryAction> actions = transaction.actions();
+        if (actions.isEmpty()) return true;
+        if (actions.size() != 1) return false;
+        BedrockPlayerAuthInputCodec.RawInventoryAction action = actions.getFirst();
+        return action.sourceType() == 2 && action.sourceFlags() <= 1
+                && isEmptyItemDescriptor(action.from()) && isEmptyItemDescriptor(action.to());
+    }
+
+    private static boolean isEmptyItemDescriptor(BedrockPlayerAuthInputCodec.RawItemStack descriptor) {
+        return descriptor != null && descriptor.runtimeItemId() == 0 && descriptor.count() == 0
+                && descriptor.auxValue() == 0 && !descriptor.hasStackNetId()
+                && descriptor.blockRuntimeId() == 0 && descriptor.userData().length == 0;
     }
 
     private boolean matchesRegisteredItem(

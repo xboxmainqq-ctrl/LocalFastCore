@@ -232,6 +232,77 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void protocol2225PlayerActionStartUseChargesSpearAgainstAnotherPlayer() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(2_000_000_000L);
+        ru.nexora.world.World combatWorld = new ru.nexora.world.World(
+                "charged-spear-pvp-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                combatWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
+        BedrockItemRegistry registry = BedrockVanillaItemCatalog.createRegistry();
+        manager.setItemRegistry(registry);
+        manager.onIdentity("charge-pvp-attacker", new NetherNetClientIdentity(
+                "charge-pvp-a-token", new byte[] {22}, "charge-pvp-a-xuid",
+                "ChargePvpAttacker", "playfab-charge-pvp-a", "20CA2", null));
+        manager.onIdentity("charge-pvp-target", new NetherNetClientIdentity(
+                "charge-pvp-t-token", new byte[] {23}, "charge-pvp-t-xuid",
+                "ChargePvpTarget", "playfab-charge-pvp-t", "20CA2", null));
+        for (String id : List.of("charge-pvp-attacker", "charge-pvp-target")) {
+            setSessionField(manager, id, "loginAuthenticated", true);
+            setSessionField(manager, id, "clientInitialized", true);
+            setSessionField(manager, id, "positionInitialized", true);
+        }
+        setSessionField(manager, "charge-pvp-attacker", "entityId", 122L);
+        setSessionField(manager, "charge-pvp-attacker", "positionX", 0.5f);
+        setSessionField(manager, "charge-pvp-attacker", "positionY", 65.0f);
+        setSessionField(manager, "charge-pvp-attacker", "positionZ", 0.5f);
+        setSessionField(manager, "charge-pvp-attacker", "physicsState",
+                new ru.nexora.world.PlayerPhysics.State(
+                        0.5, 65.0, 0.5, 0.0, 0.0, 6.0, true, 0.0, 0.0));
+        setSessionField(manager, "charge-pvp-target", "entityId", 123L);
+        setSessionField(manager, "charge-pvp-target", "positionX", 0.5f);
+        setSessionField(manager, "charge-pvp-target", "positionY", 65.0f);
+        setSessionField(manager, "charge-pvp-target", "positionZ", 3.5f);
+        setSessionField(manager, "charge-pvp-target", "physicsState",
+                new ru.nexora.world.PlayerPhysics.State(
+                        0.5, 65.0, 3.5, 0.0, 0.0, 0.0, true, 0.0, 0.0));
+
+        ItemStack spear = new ItemStack("minecraft:diamond_spear", 1, 1);
+        manager.playerInventory("charge-pvp-attacker").orElseThrow().setSlot(0, spear);
+        var spearDefinition = registry.findByIdentifier("minecraft:diamond_spear");
+        assertNotNull(spearDefinition);
+
+        // PlayerAction 37 is StartUsingItem in protocol 2225.
+        BedrockPacket startUse = new BedrockPacket(
+                BedrockPlayerActionCodec.PLAYER_ACTION_PACKET_ID, 0, 0,
+                playerActionPayload(122L, BedrockPlayerActionCodec.ACTION_START_USING_ITEM));
+        invokePlayerAction(manager, "charge-pvp-attacker", startUse);
+        assertNotEquals(Long.MIN_VALUE,
+                getSessionField(manager, "charge-pvp-attacker", "spearChargeStartedNanos"));
+
+        clock.addAndGet(200_000_000L);
+        BedrockPacket release = new BedrockPacket(
+                BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID, 0, 0,
+                itemReleasePayload(0, 0,
+                        spearDefinition.networkDefinition().runtimeItemId(), 1,
+                        0.5f, 65.0f, 0.5f));
+        invokeItemRelease(manager, "charge-pvp-attacker",
+                BedrockInventoryTransactionCodec.decodeItemRelease(release, registry));
+
+        var attack = new BedrockInventoryTransactionCodec.DecodedUseOnActor(
+                123L, 1, 0, 0, java.util.Optional.of(spear),
+                0.5f, 65.0f, 0.5f, 0.0f, 1.0f, 0.0f);
+        invokeActorAttack(manager, "charge-pvp-attacker", attack);
+
+        assertEquals(13.55f,
+                manager.playerVitals("charge-pvp-target").orElseThrow().health(), 0.0001f);
+        assertEquals(Long.MIN_VALUE,
+                getSessionField(manager, "charge-pvp-attacker", "spearChargeStartedNanos"));
+        manager.close();
+    }
+
+    @Test
     void appliesServerValidatedPlayerAttackWithSharpnessAndHurtImmunity() throws Exception {
         List<byte[]> outboundFrames = new ArrayList<>();
         ru.nexora.world.World combatWorld = new ru.nexora.world.World(
@@ -1930,6 +2001,18 @@ class BedrockSessionManagerTest {
                 "tickPlayerFire", String.class, state.getClass(), long.class);
         method.setAccessible(true);
         method.invoke(manager, networkId, state, tick);
+    }
+
+    private static void invokePlayerAction(
+            BedrockSessionManager manager, String networkId, BedrockPacket packet
+    ) throws Exception {
+        Object state = sessionState(manager, networkId);
+        var message = new ru.nexora.network.nethernet.NetherNetInboundPipeline.InboundMessage(
+                networkId, "ReliableDataChannel", true, new byte[0]);
+        java.lang.reflect.Method method = BedrockSessionManager.class.getDeclaredMethod(
+                "handlePlayerAction", message.getClass(), state.getClass(), BedrockPacket.class);
+        method.setAccessible(true);
+        method.invoke(manager, message, state, packet);
     }
 
     private static void invokePlayerAuthInput(

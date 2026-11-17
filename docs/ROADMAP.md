@@ -39,7 +39,7 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 - [ ] Improve navigation/target selection without changing gameplay unexpectedly.
 - [ ] Bound AI work per update and avoid repeated expensive path calculations.
 - [x] Add a conservative Mob AI load controller: keep mobs near players and mobs with active targets at full update rate; stagger only distant idle mobs, with deterministic tests and operator metrics.
-- [ ] Add deterministic tests for targeting, movement, despawn, and edge cases.
+- [x] Add deterministic tests for targeting, movement, despawn, physics, and edge cases; run the full CI suite once a GitHub runner is available.
 - [x] Add conservative deterministic Mob AI scheduling: nearby mobs and mobs with active aggro remain full-rate; distant unprovoked mobs are staggered across ticks. Expose aggregate counters in `/ai mob stats`.
 - [x] Add bounded, diagnostic-only stuck-mob detection with a 2-second no-progress threshold and operator report (`/ai mob stuck`); no automatic teleport or punishment.
 - [x] Expose read-only Mob AI cache counters and recent mob-ai/mob-pathfinding latency summaries through the allowlisted `/ai mob stats` operator command.
@@ -57,7 +57,7 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 ## Priority 5 — Vanilla-style mob spawners
 
 - [x] Add a dedicated internal spawner block and Bedrock runtime-state mapping without changing the existing chunk file format.
-- [x] Implement 16-block player activation, configurable 20–800 tick delay, bounded spawn attempts, basic valid-position checks, shared nearby same-type caps, and bounded registry/work.
+- [x] Implement 16-block player activation, configurable 20–800 tick delay, bounded spawn attempts, entity-height-aware valid-position checks, shared nearby same-type caps, and bounded registry/work.
 - [x] Enforce a 128-spawner per-tick processing budget with round-robin fairness and make spawner processing idempotent within one server tick, even when multiple Bedrock input callbacks arrive.
 - [x] Persist spawner type, delay, coordinates, and next-spawn timer atomically with checksum validation across world saves/restarts.
 - [x] Replicate spawned actors and operator-driven spawner block updates to initialized Bedrock clients; protocol compatibility still needs real-client verification.

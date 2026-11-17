@@ -59,6 +59,58 @@ public final class EnchantmentCombatService {
         return total;
     }
 
+    /** Applies vanilla-style armor points, toughness, and Protection enchantments. */
+    public static float applyArmorReduction(float incomingDamage, List<ItemStack> armor) {
+        if (!Float.isFinite(incomingDamage) || incomingDamage < 0.0f) {
+            throw new IllegalArgumentException("incomingDamage must be finite and non-negative");
+        }
+        Objects.requireNonNull(armor, "armor");
+        int armorPoints = 0;
+        int protectionLevels = 0;
+        double toughness = 0.0;
+        for (ItemStack piece : armor) {
+            Objects.requireNonNull(piece, "armor piece");
+            String id = piece.itemId();
+            armorPoints += armorPointsForPiece(id);
+            if (id.contains("diamond") || id.contains("netherite")) toughness += 0.5;
+            protectionLevels += level(piece, "minecraft:protection");
+        }
+        double armorReduction = 0.0;
+        if (armorPoints > 0) {
+            double effective = Math.min(20.0,
+                    Math.max(armorPoints / 5.0,
+                            armorPoints - incomingDamage / (2.0 + toughness / 4.0)));
+            armorReduction = effective / 25.0;
+        }
+        double enchantmentReduction = Math.min(0.80, protectionLevels * 0.04);
+        return (float) (incomingDamage * (1.0 - armorReduction) * (1.0 - enchantmentReduction));
+    }
+
+    private static int armorPointsForPiece(String itemId) {
+        int helmet;
+        int chestplate;
+        int leggings;
+        int boots;
+        if (itemId.contains("leather")) {
+            helmet = 1; chestplate = 3; leggings = 2; boots = 1;
+        } else if (itemId.contains("chainmail")) {
+            helmet = 2; chestplate = 5; leggings = 4; boots = 1;
+        } else if (itemId.contains("iron")) {
+            helmet = 2; chestplate = 6; leggings = 5; boots = 2;
+        } else if (itemId.contains("golden")) {
+            helmet = 2; chestplate = 5; leggings = 3; boots = 1;
+        } else if (itemId.contains("diamond") || itemId.contains("netherite")) {
+            helmet = 3; chestplate = 8; leggings = 6; boots = 3;
+        } else {
+            return 0;
+        }
+        if (itemId.endsWith("_helmet")) return helmet;
+        if (itemId.endsWith("_chestplate")) return chestplate;
+        if (itemId.endsWith("_leggings")) return leggings;
+        if (itemId.endsWith("_boots")) return boots;
+        return 0;
+    }
+
     private static int level(ItemStack stack, String enchantment) {
         return stack == null ? 0 : stack.enchantments().getOrDefault(enchantment, 0);
     }

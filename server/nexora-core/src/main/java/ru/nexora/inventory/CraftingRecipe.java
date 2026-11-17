@@ -3,6 +3,8 @@ package ru.nexora.inventory;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 
 /** Immutable shapeless ingredient-count recipe used by the server crafting engine. */
 public record CraftingRecipe(String id, Map<String, Integer> ingredients, ItemStack result) {
@@ -26,5 +28,9 @@ public record CraftingRecipe(String id, Map<String, Integer> ingredients, ItemSt
             validated.put(itemId, count);
         }
         ingredients = Map.copyOf(validated);
+    }
+
+    public UUID uuid() {
+        return UUID.nameUUIDFromBytes(id.getBytes(StandardCharsets.UTF_8));
     }
 }

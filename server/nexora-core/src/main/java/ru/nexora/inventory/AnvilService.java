@@ -38,8 +38,12 @@ public final class AnvilService {
                 return Outcome.failure(Status.INCOMPATIBLE_ENCHANTMENT);
             }
             for (String existingId : merged.keySet()) {
-                if (!existingId.equals(entry.getKey())
-                        && enchantment.conflictsWith().contains(existingId)) {
+                if (existingId.equals(entry.getKey())) continue;
+                Enchantment existing = ENCHANTMENTS.get(existingId);
+                // Treat conflicts symmetrically. This protects the anvil even if a future
+                // enchantment definition declares the relationship on only one side.
+                if (enchantment.conflictsWith().contains(existingId)
+                        || (existing != null && existing.conflictsWith().contains(entry.getKey()))) {
                     return Outcome.failure(Status.CONFLICTING_ENCHANTMENTS);
                 }
             }

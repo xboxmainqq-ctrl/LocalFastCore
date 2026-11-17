@@ -122,6 +122,24 @@ class MobSpawnerManagerTest {
     }
 
     @Test
+    void largeMobSpawnRequiresItsFullBodyClearance() {
+        World world = createWorld();
+        world.setBlock(0, 65, 0, BlockType.SPAWNER);
+        for (int x = -4; x <= 4; x++) {
+            for (int z = -4; z <= 4; z++) world.setBlock(x, 67, z, BlockType.STONE);
+        }
+        MobSpawnerManager manager = new MobSpawnerManager();
+        assertTrue(manager.register(0, 65, 0, 0));
+        assertTrue(manager.configure(0, 65, 0, "minecraft:warden", 20, 0));
+
+        var result = manager.tick(world, 20,
+                List.of(new MobSpawnerManager.PlayerPosition(0.5, 65, 0.5)), request -> true);
+
+        assertEquals(0, result.spawned());
+        assertTrue(result.invalidPositions() > 0);
+    }
+
+    @Test
     void spawnersInUnloadedChunksDoNotForceChunkLoads() {
         World world = new World("unloaded-spawner-test", 0L, new FlatWorldGenerator());
         MobSpawnerManager manager = world.mobSpawners();

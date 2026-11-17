@@ -2566,7 +2566,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return switch (identifier) {
             case "minecraft:chicken", "minecraft:cod", "minecraft:tropical_fish",
                     "minecraft:salmon", "minecraft:pufferfish", "minecraft:tadpole",
-                    "minecraft:bat", "minecraft:parrot", "minecraft:allay" -> 4.0f;
+                    "minecraft:bat", "minecraft:parrot", "minecraft:allay",
+                    "minecraft:snow_golem" -> 4.0f;
             case "minecraft:rabbit", "minecraft:cat", "minecraft:ocelot",
                     "minecraft:wolf", "minecraft:bee", "minecraft:fox" -> 8.0f;
             case "minecraft:pig", "minecraft:cow", "minecraft:sheep", "minecraft:goat",
@@ -2578,16 +2579,20 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case "minecraft:cave_spider" -> 12.0f;
             case "minecraft:spider", "minecraft:polar_bear", "minecraft:panda",
                     "minecraft:blaze", "minecraft:bogged" -> 16.0f;
+            case "minecraft:vex" -> 14.0f;
+            case "minecraft:guardian", "minecraft:shulker", "minecraft:breeze" -> 30.0f;
             case "minecraft:creeper", "minecraft:skeleton", "minecraft:stray",
                     "minecraft:husk", "minecraft:drowned", "minecraft:zombie",
                     "minecraft:zombie_villager", "minecraft:witch", "minecraft:piglin",
                     "minecraft:pillager", "minecraft:vindicator", "minecraft:evoker",
                     "minecraft:phantom", "minecraft:slime", "minecraft:magma_cube",
-                    "minecraft:shulker", "minecraft:wither_skeleton" -> 20.0f;
-            case "minecraft:enderman", "minecraft:ravager", "minecraft:hoglin",
-                    "minecraft:zoglin", "minecraft:warden" -> 40.0f;
+                    "minecraft:wither_skeleton" -> 20.0f;
+            case "minecraft:enderman", "minecraft:hoglin", "minecraft:zoglin" -> 40.0f;
+            case "minecraft:ravager", "minecraft:iron_golem" -> 100.0f;
+            case "minecraft:elder_guardian" -> 80.0f;
+            case "minecraft:warden" -> 500.0f;
+            case "minecraft:ender_dragon" -> 200.0f;
             case "minecraft:ghast" -> 10.0f;
-            case "minecraft:iron_golem", "minecraft:elder_guardian" -> 100.0f;
             case "minecraft:wither" -> 300.0f;
             default -> 20.0f;
         };

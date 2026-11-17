@@ -2425,6 +2425,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     private void tickWorldLivingActors(long tick) {
         long nowMillis = Math.max(0, nanoTime.getAsLong() / 1_000_000L);
+        tickPlayerPoisonEffects(tick);
         for (WorldLivingEntityManager.DamageResult result : world.livingEntities().tickFire(nowMillis)) {
             WorldLivingEntity entity = result.current();
             if (result.killed()) {
@@ -2918,7 +2919,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 int targetBlockX = (int) Math.floor(target.positionX);
                 int targetBlockY = (int) Math.floor(target.positionY + 1.0);
                 int targetBlockZ = (int) Math.floor(target.positionZ);
-                if (!WorldRaycast.hasLineOfSight(world, mob.x(), mob.y() + 1.2, mob.z(),
+                if (!WorldRaycast.hasLineOfSightInLoadedChunks(world, mob.x(), mob.y() + 1.2, mob.z(),
                         targetBlockX, targetBlockY, targetBlockZ)) return false;
                 List<ItemStack> armor = target.equipment.armorSnapshot().stream()
                         .flatMap(Optional::stream).toList();
@@ -2927,6 +2928,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                                 ru.nexora.combat.EnchantmentCombatService.DamageType.GENERIC);
                 if (mitigatedDamage > 0.0f) {
                     applyDamage(networkId, target, mitigatedDamage, tick, "death.attack.mob");
+                    if (!target.vitals.dead() && "minecraft:cave_spider".equals(mob.identifier())) {
+                        applyCaveSpiderPoison(target);
+                    }
                 }
                 if (!target.vitals.dead() && !armor.isEmpty()) {
                     double[] rolls = new double[armor.size()];
@@ -4098,6 +4102,46 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
+
+    private void applyCaveSpiderPoison(SessionState target) {
+        long now = nanoTime.getAsLong();
+        if (target.poisonUntilNanos <= now) {
+            target.nextPoisonDamageNanos = safeAddNanos(now, 1_000_000_000L);
+        }
+        target.poisonUntilNanos = safeAddNanos(now, 4_000_000_000L);
+    }
+
+    private void tickPlayerPoisonEffects(long tick) {
+        long now = nanoTime.getAsLong();
+        for (var entry : sessions.entrySet()) {
+            SessionState target = entry.getValue();
+            target.combatLock.lock();
+            try {
+                synchronized (target) {
+                    if (target.poisonUntilNanos == Long.MIN_VALUE) continue;
+                    if (!target.loginAuthenticated || target.dead || target.vitals.dead()
+                            || now >= target.poisonUntilNanos) {
+                        target.poisonUntilNanos = Long.MIN_VALUE;
+                        target.nextPoisonDamageNanos = Long.MIN_VALUE;
+                        continue;
+                    }
+                    if (now < target.nextPoisonDamageNanos) continue;
+                    target.nextPoisonDamageNanos = safeAddNanos(now, 1_000_000_000L);
+                    float poisonDamage = Math.min(1.0f, Math.max(0.0f, target.vitals.health() - 1.0f));
+                    if (poisonDamage > 0.0f) {
+                        applyDamage(entry.getKey(), target, poisonDamage, tick, "death.attack.poison");
+                    }
+                }
+            } finally {
+                target.combatLock.unlock();
+            }
+        }
+    }
+
+    private static long safeAddNanos(long now, long duration) {
+        return now > Long.MAX_VALUE - duration ? Long.MAX_VALUE : now + duration;
+    }
+
     private void tickPlayerFire(String networkId, SessionState state, long tick) {
         long now = nanoTime.getAsLong();
         if (state.fireUntilNanos == Long.MIN_VALUE) return;
@@ -4917,6 +4961,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private ItemStack spearChargeItemSnapshot;
         private long fireUntilNanos = Long.MIN_VALUE;
         private long nextFireDamageNanos = Long.MIN_VALUE;
+        private long poisonUntilNanos = Long.MIN_VALUE;
+        private long nextPoisonDamageNanos = Long.MIN_VALUE;
         private PlayerInventory inventory = new PlayerInventory();
         private PlayerEquipment equipment = new PlayerEquipment();
         private PlayerVitals vitals = PlayerVitals.DEFAULT;

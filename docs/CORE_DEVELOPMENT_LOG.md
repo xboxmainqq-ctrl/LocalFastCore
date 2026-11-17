@@ -13,7 +13,7 @@ Work only on engine/server foundations:
 - transport-neutral protocol, authentication and safe networking;
 - versioned extension API, data-driven content and distribution.
 
-**Out of scope:** Android client, separate RPG server/product, RPG classes/progression, magic, spells, abilities, quests, bosses, RPG economy, AI mods and RPG-specific plugins. Existing historical code may remain untouched. Mob AI and the two operator/moderation assistant foundations are now in the repository; they are incomplete and must remain optional.
+**Out of scope:** Android client, separate RPG server/product, RPG classes/progression, magic, spells, abilities, quests, bosses, RPG economy, AI mods and RPG-specific plugins. Existing historical code may remain untouched. Native Mob AI is part of the entity simulation; the Core AI Assistant and Moderation AI Assistant are separate optional modules and remain incomplete.
 
 ## Work log
 
@@ -122,7 +122,7 @@ The Core is ready only after automated tests cover clean installation, world cre
 - Added regression tests for routing around a one-block obstacle and reporting STUCK when all four adjacent ground cells are blocked. Existing passive wandering, neutral provocation, hostile perception and line-of-sight behavior remain in place.
 - Commits: 13b3c74918b8f9f9bcec6f34f8dc24ef90ade544 (bounded pathfinding), 544bf3aec507a98f9de5b93dc43d558e4d2c02d4 (waypoint precision), 87645c8ad11db2a85703357d5bfeb488f6ded046 (route regression assertion).
 - Verification: source and tests are committed, but Maven execution is not yet confirmed. Previous Actions jobs failed before reporting steps; do not claim the tests pass until a runner executes them.
-- Next Mob AI tasks after the follow-up target-memory work: navigation across height changes, safe handling of liquids/hazards, combat integration, persistent profiles and aggregate per-tick pathfinding budgets.
+- Next Mob AI tasks after the follow-up target-memory work: navigation across height changes, safe handling of liquids/hazards, combat integration, persistent profiles and stress validation of the aggregate per-tick pathfinding budget.
 ### 2026-11-17 — hostile target memory and safe search behavior
 - Extended the existing MobAiController with a bounded 100-server-tick memory of the last visible player position. If line of sight is broken, the mob can continue navigating toward the last known position rather than immediately forgetting the target.
 - A remembered position is a search destination only: it never produces an attack intent. If the player despawns or the memory window expires, the mob clears its target/navigation state and returns to IDLE.

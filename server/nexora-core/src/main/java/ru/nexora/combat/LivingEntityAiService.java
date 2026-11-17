@@ -33,11 +33,7 @@ public final class LivingEntityAiService {
         }
         if (mob.health() <= 0) return Decision.idle(mob.runtimeId());
 
-        PlayerTarget nearest = players.stream()
-                .filter(Objects::nonNull)
-                .filter(PlayerTarget::alive)
-                .min(Comparator.comparingDouble(player -> distanceSquared(mob, player)))
-                .orElse(null);
+        PlayerTarget nearest = nearestAlivePlayer(mob, players);
 
         if (isHostile(mob.identifier())) {
             if (nearest == null || distanceSquared(mob, nearest) > ACQUIRE_RANGE * ACQUIRE_RANGE) {
@@ -54,10 +50,14 @@ public final class LivingEntityAiService {
         }
 
         if (provokedByNetworkId != null && !provokedByNetworkId.isBlank()) {
-            PlayerTarget provoker = players.stream().filter(Objects::nonNull)
-                    .filter(PlayerTarget::alive)
-                    .filter(player -> player.networkId().equals(provokedByNetworkId))
-                    .findFirst().orElse(null);
+            PlayerTarget provoker = null;
+            for (PlayerTarget player : players) {
+                if (player != null && player.alive()
+                        && player.networkId().equals(provokedByNetworkId)) {
+                    provoker = player;
+                    break;
+                }
+            }
             if (provoker != null
                     && distanceSquared(mob, provoker) <= ACQUIRE_RANGE * ACQUIRE_RANGE) {
                 return pursue(mob, provoker, nowMillis, nextAttackAtMillis);
@@ -167,6 +167,26 @@ public final class LivingEntityAiService {
     /** Kept as a compatibility alias for existing callers and tests. */
     public static boolean isSupportedHostile(String identifier) {
         return isHostile(identifier);
+    }
+
+    /**
+     * Finds the nearest living player without allocating a Stream pipeline.
+     * This method is called once per mob update, so keep the scan allocation-free.
+     */
+    public static PlayerTarget nearestAlivePlayer(WorldLivingEntity mob, List<PlayerTarget> players) {
+        Objects.requireNonNull(mob, "mob");
+        Objects.requireNonNull(players, "players");
+        PlayerTarget nearest = null;
+        double nearestDistanceSquared = Double.POSITIVE_INFINITY;
+        for (PlayerTarget player : players) {
+            if (player == null || !player.alive()) continue;
+            double distanceSquared = distanceSquared(mob, player);
+            if (distanceSquared < nearestDistanceSquared) {
+                nearestDistanceSquared = distanceSquared;
+                nearest = player;
+            }
+        }
+        return nearest;
     }
 
     private static double distanceSquared(WorldLivingEntity mob, PlayerTarget player) {

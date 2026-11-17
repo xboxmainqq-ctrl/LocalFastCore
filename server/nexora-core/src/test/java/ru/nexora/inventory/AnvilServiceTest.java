@@ -82,4 +82,19 @@ class AnvilServiceTest {
     private static AnvilService.EnchantedItem item(String id, Map<String, Integer> enchantments, int penalty) {
         return new AnvilService.EnchantedItem(id, 1, enchantments, penalty);
     }
+    @Test
+    void combinesRealItemStacksAndReturnsPersistentMetadata() {
+        ItemStack sword = new ItemStack("minecraft:diamond_sword", 1, 1,
+                Map.of("minecraft:sharpness", 2), 0);
+        ItemStack book = new ItemStack("minecraft:enchanted_book", 1, 1,
+                Map.of("minecraft:sharpness", 2), 0);
+
+        AnvilService.Outcome outcome = service.combine(sword, book, 10);
+
+        assertTrue(outcome.successful());
+        assertEquals(3, outcome.resultStack().enchantments().get("minecraft:sharpness"));
+        assertEquals(1, outcome.resultStack().repairCost());
+        assertEquals(3, outcome.levelCost());
+    }
+
 }

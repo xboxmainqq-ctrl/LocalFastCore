@@ -138,7 +138,7 @@ class BedrockInventoryTransactionCodecTest {
 
     @Test
     void rejectsMalformedSourceAndActionCounts() {
-        byte[] wrongContainer = transaction(action(0, 1, 0, empty(), empty()));
+        byte[] wrongContainer = transaction(action(0, 101, 0, empty(), empty()));
         assertThrows(IllegalArgumentException.class,
                 () -> BedrockInventoryTransactionCodec.decode(
                         new BedrockPacket(0x1e, 0, 0, wrongContainer), REGISTRY));

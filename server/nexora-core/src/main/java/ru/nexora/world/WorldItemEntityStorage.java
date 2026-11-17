@@ -25,7 +25,7 @@ import java.util.zip.CRC32C;
 /** Versioned, checksummed persistence for dropped world item actors. */
 public final class WorldItemEntityStorage {
     private static final int MAGIC = 0x4e584549; // NXEI
-    private static final int VERSION = 1;
+    private static final int VERSION = 2;
     private static final int MAX_ENTITIES = 10_000;
     private static final int MAX_ITEM_ID_BYTES = 128;
     private static final int MAX_OWNER_BYTES = 64;
@@ -108,13 +108,13 @@ public final class WorldItemEntityStorage {
         try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(bytes, 0, bodyLength))) {
             if (in.readInt() != MAGIC) throw new IOException("Invalid dropped world item magic");
             int version = in.readUnsignedByte();
-            if (version != VERSION) throw new IOException("Unsupported dropped world item version: " + version);
+            if (version != 1 && version != VERSION) throw new IOException("Unsupported dropped world item version: " + version);
             int count = in.readInt();
             if (count < 0 || count > MAX_ENTITIES) throw new IOException("Invalid dropped world item count");
             List<WorldItemEntity> result = new ArrayList<>(count);
             Set<Long> runtimeIds = new HashSet<>();
             for (int i = 0; i < count; i++) {
-                WorldItemEntity entity = readEntity(in);
+                WorldItemEntity entity = readEntity(in, version);
                 if (!runtimeIds.add(entity.runtimeId())) throw new IOException("Duplicate dropped item runtime ID");
                 result.add(entity);
             }
@@ -134,6 +134,17 @@ public final class WorldItemEntityStorage {
         out.write(itemId);
         out.writeByte(entity.stack().count());
         out.writeByte(entity.stack().maxStackSize());
+        out.writeByte(entity.stack().enchantments().size());
+        for (var enchantment : entity.stack().enchantments().entrySet()) {
+            byte[] enchantmentId = enchantment.getKey().getBytes(StandardCharsets.UTF_8);
+            if (enchantmentId.length == 0 || enchantmentId.length > MAX_ITEM_ID_BYTES) {
+                throw new IOException("Invalid dropped item enchantment ID length");
+            }
+            out.writeByte(enchantmentId.length);
+            out.write(enchantmentId);
+            out.writeByte(enchantment.getValue());
+        }
+        out.writeByte(entity.stack().repairCost());
         out.writeDouble(entity.x());
         out.writeDouble(entity.y());
         out.writeDouble(entity.z());
@@ -150,7 +161,7 @@ public final class WorldItemEntityStorage {
         }
     }
 
-    private static WorldItemEntity readEntity(DataInputStream in) throws IOException {
+    private static WorldItemEntity readEntity(DataInputStream in, int version) throws IOException {
         long uniqueId = in.readLong();
         long runtimeId = in.readLong();
         int itemIdLength = in.readUnsignedByte();
@@ -160,7 +171,27 @@ public final class WorldItemEntityStorage {
         String itemId = decodeUtf8(itemIdBytes);
         int count = in.readUnsignedByte();
         int maxStackSize = in.readUnsignedByte();
-        ItemStack stack = new ItemStack(itemId, count, maxStackSize);
+        java.util.Map<String, Integer> enchantments = new java.util.LinkedHashMap<>();
+        int repairCost = 0;
+        if (version >= 2) {
+            int enchantmentCount = in.readUnsignedByte();
+            if (enchantmentCount > 32) throw new IOException("Too many dropped item enchantments");
+            for (int i = 0; i < enchantmentCount; i++) {
+                int idLength = in.readUnsignedByte();
+                if (idLength == 0 || idLength > MAX_ITEM_ID_BYTES) {
+                    throw new IOException("Invalid dropped item enchantment ID length");
+                }
+                byte[] idBytes = new byte[idLength];
+                in.readFully(idBytes);
+                String enchantmentId = decodeUtf8(idBytes);
+                int level = in.readUnsignedByte();
+                if (enchantments.putIfAbsent(enchantmentId, level) != null) {
+                    throw new IOException("Duplicate dropped item enchantment");
+                }
+            }
+            repairCost = in.readUnsignedByte();
+        }
+        ItemStack stack = new ItemStack(itemId, count, maxStackSize, enchantments, repairCost);
         double x = in.readDouble();
         double y = in.readDouble();
         double z = in.readDouble();

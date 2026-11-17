@@ -72,3 +72,10 @@ class MobPathCacheTest {
 ## Mob path cache metrics
 
 Each `MobPathCache` instance exposes a cumulative, thread-safe `stats()` snapshot: cache hits, misses, path recomputations, cached waypoints rejected by collision revalidation, LRU evictions, and current entry count. The snapshot also provides request count and hit rate. Counters are instance-local and do not claim TPS or CPU savings; compare them with pathfinding latency under a controlled mob load. No-path results remain uncached so terrain changes can be observed immediately.
+
+
+## Operator Mob AI diagnostics
+
+Allowlisted operators can run `/ai mob` or `/ai mob stats` to inspect aggregate navigation-cache counters and the recent `mob-ai` / `mob-pathfinding` latency samples. The output includes cache hits, misses, hit rate, path recomputations, collision-blocked cached waypoints, LRU evictions, current entries, and available average/p95/maximum subsystem execution times.
+
+The command is read-only, uses the existing authenticated Xbox XUID operator allowlist, and does not scan entities or expose player identifiers. Cache counters are cumulative for the cache instance; latency values summarize the most recent bounded sample window. These are subsystem measurements, not server TPS or CPU utilization.

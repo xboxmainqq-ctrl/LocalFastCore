@@ -29,7 +29,15 @@ public final class MobSpawnerManager {
 
     public MobSpawnerManager(MobSpawnerStorage storage) throws IOException {
         this.storage = Objects.requireNonNull(storage, "storage");
-        for (MobSpawnerState state : storage.load()) {
+        long nowTick = currentServerTick();
+        for (MobSpawnerState stored : storage.load()) {
+            MobSpawnerState state;
+            try {
+                state = stored.withNextSpawnTick(safeNextTick(nowTick,
+                        Math.toIntExact(Math.min(MobSpawnerState.MAX_DELAY_TICKS, stored.nextSpawnTick()))));
+            } catch (IllegalArgumentException | ArithmeticException exception) {
+                throw new IOException("Invalid persisted mob spawner timer", exception);
+            }
             Position position = new Position(state.x(), state.y(), state.z());
             if (spawners.putIfAbsent(position, state) != null) {
                 throw new IOException("Duplicate mob spawner position");
@@ -38,7 +46,18 @@ public final class MobSpawnerManager {
     }
 
     public synchronized void save() throws IOException {
-        if (storage != null) storage.save(snapshot());
+        if (storage == null) return;
+        long nowTick = currentServerTick();
+        List<MobSpawnerState> remaining = new ArrayList<>(spawners.size());
+        for (MobSpawnerState state : spawners.values()) {
+            long remainingTicks = Math.max(0L, state.nextSpawnTick() - nowTick);
+            remaining.add(state.withNextSpawnTick(remainingTicks));
+        }
+        storage.save(List.copyOf(remaining));
+    }
+
+    private static long currentServerTick() {
+        return Math.max(0L, System.nanoTime() / 50_000_000L);
     }
 
     public void onBlockChanged(World.BlockChange change, long currentTick) {

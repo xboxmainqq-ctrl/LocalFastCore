@@ -54,8 +54,13 @@ public final class MobPhysicsService {
 
         if (Math.abs(vy) > STOP_EPSILON) {
             if (WorldPathfinder.isMobFootprintLoaded(world, x, z)
-                    && WorldCollision.canMove(world, x, y, z, x, y + vy, z)) y += vy;
-            else vy = 0;
+                    && WorldCollision.canMove(world, x, y, z, x, y + vy, z)) {
+                y += vy;
+            } else if (vy < 0 && isBouncyMob(entity.identifier())) {
+                vy = Math.min(1.2, Math.max(0.2, -vy * 0.8));
+            } else {
+                vy = 0;
+            }
         } else vy = 0;
 
         double drag = groundedBeforeMove ? GROUND_DRAG : AIR_DRAG;

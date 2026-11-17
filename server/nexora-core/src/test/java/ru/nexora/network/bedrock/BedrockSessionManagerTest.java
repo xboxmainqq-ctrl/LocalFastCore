@@ -831,6 +831,7 @@ class BedrockSessionManagerTest {
         setSessionField(manager, "reward-killer", "positionX", 0.0f);
         setSessionField(manager, "reward-killer", "positionY", 65.0f);
         setSessionField(manager, "reward-killer", "positionZ", 0.0f);
+        subscribeChunk(manager, "reward-killer", 0, 0);
 
         ItemStack sword = new ItemStack("minecraft:diamond_sword", 1, 1,
                 java.util.Map.of("minecraft:looting", 3));
@@ -877,6 +878,7 @@ class BedrockSessionManagerTest {
         setSessionField(manager, "ai-player", "positionX", 4.0f);
         setSessionField(manager, "ai-player", "positionY", 65.0f);
         setSessionField(manager, "ai-player", "positionZ", 0.0f);
+        subscribeChunk(manager, "ai-player", 0, 0);
         manager.playerEquipment("ai-player").orElseThrow().setArmor(0,
                 new ItemStack("minecraft:iron_chestplate", 1, 1,
                         java.util.Map.of("minecraft:thorns", 10)));
@@ -922,6 +924,7 @@ class BedrockSessionManagerTest {
         setSessionField(manager, "mob-attacker", "positionX", 0.0f);
         setSessionField(manager, "mob-attacker", "positionY", 65.0f);
         setSessionField(manager, "mob-attacker", "positionZ", 0.0f);
+        subscribeChunk(manager, "mob-attacker", 0, 0);
 
         ItemStack sword = new ItemStack("minecraft:diamond_sword", 1, 1,
                 java.util.Map.of("minecraft:smite", 3,
@@ -978,6 +981,7 @@ class BedrockSessionManagerTest {
         setSessionField(manager, "spawner-player", "positionX", 0.5f);
         setSessionField(manager, "spawner-player", "positionY", 65.0f);
         setSessionField(manager, "spawner-player", "positionZ", 0.5f);
+        subscribeChunk(manager, "spawner-player", 0, 0);
 
         spawnerWorld.setBlock(0, 65, 0, ru.nexora.world.BlockType.SPAWNER);
         assertTrue(spawnerWorld.mobSpawners().configure(
@@ -2658,6 +2662,18 @@ class BedrockSessionManagerTest {
         java.lang.reflect.Field field = BedrockSessionManager.class.getDeclaredField(fieldName);
         field.setAccessible(true);
         return field.get(manager);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void subscribeChunk(BedrockSessionManager manager, String networkId, int chunkX, int chunkZ)
+            throws Exception {
+        java.lang.reflect.Field sessionsField = BedrockSessionManager.class.getDeclaredField("sessions");
+        sessionsField.setAccessible(true);
+        Object session = ((java.util.Map<String, Object>) sessionsField.get(manager)).get(networkId);
+        java.lang.reflect.Field chunksField = session.getClass().getDeclaredField("sentChunkKeys");
+        chunksField.setAccessible(true);
+        long key = ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
+        ((java.util.Set<Long>) chunksField.get(session)).add(key);
     }
 
     private static void setSessionField(

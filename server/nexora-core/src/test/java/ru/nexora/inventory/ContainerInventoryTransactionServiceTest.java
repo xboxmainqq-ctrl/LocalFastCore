@@ -75,6 +75,26 @@ class ContainerInventoryTransactionServiceTest {
                         action(0, 0, null, null))));
     }
 
+    @Test
+    void acceptsOnlyTheCallerApprovedPlayerUiCraftingSlots() {
+        PlayerInventory player = new PlayerInventory();
+        player.setSlot(0, new ItemStack("minecraft:iron_ingot", 1, 64));
+        ContainerInventory ui = new ContainerInventory(51);
+        var actions = List.of(
+                action(0, 0, stack("minecraft:iron_ingot", 1), null),
+                action(124, 28, null, stack("minecraft:iron_ingot", 1))
+        );
+
+        assertEquals(ContainerInventoryTransactionService.Result.APPLIED,
+                service.apply(player, ui, 124, actions, java.util.Set.of(28, 29, 30, 31)));
+        assertTrue(player.getSlot(0).isEmpty());
+        assertEquals("minecraft:iron_ingot", ui.getSlot(28).orElseThrow().itemId());
+
+        var invalidSlot = List.of(action(124, 32, null, stack("minecraft:iron_ingot", 1)));
+        assertEquals(ContainerInventoryTransactionService.Result.INVALID_SLOT,
+                service.apply(player, ui, 124, invalidSlot, java.util.Set.of(28, 29, 30, 31)));
+    }
+
     private static InventoryTransactionService.Action action(
             int containerId, int slot, ItemStack from, ItemStack to
     ) {

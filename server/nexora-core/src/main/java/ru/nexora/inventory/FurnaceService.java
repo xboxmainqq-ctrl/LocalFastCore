@@ -6,9 +6,7 @@ import java.util.Objects;
 
 /**
  * Server-authoritative furnace processing engine.
- *
- * Slot layout is input (0), fuel (1), output (2). The caller owns persistence
- * and invokes tick with elapsed server ticks for each loaded furnace.
+ * Slot layout is input (0), fuel (1), output (2).
  */
 public final class FurnaceService {
     public static final int INPUT_SLOT = 0;
@@ -30,9 +28,12 @@ public final class FurnaceService {
         }
 
         public int cookTimeTicks() { return cookTimeTicks; }
+        boolean accepts(RecipeGroup recipe) {
+            return recipeGroup == RecipeGroup.ALL || recipeGroup == recipe;
+        }
     }
 
-    private enum RecipeGroup {\n        ALL, METALS, FOOD;\n        boolean accepts(RecipeGroup recipe) { return this == ALL || this == recipe; }\n    }
+    private enum RecipeGroup { ALL, METALS, FOOD }
 
     private static final Map<String, SmeltingRecipe> RECIPES = recipes();
     private static final Map<String, Integer> FUELS = Map.of(
@@ -45,20 +46,28 @@ public final class FurnaceService {
     public synchronized TickResult tick(
             int x, int y, int z, ContainerInventory inventory, long elapsedTicks
     ) {
-        Objects.requireNonNull(inventory, "inventory");\n        Objects.requireNonNull(kind, "kind");
+        return tick(x, y, z, inventory, Kind.FURNACE, elapsedTicks);
+    }
+
+    public synchronized TickResult tick(
+            int x, int y, int z, ContainerInventory inventory, Kind kind, long elapsedTicks
+    ) {
+        Objects.requireNonNull(inventory, "inventory");
+        Objects.requireNonNull(kind, "kind");
         if (inventory.size() != 3) throw new IllegalArgumentException("Furnace inventory must have exactly 3 slots");
         if (elapsedTicks < 0 || elapsedTicks > 20_000) {
             throw new IllegalArgumentException("Elapsed furnace ticks must be 0..20000");
         }
         Position position = new Position(x, y, z);
         FurnaceState state = states.computeIfAbsent(position, ignored -> new FurnaceState());
-        if (elapsedTicks == 0) return result(state, false);
+        if (elapsedTicks == 0) return result(state, false, kind);
 
         boolean changed = false;
         long remainingTicks = elapsedTicks;
         while (remainingTicks > 0) {
             ItemStack input = inventory.getSlot(INPUT_SLOT).orElse(null);
-            SmeltingRecipe recipe = input == null ? null : RECIPES.get(input.itemId());\n            if (recipe != null && !kind.recipeGroup.accepts(recipe.group())) recipe = null;
+            SmeltingRecipe recipe = input == null ? null : RECIPES.get(input.itemId());
+            if (recipe != null && !kind.accepts(recipe.group())) recipe = null;
             boolean canSmelt = recipe != null && canAcceptOutput(inventory, recipe.result());
 
             if (state.burnTicksRemaining == 0 && canSmelt) {
@@ -119,9 +128,9 @@ public final class FurnaceService {
         states.remove(new Position(x, y, z));
     }
 
-    private static TickResult result(FurnaceState state, boolean changed) {
+    private static TickResult result(FurnaceState state, boolean changed, Kind kind) {
         return new TickResult(state.burnTicksRemaining, state.cookProgress,
-                (int) Math.round(state.cookProgress * 100.0 / COOK_TIME_TICKS), changed,
+                (int) Math.round(state.cookProgress * 100.0 / kind.cookTimeTicks), changed,
                 state.burnTicksTotal);
     }
 
@@ -143,23 +152,25 @@ public final class FurnaceService {
 
     private static Map<String, SmeltingRecipe> recipes() {
         Map<String, SmeltingRecipe> recipes = new HashMap<>();
-        addRecipe(recipes, "minecraft:raw_iron", "minecraft:iron_ingot");
-        addRecipe(recipes, "minecraft:raw_gold", "minecraft:gold_ingot");
-        addRecipe(recipes, "minecraft:raw_copper", "minecraft:copper_ingot");
-        addRecipe(recipes, "minecraft:potato", "minecraft:baked_potato");
-        addRecipe(recipes, "minecraft:beef", "minecraft:cooked_beef");
-        addRecipe(recipes, "minecraft:chicken", "minecraft:cooked_chicken");
-        addRecipe(recipes, "minecraft:salmon", "minecraft:cooked_salmon");
-        addRecipe(recipes, "minecraft:cod", "minecraft:cooked_cod");
+        addRecipe(recipes, "minecraft:raw_iron", "minecraft:iron_ingot", RecipeGroup.METALS);
+        addRecipe(recipes, "minecraft:raw_gold", "minecraft:gold_ingot", RecipeGroup.METALS);
+        addRecipe(recipes, "minecraft:raw_copper", "minecraft:copper_ingot", RecipeGroup.METALS);
+        addRecipe(recipes, "minecraft:potato", "minecraft:baked_potato", RecipeGroup.FOOD);
+        addRecipe(recipes, "minecraft:beef", "minecraft:cooked_beef", RecipeGroup.FOOD);
+        addRecipe(recipes, "minecraft:chicken", "minecraft:cooked_chicken", RecipeGroup.FOOD);
+        addRecipe(recipes, "minecraft:salmon", "minecraft:cooked_salmon", RecipeGroup.FOOD);
+        addRecipe(recipes, "minecraft:cod", "minecraft:cooked_cod", RecipeGroup.FOOD);
         return Map.copyOf(recipes);
     }
 
-    private static void addRecipe(Map<String, SmeltingRecipe> recipes, String input, String output) {
-        recipes.put(input, new SmeltingRecipe(input, new ItemStack(output, 1, 64)));
+    private static void addRecipe(
+            Map<String, SmeltingRecipe> recipes, String input, String output, RecipeGroup group
+    ) {
+        recipes.put(input, new SmeltingRecipe(input, new ItemStack(output, 1, 64), group));
     }
 
     private record Position(int x, int y, int z) { }
-    private record SmeltingRecipe(String input, ItemStack result, RecipeGroup group) { }\n\n    private static boolean accepts(RecipeGroup kind, RecipeGroup recipe) {\n        return kind == RecipeGroup.ALL || kind == recipe;\n    }
+    private record SmeltingRecipe(String input, ItemStack result, RecipeGroup group) { }
 
     private static final class FurnaceState {
         private int burnTicksRemaining;

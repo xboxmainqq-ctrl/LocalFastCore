@@ -204,6 +204,20 @@ class BedrockSessionManagerTest {
         assertEquals(0, inventory.count("minecraft:iron_ingot"));
         assertEquals(9, inventory.count("minecraft:iron_nugget"));
 
+        inventory.setSlot(2, new ItemStack("minecraft:oak_log", 1, 64));
+        var planksRecipe = ru.nexora.inventory.CraftingRecipeRegistry.vanillaSubset()
+                .find("minecraft:oak_planks_from_oak_log");
+        var oakLogDefinition = itemRegistry.findByIdentifier("minecraft:oak_log").networkDefinition();
+        var oakPlanksDefinition = itemRegistry.findByIdentifier("minecraft:oak_planks").networkDefinition();
+        BedrockPacket planksCraft = new BedrockPacket(
+                BedrockCraftingEventCodec.CRAFTING_EVENT_PACKET_ID, 0, 0,
+                BedrockCraftingDataCodecTest.craftingEvent(
+                        planksRecipe.uuid(), oakLogDefinition.runtimeItemId(), 1, oakLogDefinition.blockRuntimeId(),
+                        oakPlanksDefinition.runtimeItemId(), 4, oakPlanksDefinition.blockRuntimeId()));
+        sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(planksCraft), true, 256));
+        assertEquals(0, inventory.count("minecraft:oak_log"));
+        assertEquals(4, inventory.count("minecraft:oak_planks"));
+
         int goldNuggetId = itemRegistry.findByIdentifier("minecraft:gold_nugget")
                 .networkDefinition().runtimeItemId();
         BedrockPacket forgedOutput = new BedrockPacket(

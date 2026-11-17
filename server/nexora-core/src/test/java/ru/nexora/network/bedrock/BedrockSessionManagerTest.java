@@ -164,6 +164,75 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void protocol2225StartUseReleaseAndChargedSpearHitDamageMob() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+        ru.nexora.world.World combatWorld = new ru.nexora.world.World(
+                "charged-spear-mob-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                combatWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
+        BedrockItemRegistry registry = BedrockVanillaItemCatalog.createRegistry();
+        manager.setItemRegistry(registry);
+        manager.onIdentity("charge-mob-attacker", new NetherNetClientIdentity(
+                "charge-mob-token", new byte[] {21}, "charge-mob-xuid",
+                "ChargeMobAttacker", "playfab-charge-mob", "20CA2", null));
+        setSessionField(manager, "charge-mob-attacker", "loginAuthenticated", true);
+        setSessionField(manager, "charge-mob-attacker", "clientInitialized", true);
+        setSessionField(manager, "charge-mob-attacker", "positionInitialized", true);
+        setSessionField(manager, "charge-mob-attacker", "entityId", 121L);
+        setSessionField(manager, "charge-mob-attacker", "positionX", 0.5f);
+        setSessionField(manager, "charge-mob-attacker", "positionY", 65.0f);
+        setSessionField(manager, "charge-mob-attacker", "positionZ", 0.5f);
+        setSessionField(manager, "charge-mob-attacker", "lastMovementNanos", clock.get());
+        setSessionField(manager, "charge-mob-attacker", "physicsState",
+                new ru.nexora.world.PlayerPhysics.State(
+                        0.5, 65.0, 0.5, 0.0, 0.0, 6.0, true, 0.0, 0.0));
+
+        ItemStack spear = new ItemStack("minecraft:diamond_spear", 1, 1);
+        manager.playerInventory("charge-mob-attacker").orElseThrow().setSlot(0, spear);
+        var spearDefinition = registry.findByIdentifier("minecraft:diamond_spear");
+        assertNotNull(spearDefinition);
+
+        // Start the hold using the protocol-2225 PlayerAuthInputData value 52.
+        BedrockPacket startUse = new BedrockPacket(
+                BedrockPlayerAuthInputCodec.PLAYER_AUTH_INPUT_PACKET_ID, 0, 0,
+                BedrockPlayerAuthInputCodecTest.movementPayload(
+                        0.5f, 65.0f, 0.5f, 0.0f, 1L, false,
+                        BedrockPlayerAuthInputCodec.InputAction.START_USING_ITEM));
+        sendClientBatch(manager, "charge-mob-attacker",
+                BedrockBatchCodec.encode(List.of(startUse), true, 256));
+        assertNotEquals(Long.MIN_VALUE,
+                getSessionField(manager, "charge-mob-attacker", "spearChargeStartedNanos"));
+
+        // Release the main-hand spear from the authenticated player position.
+        clock.addAndGet(200_000_000L);
+        BedrockPacket release = new BedrockPacket(
+                BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID, 0, 0,
+                itemReleasePayload(0, 0,
+                        spearDefinition.networkDefinition().runtimeItemId(), 1,
+                        0.5f, 65.0f, 0.5f));
+        sendClientBatch(manager, "charge-mob-attacker",
+                BedrockBatchCodec.encode(List.of(release), true, 256));
+        assertEquals(clock.get(),
+                getSessionField(manager, "charge-mob-attacker", "spearChargeReleasedNanos"));
+
+        var zombie = manager.spawnLivingEntity("minecraft:zombie", 20.0f, 0.5, 65.0, 3.5);
+        var attack = new BedrockInventoryTransactionCodec.DecodedUseOnActor(
+                zombie.runtimeId(), 1, 0, 0, java.util.Optional.of(spear),
+                0.5f, 65.0f, 0.5f, 0.0f, 1.0f, 0.0f);
+        invokeActorAttack(manager, "charge-mob-attacker", attack);
+
+        // 6 blocks/s exceeds the 4.6 blocks/s charge threshold:
+        // diamond spear multiplier 1.075 gives 6.45 damage (base jab is 5).
+        assertEquals(13.55f,
+                combatWorld.livingEntities().find(zombie.runtimeId()).orElseThrow().health(), 0.0001f);
+        assertEquals(Long.MIN_VALUE,
+                getSessionField(manager, "charge-mob-attacker", "spearChargeStartedNanos"));
+        manager.close();
+    }
+
+    @Test
     void appliesServerValidatedPlayerAttackWithSharpnessAndHurtImmunity() throws Exception {
         List<byte[]> outboundFrames = new ArrayList<>();
         ru.nexora.world.World combatWorld = new ru.nexora.world.World(

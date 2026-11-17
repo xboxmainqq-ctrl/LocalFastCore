@@ -16,7 +16,9 @@ class MobPathCacheLoadBenchmarkTest {
     void reportsPathfindingWorkloadsForFiftyOneHundredAndTwoHundredMobs() {
         for (int mobCount : new int[]{50, 100, 200}) {
             World world = new World("mob-path-load-" + mobCount, 0L, new FlatWorldGenerator());
-            world.getChunk(0, 0);
+            for (int chunkX = -1; chunkX <= 1; chunkX++) {
+                for (int chunkZ = -1; chunkZ <= 1; chunkZ++) world.getChunk(chunkX, chunkZ);
+            }
             MobPathCache cache = new MobPathCache(1_024, 150);
             double[][] starts = new double[mobCount][2];
 

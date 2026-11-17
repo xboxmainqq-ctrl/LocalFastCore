@@ -67,6 +67,24 @@ public final class AnvilService {
         return new Outcome(Status.SUCCESS, result, cost);
     }
 
+    /** Combines actual inventory stacks; the caller must persist the returned stack and XP atomically. */
+    public Outcome combine(ItemStack base, ItemStack sacrifice, int availableLevels) {
+        Objects.requireNonNull(base, "base");
+        Objects.requireNonNull(sacrifice, "sacrifice");
+        if (base.count() != 1 || sacrifice.count() != 1) {
+            return Outcome.failure(Status.INCOMPATIBLE_ITEMS);
+        }
+        Outcome outcome = combine(
+                new EnchantedItem(base.itemId(), 1, base.enchantments(), base.repairCost()),
+                new EnchantedItem(sacrifice.itemId(), 1, sacrifice.enchantments(), sacrifice.repairCost()),
+                availableLevels);
+        if (!outcome.successful()) return outcome;
+        EnchantedItem result = outcome.result();
+        return new Outcome(Status.SUCCESS,
+                new EnchantedItem(result.itemId(), 1, result.enchantments(), result.repairCost()),
+                outcome.levelCost());
+    }
+
     public static Map<String, Enchantment> enchantments() {
         return ENCHANTMENTS;
     }

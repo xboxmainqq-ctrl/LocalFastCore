@@ -41,6 +41,10 @@ Spawner commands are operator-only. At this stage, command placement is an admin
 
 Mob navigation uses a bounded LRU path cache with a 150 ms TTL and a 1,024-entry limit. Cached waypoints are collision-checked before reuse. Empty/no-path results are not cached, allowing terrain changes to be observed. Path searches stay inside already resident chunks and do not force-load neighboring chunks; mobs outside loaded chunk footprints are not AI-ticked. Cache counters include hits, misses, recomputations, blocked waypoints, evictions, and current entries.
 
+### Mob movement and physics
+
+Ground-bound mobs receive server-authoritative gravity, terminal fall speed, collision-safe knockback, and ground/air drag. Flying species use three-dimensional pursuit or fleeing and do not receive ground gravity. Species-specific movement speeds and melee reach are applied by the AI service. Physics, pathfinding, raycasts, and projectile movement are restricted to already resident chunks; mob updates do not generate neighboring chunks as a side effect.
+
 ### Stuck-mob tracker
 
 The diagnostic tracker reports repeated blocked movement after two seconds without meaningful positional progress. It is bounded to 5,000 runtime IDs. Successful movement, idle behavior, and special behavior clear tracking. It does not teleport, despawn, damage, or otherwise modify mobs.

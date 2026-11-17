@@ -1379,6 +1379,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case "minecraft:gold_block" -> BlockType.GOLD_BLOCK;
             case "minecraft:diamond_block" -> BlockType.DIAMOND_BLOCK;
             case "minecraft:emerald_block" -> BlockType.EMERALD_BLOCK;
+            case "minecraft:chest" -> BlockType.CHEST;
             default -> null;
         };
         if (placedType == null) return;

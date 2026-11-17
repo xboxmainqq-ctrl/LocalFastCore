@@ -969,6 +969,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             handleCraftingEvent(message, state, packet);
                     case BedrockMobEquipmentCodec.MOB_EQUIPMENT_PACKET_ID ->
                             handleMobEquipment(message, state, packet);
+                    case BedrockTextCodec.TEXT_PACKET_ID -> handleChatMessage(message, state, packet);
                     case BedrockCommandRequestCodec.COMMAND_REQUEST_PACKET_ID ->
                             handleCommandRequest(message, state, packet);
                     case BedrockModalFormCodec.MODAL_FORM_RESPONSE_PACKET_ID ->

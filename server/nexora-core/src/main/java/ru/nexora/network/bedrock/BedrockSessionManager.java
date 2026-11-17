@@ -1805,9 +1805,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             ru.nexora.combat.LivingEntityAiService.Decision decision =
                     livingEntityAi.decide(mob, targets, nowMillis, nextAttackAt);
             if (decision.attack()) {
-                nextMobAttackMillis.put(mob.runtimeId(),
-                        nowMillis + ru.nexora.combat.LivingEntityAiService.ATTACK_COOLDOWN_MILLIS);
-                damagePlayerFromMob(decision.targetNetworkId(), mob, decision.attackDamage(), tick);
+                if (damagePlayerFromMob(decision.targetNetworkId(), mob, decision.attackDamage(), tick)) {
+                    nextMobAttackMillis.put(mob.runtimeId(),
+                            nowMillis + ru.nexora.combat.LivingEntityAiService.ATTACK_COOLDOWN_MILLIS);
+                }
                 continue;
             }
             if (!decision.moving()) continue;
@@ -1846,14 +1847,20 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
-    private void damagePlayerFromMob(String networkId, WorldLivingEntity mob, float amount, long tick) {
+    private boolean damagePlayerFromMob(String networkId, WorldLivingEntity mob, float amount, long tick) {
         SessionState target = sessions.get(networkId);
-        if (target == null) return;
+        if (target == null) return false;
         target.combatLock.lock();
         try {
             synchronized (target) {
                 if (!target.loginAuthenticated || !target.clientInitialized
-                        || target.dead || target.vitals.dead()) return;
+                        || target.dead || target.vitals.dead()) return false;
+                double rangeX = target.positionX - mob.x();
+                double rangeY = target.positionY - mob.y();
+                double rangeZ = target.positionZ - mob.z();
+                if (rangeX * rangeX + rangeY * rangeY + rangeZ * rangeZ
+                        > ru.nexora.combat.LivingEntityAiService.ATTACK_RANGE
+                                * ru.nexora.combat.LivingEntityAiService.ATTACK_RANGE) return false;
                 int targetBlockX = (int) Math.floor(target.positionX);
                 int targetBlockY = (int) Math.floor(target.positionY + 1.0);
                 int targetBlockZ = (int) Math.floor(target.positionZ);
@@ -1917,6 +1924,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                                 target.entityId, vx, 0.12, vz, Math.max(0, tick)), true);
                     }
                 }
+                return true;
             }
         } finally {
             target.combatLock.unlock();

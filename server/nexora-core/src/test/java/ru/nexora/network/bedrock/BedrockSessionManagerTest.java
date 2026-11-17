@@ -67,13 +67,18 @@ class BedrockSessionManagerTest {
                 java.util.Map.of("minecraft:sharpness", 3,
                         "minecraft:knockback", 2, "minecraft:fire_aspect", 1));
         manager.playerInventory("combat-attacker").orElseThrow().setSlot(0, sword);
+        manager.playerEquipment("combat-target").orElseThrow().setArmor(1,
+                new ItemStack("minecraft:diamond_chestplate", 1, 1,
+                        java.util.Map.of("minecraft:thorns", 10)));
         var transaction = new BedrockInventoryTransactionCodec.DecodedUseOnActor(
                 101L, 1, 0, 0, java.util.Optional.of(sword),
                 0.0f, 65.0f, 0.0f, 0.0f, 1.0f, 0.0f);
 
         invokeActorAttack(manager, "combat-attacker", transaction);
-        assertEquals(8.25f, manager.playerVitals("combat-target").orElseThrow().health(), 0.0001f);
-        assertEquals(20.0f, manager.playerVitals("combat-attacker").orElseThrow().health(), 0.0001f);
+        assertEquals(12.01f, manager.playerVitals("combat-target").orElseThrow().health(), 0.0001f);
+        float attackerHealth = manager.playerVitals("combat-attacker").orElseThrow().health();
+        assertTrue(attackerHealth >= 16.0f && attackerHealth <= 19.0f,
+                "Thorns X must reflect between one and four damage");
         assertEquals(0.6, ((ru.nexora.world.PlayerPhysics.State)
                 getSessionField(manager, "combat-target", "physicsState")).velocityX(), 0.0001);
         assertNotEquals(Long.MIN_VALUE,
@@ -82,7 +87,8 @@ class BedrockSessionManagerTest {
 
         // Bedrock's short hurt-immunity window prevents packet spam from multiplying one hit.
         invokeActorAttack(manager, "combat-attacker", transaction);
-        assertEquals(8.25f, manager.playerVitals("combat-target").orElseThrow().health(), 0.0001f);
+        assertEquals(12.01f, manager.playerVitals("combat-target").orElseThrow().health(), 0.0001f);
+        assertEquals(attackerHealth, manager.playerVitals("combat-attacker").orElseThrow().health(), 0.0001f);
         manager.close();
     }
 

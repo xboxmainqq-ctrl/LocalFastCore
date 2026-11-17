@@ -1924,7 +1924,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                                 target.entityId, vx, 0.12, vz, Math.max(0, tick)), true);
                     }
                 }
-                return true;
+                return !target.vitals.dead()
+                        && world.livingEntities().find(mob.runtimeId()).isPresent();
             }
         } finally {
             target.combatLock.unlock();

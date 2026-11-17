@@ -150,7 +150,7 @@ public final class WorldChunkPipeline implements RuntimeModule {
         }
     }
 
-    private void drainTick() {
+    private synchronized void drainTick() {
         if (!started) {
             return;
         }

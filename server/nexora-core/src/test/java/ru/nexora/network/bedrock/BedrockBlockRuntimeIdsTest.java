@@ -27,5 +27,6 @@ class BedrockBlockRuntimeIdsTest {
         assertEquals(0xbc85430e, BedrockBlockRuntimeIds.forBlock(BlockType.CHEST));
         assertEquals(0xc4f2d3e4, BedrockBlockRuntimeIds.forBlock(BlockType.OAK_LOG));
         assertEquals(0x37abcd4f, BedrockBlockRuntimeIds.forBlock(BlockType.OAK_PLANKS));
+        assertEquals(0x68702cc0, BedrockBlockRuntimeIds.forBlock(BlockType.CRAFTING_TABLE));
     }
 }

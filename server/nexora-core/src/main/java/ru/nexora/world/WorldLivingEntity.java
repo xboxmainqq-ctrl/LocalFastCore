@@ -61,6 +61,20 @@ public record WorldLivingEntity(
                 fireUntilMillis, nextFireDamageMillis);
     }
 
+    public static Family familyForIdentifier(String identifier) {
+        Objects.requireNonNull(identifier, "identifier");
+        return switch (identifier) {
+            case "minecraft:zombie", "minecraft:husk", "minecraft:drowned",
+                    "minecraft:zombie_villager", "minecraft:zombie_villager_v2",
+                    "minecraft:skeleton", "minecraft:stray", "minecraft:wither_skeleton",
+                    "minecraft:wither", "minecraft:phantom", "minecraft:zombified_piglin",
+                    "minecraft:zoglin" -> Family.UNDEAD;
+            case "minecraft:spider", "minecraft:cave_spider",
+                    "minecraft:silverfish", "minecraft:endermite", "minecraft:bee" -> Family.ARTHROPOD;
+            default -> Family.NORMAL;
+        };
+    }
+
     public enum Family {
         NORMAL,
         UNDEAD,

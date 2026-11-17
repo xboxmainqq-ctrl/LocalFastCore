@@ -28,6 +28,7 @@ public final class MobAiController {
     private static final int MAX_PATH_NODES = 512;
     private static final int MAX_PATH_NODES_PER_TICK = 4_096;
     private static final long TARGET_MEMORY_TICKS = 100;
+    private static final long FAILED_PATH_RETRY_TICKS = 10;
     private static final int[][] PATH_NEIGHBORS = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
 
     private final Map<UUID, Behavior> behaviors = new HashMap<>();
@@ -35,6 +36,7 @@ public final class MobAiController {
     private final Map<UUID, Decision> decisions = new HashMap<>();
     private final Map<UUID, NavigationState> navigation = new HashMap<>();
     private final Map<UUID, TargetMemory> targetMemory = new HashMap<>();
+    private final Map<UUID, PathRetryState> pathRetries = new HashMap<>();
     private final double detectionRange;
     private final double attackRange;
     private final double moveSpeed;
@@ -68,6 +70,7 @@ public final class MobAiController {
         if (behavior != Behavior.HOSTILE) {
             targetMemory.remove(mobId);
             navigation.remove(mobId);
+            pathRetries.remove(mobId);
         }
     }
 
@@ -126,6 +129,7 @@ public final class MobAiController {
                         || entities.find(memory.lastSeenTarget.id()).isEmpty()) {
                     targetMemory.remove(mob.id());
                     navigation.remove(mob.id());
+                    pathRetries.remove(mob.id());
                     return remember(mob.id(), new Decision(State.IDLE, null, false, false));
                 }
                 target = memory.lastSeenTarget;
@@ -153,7 +157,7 @@ public final class MobAiController {
             return remember(mob.id(), new Decision(State.SEARCH, target.id(), false, false));
         }
 
-        return navigateToward(mob, target, entities, world);
+        return navigateToward(mob, target, entities, world, tick);
     }
 
     /** Drops all controller state for entities that no longer exist. */
@@ -165,6 +169,7 @@ public final class MobAiController {
         navigation.keySet().removeIf(id -> entities.find(id).isEmpty());
         targetMemory.keySet().removeIf(id -> entities.find(id).isEmpty()
                 || entities.find(targetMemory.get(id).lastSeenTarget.id()).isEmpty());
+        pathRetries.keySet().removeIf(id -> entities.find(id).isEmpty());
     }
 
     /**
@@ -172,11 +177,16 @@ public final class MobAiController {
      * The path is cached per mob and rebuilt when its target enters another block.
      */
     private Decision navigateToward(WorldEntity mob, WorldEntity target,
-                                    EntityRegistry entities, World world) {
+                                    EntityRegistry entities, World world, long tick) {
         int targetX = floor(target.x());
         int targetZ = floor(target.z());
         NavigationState route = navigation.get(mob.id());
         if (route == null || route.targetX != targetX || route.targetZ != targetZ) {
+            PathRetryState retry = pathRetries.get(mob.id());
+            if (retry != null && retry.targetX == targetX && retry.targetZ == targetZ
+                    && tick < retry.retryAfterTick) {
+                return remember(mob.id(), new Decision(State.WAITING, target.id(), false, false));
+            }
             if (remainingPathNodes < MAX_PATH_NODES) {
                 return remember(mob.id(), new Decision(State.WAITING, target.id(), false, false));
             }
@@ -184,8 +194,11 @@ public final class MobAiController {
             route = findPath(mob, target, world);
             if (route == null) {
                 navigation.remove(mob.id());
+                pathRetries.put(mob.id(), new PathRetryState(targetX, targetZ,
+                        tick + FAILED_PATH_RETRY_TICKS));
                 return remember(mob.id(), new Decision(State.STUCK, target.id(), false, false));
             }
+            pathRetries.remove(mob.id());
             navigation.put(mob.id(), route);
         }
 
@@ -200,6 +213,7 @@ public final class MobAiController {
         }
         if (route.path.isEmpty()) {
             navigation.remove(mob.id());
+            pathRetries.put(mob.id(), new PathRetryState(targetX, targetZ, tick + 1));
             return remember(mob.id(), new Decision(State.STUCK, target.id(), false, false));
         }
 
@@ -376,6 +390,9 @@ public final class MobAiController {
 
     private static int floor(double value) {
         return (int) Math.floor(value);
+    }
+
+    private record PathRetryState(int targetX, int targetZ, long retryAfterTick) {
     }
 
     private record TargetMemory(WorldEntity lastSeenTarget, long lastSeenTick) {

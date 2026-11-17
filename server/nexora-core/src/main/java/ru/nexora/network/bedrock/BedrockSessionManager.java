@@ -2471,9 +2471,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         });
         for (WorldLivingEntity mob : world.livingEntities().snapshot()) {
             if (!ru.nexora.world.WorldPathfinder.isMobFootprintLoaded(world, mob.x(), mob.z())) continue;
+            WorldLivingEntity beforePhysics = mob;
             ru.nexora.combat.MobPhysicsService.Result physics = mobPhysics.tick(world, mob);
             mob = physics.entity();
-            if (physics.moved()) {
+            boolean velocityChanged = beforePhysics.velocityX() != mob.velocityX()
+                    || beforePhysics.velocityY() != mob.velocityY()
+                    || beforePhysics.velocityZ() != mob.velocityZ();
+            if (physics.moved() || velocityChanged) {
                 float physicsYaw = (float) Math.toDegrees(
                         Math.atan2(-mob.velocityX(), mob.velocityZ()));
                 broadcastLivingActorPacket(BedrockMoveActorAbsoluteCodec.create(

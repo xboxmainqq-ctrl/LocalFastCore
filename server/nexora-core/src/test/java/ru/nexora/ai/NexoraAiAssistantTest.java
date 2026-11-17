@@ -85,4 +85,16 @@ class NexoraAiAssistantTest {
                 assistant.createRepairProposal("player-xuid", "Player", "Server is slow", ignored -> {}));
     }
 
+    @Test
+    void operatorCanReviewProposalStoreWithoutConfiguredProvider() {
+        NexoraAiAssistant assistant = NexoraAiAssistant.fromEnvironment(
+                Map.of("NEXORA_AI_ADMIN_XUIDS", "operator-xuid"), new NexoraAiDiagnostics());
+
+        assertFalse(assistant.isEnabled());
+        assertTrue(assistant.repairProposals("operator-xuid").isEmpty());
+        assertTrue(assistant.repairProposal("operator-xuid", "R-000001").isEmpty());
+        assertTrue(assistant.approveRepairProposal("operator-xuid", "R-000001").isEmpty());
+        assertTrue(assistant.rejectRepairProposal("operator-xuid", "R-000001").isEmpty());
+    }
+
 }

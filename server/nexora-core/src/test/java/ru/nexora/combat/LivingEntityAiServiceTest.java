@@ -68,6 +68,18 @@ class LivingEntityAiServiceTest {
         assertFalse(ai.decide(zombie, List.of(), 1, 0).attack());
     }
 
+
+    @Test
+    void piglinsAndZombifiedPiglinsAreNeutralUntilProvoked() {
+        assertFalse(LivingEntityAiService.isHostile("minecraft:piglin"));
+        assertFalse(LivingEntityAiService.isHostile("minecraft:zombified_piglin"));
+        WorldLivingEntity piglin = new WorldLivingEntityManager().spawn(
+                "minecraft:piglin", 12, 0, 64, 0);
+        var player = new LivingEntityAiService.PlayerTarget("attacker", 1, 64, 0, true);
+        assertFalse(ai.decide(piglin, List.of(player), 1_000, 0).attack());
+        assertTrue(ai.decide(piglin, List.of(player), 2_000, 0, "attacker").attack());
+    }
+
     @Test
     void rejectsInvalidTimeAndTarget() {
         WorldLivingEntity zombie = new WorldLivingEntityManager().spawn(

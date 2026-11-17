@@ -19,6 +19,7 @@ public final class ItemDurabilityService {
     private static final Map<String, Integer> ARMOR_BASE = Map.of(
             "leather", 5,
             "chainmail", 15,
+            "copper", 15,
             "iron", 15,
             "golden", 7,
             "diamond", 33,

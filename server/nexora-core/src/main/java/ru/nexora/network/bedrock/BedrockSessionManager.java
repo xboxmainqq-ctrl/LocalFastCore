@@ -1585,7 +1585,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         ru.nexora.combat.EnchantmentCombatService.resolveAttack(
                                 baseDamage, weapon,
                                 ru.nexora.combat.EnchantmentCombatService.TargetType.NORMAL);
-                float finalDamage = applyPlayerArmor(target.equipment, effect.damage());
+                List<ItemStack> targetArmor = target.equipment.armorSnapshot().stream()
+                        .flatMap(Optional::stream).toList();
+                float finalDamage = ru.nexora.combat.EnchantmentCombatService
+                        .applyArmorReduction(effect.damage(), targetArmor);
                 if (finalDamage > 0.0f) {
                     applyDamage(targetNetworkId, target, finalDamage,
                             target.lastInputTick, "death.attack.generic");
@@ -1626,53 +1629,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case "minecraft:netherite_sword" -> 8.0f;
             default -> 1.0f;
         };
-    }
-
-    private static float applyPlayerArmor(PlayerEquipment equipment, float incomingDamage) {
-        int armorPoints = 0;
-        double toughness = 0.0;
-        int protectionLevels = 0;
-        for (Optional<ItemStack> optional : equipment.armorSnapshot()) {
-            ItemStack piece = optional.orElse(null);
-            if (piece == null) continue;
-            String id = piece.itemId();
-            armorPoints += armorPointsForPiece(id);
-            if (id.contains("diamond") || id.contains("netherite")) toughness += 0.5;
-            protectionLevels += piece.enchantments().getOrDefault("minecraft:protection", 0);
-        }
-        double armorReduction = 0.0;
-        if (armorPoints > 0) {
-            double effective = Math.min(20.0,
-                    Math.max(armorPoints / 5.0, armorPoints - incomingDamage / (2.0 + toughness / 4.0)));
-            armorReduction = effective / 25.0;
-        }
-        double enchantmentReduction = Math.min(0.80, protectionLevels * 0.04);
-        return (float) (incomingDamage * (1.0 - armorReduction) * (1.0 - enchantmentReduction));
-    }
-
-    private static int armorPointsForPiece(String itemId) {
-        int helmet;
-        int chestplate;
-        int leggings;
-        int boots;
-        if (itemId.contains("leather")) {
-            helmet = 1; chestplate = 3; leggings = 2; boots = 1;
-        } else if (itemId.contains("chainmail")) {
-            helmet = 2; chestplate = 5; leggings = 4; boots = 1;
-        } else if (itemId.contains("iron")) {
-            helmet = 2; chestplate = 6; leggings = 5; boots = 2;
-        } else if (itemId.contains("golden")) {
-            helmet = 2; chestplate = 5; leggings = 3; boots = 1;
-        } else if (itemId.contains("diamond") || itemId.contains("netherite")) {
-            helmet = 3; chestplate = 8; leggings = 6; boots = 3;
-        } else {
-            return 0;
-        }
-        if (itemId.endsWith("_helmet")) return helmet;
-        if (itemId.endsWith("_chestplate")) return chestplate;
-        if (itemId.endsWith("_leggings")) return leggings;
-        if (itemId.endsWith("_boots")) return boots;
-        return 0;
     }
 
     private void handleCraftingUiTransaction(

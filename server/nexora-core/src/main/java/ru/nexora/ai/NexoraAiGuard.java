@@ -147,6 +147,10 @@ public final class NexoraAiGuard {
         }
     }
 
+    public synchronized void onPlayerDisconnected(String playerKey) {
+        if (playerKey != null) playerSignals.remove(playerKey);
+    }
+
     /** Aggregate-only status suitable for operator diagnostics; no peer identifiers are exposed. */
     public synchronized Snapshot snapshot() {
         int signalledPeers = 0;

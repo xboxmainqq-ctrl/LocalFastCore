@@ -689,13 +689,15 @@ class BedrockSessionManagerTest {
         assertEquals(0x31, decodeOutbound(outboundFrames.get(22), true).packetId());
         List<BedrockPacket> initialInventoryBatch = BedrockBatchCodec.decode(
                 reassemble(List.of(outboundFrames.get(22))), true);
-        assertEquals(6, initialInventoryBatch.size());
+        assertEquals(7, initialInventoryBatch.size());
         assertEquals(0x1f, initialInventoryBatch.get(1).packetId());
         assertEquals(0x31, initialInventoryBatch.get(2).packetId()); // armor container
         assertEquals(0x31, initialInventoryBatch.get(3).packetId()); // offhand container
         assertEquals(0x32, initialInventoryBatch.get(4).packetId()); // cursor slot
         assertEquals(BedrockAvailableCommandsCodec.AVAILABLE_COMMANDS_PACKET_ID,
                 initialInventoryBatch.get(5).packetId()); // /equipment command
+        assertEquals(BedrockCraftingDataCodec.CRAFTING_DATA_PACKET_ID,
+                initialInventoryBatch.get(6).packetId()); // crafting recipes
         BedrockPacket playerSpawn = decodeOutbound(outboundFrames.get(21), true);
         assertEquals(BedrockBatchCodec.PLAY_STATUS_PACKET_ID, playerSpawn.packetId());
         assertEquals(3, ByteBuffer.wrap(playerSpawn.payload()).order(ByteOrder.BIG_ENDIAN).getInt());

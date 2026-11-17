@@ -2,7 +2,6 @@ package ru.nexora.runtime;
 
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 
 /**
  * Operator-facing facade for the optional Core AI Assistant.

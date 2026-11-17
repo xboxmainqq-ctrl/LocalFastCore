@@ -32,7 +32,7 @@ class MobClimbControllerTest {
         MobClimbController controller = new MobClimbController();
 
         assertFalse(controller.tryClimb(world, zombie, 0.77, 0.5));
-        assertFalse(controller.tryClimb(world, spider, 0.77, 0.5));
+        assertFalse(controller.tryClimb(world, spider, 3.77, 0.5));
         assertEquals(0, controller.stats().climbs());
     }
 

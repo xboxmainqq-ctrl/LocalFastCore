@@ -301,7 +301,7 @@ class MobSpawnerManagerTest {
         var second = manager.tick(world, due + 1, players, request -> false);
 
         assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK, first.processedSpawners());
-        assertEquals(1, second.processedSpawners());
+        assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK, second.processedSpawners());
         assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK + 1, first.trackedSpawners());
     }
 

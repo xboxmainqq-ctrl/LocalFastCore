@@ -3423,6 +3423,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     state.experiencePoints = player.experiencePoints();
                     state.experienceRemainderMilli = player.experienceRemainderMilli();
                     state.dead = state.vitals.dead();
+                    if (player.worldName().equals(world.name())) {
+                        // A restored position can be far from the default spawn. Prepare only
+                        // the chunks touched by the player's footprint before collision checks.
+                        ensureActorFootprintChunksLoaded(player.x(), player.z());
+                    }
                     if (player.worldName().equals(world.name())
                             && WorldCollision.canOccupy(world, player.x(), player.y(), player.z())) {
                         state.positionX = player.x();

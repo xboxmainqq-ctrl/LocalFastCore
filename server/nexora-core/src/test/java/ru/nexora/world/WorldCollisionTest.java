@@ -8,6 +8,9 @@ class WorldCollisionTest {
     private World world() {
         World world = new World("NEXORA", 1L, new FlatWorldGenerator());
         world.getChunk(0, 0);
+        world.getChunk(-1, 0);
+        world.getChunk(0, -1);
+        world.getChunk(-1, -1);
         return world;
     }
     @Test

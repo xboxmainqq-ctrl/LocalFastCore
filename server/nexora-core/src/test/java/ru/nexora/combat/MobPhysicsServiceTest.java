@@ -104,7 +104,7 @@ class MobPhysicsServiceTest {
         assertFalse(result.moved());
         assertEquals(15.5, result.entity().x(), 0.0001);
         assertEquals(0, result.entity().velocityX(), 0.0001);
-        assertFalse(world.isChunkLoadedAt(1, 0));
+        assertFalse(world.isChunkLoadedAt(16, 0));
     }
 
     @Test

@@ -78,6 +78,10 @@ Ground-bound mobs receive server-side gravity, collision-resolved falling, and d
 
 The generic AI uses species profiles for selected movement speeds, melee reach, and attack damage. Ranged bow users and creepers keep dedicated behavior paths; wither skeletons remain melee attackers. The deterministic reward table covers common drops and XP for several hostile and passive families, with Looting applied as a bounded stack bonus. Items absent from the active item registry are skipped safely rather than creating unknown inventory entries.
 
+### Natural despawn
+
+Hostile mobs that remain more than 128 blocks from every initialized player for 30 seconds are removed. Returning a player inside the radius resets the timer. Passive and neutral mobs are not automatically removed by this tracker. This conservative policy is bounded and is not a complete reproduction of every vanilla persistence/despawn rule.
+
 ### Mob lifecycle cleanup
 
 Manual despawn, melee death, fire death, creeper explosion, and thorns-reflection death all clear transient AI state, navigation cache entries, aggro/fuse/cooldown tracking, kill-credit references, and owned mob projectiles. Projectile despawn packets are sent so clients do not retain orphaned arrows.

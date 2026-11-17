@@ -152,12 +152,12 @@ public final class NexoraAiAssistant {
     /** Approves a proposal for manual review only; this does not apply any changes. */
     public java.util.Optional<NexoraAiRepairProposals.Proposal> approveRepairProposal(String operatorXuid, String id) {
         requireAdmin(operatorXuid);
-        return repairProposals.approveForManualReview(id);
+        return repairProposals.approveForManualReview(id, operatorXuid);
     }
 
     public java.util.Optional<NexoraAiRepairProposals.Proposal> rejectRepairProposal(String operatorXuid, String id) {
         requireAdmin(operatorXuid);
-        return repairProposals.reject(id);
+        return repairProposals.reject(id, operatorXuid);
     }
 
     private void requireAdmin(String xuid) {

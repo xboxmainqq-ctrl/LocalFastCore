@@ -2300,6 +2300,42 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
         }
 
+        if (current == BlockType.FURNACE) {
+            WorldFurnaceManager manager = world.furnaces().orElse(null);
+            if (manager == null) {
+                state.breakTarget = null;
+                sendPacket(networkId, BedrockBlockUpdateCodec.createPacket(
+                        target.x(), target.y(), target.z(), current), true);
+                return;
+            }
+            try {
+                ContainerInventory furnace = manager.getOrCreate(target.x(), target.y(), target.z());
+                if (furnace.snapshot().stream().anyMatch(Optional::isPresent)) {
+                    state.breakTarget = null;
+                    sendPacket(networkId, BedrockBlockUpdateCodec.createPacket(
+                            target.x(), target.y(), target.z(), current), true);
+                    return;
+                }
+                for (var entry : sessions.entrySet()) {
+                    SessionState viewer = entry.getValue();
+                    synchronized (viewer) {
+                        if (viewer.openContainerIsFurnace
+                                && viewer.openContainerX == target.x()
+                                && viewer.openContainerY == target.y()
+                                && viewer.openContainerZ == target.z()) {
+                            closeContainerWindow(entry.getKey(), viewer, true);
+                        }
+                    }
+                }
+                manager.remove(target.x(), target.y(), target.z());
+            } catch (IOException exception) {
+                state.breakTarget = null;
+                System.err.println("NEXORA: furnace break cancelled because its contents could not be checked: "
+                        + exception.getMessage());
+                return;
+            }
+        }
+
         WorldItemEntity dropped = null;
         String dropItemId = blockDropItemId(current);
         if (dropItemId != null && itemRegistry != null
@@ -2359,6 +2395,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case OAK_LOG -> "minecraft:oak_log";
             case OAK_PLANKS -> "minecraft:oak_planks";
             case CRAFTING_TABLE -> "minecraft:crafting_table";
+            case FURNACE -> "minecraft:furnace";
         };
     }
 
@@ -2399,7 +2436,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case CHEST -> 2_500_000_000L;
             case OAK_LOG -> 2_000_000_000L;
             case OAK_PLANKS -> 2_000_000_000L;
-            case CRAFTING_TABLE -> 2_500_000_000L;
+            case CRAFTING_TABLE, FURNACE -> 2_500_000_000L;
         };
     }
 

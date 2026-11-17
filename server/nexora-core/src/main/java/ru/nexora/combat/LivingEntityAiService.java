@@ -21,6 +21,11 @@ public final class LivingEntityAiService {
 
     public Decision decide(WorldLivingEntity mob, List<PlayerTarget> players, long nowMillis,
                            long nextAttackAtMillis) {
+        return decide(mob, players, nowMillis, nextAttackAtMillis, null);
+    }
+
+    public Decision decide(WorldLivingEntity mob, List<PlayerTarget> players, long nowMillis,
+                           long nextAttackAtMillis, String provokedByNetworkId) {
         Objects.requireNonNull(mob, "mob");
         Objects.requireNonNull(players, "players");
         if (nowMillis < 0 || nextAttackAtMillis < 0) {
@@ -41,8 +46,22 @@ public final class LivingEntityAiService {
             return pursue(mob, nearest, nowMillis, nextAttackAtMillis);
         }
 
-        if (nearest != null && distanceSquared(mob, nearest) <= FLEE_RANGE * FLEE_RANGE) {
-            return flee(mob, nearest);
+        if (isPassivePrey(mob.identifier())) {
+            if (nearest != null && distanceSquared(mob, nearest) <= FLEE_RANGE * FLEE_RANGE) {
+                return flee(mob, nearest);
+            }
+            return wander(mob, nowMillis);
+        }
+
+        if (provokedByNetworkId != null && !provokedByNetworkId.isBlank()) {
+            PlayerTarget provoker = players.stream().filter(Objects::nonNull)
+                    .filter(PlayerTarget::alive)
+                    .filter(player -> player.networkId().equals(provokedByNetworkId))
+                    .findFirst().orElse(null);
+            if (provoker != null
+                    && distanceSquared(mob, provoker) <= ACQUIRE_RANGE * ACQUIRE_RANGE) {
+                return pursue(mob, provoker, nowMillis, nextAttackAtMillis);
+            }
         }
         return wander(mob, nowMillis);
     }
@@ -108,7 +127,26 @@ public final class LivingEntityAiService {
         };
     }
 
-    /** Hostile families currently use melee pursuit; ranged behavior is handled separately. */
+    /** Passive prey flee from nearby players instead of treating every mob as frightened. */
+    public static boolean isPassivePrey(String identifier) {
+        return switch (identifier) {
+            case "minecraft:allay", "minecraft:armadillo", "minecraft:axolotl",
+                    "minecraft:bat", "minecraft:camel", "minecraft:cat", "minecraft:chicken",
+                    "minecraft:cod", "minecraft:cow", "minecraft:donkey", "minecraft:fox",
+                    "minecraft:frog", "minecraft:glow_squid", "minecraft:goat",
+                    "minecraft:horse", "minecraft:llama", "minecraft:mooshroom",
+                    "minecraft:mule", "minecraft:ocelot", "minecraft:parrot",
+                    "minecraft:pig", "minecraft:pufferfish", "minecraft:rabbit",
+                    "minecraft:salmon", "minecraft:sheep", "minecraft:sniffer",
+                    "minecraft:snow_golem", "minecraft:squid", "minecraft:strider",
+                    "minecraft:tadpole", "minecraft:trader_llama", "minecraft:tropical_fish",
+                    "minecraft:turtle", "minecraft:villager", "minecraft:wandering_trader",
+                    "minecraft:glow_squid" -> true;
+            default -> false;
+        };
+    }
+
+    /** Hostile families pursue players; neutral mobs only retaliate after being hit. */
     public static boolean isHostile(String identifier) {
         return switch (identifier) {
             case "minecraft:zombie", "minecraft:husk", "minecraft:drowned",

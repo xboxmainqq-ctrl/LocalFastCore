@@ -136,26 +136,29 @@ public final class CraftingService {
 
         for (int top = 0; top <= height - recipeHeight; top++) {
             for (int left = 0; left <= width - recipeWidth; left++) {
-                boolean matches = true;
-                for (int row = 0; row < height && matches; row++) {
-                    for (int column = 0; column < width; column++) {
-                        String expected = null;
-                        int recipeRow = row - top;
-                        int recipeColumn = column - left;
-                        if (recipeRow >= 0 && recipeRow < recipeHeight
-                                && recipeColumn >= 0 && recipeColumn < recipeWidth) {
-                            char symbol = recipe.pattern().get(recipeRow).charAt(recipeColumn);
-                            if (symbol != ' ') expected = recipe.key().get(symbol);
-                        }
-                        ItemStack actual = grid.getSlot(offset + row * width + column).orElse(null);
-                        if (expected == null ? actual != null
-                                : actual == null || !expected.equals(actual.itemId())) {
-                            matches = false;
-                            break;
+                for (boolean mirrored : new boolean[] {false, true}) {
+                    boolean matches = true;
+                    for (int row = 0; row < height && matches; row++) {
+                        for (int column = 0; column < width; column++) {
+                            String expected = null;
+                            int recipeRow = row - top;
+                            int recipeColumn = column - left;
+                            if (recipeRow >= 0 && recipeRow < recipeHeight
+                                    && recipeColumn >= 0 && recipeColumn < recipeWidth) {
+                                if (mirrored) recipeColumn = recipeWidth - 1 - recipeColumn;
+                                char symbol = recipe.pattern().get(recipeRow).charAt(recipeColumn);
+                                if (symbol != ' ') expected = recipe.key().get(symbol);
+                            }
+                            ItemStack actual = grid.getSlot(offset + row * width + column).orElse(null);
+                            if (expected == null ? actual != null
+                                    : actual == null || !expected.equals(actual.itemId())) {
+                                matches = false;
+                                break;
+                            }
                         }
                     }
+                    if (matches) return true;
                 }
-                if (matches) return true;
             }
         }
         return false;

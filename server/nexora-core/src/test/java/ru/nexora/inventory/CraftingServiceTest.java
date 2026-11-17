@@ -48,6 +48,17 @@ class CraftingServiceTest {
     }
 
     @Test
+    void craftsCraftingTableFromFourOakPlanks() {
+        PlayerInventory inventory = new PlayerInventory();
+        inventory.setSlot(0, new ItemStack("minecraft:oak_planks", 4, 64));
+
+        assertEquals(CraftingService.Result.CRAFTED,
+                service.craft(inventory, recipes, "minecraft:crafting_table_from_oak_planks", 1));
+        assertEquals(0, inventory.count("minecraft:oak_planks"));
+        assertEquals(1, inventory.count("minecraft:crafting_table"));
+    }
+
+    @Test
     void consumesIngredientsAcrossMultipleSlots() {
         PlayerInventory inventory = new PlayerInventory();
         inventory.setSlot(0, new ItemStack("minecraft:iron_ingot", 1, 64));

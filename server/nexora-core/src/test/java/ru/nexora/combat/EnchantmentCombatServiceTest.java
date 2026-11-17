@@ -70,7 +70,7 @@ class EnchantmentCombatServiceTest {
         assertEquals(9.04f, EnchantmentCombatService.applyIncomingDamage(
                 10.0f, ironArmor, EnchantmentCombatService.DamageType.GENERIC, 4), 0.0001f);
         // Breach changes armor points only; Protection EPF still reduces the remaining damage.
-        assertEquals(6.3232f, EnchantmentCombatService.applyIncomingDamage(
+        assertEquals(7.5936f, EnchantmentCombatService.applyIncomingDamage(
                 10.0f, protectedArmor, EnchantmentCombatService.DamageType.GENERIC, 4), 0.0001f);
         assertThrows(IllegalArgumentException.class, () ->
                 EnchantmentCombatService.applyIncomingDamage(

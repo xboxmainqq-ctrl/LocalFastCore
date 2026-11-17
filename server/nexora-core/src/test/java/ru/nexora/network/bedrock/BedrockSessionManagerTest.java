@@ -855,6 +855,9 @@ class BedrockSessionManagerTest {
                 new java.util.concurrent.atomic.AtomicLong(10_000_000_000L);
         ru.nexora.world.World spawnerWorld = new ru.nexora.world.World(
                 "spawner-ai-integration", 0L, new ru.nexora.world.FlatWorldGenerator());
+        for (int chunkX = -1; chunkX <= 1; chunkX++) {
+            for (int chunkZ = -1; chunkZ <= 1; chunkZ++) spawnerWorld.getChunk(chunkX, chunkZ);
+        }
         List<byte[]> outbound = new ArrayList<>();
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,

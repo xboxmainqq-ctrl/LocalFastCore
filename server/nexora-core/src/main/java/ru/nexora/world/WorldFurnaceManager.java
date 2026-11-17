@@ -43,6 +43,14 @@ public final class WorldFurnaceManager {
         return service.tick(x, y, z, inventory, elapsedTicks);
     }
 
+    /** Advances every loaded furnace by the supplied number of server ticks. */
+    public synchronized void tickAll(long elapsedTicks) {
+        for (var entry : loaded.entrySet()) {
+            Position p = entry.getKey();
+            service.tick(p.x(), p.y(), p.z(), entry.getValue(), elapsedTicks);
+        }
+    }
+
     public synchronized void save(int x, int y, int z) throws IOException {
         ContainerInventory inventory = loaded.get(new Position(x, y, z));
         if (inventory == null) return;

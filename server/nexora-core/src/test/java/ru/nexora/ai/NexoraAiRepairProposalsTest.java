@@ -14,6 +14,8 @@ class NexoraAiRepairProposalsTest {
 
         assertEquals("R-000001", created.id());
         assertEquals(NexoraAiRepairProposals.Status.PENDING_REVIEW, created.status());
+        assertNull(created.reviewedByXuid());
+        assertNull(created.reviewedAt());
         assertEquals(created, store.find("r-000001").orElseThrow());
     }
 
@@ -39,8 +41,11 @@ class NexoraAiRepairProposalsTest {
         NexoraAiRepairProposals.Proposal created =
                 store.create("operator-xuid", "Mob AI stall", "Proposed investigation.");
 
-        assertEquals(NexoraAiRepairProposals.Status.REJECTED,
-                store.reject(created.id(), "reviewer-xuid").orElseThrow().status());
+        NexoraAiRepairProposals.Proposal rejected =
+                store.reject(created.id(), "reviewer-xuid").orElseThrow();
+        assertEquals(NexoraAiRepairProposals.Status.REJECTED, rejected.status());
+        assertEquals("reviewer-xuid", rejected.reviewedByXuid());
+        assertNotNull(rejected.reviewedAt());
         assertTrue(store.approveForManualReview(created.id(), "reviewer-xuid").isEmpty());
     }
 

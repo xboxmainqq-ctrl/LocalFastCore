@@ -119,7 +119,8 @@ public final class NexoraServer {
                         event.packet().packetId(), event.networkId(), event.packet().payload().length));
         bedrockSessions.setAiDiagnostics(aiDiagnostics);
         NexoraAiAssistant aiAssistant = NexoraAiAssistant.fromEnvironment(System.getenv(), aiDiagnostics);
-        aiAssistant.setAdminRuntimeSnapshotProvider(bedrockSessions::adminRuntimeSummary);
+        aiAssistant.setAdminRuntimeSnapshotProvider(() -> bedrockSessions.adminRuntimeSummary()
+                + "\n" + bedrockSessions.guardSummary());
         bedrockSessions.setAiAssistant(aiAssistant);
         bedrockSessions.enableServerAuthoritativeMovement();
         bedrockSessions.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());

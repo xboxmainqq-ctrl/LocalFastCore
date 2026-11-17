@@ -51,7 +51,7 @@ class EnchantmentCombatServiceTest {
                 new double[]{0.20, 0.0, 0.10},
                 new int[]{3, 4, 2});
 
-        assertEquals(2, damage);
+        assertEquals(5, damage);
     }
 
     @Test

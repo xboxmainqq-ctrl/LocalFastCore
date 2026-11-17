@@ -43,6 +43,14 @@ public final class WorldFurnaceManager {
         return service.tick(x, y, z, inventory, elapsedTicks);
     }
 
+    public synchronized void save(int x, int y, int z) throws IOException {
+        ContainerInventory inventory = loaded.get(new Position(x, y, z));
+        if (inventory == null) return;
+        inventoryStorage.save(x, y, z, inventory);
+        FurnaceService.FurnaceStateSnapshot state = service.snapshotState(x, y, z);
+        stateStorage.save(x, y, z, state);
+    }
+
     public synchronized void saveAll() throws IOException {
         IOException failure = null;
         for (var entry : loaded.entrySet()) {

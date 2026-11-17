@@ -321,7 +321,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             playerStorage.save(new PlayerData(
                     state.identity.xuid(), displayName, world.name(),
                     state.positionX, state.positionY, state.positionZ,
-                    state.yaw, state.pitch, System.currentTimeMillis(), state.vitals, state.experiencePoints));
+                    state.yaw, state.pitch, System.currentTimeMillis(), state.vitals,
+                    state.experiencePoints, state.experienceRemainderMilli));
         } catch (IllegalArgumentException exception) {
             throw new IOException("Authenticated player data cannot be persisted", exception);
         }
@@ -1672,6 +1673,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     PlayerData player = saved.get();
                     state.vitals = player.vitals();
                     state.experiencePoints = player.experiencePoints();
+                    state.experienceRemainderMilli = player.experienceRemainderMilli();
                     state.dead = state.vitals.dead();
                     if (player.worldName().equals(world.name())
                             && WorldCollision.canOccupy(world, player.x(), player.y(), player.z())) {
@@ -2314,7 +2316,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private BedrockPacket createPlayerAttributes(SessionState state, long tick) {
-        PlayerExperience.Progress experience = PlayerExperience.fromTotalPoints(state.experiencePoints);
+        PlayerExperience.Progress experience = PlayerExperience.fromTotalMilliPoints(
+                (long) state.experiencePoints * 1000L + state.experienceRemainderMilli);
         return BedrockVitalsCodec.createUpdateAttributes(state.entityId, state.vitals,
                 experience.level(), experience.progress(), tick);
     }
@@ -3015,6 +3018,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private PlayerEquipment equipment = new PlayerEquipment();
         private PlayerVitals vitals = PlayerVitals.DEFAULT;
         private int experiencePoints;
+        private int experienceRemainderMilli;
         private boolean dead;
         private boolean deathPacketsSent;
         private boolean usingItem;

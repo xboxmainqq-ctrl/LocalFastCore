@@ -96,13 +96,17 @@ public final class MobSpawnerManager {
         int capped = 0;
         int invalid = 0;
         for (MobSpawnerState state : snapshot) {
-            if (!world.isChunkLoadedAt(state.x(), state.z())) continue;
+            if (!world.isChunkLoadedAt(state.x(), state.z())) {
+                pauseTimer(state, currentTick);
+                continue;
+            }
             if (world.getBlock(state.x(), state.y(), state.z()) != BlockType.SPAWNER) {
                 remove(state.x(), state.y(), state.z());
                 continue;
             }
             if (!isPlayerNearby(state, players)) {
                 synchronized (this) { inactiveTicks++; }
+                pauseTimer(state, currentTick);
                 continue;
             }
             active++;
@@ -152,6 +156,15 @@ public final class MobSpawnerManager {
                 invalidPositionAttempts);
     }
 
+    /** Pauses the countdown while the chunk is unloaded or no player activates the spawner. */
+    private synchronized void pauseTimer(MobSpawnerState state, long currentTick) {
+        Position key = new Position(state.x(), state.y(), state.z());
+        MobSpawnerState current = spawners.get(key);
+        if (current == null || currentTick < current.nextSpawnTick()) return;
+        if (current.nextSpawnTick() == Long.MAX_VALUE) return;
+        spawners.put(key, current.withNextSpawnTick(current.nextSpawnTick() + 1));
+    }
+
     private synchronized void updateNext(MobSpawnerState state, long currentTick) {
         Position key = new Position(state.x(), state.y(), state.z());
         MobSpawnerState current = spawners.get(key);
@@ -197,8 +210,9 @@ public final class MobSpawnerManager {
         int dx = Math.floorMod((int) (mixed ^ (mixed >>> 32)), SPAWN_RADIUS * 2 + 1) - SPAWN_RADIUS;
         int dz = Math.floorMod((int) ((mixed >>> 17) ^ (mixed >>> 41)), SPAWN_RADIUS * 2 + 1)
                 - SPAWN_RADIUS;
+        int dy = Math.floorMod((int) (mixed >>> 29), 3) - 1;
         return new SpawnRequest(state.entityIdentifier(), state.x() + 0.5 + dx,
-                state.y(), state.z() + 0.5 + dz);
+                state.y() + dy, state.z() + 0.5 + dz);
     }
 
     private static boolean validSpawnPosition(World world, SpawnRequest request) {

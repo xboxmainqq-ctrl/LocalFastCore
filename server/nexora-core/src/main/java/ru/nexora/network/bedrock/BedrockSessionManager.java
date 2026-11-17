@@ -1634,6 +1634,100 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 target.combatLock.unlock();
             }
         }
+        handleLivingActorAttack(attacker, transaction, weapon, now);
+    }
+
+    private void handleLivingActorAttack(
+            SessionState attacker,
+            BedrockInventoryTransactionCodec.DecodedUseOnActor transaction,
+            ItemStack weapon, long nowNanos
+    ) {
+        WorldLivingEntity target = world.livingEntities().find(transaction.runtimeEntityId()).orElse(null);
+        if (target == null) return;
+        double dx = target.x() - attacker.positionX;
+        double dy = target.y() - attacker.positionY;
+        double dz = target.z() - attacker.positionZ;
+        if (dx * dx + dy * dy + dz * dz > 3.5 * 3.5) return;
+        int targetBlockX = (int) Math.floor(target.x());
+        int targetBlockY = (int) Math.floor(target.y() + 1.0);
+        int targetBlockZ = (int) Math.floor(target.z());
+        if (!WorldRaycast.hasLineOfSight(world,
+                attacker.positionX, attacker.positionY + 1.62, attacker.positionZ,
+                targetBlockX, targetBlockY, targetBlockZ)) return;
+
+        attacker.lastAttackNanos = nowNanos;
+        ru.nexora.combat.EnchantmentCombatService.TargetType targetType = switch (target.family()) {
+            case NORMAL -> ru.nexora.combat.EnchantmentCombatService.TargetType.NORMAL;
+            case UNDEAD -> ru.nexora.combat.EnchantmentCombatService.TargetType.UNDEAD;
+            case ARTHROPOD -> ru.nexora.combat.EnchantmentCombatService.TargetType.ARTHROPOD;
+        };
+        ru.nexora.combat.EnchantmentCombatService.AttackEffect effect =
+                ru.nexora.combat.EnchantmentCombatService.resolveAttack(
+                        baseAttackDamage(weapon), weapon, targetType);
+        var damage = world.livingEntities().damage(target.runtimeId(), effect.damage()).orElse(null);
+        if (damage == null) return;
+        if (damage.killed()) {
+            broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(target.uniqueId()));
+            return;
+        }
+        WorldLivingEntity updated = damage.current();
+        broadcastLivingActorPacket(BedrockVitalsCodec.createActorHealthUpdate(
+                updated.runtimeId(), updated.health(), updated.maxHealth(),
+                Math.max(0, attacker.lastInputTick)));
+        if (effect.fireDurationSeconds() > 0) {
+            updated = world.livingEntities().ignite(updated.runtimeId(), effect.fireDurationSeconds(),
+                    Math.max(0, nowNanos / 1_000_000L)).orElse(updated);
+        }
+        if (effect.knockbackLevel() > 0) {
+            double horizontal = Math.hypot(dx, dz);
+            if (horizontal > 0.0001) {
+                double strength = 0.4 + 0.1 * effect.knockbackLevel();
+                updated = world.livingEntities().setVelocity(updated.runtimeId(),
+                        updated.velocityX() + dx / horizontal * strength,
+                        Math.max(updated.velocityY(), 0.1),
+                        updated.velocityZ() + dz / horizontal * strength).orElse(updated);
+                broadcastLivingActorPacket(BedrockActorMotionCodec.createSetActorMotion(
+                        updated.runtimeId(), updated.velocityX(), updated.velocityY(),
+                        updated.velocityZ(), Math.max(0, attacker.lastInputTick)));
+            }
+        }
+    }
+
+    private void tickWorldLivingActors(long tick) {
+        long nowMillis = Math.max(0, nanoTime.getAsLong() / 1_000_000L);
+        for (WorldLivingEntityManager.DamageResult result : world.livingEntities().tickFire(nowMillis)) {
+            WorldLivingEntity entity = result.current();
+            if (result.killed()) {
+                broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()));
+            } else {
+                broadcastLivingActorPacket(BedrockVitalsCodec.createActorHealthUpdate(
+                        entity.runtimeId(), entity.health(), entity.maxHealth(), Math.max(0, tick)));
+            }
+        }
+    }
+
+    private void broadcastLivingActorPacket(BedrockPacket packet) {
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            if (entry.getValue().clientInitialized) sendPacket(entry.getKey(), packet, true);
+        }
+    }
+
+    /** Spawns a server-owned living actor and publishes it to every initialized client. */
+    public WorldLivingEntity spawnLivingEntity(
+            String identifier, WorldLivingEntity.Family family,
+            float maxHealth, double x, double y, double z
+    ) {
+        WorldLivingEntity entity = world.livingEntities().spawn(identifier, family, maxHealth, x, y, z);
+        broadcastLivingActorPacket(BedrockAddActorCodec.createAddActor(entity));
+        return entity;
+    }
+
+    /** Removes a server-owned living actor and despawns it for all initialized clients. */
+    public boolean despawnLivingEntity(long runtimeId) {
+        WorldLivingEntity entity = world.livingEntities().find(runtimeId).orElse(null);
+        if (entity == null || !world.livingEntities().remove(runtimeId)) return false;
+        broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()));
+        return true;
     }
 
     private void applyKnockback(
@@ -2006,6 +2100,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         BedrockPlayerAuthInputCodec.PlayerInput input = BedrockPlayerAuthInputCodec.decode(packet);
         if (state.hasReceivedInput && input.tick() <= state.lastInputTick) return;
         tickPlayerFire(networkId, state, input.tick());
+        tickWorldLivingActors(input.tick());
 
         if (serverAuthoritativeMovement) {
             handleServerAuthoritativeMovement(networkId, state, input);

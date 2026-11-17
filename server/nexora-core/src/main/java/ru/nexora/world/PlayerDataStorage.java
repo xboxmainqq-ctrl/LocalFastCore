@@ -119,8 +119,10 @@ public final class PlayerDataStorage {
                 long lastSeen = input.readLong();
                 PlayerVitals vitals = version == 1 ? PlayerVitals.DEFAULT
                         : new PlayerVitals(input.readFloat(), input.readInt(), input.readFloat(), input.readFloat());
+                int experiencePoints = version >= 3 ? input.readInt() : 0;
+                int experienceRemainderMilli = version >= 4 ? input.readUnsignedShort() : 0;
                 player = new PlayerData(storedXuid, displayName, worldName,
-                        x, y, z, yaw, pitch, lastSeen, vitals);
+                        x, y, z, yaw, pitch, lastSeen, vitals, experiencePoints, experienceRemainderMilli);
             } catch (IllegalArgumentException exception) {
                 throw new IOException("Invalid NEXORA player profile values", exception);
             }

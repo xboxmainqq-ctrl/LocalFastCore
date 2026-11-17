@@ -58,13 +58,19 @@ public final class NexoraAiAssistant {
 
     public static NexoraAiAssistant fromEnvironment(Map<String, String> env, NexoraAiDiagnostics diagnostics) {
         Objects.requireNonNull(env, "env");
-        String key = env.getOrDefault("NEXORA_AI_API_KEY", "");
-        String model = env.getOrDefault("NEXORA_AI_MODEL", "gpt-4o-mini");
-        URI endpoint = URI.create(env.getOrDefault("NEXORA_AI_ENDPOINT", DEFAULT_ENDPOINT));
-        long seconds = Long.parseLong(env.getOrDefault("NEXORA_AI_TIMEOUT_SECONDS", "30"));
-        Set<String> admins = Arrays.stream(env.getOrDefault("NEXORA_AI_ADMIN_XUIDS", "").split(","))
-                .map(String::trim).filter(value -> !value.isEmpty()).collect(Collectors.toUnmodifiableSet());
-        return new NexoraAiAssistant(key, model, endpoint, Duration.ofSeconds(seconds), diagnostics, admins);
+        try {
+            String key = env.getOrDefault("NEXORA_AI_API_KEY", "");
+            String model = env.getOrDefault("NEXORA_AI_MODEL", "gpt-4o-mini");
+            URI endpoint = URI.create(env.getOrDefault("NEXORA_AI_ENDPOINT", DEFAULT_ENDPOINT));
+            long seconds = Long.parseLong(env.getOrDefault("NEXORA_AI_TIMEOUT_SECONDS", "30"));
+            Set<String> admins = Arrays.stream(env.getOrDefault("NEXORA_AI_ADMIN_XUIDS", "").split(","))
+                    .map(String::trim).filter(value -> !value.isEmpty()).collect(Collectors.toUnmodifiableSet());
+            return new NexoraAiAssistant(key, model, endpoint, Duration.ofSeconds(seconds), diagnostics, admins);
+        } catch (RuntimeException configurationFailure) {
+            diagnostics.recordFailure(configurationFailure);
+            return new NexoraAiAssistant("", "gpt-4o-mini", URI.create(DEFAULT_ENDPOINT),
+                    Duration.ofSeconds(30), diagnostics);
+        }
     }
 
     public boolean isEnabled() {
@@ -111,6 +117,10 @@ public final class NexoraAiAssistant {
             return previous;
         });
         if (!accepted.get()) return AskResult.RATE_LIMITED;
+        if (lastRequest.size() > 10_000) {
+            long cutoff = now - Duration.ofMinutes(5).toNanos();
+            lastRequest.entrySet().removeIf(entry -> entry.getValue() < cutoff);
+        }
 
         ObjectNode body = MAPPER.createObjectNode();
         body.put("model", model);

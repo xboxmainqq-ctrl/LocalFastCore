@@ -98,7 +98,7 @@ Work only on engine/server foundations:
 4. **Chunk lifecycle and pipeline correctness:** define NEXORA-owned states (generated, persisted, loaded, initialized/ready) and explicit transitions; then test cancellation, retry after generation/load failure, back-pressure, bounded memory/queues, duplicate requests and clean shutdown under load. Use Nukkit/PowerNukkitX only as a public behavior reference; no source/API copying.
 5. **Entity and player simulation:** authoritative movement/collision boundaries, deterministic tick behavior and persistence.
 6. **Dedicated server packaging:** verify clean install, documented config, startup, save/restart and shutdown using CI artifacts.
-7. **Mob AI completion:** bounded pathfinding, target memory, combat/damage integration, profile persistence and per-tick work budgets.
+7. **Mob AI completion:** vertical navigation, combat/damage integration, richer goals, dynamic hazard handling, profile persistence and stress validation of per-tick path budgets.
 8. **Core AI completion:** production provider adapter, diagnostics catalogue, conversation workflow and durable audit storage.
 9. **Moderation AI completion:** report ingestion, case workflow, evidence retention policy, appeals and durable moderator audit.
 

@@ -13,12 +13,12 @@ public final class MobLootService {
         return switch (identifier) {
             case "minecraft:zombie", "minecraft:husk", "minecraft:drowned",
                     "minecraft:zombified_piglin", "minecraft:zoglin" ->
-                    new Loot(List.of(new ItemStack("minecraft:rotten_flesh", 1, 0)), 5_000);
+                    new Loot(List.of(new ItemStack("minecraft:rotten_flesh", 1, 64)), 5_000);
             case "minecraft:spider", "minecraft:cave_spider" ->
-                    new Loot(List.of(new ItemStack("minecraft:string", 1, 0)), 5_000);
+                    new Loot(List.of(new ItemStack("minecraft:string", 1, 64)), 5_000);
             case "minecraft:skeleton" ->
-                    new Loot(List.of(new ItemStack("minecraft:bone", 1, 0),
-                            new ItemStack("minecraft:arrow", 1, 0)), 5_000);
+                    new Loot(List.of(new ItemStack("minecraft:bone", 1, 64),
+                            new ItemStack("minecraft:arrow", 1, 64)), 5_000);
             case "minecraft:silverfish" -> new Loot(List.of(), 5_000);
             case "minecraft:endermite" -> new Loot(List.of(), 3_000);
             default -> Loot.EMPTY;

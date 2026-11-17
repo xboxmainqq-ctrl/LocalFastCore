@@ -53,7 +53,7 @@ public final class World {
         this.containers = null;
         this.furnaces = null;
         this.mobSpawners = createMobSpawnerManager(storage);
-        addBlockChangeListener(change -> mobSpawners.onBlockChanged(change, System.currentTimeMillis() / 50L));
+        addBlockChangeListener(change -> mobSpawners.onBlockChanged(change, Math.max(0L, System.nanoTime() / 50_000_000L)));
     }
 
     /** Creates a world with durable dropped-item actor storage loaded before play begins. */

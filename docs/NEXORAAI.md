@@ -10,7 +10,7 @@ NexoraAI is an in-core operations observer and optional in-game assistant for NE
 - system load average when provided by the JVM;
 - process uptime;
 - bounded summaries of failures explicitly reported to the service;
-- a newest-first ring buffer of up to 12 timestamped failure/slow-operation events, with descriptions capped at 240 characters.
+- a newest-first ring buffer of up to 12 timestamped failure/slow-operation events, with descriptions capped at 240 characters and common bearer/API/access-token patterns redacted.
 
 `NexoraAiMonitor` samples these metrics every 30 seconds and writes warnings to the server console. It does not change server state. The Bedrock mob-AI update and furnace tick are timed; executions taking longer than 50 ms are counted. Periodic world/player autosaves taking longer than 1 second are also counted. These are subsystem execution warnings, not a server-wide TPS measurement or a complete hang detector.
 
@@ -31,7 +31,7 @@ Configuration is read from the server process environment:
 - `NEXORA_AI_TIMEOUT_SECONDS` — request timeout; default 30.
 - `NEXORA_AI_ADMIN_XUIDS` — comma-separated Xbox XUID allowlist for operator mode.
 
-Only HTTPS endpoints are accepted, except HTTP on localhost for private development providers. API keys are never written to source files or logs. Player questions, operator repair-plan descriptions, the player's display name, bounded recent conversation context, and (for repair plans) up to 12 timestamped diagnostic summaries are sent to the configured AI provider; operators should disclose this to players and must not invite them to submit passwords, tokens, or other secrets.
+Only HTTPS endpoints are accepted, except HTTP on localhost for private development providers. API keys are never written to source files or logs. Player questions, operator repair-plan descriptions, the player's display name, bounded recent conversation context, and (for repair plans) up to 12 timestamped diagnostic summaries (with common credential patterns redacted) are sent to the configured AI provider; operators should disclose this to players and must not invite them to submit passwords, tokens, or other secrets.
 
 ## Operator mode
 

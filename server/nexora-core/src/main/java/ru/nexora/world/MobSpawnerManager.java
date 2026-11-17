@@ -120,7 +120,6 @@ public final class MobSpawnerManager {
 
         List<MobSpawnerState> snapshot;
         int tracked;
-        long elapsedTicks;
         synchronized (this) {
             tracked = spawners.size();
             // Bedrock input can cause more than one world-AI callback in a server tick.
@@ -128,8 +127,6 @@ public final class MobSpawnerManager {
             if (currentTick == lastProcessedTick) {
                 return new TickResult(tracked, 0, 0, 0, 0, 0, 0);
             }
-            elapsedTicks = lastProcessedTick == Long.MIN_VALUE ? 1L
-                    : Math.max(0L, currentTick - lastProcessedTick);
             lastProcessedTick = currentTick;
 
             // Never let a large number of placed spawners monopolize one AI update.

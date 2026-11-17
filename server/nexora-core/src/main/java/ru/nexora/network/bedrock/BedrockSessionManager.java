@@ -430,6 +430,76 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return aiGuard.combatReviewSummary(nanoTime.getAsLong());
     }
 
+    private void handleAiGuardCommand(String networkId, SessionState state, String arguments) {
+        String[] parts = arguments.isBlank() ? new String[0] : arguments.split("\\s+", 2);
+        if (parts.length == 0 || parts[0].equalsIgnoreCase("status")) {
+            sendAiMessage(networkId, "§b[NEXORA AI GUARD] §f" + guardSummary()
+                    + "\\n" + guardReviewSummary()
+                    + "\\nДела: /ai guard cases; карточка: /ai guard case <ID>.");
+            return;
+        }
+        String action = parts[0].toLowerCase(Locale.ROOT);
+        if (action.equals("help")) {
+            sendAiMessage(networkId, "§b[NEXORA AI GUARD] §fКоманды: /ai guard, /ai guard cases, "
+                    + "/ai guard case <ID>, /ai guard confirm <ID>, /ai guard dismiss <ID>. "
+                    + "Подтверждение фиксирует решение модератора, но не применяет наказание.");
+            return;
+        }
+        if (action.equals("cases")) {
+            java.util.List<ru.nexora.ai.NexoraAiGuard.CombatCaseView> cases =
+                    aiGuard.combatCases(nanoTime.getAsLong());
+            if (cases.isEmpty()) {
+                sendAiMessage(networkId, "§b[NEXORA AI GUARD] §fОткрытых или сохранённых KillAura-дел нет.");
+                return;
+            }
+            StringBuilder result = new StringBuilder("§b[NEXORA AI GUARD] §fПоследние дела:");
+            for (ru.nexora.ai.NexoraAiGuard.CombatCaseView value : cases.stream().limit(8).toList()) {
+                result.append("\\n").append(value.id()).append(" — ").append(value.displayName())
+                        .append(": ").append(value.hits()).append(" hits / 5s, ")
+                        .append(value.targetSwitches()).append(" переключений [")
+                        .append(value.status()).append("]");
+            }
+            result.append("\\nОткрыть: /ai guard case <ID>");
+            sendAiMessage(networkId, result.toString());
+            return;
+        }
+        if (parts.length != 2 || parts[1].isBlank()) {
+            sendAiMessage(networkId, "§b[NEXORA AI GUARD] §fУкажи ID дела. Команда: /ai guard help.");
+            return;
+        }
+        String caseId = parts[1].trim();
+        if (action.equals("case")) {
+            ru.nexora.ai.NexoraAiGuard.CombatCaseView value =
+                    aiGuard.findCombatCase(caseId, nanoTime.getAsLong()).orElse(null);
+            if (value == null) {
+                sendAiMessage(networkId, "§b[NEXORA AI GUARD] §fДело не найдено или срок хранения истёк.");
+            } else {
+                sendAiMessage(networkId, "§b[NEXORA AI GUARD] §fДело " + value.id()
+                        + "\\nИгрок: " + value.displayName()
+                        + "\\nСигнал: " + value.hits() + " успешных попаданий / 5 секунд; "
+                        + value.targetSwitches() + " переключений цели."
+                        + "\\nСтатус: " + value.status()
+                        + "\\nРешение модератора: " + (value.reviewed() ? "уже зафиксировано" : "не принято")
+                        + "\\nПодтверждение не запускает бан/кик и не меняет состояние игрока.");
+            }
+            return;
+        }
+        if (action.equals("confirm") || action.equals("dismiss")) {
+            String reviewerXuid = state.identity == null ? null : state.identity.xuid();
+            ru.nexora.ai.NexoraAiGuard.CombatCaseView value = aiGuard.reviewCombatCase(
+                    caseId, reviewerXuid, action.equals("confirm"), nanoTime.getAsLong()).orElse(null);
+            if (value == null) {
+                sendAiMessage(networkId, "§b[NEXORA AI GUARD] §fНе удалось изменить дело: проверь ID и убедись, что оно ещё OPEN.");
+            } else {
+                sendAiMessage(networkId, "§b[NEXORA AI GUARD] §fДело " + value.id()
+                        + (action.equals("confirm") ? " подтверждено модератором." : " помечено как ложное срабатывание.")
+                        + " Наказание автоматически не применялось.");
+            }
+            return;
+        }
+        sendAiMessage(networkId, "§b[NEXORA AI GUARD] §fНеизвестная команда. Используй /ai guard help.");
+    }
+
     public int activeSessionCount() {
         return sessions.size();
     }
@@ -1291,13 +1361,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             openEquipmentMenu(message.networkId(), state, "");
             return;
         }
-        if (normalized.equals("/ai guard")) {
+        if (normalized.equals("/ai guard") || normalized.startsWith("/ai guard ")) {
             if (!isAiAdmin(state)) {
                 sendAiMessage(message.networkId(), "§c[NEXORA AI] Нет доступа к панели Guard.");
             } else {
-                sendAiMessage(message.networkId(), "§b[NEXORA AI GUARD] §f" + guardSummary()
-                        + "\n" + guardReviewSummary()
-                        + "\nИстория доступна только для проверки модератором.");
+                handleAiGuardCommand(message.networkId(), state,
+                        command.command().trim().substring("/ai guard".length()).trim());
             }
             return;
         }

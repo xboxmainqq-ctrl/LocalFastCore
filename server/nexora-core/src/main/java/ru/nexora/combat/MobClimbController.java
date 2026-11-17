@@ -42,7 +42,7 @@ public final class MobClimbController {
 
     private static boolean isWall(World world, int x, int y, int z) {
         return world.getBlock(x, y, z) != BlockType.AIR
-                || (y + 1 <= ru.nexora.world.WorldChunk.MAX_Y
+                || (y + 1 < ru.nexora.world.WorldChunk.MAX_Y
                 && world.getBlock(x, y + 1, z) != BlockType.AIR);
     }
 

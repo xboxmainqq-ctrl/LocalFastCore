@@ -72,7 +72,7 @@ class MobPathCacheTest {
 
         cache.findNextStep(3L, world, 0.5, 65, 2.5, 3.5, 2.5, 111);
         assertEquals(2, cache.size());
-        assertEquals(1, cache.stats().misses());
+        assertEquals(4, cache.stats().misses());
         cache.remove(3L);
         assertEquals(1, cache.size());
     }

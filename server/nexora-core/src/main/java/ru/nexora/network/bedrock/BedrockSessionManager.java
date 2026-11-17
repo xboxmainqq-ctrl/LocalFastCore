@@ -1865,7 +1865,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 int targetBlockY = (int) Math.floor(target.positionY + 1.0);
                 int targetBlockZ = (int) Math.floor(target.positionZ);
                 if (!WorldRaycast.hasLineOfSight(world, mob.x(), mob.y() + 1.2, mob.z(),
-                        targetBlockX, targetBlockY, targetBlockZ)) return;
+                        targetBlockX, targetBlockY, targetBlockZ)) return false;
                 List<ItemStack> armor = target.equipment.armorSnapshot().stream()
                         .flatMap(Optional::stream).toList();
                 float mitigatedDamage = ru.nexora.combat.EnchantmentCombatService

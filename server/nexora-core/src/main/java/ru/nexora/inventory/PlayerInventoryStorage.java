@@ -25,6 +25,7 @@ public final class PlayerInventoryStorage {
     private static final int FORMAT_VERSION = 1;
     private static final int CRAFTING_UI_FORMAT_VERSION = 2;
     private static final int ITEM_METADATA_FORMAT_VERSION = 3;
+    private static final int OPTIONAL_CRAFTING_UI_FORMAT_VERSION = 4;
     private static final int MAX_ENCHANTMENTS_PER_ITEM = 32;
     private static final int MAX_ENCHANTMENT_ID_BYTES = 128;
     private static final int MAX_FILE_BYTES = 32_768;
@@ -50,7 +51,7 @@ public final class PlayerInventoryStorage {
             snapshot = inventory.snapshot();
             selectedHotbarSlot = inventory.selectedHotbarSlot();
         }
-        writeFile(xuid, ITEM_METADATA_FORMAT_VERSION, snapshot, selectedHotbarSlot, null);
+        writeFile(xuid, OPTIONAL_CRAFTING_UI_FORMAT_VERSION, snapshot, selectedHotbarSlot, null);
     }
 
     /** Atomically saves player inventory and the non-persistent-in-world player crafting UI grid. */
@@ -71,7 +72,7 @@ public final class PlayerInventoryStorage {
                 uiSnapshot = craftingUiInventory.snapshot();
             }
         }
-        writeFile(xuid, ITEM_METADATA_FORMAT_VERSION, playerSnapshot, selectedHotbarSlot, uiSnapshot);
+        writeFile(xuid, OPTIONAL_CRAFTING_UI_FORMAT_VERSION, playerSnapshot, selectedHotbarSlot, uiSnapshot);
     }
 
     private void writeFile(String xuid, int version, List<Optional<ItemStack>> playerSlots,
@@ -85,7 +86,13 @@ public final class PlayerInventoryStorage {
             output.writeShort(playerSlots.size());
             output.writeByte(selectedHotbarSlot);
             writeSlots(output, playerSlots, version);
-            if (version >= CRAFTING_UI_FORMAT_VERSION) {
+            if (version == OPTIONAL_CRAFTING_UI_FORMAT_VERSION) {
+                output.writeBoolean(uiSlots != null);
+                if (uiSlots != null) {
+                    output.writeShort(uiSlots.size());
+                    writeSlots(output, uiSlots, version);
+                }
+            } else if (version >= CRAFTING_UI_FORMAT_VERSION) {
                 output.writeShort(uiSlots.size());
                 writeSlots(output, uiSlots, version);
             }
@@ -174,7 +181,8 @@ public final class PlayerInventoryStorage {
             if (input.readInt() != MAGIC) throw new IOException("Invalid NEXORA player inventory magic");
             int version = input.readUnsignedByte();
             if (version != FORMAT_VERSION && version != CRAFTING_UI_FORMAT_VERSION
-                    && version != ITEM_METADATA_FORMAT_VERSION) {
+                    && version != ITEM_METADATA_FORMAT_VERSION
+                    && version != OPTIONAL_CRAFTING_UI_FORMAT_VERSION) {
                 throw new IOException("Unsupported NEXORA player inventory version: " + version);
             }
             int playerSize = input.readUnsignedShort();
@@ -190,7 +198,15 @@ public final class PlayerInventoryStorage {
             inventory.selectHotbarSlot(selectedSlot);
 
             ContainerInventory uiInventory = new ContainerInventory(CRAFTING_UI_SLOT_COUNT);
-            if (version >= CRAFTING_UI_FORMAT_VERSION) {
+            if (version == OPTIONAL_CRAFTING_UI_FORMAT_VERSION) {
+                if (input.readBoolean()) {
+                    int uiSize = input.readUnsignedShort();
+                    if (uiSize != CRAFTING_UI_SLOT_COUNT) {
+                        throw new IOException("Invalid NEXORA player crafting UI slot count");
+                    }
+                    readSlots(input, uiSize, version, uiInventory::setSlot);
+                }
+            } else if (version >= CRAFTING_UI_FORMAT_VERSION) {
                 int uiSize = input.readUnsignedShort();
                 if (uiSize != CRAFTING_UI_SLOT_COUNT) {
                     throw new IOException("Invalid NEXORA player crafting UI slot count");

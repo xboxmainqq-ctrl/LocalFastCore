@@ -2782,9 +2782,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 double rangeX = target.positionX - mob.x();
                 double rangeY = target.positionY - mob.y();
                 double rangeZ = target.positionZ - mob.z();
+                double attackRange =
+                        ru.nexora.combat.LivingEntityAiService.attackRangeFor(mob.identifier());
                 if (rangeX * rangeX + rangeY * rangeY + rangeZ * rangeZ
-                        > ru.nexora.combat.LivingEntityAiService.ATTACK_RANGE
-                                * ru.nexora.combat.LivingEntityAiService.ATTACK_RANGE) return false;
+                        > attackRange * attackRange) return false;
                 int targetBlockX = (int) Math.floor(target.positionX);
                 int targetBlockY = (int) Math.floor(target.positionY + 1.0);
                 int targetBlockZ = (int) Math.floor(target.positionZ);

@@ -1,28 +1,42 @@
-# NexoraAI foundation
+# NexoraAI
 
-NexoraAI is the planned in-core assistant and operations observer for NEXORA.
+NexoraAI is an in-core operations observer and optional in-game assistant for NEXORA.
 
-## First foundation: read-only diagnostics
+## Runtime diagnostics
 
-`ru.nexora.ai.NexoraAiDiagnostics` exposes a point-in-time JVM snapshot:
-- heap usage and configured heap maximum;
-- live thread count and available processor count;
-- system load average when the JVM provides it;
+`ru.nexora.ai.NexoraAiDiagnostics` provides a read-only JVM snapshot:
+- heap usage and configured maximum;
+- live thread count and available processors;
+- system load average when provided by the JVM;
 - process uptime;
-- failures explicitly reported by core subsystems.
+- bounded summaries of failures explicitly reported to the service.
 
-The first version is intentionally read-only. It does not restart services, mutate worlds,
-change configuration, edit source files, execute shell commands, or make network requests.
-A warning is a signal for an operator, not permission for an automatic repair.
+`NexoraAiMonitor` samples these metrics every 30 seconds and writes warnings to the server console. It does not change server state.
 
-## Planned stages
+## In-game assistant
 
-1. Read-only runtime diagnostics and bounded failure summaries.
-2. A server-owned event/metrics feed with subsystem-specific health checks.
-3. Authenticated in-game `/ai` chat and an operator-only `/ai admin` view.
-4. Optional model-provider adapter, configured only through server environment secrets.
-5. Guarded repair proposals with tests, backups, explicit operator approval, and rollback.
+- `/ai` opens a Bedrock input form.
+- `/ai <question>` sends a direct question.
+- The assistant answers asynchronously through an OpenAI-compatible Chat Completions endpoint.
+- Per-player requests are rate-limited and prompts/replies are bounded.
+- The model receives a small read-only JVM status snapshot. It is explicitly instructed not to claim it can execute commands or modify the server.
 
-No model API key or provider integration was found in the current source tree during the initial
-repository review. The GitHub repository connection is not itself a model-provider credential;
-the adapter will be wired only after the existing deployment configuration is identified.
+Configuration is read from the server process environment:
+- `NEXORA_AI_API_KEY` — provider key; without it the chat stays disabled.
+- `NEXORA_AI_MODEL` — optional model name; default `gpt-4o-mini`.
+- `NEXORA_AI_ENDPOINT` — optional full Chat Completions URL; default OpenAI endpoint.
+- `NEXORA_AI_TIMEOUT_SECONDS` — request timeout; default 30.
+- `NEXORA_AI_ADMIN_XUIDS` — comma-separated Xbox XUID allowlist for operator mode.
+
+Only HTTPS endpoints are accepted, except HTTP on localhost for private development providers. API keys are never written to source files or logs.
+
+## Operator mode
+
+- `/ai admin` shows a read-only runtime snapshot.
+- `/ai admin <question>` asks the assistant in operator context.
+- Access is granted only when the authenticated Xbox XUID is present in `NEXORA_AI_ADMIN_XUIDS`.
+- This mode does not execute commands, change settings, edit files, restart services, or mutate worlds.
+
+## Safety and roadmap
+
+The current release is observe-and-explain only. Automated source repairs are not enabled. A future repair workflow must create a proposal, run tests, preserve a backup, require explicit operator approval, and support rollback before any change can be applied.

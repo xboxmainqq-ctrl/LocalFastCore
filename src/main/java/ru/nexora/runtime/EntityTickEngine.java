@@ -22,6 +22,7 @@ public final class EntityTickEngine {
     private final EntityRegistry entities;
     private final World world;
     private final int itemDespawnTicks;
+    private final MobAiController mobAi;
     private final Map<UUID, ItemState> itemStates = new HashMap<>();
     private final Map<UUID, MobState> mobStates = new HashMap<>();
     private long currentTick;
@@ -31,8 +32,13 @@ public final class EntityTickEngine {
     }
 
     public EntityTickEngine(EntityRegistry entities, World world, int itemDespawnTicks) {
+        this(entities, world, itemDespawnTicks, new MobAiController());
+    }
+
+    public EntityTickEngine(EntityRegistry entities, World world, int itemDespawnTicks, MobAiController mobAi) {
         this.entities = Objects.requireNonNull(entities, "entities");
         this.world = Objects.requireNonNull(world, "world");
+        this.mobAi = Objects.requireNonNull(mobAi, "mobAi");
         if (itemDespawnTicks < 1) {
             throw new IllegalArgumentException("Item despawn ticks must be at least 1");
         }
@@ -62,11 +68,17 @@ public final class EntityTickEngine {
 
         itemStates.keySet().removeIf(id -> entities.find(id).isEmpty());
         mobStates.keySet().removeIf(id -> entities.find(id).isEmpty());
+        mobAi.retainEntities(entities);
         return new TickResult(currentTick, movedMobs, movedItems, despawnedItems);
     }
 
     public synchronized long currentTick() {
         return currentTick;
+    }
+
+    /** Returns the profile-based AI controller used by this authoritative simulation. */
+    public MobAiController mobAi() {
+        return mobAi;
     }
 
     private ItemTickResult tickItem(WorldEntity item) {
@@ -115,6 +127,9 @@ public final class EntityTickEngine {
     private boolean tickMob(WorldEntity mob) {
         if (!isChunkLoaded(mob.x(), mob.z())) {
             return false;
+        }
+        if (mobAi.hasBehavior(mob.id())) {
+            return mobAi.tick(mob, currentTick, entities, world).moved();
         }
         MobState state = mobStates.computeIfAbsent(mob.id(), ignored -> new MobState());
         if (currentTick >= state.nextDecisionTick) {

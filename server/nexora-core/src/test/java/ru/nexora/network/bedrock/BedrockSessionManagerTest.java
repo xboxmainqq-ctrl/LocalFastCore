@@ -189,7 +189,8 @@ class BedrockSessionManagerTest {
         setSessionField(manager, "reward-killer", "positionY", 65.0f);
         setSessionField(manager, "reward-killer", "positionZ", 0.0f);
 
-        ItemStack sword = new ItemStack("minecraft:diamond_sword", 1, 1);
+        ItemStack sword = new ItemStack("minecraft:diamond_sword", 1, 1,
+                java.util.Map.of("minecraft:looting", 3));
         manager.playerInventory("reward-killer").orElseThrow().setSlot(0, sword);
         var zombie = manager.spawnLivingEntity("minecraft:zombie", 5.0f, 2.0, 65.0, 0.0);
         var attack = new BedrockInventoryTransactionCodec.DecodedUseOnActor(
@@ -201,6 +202,9 @@ class BedrockSessionManagerTest {
         assertEquals(1, combatWorld.itemEntities().snapshot().size());
         assertEquals("minecraft:rotten_flesh",
                 combatWorld.itemEntities().snapshot().getFirst().stack().itemId());
+        int rottenFleshCount = combatWorld.itemEntities().snapshot().getFirst().stack().count();
+        assertTrue(rottenFleshCount >= 1 && rottenFleshCount <= 4,
+                "Looting III may add up to three rotten flesh");
         long experienceMilli = ((Number) getSessionField(
                 manager, "reward-killer", "experiencePoints")).longValue() * 1000L
                 + ((Number) getSessionField(

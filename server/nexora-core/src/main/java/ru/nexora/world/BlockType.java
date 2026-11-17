@@ -22,7 +22,9 @@ public enum BlockType {
     OAK_LOG(17),
     OAK_PLANKS(18),
     CRAFTING_TABLE(19),
-    FURNACE(20);
+    FURNACE(20),
+    BLAST_FURNACE(21),
+    SMOKER(22);
 
     private final int internalId;
 

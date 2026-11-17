@@ -89,15 +89,27 @@ class BedrockCraftingDataCodecTest {
 
     static byte[] craftingEvent(UUID id, int inputRuntimeId, int inputCount, long inputBlockRuntimeId,
                                 int outputRuntimeId, int outputCount, long outputBlockRuntimeId) {
+        return craftingEventGrid(id, 0,
+                new int[] {inputRuntimeId, 0, 0, 0},
+                new int[] {inputCount, 0, 0, 0},
+                new long[] {inputBlockRuntimeId, 0, 0, 0},
+                outputRuntimeId, outputCount, outputBlockRuntimeId);
+    }
+
+    static byte[] craftingEventGrid(UUID id, int type, int[] inputRuntimeIds, int[] inputCounts,
+                                    long[] inputBlockRuntimeIds, int outputRuntimeId, int outputCount,
+                                    long outputBlockRuntimeId) {
+        if (inputRuntimeIds.length != 4 || inputCounts.length != 4 || inputBlockRuntimeIds.length != 4) {
+            throw new IllegalArgumentException("Expected four 2x2 crafting grid slots");
+        }
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         out.write(0); // inventory window
-        writeVarInt(out, 0); // shapeless
+        writeVarInt(out, type);
         writeUuidLittleEndian(out, id);
         writeVarUInt(out, 4); // small inventory crafting grid
-        writeStack(out, inputRuntimeId, inputCount, inputBlockRuntimeId);
-        writeStack(out, 0, 0, 0);
-        writeStack(out, 0, 0, 0);
-        writeStack(out, 0, 0, 0);
+        for (int i = 0; i < 4; i++) {
+            writeStack(out, inputRuntimeIds[i], inputCounts[i], inputBlockRuntimeIds[i]);
+        }
         writeVarUInt(out, 1); // one output
         writeStack(out, outputRuntimeId, outputCount, outputBlockRuntimeId);
         return out.toByteArray();

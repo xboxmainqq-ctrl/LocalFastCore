@@ -218,7 +218,7 @@ public final class NexoraAiAssistant {
         String heap = s.heapUsageRatio() < 0 ? "unknown"
                 : String.format(java.util.Locale.ROOT, "%.1f%%", s.heapUsageRatio() * 100.0);
         return "Ты NexoraAI, дружелюбный игровой помощник сервера NEXORA. Отвечай по-русски, кратко и понятно. "
-                + "Известные команды: /ai, /ai <вопрос>, /ai help, /ai status, /ai admin (только для операторов), /equipment. "
+                + "Известные команды: /ai, /ai <вопрос>, /ai help, /ai status, /ai clear, /ai admin (только для операторов), /equipment. "
                 + "Не выдумывай команды и функции ядра: если не уверен, прямо скажи об этом. "
                 + "Помогай с командами, выживанием и механиками сервера. Не утверждай, что можешь менять мир, "
                 + "выполнять команды, читать файлы или исправлять исходники. Доступные показатели JVM: health="

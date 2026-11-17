@@ -811,16 +811,18 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private void closeContainerWindow(String networkId, SessionState state, boolean serverInitiated) {
         if (state.openContainerWindowId == 0) return;
         int windowId = state.openContainerWindowId;
-        try {
-            world.containers().ifPresent(manager -> {
-                try {
-                    manager.save(state.openContainerX, state.openContainerY, state.openContainerZ);
-                } catch (IOException exception) {
-                    throw new java.io.UncheckedIOException(exception);
-                }
-            });
-        } catch (RuntimeException exception) {
-            System.err.println("NEXORA: unable to save chest while closing: " + exception.getMessage());
+        if (!state.openContainerIsCraftingTable) {
+            try {
+                world.containers().ifPresent(manager -> {
+                    try {
+                        manager.save(state.openContainerX, state.openContainerY, state.openContainerZ);
+                    } catch (IOException exception) {
+                        throw new java.io.UncheckedIOException(exception);
+                    }
+                });
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to save chest while closing: " + exception.getMessage());
+            }
         }
         try {
             sendPacket(networkId, BedrockContainerPacketCodec.createClose(

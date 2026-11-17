@@ -117,6 +117,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private volatile boolean serverAuthoritativeMovement;
     private volatile ru.nexora.ai.NexoraAiAssistant aiAssistant;
     private volatile ru.nexora.ai.NexoraAiDiagnostics aiDiagnostics;
+    private final ru.nexora.ai.NexoraAiGuard aiGuard = new ru.nexora.ai.NexoraAiGuard();
     private final NetherNetInboundPipeline inbound;
 
     public BedrockSessionManager(
@@ -272,7 +273,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         this.outbound = Objects.requireNonNull(outbound, "outbound");
         this.packetSink = Objects.requireNonNull(packetSink, "packetSink");
         this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime");
-        this.inbound = new NetherNetInboundPipeline(this::handleCompleteMessage);
+        this.inbound = new NetherNetInboundPipeline(this::handleCompleteMessage, aiGuard);
         this.furnaceUpdateListener = this.world.furnaces()
                 .map(manager -> manager.addUpdateListener(this::handleFurnaceUpdate))
                 .orElse(null);
@@ -404,6 +405,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             throw new IllegalStateException("Movement authority must be configured before sessions are created");
         }
         this.serverAuthoritativeMovement = true;
+    }
+
+    /** Aggregate-only network anomaly status for trusted operator diagnostics. */
+    public String guardSummary() {
+        return aiGuard.snapshot().summary();
     }
 
     public int activeSessionCount() {

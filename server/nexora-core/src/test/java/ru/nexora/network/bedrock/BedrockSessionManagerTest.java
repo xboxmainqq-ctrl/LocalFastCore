@@ -254,6 +254,7 @@ class BedrockSessionManagerTest {
         for (String id : List.of("charge-pvp-attacker", "charge-pvp-target")) {
             setSessionField(manager, id, "loginAuthenticated", true);
             setSessionField(manager, id, "clientInitialized", true);
+            setSessionField(manager, id, "compressionNegotiated", true);
             setSessionField(manager, id, "positionInitialized", true);
         }
         setSessionField(manager, "charge-pvp-attacker", "entityId", 122L);

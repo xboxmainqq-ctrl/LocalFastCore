@@ -230,15 +230,15 @@ class MobSpawnerManagerTest {
             world.setBlock(x, 65, 0, BlockType.SPAWNER);
             assertTrue(manager.register(x, 65, 0, 0));
         }
-        var players = List.of(new MobSpawnerManager.PlayerPosition(64.5, 65, 0.5));
-
-        var first = manager.tick(world, 200, players, request -> true);
-        var duplicate = manager.tick(world, 200, players, request -> true);
-        var second = manager.tick(world, 201, players, request -> true);
+        var first = manager.tick(world, 200, List.of(), request -> true);
+        var duplicate = manager.tick(world, 200, List.of(), request -> true);
+        var second = manager.tick(world, 201, List.of(), request -> true);
 
         assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK, first.processedSpawners());
         assertEquals(0, duplicate.processedSpawners());
         assertEquals(2, second.processedSpawners());
+        assertEquals(400, manager.snapshot().get(0).nextSpawnTick());
+        assertEquals(401, manager.snapshot().get(129).nextSpawnTick());
     }
 
     @Test

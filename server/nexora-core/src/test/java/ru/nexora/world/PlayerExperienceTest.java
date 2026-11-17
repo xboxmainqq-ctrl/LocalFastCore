@@ -10,7 +10,7 @@ class PlayerExperienceTest {
         assertEquals(new PlayerExperience.Progress(0, 0.0f, 0),
                 PlayerExperience.fromTotalPoints(0));
         assertEquals(7, PlayerExperience.pointsToNextLevel(0));
-        assertEquals(7, PlayerExperience.fromTotalPoints(7).level());
+        assertEquals(1, PlayerExperience.fromTotalPoints(7).level());
         assertEquals(42, PlayerExperience.pointsToNextLevel(16));
         assertEquals(112, PlayerExperience.pointsToNextLevel(30));
         assertEquals(352, PlayerExperience.pointsAtLevelStart(16));

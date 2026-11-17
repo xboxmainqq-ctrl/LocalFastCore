@@ -87,6 +87,7 @@ public final class MobSpawnerManager {
         if (currentTick < 0) throw new IllegalArgumentException("currentTick must be non-negative");
 
         List<MobSpawnerState> snapshot = snapshot();
+        List<WorldLivingEntity> livingSnapshot = world.livingEntities().snapshot();
         int active = 0;
         int spawned = 0;
         int attempts = 0;
@@ -104,7 +105,7 @@ public final class MobSpawnerManager {
             active++;
             if (currentTick < state.nextSpawnTick()) continue;
 
-            int nearby = countNearby(world, state);
+            int nearby = countNearby(livingSnapshot, state);
             if (nearby >= MAX_NEARBY_SAME_TYPE) {
                 capped++;
                 updateNext(state, currentTick);
@@ -168,9 +169,9 @@ public final class MobSpawnerManager {
         return false;
     }
 
-    private static int countNearby(World world, MobSpawnerState state) {
+    private static int countNearby(List<WorldLivingEntity> entities, MobSpawnerState state) {
         int count = 0;
-        for (WorldLivingEntity entity : world.livingEntities().snapshot()) {
+        for (WorldLivingEntity entity : entities) {
             if (!entity.identifier().equals(state.entityIdentifier())) continue;
             if (Math.abs(entity.x() - (state.x() + 0.5)) <= 4.5
                     && Math.abs(entity.y() - (state.y() + 0.5)) <= 4.5
@@ -186,7 +187,7 @@ public final class MobSpawnerManager {
         int dz = Math.floorMod((int) ((mixed >>> 17) ^ (mixed >>> 41)), SPAWN_RADIUS * 2 + 1)
                 - SPAWN_RADIUS;
         return new SpawnRequest(state.entityIdentifier(), state.x() + 0.5 + dx,
-                state.y() + 1.0, state.z() + 0.5 + dz);
+                state.y(), state.z() + 0.5 + dz);
     }
 
     private static boolean validSpawnPosition(World world, SpawnRequest request) {

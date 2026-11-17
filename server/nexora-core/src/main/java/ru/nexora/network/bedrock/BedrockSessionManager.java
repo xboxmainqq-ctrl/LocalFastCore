@@ -532,7 +532,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         : ru.nexora.world.MobSpawnerState.DEFAULT_DELAY_TICKS;
                 world.setBlock(x, y, z, ru.nexora.world.BlockType.SPAWNER);
                 if (!world.mobSpawners().configure(x, y, z, identifier, delay,
-                        Math.max(0L, nanoTime.getAsLong() / 50_000_000L))) {
+                        System.currentTimeMillis() / 50L)) {
                     sendAiMessage(networkId, "§c[NEXORA SPAWNER] Не удалось настроить спавнер.");
                     return;
                 }

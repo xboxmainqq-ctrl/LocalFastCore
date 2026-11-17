@@ -1278,7 +1278,7 @@ class BedrockSessionManagerTest {
 
         byte[] loginPayload = new byte[512];
         java.util.Arrays.fill(loginPayload, (byte) 0x42);
-        BedrockPacket login = new BedrockPacket(0x7f, 0, 0, loginPayload);
+        BedrockPacket unknown = new BedrockPacket(0x7f, 0, 0, loginPayload);
         byte[] compressedLogin = BedrockBatchCodec.encode(List.of(unknown), true, 256);
         assertEquals(0, Byte.toUnsignedInt(compressedLogin[0]));
         sendClientBatch(manager, "client-1", compressedLogin);

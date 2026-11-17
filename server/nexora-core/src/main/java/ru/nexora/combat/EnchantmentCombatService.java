@@ -17,8 +17,21 @@ public final class EnchantmentCombatService {
     }
 
     public static AttackEffect resolveAttack(float baseDamage, ItemStack weapon, TargetType targetType) {
+        return resolveAttack(baseDamage, weapon, targetType, 0.0f);
+    }
+
+    /**
+     * Resolves attack bonuses using the server-measured distance fallen by the attacker.
+     * Density adds 0.5 damage per fallen block and enchantment level, and is mace-only.
+     */
+    public static AttackEffect resolveAttack(
+            float baseDamage, ItemStack weapon, TargetType targetType, float fallDistance
+    ) {
         if (!Float.isFinite(baseDamage) || baseDamage < 0) {
             throw new IllegalArgumentException("baseDamage must be finite and non-negative");
+        }
+        if (!Float.isFinite(fallDistance) || fallDistance < 0) {
+            throw new IllegalArgumentException("fallDistance must be finite and non-negative");
         }
         Objects.requireNonNull(targetType, "targetType");
         int sharpness = level(weapon, "minecraft:sharpness");
@@ -28,9 +41,40 @@ public final class EnchantmentCombatService {
 
         // Bedrock damage bonuses: Sharpness +1.25/level; Smite and Bane +2.5/level.
         float bonus = sharpness * 1.25f + Math.max(smite, bane) * 2.5f;
+        int density = isMace(weapon) ? level(weapon, "minecraft:density") : 0;
+        bonus += fallDistance * 0.5f * density;
         return new AttackEffect(baseDamage + bonus,
                 level(weapon, "minecraft:knockback"),
-                level(weapon, "minecraft:fire_aspect") * 4);
+                level(weapon, "minecraft:fire_aspect") * 4,
+                level(weapon, "minecraft:breach"));
+    }
+
+    /** Applies armor and enchantment reduction, with Breach weakening armor points only. */
+    public static float applyIncomingDamage(
+            float incomingDamage, List<ItemStack> armor, DamageType damageType, int breachLevel
+    ) {
+        if (breachLevel < 0 || breachLevel > 4) {
+            throw new IllegalArgumentException("breachLevel must be between 0 and 4");
+        }
+        if (!Float.isFinite(incomingDamage) || incomingDamage < 0.0f) {
+            throw new IllegalArgumentException("incomingDamage must be finite and non-negative");
+        }
+        Objects.requireNonNull(armor, "armor");
+        Objects.requireNonNull(damageType, "damageType");
+        int armorPoints = 0;
+        for (ItemStack piece : armor) {
+            Objects.requireNonNull(piece, "armor piece");
+            armorPoints += armorPointsForPiece(piece.itemId());
+        }
+        double breachMultiplier = 1.0 - 0.15 * breachLevel;
+        double armorReduction = damageType == DamageType.FIRE || damageType == DamageType.FALL
+                ? 0.0 : Math.min(0.80, armorPoints * breachMultiplier * 0.04);
+        float afterArmor = (float) (incomingDamage * (1.0 - armorReduction));
+        return applyEnchantmentProtection(afterArmor, armor, damageType);
+    }
+
+    private static boolean isMace(ItemStack weapon) {
+        return weapon != null && "minecraft:mace".equals(weapon.itemId());
     }
 
     /**
@@ -156,9 +200,16 @@ public final class EnchantmentCombatService {
         ARTHROPOD
     }
 
-    public record AttackEffect(float damage, int knockbackLevel, int fireDurationSeconds) {
+    public record AttackEffect(
+            float damage, int knockbackLevel, int fireDurationSeconds, int breachLevel
+    ) {
+        public AttackEffect(float damage, int knockbackLevel, int fireDurationSeconds) {
+            this(damage, knockbackLevel, fireDurationSeconds, 0);
+        }
+
         public AttackEffect {
-            if (!Float.isFinite(damage) || damage < 0 || knockbackLevel < 0 || fireDurationSeconds < 0) {
+            if (!Float.isFinite(damage) || damage < 0 || knockbackLevel < 0
+                    || fireDurationSeconds < 0 || breachLevel < 0 || breachLevel > 4) {
                 throw new IllegalArgumentException("Invalid combat effect");
             }
         }

@@ -101,7 +101,7 @@ public final class MobSpawnerManager {
                                           int delayTicks, long currentTick) {
         Position position = new Position(x, y, z);
         MobSpawnerState existing = spawners.get(position);
-        if (existing == null || currentTick < 0) return false;
+        if (existing == null || identifier == null || currentTick < 0) return false;
         try {
             spawners.put(position, existing.withConfiguration(identifier, delayTicks,
                     safeNextTick(currentTick, delayTicks)));

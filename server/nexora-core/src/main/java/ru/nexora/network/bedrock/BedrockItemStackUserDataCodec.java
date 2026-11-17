@@ -46,7 +46,7 @@ public final class BedrockItemStackUserDataCodec {
     public static byte[] encode(ItemStack stack, byte[] registeredUserData) {
         Objects.requireNonNull(stack, "stack");
         Objects.requireNonNull(registeredUserData, "registeredUserData");
-        if (stack.enchantments().isEmpty() && stack.repairCost() == 0) return registeredUserData.clone();
+        if (stack.enchantments().isEmpty() && stack.repairCost() == 0 && stack.durabilityDamage() == 0) return registeredUserData.clone();
         if (registeredUserData.length != 0) {
             throw new IllegalArgumentException("Cannot combine NEXORA metadata with custom Bedrock item user data yet");
         }
@@ -79,6 +79,11 @@ public final class BedrockItemStackUserDataCodec {
             writeString(out, "RepairCost");
             writeInt(out, stack.repairCost());
         }
+        if (stack.durabilityDamage() > 0) {
+            out.write(3); // IntTag Damage
+            writeString(out, "Damage");
+            writeInt(out, stack.durabilityDamage());
+        }
         out.write(0); // end root compound
         writeInt(out, 0); // canPlaceOn
         writeInt(out, 0); // canDestroy
@@ -98,7 +103,9 @@ public final class BedrockItemStackUserDataCodec {
         }
         Map<String, Integer> enchantments = new LinkedHashMap<>();
         int repairCost = 0;
+        int durabilityDamage = 0;
         boolean sawRepairCost = false;
+        boolean sawDamage = false;
         int tagType;
         while ((tagType = in.unsignedByte()) != 0) {
             String tagName = in.string();
@@ -123,21 +130,31 @@ public final class BedrockItemStackUserDataCodec {
                 repairCost = in.int32();
                 if (repairCost < 0 || repairCost > 31) throw new IllegalArgumentException("Invalid Bedrock RepairCost");
                 sawRepairCost = true;
+            } else if (tagType == 3 && tagName.equals("Damage")) {
+                if (sawDamage) throw new IllegalArgumentException("Duplicate Damage tag");
+                durabilityDamage = in.int32();
+                if (durabilityDamage < 0 || durabilityDamage > 65_535) {
+                    throw new IllegalArgumentException("Invalid Bedrock item Damage");
+                }
+                sawDamage = true;
             } else {
                 throw new IllegalArgumentException("Unsupported Bedrock item NBT tag: " + tagName);
             }
         }
-        if (enchantments.isEmpty() && repairCost == 0) throw new IllegalArgumentException("No supported item metadata");
+        if (enchantments.isEmpty() && repairCost == 0 && durabilityDamage == 0) {
+            throw new IllegalArgumentException("No supported item metadata");
+        }
         if (in.int32() != 0 || in.int32() != 0 || !in.exhausted()) {
             throw new IllegalArgumentException("Unsupported item placement/destroy user data");
         }
-        return new DecodedMetadata(enchantments, repairCost);
+        return new DecodedMetadata(enchantments, repairCost, durabilityDamage);
     }
 
-    public record DecodedMetadata(Map<String, Integer> enchantments, int repairCost) {
+    public record DecodedMetadata(Map<String, Integer> enchantments, int repairCost, int durabilityDamage) {
         public DecodedMetadata {
             enchantments = Map.copyOf(Objects.requireNonNull(enchantments, "enchantments"));
             if (repairCost < 0 || repairCost > 31) throw new IllegalArgumentException("Invalid repair cost");
+            if (durabilityDamage < 0 || durabilityDamage > 65_535) throw new IllegalArgumentException("Invalid durability damage");
         }
     }
 

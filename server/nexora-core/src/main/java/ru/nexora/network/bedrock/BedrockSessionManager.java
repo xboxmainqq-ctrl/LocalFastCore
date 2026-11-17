@@ -583,13 +583,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
 
         CraftingRecipe recipe = craftingRecipes.findByUuid(event.recipeId());
-        if (event.windowId() != 0 || event.type() != BedrockCraftingEventCodec.TYPE_SHAPELESS
-                || recipe == null || event.input().size() != 4
-                || event.output().size() != 1
-                || event.output().getFirst().isEmpty()
+        if (recipe == null || event.windowId() != 0 || event.input().size() != 4
+                || event.output().size() != 1 || event.output().getFirst().isEmpty()
+                || event.type() != (recipe.isShaped()
+                        ? BedrockCraftingEventCodec.TYPE_SHAPED : BedrockCraftingEventCodec.TYPE_SHAPELESS)
                 || !event.output().getFirst().orElseThrow().itemId().equals(recipe.result().itemId())
                 || event.output().getFirst().orElseThrow().count() != recipe.result().count()
-                || !matchesCraftingInput(recipe, event.input())) {
+                || !(recipe.isShaped()
+                        ? matchesShapedCraftingInput(recipe, event.input())
+                        : matchesShapelessCraftingInput(recipe, event.input()))) {
             sendInventoryAndEquipmentState(networkId, state);
             return;
         }
@@ -617,15 +619,50 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         sendInventoryAndEquipmentState(networkId, state);
     }
 
-    private static boolean matchesCraftingInput(
-            ru.nexora.inventory.CraftingRecipe recipe,
-            List<Optional<ru.nexora.inventory.ItemStack>> input
+    private static boolean matchesShapelessCraftingInput(
+            CraftingRecipe recipe, List<Optional<ru.nexora.inventory.ItemStack>> input
     ) {
         java.util.Map<String, Integer> actual = new java.util.HashMap<>();
         for (Optional<ru.nexora.inventory.ItemStack> slot : input) {
             if (slot.isPresent()) actual.merge(slot.orElseThrow().itemId(), 1, Integer::sum);
         }
         return actual.equals(recipe.ingredients());
+    }
+
+    private static boolean matchesShapedCraftingInput(
+            CraftingRecipe recipe, List<Optional<ru.nexora.inventory.ItemStack>> input
+    ) {
+        int gridWidth = 2;
+        int gridHeight = 2;
+        if (recipe.width() > gridWidth || recipe.height() > gridHeight) return false;
+        for (int offsetY = 0; offsetY <= gridHeight - recipe.height(); offsetY++) {
+            for (int offsetX = 0; offsetX <= gridWidth - recipe.width(); offsetX++) {
+                for (boolean mirrored : new boolean[] {false, true}) {
+                    boolean matches = true;
+                    for (int y = 0; y < gridHeight && matches; y++) {
+                        for (int x = 0; x < gridWidth; x++) {
+                            String expectedItem = null;
+                            int patternX = x - offsetX;
+                            int patternY = y - offsetY;
+                            if (patternX >= 0 && patternX < recipe.width()
+                                    && patternY >= 0 && patternY < recipe.height()) {
+                                if (mirrored) patternX = recipe.width() - 1 - patternX;
+                                char symbol = recipe.pattern().get(patternY).charAt(patternX);
+                                if (symbol != ' ') expectedItem = recipe.key().get(symbol);
+                            }
+                            Optional<ru.nexora.inventory.ItemStack> actual = input.get(y * gridWidth + x);
+                            if (expectedItem == null ? actual.isPresent()
+                                    : actual.isEmpty() || !actual.orElseThrow().itemId().equals(expectedItem)) {
+                                matches = false;
+                                break;
+                            }
+                        }
+                    }
+                    if (matches) return true;
+                }
+            }
+        }
+        return false;
     }
 
     private void handleContainerClose(

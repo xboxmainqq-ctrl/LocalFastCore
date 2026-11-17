@@ -19,16 +19,31 @@ public final class MobClimbController {
                 || !WorldPathfinder.isMobMovementAreaLoaded(world, mob.x(), mob.z(), nextX, nextZ)) {
             return false;
         }
-        int wallX = (int) Math.floor(nextX);
         int wallY = (int) Math.floor(mob.y());
-        int wallZ = (int) Math.floor(nextZ);
-        if (world.getBlock(wallX, wallY, wallZ) == BlockType.AIR) return false;
+        boolean wallAhead = false;
+        double dx = nextX - mob.x();
+        double dz = nextZ - mob.z();
+        if (dx > 0) wallAhead |= isWall(world, (int) Math.floor(nextX + 0.3), wallY,
+                (int) Math.floor(nextZ));
+        else if (dx < 0) wallAhead |= isWall(world, (int) Math.floor(nextX - 0.3), wallY,
+                (int) Math.floor(nextZ));
+        if (dz > 0) wallAhead |= isWall(world, (int) Math.floor(nextX), wallY,
+                (int) Math.floor(nextZ + 0.3));
+        else if (dz < 0) wallAhead |= isWall(world, (int) Math.floor(nextX), wallY,
+                (int) Math.floor(nextZ - 0.3));
+        if (!wallAhead) return false;
         double raisedY = mob.y() + CLIMB_VELOCITY;
         if (!WorldCollision.canMove(world, mob.x(), mob.y(), mob.z(), mob.x(), raisedY, mob.z())) {
             return false;
         }
         return world.livingEntities().setVelocity(mob.runtimeId(),
                 mob.velocityX(), CLIMB_VELOCITY, mob.velocityZ()).isPresent();
+    }
+
+    private static boolean isWall(World world, int x, int y, int z) {
+        return world.getBlock(x, y, z) != BlockType.AIR
+                || (y + 1 <= ru.nexora.world.WorldChunk.MAX_Y
+                && world.getBlock(x, y + 1, z) != BlockType.AIR);
     }
 
     public static boolean isClimber(String identifier) {

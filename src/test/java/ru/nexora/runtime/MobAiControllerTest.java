@@ -130,9 +130,11 @@ class MobAiControllerTest {
         world.setBlock(new BlockPosition(2, 64, 0), new BlockState("minecraft:stone"));
         world.setBlock(new BlockPosition(2, 65, 0), new BlockState("minecraft:stone"));
         engine.tick();
-        assertEquals(MobAiController.State.CHASE,
-                engine.mobAi().lastDecision(mobId).orElseThrow().state(),
+        MobAiController.Decision rememberedDecision = engine.mobAi().lastDecision(mobId).orElseThrow();
+        assertEquals(MobAiController.State.CHASE, rememberedDecision.state(),
                 "mob should continue toward the last known position after losing sight");
+        assertFalse(rememberedDecision.attackRequested(),
+                "a remembered but unseen player must not be attacked");
 
         boolean movedSideways = false;
         for (int i = 0; i < 80; i++) {

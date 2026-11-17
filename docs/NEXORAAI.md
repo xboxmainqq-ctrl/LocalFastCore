@@ -79,3 +79,10 @@ Each `MobPathCache` instance exposes a cumulative, thread-safe `stats()` snapsho
 Allowlisted operators can run `/ai mob` or `/ai mob stats` to inspect aggregate navigation-cache counters and the recent `mob-ai` / `mob-pathfinding` latency samples. The output includes cache hits, misses, hit rate, path recomputations, collision-blocked cached waypoints, LRU evictions, current entries, and available average/p95/maximum subsystem execution times.
 
 The command is read-only, uses the existing authenticated Xbox XUID operator allowlist, and does not scan entities or expose player identifiers. Cache counters are cumulative for the cache instance; latency values summarize the most recent bounded sample window. These are subsystem measurements, not server TPS or CPU utilization.
+
+
+## Mob stuck detection
+
+The operator command `/ai mob stuck` reports up to five mobs with sustained blocked movement. A mob is considered stuck only after at least 2 seconds without meaningful positional progress while the AI continues to request movement. Progress resets the timer; successful movement, idle behavior, and special mob behavior clear the observation. The tracker is bounded to 5,000 runtime IDs and reports aggregate tracked/stuck counts plus eviction count in `/ai mob stats`.
+
+This is diagnostic-only: it does not teleport, despawn, damage, or otherwise modify mobs. A reported mob may be blocked by terrain or another gameplay constraint; the signal is not proof of a navigation defect.

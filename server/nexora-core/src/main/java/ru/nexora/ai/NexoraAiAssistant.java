@@ -38,6 +38,7 @@ public final class NexoraAiAssistant {
     private final HttpClient client;
     private final ConcurrentMap<String, Long> lastRequest = new ConcurrentHashMap<>();
     private final NexoraAiConversationMemory conversationMemory = new NexoraAiConversationMemory();
+    private final NexoraAiRepairProposals repairProposals = new NexoraAiRepairProposals();
     private volatile Supplier<String> adminRuntimeSnapshotProvider = () -> "unavailable";
 
     public NexoraAiAssistant(String apiKey, String model, URI endpoint,
@@ -100,6 +101,67 @@ public final class NexoraAiAssistant {
                 + "; медленных операций " + s.slowOperationCount()
                 + "; последняя медленная: " + s.lastSlowOperation()
                 + "; мир: " + adminRuntimeSnapshot();
+    }
+
+    /**
+     * Asks the provider for a bounded advisory repair plan and stores it for operator review.
+     * No generated content is executable and approval never applies changes.
+     */
+    public AskResult createRepairProposal(
+            String requesterXuid, String operatorName, String issue,
+            Consumer<NexoraAiRepairProposals.Proposal> reply
+    ) {
+        Objects.requireNonNull(issue, "issue");
+        Objects.requireNonNull(reply, "reply");
+        String normalizedIssue = issue.trim();
+        if (normalizedIssue.isEmpty() || normalizedIssue.length() > 350) {
+            throw new IllegalArgumentException("Repair issue must contain 1..350 characters");
+        }
+        String prompt = "Подготовь только план диагностики и возможного исправления, НЕ выполняй действия. "
+                + "Проблема: " + normalizedIssue
+                + ". Ответь краткими разделами: наблюдения и неизвестные факты; вероятная причина; "
+                + "предлагаемые изменения (только проверяемые пути/компоненты, не выдумывай файлы); "
+                + "тесты до и после; резервная копия; откат; риск. "
+                + "Не выводи команды для автоматического выполнения, секреты и готовые патчи. "
+                + "Явно отметь, что план требует проверки исходников и ручного одобрения.";
+        return ask(requesterXuid, operatorName, prompt, true, answer -> {
+            if (isProviderFailure(answer)) {
+                reply.accept(null);
+                return;
+            }
+            try {
+                NexoraAiRepairProposals.Proposal proposal =
+                        repairProposals.create(requesterXuid, normalizedIssue, answer);
+                reply.accept(proposal);
+            } catch (RuntimeException failure) {
+                diagnostics.recordFailure(failure);
+                reply.accept(null);
+            }
+        });
+    }
+
+    public java.util.List<NexoraAiRepairProposals.Proposal> repairProposals() {
+        return repairProposals.list();
+    }
+
+    public java.util.Optional<NexoraAiRepairProposals.Proposal> repairProposal(String id) {
+        return repairProposals.find(id);
+    }
+
+    /** Approves a proposal for manual review only; this does not apply any changes. */
+    public java.util.Optional<NexoraAiRepairProposals.Proposal> approveRepairProposal(String id) {
+        return repairProposals.approveForManualReview(id);
+    }
+
+    public java.util.Optional<NexoraAiRepairProposals.Proposal> rejectRepairProposal(String id) {
+        return repairProposals.reject(id);
+    }
+
+    private static boolean isProviderFailure(String answer) {
+        return answer.startsWith("ИИ временно недоступен")
+                || answer.startsWith("Ответ ИИ превысил")
+                || answer.startsWith("Не удалось")
+                || answer.startsWith("ИИ вернул пустой ответ");
     }
 
     /** Installs a read-only provider for aggregate world/session counters shown only to operators. */
@@ -218,7 +280,7 @@ public final class NexoraAiAssistant {
         String heap = s.heapUsageRatio() < 0 ? "unknown"
                 : String.format(java.util.Locale.ROOT, "%.1f%%", s.heapUsageRatio() * 100.0);
         return "Ты NexoraAI, дружелюбный игровой помощник сервера NEXORA. Отвечай по-русски, кратко и понятно. "
-                + "Известные команды: /ai, /ai <вопрос>, /ai help, /ai status, /ai clear, /ai admin (только для операторов), /equipment. "
+                + "Известные команды: /ai, /ai <вопрос>, /ai help, /ai status, /ai clear, /ai admin, /ai admin plan, /ai admin proposals, /ai admin proposal <id>, /ai admin approve <id>, /ai admin reject <id>, /equipment. "
                 + "Не выдумывай команды и функции ядра: если не уверен, прямо скажи об этом. "
                 + "Помогай с командами, выживанием и механиками сервера. Не утверждай, что можешь менять мир, "
                 + "выполнять команды, читать файлы или исправлять исходники. Доступные показатели JVM: health="
@@ -229,7 +291,9 @@ public final class NexoraAiAssistant {
                 + ", последняя: " + s.lastSlowOperation() + ". "
                 + "Текущая сводка мира и сессий: " + adminRuntimeSnapshot() + ". "
                 + "Ты отвечаешь администратору сервера. Можно подробно объяснять показатели диагностики, "
-                + "но нельзя выполнять команды, менять настройки, файлы, мир или процессы." : "");
+                + "но нельзя выполнять команды, менять настройки, файлы, мир или процессы. "
+                + "Планы исправления являются только рекомендациями: даже одобрение означает лишь ручную проверку, "
+                + "никогда не применение патчей или запуск команд." : "");
     }
 
     private String adminRuntimeSnapshot() {

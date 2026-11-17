@@ -2,6 +2,7 @@ package ru.nexora.network.nethernet;
 
 import java.util.Map;
 import java.util.Objects;
+import ru.nexora.ai.NexoraAiGuard;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
@@ -13,9 +14,15 @@ public final class NetherNetInboundPipeline implements NetherNetDataChannelListe
     private final Map<ChannelKey, NetherNetMessageFramer.Reassembler> reassemblers =
             new ConcurrentHashMap<>();
     private final Consumer<InboundMessage> messageSink;
+    private final NexoraAiGuard guard;
 
     public NetherNetInboundPipeline(Consumer<InboundMessage> messageSink) {
+        this(messageSink, new NexoraAiGuard());
+    }
+
+    public NetherNetInboundPipeline(Consumer<InboundMessage> messageSink, NexoraAiGuard guard) {
         this.messageSink = Objects.requireNonNull(messageSink, "messageSink");
+        this.guard = Objects.requireNonNull(guard, "guard");
     }
 
     @Override
@@ -29,6 +36,7 @@ public final class NetherNetInboundPipeline implements NetherNetDataChannelListe
             throw new IllegalArgumentException("Unknown NetherNet channel: " + channelLabel);
         }
 
+        guard.recordInboundFrame(networkId, frame.length, System.nanoTime());
         ChannelKey key = new ChannelKey(networkId, channelLabel);
         NetherNetMessageFramer.Reassembler reassembler =
                 reassemblers.computeIfAbsent(key, ignored -> new NetherNetMessageFramer.Reassembler());
@@ -40,6 +48,7 @@ public final class NetherNetInboundPipeline implements NetherNetDataChannelListe
     @Override
     public void onDisconnected(String networkId) {
         reassemblers.keySet().removeIf(key -> key.networkId().equals(networkId));
+        guard.onDisconnected(networkId);
     }
 
     public int activeChannelCount() {

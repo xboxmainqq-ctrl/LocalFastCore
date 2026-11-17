@@ -34,7 +34,7 @@ public final class WorldItemEntityStorage {
 
     public WorldItemEntityStorage(Path rootDirectory, String worldName) throws IOException {
         Objects.requireNonNull(rootDirectory, "rootDirectory");
-        if (worldName == null || !worldName.matches("[A-Za-z0-9_-]{1,64}")) {
+        if (worldName == null || !worldName.matches("[A-Za-z0-9 _-]{1,64}")) {
             throw new IllegalArgumentException("Invalid world name");
         }
         Path root = rootDirectory.toAbsolutePath().normalize();

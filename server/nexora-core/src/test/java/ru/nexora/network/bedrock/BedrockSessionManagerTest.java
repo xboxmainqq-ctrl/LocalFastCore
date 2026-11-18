@@ -58,6 +58,11 @@ class BedrockSessionManagerTest {
         assertTrue(summary.contains("heapUsed="));
         assertTrue(summary.contains("nonHeapUsed="));
         assertTrue(summary.contains("threads="));
+        String mobSummary = manager.mobAiDiagnosticsSummary();
+        assertTrue(mobSummary.contains("Mob AI decision algorithm: decisions="));
+        assertTrue(mobSummary.contains(", total="));
+        assertEquals(1, mobSummary.split("Mob spawners:", -1).length - 1,
+                "Spawner metrics should appear once in the operator summary");
         manager.close();
     }
 

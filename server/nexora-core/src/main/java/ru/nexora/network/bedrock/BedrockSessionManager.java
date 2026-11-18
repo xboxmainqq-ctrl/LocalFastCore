@@ -502,11 +502,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 .append(", stuck=").append(stuck.stuck())
                 .append(", evictions=").append(stuck.evictions())
                 .append("\nMob AI load controller: ").append(mobAiLoadController.stats().summary())
-                .append("\nMob AI execution: decisions=").append(livingEntityAi.stats().decisionCount())
-                .append(", avg=").append(livingEntityAi.stats().averageDecisionNanos()).append(" ns")
-                .append(", last=").append(livingEntityAi.stats().lastDecisionNanos()).append(" ns")
-                .append(", max=").append(livingEntityAi.stats().maxDecisionNanos()).append(" ns")
-                .append(", failures=").append(livingEntityAi.stats().failures())
+                .append("\nMob AI decision algorithm: decisions=").append(aiStats.decisionCount())
+                .append(", total=").append(aiStats.totalDecisionNanos()).append(" ns")
+                .append(", avg=").append(aiStats.averageDecisionNanos()).append(" ns")
+                .append(", last=").append(aiStats.lastDecisionNanos()).append(" ns")
+                .append(", max=").append(aiStats.maxDecisionNanos()).append(" ns")
+                .append(", failures=").append(aiStats.failures())
                 .append("\nMob fall tracker: ").append(mobFallTracker.stats().summary())
                 .append("\nMob jump controller: ").append(mobJumpController.stats().summary())
                 .append("\nMob climb controller: ").append(mobClimbController.stats().summary())
@@ -530,7 +531,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
             if (!found) result.append("\nMob AI latency: waiting for measurements");
         }
-        result.append("\nMob spawners: ").append(world.mobSpawners().stats().summary());
         result.append("\nЭто накопительные счётчики и время подсистем, не TPS и не CPU.");
         return result.toString();
     }

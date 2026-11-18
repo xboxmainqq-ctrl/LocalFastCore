@@ -80,4 +80,23 @@ class NexoraAiSafeRepairRegistryTest {
         assertThrows(IllegalArgumentException.class, () -> registry.register(
                 "Bad ID", "Invalid ID", false, () -> true, () -> {}, () -> true));
     }
+    @Test
+    void automaticEligibilityRequiresAutoSafeRegistrationAndPassingPrecondition() {
+        AtomicBoolean eligible = new AtomicBoolean(false);
+        NexoraAiSafeRepairRegistry registry = new NexoraAiSafeRepairRegistry(ignored -> {});
+        registry.register("cache.auto.prune", "Prune expired entries", true,
+                eligible::get, () -> eligible.set(false), () -> !eligible.get());
+        registry.register("cache.manual.reset", "Manual reset", false,
+                () -> true, () -> {}, () -> true);
+
+        assertFalse(registry.canExecuteAutomatically("cache.auto.prune"));
+        eligible.set(true);
+        assertTrue(registry.canExecuteAutomatically("cache.auto.prune"));
+        assertFalse(registry.canExecuteAutomatically("cache.manual.reset"));
+
+        var result = registry.executeAutomatically("cache.auto.prune");
+        assertEquals(NexoraAiSafeRepairRegistry.Status.APPLIED, result.status());
+        assertFalse(registry.canExecuteAutomatically("cache.auto.prune"));
+    }
+
 }

@@ -310,6 +310,7 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Transfer freeze also validates the active global lease before setting the frozen flag or writing the handoff checkpoint.
 - Added Bedrock session tests proving autosave keeps a valid lease and that both autosave and disconnect skip canonical writes after ownership loss.
 - Added in-memory expiry/fencing tests, JDBC multi-node exclusivity tests, and a concurrent two-node first-login race test.
+- Added scheduler and Bedrock-session tests for idle lease renewal, fail-closed ownership loss, autosave lease retention, disconnect persistence fencing, and transfer-freeze admission checks.
 - CI: 814 tests passed, zero failures on commit `8997abe`; GitHub Actions build succeeded.
 - Remaining validation: process-kill/partition tests with two actual server processes and a production database; the lease uses bounded expiry and is not a consensus protocol for arbitrary clock skew. Nodes must have synchronized clocks and must not continue gameplay when renewal fails.
 ### 42. Shared ownership restart integration coverage — IMPLEMENTED, CI VERIFIED

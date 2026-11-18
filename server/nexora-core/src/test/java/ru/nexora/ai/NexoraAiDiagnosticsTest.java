@@ -198,10 +198,26 @@ class NexoraAiDiagnosticsTest {
         var summary = diagnostics.latencySummaries().getFirst();
         assertEquals("mob-ai", summary.subsystem());
         assertEquals(4, summary.sampleCount());
+        assertEquals(0, summary.slowOperationCount());
+        assertTrue(summary.windowMillis() <= 60_000);
         assertEquals(25, summary.averageNanos());
         assertEquals(40, summary.p95Nanos());
         assertEquals(40, summary.maxNanos());
         assertEquals(0, diagnostics.inspect().slowOperationCount());
+    }
+
+    @Test
+    void rollingLatencySummaryCountsOnlyRecentBudgetBreaches() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        diagnostics.recordSlowOperation("mob-ai", 10, 5);
+        diagnostics.recordSlowOperation("mob-ai", 20, 25);
+        diagnostics.recordSlowOperation("mob-ai", 30, 25);
+
+        var summary = diagnostics.latencySummaries().getFirst();
+        assertEquals(3, summary.sampleCount());
+        assertEquals(2, summary.slowOperationCount());
+        assertEquals(60_000, summary.windowMillis());
+        assertEquals(1, diagnostics.inspect().slowOperationCount() == 0 ? 0 : 1);
     }
 
     @Test
@@ -213,6 +229,7 @@ class NexoraAiDiagnosticsTest {
 
         var summary = diagnostics.latencySummaries().getFirst();
         assertEquals(60, summary.sampleCount());
+        assertEquals(0, summary.slowOperationCount());
         assertEquals(31, summary.averageNanos());
         assertEquals(58, summary.p95Nanos());
         assertEquals(61, summary.maxNanos());

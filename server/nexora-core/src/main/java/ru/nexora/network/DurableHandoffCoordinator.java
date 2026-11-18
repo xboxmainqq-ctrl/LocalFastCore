@@ -34,6 +34,11 @@ public final class DurableHandoffCoordinator {
         return transfers.claim(transferId, destinationNode, nowEpochMillis, leaseMillis);
     }
 
+    /** Cancels a PREPARED transfer only if no destination claim has won the CAS. */
+    public Optional<PlayerTransferRecord> abortPrepared(UUID transferId, long nowEpochMillis) throws IOException {
+        return transfers.abortPrepared(transferId, nowEpochMillis);
+    }
+
     public Optional<PlayerTransferRecord> commit(UUID transferId, long fencingToken,
                                                  long nowEpochMillis) throws IOException {
         return transfers.commit(transferId, fencingToken, nowEpochMillis);

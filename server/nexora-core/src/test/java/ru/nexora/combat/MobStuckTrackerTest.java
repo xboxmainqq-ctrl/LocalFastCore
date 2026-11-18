@@ -54,6 +54,22 @@ class MobStuckTrackerTest {
     }
 
     @Test
+    void inactiveObservationsExpireAndDoNotProduceFalseStuckReports() {
+        MobStuckTracker tracker = new MobStuckTracker();
+        tracker.recordBlockedAttempt(15, 0, 64, 0, 1_000);
+        tracker.recordBlockedAttempt(15, 0, 64, 0, 2_000);
+        assertNotNull(tracker.recordBlockedAttempt(15, 0, 64, 0, 3_000));
+
+        assertTrue(tracker.stuck(4_001, 5).isEmpty());
+        assertEquals(0, tracker.stats(4_001).tracked());
+        assertEquals(0, tracker.stats(4_001).stuck());
+
+        assertNull(tracker.recordBlockedAttempt(15, 0, 64, 0, 4_100));
+        assertNull(tracker.recordBlockedAttempt(15, 0, 64, 0, 5_100));
+        assertNotNull(tracker.recordBlockedAttempt(15, 0, 64, 0, 6_100));
+    }
+
+    @Test
     void rejectsInvalidObservations() {
         MobStuckTracker tracker = new MobStuckTracker();
         assertThrows(IllegalArgumentException.class,

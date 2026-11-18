@@ -17,8 +17,7 @@ public final class GameplayGraph {
 
     public GameplayGraph action(String id, TaskContract contract) {
         Objects.requireNonNull(contract, "contract");
-        workGraph.add(id, contract.lane(), contract.critical());
-        workGraph.estimate(id, contract.estimatedNanos());
+        workGraph.add(id, contract);
         return this;
     }
 

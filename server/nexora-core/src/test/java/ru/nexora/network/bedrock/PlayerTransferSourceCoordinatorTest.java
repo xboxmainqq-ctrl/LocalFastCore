@@ -36,7 +36,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -63,7 +62,6 @@ class PlayerTransferSourceCoordinatorTest {
                 (networkId, label, frame) -> { }, event -> {});
         DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
                 new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
-        AtomicLong now = new AtomicLong(1_000L);
         try {
             sourceSessions.onIdentity("source-connection", new NetherNetClientIdentity(
                     "source-token", new byte[] {7}, xuid,

@@ -235,3 +235,11 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - The database's vendor JDBC driver must be supplied on the runtime classpath. H2 remains test-only; no production database vendor is selected or bundled.
 - Added tests for shared JDBC initialization/round-trip, local fallback, invalid credentials and schema flags.
 - Boundary: configuring a shared ledger makes the ownership metadata shared, but does not itself enable cross-host gameplay transfer. Authenticated RPC, client redirect/reconnect and process-failure validation remain mandatory gates.
+
+### 34. Shared JDBC canonical player checkpoints — IMPLEMENTED, CI PENDING
+- Added `JdbcPlayerStateStore` with per-XUID revision compare-and-set, bounded Base64 payload storage, checksum verification, idempotent same-revision writes, stale-write rejection and bounded contention retries.
+- Added two-independent-DataSource and concurrent-writer tests to verify a newer snapshot cannot be overwritten by an older node.
+- Added `PlayerStateStoreFactory` and startup configuration via `NEXORA_PLAYER_STATE_JDBC_URL`, optional `NEXORA_PLAYER_STATE_JDBC_USER`, `NEXORA_PLAYER_STATE_JDBC_PASSWORD`, and opt-in `NEXORA_PLAYER_STATE_JDBC_INITIALIZE_SCHEMA=true|false`.
+- Startup now refuses shared-ledger mode unless canonical player checkpoints are also configured as shared. This prevents a destination node from claiming a transfer while its required inventory/equipment/position checkpoint exists only on the source host's local disk.
+- The player-state store and transfer ledger can use the same SQL database but occupy separate tables. The JDBC driver must be supplied on the runtime classpath; schema creation is opt-in.
+- Remaining: validate schema behavior against the production database vendor, add multi-process kill/restart tests, and finish authenticated cluster RPC plus Bedrock client redirect/reconnect. Shared metadata and checkpoints are necessary but not sufficient to enable live cross-host handoff.

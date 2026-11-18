@@ -150,6 +150,8 @@ class NexoraAiDiagnosticsTest {
         assertEquals(2, timeline.get(0).sequence());
         assertEquals("FAILURE", timeline.get(1).type());
         assertEquals(0, timeline.get(1).uptimeMillis());
+        var initialTimeline = timeline;
+        assertThrows(UnsupportedOperationException.class, () -> initialTimeline.add(initialTimeline.getFirst()));
 
         for (int index = 0; index < 20; index++) {
             diagnostics.recordGuardSignal("guard signal " + index);
@@ -158,7 +160,6 @@ class NexoraAiDiagnosticsTest {
         assertEquals(12, timeline.size());
         assertEquals(22, timeline.get(0).sequence());
         assertEquals(11, timeline.get(11).sequence());
-        assertThrows(UnsupportedOperationException.class, () -> timeline.add(timeline.getFirst()));
     }
 
     @Test

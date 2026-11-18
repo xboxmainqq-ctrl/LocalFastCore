@@ -7,8 +7,8 @@ import java.util.UUID;
 
 /**
  * In-process reference state machine for a cross-node handoff.
- * A production deployment must persist/replicate this ledger and use an
- * authenticated transport before claiming crash-safe exactly-once transfer.
+ * Production must persist/replicate this ledger and use authenticated transport
+ * before claiming crash-safe exactly-once transfer.
  */
 public final class HandoffCoordinator {
     public enum State { PREPARED, CLAIMED, COMMITTED, ABORTED }
@@ -17,14 +17,15 @@ public final class HandoffCoordinator {
 
     public synchronized void prepare(PlayerHandoff handoff) {
         Objects.requireNonNull(handoff, "handoff");
-        if (transfers.putIfAbsent(handoff.transferId(), new Transfer(handoff.targetNode(), State.PREPARED)) != null)
+        Transfer transfer = new Transfer(handoff.targetNode(), State.PREPARED);
+        if (transfers.putIfAbsent(handoff.transferId(), transfer) != null)
             throw new IllegalStateException("Transfer already exists: " + handoff.transferId());
     }
 
     public synchronized boolean claim(UUID transferId, String destinationNode) {
-        Objects.requireNonNull(transferId, "transferId");
         Transfer transfer = require(transferId);
-        if (!transfer.destinationNode().equals(destinationNode) || transfer.state() != State.PREPARED) return false;
+        if (!transfer.destinationNode().equals(destinationNode) || transfer.state() != State.PREPARED)
+            return false;
         transfers.put(transferId, transfer.withState(State.CLAIMED));
         return true;
     }
@@ -34,29 +35,30 @@ public final class HandoffCoordinator {
     }
 
     public synchronized void abort(UUID transferId) {
-        State state = require(transferId);
-        if (state == State.COMMITTED || state == State.ABORTED)
-            throw new IllegalStateException("Cannot abort transfer from " + state);
-        transfers.put(transferId, State.ABORTED);
+        Transfer transfer = require(transferId);
+        if (transfer.state() == State.COMMITTED || transfer.state() == State.ABORTED)
+            throw new IllegalStateException("Cannot abort transfer from " + transfer.state());
+        transfers.put(transferId, transfer.withState(State.ABORTED));
     }
 
     public synchronized State state(UUID transferId) {
         return require(transferId).state();
     }
 
-    private record Transfer(String destinationNode, State state) {
-        private Transfer withState(State next) { return new Transfer(destinationNode, next); }
-    }
-
     private void transition(UUID id, State expected, State next) {
-        State current = require(id);
-        if (current != expected) throw new IllegalStateException("Expected " + expected + ", got " + current);
-        transfers.put(id, next);
+        Transfer transfer = require(id);
+        if (transfer.state() != expected)
+            throw new IllegalStateException("Expected " + expected + ", got " + transfer.state());
+        transfers.put(id, transfer.withState(next));
     }
 
-    private State require(UUID id) {
+    private Transfer require(UUID id) {
         Transfer transfer = transfers.get(Objects.requireNonNull(id, "transferId"));
         if (transfer == null) throw new IllegalArgumentException("Unknown transfer: " + id);
         return transfer;
+    }
+
+    private record Transfer(String destinationNode, State state) {
+        private Transfer withState(State next) { return new Transfer(destinationNode, next); }
     }
 }

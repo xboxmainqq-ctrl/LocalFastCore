@@ -1,5 +1,6 @@
 package ru.nexora.world;
 
+import ru.nexora.ai.HotPathProfiler;
 import ru.nexora.combat.LivingEntityAiService;
 import ru.nexora.combat.MobAiLoadController;
 
@@ -19,11 +20,13 @@ public final class WorldTickPipeline {
     private final MobAiLoadController loadController;
     private final LivingEntityAiService aiService;
     private final ru.nexora.combat.MobAiTaskScheduler taskScheduler;
+    private final HotPathProfiler profiler;
 
     public WorldTickPipeline(MobAiLoadController loadController, LivingEntityAiService aiService) {
         this.loadController = Objects.requireNonNull(loadController, "loadController");
         this.aiService = Objects.requireNonNull(aiService, "aiService");
         this.taskScheduler = new ru.nexora.combat.MobAiTaskScheduler();
+        this.profiler = new HotPathProfiler();
     }
 
     public TickResult tick(
@@ -54,8 +57,14 @@ public final class WorldTickPipeline {
                 deferred++;
                 continue;
             }
-            LivingEntityAiService.PlayerTarget nearest =
-                    LivingEntityAiService.nearestAlivePlayer(mob, players);
+            long targetingStarted = System.nanoTime();
+            LivingEntityAiService.PlayerTarget nearest;
+            try {
+                nearest = LivingEntityAiService.nearestAlivePlayer(mob, players);
+            } finally {
+                profiler.record(HotPathProfiler.Path.MOB_TARGETING,
+                        Math.max(0L, System.nanoTime() - targetingStarted));
+            }
             double distanceSquared = nearest == null
                     ? Double.POSITIVE_INFINITY
                     : distanceSquared(mob, nearest);
@@ -105,8 +114,14 @@ public final class WorldTickPipeline {
             scheduled++;
             loadController.recordScheduled(mob.runtimeId());
             long decisionStart = System.nanoTime();
-            LivingEntityAiService.Decision decision = aiService.decide(
-                    mob, players, nowMillis, 0L, null, nearest);
+            LivingEntityAiService.Decision decision;
+            long decisionStarted = System.nanoTime();
+            try {
+                decision = aiService.decide(mob, players, nowMillis, 0L, null, nearest);
+            } finally {
+                profiler.record(HotPathProfiler.Path.MOB_AI_DECISION,
+                        Math.max(0L, System.nanoTime() - decisionStarted));
+            }
             if (decision.attack()) {
                 taskScheduler.admit(ru.nexora.combat.MobAiTaskScheduler.Task.COMBAT,
                         priority, true, System.nanoTime() - budgetStart,
@@ -131,6 +146,10 @@ public final class WorldTickPipeline {
         loadController.updateAdaptiveBudget(System.nanoTime() - budgetStart);
         return new TickResult(tick, mobs.size(), scheduled, deferred, decisions,
                 highPriority, normalPriority, lowPriority);
+    }
+
+    public HotPathProfiler profiler() {
+        return profiler;
     }
 
     private MobAiLoadController.Priority priorityHint(WorldLivingEntity mob) {

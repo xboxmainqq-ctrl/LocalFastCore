@@ -1,5 +1,7 @@
 package ru.nexora.world;
 
+import ru.nexora.lifecycle.RuntimeTaskScheduler;
+
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Objects;
@@ -8,14 +10,16 @@ import java.util.function.Consumer;
 import java.util.function.LongConsumer;
 
 /**
- * Owns the background runtime services attached to a world.
+ * Owns world background services and their bounded scheduler.
  *
- * <p>The furnace ticker is stopped before the final autosave, ensuring that
- * world state is no longer being advanced while shutdown persistence runs.</p>
+ * <p>Ticking and persistence use isolated scheduler lanes, so a slow save
+ * cannot stall furnace updates. Shutdown cancels both jobs, waits for any
+ * in-flight work, then performs the final world/player save.</p>
  */
 public final class WorldRuntimeModule implements AutoCloseable {
     private final WorldAutosave autosave;
     private final WorldFurnaceTicker furnaceTicker;
+    private final RuntimeTaskScheduler scheduler;
     private final AtomicBoolean closed = new AtomicBoolean();
 
     public WorldRuntimeModule(
@@ -28,20 +32,36 @@ public final class WorldRuntimeModule implements AutoCloseable {
             LongConsumer furnaceObserver
     ) {
         Objects.requireNonNull(world, "world");
-        WorldFurnaceTicker ticker = new WorldFurnaceTicker(
-                world, furnaceErrorHandler, furnaceObserver);
+        RuntimeTaskScheduler taskScheduler = new RuntimeTaskScheduler(8, Duration.ofSeconds(10));
+        WorldFurnaceTicker ticker;
+        try {
+            ticker = new WorldFurnaceTicker(world, furnaceErrorHandler, furnaceObserver, taskScheduler);
+        } catch (RuntimeException exception) {
+            try {
+                taskScheduler.close();
+            } catch (IOException closeFailure) {
+                exception.addSuppressed(closeFailure);
+            }
+            throw exception;
+        }
         WorldAutosave saveService;
         try {
             saveService = new WorldAutosave(world, autosaveInterval, autosaveErrorHandler,
-                    additionalSave, autosaveObserver);
+                    additionalSave, autosaveObserver, taskScheduler);
         } catch (RuntimeException exception) {
             try {
                 ticker.close();
             } catch (IOException closeFailure) {
                 exception.addSuppressed(closeFailure);
             }
+            try {
+                taskScheduler.close();
+            } catch (IOException closeFailure) {
+                exception.addSuppressed(closeFailure);
+            }
             throw exception;
         }
+        this.scheduler = taskScheduler;
         this.furnaceTicker = ticker;
         this.autosave = saveService;
     }
@@ -55,6 +75,14 @@ public final class WorldRuntimeModule implements AutoCloseable {
         return closed.get();
     }
 
+    public int registeredTickTasks() {
+        return scheduler.registeredTasks(RuntimeTaskScheduler.Lane.TICK);
+    }
+
+    public int registeredPersistenceTasks() {
+        return scheduler.registeredTasks(RuntimeTaskScheduler.Lane.PERSISTENCE);
+    }
+
     @Override
     public void close() throws IOException {
         if (!closed.compareAndSet(false, true)) return;
@@ -66,6 +94,12 @@ public final class WorldRuntimeModule implements AutoCloseable {
         }
         try {
             autosave.close();
+        } catch (IOException exception) {
+            if (failure == null) failure = exception;
+            else failure.addSuppressed(exception);
+        }
+        try {
+            scheduler.close();
         } catch (IOException exception) {
             if (failure == null) failure = exception;
             else failure.addSuppressed(exception);

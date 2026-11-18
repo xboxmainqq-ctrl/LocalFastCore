@@ -29,8 +29,8 @@ class PlayerTransferOwnershipGuardTest {
     @Test
     void claimedTransferRequiresDestinationRestoreAndBlocksGameplayUntilCommit() {
         PlayerTransferRecord claimed = record(PlayerTransferRecord.State.CLAIMED);
-        assertEquals(PlayerTransferOwnershipGuard.LoginDecision.RESTORE_TRANSFER_CHECKPOINT,
-                PlayerTransferOwnershipGuard.loginDecision(Optional.of(claimed), "node-b"));
+        assertThrows(SecurityException.class,
+                () -> PlayerTransferOwnershipGuard.loginDecision(Optional.of(claimed), "node-b"));
         assertFalse(PlayerTransferOwnershipGuard.mayProcessSession(Optional.of(claimed), "node-b"));
         assertThrows(SecurityException.class,
                 () -> PlayerTransferOwnershipGuard.loginDecision(Optional.of(claimed), "node-a"));

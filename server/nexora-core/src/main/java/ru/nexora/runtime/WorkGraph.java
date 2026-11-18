@@ -28,6 +28,28 @@ public final class WorkGraph {
         for (Node n:nodes.values()) if(n.state==State.PENDING && dependenciesCompleted(n)){n.state=State.READY; result.add(view(n));}
         return List.copyOf(result);
     }
+    public synchronized List<NodeView> readyFor(AdaptiveRuntime runtime) {
+        Objects.requireNonNull(runtime, "runtime");
+        List<NodeView> result = new ArrayList<>();
+        for (Node n : nodes.values()) {
+            if (n.state == State.PENDING && dependenciesCompleted(n)) {
+                long estimate = n.estimatedNanos > 0 ? n.estimatedNanos : 1L;
+                if (runtime.admit(n.lane, estimate, n.critical) == AdaptiveRuntime.Admission.ALLOW) {
+                    n.state = State.READY;
+                    result.add(view(n));
+                }
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    public synchronized WorkGraph estimate(String id, long nanos) {
+        Node n = requireNode(id);
+        if (nanos < 0) throw new IllegalArgumentException("nanos < 0");
+        n.estimatedNanos = nanos;
+        return this;
+    }
+
     public synchronized void start(String id){Node n=requireNode(id); if(n.state!=State.READY)throw new IllegalStateException("Node is not ready: "+id); n.state=State.RUNNING;}
     public synchronized void complete(String id){Node n=requireNode(id); if(n.state!=State.RUNNING)throw new IllegalStateException("Node is not running: "+id); n.state=State.COMPLETED;}
     public synchronized void defer(String id){Node n=requireNode(id); if(n.state!=State.READY&&n.state!=State.PENDING)throw new IllegalStateException("Node cannot be deferred: "+id); n.state=State.DEFERRED;}
@@ -39,7 +61,7 @@ public final class WorkGraph {
     private boolean dependenciesCompleted(Node n){for(String d:n.dependencies)if(requireNode(d).state!=State.COMPLETED)return false;return true;}
     private Node requireNode(String id){requireId(id);Node n=nodes.get(id);if(n==null)throw new IllegalArgumentException("Unknown work node: "+id);return n;}
     private static void requireId(String id){if(id==null||id.isBlank())throw new IllegalArgumentException("Work node id is blank");}
-    private NodeView view(Node n){return new NodeView(n.id,n.lane,n.critical,n.state,List.copyOf(n.dependencies));}
-    private static final class Node{final String id;final AdaptiveRuntime.Lane lane;final boolean critical;final Set<String> dependencies=new HashSet<>();State state=State.PENDING;Node(String id,AdaptiveRuntime.Lane lane,boolean critical){this.id=id;this.lane=lane;this.critical=critical;}}
-    public record NodeView(String id,AdaptiveRuntime.Lane lane,boolean critical,State state,List<String> dependencies){}
+    private NodeView view(Node n){return new NodeView(n.id,n.lane,n.critical,n.state,n.estimatedNanos,List.copyOf(n.dependencies));}
+    private static final class Node{final String id;final AdaptiveRuntime.Lane lane;final boolean critical;final Set<String> dependencies=new HashSet<>(); long estimatedNanos=0L; State state=State.PENDING;Node(String id,AdaptiveRuntime.Lane lane,boolean critical){this.id=id;this.lane=lane;this.critical=critical;}}
+    public record NodeView(String id,AdaptiveRuntime.Lane lane,boolean critical,State state,long estimatedNanos,List<String> dependencies){}
 }

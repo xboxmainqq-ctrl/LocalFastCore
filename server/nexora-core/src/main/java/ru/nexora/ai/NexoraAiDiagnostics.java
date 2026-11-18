@@ -16,10 +16,10 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongSupplier;
 
 /**
- * Read-only runtime diagnostics for NexoraAI.
+ * Read-only JVM and world-runtime diagnostics for NexoraAI.
  *
- * This service deliberately observes the JVM only. It never changes server state,
- * restarts services, edits files, or attempts automatic repairs.
+ * This service records measurements and bounded evidence only. It never changes
+ * gameplay state, restarts services, edits files, or executes repair actions.
  */
 public final class NexoraAiDiagnostics {
     private static final int MAX_FAILURE_DESCRIPTION_LENGTH = 240;

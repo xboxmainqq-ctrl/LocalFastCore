@@ -145,7 +145,7 @@ public final class WorldChunkResidencyManager {
                     || Math.abs((long) chunkZ) > 1_875_000L) {
                 throw new IllegalArgumentException("Player chunk is outside supported world bounds");
             }
-            if (viewDistance < -1 || viewDistance > 32) {
+            if (viewDistance != -1 && (viewDistance < 1 || viewDistance > 32)) {
                 throw new IllegalArgumentException("Player view distance must be -1 or between 1 and 32");
             }
         }

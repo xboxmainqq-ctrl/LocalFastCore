@@ -82,9 +82,21 @@ public final class PlayerTransferSourceCoordinator {
             ledger.prepare(handoff, playerXuid, revision, epochMillis.getAsLong());
         } catch (Exception publicationFailure) {
             try {
-                resumeAfterAbort(handoff);
-            } catch (IOException resumeFailure) {
-                publicationFailure.addSuppressed(resumeFailure);
+                Optional<PlayerTransferRecord> stored = ledger.get(handoff.transferId());
+                boolean definitelyUnclaimed = stored.isEmpty();
+                boolean alreadyAborted = stored.filter(record ->
+                        record.state() == PlayerTransferRecord.State.ABORTED
+                                && record.playerXuid().equals(playerXuid)
+                                && record.sourceNode().equals(handoff.sourceNode())
+                                && record.targetNode().equals(handoff.targetNode())).isPresent();
+                if (definitelyUnclaimed || alreadyAborted) {
+                    resumeAfterAbort(handoff);
+                } else {
+                    publicationFailure.addSuppressed(new IOException(
+                            "Transfer publication is uncertain; source remains frozen"));
+                }
+            } catch (Exception reconciliationFailure) {
+                publicationFailure.addSuppressed(reconciliationFailure);
             }
             if (publicationFailure instanceof IOException ioFailure) throw ioFailure;
             throw new IOException("Unable to publish prepared player transfer", publicationFailure);

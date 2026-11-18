@@ -425,7 +425,8 @@ class MobSpawnerManagerTest {
         assertEquals(spawnerCount, first.trackedSpawners());
         assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK, first.processedSpawners());
         assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK, first.activeSpawners());
-        assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK, first.attempts());
+        assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK * 2, first.attempts());
+        assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK, first.invalidPositions());
         assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK, rejectedAtCapacity.get());
 
         var second = manager.tick(world, dueTick + 1, players, request -> {
@@ -437,7 +438,8 @@ class MobSpawnerManagerTest {
         });
 
         assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK, second.processedSpawners());
-        assertEquals(1, second.attempts());
+        assertEquals(2, second.attempts());
+        assertEquals(1, second.invalidPositions());
         assertEquals(spawnerCount, rejectedAtCapacity.get());
         assertEquals(5_000, world.livingEntities().size());
     }

@@ -39,7 +39,7 @@ public final class TcpClusterTransport implements ClusterTransport {
     private final Map<String, InetSocketAddress> peers;
     private final Set<String> authorizedPeers;
     private final AuthenticatedClusterMessageCodec codec;
-    private final ClusterReplayGuard replayGuard;
+    private final ClusterReplayFilter replayGuard;
     private final int connectTimeoutMillis;
     private final int readTimeoutMillis;
     private final ThreadPoolExecutor sendExecutor;

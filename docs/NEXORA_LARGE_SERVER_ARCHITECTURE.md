@@ -144,3 +144,10 @@ The coordinator currently uses participant interfaces and is not yet wired into 
 `TcpClusterTransport` now provides a bounded TCP adapter for the cluster transport SPI: configured node addresses, explicit peer allowlists, bounded send/receive worker queues, frame-size limits, socket timeouts, HMAC envelope validation, recipient checks, and an application ACK after receiver acceptance. `ClusterReplayGuard` rejects duplicate message IDs within a bounded in-memory retention window and fails closed when its capacity is exhausted.
 
 This is not a production cluster deployment by itself. Replay state is process-local and is lost on restart; messages use one TCP connection per send; HMAC does not encrypt traffic. Use private network isolation or TLS for confidentiality, a durable replay ledger, key rotation, and a replicated transfer ledger before enabling cross-host player handoff. The adapter is intentionally not wired into server startup yet.
+
+
+### Replay persistence and key rotation — foundation added
+
+The transport now accepts a pluggable `ClusterReplayFilter`. `FileClusterReplayFilter` stores message-ID expiry markers with checksums and an OS file lock, so duplicate filtering survives process restarts on one host. It rejects corrupt markers and fails closed at capacity. `RotatingClusterMessageCodec` signs outbound messages with an active key and can accept a bounded set of previous keys during a rotation grace period.
+
+The file replay filter is still single-host; it is not a replicated global deduplication service. Operators must coordinate key-ring rollout across nodes and retire old keys only after the grace window. Production multi-host use still requires shared durable replay/idempotency and replicated transfer ledger semantics.

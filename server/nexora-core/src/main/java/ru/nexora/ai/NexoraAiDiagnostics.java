@@ -68,7 +68,7 @@ public final class NexoraAiDiagnostics {
         appendEvent("GUARD", bound(sanitize(description), MAX_FAILURE_DESCRIPTION_LENGTH));
     }
 
-    /** Records an operation that exceeded its expected execution budget. */
+    /** Records every subsystem duration and marks samples that exceeded their execution budget. */
     public void recordSlowOperation(String subsystem, long elapsedNanos, long thresholdNanos) {
         Objects.requireNonNull(subsystem, "subsystem");
         if (subsystem.isBlank() || subsystem.length() > 64 || elapsedNanos < 0 || thresholdNanos < 1) {

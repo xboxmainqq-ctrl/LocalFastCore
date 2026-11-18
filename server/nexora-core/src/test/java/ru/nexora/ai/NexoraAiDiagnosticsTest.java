@@ -242,6 +242,8 @@ class NexoraAiDiagnosticsTest {
 
         assertTrue(diagnostics.recentEvidence().contains("Последние замеры длительности подсистем (не TPS):"));
         assertTrue(diagnostics.recentEvidence().contains("world-autosave"));
+        assertTrue(diagnostics.recentEvidence().contains("window="));
+        assertTrue(diagnostics.recentEvidence().contains("overBudget=1"));
     }
 
 }

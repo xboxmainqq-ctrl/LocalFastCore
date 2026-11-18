@@ -15,6 +15,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 
 /**
  * HTTP signaling endpoint for the modern Bedrock NetherNet transport.
@@ -28,6 +29,7 @@ public final class NetherNetSignalingServer implements AutoCloseable {
     private final InetSocketAddress bindAddress;
     private final Supplier<NetherNetServerMetadata> metadataSupplier;
     private final SdpNegotiator negotiator;
+    private final BooleanSupplier admissionAllowed;
     private HttpServer server;
     private ExecutorService executor;
 
@@ -36,7 +38,7 @@ public final class NetherNetSignalingServer implements AutoCloseable {
             NetherNetServerMetadata metadata,
             SdpNegotiator negotiator
     ) {
-        this(bindAddress, fixedMetadata(metadata), negotiator);
+        this(bindAddress, fixedMetadata(metadata), negotiator, () -> true);
     }
 
     private static Supplier<NetherNetServerMetadata> fixedMetadata(NetherNetServerMetadata metadata) {
@@ -49,9 +51,19 @@ public final class NetherNetSignalingServer implements AutoCloseable {
             Supplier<NetherNetServerMetadata> metadataSupplier,
             SdpNegotiator negotiator
     ) {
+        this(bindAddress, metadataSupplier, negotiator, () -> true);
+    }
+
+    public NetherNetSignalingServer(
+            InetSocketAddress bindAddress,
+            Supplier<NetherNetServerMetadata> metadataSupplier,
+            SdpNegotiator negotiator,
+            BooleanSupplier admissionAllowed
+    ) {
         this.bindAddress = Objects.requireNonNull(bindAddress, "bindAddress");
         this.metadataSupplier = Objects.requireNonNull(metadataSupplier, "metadataSupplier");
         this.negotiator = Objects.requireNonNull(negotiator, "negotiator");
+        this.admissionAllowed = Objects.requireNonNull(admissionAllowed, "admissionAllowed");
     }
 
     public synchronized void start() throws IOException {
@@ -118,6 +130,11 @@ public final class NetherNetSignalingServer implements AutoCloseable {
             }
             if (networkId.isBlank()) {
                 sendError(exchange, 400, "Invalid NetworkID path");
+                return;
+            }
+
+            if (!admissionAllowed.getAsBoolean()) {
+                sendError(exchange, 503, "Server is not accepting new sessions");
                 return;
             }
 

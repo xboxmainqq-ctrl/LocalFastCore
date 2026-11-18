@@ -455,6 +455,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
             state.onlineLeaseSessionId = sessionId;
             state.lastOnlineLeaseRenewalNanos = nanoTime.getAsLong();
+            state.onlineLeaseLost = false;
         } catch (IOException failure) {
             throw new SecurityException("Unable to acquire global online player ownership", failure);
         }
@@ -637,40 +638,72 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
             String networkId = entry.getKey();
             SessionState state = entry.getValue();
+            NetherNetClientIdentity identity = state.identity;
+            if (identity == null || state.rejected) continue;
+
+            // Renew outside the gameplay lock. A long checkpoint/save/transfer
+            // must never prevent the lease heartbeat from extending ownership.
+            String leaseSessionId = state.onlineLeaseSessionId;
+            if (leaseSessionId != null) {
+                long nowNanos = nanoTime.getAsLong();
+                long previous = state.lastOnlineLeaseRenewalNanos;
+                long interval = Math.max(500_000_000L, onlineLeaseMillis * 1_000_000L / 3L);
+                if (previous == Long.MIN_VALUE || nowNanos - previous >= interval) {
+                    boolean renewed;
+                    try {
+                        renewed = onlineLeaseRegistry.renew(identity.xuid(), transferOwnershipNodeId,
+                                leaseSessionId, System.currentTimeMillis(), onlineLeaseMillis);
+                    } catch (IOException failure) {
+                        renewed = false;
+                    }
+                    if (!renewed) {
+                        // A concurrent transfer release may have cleared the token
+                        // after this heartbeat captured it. Fence only if it is
+                        // still the session's current lease.
+                        if (leaseSessionId.equals(state.onlineLeaseSessionId)) {
+                            state.onlineLeaseLost = true;
+                            state.rejected = true;
+                            state.loginAuthenticated = false;
+                            state.clientInitialized = false;
+                            releaseOnlinePlayerLease(state);
+                            removePlayerListEntry(networkId, state);
+                            System.err.println("NEXORA: stopped session after online lease loss for "
+                                    + identity.xuid());
+                        }
+                        continue;
+                    }
+                    if (leaseSessionId.equals(state.onlineLeaseSessionId)) {
+                        state.lastOnlineLeaseRenewalNanos = nowNanos;
+                    }
+                }
+            } else if (state.loginAuthenticated && !state.transferFrozen) {
+                state.onlineLeaseLost = true;
+                state.rejected = true;
+                state.loginAuthenticated = false;
+                state.clientInitialized = false;
+                removePlayerListEntry(networkId, state);
+                System.err.println("NEXORA: stopped session without a global online lease for " + identity.xuid());
+                continue;
+            }
+
+            // A frozen source still owns its lease until PREPARED is durable,
+            // but it must not be checked against the PREPARED gameplay fence.
+            if (state.transferFrozen || state.rejected || !state.loginAuthenticated) continue;
             state.combatLock.lock();
             try {
                 synchronized (state) {
-                    if (state.rejected || state.identity == null) continue;
+                    if (state.transferFrozen || state.rejected || !state.loginAuthenticated) continue;
                     try {
-                        if (state.transferFrozen) {
-                            // The source retains ownership while PREPARED publication is
-                            // pending. Do not consult the PREPARED fence as gameplay ownership.
-                            String leaseSessionId = state.onlineLeaseSessionId;
-                            if (leaseSessionId != null) {
-                                long nowNanos = nanoTime.getAsLong();
-                                long previous = state.lastOnlineLeaseRenewalNanos;
-                                long interval = Math.max(500_000_000L,
-                                        onlineLeaseMillis * 1_000_000L / 3L);
-                                if (previous == Long.MIN_VALUE || nowNanos - previous >= interval) {
-                                    if (!onlineLeaseRegistry.renew(state.identity.xuid(), transferOwnershipNodeId,
-                                            leaseSessionId, System.currentTimeMillis(), onlineLeaseMillis)) {
-                                        throw new IOException("Frozen source lost its online player lease");
-                                    }
-                                    state.lastOnlineLeaseRenewalNanos = nowNanos;
-                                }
-                            }
-                            continue;
-                        }
-                        if (!state.loginAuthenticated) continue;
                         assertTransferNodeOwnership(state);
                     } catch (IOException | SecurityException ownershipFailure) {
+                        state.onlineLeaseLost = true;
                         state.rejected = true;
                         state.loginAuthenticated = false;
                         state.clientInitialized = false;
                         releaseOnlinePlayerLease(state);
                         removePlayerListEntry(networkId, state);
-                        System.err.println("NEXORA: stopped idle/session processing after online lease loss for "
-                                + state.identity.xuid() + ": " + ownershipFailure.getMessage());
+                        System.err.println("NEXORA: stopped idle/session processing after ownership loss for "
+                                + identity.xuid() + ": " + ownershipFailure.getMessage());
                     }
                 }
             } finally {
@@ -816,7 +849,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         || state.identity == null || !playerXuid.equals(state.identity.xuid())) {
                     throw new IOException("Source session changed before PREPARED lease release");
                 }
-                if (state.onlineLeaseSessionId != null && !releaseOnlinePlayerLease(state)) {
+                if (state.onlineLeaseLost) {
+                    throw new IOException("Source lost its online ownership lease during transfer freeze");
+                }
+                if (state.onlineLeaseSessionId == null) {
+                    throw new IOException("Source online ownership lease is missing after PREPARED publication");
+                }
+                if (!releaseOnlinePlayerLease(state)) {
                     throw new IOException("Unable to release source online lease after PREPARED publication");
                 }
             }
@@ -4620,6 +4659,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             if (previousLeaseRenewal == Long.MIN_VALUE || now - previousLeaseRenewal >= renewalInterval) {
                 if (!leases.renew(state.identity.xuid(), nodeId, leaseSessionId,
                         System.currentTimeMillis(), onlineLeaseMillis)) {
+                    state.onlineLeaseLost = true;
                     throw new IOException("Global online player lease expired or was acquired by another node");
                 }
                 state.lastOnlineLeaseRenewalNanos = now;
@@ -6701,8 +6741,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private boolean transferRedirected;
         private PlayerTransferFence transferFence;
         private long lastTransferOwnershipCheckNanos = Long.MIN_VALUE;
-        private String onlineLeaseSessionId;
-        private long lastOnlineLeaseRenewalNanos = Long.MIN_VALUE;
+        private volatile String onlineLeaseSessionId;
+        private volatile long lastOnlineLeaseRenewalNanos = Long.MIN_VALUE;
+        private volatile boolean onlineLeaseLost;
         private PendingEquipmentForm pendingEquipmentForm;
         private int pendingAiFormId;
         private int nextContainerWindowId = 1;
@@ -6717,7 +6758,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private final ContainerInventory craftingUiInventory =
                 new ContainerInventory(BedrockInventoryContentCodec.PLAYER_UI_SIZE);
         private int clientProtocol;
-        private NetherNetClientIdentity identity;
+        private volatile NetherNetClientIdentity identity;
         private BedrockPlayerListCodec.AddEntry playerListEntry;
         private volatile boolean playerListAdvertised;
         private String playerDeviceId = "";

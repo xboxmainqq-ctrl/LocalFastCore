@@ -191,7 +191,7 @@ public final class NexoraAiDiagnostics {
     }
 
     /** Returns a bounded newest-first structured timeline of observed diagnostic incidents. */
-    public List<Incident> incidentTimeline() {
+    public synchronized List<Incident> incidentTimeline() {
         List<Incident> timeline = new ArrayList<>();
         for (DiagnosticEvent event : events) {
             if (timeline.size() >= MAX_EVENTS) break;
@@ -485,7 +485,7 @@ public final class NexoraAiDiagnostics {
                 .replaceAll("[\\p{Cntrl}&&[^\\n\\t]]", " ");
     }
 
-    private void appendEvent(String type, String description) {
+    private synchronized void appendEvent(String type, String description) {
         String safeDescription = bound(description, 240);
         long uptimeMillis = Math.max(0L, (nanoClock.getAsLong() - startedAtNanos) / 1_000_000L);
         events.addFirst(new DiagnosticEvent(incidentSequence.incrementAndGet(), Instant.now().toString(),

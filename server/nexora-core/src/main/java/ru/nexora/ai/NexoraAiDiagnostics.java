@@ -258,8 +258,22 @@ public final class NexoraAiDiagnostics {
             long mobAiFullRateUpdates,
             long mobAiDeferredUpdates
     ) {
+        recordWorldRuntimeSnapshot(residentChunks, loadedChunks, livingEntities,
+                mobAiFullRateUpdates, mobAiDeferredUpdates, 0, 0);
+    }
+
+    public void recordWorldRuntimeSnapshot(
+            int residentChunks,
+            int loadedChunks,
+            int livingEntities,
+            long mobAiFullRateUpdates,
+            long mobAiDeferredUpdates,
+            long mobAiBudgetDeferred,
+            long mobAiBudgetConsumedNanos
+    ) {
         if (residentChunks < 0 || loadedChunks < 0 || livingEntities < 0
-                || mobAiFullRateUpdates < 0 || mobAiDeferredUpdates < 0) {
+                || mobAiFullRateUpdates < 0 || mobAiDeferredUpdates < 0
+                || mobAiBudgetDeferred < 0 || mobAiBudgetConsumedNanos < 0) {
             throw new IllegalArgumentException("World runtime metrics must be non-negative");
         }
         long now = nanoClock.getAsLong();
@@ -270,7 +284,9 @@ public final class NexoraAiDiagnostics {
                 + ", loadedChunks=" + loadedChunks
                 + ", livingEntities=" + livingEntities
                 + ", mobAiFullRateUpdates=" + mobAiFullRateUpdates
-                + ", mobAiDeferredUpdates=" + mobAiDeferredUpdates);
+                + ", mobAiDeferredUpdates=" + mobAiDeferredUpdates
+                + ", mobAiBudgetDeferred=" + mobAiBudgetDeferred
+                + ", mobAiBudgetConsumedNanos=" + mobAiBudgetConsumedNanos);
     }
 
     /** Records the outcome of an allowlisted in-process repair action without user identifiers. */

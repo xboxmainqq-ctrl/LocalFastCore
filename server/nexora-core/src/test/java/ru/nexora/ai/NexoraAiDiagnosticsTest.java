@@ -583,8 +583,8 @@ class NexoraAiDiagnosticsTest {
         AtomicLong clock = new AtomicLong(1_000_000_000L);
         NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
 
-        diagnostics.recordWorldRuntimeSnapshot(25, 30, 12, 100, 50);
-        diagnostics.recordWorldRuntimeSnapshot(40, 45, 14, 110, 60);
+        diagnostics.recordWorldRuntimeSnapshot(25, 30, 12, 100, 50, 2, 500_000);
+        diagnostics.recordWorldRuntimeSnapshot(40, 45, 14, 110, 60, 3, 750_000);
         assertTrue(diagnostics.recentEvidence().contains("residentChunks=25"));
         assertFalse(diagnostics.recentEvidence().contains("residentChunks=40"));
 
@@ -592,6 +592,8 @@ class NexoraAiDiagnosticsTest {
         diagnostics.recordWorldRuntimeSnapshot(40, 45, 14, 110, 60);
         assertTrue(diagnostics.recentEvidence().contains("residentChunks=40"));
         assertTrue(diagnostics.recentEvidence().contains("mobAiDeferredUpdates=60"));
+        assertTrue(diagnostics.recentEvidence().contains("mobAiBudgetDeferred=3"));
+        assertTrue(diagnostics.recentEvidence().contains("mobAiBudgetConsumedNanos=750000"));
     }
 
 }

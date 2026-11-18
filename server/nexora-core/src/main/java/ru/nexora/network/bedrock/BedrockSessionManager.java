@@ -2625,10 +2625,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         ru.nexora.ai.NexoraAiDiagnostics worldDiagnostics = aiDiagnostics;
         if (worldDiagnostics != null) {
             ru.nexora.combat.MobAiLoadController.Stats schedulerStats = mobAiLoadController.stats();
+            ru.nexora.combat.MobAiLoadController.BudgetStats budgetStats =
+                    mobAiLoadController.budgetStats();
             worldDiagnostics.recordWorldRuntimeSnapshot(
                     residencyPlan.residentCount(), world.loadedChunkCount(),
                     world.livingEntities().size(),
-                    schedulerStats.fullRateUpdates(), schedulerStats.deferredUpdates());
+                    schedulerStats.fullRateUpdates(), schedulerStats.deferredUpdates(),
+                    budgetStats.deferredTasks(), budgetStats.consumedNanos());
         }
         List<ru.nexora.world.MobSpawnerManager.PlayerPosition> spawnerPlayers = new ArrayList<>();
         for (ru.nexora.combat.LivingEntityAiService.PlayerTarget player : targets) {

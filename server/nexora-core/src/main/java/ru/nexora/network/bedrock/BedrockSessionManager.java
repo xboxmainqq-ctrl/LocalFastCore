@@ -4227,7 +4227,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     ledger.abortPrepared(record.transferId(), now);
                     latest = ledger.findLatestForPlayer(xuid);
                 } else if (record.state() == ru.nexora.network.PlayerTransferRecord.State.CLAIMED
-                        && nodeId.equals(record.sourceNode()) && record.leaseExpired(now)) {
+                        && record.leaseExpired(now)) {
+                    // An expired claim can no longer commit. Whichever node
+                    // wins this CAS revokes the old fence before login proceeds.
                     ledger.abort(record.transferId(), record.fencingToken(), now);
                     latest = ledger.findLatestForPlayer(xuid);
                 }

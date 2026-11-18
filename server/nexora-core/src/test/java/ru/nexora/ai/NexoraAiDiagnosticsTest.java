@@ -441,6 +441,48 @@ class NexoraAiDiagnosticsTest {
     }
 
     @Test
+    void latencyTrendRequiresRepeatedBreachesAcrossThreeConsecutiveMinutes() {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(10_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        for (int minute = 0; minute < 3; minute++) {
+            for (int sample = 0; sample < 5; sample++) {
+                diagnostics.recordSlowOperation("world-save", 75, 50);
+            }
+            if (minute < 2) clock.addAndGet(60_000_000_000L);
+        }
+
+        var trend = diagnostics.latencyTrendSummaries().getFirst();
+        assertEquals("world-save", trend.subsystem());
+        assertTrue(trend.enoughSamples());
+        assertEquals(3, trend.observedMinutes());
+        assertEquals(15, trend.sampleCount());
+        assertEquals(15, trend.overBudgetCount());
+        assertEquals(3, trend.overBudgetMinutes());
+        assertTrue(trend.sustainedOverBudget());
+        assertTrue(diagnostics.recentEvidence().contains("Устойчивая задержка: world-save"));
+    }
+
+    @Test
+    void latencyTrendRemainsUnknownWhenOneMinuteIsMissing() {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(10_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        for (int sample = 0; sample < 5; sample++) {
+            diagnostics.recordSlowOperation("world-save", 75, 50);
+        }
+        clock.addAndGet(120_000_000_000L);
+        for (int sample = 0; sample < 5; sample++) {
+            diagnostics.recordSlowOperation("world-save", 75, 50);
+        }
+
+        var trend = diagnostics.latencyTrendSummaries().getFirst();
+        assertFalse(trend.enoughSamples());
+        assertFalse(trend.sustainedOverBudget());
+        assertEquals(2, trend.observedMinutes());
+    }
+
+    @Test
     void resourceTrendDetectsSustainedThreadGrowthAndHeapPressure() {
         java.util.concurrent.atomic.AtomicLong clock =
                 new java.util.concurrent.atomic.AtomicLong(10_000_000_000L);

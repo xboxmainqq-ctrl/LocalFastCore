@@ -368,6 +368,36 @@ public final class NexoraAiDiagnostics {
         return List.copyOf(result);
     }
 
+    /**
+     * Detects repeated latency-budget breaches in each of the last three minute buckets.
+     * Every minute must contain at least five observations; sparse or missing minutes stay unknown.
+     */
+    public synchronized List<LatencyTrendSummary> latencyTrendSummaries() {
+        long currentMinute = Math.floorDiv(nanoClock.getAsLong(), LATENCY_BUCKET_NANOS);
+        long firstMinute = currentMinute - 2;
+        List<LatencyTrendSummary> result = new ArrayList<>();
+        latencyBuckets.forEach((subsystem, buckets) -> {
+            long samples = 0, overBudget = 0;
+            int observedMinutes = 0, overBudgetMinutes = 0;
+            boolean enoughSamples = true;
+            for (long minute = firstMinute; minute <= currentMinute; minute++) {
+                LatencyBucket bucket = buckets.get(minute);
+                if (bucket == null || bucket.count < 5) {
+                    enoughSamples = false;
+                    continue;
+                }
+                observedMinutes++;
+                samples = saturatedAdd(samples, bucket.count);
+                overBudget = saturatedAdd(overBudget, bucket.slow);
+                if (bucket.slow / (double) bucket.count >= 0.25) overBudgetMinutes++;
+            }
+            result.add(new LatencyTrendSummary(subsystem, observedMinutes, samples, overBudget,
+                    overBudgetMinutes, enoughSamples,
+                    enoughSamples && overBudgetMinutes == 3));
+        });
+        return List.copyOf(result);
+    }
+
     private static long saturatedAdd(long left, long right) {
         return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
     }
@@ -467,6 +497,14 @@ public final class NexoraAiDiagnostics {
                                 : String.format(java.util.Locale.ROOT, "%.2f", summary.maxSystemLoadPerProcessor()));
             }
         }
+        for (LatencyTrendSummary trend : latencyTrendSummaries()) {
+            if (trend.sustainedOverBudget() && result.length() < MAX_EVIDENCE_LENGTH) {
+                result.append("\\nУстойчивая задержка: ").append(trend.subsystem())
+                        .append(" — превышение бюджета в ").append(trend.overBudgetMinutes())
+                        .append("/3 последовательных минут (").append(trend.overBudgetCount())
+                        .append("/").append(trend.sampleCount()).append(" замеров)");
+            }
+        }
         ResourceTrendSummary trend = resourceTrendSummary();
         if (result.length() < MAX_EVIDENCE_LENGTH) {
             result.append("\\nТренды JVM за 3 последовательные минуты: ");
@@ -516,6 +554,21 @@ public final class NexoraAiDiagnostics {
                     || networkMaxNanos < 0 || gameplayMaxNanos < 0
                     || (overlappingMinuteBuckets == 0 && (networkSampleCount != 0 || gameplaySampleCount != 0))) {
                 throw new IllegalArgumentException("Invalid latency alignment summary");
+            }
+        }
+    }
+
+    public record LatencyTrendSummary(String subsystem, int observedMinutes, long sampleCount,
+                                      long overBudgetCount, int overBudgetMinutes,
+                                      boolean enoughSamples, boolean sustainedOverBudget) {
+        public LatencyTrendSummary {
+            Objects.requireNonNull(subsystem, "subsystem");
+            if (subsystem.isBlank() || observedMinutes < 0 || observedMinutes > 3
+                    || sampleCount < 0 || overBudgetCount < 0 || overBudgetCount > sampleCount
+                    || overBudgetMinutes < 0 || overBudgetMinutes > 3
+                    || (enoughSamples && (observedMinutes != 3 || sampleCount < 15))
+                    || (!enoughSamples && sustainedOverBudget)) {
+                throw new IllegalArgumentException("Invalid latency trend summary");
             }
         }
     }

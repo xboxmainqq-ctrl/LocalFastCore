@@ -15,6 +15,7 @@ import ru.nexora.network.PlayerTransferCoordinator;
 import ru.nexora.network.PlayerTransferLifecycle;
 import ru.nexora.network.PlayerTransferRecord;
 import ru.nexora.network.PlayerTransferSourceCoordinator;
+import ru.nexora.network.PeerClusterMessageCodec;
 import ru.nexora.network.TcpClusterTransport;
 import ru.nexora.network.nethernet.NetherNetClientIdentity;
 import ru.nexora.persistence.FilePlayerStateStore;
@@ -87,12 +88,14 @@ class PlayerTransferSourceCoordinatorTest {
             java.util.Arrays.fill(clusterSecret, (byte) 0x5a);
             TcpClusterTransport targetTransport = new TcpClusterTransport(
                     "target-node", targetAddress, Map.of("source-node", sourceAddress), java.util.Set.of("source-node"),
-                    new AuthenticatedClusterMessageCodec(clusterSecret, 60_000L),
+                    new PeerClusterMessageCodec("target-node", Map.of("source-node",
+                            new AuthenticatedClusterMessageCodec(clusterSecret, 60_000L))),
                     new ClusterReplayGuard(128, 60_000L),
                     Duration.ofSeconds(2), Duration.ofSeconds(2), 2, 32);
             TcpClusterTransport sourceTransport = new TcpClusterTransport(
                     "source-node", sourceAddress, Map.of("target-node", targetAddress), java.util.Set.of("target-node"),
-                    new AuthenticatedClusterMessageCodec(clusterSecret, 60_000L),
+                    new PeerClusterMessageCodec("source-node", Map.of("target-node",
+                            new AuthenticatedClusterMessageCodec(clusterSecret, 60_000L))),
                     new ClusterReplayGuard(128, 60_000L),
                     Duration.ofSeconds(2), Duration.ofSeconds(2), 2, 32);
             targetTransport.start(message -> {

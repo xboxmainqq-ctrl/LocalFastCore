@@ -82,6 +82,28 @@ class PlayerTransferCoordinatorTest {
     }
 
     @Test
+    void latestTransferLookupUsesPlayerRevisionThenUpdateTimeAcrossRecords() throws IOException {
+        InMemoryPlayerTransferLedger memory = new InMemoryPlayerTransferLedger();
+        PlayerTransferCoordinator coordinator = new PlayerTransferCoordinator(memory);
+        UUID older = UUID.randomUUID();
+        UUID newer = UUID.randomUUID();
+        coordinator.prepare(PlayerTransferRecord.prepared(
+                older, "xuid-latest", "node-a", "node-b", 5L, 5_000L));
+        coordinator.prepare(PlayerTransferRecord.prepared(
+                newer, "xuid-latest", "node-b", "node-c", 6L, 4_000L));
+
+        assertEquals(newer, coordinator.findLatestForPlayer("xuid-latest").orElseThrow().transferId());
+        assertTrue(coordinator.findLatestForPlayer("xuid-missing").isEmpty());
+
+        FilePlayerTransferLedger files = new FilePlayerTransferLedger(temporaryDirectory);
+        files.create(PlayerTransferRecord.prepared(
+                older, "xuid-file-latest", "node-a", "node-b", 7L, 5_000L));
+        files.create(PlayerTransferRecord.prepared(
+                newer, "xuid-file-latest", "node-b", "node-c", 8L, 4_000L));
+        assertEquals(newer, files.findLatestForPlayer("xuid-file-latest").orElseThrow().transferId());
+    }
+
+    @Test
     void fileLedgerPersistsRecordsAndEnforcesCompareAndSetAcrossInstances() throws IOException {
         UUID id = UUID.randomUUID();
         FilePlayerTransferLedger firstStore = new FilePlayerTransferLedger(temporaryDirectory);

@@ -188,3 +188,6 @@ The activator is a strict integration boundary, not a completed Bedrock destinat
 ### JDBC ledger integration tests — added
 
 The JDBC transfer ledger now has H2-backed integration coverage for durable state visibility through a fresh DataSource, duplicate transfer rejection, stale-version CAS rejection, immutable player/source/target/checkpoint identity, and two concurrent node claimants racing for one PREPARED transfer. These tests exercise real JDBC transactions and SQL constraints, but H2 is a test database; production deployments still need integration tests against their selected shared SQL engine and its failover/isolation configuration.
+
+
+The JDBC adapter also validates legal monotonic transitions before its version-guarded UPDATE: PREPARED can only become the first CLAIMED token; an expired CLAIMED lease can only be reclaimed with a strictly higher token; COMMITTED/ABORTED can only be reached by the current unexpired claimant; terminal states cannot be reopened. Player identity, node endpoints and checkpoint revision are immutable across every transition.

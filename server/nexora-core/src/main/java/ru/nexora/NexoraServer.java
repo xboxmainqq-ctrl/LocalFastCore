@@ -245,6 +245,11 @@ public final class NexoraServer {
                     System.err.println("NEXORA: periodic world/player autosave failed: " + exception.getMessage());
                 },
                 bedrockSessions::savePlayers,
+                bedrockSessions::renewOnlinePlayerLeases,
+                exception -> {
+                    aiDiagnostics.recordFailure("online-player-lease-heartbeat", exception);
+                    System.err.println("NEXORA: online player lease heartbeat failed: " + exception.getMessage());
+                },
                 elapsed -> aiDiagnostics.recordSlowOperation(
                         "world-autosave", elapsed, Duration.ofSeconds(1).toNanos()),
                 exception -> {

@@ -20,7 +20,7 @@ import ru.nexora.inventory.ContainerInventoryStorage;
 import ru.nexora.inventory.FurnaceStateStorage;
 import ru.nexora.world.WorldRuntimeModule;
 import ru.nexora.world.PlayerDataStorage;
-import ru.nexora.persistence.FilePlayerStateStore;
+import ru.nexora.persistence.PlayerStateStoreFactory;
 import ru.nexora.persistence.PlayerStateBundleCodec;
 import ru.nexora.persistence.PlayerStateCheckpointService;
 import ru.nexora.inventory.PlayerInventoryStorage;
@@ -111,11 +111,16 @@ public final class NexoraServer {
         PlayerDataStorage playerStorage = new PlayerDataStorage(Path.of(dataDirectory, "players"));
         PlayerInventoryStorage inventoryStorage = new PlayerInventoryStorage(Path.of(dataDirectory, "inventories"));
         PlayerEquipmentStorage equipmentStorage = new PlayerEquipmentStorage(Path.of(dataDirectory, "equipment"));
+        PlayerStateStoreFactory.ConfiguredStore configuredPlayerStateStore =
+                PlayerStateStoreFactory.open(Path.of(dataDirectory, "player-state"), System.getenv());
         PlayerStateCheckpointService playerStateCheckpoints = new PlayerStateCheckpointService(
-                new FilePlayerStateStore(Path.of(dataDirectory, "player-state")),
-                new PlayerStateBundleCodec());
+                configuredPlayerStateStore.store(), new PlayerStateBundleCodec());
         PlayerTransferLedgerFactory.ConfiguredLedger configuredTransferLedger =
                 PlayerTransferLedgerFactory.open(Path.of(dataDirectory), System.getenv());
+        if (configuredTransferLedger.shared() && !configuredPlayerStateStore.shared()) {
+            throw new IllegalStateException(
+                    "A shared transfer ledger requires a shared JDBC player checkpoint store on every node");
+        }
         String configuredNodeId = System.getenv("NEXORA_NODE_ID");
         if (configuredTransferLedger.shared() && (configuredNodeId == null || configuredNodeId.isBlank())) {
             throw new IllegalStateException(

@@ -427,6 +427,28 @@ public final class NexoraAiDiagnostics {
                 break;
             }
         }
+        for (LatencyTrendSummary trend : latencyTrendSummaries()) {
+            if (trend.sustainedOverBudget() && result.length() < MAX_EVIDENCE_LENGTH) {
+                result.append("\\nУстойчивая задержка: ").append(trend.subsystem())
+                        .append(" — превышение бюджета в ").append(trend.overBudgetMinutes())
+                        .append("/3 последовательных минут (").append(trend.overBudgetCount())
+                        .append("/").append(trend.sampleCount()).append(" замеров)");
+            }
+        }
+        ResourceTrendSummary trend = resourceTrendSummary();
+        if (result.length() < MAX_EVIDENCE_LENGTH) {
+            result.append("\\nТренды JVM за 3 последовательные минуты: ");
+            if (!trend.enoughSamples()) {
+                result.append("недостаточно замеров (").append(trend.observedConsecutiveMinutes()).append("/3 минут)");
+            } else {
+                result.append("потоки ").append(trend.firstMinuteAverageThreadCount()).append("→")
+                        .append(trend.latestMinuteAverageThreadCount()).append(" (рост ")
+                        .append(trend.threadGrowth()).append("), давление памяти ")
+                        .append(trend.sustainedHeapPressureMinutes()).append("/3 минут");
+                if (trend.threadGrowthDetected()) result.append("; обнаружен устойчивый рост потоков");
+                if (trend.sustainedHeapPressure()) result.append("; устойчивое давление ресурсов");
+            }
+        }
         result.append("\nНаблюдаемые диагностические события (новые сверху):");
         int count = 0;
         for (DiagnosticEvent event : events) {
@@ -495,28 +517,6 @@ public final class NexoraAiDiagnostics {
                                 : String.format(java.util.Locale.ROOT, "%.1f%%", summary.maxHeapUsageRatio() * 100))
                         .append(", maxLoad/core=").append(summary.maxSystemLoadPerProcessor() < 0 ? "n/a"
                                 : String.format(java.util.Locale.ROOT, "%.2f", summary.maxSystemLoadPerProcessor()));
-            }
-        }
-        for (LatencyTrendSummary trend : latencyTrendSummaries()) {
-            if (trend.sustainedOverBudget() && result.length() < MAX_EVIDENCE_LENGTH) {
-                result.append("\\nУстойчивая задержка: ").append(trend.subsystem())
-                        .append(" — превышение бюджета в ").append(trend.overBudgetMinutes())
-                        .append("/3 последовательных минут (").append(trend.overBudgetCount())
-                        .append("/").append(trend.sampleCount()).append(" замеров)");
-            }
-        }
-        ResourceTrendSummary trend = resourceTrendSummary();
-        if (result.length() < MAX_EVIDENCE_LENGTH) {
-            result.append("\\nТренды JVM за 3 последовательные минуты: ");
-            if (!trend.enoughSamples()) {
-                result.append("недостаточно замеров (").append(trend.observedConsecutiveMinutes()).append("/3 минут)");
-            } else {
-                result.append("потоки ").append(trend.firstMinuteAverageThreadCount()).append("→")
-                        .append(trend.latestMinuteAverageThreadCount()).append(" (рост ")
-                        .append(trend.threadGrowth()).append("), давление памяти ")
-                        .append(trend.sustainedHeapPressureMinutes()).append("/3 минут");
-                if (trend.threadGrowthDetected()) result.append("; обнаружен устойчивый рост потоков");
-                if (trend.sustainedHeapPressure()) result.append("; устойчивое давление ресурсов");
             }
         }
         if (result.length() > MAX_EVIDENCE_LENGTH) {

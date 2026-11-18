@@ -163,7 +163,17 @@ public final class NexoraServer {
         NetworkRuntimeModule networkRuntime = new NetworkRuntimeModule(
                 NetworkRuntimeModule.service(discovery::start, discovery),
                 NetworkRuntimeModule.service(signaling::start, signaling),
-                negotiator);
+                negotiator,
+                () -> {
+                    try {
+                        if (!bedrockSessions.awaitNoActiveSessions(Duration.ofSeconds(5))) {
+                            System.err.println("NEXORA: graceful session drain timed out; remaining sessions will be force-closed and saved.");
+                        }
+                    } catch (InterruptedException exception) {
+                        Thread.currentThread().interrupt();
+                        throw new java.io.IOException("Interrupted while draining Bedrock sessions", exception);
+                    }
+                });
 
         // Reverse close order: network admission/discovery, WebRTC, Bedrock
         // Network transport stops first; gameplay then persists/closes sessions;

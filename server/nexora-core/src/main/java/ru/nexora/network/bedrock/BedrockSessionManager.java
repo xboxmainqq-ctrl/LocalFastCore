@@ -616,7 +616,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     /** Revalidates destination ownership before any player persistence write. */
     private static void assertTransferFence(SessionState state) throws IOException {
-        if (state.transferFence != null) state.transferFence.assertCurrent();
+        if (state.transferFence != null) state.transferFence.assertCommitted();
     }
 
     /**
@@ -5377,6 +5377,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         if (state.clientInitialized) {
             throw new SecurityException("Duplicate SetLocalPlayerAsInitialized packet");
+        }
+        if (state.transferFence != null) {
+            try {
+                state.transferFence.assertCommitted();
+            } catch (IOException uncommitted) {
+                state.rejected = true;
+                throw new SecurityException("Destination ownership is not committed; gameplay admission denied",
+                        uncommitted);
+            }
         }
         long runtimeEntityId = readUnsignedVarLong(packet.payload());
         if (runtimeEntityId != state.entityId) {

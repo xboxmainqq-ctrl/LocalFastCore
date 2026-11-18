@@ -291,6 +291,62 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void independentHeartbeatRenewsIdleLeaseAndFencesItWhenRenewalFails() throws Exception {
+        java.util.concurrent.atomic.AtomicLong nanos = new java.util.concurrent.atomic.AtomicLong();
+        java.util.concurrent.atomic.AtomicInteger renewals = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger releases = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicBoolean renewalAllowed = new java.util.concurrent.atomic.AtomicBoolean(true);
+        ru.nexora.network.PlayerOnlineLeaseRegistry leases = new ru.nexora.network.PlayerOnlineLeaseRegistry() {
+            @Override public boolean acquire(String xuid, String nodeId, String sessionId, long now, long ttl) {
+                return true;
+            }
+            @Override public boolean renew(String xuid, String nodeId, String sessionId, long now, long ttl) {
+                renewals.incrementAndGet();
+                return renewalAllowed.get();
+            }
+            @Override public boolean release(String xuid, String nodeId, String sessionId) {
+                releases.incrementAndGet();
+                return true;
+            }
+        };
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("idle-heartbeat", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                (networkId, label, frame) -> {}, event -> {}, nanos::get);
+        try {
+            manager.configureOnlinePlayerLeases(leases, 15_000L);
+            DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
+                    new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
+            manager.configureTransferOwnershipGuard(ledger, "node-a");
+            manager.onIdentity("idle-session", new NetherNetClientIdentity(
+                    "idle-token", new byte[] {7}, "idle-xuid",
+                    "IdlePlayer", "idle-playfab", "20CA2", null));
+            setSessionField(manager, "idle-session", "onlineLeaseSessionId", "idle-session");
+            setSessionField(manager, "idle-session", "loginAuthenticated", true);
+            setSessionField(manager, "idle-session", "clientInitialized", true);
+
+            manager.renewOnlinePlayerLeases();
+            assertEquals(1, renewals.get());
+            manager.renewOnlinePlayerLeases();
+            assertEquals(1, renewals.get(), "Heartbeat throttles renewals to the configured lease interval");
+
+            nanos.addAndGet(5_000_000_000L);
+            manager.renewOnlinePlayerLeases();
+            assertEquals(2, renewals.get(), "Idle sessions renew without client movement packets");
+
+            renewalAllowed.set(false);
+            nanos.addAndGet(5_000_000_000L);
+            manager.renewOnlinePlayerLeases();
+            assertEquals(3, renewals.get());
+            assertEquals(1, releases.get());
+            assertTrue((boolean) getSessionField(manager, "idle-session", "rejected"));
+            assertFalse((boolean) getSessionField(manager, "idle-session", "loginAuthenticated"));
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void rejectsSecondActiveSessionForSameXuidOnOneNode() throws Exception {
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,

@@ -1,8 +1,7 @@
 package ru.nexora;
 
 import ru.nexora.network.NetworkRuntimeModule;
-import ru.nexora.network.FilePlayerTransferLedger;
-import ru.nexora.network.PlayerTransferCoordinator;
+import ru.nexora.network.PlayerTransferLedgerFactory;
 import ru.nexora.network.DurableHandoffCoordinator;
 import ru.nexora.gameplay.GameplayRuntimeModule;
 import ru.nexora.network.nethernet.DefaultNetherNetIdentityService;
@@ -115,12 +114,16 @@ public final class NexoraServer {
         PlayerStateCheckpointService playerStateCheckpoints = new PlayerStateCheckpointService(
                 new FilePlayerStateStore(Path.of(dataDirectory, "player-state")),
                 new PlayerStateBundleCodec());
-        // The file ledger is a single-host recovery adapter. Multi-host deployments
-        // must replace it with the shared JDBC ledger before enabling cross-host handoff.
-        String transferNodeId = System.getenv().getOrDefault("NEXORA_NODE_ID", "standalone").trim();
-        DurableHandoffCoordinator transferLedger = new DurableHandoffCoordinator(
-                new PlayerTransferCoordinator(
-                        new FilePlayerTransferLedger(Path.of(dataDirectory, "cluster", "transfers"))));
+        PlayerTransferLedgerFactory.ConfiguredLedger configuredTransferLedger =
+                PlayerTransferLedgerFactory.open(Path.of(dataDirectory), System.getenv());
+        String configuredNodeId = System.getenv("NEXORA_NODE_ID");
+        if (configuredTransferLedger.shared() && (configuredNodeId == null || configuredNodeId.isBlank())) {
+            throw new IllegalStateException(
+                    "NEXORA_NODE_ID must be explicitly configured when using a shared JDBC transfer ledger");
+        }
+        String transferNodeId = configuredNodeId == null || configuredNodeId.isBlank()
+                ? "standalone" : configuredNodeId.trim();
+        DurableHandoffCoordinator transferLedger = configuredTransferLedger.coordinator();
         AtomicReference<WebRtcSdpNegotiator> negotiatorReference = new AtomicReference<>();
         BedrockSessionManager bedrockSessions = new BedrockSessionManager(
                 2225,
@@ -265,7 +268,7 @@ public final class NexoraServer {
         System.out.println("Player inventories use versioned, checksummed files under " + Path.of(dataDirectory, "inventories").toAbsolutePath());
         System.out.println("Player armor, offhand, cursor and magical equipment use checksummed files under " + Path.of(dataDirectory, "equipment").toAbsolutePath());
         System.out.println("Canonical player shadow checkpoints use versioned snapshots under " + Path.of(dataDirectory, "player-state").toAbsolutePath() + "; legacy files remain login authority during migration.");
-        System.out.println("Local durable player-transfer ledger uses " + Path.of(dataDirectory, "cluster", "transfers").toAbsolutePath() + " (single-host only).");
+        System.out.println("Player-transfer ledger: " + configuredTransferLedger.description() + ".");
         System.out.println("Dropped world items use checksummed storage under " + Path.of(dataDirectory, "worlds", "NEXORA World", "items").toAbsolutePath());
         System.out.println("Block-container inventories use checksummed storage under " + Path.of(dataDirectory, "worlds", "NEXORA World", "containers").toAbsolutePath());
         System.out.println("Furnace inventories and burn/cook progress use checksummed storage under " + Path.of(dataDirectory, "worlds", "NEXORA World", "furnaces").toAbsolutePath());

@@ -46,6 +46,7 @@ These rules apply to all future architecture, implementation, review, and planni
 - [x] Add low-overhead NetherNet inbound frame/byte/message/failure counters and processing-duration snapshots, exposed through Bedrock session diagnostics and covered by concurrent ingress tests.
 - [ ] Profile hot paths before optimizing; avoid speculative micro-optimizations. The first mob-AI cleanup replaces per-mob Stream-based nearest-target scans with allocation-free loops; this is a code-path cleanup, not a measured performance claim.
 - [ ] Reduce avoidable allocations and repeated world/entity scans in measured hot paths.
+- [x] Remove repeated full dropped-item entity snapshot creation/sorting from the per-tick merge pair scan; use one stable candidate snapshot and verify a 130-item merge batch without losing stack counts. This is a bounded allocation/sort reduction from code inspection, not a measured throughput claim.
 - [ ] Audit locks and per-session synchronization for contention and deadlock risks.
 - [ ] Audit chunk/world loading, entity lifecycle, and scheduled work for bounded cost and safe shutdown.
 - [ ] Improve autosave reliability: bounded work, clear failure reporting, and recovery tests.

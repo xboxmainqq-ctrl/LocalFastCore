@@ -123,6 +123,25 @@ class WorldItemEntityManagerTest {
     }
 
     @Test
+    void mergesLargeSamePositionBatchUsingOneTickAndPreservesAllItems() {
+        World world = new World("item-merge-batch", 0L, new FlatWorldGenerator());
+        WorldItemEntityManager manager = new WorldItemEntityManager();
+        for (int i = 0; i < 130; i++) {
+            manager.spawn(new ItemStack("minecraft:diamond", 1, 64),
+                    0.5, 65.125, 0.5, 0, 0, 0, 0, 0, "same-owner");
+        }
+
+        manager.tick(world, 0.05, 100);
+
+        assertEquals(3, manager.size());
+        assertEquals(130, manager.snapshot().stream()
+                .mapToInt(entity -> entity.stack().count()).sum());
+        assertEquals(List.of(64, 64, 2), manager.snapshot().stream()
+                .map(entity -> entity.stack().count()).toList());
+        assertEquals(127, manager.drainRemovedByTick().size());
+    }
+
+    @Test
     void doesNotMergeStacksWithDifferentEnchantmentMetadata() {
         World world = new World("item-enchantment-merge", 0L, new FlatWorldGenerator());
         WorldItemEntityManager manager = new WorldItemEntityManager();

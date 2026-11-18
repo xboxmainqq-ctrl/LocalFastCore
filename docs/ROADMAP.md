@@ -71,6 +71,7 @@ These rules apply to all future architecture, implementation, review, and planni
 ## Priority 3 — Safe AI-assisted repair
 
 - [ ] Let NexoraAI explain likely causes and rank suggested fixes with supporting measurements.
+- [x] Enforce player-facing AI confidentiality: keep core/architecture/source/features/capabilities/performance/runtime diagnostics and operational details out of the player system prompt; retain operator diagnostics behind the authenticated XUID allowlist; reject obvious infrastructure disclosures in non-admin model output and test both blocking and normal gameplay responses.
 - [ ] Generate proposed patches/config changes for operator review; never apply source-code or risky runtime changes autonomously.
 - [ ] Require explicit operator approval, backups, validation, and a rollback path for every change.
 - [ ] Run tests/build checks before a proposed fix is considered ready.

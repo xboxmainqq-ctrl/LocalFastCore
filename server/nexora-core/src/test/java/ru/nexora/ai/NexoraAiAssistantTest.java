@@ -7,6 +7,24 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 class NexoraAiAssistantTest {
+    @Test
+    void playerOutputGuardDetectsInternalCoreAndInfrastructureDisclosure() {
+        assertTrue(NexoraAiAssistant.containsConfidentialInfrastructureDisclosure(
+                "NEXORA использует собственную архитектуру ядра."));
+        assertTrue(NexoraAiAssistant.containsConfidentialInfrastructureDisclosure(
+                "У сервера 8 потоков JVM и 4 CPU."));
+        assertTrue(NexoraAiAssistant.containsConfidentialInfrastructureDisclosure(
+                "Внутренние модули и исходный код ядра закрыты."));
+    }
+
+    @Test
+    void playerOutputGuardAllowsOrdinaryGameplayHelp() {
+        assertFalse(NexoraAiAssistant.containsConfidentialInfrastructureDisclosure(
+                "Чтобы скрафтить факел, поставь уголь над палкой."));
+        assertFalse(NexoraAiAssistant.containsConfidentialInfrastructureDisclosure(
+                "Зомби появляется ночью и боится солнечного света."));
+    }
+
     @Test void missingKeyDisablesAssistant() {
         assertFalse(NexoraAiAssistant.fromEnvironment(Map.of(), new NexoraAiDiagnostics()).isEnabled());
     }

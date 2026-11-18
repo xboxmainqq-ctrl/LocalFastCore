@@ -173,5 +173,4 @@ class MobAiLoadControllerTest {
         controller.recordScheduled(id);
         assertEquals(0, controller.starvationTicks(id));
     }
-
-
+}

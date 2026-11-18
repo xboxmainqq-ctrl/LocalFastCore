@@ -47,6 +47,25 @@ class PlayerOnlineLeaseRegistryTest {
     }
 
     @Test
+    void jdbcLeaseExpiryUsesSharedDatabaseClockInsteadOfNodeSuppliedTime() throws Exception {
+        String url = "jdbc:h2:mem:online-lease-db-clock;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000";
+        java.util.concurrent.atomic.AtomicLong databaseClock = new java.util.concurrent.atomic.AtomicLong(1_000L);
+        JdbcPlayerOnlineLeaseRegistry nodeA =
+                new JdbcPlayerOnlineLeaseRegistry(dataSource(url), databaseClock::get);
+        nodeA.initializeSchema();
+        JdbcPlayerOnlineLeaseRegistry nodeB =
+                new JdbcPlayerOnlineLeaseRegistry(dataSource(url), databaseClock::get);
+
+        assertTrue(nodeA.acquire("xuid-db-clock", "node-a", "session-a", 9_000_000L, 1_000L));
+        databaseClock.set(1_500L);
+        assertFalse(nodeB.acquire("xuid-db-clock", "node-b", "session-b", 1L, 1_000L),
+                "A node with a fast local clock must not steal a lease before the shared DB expiry");
+        databaseClock.set(2_001L);
+        assertTrue(nodeB.acquire("xuid-db-clock", "node-b", "session-b", 1L, 1_000L),
+                "A node with a slow local clock must still reclaim after shared DB expiry");
+    }
+
+    @Test
     void concurrentJdbcNodesCannotAcquireSameUnownedXuid() throws Exception {
         String url = "jdbc:h2:mem:online-lease-race;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000";
         java.util.concurrent.atomic.AtomicLong clock = new java.util.concurrent.atomic.AtomicLong(500L);

@@ -194,3 +194,6 @@ The JDBC adapter also validates legal monotonic transitions before its version-g
 
 
 The monotonic successor validation is now centralized in `PlayerTransferRecord` and enforced by all three ledger adapters: in-memory reference, local file, and JDBC. This prevents any adapter from reopening COMMITTED/ABORTED records, reusing a fencing token, reclaiming before lease expiry, or rewriting player identity and checkpoint revision. The latest validation run completed 750 tests with zero failures.
+
+
+The H2 integration suite also verifies lease expiry and reclaim after a fresh DataSource reconnect: the replacement claimant receives a strictly higher fencing token, the old claimant cannot commit, and the new claimant can complete the transfer. Latest CI validation: 751 tests passed with zero failures.

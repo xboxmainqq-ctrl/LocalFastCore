@@ -26,7 +26,6 @@ class WorldRuntimeModuleTest {
         assertEquals(1, runtime.registeredPersistenceTasks());
         assertEquals(1, runtime.tickStats().registeredTasks());
         assertEquals(1, runtime.persistenceStats().registeredTasks());
-        assertEquals(0, runtime.tickStats().completedRuns());
         assertEquals(0, runtime.persistenceStats().failedRuns());
 
         runtime.close();

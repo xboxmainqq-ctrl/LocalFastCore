@@ -89,9 +89,15 @@ class RuntimeTaskSchedulerTest {
 
         assertTrue(tickRan.await(2, TimeUnit.SECONDS));
         assertTrue(persistenceRan.await(2, TimeUnit.SECONDS));
-        RuntimeTaskScheduler.LaneStats tick = scheduler.stats(RuntimeTaskScheduler.Lane.TICK);
-        RuntimeTaskScheduler.LaneStats persistence =
-                scheduler.stats(RuntimeTaskScheduler.Lane.PERSISTENCE);
+        long metricsDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        RuntimeTaskScheduler.LaneStats tick;
+        RuntimeTaskScheduler.LaneStats persistence;
+        do {
+            tick = scheduler.stats(RuntimeTaskScheduler.Lane.TICK);
+            persistence = scheduler.stats(RuntimeTaskScheduler.Lane.PERSISTENCE);
+            if (tick.completedRuns() >= 3 && persistence.completedRuns() >= 2) break;
+            Thread.yield();
+        } while (System.nanoTime() < metricsDeadline);
 
         assertTrue(tick.completedRuns() >= 3);
         assertTrue(persistence.completedRuns() >= 2);

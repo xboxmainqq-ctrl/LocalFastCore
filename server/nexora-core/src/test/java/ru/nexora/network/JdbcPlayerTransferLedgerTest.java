@@ -40,7 +40,7 @@ class JdbcPlayerTransferLedgerTest {
         PlayerTransferRecord recovered = afterRestart.get(transferId).orElseThrow();
         assertEquals(claim, recovered);
         assertFalse(afterRestart.compareAndSet(
-                transferId, 0L, recovered.committed(102L)),
+                transferId, 0L, recovered),
                 "A stale expected version must never advance the durable record");
         PlayerTransferRecord tamperedIdentity = new PlayerTransferRecord(
                 transferId, "different-player-xuid", recovered.sourceNode(), recovered.targetNode(),

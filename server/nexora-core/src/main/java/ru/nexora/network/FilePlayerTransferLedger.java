@@ -125,7 +125,7 @@ public final class FilePlayerTransferLedger implements PlayerTransferLedger {
                 }
             }
         }
-        matches.sort(Comparator.comparingLong(PlayerTransferRecord::updatedAtEpochMillis)
+        matches.sort(Comparator.comparingLong(PlayerTransferRecord::updatedAtEpochMillis).reversed()
                 .thenComparing(record -> record.transferId().toString()));
         return List.copyOf(matches.subList(0, Math.min(limit, matches.size())));
     }

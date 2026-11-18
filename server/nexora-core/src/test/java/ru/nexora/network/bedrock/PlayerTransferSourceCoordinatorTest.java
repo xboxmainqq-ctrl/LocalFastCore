@@ -5,12 +5,13 @@ import org.junit.jupiter.api.io.TempDir;
 import ru.nexora.inventory.ContainerInventory;
 import ru.nexora.inventory.PlayerEquipment;
 import ru.nexora.inventory.PlayerInventory;
-import ru.nexora.network.ClusterMessage;
-import ru.nexora.network.ClusterTransport;
 import ru.nexora.network.DurableHandoffCoordinator;
 import ru.nexora.network.InMemoryPlayerTransferLedger;
 import ru.nexora.network.PlayerHandoff;
 import ru.nexora.network.PlayerTransferClusterEndpoint;
+import ru.nexora.network.AuthenticatedClusterMessageCodec;
+import ru.nexora.network.ClusterReplayGuard;
+import ru.nexora.network.TcpClusterTransport;
 import ru.nexora.network.PlayerTransferCoordinator;
 import ru.nexora.network.PlayerTransferRecord;
 import ru.nexora.network.PlayerTransferSourceCoordinator;
@@ -29,12 +30,12 @@ import ru.nexora.world.World;
 
 import java.lang.reflect.Field;
 import java.nio.file.Path;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -77,29 +78,57 @@ class PlayerTransferSourceCoordinatorTest {
 
             CheckpointedPlayerTransferDestination destination = new CheckpointedPlayerTransferDestination(
                     ledger, checkpoints, "target-node",
-                    new BedrockPendingTransferActivator(targetSessions), now::get);
+                    new BedrockPendingTransferActivator(targetSessions), System::currentTimeMillis);
             PlayerTransferClusterEndpoint endpoint = new PlayerTransferClusterEndpoint(
-                    "target-node", ledger, destination, 5_000L, now::get);
-            ClusterTransport transport = new DirectClusterTransport(endpoint);
+                    "target-node", ledger, destination, 5_000L, System::currentTimeMillis);
+            int sourcePort = availablePort();
+            int targetPort = availablePort();
+            InetSocketAddress sourceAddress = new InetSocketAddress("127.0.0.1", sourcePort);
+            InetSocketAddress targetAddress = new InetSocketAddress("127.0.0.1", targetPort);
+            byte[] clusterSecret = new byte[32];
+            java.util.Arrays.fill(clusterSecret, (byte) 0x5a);
+            TcpClusterTransport targetTransport = new TcpClusterTransport(
+                    "target-node", targetAddress, Map.of("source-node", sourceAddress), java.util.Set.of("source-node"),
+                    new AuthenticatedClusterMessageCodec(clusterSecret, 60_000L),
+                    new ClusterReplayGuard(128, 60_000L),
+                    Duration.ofSeconds(2), Duration.ofSeconds(2), 2, 32);
+            TcpClusterTransport sourceTransport = new TcpClusterTransport(
+                    "source-node", sourceAddress, Map.of("target-node", targetAddress), java.util.Set.of("target-node"),
+                    new AuthenticatedClusterMessageCodec(clusterSecret, 60_000L),
+                    new ClusterReplayGuard(128, 60_000L),
+                    Duration.ofSeconds(2), Duration.ofSeconds(2), 2, 32);
+            targetTransport.start(message -> {
+                try {
+                    endpoint.handle(message);
+                } catch (Exception failure) {
+                    throw new IllegalStateException(failure);
+                }
+            });
+            sourceTransport.start(message -> { });
             PlayerTransferSourceCoordinator source = new PlayerTransferSourceCoordinator(
                     "source-node", ledger,
                     new BedrockPlayerTransferSource(sourceSessions, "source-node", ignored -> xuid),
-                    sourceSessions, transport, Duration.ofSeconds(2), now::get);
+                    sourceSessions, sourceTransport, Duration.ofSeconds(3), System::currentTimeMillis);
 
             PlayerHandoff handoff = new PlayerHandoff(
                     UUID.randomUUID(), 7L, "source-node", "target-node", new byte[0]);
-            PlayerTransferRecord committed = source.transfer(
-                    handoff, xuid, "target.example.net", 19132);
+            try {
+                PlayerTransferRecord committed = source.transfer(
+                        handoff, xuid, "target.example.net", 19132);
 
-            assertEquals(PlayerTransferRecord.State.COMMITTED, committed.state());
-            assertEquals(xuid, committed.playerXuid());
-            assertTrue((boolean) getSessionField(sourceSessions, "source-connection", "transferFrozen"));
-            assertTrue((boolean) getSessionField(sourceSessions, "source-connection", "transferRedirected"));
-            assertTrue((boolean) getSessionField(sourceSessions, "source-connection", "rejected"));
-            assertFalse(outboundFrames.isEmpty(), "Source must send the Bedrock TransferPacket after commit");
-            assertTrue(targetSessions.deactivateTransferRestore(
-                    xuid, handoff.transferId(), committed.fencingToken()),
-                    "Destination must have reserved the exact checkpoint for the next login");
+                assertEquals(PlayerTransferRecord.State.COMMITTED, committed.state());
+                assertEquals(xuid, committed.playerXuid());
+                assertTrue((boolean) getSessionField(sourceSessions, "source-connection", "transferFrozen"));
+                assertTrue((boolean) getSessionField(sourceSessions, "source-connection", "transferRedirected"));
+                assertTrue((boolean) getSessionField(sourceSessions, "source-connection", "rejected"));
+                assertFalse(outboundFrames.isEmpty(), "Source must send the Bedrock TransferPacket after commit");
+                assertTrue(targetSessions.deactivateTransferRestore(
+                        xuid, handoff.transferId(), committed.fencingToken()),
+                        "Destination must have reserved the exact checkpoint for the next login");
+            } finally {
+                sourceTransport.close();
+                targetTransport.close();
+            }
         } finally {
             sourceSessions.close();
             targetSessions.close();
@@ -132,30 +161,9 @@ class PlayerTransferSourceCoordinatorTest {
         return field.get(state);
     }
 
-    private static final class DirectClusterTransport implements ClusterTransport {
-        private final PlayerTransferClusterEndpoint endpoint;
-
-        private DirectClusterTransport(PlayerTransferClusterEndpoint endpoint) {
-            this.endpoint = endpoint;
-        }
-
-        @Override
-        public void start(java.util.function.Consumer<ClusterMessage> receiver) {
-            throw new UnsupportedOperationException("Direct test transport is already connected to its endpoint");
-        }
-
-        @Override
-        public CompletionStage<Void> send(ClusterMessage message) {
-            try {
-                endpoint.handle(message);
-                return CompletableFuture.completedFuture(null);
-            } catch (Exception failure) {
-                return CompletableFuture.failedFuture(failure);
-            }
-        }
-
-        @Override
-        public void close() {
+    private static int availablePort() throws Exception {
+        try (ServerSocket socket = new ServerSocket(0)) {
+            return socket.getLocalPort();
         }
     }
 }

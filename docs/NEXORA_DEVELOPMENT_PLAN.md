@@ -48,6 +48,8 @@ Gameplay systems -> Gameplay Events / Gameplay Graph -> Work Graph -> Task Contr
 - Cross-server movement uses explicit handoff state, never shared mutable world objects.
 - Interest management scopes particles, visual effects and observer-specific work to relevant players.
 - Cluster routing and capacity decisions are based on measured player/world/gameplay/network pressure.
+- `ServerNode` and `GatewayRouter` provide profile-aware, health-aware, load-aware destination selection.
+- `PlayerHandoff` defines an immutable cross-server transfer envelope; source freeze, destination claim, commit/rollback and transport are still required.
 - Fixed online capacity claims are prohibited until benchmark evidence exists.
 
 ## Next development sequence

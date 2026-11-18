@@ -494,6 +494,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 }
                 state.transferFrozen = true;
                 try {
+                    if (state.openContainerWindowId != 0) closeContainerWindow(networkId, state, true);
+                    returnCraftingGridItems(state);
                     saveAllPlayerState(state);
                     revision = checkpointService.latestRevision(playerXuid);
                     if (revision < 0) throw new IOException("Canonical checkpoint was not written");
@@ -548,6 +550,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         } finally {
             state.combatLock.unlock();
         }
+        sendContainerReconciliation(networkId, state);
         advertisePlayerList(networkId, state);
     }
 

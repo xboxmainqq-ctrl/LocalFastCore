@@ -654,7 +654,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     try {
                         renewed = onlineLeaseRegistry.renew(identity.xuid(), transferOwnershipNodeId,
                                 leaseSessionId, System.currentTimeMillis(), onlineLeaseMillis);
-                    } catch (IOException failure) {
+                    } catch (IOException | RuntimeException failure) {
                         renewed = false;
                     }
                     if (!renewed) {
@@ -696,7 +696,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     if (state.transferFrozen || state.rejected || !state.loginAuthenticated) continue;
                     try {
                         assertTransferNodeOwnership(state);
-                    } catch (IOException | SecurityException ownershipFailure) {
+                    } catch (IOException | RuntimeException ownershipFailure) {
                         state.onlineLeaseLost = true;
                         state.rejected = true;
                         state.loginAuthenticated = false;

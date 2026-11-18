@@ -61,6 +61,10 @@ class BedrockSessionLoadTest {
                     "network-settings negotiation alone must not authenticate a player");
             assertEquals(CLIENTS, outboundFrames.size(),
                     "every initial settings request must receive a response");
+            assertEquals(CLIENTS, manager.inboundStats().frames());
+            assertEquals(CLIENTS, manager.inboundStats().completedMessages());
+            assertEquals(0, manager.inboundStats().failedFrames());
+            assertEquals(CLIENTS, manager.inboundStats().activeChannels());
             assertFalse(manager.awaitNoActiveSessions(Duration.ZERO));
 
             List<java.util.concurrent.Callable<Void>> disconnectTasks = new ArrayList<>(CLIENTS);
@@ -79,6 +83,7 @@ class BedrockSessionLoadTest {
             assertTrue(manager.awaitNoActiveSessions(Duration.ofSeconds(2)));
             assertEquals(0, manager.activeSessionCount());
             assertEquals(0, manager.activeInboundChannelCount());
+            assertEquals(0, manager.inboundStats().activeChannels());
         } finally {
             executor.shutdownNow();
             manager.close();

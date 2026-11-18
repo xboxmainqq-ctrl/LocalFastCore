@@ -47,7 +47,7 @@ public final class InMemoryPlayerTransferLedger implements PlayerTransferLedger 
         return records.values().stream()
                 .filter(record -> record.targetNode().equals(targetNode))
                 .filter(InMemoryPlayerTransferLedger::isRecoverable)
-                .sorted(Comparator.comparingLong(PlayerTransferRecord::updatedAtEpochMillis)
+                .sorted(Comparator.comparingLong(PlayerTransferRecord::updatedAtEpochMillis).reversed()
                         .thenComparing(record -> record.transferId().toString()))
                 .limit(limit)
                 .toList();

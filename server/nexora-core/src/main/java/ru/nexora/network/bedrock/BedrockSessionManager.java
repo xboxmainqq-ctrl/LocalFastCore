@@ -928,17 +928,20 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private void saveAllPlayerState(SessionState state) throws IOException {
+        // The shared canonical snapshot is the cluster authority; write it
+        // before updating host-local compatibility files.
+        checkpointCanonicalPlayerState(state);
         savePlayer(state);
         saveInventory(state);
         saveEquipment(state);
-        checkpointCanonicalPlayerState(state);
     }
 
     private long saveAllPlayerStateForTransfer(SessionState state) throws IOException {
+        long revision = checkpointCanonicalPlayerState(state, true);
         savePlayer(state);
         saveInventory(state);
         saveEquipment(state);
-        return checkpointCanonicalPlayerState(state, true);
+        return revision;
     }
 
     /** Revalidates destination ownership before any player persistence write. */

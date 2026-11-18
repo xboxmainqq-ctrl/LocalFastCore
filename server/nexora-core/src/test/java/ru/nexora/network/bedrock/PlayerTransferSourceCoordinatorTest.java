@@ -2,44 +2,39 @@ package ru.nexora.network.bedrock;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import ru.nexora.inventory.ContainerInventory;
-import ru.nexora.inventory.PlayerEquipment;
-import ru.nexora.inventory.PlayerInventory;
+import ru.nexora.network.AuthenticatedClusterMessageCodec;
+import ru.nexora.network.CheckpointedPlayerTransferDestination;
+import ru.nexora.network.ClusterMessage;
+import ru.nexora.network.ClusterReplayGuard;
+import ru.nexora.network.ClusterTransport;
 import ru.nexora.network.DurableHandoffCoordinator;
 import ru.nexora.network.InMemoryPlayerTransferLedger;
 import ru.nexora.network.PlayerHandoff;
 import ru.nexora.network.PlayerTransferClusterEndpoint;
-import ru.nexora.network.AuthenticatedClusterMessageCodec;
-import ru.nexora.network.ClusterReplayGuard;
-import ru.nexora.network.TcpClusterTransport;
 import ru.nexora.network.PlayerTransferCoordinator;
-import ru.nexora.network.PlayerTransferRecord;
 import ru.nexora.network.PlayerTransferLifecycle;
-import ru.nexora.network.PlayerTransferClusterEndpoint;
+import ru.nexora.network.PlayerTransferRecord;
 import ru.nexora.network.PlayerTransferSourceCoordinator;
-import ru.nexora.network.CheckpointedPlayerTransferDestination;
-import ru.nexora.network.bedrock.BedrockPlayerTransferSource;
-import ru.nexora.network.bedrock.BedrockPendingTransferActivator;
+import ru.nexora.network.TcpClusterTransport;
 import ru.nexora.network.nethernet.NetherNetClientIdentity;
 import ru.nexora.persistence.FilePlayerStateStore;
 import ru.nexora.persistence.PlayerStateBundle;
 import ru.nexora.persistence.PlayerStateBundleCodec;
 import ru.nexora.persistence.PlayerStateCheckpointService;
 import ru.nexora.world.FlatWorldGenerator;
-import ru.nexora.world.PlayerData;
-import ru.nexora.world.PlayerVitals;
 import ru.nexora.world.World;
 
 import java.lang.reflect.Field;
-import java.nio.file.Path;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 class PlayerTransferSourceCoordinatorTest {
     @TempDir

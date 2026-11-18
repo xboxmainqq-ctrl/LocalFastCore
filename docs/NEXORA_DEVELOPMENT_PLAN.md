@@ -54,10 +54,10 @@ Connect every Work Graph node to its full TaskContract instead of duplicating on
 `GameplayWorkBridge` converts events into explicit Work Graph items without coupling gameplay modules to the scheduler.
 
 ### 10. Safe execution ownership — IN PROGRESS
-`StateOwnership` establishes explicit PLAYER/WORLD/ENTITY/GAMEPLAY/PERSISTENCE ownership. Parallel world mutation remains disabled until stronger lifecycle and contention tests exist.
+`StateOwnership` and scoped `OwnershipGuard` establish explicit PLAYER/WORLD/ENTITY/GAMEPLAY/PERSISTENCE ownership. Parallel world mutation remains disabled until lifecycle and contention tests are complete.
 
-### 11. Adaptive multi-lane budgeting
-React to player density, world activity, entity density, AI pressure and gameplay workload while preserving critical work.
+### 11. Adaptive multi-lane budgeting — FOUNDATION DONE
+`AdaptiveBudget` now adjusts per-lane budgets from pressure, protecting player/world capacity while reducing background work first. Integration with live runtime pressure remains next.
 
 ### 12. RPG foundation
 Build generic APIs for classes, stats, abilities, resources and progression on top of Gameplay Graph.

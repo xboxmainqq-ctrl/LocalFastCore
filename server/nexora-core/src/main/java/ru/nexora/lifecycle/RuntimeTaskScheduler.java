@@ -91,6 +91,7 @@ public final class RuntimeTaskScheduler implements AutoCloseable {
         if (!closed.compareAndSet(false, true)) return;
         lanes.values().forEach(lane -> lane.executor.shutdown());
         IOException failure = null;
+        boolean interrupted = false;
         for (Map.Entry<Lane, LaneRuntime> entry : lanes.entrySet()) {
             try {
                 if (!entry.getValue().executor.awaitTermination(
@@ -105,15 +106,15 @@ public final class RuntimeTaskScheduler implements AutoCloseable {
                     }
                 }
             } catch (InterruptedException exception) {
+                interrupted = true;
                 entry.getValue().executor.shutdownNow();
-                Thread.currentThread().interrupt();
-                IOException interrupted = new IOException(
+                IOException interruptedFailure = new IOException(
                         "Interrupted while stopping " + entry.getKey() + " task lane", exception);
-                if (failure == null) failure = interrupted;
-                else failure.addSuppressed(interrupted);
-                break;
+                if (failure == null) failure = interruptedFailure;
+                else failure.addSuppressed(interruptedFailure);
             }
         }
+        if (interrupted) Thread.currentThread().interrupt();
         if (failure != null) throw failure;
     }
 

@@ -2838,22 +2838,6 @@ class BedrockSessionManagerTest {
         method.invoke(manager, tick);
     }
 
-    private static Object getSessionField(
-            BedrockSessionManager manager, String networkId, String fieldName
-    ) throws Exception {
-        java.lang.reflect.Field sessionsField =
-                BedrockSessionManager.class.getDeclaredField("sessions");
-        sessionsField.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        java.util.Map<String, Object> sessions =
-                (java.util.Map<String, Object>) sessionsField.get(manager);
-        Object state = sessions.get(networkId);
-        assertNotNull(state);
-        java.lang.reflect.Field field = state.getClass().getDeclaredField(fieldName);
-        field.setAccessible(true);
-        return field.get(state);
-    }
-
     private static void invokeFireTick(
             BedrockSessionManager manager, String networkId, long tick
     ) throws Exception {

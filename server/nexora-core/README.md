@@ -142,3 +142,27 @@ Dropped-item actors are now represented in the world item manager and synchroniz
 ## Player movement simulation
 
 The world module includes a deterministic server-side movement simulator (`PlayerPhysics`) with bounded tick duration, walking/sprinting, jump impulse, gravity, ground contact, axis-separated wall collision and safe spawn validation. The production Bedrock session manager now feeds PlayerAuthInput movement vectors and sprint/jump flags into that simulator, stores authoritative position/velocity, and emits tick-associated CorrectPlayerMovePrediction packets when client prediction diverges. StartGame provides a 20-tick correction rewind window. This is the first integrated movement pass; water, sneak/fly, knockback, effects, fall damage and Android/Windows client tuning remain follow-up work.
+
+## Cluster transfer storage (experimental; handoff not enabled)
+
+The transfer ledger and canonical player checkpoints can use shared JDBC storage instead of per-host files. Configure a unique node ID on every server process and configure both shared stores:
+
+~~~sh
+NEXORA_NODE_ID=survival-01
+NEXORA_TRANSFER_JDBC_URL=jdbc:postgresql://db.example.internal:5432/nexora
+NEXORA_TRANSFER_JDBC_USER=nexora
+NEXORA_TRANSFER_JDBC_PASSWORD=replace-with-secret
+NEXORA_TRANSFER_JDBC_INITIALIZE_SCHEMA=false
+NEXORA_PLAYER_STATE_JDBC_URL=jdbc:postgresql://db.example.internal:5432/nexora
+NEXORA_PLAYER_STATE_JDBC_USER=nexora
+NEXORA_PLAYER_STATE_JDBC_PASSWORD=replace-with-secret
+NEXORA_PLAYER_STATE_JDBC_INITIALIZE_SCHEMA=false
+~~~
+
+- The first three JDBC environment variables in each group configure the corresponding store; credentials must be provided as a pair.
+- Set the two `*_INITIALIZE_SCHEMA` flags to `true` only when intentionally allowing startup to create the tables. Prefer deployment-managed schema migrations in production.
+- The matching JDBC driver must be present on the runtime classpath. The player checkpoint schema initializer currently supports H2, PostgreSQL and MySQL/MariaDB.
+- When a shared transfer ledger is selected, startup refuses to continue unless player checkpoints are also configured as shared. This prevents a destination from claiming a transfer whose inventory/equipment/position snapshot exists only on another host's local disk.
+- Leave both JDBC URLs unset for the single-host file-backed development mode.
+
+**Important:** shared SQL storage is only the persistence foundation. Authenticated node-to-node transfer RPC, source/destination orchestration, Bedrock client redirect/reconnect and multi-process crash recovery are not yet wired into the live server. Do not treat this configuration as enabling production cross-host player migration.

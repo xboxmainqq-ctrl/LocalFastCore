@@ -46,9 +46,10 @@ class NexoraAiRepairAdvisorTest {
         }
 
         var created = advisor.analyze(diagnostics);
-        assertEquals(2, created.size());
+        assertEquals(3, created.size());
         assertTrue(created.stream().anyMatch(p -> p.issue().contains("mob-ai")));
         assertTrue(created.stream().anyMatch(p -> p.issue().contains("потоков")));
+        assertTrue(created.stream().anyMatch(p -> p.issue().contains("heap JVM")));
         assertTrue(created.stream().allMatch(p ->
                 p.status() == NexoraAiRepairProposals.Status.PENDING_REVIEW));
     }

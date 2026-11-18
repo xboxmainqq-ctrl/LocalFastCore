@@ -156,7 +156,7 @@ public final class NexoraAiDiagnostics {
         long currentMinute = Math.floorDiv(nanoClock.getAsLong(), LATENCY_BUCKET_NANOS);
         List<ActivityWindowSummary> summaries = new ArrayList<>();
         for (int windowMinutes : new int[]{5, 60}) {
-            long failures = 0, resourceSamples = 0, pressureSamples = 0, heapSamples = 0;
+            long failures = 0, resourceSamples = 0, pressureSamples = 0, heapSamples = 0, loadSamples = 0;
             double heapTotal = 0.0, maxHeap = 0.0, maxLoadRatio = 0.0;
             long firstObservedMinute = Long.MAX_VALUE;
             for (Map.Entry<Long, ActivityBucket> entry
@@ -167,6 +167,7 @@ public final class NexoraAiDiagnostics {
                 resourceSamples = saturatedAdd(resourceSamples, bucket.resourceSamples);
                 pressureSamples = saturatedAdd(pressureSamples, bucket.pressureSamples);
                 heapSamples = saturatedAdd(heapSamples, bucket.heapRatioSamples);
+                loadSamples = saturatedAdd(loadSamples, bucket.loadRatioSamples);
                 heapTotal += bucket.heapRatioTotal;
                 maxHeap = Math.max(maxHeap, bucket.maxHeapRatio);
                 maxLoadRatio = Math.max(maxLoadRatio, bucket.maxLoadRatio);
@@ -178,8 +179,7 @@ public final class NexoraAiDiagnostics {
                     resourceSamples, pressureSamples,
                     heapSamples == 0 ? -1.0 : heapTotal / heapSamples,
                     heapSamples == 0 ? -1.0 : maxHeap,
-                    activityBuckets.tailMap(currentMinute - windowMinutes + 1, true).values().stream()
-                            .mapToLong(bucket -> bucket.loadRatioSamples).sum() == 0 ? -1.0 : maxLoadRatio));
+                    loadSamples == 0 ? -1.0 : maxLoadRatio));
         }
         return List.copyOf(summaries);
     }

@@ -110,7 +110,7 @@ Do not consider the mob system finished after the load controller alone. Complet
 
 ## Current next steps
 
-1. Extract the remaining gameplay and diagnostics runtime boundaries; keep startup rollback and shutdown ordering covered by tests.
+1. Extract the remaining gameplay runtime boundary; keep startup rollback and shutdown ordering covered by tests.
 2. Add a shared bounded task/tick orchestration layer for world subsystems, with cancellation, failure reporting, and deterministic tests.
 3. Introduce readiness and graceful admission shutdown, then drain sessions and persist world/player state in a defined order.
 4. Continue the remaining mob and spawner integration/load checks; real Bedrock client verification remains a separate gate.

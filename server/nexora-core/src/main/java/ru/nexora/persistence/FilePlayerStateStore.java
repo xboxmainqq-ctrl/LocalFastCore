@@ -16,8 +16,6 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 /**
  * Durable local-disk checkpoint store.
@@ -35,7 +33,7 @@ public final class FilePlayerStateStore implements PlayerStateStore {
     private static final int MAX_FILE_BYTES = 4 * 1024 * 1024 + 128;
 
     private final Path directory;
-    private static final ConcurrentMap<String, Object> PLAYER_LOCKS = new ConcurrentHashMap<>();
+    private static final Object[] PLAYER_LOCKS = createLocks();
 
     public FilePlayerStateStore(Path directory) throws IOException {
         Objects.requireNonNull(directory, "directory");
@@ -52,7 +50,7 @@ public final class FilePlayerStateStore implements PlayerStateStore {
         byte[] payload = snapshot.payload();
         if (payload.length > MAX_PAYLOAD_BYTES) throw new IOException("Player snapshot exceeds storage limit");
 
-        synchronized (PLAYER_LOCKS.computeIfAbsent(lockPath(snapshot.playerId()).toString(), ignored -> new Object())) {
+        synchronized (lockFor(snapshot.playerId())) {
             Path lockPath = lockPath(snapshot.playerId());
             rejectSymlink(lockPath);
             try (FileChannel lockChannel = FileChannel.open(lockPath,
@@ -82,7 +80,7 @@ public final class FilePlayerStateStore implements PlayerStateStore {
     @Override
     public Optional<PlayerStateSnapshot> loadLatest(long playerId) throws IOException {
         if (playerId < 0) throw new IllegalArgumentException("playerId < 0");
-        synchronized (PLAYER_LOCKS.computeIfAbsent(lockPath(playerId).toString(), ignored -> new Object())) {
+        synchronized (lockFor(playerId)) {
             Path lockPath = lockPath(playerId);
             rejectSymlink(lockPath);
             try (FileChannel lockChannel = FileChannel.open(lockPath,
@@ -172,6 +170,16 @@ public final class FilePlayerStateStore implements PlayerStateStore {
         } finally {
             Files.deleteIfExists(temporary);
         }
+    }
+
+    private static Object[] createLocks() {
+        Object[] locks = new Object[256];
+        for (int i = 0; i < locks.length; i++) locks[i] = new Object();
+        return locks;
+    }
+
+    private static Object lockFor(long playerId) {
+        return PLAYER_LOCKS[Math.floorMod(Long.hashCode(playerId), PLAYER_LOCKS.length)];
     }
 
     private Path snapshotPath(long playerId) {

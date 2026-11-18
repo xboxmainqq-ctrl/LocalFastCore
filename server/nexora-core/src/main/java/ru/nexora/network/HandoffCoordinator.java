@@ -13,19 +13,19 @@ import java.util.UUID;
 public final class HandoffCoordinator {
     public enum State { PREPARED, CLAIMED, COMMITTED, ABORTED }
 
-    private final Map<UUID, State> transfers = new HashMap<>();
+    private final Map<UUID, Transfer> transfers = new HashMap<>();
 
     public synchronized void prepare(PlayerHandoff handoff) {
         Objects.requireNonNull(handoff, "handoff");
-        if (transfers.putIfAbsent(handoff.transferId(), State.PREPARED) != null)
+        if (transfers.putIfAbsent(handoff.transferId(), new Transfer(handoff.targetNode(), State.PREPARED)) != null)
             throw new IllegalStateException("Transfer already exists: " + handoff.transferId());
     }
 
     public synchronized boolean claim(UUID transferId, String destinationNode) {
         Objects.requireNonNull(transferId, "transferId");
-        State state = require(transferId);
-        if (state != State.PREPARED) return false;
-        transfers.put(transferId, State.CLAIMED);
+        Transfer transfer = require(transferId);
+        if (!transfer.destinationNode().equals(destinationNode) || transfer.state() != State.PREPARED) return false;
+        transfers.put(transferId, transfer.withState(State.CLAIMED));
         return true;
     }
 
@@ -41,7 +41,11 @@ public final class HandoffCoordinator {
     }
 
     public synchronized State state(UUID transferId) {
-        return require(transferId);
+        return require(transferId).state();
+    }
+
+    private record Transfer(String destinationNode, State state) {
+        private Transfer withState(State next) { return new Transfer(destinationNode, next); }
     }
 
     private void transition(UUID id, State expected, State next) {
@@ -51,8 +55,8 @@ public final class HandoffCoordinator {
     }
 
     private State require(UUID id) {
-        State state = transfers.get(Objects.requireNonNull(id, "transferId"));
-        if (state == null) throw new IllegalArgumentException("Unknown transfer: " + id);
-        return state;
+        Transfer transfer = transfers.get(Objects.requireNonNull(id, "transferId"));
+        if (transfer == null) throw new IllegalArgumentException("Unknown transfer: " + id);
+        return transfer;
     }
 }

@@ -420,6 +420,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (!sessions.isEmpty()) {
             throw new IllegalStateException("Transfer ownership guard must be configured before sessions are created");
         }
+        if (onlineLeaseRegistry == null) {
+            throw new IllegalStateException("Global online player leases must be configured before transfer ownership");
+        }
         this.transferOwnershipLedger = transferLedger;
         this.transferOwnershipNodeId = nodeId;
     }

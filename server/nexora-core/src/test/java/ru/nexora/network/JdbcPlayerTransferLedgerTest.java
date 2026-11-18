@@ -124,6 +124,22 @@ class JdbcPlayerTransferLedgerTest {
     }
 
     @Test
+    void findsLatestTransferDecisionForXuidAcrossDifferentTransferIds() throws Exception {
+        String url = databaseUrl("latest-player-transfer");
+        JdbcPlayerTransferLedger ledger = new JdbcPlayerTransferLedger(dataSource(url));
+        ledger.initializeSchema();
+        UUID olderId = UUID.randomUUID();
+        UUID latestId = UUID.randomUUID();
+        assertTrue(ledger.create(PlayerTransferRecord.prepared(
+                olderId, "same-player", "node-a", "node-b", 7L, 900L)));
+        assertTrue(ledger.create(PlayerTransferRecord.prepared(
+                latestId, "same-player", "node-b", "node-c", 8L, 800L)));
+
+        assertEquals(latestId, ledger.findLatestForPlayer("same-player").orElseThrow().transferId());
+        assertTrue(ledger.findLatestForPlayer("missing-player").isEmpty());
+    }
+
+    @Test
     void listsOnlyBoundedRecoverableRecordsForTheRequestedDestinationAfterRestart() throws Exception {
         String url = databaseUrl("recoverable-list");
         JdbcPlayerTransferLedger ledger = new JdbcPlayerTransferLedger(dataSource(url));

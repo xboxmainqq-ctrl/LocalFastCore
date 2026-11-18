@@ -135,8 +135,8 @@ class BedrockSessionManagerTest {
             DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
                     new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
             InMemoryPlayerOnlineLeaseRegistry leases = new InMemoryPlayerOnlineLeaseRegistry();
-            manager.configureTransferOwnershipGuard(ledger, "node-a");
             manager.configureOnlinePlayerLeases(leases, 15_000L);
+            manager.configureTransferOwnershipGuard(ledger, "node-a");
             long now = System.currentTimeMillis();
             assertTrue(leases.acquire("orphan-xuid", "node-a", "orphan-session", now, 15_000L));
             manager.onIdentity("orphan-session", new NetherNetClientIdentity(

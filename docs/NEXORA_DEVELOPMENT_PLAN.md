@@ -225,3 +225,13 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Added a regression test for reservation and matching-token cancellation.
 - Important boundary: this is a destination-side login reservation, not client redirection or an authenticated source-to-destination RPC. The current server startup still uses the single-host file ledger, so cross-host gameplay transfer remains disabled.
 - Next: wire an authenticated cluster RPC for prepare/accept/abort, use the shared JDBC ledger on every node, add source/destination process-kill tests, and validate real Bedrock reconnect behavior before enabling the feature.
+
+### 33. Shared JDBC transfer-ledger startup configuration — IMPLEMENTED, CI PENDING
+- Added a standard-JDBC `DriverManagerDataSource` and `PlayerTransferLedgerFactory`.
+- Startup now selects the local checksummed file ledger when `NEXORA_TRANSFER_JDBC_URL` is absent, or the shared SQL ledger when it is configured.
+- Optional environment variables: `NEXORA_TRANSFER_JDBC_USER`, `NEXORA_TRANSFER_JDBC_PASSWORD`, and `NEXORA_TRANSFER_JDBC_INITIALIZE_SCHEMA=true|false`. Credentials must be supplied as a pair; schema creation remains opt-in so production migrations can be deployment-managed.
+- Shared JDBC mode requires an explicit `NEXORA_NODE_ID`; the unsafe shared fallback identity `standalone` is not accepted.
+- Startup output deliberately hides JDBC connection details and credentials.
+- The database's vendor JDBC driver must be supplied on the runtime classpath. H2 remains test-only; no production database vendor is selected or bundled.
+- Added tests for shared JDBC initialization/round-trip, local fallback, invalid credentials and schema flags.
+- Boundary: configuring a shared ledger makes the ownership metadata shared, but does not itself enable cross-host gameplay transfer. Authenticated RPC, client redirect/reconnect and process-failure validation remain mandatory gates.

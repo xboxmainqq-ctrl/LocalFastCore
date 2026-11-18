@@ -146,6 +146,8 @@ public final class NexoraServer {
         }
         long transferLeaseMillis = longEnvironmentValue(
                 "NEXORA_TRANSFER_LEASE_MS", 15_000L, 1_000L, 120_000L);
+        long onlinePlayerLeaseMillis = longEnvironmentValue(
+                "NEXORA_ONLINE_PLAYER_LEASE_MS", 15_000L, 3_000L, 120_000L);
         AtomicReference<WebRtcSdpNegotiator> negotiatorReference = new AtomicReference<>();
         BedrockSessionManager bedrockSessions = new BedrockSessionManager(
                 2225,
@@ -165,6 +167,8 @@ public final class NexoraServer {
                         event.packet().packetId(), event.networkId(), event.packet().payload().length));
         if (configuredTransferLedger.shared()) {
             bedrockSessions.configureTransferOwnershipGuard(transferLedger, transferNodeId);
+            bedrockSessions.configureOnlinePlayerLeases(
+                    configuredTransferLedger.onlineLeases(), onlinePlayerLeaseMillis);
         }
         ru.nexora.network.PlayerTransferRecoveryService.RecoveryReport transferRecovery =
                 bedrockSessions.recoverPendingTransferRestores(transferLedger, transferNodeId, 10_000);

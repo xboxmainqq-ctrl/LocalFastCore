@@ -83,3 +83,26 @@ Do not promise a fixed player count before benchmark evidence exists.
 8. Multi-process integration tests.
 9. Large-online benchmark suite.
 10. Failure/reconnect/handoff testing.
+
+
+## Player checkpoint and recovery boundary
+
+Player state is persisted as an immutable, schema-versioned snapshot rather than
+a live player/runtime object. Each snapshot carries a player ID, monotonically
+increasing revision, capture timestamp, payload and SHA-256 checksum.
+
+The storage contract requires atomic per-player saves:
+- a newer revision may replace an older revision;
+- an older revision is rejected as stale;
+- repeating the same revision and payload is idempotent;
+- a different payload for an already-used revision is a conflict.
+
+The current `InMemoryPlayerStateStore` is only a concurrency-safe reference
+adapter for tests and local development. It loses all data on process exit and
+must never be described as crash-recovery storage.
+
+A durable adapter and a persistent transfer ledger are still required before
+player handoff can recover safely across process crashes. The source must not
+release authoritative ownership until the destination has durably claimed and
+validated the transfer. Exactly-once behavior must not be claimed without the
+transactional/replicated guarantees that make it possible.

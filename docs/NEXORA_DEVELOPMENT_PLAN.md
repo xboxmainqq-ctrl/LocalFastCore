@@ -305,7 +305,7 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - An independent scheduler heartbeat checks active sessions every second, so idle players renew without relying on movement/input packets. The heartbeat runs on the monitoring lane, isolated from furnace ticks and persistence.
 - In shared-ledger mode, the shared canonical checkpoint is now preferred for every login, even when no prior transfer record exists. Host-local legacy player/inventory files are only fallback migration sources when no canonical snapshot has yet been created.
 - If a clustered player has no canonical snapshot yet, the first successful Bedrock initialization writes the complete restored aggregate to shared storage before gameplay admission. This makes legacy-file migration durable before the player can modify state.
-- Source transfer freeze releases the source online lease; a confirmed abort reacquires it before gameplay resumes. PREPARED/CLAIMED/COMMITTED transfer history continues to fence logins during the handoff gap.
+- Source transfer freeze retains and independently renews the source online lease while the checkpoint/PREPARED publication is in progress. Only after the exact PREPARED record is durably confirmed does the source coordinator release the lease; a confirmed abort reacquires it before gameplay resumes. PREPARED/CLAIMED/COMMITTED transfer history continues to fence logins during the handoff gap.
 - A session that loses its durable transfer fence or global online lease immediately stops gameplay and releases its matching online lease; destination rollback also releases any lease held by a partially activated session.
 - Periodic autosave now retains the active lease and validates ownership before writing shared state. Disconnect saves do the same; a former owner that has lost its lease is rejected and cannot overwrite the destination's canonical checkpoint.
 - Transfer freeze also validates the active global lease before setting the frozen flag or writing the handoff checkpoint.
@@ -321,3 +321,9 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Verified an ABORTED transfer restores source-node login authority and rejects the destination after restart.
 - CI: 809 tests passed, zero failures on commit `3427de8`.
 - Remaining: run the same scenarios with two actual server JVMs, a production SQL engine, network partitions, and abrupt process termination at each handoff boundary.
+### 43. Close the source-freeze / PREPARED lease gap — IMPLEMENTED, CI PENDING
+- Found and closed a race where `freezePlayerForTransfer` released the source lease before the durable PREPARED row existed. A destination could otherwise win first login in that gap.
+- Source keeps its lease and the independent heartbeat renews frozen sessions while the PREPARED write is pending. The source adapter now releases only after checking the exact XUID/source/transfer ID in a durable PREPARED record.
+- Both source orchestration paths invoke a new `Source.onPrepared` hook. If lease release fails after PREPARED, they CAS-abort that exact newly-created PREPARED record and resume only after durable ABORTED; ambiguous publication remains frozen. Existing/reused transfer IDs are checked before freeze, and uncertain duplicate creation is never blindly aborted.
+- Added tests for callback ordering, safe abort on lease-release failure, and the Bedrock source lease remaining exclusive until PREPARED publication.
+- Also fixed legacy login migration so the presence of an inventory file no longer suppresses restoration of the separate player profile or equipment file.

@@ -21,7 +21,7 @@ class NetworkRuntimeModuleTest {
 
         assertEquals(List.of(
                 "start-discovery", "start-signaling",
-                "close-discovery", "close-signaling", "close-negotiator", "close-sessions"
+                "close-discovery", "close-signaling", "close-negotiator"
         ), events);
         assertTrue(module.isClosed());
     }
@@ -36,7 +36,7 @@ class NetworkRuntimeModuleTest {
         assertEquals("signaling startup failed", failure.getMessage());
         assertEquals(List.of(
                 "start-discovery", "start-signaling",
-                "close-discovery", "close-signaling", "close-negotiator", "close-sessions"
+                "close-discovery", "close-signaling", "close-negotiator"
         ), events);
         assertTrue(module.isClosed());
     }
@@ -49,10 +49,10 @@ class NetworkRuntimeModuleTest {
         Exception failure = assertThrows(Exception.class, module::close);
 
         assertEquals(List.of(
-                "close-discovery", "close-signaling", "close-negotiator", "close-sessions"
+                "close-discovery", "close-signaling", "close-negotiator"
         ), events);
         assertEquals("discovery close failed", failure.getMessage());
-        assertEquals(3, failure.getSuppressed().length);
+        assertEquals(2, failure.getSuppressed().length);
     }
 
     @Test
@@ -71,7 +71,6 @@ class NetworkRuntimeModuleTest {
                 service("discovery", events, false, failClose),
                 service("signaling", events, failSignalingStart, failClose),
                 closeable("negotiator", events, failClose),
-                closeable("sessions", events, failClose)
         );
     }
 

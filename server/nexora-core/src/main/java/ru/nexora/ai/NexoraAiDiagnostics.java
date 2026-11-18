@@ -417,6 +417,19 @@ public final class NexoraAiDiagnostics {
                                 : String.format(java.util.Locale.ROOT, "%.2f", summary.maxSystemLoadPerProcessor()));
             }
         }
+        List<SubsystemHealth> health = subsystemHealth();
+        if (!health.isEmpty() && result.length() < MAX_EVIDENCE_LENGTH) {
+            result.append("\nСостояние подсистем за 5 минут (эвристика, не TPS):");
+            for (SubsystemHealth item : health) {
+                result.append("\n- ").append(item.subsystem()).append(": ")
+                        .append(item.status()).append(" / ").append(item.confidence())
+                        .append(" — ").append(item.evidence());
+                if (result.length() >= MAX_EVIDENCE_LENGTH) {
+                    result.setLength(MAX_EVIDENCE_LENGTH);
+                    break;
+                }
+            }
+        }
         if (result.length() > MAX_EVIDENCE_LENGTH) {
             result.setLength(MAX_EVIDENCE_LENGTH);
         }

@@ -58,6 +58,19 @@ public final class PlayerTransferFence {
         }
     }
 
+    /** Requires durable COMMITTED ownership before gameplay admission or persistence. */
+    public void assertCommitted() throws IOException {
+        PlayerTransferRecord current = ledger.get(transferId).orElseThrow(
+                () -> new IOException("Player transfer record disappeared"));
+        boolean sameOwner = current.fencingToken() == fencingToken
+                && current.targetNode().equals(targetNode)
+                && current.playerXuid().equals(playerXuid)
+                && current.playerRevision() == playerRevision;
+        if (!sameOwner || current.state() != PlayerTransferRecord.State.COMMITTED) {
+            throw new IOException("Player transfer is not durably committed to this owner");
+        }
+    }
+
     /** True only while this fence is the active, unexpired claim (before commit). */
     public boolean isActiveClaim() throws IOException {
         PlayerTransferRecord current = ledger.get(transferId).orElse(null);

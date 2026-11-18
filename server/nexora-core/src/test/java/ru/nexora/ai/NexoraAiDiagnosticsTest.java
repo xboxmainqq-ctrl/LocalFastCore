@@ -328,4 +328,45 @@ class NexoraAiDiagnosticsTest {
         assertTrue(diagnostics.recentEvidence().contains("не причинность"));
     }
 
+    @Test
+    void concurrentLatencyRecordingKeepsLongWindowCountsConsistent() throws Exception {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        java.util.concurrent.ExecutorService workers = java.util.concurrent.Executors.newFixedThreadPool(4);
+        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+        try {
+            java.util.List<java.util.concurrent.Future<?>> futures = new java.util.ArrayList<>();
+            for (int worker = 0; worker < 4; worker++) {
+                futures.add(workers.submit(() -> {
+                    start.await();
+                    for (int sample = 0; sample < 250; sample++) {
+                        diagnostics.recordSlowOperation("bedrock-inbound",
+                                sample % 2 == 0 ? 100 : 10, 50);
+                    }
+                    return null;
+                }));
+            }
+            start.countDown();
+            for (var future : futures) future.get();
+        } finally {
+            workers.shutdownNow();
+        }
+        var summary = diagnostics.latencyWindowSummaries().stream()
+                .filter(item -> item.windowMinutes() == 5).findFirst().orElseThrow();
+        assertEquals(1_000, summary.sampleCount());
+        assertEquals(500, summary.slowOperationCount());
+    }
+
+    @Test
+    void latencySubsystemStorageEvictsOldestSubsystemFromBothWindows() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        for (int index = 0; index < 17; index++) {
+            diagnostics.recordSlowOperation("subsystem-" + index, 10, 50);
+        }
+        assertEquals(16, diagnostics.latencySummaries().size());
+        assertFalse(diagnostics.latencyWindowSummaries().stream()
+                .anyMatch(summary -> summary.subsystem().equals("subsystem-0")));
+        assertTrue(diagnostics.latencyWindowSummaries().stream()
+                .anyMatch(summary -> summary.subsystem().equals("subsystem-16")));
+    }
+
 }

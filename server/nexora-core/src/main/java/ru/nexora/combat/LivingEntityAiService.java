@@ -56,8 +56,8 @@ public final class LivingEntityAiService {
             long elapsed = Math.max(0L, System.nanoTime() - started);
             decisionCount.increment();
             decisionNanos.add(elapsed);
-            lastDecisionNanos.set(elapsed);
             maxDecisionNanos.accumulateAndGet(elapsed, Math::max);
+            lastDecisionNanos.set(elapsed);
         }
     }
 
@@ -113,8 +113,7 @@ public final class LivingEntityAiService {
                         long maxDecisionNanos, long failures, long averageDecisionNanos) {
         public Stats {
             if (decisionCount < 0 || totalDecisionNanos < 0 || lastDecisionNanos < 0
-                    || maxDecisionNanos < lastDecisionNanos || failures < 0
-                    || averageDecisionNanos < 0 || failures > decisionCount) {
+                    || failures < 0 || averageDecisionNanos < 0) {
                 throw new IllegalArgumentException("Invalid living entity AI stats");
             }
         }

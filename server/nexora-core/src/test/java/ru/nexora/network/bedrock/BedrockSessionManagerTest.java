@@ -2932,7 +2932,7 @@ class BedrockSessionManagerTest {
     }
 
     @Test
-    void operatorDiagnosticsExposeBoundedWorldAndChunkHotPathSamples() {
+    void operatorDiagnosticsExposeBoundedWorldAndChunkHotPathSamples() throws Exception {
         java.util.concurrent.atomic.AtomicLong clock =
                 new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
         ru.nexora.world.World world = new ru.nexora.world.World(

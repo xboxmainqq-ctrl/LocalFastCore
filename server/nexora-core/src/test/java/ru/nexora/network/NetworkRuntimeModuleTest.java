@@ -70,7 +70,7 @@ class NetworkRuntimeModuleTest {
         return new NetworkRuntimeModule(
                 service("discovery", events, false, failClose),
                 service("signaling", events, failSignalingStart, failClose),
-                closeable("negotiator", events, failClose),
+                closeable("negotiator", events, failClose)
         );
     }
 

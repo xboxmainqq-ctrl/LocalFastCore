@@ -305,6 +305,7 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - If a clustered player has no canonical snapshot yet, the first successful Bedrock initialization writes the complete restored aggregate to shared storage before gameplay admission. This makes legacy-file migration durable before the player can modify state.
 - Source transfer freeze releases the source online lease; a confirmed abort reacquires it before gameplay resumes. PREPARED/CLAIMED/COMMITTED transfer history continues to fence logins during the handoff gap.
 - A session that loses its durable transfer fence or global online lease immediately stops gameplay and releases its matching online lease; destination rollback also releases any lease held by a partially activated session.
+- Periodic autosave now retains the active lease and validates ownership before writing shared state. Disconnect saves do the same; a former owner that has lost its lease is rejected and cannot overwrite the destination's canonical checkpoint.
 - Added in-memory expiry/fencing tests, JDBC multi-node exclusivity tests, and a concurrent two-node first-login race test.
 - CI: 809 tests passed, zero failures on commit `3427de8`; GitHub Actions build and GitLab publish both succeeded.
 - Remaining validation: process-kill/partition tests with two actual server processes and a production database; the lease uses bounded expiry and is not a consensus protocol for arbitrary clock skew. Nodes must have synchronized clocks and must not continue gameplay when renewal fails.

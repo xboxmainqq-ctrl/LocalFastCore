@@ -101,6 +101,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final PlayerStateCheckpointService checkpointService;
     private final PendingPlayerTransferRestoreRegistry pendingTransferRestores =
             new PendingPlayerTransferRestoreRegistry();
+    private volatile ru.nexora.network.DurableHandoffCoordinator transferOwnershipLedger;
+    private volatile String transferOwnershipNodeId;
     private volatile BedrockItemRegistry itemRegistry = BedrockItemRegistry.empty();
     private volatile ArmorSlotRegistry armorSlotRegistry = ArmorSlotRegistry.empty();
     private volatile EquipmentSlotRegistry equipmentSlotRegistry = EquipmentSlotRegistry.empty();
@@ -392,6 +394,24 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 nodeId,
                 System::currentTimeMillis);
         return recovery.recover(limit);
+    }
+
+    /**
+     * Enables shared-ledger admission fencing before any network session is accepted.
+     * This also makes the shared canonical checkpoint authoritative after a transfer.
+     */
+    public void configureTransferOwnershipGuard(
+            ru.nexora.network.DurableHandoffCoordinator transferLedger, String nodeId
+    ) {
+        Objects.requireNonNull(transferLedger, "transferLedger");
+        if (nodeId == null || !nodeId.matches("[A-Za-z0-9._-]{1,64}")) {
+            throw new IllegalArgumentException("Invalid transfer ownership node ID");
+        }
+        if (!sessions.isEmpty()) {
+            throw new IllegalStateException("Transfer ownership guard must be configured before sessions are created");
+        }
+        this.transferOwnershipLedger = transferLedger;
+        this.transferOwnershipNodeId = nodeId;
     }
 
     /** Registers a durable claimed transfer for the next authenticated login of this XUID. */
@@ -1377,6 +1397,19 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         try {
           synchronized (state) {
             if (state.rejected || state.transferFrozen) return;
+            if (state.identity != null) {
+                try {
+                    assertTransferNodeOwnership(state);
+                } catch (IOException | SecurityException ownershipLost) {
+                    state.rejected = true;
+                    state.loginAuthenticated = false;
+                    state.clientInitialized = false;
+                    removePlayerListEntry(message.networkId(), state);
+                    System.err.println("NEXORA: stopped Bedrock session after node ownership changed: "
+                            + ownershipLost.getMessage());
+                    return;
+                }
+            }
             if (state.transferFence != null) {
                 try {
                     state.transferFence.assertCurrent();
@@ -4039,6 +4072,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         JsonNode clientData = verifyClientDataToken(login.rawClientDataToken(), state.identity);
         synchronized (xuidLoginLock(state.identity.xuid())) {
             ensureNoDuplicateXuidSession(message.networkId(), state.identity.xuid());
+            ru.nexora.network.PlayerTransferRecord latestTransfer = assertPlayerMayLogin(
+                    state.identity.xuid());
         boolean legacyStateFound = false;
         PendingPlayerTransferRestoreRegistry.PendingRestore pendingTransfer =
                 pendingTransferRestores.find(state.identity.xuid()).orElse(null);
@@ -4072,6 +4107,25 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 }
                 state.rejected = true;
                 throw new SecurityException("Unable to safely restore claimed transfer checkpoint", exception);
+            }
+        }
+        if (!legacyStateFound && latestTransfer != null
+                && latestTransfer.state() != ru.nexora.network.PlayerTransferRecord.State.PREPARED
+                && latestTransfer.state() != ru.nexora.network.PlayerTransferRecord.State.CLAIMED) {
+            try {
+                PlayerStateBundle canonical = checkpointService.load(state.identity.xuid())
+                        .orElseThrow(() -> new IOException(
+                                "Durable transfer exists but its canonical player checkpoint is unavailable"));
+                PlayerStateBundle.Restored restored = canonical.restore();
+                state.inventory = restored.inventory();
+                state.craftingUiInventory.restore(restored.craftingUi().snapshot());
+                state.equipment = restored.equipment();
+                restorePlayerProfile(state, restored.profile(),
+                        state.identity.displayName() == null ? "unknown" : state.identity.displayName());
+                legacyStateFound = true;
+            } catch (IOException | RuntimeException exception) {
+                state.rejected = true;
+                throw new SecurityException("Unable to restore canonical player state after transfer", exception);
             }
         }
         if (!legacyStateFound && inventoryStorage != null) {
@@ -4154,6 +4208,45 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         System.out.printf("NEXORA: authenticated player %s%n", displayName);
         }
+    }
+
+    private ru.nexora.network.PlayerTransferRecord assertPlayerMayLogin(String xuid) {
+        ru.nexora.network.DurableHandoffCoordinator ledger = transferOwnershipLedger;
+        String nodeId = transferOwnershipNodeId;
+        if (ledger == null || nodeId == null) return null;
+        try {
+            java.util.Optional<ru.nexora.network.PlayerTransferRecord> latest =
+                    ledger.findLatestForPlayer(xuid);
+            ru.nexora.network.PlayerTransferOwnershipGuard.LoginDecision decision =
+                    ru.nexora.network.PlayerTransferOwnershipGuard.loginDecision(latest, nodeId);
+            if (decision == ru.nexora.network.PlayerTransferOwnershipGuard.LoginDecision.RESTORE_TRANSFER_CHECKPOINT) {
+                PendingPlayerTransferRestoreRegistry.PendingRestore pending =
+                        pendingTransferRestores.find(xuid).orElseThrow(() ->
+                                new SecurityException("Destination has no recovered reservation for this claimed transfer"));
+                if (latest.isEmpty()
+                        || !pending.fence().transferId().equals(latest.orElseThrow().transferId())) {
+                    throw new SecurityException("Pending destination reservation does not match latest transfer");
+                }
+            }
+            return latest.orElse(null);
+        } catch (IOException failure) {
+            throw new SecurityException("Unable to verify durable player ownership before login", failure);
+        }
+    }
+
+    private void assertTransferNodeOwnership(SessionState state) throws IOException {
+        ru.nexora.network.DurableHandoffCoordinator ledger = transferOwnershipLedger;
+        String nodeId = transferOwnershipNodeId;
+        if (ledger == null || nodeId == null || state.identity == null) return;
+        long now = nanoTime.getAsLong();
+        long previous = state.lastTransferOwnershipCheckNanos;
+        if (previous != Long.MIN_VALUE && now - previous < 500_000_000L) return;
+        java.util.Optional<ru.nexora.network.PlayerTransferRecord> latest =
+                ledger.findLatestForPlayer(state.identity.xuid());
+        if (!ru.nexora.network.PlayerTransferOwnershipGuard.mayProcessSession(latest, nodeId)) {
+            throw new IOException("Latest durable transfer decision assigns this player to another node or is unresolved");
+        }
+        state.lastTransferOwnershipCheckNanos = now;
     }
 
     private Object xuidLoginLock(String xuid) {
@@ -6207,6 +6300,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private volatile boolean transferFrozen;
         private boolean transferRedirected;
         private PlayerTransferFence transferFence;
+        private long lastTransferOwnershipCheckNanos = Long.MIN_VALUE;
         private PendingEquipmentForm pendingEquipmentForm;
         private int pendingAiFormId;
         private int nextContainerWindowId = 1;

@@ -182,5 +182,6 @@ Generate at least 32 random bytes per node pair and Base64-encode them. Configur
 Once the cluster transport is active, the server process console exposes:
 - `players` — list authenticated players with their XUID and entity ID
 - `transfer <xuid> <target-node>` — request a transfer through the authenticated peer transport
+- `transfer recover` — reconcile frozen source sessions from durable ABORTED/COMMITTED outcomes after a peer or database restart
 
 The transfer command is operator-console only. A player is frozen before the transfer is published; the source resumes only after a durable abort, and redirects only after the target's durable commit. If the outcome cannot be confirmed, the source remains frozen for recovery rather than risking two active copies. In shared-ledger mode, login and active-session processing consult the latest per-XUID transfer decision; reconnect after a committed transfer restores the canonical shared checkpoint rather than a stale host-local save. Expired claims are durably revoked during startup recovery or login reconciliation.

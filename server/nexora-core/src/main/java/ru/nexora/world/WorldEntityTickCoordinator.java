@@ -18,6 +18,7 @@ import java.util.function.Consumer;
  * becomes resident again.</p>
  */
 public final class WorldEntityTickCoordinator {
+    private final World world;
     private final WorldChunkResidencyManager residency;
     private final WorldLivingEntityManager entities;
     private final WorldTickPipeline tickPipeline;
@@ -31,6 +32,30 @@ public final class WorldEntityTickCoordinator {
             NexoraAiDiagnostics diagnostics,
             long tickBudgetNanos
     ) {
+        this(null, residency, entities, tickPipeline, diagnostics, tickBudgetNanos);
+    }
+
+    /** Production constructor bound to the world's authoritative entity manager and chunk cache. */
+    public WorldEntityTickCoordinator(
+            World world,
+            WorldChunkResidencyManager residency,
+            WorldTickPipeline tickPipeline,
+            NexoraAiDiagnostics diagnostics,
+            long tickBudgetNanos
+    ) {
+        this(Objects.requireNonNull(world, "world"), residency, world.livingEntities(),
+                tickPipeline, diagnostics, tickBudgetNanos);
+    }
+
+    private WorldEntityTickCoordinator(
+            World world,
+            WorldChunkResidencyManager residency,
+            WorldLivingEntityManager entities,
+            WorldTickPipeline tickPipeline,
+            NexoraAiDiagnostics diagnostics,
+            long tickBudgetNanos
+    ) {
+        this.world = world;
         this.residency = Objects.requireNonNull(residency, "residency");
         this.entities = Objects.requireNonNull(entities, "entities");
         this.tickPipeline = Objects.requireNonNull(tickPipeline, "tickPipeline");
@@ -48,6 +73,9 @@ public final class WorldEntityTickCoordinator {
     ) {
         long started = System.nanoTime();
         WorldChunkResidencyManager.ResidencyPlan plan = residency.update(playerChunks, tick);
+        World.ChunkResidencyResult worldChunkResult = world == null
+                ? new World.ChunkResidencyResult(0, 0, 0, 0, 0)
+                : world.applyChunkResidencyPlan(plan);
         List<WorldLivingEntity> activeEntities = new ArrayList<>();
         for (WorldLivingEntity entity : entities.snapshot()) {
             if (residency.isResidentAtBlockPosition(entity.x(), entity.z())) {
@@ -62,12 +90,13 @@ public final class WorldEntityTickCoordinator {
             diagnostics.recordSlowOperation("world-entity-tick",
                     Math.max(0L, System.nanoTime() - started), tickBudgetNanos);
         }
-        return new TickResult(plan, entities.size(), activeEntities.size(),
+        return new TickResult(plan, worldChunkResult, entities.size(), activeEntities.size(),
                 entities.size() - activeEntities.size(), aiResult);
     }
 
     public record TickResult(
             WorldChunkResidencyManager.ResidencyPlan residencyPlan,
+            World.ChunkResidencyResult worldChunkResult,
             int totalEntities,
             int residentEntities,
             int dormantEntities,
@@ -75,6 +104,7 @@ public final class WorldEntityTickCoordinator {
     ) {
         public TickResult {
             Objects.requireNonNull(residencyPlan, "residencyPlan");
+            Objects.requireNonNull(worldChunkResult, "worldChunkResult");
             Objects.requireNonNull(aiResult, "aiResult");
             if (totalEntities < 0 || residentEntities < 0 || dormantEntities < 0
                     || residentEntities + dormantEntities != totalEntities) {

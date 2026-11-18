@@ -38,7 +38,8 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 
 ## Priority 2 — NexoraAI core observability
 
-- [ ] Extend diagnostics with bounded, low-overhead metrics and useful time windows (recent, 5-minute, 1-hour).
+- [x] Add bounded 60-second rolling subsystem-latency summaries (maximum 60 samples per subsystem), including sample count, observed window span, average, p95, maximum, and recent budget breaches; expose them in operator evidence and label them as subsystem timings, not TPS.
+- [ ] Extend diagnostics with longer 5-minute and 1-hour windows and time-windowed rates for failures, slow operations, and resource pressure.
 - [ ] Add subsystem health states with evidence, timestamps, and confidence; avoid claiming a global TPS value unless the core exposes a valid tick source.
 - [ ] Detect sustained latency, memory pressure, thread growth, save failures, and unusual inbound traffic patterns.
 - [ ] Add structured incident timelines that correlate symptoms without exposing player XUIDs, secrets, or sensitive payloads.
@@ -121,4 +122,4 @@ Do not consider the mob system finished after the load controller alone. Complet
 
 1. Validate the completed runtime-module, bounded scheduler, and graceful-drain integration on CI; fix all regressions before declaring this architecture stage stable.
 2. Continue mob and spawner integration/load checks; real Bedrock client verification remains a separate gate.
-3. Extend subsystem latency and JVM resource telemetry with bounded, low-overhead measurements; do not infer true TPS from isolated timings. The operator `/ai admin` snapshot now includes actual mob-decision timings and JVM heap/thread counters; `/ai mob stats` includes the detailed AI execution summary.
+3. Extend subsystem latency and JVM resource telemetry with bounded, low-overhead measurements; do not infer true TPS from isolated timings. The operator `/ai admin` snapshot now includes actual mob-decision timings, JVM heap/thread counters, and 60-second rolling latency summaries for instrumented subsystems; `/ai mob stats` includes the detailed AI execution summary. Longer 5-minute/1-hour windows remain open.

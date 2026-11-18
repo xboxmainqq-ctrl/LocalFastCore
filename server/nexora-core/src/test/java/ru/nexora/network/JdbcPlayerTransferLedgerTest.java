@@ -123,6 +123,41 @@ class JdbcPlayerTransferLedgerTest {
         }
     }
 
+    @Test
+    void listsOnlyBoundedRecoverableRecordsForTheRequestedDestinationAfterRestart() throws Exception {
+        String url = databaseUrl("recoverable-list");
+        JdbcPlayerTransferLedger ledger = new JdbcPlayerTransferLedger(dataSource(url));
+        ledger.initializeSchema();
+        PlayerTransferCoordinator coordinator = new PlayerTransferCoordinator(ledger);
+
+        UUID claimedId = UUID.randomUUID();
+        UUID committedId = UUID.randomUUID();
+        UUID preparedId = UUID.randomUUID();
+        UUID abortedId = UUID.randomUUID();
+        assertTrue(ledger.create(PlayerTransferRecord.prepared(
+                claimedId, "claimed-player", "source-a", "target-a", 1L, 100L)));
+        assertTrue(ledger.create(PlayerTransferRecord.prepared(
+                committedId, "committed-player", "source-b", "target-a", 2L, 101L)));
+        assertTrue(ledger.create(PlayerTransferRecord.prepared(
+                preparedId, "prepared-player", "source-c", "target-a", 3L, 102L)));
+        assertTrue(ledger.create(PlayerTransferRecord.prepared(
+                abortedId, "aborted-player", "source-d", "target-a", 4L, 103L)));
+
+        PlayerTransferRecord claim = coordinator.claim(claimedId, "target-a", 110L, 10_000L).orElseThrow();
+        PlayerTransferRecord commitClaim = coordinator.claim(committedId, "target-a", 111L, 10_000L).orElseThrow();
+        coordinator.commit(committedId, commitClaim.fencingToken(), 112L).orElseThrow();
+        PlayerTransferRecord abortClaim = coordinator.claim(abortedId, "target-a", 113L, 10_000L).orElseThrow();
+        coordinator.abort(abortedId, abortClaim.fencingToken(), 114L).orElseThrow();
+
+        JdbcPlayerTransferLedger afterRestart = new JdbcPlayerTransferLedger(dataSource(url));
+        var recovered = afterRestart.listRecoverableForTarget("target-a", 10);
+        assertEquals(2, recovered.size());
+        assertEquals(java.util.Set.of(claimedId, committedId),
+                recovered.stream().map(PlayerTransferRecord::transferId).collect(java.util.stream.Collectors.toSet()));
+        assertEquals(1, afterRestart.listRecoverableForTarget("target-a", 1).size());
+        assertTrue(afterRestart.listRecoverableForTarget("target-b", 10).isEmpty());
+    }
+
     private String databaseUrl(String name) {
         String file = temporaryDirectory.resolve(name).toAbsolutePath().toString().replace('\\', '/');
         return "jdbc:h2:file:" + file + ";DB_CLOSE_ON_EXIT=FALSE;LOCK_TIMEOUT=10000";

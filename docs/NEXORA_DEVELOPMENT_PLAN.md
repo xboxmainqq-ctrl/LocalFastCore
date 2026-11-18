@@ -179,3 +179,10 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Rollback deactivation is limited to the same active claim; committed destinations and newer fencing tokens are never torn down by stale rollback.
 - Added tests for exact-revision restore, commit behavior, revision mismatch and stale-token reclaim.
 - Remaining: implement the Bedrock destination activator and reconnect/session migration; require fence checks at every authoritative write; add process-level crash/restart tests. No cross-host transfer is enabled.
+
+
+### 27. JDBC ledger concurrency and restart tests — ADDED
+- Added H2 test-scope dependency and integration tests for durable state visibility across independent DataSources, duplicate IDs, versioned CAS, and commit visibility.
+- Two concurrent transfer coordinators race for one PREPARED record; the test asserts only one fencing token wins.
+- JDBC CAS now keeps player XUID, source node, target node and checkpoint revision immutable across state transitions.
+- H2 verifies JDBC behavior only; production database-specific integration/failover/isolation testing remains required.

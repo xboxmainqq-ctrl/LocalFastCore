@@ -170,3 +170,12 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Added `BedrockPlayerTransferSource` adapter with explicit source-node validation and caller-supplied authenticated XUID resolution.
 - Added a session-level freeze/checkpoint/abort-resume regression test.
 - Still gated: destination session reconstruction, exact-revision validation, fencing enforcement at every ownership mutation, authenticated network handoff, and crash-recovery reconciliation. No cross-host transfer is enabled.
+
+
+### 26. Exact-revision destination restore and runtime fencing — FOUNDATION ADDED
+- Added `loadAtRevision(XUID, revision)` to canonical checkpoint storage. It rejects revision mismatches and verifies schema, checksum and XUID before decoding.
+- Added `PlayerTransferFence`, which re-reads the durable ledger and rejects expired, aborted, or superseded claims. The same token remains valid after COMMITTED.
+- Added `CheckpointedPlayerTransferDestination`: validates target/source identity, active lease and fence, restores only the exact revision, and delegates session-specific activation with the runtime fence.
+- Rollback deactivation is limited to the same active claim; committed destinations and newer fencing tokens are never torn down by stale rollback.
+- Added tests for exact-revision restore, commit behavior, revision mismatch and stale-token reclaim.
+- Remaining: implement the Bedrock destination activator and reconnect/session migration; require fence checks at every authoritative write; add process-level crash/restart tests. No cross-host transfer is enabled.

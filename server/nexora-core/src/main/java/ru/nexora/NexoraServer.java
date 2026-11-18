@@ -137,6 +137,15 @@ public final class NexoraServer {
         String transferNodeId = configuredNodeId == null || configuredNodeId.isBlank()
                 ? "standalone" : configuredNodeId.trim();
         DurableHandoffCoordinator transferLedger = configuredTransferLedger.coordinator();
+        java.util.Optional<ClusterTransportFactory.ConfiguredTransport> configuredClusterTransport =
+                ClusterTransportFactory.open(transferNodeId, Path.of(dataDirectory), System.getenv());
+        if (configuredClusterTransport.isPresent()
+                && (!configuredTransferLedger.shared() || !configuredPlayerStateStore.shared())) {
+            throw new IllegalStateException(
+                    "Cluster transport requires both shared JDBC transfer ledger and shared player checkpoints");
+        }
+        long transferLeaseMillis = longEnvironmentValue(
+                "NEXORA_TRANSFER_LEASE_MS", 15_000L, 1_000L, 120_000L);
         AtomicReference<WebRtcSdpNegotiator> negotiatorReference = new AtomicReference<>();
         BedrockSessionManager bedrockSessions = new BedrockSessionManager(
                 2225,
@@ -160,16 +169,8 @@ public final class NexoraServer {
                 transferNodeId, transferRecovery.scanned(), transferRecovery.registered(),
                 transferRecovery.alreadyRegistered(), transferRecovery.expiredClaims(),
                 transferRecovery.supersededRecords());
-        java.util.Optional<ClusterTransportFactory.ConfiguredTransport> configuredClusterTransport =
-                ClusterTransportFactory.open(transferNodeId, Path.of(dataDirectory), System.getenv());
         NetworkRuntimeModule.ManagedService clusterService;
         if (configuredClusterTransport.isPresent()) {
-            if (!configuredTransferLedger.shared() || !configuredPlayerStateStore.shared()) {
-                throw new IllegalStateException(
-                        "Cluster transport requires both shared JDBC transfer ledger and shared player checkpoints");
-            }
-            long transferLeaseMillis = longEnvironmentValue(
-                    "NEXORA_TRANSFER_LEASE_MS", 15_000L, 1_000L, 120_000L);
             PlayerTransferClusterEndpoint transferEndpoint = new PlayerTransferClusterEndpoint(
                     transferNodeId,
                     transferLedger,

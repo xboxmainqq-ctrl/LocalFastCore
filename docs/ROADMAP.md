@@ -61,7 +61,8 @@ These rules apply to all future architecture, implementation, review, and planni
 - [x] Add bounded per-subsystem health states from 5-minute latency buckets with evidence, wall-clock/monotonic timestamps, confidence tiers, sparse-data UNKNOWN status, and deterministic expiry tests; thresholds are diagnostic heuristics, not TPS.
 - [x] Detect sustained JVM heap pressure and thread-count growth across three consecutive minute buckets; require at least two resource snapshots per minute, report diagnostic evidence only, and keep missing/sparse windows unknown.
 - [x] Detect sustained subsystem latency-budget breaches across three consecutive minute buckets; require at least five measurements per minute and a breach ratio of at least 25% in every minute. Sparse windows remain unknown and reporting is diagnostic only.
-- [ ] Detect save failures and unusual inbound traffic patterns.
+- [x] Detect repeated subsystem failures, including world autosave, across three consecutive minute buckets; missing minutes remain unknown and reports never trigger automatic retries or restarts.
+- [ ] Detect unusual inbound traffic patterns.
 - [x] Add minute-aligned comparison of Bedrock inbound and mob AI/pathfinding latency over 5-minute and 1-hour windows; report shared-minute co-occurrence and aggregate timings, never causal claims or player identifiers.
 - [x] Add a bounded structured incident timeline with monotonic sequence/uptime ordering, wall-clock timestamps, and sanitized descriptions; correlate broader symptoms without exposing player XUIDs, secrets, or sensitive payloads.
 - [ ] Ensure monitoring is rate-limited and cannot itself overload the server.

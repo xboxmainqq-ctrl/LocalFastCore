@@ -441,6 +441,41 @@ class NexoraAiDiagnosticsTest {
     }
 
     @Test
+    void failureTrendDetectsRepeatedWorldSaveFailuresAcrossThreeMinutes() {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(10_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        for (int minute = 0; minute < 3; minute++) {
+            diagnostics.recordFailure("world-autosave", new java.io.IOException("disk unavailable"));
+            if (minute < 2) clock.addAndGet(60_000_000_000L);
+        }
+
+        var trend = diagnostics.failureTrendSummaries().getFirst();
+        assertEquals("world-autosave", trend.subsystem());
+        assertTrue(trend.enoughSamples());
+        assertEquals(3, trend.observedMinutes());
+        assertEquals(3, trend.failureCount());
+        assertEquals(3, trend.failedMinutes());
+        assertTrue(trend.sustainedFailure());
+        assertTrue(diagnostics.recentEvidence().contains("Повторяющиеся ошибки подсистемы: world-autosave"));
+    }
+
+    @Test
+    void failureTrendRemainsUnknownWhenMinuteBucketIsMissing() {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(10_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        diagnostics.recordFailure("world-autosave", new java.io.IOException("disk unavailable"));
+        clock.addAndGet(120_000_000_000L);
+        diagnostics.recordFailure("world-autosave", new java.io.IOException("disk unavailable"));
+
+        var trend = diagnostics.failureTrendSummaries().getFirst();
+        assertFalse(trend.enoughSamples());
+        assertFalse(trend.sustainedFailure());
+        assertEquals(2, trend.observedMinutes());
+    }
+
+    @Test
     void latencyTrendRequiresRepeatedBreachesAcrossThreeConsecutiveMinutes() {
         java.util.concurrent.atomic.AtomicLong clock =
                 new java.util.concurrent.atomic.AtomicLong(10_000_000_000L);

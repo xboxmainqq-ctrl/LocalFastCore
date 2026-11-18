@@ -66,7 +66,7 @@ public final class NexoraAiDiagnostics {
         }
         String safeSubsystem = bound(sanitize(subsystem), 64);
         recordedFailures.incrementAndGet();
-        recordFailureActivity();
+        recordFailureActivity(safeSubsystem);
         String message = failure.getMessage();
         String description = (safeSubsystem.equals("unknown") ? "" : safeSubsystem + ": ")
                 + failure.getClass().getSimpleName()
@@ -76,9 +76,13 @@ public final class NexoraAiDiagnostics {
         appendEvent("FAILURE", lastFailure);
     }
 
-    private synchronized void recordFailureActivity() {
+    private synchronized void recordFailureActivity(String subsystem) {
         long minute = Math.floorDiv(nanoClock.getAsLong(), LATENCY_BUCKET_NANOS);
-        activityBuckets.computeIfAbsent(minute, ignored -> new ActivityBucket()).failures++;
+        ActivityBucket bucket = activityBuckets.computeIfAbsent(minute, ignored -> new ActivityBucket());
+        bucket.failures++;
+        if (bucket.failuresBySubsystem.containsKey(subsystem) || bucket.failuresBySubsystem.size() < 16) {
+            bucket.failuresBySubsystem.merge(subsystem, 1L, NexoraAiDiagnostics::saturatedAdd);
+        }
         pruneActivityBuckets(minute);
     }
 
@@ -227,6 +231,7 @@ public final class NexoraAiDiagnostics {
     private static final class ActivityBucket {
         private long failures, resourceSamples, pressureSamples, heapRatioSamples, loadRatioSamples;
         private long threadSamples, threadCountTotal, minThreadCount = Long.MAX_VALUE, maxThreadCount;
+        private final Map<String, Long> failuresBySubsystem = new java.util.LinkedHashMap<>();
         private double heapRatioTotal, maxHeapRatio, maxLoadRatio;
     }
 
@@ -369,6 +374,41 @@ public final class NexoraAiDiagnostics {
     }
 
     /**
+     * Detects subsystem failures repeated in each of the last three minute buckets.
+     * Missing minutes remain unknown; failure evidence is observational and never triggers actions.
+     */
+    public synchronized List<FailureTrendSummary> failureTrendSummaries() {
+        long currentMinute = Math.floorDiv(nanoClock.getAsLong(), LATENCY_BUCKET_NANOS);
+        long firstMinute = currentMinute - 2;
+        java.util.Set<String> subsystems = new java.util.LinkedHashSet<>();
+        for (long minute = firstMinute; minute <= currentMinute; minute++) {
+            ActivityBucket bucket = activityBuckets.get(minute);
+            if (bucket != null) subsystems.addAll(bucket.failuresBySubsystem.keySet());
+        }
+        List<FailureTrendSummary> result = new ArrayList<>();
+        for (String subsystem : subsystems) {
+            long failures = 0;
+            int observedMinutes = 0, failedMinutes = 0;
+            boolean enoughSamples = true;
+            for (long minute = firstMinute; minute <= currentMinute; minute++) {
+                ActivityBucket bucket = activityBuckets.get(minute);
+                if (bucket == null) {
+                    enoughSamples = false;
+                    continue;
+                }
+                observedMinutes++;
+                long count = bucket.failuresBySubsystem.getOrDefault(subsystem, 0L);
+                failures = saturatedAdd(failures, count);
+                if (count > 0) failedMinutes++;
+            }
+            result.add(new FailureTrendSummary(subsystem, observedMinutes, failures, failedMinutes,
+                    enoughSamples && observedMinutes == 3,
+                    enoughSamples && observedMinutes == 3 && failedMinutes == 3));
+        }
+        return List.copyOf(result);
+    }
+
+    /**
      * Detects repeated latency-budget breaches in each of the last three minute buckets.
      * Every minute must contain at least five observations; sparse or missing minutes stay unknown.
      */
@@ -425,6 +465,13 @@ public final class NexoraAiDiagnostics {
             if (result.length() >= 900) {
                 result.setLength(900);
                 break;
+            }
+        }
+        for (FailureTrendSummary trend : failureTrendSummaries()) {
+            if (trend.sustainedFailure() && result.length() < MAX_EVIDENCE_LENGTH) {
+                result.append("\\nПовторяющиеся ошибки подсистемы: ").append(trend.subsystem())
+                        .append(" — ошибки в ").append(trend.failedMinutes())
+                        .append("/3 последовательных минут (").append(trend.failureCount()).append(" всего)");
             }
         }
         for (LatencyTrendSummary trend : latencyTrendSummaries()) {
@@ -554,6 +601,19 @@ public final class NexoraAiDiagnostics {
                     || networkMaxNanos < 0 || gameplayMaxNanos < 0
                     || (overlappingMinuteBuckets == 0 && (networkSampleCount != 0 || gameplaySampleCount != 0))) {
                 throw new IllegalArgumentException("Invalid latency alignment summary");
+            }
+        }
+    }
+
+    public record FailureTrendSummary(String subsystem, int observedMinutes, long failureCount,
+                                      int failedMinutes, boolean enoughSamples, boolean sustainedFailure) {
+        public FailureTrendSummary {
+            Objects.requireNonNull(subsystem, "subsystem");
+            if (subsystem.isBlank() || observedMinutes < 0 || observedMinutes > 3
+                    || failureCount < 0 || failedMinutes < 0 || failedMinutes > 3
+                    || (sustainedFailure && (!enoughSamples || observedMinutes != 3
+                    || failedMinutes != 3 || failureCount < 3))) {
+                throw new IllegalArgumentException("Invalid failure trend summary");
             }
         }
     }

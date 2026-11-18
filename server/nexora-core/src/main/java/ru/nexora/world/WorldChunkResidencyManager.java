@@ -74,6 +74,17 @@ public final class WorldChunkResidencyManager {
                 resident.size(), desiredRefCounts.size());
     }
 
+    public synchronized boolean isResident(int chunkX, int chunkZ) {
+        return resident.contains(chunkKey(chunkX, chunkZ));
+    }
+
+    public synchronized boolean isResidentAtBlockPosition(double x, double z) {
+        if (!Double.isFinite(x) || !Double.isFinite(z)) return false;
+        int chunkX = (int) Math.floor(x / 16.0);
+        int chunkZ = (int) Math.floor(z / 16.0);
+        return resident.contains(chunkKey(chunkX, chunkZ));
+    }
+
     public synchronized int residentChunkCount() {
         return resident.size();
     }

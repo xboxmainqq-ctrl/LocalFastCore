@@ -14,28 +14,40 @@ class WorldEntityDecisionApplierTest {
         WorldEntityDecisionApplier applier = new WorldEntityDecisionApplier(manager);
 
         var result = applier.apply(new LivingEntityAiService.Decision(
-                mob.runtimeId(), "player-1", 0.23, 0, 0, 3, true));
+                mob.runtimeId(), "player-1", 0.23, 0, 0, 0, false));
 
         assertTrue(result.moved());
-        assertTrue(result.attacked());
-        assertEquals(3, result.attackDamage());
-        assertEquals(0, manager.find(mob.runtimeId()).orElseThrow().x(), 0.00001);
+        assertFalse(result.attacked());
+        assertEquals(0.23, manager.find(mob.runtimeId()).orElseThrow().x(), 0.00001);
     }
 
     @Test
-    void ignoresDeadOrMissingMob() {
+    void emitsAttackOutputWithoutMutatingMobHealth() {
         WorldLivingEntityManager manager = new WorldLivingEntityManager();
+        WorldLivingEntity mob = manager.spawn("minecraft:zombie", 20, 0, 64, 0);
         WorldEntityDecisionApplier applier = new WorldEntityDecisionApplier(manager);
 
         var result = applier.apply(new LivingEntityAiService.Decision(
-                12345, "player-1", 1, 0, 0, 3, true));
+                mob.runtimeId(), "player-1", 0, 0, 0, 3, true));
+
+        assertTrue(result.attacked());
+        assertEquals(3, result.attackDamage());
+        assertEquals(20, manager.find(mob.runtimeId()).orElseThrow().health());
+    }
+
+    @Test
+    void ignoresMissingMob() {
+        WorldEntityDecisionApplier applier = new WorldEntityDecisionApplier(new WorldLivingEntityManager());
+
+        var result = applier.apply(new LivingEntityAiService.Decision(
+                12345, "player-1", 1, 0, 0, 0, false));
 
         assertFalse(result.moved());
         assertFalse(result.attacked());
     }
 
     @Test
-    void movementIsValidatedByEntityManager() {
+    void invalidMovementDecisionIsRejectedAtBoundary() {
         WorldLivingEntityManager manager = new WorldLivingEntityManager();
         WorldLivingEntity mob = manager.spawn("minecraft:zombie", 20, 0, 64, 0);
         WorldEntityDecisionApplier applier = new WorldEntityDecisionApplier(manager);

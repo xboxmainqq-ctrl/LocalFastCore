@@ -75,6 +75,14 @@ public final class PlayerTransferSourceCoordinator {
         try {
             revision = source.freezeAndCheckpoint(handoff);
         } catch (Exception freezeFailure) {
+            // Freeze can fail after the session was stopped but before PREPARED
+            // was durably published (for example, lease release failed). Try
+            // to resume only through the source adapter's lease-safe path.
+            try {
+                source.unfreeze(handoff);
+            } catch (Exception resumeFailure) {
+                freezeFailure.addSuppressed(resumeFailure);
+            }
             if (freezeFailure instanceof IOException ioFailure) throw ioFailure;
             throw new IOException("Unable to freeze and checkpoint source player", freezeFailure);
         }

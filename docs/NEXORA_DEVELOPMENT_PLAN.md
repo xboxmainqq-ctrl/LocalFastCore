@@ -42,6 +42,14 @@ Nukkit is only a compatibility/reference point where needed. Its implementation 
 ## Current architecture
 Gameplay systems -> Gameplay Events / Gameplay Graph -> Work Graph -> Task Contracts -> Adaptive Runtime -> measured execution -> profiler/history -> improved future estimates.
 
+## Large-server architecture track
+- Cluster-first design: scale by adding server processes rather than forcing one process to own all players.
+- One authoritative server owns a player at a time.
+- Cross-server movement uses explicit handoff state, never shared mutable world objects.
+- Interest management scopes particles, visual effects and observer-specific work to relevant players.
+- Cluster routing and capacity decisions are based on measured player/world/gameplay/network pressure.
+- Fixed online capacity claims are prohibited until benchmark evidence exists.
+
 ## Next development sequence
 
 ### 7. Contract-aware Work Graph

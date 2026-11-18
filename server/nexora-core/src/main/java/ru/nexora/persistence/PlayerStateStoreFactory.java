@@ -38,6 +38,8 @@ public final class PlayerStateStoreFactory {
         if (booleanValue(environment, "NEXORA_PLAYER_STATE_JDBC_INITIALIZE_SCHEMA", false)) {
             store.initializeSchema();
         }
+        // Validate credentials, connectivity and pre-provisioned schema before accepting players.
+        store.loadLatest("nexora-schema-check");
         return new ConfiguredStore(store, true, "shared JDBC player checkpoint store (connection details hidden)");
     }
 

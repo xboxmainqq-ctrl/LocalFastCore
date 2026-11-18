@@ -1735,7 +1735,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         if (normalized.equals("/ai")) {
             if (aiAssistant == null || !aiAssistant.isEnabled()) {
-                sendAiMessage(message.networkId(), "§b[NEXORA AI] §fИИ пока не настроен. Администратору нужно задать NEXORA_AI_API_KEY.");
+                sendAiMessage(message.networkId(), "§b[NEXORA AI] §fПомощник сейчас недоступен. Попробуй позже или обратись к администрации.");
             } else {
                 openAiForm(message.networkId(), state);
             }
@@ -1804,7 +1804,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (prompt.equalsIgnoreCase("status")) {
             ru.nexora.ai.NexoraAiAssistant configured = aiAssistant;
             sendAiMessage(networkId, "§b[NEXORA AI] §fСтатус: "
-                    + (configured != null && configured.isEnabled() ? "готов к работе" : "ожидает настройки API-ключа"));
+                    + (configured != null && configured.isEnabled() ? "готов к работе" : "временно недоступен"));
             return;
         }
         if (prompt.isBlank()) {
@@ -1821,7 +1821,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         ru.nexora.ai.NexoraAiAssistant assistant = aiAssistant;
         if (assistant == null || !assistant.isEnabled()) {
-            sendAiMessage(networkId, "§b[NEXORA AI] §fИИ не настроен. Задай NEXORA_AI_API_KEY в окружении сервера.");
+            sendAiMessage(networkId, "§b[NEXORA AI] §fПомощник сейчас недоступен. Обратись к администрации.");
             return;
         }
         String playerName = state.identity == null || state.identity.displayName() == null
@@ -1882,7 +1882,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
         if (lower.startsWith("plan ")) {
             if (!assistant.isEnabled()) {
-                sendAiMessage(networkId, "§b[NEXORA AI] §fДля создания плана настрой NEXORA_AI_API_KEY.");
+                sendAiMessage(networkId, "§b[NEXORA AI] §fТехнические планы доступны только через консоль сервера.");
                 return true;
             }
             String issue = normalized.substring(5).trim();

@@ -85,7 +85,7 @@ public final class ClusterTransportFactory {
         for (String entry : value.split(";", -1)) {
             String trimmed = entry.trim();
             int separator = trimmed.indexOf('=');
-            if (separator <= 0 || separator != trimmed.lastIndexOf('=')) {
+            if (separator <= 0) {
                 throw new IllegalArgumentException("Invalid NEXORA_CLUSTER_PEER_KEYS entry");
             }
             String peerId = trimmed.substring(0, separator).trim();

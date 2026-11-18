@@ -27,6 +27,7 @@ import ru.nexora.ai.NexoraAiDiagnostics;
 import ru.nexora.ai.NexoraAiMonitor;
 import ru.nexora.ai.NexoraAiAssistant;
 import ru.nexora.lifecycle.ServerLifecycle;
+import ru.nexora.config.NexoraServerConfig;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -44,14 +45,15 @@ public final class NexoraServer {
     }
 
     public static void main(String[] args) throws Exception {
-        String bindHost = args.length > 0 ? args[0] : "0.0.0.0";
-        int port = args.length > 1 ? Integer.parseInt(args[1]) : 19132;
-        String motd = args.length > 2 ? args[2] : "NEXORA Core - Development";
-        int maxPlayers = args.length > 3 ? Integer.parseInt(args[3]) : 20;
+        NexoraServerConfig config = NexoraServerConfig.from(args, System.getenv());
+        String bindHost = config.bindHost();
+        int port = config.port();
+        String motd = config.motd();
+        int maxPlayers = config.maxPlayers();
 
         InetAddress bindAddress = InetAddress.getByName(bindHost);
         InetSocketAddress socketAddress = new InetSocketAddress(bindAddress, port);
-        String httpBindHost = System.getenv().getOrDefault("NEXORA_HTTP_BIND", bindHost);
+        String httpBindHost = config.httpBindHost();
         InetAddress httpBindAddress = InetAddress.getByName(httpBindHost);
         InetSocketAddress signalingAddress = new InetSocketAddress(httpBindAddress, port);
 
@@ -87,7 +89,7 @@ public final class NexoraServer {
             }
         });
         lifecycle.register(aiMonitor);
-        String dataDirectory = System.getenv().getOrDefault("NEXORA_DATA_DIR", "data");
+        String dataDirectory = config.dataDirectory();
         DefaultNetherNetIdentityService identityService =
                 new DefaultNetherNetIdentityService(Path.of(dataDirectory, "identity"));
         WorldStorage worldStorage = new WorldStorage(Path.of(dataDirectory, "worlds"), "NEXORA World");
@@ -131,15 +133,9 @@ public final class NexoraServer {
         bedrockSessions.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
         bedrockSessions.setArmorSlotRegistry(VanillaArmorSlotCatalog.createRegistry());
         bedrockSessions.setEquipmentSlotRegistry(NexoraMagicEquipmentCatalog.createRegistry());
-        String stunEnvironment = System.getenv("NEXORA_STUN_URLS");
-        List<String> stunUrls = stunEnvironment == null || stunEnvironment.isBlank()
-                ? List.of()
-                : Arrays.stream(stunEnvironment.split(";"))
-                        .map(String::trim)
-                        .filter(value -> !value.isEmpty())
-                        .toList();
-        int udpPortMin = Integer.parseInt(System.getenv().getOrDefault("NEXORA_UDP_PORT_MIN", "30000"));
-        int udpPortMax = Integer.parseInt(System.getenv().getOrDefault("NEXORA_UDP_PORT_MAX", "30199"));
+        List<String> stunUrls = config.stunUrls();
+        int udpPortMin = config.udpPortMin();
+        int udpPortMax = config.udpPortMax();
         WebRtcSdpNegotiator negotiator = new WebRtcSdpNegotiator(
                 identityService, bedrockSessions, maxPlayers, stunUrls, udpPortMin, udpPortMax);
         lifecycle.register(negotiator);
@@ -158,7 +154,7 @@ public final class NexoraServer {
                 negotiator);
         lifecycle.register(signaling);
 
-        long autosaveSeconds = Long.parseLong(System.getenv().getOrDefault("NEXORA_AUTOSAVE_SECONDS", "300"));
+        long autosaveSeconds = config.autosaveSeconds();
         WorldAutosave autosave = new WorldAutosave(world, Duration.ofSeconds(autosaveSeconds),
                 exception -> {
                     aiDiagnostics.recordFailure("world-autosave", exception);

@@ -96,6 +96,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     public static final int LOGIN_SUCCESS = 0;
     public static final int DEFAULT_COMPRESSION_THRESHOLD = 256;
     public static final int SCTP_MAX_MESSAGE_BYTES = 262_144;
+    private static final long TRANSFER_OWNERSHIP_RECHECK_NANOS = 5_000_000_000L;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -4536,7 +4537,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
         }
         long previous = state.lastTransferOwnershipCheckNanos;
-        if (previous != Long.MIN_VALUE && now - previous < 500_000_000L) return;
+        if (previous != Long.MIN_VALUE && now - previous < TRANSFER_OWNERSHIP_RECHECK_NANOS) return;
         java.util.Optional<ru.nexora.network.PlayerTransferRecord> latest =
                 ledger.findLatestForPlayer(state.identity.xuid());
         if (!ru.nexora.network.PlayerTransferOwnershipGuard.mayProcessSession(latest, nodeId)) {

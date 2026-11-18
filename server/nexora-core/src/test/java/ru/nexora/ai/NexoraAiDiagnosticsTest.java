@@ -269,4 +269,40 @@ class NexoraAiDiagnosticsTest {
         assertEquals(1, fiveAfterExpiry.sampleCount());
         assertEquals(30, fiveAfterExpiry.maxNanos());
     }
+
+    @Test
+    void activityWindowsTrackFailureRatesAndJvmResourcePressure() {
+        java.util.concurrent.atomic.AtomicLong clock = new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        diagnostics.recordFailure("world-save", new IllegalStateException("disk busy"));
+        diagnostics.recordResourceSnapshot(new JvmResourceSnapshot(
+                95, 100, 100, 10, 10, 2, 2, 1, 2, 5.0));
+        diagnostics.recordResourceSnapshot(new JvmResourceSnapshot(
+                50, 100, 100, 10, 10, 2, 2, 1, 2, 1.0));
+
+        var five = diagnostics.activityWindowSummaries().stream()
+                .filter(summary -> summary.windowMinutes() == 5).findFirst().orElseThrow();
+        assertEquals(1, five.failureCount());
+        assertEquals(0.2, five.failuresPerMinute(), 0.0001);
+        assertEquals(2, five.resourceSampleCount());
+        assertEquals(1, five.pressureSampleCount());
+        assertEquals(0.725, five.averageHeapUsageRatio(), 0.0001);
+        assertEquals(0.95, five.maxHeapUsageRatio(), 0.0001);
+        assertEquals(2.5, five.maxSystemLoadPerProcessor(), 0.0001);
+
+        clock.addAndGet(60_000_000_000L * 6);
+        var expiredFive = diagnostics.activityWindowSummaries().stream()
+                .filter(summary -> summary.windowMinutes() == 5).findFirst().orElseThrow();
+        assertEquals(0, expiredFive.failureCount());
+        assertEquals(0, expiredFive.resourceSampleCount());
+    }
+
+    @Test
+    void resourceSnapshotsAreRecordedByOperatorInspection() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        diagnostics.inspect();
+        var summary = diagnostics.activityWindowSummaries().stream()
+                .filter(item -> item.windowMinutes() == 5).findFirst().orElseThrow();
+        assertEquals(1, summary.resourceSampleCount());
+    }
 }

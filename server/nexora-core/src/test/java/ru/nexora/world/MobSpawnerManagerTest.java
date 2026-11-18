@@ -383,4 +383,63 @@ class MobSpawnerManagerTest {
         assertFalse(world.isChunkLoadedAt(16, 0));
     }
 
+
+    @Test
+    void moreThan128ActiveSpawnersStayBoundedWithMultiplePlayersAtEntityCapacity() {
+        World world = new World("spawner-capacity-load-test", 0L, new FlatWorldGenerator());
+        MobSpawnerManager manager = new MobSpawnerManager();
+        List<MobSpawnerManager.PlayerPosition> players = new java.util.ArrayList<>();
+        int spawnerCount = MobSpawnerManager.MAX_SPAWNERS_PER_TICK + 1;
+
+        for (int i = 0; i < spawnerCount; i++) {
+            int x = i * 32 + 8;
+            int z = 8;
+            int chunkX = Math.floorDiv(x, 16);
+            int chunkZ = Math.floorDiv(z, 16);
+            for (int cx = chunkX - 1; cx <= chunkX + 1; cx++) {
+                for (int cz = chunkZ - 1; cz <= chunkZ + 1; cz++) {
+                    world.getChunk(cx, cz);
+                }
+            }
+            world.setBlock(x, 65, z, BlockType.SPAWNER);
+            assertTrue(manager.register(x, 65, z, 0));
+            players.add(new MobSpawnerManager.PlayerPosition(x + 0.5, 65, z + 0.5));
+        }
+
+        for (int i = 0; i < 5_000; i++) {
+            world.livingEntities().spawn("minecraft:cow", 20, 0.5, 65, 0.5);
+        }
+        assertEquals(5_000, world.livingEntities().size());
+
+        long dueTick = manager.snapshot().stream()
+                .mapToLong(MobSpawnerState::nextSpawnTick).max().orElseThrow();
+        AtomicInteger rejectedAtCapacity = new AtomicInteger();
+        var first = manager.tick(world, dueTick, players, request -> {
+            rejectedAtCapacity.incrementAndGet();
+            assertThrows(IllegalStateException.class, () ->
+                    world.livingEntities().spawn(request.identifier(), 20,
+                            request.x(), request.y(), request.z()));
+            return false;
+        });
+
+        assertEquals(spawnerCount, first.trackedSpawners());
+        assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK, first.processedSpawners());
+        assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK, first.activeSpawners());
+        assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK, first.attempts());
+        assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK, rejectedAtCapacity.get());
+
+        var second = manager.tick(world, dueTick + 1, players, request -> {
+            rejectedAtCapacity.incrementAndGet();
+            assertThrows(IllegalStateException.class, () ->
+                    world.livingEntities().spawn(request.identifier(), 20,
+                            request.x(), request.y(), request.z()));
+            return false;
+        });
+
+        assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK, second.processedSpawners());
+        assertEquals(1, second.attempts());
+        assertEquals(spawnerCount, rejectedAtCapacity.get());
+        assertEquals(5_000, world.livingEntities().size());
+    }
+
 }

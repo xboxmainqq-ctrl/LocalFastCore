@@ -64,7 +64,7 @@ public final class AuthenticatedClusterMessageCodec {
         if (expectedTargetNode == null || !expectedTargetNode.matches("[A-Za-z0-9._-]{1,64}"))
             throw new IllegalArgumentException("Invalid expected target node");
         if (nowEpochMillis < 0) throw new IllegalArgumentException("Negative current time");
-        if (envelope.length < 4 + 1 + 16 + 3 + 3 + 1 + 8 + 4 + MAC_BYTES
+        if (envelope.length < 4 + 1 + 16 + 6 + 8 + 4 + MAC_BYTES
                 || envelope.length > ClusterMessage.MAX_PAYLOAD_BYTES + 512) {
             throw new IOException("Invalid cluster envelope size");
         }

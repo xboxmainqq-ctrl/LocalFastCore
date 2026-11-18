@@ -94,7 +94,10 @@ public final class CheckpointedPlayerTransferDestination implements PlayerTransf
             // tear down a newer destination's session.
             return;
         }
+        // The stored state/token check above proves this rollback still names
+        // the current owner. Deactivate even after lease expiry so an in-memory
+        // pending-login reservation cannot block a later fencing-token reclaim.
         PlayerTransferFence fence = new PlayerTransferFence(ledger, claim, epochMillis);
-        if (fence.isActiveClaim()) activator.deactivate(handoff, fence);
+        activator.deactivate(handoff, fence);
     }
 }

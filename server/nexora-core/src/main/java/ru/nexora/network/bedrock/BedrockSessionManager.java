@@ -928,6 +928,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         int resumed = 0;
         int redirected = 0;
         int unresolved = 0;
+        long now = System.currentTimeMillis();
         for (String xuid : frozenXuids) {
             java.util.Optional<ru.nexora.network.PlayerTransferRecord> latest =
                     ledger.findLatestForPlayer(xuid);
@@ -941,7 +942,23 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 unresolved++;
                 continue;
             }
-            if (record.state() == ru.nexora.network.PlayerTransferRecord.State.ABORTED) {
+            if (record.state() == ru.nexora.network.PlayerTransferRecord.State.PREPARED
+                    && now >= record.updatedAtEpochMillis()
+                    && now - record.updatedAtEpochMillis() >= 30_000L) {
+                // A stale PREPARED record has not been claimed. The ledger CAS
+                // arbitrates against a destination that may claim concurrently.
+                ledger.abortPrepared(record.transferId(), now);
+                java.util.Optional<ru.nexora.network.PlayerTransferRecord> afterAbort =
+                        ledger.findLatestForPlayer(xuid);
+                if (afterAbort.isPresent()
+                        && afterAbort.orElseThrow().state()
+                        == ru.nexora.network.PlayerTransferRecord.State.ABORTED) {
+                    unfreezePlayerAfterTransferAbort(xuid);
+                    resumed++;
+                } else {
+                    unresolved++;
+                }
+            } else if (record.state() == ru.nexora.network.PlayerTransferRecord.State.ABORTED) {
                 unfreezePlayerAfterTransferAbort(xuid);
                 resumed++;
             } else if (record.state() == ru.nexora.network.PlayerTransferRecord.State.COMMITTED) {

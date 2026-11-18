@@ -337,3 +337,10 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Added explicit fail-closed tests: JDBC acquire, renew and release surface IOException when the shared database/driver is unavailable; they do not report a successful ownership operation.
 - CI run 44344125288 was created for the PR head but the build job failed before any step started (empty step list and no job logs). The job retry was queued; no Maven result is available yet.
 - Scope boundary: these are real process-boundary tests using H2 AUTO_SERVER, not a production SQL vendor failover test or a deterministic network-partition test. Those remain deployment validation gates.
+
+### 45. Spawner admission at the final entity-capacity slot — IMPLEMENTED, CI PENDING
+- Added a multi-player regression with more than 128 active spawners and 4,999 existing living entities.
+- The test verifies that the first valid spawn can use the final available world slot, later spawners fail closed at the 5,000-entity cap, and the manager never exceeds the cap.
+- This complements the existing full-capacity/round-robin regression; it does not claim measured TPS or replace real Bedrock client/load validation.
+- GitHub Actions artifact retention on the active development branch is now one day to reduce storage pressure while preserving short-lived build artifacts.
+- Validation: commit created; Maven/CI result is pending.

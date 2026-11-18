@@ -166,9 +166,9 @@ public final class NexoraServer {
                 event -> System.out.printf("NEXORA: Bedrock packet 0x%02X from %s (%d bytes)%n",
                         event.packet().packetId(), event.networkId(), event.packet().payload().length));
         if (configuredTransferLedger.shared()) {
-            bedrockSessions.configureTransferOwnershipGuard(transferLedger, transferNodeId);
             bedrockSessions.configureOnlinePlayerLeases(
                     configuredTransferLedger.onlineLeases(), onlinePlayerLeaseMillis);
+            bedrockSessions.configureTransferOwnershipGuard(transferLedger, transferNodeId);
         }
         ru.nexora.network.PlayerTransferRecoveryService.RecoveryReport transferRecovery =
                 bedrockSessions.recoverPendingTransferRestores(transferLedger, transferNodeId, 10_000);

@@ -50,6 +50,7 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 - [x] Add server-side gravity, collision-resolved falling, knockback damping, and 3D flight targeting for selected flying species.
 - [x] Add bounded hostile-mob natural despawn after a 30-second grace period beyond 128 blocks; passive/neutral mobs are preserved.
 - [x] Add bounded fall-distance tracking and landing damage for ground-bound mobs.
+- [x] Reset creeper fuse progress when its target leaves trigger range or its chunk unloads; require a fresh fuse after reload, with deterministic tracker tests.
 - [x] Add conservative one-block obstacle jumping with headroom checks, cooldowns, loaded-chunk safety, and invoke it from the live mob movement loop before pathfinding.
 - [x] Add bounded spider and cave-spider wall climbing with headroom and loaded-chunk checks.
 - [ ] Add fluid movement and complete species-specific special attacks. Water/lava behavior remains blocked by the current world block/fluid model and must not be simulated with unsafe guesses.

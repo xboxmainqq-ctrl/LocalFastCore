@@ -72,6 +72,7 @@ These rules apply to all future architecture, implementation, review, and planni
 
 - [ ] Let NexoraAI explain likely causes and rank suggested fixes with supporting measurements.
 - [x] Separate public gameplay help from private technical assistance: all in-game users (including operators) receive safe help for public commands, mechanics, rules, and plugin usage; core/plugin implementation details and diagnostics are available only from the server process console. Add an output disclosure guard and tests.
+- [x] Extend the existing NexoraAI runtime monitor with deterministic diagnostic repair proposals: sustained failures, latency breaches, thread growth, and heap pressure produce bounded advisory plans without automatic source edits, command execution, or restarts.
 - [ ] Generate proposed patches/config changes for operator review; never apply source-code or risky runtime changes autonomously.
 - [ ] Require explicit operator approval, backups, validation, and a rollback path for every change.
 - [ ] Run tests/build checks before a proposed fix is considered ready.

@@ -26,7 +26,8 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 - [ ] Audit locks and per-session synchronization for contention and deadlock risks.
 - [ ] Audit chunk/world loading, entity lifecycle, and scheduled work for bounded cost and safe shutdown.
 - [ ] Improve autosave reliability: bounded work, clear failure reporting, and recovery tests.
-- [ ] Add regression/load tests for player movement, mob AI, world saves, and many concurrent Bedrock sessions.
+- [ ] Add regression/load tests for player movement, mob AI, and world saves.
+- [x] Add a deterministic 128-peer concurrency workload for NetherNet identity registration, initial Bedrock network-settings negotiation, and concurrent disconnect/drain cleanup; this does not replace authenticated real-client load testing.
 - [ ] Keep Nerox 0.12.0 compatibility as the target unless the project explicitly changes version.
 
 ## Priority 2 — NexoraAI core observability

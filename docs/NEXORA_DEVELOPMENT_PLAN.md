@@ -89,8 +89,9 @@ Expose stable NEXORA APIs for gameplay actions, events, contracts and graph task
 - Enforce monotonic revisions, idempotent repeat saves and conflict detection.
 - Key snapshots by the Bedrock XUID string (not a lossy numeric conversion); the file format is versioned and retains a reader for the earlier numeric-ID format.
 - Keep the storage contract backend-neutral. `InMemoryPlayerStateStore` is test-only; `FilePlayerStateStore` now provides a local durable adapter with bounded files, checksum validation, per-player locks and atomic replacement where supported.
-- The new snapshot store is not yet wired into live Bedrock player saves; existing profile, inventory and equipment stores remain separate.
-- Next: connect snapshots to the live player serialization boundary, add a durable transfer ledger, source freeze/destination claim protocol, and crash/restart recovery tests.
+- The canonical snapshot service is wired into Bedrock disconnect/aggregate saves as a shadow checkpoint; legacy files remain authoritative when any component exists, with canonical fallback only when all legacy components are absent.
+- A CAS transfer ledger now has a durable local-file adapter, versioned records, leases and monotonically increasing fencing tokens. It is not yet replicated or wired into live handoff.
+- Next: add process-restart/login-fallback integration tests, then integrate ledger operations into source freeze/destination claim/commit and add authenticated inter-node transport. Exactly-once delivery remains unclaimed.
 
 ### 18. Benchmark laboratory
 Create repeatable workloads and compare NEXORA against reference server implementations using identical scenarios. No superiority claims before measurements.

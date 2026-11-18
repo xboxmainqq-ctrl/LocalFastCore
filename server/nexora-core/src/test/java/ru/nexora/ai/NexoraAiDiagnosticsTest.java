@@ -369,4 +369,15 @@ class NexoraAiDiagnosticsTest {
                 .anyMatch(summary -> summary.subsystem().equals("subsystem-16")));
     }
 
+    @Test
+    void unavailableSystemLoadRemainsUnknownInResourceWindows() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        diagnostics.recordResourceSnapshot(new JvmResourceSnapshot(
+                50, 100, 100, 10, 10, 2, 2, 1, 2, -1.0));
+        var five = diagnostics.activityWindowSummaries().stream()
+                .filter(summary -> summary.windowMinutes() == 5).findFirst().orElseThrow();
+        assertEquals(-1.0, five.maxSystemLoadPerProcessor());
+        assertTrue(diagnostics.recentEvidence().contains("maxLoad/core=n/a"));
+    }
+
 }

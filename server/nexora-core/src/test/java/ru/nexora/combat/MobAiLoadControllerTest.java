@@ -59,4 +59,39 @@ class MobAiLoadControllerTest {
         assertThrows(IllegalArgumentException.class, () -> controller.shouldUpdate(1, -1, 0, false));
         assertThrows(IllegalArgumentException.class, () -> controller.shouldUpdate(1, 0, Double.NaN, false));
     }
+    @Test
+    void distributesTenThousandMobSchedulingDecisionsAcrossTwentyTicks() {
+        MobAiLoadController controller = new MobAiLoadController(2);
+        int mobCount = 10_000;
+        int nearMobCount = 100;
+        int targetedMobCount = 50;
+        long observedFullRate = 0;
+        long observedDeferred = 0;
+
+        for (long tick = 0; tick < 20; tick++) {
+            int updatedThisTick = 0;
+            for (long runtimeId = 0; runtimeId < mobCount; runtimeId++) {
+                boolean nearPlayer = runtimeId < nearMobCount;
+                boolean hasTarget = runtimeId >= nearMobCount
+                        && runtimeId < nearMobCount + targetedMobCount;
+                if (controller.shouldUpdate(runtimeId, tick,
+                        nearPlayer ? 8.0 : 10_000.0, hasTarget)) {
+                    updatedThisTick++;
+                }
+            }
+            observedFullRate += updatedThisTick;
+            observedDeferred += mobCount - updatedThisTick;
+        }
+
+        long alwaysActiveMobs = (long) (nearMobCount + targetedMobCount) * 20;
+        long staggeredMobs = (long) (mobCount - nearMobCount - targetedMobCount) * 10;
+        assertEquals(alwaysActiveMobs + staggeredMobs, observedFullRate);
+        assertEquals((long) (mobCount - nearMobCount - targetedMobCount) * 10,
+                observedDeferred);
+        assertEquals(observedFullRate, controller.stats().fullRateUpdates());
+        assertEquals(observedDeferred, controller.stats().deferredUpdates());
+        assertEquals(200_000, controller.stats().totalDecisions());
+    }
+
 }
+

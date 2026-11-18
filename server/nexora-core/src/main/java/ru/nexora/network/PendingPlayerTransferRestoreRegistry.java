@@ -56,7 +56,15 @@ public final class PendingPlayerTransferRestoreRegistry {
     /** Removes only the exact registration used by a successfully restored login. */
     public boolean consume(PendingRestore restore) {
         Objects.requireNonNull(restore, "restore");
-        return pending.remove(restore.playerXuid(), restore);
+        java.util.concurrent.atomic.AtomicBoolean consumed = new java.util.concurrent.atomic.AtomicBoolean();
+        pending.computeIfPresent(restore.playerXuid(), (key, current) -> {
+            if (current == restore) {
+                consumed.set(true);
+                return null;
+            }
+            return current;
+        });
+        return consumed.get();
     }
 
     /** Removes a registration only when the same transfer and fencing token still match. */

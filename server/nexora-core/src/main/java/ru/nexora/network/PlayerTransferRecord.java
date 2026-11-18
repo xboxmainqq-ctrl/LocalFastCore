@@ -61,6 +61,13 @@ public record PlayerTransferRecord(
                 State.ABORTED, fencingToken, now, version + 1, now);
     }
 
+    /** Cancels a transfer before any destination claim has acquired ownership. */
+    public PlayerTransferRecord abortedPrepared(long now) {
+        if (state != State.PREPARED) throw new IllegalStateException("Only PREPARED transfers can be cancelled");
+        return new PlayerTransferRecord(transferId, playerXuid, sourceNode, targetNode, playerRevision,
+                State.ABORTED, 0, now, version + 1, now);
+    }
+
     /** Validates a monotonic successor transition without relying on the caller's adapter. */
     boolean isLegalSuccessorOf(PlayerTransferRecord current) {
         Objects.requireNonNull(current, "current");
@@ -74,10 +81,14 @@ public record PlayerTransferRecord(
             return false;
         }
         return switch (current.state) {
-            case PREPARED -> state == State.CLAIMED
+            case PREPARED -> (state == State.CLAIMED
                     && current.fencingToken == 0
                     && fencingToken == 1
-                    && leaseExpiresAtEpochMillis > updatedAtEpochMillis;
+                    && leaseExpiresAtEpochMillis > updatedAtEpochMillis)
+                    || (state == State.ABORTED
+                    && current.fencingToken == 0
+                    && fencingToken == 0
+                    && leaseExpiresAtEpochMillis == updatedAtEpochMillis);
             case CLAIMED -> {
                 if (state == State.CLAIMED) {
                     yield current.fencingToken < Long.MAX_VALUE

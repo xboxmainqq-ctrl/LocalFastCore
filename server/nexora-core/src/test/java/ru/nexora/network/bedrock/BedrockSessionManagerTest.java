@@ -3027,7 +3027,7 @@ class BedrockSessionManagerTest {
             ledger.prepare(handoff, "redirect-xuid", revision, 100L);
             var claim = ledger.claim(transferId, "target-node", 101L, 5_000L).orElseThrow();
 
-            assertThrows(java.io.IOException.class, () -> manager.redirectFrozenPlayerToNode(
+            assertThrows(SecurityException.class, () -> manager.redirectFrozenPlayerToNode(
                     "redirect-xuid", transferId, claim.fencingToken(), ledger,
                     "source-node", "target.example.net", 19132));
             assertTrue(outboundFrames.isEmpty(), "Redirect must not be sent before durable commit");

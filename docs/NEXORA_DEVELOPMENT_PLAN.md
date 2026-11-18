@@ -303,3 +303,8 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Added in-memory expiry/fencing tests, JDBC multi-node exclusivity tests, and a concurrent two-node first-login race test.
 - CI: 802 tests passed, zero failures on implementation commit `68ff1a5`; GitHub Actions build and GitLab publish both succeeded.
 - Remaining validation: process-kill/partition tests with two actual server processes and a production database; the lease uses bounded expiry and is not a consensus protocol for arbitrary clock skew. Nodes must have synchronized clocks and must not continue gameplay when renewal fails.
+### 42. Shared ownership restart integration coverage — IMPLEMENTED, CI PENDING
+- Added combined JDBC restart tests using independent DataSource/ledger/lease/checkpoint-store instances to model source and destination processes reconnecting to the same durable database.
+- Verified a COMMITTED transfer continues to reject the former source after restart, the destination restores the exact canonical checkpoint revision, the destination lease remains exclusive, and an expired process lease cannot be resurrected by the old session token.
+- Verified an ABORTED transfer restores source-node login authority and rejects the destination after restart.
+- Remaining: run the same scenarios with two actual server JVMs, a production SQL engine, network partitions, and abrupt process termination at each handoff boundary.

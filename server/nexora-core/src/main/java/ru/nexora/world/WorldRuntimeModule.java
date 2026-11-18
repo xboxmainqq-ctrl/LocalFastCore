@@ -129,6 +129,10 @@ public final class WorldRuntimeModule implements AutoCloseable {
         return scheduler.registeredTasks(RuntimeTaskScheduler.Lane.PERSISTENCE);
     }
 
+    public int registeredLeaseHeartbeatTasks() {
+        return scheduler.registeredTasks(RuntimeTaskScheduler.Lane.MONITORING);
+    }
+
     /** Aggregate persistence flush measurements, including the final shutdown save. */
     public WorldAutosave.SaveStats autosaveStats() {
         return autosave.saveStats();

@@ -41,6 +41,29 @@ class WorldRuntimeModuleTest {
     }
 
     @Test
+    void runsOnlinePlayerLeaseHeartbeatOnIsolatedMonitoringLane() throws Exception {
+        World world = new World("NEXORA", 1L, new FlatWorldGenerator());
+        java.util.concurrent.CountDownLatch heartbeat = new java.util.concurrent.CountDownLatch(1);
+        WorldRuntimeModule runtime = new WorldRuntimeModule(
+                world,
+                Duration.ofHours(1),
+                ignored -> fail(ignored),
+                () -> {},
+                heartbeat::countDown,
+                ignored -> fail(ignored),
+                ignored -> {},
+                ignored -> fail(ignored),
+                ignored -> {});
+
+        assertEquals(1, runtime.registeredLeaseHeartbeatTasks());
+        assertTrue(heartbeat.await(3, java.util.concurrent.TimeUnit.SECONDS),
+                "Lease heartbeat must run even when no client packet arrives");
+
+        runtime.close();
+        assertEquals(0, runtime.registeredLeaseHeartbeatTasks());
+    }
+
+    @Test
     void reportsFinalPlayerSaveFailure() throws Exception {
         World world = new World("NEXORA", 1L, new FlatWorldGenerator());
         AtomicInteger playerSaves = new AtomicInteger();

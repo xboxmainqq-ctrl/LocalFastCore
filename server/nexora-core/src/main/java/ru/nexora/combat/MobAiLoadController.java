@@ -11,7 +11,10 @@ public final class MobAiLoadController {
     public static final double FULL_RATE_DISTANCE = 24.0;
     public static final double FULL_RATE_DISTANCE_SQUARED =
             FULL_RATE_DISTANCE * FULL_RATE_DISTANCE;
-    public static final int DEFAULT_FAR_UPDATE_INTERVAL = 2;
+    public static final int DEFAULT_FAR_UPDATE_INTERVAL = 4;
+    public static final double NEAR_DISTANCE = 24.0;
+    public static final double MID_DISTANCE = 48.0;
+    public static final double FAR_DISTANCE = 96.0;
 
     private final int farUpdateInterval;
     private final LongAdder fullRateUpdates = new LongAdder();
@@ -42,18 +45,44 @@ public final class MobAiLoadController {
                 || nearestPlayerDistanceSquared < 0) {
             throw new IllegalArgumentException("Invalid mob scheduling observation");
         }
+        int interval = intervalForDistance(nearestPlayerDistanceSquared);
         if (hasActiveTarget || nearestPlayerDistanceSquared <= FULL_RATE_DISTANCE_SQUARED
-                || farUpdateInterval == 1) {
+                || interval == 1 || farUpdateInterval == 1) {
             fullRateUpdates.increment();
             recordDecisionDuration(started);
             return true;
         }
-        boolean scheduled = Math.floorMod(runtimeId, farUpdateInterval)
-                == Math.floorMod(tick, farUpdateInterval);
+        boolean scheduled = Math.floorMod(runtimeId, interval)
+                == Math.floorMod(tick, interval);
         if (scheduled) fullRateUpdates.increment();
         else deferredUpdates.increment();
         recordDecisionDuration(started);
         return scheduled;
+    }
+
+    /** Adaptive interval: nearby mobs stay responsive, distant idle mobs are heavily staggered. */
+    public int intervalForDistance(double nearestPlayerDistanceSquared) {
+        if (Double.isNaN(nearestPlayerDistanceSquared) || nearestPlayerDistanceSquared < 0) {
+            throw new IllegalArgumentException("Invalid distance");
+        }
+        if (nearestPlayerDistanceSquared <= NEAR_DISTANCE * NEAR_DISTANCE) return 1;
+        if (nearestPlayerDistanceSquared <= MID_DISTANCE * MID_DISTANCE) return 2;
+        if (nearestPlayerDistanceSquared <= FAR_DISTANCE * FAR_DISTANCE) return 3;
+        return farUpdateInterval;
+    }
+
+    public Priority priority(double distanceSquared, boolean activeTarget, boolean specialBehavior) {
+        if (activeTarget || specialBehavior || distanceSquared <= NEAR_DISTANCE * NEAR_DISTANCE) {
+            return Priority.HIGH;
+        }
+        if (distanceSquared <= FAR_DISTANCE * FAR_DISTANCE) return Priority.NORMAL;
+        return Priority.LOW;
+    }
+
+    public enum Priority {
+        HIGH,
+        NORMAL,
+        LOW
     }
 
     private void recordDecisionDuration(long started) {

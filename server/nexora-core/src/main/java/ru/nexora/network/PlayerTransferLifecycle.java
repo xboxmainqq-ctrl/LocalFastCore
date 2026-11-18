@@ -60,27 +60,32 @@ public final class PlayerTransferLifecycle {
     public void prepare(PlayerHandoff handoff, String playerXuid, long nowEpochMillis)
             throws Exception {
         Objects.requireNonNull(handoff, "handoff");
+        if (ledger.get(handoff.transferId()).isPresent()) {
+            throw new IllegalStateException("Transfer ID already exists: " + handoff.transferId());
+        }
         long revision = source.freezeAndCheckpoint(handoff);
+        boolean prepared = false;
         try {
             ledger.prepare(handoff, playerXuid, revision, nowEpochMillis);
+            prepared = true;
             source.onPrepared(handoff);
         } catch (Exception publicationFailure) {
             // A failed write or source-lease release can have an uncertain outcome.
-            // Only a durable ABORTED state permits the source to reacquire ownership.
+            // Only abort the PREPARED row when this invocation confirmed its creation.
             try {
-                Optional<PlayerTransferRecord> stored = ledger.get(handoff.transferId());
-                if (stored.isEmpty()) {
-                    source.unfreeze(handoff);
+                if (prepared) {
+                    Optional<PlayerTransferRecord> aborted = ledger.abortPrepared(
+                            handoff.transferId(), nowEpochMillis);
+                    if (aborted.isPresent()) source.unfreeze(handoff);
                 } else {
-                    PlayerTransferRecord record = stored.orElseThrow();
-                    if (record.state() == PlayerTransferRecord.State.PREPARED) {
-                        Optional<PlayerTransferRecord> aborted = ledger.abortPrepared(
-                                handoff.transferId(), nowEpochMillis);
-                        if (aborted.isPresent()) source.unfreeze(handoff);
-                    } else if (record.state() == PlayerTransferRecord.State.ABORTED
-                            && record.playerXuid().equals(playerXuid)
-                            && record.sourceNode().equals(handoff.sourceNode())
-                            && record.targetNode().equals(handoff.targetNode())) {
+                    Optional<PlayerTransferRecord> stored = ledger.get(handoff.transferId());
+                    if (stored.isEmpty()) {
+                        source.unfreeze(handoff);
+                    } else if (stored.filter(record ->
+                            record.state() == PlayerTransferRecord.State.ABORTED
+                                    && record.playerXuid().equals(playerXuid)
+                                    && record.sourceNode().equals(handoff.sourceNode())
+                                    && record.targetNode().equals(handoff.targetNode())).isPresent()) {
                         source.unfreeze(handoff);
                     }
                 }

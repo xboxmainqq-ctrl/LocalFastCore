@@ -55,7 +55,7 @@ public final class TcpClusterTransport implements ClusterTransport {
             InetSocketAddress bindAddress,
             Map<String, InetSocketAddress> peers,
             Set<String> authorizedPeers,
-            AuthenticatedClusterMessageCodec codec,
+            ClusterMessageCodec codec,
             ClusterReplayFilter replayGuard,
             Duration connectTimeout,
             Duration readTimeout,

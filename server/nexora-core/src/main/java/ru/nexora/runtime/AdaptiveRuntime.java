@@ -19,6 +19,7 @@ public final class AdaptiveRuntime {
 
     private final long tickBudgetNanos;
     private final long emergencyReserveNanos;
+    private final AdaptiveBudget adaptiveBudget;
     private final EnumMap<Lane, Long> reservedNanos = new EnumMap<>(Lane.class);
     private final EnumMap<Lane, Long> consumedNanos = new EnumMap<>(Lane.class);
     private double pressure = 0.0;
@@ -31,6 +32,7 @@ public final class AdaptiveRuntime {
         }
         this.tickBudgetNanos = tickBudgetNanos;
         this.emergencyReserveNanos = emergencyReserveNanos;
+        this.adaptiveBudget = new AdaptiveBudget(Math.max(1_000L, tickBudgetNanos / 10));
         reset();
     }
 
@@ -43,6 +45,7 @@ public final class AdaptiveRuntime {
         lastTickNanos = elapsedNanos;
         double ratio = (double) elapsedNanos / tickBudgetNanos;
         pressure = pressure == 0.0 ? ratio : pressure * 0.85 + ratio * 0.15;
+        adaptiveBudget.rebalance(Math.min(1.0, pressure));
     }
 
     public synchronized long adaptEstimate(long measuredP95Nanos, long fallbackNanos) {
@@ -81,7 +84,8 @@ public final class AdaptiveRuntime {
         long hardLimit = tickBudgetNanos - emergencyReserveNanos;
         if (!critical && consumed + estimatedNanos > hardLimit) return Admission.DEFER;
 
-        long laneReserve = reservedNanos.get(lane);
+        long dynamicLaneBudget = adaptiveBudget.budget(lane);
+        long laneReserve = Math.max(reservedNanos.get(lane), dynamicLaneBudget);
         long laneConsumed = consumedNanos.get(lane);
         if (!critical && laneReserve > 0 && laneConsumed + estimatedNanos > laneReserve
                 && consumed + estimatedNanos > hardLimit - Math.max(0L, laneReserve - laneConsumed)) {

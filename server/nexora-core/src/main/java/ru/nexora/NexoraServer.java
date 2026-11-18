@@ -173,9 +173,8 @@ public final class NexoraServer {
                     }
                 });
 
-        // Reverse close order: network admission/discovery, WebRTC, Bedrock
-        // Network transport stops first; gameplay then persists/closes sessions;
-        // world ticking/final persistence follows; diagnostics stays alive until last.
+        // Reverse close order: stop network transport, drain and persist gameplay
+        // sessions, stop world ticking/final persistence, then stop diagnostics.
         lifecycle.register(diagnosticsRuntime);
         lifecycle.register(worldRuntime);
         lifecycle.register(gameplayRuntime);

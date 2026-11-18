@@ -80,6 +80,18 @@ public final class JdbcPlayerTransferLedger implements PlayerTransferLedger {
         }
     }
 
+    /** Fails startup early when the deployment-managed transfer table is absent or inaccessible. */
+    public void verifySchema() throws IOException {
+        String sql = "SELECT transfer_id FROM " + TABLE_NAME + " WHERE 1 = 0";
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet ignored = statement.executeQuery()) {
+            // Successful zero-row query is sufficient schema validation.
+        } catch (SQLException failure) {
+            throw new IOException("NEXORA transfer ledger schema is unavailable", failure);
+        }
+    }
+
     @Override
     public Optional<PlayerTransferRecord> get(UUID transferId) throws IOException {
         Objects.requireNonNull(transferId, "transferId");

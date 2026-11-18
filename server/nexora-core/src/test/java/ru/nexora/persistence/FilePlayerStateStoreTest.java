@@ -34,7 +34,7 @@ class FilePlayerStateStoreTest {
         PlayerStateSnapshot current = new PlayerStateSnapshot(1, "9", 8L, 80L, new byte[] {8});
         assertEquals(PlayerStateStore.SaveResult.SAVED, store.save(current));
         assertEquals(PlayerStateStore.SaveResult.STALE,
-                store.save(new PlayerStateSnapshot(1, "9", "7", 70L, new byte[] {7})));
+                store.save(new PlayerStateSnapshot(1, "9", 7L, 70L, new byte[] {7})));
         assertEquals(PlayerStateStore.SaveResult.ALREADY_CURRENT,
                 store.save(new PlayerStateSnapshot(1, "9", 8L, 99L, new byte[] {8})));
         assertEquals(8L, store.loadLatest("9").orElseThrow().revision());

@@ -508,6 +508,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     state.rejected = true;
                     state.loginAuthenticated = false;
                     state.clientInitialized = false;
+                    releaseOnlinePlayerLease(state);
                     removePlayerListEntry(entry.getKey(), state);
                     stopped = true;
                 }
@@ -1546,6 +1547,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     state.rejected = true;
                     state.loginAuthenticated = false;
                     state.clientInitialized = false;
+                    releaseOnlinePlayerLease(state);
                     removePlayerListEntry(message.networkId(), state);
                     System.err.println("NEXORA: stopped Bedrock session after node ownership changed: "
                             + ownershipLost.getMessage());
@@ -1582,6 +1584,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         state.rejected = true;
                         state.loginAuthenticated = false;
                         state.clientInitialized = false;
+                        releaseOnlinePlayerLease(state);
                         removePlayerListEntry(message.networkId(), state);
                         System.err.println("NEXORA: stopped Bedrock batch after transfer ownership was lost: "
                                 + staleFence.getMessage());

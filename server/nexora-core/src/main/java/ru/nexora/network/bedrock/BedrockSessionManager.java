@@ -696,6 +696,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         || !state.positionInitialized) {
                     throw new IllegalStateException("Player session is not eligible for transfer");
                 }
+                // Do not freeze or checkpoint from a session that has already
+                // lost its cluster-wide ownership lease.
+                assertTransferNodeOwnership(state);
                 state.transferFrozen = true;
                 try {
                     if (state.openContainerWindowId != 0) closeContainerWindow(networkId, state, true);

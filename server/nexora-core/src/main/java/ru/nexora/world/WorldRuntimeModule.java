@@ -20,6 +20,7 @@ public final class WorldRuntimeModule implements AutoCloseable {
     private final WorldAutosave autosave;
     private final WorldFurnaceTicker furnaceTicker;
     private final RuntimeTaskScheduler scheduler;
+    private final RuntimeTaskScheduler.TaskHandle leaseHeartbeat;
     private final AtomicBoolean closed = new AtomicBoolean();
 
     public WorldRuntimeModule(
@@ -27,6 +28,25 @@ public final class WorldRuntimeModule implements AutoCloseable {
             Duration autosaveInterval,
             Consumer<IOException> autosaveErrorHandler,
             WorldAutosave.SaveHook additionalSave,
+            LongConsumer autosaveObserver,
+            Consumer<RuntimeException> furnaceErrorHandler,
+            LongConsumer furnaceObserver
+    ) {
+        this(world, autosaveInterval, autosaveErrorHandler, additionalSave,
+                null, null, autosaveObserver, furnaceErrorHandler, furnaceObserver);
+    }
+
+    /**
+     * Creates the world runtime with an independent monitoring-lane player-lease heartbeat.
+     * The heartbeat is deliberately isolated from the furnace tick and persistence lanes.
+     */
+    public WorldRuntimeModule(
+            World world,
+            Duration autosaveInterval,
+            Consumer<IOException> autosaveErrorHandler,
+            WorldAutosave.SaveHook additionalSave,
+            Runnable playerLeaseHeartbeat,
+            Consumer<RuntimeException> leaseHeartbeatErrorHandler,
             LongConsumer autosaveObserver,
             Consumer<RuntimeException> furnaceErrorHandler,
             LongConsumer furnaceObserver
@@ -61,9 +81,34 @@ public final class WorldRuntimeModule implements AutoCloseable {
             }
             throw exception;
         }
+        RuntimeTaskScheduler.TaskHandle heartbeat = null;
+        if (playerLeaseHeartbeat != null) {
+            Objects.requireNonNull(leaseHeartbeatErrorHandler, "leaseHeartbeatErrorHandler");
+            try {
+                heartbeat = taskScheduler.scheduleWithFixedDelay(
+                        RuntimeTaskScheduler.Lane.MONITORING,
+                        () -> {
+                            try {
+                                playerLeaseHeartbeat.run();
+                            } catch (RuntimeException failure) {
+                                try { leaseHeartbeatErrorHandler.accept(failure); }
+                                catch (RuntimeException ignored) {
+                                    // Diagnostics must not terminate the heartbeat task.
+                                }
+                            }
+                        },
+                        1, 1, TimeUnit.SECONDS);
+            } catch (RuntimeException exception) {
+                try { saveService.close(); } catch (IOException closeFailure) { exception.addSuppressed(closeFailure); }
+                try { ticker.close(); } catch (IOException closeFailure) { exception.addSuppressed(closeFailure); }
+                try { taskScheduler.close(); } catch (IOException closeFailure) { exception.addSuppressed(closeFailure); }
+                throw exception;
+            }
+        }
         this.scheduler = taskScheduler;
         this.furnaceTicker = ticker;
         this.autosave = saveService;
+        this.leaseHeartbeat = heartbeat;
     }
 
     public void saveNow() throws IOException {
@@ -102,6 +147,7 @@ public final class WorldRuntimeModule implements AutoCloseable {
     public void close() throws IOException {
         if (!closed.compareAndSet(false, true)) return;
         IOException failure = null;
+        if (leaseHeartbeat != null) leaseHeartbeat.cancel();
         try {
             furnaceTicker.close();
         } catch (IOException exception) {

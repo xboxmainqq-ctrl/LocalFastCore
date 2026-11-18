@@ -124,6 +124,13 @@ public final class NexoraServer {
                         event.packet().packetId(), event.networkId(), event.packet().payload().length));
         GameplayRuntimeModule gameplayRuntime = new GameplayRuntimeModule(
                 bedrockSessions, aiDiagnostics, System.getenv());
+        diagnosticsRuntime.safeRepairs().register(
+                "cache.mob-path.clear",
+                "Clear transient mob navigation cache (world and entity state are untouched)",
+                false,
+                () -> bedrockSessions.mobPathCacheSize() > 0,
+                bedrockSessions::clearMobPathCache,
+                () -> bedrockSessions.mobPathCacheSize() == 0);
         List<String> stunUrls = config.stunUrls();
         int udpPortMin = config.udpPortMin();
         int udpPortMax = config.udpPortMax();
@@ -198,7 +205,7 @@ public final class NexoraServer {
             throw exception;
         }
         readiness.markReady();
-        startAiConsole(gameplayRuntime.assistant());
+        startAiConsole(gameplayRuntime.assistant(), diagnosticsRuntime.safeRepairs());
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             readiness.beginShutdown();
@@ -245,20 +252,55 @@ public final class NexoraServer {
     }
 
     /** Reads private operator AI requests only from the server process console. */
-    private static void startAiConsole(ru.nexora.ai.NexoraAiAssistant assistant) {
+    private static void startAiConsole(
+            ru.nexora.ai.NexoraAiAssistant assistant,
+            ru.nexora.ai.NexoraAiSafeRepairRegistry safeRepairs
+    ) {
         Thread console = new Thread(() -> {
             try (BufferedReader input = new BufferedReader(new InputStreamReader(System.in))) {
                 String line;
                 while ((line = input.readLine()) != null) {
                     String command = line.trim();
                     if (command.equalsIgnoreCase("ai") || command.equalsIgnoreCase("ai help")) {
-                        System.out.println("NEXORA AI console: ai <вопрос> | ai status");
+                        System.out.println("NEXORA AI console: ai <вопрос> | ai status | ai repair list | ai repair history | ai repair run <id> confirm");
                         continue;
                     }
                     if (command.equalsIgnoreCase("ai status")) {
                         System.out.println(assistant.adminStatus());
                         continue;
                     }
+                    if (command.equalsIgnoreCase("ai repair list")) {
+                        for (ru.nexora.ai.NexoraAiSafeRepairRegistry.ActionDescriptor action : safeRepairs.actions()) {
+                            System.out.println(action.id() + " — " + action.description()
+                                    + " (auto-safe: " + action.autoSafe() + ")");
+                        }
+                        continue;
+                    }
+                    if (command.equalsIgnoreCase("ai repair history")) {
+                        for (ru.nexora.ai.NexoraAiSafeRepairRegistry.Execution execution : safeRepairs.history()) {
+                            System.out.println(execution.at() + " " + execution.actionId()
+                                    + " " + execution.status() + " — " + execution.detail());
+                        }
+                        continue;
+                    }
+                    if (command.regionMatches(true, 0, "ai repair run ", 0, 14)) {
+                        String[] parts = command.split("\\s+");
+                        if (parts.length < 4) {
+                            System.out.println("Использование: ai repair run <id> confirm");
+                            continue;
+                        }
+                        boolean confirmed = parts.length >= 5 && parts[4].equalsIgnoreCase("confirm");
+                        ru.nexora.ai.NexoraAiSafeRepairRegistry.Execution execution =
+                                safeRepairs.execute(parts[3], "server-console", confirmed);
+                        System.out.println("NEXORA AI repair: " + execution.status()
+                                + " — " + execution.detail());
+                        continue;
+                    }
+                    if (command.regionMatches(true, 0, "ai repair", 0, 9)) {
+                        System.out.println("Использование: ai repair list | ai repair history | ai repair run <id> confirm");
+                        continue;
+                    }
+
                     if (!command.regionMatches(true, 0, "ai ", 0, 3)) continue;
                     String question = command.substring(3).trim();
                     if (question.isEmpty()) {

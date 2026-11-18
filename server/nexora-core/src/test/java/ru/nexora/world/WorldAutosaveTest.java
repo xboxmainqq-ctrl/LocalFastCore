@@ -44,6 +44,40 @@ class WorldAutosaveTest {
         assertEquals(2, profileSaves.get());
     }
 
+
+    @Test
+    void exposesAggregateManualAndFinalSaveMeasurements() throws Exception {
+        World world = new World("NEXORA", 1L, new FlatWorldGenerator());
+        WorldAutosave autosave = new WorldAutosave(
+                world, Duration.ofHours(1), ignored -> fail(ignored));
+
+        autosave.saveNow();
+        autosave.close();
+
+        WorldAutosave.SaveStats stats = autosave.saveStats();
+        assertEquals(2, stats.attempts());
+        assertEquals(2, stats.successfulSaves());
+        assertEquals(0, stats.failedSaves());
+        assertTrue(stats.totalExecutionNanos() >= stats.maxExecutionNanos());
+        assertTrue(stats.maxExecutionNanos() >= stats.lastExecutionNanos());
+        assertTrue(stats.averageExecutionMillis() >= 0.0);
+    }
+
+    @Test
+    void countsFailedSaveAttemptsWithoutLosingTheFailure() throws Exception {
+        World world = new World("NEXORA", 1L, new FlatWorldGenerator());
+        WorldAutosave autosave = new WorldAutosave(world, Duration.ofHours(1),
+                ignored -> {}, () -> { throw new java.io.IOException("profile save failed"); });
+
+        java.io.IOException failure = assertThrows(java.io.IOException.class, autosave::saveNow);
+        assertTrue(failure.getMessage().contains("profile save failed"));
+        WorldAutosave.SaveStats stats = autosave.saveStats();
+        assertEquals(1, stats.attempts());
+        assertEquals(0, stats.successfulSaves());
+        assertEquals(1, stats.failedSaves());
+        assertThrows(java.io.IOException.class, autosave::close);
+    }
+
     @Test
     void rejectsNonPositiveAutosaveIntervals() {
         World world = new World("NEXORA", 1L, new FlatWorldGenerator());

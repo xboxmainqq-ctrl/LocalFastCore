@@ -7,6 +7,8 @@ import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
 import java.util.function.LongConsumer;
 
@@ -21,6 +23,12 @@ public final class WorldAutosave implements AutoCloseable {
     private final RuntimeTaskScheduler.TaskHandle task;
     private final Object saveLock = new Object();
     private final AtomicBoolean closed = new AtomicBoolean();
+    private final LongAdder saveAttempts = new LongAdder();
+    private final LongAdder successfulSaves = new LongAdder();
+    private final LongAdder failedSaves = new LongAdder();
+    private final LongAdder totalSaveNanos = new LongAdder();
+    private final AtomicLong maxSaveNanos = new AtomicLong();
+    private final AtomicLong lastSaveNanos = new AtomicLong();
 
     public WorldAutosave(World world, Duration interval, Consumer<IOException> errorHandler) {
         this(world, interval, errorHandler, () -> {}, ignored -> {});
@@ -70,7 +78,7 @@ public final class WorldAutosave implements AutoCloseable {
     public void saveNow() throws IOException {
         if (closed.get()) throw new IllegalStateException("World autosave is closed");
         synchronized (saveLock) {
-            flushAll();
+            flushAllMeasured();
         }
     }
 
@@ -78,7 +86,7 @@ public final class WorldAutosave implements AutoCloseable {
         long started = System.nanoTime();
         try {
             synchronized (saveLock) {
-                if (!closed.get()) flushAll();
+                if (!closed.get()) flushAllMeasured();
             }
         } catch (IOException | RuntimeException exception) {
             IOException failure = exception instanceof IOException io
@@ -105,7 +113,35 @@ public final class WorldAutosave implements AutoCloseable {
         }
         if (ownsScheduler) scheduler.close();
         synchronized (saveLock) {
+            flushAllMeasured();
+        }
+    }
+
+    /** Returns aggregate save measurements, including manual and final shutdown flushes. */
+    public SaveStats saveStats() {
+        long attempts = saveAttempts.sum();
+        long total = totalSaveNanos.sum();
+        return new SaveStats(attempts, successfulSaves.sum(), failedSaves.sum(),
+                total, maxSaveNanos.get(), lastSaveNanos.get(),
+                attempts == 0 ? 0.0 : total / (double) attempts / 1_000_000.0);
+    }
+
+    private void flushAllMeasured() throws IOException {
+        long started = System.nanoTime();
+        boolean failed = false;
+        saveAttempts.increment();
+        try {
             flushAll();
+        } catch (IOException | RuntimeException exception) {
+            failed = true;
+            throw exception;
+        } finally {
+            long elapsed = Math.max(0L, System.nanoTime() - started);
+            if (failed) failedSaves.increment();
+            else successfulSaves.increment();
+            totalSaveNanos.add(elapsed);
+            maxSaveNanos.accumulateAndGet(elapsed, Math::max);
+            lastSaveNanos.set(elapsed);
         }
     }
 
@@ -126,6 +162,20 @@ public final class WorldAutosave implements AutoCloseable {
             else failure.addSuppressed(playerFailure);
         }
         if (failure != null) throw failure;
+    }
+
+    public record SaveStats(long attempts, long successfulSaves, long failedSaves,
+                            long totalExecutionNanos, long maxExecutionNanos,
+                            long lastExecutionNanos, double averageExecutionMillis) {
+        public SaveStats {
+            if (attempts < 0 || successfulSaves < 0 || failedSaves < 0
+                    || successfulSaves + failedSaves > attempts
+                    || totalExecutionNanos < 0 || maxExecutionNanos < 0
+                    || lastExecutionNanos < 0 || !Double.isFinite(averageExecutionMillis)
+                    || averageExecutionMillis < 0) {
+                throw new IllegalArgumentException("Invalid world autosave statistics");
+            }
+        }
     }
 
     @FunctionalInterface

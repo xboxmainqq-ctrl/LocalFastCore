@@ -1,6 +1,9 @@
 package ru.nexora.network;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -38,4 +41,27 @@ public final class InMemoryPlayerTransferLedger implements PlayerTransferLedger 
         records.put(transferId, replacement);
         return true;
     }
+    @Override
+    public synchronized List<PlayerTransferRecord> listRecoverableForTarget(String targetNode, int limit) {
+        validateRecoveryQuery(targetNode, limit);
+        return records.values().stream()
+                .filter(record -> record.targetNode().equals(targetNode))
+                .filter(InMemoryPlayerTransferLedger::isRecoverable)
+                .sorted(Comparator.comparingLong(PlayerTransferRecord::updatedAtEpochMillis)
+                        .thenComparing(record -> record.transferId().toString()))
+                .limit(limit)
+                .toList();
+    }
+
+    private static boolean isRecoverable(PlayerTransferRecord record) {
+        return record.state() == PlayerTransferRecord.State.CLAIMED
+                || record.state() == PlayerTransferRecord.State.COMMITTED;
+    }
+
+    private static void validateRecoveryQuery(String targetNode, int limit) {
+        if (targetNode == null || !targetNode.matches("[A-Za-z0-9._-]{1,64}"))
+            throw new IllegalArgumentException("Invalid target node");
+        if (limit < 1 || limit > 10_000) throw new IllegalArgumentException("Recovery query limit must be 1..10000");
+    }
 }
+

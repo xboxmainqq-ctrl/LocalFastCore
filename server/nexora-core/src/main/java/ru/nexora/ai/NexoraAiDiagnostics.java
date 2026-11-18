@@ -94,7 +94,10 @@ public final class NexoraAiDiagnostics {
             bucket.maxHeapRatio = Math.max(bucket.maxHeapRatio, heapRatio);
         }
         double load = resources.systemLoadAverage();
-        if (load >= 0.0) bucket.maxLoadRatio = Math.max(bucket.maxLoadRatio, load / resources.availableProcessors());
+        if (load >= 0.0) {
+            bucket.loadRatioSamples++;
+            bucket.maxLoadRatio = Math.max(bucket.maxLoadRatio, load / resources.availableProcessors());
+        }
         if (heapRatio >= 0.90 || (load >= 0.0 && load > resources.availableProcessors() * 2.0)) {
             bucket.pressureSamples++;
         }
@@ -174,13 +177,15 @@ public final class NexoraAiDiagnostics {
                     observedMinutes == 0 ? 0.0 : failures / (double) observedMinutes,
                     resourceSamples, pressureSamples,
                     heapSamples == 0 ? -1.0 : heapTotal / heapSamples,
-                    heapSamples == 0 ? -1.0 : maxHeap, maxLoadRatio));
+                    heapSamples == 0 ? -1.0 : maxHeap,
+                    activityBuckets.tailMap(currentMinute - windowMinutes + 1, true).values().stream()
+                            .mapToLong(bucket -> bucket.loadRatioSamples).sum() == 0 ? -1.0 : maxLoadRatio));
         }
         return List.copyOf(summaries);
     }
 
     private static final class ActivityBucket {
-        private long failures, resourceSamples, pressureSamples, heapRatioSamples;
+        private long failures, resourceSamples, pressureSamples, heapRatioSamples, loadRatioSamples;
         private double heapRatioTotal, maxHeapRatio, maxLoadRatio;
     }
 
@@ -360,8 +365,8 @@ public final class NexoraAiDiagnostics {
                                 : String.format(java.util.Locale.ROOT, "%.1f%%", summary.averageHeapUsageRatio() * 100))
                         .append(", heapMax=").append(summary.maxHeapUsageRatio() < 0 ? "n/a"
                                 : String.format(java.util.Locale.ROOT, "%.1f%%", summary.maxHeapUsageRatio() * 100))
-                        .append(", maxLoad/core=").append(String.format(java.util.Locale.ROOT, "%.2f",
-                                summary.maxSystemLoadPerProcessor()));
+                        .append(", maxLoad/core=").append(summary.maxSystemLoadPerProcessor() < 0 ? "n/a"
+                                : String.format(java.util.Locale.ROOT, "%.2f", summary.maxSystemLoadPerProcessor()));
             }
         }
         if (result.length() > MAX_EVIDENCE_LENGTH) {
@@ -403,7 +408,8 @@ public final class NexoraAiDiagnostics {
                     || pressureSampleCount > resourceSampleCount
                     || (!Double.isFinite(averageHeapUsageRatio) && averageHeapUsageRatio != -1.0)
                     || (!Double.isFinite(maxHeapUsageRatio) && maxHeapUsageRatio != -1.0)
-                    || !Double.isFinite(maxSystemLoadPerProcessor) || maxSystemLoadPerProcessor < 0) {
+                    || (!Double.isFinite(maxSystemLoadPerProcessor) && maxSystemLoadPerProcessor != -1.0)
+                    || maxSystemLoadPerProcessor < -1.0) {
                 throw new IllegalArgumentException("Invalid activity window summary");
             }
         }

@@ -49,6 +49,10 @@ public final class PlayerTransferLedgerFactory {
                 jdbc.initializeSchema();
                 leases.initializeSchema();
             }
+            // Validate credentials, connectivity and both ownership schemas before
+            // the Bedrock listener can accept any login.
+            jdbc.verifySchema();
+            leases.verifySchema();
             ledger = jdbc;
             onlineLeases = leases;
             shared = true;

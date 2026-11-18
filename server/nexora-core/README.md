@@ -166,3 +166,21 @@ NEXORA_PLAYER_STATE_JDBC_INITIALIZE_SCHEMA=false
 - Leave both JDBC URLs unset for the single-host file-backed development mode.
 
 **Important:** shared SQL storage is only the persistence foundation. Authenticated node-to-node transfer RPC and source/destination orchestration are not yet wired into the live server. The protocol-2225 TransferPacket encoder and a source redirect method guarded by a matching durable COMMITTED record exist, but no live coordinator invokes them yet; destination reconnect still needs end-to-end validation. Do not treat this configuration as enabling production cross-host player migration.
+
+For an authenticated TCP cluster link, configure the cluster listener, each peer's cluster endpoint, each peer's Bedrock client route, and a shared random HMAC key:
+
+~~~sh
+NEXORA_CLUSTER_BIND=10.20.0.1:19133
+NEXORA_CLUSTER_PEERS=survival-02=10.20.0.2:19133
+NEXORA_CLUSTER_BEDROCK_ROUTES=survival-02=bedrock-02.example.net:19132
+NEXORA_CLUSTER_SHARED_SECRET=BASE64_ENCODED_RANDOM_SECRET
+NEXORA_TRANSFER_LEASE_MS=15000
+~~~
+
+Generate at least 32 random secret bytes and Base64-encode them; use the same key on every configured peer. HMAC authenticates messages but does not encrypt the TCP stream, so keep the cluster listener on a private network/VPN or behind an authenticated encrypted tunnel. The Bedrock route is the address the client will connect to after the target commits the transfer.
+
+Once the cluster transport is active, the server process console exposes:
+- `players` — list authenticated players with their XUID and entity ID
+- `transfer <xuid> <target-node>` — request a transfer through the authenticated peer transport
+
+The transfer command is operator-console only. A player is frozen before the transfer is published; the source resumes only after a durable abort, and redirects only after the target's durable commit. If the outcome cannot be confirmed, the source remains frozen for recovery rather than risking two active copies.

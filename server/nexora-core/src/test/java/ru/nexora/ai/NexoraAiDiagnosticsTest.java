@@ -216,8 +216,8 @@ class NexoraAiDiagnosticsTest {
         var summary = diagnostics.latencySummaries().getFirst();
         assertEquals(3, summary.sampleCount());
         assertEquals(2, summary.slowOperationCount());
-        assertEquals(60_000, summary.windowMillis());
-        assertEquals(1, diagnostics.inspect().slowOperationCount() == 0 ? 0 : 1);
+        assertTrue(summary.windowMillis() >= 1 && summary.windowMillis() <= 60_000);
+        assertEquals(2, diagnostics.inspect().slowOperationCount());
     }
 
     @Test

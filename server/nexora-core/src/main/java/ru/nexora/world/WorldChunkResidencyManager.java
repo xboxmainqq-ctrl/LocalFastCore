@@ -18,19 +18,25 @@ import java.util.Set;
 public final class WorldChunkResidencyManager {
     private final int viewDistance;
     private final int unloadGraceTicks;
+    private final Shape shape;
     private final Map<Long, Integer> desiredRefCounts = new HashMap<>();
     private final Map<Long, Long> lastDesiredTick = new HashMap<>();
     private final Set<Long> resident = new HashSet<>();
 
     public WorldChunkResidencyManager(int viewDistance, int unloadGraceTicks) {
-        if (viewDistance < 2 || viewDistance > 32) {
-            throw new IllegalArgumentException("viewDistance must be between 2 and 32");
+        this(viewDistance, unloadGraceTicks, Shape.CIRCULAR);
+    }
+
+    public WorldChunkResidencyManager(int viewDistance, int unloadGraceTicks, Shape shape) {
+        if (viewDistance < 1 || viewDistance > 32) {
+            throw new IllegalArgumentException("viewDistance must be between 1 and 32");
         }
         if (unloadGraceTicks < 0 || unloadGraceTicks > 20 * 60) {
             throw new IllegalArgumentException("unloadGraceTicks must be between 0 and 1200");
         }
         this.viewDistance = viewDistance;
         this.unloadGraceTicks = unloadGraceTicks;
+        this.shape = java.util.Objects.requireNonNull(shape, "shape");
     }
 
     public synchronized ResidencyPlan update(List<PlayerChunk> players, long tick) {
@@ -39,17 +45,22 @@ public final class WorldChunkResidencyManager {
 
         for (PlayerChunk player : players) {
             if (player == null) continue;
-            int minX = player.chunkX() - viewDistance;
-            int maxX = player.chunkX() + viewDistance;
-            int minZ = player.chunkZ() - viewDistance;
-            int maxZ = player.chunkZ() + viewDistance;
+            int playerRadius = player.viewDistance() < 0 ? viewDistance : player.viewDistance();
+            if (playerRadius < 1 || playerRadius > 32) {
+                throw new IllegalArgumentException("Player view distance must be between 1 and 32");
+            }
+            int minX = player.chunkX() - playerRadius;
+            int maxX = player.chunkX() + playerRadius;
+            int minZ = player.chunkZ() - playerRadius;
+            int maxZ = player.chunkZ() + playerRadius;
             for (int x = minX; x <= maxX; x++) {
                 for (int z = minZ; z <= maxZ; z++) {
                     // Circular residency avoids loading the four extreme corners
                     // of a square view distance.
                     long dx = (long) x - player.chunkX();
                     long dz = (long) z - player.chunkZ();
-                    if (dx * dx + dz * dz > (long) viewDistance * viewDistance) continue;
+                    if (shape == Shape.CIRCULAR
+                            && dx * dx + dz * dz > (long) playerRadius * playerRadius) continue;
                     long key = chunkKey(x, z);
                     desiredRefCounts.merge(key, 1, Integer::sum);
                     lastDesiredTick.put(key, tick);
@@ -106,13 +117,25 @@ public final class WorldChunkResidencyManager {
         return ((long) x << 32) | (z & 0xffff_ffffL);
     }
 
-    public record PlayerChunk(int chunkX, int chunkZ) {
+    public record PlayerChunk(int chunkX, int chunkZ, int viewDistance) {
+        public PlayerChunk(int chunkX, int chunkZ) {
+            this(chunkX, chunkZ, -1);
+        }
+
         public PlayerChunk {
             if (Math.abs((long) chunkX) > 1_875_000L
                     || Math.abs((long) chunkZ) > 1_875_000L) {
                 throw new IllegalArgumentException("Player chunk is outside supported world bounds");
             }
+            if (viewDistance < -1 || viewDistance > 32) {
+                throw new IllegalArgumentException("Player view distance must be -1 or between 1 and 32");
+            }
         }
+    }
+
+    public enum Shape {
+        CIRCULAR,
+        SQUARE
     }
 
     public record ChunkCoordinate(int chunkX, int chunkZ) {}

@@ -140,6 +140,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             new ru.nexora.combat.MobDespawnTracker();
     private final ru.nexora.combat.MobAiLoadController mobAiLoadController =
             new ru.nexora.combat.MobAiLoadController();
+    private final ru.nexora.world.WorldChunkResidencyManager chunkResidency =
+            new ru.nexora.world.WorldChunkResidencyManager(
+                    BedrockChunkRadiusCodec.DEFAULT_RADIUS, 100,
+                    ru.nexora.world.WorldChunkResidencyManager.Shape.SQUARE);
     private volatile boolean serverAuthoritativeMovement;
     private volatile ru.nexora.ai.NexoraAiAssistant aiAssistant;
     private volatile ru.nexora.ai.NexoraAiDiagnostics aiDiagnostics;
@@ -2578,13 +2582,21 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     private void tickLivingEntityAi(long nowMillis, long tick) {
         List<ru.nexora.combat.LivingEntityAiService.PlayerTarget> targets = new ArrayList<>();
+        List<ru.nexora.world.WorldChunkResidencyManager.PlayerChunk> playerChunks = new ArrayList<>();
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
             SessionState player = entry.getValue();
             if (!player.loginAuthenticated || !player.clientInitialized || !player.positionInitialized
                     || player.dead || player.vitals.dead()) continue;
             targets.add(new ru.nexora.combat.LivingEntityAiService.PlayerTarget(
                     entry.getKey(), player.positionX, player.positionY, player.positionZ, true));
+            playerChunks.add(new ru.nexora.world.WorldChunkResidencyManager.PlayerChunk(
+                    Math.floorDiv((int) Math.floor(player.positionX), 16),
+                    Math.floorDiv((int) Math.floor(player.positionZ), 16),
+                    player.chunkViewRadius));
         }
+        WorldChunkResidencyManager.ResidencyPlan residencyPlan =
+                chunkResidency.update(playerChunks, Math.max(0L, nowMillis / 50L));
+        world.applyChunkResidencyPlan(residencyPlan);
         List<ru.nexora.world.MobSpawnerManager.PlayerPosition> spawnerPlayers = new ArrayList<>();
         for (ru.nexora.combat.LivingEntityAiService.PlayerTarget player : targets) {
             spawnerPlayers.add(new ru.nexora.world.MobSpawnerManager.PlayerPosition(
@@ -2600,7 +2612,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
         });
         for (WorldLivingEntity mob : world.livingEntities().snapshot()) {
-            if (!ru.nexora.world.WorldPathfinder.isMobFootprintLoaded(world, mob.x(), mob.z())) {
+            if (!chunkResidency.isResidentAtBlockPosition(mob.x(), mob.z())
+                    || !ru.nexora.world.WorldPathfinder.isMobFootprintLoaded(world, mob.x(), mob.z())) {
                 // A fuse must not keep advancing while its mob is outside loaded world space.
                 if ("minecraft:creeper".equals(mob.identifier())) {
                     mobFuseTracker.clear(mob.runtimeId());

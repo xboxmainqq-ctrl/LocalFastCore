@@ -444,4 +444,52 @@ class MobSpawnerManagerTest {
         assertEquals(5_000, world.livingEntities().size());
     }
 
+    @Test
+    void spawnersCanUseTheLastLivingEntitySlotWithoutExceedingWorldCap() {
+        World world = new World("spawner-last-slot-test", 0L, new FlatWorldGenerator());
+        MobSpawnerManager manager = new MobSpawnerManager();
+        List<MobSpawnerManager.PlayerPosition> players = new java.util.ArrayList<>();
+        int spawnerCount = MobSpawnerManager.MAX_SPAWNERS_PER_TICK + 1;
+
+        for (int i = 0; i < spawnerCount; i++) {
+            int x = i * 32 + 8;
+            int z = 8;
+            int chunkX = Math.floorDiv(x, 16);
+            int chunkZ = Math.floorDiv(z, 16);
+            for (int cx = chunkX - 1; cx <= chunkX + 1; cx++) {
+                for (int cz = chunkZ - 1; cz <= chunkZ + 1; cz++) {
+                    world.getChunk(cx, cz);
+                }
+            }
+            world.setBlock(x, 65, z, BlockType.SPAWNER);
+            assertTrue(manager.register(x, 65, z, 0));
+            players.add(new MobSpawnerManager.PlayerPosition(x + 0.5, 65, z + 0.5));
+        }
+
+        for (int i = 0; i < 4_999; i++) {
+            world.livingEntities().spawn("minecraft:cow", 20, 0.5, 65, 0.5);
+        }
+        assertEquals(4_999, world.livingEntities().size());
+
+        long dueTick = manager.snapshot().stream()
+                .mapToLong(MobSpawnerState::nextSpawnTick).max().orElseThrow();
+        java.util.concurrent.atomic.AtomicInteger spawned = new java.util.concurrent.atomic.AtomicInteger();
+        var result = manager.tick(world, dueTick, players, request -> {
+            try {
+                world.livingEntities().spawn(request.identifier(), 20,
+                        request.x(), request.y(), request.z());
+                spawned.incrementAndGet();
+                return true;
+            } catch (IllegalStateException capacityReached) {
+                return false;
+            }
+        });
+
+        assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK, result.processedSpawners());
+        assertEquals(MobSpawnerManager.MAX_SPAWNERS_PER_TICK, result.activeSpawners());
+        assertEquals(1, result.spawned());
+        assertEquals(1, spawned.get());
+        assertEquals(5_000, world.livingEntities().size());
+    }
+
 }

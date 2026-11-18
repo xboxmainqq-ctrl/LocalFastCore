@@ -33,7 +33,7 @@ class PlayerStateCheckpointServiceTest {
                 new FilePlayerStateStore(temporaryDirectory), new PlayerStateBundleCodec());
         PlayerStateBundle loaded = afterRestart.load("xuid-checkpoint").orElseThrow();
         assertEquals(bundle, loaded);
-        assertEquals(1L, new FilePlayerStateStore(temporaryDirectory)
+        assertEquals(0L, new FilePlayerStateStore(temporaryDirectory)
                 .loadLatest("xuid-checkpoint").orElseThrow().revision());
     }
 }

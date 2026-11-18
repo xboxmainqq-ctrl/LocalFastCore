@@ -74,6 +74,27 @@ class NetworkRuntimeModuleTest {
         ), events);
     }
 
+
+    @Test
+    void stillClosesNegotiatorWhenSessionDrainFails() {
+        List<String> events = new ArrayList<>();
+        NetworkRuntimeModule module = new NetworkRuntimeModule(
+                service("discovery", events, false, false),
+                service("signaling", events, false, false),
+                closeable("negotiator", events, false),
+                () -> {
+                    events.add("drain-sessions");
+                    throw new IOException("drain interrupted");
+                });
+
+        Exception failure = assertThrows(Exception.class, module::close);
+
+        assertEquals("drain interrupted", failure.getMessage());
+        assertEquals(List.of(
+                "close-discovery", "close-signaling", "drain-sessions", "close-negotiator"
+        ), events);
+    }
+
     @Test
     void cannotStartAfterClose() throws Exception {
         NetworkRuntimeModule module = module(new ArrayList<>(), false, false);

@@ -115,5 +115,29 @@ class MobAiLoadControllerTest {
                 controller.priority(200 * 200, false, false));
     }
 
+    @Test
+    void lowPriorityTasksAreDeferredAfterBudgetIsConsumedButHighPriorityIsAdmitted() {
+        MobAiLoadController controller = new MobAiLoadController(4);
+        controller.setAiBudgetNanos(1_000);
+
+        assertFalse(controller.admit(10, 1, 10_000, false,
+                MobAiLoadController.Priority.LOW, 1_000));
+        assertFalse(controller.admit(11, 1, 10_000, false,
+                MobAiLoadController.Priority.NORMAL, 2_000));
+        assertTrue(controller.admit(12, 1, 10_000, true,
+                MobAiLoadController.Priority.HIGH, 3_000));
+        assertEquals(2, controller.budgetDeferrals());
+        assertEquals(0, controller.budgetNanosConsumed());
+        controller.recordBudgetNanos(500);
+        assertEquals(500, controller.budgetNanosConsumed());
+    }
+
+    @Test
+    void budgetRejectsInvalidConfiguration() {
+        MobAiLoadController controller = new MobAiLoadController();
+        assertThrows(IllegalArgumentException.class, () -> controller.setAiBudgetNanos(-1));
+        assertThrows(IllegalArgumentException.class, () -> controller.setAiBudgetNanos(50_000_001));
+    }
+
 }
 

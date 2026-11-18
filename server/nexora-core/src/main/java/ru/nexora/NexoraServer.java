@@ -18,6 +18,9 @@ import ru.nexora.inventory.ContainerInventoryStorage;
 import ru.nexora.inventory.FurnaceStateStorage;
 import ru.nexora.world.WorldRuntimeModule;
 import ru.nexora.world.PlayerDataStorage;
+import ru.nexora.persistence.FilePlayerStateStore;
+import ru.nexora.persistence.PlayerStateBundleCodec;
+import ru.nexora.persistence.PlayerStateCheckpointService;
 import ru.nexora.inventory.PlayerInventoryStorage;
 import ru.nexora.inventory.PlayerEquipmentStorage;
 import ru.nexora.inventory.DurabilitySettings;
@@ -106,6 +109,9 @@ public final class NexoraServer {
         PlayerDataStorage playerStorage = new PlayerDataStorage(Path.of(dataDirectory, "players"));
         PlayerInventoryStorage inventoryStorage = new PlayerInventoryStorage(Path.of(dataDirectory, "inventories"));
         PlayerEquipmentStorage equipmentStorage = new PlayerEquipmentStorage(Path.of(dataDirectory, "equipment"));
+        PlayerStateCheckpointService playerStateCheckpoints = new PlayerStateCheckpointService(
+                new FilePlayerStateStore(Path.of(dataDirectory, "player-state")),
+                new PlayerStateBundleCodec());
         AtomicReference<WebRtcSdpNegotiator> negotiatorReference = new AtomicReference<>();
         BedrockSessionManager bedrockSessions = new BedrockSessionManager(
                 2225,
@@ -115,6 +121,7 @@ public final class NexoraServer {
                 playerStorage,
                 inventoryStorage,
                 equipmentStorage,
+                playerStateCheckpoints,
                 (networkId, channelLabel, frame) -> {
                     WebRtcSdpNegotiator active = negotiatorReference.get();
                     if (active == null) throw new IllegalStateException("WebRTC transport is not ready");
@@ -242,6 +249,7 @@ public final class NexoraServer {
         System.out.println("Player profiles use versioned, checksummed files under " + Path.of(dataDirectory, "players").toAbsolutePath());
         System.out.println("Player inventories use versioned, checksummed files under " + Path.of(dataDirectory, "inventories").toAbsolutePath());
         System.out.println("Player armor, offhand, cursor and magical equipment use checksummed files under " + Path.of(dataDirectory, "equipment").toAbsolutePath());
+        System.out.println("Canonical player shadow checkpoints use versioned snapshots under " + Path.of(dataDirectory, "player-state").toAbsolutePath() + "; legacy files remain login authority during migration.");
         System.out.println("Dropped world items use checksummed storage under " + Path.of(dataDirectory, "worlds", "NEXORA World", "items").toAbsolutePath());
         System.out.println("Block-container inventories use checksummed storage under " + Path.of(dataDirectory, "worlds", "NEXORA World", "containers").toAbsolutePath());
         System.out.println("Furnace inventories and burn/cook progress use checksummed storage under " + Path.of(dataDirectory, "worlds", "NEXORA World", "furnaces").toAbsolutePath());

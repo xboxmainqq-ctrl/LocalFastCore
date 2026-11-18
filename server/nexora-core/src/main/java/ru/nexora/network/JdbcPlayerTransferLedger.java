@@ -52,6 +52,23 @@ public final class JdbcPlayerTransferLedger implements PlayerTransferLedger {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.executeUpdate();
+            boolean xuidIndexExists = false;
+            try (ResultSet indexes = connection.getMetaData().getIndexInfo(
+                    connection.getCatalog(), null, TABLE_NAME, false, false)) {
+                while (indexes.next()) {
+                    if ("nexora_transfer_xuid_revision_idx".equalsIgnoreCase(indexes.getString("INDEX_NAME"))) {
+                        xuidIndexExists = true;
+                        break;
+                    }
+                }
+            }
+            if (!xuidIndexExists) {
+                try (PreparedStatement index = connection.prepareStatement(
+                        "CREATE INDEX nexora_transfer_xuid_revision_idx ON " + TABLE_NAME
+                                + " (player_xuid, player_revision, updated_at)")) {
+                    index.executeUpdate();
+                }
+            }
             commitIfNeeded(connection);
         } catch (SQLException exception) {
             throw new IOException("Unable to initialize NEXORA transfer ledger schema", exception);

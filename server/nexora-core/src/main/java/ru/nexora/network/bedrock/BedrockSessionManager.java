@@ -5786,6 +5786,18 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (runtimeEntityId != state.entityId) {
             throw new SecurityException("SetLocalPlayerAsInitialized runtime ID does not match this player");
         }
+        if (transferOwnershipLedger != null) {
+            try {
+                // First login on a cluster node may have migrated legacy local files.
+                // Persist the complete canonical aggregate before admitting gameplay.
+                checkpointCanonicalPlayerState(state);
+            } catch (IOException | RuntimeException failure) {
+                state.rejected = true;
+                state.loginAuthenticated = false;
+                throw new SecurityException("Unable to persist shared canonical player state before admission",
+                        failure);
+            }
+        }
         state.clientInitialized = true;
         advertisePlayerList(message.networkId(), state);
         sendPacket(message.networkId(), BedrockBatchCodec.createPlayStatus(3), true);

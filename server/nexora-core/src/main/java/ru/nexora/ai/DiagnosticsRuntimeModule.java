@@ -14,12 +14,19 @@ import java.util.function.Consumer;
 public final class DiagnosticsRuntimeModule implements AutoCloseable {
     private final NexoraAiDiagnostics diagnostics;
     private final NexoraAiMonitor monitor;
+    private final NexoraAiRepairProposals repairProposals;
+    private final NexoraAiRepairAdvisor repairAdvisor;
     private final AtomicBoolean started = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
 
     public DiagnosticsRuntimeModule(Consumer<NexoraAiDiagnostics.Snapshot> observer) {
         this.diagnostics = new NexoraAiDiagnostics();
-        this.monitor = new NexoraAiMonitor(diagnostics, Objects.requireNonNull(observer, "observer"));
+        this.repairProposals = new NexoraAiRepairProposals();
+        this.repairAdvisor = new NexoraAiRepairAdvisor(repairProposals);
+        this.monitor = new NexoraAiMonitor(diagnostics, snapshot -> {
+            repairAdvisor.analyze(diagnostics);
+            Objects.requireNonNull(observer, "observer").accept(snapshot);
+        });
     }
 
     public NexoraAiDiagnostics diagnostics() {
@@ -41,6 +48,14 @@ public final class DiagnosticsRuntimeModule implements AutoCloseable {
             started.set(false);
             throw failure;
         }
+    }
+
+    public NexoraAiRepairProposals repairProposals() {
+        return repairProposals;
+    }
+
+    public NexoraAiRepairAdvisor repairAdvisor() {
+        return repairAdvisor;
     }
 
     public boolean isStarted() {

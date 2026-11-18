@@ -110,8 +110,6 @@ Do not consider the mob system finished after the load controller alone. Complet
 
 ## Current next steps
 
-1. Extract the remaining gameplay runtime boundary; keep startup rollback and shutdown ordering covered by tests.
-2. Add a shared bounded task/tick orchestration layer for world subsystems, with cancellation, failure reporting, and deterministic tests.
-3. Introduce readiness and graceful admission shutdown, then drain sessions and persist world/player state in a defined order.
-4. Continue the remaining mob and spawner integration/load checks; real Bedrock client verification remains a separate gate.
-5. Add measured subsystem latency baselines before performance optimization; do not infer true TPS from isolated timings.
+1. Validate the completed runtime-module, bounded scheduler, and graceful-drain integration on CI; fix all regressions before declaring this architecture stage stable.
+2. Continue mob and spawner integration/load checks; real Bedrock client verification remains a separate gate.
+3. Add measured subsystem latency baselines before performance optimization; do not infer true TPS from isolated timings.

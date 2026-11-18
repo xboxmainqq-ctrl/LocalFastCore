@@ -2,11 +2,15 @@ package ru.nexora;
 
 import ru.nexora.network.NetworkRuntimeModule;
 import ru.nexora.network.PlayerTransferLedgerFactory;
+import ru.nexora.network.ClusterTransportFactory;
+import ru.nexora.network.PlayerTransferClusterEndpoint;
+import ru.nexora.network.CheckpointedPlayerTransferDestination;
 import ru.nexora.network.DurableHandoffCoordinator;
 import ru.nexora.gameplay.GameplayRuntimeModule;
 import ru.nexora.network.nethernet.DefaultNetherNetIdentityService;
 import ru.nexora.network.nethernet.NetherNetServerMetadata;
 import ru.nexora.network.bedrock.BedrockSessionManager;
+import ru.nexora.network.bedrock.BedrockPendingTransferActivator;
 import ru.nexora.network.nethernet.NetherNetSignalingServer;
 import ru.nexora.network.nethernet.WebRtcSdpNegotiator;
 import ru.nexora.network.raknet.BedrockServerStatus;
@@ -152,6 +156,38 @@ public final class NexoraServer {
                 transferNodeId, transferRecovery.scanned(), transferRecovery.registered(),
                 transferRecovery.alreadyRegistered(), transferRecovery.expiredClaims(),
                 transferRecovery.supersededRecords());
+        java.util.Optional<ClusterTransportFactory.ConfiguredTransport> configuredClusterTransport =
+                ClusterTransportFactory.open(transferNodeId, Path.of(dataDirectory), System.getenv());
+        NetworkRuntimeModule.ManagedService clusterService;
+        if (configuredClusterTransport.isPresent()) {
+            if (!configuredTransferLedger.shared() || !configuredPlayerStateStore.shared()) {
+                throw new IllegalStateException(
+                        "Cluster transport requires both shared JDBC transfer ledger and shared player checkpoints");
+            }
+            long transferLeaseMillis = longEnvironmentValue(
+                    "NEXORA_TRANSFER_LEASE_MS", 15_000L, 1_000L, 120_000L);
+            PlayerTransferClusterEndpoint transferEndpoint = new PlayerTransferClusterEndpoint(
+                    transferNodeId,
+                    transferLedger,
+                    new CheckpointedPlayerTransferDestination(
+                            transferLedger, playerStateCheckpoints, transferNodeId,
+                            new BedrockPendingTransferActivator(bedrockSessions), System::currentTimeMillis),
+                    transferLeaseMillis,
+                    System::currentTimeMillis);
+            ClusterTransportFactory.ConfiguredTransport cluster = configuredClusterTransport.orElseThrow();
+            clusterService = NetworkRuntimeModule.service(
+                    () -> cluster.transport().start(message -> {
+                        try {
+                            transferEndpoint.handle(message);
+                        } catch (Exception failure) {
+                            throw new IllegalStateException("Rejected NEXORA cluster message", failure);
+                        }
+                    }),
+                    cluster.transport());
+            System.out.println("NEXORA: " + cluster.description() + ".");
+        } else {
+            clusterService = NetworkRuntimeModule.service(() -> {}, () -> {});
+        }
         GameplayRuntimeModule gameplayRuntime = new GameplayRuntimeModule(
                 bedrockSessions, aiDiagnostics, System.getenv());
         diagnosticsRuntime.safeRepairs().register(
@@ -206,6 +242,7 @@ public final class NexoraServer {
                 elapsed -> aiDiagnostics.recordSlowOperation("furnace-tick", elapsed, 50_000_000L));
 
         NetworkRuntimeModule networkRuntime = new NetworkRuntimeModule(
+                clusterService,
                 NetworkRuntimeModule.service(discovery::start, discovery),
                 NetworkRuntimeModule.service(signaling::start, signaling),
                 negotiator,
@@ -288,6 +325,18 @@ public final class NexoraServer {
         System.out.printf("World autosave interval: %d seconds%n", autosaveSeconds);
         System.out.println("Saved player positions and rotations are restored on re-login.");
         System.out.println("Next gameplay stages: item bounce/despawn, player/mob entity replication, containers/crafting, death inventory drops and real-client validation.");
+    }
+
+    private static long longEnvironmentValue(String name, long fallback, long minimum, long maximum) {
+        String configured = System.getenv(name);
+        if (configured == null || configured.isBlank()) return fallback;
+        try {
+            long value = Long.parseLong(configured.trim());
+            if (value < minimum || value > maximum) throw new NumberFormatException();
+            return value;
+        } catch (NumberFormatException invalid) {
+            throw new IllegalArgumentException(name + " must be in range " + minimum + ".." + maximum, invalid);
+        }
     }
 
     /** Reads private operator AI requests only from the server process console. */

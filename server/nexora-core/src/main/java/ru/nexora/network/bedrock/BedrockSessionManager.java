@@ -4217,6 +4217,21 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         try {
             java.util.Optional<ru.nexora.network.PlayerTransferRecord> latest =
                     ledger.findLatestForPlayer(xuid);
+            long now = System.currentTimeMillis();
+            if (latest.isPresent()) {
+                ru.nexora.network.PlayerTransferRecord record = latest.orElseThrow();
+                if (record.state() == ru.nexora.network.PlayerTransferRecord.State.PREPARED
+                        && nodeId.equals(record.sourceNode())
+                        && now >= record.updatedAtEpochMillis()
+                        && now - record.updatedAtEpochMillis() >= 30_000L) {
+                    ledger.abortPrepared(record.transferId(), now);
+                    latest = ledger.findLatestForPlayer(xuid);
+                } else if (record.state() == ru.nexora.network.PlayerTransferRecord.State.CLAIMED
+                        && nodeId.equals(record.sourceNode()) && record.leaseExpired(now)) {
+                    ledger.abort(record.transferId(), record.fencingToken(), now);
+                    latest = ledger.findLatestForPlayer(xuid);
+                }
+            }
             ru.nexora.network.PlayerTransferOwnershipGuard.LoginDecision decision =
                     ru.nexora.network.PlayerTransferOwnershipGuard.loginDecision(latest, nodeId);
             if (decision == ru.nexora.network.PlayerTransferOwnershipGuard.LoginDecision.RESTORE_TRANSFER_CHECKPOINT) {

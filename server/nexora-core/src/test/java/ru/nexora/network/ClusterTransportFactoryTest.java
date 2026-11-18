@@ -48,7 +48,7 @@ class ClusterTransportFactoryTest {
                 "source-node", temporaryDirectory, Map.of(
                         "NEXORA_CLUSTER_BIND", "127.0.0.1:19141",
                         "NEXORA_CLUSTER_PEERS", "source-node=127.0.0.1:19142",
-                        "NEXORA_CLUSTER_SHARED_SECRET", secret)));
+                        "NEXORA_CLUSTER_PEER_KEYS", "source-node=" + secret)));
         assertThrows(IllegalArgumentException.class, () -> ClusterTransportFactory.open(
                 "source-node", temporaryDirectory, Map.of(
                         "NEXORA_CLUSTER_BIND", "127.0.0.1:19141",
@@ -59,6 +59,6 @@ class ClusterTransportFactoryTest {
                         "NEXORA_CLUSTER_BIND", "127.0.0.1:19141",
                         "NEXORA_CLUSTER_PEERS", "target-node=127.0.0.1:19142",
                         "NEXORA_CLUSTER_BEDROCK_ROUTES", "unknown-node=127.0.0.1:19132",
-                        "NEXORA_CLUSTER_SHARED_SECRET", secret)));
+                        "NEXORA_CLUSTER_PEER_KEYS", "target-node=" + secret)));
     }
 }

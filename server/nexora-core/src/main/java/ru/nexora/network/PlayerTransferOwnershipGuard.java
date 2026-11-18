@@ -26,12 +26,8 @@ public final class PlayerTransferOwnershipGuard {
         return switch (record.state()) {
             case PREPARED -> throw new SecurityException(
                     "Player transfer is prepared; login is blocked until the transfer is resolved");
-            case CLAIMED -> {
-                if (!localNodeId.equals(record.targetNode())) {
-                    throw new SecurityException("Player is claimed by another server node");
-                }
-                yield LoginDecision.RESTORE_TRANSFER_CHECKPOINT;
-            }
+            case CLAIMED -> throw new SecurityException(
+                    "Player transfer is claimed but not committed; login is blocked until ownership is committed");
             case COMMITTED -> {
                 if (!localNodeId.equals(record.targetNode())) {
                     throw new SecurityException("Player ownership has moved to another server node");

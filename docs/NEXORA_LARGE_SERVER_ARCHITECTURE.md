@@ -110,3 +110,7 @@ can recover safely across process crashes. The source must not
 release authoritative ownership until the destination has durably claimed and
 validated the transfer. Exactly-once behavior must not be claimed without the
 transactional/replicated guarantees that make it possible.
+
+
+### Player snapshot identity compatibility
+The snapshot contract uses the authenticated Bedrock XUID as an opaque, validated string. The local file format writes that identity directly and reads the earlier numeric-ID format for compatibility. This removes the need to coerce XUIDs into signed 64-bit integers. Snapshot payload composition and integration with the live profile/inventory/equipment save path remain pending.

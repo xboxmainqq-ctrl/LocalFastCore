@@ -723,6 +723,55 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     /**
+     * Recovers a source session frozen before PREPARED could be published.
+     * Resume is allowed only when the shared ledger confirms no transfer record
+     * and this process can still acquire/renew the exclusive online lease.
+     */
+    private boolean resumeFrozenPlayerWithoutTransfer(String playerXuid) throws IOException {
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            SessionState state = entry.getValue();
+            state.combatLock.lock();
+            try {
+                synchronized (state) {
+                    if (state.identity == null || !playerXuid.equals(state.identity.xuid())
+                            || !state.transferFrozen || state.rejected || state.transferFence != null) continue;
+                    try {
+                        if (onlineLeaseRegistry != null && state.onlineLeaseSessionId != null) {
+                            boolean renewed = onlineLeaseRegistry.renew(playerXuid, transferOwnershipNodeId,
+                                    state.onlineLeaseSessionId, System.currentTimeMillis(), onlineLeaseMillis);
+                            if (!renewed) {
+                                state.onlineLeaseSessionId = null;
+                                state.lastOnlineLeaseRenewalNanos = Long.MIN_VALUE;
+                                acquireOnlinePlayerLease(state);
+                            } else {
+                                state.lastOnlineLeaseRenewalNanos = nanoTime.getAsLong();
+                            }
+                        } else {
+                            acquireOnlinePlayerLease(state);
+                        }
+                    } catch (SecurityException leaseUnavailable) {
+                        return false;
+                    }
+                    state.loginAuthenticated = true;
+                    state.clientInitialized = true;
+                    state.transferFrozen = false;
+                }
+            } finally {
+                state.combatLock.unlock();
+            }
+            try {
+                sendContainerReconciliation(entry.getKey(), state);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to reconcile inventory after orphaned freeze: "
+                        + exception.getMessage());
+            }
+            advertisePlayerList(entry.getKey(), state);
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Redirects a source session only after the transfer coordinator has durably
      * committed ownership to the destination. The session must already be frozen.
      */
@@ -813,7 +862,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             java.util.Optional<ru.nexora.network.PlayerTransferRecord> latest =
                     ledger.findLatestForPlayer(xuid);
             if (latest.isEmpty()) {
-                unresolved++;
+                if (resumeFrozenPlayerWithoutTransfer(xuid)) resumed++;
+                else unresolved++;
                 continue;
             }
             ru.nexora.network.PlayerTransferRecord record = latest.orElseThrow();

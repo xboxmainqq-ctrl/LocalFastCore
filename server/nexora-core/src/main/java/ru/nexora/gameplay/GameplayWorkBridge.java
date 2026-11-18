@@ -19,7 +19,7 @@ public final class GameplayWorkBridge {
         return id;
     }
 
-    public void bind(GameplayEventBus bus, GameplayEventBus.EventType type,
+    public void bind(GameplayEventBus bus, GameplayEventBus.Type type,
                      java.util.function.Function<GameplayEventBus.Event, WorkItem> factory) {
         Objects.requireNonNull(bus, "bus");
         Objects.requireNonNull(type, "type");

@@ -16,6 +16,10 @@ Gateway
 
 A player has one authoritative gameplay server at a time. Cross-server movement is an explicit handoff, not shared mutable world state.
 
+## Authenticated node messaging
+
+`ClusterTransport` defines the node transport SPI. `AuthenticatedClusterMessageCodec` provides bounded HMAC-SHA-256 message envelopes with recipient and clock-skew validation. This is a protocol foundation only: replay deduplication, key rotation, peer authorization, a concrete network adapter, and replicated ledger semantics remain required before production use.
+
 ## Per-server protection
 
 Each server uses:
@@ -75,7 +79,7 @@ Do not promise a fixed player count before benchmark evidence exists.
 
 1. Interest/observer model.
 2. Server-local player ownership.
-3. Gateway protocol abstraction — FOUNDATION (`ServerNode`, `GatewayRouter`; transport adapter remains next).
+3. Gateway protocol abstraction — FOUNDATION (`ServerNode`, `GatewayRouter`, `ClusterTransport` SPI and authenticated envelope codec; concrete transport adapter remains next).
 4. Cross-server handoff state — PARTIAL FOUNDATION (`PlayerHandoff` envelope, in-process `HandoffCoordinator`, and a CAS-based `PlayerTransferCoordinator` with lease expiry and fencing tokens, a `DurableHandoffCoordinator` facade, and `FilePlayerTransferLedger` durable on one host only. The new ledger is not yet wired into live handoff, replicated, or backed by an authenticated inter-node transport).
 5. Global event bus boundary.
 6. Cluster health/load metrics.

@@ -80,6 +80,7 @@ These rules apply to all future architecture, implementation, review, and planni
 - [x] Apply chunk residency to the real Bedrock world tick: negotiated per-player chunk radii are tracked, the world loads newly resident chunks, persists chunks before eviction, and the existing Mob AI loop skips entities outside resident chunks.
 - [x] Preserve world-owned entity chunks as pinned residency while entities remain alive, preventing unsafe eviction of chunks that still contain active mobs; release the pin when entity lifecycle removes the actor.
 - [x] Feed NexoraAI a throttled world-runtime snapshot containing resident/loaded chunk counts, living-entity count, and cumulative Mob AI scheduler updates, so operator diagnostics can correlate world activity with JVM and latency evidence.
+- [x] Add an allowlisted in-process repair registry with preconditions, post-action verification, bounded history, explicit console confirmation, and a strict auto-safe flag; register only a transient mob path-cache reset as a manual repair.
 - [ ] Generate proposed patches/config changes for operator review; never apply source-code or risky runtime changes autonomously.
 - [ ] Require explicit operator approval, backups, validation, and a rollback path for every change.
 - [ ] Run tests/build checks before a proposed fix is considered ready.

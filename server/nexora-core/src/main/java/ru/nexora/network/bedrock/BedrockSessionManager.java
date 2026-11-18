@@ -490,7 +490,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return aiGuard.combatReviewSummary(nanoTime.getAsLong());
     }
 
-    /** Read-only mob navigation/cache diagnostics for allowlisted operators. */
     /** Clears only the transient path cache; world and entity state are not modified. */
     public void clearMobPathCache() {
         mobPathCache.clear();
@@ -500,6 +499,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return mobPathCache.size();
     }
 
+    /** Read-only mob navigation/cache diagnostics for trusted operator console output. */
     public String mobAiDiagnosticsSummary() {
         ru.nexora.world.MobPathCache.Stats cache = mobPathCache.stats();
         ru.nexora.combat.MobStuckTracker.Stats stuck = mobStuckTracker.stats(Math.max(0L, nanoTime.getAsLong() / 1_000_000L));

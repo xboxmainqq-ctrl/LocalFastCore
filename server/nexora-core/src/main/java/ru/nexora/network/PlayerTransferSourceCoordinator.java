@@ -129,6 +129,7 @@ public final class PlayerTransferSourceCoordinator {
             return current;
         }
         if (current.state() == PlayerTransferRecord.State.ABORTED) {
+            notifyDestinationAbort(handoff, current.fencingToken());
             resumeAfterAbort(handoff);
             throw new IOException("Destination aborted the player transfer; source session resumed", ackFailure);
         }
@@ -141,6 +142,8 @@ public final class PlayerTransferSourceCoordinator {
             aborted = ledger.abort(handoff.transferId(), current.fencingToken(), now);
         }
         if (aborted.isPresent()) {
+            notifyDestinationAbort(handoff,
+                    current.state() == PlayerTransferRecord.State.PREPARED ? 0L : current.fencingToken());
             resumeAfterAbort(handoff);
             throw new IOException("Destination did not commit the player transfer; source session resumed", ackFailure);
         }
@@ -156,10 +159,30 @@ public final class PlayerTransferSourceCoordinator {
             return reconciled;
         }
         if (reconciled.state() == PlayerTransferRecord.State.ABORTED) {
+            notifyDestinationAbort(handoff, reconciled.fencingToken());
             resumeAfterAbort(handoff);
             throw new IOException("Transfer was durably aborted; source session resumed", ackFailure);
         }
         throw new IOException("Transfer outcome is uncertain; source remains frozen for recovery", ackFailure);
+    }
+
+    private void notifyDestinationAbort(PlayerHandoff handoff, long fencingToken) {
+        ClusterMessage abort = new ClusterMessage(
+                UUID.randomUUID(), localNodeId, handoff.targetNode(),
+                PlayerTransferClusterEndpoint.ABORT_MESSAGE_TYPE,
+                epochMillis.getAsLong(),
+                PlayerTransferClusterEndpoint.encodeAbortPayload(handoff.transferId(), fencingToken));
+        try {
+            transport.send(abort).whenComplete((ignored, failure) -> {
+                if (failure != null) {
+                    System.err.println("NEXORA: destination cleanup notification failed for transfer "
+                            + handoff.transferId() + ": " + failure.getMessage());
+                }
+            });
+        } catch (RuntimeException failure) {
+            System.err.println("NEXORA: destination cleanup notification failed for transfer "
+                    + handoff.transferId() + ": " + failure.getMessage());
+        }
     }
 
     private void resumeAfterAbort(PlayerHandoff handoff) throws IOException {

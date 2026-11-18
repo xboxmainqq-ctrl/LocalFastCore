@@ -83,6 +83,16 @@ public final class WorldRuntimeModule implements AutoCloseable {
         return scheduler.registeredTasks(RuntimeTaskScheduler.Lane.PERSISTENCE);
     }
 
+    /** Execution-time baseline for furnace/tick work; does not represent global server TPS. */
+    public RuntimeTaskScheduler.LaneStats tickStats() {
+        return scheduler.stats(RuntimeTaskScheduler.Lane.TICK);
+    }
+
+    /** Execution-time baseline for world/player persistence work. */
+    public RuntimeTaskScheduler.LaneStats persistenceStats() {
+        return scheduler.stats(RuntimeTaskScheduler.Lane.PERSISTENCE);
+    }
+
     @Override
     public void close() throws IOException {
         if (!closed.compareAndSet(false, true)) return;

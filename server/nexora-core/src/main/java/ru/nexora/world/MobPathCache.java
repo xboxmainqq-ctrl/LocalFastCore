@@ -115,6 +115,10 @@ public final class MobPathCache {
         return new Stats(hits, misses, recomputations, blockedWaypoints, evictions, entries.size());
     }
 
+    public synchronized void clear() {
+        entries.clear();
+    }
+
     public synchronized void remove(long mobRuntimeId) {
         entries.remove(mobRuntimeId);
     }

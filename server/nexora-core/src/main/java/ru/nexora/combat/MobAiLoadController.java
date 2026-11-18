@@ -23,6 +23,11 @@ public final class MobAiLoadController {
     private final AtomicLong lastDecisionNanos = new AtomicLong();
     private final AtomicLong maxDecisionNanos = new AtomicLong();
     private volatile long aiBudgetNanos = 2_000_000L;
+    private volatile boolean adaptiveBudget = true;
+    private volatile long targetTickNanos = 50_000_000L;
+    private volatile long minBudgetNanos = 500_000L;
+    private volatile long maxBudgetNanos = 5_000_000L;
+    private volatile double smoothedTickLoad = 0.0;
     private final AtomicLong budgetDeferrals = new AtomicLong();
     private final AtomicLong budgetNanosConsumed = new AtomicLong();
 
@@ -95,6 +100,24 @@ public final class MobAiLoadController {
         maxDecisionNanos.accumulateAndGet(elapsed, Math::max);
     }
 
+    public synchronized void configureAdaptiveBudget(boolean enabled, long targetTickNanos, long minBudgetNanos, long maxBudgetNanos) {
+        if (targetTickNanos <= 0 || minBudgetNanos < 0 || maxBudgetNanos < minBudgetNanos) throw new IllegalArgumentException("Invalid adaptive AI budget configuration");
+        this.adaptiveBudget = enabled; this.targetTickNanos = targetTickNanos; this.minBudgetNanos = minBudgetNanos; this.maxBudgetNanos = maxBudgetNanos;
+        this.aiBudgetNanos = Math.max(minBudgetNanos, Math.min(maxBudgetNanos, aiBudgetNanos));
+    }
+
+    public synchronized long updateAdaptiveBudget(long worldTickNanos) {
+        if (worldTickNanos < 0) throw new IllegalArgumentException("worldTickNanos must be non-negative");
+        if (!adaptiveBudget) return aiBudgetNanos;
+        double load = (double) worldTickNanos / targetTickNanos;
+        smoothedTickLoad = smoothedTickLoad == 0.0 ? load : smoothedTickLoad * 0.8 + load * 0.2;
+        if (smoothedTickLoad > 1.05) aiBudgetNanos = Math.max(minBudgetNanos, (long)(aiBudgetNanos * 0.90));
+        else if (smoothedTickLoad < 0.85) aiBudgetNanos = Math.min(maxBudgetNanos, (long)(aiBudgetNanos * 1.05));
+        return aiBudgetNanos;
+    }
+
+    public double smoothedTickLoad() { return smoothedTickLoad; }
+
     public void setAiBudgetNanos(long budgetNanos) {
         if (budgetNanos < 1 || budgetNanos > 50_000_000L) {
             throw new IllegalArgumentException("AI budget must be between 1 ns and 50 ms");
@@ -137,7 +160,7 @@ public final class MobAiLoadController {
     }
 
     public BudgetStats budgetStats() {
-        return new BudgetStats(aiBudgetNanos, budgetNanosConsumed.get(), budgetDeferrals.get());
+        return new BudgetStats(aiBudgetNanos, budgetNanosConsumed.get(), budgetDeferrals.get(), adaptiveBudget, smoothedTickLoad);
     }
 
     public record BudgetStats(long budgetNanos, long consumedNanos, long deferredTasks) {

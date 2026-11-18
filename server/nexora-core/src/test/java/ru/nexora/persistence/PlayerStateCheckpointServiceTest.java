@@ -27,8 +27,8 @@ class PlayerStateCheckpointServiceTest {
                 new FilePlayerStateStore(temporaryDirectory), new PlayerStateBundleCodec());
 
         assertEquals(PlayerStateStore.SaveResult.SAVED, service.checkpoint(bundle, 100L));
-        assertEquals(PlayerStateStore.SaveResult.SAVED, service.checkpointForTransfer(bundle, 200L));
-        assertEquals(PlayerStateStore.SaveResult.SAVED, service.checkpointForTransfer(bundle, 300L));
+        assertEquals(1L, service.checkpointForTransfer(bundle, 200L));
+        assertEquals(2L, service.checkpointForTransfer(bundle, 300L));
         assertEquals(2L, service.latestRevision("xuid-transfer-revision"));
     }
 

@@ -1,5 +1,6 @@
 package ru.nexora;
 
+import ru.nexora.network.NetworkRuntimeModule;
 import ru.nexora.network.nethernet.DefaultNetherNetIdentityService;
 import ru.nexora.network.nethernet.NetherNetServerMetadata;
 import ru.nexora.network.bedrock.BedrockSessionManager;
@@ -168,19 +169,20 @@ public final class NexoraServer {
                 },
                 elapsed -> aiDiagnostics.recordSlowOperation("furnace-tick", elapsed, 50_000_000L));
 
-        // Reverse close order: stop discovery/signaling admission, stop WebRTC,
-        // persist active player sessions, then stop world ticking and save the world.
-        // Keep diagnostics alive until every other subsystem has shut down.
+        NetworkRuntimeModule networkRuntime = new NetworkRuntimeModule(
+                NetworkRuntimeModule.service(discovery::start, discovery),
+                NetworkRuntimeModule.service(signaling::start, signaling),
+                negotiator,
+                bedrockSessions);
+
+        // Reverse close order: network admission/discovery, WebRTC, Bedrock
+        // sessions and player persistence; then world ticking/final save; diagnostics last.
         lifecycle.register(aiMonitor);
         lifecycle.register(worldRuntime);
-        lifecycle.register(bedrockSessions);
-        lifecycle.register(negotiator);
-        lifecycle.register(signaling);
-        lifecycle.register(discovery);
+        lifecycle.register(networkRuntime);
 
         try {
-            discovery.start();
-            signaling.start();
+            networkRuntime.start();
             aiMonitor.start();
         } catch (Exception exception) {
             readiness.beginShutdown();

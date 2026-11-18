@@ -1703,49 +1703,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             openEquipmentMenu(message.networkId(), state, "");
             return;
         }
-        if (normalized.equals("/ai spawner") || normalized.startsWith("/ai spawner ")) {
-            if (!isAiAdmin(state)) {
-                sendAiMessage(message.networkId(), "§c[NEXORA AI] Нет доступа к управлению спавнерами.");
-            } else {
-                handleMobSpawnerCommand(message.networkId(), command.command().trim()
-                        .substring("/ai spawner".length()).trim());
-            }
-            return;
-        }
-        if (normalized.equals("/ai mob") || normalized.equals("/ai mob stats")
-                || normalized.equals("/ai mob stuck")) {
-            if (!isAiAdmin(state)) {
-                sendAiMessage(message.networkId(), "§c[NEXORA AI] Нет доступа к диагностике Mob AI.");
-            } else if (normalized.equals("/ai mob stuck")) {
-                sendAiMessage(message.networkId(), "§b[NEXORA AI MOB] §f" + mobAiStuckSummary());
-            } else {
-                sendAiMessage(message.networkId(), "§b[NEXORA AI MOB] §f" + mobAiDiagnosticsSummary());
-            }
-            return;
-        }
-        if (normalized.equals("/ai guard") || normalized.startsWith("/ai guard ")) {
-            if (!isAiAdmin(state)) {
-                sendAiMessage(message.networkId(), "§c[NEXORA AI] Нет доступа к панели Guard.");
-            } else {
-                handleAiGuardCommand(message.networkId(), state,
-                        command.command().trim().substring("/ai guard".length()).trim());
-            }
-            return;
-        }
-        if (normalized.equals("/ai admin")) {
-            if (!isAiAdmin(state)) {
-                sendAiMessage(message.networkId(), "§c[NEXORA AI] Нет доступа к режиму администрации.");
-            } else if (aiAssistant != null) {
-                sendAiMessage(message.networkId(), "§b[NEXORA AI ADMIN] §f" + aiAssistant.adminStatus());
-            }
-            return;
-        }
-        if (normalized.startsWith("/ai admin ")) {
-            if (!isAiAdmin(state)) {
-                sendAiMessage(message.networkId(), "§c[NEXORA AI] Нет доступа к режиму администрации.");
-            } else {
-                handleAiChat(message.networkId(), state, command.command().trim().substring(10).trim(), true);
-            }
+        if (normalized.startsWith("/ai spawner") || normalized.startsWith("/ai mob")
+                || normalized.startsWith("/ai guard") || normalized.equals("/ai admin")
+                || normalized.startsWith("/ai admin ")) {
+            sendAiMessage(message.networkId(),
+                    "§c[NEXORA AI] Технические сведения и диагностика доступны только через консоль сервера.");
             return;
         }
         if (normalized.equals("/ai")) {

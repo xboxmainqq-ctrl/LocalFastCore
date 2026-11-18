@@ -18,6 +18,16 @@ class NexoraAiAssistantTest {
     }
 
     @Test
+    void playerOutputGuardBlocksPluginAndCoreImplementationDetailsButAllowsPublicUsage() {
+        assertTrue(NexoraAiAssistant.containsConfidentialInfrastructureDisclosure(
+                "Исходный код плагина хранится во внутреннем модуле."));
+        assertTrue(NexoraAiAssistant.containsConfidentialInfrastructureDisclosure(
+                "Архитектура ядра и его API закрыты."));
+        assertFalse(NexoraAiAssistant.containsConfidentialInfrastructureDisclosure(
+                "Плагин добавляет новые игровые задания и команду /quests."));
+    }
+
+    @Test
     void playerOutputGuardAllowsOrdinaryGameplayHelp() {
         assertFalse(NexoraAiAssistant.containsConfidentialInfrastructureDisclosure(
                 "Чтобы скрафтить факел, поставь уголь над палкой."));

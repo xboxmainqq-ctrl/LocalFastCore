@@ -27,6 +27,9 @@ import ru.nexora.lifecycle.ServerLifecycle;
 import ru.nexora.lifecycle.ServerReadiness;
 import ru.nexora.config.NexoraServerConfig;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
@@ -195,6 +198,7 @@ public final class NexoraServer {
             throw exception;
         }
         readiness.markReady();
+        startAiConsole(gameplayRuntime.assistant());
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             readiness.beginShutdown();
@@ -239,4 +243,46 @@ public final class NexoraServer {
         System.out.println("Saved player positions and rotations are restored on re-login.");
         System.out.println("Next gameplay stages: item bounce/despawn, player/mob entity replication, containers/crafting, death inventory drops and real-client validation.");
     }
+
+    /** Reads private operator AI requests only from the server process console. */
+    private static void startAiConsole(ru.nexora.ai.NexoraAiAssistant assistant) {
+        Thread console = new Thread(() -> {
+            try (BufferedReader input = new BufferedReader(new InputStreamReader(System.in))) {
+                String line;
+                while ((line = input.readLine()) != null) {
+                    String command = line.trim();
+                    if (command.equalsIgnoreCase("ai") || command.equalsIgnoreCase("ai help")) {
+                        System.out.println("NEXORA AI console: ai <вопрос> | ai status");
+                        continue;
+                    }
+                    if (command.equalsIgnoreCase("ai status")) {
+                        System.out.println(assistant.adminStatus());
+                        continue;
+                    }
+                    if (!command.regionMatches(true, 0, "ai ", 0, 3)) continue;
+                    String question = command.substring(3).trim();
+                    if (question.isEmpty()) {
+                        System.out.println("Использование: ai <вопрос>");
+                        continue;
+                    }
+                    if (!assistant.isEnabled()) {
+                        System.out.println("NEXORA AI: API не настроен (NEXORA_AI_API_KEY).");
+                        continue;
+                    }
+                    ru.nexora.ai.NexoraAiAssistant.AskResult result = assistant.askConsole(
+                            question, answer -> System.out.println("NEXORA AI: " + answer));
+                    if (result == ru.nexora.ai.NexoraAiAssistant.AskResult.RATE_LIMITED) {
+                        System.out.println("NEXORA AI: подожди несколько секунд.");
+                    } else if (result == ru.nexora.ai.NexoraAiAssistant.AskResult.DISABLED) {
+                        System.out.println("NEXORA AI: API не настроен.");
+                    }
+                }
+            } catch (IOException exception) {
+                System.err.println("NEXORA AI console input stopped: " + exception.getMessage());
+            }
+        }, "nexora-ai-console");
+        console.setDaemon(true);
+        console.start();
+    }
+
 }

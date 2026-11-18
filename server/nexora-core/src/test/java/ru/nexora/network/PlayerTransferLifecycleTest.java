@@ -2,7 +2,6 @@ package ru.nexora.network;
 
 import org.junit.jupiter.api.Test;
 
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -64,7 +63,7 @@ class PlayerTransferLifecycleTest {
     }
 
     @Test
-    void uncertainCommitNeverUnfreezesSource() throws Exception {
+    void existingClaimByAnotherOwnerNeverUnfreezesSource() throws Exception {
         InMemoryPlayerTransferLedger store = new InMemoryPlayerTransferLedger();
         DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(new PlayerTransferCoordinator(store));
         FakeSource source = new FakeSource();

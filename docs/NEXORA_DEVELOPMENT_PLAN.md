@@ -297,6 +297,7 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - CI: 798 tests passed, zero failures on commit `35e90f7`.
 ### 41. Shared online XUID lease registry — IMPLEMENTED, CI VERIFIED
 - Added `PlayerOnlineLeaseRegistry` with in-memory and JDBC implementations. The JDBC table `nexora_player_online_leases` uses XUID as its primary key and atomic conditional UPDATE/INSERT acquisition so only one node can own an unexpired player lease.
+- JDBC lease acquisition/renewal now uses the shared database `CURRENT_TIMESTAMP`, not the individual node clock, avoiding early lease theft caused by clock skew between nodes. Transfer-record timestamps still require synchronized node clocks.
 - Shared-ledger bootstrap now initializes the online-lease table when the existing transfer JDBC schema-initialization flag is enabled, and configures the Bedrock session manager with the shared registry.
 - Authenticated login acquires a random per-session lease before restoring player state. Active inbound sessions renew every third of `NEXORA_ONLINE_PLAYER_LEASE_MS` (default 15 seconds); failed renewal is fail-closed. Disconnect and shutdown release the exact node/session lease.
 - In shared-ledger mode, the shared canonical checkpoint is now preferred for every login, even when no prior transfer record exists. Host-local legacy player/inventory files are only fallback migration sources when no canonical snapshot has yet been created.

@@ -456,6 +456,26 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
+    private void ensureOnlinePlayerLeaseForResume(SessionState state) throws IOException {
+        ru.nexora.network.PlayerOnlineLeaseRegistry registry = onlineLeaseRegistry;
+        String nodeId = transferOwnershipNodeId;
+        if (registry == null || nodeId == null) return;
+        String sessionId = state.onlineLeaseSessionId;
+        long now = System.currentTimeMillis();
+        if (sessionId != null && registry.renew(
+                state.identity.xuid(), nodeId, sessionId, now, onlineLeaseMillis)) {
+            state.lastOnlineLeaseRenewalNanos = nanoTime.getAsLong();
+            return;
+        }
+        state.onlineLeaseSessionId = null;
+        state.lastOnlineLeaseRenewalNanos = Long.MIN_VALUE;
+        try {
+            acquireOnlinePlayerLease(state);
+        } catch (SecurityException leaseFailure) {
+            throw new IOException("Unable to reacquire global online player lease", leaseFailure);
+        }
+    }
+
     private boolean releaseOnlinePlayerLease(SessionState state) {
         ru.nexora.network.PlayerOnlineLeaseRegistry registry = onlineLeaseRegistry;
         String nodeId = transferOwnershipNodeId;
@@ -701,11 +721,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         || state.identity == null || !playerXuid.equals(state.identity.xuid())) {
                     throw new IOException("Source session cannot be safely resumed");
                 }
-                try {
-                    acquireOnlinePlayerLease(state);
-                } catch (SecurityException leaseFailure) {
-                    throw new IOException("Unable to reacquire source online lease after transfer abort", leaseFailure);
-                }
+                ensureOnlinePlayerLeaseForResume(state);
                 state.loginAuthenticated = true;
                 state.clientInitialized = true;
                 state.transferFrozen = false;
@@ -737,19 +753,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     if (state.identity == null || !playerXuid.equals(state.identity.xuid())
                             || !state.transferFrozen || state.rejected || state.transferFence != null) continue;
                     try {
-                        if (onlineLeaseRegistry != null && state.onlineLeaseSessionId != null) {
-                            boolean renewed = onlineLeaseRegistry.renew(playerXuid, transferOwnershipNodeId,
-                                    state.onlineLeaseSessionId, System.currentTimeMillis(), onlineLeaseMillis);
-                            if (!renewed) {
-                                state.onlineLeaseSessionId = null;
-                                state.lastOnlineLeaseRenewalNanos = Long.MIN_VALUE;
-                                acquireOnlinePlayerLease(state);
-                            } else {
-                                state.lastOnlineLeaseRenewalNanos = nanoTime.getAsLong();
-                            }
-                        } else {
-                            acquireOnlinePlayerLease(state);
-                        }
+                        ensureOnlinePlayerLeaseForResume(state);
                     } catch (SecurityException leaseUnavailable) {
                         return false;
                     }

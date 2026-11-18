@@ -1,6 +1,7 @@
 package ru.nexora.network;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -41,6 +42,11 @@ public final class DurableHandoffCoordinator {
     public Optional<PlayerTransferRecord> abort(UUID transferId, long fencingToken,
                                                  long nowEpochMillis) throws IOException {
         return transfers.abort(transferId, fencingToken, nowEpochMillis);
+    }
+
+    /** Lists durable claims/commits owned by this destination for bounded restart recovery. */
+    public List<PlayerTransferRecord> listRecoverableForTarget(String targetNode, int limit) throws IOException {
+        return transfers.listRecoverableForTarget(targetNode, limit);
     }
 
     public Optional<PlayerTransferRecord> get(UUID transferId) throws IOException {

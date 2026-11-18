@@ -286,3 +286,7 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Expired claims are durably aborted during destination startup recovery and on login reconciliation; stale PREPARED records on their source node are cancelled after a 30-second grace period.
 - Added tests for ownership policy, latest per-XUID lookup, and expired-claim durable rollback.
 - Remaining: this is transfer-history fencing, not a complete online-player lease registry. A duplicate XUID that logs into two different nodes before either node has a transfer record can still be admitted. Implement a shared lease/owner registry and validate it under multi-process login races before public cluster use.
+### 40. Frozen source session reconciliation — IMPLEMENTED, CI PENDING
+- Added a source-side reconciliation API that scans frozen Bedrock sessions and queries the latest durable per-XUID transfer decision.
+- A frozen source session is resumed only for a durable ABORTED record; it is redirected only for a matching durable COMMITTED record and configured Bedrock route. PREPARED/CLAIMED or missing/ambiguous outcomes remain frozen.
+- Added the operator-console command `transfer recover` so an operator can reconcile source sessions after a peer or database restart without guessing whether ownership committed.

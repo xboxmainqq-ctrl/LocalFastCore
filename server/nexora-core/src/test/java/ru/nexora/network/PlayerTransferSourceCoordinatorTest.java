@@ -61,10 +61,14 @@ class PlayerTransferSourceCoordinatorTest {
         DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
                 new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
         PlayerHandoff handoff = handoff();
-        class PreparedSource extends FakeSource {
+        class PreparedSource implements PlayerTransferLifecycle.Source {
             boolean preparedObserved;
+            boolean unfrozen;
             @Override public long freezeAndCheckpoint(PlayerHandoff ignored) {
                 return 17L;
+            }
+            @Override public void unfreeze(PlayerHandoff ignored) {
+                unfrozen = true;
             }
             @Override public void onPrepared(PlayerHandoff ignored) throws Exception {
                 PlayerTransferRecord record = ledger.get(handoff.transferId()).orElseThrow();

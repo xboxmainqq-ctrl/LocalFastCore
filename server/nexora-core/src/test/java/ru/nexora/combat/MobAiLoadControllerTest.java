@@ -153,5 +153,25 @@ class MobAiLoadControllerTest {
         assertTrue(controller.smoothedTickLoad() > 0.0);
     }
 
-}
+    @Test
+    void starvationPromotionGuaranteesEventuallyScheduledLowPriorityMob() {
+        MobAiLoadController controller = new MobAiLoadController(4);
+        controller.setStarvationPromotionTicks(4);
+        long id = 99L;
+
+        assertEquals(MobAiLoadController.Priority.LOW,
+                controller.effectivePriority(id, MobAiLoadController.Priority.LOW));
+        controller.recordDeferred(id);
+        controller.recordDeferred(id);
+        assertEquals(MobAiLoadController.Priority.NORMAL,
+                controller.effectivePriority(id, MobAiLoadController.Priority.LOW));
+        controller.recordDeferred(id);
+        controller.recordDeferred(id);
+        assertEquals(MobAiLoadController.Priority.HIGH,
+                controller.effectivePriority(id, MobAiLoadController.Priority.LOW));
+
+        controller.recordScheduled(id);
+        assertEquals(0, controller.starvationTicks(id));
+    }
+
 

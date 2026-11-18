@@ -82,8 +82,13 @@ public final class WorldTickPipeline {
                 case LOW -> lowPriority++;
             }
 
+            boolean starvationPromoted = priority == MobAiLoadController.Priority.HIGH
+                    && loadController.priority(finiteDistanceSquared, activeTarget,
+                    LivingEntityAiService.isFlyingMob(mob.identifier())
+                            || LivingEntityAiService.isTimidMob(mob.identifier()))
+                    != MobAiLoadController.Priority.HIGH;
             if (!loadController.shouldUpdate(mob.runtimeId(), tick,
-                    finiteDistanceSquared, activeTarget)) {
+                    finiteDistanceSquared, activeTarget || starvationPromoted)) {
                 deferred++;
                 loadController.recordDeferred(mob.runtimeId());
                 continue;
@@ -107,9 +112,14 @@ public final class WorldTickPipeline {
                         priority, true, System.nanoTime() - budgetStart,
                         loadController.aiBudgetNanos());
             } else if (decision.moving()) {
-                taskScheduler.admit(ru.nexora.combat.MobAiTaskScheduler.Task.MOVEMENT,
+                if (taskScheduler.admit(ru.nexora.combat.MobAiTaskScheduler.Task.MOVEMENT,
                         priority, priority == MobAiLoadController.Priority.HIGH,
-                        System.nanoTime() - budgetStart, loadController.aiBudgetNanos());
+                        System.nanoTime() - budgetStart, loadController.aiBudgetNanos())
+                        == ru.nexora.combat.MobAiTaskScheduler.Admission.DEFER) {
+                    deferred++;
+                    loadController.recordDeferred(mob.runtimeId());
+                    continue;
+                }
             } else {
                 taskScheduler.recordRun(ru.nexora.combat.MobAiTaskScheduler.Task.IDLE);
             }

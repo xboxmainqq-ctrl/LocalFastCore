@@ -53,5 +53,14 @@ public final class MobAiTaskScheduler {
         return new Stats(Map.copyOf(runs), Map.copyOf(deferrals));
     }
 
-    public record Stats(Map<Task, Long> runs, Map<Task, Long> deferrals) {}
+    public record Stats(Map<Task, Long> runs, Map<Task, Long> deferrals) {
+        public Stats {
+            runs = Map.copyOf(runs);
+            deferrals = Map.copyOf(deferrals);
+        }
+
+        public String summary() {
+            return "runs=" + runs + ", deferred=" + deferrals;
+        }
+    }
 }

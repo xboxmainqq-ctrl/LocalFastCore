@@ -141,6 +141,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             new ru.nexora.combat.MobDespawnTracker();
     private final ru.nexora.combat.MobAiLoadController mobAiLoadController =
             new ru.nexora.combat.MobAiLoadController();
+    private final ru.nexora.combat.MobAiTaskScheduler mobAiTaskScheduler =
+            new ru.nexora.combat.MobAiTaskScheduler();
     private final ru.nexora.world.WorldChunkResidencyManager chunkResidency =
             new ru.nexora.world.WorldChunkResidencyManager(
                     BedrockChunkRadiusCodec.DEFAULT_RADIUS, 100,
@@ -525,6 +527,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 .append(", evictions=").append(stuck.evictions())
                 .append("\nMob AI load controller: ").append(mobAiLoadController.stats().summary())
                 .append("\nMob AI budget: ").append(mobAiLoadController.budgetStats().summary())
+                .append("\nMob AI tasks: ").append(mobAiTaskScheduler.stats().summary())
                 .append("\nMob AI decision algorithm: decisions=").append(aiStats.decisionCount())
                 .append(", total=").append(aiStats.totalDecisionNanos()).append(" ns")
                 .append(", avg=").append(aiStats.averageDecisionNanos()).append(" ns")
@@ -2694,10 +2697,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     ru.nexora.combat.LivingEntityAiService.nearestAlivePlayer(mob, targets);
             if ("minecraft:creeper".equals(mob.identifier())
                     && tickCreeperBehavior(mob, nearestPlayer, nowMillis, tick)) {
+                mobAiLoadController.recordScheduled(mob.runtimeId());
+                mobAiTaskScheduler.recordRun(ru.nexora.combat.MobAiTaskScheduler.Task.COMBAT);
                 mobStuckTracker.clear(mob.runtimeId());
                 continue;
             }
             if (tickRangedMobBehavior(mob, nearestPlayer, nowMillis)) {
+                mobAiLoadController.recordScheduled(mob.runtimeId());
+                mobAiTaskScheduler.recordRun(ru.nexora.combat.MobAiTaskScheduler.Task.COMBAT);
                 mobStuckTracker.clear(mob.runtimeId());
                 continue;
             }
@@ -2719,17 +2726,31 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             // Use the server's monotonic 50 ms AI cadence, not a client-provided input tick.
             // Different players have independent input counters and must not perturb mob scheduling.
             long serverAiTick = Math.max(0L, nowMillis / 50L);
+            ru.nexora.combat.MobAiLoadController.Priority basePriority =
+                    mobAiLoadController.priority(nearestPlayerDistanceSquared, hasActiveTarget, false);
+            ru.nexora.combat.MobAiLoadController.Priority aiPriority =
+                    mobAiLoadController.effectivePriority(mob.runtimeId(), basePriority);
+            boolean starvationPromoted = aiPriority == ru.nexora.combat.MobAiLoadController.Priority.HIGH
+                    && basePriority != ru.nexora.combat.MobAiLoadController.Priority.HIGH;
             if (!mobAiLoadController.shouldUpdate(mob.runtimeId(), serverAiTick,
-                    nearestPlayerDistanceSquared, hasActiveTarget)) {
+                    nearestPlayerDistanceSquared, hasActiveTarget || starvationPromoted)) {
+                mobAiLoadController.recordDeferred(mob.runtimeId());
+                mobAiTaskScheduler.recordDeferral(ru.nexora.combat.MobAiTaskScheduler.Task.NAVIGATION);
                 continue;
             }
-            ru.nexora.combat.MobAiLoadController.Priority aiPriority =
-                    mobAiLoadController.priority(nearestPlayerDistanceSquared, hasActiveTarget, false);
             long budgetElapsed = Math.max(0L, nanoTime.getAsLong() - aiStartedNanos);
+            if (mobAiTaskScheduler.admit(ru.nexora.combat.MobAiTaskScheduler.Task.NAVIGATION,
+                    aiPriority, hasActiveTarget, budgetElapsed, mobAiLoadController.aiBudgetNanos())
+                    == ru.nexora.combat.MobAiTaskScheduler.Admission.DEFER) {
+                mobAiLoadController.recordDeferred(mob.runtimeId());
+                continue;
+            }
             if (!mobAiLoadController.admit(mob.runtimeId(), serverAiTick,
                     nearestPlayerDistanceSquared, hasActiveTarget, aiPriority, budgetElapsed)) {
+                mobAiLoadController.recordDeferred(mob.runtimeId());
                 continue;
             }
+            mobAiLoadController.recordScheduled(mob.runtimeId());
             long nextAttackAt = nextMobAttackMillis.getOrDefault(mob.runtimeId(), 0L);
             long decisionStartedNanos = nanoTime.getAsLong();
             ru.nexora.combat.LivingEntityAiService.Decision decision =
@@ -2738,6 +2759,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             mobAiLoadController.recordBudgetNanos(
                     Math.max(0L, nanoTime.getAsLong() - decisionStartedNanos));
             if (decision.attack()) {
+                mobAiTaskScheduler.admit(ru.nexora.combat.MobAiTaskScheduler.Task.COMBAT,
+                        aiPriority, true, Math.max(0L, nanoTime.getAsLong() - aiStartedNanos),
+                        mobAiLoadController.aiBudgetNanos());
                 mobStuckTracker.clear(mob.runtimeId());
                 if (damagePlayerFromMob(decision.targetNetworkId(), mob, decision.attackDamage(), tick)) {
                     nextMobAttackMillis.put(mob.runtimeId(),
@@ -2746,7 +2770,17 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 continue;
             }
             if (!decision.moving()) {
+                mobAiTaskScheduler.recordRun(ru.nexora.combat.MobAiTaskScheduler.Task.IDLE);
                 mobStuckTracker.clear(mob.runtimeId());
+                continue;
+            }
+            if (mobAiTaskScheduler.admit(ru.nexora.combat.MobAiTaskScheduler.Task.MOVEMENT,
+                    aiPriority, aiPriority == ru.nexora.combat.MobAiLoadController.Priority.HIGH,
+                    Math.max(0L, nanoTime.getAsLong() - aiStartedNanos),
+                    mobAiLoadController.aiBudgetNanos())
+                    == ru.nexora.combat.MobAiTaskScheduler.Admission.DEFER) {
+                mobAiTaskScheduler.recordDeferral(ru.nexora.combat.MobAiTaskScheduler.Task.MOVEMENT);
+                mobAiLoadController.recordDeferred(mob.runtimeId());
                 continue;
             }
             double nextX = mob.x() + decision.moveX();

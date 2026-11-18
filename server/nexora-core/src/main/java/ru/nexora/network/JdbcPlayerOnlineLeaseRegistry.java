@@ -4,7 +4,6 @@ import javax.sql.DataSource;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Objects;
 
@@ -101,7 +100,9 @@ public final class JdbcPlayerOnlineLeaseRegistry implements PlayerOnlineLeaseReg
             statement.setString(1, xuid);
             statement.setString(2, node);
             statement.setString(3, session);
-            return statement.executeUpdate() == 1;
+            int deleted = statement.executeUpdate();
+            commitIfNeeded(connection);
+            return deleted == 1;
         } catch (SQLException failure) {
             throw new IOException("Unable to release NEXORA online player lease", failure);
         }

@@ -125,6 +125,42 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void recoversFrozenSourceWhenTransferWasNeverPublishedAndLeaseIsStillOwned() throws Exception {
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("orphan-freeze", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                (networkId, label, frame) -> {}, event -> {});
+        try {
+            DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
+                    new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
+            InMemoryPlayerOnlineLeaseRegistry leases = new InMemoryPlayerOnlineLeaseRegistry();
+            manager.configureTransferOwnershipGuard(ledger, "node-a");
+            manager.configureOnlinePlayerLeases(leases, 15_000L);
+            long now = System.currentTimeMillis();
+            assertTrue(leases.acquire("orphan-xuid", "node-a", "orphan-session", now, 15_000L));
+            manager.onIdentity("orphan-session", new NetherNetClientIdentity(
+                    "orphan-token", new byte[] {3}, "orphan-xuid",
+                    "OrphanPlayer", "orphan-playfab", "20CA2", null));
+            setSessionField(manager, "orphan-session", "transferFrozen", true);
+            setSessionField(manager, "orphan-session", "loginAuthenticated", false);
+            setSessionField(manager, "orphan-session", "clientInitialized", false);
+            setSessionField(manager, "orphan-session", "onlineLeaseSessionId", "orphan-session");
+
+            var report = manager.reconcileFrozenPlayerTransfers(ledger, "node-a", java.util.Map.of());
+
+            assertEquals(1, report.scanned());
+            assertEquals(1, report.resumed());
+            assertEquals(0, report.unresolved());
+            assertFalse((boolean) getSessionField(manager, "orphan-session", "transferFrozen"));
+            assertTrue((boolean) getSessionField(manager, "orphan-session", "loginAuthenticated"));
+            assertTrue(leases.renew("orphan-xuid", "node-a", "orphan-session",
+                    System.currentTimeMillis(), 15_000L));
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void rejectsSecondActiveSessionForSameXuidOnOneNode() throws Exception {
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,

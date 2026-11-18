@@ -167,10 +167,6 @@ public final class WorldTickPipeline {
         return runtime;
     }
 
-    public HotPathProfiler profiler_unused() {
-        return profiler;
-    }
-
     private MobAiLoadController.Priority priorityHint(WorldLivingEntity mob) {
         return LivingEntityAiService.isFlyingMob(mob.identifier())
                 ? MobAiLoadController.Priority.HIGH : MobAiLoadController.Priority.NORMAL;

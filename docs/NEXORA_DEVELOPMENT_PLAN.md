@@ -226,7 +226,7 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Important boundary: this is a destination-side login reservation, not client redirection or an authenticated source-to-destination RPC. The current server startup still uses the single-host file ledger, so cross-host gameplay transfer remains disabled.
 - Next: wire an authenticated cluster RPC for prepare/accept/abort, use the shared JDBC ledger on every node, add source/destination process-kill tests, and validate real Bedrock reconnect behavior before enabling the feature.
 
-### 33. Shared JDBC transfer-ledger startup configuration — IMPLEMENTED, CI PENDING
+### 33. Shared JDBC transfer-ledger startup configuration — IMPLEMENTED, CI VERIFIED
 - Added a standard-JDBC `DriverManagerDataSource` and `PlayerTransferLedgerFactory`.
 - Startup now selects the local checksummed file ledger when `NEXORA_TRANSFER_JDBC_URL` is absent, or the shared SQL ledger when it is configured.
 - Optional environment variables: `NEXORA_TRANSFER_JDBC_USER`, `NEXORA_TRANSFER_JDBC_PASSWORD`, and `NEXORA_TRANSFER_JDBC_INITIALIZE_SCHEMA=true|false`. Credentials must be supplied as a pair; schema creation remains opt-in so production migrations can be deployment-managed.
@@ -234,9 +234,10 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Startup output deliberately hides JDBC connection details and credentials.
 - The database's vendor JDBC driver must be supplied on the runtime classpath. H2 remains test-only; no production database vendor is selected or bundled.
 - Added tests for shared JDBC initialization/round-trip, local fallback, invalid credentials and schema flags.
+- CI: 770 tests passed, zero failures on commit `2b0b604`.
 - Boundary: configuring a shared ledger makes the ownership metadata shared, but does not itself enable cross-host gameplay transfer. Authenticated RPC, client redirect/reconnect and process-failure validation remain mandatory gates.
 
-### 34. Shared JDBC canonical player checkpoints — IMPLEMENTED, CI PENDING
+### 34. Shared JDBC canonical player checkpoints — IMPLEMENTED, CI VERIFIED
 - Added `JdbcPlayerStateStore` with per-XUID revision compare-and-set, bounded Base64 payload storage, checksum verification, idempotent same-revision writes, stale-write rejection and bounded contention retries.
 - Added two-independent-DataSource and concurrent-writer tests to verify a newer snapshot cannot be overwritten by an older node.
 - Added `PlayerStateStoreFactory` and startup configuration via `NEXORA_PLAYER_STATE_JDBC_URL`, optional `NEXORA_PLAYER_STATE_JDBC_USER`, `NEXORA_PLAYER_STATE_JDBC_PASSWORD`, and opt-in `NEXORA_PLAYER_STATE_JDBC_INITIALIZE_SCHEMA=true|false`.

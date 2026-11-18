@@ -305,4 +305,24 @@ class NexoraAiDiagnosticsTest {
                 .filter(item -> item.windowMinutes() == 5).findFirst().orElseThrow();
         assertEquals(1, summary.resourceSampleCount());
     }
+    @Test
+    void latencyAlignmentUsesOnlySharedNetworkAndGameplayMinuteBuckets() {
+        java.util.concurrent.atomic.AtomicLong clock = new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        diagnostics.recordSlowOperation("bedrock-inbound", 100, 50);
+        diagnostics.recordSlowOperation("mob-ai", 200, 50);
+        diagnostics.recordSlowOperation("mob-pathfinding", 50, 100);
+        clock.addAndGet(60_000_000_000L);
+        diagnostics.recordSlowOperation("bedrock-inbound", 300, 50);
+        var five = diagnostics.latencyAlignmentSummaries().stream()
+                .filter(summary -> summary.windowMinutes() == 5).findFirst().orElseThrow();
+        assertEquals(1, five.overlappingMinuteBuckets());
+        assertEquals(1, five.networkSampleCount());
+        assertEquals(2, five.gameplaySampleCount());
+        assertEquals(100, five.networkAverageNanos());
+        assertEquals(125, five.gameplayAverageNanos());
+        assertEquals(200, five.gameplayMaxNanos());
+        assertTrue(diagnostics.recentEvidence().contains("не причинность"));
+    }
+
 }

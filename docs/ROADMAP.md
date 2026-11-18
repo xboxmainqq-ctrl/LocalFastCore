@@ -43,7 +43,8 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 - [x] Add 5-minute and 1-hour failure counts/rates plus bounded JVM resource-pressure samples (heap ratio and system load per processor); pressure is diagnostic only and sampled during operator/monitor snapshots.
 - [ ] Add subsystem health states with evidence, timestamps, and confidence; avoid claiming a global TPS value unless the core exposes a valid tick source.
 - [ ] Detect sustained latency, memory pressure, thread growth, save failures, and unusual inbound traffic patterns.
-- [ ] Add structured incident timelines that correlate symptoms without exposing player XUIDs, secrets, or sensitive payloads.
+- [x] Add minute-aligned comparison of Bedrock inbound and mob AI/pathfinding latency over 5-minute and 1-hour windows; report shared-minute co-occurrence and aggregate timings, never causal claims or player identifiers.
+- [ ] Add structured incident timelines that correlate broader symptoms without exposing player XUIDs, secrets, or sensitive payloads.
 - [ ] Ensure monitoring is rate-limited and cannot itself overload the server.
 
 ## Priority 3 — Safe AI-assisted repair
@@ -123,4 +124,4 @@ Do not consider the mob system finished after the load controller alone. Complet
 
 1. Validate the completed runtime-module, bounded scheduler, and graceful-drain integration on CI; fix all regressions before declaring this architecture stage stable.
 2. Continue mob and spawner integration/load checks; real Bedrock client verification remains a separate gate.
-3. Extend subsystem latency and JVM resource telemetry with bounded, low-overhead measurements; do not infer true TPS from isolated timings. The operator `/ai admin` snapshot now includes actual mob-decision timings, JVM heap/thread counters, and 60-second rolling latency summaries for instrumented subsystems; `/ai mob stats` includes the detailed AI execution summary. 5-minute/1-hour minute-bucket latency aggregates are now available; 5-minute/1-hour failure rates and JVM resource-pressure sampling are now available.
+3. Extend subsystem latency and JVM resource telemetry with bounded, low-overhead measurements; do not infer true TPS from isolated timings. The operator `/ai admin` snapshot now includes actual mob-decision timings, JVM heap/thread counters, and 60-second rolling latency summaries for instrumented subsystems; `/ai mob stats` includes the detailed AI execution summary. 5-minute/1-hour minute-bucket latency aggregates are now available; 5-minute/1-hour failure rates and JVM resource-pressure sampling are available. Bedrock inbound and mob AI/pathfinding timings are compared in shared minute buckets; this is co-occurrence, not proof of causality.

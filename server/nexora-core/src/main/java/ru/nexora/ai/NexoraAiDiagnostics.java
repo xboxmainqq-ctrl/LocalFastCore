@@ -105,6 +105,49 @@ public final class NexoraAiDiagnostics {
         activityBuckets.headMap(currentMinute - MAX_LATENCY_BUCKETS + 1, false).clear();
     }
 
+    /**
+     * Aligns Bedrock inbound and mob gameplay measurements by shared monotonic minute buckets.
+     * This reports co-occurrence only; it does not claim that one subsystem caused another's latency.
+     */
+    public synchronized List<LatencyAlignmentSummary> latencyAlignmentSummaries() {
+        long currentMinute = Math.floorDiv(nanoClock.getAsLong(), LATENCY_BUCKET_NANOS);
+        java.util.TreeMap<Long, LatencyBucket> network = latencyBuckets.get("bedrock-inbound");
+        java.util.TreeMap<Long, LatencyBucket> mobAi = latencyBuckets.get("mob-ai");
+        java.util.TreeMap<Long, LatencyBucket> pathfinding = latencyBuckets.get("mob-pathfinding");
+        List<LatencyAlignmentSummary> summaries = new ArrayList<>();
+        for (int windowMinutes : new int[]{5, 60}) {
+            long firstMinute = currentMinute - windowMinutes + 1;
+            long overlap = 0, networkCount = 0, gameplayCount = 0;
+            long networkTotal = 0, gameplayTotal = 0, networkMax = 0, gameplayMax = 0;
+            if (network != null) {
+                for (Map.Entry<Long, LatencyBucket> entry : network.tailMap(firstMinute, true).entrySet()) {
+                    LatencyBucket ai = mobAi == null ? null : mobAi.get(entry.getKey());
+                    LatencyBucket path = pathfinding == null ? null : pathfinding.get(entry.getKey());
+                    if (ai == null && path == null) continue;
+                    overlap++;
+                    LatencyBucket net = entry.getValue();
+                    networkCount = saturatedAdd(networkCount, net.count);
+                    networkTotal = saturatedAdd(networkTotal, net.totalNanos);
+                    networkMax = Math.max(networkMax, net.maxNanos);
+                    if (ai != null) {
+                        gameplayCount = saturatedAdd(gameplayCount, ai.count);
+                        gameplayTotal = saturatedAdd(gameplayTotal, ai.totalNanos);
+                        gameplayMax = Math.max(gameplayMax, ai.maxNanos);
+                    }
+                    if (path != null) {
+                        gameplayCount = saturatedAdd(gameplayCount, path.count);
+                        gameplayTotal = saturatedAdd(gameplayTotal, path.totalNanos);
+                        gameplayMax = Math.max(gameplayMax, path.maxNanos);
+                    }
+                }
+            }
+            summaries.add(new LatencyAlignmentSummary(windowMinutes, overlap, networkCount, gameplayCount,
+                    networkCount == 0 ? 0 : networkTotal / networkCount,
+                    gameplayCount == 0 ? 0 : gameplayTotal / gameplayCount, networkMax, gameplayMax));
+        }
+        return List.copyOf(summaries);
+    }
+
     /** Returns bounded failure and JVM-pressure aggregates for the last 5 and 60 minutes. */
     public synchronized List<ActivityWindowSummary> activityWindowSummaries() {
         long currentMinute = Math.floorDiv(nanoClock.getAsLong(), LATENCY_BUCKET_NANOS);
@@ -284,6 +327,18 @@ public final class NexoraAiDiagnostics {
                         .append(" ms, max=").append(summary.maxNanos() / 1_000_000L).append(" ms");
             }
         }
+        List<LatencyAlignmentSummary> aligned = latencyAlignmentSummaries();
+        if (result.length() < MAX_EVIDENCE_LENGTH) {
+            result.append("\nСопоставление сетевых и игровых задержек по общим минутам (не причинность):");
+            for (LatencyAlignmentSummary summary : aligned) {
+                result.append("\n- ").append(summary.windowMinutes()).append("m: commonMinutes=")
+                        .append(summary.overlappingMinuteBuckets()).append(", networkN=")
+                        .append(summary.networkSampleCount()).append(", gameplayN=")
+                        .append(summary.gameplaySampleCount()).append(", networkAvg=")
+                        .append(summary.networkAverageNanos() / 1_000_000L).append(" ms, gameplayAvg=")
+                        .append(summary.gameplayAverageNanos() / 1_000_000L).append(" ms");
+            }
+        }
         List<ActivityWindowSummary> activity = activityWindowSummaries();
         if (result.length() < MAX_EVIDENCE_LENGTH) {
             result.append("\nОшибки и давление ресурсов (5m/60m):");
@@ -311,6 +366,21 @@ public final class NexoraAiDiagnostics {
         while (!samples.isEmpty()
                 && nowNanos - samples.getFirst().recordedAtNanos() > LATENCY_WINDOW_NANOS) {
             samples.removeFirst();
+        }
+    }
+
+    public record LatencyAlignmentSummary(int windowMinutes, long overlappingMinuteBuckets,
+                                          long networkSampleCount, long gameplaySampleCount,
+                                          long networkAverageNanos, long gameplayAverageNanos,
+                                          long networkMaxNanos, long gameplayMaxNanos) {
+        public LatencyAlignmentSummary {
+            if ((windowMinutes != 5 && windowMinutes != 60) || overlappingMinuteBuckets < 0
+                    || networkSampleCount < 0 || gameplaySampleCount < 0
+                    || networkAverageNanos < 0 || gameplayAverageNanos < 0
+                    || networkMaxNanos < 0 || gameplayMaxNanos < 0
+                    || (overlappingMinuteBuckets == 0 && (networkSampleCount != 0 || gameplaySampleCount != 0))) {
+                throw new IllegalArgumentException("Invalid latency alignment summary");
+            }
         }
     }
 

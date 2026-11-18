@@ -23,7 +23,6 @@ import ru.nexora.inventory.PlayerEquipmentStorage;
 import ru.nexora.inventory.DurabilitySettings;
 import ru.nexora.ai.NexoraAiDiagnostics;
 import ru.nexora.ai.DiagnosticsRuntimeModule;
-import ru.nexora.ai.NexoraAiAssistant;
 import ru.nexora.lifecycle.ServerLifecycle;
 import ru.nexora.lifecycle.ServerReadiness;
 import ru.nexora.config.NexoraServerConfig;
@@ -32,7 +31,6 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 

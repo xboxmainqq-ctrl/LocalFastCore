@@ -45,6 +45,32 @@ public final class PlayerStateCheckpointService {
         }
     }
 
+    /**
+     * Writes a new revision even when the serialized player state is unchanged.
+     * Transfer revisions are monotonic ownership markers, not just content versions.
+     */
+    public PlayerStateStore.SaveResult checkpointForTransfer(
+            PlayerStateBundle bundle, long capturedAtEpochMillis
+    ) throws IOException {
+        Objects.requireNonNull(bundle, "bundle");
+        if (capturedAtEpochMillis < 0) throw new IllegalArgumentException("capturedAtEpochMillis < 0");
+        String xuid = bundle.profile().xuid();
+        synchronized (lockFor(xuid)) {
+            byte[] payload = codec.encode(bundle);
+            for (int attempt = 0; attempt < 32; attempt++) {
+                long revision = store.loadLatest(xuid)
+                        .map(PlayerStateSnapshot::revision).orElse(-1L);
+                if (revision == Long.MAX_VALUE) throw new IOException("Player snapshot revision exhausted");
+                PlayerStateSnapshot snapshot = new PlayerStateSnapshot(
+                        PlayerStateBundleCodec.SCHEMA_VERSION, xuid, revision + 1,
+                        capturedAtEpochMillis, payload);
+                PlayerStateStore.SaveResult result = store.save(snapshot);
+                if (result != PlayerStateStore.SaveResult.STALE) return result;
+            }
+            throw new IOException("Transfer checkpoint CAS contention exceeded retry limit");
+        }
+    }
+
     /** Returns the latest durable revision, or -1 when no canonical checkpoint exists. */
     public long latestRevision(String xuid) throws IOException {
         if (xuid == null || !xuid.matches("[A-Za-z0-9_-]{1,64}")) {

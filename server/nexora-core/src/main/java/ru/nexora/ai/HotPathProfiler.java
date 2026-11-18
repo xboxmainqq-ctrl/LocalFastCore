@@ -14,6 +14,7 @@ public final class HotPathProfiler {
     public enum Path {
         MOB_TARGETING,
         MOB_AI_DECISION,
+        MOB_PATHFINDING,
         WORLD_ENTITY_TICK,
         CHUNK_RESIDENCY,
         BEDROCK_INBOUND

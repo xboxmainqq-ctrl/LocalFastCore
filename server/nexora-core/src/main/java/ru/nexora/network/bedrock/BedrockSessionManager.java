@@ -143,6 +143,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             new ru.nexora.combat.MobAiLoadController();
     private final ru.nexora.combat.MobAiTaskScheduler mobAiTaskScheduler =
             new ru.nexora.combat.MobAiTaskScheduler();
+    private final ru.nexora.ai.HotPathProfiler hotPathProfiler =
+            new ru.nexora.ai.HotPathProfiler();
     private final ru.nexora.world.WorldChunkResidencyManager chunkResidency =
             new ru.nexora.world.WorldChunkResidencyManager(
                     BedrockChunkRadiusCodec.DEFAULT_RADIUS, 100,
@@ -509,6 +511,17 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return mobPathCache.pruneExpired(Math.max(0L, nanoTime.getAsLong() / 1_000_000L));
     }
 
+    private String hotPathProfilerSummary() {
+        StringBuilder summary = new StringBuilder();
+        for (ru.nexora.ai.HotPathProfiler.Path path : ru.nexora.ai.HotPathProfiler.Path.values()) {
+            ru.nexora.ai.HotPathProfiler.Snapshot snapshot = hotPathProfiler.snapshot(path);
+            if (snapshot.sampleCount() == 0) continue;
+            if (summary.length() > 0) summary.append("; ");
+            summary.append(path.name()).append("[").append(snapshot.summary()).append("]");
+        }
+        return summary.length() == 0 ? "no samples" : summary.toString();
+    }
+
     /** Read-only mob navigation/cache diagnostics for trusted operator console output. */
     public String mobAiDiagnosticsSummary() {
         ru.nexora.world.MobPathCache.Stats cache = mobPathCache.stats();
@@ -528,6 +541,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 .append("\nMob AI load controller: ").append(mobAiLoadController.stats().summary())
                 .append("\nMob AI budget: ").append(mobAiLoadController.budgetStats().summary())
                 .append("\nMob AI tasks: ").append(mobAiTaskScheduler.stats().summary())
+                .append("\nHot paths: ").append(hotPathProfilerSummary())
                 .append("\nMob AI decision algorithm: decisions=").append(aiStats.decisionCount())
                 .append(", total=").append(aiStats.totalDecisionNanos()).append(" ns")
                 .append(", avg=").append(aiStats.averageDecisionNanos()).append(" ns")
@@ -2595,6 +2609,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             throw failure;
         } finally {
             long elapsedNanos = Math.max(0L, nanoTime.getAsLong() - aiStartedNanos);
+            hotPathProfiler.record(ru.nexora.ai.HotPathProfiler.Path.WORLD_ENTITY_TICK, elapsedNanos);
             mobAiLoadController.updateAdaptiveBudget(elapsedNanos);
             ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
             if (diagnostics != null) {
@@ -2623,9 +2638,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     Math.floorDiv((int) Math.floor(entity.x()), 16),
                     Math.floorDiv((int) Math.floor(entity.z()), 16)));
         }
+        long residencyStartedNanos = nanoTime.getAsLong();
         WorldChunkResidencyManager.ResidencyPlan residencyPlan =
                 chunkResidency.update(playerChunks, entityChunks, Math.max(0L, nowMillis / 50L));
         world.applyChunkResidencyPlan(residencyPlan);
+        hotPathProfiler.record(ru.nexora.ai.HotPathProfiler.Path.CHUNK_RESIDENCY,
+                Math.max(0L, nanoTime.getAsLong() - residencyStartedNanos));
         ru.nexora.ai.NexoraAiDiagnostics worldDiagnostics = aiDiagnostics;
         if (worldDiagnostics != null) {
             ru.nexora.combat.MobAiLoadController.Stats schedulerStats = mobAiLoadController.stats();
@@ -2694,8 +2712,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             mob.runtimeId(), mob.health(), mob.maxHealth(), Math.max(0, tick)));
                 }
             }
+            long targetingStartedNanos = nanoTime.getAsLong();
             ru.nexora.combat.LivingEntityAiService.PlayerTarget nearestPlayer =
                     ru.nexora.combat.LivingEntityAiService.nearestAlivePlayer(mob, targets);
+            hotPathProfiler.record(ru.nexora.ai.HotPathProfiler.Path.MOB_TARGETING,
+                    Math.max(0L, nanoTime.getAsLong() - targetingStartedNanos));
             if ("minecraft:creeper".equals(mob.identifier())
                     && tickCreeperBehavior(mob, nearestPlayer, nowMillis, tick)) {
                 mobAiLoadController.recordScheduled(mob.runtimeId());
@@ -2757,8 +2778,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             ru.nexora.combat.LivingEntityAiService.Decision decision =
                     livingEntityAi.decide(mob, targets, nowMillis, nextAttackAt,
                             provokedBy, nearestPlayer);
-            mobAiLoadController.recordBudgetNanos(
-                    Math.max(0L, nanoTime.getAsLong() - decisionStartedNanos));
+            long decisionElapsedNanos = Math.max(0L, nanoTime.getAsLong() - decisionStartedNanos);
+            mobAiLoadController.recordBudgetNanos(decisionElapsedNanos);
+            hotPathProfiler.record(ru.nexora.ai.HotPathProfiler.Path.MOB_AI_DECISION, decisionElapsedNanos);
             if (decision.attack()) {
                 mobAiTaskScheduler.admit(ru.nexora.combat.MobAiTaskScheduler.Task.COMBAT,
                         aiPriority, true, Math.max(0L, nanoTime.getAsLong() - aiStartedNanos),
@@ -2808,9 +2830,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             mob.x(), mob.y(), mob.z(), desiredX, desiredZ, nowMillis).orElse(null);
                 } finally {
                     ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
+                    long pathElapsedNanos = Math.max(0L, nanoTime.getAsLong() - pathStartedNanos);
+                    hotPathProfiler.record(ru.nexora.ai.HotPathProfiler.Path.MOB_PATHFINDING, pathElapsedNanos);
                     if (diagnostics != null) {
-                        diagnostics.recordSlowOperation("mob-pathfinding",
-                                Math.max(0L, nanoTime.getAsLong() - pathStartedNanos), 5_000_000L);
+                        diagnostics.recordSlowOperation("mob-pathfinding", pathElapsedNanos, 5_000_000L);
                     }
                 }
                 if (waypoint == null) {

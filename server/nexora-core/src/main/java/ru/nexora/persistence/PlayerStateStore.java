@@ -1,5 +1,6 @@
 package ru.nexora.persistence;
 
+import java.io.IOException;
 import java.util.Optional;
 
 /**
@@ -12,7 +13,7 @@ import java.util.Optional;
 public interface PlayerStateStore {
     enum SaveResult { SAVED, ALREADY_CURRENT, STALE }
 
-    SaveResult save(PlayerStateSnapshot snapshot);
+    SaveResult save(PlayerStateSnapshot snapshot) throws IOException;
 
-    Optional<PlayerStateSnapshot> loadLatest(String playerId);
+    Optional<PlayerStateSnapshot> loadLatest(String playerId) throws IOException;
 }

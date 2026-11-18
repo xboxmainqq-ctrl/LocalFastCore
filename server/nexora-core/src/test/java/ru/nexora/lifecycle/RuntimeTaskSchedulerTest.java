@@ -52,7 +52,6 @@ class RuntimeTaskSchedulerTest {
         scheduler.close();
     }
 
-
     @Test
     void releasesCapacityWhenPeriodicTaskFails() throws Exception {
         RuntimeTaskScheduler scheduler = new RuntimeTaskScheduler(1, Duration.ofSeconds(1));
@@ -69,6 +68,38 @@ class RuntimeTaskSchedulerTest {
             Thread.yield();
         }
         assertEquals(0, scheduler.registeredTasks(RuntimeTaskScheduler.Lane.TICK));
+        RuntimeTaskScheduler.LaneStats stats = scheduler.stats(RuntimeTaskScheduler.Lane.TICK);
+        assertEquals(1, stats.completedRuns());
+        assertEquals(1, stats.failedRuns());
+        assertTrue(stats.totalExecutionNanos() >= 0);
+        assertTrue(stats.maxExecutionNanos() >= stats.lastExecutionNanos());
+        scheduler.close();
+    }
+
+    @Test
+    void recordsExecutionBaselinesPerLaneWithoutMixingCounters() throws Exception {
+        RuntimeTaskScheduler scheduler = new RuntimeTaskScheduler(2, Duration.ofSeconds(1));
+        CountDownLatch tickRan = new CountDownLatch(3);
+        CountDownLatch persistenceRan = new CountDownLatch(2);
+
+        scheduler.scheduleAtFixedRate(RuntimeTaskScheduler.Lane.TICK,
+                tickRan::countDown, 0, 1, TimeUnit.MILLISECONDS);
+        scheduler.scheduleAtFixedRate(RuntimeTaskScheduler.Lane.PERSISTENCE,
+                persistenceRan::countDown, 0, 1, TimeUnit.MILLISECONDS);
+
+        assertTrue(tickRan.await(2, TimeUnit.SECONDS));
+        assertTrue(persistenceRan.await(2, TimeUnit.SECONDS));
+        RuntimeTaskScheduler.LaneStats tick = scheduler.stats(RuntimeTaskScheduler.Lane.TICK);
+        RuntimeTaskScheduler.LaneStats persistence =
+                scheduler.stats(RuntimeTaskScheduler.Lane.PERSISTENCE);
+
+        assertTrue(tick.completedRuns() >= 3);
+        assertTrue(persistence.completedRuns() >= 2);
+        assertEquals(0, tick.failedRuns());
+        assertEquals(0, persistence.failedRuns());
+        assertTrue(tick.totalExecutionNanos() >= tick.maxExecutionNanos());
+        assertTrue(tick.averageExecutionMillis() >= 0);
+        assertTrue(tick.maxExecutionMillis() >= 0);
         scheduler.close();
     }
 

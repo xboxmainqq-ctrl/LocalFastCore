@@ -10,6 +10,8 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
 
 /**
  * Bounded scheduler with isolated single-thread lanes.
@@ -17,6 +19,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <p>Each lane has its own worker and task-registration budget, so slow
  * persistence work cannot delay tick work. Only periodic tasks are accepted;
  * registrations are bounded before they enter the executor's delay queue.</p>
+ *
+ * <p>Per-lane counters expose completed/failed runs and execution duration.
+ * They are diagnostic measurements, not a substitute for server TPS.</p>
  */
 public final class RuntimeTaskScheduler implements AutoCloseable {
     public enum Lane { TICK, PERSISTENCE, MONITORING }
@@ -71,11 +76,16 @@ public final class RuntimeTaskScheduler implements AutoCloseable {
         try {
             Runnable guarded = () -> {
                 if (closed.get()) return;
+                long startedAt = System.nanoTime();
+                boolean failed = false;
                 try {
                     task.run();
                 } catch (RuntimeException | Error failure) {
+                    failed = true;
                     release.run();
                     throw failure;
+                } finally {
+                    runtime.recordRun(System.nanoTime() - startedAt, failed);
                 }
             };
             ScheduledFuture<?> future = fixedRate
@@ -90,6 +100,11 @@ public final class RuntimeTaskScheduler implements AutoCloseable {
 
     public int registeredTasks(Lane lane) {
         return lanes.get(Objects.requireNonNull(lane, "lane")).registered.get();
+    }
+
+    /** Returns a thread-safe point-in-time snapshot for one scheduler lane. */
+    public LaneStats stats(Lane lane) {
+        return lanes.get(Objects.requireNonNull(lane, "lane")).stats();
     }
 
     @Override
@@ -124,6 +139,19 @@ public final class RuntimeTaskScheduler implements AutoCloseable {
         if (failure != null) throw failure;
     }
 
+    public record LaneStats(int registeredTasks, long completedRuns, long failedRuns,
+                            long totalExecutionNanos, long maxExecutionNanos,
+                            long lastExecutionNanos) {
+        public double averageExecutionMillis() {
+            return completedRuns == 0 ? 0.0
+                    : totalExecutionNanos / (double) completedRuns / 1_000_000.0;
+        }
+
+        public double maxExecutionMillis() {
+            return maxExecutionNanos / 1_000_000.0;
+        }
+    }
+
     public static final class TaskHandle implements AutoCloseable {
         private final ScheduledFuture<?> future;
         private final Runnable release;
@@ -155,6 +183,11 @@ public final class RuntimeTaskScheduler implements AutoCloseable {
         private final ScheduledThreadPoolExecutor executor;
         private final int maxTasks;
         private final AtomicInteger registered = new AtomicInteger();
+        private final LongAdder completedRuns = new LongAdder();
+        private final LongAdder failedRuns = new LongAdder();
+        private final LongAdder totalExecutionNanos = new LongAdder();
+        private final AtomicLong maxExecutionNanos = new AtomicLong();
+        private final AtomicLong lastExecutionNanos = new AtomicLong();
 
         private LaneRuntime(Lane lane, int maxTasks) {
             this.maxTasks = maxTasks;
@@ -166,6 +199,20 @@ public final class RuntimeTaskScheduler implements AutoCloseable {
             executor.setRemoveOnCancelPolicy(true);
             executor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
             executor.setContinueExistingPeriodicTasksAfterShutdownPolicy(false);
+        }
+
+        private void recordRun(long elapsedNanos, boolean failed) {
+            long safeElapsed = Math.max(0L, elapsedNanos);
+            completedRuns.increment();
+            if (failed) failedRuns.increment();
+            totalExecutionNanos.add(safeElapsed);
+            lastExecutionNanos.set(safeElapsed);
+            maxExecutionNanos.accumulateAndGet(safeElapsed, Math::max);
+        }
+
+        private LaneStats stats() {
+            return new LaneStats(registered.get(), completedRuns.sum(), failedRuns.sum(),
+                    totalExecutionNanos.sum(), maxExecutionNanos.get(), lastExecutionNanos.get());
         }
 
         private boolean reserve() {

@@ -3379,6 +3379,50 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void sourceLeaseRemainsHeldUntilPreparedRecordIsDurable() throws Exception {
+        var checkpoints = new ru.nexora.persistence.PlayerStateCheckpointService(
+                new FilePlayerStateStore(temporaryDirectory), new PlayerStateBundleCodec());
+        var leases = new ru.nexora.network.InMemoryPlayerOnlineLeaseRegistry();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("transfer-lease-order", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                null, null, null, checkpoints, (networkId, label, frame) -> {}, event -> {});
+        try {
+            manager.configureOnlinePlayerLeases(leases, 15_000L);
+            DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
+                    new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
+            manager.configureTransferOwnershipGuard(ledger, "node-a");
+            long now = System.currentTimeMillis();
+            assertTrue(leases.acquire("lease-order-xuid", "node-a", "lease-order-session", now, 15_000L));
+            manager.onIdentity("lease-order-network", new NetherNetClientIdentity(
+                    "lease-order-token", new byte[] {8}, "lease-order-xuid",
+                    "LeaseOrderPlayer", "lease-order-playfab", "20CA2", null));
+            setSessionField(manager, "lease-order-network", "onlineLeaseSessionId", "lease-order-session");
+            setSessionField(manager, "lease-order-network", "loginAuthenticated", true);
+            setSessionField(manager, "lease-order-network", "clientInitialized", true);
+            setSessionField(manager, "lease-order-network", "positionInitialized", true);
+
+            long revision = manager.freezePlayerForTransfer("lease-order-xuid");
+            assertTrue(leases.renew("lease-order-xuid", "node-a", "lease-order-session",
+                    now + 1L, 15_000L),
+                    "Source retains global ownership while the PREPARED record is not yet durable");
+
+            UUID transferId = UUID.randomUUID();
+            PlayerHandoff handoff = new PlayerHandoff(transferId, 1L, "node-a", "node-b", new byte[0]);
+            ledger.prepare(handoff, "lease-order-xuid", revision, now + 2L);
+            manager.releaseOnlinePlayerLeaseAfterPreparedTransfer("lease-order-xuid", transferId);
+
+            assertFalse(leases.renew("lease-order-xuid", "node-a", "lease-order-session",
+                    now + 3L, 15_000L));
+            assertTrue(leases.acquire("lease-order-xuid", "node-b", "destination-session",
+                    now + 3L, 15_000L),
+                    "Destination can acquire the XUID only after PREPARED has been durably published");
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void transferFreezeCheckpointsAndRemovesSourceFromActiveGameplayUntilAbortResume() throws Exception {
         PlayerStateCheckpointService checkpoints = new PlayerStateCheckpointService(
                 new FilePlayerStateStore(temporaryDirectory.resolve("transfer-checkpoints")),

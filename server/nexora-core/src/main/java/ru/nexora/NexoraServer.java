@@ -272,7 +272,7 @@ public final class NexoraServer {
         System.out.println("Player profiles use versioned, checksummed files under " + Path.of(dataDirectory, "players").toAbsolutePath());
         System.out.println("Player inventories use versioned, checksummed files under " + Path.of(dataDirectory, "inventories").toAbsolutePath());
         System.out.println("Player armor, offhand, cursor and magical equipment use checksummed files under " + Path.of(dataDirectory, "equipment").toAbsolutePath());
-        System.out.println("Canonical player shadow checkpoints use versioned snapshots under " + Path.of(dataDirectory, "player-state").toAbsolutePath() + "; legacy files remain login authority during migration.");
+        System.out.println("Canonical player checkpoints: " + configuredPlayerStateStore.description() + "; legacy files remain login authority during migration.");
         System.out.println("Player-transfer ledger: " + configuredTransferLedger.description() + ".");
         System.out.println("Dropped world items use checksummed storage under " + Path.of(dataDirectory, "worlds", "NEXORA World", "items").toAbsolutePath());
         System.out.println("Block-container inventories use checksummed storage under " + Path.of(dataDirectory, "worlds", "NEXORA World", "containers").toAbsolutePath());

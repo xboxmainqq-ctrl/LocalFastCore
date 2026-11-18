@@ -97,12 +97,16 @@ The storage contract requires atomic per-player saves:
 - repeating the same revision and payload is idempotent;
 - a different payload for an already-used revision is a conflict.
 
-The current `InMemoryPlayerStateStore` is only a concurrency-safe reference
-adapter for tests and local development. It loses all data on process exit and
-must never be described as crash-recovery storage.
+The `InMemoryPlayerStateStore` is only a concurrency-safe reference adapter
+for tests and loses data on process exit. `FilePlayerStateStore` now provides a
+local durable adapter using bounded versioned files, SHA-256 verification,
+per-player locking, forced temporary-file writes and atomic replacement where
+the filesystem supports it. It is still a single-host store, not a replicated
+cluster database.
 
-A durable adapter and a persistent transfer ledger are still required before
-player handoff can recover safely across process crashes. The source must not
+The snapshot store is not yet connected to the live Bedrock session serialization
+path, and a persistent transfer ledger is still required before player handoff
+can recover safely across process crashes. The source must not
 release authoritative ownership until the destination has durably claimed and
 validated the transfer. Exactly-once behavior must not be claimed without the
 transactional/replicated guarantees that make it possible.

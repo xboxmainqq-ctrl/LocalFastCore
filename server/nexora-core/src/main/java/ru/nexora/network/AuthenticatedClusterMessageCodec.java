@@ -19,7 +19,7 @@ import java.util.UUID;
  * It authenticates bytes and recipient/time metadata; replay deduplication,
  * key rotation and peer authorization must be enforced by the transport layer.
  */
-public final class AuthenticatedClusterMessageCodec {
+public final class AuthenticatedClusterMessageCodec implements ClusterMessageCodec {
     private static final int MAGIC = 0x4e58434d; // NXCM
     private static final int VERSION = 1;
     private static final int MAC_BYTES = 32;

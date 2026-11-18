@@ -43,6 +43,30 @@ class PendingPlayerTransferRestoreRegistryTest {
         assertThrows(IllegalStateException.class, () -> registry.register(restore));
     }
 
+    @Test
+    void newTransferPrunesOnlyRevokedPendingRegistrationForSameXuid() throws Exception {
+        UUID oldId = UUID.randomUUID();
+        DurableHandoffCoordinator ledger = ledgerWithClaim(oldId);
+        PlayerTransferRecord oldClaim = ledger.get(oldId).orElseThrow();
+        PlayerTransferFence oldFence = new PlayerTransferFence(ledger, oldClaim, () -> 100L);
+        PendingPlayerTransferRestoreRegistry registry = new PendingPlayerTransferRestoreRegistry();
+        var oldRestore = new PendingPlayerTransferRestoreRegistry.PendingRestore("xuid-123", 7, oldFence);
+        registry.register(oldRestore);
+        ledger.abort(oldId, oldFence.fencingToken(), 200L);
+
+        UUID newId = UUID.randomUUID();
+        ledger.prepare(new PlayerHandoff(newId, 2L, "source", "target", new byte[0]),
+                "xuid-123", 8L, 201L);
+        PlayerTransferRecord newClaim = ledger.claim(newId, "target", 202L, 10_000L).orElseThrow();
+        PlayerTransferFence newFence = new PlayerTransferFence(ledger, newClaim, () -> 203L);
+        var newRestore = new PendingPlayerTransferRestoreRegistry.PendingRestore("xuid-123", 8, newFence);
+
+        registry.register(newRestore);
+
+        assertEquals(newRestore, registry.find("xuid-123").orElseThrow());
+        assertEquals(1, registry.size());
+    }
+
     private static DurableHandoffCoordinator ledgerWithClaim(UUID id) throws Exception {
         DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
                 new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));

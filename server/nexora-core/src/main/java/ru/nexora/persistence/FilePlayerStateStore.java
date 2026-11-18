@@ -35,7 +35,7 @@ public final class FilePlayerStateStore implements PlayerStateStore {
     private static final int MAX_FILE_BYTES = 4 * 1024 * 1024 + 128;
 
     private final Path directory;
-    private final ConcurrentMap<Long, Object> playerLocks = new ConcurrentHashMap<>();
+    private static final ConcurrentMap<String, Object> PLAYER_LOCKS = new ConcurrentHashMap<>();
 
     public FilePlayerStateStore(Path directory) throws IOException {
         Objects.requireNonNull(directory, "directory");
@@ -52,7 +52,7 @@ public final class FilePlayerStateStore implements PlayerStateStore {
         byte[] payload = snapshot.payload();
         if (payload.length > MAX_PAYLOAD_BYTES) throw new IOException("Player snapshot exceeds storage limit");
 
-        synchronized (playerLocks.computeIfAbsent(snapshot.playerId(), ignored -> new Object())) {
+        synchronized (PLAYER_LOCKS.computeIfAbsent(lockPath(snapshot.playerId()).toString(), ignored -> new Object())) {
             Path lockPath = lockPath(snapshot.playerId());
             rejectSymlink(lockPath);
             try (FileChannel lockChannel = FileChannel.open(lockPath,
@@ -82,7 +82,7 @@ public final class FilePlayerStateStore implements PlayerStateStore {
     @Override
     public Optional<PlayerStateSnapshot> loadLatest(long playerId) throws IOException {
         if (playerId < 0) throw new IllegalArgumentException("playerId < 0");
-        synchronized (playerLocks.computeIfAbsent(playerId, ignored -> new Object())) {
+        synchronized (PLAYER_LOCKS.computeIfAbsent(lockPath(playerId).toString(), ignored -> new Object())) {
             Path lockPath = lockPath(playerId);
             rejectSymlink(lockPath);
             try (FileChannel lockChannel = FileChannel.open(lockPath,

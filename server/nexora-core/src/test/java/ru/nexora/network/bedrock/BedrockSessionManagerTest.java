@@ -969,6 +969,7 @@ class BedrockSessionManagerTest {
         // This distant idle mob is deliberately deferred by the generic AI scheduler
         // on tick 200. Spawner processing must still run before that scheduling decision.
         spawnerWorld.livingEntities().spawn("minecraft:cow", 20, 40.5, 65.0, 40.5);
+        spawnerWorld.livingEntities().spawn("minecraft:cow", 20, 41.5, 65.0, 40.5);
         List<byte[]> outbound = new ArrayList<>();
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,

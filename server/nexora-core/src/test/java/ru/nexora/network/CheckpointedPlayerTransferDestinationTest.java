@@ -100,6 +100,41 @@ class CheckpointedPlayerTransferDestinationTest {
     }
 
     @Test
+    void expiredCurrentClaimStillDeactivatesItsPendingReservationBeforeReclaim() throws Exception {
+        PlayerStateCheckpointService checkpoints = checkpoints();
+        checkpoints.checkpoint(bundle("transfer-destination-xuid", 4.0f), 100L);
+        InMemoryPlayerTransferLedger store = new InMemoryPlayerTransferLedger();
+        DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(new PlayerTransferCoordinator(store));
+        PlayerHandoff handoff = handoff();
+        ledger.prepare(handoff, "transfer-destination-xuid", 0L, 100L);
+        PlayerTransferRecord firstClaim = ledger.claim(
+                handoff.transferId(), "target-node", 101L, 10L).orElseThrow();
+        AtomicLong now = new AtomicLong(112L);
+        AtomicBoolean deactivated = new AtomicBoolean();
+        CheckpointedPlayerTransferDestination destination = new CheckpointedPlayerTransferDestination(
+                ledger, checkpoints, "target-node",
+                new CheckpointedPlayerTransferDestination.Activator() {
+                    @Override
+                    public boolean restoreAndActivate(PlayerHandoff ignored,
+                                                       PlayerStateBundle restored,
+                                                       PlayerTransferFence fence) {
+                        return true;
+                    }
+
+                    @Override
+                    public void deactivate(PlayerHandoff ignored, PlayerTransferFence fence) {
+                        deactivated.set(true);
+                    }
+                }, now::get);
+
+        destination.deactivateIfOwned(handoff, firstClaim.fencingToken());
+        assertTrue(deactivated.get(), "Expired matching claim must clear its stale local reservation");
+        PlayerTransferRecord reclaimed = ledger.claim(
+                handoff.transferId(), "target-node", 112L, 10_000L).orElseThrow();
+        assertTrue(reclaimed.fencingToken() > firstClaim.fencingToken());
+    }
+
+    @Test
     void staleFenceCannotActivateOrDeactivateAfterClaimWasReclaimed() throws Exception {
         PlayerStateCheckpointService checkpoints = checkpoints();
         checkpoints.checkpoint(bundle("transfer-destination-xuid", 4.0f), 100L);

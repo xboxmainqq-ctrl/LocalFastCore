@@ -52,9 +52,9 @@ public final class ClusterTransportFactory {
         if (!peers.keySet().containsAll(bedrockRoutes.keySet())) {
             throw new IllegalArgumentException("Every Bedrock route must name a configured cluster peer");
         }
-        Map<String, ClusterMessageCodec> peerCodecs = parsePeerCodecs(
-                peerKeysValue, localNodeId, peers.keySet());
         long skewMillis = longValue(environment, "NEXORA_CLUSTER_MAX_CLOCK_SKEW_MS", 30_000L, 1_000L, 300_000L);
+        Map<String, ClusterMessageCodec> peerCodecs = parsePeerCodecs(
+                peerKeysValue, localNodeId, peers.keySet(), skewMillis);
         long replayRetentionMillis = longValue(
                 environment, "NEXORA_CLUSTER_REPLAY_RETENTION_MS", 600_000L, 10_000L, 86_400_000L);
         int replayCapacity = intValue(environment, "NEXORA_CLUSTER_REPLAY_MAX_ENTRIES", 100_000, 128, 2_000_000);
@@ -76,11 +76,11 @@ public final class ClusterTransportFactory {
                 transport, peers.size(), bedrockRoutes,
                 "authenticated TCP cluster transport (pairwise HMAC-SHA-256, "
                         + peers.size() + " configured peers; " + bedrockRoutes.size()
-                        + " Bedrock routes; shared secret hidden)"));
+                        + " Bedrock routes; pairwise keys hidden)"));
     }
 
     private static Map<String, ClusterMessageCodec> parsePeerCodecs(
-            String value, String localNodeId, java.util.Set<String> configuredPeers) {
+            String value, String localNodeId, java.util.Set<String> configuredPeers, long skewMillis) {
         Map<String, ClusterMessageCodec> codecs = new LinkedHashMap<>();
         for (String entry : value.split(";", -1)) {
             String trimmed = entry.trim();
@@ -101,7 +101,7 @@ public final class ClusterTransportFactory {
             if (key.length < 32) {
                 throw new IllegalArgumentException("Each pairwise cluster key must decode to at least 32 bytes");
             }
-            if (codecs.putIfAbsent(peerId, new AuthenticatedClusterMessageCodec(key, 30_000L)) != null) {
+            if (codecs.putIfAbsent(peerId, new AuthenticatedClusterMessageCodec(key, skewMillis)) != null) {
                 throw new IllegalArgumentException("Duplicate cluster peer key: " + peerId);
             }
         }

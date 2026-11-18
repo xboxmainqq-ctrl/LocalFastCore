@@ -173,11 +173,11 @@ For an authenticated TCP cluster link, configure the cluster listener, each peer
 NEXORA_CLUSTER_BIND=10.20.0.1:19133
 NEXORA_CLUSTER_PEERS=survival-02=10.20.0.2:19133
 NEXORA_CLUSTER_BEDROCK_ROUTES=survival-02=bedrock-02.example.net:19132
-NEXORA_CLUSTER_SHARED_SECRET=BASE64_ENCODED_RANDOM_SECRET
+NEXORA_CLUSTER_PEER_KEYS=survival-02=BASE64_PAIRWISE_KEY
 NEXORA_TRANSFER_LEASE_MS=15000
 ~~~
 
-Generate at least 32 random secret bytes and Base64-encode them; use the same key on every configured peer. HMAC authenticates messages but does not encrypt the TCP stream, so keep the cluster listener on a private network/VPN or behind an authenticated encrypted tunnel. The Bedrock route is the address the client will connect to after the target commits the transfer.
+Generate at least 32 random bytes per node pair and Base64-encode them. Configure the same pairwise key under the opposite peer ID on both nodes; do not reuse one key across unrelated peers. HMAC authenticates messages but does not encrypt the TCP stream, so keep the cluster listener on a private network/VPN or behind an authenticated encrypted tunnel. The Bedrock route is the address the client will connect to after the target commits the transfer.
 
 Once the cluster transport is active, the server process console exposes:
 - `players` — list authenticated players with their XUID and entity ID

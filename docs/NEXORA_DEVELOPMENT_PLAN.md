@@ -284,6 +284,7 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Shared-ledger mode now configures this policy in BedrockSessionManager before the network starts. Login checks the latest durable transfer decision; active sessions periodically re-check it and are stopped when ownership moves to another node.
 - After a committed/aborted transfer, reconnects restore the latest shared canonical checkpoint instead of potentially stale per-host legacy inventory/profile files. A claimed-but-uncommitted transfer cannot admit a player.
 - Expired claims are durably aborted during destination startup recovery and on login reconciliation; stale PREPARED records on their source node are cancelled after a 30-second grace period.
+- Transfer freeze now forces a fresh monotonic canonical checkpoint revision even when the serialized player state is unchanged, and the exact revision returned by that write is stored in PREPARED. This avoids a separate latest-revision read racing with another checkpoint.
 - Added tests for ownership policy, latest per-XUID lookup, and expired-claim durable rollback.
 - Remaining: this is transfer-history fencing, not a complete online-player lease registry. A duplicate XUID that logs into two different nodes before either node has a transfer record can still be admitted. Implement a shared lease/owner registry and validate it under multi-process login races before public cluster use.
 ### 40. Frozen source session reconciliation — IMPLEMENTED, CI PENDING

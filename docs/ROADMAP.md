@@ -54,6 +54,7 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 - [x] Add a conservative Mob AI load controller: keep mobs near players and mobs with active targets at full update rate; stagger only distant idle mobs, with deterministic tests and operator metrics.
 - [x] Add deterministic tests for targeting, movement, despawn, physics, and edge cases; run the full CI suite once a GitHub runner is available.
 - [x] Add conservative deterministic Mob AI scheduling: nearby mobs and mobs with active aggro remain full-rate; distant unprovoked mobs are staggered across ticks. Expose aggregate counters in `/ai mob stats`.
+- [x] Add a deterministic 10,000-mob / 20-tick scheduling workload regression (200,000 decisions) covering full-rate nearby/targeted mobs and staggered distant idle mobs; this validates scheduling fairness, not live server TPS.
 - [x] Add bounded, diagnostic-only stuck-mob detection with a 2-second no-progress threshold and operator report (`/ai mob stuck`); no automatic teleport or punishment.
 - [x] Expose read-only Mob AI cache counters and recent mob-ai/mob-pathfinding latency summaries through the allowlisted `/ai mob stats` operator command.
 - [x] Reuse nearest-player targeting results between scheduling and generic decisions; remove stream allocation from creeper target selection.

@@ -3,7 +3,6 @@ package ru.nexora.persistence;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
-import java.util.HexFormat;
 
 /**
  * Immutable, versioned representation of player data suitable for persistence
@@ -45,7 +44,15 @@ public final class PlayerStateSnapshot {
 
     private static String sha256(byte[] bytes) {
         try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes);
+            char[] hex = new char[digest.length * 2];
+            char[] digits = "0123456789abcdef".toCharArray();
+            for (int i = 0; i < digest.length; i++) {
+                int value = digest[i] & 0xff;
+                hex[i * 2] = digits[value >>> 4];
+                hex[i * 2 + 1] = digits[value & 0x0f];
+            }
+            return new String(hex);
         } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException("SHA-256 is unavailable", impossible);
         }

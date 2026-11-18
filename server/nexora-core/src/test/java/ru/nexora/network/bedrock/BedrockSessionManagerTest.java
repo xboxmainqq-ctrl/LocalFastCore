@@ -5,6 +5,7 @@ import org.junit.jupiter.api.io.TempDir;
 import ru.nexora.network.nethernet.NetherNetClientIdentity;
 import ru.nexora.network.DurableHandoffCoordinator;
 import ru.nexora.network.InMemoryPlayerTransferLedger;
+import ru.nexora.network.InMemoryPlayerOnlineLeaseRegistry;
 import ru.nexora.network.PlayerHandoff;
 import ru.nexora.network.PlayerTransferCoordinator;
 import ru.nexora.inventory.ItemStack;

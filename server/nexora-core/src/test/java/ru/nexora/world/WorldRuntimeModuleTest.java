@@ -31,7 +31,7 @@ class WorldRuntimeModuleTest {
     }
 
     @Test
-    void continuesFinalPlayerSaveWhenWorldSaveFails() throws Exception {
+    void reportsFinalPlayerSaveFailure() throws Exception {
         World world = new World("NEXORA", 1L, new FlatWorldGenerator());
         AtomicInteger playerSaves = new AtomicInteger();
         WorldRuntimeModule runtime = new WorldRuntimeModule(

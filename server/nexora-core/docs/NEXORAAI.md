@@ -30,7 +30,7 @@ The following commands are read from the server process stdin. They are not in-g
 - `ai repair history` — show recent repair execution results.
 - `ai repair run <id> confirm` — execute one registered action after explicit confirmation.
 
-The currently registered action is `cache.mob-path.clear`. It clears only the transient in-memory mob navigation cache; it does not edit world data, entity state, source files, or server configuration. It is manual-confirmation-only. AI-generated text is never treated as executable input. The repair registry supports automatic execution only for actions explicitly marked auto-safe by trusted runtime code; no automatic repair action is enabled by default.
+The manually confirmed action is `cache.mob-path.clear`. It clears only the transient in-memory mob navigation cache; it does not edit world data, entity state, source files, or server configuration. The monitor also runs `cache.mob-path.prune-expired` automatically when expired cache entries exist; this action only removes expired in-memory navigation entries and verifies the result. AI-generated text is never treated as executable input. Automatic execution is limited to actions explicitly marked auto-safe by trusted runtime code.
 
 Legacy in-game technical routes such as `/ai admin`, `/ai mob`, `/ai spawner`, and `/ai guard` are blocked by the public-mode boundary. They must not be documented as available player commands.
 ## Mob AI diagnostics and optimization

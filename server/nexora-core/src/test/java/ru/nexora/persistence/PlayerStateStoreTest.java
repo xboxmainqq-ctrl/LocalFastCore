@@ -42,7 +42,7 @@ class PlayerStateStoreTest {
     @Test
     void validatesSnapshotMetadata() {
         assertThrows(IllegalArgumentException.class,
-                () -> new PlayerStateSnapshot(0, 1L, 0L, 0L, new byte[0]));
+                () -> new PlayerStateSnapshot(0, "1", 0L, 0L, new byte[0]));
         assertThrows(IllegalArgumentException.class,
                 () -> new PlayerStateSnapshot(1, "", 0L, 0L, new byte[0]));
     }

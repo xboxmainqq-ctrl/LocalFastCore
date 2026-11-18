@@ -63,12 +63,15 @@ class RuntimeTaskSchedulerTest {
 
         assertTrue(failedTaskRan.await(2, TimeUnit.SECONDS));
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-        while (scheduler.registeredTasks(RuntimeTaskScheduler.Lane.TICK) != 0
-                && System.nanoTime() < deadline) {
+        RuntimeTaskScheduler.LaneStats stats;
+        do {
+            stats = scheduler.stats(RuntimeTaskScheduler.Lane.TICK);
+            if (scheduler.registeredTasks(RuntimeTaskScheduler.Lane.TICK) == 0
+                    && stats.failedRuns() == 1) break;
             Thread.yield();
-        }
+        } while (System.nanoTime() < deadline);
         assertEquals(0, scheduler.registeredTasks(RuntimeTaskScheduler.Lane.TICK));
-        RuntimeTaskScheduler.LaneStats stats = scheduler.stats(RuntimeTaskScheduler.Lane.TICK);
+        stats = scheduler.stats(RuntimeTaskScheduler.Lane.TICK);
         assertEquals(1, stats.completedRuns());
         assertEquals(1, stats.failedRuns());
         assertTrue(stats.totalExecutionNanos() >= 0);

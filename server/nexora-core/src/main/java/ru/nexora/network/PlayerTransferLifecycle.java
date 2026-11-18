@@ -23,6 +23,8 @@ public final class PlayerTransferLifecycle {
     public interface Source {
         /** Stop authoritative gameplay and persist a canonical checkpoint. */
         long freezeAndCheckpoint(PlayerHandoff handoff) throws Exception;
+        /** Release source online ownership only after PREPARED is durable. */
+        default void onPrepared(PlayerHandoff handoff) throws Exception { }
         /** Resume source gameplay only after the ledger confirms ABORTED. */
         void unfreeze(PlayerHandoff handoff) throws Exception;
     }
@@ -61,18 +63,27 @@ public final class PlayerTransferLifecycle {
         long revision = source.freezeAndCheckpoint(handoff);
         try {
             ledger.prepare(handoff, playerXuid, revision, nowEpochMillis);
+            source.onPrepared(handoff);
         } catch (Exception publicationFailure) {
-            // A failed write can have an uncertain outcome. Resume only when a
-            // ledger read proves that no destination can own this transfer.
+            // A failed write or source-lease release can have an uncertain outcome.
+            // Only a durable ABORTED state permits the source to reacquire ownership.
             try {
                 Optional<PlayerTransferRecord> stored = ledger.get(handoff.transferId());
-                boolean definitelyUnclaimed = stored.isEmpty();
-                boolean alreadyAborted = stored.filter(record ->
-                        record.state() == PlayerTransferRecord.State.ABORTED
-                                && record.playerXuid().equals(playerXuid)
-                                && record.sourceNode().equals(handoff.sourceNode())
-                                && record.targetNode().equals(handoff.targetNode())).isPresent();
-                if (definitelyUnclaimed || alreadyAborted) source.unfreeze(handoff);
+                if (stored.isEmpty()) {
+                    source.unfreeze(handoff);
+                } else {
+                    PlayerTransferRecord record = stored.orElseThrow();
+                    if (record.state() == PlayerTransferRecord.State.PREPARED) {
+                        Optional<PlayerTransferRecord> aborted = ledger.abortPrepared(
+                                handoff.transferId(), nowEpochMillis);
+                        if (aborted.isPresent()) source.unfreeze(handoff);
+                    } else if (record.state() == PlayerTransferRecord.State.ABORTED
+                            && record.playerXuid().equals(playerXuid)
+                            && record.sourceNode().equals(handoff.sourceNode())
+                            && record.targetNode().equals(handoff.targetNode())) {
+                        source.unfreeze(handoff);
+                    }
+                }
             } catch (Exception reconciliationFailure) {
                 publicationFailure.addSuppressed(reconciliationFailure);
             }

@@ -56,6 +56,40 @@ public final class FilePlayerTransferLedger implements PlayerTransferLedger {
     }
 
     @Override
+    public Optional<PlayerTransferRecord> findLatestForPlayer(String playerXuid) throws IOException {
+        if (playerXuid == null || !playerXuid.matches("[A-Za-z0-9_-]{1,64}")) {
+            throw new IllegalArgumentException("Invalid player XUID");
+        }
+        PlayerTransferRecord latest = null;
+        try (DirectoryStream<Path> files = Files.newDirectoryStream(directory, "*.nxtl")) {
+            for (Path file : files) {
+                rejectSymlink(file);
+                String name = file.getFileName().toString();
+                UUID id;
+                try {
+                    id = UUID.fromString(name.substring(0, name.length() - ".nxtl".length()));
+                } catch (RuntimeException invalidName) {
+                    throw new IOException("Invalid transfer ledger filename: " + name, invalidName);
+                }
+                Optional<PlayerTransferRecord> stored = get(id);
+                if (stored.isEmpty()) continue;
+                PlayerTransferRecord record = stored.orElseThrow();
+                if (!record.playerXuid().equals(playerXuid)) continue;
+                if (latest == null
+                        || record.playerRevision() > latest.playerRevision()
+                        || (record.playerRevision() == latest.playerRevision()
+                        && record.updatedAtEpochMillis() > latest.updatedAtEpochMillis())
+                        || (record.playerRevision() == latest.playerRevision()
+                        && record.updatedAtEpochMillis() == latest.updatedAtEpochMillis()
+                        && record.transferId().toString().compareTo(latest.transferId().toString()) > 0)) {
+                    latest = record;
+                }
+            }
+        }
+        return Optional.ofNullable(latest);
+    }
+
+    @Override
     public boolean create(PlayerTransferRecord prepared) throws IOException {
         Objects.requireNonNull(prepared, "prepared");
         if (prepared.state() != PlayerTransferRecord.State.PREPARED

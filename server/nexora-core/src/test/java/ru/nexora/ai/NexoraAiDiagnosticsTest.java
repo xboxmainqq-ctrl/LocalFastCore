@@ -418,7 +418,7 @@ class NexoraAiDiagnosticsTest {
         assertEquals(NexoraAiDiagnostics.HealthConfidence.MEDIUM, critical.confidence());
         assertEquals(NexoraAiDiagnostics.SubsystemHealthStatus.UNKNOWN, sparse.status());
         assertEquals(NexoraAiDiagnostics.HealthConfidence.LOW, sparse.confidence());
-        assertEquals(0, sparse.overBudgetCount());
+        assertEquals(1, sparse.overBudgetCount());
         assertTrue(critical.evidence().contains("10 over budget"));
         assertTrue(critical.uptimeMillis() >= 0);
         assertNotNull(critical.observedAt());
@@ -434,7 +434,10 @@ class NexoraAiDiagnosticsTest {
                 diagnostics.subsystemHealth().getFirst().status());
 
         clock.addAndGet(5 * 60_000_000_000L);
-        assertTrue(diagnostics.subsystemHealth().isEmpty());
+        var expired = diagnostics.subsystemHealth().getFirst();
+        assertEquals(NexoraAiDiagnostics.SubsystemHealthStatus.UNKNOWN, expired.status());
+        assertEquals(0, expired.sampleCount());
+        assertTrue(expired.evidence().contains("No measurements"));
     }
 
     @Test

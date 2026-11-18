@@ -14,4 +14,10 @@ class WorkGraphTest {
   runtime.admit(AdaptiveRuntime.Lane.PLAYER,8_000_000L,true);
   assertTrue(g.readyFor(runtime).isEmpty());
  }
+ @Test void observedCostBecomesFutureAdmissionEstimate(){
+  WorkGraph g=new WorkGraph().add("ai",AdaptiveRuntime.Lane.AI,false);
+  g.observe("ai",200_000L).observe("ai",100_000L);
+  assertTrue(g.snapshot().get(0).observedP95Nanos() >= 100_000L);
+  assertEquals(g.snapshot().get(0).observedP95Nanos(), g.snapshot().get(0).estimatedNanos());
+ }
 }

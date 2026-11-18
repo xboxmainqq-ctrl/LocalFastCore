@@ -27,16 +27,20 @@ class PlayerOnlineLeaseRegistryTest {
     @Test
     void jdbcLeaseIsExclusiveAcrossIndependentNodeRegistries() throws Exception {
         JdbcDataSource firstSource = dataSource("jdbc:h2:mem:online-lease;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000");
-        JdbcPlayerOnlineLeaseRegistry first = new JdbcPlayerOnlineLeaseRegistry(firstSource);
+        java.util.concurrent.atomic.AtomicLong clock = new java.util.concurrent.atomic.AtomicLong(100L);
+        JdbcPlayerOnlineLeaseRegistry first = new JdbcPlayerOnlineLeaseRegistry(firstSource, clock::get);
         first.initializeSchema();
         JdbcPlayerOnlineLeaseRegistry second = new JdbcPlayerOnlineLeaseRegistry(
-                dataSource("jdbc:h2:mem:online-lease;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000"));
+                dataSource("jdbc:h2:mem:online-lease;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000"), clock::get);
 
         assertTrue(first.acquire("xuid-2", "node-a", "session-a", 100L, 1_000L));
         assertFalse(second.acquire("xuid-2", "node-b", "session-b", 200L, 1_000L));
+        clock.set(300L);
         assertTrue(second.renew("xuid-2", "node-a", "session-a", 300L, 1_000L));
         assertFalse(second.release("xuid-2", "node-b", "session-b"));
+        clock.set(1_301L);
         assertTrue(second.acquire("xuid-2", "node-b", "session-b", 1_301L, 1_000L));
+        clock.set(1_302L);
         assertFalse(first.renew("xuid-2", "node-a", "session-a", 1_302L, 1_000L));
         assertFalse(first.release("xuid-2", "node-a", "session-a"));
         assertTrue(first.release("xuid-2", "node-b", "session-b"));
@@ -45,9 +49,10 @@ class PlayerOnlineLeaseRegistryTest {
     @Test
     void concurrentJdbcNodesCannotAcquireSameUnownedXuid() throws Exception {
         String url = "jdbc:h2:mem:online-lease-race;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000";
-        JdbcPlayerOnlineLeaseRegistry first = new JdbcPlayerOnlineLeaseRegistry(dataSource(url));
+        java.util.concurrent.atomic.AtomicLong clock = new java.util.concurrent.atomic.AtomicLong(500L);
+        JdbcPlayerOnlineLeaseRegistry first = new JdbcPlayerOnlineLeaseRegistry(dataSource(url), clock::get);
         first.initializeSchema();
-        JdbcPlayerOnlineLeaseRegistry second = new JdbcPlayerOnlineLeaseRegistry(dataSource(url));
+        JdbcPlayerOnlineLeaseRegistry second = new JdbcPlayerOnlineLeaseRegistry(dataSource(url), clock::get);
         CountDownLatch start = new CountDownLatch(1);
         ExecutorService workers = Executors.newFixedThreadPool(2);
         try {

@@ -347,6 +347,39 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void sourceRecoveryAbortsStaleUnclaimedPreparedTransferAndResumesPlayer() throws Exception {
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("stale-prepared-recovery", 0L,
+                        new ru.nexora.world.FlatWorldGenerator()),
+                (networkId, label, frame) -> {}, event -> {});
+        try {
+            DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
+                    new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
+            manager.onIdentity("stale-prepared-session", new NetherNetClientIdentity(
+                    "stale-prepared-token", new byte[] {8}, "stale-prepared-xuid",
+                    "StalePreparedPlayer", "stale-prepared-playfab", "20CA2", null));
+            setSessionField(manager, "stale-prepared-session", "transferFrozen", true);
+            setSessionField(manager, "stale-prepared-session", "loginAuthenticated", false);
+            setSessionField(manager, "stale-prepared-session", "clientInitialized", false);
+            UUID transferId = UUID.randomUUID();
+            ledger.prepare(new PlayerHandoff(transferId, 1L, "node-a", "node-b", new byte[0]),
+                    "stale-prepared-xuid", 1L, 1L);
+
+            var report = manager.reconcileFrozenPlayerTransfers(ledger, "node-a", java.util.Map.of());
+
+            assertEquals(1, report.resumed());
+            assertEquals(0, report.unresolved());
+            assertEquals(PlayerTransferRecord.State.ABORTED,
+                    ledger.get(transferId).orElseThrow().state());
+            assertFalse((boolean) getSessionField(manager, "stale-prepared-session", "transferFrozen"));
+            assertTrue((boolean) getSessionField(manager, "stale-prepared-session", "loginAuthenticated"));
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void rejectsSecondActiveSessionForSameXuidOnOneNode() throws Exception {
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,

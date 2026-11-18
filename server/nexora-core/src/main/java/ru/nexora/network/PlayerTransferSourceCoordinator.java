@@ -71,13 +71,19 @@ public final class PlayerTransferSourceCoordinator {
         // Validate the redirect target before freezing the source session.
         BedrockTransferPacketCodec.create(destinationAddress, destinationPort, true);
 
-        long revision = source.freezeAndCheckpoint(handoff);
+        long revision;
+        try {
+            revision = source.freezeAndCheckpoint(handoff);
+        } catch (Exception freezeFailure) {
+            if (freezeFailure instanceof IOException ioFailure) throw ioFailure;
+            throw new IOException("Unable to freeze and checkpoint source player", freezeFailure);
+        }
         try {
             ledger.prepare(handoff, playerXuid, revision, epochMillis.getAsLong());
         } catch (Exception publicationFailure) {
             try {
-                source.unfreeze(handoff);
-            } catch (Exception resumeFailure) {
+                resumeAfterAbort(handoff);
+            } catch (IOException resumeFailure) {
                 publicationFailure.addSuppressed(resumeFailure);
             }
             if (publicationFailure instanceof IOException ioFailure) throw ioFailure;
@@ -100,15 +106,19 @@ public final class PlayerTransferSourceCoordinator {
             deliveryFailure = new IOException("Destination transfer acknowledgement was not confirmed", failed);
         }
 
-        PlayerTransferRecord current = ledger.get(handoff.transferId()).orElseThrow(
-                () -> new IOException("Prepared transfer disappeared from the shared ledger", deliveryFailure));
+        Optional<PlayerTransferRecord> currentValue = ledger.get(handoff.transferId());
+        if (currentValue.isEmpty()) {
+            throw new IOException("Prepared transfer disappeared from the shared ledger", deliveryFailure);
+        }
+        PlayerTransferRecord current = currentValue.orElseThrow();
+        IOException ackFailure = deliveryFailure;
         if (current.state() == PlayerTransferRecord.State.COMMITTED) {
             redirect(handoff, playerXuid, current, destinationAddress, destinationPort);
             return current;
         }
         if (current.state() == PlayerTransferRecord.State.ABORTED) {
-            source.unfreeze(handoff);
-            throw new IOException("Destination aborted the player transfer; source session resumed", deliveryFailure);
+            resumeAfterAbort(handoff);
+            throw new IOException("Destination aborted the player transfer; source session resumed", ackFailure);
         }
 
         Optional<PlayerTransferRecord> aborted = Optional.empty();
@@ -119,22 +129,34 @@ public final class PlayerTransferSourceCoordinator {
             aborted = ledger.abort(handoff.transferId(), current.fencingToken(), now);
         }
         if (aborted.isPresent()) {
-            source.unfreeze(handoff);
-            throw new IOException("Destination did not commit the player transfer; source session resumed", deliveryFailure);
+            resumeAfterAbort(handoff);
+            throw new IOException("Destination did not commit the player transfer; source session resumed", ackFailure);
         }
 
         // A concurrent commit/reclaim may have won while cancellation was attempted.
-        PlayerTransferRecord reconciled = ledger.get(handoff.transferId()).orElseThrow(
-                () -> new IOException("Transfer disappeared during outcome reconciliation", deliveryFailure));
+        Optional<PlayerTransferRecord> reconciledValue = ledger.get(handoff.transferId());
+        if (reconciledValue.isEmpty()) {
+            throw new IOException("Transfer disappeared during outcome reconciliation", ackFailure);
+        }
+        PlayerTransferRecord reconciled = reconciledValue.orElseThrow();
         if (reconciled.state() == PlayerTransferRecord.State.COMMITTED) {
             redirect(handoff, playerXuid, reconciled, destinationAddress, destinationPort);
             return reconciled;
         }
         if (reconciled.state() == PlayerTransferRecord.State.ABORTED) {
-            source.unfreeze(handoff);
-            throw new IOException("Transfer was durably aborted; source session resumed", deliveryFailure);
+            resumeAfterAbort(handoff);
+            throw new IOException("Transfer was durably aborted; source session resumed", ackFailure);
         }
-        throw new IOException("Transfer outcome is uncertain; source remains frozen for recovery", deliveryFailure);
+        throw new IOException("Transfer outcome is uncertain; source remains frozen for recovery", ackFailure);
+    }
+
+    private void resumeAfterAbort(PlayerHandoff handoff) throws IOException {
+        try {
+            source.unfreeze(handoff);
+        } catch (Exception failure) {
+            if (failure instanceof IOException ioFailure) throw ioFailure;
+            throw new IOException("Durable transfer abort was confirmed but source could not resume", failure);
+        }
     }
 
     private void redirect(PlayerHandoff handoff, String playerXuid, PlayerTransferRecord committed,

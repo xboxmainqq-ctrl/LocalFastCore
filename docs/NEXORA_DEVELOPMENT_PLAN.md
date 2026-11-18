@@ -119,3 +119,11 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - The canonical file store is local to one server process and is not a distributed database.
 - Existing legacy files remain the login authority. Canonical recovery must not overwrite partially present legacy state until migration can prove completeness and freshness.
 - Next: add conservative recovery for players with no legacy component files, test login/disconnect/restart, then introduce an explicit migration marker and only later switch canonical snapshots to primary authority.
+
+
+### 20. Live player-transfer lifecycle — FOUNDATION ADDED
+- `PlayerTransferLifecycle` now sequences source freeze + canonical checkpoint, durable PREPARED publication, destination lease/fence claim, destination restore/activation, and durable COMMITTED transition.
+- Failed activation deactivates the destination before attempting ABORTED; source gameplay resumes only after the durable ledger confirms ABORTED.
+- An uncertain commit never resumes the source. The destination is asked to deactivate only if it still owns the same fencing token; recovery must reconcile the durable ledger.
+- Participant hooks are explicit interfaces. The Bedrock session manager is not yet wired to these hooks, and the current file ledger is still single-host only. This is a lifecycle protocol foundation, not crash-safe cross-host consensus or exactly-once delivery.
+- Next: wire session freeze/restore hooks behind a feature gate, then add multi-process fault-injection tests and a replicated ledger/transport before enabling cross-host handoff.

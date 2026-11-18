@@ -1,7 +1,5 @@
 package ru.nexora.persistence;
 
-import ru.nexora.network.DriverManagerDataSource;
-
 import javax.sql.DataSource;
 import java.io.IOException;
 import java.nio.file.Path;

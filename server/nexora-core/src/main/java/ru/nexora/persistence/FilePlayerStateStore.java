@@ -114,10 +114,10 @@ public final class FilePlayerStateStore implements PlayerStateStore {
         return bytes.toByteArray();
     }
 
-    private Optional<PlayerStateSnapshot> read(Path file, long expectedPlayerId) throws IOException {
+    private Optional<PlayerStateSnapshot> read(Path file, String expectedPlayerId) throws IOException {
         if (!Files.exists(file)) return Optional.empty();
         long size = Files.size(file);
-        if (size < 4 + 1 + 4 + 8 + 8 + 8 + 4 + CHECKSUM_BYTES || size > MAX_FILE_BYTES) {
+        if (size < 4 + 1 + 4 + 1 + 1 + 8 + 8 + 4 + CHECKSUM_BYTES || size > MAX_FILE_BYTES) {
             throw new IOException("Invalid NEXORA player snapshot file size: " + size);
         }
         byte[] bytes = Files.readAllBytes(file);
@@ -143,7 +143,7 @@ public final class FilePlayerStateStore implements PlayerStateStore {
             long revision = input.readLong();
             long capturedAt = input.readLong();
             int payloadLength = input.readInt();
-            if (playerId != expectedPlayerId) throw new IOException("Player snapshot ID does not match file name");
+            if (!playerId.equals(expectedPlayerId)) throw new IOException("Player snapshot ID does not match file name");
             if (payloadLength < 0 || payloadLength > MAX_PAYLOAD_BYTES
                     || payloadLength != input.available() - CHECKSUM_BYTES) {
                 throw new IOException("Invalid NEXORA player snapshot payload length");

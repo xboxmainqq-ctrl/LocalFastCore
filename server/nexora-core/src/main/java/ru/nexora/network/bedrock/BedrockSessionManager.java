@@ -45,6 +45,8 @@ import ru.nexora.world.PlayerVitals;
 import ru.nexora.persistence.PlayerStateBundle;
 import ru.nexora.persistence.PlayerStateBundleCodec;
 import ru.nexora.persistence.PlayerStateCheckpointService;
+import ru.nexora.network.PlayerTransferFence;
+import ru.nexora.network.PendingPlayerTransferRestoreRegistry;
 
 import java.security.KeyFactory;
 import java.security.MessageDigest;
@@ -93,6 +95,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final PlayerInventoryStorage inventoryStorage;
     private final PlayerEquipmentStorage equipmentStorage;
     private final PlayerStateCheckpointService checkpointService;
+    private final PendingPlayerTransferRestoreRegistry pendingTransferRestores =
+            new PendingPlayerTransferRestoreRegistry();
     private volatile BedrockItemRegistry itemRegistry = BedrockItemRegistry.empty();
     private volatile ArmorSlotRegistry armorSlotRegistry = ArmorSlotRegistry.empty();
     private volatile EquipmentSlotRegistry equipmentSlotRegistry = EquipmentSlotRegistry.empty();
@@ -363,6 +367,21 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         this.furnaceUpdateListener = this.world.furnaces()
                 .map(manager -> manager.addUpdateListener(this::handleFurnaceUpdate))
                 .orElse(null);
+    }
+
+    /** Registers a durable claimed transfer for the next authenticated login of this XUID. */
+    public void registerPendingTransferRestore(
+            PendingPlayerTransferRestoreRegistry.PendingRestore restore
+    ) {
+        if (checkpointService == null) {
+            throw new IllegalStateException("Canonical player checkpoints are not configured");
+        }
+        pendingTransferRestores.register(restore);
+    }
+
+    /** Cancels only the matching local pending registration after a confirmed transfer abort. */
+    public boolean cancelPendingTransferRestore(String playerXuid, UUID transferId, long fencingToken) {
+        return pendingTransferRestores.cancel(playerXuid, transferId, fencingToken);
     }
 
     @Override
@@ -3853,7 +3872,32 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         JsonNode clientData = verifyClientDataToken(login.rawClientDataToken(), state.identity);
         boolean legacyStateFound = false;
-        if (inventoryStorage != null) {
+        PendingPlayerTransferRestoreRegistry.PendingRestore pendingTransfer =
+                pendingTransferRestores.find(state.identity.xuid()).orElse(null);
+        if (pendingTransfer != null) {
+            try {
+                pendingTransfer.fence().assertCurrent();
+                PlayerStateCheckpointService.LoadedCheckpoint loaded = checkpointService
+                        .loadAtRevision(state.identity.xuid(), pendingTransfer.checkpointRevision())
+                        .orElseThrow(() -> new IOException("Exact transfer checkpoint revision is unavailable"));
+                PlayerStateBundle.Restored restored = loaded.bundle().restore();
+                state.inventory = restored.inventory();
+                state.craftingUiInventory.restore(restored.craftingUi().snapshot());
+                state.equipment = restored.equipment();
+                restorePlayerProfile(state, restored.profile(),
+                        state.identity.displayName() == null ? "unknown" : state.identity.displayName());
+                pendingTransfer.fence().assertCurrent();
+                if (!pendingTransferRestores.consume(pendingTransfer)) {
+                    throw new IOException("Pending transfer restore was concurrently cancelled");
+                }
+                state.transferFence = pendingTransfer.fence();
+                legacyStateFound = true;
+            } catch (IOException | RuntimeException exception) {
+                state.rejected = true;
+                throw new SecurityException("Unable to safely restore claimed transfer checkpoint", exception);
+            }
+        }
+        if (!legacyStateFound && inventoryStorage != null) {
             try {
                 var restored = inventoryStorage.loadState(state.identity.xuid());
                 if (restored.isPresent()) {
@@ -3867,7 +3911,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 throw new SecurityException("Unable to safely restore authenticated player inventory", exception);
             }
         }
-        if (equipmentStorage != null) {
+        if (!legacyStateFound && equipmentStorage != null) {
             try {
                 Optional<PlayerEquipment> restoredEquipment = equipmentStorage.load(state.identity.xuid());
                 if (restoredEquipment.isPresent()) {
@@ -3902,7 +3946,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
         String displayName = state.identity.displayName() == null
                 ? "unknown" : state.identity.displayName();
-        if (playerStorage != null) {
+        if (!legacyStateFound && playerStorage != null) {
             try {
                 Optional<PlayerData> saved = playerStorage.load(state.identity.xuid());
                 if (saved.isPresent()) {
@@ -5950,6 +5994,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private long entityId;
         private volatile boolean rejected;
         private volatile boolean transferFrozen;
+        private PlayerTransferFence transferFence;
         private PendingEquipmentForm pendingEquipmentForm;
         private int pendingAiFormId;
         private int nextContainerWindowId = 1;

@@ -49,7 +49,7 @@ class PlayerTransferLifecycleTest {
     }
 
     @Test
-    void failedPreparePublicationUnfreezesSource() throws Exception {
+    void duplicatePreparedPublicationKeepsSourceFrozenWhenOutcomeIsAlreadyOwned() throws Exception {
         InMemoryPlayerTransferLedger store = new InMemoryPlayerTransferLedger();
         DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(new PlayerTransferCoordinator(store));
         FakeSource source = new FakeSource();
@@ -59,7 +59,7 @@ class PlayerTransferLifecycleTest {
         ledger.prepare(handoff, "xuid_123", 12, 100);
 
         assertThrows(IllegalStateException.class, () -> lifecycle.prepare(handoff, "xuid_123", 101));
-        assertFalse(source.frozen);
+        assertTrue(source.frozen, "An existing PREPARED record may already be claimed by a destination");
     }
 
     @Test

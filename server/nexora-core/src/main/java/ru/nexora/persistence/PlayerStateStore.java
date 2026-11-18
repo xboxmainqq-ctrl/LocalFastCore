@@ -14,5 +14,5 @@ public interface PlayerStateStore {
 
     SaveResult save(PlayerStateSnapshot snapshot);
 
-    Optional<PlayerStateSnapshot> loadLatest(long playerId);
+    Optional<PlayerStateSnapshot> loadLatest(String playerId);
 }

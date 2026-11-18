@@ -278,3 +278,11 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Added a regression test for duplicate active XUID rejection.
 - CI: 790 tests passed, zero failures on commit `b834401`.
 - Remaining cluster-safety requirement: a durable shared player-owner lease/registry must gate admission across different server processes. The current transfer fencing protects a transfer's destination after claim/commit, but it is not yet a global online-session lease for arbitrary duplicate logins on different nodes. Until that is implemented and process-kill tested, keep cluster handoff in a controlled test environment.
+### 39. Shared transfer-decision lookup and node-side ownership fencing — IMPLEMENTED, CI PENDING
+- Added latest-per-XUID transfer lookup to in-memory, file and JDBC ledgers; recovery ordering now prefers the greatest canonical checkpoint revision before timestamps.
+- Added a common ownership policy: PREPARED blocks admission, CLAIMED blocks gameplay until COMMITTED, COMMITTED permits only the destination, and ABORTED restores the source.
+- Shared-ledger mode now configures this policy in BedrockSessionManager before the network starts. Login checks the latest durable transfer decision; active sessions periodically re-check it and are stopped when ownership moves to another node.
+- After a committed/aborted transfer, reconnects restore the latest shared canonical checkpoint instead of potentially stale per-host legacy inventory/profile files. A claimed-but-uncommitted transfer cannot admit a player.
+- Expired claims are durably aborted during destination startup recovery and on login reconciliation; stale PREPARED records on their source node are cancelled after a 30-second grace period.
+- Added tests for ownership policy, latest per-XUID lookup, and expired-claim durable rollback.
+- Remaining: this is transfer-history fencing, not a complete online-player lease registry. A duplicate XUID that logs into two different nodes before either node has a transfer record can still be admitted. Implement a shared lease/owner registry and validate it under multi-process login races before public cluster use.

@@ -10,12 +10,12 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 
 - [x] Introduce a validated immutable process configuration so invalid ports, player limits, autosave intervals, and WebRTC ranges fail fast before network startup.
 - [x] Centralize owned server resources in a reverse-order lifecycle coordinator; startup rollback and shutdown both attempt every close operation and preserve suppressed failures.
-- [ ] Split process bootstrap into explicit runtime modules (network, world/persistence, gameplay, diagnostics) with dependency boundaries and focused integration tests. Network ownership is now extracted into `NetworkRuntimeModule`; world/persistence is extracted separately. Gameplay and diagnostics boundaries remain.
-- [x] Extract world background services into a `WorldRuntimeModule`; it owns furnace ticking and world/player autosave, stops ticking before the final save, and aggregates shutdown failures. Network, gameplay, and diagnostics module boundaries remain to be extracted.
-- [ ] Introduce a shared bounded task/tick orchestration layer; avoid independent uncoordinated schedulers for world subsystems.
+- [x] Split process bootstrap into explicit runtime modules (network, world/persistence, gameplay, diagnostics) with dependency boundaries and focused integration tests. `NetworkRuntimeModule` owns discovery/signaling/WebRTC; `GameplayRuntimeModule` configures and owns Bedrock gameplay sessions and NexoraAI assistant wiring; `WorldRuntimeModule` owns world services; `DiagnosticsRuntimeModule` owns diagnostic storage and monitoring.
+- [x] Extract world background services into a `WorldRuntimeModule`; it owns furnace ticking, world/player autosave, and a shared bounded scheduler with isolated tick and persistence lanes. It stops ticking before final save and aggregates shutdown failures.
+- [x] Introduce a shared bounded task/tick orchestration layer; per-lane task registration is capped, tick and persistence run on separate workers, cancellation releases capacity, and shutdown waits for workers.
 - [x] Define explicit STARTING/READY/STOPPING/STOPPED readiness states; reject new NetherNet session negotiations as soon as shutdown begins while keeping server metadata discoverable.
 - [x] Order shutdown by dependencies: close legacy discovery and signaling first, stop WebRTC negotiation, persist active Bedrock sessions, then stop world ticking and perform final world/player persistence; keep diagnostics alive until the other modules stop.
-- [ ] Extend graceful shutdown with bounded active-session draining before final persistence; current stage closes admission, stops discovery/signaling, closes WebRTC, then relies on existing Bedrock session close/save handling.
+- [x] Extend graceful shutdown with bounded active-session draining before final persistence; close admission, stop discovery/signaling, wait up to five seconds for active Bedrock sessions, close WebRTC, then persist/clear remaining gameplay sessions and finally save world/player state.
 
 ## Priority 1 — Core stability and performance
 

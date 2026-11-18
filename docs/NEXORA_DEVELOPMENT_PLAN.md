@@ -198,3 +198,12 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 ### 29. JDBC lease reclaim after reconnect — VERIFIED
 - Added an H2-backed restart/reconnect scenario: a node's claim expires, a second DataSource reclaims it with a higher fencing token, the old token cannot commit, and the new token can.
 - CI: 751 tests passed, zero failures on commit `e074e3f`.
+
+
+### 30. Destination transfer recovery rehydration — FOUNDATION ADDED
+- Added `PlayerTransferRecoveryService` to rebuild destination-side pending Bedrock login restores from the durable transfer ledger after process restart.
+- Only current, unexpired CLAIMED leases and COMMITTED ownership records are eligible; expired claims are skipped and cannot restore stale player ownership.
+- Recovery is bounded (1..10000 records), idempotent for an already-registered matching transfer/fence, and fails closed on conflicting pending ownership.
+- Recovery queries now prioritize newest records first across in-memory, file and JDBC ledger adapters so historical transfers for one XUID do not mask the latest ownership record.
+- Added tests for claimed/committed rehydration, expired-lease rejection and repeat recovery.
+- Remaining: wire recovery service into configured server startup and a deployment-owned shared ledger; add process-restart Bedrock login tests and multi-process failure injection. This does not enable cross-host transfer by itself.

@@ -347,7 +347,17 @@ public final class NexoraAiDiagnostics {
      * Entries contain only bounded diagnostic summaries, never stack traces or player data.
      */
     public String recentEvidence() {
-        StringBuilder result = new StringBuilder("Наблюдаемые диагностические события (новые сверху):");
+        StringBuilder result = new StringBuilder("Состояние подсистем за 5 минут (эвристика, не TPS):");
+        for (SubsystemHealth item : subsystemHealth()) {
+            result.append("\n- ").append(item.subsystem()).append(": ")
+                    .append(item.status()).append(" / ").append(item.confidence())
+                    .append(" — ").append(item.evidence());
+            if (result.length() >= 900) {
+                result.setLength(900);
+                break;
+            }
+        }
+        result.append("\nНаблюдаемые диагностические события (новые сверху):");
         int count = 0;
         for (DiagnosticEvent event : events) {
             if (count++ >= MAX_EVENTS) break;
@@ -415,19 +425,6 @@ public final class NexoraAiDiagnostics {
                                 : String.format(java.util.Locale.ROOT, "%.1f%%", summary.maxHeapUsageRatio() * 100))
                         .append(", maxLoad/core=").append(summary.maxSystemLoadPerProcessor() < 0 ? "n/a"
                                 : String.format(java.util.Locale.ROOT, "%.2f", summary.maxSystemLoadPerProcessor()));
-            }
-        }
-        List<SubsystemHealth> health = subsystemHealth();
-        if (!health.isEmpty() && result.length() < MAX_EVIDENCE_LENGTH) {
-            result.append("\nСостояние подсистем за 5 минут (эвристика, не TPS):");
-            for (SubsystemHealth item : health) {
-                result.append("\n- ").append(item.subsystem()).append(": ")
-                        .append(item.status()).append(" / ").append(item.confidence())
-                        .append(" — ").append(item.evidence());
-                if (result.length() >= MAX_EVIDENCE_LENGTH) {
-                    result.setLength(MAX_EVIDENCE_LENGTH);
-                    break;
-                }
             }
         }
         if (result.length() > MAX_EVIDENCE_LENGTH) {

@@ -363,13 +363,31 @@ public final class NexoraServer {
                 while ((line = input.readLine()) != null) {
                     String command = line.trim();
                     if (command.equalsIgnoreCase("help")) {
-                        System.out.println("Server console: players | transfer <xuid> <target-node> | ai <вопрос> | ai status | ai repair list");
+                        System.out.println("Server console: players | transfer <xuid> <target-node> | transfer recover | ai <вопрос> | ai status | ai repair list");
                         continue;
                     }
                     if (command.equalsIgnoreCase("players")) {
                         for (BedrockSessionManager.AuthenticatedPlayer player : bedrockSessions.authenticatedPlayers()) {
                             System.out.println(player.xuid() + " | " + player.displayName()
                                     + " | entity=" + player.entityId());
+                        }
+                        continue;
+                    }
+                    if (command.equalsIgnoreCase("transfer recover")) {
+                        if (clusterTransport.isEmpty()) {
+                            System.out.println("NEXORA transfer recovery: cluster transport is not configured.");
+                            continue;
+                        }
+                        try {
+                            BedrockSessionManager.TransferReconciliationReport report =
+                                    bedrockSessions.reconcileFrozenPlayerTransfers(
+                                            transferLedger, localNodeId,
+                                            clusterTransport.orElseThrow().bedrockRoutes());
+                            System.out.println("NEXORA transfer recovery: scanned " + report.scanned()
+                                    + ", resumed " + report.resumed() + ", redirected " + report.redirected()
+                                    + ", unresolved " + report.unresolved());
+                        } catch (Exception failure) {
+                            System.err.println("NEXORA transfer recovery failed closed: " + failure.getMessage());
                         }
                         continue;
                     }

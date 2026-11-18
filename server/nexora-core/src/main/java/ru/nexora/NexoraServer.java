@@ -324,6 +324,9 @@ public final class NexoraServer {
         System.out.println("Player armor, offhand, cursor and magical equipment use checksummed files under " + Path.of(dataDirectory, "equipment").toAbsolutePath());
         System.out.println("Canonical player checkpoints: " + configuredPlayerStateStore.description() + "; legacy files remain login authority during migration.");
         System.out.println("Player-transfer ledger: " + configuredTransferLedger.description() + ".");
+        System.out.println(configuredTransferLedger.shared()
+                ? "Global online XUID leases: shared JDBC, TTL " + onlinePlayerLeaseMillis + " ms."
+                : "Global online XUID leases: disabled (single-process ownership only).");
         System.out.println("Dropped world items use checksummed storage under " + Path.of(dataDirectory, "worlds", "NEXORA World", "items").toAbsolutePath());
         System.out.println("Block-container inventories use checksummed storage under " + Path.of(dataDirectory, "worlds", "NEXORA World", "containers").toAbsolutePath());
         System.out.println("Furnace inventories and burn/cook progress use checksummed storage under " + Path.of(dataDirectory, "worlds", "NEXORA World", "furnaces").toAbsolutePath());

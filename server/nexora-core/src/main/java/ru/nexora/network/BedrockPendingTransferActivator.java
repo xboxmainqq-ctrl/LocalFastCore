@@ -43,7 +43,7 @@ public final class BedrockPendingTransferActivator
     public void deactivate(PlayerHandoff handoff, PlayerTransferFence fence) {
         Objects.requireNonNull(handoff, "handoff");
         Objects.requireNonNull(fence, "fence");
-        sessions.cancelPendingTransferRestore(
+        sessions.deactivateTransferRestore(
                 fence.playerXuid(), fence.transferId(), fence.fencingToken());
     }
 }

@@ -16,6 +16,11 @@ public final class NetworkRuntimeModule implements AutoCloseable {
         void start() throws Exception;
     }
 
+    @FunctionalInterface
+    public interface DrainAction {
+        void drain() throws Exception;
+    }
+
     public interface ManagedService extends AutoCloseable {
         void start() throws Exception;
         @Override
@@ -25,6 +30,7 @@ public final class NetworkRuntimeModule implements AutoCloseable {
     private final ManagedService discovery;
     private final ManagedService signaling;
     private final AutoCloseable negotiator;
+    private final DrainAction drainAction;
     private final AtomicBoolean closed = new AtomicBoolean();
     private boolean started;
 
@@ -33,9 +39,19 @@ public final class NetworkRuntimeModule implements AutoCloseable {
             ManagedService signaling,
             AutoCloseable negotiator
     ) {
+        this(discovery, signaling, negotiator, () -> {});
+    }
+
+    public NetworkRuntimeModule(
+            ManagedService discovery,
+            ManagedService signaling,
+            AutoCloseable negotiator,
+            DrainAction drainAction
+    ) {
         this.discovery = Objects.requireNonNull(discovery, "discovery");
         this.signaling = Objects.requireNonNull(signaling, "signaling");
         this.negotiator = Objects.requireNonNull(negotiator, "negotiator");
+        this.drainAction = Objects.requireNonNull(drainAction, "drainAction");
     }
 
     public static ManagedService service(StartAction start, AutoCloseable close) {
@@ -81,6 +97,12 @@ public final class NetworkRuntimeModule implements AutoCloseable {
         Exception failure = null;
         failure = close(discovery, failure);
         failure = close(signaling, failure);
+        try {
+            drainAction.drain();
+        } catch (Exception exception) {
+            if (failure == null) failure = exception;
+            else failure.addSuppressed(exception);
+        }
         failure = close(negotiator, failure);
         if (failure != null) throw failure;
     }

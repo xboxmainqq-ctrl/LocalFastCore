@@ -30,6 +30,8 @@ public final class MobAiLoadController {
     private volatile double smoothedTickLoad = 0.0;
     private final AtomicLong budgetDeferrals = new AtomicLong();
     private final AtomicLong budgetNanosConsumed = new AtomicLong();
+    private final java.util.concurrent.ConcurrentHashMap<Long, Integer> starvationTicks = new java.util.concurrent.ConcurrentHashMap<>();
+    private volatile int starvationPromotionTicks = 8;
 
     public MobAiLoadController() {
         this(DEFAULT_FAR_UPDATE_INTERVAL);
@@ -117,6 +119,36 @@ public final class MobAiLoadController {
     }
 
     public double smoothedTickLoad() { return smoothedTickLoad; }
+
+    public void setStarvationPromotionTicks(int ticks) {
+        if (ticks < 1 || ticks > 1000) throw new IllegalArgumentException("ticks must be between 1 and 1000");
+        starvationPromotionTicks = ticks;
+    }
+
+    public int starvationTicks(long runtimeId) {
+        return starvationTicks.getOrDefault(runtimeId, 0);
+    }
+
+    public Priority effectivePriority(long runtimeId, Priority base) {
+        if (runtimeId < 0 || base == null) throw new IllegalArgumentException("Invalid starvation priority input");
+        int waited = starvationTicks.getOrDefault(runtimeId, 0);
+        if (waited >= starvationPromotionTicks) return Priority.HIGH;
+        if (waited >= Math.max(1, starvationPromotionTicks / 2) && base == Priority.LOW) return Priority.NORMAL;
+        return base;
+    }
+
+    public void recordDeferred(long runtimeId) {
+        if (runtimeId < 0) throw new IllegalArgumentException("runtimeId must be non-negative");
+        starvationTicks.merge(runtimeId, 1, Integer::sum);
+    }
+
+    public void recordScheduled(long runtimeId) {
+        starvationTicks.remove(runtimeId);
+    }
+
+    public void remove(long runtimeId) {
+        starvationTicks.remove(runtimeId);
+    }
 
     public void setAiBudgetNanos(long budgetNanos) {
         if (budgetNanos < 1 || budgetNanos > 50_000_000L) {

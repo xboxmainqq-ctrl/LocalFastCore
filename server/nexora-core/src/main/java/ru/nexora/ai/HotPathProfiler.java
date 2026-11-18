@@ -47,6 +47,17 @@ public final class HotPathProfiler {
         }
     }
 
+    public long estimateNanos(Path path, long fallbackNanos) {
+        Objects.requireNonNull(path, "path");
+        if (fallbackNanos < 0) throw new IllegalArgumentException("fallbackNanos < 0");
+        synchronized (windows) {
+            Snapshot snapshot = windows.get(path).snapshot();
+            if (snapshot.sampleCount() == 0) return fallbackNanos;
+            long estimate = snapshot.p95Nanos();
+            return estimate > 0 ? estimate : fallbackNanos;
+        }
+    }
+
     public Snapshot snapshot(Path path) {
         Objects.requireNonNull(path, "path");
         synchronized (windows) {

@@ -24,7 +24,7 @@ import ru.nexora.inventory.VanillaArmorSlotCatalog;
 import ru.nexora.inventory.NexoraMagicEquipmentCatalog;
 import ru.nexora.inventory.DurabilitySettings;
 import ru.nexora.ai.NexoraAiDiagnostics;
-import ru.nexora.ai.NexoraAiMonitor;
+import ru.nexora.ai.DiagnosticsRuntimeModule;
 import ru.nexora.ai.NexoraAiAssistant;
 import ru.nexora.lifecycle.ServerLifecycle;
 import ru.nexora.lifecycle.ServerReadiness;
@@ -79,8 +79,7 @@ public final class NexoraServer {
         );
 
         DurabilitySettings durabilitySettings = DurabilitySettings.fromEnvironment(System.getenv());
-        NexoraAiDiagnostics aiDiagnostics = new NexoraAiDiagnostics();
-        NexoraAiMonitor aiMonitor = new NexoraAiMonitor(aiDiagnostics, snapshot -> {
+        DiagnosticsRuntimeModule diagnosticsRuntime = new DiagnosticsRuntimeModule(snapshot -> {
             if (snapshot.health() == NexoraAiDiagnostics.Health.WARNING) {
                 String heapUsage = snapshot.heapUsageRatio() < 0.0 ? "unknown"
                         : String.format(java.util.Locale.ROOT, "%.1f%%", snapshot.heapUsageRatio() * 100.0);
@@ -89,6 +88,7 @@ public final class NexoraServer {
                         snapshot.liveThreadCount(), snapshot.recordedFailures(), snapshot.slowOperationCount());
             }
         });
+        NexoraAiDiagnostics aiDiagnostics = diagnosticsRuntime.diagnostics();
         String dataDirectory = config.dataDirectory();
         DefaultNetherNetIdentityService identityService =
                 new DefaultNetherNetIdentityService(Path.of(dataDirectory, "identity"));
@@ -177,13 +177,13 @@ public final class NexoraServer {
 
         // Reverse close order: network admission/discovery, WebRTC, Bedrock
         // sessions and player persistence; then world ticking/final save; diagnostics last.
-        lifecycle.register(aiMonitor);
+        lifecycle.register(diagnosticsRuntime);
         lifecycle.register(worldRuntime);
         lifecycle.register(networkRuntime);
 
         try {
             networkRuntime.start();
-            aiMonitor.start();
+            diagnosticsRuntime.start();
         } catch (Exception exception) {
             readiness.beginShutdown();
             try {

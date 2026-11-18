@@ -1,5 +1,7 @@
 package ru.nexora.network;
 
+import ru.nexora.persistence.DriverManagerDataSource;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

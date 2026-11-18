@@ -18,10 +18,12 @@ import java.util.function.Consumer;
 public final class WorldTickPipeline {
     private final MobAiLoadController loadController;
     private final LivingEntityAiService aiService;
+    private final ru.nexora.combat.MobAiTaskScheduler taskScheduler;
 
     public WorldTickPipeline(MobAiLoadController loadController, LivingEntityAiService aiService) {
         this.loadController = Objects.requireNonNull(loadController, "loadController");
         this.aiService = Objects.requireNonNull(aiService, "aiService");
+        this.taskScheduler = new ru.nexora.combat.MobAiTaskScheduler();
     }
 
     public TickResult tick(
@@ -46,6 +48,12 @@ public final class WorldTickPipeline {
         for (WorldLivingEntity mob : mobs) {
             if (mob == null || mob.health() <= 0) continue;
 
+            if (taskScheduler.admit(ru.nexora.combat.MobAiTaskScheduler.Task.TARGETING,
+                    priorityHint(mob), true, 0, loadController.aiBudgetNanos())
+                    == ru.nexora.combat.MobAiTaskScheduler.Admission.DEFER) {
+                deferred++;
+                continue;
+            }
             LivingEntityAiService.PlayerTarget nearest =
                     LivingEntityAiService.nearestAlivePlayer(mob, players);
             double distanceSquared = nearest == null
@@ -60,6 +68,14 @@ public final class WorldTickPipeline {
                     LivingEntityAiService.isFlyingMob(mob.identifier())
                             || LivingEntityAiService.isTimidMob(mob.identifier()));
             priority = loadController.effectivePriority(mob.runtimeId(), priority);
+            if (taskScheduler.admit(ru.nexora.combat.MobAiTaskScheduler.Task.NAVIGATION,
+                    priority, activeTarget, System.nanoTime() - budgetStart,
+                    loadController.aiBudgetNanos())
+                    == ru.nexora.combat.MobAiTaskScheduler.Admission.DEFER) {
+                deferred++;
+                loadController.recordDeferred(mob.runtimeId());
+                continue;
+            }
             switch (priority) {
                 case HIGH -> highPriority++;
                 case NORMAL -> normalPriority++;
@@ -86,6 +102,17 @@ public final class WorldTickPipeline {
             long decisionStart = System.nanoTime();
             LivingEntityAiService.Decision decision = aiService.decide(
                     mob, players, nowMillis, 0L, null, nearest);
+            if (decision.attack()) {
+                taskScheduler.admit(ru.nexora.combat.MobAiTaskScheduler.Task.COMBAT,
+                        priority, true, System.nanoTime() - budgetStart,
+                        loadController.aiBudgetNanos());
+            } else if (decision.moving()) {
+                taskScheduler.admit(ru.nexora.combat.MobAiTaskScheduler.Task.MOVEMENT,
+                        priority, priority == MobAiLoadController.Priority.HIGH,
+                        System.nanoTime() - budgetStart, loadController.aiBudgetNanos());
+            } else {
+                taskScheduler.recordRun(ru.nexora.combat.MobAiTaskScheduler.Task.IDLE);
+            }
             decisionSink.accept(decision);
             decisions++;
             loadController.recordBudgetNanos(System.nanoTime() - decisionStart);
@@ -94,6 +121,11 @@ public final class WorldTickPipeline {
         loadController.updateAdaptiveBudget(System.nanoTime() - budgetStart);
         return new TickResult(tick, mobs.size(), scheduled, deferred, decisions,
                 highPriority, normalPriority, lowPriority);
+    }
+
+    private MobAiLoadController.Priority priorityHint(WorldLivingEntity mob) {
+        return LivingEntityAiService.isFlyingMob(mob.identifier())
+                ? MobAiLoadController.Priority.HIGH : MobAiLoadController.Priority.NORMAL;
     }
 
     private static double finiteDistance(double value) {

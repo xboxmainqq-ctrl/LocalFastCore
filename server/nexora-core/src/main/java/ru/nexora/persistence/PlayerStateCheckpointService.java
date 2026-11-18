@@ -54,6 +54,36 @@ public final class PlayerStateCheckpointService {
         }
     }
 
+    /** Loads the exact durable revision requested by a transfer claim. */
+    public Optional<LoadedCheckpoint> loadAtRevision(String xuid, long expectedRevision) throws IOException {
+        if (xuid == null || !xuid.matches("[A-Za-z0-9_-]{1,64}")) {
+            throw new IllegalArgumentException("Invalid player XUID");
+        }
+        if (expectedRevision < 0) throw new IllegalArgumentException("expectedRevision < 0");
+        synchronized (lockFor(xuid)) {
+            Optional<PlayerStateSnapshot> stored = store.loadLatest(xuid);
+            if (stored.isEmpty()) return Optional.empty();
+            PlayerStateSnapshot snapshot = stored.orElseThrow();
+            if (snapshot.revision() != expectedRevision) return Optional.empty();
+            if (snapshot.schemaVersion() != PlayerStateBundleCodec.SCHEMA_VERSION
+                    || !snapshot.hasValidChecksum()) {
+                throw new IOException("Canonical player checkpoint failed schema/checksum validation");
+            }
+            PlayerStateBundle bundle = codec.decode(snapshot.payload());
+            if (!bundle.profile().xuid().equals(xuid)) {
+                throw new IOException("Player state XUID does not match snapshot key");
+            }
+            return Optional.of(new LoadedCheckpoint(snapshot.revision(), bundle));
+        }
+    }
+
+    public record LoadedCheckpoint(long revision, PlayerStateBundle bundle) {
+        public LoadedCheckpoint {
+            if (revision < 0) throw new IllegalArgumentException("revision < 0");
+            Objects.requireNonNull(bundle, "bundle");
+        }
+    }
+
     public Optional<PlayerStateBundle> load(String xuid) throws IOException {
         synchronized (lockFor(xuid)) {
             Optional<PlayerStateSnapshot> stored = store.loadLatest(xuid);

@@ -1,9 +1,9 @@
 package ru.nexora.combat;
 
 import ru.nexora.world.WorldLivingEntity;
+import ru.nexora.world.World;
 import ru.nexora.world.MobPathCache;
 import ru.nexora.world.WorldPathfinder;
-
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -28,7 +28,17 @@ public final class LivingEntityAiService {
     private final LongAdder decisionFailures = new LongAdder();
     private final AtomicLong lastDecisionNanos = new AtomicLong();
     private final AtomicLong maxDecisionNanos = new AtomicLong();
-    private final MobPathCache pathCache = new MobPathCache();
+    private final World world;
+    private final MobPathCache pathCache;
+
+    public LivingEntityAiService() {
+        this(null, new MobPathCache());
+    }
+
+    public LivingEntityAiService(World world, MobPathCache pathCache) {
+        this.world = world;
+        this.pathCache = Objects.requireNonNull(pathCache, "pathCache");
+    }
 
     public Decision decide(WorldLivingEntity mob, List<PlayerTarget> players, long nowMillis,
                            long nextAttackAtMillis) {
@@ -160,16 +170,20 @@ public final class LivingEntityAiService {
             return Decision.idle(mob.runtimeId());
         }
         double speed = movementSpeedFor(mob.identifier());
-        if (!isFlyingMob(mob.identifier())) {
+        if (!isFlyingMob(mob.identifier()) && world != null) {
             java.util.Optional<WorldPathfinder.Step> step = pathCache.findNextStep(
-                    mob.runtimeId(), mob.world(), mob.x(), mob.y(), mob.z(),
+                    mob.runtimeId(), world, mob.x(), mob.y(), mob.z(),
                     target.x(), target.z(), nowMillis);
-            if (step.isPresent()) {
-                WorldPathfinder.Step waypoint = step.orElseThrow();
-                return new Decision(mob.runtimeId(), target.networkId(),
-                        waypoint.x() - mob.x(), 0, waypoint.z() - mob.z(), 0, false);
-            }
-            return Decision.idle(mob.runtimeId());
+            if (step.isEmpty()) return Decision.idle(mob.runtimeId());
+            WorldPathfinder.Step waypoint = step.orElseThrow();
+            double pathDx = waypoint.x() - mob.x();
+            double pathDz = waypoint.z() - mob.z();
+            double pathLength = Math.hypot(pathDx, pathDz);
+            if (pathLength < 0.0001) return Decision.idle(mob.runtimeId());
+            double pathStep = Math.min(speed, pathLength);
+            return new Decision(mob.runtimeId(), target.networkId(),
+                    pathDx / pathLength * pathStep, 0,
+                    pathDz / pathLength * pathStep, 0, false);
         }
         if (isFlyingMob(mob.identifier())) {
             double distance = Math.sqrt(distanceSquared);

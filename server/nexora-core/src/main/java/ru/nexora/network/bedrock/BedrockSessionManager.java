@@ -123,8 +123,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final ru.nexora.combat.MobFuseTracker mobFuseTracker =
             new ru.nexora.combat.MobFuseTracker();
     private final Map<Long, Long> endermanTeleportCooldownMillis = new ConcurrentHashMap<>();
-    private final ru.nexora.combat.LivingEntityAiService livingEntityAi =
-            new ru.nexora.combat.LivingEntityAiService();
+    private final ru.nexora.combat.LivingEntityAiService livingEntityAi;
     private final ru.nexora.combat.MobPhysicsService mobPhysics =
             new ru.nexora.combat.MobPhysicsService();
     private final ru.nexora.world.MobPathCache mobPathCache =
@@ -310,6 +309,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         this.serverVersion = serverVersion;
         this.compressionThreshold = compressionThreshold;
         this.world = Objects.requireNonNull(world, "world");
+        this.livingEntityAi = new ru.nexora.combat.LivingEntityAiService(this.world, mobPathCache);
         this.playerStorage = playerStorage;
         this.inventoryStorage = inventoryStorage;
         this.equipmentStorage = equipmentStorage;

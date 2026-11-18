@@ -245,10 +245,11 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - The player-state store and transfer ledger can use the same SQL database but occupy separate tables. The checkpoint schema initializer currently supports H2, PostgreSQL and MySQL/MariaDB payload column types; other vendors fail closed and need an explicit dialect implementation. The JDBC driver must be supplied on the runtime classpath; schema creation is opt-in.
 - Remaining: validate schema behavior against the production database vendor, add multi-process kill/restart tests, and finish authenticated cluster RPC plus Bedrock client redirect/reconnect. Shared metadata and checkpoints are necessary but not sufficient to enable live cross-host handoff.
 
-### 35. Bedrock source redirect gate — IMPLEMENTED, CI PENDING
+### 35. Bedrock source redirect gate — IMPLEMENTED, CI VERIFIED
 - Added protocol-2225 TransferPacket (0x55) encoding for destination host, little-endian uint16 port, reload-world flag and absent optional gatherings metadata.
 - Added a source-session redirect method that only accepts a matching durable COMMITTED record, transfer ID, fencing token, XUID and local source-node identity.
 - Redirect is allowed only for the already-frozen source session, is sent over the reliable channel, and is one-shot. A failed/uncommitted ownership check sends no packet.
 - Added packet encoding/validation tests and a session test proving the redirect cannot be sent before COMMITTED.
+- CI: 773 tests passed, zero failures on commit `7683fe5`.
 - Protocol reference: Mojang Bedrock protocol docs, TransferPacket: https://mojang.github.io/bedrock-protocol-docs/1.26.50/packets/transfer-packet/
 - Remaining: wire this gate into authenticated inter-node prepare/accept/abort RPC and node routing; test a real Bedrock client reconnect on the destination. The packet encoder and guarded session method alone do not enable live cross-host migration.

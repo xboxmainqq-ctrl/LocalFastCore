@@ -339,7 +339,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     @Override
     public void onFrame(String networkId, String channelLabel, byte[] frame) {
-        inbound.onFrame(networkId, channelLabel, frame);
+        long startedNanos = nanoTime.getAsLong();
+        try {
+            inbound.onFrame(networkId, channelLabel, frame);
+        } finally {
+            hotPathProfiler.record(ru.nexora.ai.HotPathProfiler.Path.BEDROCK_INBOUND,
+                    Math.max(0L, nanoTime.getAsLong() - startedNanos));
+        }
     }
 
     @Override

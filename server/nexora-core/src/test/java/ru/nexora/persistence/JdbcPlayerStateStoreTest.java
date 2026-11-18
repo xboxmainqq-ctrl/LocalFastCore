@@ -21,15 +21,15 @@ class JdbcPlayerStateStoreTest {
         first.initializeSchema();
 
         assertEquals(PlayerStateStore.SaveResult.SAVED,
-                first.save(new PlayerStateSnapshot(1, "jdbc-xuid", 0L, 100L, new byte[] {1, 2, 3})));
+                first.save(new PlayerStateSnapshot(1, "jdbc-xuid", 2L, 100L, new byte[] {1, 2, 3})));
         PlayerStateSnapshot loaded = second.loadLatest("jdbc-xuid").orElseThrow();
         assertArrayEquals(new byte[] {1, 2, 3}, loaded.payload());
         assertEquals(PlayerStateStore.SaveResult.STALE,
-                second.save(new PlayerStateSnapshot(1, "jdbc-xuid", 0L, 101L, new byte[] {9})));
+                second.save(new PlayerStateSnapshot(1, "jdbc-xuid", 1L, 101L, new byte[] {9})));
         assertEquals(PlayerStateStore.SaveResult.ALREADY_CURRENT,
-                second.save(new PlayerStateSnapshot(1, "jdbc-xuid", 0L, 999L, new byte[] {1, 2, 3})));
+                second.save(new PlayerStateSnapshot(1, "jdbc-xuid", 2L, 999L, new byte[] {1, 2, 3})));
         assertThrows(IllegalStateException.class,
-                () -> second.save(new PlayerStateSnapshot(1, "jdbc-xuid", 0L, 100L, new byte[] {9})));
+                () -> second.save(new PlayerStateSnapshot(1, "jdbc-xuid", 2L, 100L, new byte[] {9})));
     }
 
     @Test

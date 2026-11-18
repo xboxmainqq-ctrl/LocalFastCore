@@ -56,8 +56,8 @@ Connect every Work Graph node to its full TaskContract instead of duplicating on
 ### 10. Safe execution ownership — IN PROGRESS
 `StateOwnership` and scoped `OwnershipGuard` establish explicit PLAYER/WORLD/ENTITY/GAMEPLAY/PERSISTENCE ownership. Parallel world mutation remains disabled until lifecycle and contention tests are complete.
 
-### 11. Adaptive multi-lane budgeting — FOUNDATION DONE
-`AdaptiveBudget` now adjusts per-lane budgets from pressure, protecting player/world capacity while reducing background work first. Integration with live runtime pressure remains next.
+### 11. Adaptive multi-lane budgeting — INTEGRATED
+`AdaptiveBudget` now feeds live `AdaptiveRuntime` admission decisions. `RuntimeSlice` provides a bounded admission boundary for each execution slice; background work is reduced first under pressure.
 
 ### 12. RPG foundation
 Build generic APIs for classes, stats, abilities, resources and progression on top of Gameplay Graph.

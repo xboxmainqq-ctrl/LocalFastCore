@@ -97,7 +97,7 @@ class ClusterOwnershipRestartIntegrationTest {
 
     private static PlayerStateBundle bundle(String xuid) {
         PlayerData profile = new PlayerData(xuid, "RestartPlayer", "world",
-                12.0f, 65.0f, -8.0f, 90.0f, 0.0f, 100L, PlayerVitals.DEFAULT, 37, 1200);
+                12.0f, 65.0f, -8.0f, 90.0f, 0.0f, 100L, PlayerVitals.DEFAULT, 37, 200);
         return PlayerStateBundle.capture(profile, new PlayerInventory(),
                 new ContainerInventory(PlayerStateBundle.CRAFTING_UI_SLOT_COUNT), new PlayerEquipment());
     }

@@ -254,16 +254,18 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Protocol reference: Mojang Bedrock protocol docs, TransferPacket: https://mojang.github.io/bedrock-protocol-docs/1.26.50/packets/transfer-packet/
 - Remaining: wire this gate into authenticated inter-node prepare/accept/abort RPC and node routing; test a real Bedrock client reconnect on the destination. The packet encoder and guarded session method alone do not enable live cross-host migration.
 
-### 36. Authenticated source/destination transfer orchestration — IMPLEMENTED, CI PENDING
+### 36. Authenticated source/destination transfer orchestration — IMPLEMENTED, CI VERIFIED
 - Added `PlayerTransferClusterEndpoint` on the destination: it accepts only authenticated cluster messages whose source/target match the durable PREPARED record, claims with a fencing token, reserves the exact shared checkpoint through the Bedrock login adapter, and commits ownership only after reservation succeeds.
 - Added `PlayerTransferSourceCoordinator`: freezes/checkpoints the source, writes PREPARED, sends the target request through `ClusterTransport`, reconciles the durable outcome, and invokes the guarded Bedrock redirect only after COMMITTED is confirmed.
 - Added a loopback TCP integration test using HMAC-authenticated `TcpClusterTransport` instances for source and destination. The test verifies checkpoint reservation, durable commit and TransferPacket emission.
 - The source coordinator fails closed on uncertain outcomes: it never resumes a source session unless the shared ledger proves ABORTED.
+- CI: 783 tests passed, zero failures on commit `62b6bfc`.
 - Remaining: wire transport/peer/key configuration and these coordinators into `NexoraServer` lifecycle and an authenticated admin/API route; test real client reconnect and process-kill races.
 
-### 37. Transfer cancellation and remote reservation cleanup — IMPLEMENTED, CI PENDING
+### 37. Transfer cancellation and remote reservation cleanup — IMPLEMENTED, CI VERIFIED
 - Added CAS-safe PREPARED cancellation. If a destination claim races cancellation, exactly one state transition wins; a stale source cannot abort the newer owner.
 - A current claim may be aborted even after lease expiry, but a superseded fencing token still cannot abort or commit.
 - Added authenticated `PLAYER_TRANSFER_ABORT` messages so source-side cancellation also clears the matching destination pending-login reservation. A committed transfer is never deactivated by a stale abort.
 - Destination cleanup now removes a matching reservation even when its claim lease has expired or the ledger has already recorded ABORTED, while preserving newer tokens and committed ownership.
 - Added tests for expired-claim cleanup, prepared cancellation, claim/abort races and remote reservation cleanup.
+- CI: the same 783-test build passed with zero failures.

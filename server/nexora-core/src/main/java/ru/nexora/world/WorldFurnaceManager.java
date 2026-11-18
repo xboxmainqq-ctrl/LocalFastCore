@@ -88,6 +88,7 @@ public final class WorldFurnaceManager {
 
     /** Advances every loaded furnace by the supplied number of server ticks. */
     public void tickAll(long elapsedTicks) {
+        long started = System.nanoTime();
         java.util.List<FurnaceUpdate> updates = new java.util.ArrayList<>();
         synchronized (this) {
             for (var entry : loaded.entrySet()) {

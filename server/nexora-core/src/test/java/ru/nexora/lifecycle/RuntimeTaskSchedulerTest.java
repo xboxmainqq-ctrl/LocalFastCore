@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class RuntimeTaskSchedulerTest {
     @Test
-    void boundsRegistrationsAndReleasesCapacityOnCancellation() {
+    void boundsRegistrationsAndReleasesCapacityOnCancellation() throws Exception {
         RuntimeTaskScheduler scheduler = new RuntimeTaskScheduler(1, Duration.ofSeconds(1));
         RuntimeTaskScheduler.TaskHandle first = scheduler.scheduleWithFixedDelay(
                 RuntimeTaskScheduler.Lane.TICK, () -> {}, 1, 1, TimeUnit.DAYS);

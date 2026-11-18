@@ -632,9 +632,31 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
      * Redirects a source session only after the transfer coordinator has durably
      * committed ownership to the destination. The session must already be frozen.
      */
-    public void redirectFrozenPlayerToNode(String playerXuid, String address, int port) {
+    public void redirectFrozenPlayerToNode(
+            String playerXuid,
+            UUID transferId,
+            long fencingToken,
+            ru.nexora.network.DurableHandoffCoordinator transferLedger,
+            String localNodeId,
+            String address,
+            int port
+    ) throws IOException {
         if (playerXuid == null || !playerXuid.matches("[A-Za-z0-9_-]{1,64}")) {
             throw new IllegalArgumentException("Invalid player XUID");
+        }
+        Objects.requireNonNull(transferId, "transferId");
+        Objects.requireNonNull(transferLedger, "transferLedger");
+        if (fencingToken <= 0 || localNodeId == null || !localNodeId.matches("[A-Za-z0-9._-]{1,64}")) {
+            throw new IllegalArgumentException("Invalid transfer fence or local node ID");
+        }
+        ru.nexora.network.PlayerTransferRecord committed = transferLedger.get(transferId)
+                .orElseThrow(() -> new IOException("Committed transfer record is unavailable"));
+        if (committed.state() != ru.nexora.network.PlayerTransferRecord.State.COMMITTED
+                || committed.fencingToken() != fencingToken
+                || !playerXuid.equals(committed.playerXuid())
+                || !localNodeId.equals(committed.sourceNode())
+                || localNodeId.equals(committed.targetNode())) {
+            throw new SecurityException("Bedrock redirect requires the matching durable COMMITTED transfer");
         }
         Map.Entry<String, SessionState> match = null;
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {

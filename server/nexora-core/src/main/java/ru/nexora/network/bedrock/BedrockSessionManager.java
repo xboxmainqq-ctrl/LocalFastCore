@@ -80,6 +80,9 @@ import java.util.function.LongSupplier;
  * -> PlayStatus -> ResourcePacksInfo -> ResourcePackStack.
  */
 public final class BedrockSessionManager implements NetherNetDataChannelListener, AutoCloseable {
+    public record AuthenticatedPlayer(String xuid, String displayName, long entityId) {
+    }
+
     public static final int LOGIN_FAILED_CLIENT_OLD = 1;
     public static final int LOGIN_FAILED_SERVER_OLD = 2;
     public static final int LOGIN_SUCCESS = 0;
@@ -1103,6 +1106,22 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     public long authenticatedPlayerCount() {
         return sessions.values().stream().filter(state -> state.loginAuthenticated).count();
+    }
+
+    /** Immutable authenticated player identities for operator routing and diagnostics. */
+    public List<AuthenticatedPlayer> authenticatedPlayers() {
+        List<AuthenticatedPlayer> players = new ArrayList<>();
+        for (SessionState state : sessions.values()) {
+            synchronized (state) {
+                if (state.identity == null || !state.loginAuthenticated || !state.clientInitialized
+                        || state.rejected || state.transferFrozen) continue;
+                players.add(new AuthenticatedPlayer(
+                        state.identity.xuid(), state.identity.displayName(), state.entityId));
+            }
+        }
+        players.sort(java.util.Comparator.comparing(AuthenticatedPlayer::displayName,
+                String.CASE_INSENSITIVE_ORDER));
+        return List.copyOf(players);
     }
 
     public long resourcePackReadyCount() {

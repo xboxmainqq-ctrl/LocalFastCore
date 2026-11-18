@@ -32,6 +32,21 @@ class FileClusterReplayFilterTest {
     }
 
     @Test
+    void concurrentInstancesAcceptSameMessageOnlyOnce() throws Exception {
+        UUID id = UUID.randomUUID();
+        FileClusterReplayFilter first = new FileClusterReplayFilter(directory, 10, 1_000);
+        FileClusterReplayFilter second = new FileClusterReplayFilter(directory, 10, 1_000);
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var a = pool.submit(() -> first.accept(id, 100));
+            var b = pool.submit(() -> second.accept(id, 100));
+            assertNotEquals(a.get(), b.get());
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
     void rejectsCorruptMarkerInsteadOfAcceptingPotentialReplay() throws Exception {
         UUID id = UUID.randomUUID();
         assertTrue(new FileClusterReplayFilter(directory, 10, 1_000).accept(id, 100));

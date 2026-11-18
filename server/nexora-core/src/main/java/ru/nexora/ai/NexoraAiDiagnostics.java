@@ -102,7 +102,46 @@ public final class NexoraAiDiagnostics {
         if (heapRatio >= 0.90 || (load >= 0.0 && load > resources.availableProcessors() * 2.0)) {
             bucket.pressureSamples++;
         }
+        bucket.threadSamples++;
+        bucket.threadCountTotal = saturatedAdd(bucket.threadCountTotal, resources.liveThreadCount());
+        bucket.minThreadCount = Math.min(bucket.minThreadCount, resources.liveThreadCount());
+        bucket.maxThreadCount = Math.max(bucket.maxThreadCount, resources.liveThreadCount());
         pruneActivityBuckets(minute);
+    }
+
+    /**
+     * Evaluates three consecutive minute buckets. A trend is only reported when every
+     * minute has at least two JVM samples, avoiding conclusions from one-off snapshots.
+     */
+    public synchronized ResourceTrendSummary resourceTrendSummary() {
+        long currentMinute = Math.floorDiv(nanoClock.getAsLong(), LATENCY_BUCKET_NANOS);
+        long firstMinute = currentMinute - 2;
+        long firstAverage = -1, latestAverage = -1;
+        int observedMinutes = 0, pressureMinutes = 0;
+        boolean enoughSamples = true;
+        for (long minute = firstMinute; minute <= currentMinute; minute++) {
+            ActivityBucket bucket = activityBuckets.get(minute);
+            if (bucket == null || bucket.resourceSamples == 0) {
+                enoughSamples = false;
+                continue;
+            }
+            observedMinutes++;
+            if (bucket.threadSamples < 2) enoughSamples = false;
+            long averageThreads = bucket.threadCountTotal / bucket.threadSamples;
+            if (minute == firstMinute) firstAverage = averageThreads;
+            if (minute == currentMinute) latestAverage = averageThreads;
+            if (bucket.resourceSamples >= 2 && bucket.pressureSamples * 2 >= bucket.resourceSamples) {
+                pressureMinutes++;
+            }
+        }
+        long growth = firstAverage < 0 || latestAverage < 0 ? 0 : latestAverage - firstAverage;
+        long growthThreshold = firstAverage < 0 ? Long.MAX_VALUE
+                : Math.max(4L, (long) Math.ceil(firstAverage * 0.20));
+        boolean complete = enoughSamples && observedMinutes == 3
+                && firstAverage >= 0 && latestAverage >= 0;
+        return new ResourceTrendSummary(observedMinutes, firstAverage, latestAverage, growth,
+                pressureMinutes, complete,
+                complete && growth >= growthThreshold, complete && pressureMinutes == 3);
     }
 
     private void pruneActivityBuckets(long currentMinute) {
@@ -187,6 +226,7 @@ public final class NexoraAiDiagnostics {
 
     private static final class ActivityBucket {
         private long failures, resourceSamples, pressureSamples, heapRatioSamples, loadRatioSamples;
+        private long threadSamples, threadCountTotal, minThreadCount = Long.MAX_VALUE, maxThreadCount;
         private double heapRatioTotal, maxHeapRatio, maxLoadRatio;
     }
 
@@ -427,6 +467,20 @@ public final class NexoraAiDiagnostics {
                                 : String.format(java.util.Locale.ROOT, "%.2f", summary.maxSystemLoadPerProcessor()));
             }
         }
+        ResourceTrendSummary trend = resourceTrendSummary();
+        if (result.length() < MAX_EVIDENCE_LENGTH) {
+            result.append("\\nТренды JVM за 3 последовательные минуты: ");
+            if (!trend.enoughSamples()) {
+                result.append("недостаточно замеров (").append(trend.observedConsecutiveMinutes()).append("/3 минут)");
+            } else {
+                result.append("потоки ").append(trend.firstMinuteAverageThreadCount()).append("→")
+                        .append(trend.latestMinuteAverageThreadCount()).append(" (рост ")
+                        .append(trend.threadGrowth()).append("), давление памяти ")
+                        .append(trend.sustainedHeapPressureMinutes()).append("/3 минут");
+                if (trend.threadGrowthDetected()) result.append("; обнаружен устойчивый рост потоков");
+                if (trend.sustainedHeapPressure()) result.append("; устойчивое давление ресурсов");
+            }
+        }
         if (result.length() > MAX_EVIDENCE_LENGTH) {
             result.setLength(MAX_EVIDENCE_LENGTH);
         }
@@ -462,6 +516,22 @@ public final class NexoraAiDiagnostics {
                     || networkMaxNanos < 0 || gameplayMaxNanos < 0
                     || (overlappingMinuteBuckets == 0 && (networkSampleCount != 0 || gameplaySampleCount != 0))) {
                 throw new IllegalArgumentException("Invalid latency alignment summary");
+            }
+        }
+    }
+
+    public record ResourceTrendSummary(int observedConsecutiveMinutes, long firstMinuteAverageThreadCount,
+                                       long latestMinuteAverageThreadCount, long threadGrowth,
+                                       int sustainedHeapPressureMinutes, boolean enoughSamples,
+                                       boolean threadGrowthDetected, boolean sustainedHeapPressure) {
+        public ResourceTrendSummary {
+            if (observedConsecutiveMinutes < 0 || observedConsecutiveMinutes > 3
+                    || firstMinuteAverageThreadCount < -1 || latestMinuteAverageThreadCount < -1
+                    || sustainedHeapPressureMinutes < 0 || sustainedHeapPressureMinutes > 3
+                    || (enoughSamples && (observedConsecutiveMinutes != 3
+                    || firstMinuteAverageThreadCount < 0 || latestMinuteAverageThreadCount < 0))
+                    || (!enoughSamples && (threadGrowthDetected || sustainedHeapPressure))) {
+                throw new IllegalArgumentException("Invalid resource trend summary");
             }
         }
     }

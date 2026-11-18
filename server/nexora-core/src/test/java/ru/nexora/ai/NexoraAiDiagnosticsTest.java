@@ -441,6 +441,54 @@ class NexoraAiDiagnosticsTest {
     }
 
     @Test
+    void resourceTrendDetectsSustainedThreadGrowthAndHeapPressure() {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(10_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        for (int minute = 0; minute < 3; minute++) {
+            int threads = 100 + minute * 20;
+            for (int sample = 0; sample < 2; sample++) {
+                diagnostics.recordResourceSnapshot(new JvmResourceSnapshot(
+                        95, 100, 100, 10, 10, threads, threads, 1, 4, 0.5));
+            }
+            if (minute < 2) clock.addAndGet(60_000_000_000L);
+        }
+
+        var trend = diagnostics.resourceTrendSummary();
+        assertTrue(trend.enoughSamples());
+        assertEquals(3, trend.observedConsecutiveMinutes());
+        assertEquals(100, trend.firstMinuteAverageThreadCount());
+        assertEquals(140, trend.latestMinuteAverageThreadCount());
+        assertEquals(40, trend.threadGrowth());
+        assertTrue(trend.threadGrowthDetected());
+        assertEquals(3, trend.sustainedHeapPressureMinutes());
+        assertTrue(trend.sustainedHeapPressure());
+        assertTrue(diagnostics.recentEvidence().contains("обнаружен устойчивый рост потоков"));
+    }
+
+    @Test
+    void resourceTrendRemainsUnknownWithMissingMinuteOrSparseSamples() {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(10_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        for (int sample = 0; sample < 2; sample++) {
+            diagnostics.recordResourceSnapshot(new JvmResourceSnapshot(
+                    50, 100, 100, 10, 10, 10, 10, 1, 4, 0.5));
+        }
+        clock.addAndGet(120_000_000_000L);
+        for (int sample = 0; sample < 2; sample++) {
+            diagnostics.recordResourceSnapshot(new JvmResourceSnapshot(
+                    50, 100, 100, 10, 10, 30, 30, 1, 4, 0.5));
+        }
+
+        var trend = diagnostics.resourceTrendSummary();
+        assertFalse(trend.enoughSamples());
+        assertFalse(trend.threadGrowthDetected());
+        assertFalse(trend.sustainedHeapPressure());
+        assertTrue(diagnostics.recentEvidence().contains("недостаточно замеров"));
+    }
+
+    @Test
     void unavailableSystemLoadRemainsUnknownInResourceWindows() {
         NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
         diagnostics.recordResourceSnapshot(new JvmResourceSnapshot(

@@ -101,7 +101,7 @@ class NetherNetSignalingServerTest {
         AtomicInteger negotiationCalls = new AtomicInteger();
         try (NetherNetSignalingServer server = new NetherNetSignalingServer(
                 new InetSocketAddress("127.0.0.1", 0),
-                metadata(),
+                () -> metadata(),
                 (id, offer) -> {
                     negotiationCalls.incrementAndGet();
                     return ANSWER;

@@ -1,8 +1,7 @@
 package ru.nexora.network;
 
 import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.Iterator;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -14,7 +13,7 @@ import java.util.UUID;
 public final class ClusterReplayGuard {
     private final int maximumEntries;
     private final long retentionMillis;
-    private final LinkedHashMap<UUID, Long> seen = new LinkedHashMap<>();
+    private final java.util.HashMap<UUID, Long> seen = new java.util.HashMap<>();
 
     public ClusterReplayGuard(int maximumEntries, long retentionMillis) {
         if (maximumEntries < 1) throw new IllegalArgumentException("maximumEntries must be positive");
@@ -36,11 +35,8 @@ public final class ClusterReplayGuard {
         long expires;
         try { expires = Math.addExact(nowEpochMillis, retentionMillis); }
         catch (ArithmeticException overflow) { expires = Long.MAX_VALUE; }
+        if (seen.size() >= maximumEntries) return false; // fail closed; never evict a live replay key
         seen.put(messageId, expires);
-        while (seen.size() > maximumEntries) {
-            UUID eldest = seen.keySet().iterator().next();
-            seen.remove(eldest);
-        }
         return true;
     }
 

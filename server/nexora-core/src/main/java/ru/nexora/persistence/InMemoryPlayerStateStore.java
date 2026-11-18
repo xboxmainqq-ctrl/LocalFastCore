@@ -9,7 +9,7 @@ import java.util.concurrent.ConcurrentMap;
  * Data is lost when the process exits; this is not crash-recovery storage.
  */
 public final class InMemoryPlayerStateStore implements PlayerStateStore {
-    private final ConcurrentMap<Long, PlayerStateSnapshot> snapshots = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, PlayerStateSnapshot> snapshots = new ConcurrentHashMap<>();
 
     @Override
     public SaveResult save(PlayerStateSnapshot snapshot) {
@@ -38,8 +38,8 @@ public final class InMemoryPlayerStateStore implements PlayerStateStore {
     }
 
     @Override
-    public Optional<PlayerStateSnapshot> loadLatest(long playerId) {
-        if (playerId < 0) throw new IllegalArgumentException("playerId < 0");
+    public Optional<PlayerStateSnapshot> loadLatest(String playerId) {
+        if (playerId == null || !playerId.matches("[A-Za-z0-9_-]{1,64}")) throw new IllegalArgumentException("Invalid player XUID");
         return Optional.ofNullable(snapshots.get(playerId));
     }
 

@@ -77,7 +77,8 @@ public final class PlayerTransferCoordinator {
             PlayerTransferRecord current = ledger.get(id).orElseThrow(
                     () -> new IllegalArgumentException("Unknown transfer: " + id));
             if (current.state() != PlayerTransferRecord.State.CLAIMED
-                    || current.fencingToken() != fencingToken || current.leaseExpired(now)) {
+                    || current.fencingToken() != fencingToken
+                    || (commit && current.leaseExpired(now))) {
                 return Optional.empty();
             }
             if (current.version() == Long.MAX_VALUE) throw new IOException("Transfer record version exhausted");

@@ -13,6 +13,7 @@ class HandoffCoordinatorTest {
         UUID id = UUID.randomUUID();
         coordinator.prepare(new PlayerHandoff(id, 7L, "node-a", "node-b", new byte[] {1}));
 
+        assertFalse(coordinator.claim(id, "node-c"));
         assertTrue(coordinator.claim(id, "node-b"));
         assertFalse(coordinator.claim(id, "node-b"));
         coordinator.commit(id);

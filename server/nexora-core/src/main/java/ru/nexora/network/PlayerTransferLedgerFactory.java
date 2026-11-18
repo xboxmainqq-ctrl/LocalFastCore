@@ -44,7 +44,7 @@ public final class PlayerTransferLedgerFactory {
             }
             ledger = jdbc;
             shared = true;
-            description = "shared JDBC ledger (" + jdbcUrl.replaceAll("(?i)(password|pwd)=[^;&]*", "$1=[redacted]") + ")";
+            description = "shared JDBC ledger (connection details hidden)";
         }
         return new ConfiguredLedger(
                 new DurableHandoffCoordinator(new PlayerTransferCoordinator(ledger)),

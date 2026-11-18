@@ -49,6 +49,7 @@ import java.security.Signature;
 import java.security.spec.X509EncodedKeySpec;
 import java.io.IOException;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -103,6 +104,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final LongSupplier nanoTime;
     private final AutoCloseable furnaceUpdateListener;
     private final Map<String, SessionState> sessions = new ConcurrentHashMap<>();
+    private final Object sessionChangeMonitor = new Object();
     private final AtomicLong nextEntityId = new AtomicLong(1);
     private final AtomicLong nextFormId = new AtomicLong(1);
     private final AtomicLong lastItemActorTickNanos = new AtomicLong(Long.MIN_VALUE);
@@ -357,8 +359,33 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 state.combatLock.unlock();
             }
             sessions.remove(networkId, state);
+            synchronized (sessionChangeMonitor) {
+                sessionChangeMonitor.notifyAll();
+            }
         }
         inbound.onDisconnected(networkId);
+    }
+
+    /**
+     * Waits for active network sessions to disconnect during graceful shutdown.
+     * Returns false when the bounded timeout expires; callers must then force-close
+     * transport and let the gameplay module persist remaining sessions.
+     */
+    public boolean awaitNoActiveSessions(Duration timeout) throws InterruptedException {
+        Objects.requireNonNull(timeout, "timeout");
+        if (timeout.isNegative()) throw new IllegalArgumentException("timeout must not be negative");
+        long started = System.nanoTime();
+        long budget = timeout.toNanos();
+        synchronized (sessionChangeMonitor) {
+            while (!sessions.isEmpty()) {
+                long remaining = budget - (System.nanoTime() - started);
+                if (remaining <= 0) return false;
+                long millis = remaining / 1_000_000L;
+                int nanos = (int) (remaining % 1_000_000L);
+                sessionChangeMonitor.wait(millis, nanos);
+            }
+        }
+        return true;
     }
 
     public void savePlayers() throws IOException {

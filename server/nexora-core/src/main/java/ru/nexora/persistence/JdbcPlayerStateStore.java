@@ -28,17 +28,24 @@ public final class JdbcPlayerStateStore implements PlayerStateStore {
 
     /** Run as a deployment migration or explicitly opt in during startup. */
     public void initializeSchema() throws IOException {
-        String sql = "CREATE TABLE IF NOT EXISTS " + TABLE_NAME + " ("
-                + "player_xuid VARCHAR(64) PRIMARY KEY, "
-                + "schema_version INTEGER NOT NULL, "
-                + "revision BIGINT NOT NULL, "
-                + "captured_at BIGINT NOT NULL, "
-                + "payload_base64 TEXT NOT NULL, "
-                + "checksum VARCHAR(64) NOT NULL)";
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.executeUpdate();
-            commitIfNeeded(connection);
+        try (Connection connection = dataSource.getConnection()) {
+            String product = connection.getMetaData().getDatabaseProductName().toLowerCase(java.util.Locale.ROOT);
+            String payloadType;
+            if (product.contains("postgresql")) payloadType = "TEXT";
+            else if (product.contains("mysql") || product.contains("mariadb")) payloadType = "LONGTEXT";
+            else if (product.contains("h2")) payloadType = "CLOB";
+            else throw new IOException("Unsupported JDBC database for NEXORA player checkpoints: " + product);
+            String sql = "CREATE TABLE IF NOT EXISTS " + TABLE_NAME + " ("
+                    + "player_xuid VARCHAR(64) PRIMARY KEY, "
+                    + "schema_version INTEGER NOT NULL, "
+                    + "revision BIGINT NOT NULL, "
+                    + "captured_at BIGINT NOT NULL, "
+                    + "payload_base64 " + payloadType + " NOT NULL, "
+                    + "checksum VARCHAR(64) NOT NULL)";
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                statement.executeUpdate();
+                commitIfNeeded(connection);
+            }
         } catch (SQLException exception) {
             throw new IOException("Unable to initialize NEXORA player checkpoint schema", exception);
         }

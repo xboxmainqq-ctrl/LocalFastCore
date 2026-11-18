@@ -640,9 +640,28 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             state.combatLock.lock();
             try {
                 synchronized (state) {
-                    if (state.transferFrozen || state.rejected || !state.loginAuthenticated
-                            || state.identity == null) continue;
+                    if (state.rejected || state.identity == null) continue;
                     try {
+                        if (state.transferFrozen) {
+                            // The source retains ownership while PREPARED publication is
+                            // pending. Do not consult the PREPARED fence as gameplay ownership.
+                            String leaseSessionId = state.onlineLeaseSessionId;
+                            if (leaseSessionId != null) {
+                                long nowNanos = nanoTime.getAsLong();
+                                long previous = state.lastOnlineLeaseRenewalNanos;
+                                long interval = Math.max(500_000_000L,
+                                        onlineLeaseMillis * 1_000_000L / 3L);
+                                if (previous == Long.MIN_VALUE || nowNanos - previous >= interval) {
+                                    if (!onlineLeaseRegistry.renew(state.identity.xuid(), transferOwnershipNodeId,
+                                            leaseSessionId, System.currentTimeMillis(), onlineLeaseMillis)) {
+                                        throw new IOException("Frozen source lost its online player lease");
+                                    }
+                                    state.lastOnlineLeaseRenewalNanos = nowNanos;
+                                }
+                            }
+                            continue;
+                        }
+                        if (!state.loginAuthenticated) continue;
                         assertTransferNodeOwnership(state);
                     } catch (IOException | SecurityException ownershipFailure) {
                         state.rejected = true;
@@ -750,11 +769,60 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         } finally {
             state.combatLock.unlock();
         }
-        if (!releaseOnlinePlayerLease(state)) {
-            throw new IOException("Unable to release source online lease before transfer; source remains frozen");
-        }
+        // Keep the source lease until PREPARED is durable. The source coordinator
+        // releases it through releaseOnlinePlayerLeaseAfterPreparedTransfer().
         removePlayerListEntry(networkId, state);
         return revision;
+    }
+
+    /**
+     * Releases the frozen source session's online XUID lease only after its exact
+     * transfer is durably PREPARED. Until this point the source retains the lease,
+     * preventing an early destination login in the checkpoint/publication gap.
+     */
+    public void releaseOnlinePlayerLeaseAfterPreparedTransfer(String playerXuid, UUID transferId)
+            throws IOException {
+        Objects.requireNonNull(transferId, "transferId");
+        ru.nexora.network.DurableHandoffCoordinator ledger = transferOwnershipLedger;
+        String nodeId = transferOwnershipNodeId;
+        if (onlineLeaseRegistry == null) return;
+        if (ledger == null || nodeId == null) {
+            throw new IOException("Shared transfer ownership is not configured");
+        }
+        ru.nexora.network.PlayerTransferRecord record = ledger.get(transferId)
+                .orElseThrow(() -> new IOException("Prepared transfer is not present in the durable ledger"));
+        if (record.state() != ru.nexora.network.PlayerTransferRecord.State.PREPARED
+                || !record.playerXuid().equals(playerXuid)
+                || !record.sourceNode().equals(nodeId)) {
+            throw new SecurityException("Durable PREPARED record does not match frozen source player");
+        }
+        Map.Entry<String, SessionState> match = null;
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            SessionState candidate = entry.getValue();
+            synchronized (candidate) {
+                if (candidate.identity != null && playerXuid.equals(candidate.identity.xuid())
+                        && candidate.transferFrozen) {
+                    if (match != null) throw new IOException("Duplicate frozen XUID on source node");
+                    match = entry;
+                }
+            }
+        }
+        if (match == null) throw new IOException("Frozen source session is no longer available");
+        SessionState state = match.getValue();
+        state.combatLock.lock();
+        try {
+            synchronized (state) {
+                if (sessions.get(match.getKey()) != state || !state.transferFrozen
+                        || state.identity == null || !playerXuid.equals(state.identity.xuid())) {
+                    throw new IOException("Source session changed before PREPARED lease release");
+                }
+                if (state.onlineLeaseSessionId != null && !releaseOnlinePlayerLease(state)) {
+                    throw new IOException("Unable to release source online lease after PREPARED publication");
+                }
+            }
+        } finally {
+            state.combatLock.unlock();
+        }
     }
 
     /**

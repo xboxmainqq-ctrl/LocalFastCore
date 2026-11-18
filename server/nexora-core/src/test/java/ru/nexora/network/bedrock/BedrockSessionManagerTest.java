@@ -8,6 +8,7 @@ import ru.nexora.network.InMemoryPlayerTransferLedger;
 import ru.nexora.network.InMemoryPlayerOnlineLeaseRegistry;
 import ru.nexora.network.PlayerHandoff;
 import ru.nexora.network.PlayerTransferCoordinator;
+import ru.nexora.network.PlayerTransferRecord;
 import ru.nexora.inventory.ItemStack;
 import ru.nexora.inventory.PlayerInventory;
 import ru.nexora.inventory.PlayerInventoryStorage;

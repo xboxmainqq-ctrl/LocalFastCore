@@ -195,10 +195,24 @@ public final class MobAiLoadController {
         return new BudgetStats(aiBudgetNanos, budgetNanosConsumed.get(), budgetDeferrals.get(), adaptiveBudget, smoothedTickLoad);
     }
 
-    public record BudgetStats(long budgetNanos, long consumedNanos, long deferredTasks) {
+    public record BudgetStats(
+            long budgetNanos,
+            long consumedNanos,
+            long deferredTasks,
+            boolean adaptive,
+            double smoothedTickLoad
+    ) {
+        public BudgetStats {
+            if (budgetNanos < 0 || consumedNanos < 0 || deferredTasks < 0
+                    || !Double.isFinite(smoothedTickLoad) || smoothedTickLoad < 0) {
+                throw new IllegalArgumentException("Invalid Mob AI budget statistics");
+            }
+        }
+
         public String summary() {
             return "budget=" + budgetNanos + " ns, consumed=" + consumedNanos
-                    + " ns, deferred=" + deferredTasks;
+                    + " ns, deferred=" + deferredTasks + ", adaptive=" + adaptive
+                    + ", smoothedTickLoad=" + String.format(java.util.Locale.ROOT, "%.3f", smoothedTickLoad);
         }
     }
 

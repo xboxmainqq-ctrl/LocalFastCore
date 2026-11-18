@@ -1,10 +1,10 @@
 package ru.nexora;
 
 import ru.nexora.network.NetworkRuntimeModule;
+import ru.nexora.gameplay.GameplayRuntimeModule;
 import ru.nexora.network.nethernet.DefaultNetherNetIdentityService;
 import ru.nexora.network.nethernet.NetherNetServerMetadata;
 import ru.nexora.network.bedrock.BedrockSessionManager;
-import ru.nexora.network.bedrock.BedrockVanillaItemCatalog;
 import ru.nexora.network.nethernet.NetherNetSignalingServer;
 import ru.nexora.network.nethernet.WebRtcSdpNegotiator;
 import ru.nexora.network.raknet.BedrockServerStatus;
@@ -20,8 +20,6 @@ import ru.nexora.world.WorldRuntimeModule;
 import ru.nexora.world.PlayerDataStorage;
 import ru.nexora.inventory.PlayerInventoryStorage;
 import ru.nexora.inventory.PlayerEquipmentStorage;
-import ru.nexora.inventory.VanillaArmorSlotCatalog;
-import ru.nexora.inventory.NexoraMagicEquipmentCatalog;
 import ru.nexora.inventory.DurabilitySettings;
 import ru.nexora.ai.NexoraAiDiagnostics;
 import ru.nexora.ai.DiagnosticsRuntimeModule;
@@ -123,15 +121,8 @@ public final class NexoraServer {
                 },
                 event -> System.out.printf("NEXORA: Bedrock packet 0x%02X from %s (%d bytes)%n",
                         event.packet().packetId(), event.networkId(), event.packet().payload().length));
-        bedrockSessions.setAiDiagnostics(aiDiagnostics);
-        NexoraAiAssistant aiAssistant = NexoraAiAssistant.fromEnvironment(System.getenv(), aiDiagnostics);
-        aiAssistant.setAdminRuntimeSnapshotProvider(() -> bedrockSessions.adminRuntimeSummary()
-                + "\n" + bedrockSessions.guardSummary());
-        bedrockSessions.setAiAssistant(aiAssistant);
-        bedrockSessions.enableServerAuthoritativeMovement();
-        bedrockSessions.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
-        bedrockSessions.setArmorSlotRegistry(VanillaArmorSlotCatalog.createRegistry());
-        bedrockSessions.setEquipmentSlotRegistry(NexoraMagicEquipmentCatalog.createRegistry());
+        GameplayRuntimeModule gameplayRuntime = new GameplayRuntimeModule(
+                bedrockSessions, aiDiagnostics, System.getenv());
         List<String> stunUrls = config.stunUrls();
         int udpPortMin = config.udpPortMin();
         int udpPortMax = config.udpPortMax();
@@ -172,13 +163,14 @@ public final class NexoraServer {
         NetworkRuntimeModule networkRuntime = new NetworkRuntimeModule(
                 NetworkRuntimeModule.service(discovery::start, discovery),
                 NetworkRuntimeModule.service(signaling::start, signaling),
-                negotiator,
-                bedrockSessions);
+                negotiator);
 
         // Reverse close order: network admission/discovery, WebRTC, Bedrock
-        // sessions and player persistence; then world ticking/final save; diagnostics last.
+        // Network transport stops first; gameplay then persists/closes sessions;
+        // world ticking/final persistence follows; diagnostics stays alive until last.
         lifecycle.register(diagnosticsRuntime);
         lifecycle.register(worldRuntime);
+        lifecycle.register(gameplayRuntime);
         lifecycle.register(networkRuntime);
 
         try {

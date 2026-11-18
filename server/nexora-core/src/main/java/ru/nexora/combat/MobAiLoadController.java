@@ -150,6 +150,10 @@ public final class MobAiLoadController {
         starvationTicks.remove(runtimeId);
     }
 
+    public long aiBudgetNanos() {
+        return aiBudgetNanos;
+    }
+
     public void setAiBudgetNanos(long budgetNanos) {
         if (budgetNanos < 1 || budgetNanos > 50_000_000L) {
             throw new IllegalArgumentException("AI budget must be between 1 ns and 50 ms");

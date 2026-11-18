@@ -150,3 +150,12 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Pairwise codecs can wrap the rotating key-ring codec for controlled per-peer key rotation.
 - Tests verify source identity binding and reject source spoofing / unknown targets.
 - Key provisioning remains external; no secrets manager or TLS certificate lifecycle is included.
+
+
+### 24. Shared SQL transfer ledger — FOUNDATION ADDED
+- Added `JdbcPlayerTransferLedger`, a JDBC/DataSource adapter for the existing versioned CAS ledger contract.
+- Transfer state, checkpoint revision, lease expiry, fencing token and record version are persisted in a shared SQL table.
+- State transitions use one conditional UPDATE on transfer ID + expected record version, allowing competing nodes to race safely against the same transactional database.
+- Schema initialization is explicit; deployment tooling must run it and provide the JDBC driver, shared database, credentials and tested isolation/failover settings.
+- The adapter is not wired into startup and does not create replication or end-to-end exactly-once semantics.
+- Next: validate against supported real database engines in integration CI, then add a deployment-owned DataSource configuration. Live Bedrock source/destination participant hooks and process-level crash recovery remain gated.

@@ -76,6 +76,26 @@ class NetworkRuntimeModuleTest {
 
 
     @Test
+    void startsClusterBeforePublicListenersAndStopsItBeforeSessionDrain() throws Exception {
+        List<String> events = new ArrayList<>();
+        NetworkRuntimeModule module = new NetworkRuntimeModule(
+                service("cluster", events, false, false),
+                service("discovery", events, false, false),
+                service("signaling", events, false, false),
+                closeable("negotiator", events, false),
+                () -> events.add("drain-sessions"));
+
+        module.start();
+        module.close();
+
+        assertEquals(List.of(
+                "start-cluster", "start-discovery", "start-signaling",
+                "close-discovery", "close-signaling", "close-cluster",
+                "drain-sessions", "close-negotiator"
+        ), events);
+    }
+
+    @Test
     void stillClosesNegotiatorWhenSessionDrainFails() {
         List<String> events = new ArrayList<>();
         NetworkRuntimeModule module = new NetworkRuntimeModule(

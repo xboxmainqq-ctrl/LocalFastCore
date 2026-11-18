@@ -40,7 +40,18 @@ public final class WorldChunkResidencyManager {
     }
 
     public synchronized ResidencyPlan update(List<PlayerChunk> players, long tick) {
+        return update(players, List.of(), tick);
+    }
+
+    /** Pinned chunks contain active world-owned entities and cannot be evicted yet. */
+    public synchronized ResidencyPlan update(
+            List<PlayerChunk> players,
+            java.util.Set<ChunkCoordinate> pinnedChunks,
+            long tick
+    ) {
         if (tick < 0) throw new IllegalArgumentException("tick must be non-negative");
+        java.util.Objects.requireNonNull(players, "players");
+        java.util.Objects.requireNonNull(pinnedChunks, "pinnedChunks");
         desiredRefCounts.clear();
 
         for (PlayerChunk player : players) {
@@ -66,6 +77,13 @@ public final class WorldChunkResidencyManager {
                     lastDesiredTick.put(key, tick);
                 }
             }
+        }
+
+        for (ChunkCoordinate pinned : pinnedChunks) {
+            if (pinned == null) continue;
+            long key = chunkKey(pinned.chunkX(), pinned.chunkZ());
+            desiredRefCounts.merge(key, 1, Integer::sum);
+            lastDesiredTick.put(key, tick);
         }
 
         Set<Long> load = new HashSet<>(desiredRefCounts.keySet());

@@ -46,7 +46,7 @@ class PendingPlayerTransferRestoreRegistryTest {
     private static DurableHandoffCoordinator ledgerWithClaim(UUID id) throws Exception {
         DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
                 new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
-        ledger.prepare(new PlayerHandoff(id, "source", "target"), "xuid-123", 7, 1);
+        ledger.prepare(new PlayerHandoff(id, 1L, "source", "target", new byte[0]), "xuid-123", 7, 1);
         ledger.claim(id, "target", 2, 10_000).orElseThrow();
         return ledger;
     }

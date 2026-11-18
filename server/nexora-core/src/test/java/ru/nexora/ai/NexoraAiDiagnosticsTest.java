@@ -2,6 +2,8 @@ package ru.nexora.ai;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class NexoraAiDiagnosticsTest {

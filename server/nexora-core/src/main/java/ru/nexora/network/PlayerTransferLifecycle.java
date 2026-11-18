@@ -59,12 +59,24 @@ public final class PlayerTransferLifecycle {
             throws Exception {
         Objects.requireNonNull(handoff, "handoff");
         long revision = source.freezeAndCheckpoint(handoff);
-        boolean prepared = false;
         try {
             ledger.prepare(handoff, playerXuid, revision, nowEpochMillis);
-            prepared = true;
-        } finally {
-            if (!prepared) source.unfreeze(handoff);
+        } catch (Exception publicationFailure) {
+            // A failed write can have an uncertain outcome. Resume only when a
+            // ledger read proves that no destination can own this transfer.
+            try {
+                Optional<PlayerTransferRecord> stored = ledger.get(handoff.transferId());
+                boolean definitelyUnclaimed = stored.isEmpty();
+                boolean alreadyAborted = stored.filter(record ->
+                        record.state() == PlayerTransferRecord.State.ABORTED
+                                && record.playerXuid().equals(playerXuid)
+                                && record.sourceNode().equals(handoff.sourceNode())
+                                && record.targetNode().equals(handoff.targetNode())).isPresent();
+                if (definitelyUnclaimed || alreadyAborted) source.unfreeze(handoff);
+            } catch (Exception reconciliationFailure) {
+                publicationFailure.addSuppressed(reconciliationFailure);
+            }
+            throw publicationFailure;
         }
     }
 

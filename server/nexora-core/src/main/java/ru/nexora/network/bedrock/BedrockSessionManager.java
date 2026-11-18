@@ -33,6 +33,7 @@ import ru.nexora.world.WorldItemEntityManager;
 import ru.nexora.world.WorldLivingEntity;
 import ru.nexora.world.WorldLivingEntityManager;
 import ru.nexora.world.WorldChunk;
+import ru.nexora.world.WorldChunkResidencyManager;
 import ru.nexora.world.WorldCollision;
 import ru.nexora.world.WorldRaycast;
 import ru.nexora.world.WorldPathfinder;

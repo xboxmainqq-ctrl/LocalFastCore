@@ -59,6 +59,7 @@ public final class WorldTickPipeline {
                     finiteDistanceSquared, activeTarget,
                     LivingEntityAiService.isFlyingMob(mob.identifier())
                             || LivingEntityAiService.isTimidMob(mob.identifier()));
+            priority = loadController.effectivePriority(mob.runtimeId(), priority);
             switch (priority) {
                 case HIGH -> highPriority++;
                 case NORMAL -> normalPriority++;
@@ -68,6 +69,7 @@ public final class WorldTickPipeline {
             if (!loadController.shouldUpdate(mob.runtimeId(), tick,
                     finiteDistanceSquared, activeTarget)) {
                 deferred++;
+                loadController.recordDeferred(mob.runtimeId());
                 continue;
             }
 
@@ -75,10 +77,12 @@ public final class WorldTickPipeline {
             if (!loadController.admit(mob.runtimeId(), tick, finiteDistanceSquared,
                     activeTarget, priority, consumedNanos)) {
                 deferred++;
+                loadController.recordDeferred(mob.runtimeId());
                 continue;
             }
 
             scheduled++;
+            loadController.recordScheduled(mob.runtimeId());
             long decisionStart = System.nanoTime();
             LivingEntityAiService.Decision decision = aiService.decide(
                     mob, players, nowMillis, 0L, null, nearest);

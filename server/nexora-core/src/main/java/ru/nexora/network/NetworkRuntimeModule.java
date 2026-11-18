@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * <p>Startup opens discovery before HTTP signaling. Shutdown reverses the
  * dependency chain: stop discovery, stop signaling admission, close WebRTC,
- * then persist and clear active Bedrock sessions.</p>
+ * Gameplay/session persistence is owned by GameplayRuntimeModule.</p>
  */
 public final class NetworkRuntimeModule implements AutoCloseable {
     @FunctionalInterface
@@ -25,20 +25,17 @@ public final class NetworkRuntimeModule implements AutoCloseable {
     private final ManagedService discovery;
     private final ManagedService signaling;
     private final AutoCloseable negotiator;
-    private final AutoCloseable sessions;
     private final AtomicBoolean closed = new AtomicBoolean();
     private boolean started;
 
     public NetworkRuntimeModule(
             ManagedService discovery,
             ManagedService signaling,
-            AutoCloseable negotiator,
-            AutoCloseable sessions
+            AutoCloseable negotiator
     ) {
         this.discovery = Objects.requireNonNull(discovery, "discovery");
         this.signaling = Objects.requireNonNull(signaling, "signaling");
         this.negotiator = Objects.requireNonNull(negotiator, "negotiator");
-        this.sessions = Objects.requireNonNull(sessions, "sessions");
     }
 
     public static ManagedService service(StartAction start, AutoCloseable close) {
@@ -85,7 +82,6 @@ public final class NetworkRuntimeModule implements AutoCloseable {
         failure = close(discovery, failure);
         failure = close(signaling, failure);
         failure = close(negotiator, failure);
-        failure = close(sessions, failure);
         if (failure != null) throw failure;
     }
 

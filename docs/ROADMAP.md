@@ -14,6 +14,7 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 - [x] Extract world background services into a `WorldRuntimeModule`; it owns furnace ticking and world/player autosave, stops ticking before the final save, and aggregates shutdown failures. Network, gameplay, and diagnostics module boundaries remain to be extracted.
 - [ ] Introduce a shared bounded task/tick orchestration layer; avoid independent uncoordinated schedulers for world subsystems.
 - [x] Define explicit STARTING/READY/STOPPING/STOPPED readiness states; reject new NetherNet session negotiations as soon as shutdown begins while keeping server metadata discoverable.
+- [x] Order shutdown by dependencies: close legacy discovery and signaling first, stop WebRTC negotiation, persist active Bedrock sessions, then stop world ticking and perform final world/player persistence; keep diagnostics alive until the other modules stop.
 - [ ] Extend graceful shutdown with bounded active-session draining before final persistence; current stage closes admission and relies on existing disconnect/save handling.
 
 ## Priority 1 — Core stability and performance

@@ -369,6 +369,26 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 .orElse(null);
     }
 
+    /**
+     * Rehydrates durable destination ownership before the network starts accepting logins.
+     * The registry is local to this session manager; the transfer ledger is the source of truth.
+     */
+    public PlayerTransferRecoveryService.RecoveryReport recoverPendingTransferRestores(
+            ru.nexora.network.DurableHandoffCoordinator transferLedger,
+            String nodeId,
+            int limit
+    ) throws IOException {
+        if (checkpointService == null) {
+            throw new IllegalStateException("Canonical player checkpoints are not configured");
+        }
+        PlayerTransferRecoveryService recovery = new PlayerTransferRecoveryService(
+                Objects.requireNonNull(transferLedger, "transferLedger"),
+                pendingTransferRestores,
+                nodeId,
+                System::currentTimeMillis);
+        return recovery.recover(limit);
+    }
+
     /** Registers a durable claimed transfer for the next authenticated login of this XUID. */
     public void registerPendingTransferRestore(
             PendingPlayerTransferRestoreRegistry.PendingRestore restore

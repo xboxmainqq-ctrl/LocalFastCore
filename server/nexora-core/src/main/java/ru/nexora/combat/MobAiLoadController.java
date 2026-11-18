@@ -95,11 +95,57 @@ public final class MobAiLoadController {
         maxDecisionNanos.accumulateAndGet(elapsed, Math::max);
     }
 
+    public void setAiBudgetNanos(long budgetNanos) {
+        if (budgetNanos < 1 || budgetNanos > 50_000_000L) {
+            throw new IllegalArgumentException("AI budget must be between 1 ns and 50 ms");
+        }
+        aiBudgetNanos = budgetNanos;
+    }
+
+    public boolean admit(
+            long runtimeId,
+            long tick,
+            double distanceSquared,
+            boolean activeTarget,
+            Priority priority,
+            long consumedNanos
+    ) {
+        if (runtimeId < 0 || tick < 0 || Double.isNaN(distanceSquared)
+                || distanceSquared < 0 || consumedNanos < 0) {
+            throw new IllegalArgumentException("Invalid AI budget admission observation");
+        }
+        java.util.Objects.requireNonNull(priority, "priority");
+        if (activeTarget || priority == Priority.HIGH || consumedNanos < aiBudgetNanos) {
+            return true;
+        }
+        budgetDeferrals.incrementAndGet();
+        return false;
+    }
+
+    public void recordBudgetNanos(long elapsedNanos) {
+        if (elapsedNanos < 0) throw new IllegalArgumentException("elapsedNanos must be non-negative");
+        budgetNanosConsumed.updateAndGet(current ->
+                current > Long.MAX_VALUE - elapsedNanos ? Long.MAX_VALUE : current + elapsedNanos);
+    }
+
+    public long budgetDeferrals() {
+        return budgetDeferrals.get();
+    }
+
+    public long budgetNanosConsumed() {
+        return budgetNanosConsumed.get();
+    }
+
     public BudgetStats budgetStats() {
         return new BudgetStats(aiBudgetNanos, budgetNanosConsumed.get(), budgetDeferrals.get());
     }
 
-    public record BudgetStats(long budgetNanos, long consumedNanos, long deferredTasks) {}
+    public record BudgetStats(long budgetNanos, long consumedNanos, long deferredTasks) {
+        public String summary() {
+            return "budget=" + budgetNanos + " ns, consumed=" + consumedNanos
+                    + " ns, deferred=" + deferredTasks;
+        }
+    }
 
     public Stats stats() {
         return new Stats(fullRateUpdates.sum(), deferredUpdates.sum(), farUpdateInterval,

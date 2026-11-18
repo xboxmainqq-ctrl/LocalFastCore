@@ -524,6 +524,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 .append(", stuck=").append(stuck.stuck())
                 .append(", evictions=").append(stuck.evictions())
                 .append("\nMob AI load controller: ").append(mobAiLoadController.stats().summary())
+                .append("\nMob AI budget: ").append(mobAiLoadController.budgetStats().summary())
                 .append("\nMob AI decision algorithm: decisions=").append(aiStats.decisionCount())
                 .append(", total=").append(aiStats.totalDecisionNanos()).append(" ns")
                 .append(", avg=").append(aiStats.averageDecisionNanos()).append(" ns")
@@ -2719,10 +2720,20 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     nearestPlayerDistanceSquared, hasActiveTarget)) {
                 continue;
             }
+            ru.nexora.combat.MobAiLoadController.Priority aiPriority =
+                    mobAiLoadController.priority(nearestPlayerDistanceSquared, hasActiveTarget, false);
+            long budgetElapsed = Math.max(0L, nanoTime.getAsLong() - aiStartedNanos);
+            if (!mobAiLoadController.admit(mob.runtimeId(), serverAiTick,
+                    nearestPlayerDistanceSquared, hasActiveTarget, aiPriority, budgetElapsed)) {
+                continue;
+            }
             long nextAttackAt = nextMobAttackMillis.getOrDefault(mob.runtimeId(), 0L);
+            long decisionStartedNanos = nanoTime.getAsLong();
             ru.nexora.combat.LivingEntityAiService.Decision decision =
                     livingEntityAi.decide(mob, targets, nowMillis, nextAttackAt,
                             provokedBy, nearestPlayer);
+            mobAiLoadController.recordBudgetNanos(
+                    Math.max(0L, nanoTime.getAsLong() - decisionStartedNanos));
             if (decision.attack()) {
                 mobStuckTracker.clear(mob.runtimeId());
                 if (damagePlayerFromMob(decision.targetNetworkId(), mob, decision.attackDamage(), tick)) {

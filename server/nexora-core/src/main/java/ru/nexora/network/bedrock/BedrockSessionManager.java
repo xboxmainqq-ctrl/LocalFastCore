@@ -42,6 +42,9 @@ import ru.nexora.world.PlayerDataStorage;
 import ru.nexora.world.PlayerExperience;
 import ru.nexora.world.PlayerPhysics;
 import ru.nexora.world.PlayerVitals;
+import ru.nexora.persistence.PlayerStateBundle;
+import ru.nexora.persistence.PlayerStateBundleCodec;
+import ru.nexora.persistence.PlayerStateCheckpointService;
 
 import java.security.KeyFactory;
 import java.security.MessageDigest;
@@ -89,6 +92,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final PlayerDataStorage playerStorage;
     private final PlayerInventoryStorage inventoryStorage;
     private final PlayerEquipmentStorage equipmentStorage;
+    private final PlayerStateCheckpointService checkpointService;
     private volatile BedrockItemRegistry itemRegistry = BedrockItemRegistry.empty();
     private volatile ArmorSlotRegistry armorSlotRegistry = ArmorSlotRegistry.empty();
     private volatile EquipmentSlotRegistry equipmentSlotRegistry = EquipmentSlotRegistry.empty();
@@ -246,7 +250,24 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             Consumer<PacketEvent> packetSink
     ) {
         this(serverProtocol, serverVersion, compressionThreshold, world, playerStorage, inventoryStorage,
-                equipmentStorage, outbound, packetSink, System::nanoTime);
+                equipmentStorage, null, outbound, packetSink, System::nanoTime);
+    }
+
+    /** Enables canonical shadow checkpoints while legacy files remain the login authority. */
+    public BedrockSessionManager(
+            int serverProtocol,
+            String serverVersion,
+            int compressionThreshold,
+            World world,
+            PlayerDataStorage playerStorage,
+            PlayerInventoryStorage inventoryStorage,
+            PlayerEquipmentStorage equipmentStorage,
+            PlayerStateCheckpointService checkpointService,
+            OutboundFrameSender outbound,
+            Consumer<PacketEvent> packetSink
+    ) {
+        this(serverProtocol, serverVersion, compressionThreshold, world, playerStorage, inventoryStorage,
+                equipmentStorage, checkpointService, outbound, packetSink, System::nanoTime);
     }
 
     BedrockSessionManager(
@@ -303,6 +324,23 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             Consumer<PacketEvent> packetSink,
             LongSupplier nanoTime
     ) {
+        this(serverProtocol, serverVersion, compressionThreshold, world, playerStorage, inventoryStorage,
+                equipmentStorage, null, outbound, packetSink, nanoTime);
+    }
+
+    BedrockSessionManager(
+            int serverProtocol,
+            String serverVersion,
+            int compressionThreshold,
+            World world,
+            PlayerDataStorage playerStorage,
+            PlayerInventoryStorage inventoryStorage,
+            PlayerEquipmentStorage equipmentStorage,
+            PlayerStateCheckpointService checkpointService,
+            OutboundFrameSender outbound,
+            Consumer<PacketEvent> packetSink,
+            LongSupplier nanoTime
+    ) {
         if (serverProtocol < 1) throw new IllegalArgumentException("serverProtocol must be positive");
         if (serverVersion == null || serverVersion.isBlank()) {
             throw new IllegalArgumentException("serverVersion must not be blank");
@@ -317,6 +355,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         this.playerStorage = playerStorage;
         this.inventoryStorage = inventoryStorage;
         this.equipmentStorage = equipmentStorage;
+        this.checkpointService = checkpointService;
         this.outbound = Objects.requireNonNull(outbound, "outbound");
         this.packetSink = Objects.requireNonNull(packetSink, "packetSink");
         this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime");
@@ -363,9 +402,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     saveAndClearContainerWindow(state);
                     try {
                         returnCraftingGridItems(state);
-                        savePlayer(state);
-                        saveInventory(state);
-                        saveEquipment(state);
+                        saveAllPlayerState(state);
                     } catch (IOException | RuntimeException exception) {
                         System.err.println("NEXORA: unable to save disconnected player: " + exception.getMessage());
                     }
@@ -408,9 +445,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         for (SessionState state : sessions.values()) {
             synchronized (state) {
                 try {
-                    savePlayer(state);
-                    saveInventory(state);
-                    saveEquipment(state);
+                    saveAllPlayerState(state);
                 } catch (IOException exception) {
                     if (failure == null) failure = exception;
                     else failure.addSuppressed(exception);
@@ -418,6 +453,32 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
         }
         if (failure != null) throw failure;
+    }
+
+    private void saveAllPlayerState(SessionState state) throws IOException {
+        savePlayer(state);
+        saveInventory(state);
+        saveEquipment(state);
+        checkpointCanonicalPlayerState(state);
+    }
+
+    /**
+     * Writes a canonical aggregate after all legacy components have been saved.
+     * Legacy stores remain the login authority until an explicit migration protocol
+     * can prove that the aggregate is newer and complete.
+     */
+    private void checkpointCanonicalPlayerState(SessionState state) throws IOException {
+        if (checkpointService == null || !state.loginAuthenticated || !state.positionInitialized
+                || state.identity == null) return;
+        String displayName = state.identity.displayName() == null ? "unknown" : state.identity.displayName();
+        PlayerData profile = new PlayerData(
+                state.identity.xuid(), displayName, world.name(),
+                state.positionX, state.positionY, state.positionZ,
+                state.yaw, state.pitch, System.currentTimeMillis(), state.vitals,
+                state.experiencePoints, state.experienceRemainderMilli);
+        PlayerStateBundle bundle = PlayerStateBundle.capture(
+                profile, state.inventory, state.craftingUiInventory, state.equipment);
+        checkpointService.checkpoint(bundle, profile.lastSeenEpochMillis());
     }
 
     private void savePlayer(SessionState state) throws IOException {

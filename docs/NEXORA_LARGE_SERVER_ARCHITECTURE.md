@@ -209,3 +209,9 @@ This is a reconnect-based destination admission path, not seamless live socket m
 
 
 The reconnect admission boundary now waits for durable COMMITTED state before setting `clientInitialized`; while the transfer is only CLAIMED, the client may complete authentication/bootstrap but cannot enter gameplay. Destination persistence also requires COMMITTED ownership. This closes the short activation-to-commit window for normal gameplay admission, while inbound protocol handling still checks the active claim so the login handshake can complete. World-side and external plugin mutation paths still need systematic ownership guards.
+
+### Durable destination recovery enumeration — foundation added
+
+`PlayerTransferLedger` now exposes a bounded, destination-scoped query for recoverable `CLAIMED` and `COMMITTED` records. The in-memory adapter orders results deterministically for tests; the local file adapter validates each discovered record and fails closed on malformed/corrupt ledger files or scans exceeding its safety bound; the JDBC adapter queries the shared table in deterministic order with a caller-supplied row limit. `DurableHandoffCoordinator` exposes this query, and `PlayerTransferFence` can now be rehydrated from a durable COMMITTED record after process restart.
+
+This is the durable discovery primitive, not yet automatic session recovery. Startup still needs to recreate pending Bedrock reservations from exact checkpoint revisions, safely reconcile an already-active destination session, and prevent duplicate restoration when a committed transfer is replayed after a later restart. The in-memory pending registry is still not itself durable, so this work does not enable production cross-host transfers.

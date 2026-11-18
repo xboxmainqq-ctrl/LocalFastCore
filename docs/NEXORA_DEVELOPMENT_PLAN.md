@@ -290,6 +290,7 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Remaining: this is transfer-history fencing, not a complete online-player lease registry. A duplicate XUID that logs into two different nodes before either node has a transfer record can still be admitted. Implement a shared lease/owner registry and validate it under multi-process login races before public cluster use.
 ### 40. Frozen source session reconciliation — IMPLEMENTED, CI VERIFIED
 - Added a source-side reconciliation API that scans frozen Bedrock sessions and queries the latest durable per-XUID transfer decision.
+- Added recovery for the narrow crash/failure window where the source froze and checkpointed but PREPARED was never published: the session resumes only if the shared ledger confirms no transfer record and the same node can still renew/acquire the exclusive online lease.
 - A frozen source session is resumed only for a durable ABORTED record; it is redirected only for a matching durable COMMITTED record and configured Bedrock route. PREPARED/CLAIMED or missing/ambiguous outcomes remain frozen.
 - Added the operator-console command `transfer recover` so an operator can reconcile source sessions after a peer or database restart without guessing whether ownership committed.
 - CI: 798 tests passed, zero failures on commit `35e90f7`.

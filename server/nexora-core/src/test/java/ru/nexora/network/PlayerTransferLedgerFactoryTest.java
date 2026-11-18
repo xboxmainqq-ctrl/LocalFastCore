@@ -42,7 +42,7 @@ class PlayerTransferLedgerFactoryTest {
                 Map.of(
                         "NEXORA_TRANSFER_JDBC_URL", "jdbc:h2:mem:nexora-shared-leases;DB_CLOSE_DELAY=-1",
                         "NEXORA_TRANSFER_JDBC_USER", "sa",
-                        "NEXORA_TRANSFER_JDBC_PASSWORD", "",
+                        "NEXORA_TRANSFER_JDBC_PASSWORD", "private-secret",
                         "NEXORA_TRANSFER_JDBC_INITIALIZE_SCHEMA", "true"));
 
         assertTrue(configured.shared());

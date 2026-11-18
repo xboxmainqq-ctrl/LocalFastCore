@@ -26,8 +26,9 @@ public final class PlayerTransferFence {
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         Objects.requireNonNull(claim, "claim");
         if ((claim.state() != PlayerTransferRecord.State.CLAIMED
-                && claim.state() != PlayerTransferRecord.State.COMMITTED) || claim.fencingToken() <= 0) {
-            throw new IllegalArgumentException("Fence must be created from a CLAIMED or COMMITTED record");
+                && claim.state() != PlayerTransferRecord.State.COMMITTED
+                && claim.state() != PlayerTransferRecord.State.ABORTED) || claim.fencingToken() <= 0) {
+            throw new IllegalArgumentException("Fence must retain a positive transfer fencing token");
         }
         this.transferId = claim.transferId();
         this.targetNode = claim.targetNode();

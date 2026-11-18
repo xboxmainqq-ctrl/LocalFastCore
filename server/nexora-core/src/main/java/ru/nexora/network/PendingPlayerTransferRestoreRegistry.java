@@ -42,8 +42,17 @@ public final class PendingPlayerTransferRestoreRegistry {
         } catch (java.io.IOException exception) {
             throw new IllegalStateException("Cannot register a stale transfer restore", exception);
         }
-        PendingRestore previous = pending.putIfAbsent(restore.playerXuid(), restore);
-        if (previous != null) {
+        while (true) {
+            PendingRestore previous = pending.putIfAbsent(restore.playerXuid(), restore);
+            if (previous == null) return;
+            try {
+                previous.fence().assertCurrent();
+            } catch (java.io.IOException stale) {
+                // Remove only the exact revoked/expired registration. A newer
+                // or committed owner must continue to block replacement.
+                pending.remove(restore.playerXuid(), previous);
+                continue;
+            }
             throw new IllegalStateException("A transfer restore is already pending for this player");
         }
     }

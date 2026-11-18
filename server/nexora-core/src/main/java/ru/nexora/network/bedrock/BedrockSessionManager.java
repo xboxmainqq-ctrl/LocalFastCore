@@ -597,8 +597,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 try {
                     if (state.openContainerWindowId != 0) closeContainerWindow(networkId, state, true);
                     returnCraftingGridItems(state);
-                    saveAllPlayerStateForTransfer(state);
-                    revision = checkpointService.latestRevision(playerXuid);
+                    revision = saveAllPlayerStateForTransfer(state);
                     if (revision < 0) throw new IOException("Canonical checkpoint was not written");
                 } catch (IOException | RuntimeException failure) {
                     state.transferFrozen = false;
@@ -786,11 +785,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         checkpointCanonicalPlayerState(state);
     }
 
-    private void saveAllPlayerStateForTransfer(SessionState state) throws IOException {
+    private long saveAllPlayerStateForTransfer(SessionState state) throws IOException {
         savePlayer(state);
         saveInventory(state);
         saveEquipment(state);
-        checkpointCanonicalPlayerState(state, true);
+        return checkpointCanonicalPlayerState(state, true);
     }
 
     /** Revalidates destination ownership before any player persistence write. */
@@ -807,10 +806,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         checkpointCanonicalPlayerState(state, false);
     }
 
-    private void checkpointCanonicalPlayerState(SessionState state, boolean forceTransferRevision) throws IOException {
+    private long checkpointCanonicalPlayerState(SessionState state, boolean forceTransferRevision) throws IOException {
         assertTransferFence(state);
         if (checkpointService == null || !state.loginAuthenticated || !state.positionInitialized
-                || state.identity == null) return;
+                || state.identity == null) return -1L;
         String displayName = state.identity.displayName() == null ? "unknown" : state.identity.displayName();
         PlayerData profile = new PlayerData(
                 state.identity.xuid(), displayName, world.name(),
@@ -820,10 +819,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         PlayerStateBundle bundle = PlayerStateBundle.capture(
                 profile, state.inventory, state.craftingUiInventory, state.equipment);
         if (forceTransferRevision) {
-            checkpointService.checkpointForTransfer(bundle, profile.lastSeenEpochMillis());
-        } else {
-            checkpointService.checkpoint(bundle, profile.lastSeenEpochMillis());
+            return checkpointService.checkpointForTransfer(bundle, profile.lastSeenEpochMillis());
         }
+        checkpointService.checkpoint(bundle, profile.lastSeenEpochMillis());
+        return checkpointService.latestRevision(state.identity.xuid());
     }
 
     private void savePlayer(SessionState state) throws IOException {

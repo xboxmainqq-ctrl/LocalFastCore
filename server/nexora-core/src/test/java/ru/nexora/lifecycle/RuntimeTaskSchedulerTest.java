@@ -52,6 +52,26 @@ class RuntimeTaskSchedulerTest {
         scheduler.close();
     }
 
+
+    @Test
+    void releasesCapacityWhenPeriodicTaskFails() throws Exception {
+        RuntimeTaskScheduler scheduler = new RuntimeTaskScheduler(1, Duration.ofSeconds(1));
+        CountDownLatch failedTaskRan = new CountDownLatch(1);
+        scheduler.scheduleAtFixedRate(RuntimeTaskScheduler.Lane.TICK, () -> {
+            failedTaskRan.countDown();
+            throw new IllegalStateException("tick failed");
+        }, 0, 1, TimeUnit.MILLISECONDS);
+
+        assertTrue(failedTaskRan.await(2, TimeUnit.SECONDS));
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (scheduler.registeredTasks(RuntimeTaskScheduler.Lane.TICK) != 0
+                && System.nanoTime() < deadline) {
+            Thread.yield();
+        }
+        assertEquals(0, scheduler.registeredTasks(RuntimeTaskScheduler.Lane.TICK));
+        scheduler.close();
+    }
+
     @Test
     void closeStopsTasksAndRejectsFurtherScheduling() throws Exception {
         RuntimeTaskScheduler scheduler = new RuntimeTaskScheduler();

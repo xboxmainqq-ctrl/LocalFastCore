@@ -2585,7 +2585,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (!lastLivingAiTickMillis.compareAndSet(previousTick, nowMillis)) return;
         long aiStartedNanos = nanoTime.getAsLong();
         try {
-            tickLivingEntityAi(nowMillis, tick);
+            tickLivingEntityAi(nowMillis, tick, aiStartedNanos);
         } catch (RuntimeException failure) {
             ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
             if (diagnostics != null) diagnostics.recordFailure(failure);
@@ -2599,7 +2599,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
-    private void tickLivingEntityAi(long nowMillis, long tick) {
+    private void tickLivingEntityAi(long nowMillis, long tick, long aiStartedNanos) {
         List<ru.nexora.combat.LivingEntityAiService.PlayerTarget> targets = new ArrayList<>();
         List<ru.nexora.world.WorldChunkResidencyManager.PlayerChunk> playerChunks = new ArrayList<>();
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {

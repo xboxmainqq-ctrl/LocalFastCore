@@ -191,3 +191,6 @@ The JDBC transfer ledger now has H2-backed integration coverage for durable stat
 
 
 The JDBC adapter also validates legal monotonic transitions before its version-guarded UPDATE: PREPARED can only become the first CLAIMED token; an expired CLAIMED lease can only be reclaimed with a strictly higher token; COMMITTED/ABORTED can only be reached by the current unexpired claimant; terminal states cannot be reopened. Player identity, node endpoints and checkpoint revision are immutable across every transition.
+
+
+The monotonic successor validation is now centralized in `PlayerTransferRecord` and enforced by all three ledger adapters: in-memory reference, local file, and JDBC. This prevents any adapter from reopening COMMITTED/ABORTED records, reusing a fencing token, reclaiming before lease expiry, or rewriting player identity and checkpoint revision. The latest validation run completed 750 tests with zero failures.

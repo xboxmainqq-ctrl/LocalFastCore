@@ -62,4 +62,33 @@ class PlayerTransferRecoveryServiceTest {
         assertEquals(1, activeRecovery.recover(10).registered());
         assertEquals(1, activeRecovery.recover(10).alreadyRegistered());
     }
+
+    @Test
+    void newestTransferWinsWhenLedgerContainsPlayerHistory() throws Exception {
+        DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
+                new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
+        UUID oldId = UUID.randomUUID();
+        UUID newId = UUID.randomUUID();
+        ledger.prepare(new PlayerHandoff(oldId, 1L, "source-a", "target", new byte[0]),
+                "xuid-repeat", 7, 10);
+        var oldClaim = ledger.claim(oldId, "target", 20, 10_000).orElseThrow();
+        ledger.commit(oldId, oldClaim.fencingToken(), 30).orElseThrow();
+
+        ledger.prepare(new PlayerHandoff(newId, 2L, "source-b", "target", new byte[0]),
+                "xuid-repeat", 9, 10);
+        var newestClaim = ledger.claim(newId, "target", 40, 10_000).orElseThrow();
+
+        PendingPlayerTransferRestoreRegistry registry = new PendingPlayerTransferRestoreRegistry();
+        PlayerTransferRecoveryService recovery = new PlayerTransferRecoveryService(
+                ledger, registry, "target", () -> 41L);
+        var report = recovery.recover(10);
+
+        assertEquals(2, report.scanned());
+        assertEquals(1, report.registered());
+        assertEquals(1, report.supersededRecords());
+        var restored = registry.find("xuid-repeat").orElseThrow();
+        assertEquals(newId, restored.fence().transferId());
+        assertEquals(newestClaim.fencingToken(), restored.fence().fencingToken());
+    }
+
 }

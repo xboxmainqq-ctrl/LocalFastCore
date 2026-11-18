@@ -115,6 +115,24 @@ public final class MobPathCache {
         return new Stats(hits, misses, recomputations, blockedWaypoints, evictions, entries.size());
     }
 
+    /** Counts expired entries without mutating the cache. */
+    public synchronized int expiredEntries(long nowMillis) {
+        if (nowMillis < 0) throw new IllegalArgumentException("nowMillis must be non-negative");
+        int expired = 0;
+        for (Entry entry : entries.values()) {
+            if (nowMillis >= entry.expiresAtMillis()) expired++;
+        }
+        return expired;
+    }
+
+    /** Removes expired transient navigation entries while preserving cumulative counters. */
+    public synchronized int pruneExpired(long nowMillis) {
+        if (nowMillis < 0) throw new IllegalArgumentException("nowMillis must be non-negative");
+        int before = entries.size();
+        entries.values().removeIf(entry -> nowMillis >= entry.expiresAtMillis());
+        return before - entries.size();
+    }
+
     public synchronized void clear() {
         entries.clear();
     }

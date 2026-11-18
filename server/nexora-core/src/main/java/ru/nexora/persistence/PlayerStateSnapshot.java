@@ -10,16 +10,16 @@ import java.util.Arrays;
  */
 public final class PlayerStateSnapshot {
     private final int schemaVersion;
-    private final long playerId;
+    private final String playerId;
     private final long revision;
     private final long capturedAtEpochMillis;
     private final byte[] payload;
     private final String checksum;
 
-    public PlayerStateSnapshot(int schemaVersion, long playerId, long revision,
+    public PlayerStateSnapshot(int schemaVersion, String playerId, long revision,
                                long capturedAtEpochMillis, byte[] payload) {
         if (schemaVersion <= 0) throw new IllegalArgumentException("schemaVersion must be positive");
-        if (playerId < 0) throw new IllegalArgumentException("playerId < 0");
+        if (playerId == null || !playerId.matches("[A-Za-z0-9_-]{1,64}")) {\n            throw new IllegalArgumentException("Invalid player XUID");\n        }
         if (revision < 0) throw new IllegalArgumentException("revision < 0");
         if (capturedAtEpochMillis < 0) throw new IllegalArgumentException("capturedAtEpochMillis < 0");
         if (payload == null) throw new NullPointerException("payload");
@@ -32,7 +32,7 @@ public final class PlayerStateSnapshot {
     }
 
     public int schemaVersion() { return schemaVersion; }
-    public long playerId() { return playerId; }
+    public String playerId() { return playerId; }
     public long revision() { return revision; }
     public long capturedAtEpochMillis() { return capturedAtEpochMillis; }
     public byte[] payload() { return Arrays.copyOf(payload, payload.length); }

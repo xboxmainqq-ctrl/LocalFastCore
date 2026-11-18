@@ -248,6 +248,49 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void transferFreezeDoesNotCheckpointAfterGlobalOwnershipLeaseIsLost() throws Exception {
+        var checkpoints = new ru.nexora.persistence.PlayerStateCheckpointService(
+                new FilePlayerStateStore(temporaryDirectory), new PlayerStateBundleCodec());
+        ru.nexora.network.PlayerOnlineLeaseRegistry lostLease = new ru.nexora.network.PlayerOnlineLeaseRegistry() {
+            @Override public boolean acquire(String xuid, String nodeId, String sessionId, long now, long ttl) {
+                return true;
+            }
+            @Override public boolean renew(String xuid, String nodeId, String sessionId, long now, long ttl) {
+                return false;
+            }
+            @Override public boolean release(String xuid, String nodeId, String sessionId) {
+                return true;
+            }
+        };
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("freeze-lost-lease", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                null, null, null, checkpoints, (networkId, label, frame) -> {}, event -> {});
+        try {
+            manager.configureOnlinePlayerLeases(lostLease, 15_000L);
+            DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
+                    new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
+            manager.configureTransferOwnershipGuard(ledger, "node-a");
+            manager.onIdentity("freeze-lost-session", new NetherNetClientIdentity(
+                    "freeze-lost-token", new byte[] {6}, "freeze-lost-xuid",
+                    "FreezeLostPlayer", "freeze-lost-playfab", "20CA2", null));
+            setSessionField(manager, "freeze-lost-session", "onlineLeaseSessionId", "freeze-lost-session");
+            setSessionField(manager, "freeze-lost-session", "loginAuthenticated", true);
+            setSessionField(manager, "freeze-lost-session", "clientInitialized", true);
+            setSessionField(manager, "freeze-lost-session", "positionInitialized", true);
+
+            assertThrows(java.io.IOException.class,
+                    () -> manager.freezePlayerForTransfer("freeze-lost-xuid"));
+
+            assertFalse((boolean) getSessionField(manager, "freeze-lost-session", "transferFrozen"));
+            assertEquals(-1L, checkpoints.latestRevision("freeze-lost-xuid"),
+                    "A node without the global lease must not publish a new transfer checkpoint");
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void rejectsSecondActiveSessionForSameXuidOnOneNode() throws Exception {
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,

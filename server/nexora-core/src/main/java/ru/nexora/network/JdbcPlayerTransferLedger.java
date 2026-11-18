@@ -105,6 +105,10 @@ public final class JdbcPlayerTransferLedger implements PlayerTransferLedger {
                 || replacement.version() != expectedVersion + 1) {
             throw new IllegalArgumentException("Replacement version must be expectedVersion + 1");
         }
+        Optional<PlayerTransferRecord> stored = get(transferId);
+        if (stored.isEmpty()) return false;
+        PlayerTransferRecord current = stored.orElseThrow();
+        if (current.version() != expectedVersion || !isLegalTransition(current, replacement)) return false;
         String sql = "UPDATE " + TABLE_NAME + " SET transfer_state = ?, fencing_token = ?, "
                 + "lease_expires_at = ?, record_version = ?, updated_at = ? "
                 + "WHERE transfer_id = ? AND record_version = ? AND player_xuid = ? "
@@ -128,6 +132,37 @@ public final class JdbcPlayerTransferLedger implements PlayerTransferLedger {
         } catch (SQLException exception) {
             throw new IOException("Unable to advance NEXORA transfer ledger record", exception);
         }
+    }
+
+    private static boolean isLegalTransition(PlayerTransferRecord current,
+                                              PlayerTransferRecord replacement) {
+        if (!current.playerXuid().equals(replacement.playerXuid())
+                || !current.sourceNode().equals(replacement.sourceNode())
+                || !current.targetNode().equals(replacement.targetNode())
+                || current.playerRevision() != replacement.playerRevision()
+                || replacement.updatedAtEpochMillis() < current.updatedAtEpochMillis()) {
+            return false;
+        }
+        return switch (current.state()) {
+            case PREPARED -> replacement.state() == PlayerTransferRecord.State.CLAIMED
+                    && current.fencingToken() == 0
+                    && replacement.fencingToken() == 1
+                    && replacement.leaseExpiresAtEpochMillis() > replacement.updatedAtEpochMillis();
+            case CLAIMED -> {
+                if (replacement.state() == PlayerTransferRecord.State.CLAIMED) {
+                    yield current.fencingToken() < Long.MAX_VALUE
+                            && replacement.fencingToken() == current.fencingToken() + 1
+                            && current.leaseExpired(replacement.updatedAtEpochMillis())
+                            && replacement.leaseExpiresAtEpochMillis() > replacement.updatedAtEpochMillis();
+                }
+                boolean terminal = replacement.state() == PlayerTransferRecord.State.COMMITTED
+                        || replacement.state() == PlayerTransferRecord.State.ABORTED;
+                yield terminal && replacement.fencingToken() == current.fencingToken()
+                        && !current.leaseExpired(replacement.updatedAtEpochMillis())
+                        && replacement.leaseExpiresAtEpochMillis() == replacement.updatedAtEpochMillis();
+            }
+            case COMMITTED, ABORTED -> false;
+        };
     }
 
     private static void commitIfNeeded(Connection connection) throws SQLException {

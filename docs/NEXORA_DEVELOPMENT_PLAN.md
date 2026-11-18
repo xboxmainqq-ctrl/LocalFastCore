@@ -143,3 +143,10 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - `RotatingClusterMessageCodec` signs with the active HMAC key and accepts up to four configured active/previous keys for staged rotation.
 - Tests cover restart-style replay rejection, expiry, capacity, corruption, symlink rejection, and key rotation.
 - Limitation: replay persistence is local to one host; no shared cluster-wide deduplication or automated secret distribution/rotation exists.
+
+
+### 23. Pairwise peer authentication — FOUNDATION ADDED
+- `PeerClusterMessageCodec` binds source identity to a configured pairwise key and selects the outbound key by target node.
+- Pairwise codecs can wrap the rotating key-ring codec for controlled per-peer key rotation.
+- Tests verify source identity binding and reject source spoofing / unknown targets.
+- Key provisioning remains external; no secrets manager or TLS certificate lifecycle is included.

@@ -206,13 +206,20 @@ public final class RuntimeTaskScheduler implements AutoCloseable {
             completedRuns.increment();
             if (failed) failedRuns.increment();
             totalExecutionNanos.add(safeElapsed);
-            lastExecutionNanos.set(safeElapsed);
+            // Publish max before last so a snapshot that observes a new last value
+            // cannot observe an older maximum.
             maxExecutionNanos.accumulateAndGet(safeElapsed, Math::max);
+            lastExecutionNanos.set(safeElapsed);
         }
 
         private LaneStats stats() {
+            // Read dependent measurements in publication order: last -> max -> total.
+            // recordRun writes total -> max -> last, preserving max >= last and total >= max.
+            long last = lastExecutionNanos.get();
+            long maximum = maxExecutionNanos.get();
+            long total = totalExecutionNanos.sum();
             return new LaneStats(registered.get(), completedRuns.sum(), failedRuns.sum(),
-                    totalExecutionNanos.sum(), maxExecutionNanos.get(), lastExecutionNanos.get());
+                    total, maximum, last);
         }
 
         private boolean reserve() {

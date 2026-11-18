@@ -88,7 +88,7 @@ Expose stable NEXORA APIs for gameplay actions, events, contracts and graph task
 - Separate serialized player snapshots from live runtime/player objects.
 - Enforce monotonic revisions, idempotent repeat saves and conflict detection.
 - Keep the storage contract backend-neutral; the current in-memory adapter is explicitly non-durable.
-- Next: durable adapter, transfer ledger, source freeze/destination claim protocol, and crash/restart recovery tests.
+- Next: connect snapshots to the live player serialization boundary, add a durable transfer ledger, source freeze/destination claim protocol, and crash/restart recovery tests.
 
 ### 18. Benchmark laboratory
 Create repeatable workloads and compare NEXORA against reference server implementations using identical scenarios. No superiority claims before measurements.

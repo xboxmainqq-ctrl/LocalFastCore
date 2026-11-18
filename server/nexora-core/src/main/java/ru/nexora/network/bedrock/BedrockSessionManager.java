@@ -822,7 +822,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             return checkpointService.checkpointForTransfer(bundle, profile.lastSeenEpochMillis());
         }
         checkpointService.checkpoint(bundle, profile.lastSeenEpochMillis());
-        return checkpointService.latestRevision(state.identity.xuid());
+        return -1L;
     }
 
     private void savePlayer(SessionState state) throws IOException {

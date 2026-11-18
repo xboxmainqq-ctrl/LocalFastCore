@@ -158,3 +158,10 @@ The file replay filter is still single-host; it is not a replicated global dedup
 `PeerClusterMessageCodec` binds each authenticated source node to its own configured pairwise codec/key and signs outbound messages with the key for the destination peer. This prevents a node holding only its own pairwise key from simply claiming another configured source ID. It composes with `RotatingClusterMessageCodec` for staged per-peer key rotation. The TCP adapter accepts the codec abstraction, so this can be used without changing the transport.
 
 Pairwise keys still need secure provisioning and rotation outside the repository; this code does not provide a secrets manager, TLS, certificate identity, or cluster-wide consensus. Avoid one shared cluster-wide HMAC secret for production peer identity.
+
+
+### Shared SQL transfer ledger adapter — foundation added
+
+`JdbcPlayerTransferLedger` now implements the existing compare-and-set ledger contract over an injected JDBC `DataSource`. It stores transfer identity, player checkpoint revision, state, lease, fencing token and record version in a shared SQL table. Each transition is a single conditional UPDATE (`WHERE transfer_id = ? AND record_version = ?`), so concurrent nodes sharing the same transactional database cannot both advance one version. Schema initialization is explicit and can be run by deployment tooling.
+
+This adapter is not automatically configured or enabled by server startup. A production deployment must provide a correctly configured shared transactional database and JDBC driver, run schema migration, protect credentials, and test database failover/isolation semantics. It does not itself replicate the database, distribute secrets, or make the end-to-end player handoff exactly-once. Live Bedrock participant integration and multi-process crash recovery remain outstanding.

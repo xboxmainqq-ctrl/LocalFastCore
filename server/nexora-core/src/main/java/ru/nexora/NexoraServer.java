@@ -26,6 +26,7 @@ import ru.nexora.inventory.DurabilitySettings;
 import ru.nexora.ai.NexoraAiDiagnostics;
 import ru.nexora.ai.NexoraAiMonitor;
 import ru.nexora.ai.NexoraAiAssistant;
+import ru.nexora.lifecycle.ServerLifecycle;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -66,11 +67,13 @@ public final class NexoraServer {
                 port,
                 port
         );
+        ServerLifecycle lifecycle = new ServerLifecycle();
         RakNetDiscoveryServer discovery = new RakNetDiscoveryServer(
                 socketAddress,
                 legacyStatus,
                 new java.security.SecureRandom().nextLong()
         );
+        lifecycle.register(discovery);
 
         DurabilitySettings durabilitySettings = DurabilitySettings.fromEnvironment(System.getenv());
         NexoraAiDiagnostics aiDiagnostics = new NexoraAiDiagnostics();
@@ -83,6 +86,7 @@ public final class NexoraServer {
                         snapshot.liveThreadCount(), snapshot.recordedFailures(), snapshot.slowOperationCount());
             }
         });
+        lifecycle.register(aiMonitor);
         String dataDirectory = System.getenv().getOrDefault("NEXORA_DATA_DIR", "data");
         DefaultNetherNetIdentityService identityService =
                 new DefaultNetherNetIdentityService(Path.of(dataDirectory, "identity"));
@@ -117,6 +121,7 @@ public final class NexoraServer {
                 },
                 event -> System.out.printf("NEXORA: Bedrock packet 0x%02X from %s (%d bytes)%n",
                         event.packet().packetId(), event.networkId(), event.packet().payload().length));
+        lifecycle.register(bedrockSessions);
         bedrockSessions.setAiDiagnostics(aiDiagnostics);
         NexoraAiAssistant aiAssistant = NexoraAiAssistant.fromEnvironment(System.getenv(), aiDiagnostics);
         aiAssistant.setAdminRuntimeSnapshotProvider(() -> bedrockSessions.adminRuntimeSummary()
@@ -137,6 +142,7 @@ public final class NexoraServer {
         int udpPortMax = Integer.parseInt(System.getenv().getOrDefault("NEXORA_UDP_PORT_MAX", "30199"));
         WebRtcSdpNegotiator negotiator = new WebRtcSdpNegotiator(
                 identityService, bedrockSessions, maxPlayers, stunUrls, udpPortMin, udpPortMax);
+        lifecycle.register(negotiator);
         negotiatorReference.set(negotiator);
         NetherNetSignalingServer signaling = new NetherNetSignalingServer(
                 signalingAddress,
@@ -150,6 +156,7 @@ public final class NexoraServer {
                         0
                 ),
                 negotiator);
+        lifecycle.register(signaling);
 
         long autosaveSeconds = Long.parseLong(System.getenv().getOrDefault("NEXORA_AUTOSAVE_SECONDS", "300"));
         WorldAutosave autosave = new WorldAutosave(world, Duration.ofSeconds(autosaveSeconds),
@@ -160,51 +167,37 @@ public final class NexoraServer {
                 bedrockSessions::savePlayers,
                 elapsed -> aiDiagnostics.recordSlowOperation(
                         "world-autosave", elapsed, Duration.ofSeconds(1).toNanos()));
+        lifecycle.register(autosave);
         WorldFurnaceTicker furnaceTicker = new WorldFurnaceTicker(world,
                 exception -> {
                     aiDiagnostics.recordFailure("furnace-tick", exception);
                     System.err.println("NEXORA: furnace tick failed: " + exception.getMessage());
                 },
                 elapsed -> aiDiagnostics.recordSlowOperation("furnace-tick", elapsed, 50_000_000L));
+        lifecycle.register(furnaceTicker);
         try {
             discovery.start();
             signaling.start();
             aiMonitor.start();
         } catch (Exception exception) {
-            aiMonitor.close();
-            signaling.close();
-            negotiator.close();
             try {
-                furnaceTicker.close();
-            } catch (java.io.IOException tickerException) {
-                exception.addSuppressed(tickerException);
+                lifecycle.close();
+            } catch (Exception closeException) {
+                exception.addSuppressed(closeException);
             }
-            try {
-                autosave.close();
-            } catch (java.io.IOException saveException) {
-                exception.addSuppressed(saveException);
-            }
-            bedrockSessions.close();
-            discovery.close();
             throw exception;
         }
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            aiMonitor.close();
-            signaling.close();
-            negotiator.close();
             try {
-                furnaceTicker.close();
-            } catch (java.io.IOException exception) {
-                System.err.println("NEXORA: unable to stop furnace ticker: " + exception.getMessage());
+                lifecycle.close();
+            } catch (Exception exception) {
+                System.err.println("NEXORA: one or more server resources failed to stop cleanly: "
+                        + exception.getMessage());
+                for (Throwable suppressed : exception.getSuppressed()) {
+                    System.err.println("NEXORA shutdown detail: " + suppressed.getMessage());
+                }
             }
-            try {
-                autosave.close();
-            } catch (java.io.IOException exception) {
-                System.err.println("NEXORA: unable to flush world/player autosave: " + exception.getMessage());
-            }
-            bedrockSessions.close();
-            discovery.close();
         }, "nexora-shutdown"));
 
         System.out.printf("NEXORA NetherNet signaling listening on TCP %s:%d%n", httpBindHost, port);

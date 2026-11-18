@@ -330,3 +330,8 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Source lease release accepts the exact transfer while its durable state is PREPARED, CLAIMED or COMMITTED. This avoids leaving both nodes blocked if the destination has already claimed the record before the source release callback runs; ABORTED and mismatched records remain rejected.
 - Also fixed legacy login migration so the presence of an inventory file no longer suppresses restoration of the separate player profile or equipment file.
 - Validation status: the previous lease-registry baseline passed 802 Maven tests on `6dbeb3f`; newer source-ordering/heartbeat tests are not yet CI-verified. Recent GitHub Actions attempts terminate before any build step starts (runner ID 0, no step logs), so this is currently an execution/runner limitation rather than a reported Maven test failure.
+### 44. Separate-JVM online lease crash test — IMPLEMENTED, VALIDATION PENDING
+- Added a child-JVM test probe that opens the shared JDBC online-lease registry through its normal production constructor (database-authoritative time, not the package-private test clock).
+- Added a process-level integration test backed by an H2 file database with AUTO_SERVER: node A acquires and holds an XUID lease, node B in a separate JVM is rejected, node A is forcibly terminated, and node B is accepted only after the lease expires.
+- This exercises actual JVM/process boundaries and abrupt owner termination, beyond the prior independent-DataSource tests.
+- Validation is pending: this environment has not executed Maven for the new test, and no successful GitHub Actions run has yet confirmed it. This remains an H2 process test, not a production SQL vendor or network-partition test.

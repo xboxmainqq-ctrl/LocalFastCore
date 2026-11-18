@@ -193,3 +193,8 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - In-memory, local-file and JDBC ledgers now all reject state regression, premature reclaim, same/lower fencing tokens, terminal-state reopening, and mutation of XUID/node/checkpoint identity.
 - H2 integration tests cover JDBC persistence, concurrent claims, stale CAS, immutable identity and no PREPARED regression.
 - CI validation: 750 tests passed, zero failures on commit `73d7212`.
+
+
+### 29. JDBC lease reclaim after reconnect — VERIFIED
+- Added an H2-backed restart/reconnect scenario: a node's claim expires, a second DataSource reclaims it with a higher fencing token, the old token cannot commit, and the new token can.
+- CI: 751 tests passed, zero failures on commit `e074e3f`.

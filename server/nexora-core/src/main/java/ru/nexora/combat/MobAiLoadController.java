@@ -22,6 +22,9 @@ public final class MobAiLoadController {
     private final LongAdder decisionNanos = new LongAdder();
     private final AtomicLong lastDecisionNanos = new AtomicLong();
     private final AtomicLong maxDecisionNanos = new AtomicLong();
+    private volatile long aiBudgetNanos = 2_000_000L;
+    private final AtomicLong budgetDeferrals = new AtomicLong();
+    private final AtomicLong budgetNanosConsumed = new AtomicLong();
 
     public MobAiLoadController() {
         this(DEFAULT_FAR_UPDATE_INTERVAL);
@@ -91,6 +94,12 @@ public final class MobAiLoadController {
         lastDecisionNanos.set(elapsed);
         maxDecisionNanos.accumulateAndGet(elapsed, Math::max);
     }
+
+    public BudgetStats budgetStats() {
+        return new BudgetStats(aiBudgetNanos, budgetNanosConsumed.get(), budgetDeferrals.get());
+    }
+
+    public record BudgetStats(long budgetNanos, long consumedNanos, long deferredTasks) {}
 
     public Stats stats() {
         return new Stats(fullRateUpdates.sum(), deferredUpdates.sum(), farUpdateInterval,

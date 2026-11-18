@@ -129,7 +129,12 @@ public final class PlayerTransferClusterEndpoint {
         }
         PlayerHandoff handoff = new PlayerHandoff(abort.transferId(), 0L,
                 current.sourceNode(), current.targetNode(), new byte[0]);
-        destination.deactivateIfOwned(handoff, abort.fencingToken());
+        try {
+            destination.deactivateIfOwned(handoff, abort.fencingToken());
+        } catch (Exception failure) {
+            if (failure instanceof IOException ioFailure) throw ioFailure;
+            throw new IOException("Unable to clear aborted destination transfer reservation", failure);
+        }
     }
 
     public static byte[] encodeAbortPayload(UUID transferId, long fencingToken) {

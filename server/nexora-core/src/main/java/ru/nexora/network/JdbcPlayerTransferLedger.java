@@ -105,22 +105,23 @@ public final class JdbcPlayerTransferLedger implements PlayerTransferLedger {
                 || replacement.version() != expectedVersion + 1) {
             throw new IllegalArgumentException("Replacement version must be expectedVersion + 1");
         }
-        String sql = "UPDATE " + TABLE_NAME + " SET player_xuid = ?, source_node = ?, target_node = ?, "
-                + "player_revision = ?, transfer_state = ?, fencing_token = ?, lease_expires_at = ?, "
-                + "record_version = ?, updated_at = ? WHERE transfer_id = ? AND record_version = ?";
+        String sql = "UPDATE " + TABLE_NAME + " SET transfer_state = ?, fencing_token = ?, "
+                + "lease_expires_at = ?, record_version = ?, updated_at = ? "
+                + "WHERE transfer_id = ? AND record_version = ? AND player_xuid = ? "
+                + "AND source_node = ? AND target_node = ? AND player_revision = ?";
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, replacement.playerXuid());
-            statement.setString(2, replacement.sourceNode());
-            statement.setString(3, replacement.targetNode());
-            statement.setLong(4, replacement.playerRevision());
-            statement.setString(5, replacement.state().name());
-            statement.setLong(6, replacement.fencingToken());
-            statement.setLong(7, replacement.leaseExpiresAtEpochMillis());
-            statement.setLong(8, replacement.version());
-            statement.setLong(9, replacement.updatedAtEpochMillis());
-            statement.setString(10, transferId.toString());
-            statement.setLong(11, expectedVersion);
+            statement.setString(1, replacement.state().name());
+            statement.setLong(2, replacement.fencingToken());
+            statement.setLong(3, replacement.leaseExpiresAtEpochMillis());
+            statement.setLong(4, replacement.version());
+            statement.setLong(5, replacement.updatedAtEpochMillis());
+            statement.setString(6, transferId.toString());
+            statement.setLong(7, expectedVersion);
+            statement.setString(8, replacement.playerXuid());
+            statement.setString(9, replacement.sourceNode());
+            statement.setString(10, replacement.targetNode());
+            statement.setLong(11, replacement.playerRevision());
             int updated = statement.executeUpdate();
             commitIfNeeded(connection);
             return updated == 1;

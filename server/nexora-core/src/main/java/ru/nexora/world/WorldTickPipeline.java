@@ -39,6 +39,9 @@ public final class WorldTickPipeline {
         int scheduled = 0;
         int deferred = 0;
         int decisions = 0;
+        int highPriority = 0;
+        int normalPriority = 0;
+        int lowPriority = 0;
         for (WorldLivingEntity mob : mobs) {
             if (mob == null || mob.health() <= 0) continue;
 
@@ -50,9 +53,19 @@ public final class WorldTickPipeline {
 
             boolean activeTarget = nearest != null && distanceSquared
                     <= LivingEntityAiService.ACQUIRE_RANGE * LivingEntityAiService.ACQUIRE_RANGE;
+            double finiteDistanceSquared = finiteDistance(distanceSquared);
+            MobAiLoadController.Priority priority = loadController.priority(
+                    finiteDistanceSquared, activeTarget,
+                    LivingEntityAiService.isFlyingMob(mob.identifier())
+                            || LivingEntityAiService.isTimidMob(mob.identifier()));
+            switch (priority) {
+                case HIGH -> highPriority++;
+                case NORMAL -> normalPriority++;
+                case LOW -> lowPriority++;
+            }
 
             if (!loadController.shouldUpdate(mob.runtimeId(), tick,
-                    finiteDistance(distanceSquared), activeTarget)) {
+                    finiteDistanceSquared, activeTarget)) {
                 deferred++;
                 continue;
             }
@@ -64,7 +77,8 @@ public final class WorldTickPipeline {
             decisions++;
         }
 
-        return new TickResult(tick, mobs.size(), scheduled, deferred, decisions);
+        return new TickResult(tick, mobs.size(), scheduled, deferred, decisions,
+                highPriority, normalPriority, lowPriority);
     }
 
     private static double finiteDistance(double value) {
@@ -80,10 +94,13 @@ public final class WorldTickPipeline {
     }
 
     public record TickResult(long tick, int observedMobs, int scheduledMobs,
-                             int deferredMobs, int decisionsProduced) {
+                             int deferredMobs, int decisionsProduced,
+                             int highPriorityMobs, int normalPriorityMobs, int lowPriorityMobs) {
         public TickResult {
             if (tick < 0 || observedMobs < 0 || scheduledMobs < 0
-                    || deferredMobs < 0 || decisionsProduced < 0) {
+                    || deferredMobs < 0 || decisionsProduced < 0 || highPriorityMobs < 0
+                || normalPriorityMobs < 0 || lowPriorityMobs < 0
+                || highPriorityMobs + normalPriorityMobs + lowPriorityMobs > observedMobs) {
                 throw new IllegalArgumentException("Invalid tick result");
             }
         }

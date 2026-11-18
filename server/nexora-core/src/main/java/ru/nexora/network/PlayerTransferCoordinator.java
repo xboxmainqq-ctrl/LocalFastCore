@@ -35,6 +35,7 @@ public final class PlayerTransferCoordinator {
                     && !(current.state() == PlayerTransferRecord.State.CLAIMED
                     && current.leaseExpired(nowEpochMillis))) return Optional.empty();
             if (current.fencingToken() == Long.MAX_VALUE) throw new IOException("Transfer fencing token exhausted");
+            if (current.version() == Long.MAX_VALUE) throw new IOException("Transfer record version exhausted");
             PlayerTransferRecord next = current.claimed(current.fencingToken() + 1, leaseUntil, nowEpochMillis);
             if (ledger.compareAndSet(id, current.version(), next)) return Optional.of(next);
         }
@@ -61,6 +62,7 @@ public final class PlayerTransferCoordinator {
                     || current.fencingToken() != fencingToken || current.leaseExpired(now)) {
                 return Optional.empty();
             }
+            if (current.version() == Long.MAX_VALUE) throw new IOException("Transfer record version exhausted");
             PlayerTransferRecord next = commit ? current.committed(now) : current.aborted(now);
             if (ledger.compareAndSet(id, current.version(), next)) return Optional.of(next);
         }

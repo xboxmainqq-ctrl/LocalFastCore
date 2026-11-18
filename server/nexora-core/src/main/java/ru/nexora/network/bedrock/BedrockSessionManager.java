@@ -83,6 +83,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     public record AuthenticatedPlayer(String xuid, String displayName, long entityId) {
     }
 
+    public record TransferReconciliationReport(int scanned, int resumed, int redirected, int unresolved) {
+        public TransferReconciliationReport {
+            if (scanned < 0 || resumed < 0 || redirected < 0 || unresolved < 0) {
+                throw new IllegalArgumentException("Transfer reconciliation counts must not be negative");
+            }
+        }
+    }
+
     public static final int LOGIN_FAILED_CLIENT_OLD = 1;
     public static final int LOGIN_FAILED_SERVER_OLD = 2;
     public static final int LOGIN_SUCCESS = 0;
@@ -711,6 +719,64 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         } finally {
             state.combatLock.unlock();
         }
+    }
+
+    /**
+     * Reconciles frozen source sessions after a peer/database restart. Only a
+     * durable ABORTED record resumes gameplay; only COMMITTED ownership redirects.
+     */
+    public TransferReconciliationReport reconcileFrozenPlayerTransfers(
+            ru.nexora.network.DurableHandoffCoordinator ledger,
+            String localNodeId,
+            Map<String, java.net.InetSocketAddress> bedrockRoutes
+    ) throws IOException {
+        Objects.requireNonNull(ledger, "ledger");
+        Objects.requireNonNull(bedrockRoutes, "bedrockRoutes");
+        if (localNodeId == null || !localNodeId.matches("[A-Za-z0-9._-]{1,64}")) {
+            throw new IllegalArgumentException("Invalid local transfer node ID");
+        }
+        List<String> frozenXuids = new ArrayList<>();
+        for (SessionState state : sessions.values()) {
+            synchronized (state) {
+                if (state.identity != null && state.transferFrozen && !state.rejected
+                        && !state.transferRedirected) {
+                    frozenXuids.add(state.identity.xuid());
+                }
+            }
+        }
+        int resumed = 0;
+        int redirected = 0;
+        int unresolved = 0;
+        for (String xuid : frozenXuids) {
+            java.util.Optional<ru.nexora.network.PlayerTransferRecord> latest =
+                    ledger.findLatestForPlayer(xuid);
+            if (latest.isEmpty()) {
+                unresolved++;
+                continue;
+            }
+            ru.nexora.network.PlayerTransferRecord record = latest.orElseThrow();
+            if (!localNodeId.equals(record.sourceNode())) {
+                unresolved++;
+                continue;
+            }
+            if (record.state() == ru.nexora.network.PlayerTransferRecord.State.ABORTED) {
+                unfreezePlayerAfterTransferAbort(xuid);
+                resumed++;
+            } else if (record.state() == ru.nexora.network.PlayerTransferRecord.State.COMMITTED) {
+                java.net.InetSocketAddress route = bedrockRoutes.get(record.targetNode());
+                if (route == null) {
+                    unresolved++;
+                    continue;
+                }
+                redirectFrozenPlayerToNode(xuid, record.transferId(), record.fencingToken(),
+                        ledger, localNodeId, route.getHostString(), route.getPort());
+                redirected++;
+            } else {
+                unresolved++;
+            }
+        }
+        return new TransferReconciliationReport(
+                frozenXuids.size(), resumed, redirected, unresolved);
     }
 
     private void saveAllPlayerState(SessionState state) throws IOException {

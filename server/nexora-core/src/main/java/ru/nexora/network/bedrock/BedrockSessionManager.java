@@ -585,12 +585,18 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         checkpointCanonicalPlayerState(state);
     }
 
+    /** Revalidates destination ownership before any player persistence write. */
+    private static void assertTransferFence(SessionState state) throws IOException {
+        if (state.transferFence != null) state.transferFence.assertCurrent();
+    }
+
     /**
      * Writes a canonical aggregate after all legacy components have been saved.
      * Legacy stores remain the login authority until an explicit migration protocol
      * can prove that the aggregate is newer and complete.
      */
     private void checkpointCanonicalPlayerState(SessionState state) throws IOException {
+        assertTransferFence(state);
         if (checkpointService == null || !state.loginAuthenticated || !state.positionInitialized
                 || state.identity == null) return;
         String displayName = state.identity.displayName() == null ? "unknown" : state.identity.displayName();
@@ -605,6 +611,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private void savePlayer(SessionState state) throws IOException {
+        assertTransferFence(state);
         if (playerStorage == null || !state.loginAuthenticated || !state.positionInitialized
                 || state.identity == null) return;
         String displayName = state.identity.displayName() == null ? "unknown" : state.identity.displayName();
@@ -657,11 +664,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private void saveInventory(SessionState state) throws IOException {
+        assertTransferFence(state);
         if (inventoryStorage == null || !state.loginAuthenticated || state.identity == null) return;
         inventoryStorage.save(state.identity.xuid(), state.inventory, state.craftingUiInventory);
     }
 
     private void saveEquipment(SessionState state) throws IOException {
+        assertTransferFence(state);
         if (equipmentStorage == null || !state.loginAuthenticated || state.identity == null) return;
         equipmentStorage.save(state.identity.xuid(), state.equipment);
     }
@@ -1237,6 +1246,19 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         try {
           synchronized (state) {
             if (state.rejected || state.transferFrozen) return;
+            if (state.transferFence != null) {
+                try {
+                    state.transferFence.assertCurrent();
+                } catch (IOException staleFence) {
+                    state.rejected = true;
+                    state.loginAuthenticated = false;
+                    state.clientInitialized = false;
+                    removePlayerListEntry(message.networkId(), state);
+                    System.err.println("NEXORA: stopped Bedrock session after transfer ownership was lost: "
+                            + staleFence.getMessage());
+                    return;
+                }
+            }
 
             if (!state.compressionNegotiated) {
                 handleNetworkSettingsRequest(message, state);

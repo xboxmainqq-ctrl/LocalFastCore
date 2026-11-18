@@ -6,6 +6,14 @@ This is the continuing project plan for the Nerox 0.12.0 line and NexoraAI. Keep
 
 Prioritize a stable, fast, observable Minecraft server core. NexoraAI should help operators understand problems, detect abuse, and prepare safe fixes. It must not silently rewrite core behavior or punish players based only on a heuristic.
 
+## Architecture foundations
+
+- [x] Introduce a validated immutable process configuration so invalid ports, player limits, autosave intervals, and WebRTC ranges fail fast before network startup.
+- [x] Centralize owned server resources in a reverse-order lifecycle coordinator; startup rollback and shutdown both attempt every close operation and preserve suppressed failures.
+- [ ] Split process bootstrap into explicit runtime modules (network, world/persistence, gameplay, diagnostics) with dependency boundaries and focused integration tests.
+- [ ] Introduce a shared bounded task/tick orchestration layer; avoid independent uncoordinated schedulers for world subsystems.
+- [ ] Define health/readiness states and graceful admission shutdown before session draining and final persistence.
+
 ## Priority 1 — Core stability and performance
 
 - [ ] Establish repeatable baselines for tick-like subsystem latency, Bedrock inbound handling, mob AI, furnace updates, saves, heap, and thread counts. Clearly distinguish measured subsystem latency from true server TPS.
@@ -99,8 +107,8 @@ Do not consider the mob system finished after the load controller alone. Complet
 
 ## Current next steps
 
-1. Finish the remaining mob behavior gaps: fluid movement and species-specific special attacks must wait for a reliable world fluid model.
-2. Add a dedicated integration/load test that runs the spawner manager alongside the live Mob AI scheduler, including multiple players and more than 128 active spawners.
-3. Verify spawner actor replication and lifecycle on a real compatible Bedrock client/server; CI cannot replace this protocol-level check.
-4. Run controlled entity-load tests, capture subsystem latency and entity counts, and report measured results without inferring true TPS.
-5. Publish the final mob-system change inventory (added, changed, removed) and freeze mob code before starting unrelated feature work.
+1. Split the bootstrap into explicit runtime modules with clear ownership and dependency boundaries; keep startup rollback and shutdown ordering covered by tests.
+2. Add a shared bounded task/tick orchestration layer for world subsystems, with cancellation, failure reporting, and deterministic tests.
+3. Introduce readiness and graceful admission shutdown, then drain sessions and persist world/player state in a defined order.
+4. Continue the remaining mob and spawner integration/load checks; real Bedrock client verification remains a separate gate.
+5. Add measured subsystem latency baselines before performance optimization; do not infer true TPS from isolated timings.

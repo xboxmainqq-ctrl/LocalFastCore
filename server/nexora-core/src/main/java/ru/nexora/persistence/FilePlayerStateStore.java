@@ -14,7 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
-import java.util.Objects;
+import java.util.Objects;\nimport java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 /**
@@ -27,7 +27,7 @@ import java.util.Optional;
  */
 public final class FilePlayerStateStore implements PlayerStateStore {
     private static final int MAGIC = 0x4e585053; // NXPS
-    private static final int FORMAT_VERSION = 1;
+    private static final int FORMAT_VERSION = 2;
     private static final int CHECKSUM_BYTES = 32;
     private static final int MAX_PAYLOAD_BYTES = 4 * 1024 * 1024;
     private static final int MAX_FILE_BYTES = 4 * 1024 * 1024 + 128;
@@ -101,7 +101,7 @@ public final class FilePlayerStateStore implements PlayerStateStore {
             output.writeInt(MAGIC);
             output.writeByte(FORMAT_VERSION);
             output.writeInt(snapshot.schemaVersion());
-            output.writeLong(snapshot.playerId());
+            byte[] playerId = snapshot.playerId().getBytes(StandardCharsets.US_ASCII);\n            output.writeByte(playerId.length);\n            output.write(playerId);
             output.writeLong(snapshot.revision());
             output.writeLong(snapshot.capturedAtEpochMillis());
             output.writeInt(payload.length);

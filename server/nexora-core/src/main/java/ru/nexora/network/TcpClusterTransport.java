@@ -174,20 +174,20 @@ public final class TcpClusterTransport implements ClusterTransport {
             if (length < 1 || length > MAX_ENVELOPE_BYTES) throw new IOException("Invalid cluster frame length");
             byte[] envelope = new byte[length];
             input.readFully(envelope);
-            ClusterMessage message = codec.decode(envelope, localNodeId, System.currentTimeMillis());
-            if (!authorizedPeers.contains(message.sourceNode())) throw new SecurityException("Unauthorized cluster peer");
-            if (!replayGuard.accept(message.messageId(), System.currentTimeMillis()))
-                throw new SecurityException("Duplicate or capacity-rejected cluster message");
-            receiver.accept(message);
-            new DataOutputStream(socket.getOutputStream()).writeByte(ACK_ACCEPTED);
-            socket.getOutputStream().flush();
-        } catch (Exception rejected) {
             try {
-                if (!socket.isClosed()) {
-                    socket.getOutputStream().write(ACK_REJECTED);
-                    socket.getOutputStream().flush();
-                }
-            } catch (IOException ignored) { }
+                ClusterMessage message = codec.decode(envelope, localNodeId, System.currentTimeMillis());
+                if (!authorizedPeers.contains(message.sourceNode()))
+                    throw new SecurityException("Unauthorized cluster peer");
+                if (!replayGuard.accept(message.messageId(), System.currentTimeMillis()))
+                    throw new SecurityException("Duplicate or capacity-rejected cluster message");
+                receiver.accept(message);
+                socket.getOutputStream().write(ACK_ACCEPTED);
+            } catch (Exception rejected) {
+                socket.getOutputStream().write(ACK_REJECTED);
+            }
+            socket.getOutputStream().flush();
+        } catch (IOException failure) {
+            if (!closed.get()) System.err.println("NEXORA cluster receive failed: " + failure.getMessage());
         }
     }
 

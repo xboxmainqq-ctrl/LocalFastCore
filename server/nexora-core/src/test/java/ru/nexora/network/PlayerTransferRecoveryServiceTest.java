@@ -54,11 +54,15 @@ class PlayerTransferRecoveryServiceTest {
         var expired = recovery.recover(10);
         assertEquals(1, expired.expiredClaims());
         assertTrue(registry.find("xuid-123").isEmpty());
+        assertEquals(PlayerTransferRecord.State.ABORTED, ledger.get(id).orElseThrow().state());
 
-        // A later active claim can be recovered, and repeated recovery is harmless.
-        ledger.claim(id, "target", 41, 10_000).orElseThrow();
+        // A fresh transfer can be recovered, and repeated recovery is harmless.
+        UUID retryId = UUID.randomUUID();
+        ledger.prepare(new PlayerHandoff(retryId, 2L, "source", "target", new byte[0]),
+                "xuid-123", 8, 41);
+        ledger.claim(retryId, "target", 42, 10_000).orElseThrow();
         PlayerTransferRecoveryService activeRecovery = new PlayerTransferRecoveryService(
-                ledger, registry, "target", () -> 42L);
+                ledger, registry, "target", () -> 43L);
         assertEquals(1, activeRecovery.recover(10).registered());
         assertEquals(1, activeRecovery.recover(10).alreadyRegistered());
     }

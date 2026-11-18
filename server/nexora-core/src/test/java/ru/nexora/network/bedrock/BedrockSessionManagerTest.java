@@ -3404,10 +3404,23 @@ class BedrockSessionManagerTest {
 
             long revision = manager.freezePlayerForTransfer("lease-order-xuid");
             setSessionField(manager, "lease-order-network", "lastOnlineLeaseRenewalNanos", Long.MIN_VALUE);
-            manager.renewOnlinePlayerLeases();
+            java.util.concurrent.locks.ReentrantLock combatLock =
+                    (java.util.concurrent.locks.ReentrantLock) getSessionField(
+                            manager, "lease-order-network", "combatLock");
+            combatLock.lock();
+            try {
+                java.util.concurrent.ExecutorService heartbeat = java.util.concurrent.Executors.newSingleThreadExecutor();
+                try {
+                    heartbeat.submit(manager::renewOnlinePlayerLeases).get(2, java.util.concurrent.TimeUnit.SECONDS);
+                } finally {
+                    heartbeat.shutdownNow();
+                }
+            } finally {
+                combatLock.unlock();
+            }
             assertTrue(leases.renew("lease-order-xuid", "node-a", "lease-order-session",
                     now + 1L, 15_000L),
-                    "Frozen source heartbeat retains global ownership while PREPARED is not yet durable");
+                    "Frozen source heartbeat renews ownership even while the gameplay lock is held");
 
             UUID transferId = UUID.randomUUID();
             PlayerHandoff handoff = new PlayerHandoff(transferId, 1L, "node-a", "node-b", new byte[0]);

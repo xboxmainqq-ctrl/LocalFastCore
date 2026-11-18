@@ -21,8 +21,9 @@ public record JvmResourceSnapshot(
         double systemLoadAverage
 ) {
     public JvmResourceSnapshot {
-        if (heapUsedBytes < 0 || heapCommittedBytes < 0 || heapMaxBytes < -1
-                || nonHeapUsedBytes < 0 || nonHeapCommittedBytes < 0
+        if (heapUsedBytes < 0 || heapCommittedBytes < heapUsedBytes || heapMaxBytes < -1
+                || (heapMaxBytes > 0 && heapCommittedBytes > heapMaxBytes)
+                || nonHeapUsedBytes < 0 || nonHeapCommittedBytes < nonHeapUsedBytes
                 || liveThreadCount < 0 || peakThreadCount < 0 || daemonThreadCount < 0
                 || daemonThreadCount > liveThreadCount || availableProcessors < 1
                 || (!Double.isFinite(systemLoadAverage) && systemLoadAverage != -1.0)) {

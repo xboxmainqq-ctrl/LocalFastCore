@@ -20,6 +20,16 @@ class NexoraAiDiagnosticsTest {
     }
 
     @Test
+    void resourceSnapshotIsAvailableThroughDiagnostics() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        JvmResourceSnapshot resources = diagnostics.resourceSnapshot();
+
+        assertTrue(resources.heapUsedBytes() >= 0);
+        assertTrue(resources.heapCommittedBytes() >= resources.heapUsedBytes());
+        assertTrue(resources.liveThreadCount() > 0);
+    }
+
+    @Test
     void reportedFailureIsCountedAndChangesHealthToWarning() {
         NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
 

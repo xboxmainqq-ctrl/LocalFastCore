@@ -26,5 +26,9 @@ class JvmResourceSnapshotTest {
                 1, 1, 1, 0, 0, 2, 1, 0, 1, -1.0));
         assertThrows(IllegalArgumentException.class, () -> new JvmResourceSnapshot(
                 2, 1, 10, 0, 0, 1, 1, 0, 1, -1.0));
+        assertThrows(IllegalArgumentException.class, () -> new JvmResourceSnapshot(
+                1, 11, 10, 0, 0, 1, 1, 0, 1, -1.0));
+        assertThrows(IllegalArgumentException.class, () -> new JvmResourceSnapshot(
+                0, 0, 10, 2, 1, 1, 1, 0, 1, -1.0));
     }
 }

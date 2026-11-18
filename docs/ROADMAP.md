@@ -63,7 +63,7 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 - [x] Persist spawner type, delay, coordinates, and next-spawn timer atomically with checksum validation across world saves/restarts.
 - [x] Replicate spawned actors and operator-driven spawner block updates to initialized Bedrock clients; protocol compatibility still needs real-client verification.
 - [x] Add allowlisted operator setup/inspection/configuration/removal commands; survival item placement and loot are still pending.
-- [x] Add unit and persistence tests for unloaded/inactive areas, caps, invalid positions, corrupted data, timer pause, and restart recovery; CI verification is pending.
+- [x] Add unit and persistence tests for unloaded/inactive areas, caps, invalid positions, corrupted data, timer pause, and restart recovery; verified by the full CI suite (581 tests, 0 failures, 0 errors).
 - [ ] Verify on a real Bedrock client/server that Mob AI load scheduling never prevents a spawner from producing mobs or removes spawned entities.
 - [ ] Run integration/load tests with more than 128 active spawners, multiple players, and a full living-entity cap; record measured results rather than inferring TPS.
 
@@ -98,8 +98,8 @@ Do not consider the mob system finished after the load controller alone. Complet
 
 ## Current next steps
 
-1. Complete Mob AI behavior and lifecycle regression coverage, including target acquisition, combat, special mobs, navigation, and despawn cleanup.
-2. Implement vanilla-style spawner blocks, activation/delay/caps/valid positions, persistence, and Bedrock client replication.
-3. Test spawners with multiple players, nearby-mob caps, restart recovery, and the Mob AI load controller.
-4. Run controlled entity-load tests and then verify on a real compatible Bedrock host; do not claim performance gains from synthetic tests alone.
-5. Publish a final mob-system change inventory (added, changed, removed) and freeze mob code before starting unrelated feature work.
+1. Finish the remaining mob behavior gaps: fluid movement and species-specific special attacks must wait for a reliable world fluid model.
+2. Add a dedicated integration/load test that runs the spawner manager alongside the live Mob AI scheduler, including multiple players and more than 128 active spawners.
+3. Verify spawner actor replication and lifecycle on a real compatible Bedrock client/server; CI cannot replace this protocol-level check.
+4. Run controlled entity-load tests, capture subsystem latency and entity counts, and report measured results without inferring true TPS.
+5. Publish the final mob-system change inventory (added, changed, removed) and freeze mob code before starting unrelated feature work.

@@ -37,6 +37,13 @@ public final class BedrockPlayerTransferSource implements PlayerTransferLifecycl
     }
 
     @Override
+    public void onPrepared(PlayerHandoff handoff) throws IOException {
+        validateSource(handoff);
+        String xuid = resolveXuid(handoff);
+        sessions.releaseOnlinePlayerLeaseAfterPreparedTransfer(xuid, handoff.transferId());
+    }
+
+    @Override
     public void unfreeze(PlayerHandoff handoff) throws IOException {
         validateSource(handoff);
         String xuid = resolveXuid(handoff);

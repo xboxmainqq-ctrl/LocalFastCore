@@ -28,8 +28,8 @@ public final class BedrockPendingTransferActivator
         Objects.requireNonNull(handoff, "handoff");
         Objects.requireNonNull(bundle, "bundle");
         Objects.requireNonNull(fence, "fence");
-        if (!handoff.targetNode().equals(fence.targetNode())
-                || !bundle.profile().xuid().equals(fence.playerXuid())
+        if (!handoff.transferId().equals(fence.transferId())
+                || !handoff.targetNode().equals(fence.targetNode())
                 || !bundle.profile().xuid().equals(fence.playerXuid())) {
             throw new SecurityException("Transfer checkpoint identity does not match destination claim");
         }

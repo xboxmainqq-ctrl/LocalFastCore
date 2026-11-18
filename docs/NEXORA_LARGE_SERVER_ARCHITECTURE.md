@@ -122,3 +122,18 @@ The snapshot contract uses the authenticated Bedrock XUID as an opaque, validate
 
 ### Canonical player-state bundle
 NEXORA has an immutable `PlayerStateBundle`, a bounded explicit binary `PlayerStateBundleCodec`, and a `PlayerStateCheckpointService` that advances revisions from the durable latest snapshot and restores the aggregate. The bundle covers profile/location/vitals/experience, player inventory and selected hotbar slot, crafting UI slots, armor, offhand, cursor, and magical equipment. It contains detached immutable snapshots rather than live session objects. The codec and checkpoint coordinator have round-trip/durable-store tests. `NexoraServer` now wires the checkpoint service into `BedrockSessionManager`; after the legacy profile, inventory, and equipment stores are saved, the manager writes a canonical shadow checkpoint. Legacy stores remain the login authority whenever any legacy component is present. A canonical snapshot is used as a recovery fallback only when profile, inventory, and equipment legacy components are all absent; it never overwrites partially present legacy state. This is a conservative recovery bridge, not completed migration or distributed replication.
+
+
+### Live transfer lifecycle protocol — partial foundation
+
+The `PlayerTransferLifecycle` coordinator sequences the participant boundary:
+
+1. Freeze the source and checkpoint the canonical player aggregate.
+2. Publish a durable PREPARED record containing the checkpoint revision.
+3. Claim the transfer on the destination with a lease and monotonically increasing fencing token.
+4. Restore and activate the destination while enforcing that fence on ownership-sensitive writes.
+5. Commit the ledger only after destination activation succeeds.
+
+On failed activation, the destination is deactivated before the ledger is aborted. The source resumes only after ABORTED is durably confirmed. If commit is uncertain, the source remains frozen; the destination is asked to deactivate only while it still owns the same fence. This intentionally favors temporary unavailability over two authoritative owners.
+
+The coordinator currently uses participant interfaces and is not yet wired into the live Bedrock session lifecycle. The local file ledger is not a shared multi-host consensus store. Cross-host handoff must remain disabled until session hooks, replicated ledger semantics, authenticated transport, and process-level fault-injection tests are complete.

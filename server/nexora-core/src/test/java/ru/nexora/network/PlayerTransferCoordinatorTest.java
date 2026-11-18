@@ -67,4 +67,20 @@ class PlayerTransferCoordinatorTest {
         Files.write(file, bytes);
         assertThrows(IOException.class, () -> store.get(id));
     }
+    @Test
+    void durableHandoffFacadePersistsEnvelopeOwnershipMetadata() throws IOException {
+        DurableHandoffCoordinator handoffs = new DurableHandoffCoordinator(
+                new PlayerTransferCoordinator(new FilePlayerTransferLedger(temporaryDirectory)));
+        UUID id = UUID.randomUUID();
+        PlayerHandoff envelope = new PlayerHandoff(id, 91L, "source-1", "target-2", new byte[] {1, 2, 3});
+
+        handoffs.prepare(envelope, "xuid-handoff", 18, 10_000);
+        PlayerTransferRecord claim = handoffs.claim(id, "target-2", 10_100, 2_000).orElseThrow();
+        assertEquals("xuid-handoff", claim.playerXuid());
+        assertEquals(18, claim.playerRevision());
+        assertEquals(PlayerTransferRecord.State.CLAIMED, claim.state());
+        assertEquals(PlayerTransferRecord.State.COMMITTED,
+                handoffs.commit(id, claim.fencingToken(), 10_200).orElseThrow().state());
+    }
+
 }

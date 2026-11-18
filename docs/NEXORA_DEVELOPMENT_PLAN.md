@@ -159,3 +159,14 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Schema initialization is explicit; deployment tooling must run it and provide the JDBC driver, shared database, credentials and tested isolation/failover settings.
 - The adapter is not wired into startup and does not create replication or end-to-end exactly-once semantics.
 - Next: validate against supported real database engines in integration CI, then add a deployment-owned DataSource configuration. Live Bedrock source/destination participant hooks and process-level crash recovery remain gated.
+
+
+### 25. Live Bedrock source participant — INTEGRATED
+- Added canonical checkpoint revision lookup to `PlayerStateCheckpointService`.
+- `BedrockSessionManager.freezePlayerForTransfer(XUID)` serializes against inbound combat/gameplay with the session lock, verifies one authenticated source session, checkpoints the complete canonical player bundle, and returns its durable revision.
+- Frozen sessions reject inbound frames, leave authenticated/initialized gameplay counts and visibility, and are not modified by periodic save, disconnect cleanup, or shutdown crafting cleanup.
+- Remote player-list/actor visibility is removed while the source is frozen.
+- `unfreezePlayerAfterTransferAbort(XUID)` restores the existing source session and re-advertises it only when called after a confirmed durable ABORTED transition.
+- Added `BedrockPlayerTransferSource` adapter with explicit source-node validation and caller-supplied authenticated XUID resolution.
+- Added a session-level freeze/checkpoint/abort-resume regression test.
+- Still gated: destination session reconstruction, exact-revision validation, fencing enforcement at every ownership mutation, authenticated network handoff, and crash-recovery reconciliation. No cross-host transfer is enabled.

@@ -2988,4 +2988,42 @@ class BedrockSessionManagerTest {
         manager.close();
     }
 
+
+    @Test
+    void transferFreezeCheckpointsAndRemovesSourceFromActiveGameplayUntilAbortResume() throws Exception {
+        PlayerStateCheckpointService checkpoints = new PlayerStateCheckpointService(
+                new FilePlayerStateStore(temporaryDirectory.resolve("transfer-checkpoints")),
+                new PlayerStateBundleCodec());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("transfer-source-world", 0L,
+                        new ru.nexora.world.FlatWorldGenerator()),
+                null, null, null, checkpoints, (networkId, label, frame) -> {}, event -> {});
+        manager.onIdentity("transfer-source", new NetherNetClientIdentity(
+                "transfer-token", new byte[] {7}, "transfer-xuid",
+                "TransferPlayer", "transfer-playfab", "20CA2", null));
+        setSessionField(manager, "transfer-source", "loginAuthenticated", true);
+        setSessionField(manager, "transfer-source", "clientInitialized", true);
+        setSessionField(manager, "transfer-source", "positionInitialized", true);
+        setSessionField(manager, "transfer-source", "positionX", 12.0f);
+        setSessionField(manager, "transfer-source", "positionY", 70.0f);
+        setSessionField(manager, "transfer-source", "positionZ", -4.0f);
+
+        long revision = manager.freezePlayerForTransfer("transfer-xuid");
+
+        assertEquals(0L, revision);
+        assertEquals(0L, manager.authenticatedPlayerCount());
+        assertTrue(manager.playerPosition("transfer-source").isEmpty());
+        assertTrue(checkpoints.load("transfer-xuid").isPresent());
+        assertTrue((boolean) getSessionField(manager, "transfer-source", "transferFrozen"));
+
+        manager.unfreezePlayerAfterTransferAbort("transfer-xuid");
+
+        assertEquals(1L, manager.authenticatedPlayerCount());
+        assertTrue(manager.playerPosition("transfer-source").isPresent());
+        assertFalse((boolean) getSessionField(manager, "transfer-source", "transferFrozen"));
+        assertEquals(0L, checkpoints.latestRevision("transfer-xuid"));
+        manager.close();
+    }
+
 }

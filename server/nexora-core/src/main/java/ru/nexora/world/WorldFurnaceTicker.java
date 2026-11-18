@@ -1,9 +1,9 @@
 package ru.nexora.world;
 
+import ru.nexora.lifecycle.RuntimeTaskScheduler;
+
 import java.io.IOException;
 import java.util.Objects;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -14,7 +14,10 @@ public final class WorldFurnaceTicker implements AutoCloseable {
     private final World world;
     private final Consumer<RuntimeException> errorHandler;
     private final LongConsumer executionObserver;
-    private final ScheduledExecutorService executor;
+    private final RuntimeTaskScheduler scheduler;
+    private final boolean ownsScheduler;
+    private final RuntimeTaskScheduler.TaskHandle task;
+    private final Object tickLock = new Object();
     private final AtomicBoolean closed = new AtomicBoolean();
 
     public WorldFurnaceTicker(World world, Consumer<RuntimeException> errorHandler) {
@@ -24,31 +27,50 @@ public final class WorldFurnaceTicker implements AutoCloseable {
     public WorldFurnaceTicker(
             World world, Consumer<RuntimeException> errorHandler, LongConsumer executionObserver
     ) {
+        this(world, errorHandler, executionObserver, new RuntimeTaskScheduler(), true);
+    }
+
+    public WorldFurnaceTicker(
+            World world,
+            Consumer<RuntimeException> errorHandler,
+            LongConsumer executionObserver,
+            RuntimeTaskScheduler scheduler
+    ) {
+        this(world, errorHandler, executionObserver, scheduler, false);
+    }
+
+    private WorldFurnaceTicker(
+            World world,
+            Consumer<RuntimeException> errorHandler,
+            LongConsumer executionObserver,
+            RuntimeTaskScheduler scheduler,
+            boolean ownsScheduler
+    ) {
         this.world = Objects.requireNonNull(world, "world");
         this.errorHandler = Objects.requireNonNull(errorHandler, "errorHandler");
         this.executionObserver = Objects.requireNonNull(executionObserver, "executionObserver");
-        executor = Executors.newSingleThreadScheduledExecutor(task -> {
-            Thread thread = new Thread(task, "nexora-furnace-ticker");
-            thread.setDaemon(true);
-            return thread;
-        });
-        executor.scheduleAtFixedRate(this::tickSafely, 50, 50, TimeUnit.MILLISECONDS);
+        this.scheduler = Objects.requireNonNull(scheduler, "scheduler");
+        this.ownsScheduler = ownsScheduler;
+        this.task = scheduler.scheduleAtFixedRate(RuntimeTaskScheduler.Lane.TICK,
+                this::tickSafely, 50, 50, TimeUnit.MILLISECONDS);
     }
 
     private void tickSafely() {
-        if (closed.get()) return;
-        long started = System.nanoTime();
-        try {
-            world.furnaces().ifPresent(manager -> manager.tickAll(1));
-        } catch (RuntimeException exception) {
-            try { errorHandler.accept(exception); }
-            catch (RuntimeException ignored) {
-                // A logging callback must not terminate the furnace ticker.
-            }
-        } finally {
-            try { executionObserver.accept(Math.max(0L, System.nanoTime() - started)); }
-            catch (RuntimeException ignored) {
-                // Diagnostics must not terminate the furnace ticker.
+        synchronized (tickLock) {
+            if (closed.get()) return;
+            long started = System.nanoTime();
+            try {
+                world.furnaces().ifPresent(manager -> manager.tickAll(1));
+            } catch (RuntimeException exception) {
+                try { errorHandler.accept(exception); }
+                catch (RuntimeException ignored) {
+                    // A logging callback must not terminate the furnace ticker.
+                }
+            } finally {
+                try { executionObserver.accept(Math.max(0L, System.nanoTime() - started)); }
+                catch (RuntimeException ignored) {
+                    // Diagnostics must not terminate the furnace ticker.
+                }
             }
         }
     }
@@ -56,18 +78,10 @@ public final class WorldFurnaceTicker implements AutoCloseable {
     @Override
     public void close() throws IOException {
         if (!closed.compareAndSet(false, true)) return;
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-                executor.shutdownNow();
-                if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-                    throw new IOException("Timed out waiting for furnace ticker to stop");
-                }
-            }
-        } catch (InterruptedException exception) {
-            executor.shutdownNow();
-            Thread.currentThread().interrupt();
-            throw new IOException("Interrupted while stopping furnace ticker", exception);
+        task.cancel();
+        synchronized (tickLock) {
+            // Wait for an in-flight tick before world persistence begins.
         }
+        if (ownsScheduler) scheduler.close();
     }
 }

@@ -47,14 +47,14 @@ Gameplay systems -> Gameplay Events / Gameplay Graph -> Work Graph -> Task Contr
 ### 7. Contract-aware Work Graph
 Connect every Work Graph node to its full TaskContract instead of duplicating only lane/criticality/estimate fields.
 
-### 8. Unified execution observation
-Automatically record actual task duration and update future estimates using robust p95-style history.
+### 8. Unified execution observation — DONE
+`TaskExecution` measures actual execution, feeds observations into WorkGraph and HotPathProfiler, and records failures.
 
-### 9. Gameplay event-to-work bridge
-Allow expensive event handlers to create Work Graph tasks without direct scheduler coupling.
+### 9. Gameplay event-to-work bridge — DONE
+`GameplayWorkBridge` converts events into explicit Work Graph items without coupling gameplay modules to the scheduler.
 
-### 10. Safe execution ownership
-Define explicit ownership rules for world, entity, player and gameplay state before parallel execution.
+### 10. Safe execution ownership — IN PROGRESS
+`StateOwnership` establishes explicit PLAYER/WORLD/ENTITY/GAMEPLAY/PERSISTENCE ownership. Parallel world mutation remains disabled until stronger lifecycle and contention tests exist.
 
 ### 11. Adaptive multi-lane budgeting
 React to player density, world activity, entity density, AI pressure and gameplay workload while preserving critical work.

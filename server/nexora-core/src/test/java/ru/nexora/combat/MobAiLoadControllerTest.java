@@ -139,5 +139,19 @@ class MobAiLoadControllerTest {
         assertThrows(IllegalArgumentException.class, () -> controller.setAiBudgetNanos(50_000_001));
     }
 
+    @Test
+    void adaptiveBudgetShrinksUnderTickPressureAndGrowsWhenServerHasHeadroom() {
+        MobAiLoadController controller = new MobAiLoadController(4);
+        controller.setAiBudgetNanos(2_000_000);
+        controller.configureAdaptiveBudget(true, 50_000_000, 500_000, 5_000_000);
+
+        controller.updateAdaptiveBudget(70_000_000);
+        assertEquals(1_800_000, controller.aiBudgetNanos());
+
+        controller.updateAdaptiveBudget(20_000_000);
+        assertTrue(controller.aiBudgetNanos() > 1_800_000);
+        assertTrue(controller.smoothedTickLoad() > 0.0);
+    }
+
 }
 

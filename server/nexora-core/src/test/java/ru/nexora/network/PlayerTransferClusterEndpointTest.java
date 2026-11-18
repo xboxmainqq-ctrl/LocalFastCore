@@ -108,6 +108,73 @@ class PlayerTransferClusterEndpointTest {
     }
 
     @Test
+    void abortMessageInvalidatesClaimBeforeClearingMatchingPendingReservation() throws Exception {
+        String xuid = "cluster-endpoint-abort-xuid";
+        PlayerStateCheckpointService checkpoints = checkpoints();
+        checkpoints.checkpoint(bundle(xuid), 100L);
+        DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
+                new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
+        PlayerHandoff handoff = handoff();
+        ledger.prepare(handoff, xuid, checkpoints.latestRevision(xuid), 100L);
+        var claim = ledger.claim(handoff.transferId(), "target-node", 101L, 5_000L).orElseThrow();
+        AtomicBoolean deactivated = new AtomicBoolean();
+        PlayerTransferClusterEndpoint endpoint = new PlayerTransferClusterEndpoint(
+                "target-node", ledger,
+                new CheckpointedPlayerTransferDestination(
+                        ledger, checkpoints, "target-node",
+                        new CheckpointedPlayerTransferDestination.Activator() {
+                            @Override public boolean restoreAndActivate(PlayerHandoff ignored,
+                                    PlayerStateBundle restored, PlayerTransferFence fence) { return true; }
+                            @Override public void deactivate(PlayerHandoff ignored, PlayerTransferFence fence) {
+                                deactivated.set(true);
+                            }
+                        }, () -> 102L),
+                5_000L, () -> 102L);
+
+        ClusterMessage abort = new ClusterMessage(UUID.randomUUID(), "source-node", "target-node",
+                PlayerTransferClusterEndpoint.ABORT_MESSAGE_TYPE, 102L,
+                PlayerTransferClusterEndpoint.encodeAbortPayload(
+                        handoff.transferId(), claim.fencingToken()));
+        endpoint.handle(abort);
+
+        assertEquals(PlayerTransferRecord.State.ABORTED,
+                ledger.get(handoff.transferId()).orElseThrow().state());
+        assertTrue(deactivated.get());
+    }
+
+    @Test
+    void abortPreparedMessageIsIdempotentWithoutInventingAClaimFence() throws Exception {
+        String xuid = "cluster-endpoint-prepared-abort-xuid";
+        PlayerStateCheckpointService checkpoints = checkpoints();
+        checkpoints.checkpoint(bundle(xuid), 100L);
+        DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
+                new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
+        PlayerHandoff handoff = handoff();
+        ledger.prepare(handoff, xuid, checkpoints.latestRevision(xuid), 100L);
+        PlayerTransferClusterEndpoint endpoint = new PlayerTransferClusterEndpoint(
+                "target-node", ledger,
+                new CheckpointedPlayerTransferDestination(
+                        ledger, checkpoints, "target-node",
+                        new CheckpointedPlayerTransferDestination.Activator() {
+                            @Override public boolean restoreAndActivate(PlayerHandoff ignored,
+                                    PlayerStateBundle restored, PlayerTransferFence fence) { return true; }
+                            @Override public void deactivate(PlayerHandoff ignored, PlayerTransferFence fence) { }
+                        }, () -> 102L),
+                5_000L, () -> 102L);
+        ClusterMessage abort = new ClusterMessage(UUID.randomUUID(), "source-node", "target-node",
+                PlayerTransferClusterEndpoint.ABORT_MESSAGE_TYPE, 102L,
+                PlayerTransferClusterEndpoint.encodeAbortPayload(handoff.transferId(), 0L));
+
+        endpoint.handle(abort);
+        endpoint.handle(new ClusterMessage(UUID.randomUUID(), "source-node", "target-node",
+                PlayerTransferClusterEndpoint.ABORT_MESSAGE_TYPE, 103L,
+                PlayerTransferClusterEndpoint.encodeAbortPayload(handoff.transferId(), 0L)));
+        assertEquals(PlayerTransferRecord.State.ABORTED,
+                ledger.get(handoff.transferId()).orElseThrow().state());
+        assertEquals(0L, ledger.get(handoff.transferId()).orElseThrow().fencingToken());
+    }
+
+    @Test
     void rejectsMessageFromNodeThatDoesNotOwnPreparedTransfer() throws Exception {
         String xuid = "cluster-endpoint-spoof-xuid";
         PlayerStateCheckpointService checkpoints = checkpoints();

@@ -141,7 +141,7 @@ class CheckpointedPlayerTransferDestinationTest {
         assertFalse(deactivated.get());
     }
 
-    private PlayerStateCheckpointService checkpoints() {
+    private PlayerStateCheckpointService checkpoints() throws IOException {
         return new PlayerStateCheckpointService(
                 new FilePlayerStateStore(temporaryDirectory), new PlayerStateBundleCodec());
     }

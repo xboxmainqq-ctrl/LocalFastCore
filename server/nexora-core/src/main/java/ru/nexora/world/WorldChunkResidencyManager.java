@@ -70,6 +70,7 @@ public final class WorldChunkResidencyManager {
             }
         }
         resident.removeAll(unload);
+        for (long key : unload) lastDesiredTick.remove(key);
         return new ResidencyPlan(List.copyOf(decode(load)), List.copyOf(decode(unload)),
                 resident.size(), desiredRefCounts.size());
     }
@@ -105,7 +106,14 @@ public final class WorldChunkResidencyManager {
         return ((long) x << 32) | (z & 0xffff_ffffL);
     }
 
-    public record PlayerChunk(int chunkX, int chunkZ) {}
+    public record PlayerChunk(int chunkX, int chunkZ) {
+        public PlayerChunk {
+            if (Math.abs((long) chunkX) > 1_875_000L
+                    || Math.abs((long) chunkZ) > 1_875_000L) {
+                throw new IllegalArgumentException("Player chunk is outside supported world bounds");
+            }
+        }
+    }
 
     public record ChunkCoordinate(int chunkX, int chunkZ) {}
 

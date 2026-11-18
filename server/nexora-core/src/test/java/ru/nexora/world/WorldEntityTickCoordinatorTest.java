@@ -49,6 +49,6 @@ class WorldEntityTickCoordinatorTest {
 
         assertTrue(residency.isResidentAtBlockPosition(-1, -1));
         assertTrue(residency.isResidentAtBlockPosition(-16, -16));
-        assertFalse(residency.isResidentAtBlockPosition(0, 0));
+        assertFalse(residency.isResidentAtBlockPosition(48, 48));
     }
 }

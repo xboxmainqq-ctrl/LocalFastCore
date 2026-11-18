@@ -15,7 +15,7 @@ class WorldTickPipelineTest {
         WorldTickPipeline pipeline = new WorldTickPipeline(
                 new MobAiLoadController(2), new LivingEntityAiService());
         WorldLivingEntityManager manager = new WorldLivingEntityManager();
-        WorldLivingEntity near = manager.spawn("minecraft:zombie", 20, 0, 64, 0);
+        WorldLivingEntity near = manager.spawn("minecraft:zombie", 20, 5, 64, 0);
         WorldLivingEntity far = manager.spawn("minecraft:zombie", 20, 100, 64, 100);
         var player = new LivingEntityAiService.PlayerTarget("player", 0, 64, 0, true);
         List<LivingEntityAiService.Decision> decisions = new ArrayList<>();

@@ -246,4 +246,27 @@ class NexoraAiDiagnosticsTest {
         assertTrue(diagnostics.recentEvidence().contains("overBudget=1"));
     }
 
+
+    @Test
+    void longerLatencyWindowsAggregateMinuteBucketsAndExpireOldData() {
+        java.util.concurrent.atomic.AtomicLong clock = new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        diagnostics.recordSlowOperation("mob-ai", 10, 5);
+        clock.addAndGet(60_000_000_000L * 4);
+        diagnostics.recordSlowOperation("mob-ai", 30, 25);
+
+        var summaries = diagnostics.latencyWindowSummaries();
+        var fiveMinutes = summaries.stream().filter(s -> s.windowMinutes() == 5).findFirst().orElseThrow();
+        var hour = summaries.stream().filter(s -> s.windowMinutes() == 60).findFirst().orElseThrow();
+        assertEquals(2, fiveMinutes.sampleCount());
+        assertEquals(2, fiveMinutes.slowOperationCount());
+        assertEquals(2, hour.sampleCount());
+        assertEquals(20, hour.averageNanos());
+
+        clock.addAndGet(60_000_000_000L * 2);
+        var afterExpiry = diagnostics.latencyWindowSummaries();
+        var fiveAfterExpiry = afterExpiry.stream().filter(s -> s.windowMinutes() == 5).findFirst().orElseThrow();
+        assertEquals(1, fiveAfterExpiry.sampleCount());
+        assertEquals(30, fiveAfterExpiry.maxNanos());
+    }
 }

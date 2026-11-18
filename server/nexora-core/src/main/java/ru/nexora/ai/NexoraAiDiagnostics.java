@@ -13,6 +13,7 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.LongSupplier;
 
 /**
  * Read-only runtime diagnostics for NexoraAI.
@@ -28,15 +29,26 @@ public final class NexoraAiDiagnostics {
     private static final int MAX_LATENCY_SUBSYSTEMS = 16;
     private static final int LATENCY_SAMPLES_PER_SUBSYSTEM = 60;
     private static final long LATENCY_WINDOW_NANOS = 60_000_000_000L;
+    private static final long LATENCY_BUCKET_NANOS = 60_000_000_000L;
+    private static final int MAX_LATENCY_BUCKETS = 60;
 
-    private final long startedAtNanos = System.nanoTime();
+    private final LongSupplier nanoClock;
+    private final long startedAtNanos;
     private final AtomicLong recordedFailures = new AtomicLong();
     private final AtomicLong slowOperationCount = new AtomicLong();
     private final ConcurrentLinkedDeque<DiagnosticEvent> events = new ConcurrentLinkedDeque<>();
     private final ConcurrentHashMap<String, AtomicLong> repeatedSignatures = new ConcurrentHashMap<>();
     private final Map<String, ArrayDeque<LatencySample>> latencySamples = new java.util.LinkedHashMap<>();
+    private final Map<String, java.util.TreeMap<Long, LatencyBucket>> latencyBuckets = new java.util.LinkedHashMap<>();
     private volatile String lastFailure = "none";
     private volatile String lastSlowOperation = "none";
+
+    public NexoraAiDiagnostics() { this(System::nanoTime); }
+
+    NexoraAiDiagnostics(LongSupplier nanoClock) {
+        this.nanoClock = Objects.requireNonNull(nanoClock, "nanoClock");
+        this.startedAtNanos = nanoClock.getAsLong();
+    }
 
     /** Records a failure reported by a subsystem without retaining its Throwable or stack trace. */
     public void recordFailure(Throwable failure) {
@@ -84,7 +96,11 @@ public final class NexoraAiDiagnostics {
     }
 
     private synchronized void recordLatencySample(String subsystem, long elapsedNanos, boolean exceededBudget) {
-        long now = System.nanoTime();
+        long now = nanoClock.getAsLong();
+        long minute = Math.floorDiv(now, LATENCY_BUCKET_NANOS);
+        java.util.TreeMap<Long, LatencyBucket> buckets = latencyBuckets.computeIfAbsent(subsystem, ignored -> new java.util.TreeMap<>());
+        buckets.computeIfAbsent(minute, ignored -> new LatencyBucket()).record(elapsedNanos, exceededBudget);
+        buckets.headMap(minute - MAX_LATENCY_BUCKETS + 1, false).clear();
         ArrayDeque<LatencySample> samples = latencySamples.get(subsystem);
         if (samples == null) {
             if (latencySamples.size() >= MAX_LATENCY_SUBSYSTEMS) {
@@ -101,7 +117,7 @@ public final class NexoraAiDiagnostics {
     /** Returns bounded rolling latency summaries; values are subsystem execution times, not server TPS. */
     public synchronized List<LatencySummary> latencySummaries() {
         List<LatencySummary> summaries = new ArrayList<>();
-        long now = System.nanoTime();
+        long now = nanoClock.getAsLong();
         latencySamples.forEach((subsystem, samples) -> {
             pruneExpiredSamples(samples, now);
             if (samples.isEmpty()) return;
@@ -123,6 +139,41 @@ public final class NexoraAiDiagnostics {
                     average, p95, sorted.get(sorted.size() - 1)));
         });
         return List.copyOf(summaries);
+    }
+
+    /** Returns minute-bucketed 5-minute and 1-hour subsystem aggregates (not TPS). */
+    public synchronized List<LatencyWindowSummary> latencyWindowSummaries() {
+        long currentMinute = Math.floorDiv(nanoClock.getAsLong(), LATENCY_BUCKET_NANOS);
+        List<LatencyWindowSummary> result = new ArrayList<>();
+        latencyBuckets.forEach((subsystem, buckets) -> {
+            for (int windowMinutes : new int[]{5, 60}) {
+                long firstMinute = currentMinute - windowMinutes + 1;
+                long count = 0, slow = 0, total = 0, max = 0;
+                for (LatencyBucket bucket : buckets.tailMap(firstMinute, true).values()) {
+                    count = saturatedAdd(count, bucket.count);
+                    slow = saturatedAdd(slow, bucket.slow);
+                    total = saturatedAdd(total, bucket.totalNanos);
+                    max = Math.max(max, bucket.maxNanos);
+                }
+                if (count > 0) result.add(new LatencyWindowSummary(subsystem, windowMinutes,
+                        count, slow, total / count, max));
+            }
+        });
+        return List.copyOf(result);
+    }
+
+    private static long saturatedAdd(long left, long right) {
+        return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
+    }
+
+    private static final class LatencyBucket {
+        private long count, slow, totalNanos, maxNanos;
+        private void record(long elapsedNanos, boolean exceededBudget) {
+            count++;
+            if (exceededBudget) slow++;
+            totalNanos = saturatedAdd(totalNanos, elapsedNanos);
+            maxNanos = Math.max(maxNanos, elapsedNanos);
+        }
     }
 
     /**
@@ -159,6 +210,17 @@ public final class NexoraAiDiagnostics {
                         .append(summary.maxNanos() / 1_000_000L).append(" ms");
             }
         }
+        List<LatencyWindowSummary> longerWindows = latencyWindowSummaries();
+        if (!longerWindows.isEmpty() && result.length() < MAX_EVIDENCE_LENGTH) {
+            result.append("\nДлительные замеры подсистем (минутные корзины, не TPS):");
+            for (LatencyWindowSummary summary : longerWindows) {
+                result.append("\n- ").append(summary.subsystem()).append(" / ")
+                        .append(summary.windowMinutes()).append("m: n=").append(summary.sampleCount())
+                        .append(", overBudget=").append(summary.slowOperationCount())
+                        .append(", avg=").append(summary.averageNanos() / 1_000_000L)
+                        .append(" ms, max=").append(summary.maxNanos() / 1_000_000L).append(" ms");
+            }
+        }
         if (result.length() > MAX_EVIDENCE_LENGTH) {
             result.setLength(MAX_EVIDENCE_LENGTH);
         }
@@ -169,6 +231,18 @@ public final class NexoraAiDiagnostics {
         while (!samples.isEmpty()
                 && nowNanos - samples.getFirst().recordedAtNanos() > LATENCY_WINDOW_NANOS) {
             samples.removeFirst();
+        }
+    }
+
+    public record LatencyWindowSummary(String subsystem, int windowMinutes, long sampleCount,
+                                       long slowOperationCount, long averageNanos, long maxNanos) {
+        public LatencyWindowSummary {
+            Objects.requireNonNull(subsystem, "subsystem");
+            if (subsystem.isBlank() || (windowMinutes != 5 && windowMinutes != 60)
+                    || sampleCount < 1 || slowOperationCount < 0 || slowOperationCount > sampleCount
+                    || averageNanos < 0 || maxNanos < 0) {
+                throw new IllegalArgumentException("Invalid latency window summary");
+            }
         }
     }
 
@@ -231,7 +305,7 @@ public final class NexoraAiDiagnostics {
         int threadCount = ManagementFactory.getThreadMXBean().getThreadCount();
         int processors = Runtime.getRuntime().availableProcessors();
         double systemLoad = ManagementFactory.getOperatingSystemMXBean().getSystemLoadAverage();
-        long uptimeMillis = Math.max(0L, (System.nanoTime() - startedAtNanos) / 1_000_000L);
+        long uptimeMillis = Math.max(0L, (nanoClock.getAsLong() - startedAtNanos) / 1_000_000L);
 
         Health health = Health.HEALTHY;
         String reason = "Runtime metrics are within the basic safety thresholds.";

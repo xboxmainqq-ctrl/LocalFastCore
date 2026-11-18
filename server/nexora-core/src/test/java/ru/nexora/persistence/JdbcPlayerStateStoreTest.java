@@ -1,7 +1,6 @@
 package ru.nexora.persistence;
 
 import org.junit.jupiter.api.Test;
-import ru.nexora.persistence.DriverManagerDataSource;
 
 import java.io.IOException;
 import java.sql.Connection;

@@ -68,8 +68,8 @@ Build spells, elements, damage, effects, resistances and reactions as composable
 ### 14. Plugin/module API
 Expose stable NEXORA APIs for gameplay actions, events, contracts and graph tasks.
 
-### 15. World/chunk architecture — STARTED
-Initial `WorldState` and `EntityState` boundaries are in place. Chunk storage, entity indexing and lifecycle remain next.
+### 15. World/chunk architecture — IN PROGRESS
+`WorldState`, `ChunkState`, `EntityState` and `EntityRegistry` establish explicit world/entity boundaries. `ChunkWorkScheduler` routes chunk load/unload lifecycle work through WorkGraph. Full chunk storage, indexing by spatial region and persistence remain next.
 
 ### 16. Persistence and lifecycle
 Design save/load, shutdown, recovery and background persistence as explicit runtime workloads.

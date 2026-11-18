@@ -55,6 +55,25 @@ class NetworkRuntimeModuleTest {
         assertEquals(2, failure.getSuppressed().length);
     }
 
+
+    @Test
+    void drainsSessionsAfterSignalingStopsAndBeforeNegotiatorCloses() throws Exception {
+        List<String> events = new ArrayList<>();
+        NetworkRuntimeModule module = new NetworkRuntimeModule(
+                service("discovery", events, false, false),
+                service("signaling", events, false, false),
+                closeable("negotiator", events, false),
+                () -> events.add("drain-sessions"));
+
+        module.start();
+        module.close();
+
+        assertEquals(List.of(
+                "start-discovery", "start-signaling",
+                "close-discovery", "close-signaling", "drain-sessions", "close-negotiator"
+        ), events);
+    }
+
     @Test
     void cannotStartAfterClose() throws Exception {
         NetworkRuntimeModule module = module(new ArrayList<>(), false, false);

@@ -104,7 +104,9 @@ public final class NexoraAiDiagnostics {
         ArrayDeque<LatencySample> samples = latencySamples.get(subsystem);
         if (samples == null) {
             if (latencySamples.size() >= MAX_LATENCY_SUBSYSTEMS) {
-                latencySamples.remove(latencySamples.keySet().iterator().next());
+                String evictedSubsystem = latencySamples.keySet().iterator().next();
+                latencySamples.remove(evictedSubsystem);
+                latencyBuckets.remove(evictedSubsystem);
             }
             samples = new ArrayDeque<>(LATENCY_SAMPLES_PER_SUBSYSTEM);
             latencySamples.put(subsystem, samples);

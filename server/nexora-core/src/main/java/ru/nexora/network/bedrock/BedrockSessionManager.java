@@ -384,6 +384,35 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return pendingTransferRestores.cancel(playerXuid, transferId, fencingToken);
     }
 
+    /**
+     * Stops a destination session if it has already consumed the matching pending
+     * restore. This is used only during rollback while the same CLAIMED fence is owned.
+     */
+    public boolean deactivateTransferRestore(String playerXuid, UUID transferId, long fencingToken) {
+        boolean cancelled = pendingTransferRestores.cancel(playerXuid, transferId, fencingToken);
+        boolean stopped = false;
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            SessionState state = entry.getValue();
+            state.combatLock.lock();
+            try {
+                synchronized (state) {
+                    PlayerTransferFence fence = state.transferFence;
+                    if (fence == null || !playerXuid.equals(fence.playerXuid())
+                            || !transferId.equals(fence.transferId())
+                            || fencingToken != fence.fencingToken()) continue;
+                    state.rejected = true;
+                    state.loginAuthenticated = false;
+                    state.clientInitialized = false;
+                    removePlayerListEntry(entry.getKey(), state);
+                    stopped = true;
+                }
+            } finally {
+                state.combatLock.unlock();
+            }
+        }
+        return cancelled || stopped;
+    }
+
     @Override
     public void onIdentity(String networkId, NetherNetClientIdentity identity) {
         SessionState state = sessions.computeIfAbsent(networkId, ignored -> new SessionState());

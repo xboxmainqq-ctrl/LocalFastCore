@@ -169,6 +169,8 @@ This adapter is not automatically configured or enabled by server startup. A pro
 
 ### Live Bedrock source freeze — integrated, destination still pending
 
+The source freeze also closes any open container window and returns transient crafting-grid items before checkpointing. On an abort, inventory/equipment reconciliation is sent best-effort before the source is re-advertised; frozen disconnect/shutdown paths deliberately do not write over the transfer checkpoint.
+
 `BedrockSessionManager` now exposes a guarded source-transfer boundary. It resolves exactly one active session by authenticated XUID, takes the session combat lock, marks the session transfer-frozen, writes the legacy stores and canonical aggregate checkpoint, and returns the durable checkpoint revision. It then removes the player-list entry and remote actor from initialized peers and clears the source session's authenticated/initialized gameplay flags. Inbound frames are ignored while frozen; periodic saves and disconnect/shutdown cleanup do not overwrite or mutate the frozen snapshot.
 
 `BedrockPlayerTransferSource` adapts this boundary to `PlayerTransferLifecycle.Source`, requiring the configured node ID to match the handoff source and resolving the authenticated XUID from caller-owned transfer context. The source is resumed only through the explicit abort callback, which re-advertises the player after restoring its active flags. If the network session disappears while frozen, abort does not silently create a replacement session; recovery must reconnect/re-authenticate the player.

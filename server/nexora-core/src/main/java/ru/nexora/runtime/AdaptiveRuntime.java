@@ -13,7 +13,7 @@ import java.util.Objects;
  * enter the current execution slice.</p>
  */
 public final class AdaptiveRuntime {
-    public enum Lane { PLAYER, WORLD, ENTITY, AI, BACKGROUND }
+    public enum Lane { PLAYER, WORLD, ENTITY, AI, MAGIC, BACKGROUND }
 
     public enum Admission { ALLOW, DEFER }
 

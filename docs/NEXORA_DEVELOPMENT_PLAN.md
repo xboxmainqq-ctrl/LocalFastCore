@@ -186,3 +186,10 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Two concurrent transfer coordinators race for one PREPARED record; the test asserts only one fencing token wins.
 - JDBC CAS now keeps player XUID, source node, target node and checkpoint revision immutable across state transitions.
 - H2 verifies JDBC behavior only; production database-specific integration/failover/isolation testing remains required.
+
+
+### 28. Monotonic transfer state enforcement across ledger adapters — COMPLETE
+- Centralized legal transfer successor rules in `PlayerTransferRecord`.
+- In-memory, local-file and JDBC ledgers now all reject state regression, premature reclaim, same/lower fencing tokens, terminal-state reopening, and mutation of XUID/node/checkpoint identity.
+- H2 integration tests cover JDBC persistence, concurrent claims, stale CAS, immutable identity and no PREPARED regression.
+- CI validation: 750 tests passed, zero failures on commit `73d7212`.

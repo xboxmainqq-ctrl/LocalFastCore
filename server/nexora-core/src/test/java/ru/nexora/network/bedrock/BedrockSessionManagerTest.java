@@ -36,6 +36,33 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockSessionManagerTest {
     @Test
+    void adminRuntimeSummaryIncludesActualMobAiAndJvmResourceMetrics() {
+        ru.nexora.world.World testWorld = new ru.nexora.world.World(
+                "admin-metrics-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                testWorld, (networkId, label, frame) -> {}, event -> {});
+        manager.spawnLivingEntity("minecraft:zombie", 20.0f, 0.5, 65.0, 0.5);
+        java.util.concurrent.atomic.AtomicLong clock = new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+        // A tick with no players still exercises a real, idle AI decision for passive mobs only;
+        // hostile mobs with no target remain intentionally idle, so use a cow for a decision.
+        manager.spawnLivingEntity("minecraft:cow", 20.0f, 0.5, 65.0, 0.5);
+        invokeLivingActorTick(manager, 1L);
+        ru.nexora.ai.NexoraAiDiagnostics diagnostics = new ru.nexora.ai.NexoraAiDiagnostics();
+        manager.setAiDiagnostics(diagnostics);
+
+        String summary = manager.adminRuntimeSummary();
+        assertTrue(summary.contains("mobAiDecisions="));
+        assertTrue(summary.contains("mobAiAvgNs="));
+        assertTrue(summary.contains("mobAiMaxNs="));
+        assertTrue(summary.contains("mobAiFailures="));
+        assertTrue(summary.contains("heapUsed="));
+        assertTrue(summary.contains("nonHeapUsed="));
+        assertTrue(summary.contains("threads="));
+        manager.close();
+    }
+
+    @Test
     void relaysAuthenticatedChatUsingServerOwnedPlayerName() throws Exception {
         java.util.List<String> recipients = new java.util.ArrayList<>();
         java.util.List<byte[]> frames = new java.util.ArrayList<>();

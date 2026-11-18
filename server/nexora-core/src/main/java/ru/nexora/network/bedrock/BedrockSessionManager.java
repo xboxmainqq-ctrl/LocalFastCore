@@ -501,6 +501,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 .append(", stuck=").append(stuck.stuck())
                 .append(", evictions=").append(stuck.evictions())
                 .append("\nMob AI load controller: ").append(mobAiLoadController.stats().summary())
+                .append("\nMob AI execution: ").append(livingEntityAi.stats().summary())
                 .append("\nMob fall tracker: ").append(mobFallTracker.stats().summary())
                 .append("\nMob jump controller: ").append(mobJumpController.stats().summary())
                 .append("\nMob climb controller: ").append(mobClimbController.stats().summary())
@@ -755,10 +756,26 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     /** Read-only aggregate world/session counters for the authenticated operator assistant. */
     public String adminRuntimeSummary() {
-        return "players=" + authenticatedPlayerCount()
-                + ", sessions=" + activeSessionCount()
-                + ", mobs=" + world.livingEntities().snapshot().size()
-                + ", droppedItems=" + world.itemEntities().snapshot().size();
+        ru.nexora.combat.LivingEntityAiService.Stats ai = livingEntityAi.stats();
+        StringBuilder summary = new StringBuilder("players=").append(authenticatedPlayerCount())
+                .append(", sessions=").append(activeSessionCount())
+                .append(", mobs=").append(world.livingEntities().snapshot().size())
+                .append(", droppedItems=").append(world.itemEntities().snapshot().size())
+                .append(", mobAiDecisions=").append(ai.decisionCount())
+                .append(", mobAiAvgNs=").append(ai.averageDecisionNanos())
+                .append(", mobAiMaxNs=").append(ai.maxDecisionNanos())
+                .append(", mobAiFailures=").append(ai.failures());
+        ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
+        if (diagnostics != null) {
+            ru.nexora.ai.JvmResourceSnapshot resources = diagnostics.resourceSnapshot();
+            summary.append(", heapUsed=").append(resources.heapUsedBytes())
+                    .append(", heapCommitted=").append(resources.heapCommittedBytes())
+                    .append(", heapMax=").append(resources.heapMaxBytes())
+                    .append(", nonHeapUsed=").append(resources.nonHeapUsedBytes())
+                    .append(", threads=").append(resources.liveThreadCount())
+                    .append(", peakThreads=").append(resources.peakThreadCount());
+        }
+        return summary.toString();
     }
 
     /**

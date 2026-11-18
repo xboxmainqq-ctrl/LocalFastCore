@@ -119,4 +119,4 @@ Do not consider the mob system finished after the load controller alone. Complet
 
 1. Validate the completed runtime-module, bounded scheduler, and graceful-drain integration on CI; fix all regressions before declaring this architecture stage stable.
 2. Continue mob and spawner integration/load checks; real Bedrock client verification remains a separate gate.
-3. Extend subsystem latency and JVM resource telemetry with bounded, low-overhead measurements; do not infer true TPS from isolated timings.
+3. Extend subsystem latency and JVM resource telemetry with bounded, low-overhead measurements; do not infer true TPS from isolated timings. The operator `/ai admin` snapshot now includes actual mob-decision timings and JVM heap/thread counters; `/ai mob stats` includes the detailed AI execution summary.

@@ -61,6 +61,39 @@ public record PlayerTransferRecord(
                 State.ABORTED, fencingToken, now, version + 1, now);
     }
 
+    /** Validates a monotonic successor transition without relying on the caller's adapter. */
+    boolean isLegalSuccessorOf(PlayerTransferRecord current) {
+        Objects.requireNonNull(current, "current");
+        if (!transferId.equals(current.transferId)
+                || !playerXuid.equals(current.playerXuid)
+                || !sourceNode.equals(current.sourceNode)
+                || !targetNode.equals(current.targetNode)
+                || playerRevision != current.playerRevision
+                || version != current.version + 1
+                || updatedAtEpochMillis < current.updatedAtEpochMillis) {
+            return false;
+        }
+        return switch (current.state) {
+            case PREPARED -> state == State.CLAIMED
+                    && current.fencingToken == 0
+                    && fencingToken == 1
+                    && leaseExpiresAtEpochMillis > updatedAtEpochMillis;
+            case CLAIMED -> {
+                if (state == State.CLAIMED) {
+                    yield current.fencingToken < Long.MAX_VALUE
+                            && fencingToken == current.fencingToken + 1
+                            && current.leaseExpired(updatedAtEpochMillis)
+                            && leaseExpiresAtEpochMillis > updatedAtEpochMillis;
+                }
+                boolean terminal = state == State.COMMITTED || state == State.ABORTED;
+                yield terminal && fencingToken == current.fencingToken
+                        && !current.leaseExpired(updatedAtEpochMillis)
+                        && leaseExpiresAtEpochMillis == updatedAtEpochMillis;
+            }
+            case COMMITTED, ABORTED -> false;
+        };
+    }
+
     private static void validateNode(String value, String field) {
         if (value == null || !value.matches("[A-Za-z0-9._-]{1,64}"))
             throw new IllegalArgumentException("Invalid " + field);

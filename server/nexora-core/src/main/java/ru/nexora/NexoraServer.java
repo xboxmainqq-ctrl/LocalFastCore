@@ -4,6 +4,9 @@ import ru.nexora.network.NetworkRuntimeModule;
 import ru.nexora.network.PlayerTransferLedgerFactory;
 import ru.nexora.network.ClusterTransportFactory;
 import ru.nexora.network.PlayerTransferClusterEndpoint;
+import ru.nexora.network.PlayerTransferSourceCoordinator;
+import ru.nexora.network.PlayerHandoff;
+import ru.nexora.network.bedrock.BedrockPlayerTransferSource;
 import ru.nexora.network.CheckpointedPlayerTransferDestination;
 import ru.nexora.network.DurableHandoffCoordinator;
 import ru.nexora.gameplay.GameplayRuntimeModule;
@@ -44,6 +47,7 @@ import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -279,7 +283,8 @@ public final class NexoraServer {
             throw exception;
         }
         readiness.markReady();
-        startAiConsole(gameplayRuntime.assistant(), diagnosticsRuntime.safeRepairs());
+        startAiConsole(gameplayRuntime.assistant(), diagnosticsRuntime.safeRepairs(),
+                bedrockSessions, transferNodeId, transferLedger, configuredClusterTransport);
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             readiness.beginShutdown();
@@ -342,13 +347,70 @@ public final class NexoraServer {
     /** Reads private operator AI requests only from the server process console. */
     private static void startAiConsole(
             ru.nexora.ai.NexoraAiAssistant assistant,
-            ru.nexora.ai.NexoraAiSafeRepairRegistry safeRepairs
+            ru.nexora.ai.NexoraAiSafeRepairRegistry safeRepairs,
+            BedrockSessionManager bedrockSessions,
+            String localNodeId,
+            DurableHandoffCoordinator transferLedger,
+            java.util.Optional<ClusterTransportFactory.ConfiguredTransport> clusterTransport
     ) {
         Thread console = new Thread(() -> {
             try (BufferedReader input = new BufferedReader(new InputStreamReader(System.in))) {
                 String line;
                 while ((line = input.readLine()) != null) {
                     String command = line.trim();
+                    if (command.equalsIgnoreCase("help")) {
+                        System.out.println("Server console: players | transfer <xuid> <target-node> | ai <вопрос> | ai status | ai repair list");
+                        continue;
+                    }
+                    if (command.equalsIgnoreCase("players")) {
+                        for (BedrockSessionManager.AuthenticatedPlayer player : bedrockSessions.authenticatedPlayers()) {
+                            System.out.println(player.xuid() + " | " + player.displayName()
+                                    + " | entity=" + player.entityId());
+                        }
+                        continue;
+                    }
+                    if (command.regionMatches(true, 0, "transfer ", 0, 9)) {
+                        String[] parts = command.split("\\s+");
+                        if (parts.length != 3) {
+                            System.out.println("Использование: transfer <xuid> <target-node>");
+                            continue;
+                        }
+                        if (clusterTransport.isEmpty()) {
+                            System.out.println("NEXORA transfer: cluster transport is not configured.");
+                            continue;
+                        }
+                        BedrockSessionManager.AuthenticatedPlayer player = bedrockSessions.authenticatedPlayers()
+                                .stream().filter(candidate -> candidate.xuid().equals(parts[1]))
+                                .findFirst().orElse(null);
+                        if (player == null) {
+                            System.out.println("NEXORA transfer: authenticated player XUID was not found.");
+                            continue;
+                        }
+                        java.net.InetSocketAddress route = clusterTransport.orElseThrow()
+                                .bedrockRoutes().get(parts[2]);
+                        if (route == null) {
+                            System.out.println("NEXORA transfer: no Bedrock route configured for node " + parts[2]);
+                            continue;
+                        }
+                        PlayerHandoff handoff = new PlayerHandoff(
+                                UUID.randomUUID(), player.entityId(), localNodeId, parts[2], new byte[0]);
+                        PlayerTransferSourceCoordinator transfer = new PlayerTransferSourceCoordinator(
+                                localNodeId, transferLedger,
+                                new BedrockPlayerTransferSource(bedrockSessions, localNodeId,
+                                        ignored -> player.xuid()),
+                                bedrockSessions, clusterTransport.orElseThrow().transport(),
+                                Duration.ofSeconds(5), System::currentTimeMillis);
+                        try {
+                            var committed = transfer.transfer(
+                                    handoff, player.xuid(), route.getHostString(), route.getPort());
+                            System.out.println("NEXORA transfer: committed " + committed.transferId()
+                                    + " to " + committed.targetNode() + " with fence " + committed.fencingToken());
+                        } catch (Exception failure) {
+                            System.err.println("NEXORA transfer failed: " + failure.getMessage()
+                                    + ". If the outcome is uncertain, the source remains frozen for recovery.");
+                        }
+                        continue;
+                    }
                     if (command.equalsIgnoreCase("ai") || command.equalsIgnoreCase("ai help")) {
                         System.out.println("NEXORA AI console: ai <вопрос> | ai status | ai repair list | ai repair history | ai repair run <id> confirm");
                         continue;

@@ -82,7 +82,8 @@ public final class FilePlayerTransferLedger implements PlayerTransferLedger {
             return withFileLock(transferId, () -> {
                 Path target = recordPath(transferId);
                 Optional<PlayerTransferRecord> stored = read(target, transferId);
-                if (stored.isEmpty() || stored.orElseThrow().version() != expectedVersion) return false;
+                if (stored.isEmpty() || stored.orElseThrow().version() != expectedVersion
+                        || !replacement.isLegalSuccessorOf(stored.orElseThrow())) return false;
                 writeAtomically(target, encode(replacement));
                 return true;
             });

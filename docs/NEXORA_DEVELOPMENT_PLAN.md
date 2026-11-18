@@ -127,3 +127,11 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - An uncertain commit never resumes the source. The destination is asked to deactivate only if it still owns the same fencing token; recovery must reconcile the durable ledger.
 - Participant hooks are explicit interfaces. The Bedrock session manager is not yet wired to these hooks, and the current file ledger is still single-host only. This is a lifecycle protocol foundation, not crash-safe cross-host consensus or exactly-once delivery.
 - Next: wire session freeze/restore hooks behind a feature gate, then add multi-process fault-injection tests and a replicated ledger/transport before enabling cross-host handoff.
+
+
+### 21. Concrete cluster transport — FOUNDATION ADDED
+- `TcpClusterTransport` implements bounded TCP message exchange with configured peer addresses and allowlists, frame limits, bounded queues, socket timeouts and receiver ACKs.
+- HMAC envelope verification and recipient validation are enforced before delivery.
+- `ClusterReplayGuard` rejects duplicate IDs during a bounded in-memory retention window and fails closed at capacity. It does not survive process restart.
+- Loopback transport tests cover message delivery, ACK and duplicate rejection.
+- Next: durable replay/idempotency, key rotation, TLS or private-network confidentiality, process restart/failure injection, and a shared replicated transfer ledger. The transport remains opt-in and is not wired into server startup.

@@ -3748,10 +3748,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             throw new SecurityException("Login GameServerToken does not match the verified NetherNet identity");
         }
         JsonNode clientData = verifyClientDataToken(login.rawClientDataToken(), state.identity);
+        boolean legacyStateFound = false;
         if (inventoryStorage != null) {
             try {
                 var restored = inventoryStorage.loadState(state.identity.xuid());
                 if (restored.isPresent()) {
+                    legacyStateFound = true;
                     state.inventory = restored.orElseThrow().inventory();
                     state.craftingUiInventory.restore(
                             restored.orElseThrow().craftingUiInventory().snapshot());
@@ -3763,7 +3765,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         if (equipmentStorage != null) {
             try {
-                state.equipment = equipmentStorage.load(state.identity.xuid()).orElseGet(PlayerEquipment::new);
+                Optional<PlayerEquipment> restoredEquipment = equipmentStorage.load(state.identity.xuid());
+                if (restoredEquipment.isPresent()) {
+                    legacyStateFound = true;
+                    state.equipment = restoredEquipment.orElseThrow();
+                } else {
+                    state.equipment = new PlayerEquipment();
+                }
             } catch (IOException | RuntimeException exception) {
                 state.rejected = true;
                 throw new SecurityException("Unable to safely restore authenticated player equipment", exception);
@@ -3794,35 +3802,54 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             try {
                 Optional<PlayerData> saved = playerStorage.load(state.identity.xuid());
                 if (saved.isPresent()) {
-                    PlayerData player = saved.get();
-                    state.vitals = player.vitals();
-                    state.experiencePoints = player.experiencePoints();
-                    state.experienceRemainderMilli = player.experienceRemainderMilli();
-                    state.dead = state.vitals.dead();
-                    if (player.worldName().equals(world.name())) {
-                        // A restored position can be far from the default spawn. Prepare only
-                        // the chunks touched by the player's footprint before collision checks.
-                        ensureActorFootprintChunksLoaded(player.x(), player.z());
-                    }
-                    if (player.worldName().equals(world.name())
-                            && WorldCollision.canOccupy(world, player.x(), player.y(), player.z())) {
-                        state.positionX = player.x();
-                        state.positionY = player.y();
-                        state.positionZ = player.z();
-                        state.yaw = player.yaw();
-                        state.pitch = player.pitch();
-                        state.positionInitialized = true;
-                    } else if (player.worldName().equals(world.name())) {
-                        System.err.println("NEXORA: saved position for " + displayName
-                                + " is obstructed; using the world spawn");
-                    }
+                    legacyStateFound = true;
+                    restorePlayerProfile(state, saved.orElseThrow(), displayName);
                 }
             } catch (IOException | RuntimeException exception) {
                 System.err.println("NEXORA: unable to load player profile for " + displayName
                         + ": " + exception.getMessage());
             }
         }
+        if (!legacyStateFound && checkpointService != null) {
+            try {
+                Optional<PlayerStateBundle> canonical = checkpointService.load(state.identity.xuid());
+                if (canonical.isPresent()) {
+                    PlayerStateBundle.Restored restored = canonical.orElseThrow().restore();
+                    state.inventory = restored.inventory();
+                    state.craftingUiInventory.restore(restored.craftingUi().snapshot());
+                    state.equipment = restored.equipment();
+                    restorePlayerProfile(state, restored.profile(), displayName);
+                    System.out.println("NEXORA: restored canonical player checkpoint for " + displayName
+                            + " because no legacy player components were present");
+                }
+            } catch (IOException | RuntimeException exception) {
+                state.rejected = true;
+                throw new SecurityException("Unable to safely restore canonical player checkpoint", exception);
+            }
+        }
         System.out.printf("NEXORA: authenticated player %s%n", displayName);
+    }
+
+    private void restorePlayerProfile(SessionState state, PlayerData player, String displayName) {
+        state.vitals = player.vitals();
+        state.experiencePoints = player.experiencePoints();
+        state.experienceRemainderMilli = player.experienceRemainderMilli();
+        state.dead = state.vitals.dead();
+        if (player.worldName().equals(world.name())) {
+            ensureActorFootprintChunksLoaded(player.x(), player.z());
+        }
+        if (player.worldName().equals(world.name())
+                && WorldCollision.canOccupy(world, player.x(), player.y(), player.z())) {
+            state.positionX = player.x();
+            state.positionY = player.y();
+            state.positionZ = player.z();
+            state.yaw = player.yaw();
+            state.pitch = player.pitch();
+            state.positionInitialized = true;
+        } else if (player.worldName().equals(world.name())) {
+            System.err.println("NEXORA: saved position for " + displayName
+                    + " is obstructed; using the world spawn");
+        }
     }
 
     private void handleClientHandshake(String networkId, SessionState state, BedrockPacket packet) {

@@ -2594,10 +2594,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             if (diagnostics != null) diagnostics.recordFailure(failure);
             throw failure;
         } finally {
+            long elapsedNanos = Math.max(0L, nanoTime.getAsLong() - aiStartedNanos);
+            mobAiLoadController.updateAdaptiveBudget(elapsedNanos);
             ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
             if (diagnostics != null) {
-                diagnostics.recordSlowOperation("mob-ai",
-                        Math.max(0L, nanoTime.getAsLong() - aiStartedNanos), 50_000_000L);
+                diagnostics.recordSlowOperation("mob-ai", elapsedNanos, 50_000_000L);
             }
         }
     }
@@ -3366,6 +3367,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     /** Clears every transient subsystem reference when a mob dies or is despawned. */
     private void cleanupLivingEntityRuntimeState(long runtimeId) {
         nextMobAttackMillis.remove(runtimeId);
+        mobAiLoadController.remove(runtimeId);
         mobPathCache.remove(runtimeId);
         mobStuckTracker.clear(runtimeId);
         mobFallTracker.clear(runtimeId);

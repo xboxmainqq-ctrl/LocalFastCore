@@ -46,7 +46,9 @@ public final class JdbcPlayerOnlineLeaseRegistry implements PlayerOnlineLeaseReg
             statement.setLong(5, now);
             statement.setString(6, node);
             statement.setString(7, session);
-            if (statement.executeUpdate() == 1) return true;
+            int updated = statement.executeUpdate();
+            commitIfNeeded(connection);
+            if (updated == 1) return true;
         } catch (SQLException failure) {
             throw new IOException("Unable to acquire NEXORA online player lease", failure);
         }
@@ -60,6 +62,7 @@ public final class JdbcPlayerOnlineLeaseRegistry implements PlayerOnlineLeaseReg
             statement.setString(3, session);
             statement.setLong(4, expires);
             statement.executeUpdate();
+            commitIfNeeded(connection);
             return true;
         } catch (SQLException failure) {
             if (isConstraintViolation(failure)) return false;
@@ -80,7 +83,9 @@ public final class JdbcPlayerOnlineLeaseRegistry implements PlayerOnlineLeaseReg
             statement.setString(3, node);
             statement.setString(4, session);
             statement.setLong(5, now);
-            return statement.executeUpdate() == 1;
+            int updated = statement.executeUpdate();
+            commitIfNeeded(connection);
+            return updated == 1;
         } catch (SQLException failure) {
             throw new IOException("Unable to renew NEXORA online player lease", failure);
         }
@@ -100,6 +105,10 @@ public final class JdbcPlayerOnlineLeaseRegistry implements PlayerOnlineLeaseReg
         } catch (SQLException failure) {
             throw new IOException("Unable to release NEXORA online player lease", failure);
         }
+    }
+
+    private static void commitIfNeeded(Connection connection) throws SQLException {
+        if (!connection.getAutoCommit()) connection.commit();
     }
 
     private static boolean isConstraintViolation(SQLException failure) {

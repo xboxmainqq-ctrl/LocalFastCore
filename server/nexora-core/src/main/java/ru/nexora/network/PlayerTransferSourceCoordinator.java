@@ -79,7 +79,13 @@ public final class PlayerTransferSourceCoordinator {
             // was durably published (for example, lease release failed). Try
             // to resume only through the source adapter's lease-safe path.
             try {
-                source.unfreeze(handoff);
+                Optional<PlayerTransferRecord> existing = ledger.findLatestForPlayer(playerXuid);
+                if (existing.isEmpty()) {
+                    source.unfreeze(handoff);
+                } else {
+                    freezeFailure.addSuppressed(new IOException(
+                            "A durable transfer decision already exists; source remains frozen"));
+                }
             } catch (Exception resumeFailure) {
                 freezeFailure.addSuppressed(resumeFailure);
             }

@@ -197,3 +197,12 @@ The monotonic successor validation is now centralized in `PlayerTransferRecord` 
 
 
 The H2 integration suite also verifies lease expiry and reclaim after a fresh DataSource reconnect: the replacement claimant receives a strictly higher fencing token, the old claimant cannot commit, and the new claimant can complete the transfer. Latest CI validation: 751 tests passed with zero failures.
+
+
+### Bedrock destination reconnect admission — first integration slice
+
+`BedrockPendingTransferActivator` now bridges a claimed destination transfer into `BedrockSessionManager`. It validates the checkpoint XUID against the fence and registers a pending restore keyed by the authenticated XUID, exact checkpoint revision, transfer ID and fencing token. The existing Xbox Live-authenticated Bedrock Login path consumes that reservation, loads only the exact revision, restores inventory/crafting UI/equipment/profile before the session becomes authenticated, and attaches the ownership fence to the new session. The legacy player stores are bypassed for this transfer login so stale source files cannot overwrite the transferred aggregate.
+
+Inbound Bedrock batches revalidate the fence before dispatch and again before each packet; player persistence paths also check the fence before writing. If ownership is lost, the session is rejected and removed from initialized gameplay/player-list state. Rollback can cancel an unconsumed reservation or stop a session that already consumed the matching reservation.
+
+This is a reconnect-based destination admission path, not seamless live socket migration: the player must authenticate to the destination server. Pending reservations are currently in-memory and are lost on destination process restart; automatic reconstruction from the durable transfer ledger, session recovery, transport redirect/routing and exhaustive fencing of every world-side mutation remain required. The adapter is not wired into server startup or exposed as a production cross-host feature. Shared SQL ledger and peer security provisioning must be configured separately.

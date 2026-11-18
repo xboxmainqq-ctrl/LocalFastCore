@@ -4314,17 +4314,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     latest = ledger.findLatestForPlayer(xuid);
                 }
             }
-            ru.nexora.network.PlayerTransferOwnershipGuard.LoginDecision decision =
-                    ru.nexora.network.PlayerTransferOwnershipGuard.loginDecision(latest, nodeId);
-            if (decision == ru.nexora.network.PlayerTransferOwnershipGuard.LoginDecision.RESTORE_TRANSFER_CHECKPOINT) {
-                PendingPlayerTransferRestoreRegistry.PendingRestore pending =
-                        pendingTransferRestores.find(xuid).orElseThrow(() ->
-                                new SecurityException("Destination has no recovered reservation for this claimed transfer"));
-                if (latest.isEmpty()
-                        || !pending.fence().transferId().equals(latest.orElseThrow().transferId())) {
-                    throw new SecurityException("Pending destination reservation does not match latest transfer");
-                }
-            }
+            ru.nexora.network.PlayerTransferOwnershipGuard.loginDecision(latest, nodeId);
             return latest.orElse(null);
         } catch (IOException failure) {
             throw new SecurityException("Unable to verify durable player ownership before login", failure);

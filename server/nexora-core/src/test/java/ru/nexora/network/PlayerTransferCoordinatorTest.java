@@ -58,6 +58,30 @@ class PlayerTransferCoordinatorTest {
     }
 
     @Test
+    void expiredClaimCanBeAbortedByItsCurrentFenceButNotBySupersededFence() throws IOException {
+        InMemoryPlayerTransferLedger store = new InMemoryPlayerTransferLedger();
+        PlayerTransferCoordinator coordinator = new PlayerTransferCoordinator(store);
+        UUID id = UUID.randomUUID();
+        coordinator.prepare(PlayerTransferRecord.prepared(
+                id, "xuid-expired-abort", "node-a", "node-b", 1L, 100L));
+        PlayerTransferRecord claim = coordinator.claim(id, "node-b", 101L, 10L).orElseThrow();
+
+        PlayerTransferRecord aborted = coordinator.abort(id, claim.fencingToken(), 112L).orElseThrow();
+        assertEquals(PlayerTransferRecord.State.ABORTED, aborted.state());
+        assertTrue(coordinator.commit(id, claim.fencingToken(), 113L).isEmpty());
+
+        UUID reclaimedId = UUID.randomUUID();
+        coordinator.prepare(PlayerTransferRecord.prepared(
+                reclaimedId, "xuid-reclaim-abort", "node-a", "node-b", 1L, 100L));
+        PlayerTransferRecord oldClaim = coordinator.claim(reclaimedId, "node-b", 101L, 10L).orElseThrow();
+        PlayerTransferRecord newClaim = coordinator.claim(reclaimedId, "node-b", 112L, 10_000L).orElseThrow();
+        assertTrue(coordinator.abort(reclaimedId, oldClaim.fencingToken(), 113L).isEmpty());
+        assertEquals(PlayerTransferRecord.State.CLAIMED,
+                coordinator.get(reclaimedId).orElseThrow().state());
+        assertTrue(newClaim.fencingToken() > oldClaim.fencingToken());
+    }
+
+    @Test
     void fileLedgerPersistsRecordsAndEnforcesCompareAndSetAcrossInstances() throws IOException {
         UUID id = UUID.randomUUID();
         FilePlayerTransferLedger firstStore = new FilePlayerTransferLedger(temporaryDirectory);

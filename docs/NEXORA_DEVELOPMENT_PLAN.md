@@ -293,6 +293,7 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Added recovery for the narrow crash/failure window where the source froze and checkpointed but PREPARED was never published: the session resumes only if the shared ledger confirms no transfer record and the same node can still renew/acquire the exclusive online lease.
 - Duplicate/failed transfer attempts now consult the durable per-XUID decision before any automatic source resume; an existing PREPARED, CLAIMED, or terminal decision keeps the source frozen for normal reconciliation.
 - A frozen source session is resumed for a durable ABORTED record; it is redirected only for a matching durable COMMITTED record and configured Bedrock route. PREPARED/CLAIMED remain frozen. If no transfer record exists, the source may resume only after it proves it can still acquire/renew its exclusive online lease.
+- `transfer recover` now CAS-aborts a PREPARED record after the 30-second claim grace period and resumes only after re-reading the exact same transfer ID as ABORTED; a concurrent destination claim wins the CAS and keeps the source frozen.
 - Added the operator-console command `transfer recover` so an operator can reconcile source sessions after a peer or database restart without guessing whether ownership committed.
 - CI: 798 tests passed, zero failures on commit `35e90f7`.
 ### 41. Shared online XUID lease registry — IMPLEMENTED, CI VERIFIED

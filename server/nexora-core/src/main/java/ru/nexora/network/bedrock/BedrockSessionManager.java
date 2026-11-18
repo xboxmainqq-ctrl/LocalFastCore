@@ -399,12 +399,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             state.combatLock.lock();
             try {
                 synchronized (state) {
-                    saveAndClearContainerWindow(state);
-                    try {
-                        returnCraftingGridItems(state);
-                        saveAllPlayerState(state);
-                    } catch (IOException | RuntimeException exception) {
-                        System.err.println("NEXORA: unable to save disconnected player: " + exception.getMessage());
+                    if (!state.transferFrozen) {
+                        saveAndClearContainerWindow(state);
+                        try {
+                            returnCraftingGridItems(state);
+                            saveAllPlayerState(state);
+                        } catch (IOException | RuntimeException exception) {
+                            System.err.println("NEXORA: unable to save disconnected player: " + exception.getMessage());
+                        }
                     }
                 }
             } finally {
@@ -444,6 +446,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         IOException failure = null;
         for (SessionState state : sessions.values()) {
             synchronized (state) {
+                if (state.transferFrozen) continue;
                 try {
                     saveAllPlayerState(state);
                 } catch (IOException exception) {
@@ -453,6 +456,99 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
         }
         if (failure != null) throw failure;
+    }
+
+    /**
+     * Freezes one authenticated player on this node and writes a canonical checkpoint.
+     * The returned revision is the durable revision the destination must restore.
+     */
+    public long freezePlayerForTransfer(String playerXuid) throws IOException {
+        if (checkpointService == null) {
+            throw new IllegalStateException("Canonical player checkpoints are not configured");
+        }
+        if (playerXuid == null || !playerXuid.matches("[A-Za-z0-9_-]{1,64}")) {
+            throw new IllegalArgumentException("Invalid player XUID");
+        }
+        Map.Entry<String, SessionState> match = null;
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            SessionState candidate = entry.getValue();
+            synchronized (candidate) {
+                if (candidate.identity != null && playerXuid.equals(candidate.identity.xuid())) {
+                    if (match != null) throw new IllegalStateException("Duplicate active XUID on source node");
+                    match = entry;
+                }
+            }
+        }
+        if (match == null) throw new IllegalArgumentException("Player is not connected to this source node");
+        String networkId = match.getKey();
+        SessionState state = match.getValue();
+        long revision;
+        state.combatLock.lock();
+        try {
+            synchronized (state) {
+                if (sessions.get(networkId) != state || state.rejected || state.transferFrozen
+                        || !state.loginAuthenticated || !state.clientInitialized
+                        || state.identity == null || !playerXuid.equals(state.identity.xuid())
+                        || !state.positionInitialized) {
+                    throw new IllegalStateException("Player session is not eligible for transfer");
+                }
+                state.transferFrozen = true;
+                try {
+                    saveAllPlayerState(state);
+                    revision = checkpointService.latestRevision(playerXuid);
+                    if (revision < 0) throw new IOException("Canonical checkpoint was not written");
+                } catch (IOException | RuntimeException failure) {
+                    state.transferFrozen = false;
+                    throw failure;
+                }
+                // Stop inbound gameplay and every tick path gated by authenticated/initialized state.
+                state.loginAuthenticated = false;
+                state.clientInitialized = false;
+            }
+        } finally {
+            state.combatLock.unlock();
+        }
+        removePlayerListEntry(networkId, state);
+        return revision;
+    }
+
+    /**
+     * Resumes a source session only after the transfer ledger has durably confirmed ABORTED.
+     * A disconnected source session is deliberately not recreated here.
+     */
+    public void unfreezePlayerAfterTransferAbort(String playerXuid) throws IOException {
+        if (playerXuid == null || !playerXuid.matches("[A-Za-z0-9_-]{1,64}")) {
+            throw new IllegalArgumentException("Invalid player XUID");
+        }
+        Map.Entry<String, SessionState> match = null;
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            SessionState candidate = entry.getValue();
+            synchronized (candidate) {
+                if (candidate.identity != null && playerXuid.equals(candidate.identity.xuid())
+                        && candidate.transferFrozen) {
+                    if (match != null) throw new IllegalStateException("Duplicate frozen XUID on source node");
+                    match = entry;
+                }
+            }
+        }
+        if (match == null) throw new IOException("Frozen source session is no longer available");
+        String networkId = match.getKey();
+        SessionState state = match.getValue();
+        state.combatLock.lock();
+        try {
+            synchronized (state) {
+                if (sessions.get(networkId) != state || !state.transferFrozen || state.rejected
+                        || state.identity == null || !playerXuid.equals(state.identity.xuid())) {
+                    throw new IOException("Source session cannot be safely resumed");
+                }
+                state.loginAuthenticated = true;
+                state.clientInitialized = true;
+                state.transferFrozen = false;
+            }
+        } finally {
+            state.combatLock.unlock();
+        }
+        advertisePlayerList(networkId, state);
     }
 
     private void saveAllPlayerState(SessionState state) throws IOException {
@@ -1113,7 +1209,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.combatLock.lock();
         try {
           synchronized (state) {
-            if (state.rejected) return;
+            if (state.rejected || state.transferFrozen) return;
 
             if (!state.compressionNegotiated) {
                 handleNetworkSettingsRequest(message, state);
@@ -5729,6 +5825,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         for (SessionState state : sessions.values()) {
             synchronized (state) {
+                if (state.transferFrozen) continue;
                 try {
                     returnCraftingGridItems(state);
                 } catch (IOException | RuntimeException exception) {
@@ -5844,6 +5941,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private BreakTarget breakTarget;
         private long entityId;
         private volatile boolean rejected;
+        private volatile boolean transferFrozen;
         private PendingEquipmentForm pendingEquipmentForm;
         private int pendingAiFormId;
         private int nextContainerWindowId = 1;

@@ -1,0 +1,74 @@
+package ru.nexora.network;
+
+import org.h2.jdbcx.JdbcDataSource;
+import org.junit.jupiter.api.Test;
+
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class PlayerOnlineLeaseRegistryTest {
+    @Test
+    void inMemoryLeaseRejectsOtherNodeUntilExpiryAndFencesOldSession() throws Exception {
+        InMemoryPlayerOnlineLeaseRegistry leases = new InMemoryPlayerOnlineLeaseRegistry();
+        assertTrue(leases.acquire("xuid-1", "node-a", "session-a", 100L, 1_000L));
+        assertFalse(leases.acquire("xuid-1", "node-b", "session-b", 200L, 1_000L));
+        assertFalse(leases.renew("xuid-1", "node-a", "session-a", 1_101L, 1_000L));
+        assertTrue(leases.acquire("xuid-1", "node-b", "session-b", 1_101L, 1_000L));
+        assertFalse(leases.release("xuid-1", "node-a", "session-a"));
+        assertFalse(leases.renew("xuid-1", "node-a", "session-a", 1_102L, 1_000L));
+        assertTrue(leases.renew("xuid-1", "node-b", "session-b", 1_102L, 1_000L));
+        assertTrue(leases.release("xuid-1", "node-b", "session-b"));
+    }
+
+    @Test
+    void jdbcLeaseIsExclusiveAcrossIndependentNodeRegistries() throws Exception {
+        JdbcDataSource firstSource = dataSource("jdbc:h2:mem:online-lease;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000");
+        JdbcPlayerOnlineLeaseRegistry first = new JdbcPlayerOnlineLeaseRegistry(firstSource);
+        first.initializeSchema();
+        JdbcPlayerOnlineLeaseRegistry second = new JdbcPlayerOnlineLeaseRegistry(
+                dataSource("jdbc:h2:mem:online-lease;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000"));
+
+        assertTrue(first.acquire("xuid-2", "node-a", "session-a", 100L, 1_000L));
+        assertFalse(second.acquire("xuid-2", "node-b", "session-b", 200L, 1_000L));
+        assertTrue(second.renew("xuid-2", "node-a", "session-a", 300L, 1_000L));
+        assertFalse(second.release("xuid-2", "node-b", "session-b"));
+        assertTrue(second.acquire("xuid-2", "node-b", "session-b", 1_301L, 1_000L));
+        assertFalse(first.renew("xuid-2", "node-a", "session-a", 1_302L, 1_000L));
+        assertFalse(first.release("xuid-2", "node-a", "session-a"));
+        assertTrue(first.release("xuid-2", "node-b", "session-b"));
+    }
+
+    @Test
+    void concurrentJdbcNodesCannotAcquireSameUnownedXuid() throws Exception {
+        String url = "jdbc:h2:mem:online-lease-race;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000";
+        JdbcPlayerOnlineLeaseRegistry first = new JdbcPlayerOnlineLeaseRegistry(dataSource(url));
+        first.initializeSchema();
+        JdbcPlayerOnlineLeaseRegistry second = new JdbcPlayerOnlineLeaseRegistry(dataSource(url));
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService workers = Executors.newFixedThreadPool(2);
+        try {
+            Future<Boolean> a = workers.submit(() -> {
+                start.await();
+                return first.acquire("xuid-race", "node-a", "session-a", 500L, 5_000L);
+            });
+            Future<Boolean> b = workers.submit(() -> {
+                start.await();
+                return second.acquire("xuid-race", "node-b", "session-b", 500L, 5_000L);
+            });
+            start.countDown();
+            assertNotEquals(a.get(), b.get(), "Exactly one cluster node must acquire an unowned XUID");
+        } finally {
+            workers.shutdownNow();
+        }
+    }
+
+    private static JdbcDataSource dataSource(String url) {
+        JdbcDataSource source = new JdbcDataSource();
+        source.setURL(url);
+        return source;
+    }
+}

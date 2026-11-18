@@ -76,7 +76,7 @@ Do not promise a fixed player count before benchmark evidence exists.
 1. Interest/observer model.
 2. Server-local player ownership.
 3. Gateway protocol abstraction — FOUNDATION (`ServerNode`, `GatewayRouter`; transport adapter remains next).
-4. Cross-server handoff state — PARTIAL FOUNDATION (`PlayerHandoff` immutable envelope and `HandoffCoordinator` PREPARED/CLAIMED/COMMITTED/ABORTED state machine; durable replicated ledger and transport authentication remain required).
+4. Cross-server handoff state — PARTIAL FOUNDATION (`PlayerHandoff` envelope, in-process `HandoffCoordinator`, and a separate CAS-based `PlayerTransferCoordinator` with lease expiry and fencing tokens; `FilePlayerTransferLedger` is durable on one host only. The new ledger is not yet wired into live handoff, replicated, or backed by an authenticated inter-node transport).
 5. Global event bus boundary.
 6. Cluster health/load metrics.
 7. Load-aware player routing — FOUNDATION (`GatewayRouter` filters by profile, health and `ServerLoadPolicy`).

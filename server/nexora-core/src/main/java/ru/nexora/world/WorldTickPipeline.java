@@ -55,7 +55,8 @@ public final class WorldTickPipeline {
         for (WorldLivingEntity mob : mobs) {
             if (mob == null || mob.health() <= 0) continue;
 
-            long targetEstimate = 50_000L;
+            long targetEstimate = runtime.adaptEstimate(
+                    profiler.snapshot(HotPathProfiler.Path.MOB_TARGETING).p95Nanos(), 50_000L);
             if (runtime.admit(AdaptiveRuntime.Lane.AI, targetEstimate,
                     priorityHint(mob) == MobAiLoadController.Priority.HIGH)
                     == AdaptiveRuntime.Admission.DEFER) {
@@ -154,7 +155,9 @@ public final class WorldTickPipeline {
             loadController.recordBudgetNanos(System.nanoTime() - decisionStart);
         }
 
-        loadController.updateAdaptiveBudget(System.nanoTime() - budgetStart);
+        long elapsed = System.nanoTime() - budgetStart;
+        runtime.observeTick(elapsed);
+        loadController.updateAdaptiveBudget(elapsed);
         return new TickResult(tick, mobs.size(), scheduled, deferred, decisions,
                 highPriority, normalPriority, lowPriority);
     }

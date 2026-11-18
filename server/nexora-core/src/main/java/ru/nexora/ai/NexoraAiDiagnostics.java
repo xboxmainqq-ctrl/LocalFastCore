@@ -40,6 +40,7 @@ public final class NexoraAiDiagnostics {
     private final ConcurrentHashMap<String, AtomicLong> repeatedSignatures = new ConcurrentHashMap<>();
     private final Map<String, ArrayDeque<LatencySample>> latencySamples = new java.util.LinkedHashMap<>();
     private final Map<String, java.util.TreeMap<Long, LatencyBucket>> latencyBuckets = new java.util.LinkedHashMap<>();
+    private final java.util.TreeMap<Long, ActivityBucket> activityBuckets = new java.util.TreeMap<>();
     private volatile String lastFailure = "none";
     private volatile String lastSlowOperation = "none";
 
@@ -64,6 +65,7 @@ public final class NexoraAiDiagnostics {
         }
         String safeSubsystem = bound(sanitize(subsystem), 64);
         recordedFailures.incrementAndGet();
+        recordFailureActivity();
         String message = failure.getMessage();
         String description = (safeSubsystem.equals("unknown") ? "" : safeSubsystem + ": ")
                 + failure.getClass().getSimpleName()
@@ -71,6 +73,65 @@ public final class NexoraAiDiagnostics {
         lastFailure = bound(sanitize(description), MAX_FAILURE_DESCRIPTION_LENGTH);
         incrementSignature("FAILURE:" + safeSubsystem + ":" + failure.getClass().getSimpleName());
         appendEvent("FAILURE", lastFailure);
+    }
+
+    private synchronized void recordFailureActivity() {
+        long minute = Math.floorDiv(nanoClock.getAsLong(), LATENCY_BUCKET_NANOS);
+        activityBuckets.computeIfAbsent(minute, ignored -> new ActivityBucket()).failures++;
+        pruneActivityBuckets(minute);
+    }
+
+    /** Records a JVM resource sample; pressure is diagnostic only, never an automatic action. */
+    public synchronized void recordResourceSnapshot(JvmResourceSnapshot resources) {
+        Objects.requireNonNull(resources, "resources");
+        long minute = Math.floorDiv(nanoClock.getAsLong(), LATENCY_BUCKET_NANOS);
+        ActivityBucket bucket = activityBuckets.computeIfAbsent(minute, ignored -> new ActivityBucket());
+        bucket.resourceSamples++;
+        double heapRatio = resources.heapUsageRatio();
+        if (heapRatio >= 0.0) {
+            bucket.heapRatioTotal += heapRatio;
+            bucket.heapRatioSamples++;
+            bucket.maxHeapRatio = Math.max(bucket.maxHeapRatio, heapRatio);
+        }
+        double load = resources.systemLoadAverage();
+        if (load >= 0.0) bucket.maxLoadRatio = Math.max(bucket.maxLoadRatio, load / resources.availableProcessors());
+        if (heapRatio >= 0.90 || (load >= 0.0 && load > resources.availableProcessors() * 2.0)) {
+            bucket.pressureSamples++;
+        }
+        pruneActivityBuckets(minute);
+    }
+
+    private void pruneActivityBuckets(long currentMinute) {
+        activityBuckets.headMap(currentMinute - MAX_LATENCY_BUCKETS + 1, false).clear();
+    }
+
+    /** Returns bounded failure and JVM-pressure aggregates for the last 5 and 60 minutes. */
+    public synchronized List<ActivityWindowSummary> activityWindowSummaries() {
+        long currentMinute = Math.floorDiv(nanoClock.getAsLong(), LATENCY_BUCKET_NANOS);
+        List<ActivityWindowSummary> summaries = new ArrayList<>();
+        for (int windowMinutes : new int[]{5, 60}) {
+            long failures = 0, resourceSamples = 0, pressureSamples = 0, heapSamples = 0;
+            double heapTotal = 0.0, maxHeap = 0.0, maxLoadRatio = 0.0;
+            for (ActivityBucket bucket : activityBuckets.tailMap(currentMinute - windowMinutes + 1, true).values()) {
+                failures = saturatedAdd(failures, bucket.failures);
+                resourceSamples = saturatedAdd(resourceSamples, bucket.resourceSamples);
+                pressureSamples = saturatedAdd(pressureSamples, bucket.pressureSamples);
+                heapSamples = saturatedAdd(heapSamples, bucket.heapRatioSamples);
+                heapTotal += bucket.heapRatioTotal;
+                maxHeap = Math.max(maxHeap, bucket.maxHeapRatio);
+                maxLoadRatio = Math.max(maxLoadRatio, bucket.maxLoadRatio);
+            }
+            summaries.add(new ActivityWindowSummary(windowMinutes, failures,
+                    failures / (double) windowMinutes, resourceSamples, pressureSamples,
+                    heapSamples == 0 ? -1.0 : heapTotal / heapSamples,
+                    heapSamples == 0 ? -1.0 : maxHeap, maxLoadRatio));
+        }
+        return List.copyOf(summaries);
+    }
+
+    private static final class ActivityBucket {
+        private long failures, resourceSamples, pressureSamples, heapRatioSamples;
+        private double heapRatioTotal, maxHeapRatio, maxLoadRatio;
     }
 
     /** Records a bounded, identifier-free security signal from NexoraAI Guard. */
@@ -223,6 +284,23 @@ public final class NexoraAiDiagnostics {
                         .append(" ms, max=").append(summary.maxNanos() / 1_000_000L).append(" ms");
             }
         }
+        List<ActivityWindowSummary> activity = activityWindowSummaries();
+        if (result.length() < MAX_EVIDENCE_LENGTH) {
+            result.append("\nОшибки и давление ресурсов (5m/60m):");
+            for (ActivityWindowSummary summary : activity) {
+                result.append("\n- ").append(summary.windowMinutes()).append("m: failures=")
+                        .append(summary.failureCount()).append(" (")
+                        .append(String.format(java.util.Locale.ROOT, "%.2f", summary.failuresPerMinute()))
+                        .append("/min), resourceSamples=").append(summary.resourceSampleCount())
+                        .append(", pressureSamples=").append(summary.pressureSampleCount())
+                        .append(", heapAvg=").append(summary.averageHeapUsageRatio() < 0 ? "n/a"
+                                : String.format(java.util.Locale.ROOT, "%.1f%%", summary.averageHeapUsageRatio() * 100))
+                        .append(", heapMax=").append(summary.maxHeapUsageRatio() < 0 ? "n/a"
+                                : String.format(java.util.Locale.ROOT, "%.1f%%", summary.maxHeapUsageRatio() * 100))
+                        .append(", maxLoad/core=").append(String.format(java.util.Locale.ROOT, "%.2f",
+                                summary.maxSystemLoadPerProcessor()));
+            }
+        }
         if (result.length() > MAX_EVIDENCE_LENGTH) {
             result.setLength(MAX_EVIDENCE_LENGTH);
         }
@@ -233,6 +311,23 @@ public final class NexoraAiDiagnostics {
         while (!samples.isEmpty()
                 && nowNanos - samples.getFirst().recordedAtNanos() > LATENCY_WINDOW_NANOS) {
             samples.removeFirst();
+        }
+    }
+
+    public record ActivityWindowSummary(int windowMinutes, long failureCount,
+                                        double failuresPerMinute, long resourceSampleCount,
+                                        long pressureSampleCount, double averageHeapUsageRatio,
+                                        double maxHeapUsageRatio, double maxSystemLoadPerProcessor) {
+        public ActivityWindowSummary {
+            if ((windowMinutes != 5 && windowMinutes != 60) || failureCount < 0
+                    || !Double.isFinite(failuresPerMinute) || failuresPerMinute < 0
+                    || resourceSampleCount < 0 || pressureSampleCount < 0
+                    || pressureSampleCount > resourceSampleCount
+                    || (!Double.isFinite(averageHeapUsageRatio) && averageHeapUsageRatio != -1.0)
+                    || (!Double.isFinite(maxHeapUsageRatio) && maxHeapUsageRatio != -1.0)
+                    || !Double.isFinite(maxSystemLoadPerProcessor) || maxSystemLoadPerProcessor < 0) {
+                throw new IllegalArgumentException("Invalid activity window summary");
+            }
         }
     }
 
@@ -295,18 +390,20 @@ public final class NexoraAiDiagnostics {
 
     /** Returns detailed heap, non-heap, and thread counters for operator diagnostics. */
     public JvmResourceSnapshot resourceSnapshot() {
-        return JvmResourceSnapshot.capture();
+        JvmResourceSnapshot resources = JvmResourceSnapshot.capture();
+        recordResourceSnapshot(resources);
+        return resources;
     }
 
     /** Returns a point-in-time, read-only view of JVM health. */
     public Snapshot inspect() {
-        MemoryUsage heap = ManagementFactory.getMemoryMXBean().getHeapMemoryUsage();
-        long used = Math.max(0L, heap.getUsed());
-        long max = heap.getMax();
-        double heapUsage = max > 0 ? (double) used / max : -1.0;
-        int threadCount = ManagementFactory.getThreadMXBean().getThreadCount();
-        int processors = Runtime.getRuntime().availableProcessors();
-        double systemLoad = ManagementFactory.getOperatingSystemMXBean().getSystemLoadAverage();
+        JvmResourceSnapshot resources = resourceSnapshot();
+        long used = resources.heapUsedBytes();
+        long max = resources.heapMaxBytes();
+        double heapUsage = resources.heapUsageRatio();
+        int threadCount = resources.liveThreadCount();
+        int processors = resources.availableProcessors();
+        double systemLoad = resources.systemLoadAverage();
         long uptimeMillis = Math.max(0L, (nanoClock.getAsLong() - startedAtNanos) / 1_000_000L);
 
         Health health = Health.HEALTHY;

@@ -153,6 +153,7 @@ NEXORA_TRANSFER_JDBC_URL=jdbc:postgresql://db.example.internal:5432/nexora
 NEXORA_TRANSFER_JDBC_USER=nexora
 NEXORA_TRANSFER_JDBC_PASSWORD=replace-with-secret
 NEXORA_TRANSFER_JDBC_INITIALIZE_SCHEMA=false
+NEXORA_ONLINE_PLAYER_LEASE_MS=15000
 NEXORA_PLAYER_STATE_JDBC_URL=jdbc:postgresql://db.example.internal:5432/nexora
 NEXORA_PLAYER_STATE_JDBC_USER=nexora
 NEXORA_PLAYER_STATE_JDBC_PASSWORD=replace-with-secret
@@ -163,6 +164,8 @@ NEXORA_PLAYER_STATE_JDBC_INITIALIZE_SCHEMA=false
 - Set the two `*_INITIALIZE_SCHEMA` flags to `true` only when intentionally allowing startup to create the tables. Prefer deployment-managed schema migrations in production.
 - The matching JDBC driver must be present on the runtime classpath. The player checkpoint schema initializer currently supports H2, PostgreSQL and MySQL/MariaDB.
 - When a shared transfer ledger is selected, startup refuses to continue unless player checkpoints are also configured as shared. This prevents a destination from claiming a transfer whose inventory/equipment/position snapshot exists only on another host's local disk.
+- The same JDBC connection settings also create/use `nexora_player_online_leases`. A successful Bedrock login atomically acquires one XUID lease; active sessions renew it every third of `NEXORA_ONLINE_PLAYER_LEASE_MS` (default 15 seconds), and disconnect/transfer freeze releases it. A second node cannot admit the same XUID until the first lease is released or expires. A node that cannot renew is stopped fail-closed.
+- `NEXORA_TRANSFER_JDBC_INITIALIZE_SCHEMA=true` also initializes the online-lease table. Use the same shared SQL database on every node; local file-backed mode only protects duplicate sessions within one process.
 - Leave both JDBC URLs unset for the single-host file-backed development mode.
 
 **Important:** shared SQL storage is only the persistence foundation. Authenticated TCP peer transport, destination endpoint and source coordinator are wired when cluster configuration is present; the operator console can request a transfer. The protocol-2225 TransferPacket redirect is guarded by a matching durable COMMITTED record. This is an experimental controlled-cluster feature, not a production guarantee: real Bedrock client reconnect, multi-process kill/restart races, a global online-player lease for duplicate XUID logins that occur before the first transfer record (same-process duplicates are rejected and transfer history fences nodes after a transfer), and production database failover still require end-to-end validation. Do not enable it on public production servers until those checks are complete.

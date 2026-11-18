@@ -22,6 +22,7 @@ public final class WorldRuntimeModule implements AutoCloseable {
     private final WorldFurnaceTicker furnaceTicker;
     private final RuntimeTaskScheduler scheduler;
     private final RuntimeTaskScheduler.TaskHandle leaseHeartbeat;
+    private final Object heartbeatLock = new Object();
     private final AtomicBoolean closed = new AtomicBoolean();
 
     public WorldRuntimeModule(
@@ -89,12 +90,15 @@ public final class WorldRuntimeModule implements AutoCloseable {
                 heartbeat = taskScheduler.scheduleWithFixedDelay(
                         RuntimeTaskScheduler.Lane.MONITORING,
                         () -> {
-                            try {
-                                playerLeaseHeartbeat.run();
-                            } catch (RuntimeException failure) {
-                                try { leaseHeartbeatErrorHandler.accept(failure); }
-                                catch (RuntimeException ignored) {
-                                    // Diagnostics must not terminate the heartbeat task.
+                            synchronized (heartbeatLock) {
+                                if (closed.get()) return;
+                                try {
+                                    playerLeaseHeartbeat.run();
+                                } catch (RuntimeException failure) {
+                                    try { leaseHeartbeatErrorHandler.accept(failure); }
+                                    catch (RuntimeException ignored) {
+                                        // Diagnostics must not terminate the heartbeat task.
+                                    }
                                 }
                             }
                         },
@@ -152,7 +156,12 @@ public final class WorldRuntimeModule implements AutoCloseable {
     public void close() throws IOException {
         if (!closed.compareAndSet(false, true)) return;
         IOException failure = null;
-        if (leaseHeartbeat != null) leaseHeartbeat.cancel();
+        if (leaseHeartbeat != null) {
+            leaseHeartbeat.cancel();
+            synchronized (heartbeatLock) {
+                // Wait for an in-flight lease check before final player persistence.
+            }
+        }
         try {
             furnaceTicker.close();
         } catch (IOException exception) {

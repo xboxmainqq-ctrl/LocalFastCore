@@ -136,6 +136,32 @@ class NexoraAiDiagnosticsTest {
     }
 
     @Test
+    void incidentTimelineIsStructuredNewestFirstAndBounded() {
+        java.util.concurrent.atomic.AtomicLong clock = new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        diagnostics.recordFailure("world-save", new IllegalStateException("disk busy"));
+        clock.addAndGet(2_000_000_000L);
+        diagnostics.recordSlowOperation("mob-ai", 80, 50);
+
+        var timeline = diagnostics.incidentTimeline();
+        assertEquals(2, timeline.size());
+        assertEquals("SLOW", timeline.get(0).type());
+        assertEquals(2_000, timeline.get(0).uptimeMillis());
+        assertEquals(2, timeline.get(0).sequence());
+        assertEquals("FAILURE", timeline.get(1).type());
+        assertEquals(0, timeline.get(1).uptimeMillis());
+
+        for (int index = 0; index < 20; index++) {
+            diagnostics.recordGuardSignal("guard signal " + index);
+        }
+        timeline = diagnostics.incidentTimeline();
+        assertEquals(12, timeline.size());
+        assertEquals(22, timeline.get(0).sequence());
+        assertEquals(11, timeline.get(11).sequence());
+        assertThrows(UnsupportedOperationException.class, () -> timeline.add(timeline.getFirst()));
+    }
+
+    @Test
     void diagnosticEvidenceRedactsCredentialLikeValues() {
         NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
         diagnostics.recordFailure(new IllegalStateException(

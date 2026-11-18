@@ -35,6 +35,7 @@ public final class NexoraAiDiagnostics {
     private final LongSupplier nanoClock;
     private final long startedAtNanos;
     private final AtomicLong recordedFailures = new AtomicLong();
+    private final AtomicLong incidentSequence = new AtomicLong();
     private final AtomicLong slowOperationCount = new AtomicLong();
     private final ConcurrentLinkedDeque<DiagnosticEvent> events = new ConcurrentLinkedDeque<>();
     private final ConcurrentHashMap<String, AtomicLong> repeatedSignatures = new ConcurrentHashMap<>();
@@ -187,6 +188,17 @@ public final class NexoraAiDiagnostics {
     private static final class ActivityBucket {
         private long failures, resourceSamples, pressureSamples, heapRatioSamples, loadRatioSamples;
         private double heapRatioTotal, maxHeapRatio, maxLoadRatio;
+    }
+
+    /** Returns a bounded newest-first structured timeline of observed diagnostic incidents. */
+    public List<Incident> incidentTimeline() {
+        List<Incident> timeline = new ArrayList<>();
+        for (DiagnosticEvent event : events) {
+            if (timeline.size() >= MAX_EVENTS) break;
+            timeline.add(new Incident(event.sequence(), event.timestamp(), event.uptimeMillis(),
+                    event.type(), event.description()));
+        }
+        return List.copyOf(timeline);
     }
 
     /** Records a bounded, identifier-free security signal from NexoraAI Guard. */
@@ -382,6 +394,17 @@ public final class NexoraAiDiagnostics {
         }
     }
 
+    public record Incident(long sequence, String occurredAt, long uptimeMillis, String type, String description) {
+        public Incident {
+            Objects.requireNonNull(occurredAt, "occurredAt");
+            Objects.requireNonNull(type, "type");
+            Objects.requireNonNull(description, "description");
+            if (sequence < 1 || uptimeMillis < 0 || type.isBlank() || description.isBlank()) {
+                throw new IllegalArgumentException("Invalid diagnostic incident");
+            }
+        }
+    }
+
     public record LatencyAlignmentSummary(int windowMinutes, long overlappingMinuteBuckets,
                                           long networkSampleCount, long gameplaySampleCount,
                                           long networkAverageNanos, long gameplayAverageNanos,
@@ -464,7 +487,9 @@ public final class NexoraAiDiagnostics {
 
     private void appendEvent(String type, String description) {
         String safeDescription = bound(description, 240);
-        events.addFirst(new DiagnosticEvent(Instant.now().toString(), type, safeDescription));
+        long uptimeMillis = Math.max(0L, (nanoClock.getAsLong() - startedAtNanos) / 1_000_000L);
+        events.addFirst(new DiagnosticEvent(incidentSequence.incrementAndGet(), Instant.now().toString(),
+                uptimeMillis, type, safeDescription));
         while (events.size() > MAX_EVENTS) events.pollLast();
     }
 
@@ -511,7 +536,7 @@ public final class NexoraAiDiagnostics {
                 slowOperationCount.get(), lastSlowOperation);
     }
 
-    private record DiagnosticEvent(String timestamp, String type, String description) {
+    private record DiagnosticEvent(long sequence, String timestamp, long uptimeMillis, String type, String description) {
     }
 
     public record LatencySummary(String subsystem, int sampleCount, long slowOperationCount,

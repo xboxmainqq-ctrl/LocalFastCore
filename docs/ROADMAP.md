@@ -81,6 +81,7 @@ These rules apply to all future architecture, implementation, review, and planni
 - [x] Preserve world-owned entity chunks as pinned residency while entities remain alive, preventing unsafe eviction of chunks that still contain active mobs; release the pin when entity lifecycle removes the actor.
 - [x] Add Mob AI budget protection: adaptive priority admission preserves HIGH-priority decisions while deferring LOW/NORMAL work after the per-tick AI budget is consumed, with budget diagnostics and tests.
 - [x] Add adaptive AI budget control: budget contracts shrink under tick pressure and grow when the server has headroom, with smoothing, hard bounds, live diagnostics, and tests.
+- [x] Add Mob AI starvation protection: deferred entities accumulate bounded wait time, LOW work is promoted to NORMAL and then HIGH, and successful scheduling resets starvation state.
 - [x] Feed NexoraAI a throttled world-runtime snapshot containing resident/loaded chunk counts, living-entity count, and cumulative Mob AI scheduler updates, so operator diagnostics can correlate world activity with JVM and latency evidence.
 - [x] Add an allowlisted in-process repair registry with preconditions, post-action verification, bounded history, explicit console confirmation, and a strict auto-safe flag; register only a transient mob path-cache reset as a manual repair.
 - [ ] Generate proposed patches/config changes for operator review; never apply source-code or risky runtime changes autonomously.

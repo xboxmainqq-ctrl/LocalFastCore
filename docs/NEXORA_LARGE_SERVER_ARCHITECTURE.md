@@ -114,3 +114,7 @@ transactional/replicated guarantees that make it possible.
 
 ### Player snapshot identity compatibility
 The snapshot contract uses the authenticated Bedrock XUID as an opaque, validated string. The local file format writes that identity directly and reads the earlier numeric-ID format for compatibility. This removes the need to coerce XUIDs into signed 64-bit integers. Snapshot payload composition and integration with the live profile/inventory/equipment save path remain pending.
+
+
+### Canonical player-state bundle
+NEXORA now has an immutable `PlayerStateBundle`, a bounded explicit binary `PlayerStateBundleCodec`, and a `PlayerStateCheckpointService` that advances revisions from the durable latest snapshot and restores the aggregate. The bundle covers profile/location/vitals/experience, player inventory and selected hotbar slot, crafting UI slots, armor, offhand, cursor, and magical equipment. It intentionally contains detached immutable snapshots rather than live session objects. The codec and checkpoint coordinator have round-trip/durable-store tests. They are not yet connected to `BedrockSessionManager`; existing independent profile/inventory/equipment files remain the active live persistence path until lifecycle integration and migration tests are complete.

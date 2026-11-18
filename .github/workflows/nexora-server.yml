@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - nexora/compatibility-edition
+      - nexora/bds-network-test
     paths:
       - "src/**"
       - "pom.xml"
@@ -61,7 +62,7 @@ jobs:
           name: nexora-dedicated-server-preview
           path: target/nexora-dedicated-server-preview.zip
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
 
       - name: Render deterministic world preview from generated chunks
         if: success()
@@ -74,7 +75,7 @@ jobs:
           name: nexora-world-preview-seed-103-region-25x25
           path: target/nexora-world-preview.png
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
 
       - name: Upload test reports
         if: always()
@@ -83,7 +84,7 @@ jobs:
           name: nexora-server-test-reports
           path: target/surefire-reports/
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 1
 
       - name: Publish executable server JAR
         if: success()
@@ -92,4 +93,4 @@ jobs:
           name: nexora-core-server
           path: target/nexora-runtime-0.1.0-SNAPSHOT.jar
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1

@@ -25,8 +25,9 @@ public final class PlayerTransferFence {
                                LongSupplier epochMillis) {
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         Objects.requireNonNull(claim, "claim");
-        if (claim.state() != PlayerTransferRecord.State.CLAIMED || claim.fencingToken() <= 0) {
-            throw new IllegalArgumentException("Fence must be created from an active CLAIMED record");
+        if ((claim.state() != PlayerTransferRecord.State.CLAIMED
+                && claim.state() != PlayerTransferRecord.State.COMMITTED) || claim.fencingToken() <= 0) {
+            throw new IllegalArgumentException("Fence must be created from a CLAIMED or COMMITTED record");
         }
         this.transferId = claim.transferId();
         this.targetNode = claim.targetNode();

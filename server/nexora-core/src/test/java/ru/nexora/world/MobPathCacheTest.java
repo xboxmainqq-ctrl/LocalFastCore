@@ -94,4 +94,19 @@ class MobPathCacheTest {
         assertEquals("hits=9, misses=1, hitRate=90.0%, recomputations=1, blocked=0, evictions=0, entries=1",
                 stats.summary());
     }
+    @Test
+    void clearRemovesAllCachedPathsWithoutChangingHistoricalCounters() {
+        World world = new World("mob-path-cache-clear", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
+        MobPathCache cache = new MobPathCache();
+        cache.findNextStep(77L, world, 0.5, 65, 0.5, 2.5, 0.5, 1_000);
+        cache.findNextStep(77L, world, 0.5, 65, 0.5, 2.5, 0.5, 1_010);
+
+        cache.clear();
+
+        assertEquals(0, cache.size());
+        assertEquals(1, cache.stats().hits());
+        assertEquals(1, cache.stats().recomputations());
+    }
+
 }

@@ -75,6 +75,33 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void rejectsSecondActiveSessionForSameXuidOnOneNode() throws Exception {
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("duplicate-xuid", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                (networkId, label, frame) -> {}, event -> {});
+        try {
+            manager.onIdentity("first-session", new NetherNetClientIdentity(
+                    "first-token", new byte[] {1}, "same-xuid",
+                    "Player", "first-playfab", "20CA2", null));
+            manager.onIdentity("second-session", new NetherNetClientIdentity(
+                    "second-token", new byte[] {2}, "same-xuid",
+                    "Player", "second-playfab", "20CA2", null));
+            setSessionField(manager, "first-session", "loginAuthenticated", true);
+
+            java.lang.reflect.Method guard = BedrockSessionManager.class.getDeclaredMethod(
+                    "ensureNoDuplicateXuidSession", String.class, String.class);
+            guard.setAccessible(true);
+            java.lang.reflect.InvocationTargetException failure = assertThrows(
+                    java.lang.reflect.InvocationTargetException.class,
+                    () -> guard.invoke(manager, "second-session", "same-xuid"));
+            assertInstanceOf(SecurityException.class, failure.getCause());
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void relaysAuthenticatedChatUsingServerOwnedPlayerName() throws Exception {
         java.util.List<String> recipients = new java.util.ArrayList<>();
         java.util.List<byte[]> frames = new java.util.ArrayList<>();

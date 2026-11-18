@@ -59,6 +59,13 @@ class WorldFurnaceManagerTest {
         manager.tickAll(200);
 
         assertEquals(2, updates.get());
+        var stats = manager.tickStats();
+        assertEquals(1, stats.tickBatches());
+        assertEquals(2, stats.furnacesProcessed());
+        assertEquals(2, stats.changedFurnaces());
+        assertTrue(stats.totalExecutionNanos() >= stats.maxExecutionNanos());
+        assertTrue(stats.maxExecutionNanos() >= stats.lastExecutionNanos());
+        assertTrue(stats.averageExecutionMillis() >= 0.0);
         assertEquals(new ItemStack("minecraft:iron_ingot", 1, 64),
                 first.getSlot(2).orElseThrow());
         assertEquals(new ItemStack("minecraft:gold_ingot", 1, 64),

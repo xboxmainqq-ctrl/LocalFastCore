@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
 
 /** World-scoped furnace inventories and processing state with durable storage. */
@@ -20,6 +21,12 @@ public final class WorldFurnaceManager {
     private final Map<Position, ContainerInventory> loaded = new HashMap<>();
     private final Map<Position, FurnaceService.Kind> kinds = new HashMap<>();
     private final CopyOnWriteArrayList<Consumer<FurnaceUpdate>> updateListeners = new CopyOnWriteArrayList<>();
+    private final LongAdder tickBatches = new LongAdder();
+    private final LongAdder furnacesProcessed = new LongAdder();
+    private final LongAdder changedFurnaces = new LongAdder();
+    private final LongAdder totalTickNanos = new LongAdder();
+    private final java.util.concurrent.atomic.AtomicLong maxTickNanos = new java.util.concurrent.atomic.AtomicLong();
+    private final java.util.concurrent.atomic.AtomicLong lastTickNanos = new java.util.concurrent.atomic.AtomicLong();
 
     public WorldFurnaceManager(ContainerInventoryStorage inventoryStorage, FurnaceStateStorage stateStorage) {
         this.inventoryStorage = Objects.requireNonNull(inventoryStorage, "inventoryStorage");
@@ -85,6 +92,7 @@ public final class WorldFurnaceManager {
         synchronized (this) {
             for (var entry : loaded.entrySet()) {
                 Position p = entry.getKey();
+                furnacesProcessed.increment();
                 FurnaceService.Kind kind = kinds.getOrDefault(p, FurnaceService.Kind.FURNACE);
                 FurnaceService.FurnaceStateSnapshot before = service.snapshotState(p.x(), p.y(), p.z());
                 FurnaceService.TickResult result =
@@ -94,6 +102,22 @@ public final class WorldFurnaceManager {
             }
         }
         updates.forEach(this::publish);
+        changedFurnaces.add(updates.size());
+        tickBatches.increment();
+        long elapsedNanos = Math.max(0L, System.nanoTime() - started);
+        totalTickNanos.add(elapsedNanos);
+        maxTickNanos.accumulateAndGet(elapsedNanos, Math::max);
+        lastTickNanos.set(elapsedNanos);
+    }
+
+    /** Returns cumulative, aggregate-only furnace workload and latency measurements. */
+    public FurnaceTickStats tickStats() {
+        long batches = tickBatches.sum();
+        long processed = furnacesProcessed.sum();
+        long total = totalTickNanos.sum();
+        return new FurnaceTickStats(batches, processed, changedFurnaces.sum(),
+                total, maxTickNanos.get(), lastTickNanos.get(),
+                batches == 0 ? 0.0 : total / (double) batches / 1_000_000.0);
     }
 
     /** Claims the pending smelting experience for items removed from the output slot. */
@@ -165,6 +189,11 @@ public final class WorldFurnaceManager {
     }
 
     public synchronized int loadedCount() { return loaded.size(); }
+
+    public record FurnaceTickStats(long tickBatches, long furnacesProcessed, long changedFurnaces,
+                                   long totalExecutionNanos, long maxExecutionNanos,
+                                   long lastExecutionNanos, double averageExecutionMillis) {
+    }
 
     public record FurnaceUpdate(int x, int y, int z, ContainerInventory inventory,
                                 FurnaceService.TickResult result) {

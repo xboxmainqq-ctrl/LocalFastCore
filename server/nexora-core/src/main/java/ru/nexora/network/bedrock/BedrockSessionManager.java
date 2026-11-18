@@ -4252,23 +4252,24 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 throw new SecurityException("Unable to safely restore claimed transfer checkpoint", exception);
             }
         }
-        if (!legacyStateFound && latestTransfer != null
-                && latestTransfer.state() != ru.nexora.network.PlayerTransferRecord.State.PREPARED
-                && latestTransfer.state() != ru.nexora.network.PlayerTransferRecord.State.CLAIMED) {
+        if (!legacyStateFound && transferOwnershipLedger != null) {
             try {
-                PlayerStateBundle canonical = checkpointService.load(state.identity.xuid())
-                        .orElseThrow(() -> new IOException(
-                                "Durable transfer exists but its canonical player checkpoint is unavailable"));
-                PlayerStateBundle.Restored restored = canonical.restore();
-                state.inventory = restored.inventory();
-                state.craftingUiInventory.restore(restored.craftingUi().snapshot());
-                state.equipment = restored.equipment();
-                restorePlayerProfile(state, restored.profile(),
-                        state.identity.displayName() == null ? "unknown" : state.identity.displayName());
-                legacyStateFound = true;
+                Optional<PlayerStateBundle> canonical = checkpointService.load(state.identity.xuid());
+                if (canonical.isPresent()) {
+                    PlayerStateBundle.Restored restored = canonical.orElseThrow().restore();
+                    state.inventory = restored.inventory();
+                    state.craftingUiInventory.restore(restored.craftingUi().snapshot());
+                    state.equipment = restored.equipment();
+                    restorePlayerProfile(state, restored.profile(),
+                            state.identity.displayName() == null ? "unknown" : state.identity.displayName());
+                    legacyStateFound = true;
+                } else if (latestTransfer != null) {
+                    throw new IOException(
+                            "Durable transfer exists but its canonical player checkpoint is unavailable");
+                }
             } catch (IOException | RuntimeException exception) {
                 state.rejected = true;
-                throw new SecurityException("Unable to restore canonical player state after transfer", exception);
+                throw new SecurityException("Unable to restore shared canonical player state", exception);
             }
         }
         if (!legacyStateFound && inventoryStorage != null) {

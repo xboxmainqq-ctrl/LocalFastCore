@@ -24,9 +24,19 @@ public final class PlayerStateCheckpointService {
         String xuid = bundle.profile().xuid();
         synchronized (lockFor(xuid)) {
             Optional<PlayerStateSnapshot> latest = store.loadLatest(xuid);
+            byte[] payload = codec.encode(bundle);
+            if (latest.isPresent()) {
+                PlayerStateSnapshot current = latest.orElseThrow();
+                PlayerStateSnapshot candidate = new PlayerStateSnapshot(
+                        PlayerStateBundleCodec.SCHEMA_VERSION, xuid, current.revision(),
+                        capturedAtEpochMillis, payload);
+                if (current.schemaVersion() == candidate.schemaVersion()
+                        && current.checksum().equals(candidate.checksum())) {
+                    return PlayerStateStore.SaveResult.ALREADY_CURRENT;
+                }
+            }
             long revision = latest.map(PlayerStateSnapshot::revision).orElse(-1L);
             if (revision == Long.MAX_VALUE) throw new IOException("Player snapshot revision exhausted");
-            byte[] payload = codec.encode(bundle);
             PlayerStateSnapshot snapshot = new PlayerStateSnapshot(
                     PlayerStateBundleCodec.SCHEMA_VERSION, xuid, revision + 1,
                     capturedAtEpochMillis, payload);

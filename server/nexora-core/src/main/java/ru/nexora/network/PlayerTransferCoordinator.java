@@ -18,6 +18,10 @@ public final class PlayerTransferCoordinator {
         this.ledger = Objects.requireNonNull(ledger, "ledger");
     }
 
+    public Optional<PlayerTransferRecord> findLatestForPlayer(String playerXuid) throws IOException {
+        return ledger.findLatestForPlayer(playerXuid);
+    }
+
     public boolean prepare(PlayerTransferRecord record) throws IOException {
         return ledger.create(Objects.requireNonNull(record, "record"));
     }

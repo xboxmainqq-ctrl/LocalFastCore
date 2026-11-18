@@ -143,9 +143,9 @@ Dropped-item actors are now represented in the world item manager and synchroniz
 
 The world module includes a deterministic server-side movement simulator (`PlayerPhysics`) with bounded tick duration, walking/sprinting, jump impulse, gravity, ground contact, axis-separated wall collision and safe spawn validation. The production Bedrock session manager now feeds PlayerAuthInput movement vectors and sprint/jump flags into that simulator, stores authoritative position/velocity, and emits tick-associated CorrectPlayerMovePrediction packets when client prediction diverges. StartGame provides a 20-tick correction rewind window. This is the first integrated movement pass; water, sneak/fly, knockback, effects, fall damage and Android/Windows client tuning remain follow-up work.
 
-## Cluster transfer storage (experimental; handoff not enabled)
+## Cluster transfer (experimental; controlled-cluster validation required)
 
-The transfer ledger and canonical player checkpoints can use shared JDBC storage instead of per-host files. Configure a unique node ID on every server process and configure both shared stores:
+The transfer ledger and canonical player checkpoints must use shared JDBC storage instead of per-host files for a cross-host transfer. Configure a unique node ID on every server process and configure both shared stores:
 
 ~~~sh
 NEXORA_NODE_ID=survival-01
@@ -165,9 +165,9 @@ NEXORA_PLAYER_STATE_JDBC_INITIALIZE_SCHEMA=false
 - When a shared transfer ledger is selected, startup refuses to continue unless player checkpoints are also configured as shared. This prevents a destination from claiming a transfer whose inventory/equipment/position snapshot exists only on another host's local disk.
 - Leave both JDBC URLs unset for the single-host file-backed development mode.
 
-**Important:** shared SQL storage is only the persistence foundation. Authenticated TCP peer transport, destination endpoint and source coordinator are now wired when cluster configuration is present; the operator console can request a transfer. The protocol-2225 TransferPacket redirect is guarded by a matching durable COMMITTED record. Real Bedrock client reconnect, multi-process crash recovery and production database failover still need end-to-end validation. Do not treat this configuration as enabling production cross-host player migration.
+**Important:** shared SQL storage is only the persistence foundation. Authenticated TCP peer transport, destination endpoint and source coordinator are wired when cluster configuration is present; the operator console can request a transfer. The protocol-2225 TransferPacket redirect is guarded by a matching durable COMMITTED record. This is an experimental controlled-cluster feature, not a production guarantee: real Bedrock client reconnect, multi-process kill/restart races, duplicate-XUID admission across nodes, and production database failover still require end-to-end validation. Do not enable it on public production servers until those checks are complete.
 
-For an authenticated TCP cluster link, configure the cluster listener, each peer's cluster endpoint, each peer's Bedrock client route, and a shared random HMAC key:
+For an authenticated TCP cluster link, configure the cluster listener, each peer's cluster endpoint, each peer's Bedrock client route, and a distinct pairwise HMAC key for every peer:
 
 ~~~sh
 NEXORA_CLUSTER_BIND=10.20.0.1:19133

@@ -47,6 +47,10 @@ Ground-bound mobs receive server-authoritative gravity, terminal fall speed, col
 
 The diagnostic tracker reports repeated blocked movement after two seconds without meaningful positional progress. It is bounded to 5,000 runtime IDs. Successful movement, idle behavior, and special behavior clear tracking. It does not teleport, despawn, damage, or otherwise modify mobs.
 
+### Bounded hot-path profiling
+
+The runtime keeps a fixed-size rolling sample window for world entity ticks, chunk residency, Mob AI targeting, Mob AI decisions, and pathfinding. Console diagnostics expose sample count, average, p50, p95, and maximum latency; these are subsystem timings, not a substitute for a complete TPS meter.
+
 ### Chunk residency and entity ticking
 
 Bedrock sessions publish their negotiated per-player view radius to a world-owned residency manager. The current runtime loads the requested square chunk region, keeps chunks referenced by active living entities pinned, and persists chunks before evicting them after a 100-tick grace period. The Mob AI loop skips entities outside resident chunks. This is a first chunk lifecycle layer; entity serialization/unloading remains separate, so chunks containing living entities are pinned rather than evicted.

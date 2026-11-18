@@ -2931,4 +2931,23 @@ class BedrockSessionManagerTest {
         out.write(0); // user data length
     }
 
+    @Test
+    void operatorDiagnosticsExposeBoundedWorldAndChunkHotPathSamples() {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+        ru.nexora.world.World world = new ru.nexora.world.World(
+                "hot-path-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                world, (networkId, label, frame) -> {}, event -> {}, clock::get);
+
+        invokeLivingActorTick(manager, 20L);
+        String summary = manager.mobAiDiagnosticsSummary();
+
+        assertTrue(summary.contains("WORLD_ENTITY_TICK"));
+        assertTrue(summary.contains("CHUNK_RESIDENCY"));
+        assertTrue(summary.contains("samples=1"));
+        manager.close();
+    }
+
 }

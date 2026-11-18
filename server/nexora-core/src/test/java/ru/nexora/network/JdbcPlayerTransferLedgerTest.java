@@ -42,6 +42,13 @@ class JdbcPlayerTransferLedgerTest {
         assertFalse(afterRestart.compareAndSet(
                 transferId, 0L, recovered.committed(102L)),
                 "A stale expected version must never advance the durable record");
+        PlayerTransferRecord tamperedIdentity = new PlayerTransferRecord(
+                transferId, "different-player-xuid", recovered.sourceNode(), recovered.targetNode(),
+                recovered.playerRevision(), PlayerTransferRecord.State.COMMITTED,
+                recovered.fencingToken(), 102L, recovered.version() + 1, 102L);
+        assertFalse(afterRestart.compareAndSet(
+                transferId, recovered.version(), tamperedIdentity),
+                "A CAS transition must not rewrite the authenticated player or transfer endpoints");
 
         PlayerTransferRecord committed = new PlayerTransferCoordinator(afterRestart)
                 .commit(transferId, claim.fencingToken(), 102L).orElseThrow();

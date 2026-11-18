@@ -21,6 +21,8 @@ public final class AdaptiveRuntime {
     private final long emergencyReserveNanos;
     private final EnumMap<Lane, Long> reservedNanos = new EnumMap<>(Lane.class);
     private final EnumMap<Lane, Long> consumedNanos = new EnumMap<>(Lane.class);
+    private double pressure = 0.0;
+    private long lastTickNanos = 0L;
 
     public AdaptiveRuntime(long tickBudgetNanos, long emergencyReserveNanos) {
         if (tickBudgetNanos < 1_000_000L) throw new IllegalArgumentException("tick budget too small");
@@ -30,6 +32,25 @@ public final class AdaptiveRuntime {
         this.tickBudgetNanos = tickBudgetNanos;
         this.emergencyReserveNanos = emergencyReserveNanos;
         reset();
+    }
+
+    public synchronized void beginTick() {
+        reset();
+    }
+
+    public synchronized void observeTick(long elapsedNanos) {
+        if (elapsedNanos < 0) throw new IllegalArgumentException("elapsedNanos < 0");
+        lastTickNanos = elapsedNanos;
+        double ratio = (double) elapsedNanos / tickBudgetNanos;
+        pressure = pressure == 0.0 ? ratio : pressure * 0.85 + ratio * 0.15;
+    }
+
+    public synchronized double pressure() {
+        return pressure;
+    }
+
+    public synchronized long remainingNanos() {
+        return Math.max(0L, tickBudgetNanos - totalConsumed());
     }
 
     public synchronized void reset() {
@@ -69,8 +90,10 @@ public final class AdaptiveRuntime {
     }
 
     public synchronized Snapshot snapshot() {
+
         return new Snapshot(tickBudgetNanos, emergencyReserveNanos,
-                Map.copyOf(reservedNanos), Map.copyOf(consumedNanos), totalConsumed());
+                Map.copyOf(reservedNanos), Map.copyOf(consumedNanos), totalConsumed(),
+                pressure, lastTickNanos);
     }
 
     private long totalConsumed() {
@@ -84,5 +107,7 @@ public final class AdaptiveRuntime {
     public record Snapshot(long tickBudgetNanos, long emergencyReserveNanos,
                            Map<Lane, Long> reservedNanos,
                            Map<Lane, Long> consumedNanos,
-                           long totalConsumedNanos) {}
+                           long totalConsumedNanos,
+                           double pressure,
+                           long lastTickNanos) {}
 }

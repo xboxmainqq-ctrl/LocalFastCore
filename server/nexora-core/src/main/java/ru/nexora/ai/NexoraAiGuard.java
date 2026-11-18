@@ -73,7 +73,11 @@ public final class NexoraAiGuard {
                 peers.put(peerId, window);
             } else if (nowNanos < window.startedAtNanos
                     || nowNanos - window.startedAtNanos >= windowNanos) {
-                window.reset(nowNanos);
+                long elapsedWindows = nowNanos < window.startedAtNanos ? 0
+                        : (nowNanos - window.startedAtNanos) / windowNanos;
+                int consecutiveSignalledWindows = elapsedWindows == 1 && window.signalled
+                        ? window.consecutiveSignalledWindows + 1 : 0;
+                window.reset(nowNanos, consecutiveSignalledWindows);
             }
 
             window.frames++;
@@ -84,6 +88,9 @@ public final class NexoraAiGuard {
                 totalSignals++;
                 String reason = window.frames > maxFramesPerWindow
                         ? "frame-rate threshold exceeded" : "inbound-byte threshold exceeded";
+                if (window.consecutiveSignalledWindows > 0) {
+                    reason = "repeated inbound threshold across consecutive windows";
+                }
                 event = new GuardEvent(window.frames, window.bytes, reason);
             }
         }
@@ -435,16 +442,18 @@ public final class NexoraAiGuard {
         private long startedAtNanos;
         private long frames;
         private long bytes;
+        private int consecutiveSignalledWindows;
         private boolean signalled;
 
         private PeerWindow(long startedAtNanos) {
             this.startedAtNanos = startedAtNanos;
         }
 
-        private void reset(long nowNanos) {
+        private void reset(long nowNanos, int consecutiveSignalledWindows) {
             startedAtNanos = nowNanos;
             frames = 0;
             bytes = 0;
+            this.consecutiveSignalledWindows = consecutiveSignalledWindows;
             signalled = false;
         }
     }

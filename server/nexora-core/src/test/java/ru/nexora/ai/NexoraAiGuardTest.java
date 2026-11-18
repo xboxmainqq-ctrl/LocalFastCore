@@ -26,6 +26,33 @@ class NexoraAiGuardTest {
     }
 
     @Test
+    void repeatedInboundBurstsAcrossConsecutiveWindowsProduceSustainedReviewSignal() {
+        List<NexoraAiGuard.GuardEvent> events = new ArrayList<>();
+        NexoraAiGuard guard = new NexoraAiGuard(1_000, 2, 10_000, 8, events::add);
+
+        for (int frame = 0; frame < 3; frame++) guard.recordInboundFrame("peer-private", 10, frame);
+        for (int frame = 0; frame < 3; frame++) guard.recordInboundFrame("peer-private", 10, 1_000 + frame);
+
+        assertEquals(2, events.size());
+        assertEquals("frame-rate threshold exceeded", events.get(0).reason());
+        assertEquals("repeated inbound threshold across consecutive windows", events.get(1).reason());
+        assertFalse(guard.snapshot().summary().contains("peer-private"));
+        assertTrue(guard.snapshot().summary().contains("no automatic punishment") == false);
+    }
+
+    @Test
+    void inboundBurstStreakResetsWhenAWindowIsSkipped() {
+        List<NexoraAiGuard.GuardEvent> events = new ArrayList<>();
+        NexoraAiGuard guard = new NexoraAiGuard(1_000, 2, 10_000, 8, events::add);
+
+        for (int frame = 0; frame < 3; frame++) guard.recordInboundFrame("peer-a", 10, frame);
+        for (int frame = 0; frame < 3; frame++) guard.recordInboundFrame("peer-a", 10, 2_000 + frame);
+
+        assertEquals(2, events.size());
+        assertEquals("frame-rate threshold exceeded", events.get(1).reason());
+    }
+
+    @Test
     void flagsByteVolumeAndResetsAtWindowBoundary() {
         List<NexoraAiGuard.GuardEvent> events = new ArrayList<>();
         NexoraAiGuard guard = new NexoraAiGuard(1_000, 100, 100, 8, events::add);

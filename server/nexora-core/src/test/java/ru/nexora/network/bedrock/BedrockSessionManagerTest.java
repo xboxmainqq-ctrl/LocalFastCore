@@ -238,6 +238,10 @@ class BedrockSessionManagerTest {
             assertFalse((boolean) getSessionField(manager, "lost-lease-session", "loginAuthenticated"));
             assertEquals(-1L, checkpoints.latestRevision("lost-lease-xuid"),
                     "A former owner must never overwrite the shared checkpoint after losing its lease");
+
+            manager.onDisconnected("lost-lease-session");
+            assertEquals(-1L, checkpoints.latestRevision("lost-lease-xuid"),
+                    "Disconnect persistence must also skip writes after the lease was lost");
         } finally {
             manager.close();
         }

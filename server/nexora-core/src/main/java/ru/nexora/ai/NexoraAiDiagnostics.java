@@ -155,7 +155,11 @@ public final class NexoraAiDiagnostics {
         for (int windowMinutes : new int[]{5, 60}) {
             long failures = 0, resourceSamples = 0, pressureSamples = 0, heapSamples = 0;
             double heapTotal = 0.0, maxHeap = 0.0, maxLoadRatio = 0.0;
-            for (ActivityBucket bucket : activityBuckets.tailMap(currentMinute - windowMinutes + 1, true).values()) {
+            long firstObservedMinute = Long.MAX_VALUE;
+            for (Map.Entry<Long, ActivityBucket> entry
+                    : activityBuckets.tailMap(currentMinute - windowMinutes + 1, true).entrySet()) {
+                ActivityBucket bucket = entry.getValue();
+                firstObservedMinute = Math.min(firstObservedMinute, entry.getKey());
                 failures = saturatedAdd(failures, bucket.failures);
                 resourceSamples = saturatedAdd(resourceSamples, bucket.resourceSamples);
                 pressureSamples = saturatedAdd(pressureSamples, bucket.pressureSamples);
@@ -164,8 +168,11 @@ public final class NexoraAiDiagnostics {
                 maxHeap = Math.max(maxHeap, bucket.maxHeapRatio);
                 maxLoadRatio = Math.max(maxLoadRatio, bucket.maxLoadRatio);
             }
-            summaries.add(new ActivityWindowSummary(windowMinutes, failures,
-                    failures / (double) windowMinutes, resourceSamples, pressureSamples,
+            long observedMinutes = firstObservedMinute == Long.MAX_VALUE ? 0
+                    : Math.min(windowMinutes, currentMinute - firstObservedMinute + 1);
+            summaries.add(new ActivityWindowSummary(windowMinutes, observedMinutes, failures,
+                    observedMinutes == 0 ? 0.0 : failures / (double) observedMinutes,
+                    resourceSamples, pressureSamples,
                     heapSamples == 0 ? -1.0 : heapTotal / heapSamples,
                     heapSamples == 0 ? -1.0 : maxHeap, maxLoadRatio));
         }
@@ -384,13 +391,13 @@ public final class NexoraAiDiagnostics {
         }
     }
 
-    public record ActivityWindowSummary(int windowMinutes, long failureCount,
+    public record ActivityWindowSummary(int windowMinutes, long observedMinutes, long failureCount,
                                         double failuresPerMinute, long resourceSampleCount,
                                         long pressureSampleCount, double averageHeapUsageRatio,
                                         double maxHeapUsageRatio, double maxSystemLoadPerProcessor) {
         public ActivityWindowSummary {
-            if ((windowMinutes != 5 && windowMinutes != 60) || failureCount < 0
-                    || !Double.isFinite(failuresPerMinute) || failuresPerMinute < 0
+            if ((windowMinutes != 5 && windowMinutes != 60) || observedMinutes < 0 || observedMinutes > windowMinutes || failureCount < 0
+                    || !Double.isFinite(failuresPerMinute) || failuresPerMinute < 0 || (observedMinutes == 0 && (failureCount != 0 || failuresPerMinute != 0.0))
                     || resourceSampleCount < 0 || pressureSampleCount < 0
                     || pressureSampleCount > resourceSampleCount
                     || (!Double.isFinite(averageHeapUsageRatio) && averageHeapUsageRatio != -1.0)

@@ -87,6 +87,7 @@ public final class WorldTickPipeline {
             loadController.recordBudgetNanos(System.nanoTime() - decisionStart);
         }
 
+        loadController.updateAdaptiveBudget(System.nanoTime() - budgetStart);
         return new TickResult(tick, mobs.size(), scheduled, deferred, decisions,
                 highPriority, normalPriority, lowPriority);
     }

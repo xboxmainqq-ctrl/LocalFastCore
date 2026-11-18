@@ -4058,6 +4058,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 state.transferFence = pendingTransfer.fence();
                 legacyStateFound = true;
             } catch (IOException | RuntimeException exception) {
+                try {
+                    if (pendingTransfer.fence().isRevokedOrExpired()) {
+                        pendingTransferRestores.cancel(state.identity.xuid(),
+                                pendingTransfer.fence().transferId(),
+                                pendingTransfer.fence().fencingToken());
+                    }
+                } catch (IOException cleanupFailure) {
+                    exception.addSuppressed(cleanupFailure);
+                }
                 state.rejected = true;
                 throw new SecurityException("Unable to safely restore claimed transfer checkpoint", exception);
             }

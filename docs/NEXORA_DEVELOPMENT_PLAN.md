@@ -286,7 +286,7 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Expired claims are durably aborted during destination startup recovery and on login reconciliation; stale PREPARED records on their source node are cancelled after a 30-second grace period.
 - Transfer freeze now forces a fresh monotonic canonical checkpoint revision even when the serialized player state is unchanged, and the exact revision returned by that write is stored in PREPARED. This avoids a separate latest-revision read racing with another checkpoint.
 - Added tests for ownership policy, latest per-XUID lookup, and expired-claim durable rollback.
-- CI: 811 tests passed, zero failures on the latest validated lease-safe persistence build `8768217`.
+- CI: 811 tests passed, zero failures on the latest validated lease-safe persistence build `4d35bc5`.
 - Remaining: this is transfer-history fencing, not a complete online-player lease registry. A duplicate XUID that logs into two different nodes before either node has a transfer record can still be admitted. Implement a shared lease/owner registry and validate it under multi-process login races before public cluster use.
 ### 40. Frozen source session reconciliation — IMPLEMENTED, CI VERIFIED
 - Added a source-side reconciliation API that scans frozen Bedrock sessions and queries the latest durable per-XUID transfer decision.
@@ -308,7 +308,7 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Periodic autosave now retains the active lease and validates ownership before writing shared state. Disconnect saves do the same; a former owner that has lost its lease is rejected and cannot overwrite the destination's canonical checkpoint.
 - Added Bedrock session tests proving autosave keeps a valid lease and that both autosave and disconnect skip canonical writes after ownership loss.
 - Added in-memory expiry/fencing tests, JDBC multi-node exclusivity tests, and a concurrent two-node first-login race test.
-- CI: 811 tests passed, zero failures on commit `8768217`; GitHub Actions build and GitLab publish both succeeded.
+- CI: 811 tests passed, zero failures on commit `4d35bc5`; GitHub Actions build and GitLab publish both succeeded.
 - Remaining validation: process-kill/partition tests with two actual server processes and a production database; the lease uses bounded expiry and is not a consensus protocol for arbitrary clock skew. Nodes must have synchronized clocks and must not continue gameplay when renewal fails.
 ### 42. Shared ownership restart integration coverage — IMPLEMENTED, CI VERIFIED
 - Added combined JDBC restart tests using independent DataSource/ledger/lease/checkpoint-store instances to model source and destination processes reconnecting to the same durable database.

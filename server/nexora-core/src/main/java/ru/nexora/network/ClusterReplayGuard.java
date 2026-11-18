@@ -11,7 +11,7 @@ import java.util.UUID;
  * within the configured retention window; it is deliberately not advertised as
  * durable replay protection across restarts.
  */
-public final class ClusterReplayGuard {
+public final class ClusterReplayGuard implements ClusterReplayFilter {
     private final int maximumEntries;
     private final long retentionMillis;
     private final java.util.HashMap<UUID, Long> seen = new java.util.HashMap<>();

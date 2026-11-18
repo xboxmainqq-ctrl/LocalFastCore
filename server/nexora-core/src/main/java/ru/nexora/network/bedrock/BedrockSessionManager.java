@@ -1269,6 +1269,19 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             boolean resourcePacksInfoWasSent = state.resourcePacksInfoSent;
             boolean resourcePackStackWasSent = state.resourcePackStackSent;
             for (BedrockPacket packet : packets) {
+                if (state.transferFence != null) {
+                    try {
+                        state.transferFence.assertCurrent();
+                    } catch (IOException staleFence) {
+                        state.rejected = true;
+                        state.loginAuthenticated = false;
+                        state.clientInitialized = false;
+                        removePlayerListEntry(message.networkId(), state);
+                        System.err.println("NEXORA: stopped Bedrock batch after transfer ownership was lost: "
+                                + staleFence.getMessage());
+                        return;
+                    }
+                }
                 switch (packet.packetId()) {
                     case BedrockLoginPacketParser.LOGIN_PACKET_ID -> handleLogin(message, state, packet);
                     case BedrockBatchCodec.CLIENT_TO_SERVER_HANDSHAKE_PACKET_ID ->

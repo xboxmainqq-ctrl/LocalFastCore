@@ -98,7 +98,7 @@ public record PlayerTransferRecord(
                 }
                 boolean terminal = state == State.COMMITTED || state == State.ABORTED;
                 yield terminal && fencingToken == current.fencingToken
-                        && !current.leaseExpired(updatedAtEpochMillis)
+                        && (state == State.ABORTED || !current.leaseExpired(updatedAtEpochMillis))
                         && leaseExpiresAtEpochMillis == updatedAtEpochMillis;
             }
             case COMMITTED, ABORTED -> false;

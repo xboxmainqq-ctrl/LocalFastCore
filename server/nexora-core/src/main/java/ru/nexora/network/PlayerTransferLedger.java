@@ -1,6 +1,7 @@
 package ru.nexora.network;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -10,4 +11,7 @@ public interface PlayerTransferLedger {
     boolean create(PlayerTransferRecord prepared) throws IOException;
     boolean compareAndSet(UUID transferId, long expectedVersion,
                           PlayerTransferRecord replacement) throws IOException;
+
+    /** Returns bounded, deterministically ordered CLAIMED/COMMITTED records for a destination. */
+    List<PlayerTransferRecord> listRecoverableForTarget(String targetNode, int limit) throws IOException;
 }

@@ -14,6 +14,9 @@ import ru.nexora.world.PlayerDataStorage;
 import ru.nexora.world.PlayerData;
 import ru.nexora.world.PlayerVitals;
 import ru.nexora.world.WorldItemEntity;
+import ru.nexora.persistence.FilePlayerStateStore;
+import ru.nexora.persistence.PlayerStateBundleCodec;
+import ru.nexora.persistence.PlayerStateCheckpointService;
 
 import java.nio.file.Path;
 import java.nio.file.Files;
@@ -2947,6 +2950,41 @@ class BedrockSessionManagerTest {
         assertTrue(summary.contains("WORLD_ENTITY_TICK"));
         assertTrue(summary.contains("CHUNK_RESIDENCY"));
         assertTrue(summary.contains("samples=1"));
+        manager.close();
+    }
+
+    @Test
+    void disconnectWritesCanonicalCheckpointAfterLegacyPlayerStores() throws Exception {
+        Path players = temporaryDirectory.resolve("shadow-players");
+        Path inventories = temporaryDirectory.resolve("shadow-inventories");
+        Path equipment = temporaryDirectory.resolve("shadow-equipment");
+        Path checkpoints = temporaryDirectory.resolve("shadow-checkpoints");
+        PlayerDataStorage profileStorage = new PlayerDataStorage(players);
+        PlayerInventoryStorage inventoryStorage = new PlayerInventoryStorage(inventories);
+        PlayerEquipmentStorage equipmentStorage = new PlayerEquipmentStorage(equipment);
+        PlayerStateCheckpointService checkpointService = new PlayerStateCheckpointService(
+                new FilePlayerStateStore(checkpoints), new PlayerStateBundleCodec());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("shadow-checkpoint-world", 0L,
+                        new ru.nexora.world.FlatWorldGenerator()),
+                profileStorage, inventoryStorage, equipmentStorage, checkpointService,
+                (networkId, label, frame) -> {}, event -> {});
+        manager.onIdentity("shadow-player", new NetherNetClientIdentity(
+                "shadow-token", new byte[] {7}, "shadow-xuid",
+                "ShadowPlayer", "shadow-playfab", "20CA2", null));
+        setSessionField(manager, "shadow-player", "loginAuthenticated", true);
+        setSessionField(manager, "shadow-player", "positionInitialized", true);
+        setSessionField(manager, "shadow-player", "positionX", 3.0f);
+        setSessionField(manager, "shadow-player", "positionY", 66.0f);
+        setSessionField(manager, "shadow-player", "positionZ", 4.0f);
+
+        manager.onDisconnected("shadow-player");
+
+        assertTrue(profileStorage.load("shadow-xuid").isPresent());
+        var canonical = checkpointService.load("shadow-xuid").orElseThrow();
+        assertEquals("shadow-xuid", canonical.profile().xuid());
+        assertEquals(3.0f, canonical.profile().x());
         manager.close();
     }
 

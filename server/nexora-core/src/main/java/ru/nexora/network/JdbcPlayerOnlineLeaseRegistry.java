@@ -39,6 +39,18 @@ public final class JdbcPlayerOnlineLeaseRegistry implements PlayerOnlineLeaseReg
         }
     }
 
+    /** Fails startup early when the deployment-managed online lease table is absent or inaccessible. */
+    public void verifySchema() throws IOException {
+        String sql = "SELECT player_xuid FROM " + TABLE_NAME + " WHERE 1 = 0";
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             java.sql.ResultSet ignored = statement.executeQuery()) {
+            // Successful zero-row query is sufficient schema validation.
+        } catch (SQLException failure) {
+            throw new IOException("NEXORA online player lease schema is unavailable", failure);
+        }
+    }
+
     @Override
     public boolean acquire(String xuid, String node, String session, long now, long leaseMillis)
             throws IOException {

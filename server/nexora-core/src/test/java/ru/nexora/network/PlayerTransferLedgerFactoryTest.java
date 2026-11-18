@@ -36,6 +36,24 @@ class PlayerTransferLedgerFactoryTest {
     }
 
     @Test
+    void sharedJdbcConfigurationAlsoInitializesGlobalOnlineLeaseTable() throws Exception {
+        PlayerTransferLedgerFactory.ConfiguredLedger configured = PlayerTransferLedgerFactory.open(
+                temporaryDirectory,
+                Map.of(
+                        "NEXORA_TRANSFER_JDBC_URL", "jdbc:h2:mem:nexora-shared-leases;DB_CLOSE_DELAY=-1",
+                        "NEXORA_TRANSFER_JDBC_USER", "sa",
+                        "NEXORA_TRANSFER_JDBC_PASSWORD", "",
+                        "NEXORA_TRANSFER_JDBC_INITIALIZE_SCHEMA", "true"));
+
+        assertTrue(configured.shared());
+        assertNotNull(configured.onlineLeases());
+        assertTrue(configured.onlineLeases().acquire(
+                "factory-lease-xuid", "node-a", "session-a", 100L, 1_000L));
+        assertFalse(configured.onlineLeases().acquire(
+                "factory-lease-xuid", "node-b", "session-b", 101L, 1_000L));
+    }
+
+    @Test
     void defaultsToSingleHostFileLedgerWhenJdbcUrlIsAbsent() throws Exception {
         PlayerTransferLedgerFactory.ConfiguredLedger configured =
                 PlayerTransferLedgerFactory.open(temporaryDirectory, Map.of());

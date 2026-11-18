@@ -162,6 +162,7 @@ NEXORA_PLAYER_STATE_JDBC_INITIALIZE_SCHEMA=false
 
 - The first three JDBC environment variables in each group configure the corresponding store; credentials must be provided as a pair.
 - Set the two `*_INITIALIZE_SCHEMA` flags to `true` only when intentionally allowing startup to create the tables. Prefer deployment-managed schema migrations in production.
+- Startup validates connectivity and all three shared schemas (transfer ledger, online leases, canonical player checkpoints) before enabling the Bedrock listener, even when schema initialization is disabled. Missing migrations fail startup rather than surfacing on the first player login.
 - The matching JDBC driver must be present on the runtime classpath. The player checkpoint schema initializer currently supports H2, PostgreSQL and MySQL/MariaDB.
 - All nodes must read and write the same strongly consistent primary database for transfer decisions, checkpoints and online leases. Do not route ownership reads through asynchronous replicas. Online lease expiry uses the database `CURRENT_TIMESTAMP`; keep node clocks synchronized with NTP as transfer-record timestamps and handoff claims also use epoch milliseconds.
 - When a shared transfer ledger is selected, startup refuses to continue unless player checkpoints are also configured as shared. This prevents a destination from claiming a transfer whose inventory/equipment/position snapshot exists only on another host's local disk.

@@ -19,6 +19,18 @@ public final class InMemoryPlayerTransferLedger implements PlayerTransferLedger 
     }
 
     @Override
+    public synchronized Optional<PlayerTransferRecord> findLatestForPlayer(String playerXuid) {
+        if (playerXuid == null || !playerXuid.matches("[A-Za-z0-9_-]{1,64}")) {
+            throw new IllegalArgumentException("Invalid player XUID");
+        }
+        return records.values().stream()
+                .filter(record -> record.playerXuid().equals(playerXuid))
+                .max(Comparator.comparingLong(PlayerTransferRecord::playerRevision)
+                        .thenComparingLong(PlayerTransferRecord::updatedAtEpochMillis)
+                        .thenComparing(record -> record.transferId().toString()));
+    }
+
+    @Override
     public synchronized boolean create(PlayerTransferRecord prepared) {
         Objects.requireNonNull(prepared, "prepared");
         if (prepared.state() != PlayerTransferRecord.State.PREPARED || prepared.version() != 0

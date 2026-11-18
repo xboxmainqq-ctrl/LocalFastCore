@@ -54,6 +54,10 @@ public final class DurableHandoffCoordinator {
         return transfers.listRecoverableForTarget(targetNode, limit);
     }
 
+    public Optional<PlayerTransferRecord> findLatestForPlayer(String playerXuid) throws IOException {
+        return transfers.findLatestForPlayer(playerXuid);
+    }
+
     public Optional<PlayerTransferRecord> get(UUID transferId) throws IOException {
         return transfers.get(transferId);
     }

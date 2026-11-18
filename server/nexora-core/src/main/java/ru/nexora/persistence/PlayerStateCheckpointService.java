@@ -44,6 +44,16 @@ public final class PlayerStateCheckpointService {
         }
     }
 
+    /** Returns the latest durable revision, or -1 when no canonical checkpoint exists. */
+    public long latestRevision(String xuid) throws IOException {
+        if (xuid == null || !xuid.matches("[A-Za-z0-9_-]{1,64}")) {
+            throw new IllegalArgumentException("Invalid player XUID");
+        }
+        synchronized (lockFor(xuid)) {
+            return store.loadLatest(xuid).map(PlayerStateSnapshot::revision).orElse(-1L);
+        }
+    }
+
     public Optional<PlayerStateBundle> load(String xuid) throws IOException {
         synchronized (lockFor(xuid)) {
             Optional<PlayerStateSnapshot> stored = store.loadLatest(xuid);

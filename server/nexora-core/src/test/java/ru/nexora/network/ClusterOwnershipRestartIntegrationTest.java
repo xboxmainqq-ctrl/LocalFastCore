@@ -129,6 +129,28 @@ class ClusterOwnershipRestartIntegrationTest {
                 "A different JVM may acquire the XUID only after the crashed owner's lease expires");
     }
 
+    @Test
+    void simultaneousIndependentJvmLoginsHaveExactlyOneLeaseWinner(@TempDir Path directory) throws Exception {
+        String databasePath = directory.resolve("nexora-race").toAbsolutePath().toString().replace('\\', '/');
+        String url = "jdbc:h2:file:" + databasePath + ";AUTO_SERVER=TRUE;DB_CLOSE_ON_EXIT=FALSE;LOCK_TIMEOUT=10000";
+        new JdbcPlayerOnlineLeaseRegistry(dataSource(url)).initializeSchema();
+
+        Process nodeA = startLeaseProcess(url, "try", "race-process-xuid", "node-a", 10_000L);
+        Process nodeB = startLeaseProcess(url, "try", "race-process-xuid", "node-b", 10_000L);
+        assertTrue(nodeA.waitFor(15, TimeUnit.SECONDS), "Node A must finish its login attempt");
+        assertTrue(nodeB.waitFor(15, TimeUnit.SECONDS), "Node B must finish its login attempt");
+        assertEquals(0, nodeA.exitValue());
+        assertEquals(0, nodeB.exitValue());
+
+        String resultA = new BufferedReader(new InputStreamReader(nodeA.getInputStream())).readLine();
+        String resultB = new BufferedReader(new InputStreamReader(nodeB.getInputStream())).readLine();
+        assertNotEquals(resultA, resultB,
+                "Exactly one independent JVM may acquire a previously unowned XUID");
+        assertTrue(("ACQUIRED".equals(resultA) && "REJECTED".equals(resultB))
+                        || ("REJECTED".equals(resultA) && "ACQUIRED".equals(resultB)),
+                "Unexpected lease outcomes: node-a=" + resultA + ", node-b=" + resultB);
+    }
+
     private static Process startLeaseProcess(String url, String action, String xuid, String node,
                                              long leaseMillis) throws Exception {
         String classpath = System.getProperty("surefire.test.class.path", System.getProperty("java.class.path"));

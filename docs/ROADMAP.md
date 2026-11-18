@@ -78,6 +78,7 @@ These rules apply to all future architecture, implementation, review, and planni
 - [x] Add an explicit Mob AI mutation boundary: `WorldEntityDecisionApplier` applies validated movement through the living-entity manager while player attacks remain output events for the player subsystem, keeping AI decisions separate from world mutation.
 - [x] Connect chunk residency to entity ticking with `WorldEntityTickCoordinator`: only resident-chunk entities enter Mob AI scheduling, unload grace periods preserve short-term activity, and aggregate world/entity tick duration is reported to NexoraAI diagnostics.
 - [x] Apply chunk residency to the real Bedrock world tick: negotiated per-player chunk radii are tracked, the world loads newly resident chunks, persists chunks before eviction, and the existing Mob AI loop skips entities outside resident chunks.
+- [x] Preserve world-owned entity chunks as pinned residency while entities remain alive, preventing unsafe eviction of chunks that still contain active mobs; release the pin when entity lifecycle removes the actor.
 - [ ] Generate proposed patches/config changes for operator review; never apply source-code or risky runtime changes autonomously.
 - [ ] Require explicit operator approval, backups, validation, and a rollback path for every change.
 - [ ] Run tests/build checks before a proposed fix is considered ready.

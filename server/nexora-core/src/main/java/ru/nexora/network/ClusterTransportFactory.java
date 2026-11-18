@@ -35,11 +35,11 @@ public final class ClusterTransportFactory {
         if (dataDirectory == null || environment == null) throw new NullPointerException();
         String bindValue = value(environment, "NEXORA_CLUSTER_BIND");
         String peersValue = value(environment, "NEXORA_CLUSTER_PEERS");
-        String secretValue = value(environment, "NEXORA_CLUSTER_SHARED_SECRET");
-        if (bindValue == null && peersValue == null && secretValue == null) return Optional.empty();
-        if (bindValue == null || peersValue == null || secretValue == null) {
+        String peerKeysValue = value(environment, "NEXORA_CLUSTER_PEER_KEYS");
+        if (bindValue == null && peersValue == null && peerKeysValue == null) return Optional.empty();
+        if (bindValue == null || peersValue == null || peerKeysValue == null) {
             throw new IllegalArgumentException(
-                    "NEXORA_CLUSTER_BIND, NEXORA_CLUSTER_PEERS and NEXORA_CLUSTER_SHARED_SECRET must be configured together");
+                    "NEXORA_CLUSTER_BIND, NEXORA_CLUSTER_PEERS and NEXORA_CLUSTER_PEER_KEYS must be configured together");
         }
 
         InetSocketAddress bindAddress = parseAddress(bindValue, "NEXORA_CLUSTER_BIND");
@@ -52,16 +52,8 @@ public final class ClusterTransportFactory {
         if (!peers.keySet().containsAll(bedrockRoutes.keySet())) {
             throw new IllegalArgumentException("Every Bedrock route must name a configured cluster peer");
         }
-        byte[] secret;
-        try {
-            secret = Base64.getDecoder().decode(secretValue);
-        } catch (IllegalArgumentException invalid) {
-            throw new IllegalArgumentException("NEXORA_CLUSTER_SHARED_SECRET must be Base64", invalid);
-        }
-        if (secret.length < 32) {
-            throw new IllegalArgumentException("NEXORA_CLUSTER_SHARED_SECRET must decode to at least 32 bytes");
-        }
-
+        Map<String, ClusterMessageCodec> peerCodecs = parsePeerCodecs(
+                peerKeysValue, localNodeId, peers.keySet());
         long skewMillis = longValue(environment, "NEXORA_CLUSTER_MAX_CLOCK_SKEW_MS", 30_000L, 1_000L, 300_000L);
         long replayRetentionMillis = longValue(
                 environment, "NEXORA_CLUSTER_REPLAY_RETENTION_MS", 600_000L, 10_000L, 86_400_000L);
@@ -76,15 +68,47 @@ public final class ClusterTransportFactory {
 
         TcpClusterTransport transport = new TcpClusterTransport(
                 localNodeId, bindAddress, peers, peers.keySet(),
-                new AuthenticatedClusterMessageCodec(secret, skewMillis),
+                new PeerClusterMessageCodec(localNodeId, peerCodecs),
                 new FileClusterReplayFilter(replayDirectory, replayCapacity, replayRetentionMillis),
                 Duration.ofMillis(connectTimeout), Duration.ofMillis(readTimeout),
                 workers, queueCapacity);
         return Optional.of(new ConfiguredTransport(
                 transport, peers.size(), bedrockRoutes,
-                "authenticated TCP cluster transport (HMAC-SHA-256, "
+                "authenticated TCP cluster transport (pairwise HMAC-SHA-256, "
                         + peers.size() + " configured peers; " + bedrockRoutes.size()
                         + " Bedrock routes; shared secret hidden)"));
+    }
+
+    private static Map<String, ClusterMessageCodec> parsePeerCodecs(
+            String value, String localNodeId, java.util.Set<String> configuredPeers) {
+        Map<String, ClusterMessageCodec> codecs = new LinkedHashMap<>();
+        for (String entry : value.split(";", -1)) {
+            String trimmed = entry.trim();
+            int separator = trimmed.indexOf('=');
+            if (separator <= 0 || separator != trimmed.lastIndexOf('=')) {
+                throw new IllegalArgumentException("Invalid NEXORA_CLUSTER_PEER_KEYS entry");
+            }
+            String peerId = trimmed.substring(0, separator).trim();
+            if (!configuredPeers.contains(peerId) || peerId.equals(localNodeId)) {
+                throw new IllegalArgumentException("Peer key has no matching configured cluster peer: " + peerId);
+            }
+            byte[] key;
+            try {
+                key = Base64.getDecoder().decode(trimmed.substring(separator + 1).trim());
+            } catch (IllegalArgumentException invalid) {
+                throw new IllegalArgumentException("NEXORA_CLUSTER_PEER_KEYS values must be Base64", invalid);
+            }
+            if (key.length < 32) {
+                throw new IllegalArgumentException("Each pairwise cluster key must decode to at least 32 bytes");
+            }
+            if (codecs.putIfAbsent(peerId, new AuthenticatedClusterMessageCodec(key, 30_000L)) != null) {
+                throw new IllegalArgumentException("Duplicate cluster peer key: " + peerId);
+            }
+        }
+        if (!codecs.keySet().equals(configuredPeers)) {
+            throw new IllegalArgumentException("NEXORA_CLUSTER_PEER_KEYS must define exactly one key per configured peer");
+        }
+        return Map.copyOf(codecs);
     }
 
     private static Map<String, InetSocketAddress> parsePeers(

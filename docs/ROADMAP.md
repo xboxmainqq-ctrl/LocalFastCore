@@ -20,6 +20,7 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 ## Priority 1 — Core stability and performance
 
 - [ ] Establish repeatable baselines for tick-like subsystem latency, Bedrock inbound handling, mob AI, furnace updates, saves, heap, and thread counts. Clearly distinguish measured subsystem latency from true server TPS.\n- [x] Expose aggregate furnace tick batches, processed/changed furnace counts, and cumulative/max/last execution duration; verify counters with deterministic manager tests. These measurements are subsystem diagnostics, not global TPS.
+- [x] Expose aggregate world autosave attempts, successes/failures, and cumulative/max/last flush duration; cover manual, periodic, final, and failed flush accounting with deterministic tests.
 - [x] Add thread-safe per-lane scheduler execution counters and duration snapshots; expose tick and persistence measurements through the world runtime module without presenting them as global TPS.
 - [x] Add low-overhead NetherNet inbound frame/byte/message/failure counters and processing-duration snapshots, exposed through Bedrock session diagnostics and covered by concurrent ingress tests.
 - [ ] Profile hot paths before optimizing; avoid speculative micro-optimizations. The first mob-AI cleanup replaces per-mob Stream-based nearest-target scans with allocation-free loops; this is a code-path cleanup, not a measured performance claim.

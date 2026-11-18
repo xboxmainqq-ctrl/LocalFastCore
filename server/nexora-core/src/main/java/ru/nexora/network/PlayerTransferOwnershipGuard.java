@@ -11,8 +11,7 @@ import java.util.Optional;
 public final class PlayerTransferOwnershipGuard {
     public enum LoginDecision {
         LEGACY_ALLOWED,
-        RESTORE_CANONICAL,
-        RESTORE_TRANSFER_CHECKPOINT
+        RESTORE_CANONICAL
     }
 
     private PlayerTransferOwnershipGuard() {

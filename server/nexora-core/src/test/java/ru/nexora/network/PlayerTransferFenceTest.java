@@ -24,6 +24,10 @@ class PlayerTransferFenceTest {
         assertTrue(ledger.commit(id, claim.fencingToken(), 101L).isPresent());
         assertDoesNotThrow(fence::assertCurrent);
         assertDoesNotThrow(fence::assertCommitted);
+        PlayerTransferFence rehydrated = new PlayerTransferFence(ledger,
+                ledger.get(id).orElseThrow(), () -> 102L);
+        assertDoesNotThrow(rehydrated::assertCurrent);
+        assertDoesNotThrow(rehydrated::assertCommitted);
     }
 
     @Test

@@ -70,7 +70,13 @@ public final class RuntimeTaskScheduler implements AutoCloseable {
         };
         try {
             Runnable guarded = () -> {
-                if (!closed.get()) task.run();
+                if (closed.get()) return;
+                try {
+                    task.run();
+                } catch (RuntimeException | Error failure) {
+                    release.run();
+                    throw failure;
+                }
             };
             ScheduledFuture<?> future = fixedRate
                     ? runtime.executor.scheduleAtFixedRate(guarded, initialDelay, interval, unit)

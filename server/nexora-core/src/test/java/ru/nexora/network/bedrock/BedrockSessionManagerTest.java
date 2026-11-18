@@ -963,9 +963,12 @@ class BedrockSessionManagerTest {
                 new java.util.concurrent.atomic.AtomicLong(10_000_000_000L);
         ru.nexora.world.World spawnerWorld = new ru.nexora.world.World(
                 "spawner-ai-integration", 0L, new ru.nexora.world.FlatWorldGenerator());
-        for (int chunkX = -1; chunkX <= 1; chunkX++) {
-            for (int chunkZ = -1; chunkZ <= 1; chunkZ++) spawnerWorld.getChunk(chunkX, chunkZ);
+        for (int chunkX = -1; chunkX <= 2; chunkX++) {
+            for (int chunkZ = -1; chunkZ <= 2; chunkZ++) spawnerWorld.getChunk(chunkX, chunkZ);
         }
+        // This distant idle mob is deliberately deferred by the generic AI scheduler
+        // on tick 200. Spawner processing must still run before that scheduling decision.
+        spawnerWorld.livingEntities().spawn("minecraft:cow", 20, 40.5, 65.0, 40.5);
         List<byte[]> outbound = new ArrayList<>();
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
@@ -993,6 +996,10 @@ class BedrockSessionManagerTest {
                 .anyMatch(entity -> entity.identifier().equals("minecraft:zombie")));
         assertTrue(outbound.stream().flatMap(frame -> decodeOutboundAll(frame, true).stream())
                 .anyMatch(packet -> packet.packetId() == BedrockAddActorCodec.ADD_ACTOR_PACKET_ID));
+        ru.nexora.combat.MobAiLoadController scheduler =
+                (ru.nexora.combat.MobAiLoadController) getManagerField(manager, "mobAiLoadController");
+        assertTrue(scheduler.stats().deferredUpdates() > 0,
+                "The distant idle mob should be deferred while the active spawner still produces");
         manager.close();
     }
 

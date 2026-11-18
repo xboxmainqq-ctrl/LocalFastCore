@@ -73,6 +73,22 @@ public final class PlayerTransferFence {
         }
     }
 
+    /**
+     * True when this token is terminal, expired, or superseded and its pending
+     * login reservation can be safely discarded.
+     */
+    public boolean isRevokedOrExpired() throws IOException {
+        PlayerTransferRecord current = ledger.get(transferId).orElse(null);
+        if (current == null) return true;
+        boolean sameOwner = current.fencingToken() == fencingToken
+                && current.targetNode().equals(targetNode)
+                && current.playerXuid().equals(playerXuid)
+                && current.playerRevision() == playerRevision;
+        if (!sameOwner || current.state() == PlayerTransferRecord.State.ABORTED) return true;
+        return current.state() == PlayerTransferRecord.State.CLAIMED
+                && current.leaseExpired(epochMillis.getAsLong());
+    }
+
     /** True only while this fence is the active, unexpired claim (before commit). */
     public boolean isActiveClaim() throws IOException {
         PlayerTransferRecord current = ledger.get(transferId).orElse(null);

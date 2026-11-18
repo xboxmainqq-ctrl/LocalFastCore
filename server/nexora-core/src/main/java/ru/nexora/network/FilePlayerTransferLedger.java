@@ -11,12 +11,16 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -88,6 +92,42 @@ public final class FilePlayerTransferLedger implements PlayerTransferLedger {
                 return true;
             });
         }
+    }
+
+    @Override
+    public List<PlayerTransferRecord> listRecoverableForTarget(String targetNode, int limit) throws IOException {
+        if (targetNode == null || !targetNode.matches("[A-Za-z0-9._-]{1,64}"))
+            throw new IllegalArgumentException("Invalid target node");
+        if (limit < 1 || limit > 10_000)
+            throw new IllegalArgumentException("Recovery query limit must be 1..10000");
+
+        List<PlayerTransferRecord> matches = new ArrayList<>();
+        int scanned = 0;
+        try (DirectoryStream<Path> files = Files.newDirectoryStream(directory, "*.nxtl")) {
+            for (Path file : files) {
+                if (++scanned > 100_000)
+                    throw new IOException("Transfer ledger recovery scan exceeds 100000 records");
+                String name = file.getFileName().toString();
+                String idText = name.substring(0, name.length() - ".nxtl".length());
+                final UUID id;
+                try {
+                    id = UUID.fromString(idText);
+                } catch (IllegalArgumentException malformed) {
+                    throw new IOException("Invalid transfer ledger filename: " + name, malformed);
+                }
+                Optional<PlayerTransferRecord> stored = get(id);
+                if (stored.isEmpty()) throw new IOException("Transfer ledger record disappeared during recovery scan: " + id);
+                PlayerTransferRecord record = stored.orElseThrow();
+                if (record.targetNode().equals(targetNode)
+                        && (record.state() == PlayerTransferRecord.State.CLAIMED
+                        || record.state() == PlayerTransferRecord.State.COMMITTED)) {
+                    matches.add(record);
+                }
+            }
+        }
+        matches.sort(Comparator.comparingLong(PlayerTransferRecord::updatedAtEpochMillis)
+                .thenComparing(record -> record.transferId().toString()));
+        return List.copyOf(matches.subList(0, Math.min(limit, matches.size())));
     }
 
     private <T> T withFileLock(UUID id, IoSupplier<T> action) throws IOException {

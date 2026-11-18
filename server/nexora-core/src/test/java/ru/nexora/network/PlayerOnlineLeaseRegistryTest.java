@@ -90,6 +90,18 @@ class PlayerOnlineLeaseRegistryTest {
         }
     }
 
+    @Test
+    void jdbcLeaseOperationsFailClosedWhenSharedDatabaseIsUnavailable() {
+        JdbcPlayerOnlineLeaseRegistry unavailable =
+                new JdbcPlayerOnlineLeaseRegistry(dataSource("jdbc:nexora-unavailable:lease-db"));
+        assertThrows(java.io.IOException.class,
+                () -> unavailable.acquire("xuid-offline", "node-a", "session-a", 100L, 1_000L));
+        assertThrows(java.io.IOException.class,
+                () -> unavailable.renew("xuid-offline", "node-a", "session-a", 200L, 1_000L));
+        assertThrows(java.io.IOException.class,
+                () -> unavailable.release("xuid-offline", "node-a", "session-a"));
+    }
+
     private static JdbcDataSource dataSource(String url) {
         JdbcDataSource source = new JdbcDataSource();
         source.setURL(url);

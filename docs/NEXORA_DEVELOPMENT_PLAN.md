@@ -50,6 +50,8 @@ Gameplay systems -> Gameplay Events / Gameplay Graph -> Work Graph -> Task Contr
 - Cluster routing and capacity decisions are based on measured player/world/gameplay/network pressure.
 - `ServerNode` and `GatewayRouter` provide profile-aware, health-aware, load-aware destination selection.
 - `PlayerHandoff` defines an immutable cross-server transfer envelope; source freeze, destination claim, commit/rollback and transport are still required.
+- `PlayerTransferCoordinator` and `FilePlayerTransferLedger` provide local durable CAS records, expiring claims and fencing tokens; `DurableHandoffCoordinator` bridges the handoff envelope to this ledger. Replication and live ownership transfer are not implemented.
+- `ClusterTransport` defines the transport SPI and `AuthenticatedClusterMessageCodec` authenticates bounded node messages with HMAC-SHA-256. Replay protection, key rotation, peer authorization and a concrete network adapter remain next.
 - Fixed online capacity claims are prohibited until benchmark evidence exists.
 
 ## Next development sequence

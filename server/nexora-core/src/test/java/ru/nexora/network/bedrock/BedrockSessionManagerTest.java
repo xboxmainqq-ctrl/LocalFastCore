@@ -3425,12 +3425,15 @@ class BedrockSessionManagerTest {
             UUID transferId = UUID.randomUUID();
             PlayerHandoff handoff = new PlayerHandoff(transferId, 1L, "node-a", "node-b", new byte[0]);
             ledger.prepare(handoff, "lease-order-xuid", revision, now + 2L);
+            var claimed = ledger.claim(transferId, "node-b", now + 3L, 15_000L).orElseThrow();
+            assertEquals(ru.nexora.network.PlayerTransferRecord.State.CLAIMED, claimed.state(),
+                    "Destination may claim the durable PREPARED record before source lease release runs");
             manager.releaseOnlinePlayerLeaseAfterPreparedTransfer("lease-order-xuid", transferId);
 
             assertFalse(leases.renew("lease-order-xuid", "node-a", "lease-order-session",
-                    now + 3L, 15_000L));
+                    now + 4L, 15_000L));
             assertTrue(leases.acquire("lease-order-xuid", "node-b", "destination-session",
-                    now + 3L, 15_000L),
+                    now + 4L, 15_000L),
                     "Destination can acquire the XUID only after PREPARED has been durably published");
         } finally {
             manager.close();

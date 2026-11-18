@@ -810,8 +810,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     /**
-     * Releases the frozen source session's online XUID lease only after its exact
-     * transfer is durably PREPARED. Until this point the source retains the lease,
+     * Releases the frozen source session's online XUID lease after its exact
+     * transfer is durably PREPARED (or has advanced to CLAIMED/COMMITTED). Until this point the source retains the lease,
      * preventing an early destination login in the checkpoint/publication gap.
      */
     public void releaseOnlinePlayerLeaseAfterPreparedTransfer(String playerXuid, UUID transferId)
@@ -825,10 +825,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         ru.nexora.network.PlayerTransferRecord record = ledger.get(transferId)
                 .orElseThrow(() -> new IOException("Prepared transfer is not present in the durable ledger"));
-        if (record.state() != ru.nexora.network.PlayerTransferRecord.State.PREPARED
+        if ((record.state() != ru.nexora.network.PlayerTransferRecord.State.PREPARED
+                && record.state() != ru.nexora.network.PlayerTransferRecord.State.CLAIMED
+                && record.state() != ru.nexora.network.PlayerTransferRecord.State.COMMITTED)
                 || !record.playerXuid().equals(playerXuid)
                 || !record.sourceNode().equals(nodeId)) {
-            throw new SecurityException("Durable PREPARED record does not match frozen source player");
+            throw new SecurityException("Durable transfer record does not match frozen source player");
         }
         Map.Entry<String, SessionState> match = null;
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {

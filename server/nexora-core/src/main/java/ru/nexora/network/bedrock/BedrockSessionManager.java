@@ -589,7 +589,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 try {
                     if (state.openContainerWindowId != 0) closeContainerWindow(networkId, state, true);
                     returnCraftingGridItems(state);
-                    saveAllPlayerState(state);
+                    saveAllPlayerStateForTransfer(state);
                     revision = checkpointService.latestRevision(playerXuid);
                     if (revision < 0) throw new IOException("Canonical checkpoint was not written");
                 } catch (IOException | RuntimeException failure) {
@@ -720,6 +720,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         checkpointCanonicalPlayerState(state);
     }
 
+    private void saveAllPlayerStateForTransfer(SessionState state) throws IOException {
+        savePlayer(state);
+        saveInventory(state);
+        saveEquipment(state);
+        checkpointCanonicalPlayerState(state, true);
+    }
+
     /** Revalidates destination ownership before any player persistence write. */
     private static void assertTransferFence(SessionState state) throws IOException {
         if (state.transferFence != null) state.transferFence.assertCommitted();
@@ -731,6 +738,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
      * can prove that the aggregate is newer and complete.
      */
     private void checkpointCanonicalPlayerState(SessionState state) throws IOException {
+        checkpointCanonicalPlayerState(state, false);
+    }
+
+    private void checkpointCanonicalPlayerState(SessionState state, boolean forceTransferRevision) throws IOException {
         assertTransferFence(state);
         if (checkpointService == null || !state.loginAuthenticated || !state.positionInitialized
                 || state.identity == null) return;
@@ -742,7 +753,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 state.experiencePoints, state.experienceRemainderMilli);
         PlayerStateBundle bundle = PlayerStateBundle.capture(
                 profile, state.inventory, state.craftingUiInventory, state.equipment);
-        checkpointService.checkpoint(bundle, profile.lastSeenEpochMillis());
+        if (forceTransferRevision) {
+            checkpointService.checkpointForTransfer(bundle, profile.lastSeenEpochMillis());
+        } else {
+            checkpointService.checkpoint(bundle, profile.lastSeenEpochMillis());
+        }
     }
 
     private void savePlayer(SessionState state) throws IOException {

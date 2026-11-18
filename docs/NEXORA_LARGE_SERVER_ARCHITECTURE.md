@@ -137,3 +137,10 @@ The `PlayerTransferLifecycle` coordinator sequences the participant boundary:
 On failed activation, the destination is deactivated before the ledger is aborted. The source resumes only after ABORTED is durably confirmed. If commit is uncertain, the source remains frozen; the destination is asked to deactivate only while it still owns the same fence. This intentionally favors temporary unavailability over two authoritative owners.
 
 The coordinator currently uses participant interfaces and is not yet wired into the live Bedrock session lifecycle. The local file ledger is not a shared multi-host consensus store. Cross-host handoff must remain disabled until session hooks, replicated ledger semantics, authenticated transport, and process-level fault-injection tests are complete.
+
+
+### Concrete node transport — foundation added
+
+`TcpClusterTransport` now provides a bounded TCP adapter for the cluster transport SPI: configured node addresses, explicit peer allowlists, bounded send/receive worker queues, frame-size limits, socket timeouts, HMAC envelope validation, recipient checks, and an application ACK after receiver acceptance. `ClusterReplayGuard` rejects duplicate message IDs within a bounded in-memory retention window and fails closed when its capacity is exhausted.
+
+This is not a production cluster deployment by itself. Replay state is process-local and is lost on restart; messages use one TCP connection per send; HMAC does not encrypt traffic. Use private network isolation or TLS for confidentiality, a durable replay ledger, key rotation, and a replicated transfer ledger before enabling cross-host player handoff. The adapter is intentionally not wired into server startup yet.

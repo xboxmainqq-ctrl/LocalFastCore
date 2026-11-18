@@ -1,6 +1,7 @@
 package ru.nexora.network;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -67,6 +68,10 @@ public final class PlayerTransferCoordinator {
             if (ledger.compareAndSet(id, current.version(), next)) return Optional.of(next);
         }
         throw new IOException("Transfer transition CAS contention exceeded retry limit");
+    }
+
+    public List<PlayerTransferRecord> listRecoverableForTarget(String targetNode, int limit) throws IOException {
+        return ledger.listRecoverableForTarget(targetNode, limit);
     }
 
     public Optional<PlayerTransferRecord> get(UUID id) throws IOException {

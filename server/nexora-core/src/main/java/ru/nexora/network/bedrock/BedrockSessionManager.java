@@ -111,6 +111,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             new PendingPlayerTransferRestoreRegistry();
     private volatile ru.nexora.network.DurableHandoffCoordinator transferOwnershipLedger;
     private volatile String transferOwnershipNodeId;
+    private volatile ru.nexora.network.PlayerOnlineLeaseRegistry onlineLeaseRegistry;
+    private volatile long onlineLeaseMillis = 15_000L;
     private volatile BedrockItemRegistry itemRegistry = BedrockItemRegistry.empty();
     private volatile ArmorSlotRegistry armorSlotRegistry = ArmorSlotRegistry.empty();
     private volatile EquipmentSlotRegistry equipmentSlotRegistry = EquipmentSlotRegistry.empty();
@@ -422,6 +424,53 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         this.transferOwnershipNodeId = nodeId;
     }
 
+    /** Configures the cluster-wide online XUID lease. Must be called before accepting sessions. */
+    public void configureOnlinePlayerLeases(
+            ru.nexora.network.PlayerOnlineLeaseRegistry registry, long leaseMillis
+    ) {
+        Objects.requireNonNull(registry, "registry");
+        if (leaseMillis < 3_000L || leaseMillis > 120_000L) {
+            throw new IllegalArgumentException("Online player lease must be between 3000 and 120000 ms");
+        }
+        if (!sessions.isEmpty()) {
+            throw new IllegalStateException("Online leases must be configured before sessions are created");
+        }
+        this.onlineLeaseRegistry = registry;
+        this.onlineLeaseMillis = leaseMillis;
+    }
+
+    private void acquireOnlinePlayerLease(SessionState state) {
+        ru.nexora.network.PlayerOnlineLeaseRegistry registry = onlineLeaseRegistry;
+        String nodeId = transferOwnershipNodeId;
+        if (registry == null || nodeId == null || state.identity == null) return;
+        String sessionId = UUID.randomUUID().toString();
+        try {
+            if (!registry.acquire(state.identity.xuid(), nodeId, sessionId,
+                    System.currentTimeMillis(), onlineLeaseMillis)) {
+                throw new SecurityException("This player already has an active session on another cluster node");
+            }
+            state.onlineLeaseSessionId = sessionId;
+            state.lastOnlineLeaseRenewalNanos = nanoTime.getAsLong();
+        } catch (IOException failure) {
+            throw new SecurityException("Unable to acquire global online player ownership", failure);
+        }
+    }
+
+    private void releaseOnlinePlayerLease(SessionState state) {
+        ru.nexora.network.PlayerOnlineLeaseRegistry registry = onlineLeaseRegistry;
+        String nodeId = transferOwnershipNodeId;
+        String sessionId = state.onlineLeaseSessionId;
+        if (registry == null || nodeId == null || sessionId == null || state.identity == null) return;
+        try {
+            registry.release(state.identity.xuid(), nodeId, sessionId);
+        } catch (IOException failure) {
+            System.err.println("NEXORA: unable to release online XUID lease: " + failure.getMessage());
+        } finally {
+            state.onlineLeaseSessionId = null;
+            state.lastOnlineLeaseRenewalNanos = Long.MIN_VALUE;
+        }
+    }
+
     /** Registers a durable claimed transfer for the next authenticated login of this XUID. */
     public void registerPendingTransferRestore(
             PendingPlayerTransferRestoreRegistry.PendingRestore restore
@@ -513,6 +562,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             } finally {
                 state.combatLock.unlock();
             }
+            releaseOnlinePlayerLease(state);
             sessions.remove(networkId, state);
             synchronized (sessionChangeMonitor) {
                 sessionChangeMonitor.notifyAll();
@@ -546,6 +596,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     public void savePlayers() throws IOException {
         IOException failure = null;
         for (SessionState state : sessions.values()) {
+            releaseOnlinePlayerLease(state);
             synchronized (state) {
                 if (state.transferFrozen) continue;
                 try {
@@ -4154,6 +4205,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             ensureNoDuplicateXuidSession(message.networkId(), state.identity.xuid());
             ru.nexora.network.PlayerTransferRecord latestTransfer = assertPlayerMayLogin(
                     state.identity.xuid());
+            acquireOnlinePlayerLease(state);
         boolean legacyStateFound = false;
         PendingPlayerTransferRestoreRegistry.PendingRestore pendingTransfer =
                 pendingTransferRestores.find(state.identity.xuid()).orElse(null);
@@ -4326,6 +4378,19 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         String nodeId = transferOwnershipNodeId;
         if (ledger == null || nodeId == null || state.identity == null) return;
         long now = nanoTime.getAsLong();
+        String leaseSessionId = state.onlineLeaseSessionId;
+        ru.nexora.network.PlayerOnlineLeaseRegistry leases = onlineLeaseRegistry;
+        if (leases != null && leaseSessionId != null) {
+            long previousLeaseRenewal = state.lastOnlineLeaseRenewalNanos;
+            long renewalInterval = Math.max(500_000_000L, onlineLeaseMillis * 1_000_000L / 3L);
+            if (previousLeaseRenewal == Long.MIN_VALUE || now - previousLeaseRenewal >= renewalInterval) {
+                if (!leases.renew(state.identity.xuid(), nodeId, leaseSessionId,
+                        System.currentTimeMillis(), onlineLeaseMillis)) {
+                    throw new IOException("Global online player lease expired or was acquired by another node");
+                }
+                state.lastOnlineLeaseRenewalNanos = now;
+            }
+        }
         long previous = state.lastTransferOwnershipCheckNanos;
         if (previous != Long.MIN_VALUE && now - previous < 500_000_000L) return;
         java.util.Optional<ru.nexora.network.PlayerTransferRecord> latest =
@@ -6388,6 +6453,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private boolean transferRedirected;
         private PlayerTransferFence transferFence;
         private long lastTransferOwnershipCheckNanos = Long.MIN_VALUE;
+        private String onlineLeaseSessionId;
+        private long lastOnlineLeaseRenewalNanos = Long.MIN_VALUE;
         private PendingEquipmentForm pendingEquipmentForm;
         private int pendingAiFormId;
         private int nextContainerWindowId = 1;

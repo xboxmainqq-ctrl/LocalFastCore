@@ -39,7 +39,7 @@ public final class WorldEntityDecisionApplier {
 
         boolean attacked = false;
         float damage = 0;
-        if (decision.attackDamage() > 0 && decision.targetNetworkId() != null) {
+        if (decision.attack() && decision.attackDamage() > 0 && decision.targetNetworkId() != null) {
             // Player damage is intentionally represented as an output event here.
             // The player subsystem owns actual player health/inventory mutation.
             attacked = true;

@@ -306,6 +306,7 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Source transfer freeze releases the source online lease; a confirmed abort reacquires it before gameplay resumes. PREPARED/CLAIMED/COMMITTED transfer history continues to fence logins during the handoff gap.
 - A session that loses its durable transfer fence or global online lease immediately stops gameplay and releases its matching online lease; destination rollback also releases any lease held by a partially activated session.
 - Periodic autosave now retains the active lease and validates ownership before writing shared state. Disconnect saves do the same; a former owner that has lost its lease is rejected and cannot overwrite the destination's canonical checkpoint.
+- Transfer freeze also validates the active global lease before setting the frozen flag or writing the handoff checkpoint.
 - Added Bedrock session tests proving autosave keeps a valid lease and that both autosave and disconnect skip canonical writes after ownership loss.
 - Added in-memory expiry/fencing tests, JDBC multi-node exclusivity tests, and a concurrent two-node first-login race test.
 - CI: 811 tests passed, zero failures on commit `4d35bc5`; GitHub Actions build and GitLab publish both succeeded.

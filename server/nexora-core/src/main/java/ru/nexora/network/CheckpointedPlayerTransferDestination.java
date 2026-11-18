@@ -85,13 +85,13 @@ public final class CheckpointedPlayerTransferDestination implements PlayerTransf
         Optional<PlayerTransferRecord> stored = ledger.get(handoff.transferId());
         if (stored.isEmpty()) return;
         PlayerTransferRecord claim = stored.orElseThrow();
-        if (claim.state() != PlayerTransferRecord.State.CLAIMED
+        if ((claim.state() != PlayerTransferRecord.State.CLAIMED
+                && claim.state() != PlayerTransferRecord.State.ABORTED)
                 || claim.fencingToken() != fencingToken
                 || !claim.targetNode().equals(nodeId)
                 || !claim.sourceNode().equals(handoff.sourceNode())
                 || !claim.targetNode().equals(handoff.targetNode())) {
-            // A committed destination must remain active; a stale fence cannot
-            // tear down a newer destination's session.
+            // A committed destination or a superseded fence must never be torn down.
             return;
         }
         // The stored state/token check above proves this rollback still names

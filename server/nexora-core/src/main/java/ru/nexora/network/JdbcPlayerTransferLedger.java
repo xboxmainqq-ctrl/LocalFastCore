@@ -50,6 +50,7 @@ public final class JdbcPlayerTransferLedger implements PlayerTransferLedger {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.executeUpdate();
+            commitIfNeeded(connection);
         } catch (SQLException exception) {
             throw new IOException("Unable to initialize NEXORA transfer ledger schema", exception);
         }
@@ -82,6 +83,7 @@ public final class JdbcPlayerTransferLedger implements PlayerTransferLedger {
              PreparedStatement statement = connection.prepareStatement(sql)) {
             bindRecord(statement, prepared);
             statement.executeUpdate();
+            commitIfNeeded(connection);
             return true;
         } catch (SQLIntegrityConstraintViolationException duplicate) {
             return false;
@@ -119,10 +121,16 @@ public final class JdbcPlayerTransferLedger implements PlayerTransferLedger {
             statement.setLong(9, replacement.updatedAtEpochMillis());
             statement.setString(10, transferId.toString());
             statement.setLong(11, expectedVersion);
-            return statement.executeUpdate() == 1;
+            int updated = statement.executeUpdate();
+            commitIfNeeded(connection);
+            return updated == 1;
         } catch (SQLException exception) {
             throw new IOException("Unable to advance NEXORA transfer ledger record", exception);
         }
+    }
+
+    private static void commitIfNeeded(Connection connection) throws SQLException {
+        if (!connection.getAutoCommit()) connection.commit();
     }
 
     private static void bindRecord(PreparedStatement statement, PlayerTransferRecord record)

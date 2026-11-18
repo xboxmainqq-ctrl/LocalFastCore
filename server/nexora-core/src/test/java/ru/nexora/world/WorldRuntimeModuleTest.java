@@ -22,6 +22,9 @@ class WorldRuntimeModuleTest {
                 ignored -> fail(ignored),
                 ignored -> {});
 
+        assertEquals(1, runtime.registeredTickTasks());
+        assertEquals(1, runtime.registeredPersistenceTasks());
+
         runtime.close();
         runtime.close();
 

@@ -6,17 +6,17 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 /** Strict environment parser for an authenticated TCP cluster transport. */
 public final class ClusterTransportFactory {
-    public record ConfiguredTransport(TcpClusterTransport transport, int peerCount, String description) {
+    public record ConfiguredTransport(TcpClusterTransport transport, int peerCount,
+                                      Map<String, InetSocketAddress> bedrockRoutes, String description) {
         public ConfiguredTransport {
             if (transport == null) throw new NullPointerException("transport");
             if (peerCount < 1) throw new IllegalArgumentException("peerCount must be positive");
+            bedrockRoutes = Map.copyOf(bedrockRoutes);
             if (description == null || description.isBlank()) {
                 throw new IllegalArgumentException("description must not be blank");
             }
@@ -43,8 +43,15 @@ public final class ClusterTransportFactory {
         }
 
         InetSocketAddress bindAddress = parseAddress(bindValue, "NEXORA_CLUSTER_BIND");
-        Map<String, InetSocketAddress> peers = parsePeers(peersValue, localNodeId);
+        Map<String, InetSocketAddress> peers = parsePeers(
+                peersValue, localNodeId, "NEXORA_CLUSTER_PEERS");
         if (peers.isEmpty()) throw new IllegalArgumentException("At least one NEXORA_CLUSTER_PEERS entry is required");
+        String routesValue = value(environment, "NEXORA_CLUSTER_BEDROCK_ROUTES");
+        Map<String, InetSocketAddress> bedrockRoutes = routesValue == null
+                ? Map.of() : parsePeers(routesValue, localNodeId, "NEXORA_CLUSTER_BEDROCK_ROUTES");
+        if (!peers.keySet().containsAll(bedrockRoutes.keySet())) {
+            throw new IllegalArgumentException("Every Bedrock route must name a configured cluster peer");
+        }
         byte[] secret;
         try {
             secret = Base64.getDecoder().decode(secretValue);
@@ -74,24 +81,27 @@ public final class ClusterTransportFactory {
                 Duration.ofMillis(connectTimeout), Duration.ofMillis(readTimeout),
                 workers, queueCapacity);
         return Optional.of(new ConfiguredTransport(
-                transport, peers.size(), "authenticated TCP cluster transport (HMAC-SHA-256, "
-                + peers.size() + " configured peers; shared secret hidden)"));
+                transport, peers.size(), bedrockRoutes,
+                "authenticated TCP cluster transport (HMAC-SHA-256, "
+                        + peers.size() + " configured peers; " + bedrockRoutes.size()
+                        + " Bedrock routes; shared secret hidden)"));
     }
 
-    private static Map<String, InetSocketAddress> parsePeers(String value, String localNodeId) {
+    private static Map<String, InetSocketAddress> parsePeers(
+            String value, String localNodeId, String setting) {
         Map<String, InetSocketAddress> peers = new LinkedHashMap<>();
         for (String entry : value.split(";", -1)) {
             String trimmed = entry.trim();
             int separator = trimmed.indexOf('=');
             if (separator <= 0 || separator != trimmed.lastIndexOf('=')) {
-                throw new IllegalArgumentException("Invalid NEXORA_CLUSTER_PEERS entry");
+                throw new IllegalArgumentException("Invalid " + setting + " entry");
             }
             String nodeId = trimmed.substring(0, separator).trim();
             if (!nodeId.matches("[A-Za-z0-9._-]{1,64}") || nodeId.equals(localNodeId)) {
                 throw new IllegalArgumentException("Invalid or self-referencing cluster peer ID");
             }
             InetSocketAddress address = parseAddress(trimmed.substring(separator + 1).trim(),
-                    "cluster peer " + nodeId);
+                    setting + " node " + nodeId);
             if (peers.putIfAbsent(nodeId, address) != null) {
                 throw new IllegalArgumentException("Duplicate cluster peer: " + nodeId);
             }

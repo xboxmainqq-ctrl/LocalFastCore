@@ -29,6 +29,32 @@ class PlayerTransferLifecycleTest {
     }
 
     @Test
+    void sourcePreparedHookRunsAfterDurableWriteAndFailureAbortsBeforeResume() throws Exception {
+        InMemoryPlayerTransferLedger store = new InMemoryPlayerTransferLedger();
+        DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(new PlayerTransferCoordinator(store));
+        class PreparedSource extends FakeSource {
+            boolean preparedObserved;
+            @Override public void onPrepared(PlayerHandoff handoff) throws Exception {
+                assertEquals(PlayerTransferRecord.State.PREPARED,
+                        ledger.get(handoff.transferId()).orElseThrow().state());
+                preparedObserved = true;
+                throw new java.io.IOException("simulated lease release failure");
+            }
+        }
+        PreparedSource source = new PreparedSource();
+        PlayerTransferLifecycle lifecycle = new PlayerTransferLifecycle(
+                ledger, source, new FakeDestination(), 5_000);
+        PlayerHandoff handoff = handoff();
+
+        assertThrows(java.io.IOException.class, () -> lifecycle.prepare(handoff, "xuid_123", 100));
+
+        assertTrue(source.preparedObserved);
+        assertFalse(source.frozen, "Source may resume only after PREPARED is durably ABORTED");
+        assertEquals(PlayerTransferRecord.State.ABORTED,
+                store.get(handoff.transferId()).orElseThrow().state());
+    }
+
+    @Test
     void failedActivationAbortsBeforeSourceIsUnfrozen() throws Exception {
         InMemoryPlayerTransferLedger store = new InMemoryPlayerTransferLedger();
         DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(new PlayerTransferCoordinator(store));
@@ -88,7 +114,7 @@ class PlayerTransferLifecycleTest {
         return new PlayerHandoff(UUID.randomUUID(), 7L, "node-a", "node-b", new byte[] {1, 2});
     }
 
-    private static final class FakeSource implements PlayerTransferLifecycle.Source {
+    private static class FakeSource implements PlayerTransferLifecycle.Source {
         boolean frozen;
         @Override public long freezeAndCheckpoint(PlayerHandoff handoff) {
             frozen = true;

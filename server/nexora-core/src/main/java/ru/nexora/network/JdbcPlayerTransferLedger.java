@@ -144,7 +144,7 @@ public final class JdbcPlayerTransferLedger implements PlayerTransferLedger {
             throw new IllegalArgumentException("Recovery query limit must be 1..10000");
         String sql = "SELECT " + COLUMNS + " FROM " + TABLE_NAME
                 + " WHERE target_node = ? AND transfer_state IN (?, ?) "
-                + "ORDER BY updated_at ASC, transfer_id ASC";
+                + "ORDER BY updated_at DESC, transfer_id ASC";
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, targetNode);

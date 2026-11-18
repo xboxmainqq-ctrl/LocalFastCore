@@ -178,7 +178,7 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Added `CheckpointedPlayerTransferDestination`: validates target/source identity, active lease and fence, restores only the exact revision, and delegates session-specific activation with the runtime fence.
 - Rollback deactivation is limited to the same active claim; committed destinations and newer fencing tokens are never torn down by stale rollback.
 - Added tests for exact-revision restore, commit behavior, revision mismatch and stale-token reclaim.
-- Remaining: implement the Bedrock destination activator and reconnect/session migration; require fence checks at every authoritative write; add process-level crash/restart tests. No cross-host transfer is enabled.
+- Remaining: authenticated client redirect/reconnect and inter-node RPC; add process-level crash/restart tests and audit every authoritative mutation path. The concrete pending-login activator is now tracked in section 32. No cross-host transfer is enabled.
 
 
 ### 27. JDBC ledger concurrency and restart tests — ADDED
@@ -208,7 +208,7 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Added tests for claimed/committed rehydration, expired-lease rejection and repeat recovery.
 - Remaining: wire recovery service into configured server startup and a deployment-owned shared ledger; add process-restart Bedrock login tests and multi-process failure injection. This does not enable cross-host transfer by itself.
 
-### 31. Startup recovery wiring — IMPLEMENTED, CI VALIDATION PENDING
+### 31. Startup recovery wiring — IMPLEMENTED, CI VERIFIED
 - `NexoraServer` now opens the durable local transfer ledger under `data/cluster/transfers` and runs bounded destination recovery before starting the network runtime.
 - `NEXORA_NODE_ID` selects the destination identity; the development fallback is `standalone`.
 - `BedrockSessionManager` exposes a startup recovery entry point that rehydrates its private pending-login registry.

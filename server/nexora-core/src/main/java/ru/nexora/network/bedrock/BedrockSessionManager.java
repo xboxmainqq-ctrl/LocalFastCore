@@ -499,6 +499,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return mobPathCache.size();
     }
 
+    public int expiredMobPathCacheEntries() {
+        return mobPathCache.expiredEntries(Math.max(0L, nanoTime.getAsLong() / 1_000_000L));
+    }
+
+    public int pruneExpiredMobPathCache() {
+        return mobPathCache.pruneExpired(Math.max(0L, nanoTime.getAsLong() / 1_000_000L));
+    }
+
     /** Read-only mob navigation/cache diagnostics for trusted operator console output. */
     public String mobAiDiagnosticsSummary() {
         ru.nexora.world.MobPathCache.Stats cache = mobPathCache.stats();

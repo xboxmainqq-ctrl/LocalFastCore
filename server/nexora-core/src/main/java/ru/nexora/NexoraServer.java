@@ -131,6 +131,13 @@ public final class NexoraServer {
                 () -> bedrockSessions.mobPathCacheSize() > 0,
                 bedrockSessions::clearMobPathCache,
                 () -> bedrockSessions.mobPathCacheSize() == 0);
+        diagnosticsRuntime.safeRepairs().register(
+                "cache.mob-path.prune-expired",
+                "Prune expired transient mob navigation entries",
+                true,
+                () -> bedrockSessions.expiredMobPathCacheEntries() > 0,
+                bedrockSessions::pruneExpiredMobPathCache,
+                () -> bedrockSessions.expiredMobPathCacheEntries() == 0);
         List<String> stunUrls = config.stunUrls();
         int udpPortMin = config.udpPortMin();
         int udpPortMax = config.udpPortMax();

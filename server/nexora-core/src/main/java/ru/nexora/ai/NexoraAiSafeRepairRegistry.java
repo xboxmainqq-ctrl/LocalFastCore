@@ -65,6 +65,18 @@ public final class NexoraAiSafeRepairRegistry {
                 .toList();
     }
 
+    /** Read-only eligibility check used by the monitor before attempting an auto-safe action. */
+    public boolean canExecuteAutomatically(String id) {
+        String key = requireId(id);
+        SafeAction action = actions.get(key);
+        if (action == null || !action.autoSafe() || executing.contains(key)) return false;
+        try {
+            return action.precondition().getAsBoolean();
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
     public Execution execute(String id, String actor, boolean explicitlyConfirmed) {
         return executeInternal(id, actor, explicitlyConfirmed, false);
     }

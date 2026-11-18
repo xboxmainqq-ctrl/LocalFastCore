@@ -29,6 +29,9 @@ public final class DiagnosticsRuntimeModule implements AutoCloseable {
                         execution.status().name(), execution.detail()));
         this.monitor = new NexoraAiMonitor(diagnostics, snapshot -> {
             repairAdvisor.analyze(diagnostics);
+            if (safeRepairs.canExecuteAutomatically("cache.mob-path.prune-expired")) {
+                safeRepairs.executeAutomatically("cache.mob-path.prune-expired");
+            }
             Objects.requireNonNull(observer, "observer").accept(snapshot);
         });
     }

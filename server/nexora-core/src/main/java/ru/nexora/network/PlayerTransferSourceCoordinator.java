@@ -94,20 +94,29 @@ public final class PlayerTransferSourceCoordinator {
         }
         try {
             ledger.prepare(handoff, playerXuid, revision, epochMillis.getAsLong());
+            source.onPrepared(handoff);
         } catch (Exception publicationFailure) {
             try {
                 Optional<PlayerTransferRecord> stored = ledger.get(handoff.transferId());
-                boolean definitelyUnclaimed = stored.isEmpty();
-                boolean alreadyAborted = stored.filter(record ->
-                        record.state() == PlayerTransferRecord.State.ABORTED
-                                && record.playerXuid().equals(playerXuid)
-                                && record.sourceNode().equals(handoff.sourceNode())
-                                && record.targetNode().equals(handoff.targetNode())).isPresent();
-                if (definitelyUnclaimed || alreadyAborted) {
+                if (stored.isEmpty()) {
                     resumeAfterAbort(handoff);
                 } else {
-                    publicationFailure.addSuppressed(new IOException(
-                            "Transfer publication is uncertain; source remains frozen"));
+                    PlayerTransferRecord record = stored.orElseThrow();
+                    if (record.state() == PlayerTransferRecord.State.PREPARED) {
+                        Optional<PlayerTransferRecord> aborted = ledger.abortPrepared(
+                                handoff.transferId(), epochMillis.getAsLong());
+                        if (aborted.isPresent()) resumeAfterAbort(handoff);
+                        else publicationFailure.addSuppressed(new IOException(
+                                "Prepared transfer changed concurrently; source remains frozen"));
+                    } else if (record.state() == PlayerTransferRecord.State.ABORTED
+                            && record.playerXuid().equals(playerXuid)
+                            && record.sourceNode().equals(handoff.sourceNode())
+                            && record.targetNode().equals(handoff.targetNode())) {
+                        resumeAfterAbort(handoff);
+                    } else {
+                        publicationFailure.addSuppressed(new IOException(
+                                "Transfer publication is uncertain; source remains frozen"));
+                    }
                 }
             } catch (Exception reconciliationFailure) {
                 publicationFailure.addSuppressed(reconciliationFailure);

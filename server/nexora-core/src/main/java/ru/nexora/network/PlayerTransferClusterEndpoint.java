@@ -106,6 +106,8 @@ public final class PlayerTransferClusterEndpoint {
             throw new SecurityException("Abort message does not match durable transfer participants");
         }
         if (current.state() == PlayerTransferRecord.State.COMMITTED) return;
+        if (current.state() == PlayerTransferRecord.State.ABORTED
+                && current.fencingToken() == 0 && abort.fencingToken() == 0) return;
         if (current.state() == PlayerTransferRecord.State.PREPARED) {
             if (abort.fencingToken() != 0) throw new SecurityException("Prepared transfer has no claim fence");
             ledger.abortPrepared(abort.transferId(), epochMillis.getAsLong());

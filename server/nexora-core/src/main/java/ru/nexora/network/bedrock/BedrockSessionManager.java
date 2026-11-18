@@ -622,15 +622,34 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     public void savePlayers() throws IOException {
         IOException failure = null;
-        for (SessionState state : sessions.values()) {
-            releaseOnlinePlayerLease(state);
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            String networkId = entry.getKey();
+            SessionState state = entry.getValue();
             synchronized (state) {
-                if (state.transferFrozen) continue;
+                if (state.transferFrozen || state.rejected || !state.loginAuthenticated) continue;
+                try {
+                    // Autosave must retain the lease and verify it before any
+                    // shared checkpoint write; releasing here would open a
+                    // duplicate-login window on every save interval.
+                    assertTransferNodeOwnership(state);
+                } catch (IOException | SecurityException ownershipFailure) {
+                    state.rejected = true;
+                    state.loginAuthenticated = false;
+                    state.clientInitialized = false;
+                    releaseOnlinePlayerLease(state);
+                    removePlayerListEntry(networkId, state);
+                    IOException wrapped = new IOException(
+                            "Stopped player autosave after global ownership validation failed",
+                            ownershipFailure);
+                    if (failure == null) failure = wrapped;
+                    else failure.addSuppressed(wrapped);
+                    continue;
+                }
                 try {
                     saveAllPlayerState(state);
-                } catch (IOException exception) {
-                    if (failure == null) failure = exception;
-                    else failure.addSuppressed(exception);
+                } catch (IOException saveFailure) {
+                    if (failure == null) failure = saveFailure;
+                    else failure.addSuppressed(saveFailure);
                 }
             }
         }
@@ -6431,6 +6450,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             savePlayers();
         } catch (IOException exception) {
             System.err.println("NEXORA: unable to save player profiles on shutdown: " + exception.getMessage());
+        } finally {
+            for (SessionState state : sessions.values()) releaseOnlinePlayerLease(state);
         }
         sessions.clear();
     }

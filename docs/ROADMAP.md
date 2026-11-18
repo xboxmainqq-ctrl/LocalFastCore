@@ -75,6 +75,7 @@ These rules apply to all future architecture, implementation, review, and planni
 - [x] Extend the existing NexoraAI runtime monitor with deterministic diagnostic repair proposals: sustained failures, latency breaches, thread growth, and heap pressure produce bounded advisory plans without automatic source edits, command execution, or restarts.
 - [x] Add bounded world chunk residency planning: circular view-distance loading, shared residency between players, unload grace periods, and a persistence-aware unload contract without letting the network layer mutate world state directly.
 - [x] Add deterministic world tick coordination for Mob AI: reuse the nearest-player scan, apply distance/target-aware scheduling, defer distant unprovoked mobs, and emit behavior decisions without mutating world state inside the coordinator.
+- [x] Add an explicit Mob AI mutation boundary: `WorldEntityDecisionApplier` applies validated movement through the living-entity manager while player attacks remain output events for the player subsystem, keeping AI decisions separate from world mutation.
 - [ ] Generate proposed patches/config changes for operator review; never apply source-code or risky runtime changes autonomously.
 - [ ] Require explicit operator approval, backups, validation, and a rollback path for every change.
 - [ ] Run tests/build checks before a proposed fix is considered ready.

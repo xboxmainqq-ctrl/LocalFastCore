@@ -43,6 +43,9 @@ class ClusterTransportFactoryTest {
         assertThrows(IllegalArgumentException.class, () -> ClusterTransportFactory.open(
                 "source-node", temporaryDirectory,
                 Map.of("NEXORA_CLUSTER_BIND", "127.0.0.1:19141")));
+        assertThrows(IllegalArgumentException.class, () -> ClusterTransportFactory.open(
+                "source-node", temporaryDirectory,
+                Map.of("NEXORA_CLUSTER_BEDROCK_ROUTES", "target-node=127.0.0.1:19132")));
         String secret = Base64.getEncoder().encodeToString(new byte[32]);
         assertThrows(IllegalArgumentException.class, () -> ClusterTransportFactory.open(
                 "source-node", temporaryDirectory, Map.of(

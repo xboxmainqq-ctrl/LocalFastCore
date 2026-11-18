@@ -973,7 +973,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (forceTransferRevision) {
             return checkpointService.checkpointForTransfer(bundle, profile.lastSeenEpochMillis());
         }
-        checkpointService.checkpoint(bundle, profile.lastSeenEpochMillis());
+        ru.nexora.persistence.PlayerStateStore.SaveResult saveResult =
+                checkpointService.checkpoint(bundle, profile.lastSeenEpochMillis());
+        if (saveResult == ru.nexora.persistence.PlayerStateStore.SaveResult.STALE) {
+            throw new IOException("Canonical player checkpoint was superseded by a newer owner revision");
+        }
         return -1L;
     }
 

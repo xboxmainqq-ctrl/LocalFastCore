@@ -292,6 +292,13 @@ public final class NexoraAiAssistant {
         return AskResult.ACCEPTED;
     }
 
+    /** Private operator entry point used only by the local server process console. */
+    public AskResult askConsole(String prompt, Consumer<String> reply) {
+        Objects.requireNonNull(prompt, "prompt");
+        Objects.requireNonNull(reply, "reply");
+        return ask("nexora-server-console", "Консоль", prompt, true, reply);
+    }
+
     private String systemPrompt(boolean admin) {
         if (!admin) {
             return "Ты дружелюбный игровой помощник Minecraft-сервера. Отвечай по-русски, понятно и полезно. "

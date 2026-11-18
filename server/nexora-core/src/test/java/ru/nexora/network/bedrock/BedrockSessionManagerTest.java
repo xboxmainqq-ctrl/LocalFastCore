@@ -162,6 +162,88 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void autosaveRetainsGlobalOnlineLeaseAndPersistsCanonicalCheckpoint() throws Exception {
+        var checkpoints = new ru.nexora.persistence.PlayerStateCheckpointService(
+                new FilePlayerStateStore(temporaryDirectory), new PlayerStateBundleCodec());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("autosave-lease", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                null, null, null, checkpoints, (networkId, label, frame) -> {}, event -> {});
+        var leases = new InMemoryPlayerOnlineLeaseRegistry();
+        try {
+            manager.configureOnlinePlayerLeases(leases, 15_000L);
+            DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
+                    new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
+            manager.configureTransferOwnershipGuard(ledger, "node-a");
+            long now = System.currentTimeMillis();
+            assertTrue(leases.acquire("autosave-xuid", "node-a", "autosave-session", now, 15_000L));
+            manager.onIdentity("autosave-session", new NetherNetClientIdentity(
+                    "autosave-token", new byte[] {4}, "autosave-xuid",
+                    "AutosavePlayer", "autosave-playfab", "20CA2", null));
+            setSessionField(manager, "autosave-session", "onlineLeaseSessionId", "autosave-session");
+            setSessionField(manager, "autosave-session", "loginAuthenticated", true);
+            setSessionField(manager, "autosave-session", "clientInitialized", true);
+            setSessionField(manager, "autosave-session", "positionInitialized", true);
+
+            manager.savePlayers();
+
+            assertTrue(leases.renew("autosave-xuid", "node-a", "autosave-session",
+                    System.currentTimeMillis(), 15_000L),
+                    "Periodic autosave must not release the player's global ownership lease");
+            assertTrue(checkpoints.latestRevision("autosave-xuid") >= 0,
+                    "Shared canonical state must be saved while the lease is held");
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void autosaveRejectsSessionAndSkipsCheckpointWhenGlobalLeaseIsLost() throws Exception {
+        var checkpoints = new ru.nexora.persistence.PlayerStateCheckpointService(
+                new FilePlayerStateStore(temporaryDirectory), new PlayerStateBundleCodec());
+        java.util.concurrent.atomic.AtomicBoolean released = new java.util.concurrent.atomic.AtomicBoolean();
+        ru.nexora.network.PlayerOnlineLeaseRegistry lostLease = new ru.nexora.network.PlayerOnlineLeaseRegistry() {
+            @Override public boolean acquire(String xuid, String nodeId, String sessionId, long now, long ttl) {
+                return true;
+            }
+            @Override public boolean renew(String xuid, String nodeId, String sessionId, long now, long ttl) {
+                return false;
+            }
+            @Override public boolean release(String xuid, String nodeId, String sessionId) {
+                released.set(true);
+                return true;
+            }
+        };
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("autosave-lost-lease", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                null, null, null, checkpoints, (networkId, label, frame) -> {}, event -> {});
+        try {
+            manager.configureOnlinePlayerLeases(lostLease, 15_000L);
+            DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
+                    new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
+            manager.configureTransferOwnershipGuard(ledger, "node-a");
+            manager.onIdentity("lost-lease-session", new NetherNetClientIdentity(
+                    "lost-lease-token", new byte[] {5}, "lost-lease-xuid",
+                    "LostLeasePlayer", "lost-lease-playfab", "20CA2", null));
+            setSessionField(manager, "lost-lease-session", "onlineLeaseSessionId", "lost-lease-session");
+            setSessionField(manager, "lost-lease-session", "loginAuthenticated", true);
+            setSessionField(manager, "lost-lease-session", "clientInitialized", true);
+            setSessionField(manager, "lost-lease-session", "positionInitialized", true);
+
+            assertThrows(java.io.IOException.class, manager::savePlayers);
+
+            assertTrue(released.get());
+            assertTrue((boolean) getSessionField(manager, "lost-lease-session", "rejected"));
+            assertFalse((boolean) getSessionField(manager, "lost-lease-session", "loginAuthenticated"));
+            assertEquals(-1L, checkpoints.latestRevision("lost-lease-xuid"),
+                    "A former owner must never overwrite the shared checkpoint after losing its lease");
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void rejectsSecondActiveSessionForSameXuidOnOneNode() throws Exception {
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,

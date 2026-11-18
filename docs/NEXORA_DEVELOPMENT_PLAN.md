@@ -53,8 +53,8 @@ Connect every Work Graph node to its full TaskContract instead of duplicating on
 ### 9. Gameplay event-to-work bridge — DONE
 `GameplayWorkBridge` converts events into explicit Work Graph items without coupling gameplay modules to the scheduler.
 
-### 10. Safe execution ownership — IN PROGRESS
-`StateOwnership` and scoped `OwnershipGuard` establish explicit PLAYER/WORLD/ENTITY/GAMEPLAY/PERSISTENCE ownership. Parallel world mutation remains disabled until lifecycle and contention tests are complete.
+### 10. Safe execution ownership — FOUNDATION DONE
+`StateOwnership` and scoped `OwnershipGuard` establish explicit PLAYER/WORLD/ENTITY/GAMEPLAY/PERSISTENCE ownership. `WorldState` and `EntityState` now require explicit ownership for mutation. Parallel world mutation remains disabled until lifecycle and contention tests are complete.
 
 ### 11. Adaptive multi-lane budgeting — INTEGRATED
 `AdaptiveBudget` now feeds live `AdaptiveRuntime` admission decisions. `RuntimeSlice` provides a bounded admission boundary for each execution slice; background work is reduced first under pressure.
@@ -68,8 +68,8 @@ Build spells, elements, damage, effects, resistances and reactions as composable
 ### 14. Plugin/module API
 Expose stable NEXORA APIs for gameplay actions, events, contracts and graph tasks.
 
-### 15. World/chunk architecture
-Continue the separate NEXORA world/chunk/entity architecture and connect it to Adaptive Runtime after ownership rules are explicit.
+### 15. World/chunk architecture — STARTED
+Initial `WorldState` and `EntityState` boundaries are in place. Chunk storage, entity indexing and lifecycle remain next.
 
 ### 16. Persistence and lifecycle
 Design save/load, shutdown, recovery and background persistence as explicit runtime workloads.

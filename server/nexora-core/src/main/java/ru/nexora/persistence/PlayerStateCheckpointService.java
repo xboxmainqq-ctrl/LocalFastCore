@@ -2,6 +2,7 @@ package ru.nexora.persistence;
 
 import java.io.IOException;
 import java.util.Optional;
+import java.util.Objects;
 
 /**
  * Coordinates canonical bundle encoding with the revisioned snapshot store.

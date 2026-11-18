@@ -3004,7 +3004,10 @@ class BedrockSessionManagerTest {
                 "TransferPlayer", "transfer-playfab", "20CA2", null));
         setSessionField(manager, "transfer-source", "loginAuthenticated", true);
         setSessionField(manager, "transfer-source", "clientInitialized", true);
+        setSessionField(manager, "transfer-source", "compressionNegotiated", true);
         setSessionField(manager, "transfer-source", "positionInitialized", true);
+        manager.playerInventory("transfer-source").orElseThrow().setSlot(
+                0, new ItemStack("minecraft:diamond", 3, 64));
         setSessionField(manager, "transfer-source", "positionX", 12.0f);
         setSessionField(manager, "transfer-source", "positionY", 70.0f);
         setSessionField(manager, "transfer-source", "positionZ", -4.0f);
@@ -3015,7 +3018,18 @@ class BedrockSessionManagerTest {
         assertEquals(0L, manager.authenticatedPlayerCount());
         assertTrue(manager.playerPosition("transfer-source").isEmpty());
         assertTrue(checkpoints.load("transfer-xuid").isPresent());
+        assertEquals(3, checkpoints.load("transfer-xuid").orElseThrow()
+                .restore().inventory().getSlot(0).orElseThrow().count());
         assertTrue((boolean) getSessionField(manager, "transfer-source", "transferFrozen"));
+
+        manager.savePlayers();
+        assertEquals(0L, checkpoints.latestRevision("transfer-xuid"),
+                "Periodic saves must not rewrite a frozen source checkpoint");
+        sendClientBatch(manager, "transfer-source", BedrockBatchCodec.encode(
+                List.of(BedrockTextCodec.createChatMessage(
+                        "TransferPlayer", "must-not-be-processed", "transfer-xuid", "")), true, 256));
+        assertEquals(0, (int) getSessionField(manager, "transfer-source", "chatMessagesInWindow"),
+                "Frozen sessions must ignore inbound gameplay packets");
 
         manager.unfreezePlayerAfterTransferAbort("transfer-xuid");
 

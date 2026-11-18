@@ -64,6 +64,7 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 - [x] Replicate spawned actors and operator-driven spawner block updates to initialized Bedrock clients; protocol compatibility still needs real-client verification.
 - [x] Add allowlisted operator setup/inspection/configuration/removal commands; survival item placement and loot are still pending.
 - [x] Add unit and persistence tests for unloaded/inactive areas, caps, invalid positions, corrupted data, timer pause, and restart recovery; verified by the full CI suite (581 tests, 0 failures, 0 errors).
+- [x] Add a Bedrock integration regression proving an active spawner still creates and replicates mobs while a distant idle mob is deferred by the generic Mob AI scheduler.
 - [ ] Verify on a real Bedrock client/server that Mob AI load scheduling never prevents a spawner from producing mobs or removes spawned entities.
 - [ ] Run integration/load tests with more than 128 active spawners, multiple players, and a full living-entity cap; record measured results rather than inferring TPS.
 

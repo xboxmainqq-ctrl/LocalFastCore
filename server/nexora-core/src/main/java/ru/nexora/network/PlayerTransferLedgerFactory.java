@@ -10,6 +10,7 @@ import java.util.Objects;
 /** Selects a local development ledger or a deployment-shared JDBC ledger. */
 public final class PlayerTransferLedgerFactory {
     public record ConfiguredLedger(DurableHandoffCoordinator coordinator,
+                                   PlayerOnlineLeaseRegistry onlineLeases,
                                    boolean shared,
                                    String description) {
         public ConfiguredLedger {
@@ -29,11 +30,13 @@ public final class PlayerTransferLedgerFactory {
         Objects.requireNonNull(environment, "environment");
         String jdbcUrl = value(environment, "NEXORA_TRANSFER_JDBC_URL");
         PlayerTransferLedger ledger;
+        PlayerOnlineLeaseRegistry onlineLeases;
         boolean shared;
         String description;
         if (jdbcUrl == null) {
             Path path = dataDirectory.resolve("cluster").resolve("transfers");
             ledger = new FilePlayerTransferLedger(path);
+            onlineLeases = new InMemoryPlayerOnlineLeaseRegistry();
             shared = false;
             description = "local file ledger at " + path.toAbsolutePath() + " (single-host only)";
         } else {
@@ -41,15 +44,19 @@ public final class PlayerTransferLedgerFactory {
             String password = value(environment, "NEXORA_TRANSFER_JDBC_PASSWORD");
             DriverManagerDataSource dataSource = new DriverManagerDataSource(jdbcUrl, username, password);
             JdbcPlayerTransferLedger jdbc = new JdbcPlayerTransferLedger(dataSource);
+            JdbcPlayerOnlineLeaseRegistry leases = new JdbcPlayerOnlineLeaseRegistry(dataSource);
             if (booleanValue(environment, "NEXORA_TRANSFER_JDBC_INITIALIZE_SCHEMA", false)) {
                 jdbc.initializeSchema();
+                leases.initializeSchema();
             }
             ledger = jdbc;
+            onlineLeases = leases;
             shared = true;
             description = "shared JDBC ledger (connection details hidden)";
         }
         return new ConfiguredLedger(
                 new DurableHandoffCoordinator(new PlayerTransferCoordinator(ledger)),
+                onlineLeases,
                 shared,
                 description);
     }

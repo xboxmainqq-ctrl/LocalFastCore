@@ -14,6 +14,9 @@ class MobAiLoadControllerTest {
         }
         assertEquals(10, controller.stats().fullRateUpdates());
         assertEquals(0, controller.stats().deferredUpdates());
+        assertTrue(controller.stats().totalDecisionNanos() > 0);
+        assertTrue(controller.stats().lastDecisionNanos() >= 0);
+        assertTrue(controller.stats().maxDecisionNanos() >= controller.stats().lastDecisionNanos());
     }
 
     @Test

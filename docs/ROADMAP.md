@@ -19,7 +19,9 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 
 ## Priority 1 — Core stability and performance
 
-- [ ] Establish repeatable baselines for tick-like subsystem latency, Bedrock inbound handling, mob AI, furnace updates, saves, heap, and thread counts. Clearly distinguish measured subsystem latency from true server TPS.\n- [x] Expose aggregate furnace tick batches, processed/changed furnace counts, and cumulative/max/last execution duration; verify counters with deterministic manager tests. These measurements are subsystem diagnostics, not global TPS.
+- [ ] Establish repeatable baselines for tick-like subsystem latency, Bedrock inbound handling, mob AI, furnace updates, saves, heap, and thread counts. Clearly distinguish measured subsystem latency from true server TPS.
+- [x] Expose Mob AI scheduler decision count and aggregate/last/max decision duration; label it as scheduler overhead rather than full AI execution or server TPS.
+- [x] Add immutable JVM resource snapshots for heap/non-heap usage, committed/max heap, live/peak/daemon threads, processor count, and system load, with invariant tests.\n- [x] Expose aggregate furnace tick batches, processed/changed furnace counts, and cumulative/max/last execution duration; verify counters with deterministic manager tests. These measurements are subsystem diagnostics, not global TPS.
 - [x] Expose aggregate world autosave attempts, successes/failures, and cumulative/max/last flush duration; cover manual, periodic, final, and failed flush accounting with deterministic tests.
 - [x] Add thread-safe per-lane scheduler execution counters and duration snapshots; expose tick and persistence measurements through the world runtime module without presenting them as global TPS.
 - [x] Add low-overhead NetherNet inbound frame/byte/message/failure counters and processing-duration snapshots, exposed through Bedrock session diagnostics and covered by concurrent ingress tests.
@@ -117,4 +119,4 @@ Do not consider the mob system finished after the load controller alone. Complet
 
 1. Validate the completed runtime-module, bounded scheduler, and graceful-drain integration on CI; fix all regressions before declaring this architecture stage stable.
 2. Continue mob and spawner integration/load checks; real Bedrock client verification remains a separate gate.
-3. Add measured subsystem latency baselines before performance optimization; do not infer true TPS from isolated timings.
+3. Extend subsystem latency and JVM resource telemetry with bounded, low-overhead measurements; do not infer true TPS from isolated timings.

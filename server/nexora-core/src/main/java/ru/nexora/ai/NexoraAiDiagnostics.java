@@ -193,6 +193,11 @@ public final class NexoraAiDiagnostics {
         return value.length() <= maxLength ? value : value.substring(0, maxLength);
     }
 
+    /** Returns detailed heap, non-heap, and thread counters for operator diagnostics. */
+    public JvmResourceSnapshot resourceSnapshot() {
+        return JvmResourceSnapshot.capture();
+    }
+
     /** Returns a point-in-time, read-only view of JVM health. */
     public Snapshot inspect() {
         MemoryUsage heap = ManagementFactory.getMemoryMXBean().getHeapMemoryUsage();

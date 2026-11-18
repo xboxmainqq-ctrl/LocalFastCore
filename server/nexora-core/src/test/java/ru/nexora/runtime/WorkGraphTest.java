@@ -18,6 +18,8 @@ class WorkGraphTest {
   WorkGraph g=new WorkGraph().add("ai",AdaptiveRuntime.Lane.AI,false);
   g.observe("ai",200_000L).observe("ai",100_000L);
   assertTrue(g.snapshot().get(0).observedP95Nanos() >= 100_000L);
-  AdaptiveRuntime constrained = new AdaptiveRuntime(1_000_000L, 0L);\n  constrained.admit(AdaptiveRuntime.Lane.PLAYER, 850_000L, true);\n  assertTrue(g.readyFor(constrained).isEmpty());
+  AdaptiveRuntime constrained = new AdaptiveRuntime(1_000_000L, 0L);
+  constrained.admit(AdaptiveRuntime.Lane.PLAYER, 850_000L, true);
+  assertTrue(g.readyFor(constrained).isEmpty());
  }
 }

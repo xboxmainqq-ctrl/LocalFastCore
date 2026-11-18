@@ -75,11 +75,11 @@ Do not promise a fixed player count before benchmark evidence exists.
 
 1. Interest/observer model.
 2. Server-local player ownership.
-3. Gateway protocol abstraction.
-4. Cross-server handoff state.
+3. Gateway protocol abstraction — FOUNDATION (`ServerNode`, `GatewayRouter`; transport adapter remains next).
+4. Cross-server handoff state — FOUNDATION (`PlayerHandoff` immutable transfer envelope; claim/commit protocol remains next).
 5. Global event bus boundary.
 6. Cluster health/load metrics.
-7. Load-aware player routing.
+7. Load-aware player routing — FOUNDATION (`GatewayRouter` filters by profile, health and `ServerLoadPolicy`).
 8. Multi-process integration tests.
 9. Large-online benchmark suite.
 10. Failure/reconnect/handoff testing.

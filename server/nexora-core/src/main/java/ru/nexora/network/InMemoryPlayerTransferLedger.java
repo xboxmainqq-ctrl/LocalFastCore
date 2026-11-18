@@ -33,7 +33,8 @@ public final class InMemoryPlayerTransferLedger implements PlayerTransferLedger 
         if (!transferId.equals(replacement.transferId()) || replacement.version() != expectedVersion + 1)
             throw new IllegalArgumentException("Invalid transfer CAS replacement");
         PlayerTransferRecord current = records.get(transferId);
-        if (current == null || current.version() != expectedVersion) return false;
+        if (current == null || current.version() != expectedVersion
+                || !replacement.isLegalSuccessorOf(current)) return false;
         records.put(transferId, replacement);
         return true;
     }

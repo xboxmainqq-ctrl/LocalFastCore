@@ -151,3 +151,10 @@ This is not a production cluster deployment by itself. Replay state is process-l
 The transport now accepts a pluggable `ClusterReplayFilter`. `FileClusterReplayFilter` stores message-ID expiry markers with checksums and an OS file lock, so duplicate filtering survives process restarts on one host. It rejects corrupt markers and fails closed at capacity. `RotatingClusterMessageCodec` signs outbound messages with an active key and can accept a bounded set of previous keys during a rotation grace period.
 
 The file replay filter is still single-host; it is not a replicated global deduplication service. Operators must coordinate key-ring rollout across nodes and retire old keys only after the grace window. Production multi-host use still requires shared durable replay/idempotency and replicated transfer ledger semantics.
+
+
+### Pairwise peer authentication — foundation added
+
+`PeerClusterMessageCodec` binds each authenticated source node to its own configured pairwise codec/key and signs outbound messages with the key for the destination peer. This prevents a node holding only its own pairwise key from simply claiming another configured source ID. It composes with `RotatingClusterMessageCodec` for staged per-peer key rotation. The TCP adapter accepts the codec abstraction, so this can be used without changing the transport.
+
+Pairwise keys still need secure provisioning and rotation outside the repository; this code does not provide a secrets manager, TLS, certificate identity, or cluster-wide consensus. Avoid one shared cluster-wide HMAC secret for production peer identity.

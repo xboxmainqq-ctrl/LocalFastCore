@@ -3403,9 +3403,11 @@ class BedrockSessionManagerTest {
             setSessionField(manager, "lease-order-network", "positionInitialized", true);
 
             long revision = manager.freezePlayerForTransfer("lease-order-xuid");
+            setSessionField(manager, "lease-order-network", "lastOnlineLeaseRenewalNanos", Long.MIN_VALUE);
+            manager.renewOnlinePlayerLeases();
             assertTrue(leases.renew("lease-order-xuid", "node-a", "lease-order-session",
                     now + 1L, 15_000L),
-                    "Source retains global ownership while the PREPARED record is not yet durable");
+                    "Frozen source heartbeat retains global ownership while PREPARED is not yet durable");
 
             UUID transferId = UUID.randomUUID();
             PlayerHandoff handoff = new PlayerHandoff(transferId, 1L, "node-a", "node-b", new byte[0]);

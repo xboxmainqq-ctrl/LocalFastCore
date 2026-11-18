@@ -14,6 +14,7 @@ import java.util.function.LongSupplier;
  */
 public final class PlayerTransferClusterEndpoint {
     public static final String ACCEPT_MESSAGE_TYPE = "PLAYER_TRANSFER_ACCEPT";
+    public static final String ABORT_MESSAGE_TYPE = "PLAYER_TRANSFER_ABORT";
 
     private final String localNodeId;
     private final DurableHandoffCoordinator ledger;
@@ -42,9 +43,15 @@ public final class PlayerTransferClusterEndpoint {
     /** Handles one authenticated transport message; throw to make the TCP ACK fail. */
     public void handle(ClusterMessage message) throws IOException {
         Objects.requireNonNull(message, "message");
-        if (!ACCEPT_MESSAGE_TYPE.equals(message.type())
-                || !localNodeId.equals(message.targetNode())) {
-            throw new SecurityException("Unexpected player-transfer cluster message");
+        if (!localNodeId.equals(message.targetNode())) {
+            throw new SecurityException("Unexpected player-transfer target node");
+        }
+        if (ABORT_MESSAGE_TYPE.equals(message.type())) {
+            handleAbort(message);
+            return;
+        }
+        if (!ACCEPT_MESSAGE_TYPE.equals(message.type())) {
+            throw new SecurityException("Unexpected player-transfer cluster message type");
         }
         UUID transferId = decodeTransferId(message.payload());
         PlayerTransferRecord prepared = ledger.get(transferId).orElseThrow(
@@ -88,6 +95,61 @@ public final class PlayerTransferClusterEndpoint {
             if (failure instanceof IOException ioFailure) throw ioFailure;
             throw new IOException("Destination player-transfer acceptance failed", failure);
         }
+    }
+
+    private void handleAbort(ClusterMessage message) throws IOException {
+        AbortPayload abort = decodeAbortPayload(message.payload());
+        PlayerTransferRecord current = ledger.get(abort.transferId()).orElseThrow(
+                () -> new IOException("Transfer record is not present in the shared ledger"));
+        if (!message.sourceNode().equals(current.sourceNode())
+                || !localNodeId.equals(current.targetNode())) {
+            throw new SecurityException("Abort message does not match durable transfer participants");
+        }
+        if (current.state() == PlayerTransferRecord.State.COMMITTED) return;
+        if (current.state() == PlayerTransferRecord.State.PREPARED) {
+            if (abort.fencingToken() != 0) throw new SecurityException("Prepared transfer has no claim fence");
+            ledger.abortPrepared(abort.transferId(), epochMillis.getAsLong());
+            return;
+        }
+        if (current.fencingToken() != abort.fencingToken() || abort.fencingToken() <= 0) {
+            throw new SecurityException("Abort message carries a stale fencing token");
+        }
+        if (current.state() == PlayerTransferRecord.State.CLAIMED) {
+            Optional<PlayerTransferRecord> aborted = ledger.abort(
+                    abort.transferId(), abort.fencingToken(), epochMillis.getAsLong());
+            if (aborted.isEmpty()) {
+                PlayerTransferRecord latest = ledger.get(abort.transferId()).orElseThrow(
+                        () -> new IOException("Transfer disappeared during abort"));
+                if (latest.state() == PlayerTransferRecord.State.COMMITTED) return;
+                if (latest.state() != PlayerTransferRecord.State.ABORTED
+                        || latest.fencingToken() != abort.fencingToken()) return;
+            }
+        }
+        PlayerHandoff handoff = new PlayerHandoff(abort.transferId(), 0L,
+                current.sourceNode(), current.targetNode(), new byte[0]);
+        destination.deactivateIfOwned(handoff, abort.fencingToken());
+    }
+
+    public static byte[] encodeAbortPayload(UUID transferId, long fencingToken) {
+        Objects.requireNonNull(transferId, "transferId");
+        if (fencingToken < 0) throw new IllegalArgumentException("fencingToken must not be negative");
+        return ByteBuffer.allocate(24)
+                .putLong(transferId.getMostSignificantBits())
+                .putLong(transferId.getLeastSignificantBits())
+                .putLong(fencingToken)
+                .array();
+    }
+
+    private static AbortPayload decodeAbortPayload(byte[] payload) throws IOException {
+        if (payload == null || payload.length != 24) throw new IOException("Invalid player-transfer abort payload");
+        ByteBuffer input = ByteBuffer.wrap(payload);
+        UUID transferId = new UUID(input.getLong(), input.getLong());
+        long fencingToken = input.getLong();
+        if (fencingToken < 0) throw new IOException("Invalid player-transfer abort fencing token");
+        return new AbortPayload(transferId, fencingToken);
+    }
+
+    private record AbortPayload(UUID transferId, long fencingToken) {
     }
 
     public static byte[] encodeTransferId(UUID transferId) {

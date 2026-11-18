@@ -489,6 +489,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     public String mobAiDiagnosticsSummary() {
         ru.nexora.world.MobPathCache.Stats cache = mobPathCache.stats();
         ru.nexora.combat.MobStuckTracker.Stats stuck = mobStuckTracker.stats(Math.max(0L, nanoTime.getAsLong() / 1_000_000L));
+        ru.nexora.combat.LivingEntityAiService.Stats aiStats = livingEntityAi.stats();
         StringBuilder result = new StringBuilder("Mob path cache: ")
                 .append("hits=").append(cache.hits())
                 .append(", misses=").append(cache.misses())

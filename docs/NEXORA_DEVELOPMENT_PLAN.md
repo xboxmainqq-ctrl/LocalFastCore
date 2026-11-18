@@ -272,8 +272,9 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Added tests for expired-claim cleanup, prepared cancellation, claim/abort races and remote reservation cleanup.
 - CI: the same 783-test build passed with zero failures.
 
-### 38. Duplicate Bedrock XUID admission guard — IMPLEMENTED LOCALLY, CI PENDING
+### 38. Duplicate Bedrock XUID admission guard — IMPLEMENTED LOCALLY, CI VERIFIED
 - Bedrock Login processing now serializes authentication by XUID within a server process and rejects a second active or transfer-frozen session for the same XUID.
 - A stale duplicate can no longer create two independently active local sessions while one session is already transferring.
 - Added a regression test for duplicate active XUID rejection.
+- CI: 790 tests passed, zero failures on commit `b834401`.
 - Remaining cluster-safety requirement: a durable shared player-owner lease/registry must gate admission across different server processes. The current transfer fencing protects a transfer's destination after claim/commit, but it is not yet a global online-session lease for arbitrary duplicate logins on different nodes. Until that is implemented and process-kill tested, keep cluster handoff in a controlled test environment.

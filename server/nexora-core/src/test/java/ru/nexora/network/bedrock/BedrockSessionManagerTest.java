@@ -1258,9 +1258,8 @@ class BedrockSessionManagerTest {
         @SuppressWarnings("unchecked")
         java.util.Map<Long, Long> attacks =
                 (java.util.Map<Long, Long>) getManagerField(manager, "nextMobAttackMillis");
-        @SuppressWarnings("unchecked")
-        java.util.Map<Long, Long> fuses =
-                (java.util.Map<Long, Long>) getManagerField(manager, "creeperFuseStartedMillis");
+        ru.nexora.combat.MobFuseTracker fuses =
+                (ru.nexora.combat.MobFuseTracker) getManagerField(manager, "mobFuseTracker");
         @SuppressWarnings("unchecked")
         java.util.Map<Long, Long> teleports =
                 (java.util.Map<Long, Long>) getManagerField(manager, "endermanTeleportCooldownMillis");
@@ -1271,7 +1270,7 @@ class BedrockSessionManagerTest {
                 (ru.nexora.combat.MobFallTracker) getManagerField(manager, "mobFallTracker");
         falls.update(zombie.runtimeId(), 80, false, false);
         attacks.put(zombie.runtimeId(), 100L);
-        fuses.put(zombie.runtimeId(), 100L);
+        assertFalse(fuses.isReadyToDetonate(zombie.runtimeId(), true, 100L, 1_500L));
         teleports.put(zombie.runtimeId(), 100L);
         aggro.put(zombie.runtimeId(), "test-player");
         @SuppressWarnings("unchecked")
@@ -1290,7 +1289,7 @@ class BedrockSessionManagerTest {
 
         assertTrue(manager.despawnLivingEntity(zombie.runtimeId()));
         assertFalse(attacks.containsKey(zombie.runtimeId()));
-        assertFalse(fuses.containsKey(zombie.runtimeId()));
+        assertEquals(0, fuses.trackedFuses());
         assertFalse(teleports.containsKey(zombie.runtimeId()));
         assertFalse(aggro.containsKey(zombie.runtimeId()));
         assertEquals(0, cache.size());

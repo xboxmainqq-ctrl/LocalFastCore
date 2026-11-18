@@ -27,12 +27,16 @@ class WorldRuntimeModuleTest {
         assertEquals(1, runtime.tickStats().registeredTasks());
         assertEquals(1, runtime.persistenceStats().registeredTasks());
         assertEquals(0, runtime.persistenceStats().failedRuns());
+        assertEquals(0, runtime.autosaveStats().attempts());
 
         runtime.close();
         runtime.close();
 
         assertTrue(runtime.isClosed());
         assertEquals(1, playerSaves.get());
+        assertEquals(1, runtime.autosaveStats().attempts());
+        assertEquals(1, runtime.autosaveStats().successfulSaves());
+        assertEquals(0, runtime.autosaveStats().failedSaves());
         assertThrows(IllegalStateException.class, runtime::saveNow);
     }
 

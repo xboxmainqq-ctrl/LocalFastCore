@@ -83,6 +83,11 @@ public final class WorldRuntimeModule implements AutoCloseable {
         return scheduler.registeredTasks(RuntimeTaskScheduler.Lane.PERSISTENCE);
     }
 
+    /** Aggregate persistence flush measurements, including the final shutdown save. */
+    public WorldAutosave.SaveStats autosaveStats() {
+        return autosave.saveStats();
+    }
+
     /** Execution-time baseline for furnace/tick work; does not represent global server TPS. */
     public RuntimeTaskScheduler.LaneStats tickStats() {
         return scheduler.stats(RuntimeTaskScheduler.Lane.TICK);

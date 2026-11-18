@@ -579,6 +579,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     if (!state.transferFrozen) {
                         saveAndClearContainerWindow(state);
                         try {
+                            // A disconnect must not let an expired former owner
+                            // overwrite the canonical checkpoint now owned elsewhere.
+                            assertTransferNodeOwnership(state);
                             returnCraftingGridItems(state);
                             saveAllPlayerState(state);
                         } catch (IOException | RuntimeException exception) {

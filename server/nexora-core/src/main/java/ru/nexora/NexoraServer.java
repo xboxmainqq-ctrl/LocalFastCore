@@ -26,6 +26,7 @@ import ru.nexora.ai.NexoraAiDiagnostics;
 import ru.nexora.ai.NexoraAiMonitor;
 import ru.nexora.ai.NexoraAiAssistant;
 import ru.nexora.lifecycle.ServerLifecycle;
+import ru.nexora.lifecycle.ServerReadiness;
 import ru.nexora.config.NexoraServerConfig;
 
 import java.net.InetAddress;
@@ -69,6 +70,7 @@ public final class NexoraServer {
                 port
         );
         ServerLifecycle lifecycle = new ServerLifecycle();
+        ServerReadiness readiness = new ServerReadiness();
         RakNetDiscoveryServer discovery = new RakNetDiscoveryServer(
                 socketAddress,
                 legacyStatus,
@@ -149,7 +151,8 @@ public final class NexoraServer {
                         maxPlayers,
                         0
                 ),
-                negotiator);
+                negotiator,
+                readiness::isAcceptingConnections);
         lifecycle.register(signaling);
 
         long autosaveSeconds = config.autosaveSeconds();
@@ -175,15 +178,20 @@ public final class NexoraServer {
             signaling.start();
             aiMonitor.start();
         } catch (Exception exception) {
+            readiness.beginShutdown();
             try {
                 lifecycle.close();
             } catch (Exception closeException) {
                 exception.addSuppressed(closeException);
+            } finally {
+                readiness.markStopped();
             }
             throw exception;
         }
+        readiness.markReady();
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            readiness.beginShutdown();
             try {
                 lifecycle.close();
             } catch (Exception exception) {
@@ -192,6 +200,8 @@ public final class NexoraServer {
                 for (Throwable suppressed : exception.getSuppressed()) {
                     System.err.println("NEXORA shutdown detail: " + suppressed.getMessage());
                 }
+            } finally {
+                readiness.markStopped();
             }
         }, "nexora-shutdown"));
 

@@ -3,6 +3,7 @@ package ru.nexora.world;
 import ru.nexora.ai.HotPathProfiler;
 import ru.nexora.combat.LivingEntityAiService;
 import ru.nexora.combat.MobAiLoadController;
+import ru.nexora.runtime.AdaptiveRuntime;
 
 import java.util.List;
 import java.util.Objects;
@@ -21,12 +22,14 @@ public final class WorldTickPipeline {
     private final LivingEntityAiService aiService;
     private final ru.nexora.combat.MobAiTaskScheduler taskScheduler;
     private final HotPathProfiler profiler;
+    private final AdaptiveRuntime runtime;
 
     public WorldTickPipeline(MobAiLoadController loadController, LivingEntityAiService aiService) {
         this.loadController = Objects.requireNonNull(loadController, "loadController");
         this.aiService = Objects.requireNonNull(aiService, "aiService");
         this.taskScheduler = new ru.nexora.combat.MobAiTaskScheduler();
         this.profiler = new HotPathProfiler();
+        this.runtime = new AdaptiveRuntime(50_000_000L, 5_000_000L);
     }
 
     public TickResult tick(
@@ -40,6 +43,7 @@ public final class WorldTickPipeline {
         Objects.requireNonNull(mobs, "mobs");
         Objects.requireNonNull(players, "players");
         Objects.requireNonNull(decisionSink, "decisionSink");
+        runtime.beginTick();
 
         int scheduled = 0;
         int deferred = 0;
@@ -51,6 +55,13 @@ public final class WorldTickPipeline {
         for (WorldLivingEntity mob : mobs) {
             if (mob == null || mob.health() <= 0) continue;
 
+            long targetEstimate = 50_000L;
+            if (runtime.admit(AdaptiveRuntime.Lane.AI, targetEstimate,
+                    priorityHint(mob) == MobAiLoadController.Priority.HIGH)
+                    == AdaptiveRuntime.Admission.DEFER) {
+                deferred++;
+                continue;
+            }
             if (taskScheduler.admit(ru.nexora.combat.MobAiTaskScheduler.Task.TARGETING,
                     priorityHint(mob), true, 0, loadController.aiBudgetNanos())
                     == ru.nexora.combat.MobAiTaskScheduler.Admission.DEFER) {
@@ -149,6 +160,14 @@ public final class WorldTickPipeline {
     }
 
     public HotPathProfiler profiler() {
+        return profiler;
+    }
+
+    public AdaptiveRuntime runtime() {
+        return runtime;
+    }
+
+    public HotPathProfiler profiler_unused() {
         return profiler;
     }
 

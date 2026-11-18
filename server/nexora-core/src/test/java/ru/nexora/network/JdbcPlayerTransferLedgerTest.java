@@ -64,6 +64,29 @@ class JdbcPlayerTransferLedgerTest {
     }
 
     @Test
+    void expiredClaimIsReclaimedAfterLedgerReconnectWithHigherFence() throws Exception {
+        String url = databaseUrl("reclaimed-ledger");
+        JdbcPlayerTransferLedger first = new JdbcPlayerTransferLedger(dataSource(url));
+        first.initializeSchema();
+        UUID transferId = UUID.randomUUID();
+        assertTrue(first.create(PlayerTransferRecord.prepared(
+                transferId, "reclaim-player", "source-node", "target-node", 9L, 100L)));
+
+        PlayerTransferRecord oldClaim = new PlayerTransferCoordinator(first)
+                .claim(transferId, "target-node", 101L, 10L).orElseThrow();
+        JdbcPlayerTransferLedger afterRestart = new JdbcPlayerTransferLedger(dataSource(url));
+        PlayerTransferCoordinator recoveredNode = new PlayerTransferCoordinator(afterRestart);
+        PlayerTransferRecord newClaim = recoveredNode.claim(
+                transferId, "target-node", 111L, 1_000L).orElseThrow();
+
+        assertEquals(oldClaim.fencingToken() + 1, newClaim.fencingToken());
+        assertTrue(recoveredNode.commit(transferId, oldClaim.fencingToken(), 112L).isEmpty(),
+                "A process that lost its lease cannot commit after another node reclaimed it");
+        assertEquals(PlayerTransferRecord.State.COMMITTED,
+                recoveredNode.commit(transferId, newClaim.fencingToken(), 112L).orElseThrow().state());
+    }
+
+    @Test
     void concurrentNodesCannotBothClaimTheSamePreparedTransfer() throws Exception {
         String url = databaseUrl("concurrent-ledger");
         JdbcPlayerTransferLedger first = new JdbcPlayerTransferLedger(dataSource(url));

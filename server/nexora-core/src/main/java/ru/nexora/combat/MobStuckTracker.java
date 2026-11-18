@@ -12,6 +12,8 @@ import java.util.Map;
  */
 public final class MobStuckTracker {
     public static final long STUCK_AFTER_MILLIS = 2_000L;
+    /** Ignore blocked-movement observations that stopped for over one second. */
+    public static final long INACTIVE_AFTER_MILLIS = 1_000L;
     public static final double MIN_PROGRESS_DISTANCE = 0.15;
     public static final int DEFAULT_MAX_TRACKED = 5_000;
 
@@ -38,22 +40,23 @@ public final class MobStuckTracker {
         validate(runtimeId, x, y, z, nowMillis);
         Entry entry = entries.get(runtimeId);
         if (entry == null) {
-            put(runtimeId, new Entry(x, y, z, nowMillis, 1));
+            put(runtimeId, new Entry(x, y, z, nowMillis, nowMillis, 1));
             return null;
         }
 
         double dx = x - entry.anchorX();
         double dy = y - entry.anchorY();
         double dz = z - entry.anchorZ();
-        if (nowMillis < entry.startedAtMillis()
+        if (nowMillis < entry.lastAttemptAtMillis()
+                || nowMillis - entry.lastAttemptAtMillis() > INACTIVE_AFTER_MILLIS
                 || dx * dx + dy * dy + dz * dz >= MIN_PROGRESS_DISTANCE * MIN_PROGRESS_DISTANCE) {
-            Entry reset = new Entry(x, y, z, nowMillis, 1);
+            Entry reset = new Entry(x, y, z, nowMillis, nowMillis, 1);
             entries.put(runtimeId, reset);
             return null;
         }
 
         Entry updated = new Entry(entry.anchorX(), entry.anchorY(), entry.anchorZ(),
-                entry.startedAtMillis(), entry.attempts() + 1);
+                entry.startedAtMillis(), nowMillis, entry.attempts() + 1);
         entries.put(runtimeId, updated);
         long duration = nowMillis - updated.startedAtMillis();
         return duration >= STUCK_AFTER_MILLIS
@@ -70,6 +73,7 @@ public final class MobStuckTracker {
         if (nowMillis < 0 || limit < 1 || limit > 20) {
             throw new IllegalArgumentException("Invalid stuck snapshot bounds");
         }
+        pruneInactive(nowMillis);
         List<StuckMob> result = new ArrayList<>();
         for (Map.Entry<Long, Entry> item : entries.entrySet()) {
             Entry entry = item.getValue();
@@ -84,12 +88,20 @@ public final class MobStuckTracker {
 
     public synchronized Stats stats(long nowMillis) {
         if (nowMillis < 0) throw new IllegalArgumentException("nowMillis must be non-negative");
+        pruneInactive(nowMillis);
         int stuck = 0;
         for (Entry entry : entries.values()) {
             if (nowMillis >= entry.startedAtMillis()
                     && nowMillis - entry.startedAtMillis() >= STUCK_AFTER_MILLIS) stuck++;
         }
         return new Stats(entries.size(), stuck, evictions);
+    }
+
+    private void pruneInactive(long nowMillis) {
+        entries.entrySet().removeIf(item -> {
+            long lastAttempt = item.getValue().lastAttemptAtMillis();
+            return nowMillis < lastAttempt || nowMillis - lastAttempt > INACTIVE_AFTER_MILLIS;
+        });
     }
 
     private void put(long runtimeId, Entry entry) {
@@ -109,7 +121,7 @@ public final class MobStuckTracker {
     }
 
     private record Entry(double anchorX, double anchorY, double anchorZ,
-                         long startedAtMillis, long attempts) {
+                         long startedAtMillis, long lastAttemptAtMillis, long attempts) {
     }
 
     public record StuckMob(long runtimeId, long durationMillis, long attempts) {

@@ -626,6 +626,39 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return true;
     }
 
+    /**
+     * Periodic lease heartbeat independent of client movement/input packets.
+     * Idle authenticated players must not lose ownership simply because they
+     * have no gameplay packet to trigger the inbound-path renewal.
+     */
+    public void renewOnlinePlayerLeases() {
+        if (onlineLeaseRegistry == null || transferOwnershipLedger == null) return;
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            String networkId = entry.getKey();
+            SessionState state = entry.getValue();
+            state.combatLock.lock();
+            try {
+                synchronized (state) {
+                    if (state.transferFrozen || state.rejected || !state.loginAuthenticated
+                            || state.identity == null) continue;
+                    try {
+                        assertTransferNodeOwnership(state);
+                    } catch (IOException | SecurityException ownershipFailure) {
+                        state.rejected = true;
+                        state.loginAuthenticated = false;
+                        state.clientInitialized = false;
+                        releaseOnlinePlayerLease(state);
+                        removePlayerListEntry(networkId, state);
+                        System.err.println("NEXORA: stopped idle/session processing after online lease loss for "
+                                + state.identity.xuid() + ": " + ownershipFailure.getMessage());
+                    }
+                }
+            } finally {
+                state.combatLock.unlock();
+            }
+        }
+    }
+
     public void savePlayers() throws IOException {
         IOException failure = null;
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {

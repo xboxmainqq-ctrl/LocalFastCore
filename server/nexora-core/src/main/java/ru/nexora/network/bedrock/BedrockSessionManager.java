@@ -46,6 +46,7 @@ import ru.nexora.persistence.PlayerStateBundle;
 import ru.nexora.persistence.PlayerStateBundleCodec;
 import ru.nexora.persistence.PlayerStateCheckpointService;
 import ru.nexora.network.PlayerTransferFence;
+import ru.nexora.network.PlayerTransferRecoveryService;
 import ru.nexora.network.PendingPlayerTransferRestoreRegistry;
 
 import java.security.KeyFactory;

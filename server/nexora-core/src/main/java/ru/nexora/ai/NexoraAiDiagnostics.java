@@ -37,6 +37,7 @@ public final class NexoraAiDiagnostics {
     private final AtomicLong recordedFailures = new AtomicLong();
     private final AtomicLong incidentSequence = new AtomicLong();
     private final AtomicLong slowOperationCount = new AtomicLong();
+    private final AtomicLong lastWorldSnapshotNanos = new AtomicLong(Long.MIN_VALUE);
     private final ConcurrentLinkedDeque<DiagnosticEvent> events = new ConcurrentLinkedDeque<>();
     private final ConcurrentHashMap<String, AtomicLong> repeatedSignatures = new ConcurrentHashMap<>();
     private final Map<String, ArrayDeque<LatencySample>> latencySamples = new java.util.LinkedHashMap<>();
@@ -244,6 +245,32 @@ public final class NexoraAiDiagnostics {
                     event.type(), event.description()));
         }
         return List.copyOf(timeline);
+    }
+
+    /**
+     * Records a throttled, identifier-free snapshot of world residency and Mob AI scheduling.
+     * At most one event is emitted per ten seconds to keep the diagnostic timeline bounded.
+     */
+    public void recordWorldRuntimeSnapshot(
+            int residentChunks,
+            int loadedChunks,
+            int livingEntities,
+            long mobAiFullRateUpdates,
+            long mobAiDeferredUpdates
+    ) {
+        if (residentChunks < 0 || loadedChunks < 0 || livingEntities < 0
+                || mobAiFullRateUpdates < 0 || mobAiDeferredUpdates < 0) {
+            throw new IllegalArgumentException("World runtime metrics must be non-negative");
+        }
+        long now = nanoClock.getAsLong();
+        long previous = lastWorldSnapshotNanos.get();
+        if (previous != Long.MIN_VALUE && now - previous < 10_000_000_000L) return;
+        if (!lastWorldSnapshotNanos.compareAndSet(previous, now)) return;
+        appendEvent("WORLD", "residentChunks=" + residentChunks
+                + ", loadedChunks=" + loadedChunks
+                + ", livingEntities=" + livingEntities
+                + ", mobAiFullRateUpdates=" + mobAiFullRateUpdates
+                + ", mobAiDeferredUpdates=" + mobAiDeferredUpdates);
     }
 
     /** Records a bounded, identifier-free security signal from NexoraAI Guard. */

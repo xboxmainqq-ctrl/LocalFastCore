@@ -576,4 +576,20 @@ class NexoraAiDiagnosticsTest {
         assertTrue(diagnostics.recentEvidence().contains("maxLoad/core=n/a"));
     }
 
+    @Test
+    void worldRuntimeSnapshotsAreThrottledAndContainOnlyAggregateMetrics() {
+        AtomicLong clock = new AtomicLong(1_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+
+        diagnostics.recordWorldRuntimeSnapshot(25, 30, 12, 100, 50);
+        diagnostics.recordWorldRuntimeSnapshot(40, 45, 14, 110, 60);
+        assertTrue(diagnostics.recentEvidence().contains("residentChunks=25"));
+        assertFalse(diagnostics.recentEvidence().contains("residentChunks=40"));
+
+        clock.addAndGet(10_000_000_000L);
+        diagnostics.recordWorldRuntimeSnapshot(40, 45, 14, 110, 60);
+        assertTrue(diagnostics.recentEvidence().contains("residentChunks=40"));
+        assertTrue(diagnostics.recentEvidence().contains("mobAiDeferredUpdates=60"));
+    }
+
 }

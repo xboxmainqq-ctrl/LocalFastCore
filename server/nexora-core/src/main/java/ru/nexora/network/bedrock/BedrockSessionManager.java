@@ -2604,6 +2604,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         WorldChunkResidencyManager.ResidencyPlan residencyPlan =
                 chunkResidency.update(playerChunks, entityChunks, Math.max(0L, nowMillis / 50L));
         world.applyChunkResidencyPlan(residencyPlan);
+        ru.nexora.ai.NexoraAiDiagnostics worldDiagnostics = aiDiagnostics;
+        if (worldDiagnostics != null) {
+            ru.nexora.combat.MobAiLoadController.Stats schedulerStats = mobAiLoadController.stats();
+            worldDiagnostics.recordWorldRuntimeSnapshot(
+                    residencyPlan.residentCount(), world.loadedChunkCount(),
+                    world.livingEntities().size(),
+                    schedulerStats.fullRateUpdates(), schedulerStats.deferredUpdates());
+        }
         List<ru.nexora.world.MobSpawnerManager.PlayerPosition> spawnerPlayers = new ArrayList<>();
         for (ru.nexora.combat.LivingEntityAiService.PlayerTarget player : targets) {
             spawnerPlayers.add(new ru.nexora.world.MobSpawnerManager.PlayerPosition(

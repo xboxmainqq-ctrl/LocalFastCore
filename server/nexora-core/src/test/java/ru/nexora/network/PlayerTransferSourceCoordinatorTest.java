@@ -56,6 +56,42 @@ class PlayerTransferSourceCoordinatorTest {
         }
     }
 
+    @Test
+    void sourceLeaseReleaseRunsOnlyAfterPreparedIsDurableAndFailureAbortsSafely() throws Exception {
+        DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
+                new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
+        PlayerHandoff handoff = handoff();
+        class PreparedSource extends FakeSource {
+            boolean preparedObserved;
+            @Override public long freezeAndCheckpoint(PlayerHandoff ignored) {
+                return 17L;
+            }
+            @Override public void onPrepared(PlayerHandoff ignored) throws Exception {
+                PlayerTransferRecord record = ledger.get(handoff.transferId()).orElseThrow();
+                assertEquals(PlayerTransferRecord.State.PREPARED, record.state());
+                assertEquals("prepared-order-xuid", record.playerXuid());
+                preparedObserved = true;
+                throw new IOException("simulated source lease release failure");
+            }
+        }
+        PreparedSource source = new PreparedSource();
+        BedrockSessionManager sessions = sessions();
+        try {
+            PlayerTransferSourceCoordinator coordinator = new PlayerTransferSourceCoordinator(
+                    "source-node", ledger, source, sessions, new FakeTransport(),
+                    Duration.ofSeconds(1), () -> 101L);
+
+            assertThrows(IOException.class,
+                    () -> coordinator.transfer(handoff, "prepared-order-xuid", "127.0.0.1", 19132));
+            assertTrue(source.preparedObserved);
+            assertTrue(source.unfrozen, "Source resumes only after the PREPARED record is durably ABORTED");
+            assertEquals(PlayerTransferRecord.State.ABORTED,
+                    ledger.get(handoff.transferId()).orElseThrow().state());
+        } finally {
+            sessions.close();
+        }
+    }
+
     private static BedrockSessionManager sessions() {
         return new BedrockSessionManager(2225, "1.26.62",
                 BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,

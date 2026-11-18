@@ -68,8 +68,11 @@ public final class PlayerTransferSourceCoordinator {
         if (handoff.targetNode().equals(localNodeId)) {
             throw new IllegalArgumentException("Transfer target must be another node");
         }
-        // Validate the redirect target before freezing the source session.
+        // Validate the redirect target and reject reused transfer IDs before freezing.
         BedrockTransferPacketCodec.create(destinationAddress, destinationPort, true);
+        if (ledger.get(handoff.transferId()).isPresent()) {
+            throw new IllegalStateException("Transfer ID already exists: " + handoff.transferId());
+        }
 
         long revision;
         try {
@@ -92,30 +95,32 @@ public final class PlayerTransferSourceCoordinator {
             if (freezeFailure instanceof IOException ioFailure) throw ioFailure;
             throw new IOException("Unable to freeze and checkpoint source player", freezeFailure);
         }
+        boolean prepared = false;
         try {
             ledger.prepare(handoff, playerXuid, revision, epochMillis.getAsLong());
+            prepared = true;
             source.onPrepared(handoff);
         } catch (Exception publicationFailure) {
             try {
-                Optional<PlayerTransferRecord> stored = ledger.get(handoff.transferId());
-                if (stored.isEmpty()) {
-                    resumeAfterAbort(handoff);
+                if (prepared) {
+                    Optional<PlayerTransferRecord> aborted = ledger.abortPrepared(
+                            handoff.transferId(), epochMillis.getAsLong());
+                    if (aborted.isPresent()) resumeAfterAbort(handoff);
+                    else publicationFailure.addSuppressed(new IOException(
+                            "Prepared transfer changed concurrently; source remains frozen"));
                 } else {
-                    PlayerTransferRecord record = stored.orElseThrow();
-                    if (record.state() == PlayerTransferRecord.State.PREPARED) {
-                        Optional<PlayerTransferRecord> aborted = ledger.abortPrepared(
-                                handoff.transferId(), epochMillis.getAsLong());
-                        if (aborted.isPresent()) resumeAfterAbort(handoff);
-                        else publicationFailure.addSuppressed(new IOException(
-                                "Prepared transfer changed concurrently; source remains frozen"));
-                    } else if (record.state() == PlayerTransferRecord.State.ABORTED
-                            && record.playerXuid().equals(playerXuid)
-                            && record.sourceNode().equals(handoff.sourceNode())
-                            && record.targetNode().equals(handoff.targetNode())) {
+                    Optional<PlayerTransferRecord> stored = ledger.get(handoff.transferId());
+                    if (stored.isEmpty()) {
+                        resumeAfterAbort(handoff);
+                    } else if (stored.filter(record ->
+                            record.state() == PlayerTransferRecord.State.ABORTED
+                                    && record.playerXuid().equals(playerXuid)
+                                    && record.sourceNode().equals(handoff.sourceNode())
+                                    && record.targetNode().equals(handoff.targetNode())).isPresent()) {
                         resumeAfterAbort(handoff);
                     } else {
                         publicationFailure.addSuppressed(new IOException(
-                                "Transfer publication is uncertain; source remains frozen"));
+                                "Transfer publication is uncertain or belongs to another attempt; source remains frozen"));
                     }
                 }
             } catch (Exception reconciliationFailure) {

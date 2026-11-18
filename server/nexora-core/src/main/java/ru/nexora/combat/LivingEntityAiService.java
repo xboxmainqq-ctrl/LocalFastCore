@@ -1,6 +1,8 @@
 package ru.nexora.combat;
 
 import ru.nexora.world.WorldLivingEntity;
+import ru.nexora.world.MobPathCache;
+import ru.nexora.world.WorldPathfinder;
 
 import java.util.Comparator;
 import java.util.List;
@@ -26,6 +28,7 @@ public final class LivingEntityAiService {
     private final LongAdder decisionFailures = new LongAdder();
     private final AtomicLong lastDecisionNanos = new AtomicLong();
     private final AtomicLong maxDecisionNanos = new AtomicLong();
+    private final MobPathCache pathCache = new MobPathCache();
 
     public Decision decide(WorldLivingEntity mob, List<PlayerTarget> players, long nowMillis,
                            long nextAttackAtMillis) {
@@ -102,6 +105,10 @@ public final class LivingEntityAiService {
     }
 
     /** Thread-safe aggregate timings for the actual decision algorithm, excluding wrapper scans. */
+    public MobPathCache.Stats pathCacheStats() {
+        return pathCache.stats();
+    }
+
     public Stats stats() {
         long count = decisionCount.sum();
         long total = decisionNanos.sum();
@@ -153,6 +160,17 @@ public final class LivingEntityAiService {
             return Decision.idle(mob.runtimeId());
         }
         double speed = movementSpeedFor(mob.identifier());
+        if (!isFlyingMob(mob.identifier())) {
+            java.util.Optional<WorldPathfinder.Step> step = pathCache.findNextStep(
+                    mob.runtimeId(), mob.world(), mob.x(), mob.y(), mob.z(),
+                    target.x(), target.z(), nowMillis);
+            if (step.isPresent()) {
+                WorldPathfinder.Step waypoint = step.orElseThrow();
+                return new Decision(mob.runtimeId(), target.networkId(),
+                        waypoint.x() - mob.x(), 0, waypoint.z() - mob.z(), 0, false);
+            }
+            return Decision.idle(mob.runtimeId());
+        }
         if (isFlyingMob(mob.identifier())) {
             double distance = Math.sqrt(distanceSquared);
             if (distance < 0.0001) return Decision.idle(mob.runtimeId());

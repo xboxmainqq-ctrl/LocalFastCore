@@ -11,6 +11,7 @@ Prioritize a stable, fast, observable Minecraft server core. NexoraAI should hel
 - [x] Introduce a validated immutable process configuration so invalid ports, player limits, autosave intervals, and WebRTC ranges fail fast before network startup.
 - [x] Centralize owned server resources in a reverse-order lifecycle coordinator; startup rollback and shutdown both attempt every close operation and preserve suppressed failures.
 - [ ] Split process bootstrap into explicit runtime modules (network, world/persistence, gameplay, diagnostics) with dependency boundaries and focused integration tests.
+- [x] Extract world background services into a `WorldRuntimeModule`; it owns furnace ticking and world/player autosave, stops ticking before the final save, and aggregates shutdown failures. Network, gameplay, and diagnostics module boundaries remain to be extracted.
 - [ ] Introduce a shared bounded task/tick orchestration layer; avoid independent uncoordinated schedulers for world subsystems.
 - [ ] Define health/readiness states and graceful admission shutdown before session draining and final persistence.
 

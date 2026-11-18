@@ -88,7 +88,6 @@ public final class NexoraServer {
                         snapshot.liveThreadCount(), snapshot.recordedFailures(), snapshot.slowOperationCount());
             }
         });
-        lifecycle.register(aiMonitor);
         String dataDirectory = config.dataDirectory();
         DefaultNetherNetIdentityService identityService =
                 new DefaultNetherNetIdentityService(Path.of(dataDirectory, "identity"));
@@ -171,6 +170,7 @@ public final class NexoraServer {
                 },
                 elapsed -> aiDiagnostics.recordSlowOperation("furnace-tick", elapsed, 50_000_000L));
         lifecycle.register(furnaceTicker);
+        lifecycle.register(aiMonitor);
         try {
             discovery.start();
             signaling.start();

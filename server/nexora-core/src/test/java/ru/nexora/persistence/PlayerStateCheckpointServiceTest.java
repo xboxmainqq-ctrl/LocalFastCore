@@ -27,13 +27,13 @@ class PlayerStateCheckpointServiceTest {
         PlayerStateCheckpointService first = new PlayerStateCheckpointService(
                 new FilePlayerStateStore(temporaryDirectory), new PlayerStateBundleCodec());
         assertEquals(PlayerStateStore.SaveResult.SAVED, first.checkpoint(bundle, 100L));
-        assertEquals(PlayerStateStore.SaveResult.SAVED, first.checkpoint(bundle, 200L));
+        assertEquals(PlayerStateStore.SaveResult.ALREADY_CURRENT, first.checkpoint(bundle, 200L));
 
         PlayerStateCheckpointService afterRestart = new PlayerStateCheckpointService(
                 new FilePlayerStateStore(temporaryDirectory), new PlayerStateBundleCodec());
         PlayerStateBundle loaded = afterRestart.load("xuid-checkpoint").orElseThrow();
         assertEquals(bundle, loaded);
-        assertEquals(2L, new FilePlayerStateStore(temporaryDirectory)
+        assertEquals(1L, new FilePlayerStateStore(temporaryDirectory)
                 .loadLatest("xuid-checkpoint").orElseThrow().revision());
     }
 }

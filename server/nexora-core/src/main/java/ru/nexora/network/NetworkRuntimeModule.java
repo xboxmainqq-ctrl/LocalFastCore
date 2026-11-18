@@ -27,6 +27,7 @@ public final class NetworkRuntimeModule implements AutoCloseable {
         void close() throws Exception;
     }
 
+    private final ManagedService cluster;
     private final ManagedService discovery;
     private final ManagedService signaling;
     private final AutoCloseable negotiator;
@@ -39,7 +40,7 @@ public final class NetworkRuntimeModule implements AutoCloseable {
             ManagedService signaling,
             AutoCloseable negotiator
     ) {
-        this(discovery, signaling, negotiator, () -> {});
+        this(noOpService(), discovery, signaling, negotiator, () -> {});
     }
 
     public NetworkRuntimeModule(
@@ -48,10 +49,25 @@ public final class NetworkRuntimeModule implements AutoCloseable {
             AutoCloseable negotiator,
             DrainAction drainAction
     ) {
+        this(noOpService(), discovery, signaling, negotiator, drainAction);
+    }
+
+    public NetworkRuntimeModule(
+            ManagedService cluster,
+            ManagedService discovery,
+            ManagedService signaling,
+            AutoCloseable negotiator,
+            DrainAction drainAction
+    ) {
+        this.cluster = Objects.requireNonNull(cluster, "cluster");
         this.discovery = Objects.requireNonNull(discovery, "discovery");
         this.signaling = Objects.requireNonNull(signaling, "signaling");
         this.negotiator = Objects.requireNonNull(negotiator, "negotiator");
         this.drainAction = Objects.requireNonNull(drainAction, "drainAction");
+    }
+
+    private static ManagedService noOpService() {
+        return service(() -> {}, () -> {});
     }
 
     public static ManagedService service(StartAction start, AutoCloseable close) {
@@ -74,6 +90,7 @@ public final class NetworkRuntimeModule implements AutoCloseable {
         if (closed.get()) throw new IllegalStateException("Network runtime module is closed");
         if (started) return;
         try {
+            cluster.start();
             discovery.start();
             signaling.start();
             started = true;
@@ -97,6 +114,7 @@ public final class NetworkRuntimeModule implements AutoCloseable {
         Exception failure = null;
         failure = close(discovery, failure);
         failure = close(signaling, failure);
+        failure = close(cluster, failure);
         try {
             drainAction.drain();
         } catch (Exception exception) {

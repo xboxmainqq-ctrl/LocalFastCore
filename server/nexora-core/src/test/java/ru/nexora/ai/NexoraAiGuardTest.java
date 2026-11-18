@@ -37,7 +37,7 @@ class NexoraAiGuardTest {
         assertEquals("frame-rate threshold exceeded", events.get(0).reason());
         assertEquals("repeated inbound threshold across consecutive windows", events.get(1).reason());
         assertFalse(guard.snapshot().summary().contains("peer-private"));
-        assertTrue(guard.snapshot().summary().contains("no automatic punishment") == false);
+        assertTrue(guard.snapshot().summary().contains("no automatic punishment"));
     }
 
     @Test

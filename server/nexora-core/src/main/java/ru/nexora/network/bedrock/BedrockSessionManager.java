@@ -117,6 +117,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final LongSupplier nanoTime;
     private final AutoCloseable furnaceUpdateListener;
     private final Map<String, SessionState> sessions = new ConcurrentHashMap<>();
+    private final Object[] xuidLoginLocks = createXuidLoginLocks();
     private final Object sessionChangeMonitor = new Object();
     private final AtomicLong nextEntityId = new AtomicLong(1);
     private final AtomicLong nextFormId = new AtomicLong(1);
@@ -4036,6 +4037,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             throw new SecurityException("Login GameServerToken does not match the verified NetherNet identity");
         }
         JsonNode clientData = verifyClientDataToken(login.rawClientDataToken(), state.identity);
+        synchronized (xuidLoginLock(state.identity.xuid())) {
+            ensureNoDuplicateXuidSession(message.networkId(), state.identity.xuid());
         boolean legacyStateFound = false;
         PendingPlayerTransferRestoreRegistry.PendingRestore pendingTransfer =
                 pendingTransferRestores.find(state.identity.xuid()).orElse(null);
@@ -4150,6 +4153,31 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
         }
         System.out.printf("NEXORA: authenticated player %s%n", displayName);
+        }
+    }
+
+    private Object xuidLoginLock(String xuid) {
+        return xuidLoginLocks[Math.floorMod(xuid.hashCode(), xuidLoginLocks.length)];
+    }
+
+    private void ensureNoDuplicateXuidSession(String incomingNetworkId, String xuid) {
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            if (entry.getKey().equals(incomingNetworkId)) continue;
+            SessionState existing = entry.getValue();
+            synchronized (existing) {
+                if (!existing.rejected && existing.identity != null
+                        && xuid.equals(existing.identity.xuid())
+                        && (existing.loginAuthenticated || existing.transferFrozen)) {
+                    throw new SecurityException("XUID already has an active or transferring session on this node");
+                }
+            }
+        }
+    }
+
+    private static Object[] createXuidLoginLocks() {
+        Object[] locks = new Object[256];
+        for (int i = 0; i < locks.length; i++) locks[i] = new Object();
+        return locks;
     }
 
     private void restorePlayerProfile(SessionState state, PlayerData player, String displayName) {

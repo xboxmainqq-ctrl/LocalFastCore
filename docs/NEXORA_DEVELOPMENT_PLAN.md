@@ -207,3 +207,12 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Recovery queries now prioritize newest records first across in-memory, file and JDBC ledger adapters so historical transfers for one XUID do not mask the latest ownership record.
 - Added tests for claimed/committed rehydration, expired-lease rejection and repeat recovery.
 - Remaining: wire recovery service into configured server startup and a deployment-owned shared ledger; add process-restart Bedrock login tests and multi-process failure injection. This does not enable cross-host transfer by itself.
+
+### 31. Startup recovery wiring — IMPLEMENTED, CI VALIDATION PENDING
+- `NexoraServer` now opens the durable local transfer ledger under `data/cluster/transfers` and runs bounded destination recovery before starting the network runtime.
+- `NEXORA_NODE_ID` selects the destination identity; the development fallback is `standalone`.
+- `BedrockSessionManager` exposes a startup recovery entry point that rehydrates its private pending-login registry.
+- Startup logs the scanned, registered, already-pending, expired and superseded record counts.
+- Recovery errors fail startup closed rather than accepting logins with a partially reconstructed ownership registry.
+- The configured file ledger is explicitly single-host/local-filesystem only. Do not use it for a multi-host cluster; shared JDBC storage and an operator-managed unique node ID are required for that deployment.
+- Remaining: complete live transfer orchestration (claim/commit/abort across source and destination), validate recovery with process-kill integration tests, and prove shared-store semantics across separate hosts.

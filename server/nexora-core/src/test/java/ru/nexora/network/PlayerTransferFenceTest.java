@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -28,6 +29,30 @@ class PlayerTransferFenceTest {
                 ledger.get(id).orElseThrow(), () -> 102L);
         assertDoesNotThrow(rehydrated::assertCurrent);
         assertDoesNotThrow(rehydrated::assertCommitted);
+    }
+
+    @Test
+    void detectsRevokedExpiredAndSupersededFencesForPendingRestoreCleanup() throws Exception {
+        DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
+                new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
+        UUID id = UUID.randomUUID();
+        ledger.prepare(new PlayerHandoff(id, 1L, "source", "target", new byte[0]),
+                "fence-cleanup-xuid", 1L, 100L);
+        PlayerTransferRecord first = ledger.claim(id, "target", 101L, 10L).orElseThrow();
+        AtomicLong now = new AtomicLong(102L);
+        PlayerTransferFence fence = new PlayerTransferFence(ledger, first, now::get);
+        assertFalse(fence.isRevokedOrExpired());
+
+        now.set(112L);
+        assertTrue(fence.isRevokedOrExpired());
+        PlayerTransferRecord second = ledger.claim(id, "target", 112L, 10_000L).orElseThrow();
+        assertTrue(fence.isRevokedOrExpired());
+        assertTrue(second.fencingToken() > first.fencingToken());
+
+        ledger.abort(id, second.fencingToken(), 113L);
+        PlayerTransferFence aborted = new PlayerTransferFence(
+                ledger, ledger.get(id).orElseThrow(), now::get);
+        assertTrue(aborted.isRevokedOrExpired());
     }
 
     @Test

@@ -40,7 +40,7 @@ public final class WorldChunkResidencyManager {
     }
 
     public synchronized ResidencyPlan update(List<PlayerChunk> players, long tick) {
-        return update(players, List.of(), tick);
+        return update(players, java.util.Set.of(), tick);
     }
 
     /** Pinned chunks contain active world-owned entities and cannot be evicted yet. */

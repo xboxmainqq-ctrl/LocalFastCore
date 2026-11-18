@@ -4,11 +4,11 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Owns the network-facing runtime and its dependent Bedrock session state.
+ * Owns discovery, HTTP signaling, and WebRTC negotiation.
  *
- * <p>Startup opens discovery before HTTP signaling. Shutdown reverses the
- * dependency chain: stop discovery, stop signaling admission, close WebRTC,
- * Gameplay/session persistence is owned by GameplayRuntimeModule.</p>
+ * <p>Startup opens discovery before HTTP signaling. Shutdown stops discovery
+ * and signaling admission, allows a bounded gameplay-session drain, then closes
+ * WebRTC. Session persistence is owned by GameplayRuntimeModule.</p>
  */
 public final class NetworkRuntimeModule implements AutoCloseable {
     @FunctionalInterface

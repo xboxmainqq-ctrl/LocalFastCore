@@ -16,6 +16,7 @@ public final class DiagnosticsRuntimeModule implements AutoCloseable {
     private final NexoraAiMonitor monitor;
     private final NexoraAiRepairProposals repairProposals;
     private final NexoraAiRepairAdvisor repairAdvisor;
+    private final NexoraAiSafeRepairRegistry safeRepairs;
     private final AtomicBoolean started = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
 
@@ -23,6 +24,9 @@ public final class DiagnosticsRuntimeModule implements AutoCloseable {
         this.diagnostics = new NexoraAiDiagnostics();
         this.repairProposals = new NexoraAiRepairProposals();
         this.repairAdvisor = new NexoraAiRepairAdvisor(repairProposals);
+        this.safeRepairs = new NexoraAiSafeRepairRegistry(execution ->
+                diagnostics.recordRepairExecution(execution.actionId(),
+                        execution.status().name(), execution.detail()));
         this.monitor = new NexoraAiMonitor(diagnostics, snapshot -> {
             repairAdvisor.analyze(diagnostics);
             Objects.requireNonNull(observer, "observer").accept(snapshot);
@@ -56,6 +60,10 @@ public final class DiagnosticsRuntimeModule implements AutoCloseable {
 
     public NexoraAiRepairAdvisor repairAdvisor() {
         return repairAdvisor;
+    }
+
+    public NexoraAiSafeRepairRegistry safeRepairs() {
+        return safeRepairs;
     }
 
     public boolean isStarted() {

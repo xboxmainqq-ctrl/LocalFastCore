@@ -123,6 +123,11 @@ public final class MobPathCache {
         entries.remove(mobRuntimeId);
     }
 
+    /** Clears only ephemeral navigation entries; cumulative diagnostic counters are preserved. */
+    public synchronized void clear() {
+        entries.clear();
+    }
+
     public synchronized int size() {
         return entries.size();
     }

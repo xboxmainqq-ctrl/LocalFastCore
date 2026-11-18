@@ -273,6 +273,19 @@ public final class NexoraAiDiagnostics {
                 + ", mobAiDeferredUpdates=" + mobAiDeferredUpdates);
     }
 
+    /** Records the outcome of an allowlisted in-process repair action without user identifiers. */
+    public void recordRepairExecution(String actionId, String status, String detail) {
+        Objects.requireNonNull(actionId, "actionId");
+        Objects.requireNonNull(status, "status");
+        Objects.requireNonNull(detail, "detail");
+        if (!actionId.matches("[a-z0-9][a-z0-9._-]{2,63}")
+                || !status.matches("[A-Z_]{2,40}")) {
+            throw new IllegalArgumentException("Invalid repair execution metadata");
+        }
+        appendEvent("REPAIR", "action=" + actionId + ", status=" + status
+                + ", detail=" + bound(sanitize(detail), 200));
+    }
+
     /** Records a bounded, identifier-free security signal from NexoraAI Guard. */
     public void recordGuardSignal(String description) {
         Objects.requireNonNull(description, "description");

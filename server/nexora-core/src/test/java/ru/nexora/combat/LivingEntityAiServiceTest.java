@@ -12,6 +12,31 @@ class LivingEntityAiServiceTest {
     private final LivingEntityAiService ai = new LivingEntityAiService();
 
     @Test
+    void decisionMetricsCountDelegatedCallsOnceAndTrackFailures() {
+        WorldLivingEntity zombie = new WorldLivingEntityManager().spawn(
+                "minecraft:zombie", 20, 0, 64, 0);
+        var player = new LivingEntityAiService.PlayerTarget("player", 4, 64, 0, true);
+
+        ai.decide(zombie, List.of(player), 1_000, 0);
+        ai.decide(zombie, List.of(player), 1_000, 0, null,
+                LivingEntityAiService.nearestAlivePlayer(zombie, List.of(player)));
+
+        var beforeFailure = ai.stats();
+        assertEquals(2, beforeFailure.decisionCount());
+        assertEquals(0, beforeFailure.failures());
+        assertTrue(beforeFailure.totalDecisionNanos() >= beforeFailure.lastDecisionNanos());
+        assertTrue(beforeFailure.maxDecisionNanos() >= beforeFailure.lastDecisionNanos());
+        assertTrue(beforeFailure.averageDecisionNanos() >= 0);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> ai.decide(zombie, List.of(), -1, 0, null, null));
+        var afterFailure = ai.stats();
+        assertEquals(3, afterFailure.decisionCount());
+        assertEquals(1, afterFailure.failures());
+        assertTrue(afterFailure.maxDecisionNanos() >= afterFailure.lastDecisionNanos());
+    }
+
+    @Test
     void hostileMobAcquiresNearestAlivePlayerAndMovesTowardThem() {
         WorldLivingEntity zombie = new WorldLivingEntityManager().spawn(
                 "minecraft:zombie", 20, 0, 64, 0);

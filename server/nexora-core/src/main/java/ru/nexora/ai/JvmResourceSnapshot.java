@@ -25,7 +25,8 @@ public record JvmResourceSnapshot(
                 || (heapMaxBytes > 0 && heapCommittedBytes > heapMaxBytes)
                 || nonHeapUsedBytes < 0 || nonHeapCommittedBytes < nonHeapUsedBytes
                 || liveThreadCount < 0 || peakThreadCount < 0 || daemonThreadCount < 0
-                || daemonThreadCount > liveThreadCount || availableProcessors < 1
+                || daemonThreadCount > liveThreadCount || peakThreadCount < liveThreadCount
+                || availableProcessors < 1
                 || (!Double.isFinite(systemLoadAverage) && systemLoadAverage != -1.0)) {
             throw new IllegalArgumentException("Invalid JVM resource snapshot");
         }

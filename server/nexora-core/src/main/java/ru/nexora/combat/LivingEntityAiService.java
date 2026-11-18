@@ -5,6 +5,8 @@ import ru.nexora.world.WorldLivingEntity;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.LongAdder;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Deterministic server-authoritative behavior for living mobs.
@@ -18,6 +20,12 @@ public final class LivingEntityAiService {
     public static final long ATTACK_COOLDOWN_MILLIS = 1_000;
     public static final long WANDER_INTERVAL_MILLIS = 3_000;
     public static final float BASE_ATTACK_DAMAGE = 3.0f;
+
+    private final LongAdder decisionCount = new LongAdder();
+    private final LongAdder decisionNanos = new LongAdder();
+    private final LongAdder decisionFailures = new LongAdder();
+    private final AtomicLong lastDecisionNanos = new AtomicLong();
+    private final AtomicLong maxDecisionNanos = new AtomicLong();
 
     public Decision decide(WorldLivingEntity mob, List<PlayerTarget> players, long nowMillis,
                            long nextAttackAtMillis) {
@@ -37,6 +45,25 @@ public final class LivingEntityAiService {
     public Decision decide(WorldLivingEntity mob, List<PlayerTarget> players, long nowMillis,
                            long nextAttackAtMillis, String provokedByNetworkId,
                            PlayerTarget nearest) {
+        long started = System.nanoTime();
+        try {
+            return decideInternal(mob, players, nowMillis, nextAttackAtMillis,
+                    provokedByNetworkId, nearest);
+        } catch (RuntimeException | Error failure) {
+            decisionFailures.increment();
+            throw failure;
+        } finally {
+            long elapsed = Math.max(0L, System.nanoTime() - started);
+            decisionCount.increment();
+            decisionNanos.add(elapsed);
+            lastDecisionNanos.set(elapsed);
+            maxDecisionNanos.accumulateAndGet(elapsed, Math::max);
+        }
+    }
+
+    private Decision decideInternal(WorldLivingEntity mob, List<PlayerTarget> players, long nowMillis,
+                                    long nextAttackAtMillis, String provokedByNetworkId,
+                                    PlayerTarget nearest) {
         Objects.requireNonNull(mob, "mob");
         Objects.requireNonNull(players, "players");
         if (nowMillis < 0 || nextAttackAtMillis < 0) {
@@ -72,6 +99,25 @@ public final class LivingEntityAiService {
             return pursue(mob, provoker, nowMillis, nextAttackAtMillis);
         }
         return wander(mob, nowMillis);
+    }
+
+    /** Thread-safe aggregate timings for the actual decision algorithm, excluding wrapper scans. */
+    public Stats stats() {
+        long count = decisionCount.sum();
+        long total = decisionNanos.sum();
+        return new Stats(count, total, lastDecisionNanos.get(), maxDecisionNanos.get(),
+                decisionFailures.sum(), count == 0 ? 0 : total / count);
+    }
+
+    public record Stats(long decisionCount, long totalDecisionNanos, long lastDecisionNanos,
+                        long maxDecisionNanos, long failures, long averageDecisionNanos) {
+        public Stats {
+            if (decisionCount < 0 || totalDecisionNanos < 0 || lastDecisionNanos < 0
+                    || maxDecisionNanos < lastDecisionNanos || failures < 0
+                    || averageDecisionNanos < 0 || failures > decisionCount) {
+                throw new IllegalArgumentException("Invalid living entity AI stats");
+            }
+        }
     }
 
     private static PlayerTarget findPlayer(List<PlayerTarget> players, String networkId) {

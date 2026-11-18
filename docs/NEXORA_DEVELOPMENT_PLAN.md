@@ -107,3 +107,12 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Never introduce parallel world mutation before ownership is proven safe.
 - Measure performance before claiming an optimization is better.
 - Update this document after every major architectural milestone.
+
+## Player-state persistence integration (current stage)
+
+- PlayerStateCheckpointService is wired into the live BedrockSessionManager by NexoraServer.
+- Graceful player disconnect and the manager aggregate save path first persist the existing profile, inventory/crafting UI, and equipment files, then write one canonical player-state checkpoint.
+- An unchanged aggregate is idempotent: it returns ALREADY_CURRENT and does not advance the durable revision.
+- The canonical file store is local to one server process and is not a distributed database.
+- Existing legacy files remain the login authority. Canonical recovery must not overwrite partially present legacy state until migration can prove completeness and freshness.
+- Next: add conservative recovery for players with no legacy component files, test login/disconnect/restart, then introduce an explicit migration marker and only later switch canonical snapshots to primary authority.

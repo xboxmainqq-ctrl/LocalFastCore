@@ -216,3 +216,12 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Recovery errors fail startup closed rather than accepting logins with a partially reconstructed ownership registry.
 - The configured file ledger is explicitly single-host/local-filesystem only. Do not use it for a multi-host cluster; shared JDBC storage and an operator-managed unique node ID are required for that deployment.
 - Remaining: complete live transfer orchestration (claim/commit/abort across source and destination), validate recovery with process-kill integration tests, and prove shared-store semantics across separate hosts.
+
+### 32. Bedrock destination login reservation — IMPLEMENTED, TRANSPORT STILL GATED
+- Added `BedrockPendingTransferActivator`, the concrete bridge from the exact-revision destination adapter into the live Bedrock login pipeline.
+- The adapter verifies transfer ID, target node and checkpoint XUID against the active fencing token, then registers the exact XUID/revision for the next authenticated login.
+- The destination lifecycle can now durably commit ownership after this reservation is installed; the login path revalidates the ledger fence and loads only the claimed checkpoint revision before authenticating the player.
+- Rollback removes only the matching transfer/fencing-token reservation and rejects a matching session if login already consumed the reservation.
+- Added a regression test for reservation and matching-token cancellation.
+- Important boundary: this is a destination-side login reservation, not client redirection or an authenticated source-to-destination RPC. The current server startup still uses the single-host file ledger, so cross-host gameplay transfer remains disabled.
+- Next: wire an authenticated cluster RPC for prepare/accept/abort, use the shared JDBC ledger on every node, add source/destination process-kill tests, and validate real Bedrock reconnect behavior before enabling the feature.

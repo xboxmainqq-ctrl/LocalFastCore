@@ -137,6 +137,25 @@ public final class JdbcPlayerTransferLedger implements PlayerTransferLedger {
     }
 
     @Override
+    public Optional<PlayerTransferRecord> findLatestForPlayer(String playerXuid) throws IOException {
+        if (playerXuid == null || !playerXuid.matches("[A-Za-z0-9_-]{1,64}")) {
+            throw new IllegalArgumentException("Invalid player XUID");
+        }
+        String sql = "SELECT " + COLUMNS + " FROM " + TABLE_NAME
+                + " WHERE player_xuid = ? ORDER BY player_revision DESC, updated_at DESC, transfer_id DESC";
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, playerXuid);
+            statement.setMaxRows(1);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? Optional.of(readRecord(result)) : Optional.empty();
+            }
+        } catch (SQLException | IllegalArgumentException exception) {
+            throw new IOException("Unable to find latest NEXORA transfer for player", exception);
+        }
+    }
+
+    @Override
     public List<PlayerTransferRecord> listRecoverableForTarget(String targetNode, int limit) throws IOException {
         if (targetNode == null || !targetNode.matches("[A-Za-z0-9._-]{1,64}"))
             throw new IllegalArgumentException("Invalid target node");

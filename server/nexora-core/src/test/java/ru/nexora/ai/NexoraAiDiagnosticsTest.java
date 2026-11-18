@@ -283,7 +283,8 @@ class NexoraAiDiagnosticsTest {
         var five = diagnostics.activityWindowSummaries().stream()
                 .filter(summary -> summary.windowMinutes() == 5).findFirst().orElseThrow();
         assertEquals(1, five.failureCount());
-        assertEquals(0.2, five.failuresPerMinute(), 0.0001);
+        assertEquals(1, five.observedMinutes());
+        assertEquals(1.0, five.failuresPerMinute(), 0.0001);
         assertEquals(2, five.resourceSampleCount());
         assertEquals(1, five.pressureSampleCount());
         assertEquals(0.725, five.averageHeapUsageRatio(), 0.0001);
@@ -294,6 +295,8 @@ class NexoraAiDiagnosticsTest {
         var expiredFive = diagnostics.activityWindowSummaries().stream()
                 .filter(summary -> summary.windowMinutes() == 5).findFirst().orElseThrow();
         assertEquals(0, expiredFive.failureCount());
+        assertEquals(0, expiredFive.observedMinutes());
+        assertEquals(0.0, expiredFive.failuresPerMinute());
         assertEquals(0, expiredFive.resourceSampleCount());
     }
 

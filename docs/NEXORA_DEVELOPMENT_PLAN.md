@@ -286,7 +286,7 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Expired claims are durably aborted during destination startup recovery and on login reconciliation; stale PREPARED records on their source node are cancelled after a 30-second grace period.
 - Transfer freeze now forces a fresh monotonic canonical checkpoint revision even when the serialized player state is unchanged, and the exact revision returned by that write is stored in PREPARED. This avoids a separate latest-revision read racing with another checkpoint.
 - Added tests for ownership policy, latest per-XUID lookup, and expired-claim durable rollback.
-- CI: 807 tests passed, zero failures on the latest validated transfer-ownership build `b2ae9a1`.
+- CI: 808 tests passed, zero failures on the latest validated shared-lease build `ab4fca7`.
 - Remaining: this is transfer-history fencing, not a complete online-player lease registry. A duplicate XUID that logs into two different nodes before either node has a transfer record can still be admitted. Implement a shared lease/owner registry and validate it under multi-process login races before public cluster use.
 ### 40. Frozen source session reconciliation — IMPLEMENTED, CI VERIFIED
 - Added a source-side reconciliation API that scans frozen Bedrock sessions and queries the latest durable per-XUID transfer decision.
@@ -305,12 +305,12 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Source transfer freeze releases the source online lease; a confirmed abort reacquires it before gameplay resumes. PREPARED/CLAIMED/COMMITTED transfer history continues to fence logins during the handoff gap.
 - A session that loses its durable transfer fence or global online lease immediately stops gameplay and releases its matching online lease; destination rollback also releases any lease held by a partially activated session.
 - Added in-memory expiry/fencing tests, JDBC multi-node exclusivity tests, and a concurrent two-node first-login race test.
-- CI: 807 tests passed, zero failures on commit `b2ae9a1`; GitHub Actions build and GitLab publish succeeded.
+- CI: 808 tests passed, zero failures on commit `ab4fca7`; GitHub Actions build succeeded and GitLab publish was successful on the immediately preceding code build.
 - Remaining validation: process-kill/partition tests with two actual server processes and a production database; the lease uses bounded expiry and is not a consensus protocol for arbitrary clock skew. Nodes must have synchronized clocks and must not continue gameplay when renewal fails.
 ### 42. Shared ownership restart integration coverage — IMPLEMENTED, CI VERIFIED
 - Added combined JDBC restart tests using independent DataSource/ledger/lease/checkpoint-store instances to model source and destination processes reconnecting to the same durable database.
 - Added source-coordinator tests proving a failed freeze resumes only when no durable per-XUID transfer decision exists; duplicate attempts cannot unfreeze an already-owned transfer.
 - Verified a COMMITTED transfer continues to reject the former source after restart, the destination restores the exact canonical checkpoint revision, the destination lease remains exclusive, and an expired process lease cannot be resurrected by the old session token.
 - Verified an ABORTED transfer restores source-node login authority and rejects the destination after restart.
-- CI: 807 tests passed, zero failures on commit `b2ae9a1`.
+- CI: 808 tests passed, zero failures on commit `ab4fca7`.
 - Remaining: run the same scenarios with two actual server JVMs, a production SQL engine, network partitions, and abrupt process termination at each handoff boundary.

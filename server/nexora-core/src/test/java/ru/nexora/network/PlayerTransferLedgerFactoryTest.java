@@ -2,6 +2,9 @@ package ru.nexora.network;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import ru.nexora.persistence.DriverManagerDataSource;
+
+import java.io.IOException;
 
 import java.nio.file.Path;
 import java.util.Map;
@@ -51,6 +54,27 @@ class PlayerTransferLedgerFactoryTest {
                 "factory-lease-xuid", "node-a", "session-a", 100L, 1_000L));
         assertFalse(configured.onlineLeases().acquire(
                 "factory-lease-xuid", "node-b", "session-b", 101L, 1_000L));
+    }
+
+    @Test
+    void refusesSharedStartupWhenDeploymentManagedOwnershipSchemaIsMissing() throws Exception {
+        String missingTransferUrl = "jdbc:h2:mem:nexora-missing-transfer-schema;DB_CLOSE_DELAY=-1";
+        Map<String, String> missingTransfer = Map.of(
+                "NEXORA_TRANSFER_JDBC_URL", missingTransferUrl,
+                "NEXORA_TRANSFER_JDBC_USER", "sa",
+                "NEXORA_TRANSFER_JDBC_PASSWORD", "private-secret");
+        assertThrows(IOException.class,
+                () -> PlayerTransferLedgerFactory.open(temporaryDirectory, missingTransfer));
+
+        String missingLeaseUrl = "jdbc:h2:mem:nexora-missing-lease-schema;DB_CLOSE_DELAY=-1";
+        new JdbcPlayerTransferLedger(new DriverManagerDataSource(
+                missingLeaseUrl, "sa", "private-secret")).initializeSchema();
+        Map<String, String> missingLease = Map.of(
+                "NEXORA_TRANSFER_JDBC_URL", missingLeaseUrl,
+                "NEXORA_TRANSFER_JDBC_USER", "sa",
+                "NEXORA_TRANSFER_JDBC_PASSWORD", "private-secret");
+        assertThrows(IOException.class,
+                () -> PlayerTransferLedgerFactory.open(temporaryDirectory, missingLease));
     }
 
     @Test

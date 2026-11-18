@@ -550,7 +550,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         } finally {
             state.combatLock.unlock();
         }
-        sendContainerReconciliation(networkId, state);
+        try {
+            sendContainerReconciliation(networkId, state);
+        } catch (RuntimeException exception) {
+            System.err.println("NEXORA: unable to reconcile inventory after transfer abort: "
+                    + exception.getMessage());
+        }
         advertisePlayerList(networkId, state);
     }
 

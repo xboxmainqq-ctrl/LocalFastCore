@@ -4,7 +4,24 @@ This is the continuing project plan for the Nerox 0.12.0 line and NexoraAI. Keep
 
 ## Product direction
 
-Prioritize a stable, fast, observable Minecraft server core. NexoraAI should help operators understand problems, detect abuse, and prepare safe fixes. It must not silently rewrite core behavior or punish players based only on a heuristic.
+Prioritize a stable, fast, observable Minecraft Bedrock server core. NexoraAI should help operators understand problems, detect abuse, and prepare safe fixes. It must not silently rewrite core behavior or punish players based only on a heuristic.
+
+NEXORA is an independently implemented server core. Nukkit is an architectural and behavioral reference for understanding how a Bedrock server can organize its systems; it is not the codebase to copy, rename, or mechanically fork.
+
+## NEXORA independence and Nukkit reference policy
+
+These rules apply to all future architecture, implementation, review, and planning work:
+
+- [x] Record the product decision: NEXORA is its own Minecraft Bedrock server core, not a renamed or mechanically modified Nukkit fork.
+- [ ] Use Nukkit only as a reference for studying architecture, subsystem boundaries, protocol handling concepts, gameplay behavior, lifecycle design, and operational practices.
+- [ ] Design NEXORA's architecture independently before implementing a subsystem; document the intended NEXORA contract and ownership boundaries.
+- [ ] Implement NEXORA classes, modules, APIs, data models, and runtime behavior in original code. Do not copy/paste Nukkit source, rename its classes, or reproduce its internal implementation mechanically.
+- [ ] When consulting Nukkit or any other external project, respect its license and notices; keep a clear record of any third-party code or dependencies actually incorporated. Architectural study alone must not be represented as copied or derived source code.
+- [ ] Preserve required Minecraft Bedrock protocol compatibility through independently implemented and tested protocol behavior; compatibility does not require adopting Nukkit's internal architecture.
+- [ ] Prefer NEXORA-owned abstractions and interfaces so core subsystems do not depend on Nukkit internals or require Nukkit at runtime.
+- [ ] For each major subsystem, record the design rationale, tests, compatibility evidence, and any known gaps before marking it complete.
+
+**Decision rule:** learn from Nukkit's approach, then design and write NEXORA's own solution. If a proposed change would turn NEXORA into a source-level Nukkit copy or a thin fork, stop and redesign it.
 
 ## Architecture foundations
 
@@ -119,6 +136,7 @@ Do not consider the mob system finished after the load controller alone. Complet
 4. Run the project build and tests; report the actual result and link to CI.
 5. Do not claim a feature is complete merely because it is listed here.
 6. Prefer reversible, observable changes; never hide failures or silently swallow exceptions.
+7. Treat Nukkit and other external server projects as references, not source templates; follow the NEXORA independence policy above.
 
 ## Current next steps
 

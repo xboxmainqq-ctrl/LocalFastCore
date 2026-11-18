@@ -76,7 +76,6 @@ public final class NexoraServer {
                 legacyStatus,
                 new java.security.SecureRandom().nextLong()
         );
-        lifecycle.register(discovery);
 
         DurabilitySettings durabilitySettings = DurabilitySettings.fromEnvironment(System.getenv());
         NexoraAiDiagnostics aiDiagnostics = new NexoraAiDiagnostics();
@@ -123,7 +122,6 @@ public final class NexoraServer {
                 },
                 event -> System.out.printf("NEXORA: Bedrock packet 0x%02X from %s (%d bytes)%n",
                         event.packet().packetId(), event.networkId(), event.packet().payload().length));
-        lifecycle.register(bedrockSessions);
         bedrockSessions.setAiDiagnostics(aiDiagnostics);
         NexoraAiAssistant aiAssistant = NexoraAiAssistant.fromEnvironment(System.getenv(), aiDiagnostics);
         aiAssistant.setAdminRuntimeSnapshotProvider(() -> bedrockSessions.adminRuntimeSummary()
@@ -138,7 +136,6 @@ public final class NexoraServer {
         int udpPortMax = config.udpPortMax();
         WebRtcSdpNegotiator negotiator = new WebRtcSdpNegotiator(
                 identityService, bedrockSessions, maxPlayers, stunUrls, udpPortMin, udpPortMax);
-        lifecycle.register(negotiator);
         negotiatorReference.set(negotiator);
         NetherNetSignalingServer signaling = new NetherNetSignalingServer(
                 signalingAddress,
@@ -153,7 +150,6 @@ public final class NexoraServer {
                 ),
                 negotiator,
                 readiness::isAcceptingConnections);
-        lifecycle.register(signaling);
 
         long autosaveSeconds = config.autosaveSeconds();
         WorldRuntimeModule worldRuntime = new WorldRuntimeModule(
@@ -171,8 +167,17 @@ public final class NexoraServer {
                     System.err.println("NEXORA: furnace tick failed: " + exception.getMessage());
                 },
                 elapsed -> aiDiagnostics.recordSlowOperation("furnace-tick", elapsed, 50_000_000L));
-        lifecycle.register(worldRuntime);
+
+        // Reverse close order: stop discovery/signaling admission, stop WebRTC,
+        // persist active player sessions, then stop world ticking and save the world.
+        // Keep diagnostics alive until every other subsystem has shut down.
         lifecycle.register(aiMonitor);
+        lifecycle.register(worldRuntime);
+        lifecycle.register(bedrockSessions);
+        lifecycle.register(negotiator);
+        lifecycle.register(signaling);
+        lifecycle.register(discovery);
+
         try {
             discovery.start();
             signaling.start();

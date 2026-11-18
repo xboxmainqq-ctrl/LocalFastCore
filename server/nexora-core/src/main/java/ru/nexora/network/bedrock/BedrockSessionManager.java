@@ -456,18 +456,21 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
-    private void releaseOnlinePlayerLease(SessionState state) {
+    private boolean releaseOnlinePlayerLease(SessionState state) {
         ru.nexora.network.PlayerOnlineLeaseRegistry registry = onlineLeaseRegistry;
         String nodeId = transferOwnershipNodeId;
         String sessionId = state.onlineLeaseSessionId;
-        if (registry == null || nodeId == null || sessionId == null || state.identity == null) return;
+        if (registry == null || nodeId == null || sessionId == null || state.identity == null) return true;
         try {
-            registry.release(state.identity.xuid(), nodeId, sessionId);
+            boolean released = registry.release(state.identity.xuid(), nodeId, sessionId);
+            if (released) {
+                state.onlineLeaseSessionId = null;
+                state.lastOnlineLeaseRenewalNanos = Long.MIN_VALUE;
+            }
+            return released;
         } catch (IOException failure) {
             System.err.println("NEXORA: unable to release online XUID lease: " + failure.getMessage());
-        } finally {
-            state.onlineLeaseSessionId = null;
-            state.lastOnlineLeaseRenewalNanos = Long.MIN_VALUE;
+            return false;
         }
     }
 
@@ -661,6 +664,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         } finally {
             state.combatLock.unlock();
         }
+        if (!releaseOnlinePlayerLease(state)) {
+            throw new IOException("Unable to release source online lease before transfer; source remains frozen");
+        }
         removePlayerListEntry(networkId, state);
         return revision;
     }
@@ -693,6 +699,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 if (sessions.get(networkId) != state || !state.transferFrozen || state.rejected
                         || state.identity == null || !playerXuid.equals(state.identity.xuid())) {
                     throw new IOException("Source session cannot be safely resumed");
+                }
+                try {
+                    acquireOnlinePlayerLease(state);
+                } catch (SecurityException leaseFailure) {
+                    throw new IOException("Unable to reacquire source online lease after transfer abort", leaseFailure);
                 }
                 state.loginAuthenticated = true;
                 state.clientInitialized = true;

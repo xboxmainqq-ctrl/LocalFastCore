@@ -75,6 +75,56 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void reconcilesFrozenSourceSessionOnlyFromDurableAbortOrCommit() throws Exception {
+        java.util.List<byte[]> frames = new java.util.ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("transfer-reconcile", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                (networkId, label, frame) -> frames.add(frame), event -> {});
+        try {
+            DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
+                    new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
+            manager.onIdentity("frozen-abort", new NetherNetClientIdentity(
+                    "abort-token", new byte[] {1}, "abort-xuid",
+                    "AbortPlayer", "abort-playfab", "20CA2", null));
+            setSessionField(manager, "frozen-abort", "transferFrozen", true);
+            setSessionField(manager, "frozen-abort", "loginAuthenticated", false);
+            setSessionField(manager, "frozen-abort", "clientInitialized", false);
+            UUID abortedId = UUID.randomUUID();
+            ledger.prepare(new PlayerHandoff(abortedId, 1L, "node-a", "node-b", new byte[0]),
+                    "abort-xuid", 1L, 10L);
+            var abortedClaim = ledger.claim(abortedId, "node-b", 11L, 10_000L).orElseThrow();
+            ledger.abort(abortedId, abortedClaim.fencingToken(), 12L).orElseThrow();
+
+            var abortReport = manager.reconcileFrozenPlayerTransfers(ledger, "node-a", java.util.Map.of());
+            assertEquals(1, abortReport.resumed());
+            assertFalse((boolean) getSessionField(manager, "frozen-abort", "transferFrozen"));
+            assertTrue((boolean) getSessionField(manager, "frozen-abort", "loginAuthenticated"));
+
+            manager.onIdentity("frozen-commit", new NetherNetClientIdentity(
+                    "commit-token", new byte[] {2}, "commit-xuid",
+                    "CommitPlayer", "commit-playfab", "20CA2", null));
+            setSessionField(manager, "frozen-commit", "transferFrozen", true);
+            setSessionField(manager, "frozen-commit", "loginAuthenticated", false);
+            setSessionField(manager, "frozen-commit", "clientInitialized", false);
+            setSessionField(manager, "frozen-commit", "compressionNegotiated", true);
+            UUID committedId = UUID.randomUUID();
+            ledger.prepare(new PlayerHandoff(committedId, 2L, "node-a", "node-b", new byte[0]),
+                    "commit-xuid", 2L, 20L);
+            var committedClaim = ledger.claim(committedId, "node-b", 21L, 10_000L).orElseThrow();
+            ledger.commit(committedId, committedClaim.fencingToken(), 22L).orElseThrow();
+
+            var commitReport = manager.reconcileFrozenPlayerTransfers(ledger, "node-a",
+                    java.util.Map.of("node-b", new java.net.InetSocketAddress("127.0.0.1", 19132)));
+            assertEquals(1, commitReport.redirected());
+            assertTrue((boolean) getSessionField(manager, "frozen-commit", "transferRedirected"));
+            assertFalse(frames.isEmpty());
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void rejectsSecondActiveSessionForSameXuidOnOneNode() throws Exception {
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
@@ -2763,6 +2813,20 @@ class BedrockSessionManagerTest {
         java.lang.reflect.Field field = state.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         field.set(state, value);
+    }
+
+    private static Object getSessionField(
+            BedrockSessionManager manager, String networkId, String fieldName
+    ) throws Exception {
+        java.lang.reflect.Field sessionsField = BedrockSessionManager.class.getDeclaredField("sessions");
+        sessionsField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> sessions = (java.util.Map<String, Object>) sessionsField.get(manager);
+        Object state = sessions.get(networkId);
+        assertNotNull(state);
+        java.lang.reflect.Field field = state.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return field.get(state);
     }
 
     private static void invokeLivingActorTick(

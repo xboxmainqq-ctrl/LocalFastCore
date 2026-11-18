@@ -14,7 +14,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
-import java.util.Objects;\nimport java.nio.charset.StandardCharsets;
+import java.util.Objects;
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 /**
@@ -78,8 +79,8 @@ public final class FilePlayerStateStore implements PlayerStateStore {
     }
 
     @Override
-    public Optional<PlayerStateSnapshot> loadLatest(long playerId) throws IOException {
-        if (playerId < 0) throw new IllegalArgumentException("playerId < 0");
+    public Optional<PlayerStateSnapshot> loadLatest(String playerId) throws IOException {
+        validatePlayerId(playerId);
         synchronized (lockFor(playerId)) {
             Path lockPath = lockPath(playerId);
             rejectSymlink(lockPath);
@@ -101,7 +102,9 @@ public final class FilePlayerStateStore implements PlayerStateStore {
             output.writeInt(MAGIC);
             output.writeByte(FORMAT_VERSION);
             output.writeInt(snapshot.schemaVersion());
-            byte[] playerId = snapshot.playerId().getBytes(StandardCharsets.US_ASCII);\n            output.writeByte(playerId.length);\n            output.write(playerId);
+            byte[] playerId = snapshot.playerId().getBytes(StandardCharsets.US_ASCII);
+            output.writeByte(playerId.length);
+            output.write(playerId);
             output.writeLong(snapshot.revision());
             output.writeLong(snapshot.capturedAtEpochMillis());
             output.writeInt(payload.length);
@@ -121,9 +124,22 @@ public final class FilePlayerStateStore implements PlayerStateStore {
         try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(bytes))) {
             if (input.readInt() != MAGIC) throw new IOException("Invalid NEXORA player snapshot magic");
             int format = input.readUnsignedByte();
-            if (format != FORMAT_VERSION) throw new IOException("Unsupported player snapshot format: " + format);
+            if (format != 1 && format != FORMAT_VERSION) throw new IOException("Unsupported player snapshot format: " + format);
             int schemaVersion = input.readInt();
-            long playerId = input.readLong();
+            String playerId;
+            if (format == 1) {
+                long legacyId = input.readLong();
+                if (legacyId < 0) throw new IOException("Invalid legacy player snapshot ID");
+                playerId = Long.toString(legacyId);
+            } else {
+                int idLength = input.readUnsignedByte();
+                if (idLength < 1 || idLength > 64) throw new IOException("Invalid player XUID length");
+                byte[] idBytes = new byte[idLength];
+                input.readFully(idBytes);
+                playerId = new String(idBytes, StandardCharsets.US_ASCII);
+                try { validatePlayerId(playerId); }
+                catch (IllegalArgumentException invalid) { throw new IOException("Invalid player XUID", invalid); }
+            }
             long revision = input.readLong();
             long capturedAt = input.readLong();
             int payloadLength = input.readInt();
@@ -178,16 +194,24 @@ public final class FilePlayerStateStore implements PlayerStateStore {
         return locks;
     }
 
-    private static Object lockFor(long playerId) {
-        return PLAYER_LOCKS[Math.floorMod(Long.hashCode(playerId), PLAYER_LOCKS.length)];
+    private static Object lockFor(String playerId) {
+        return PLAYER_LOCKS[Math.floorMod(playerId.hashCode(), PLAYER_LOCKS.length)];
     }
 
-    private Path snapshotPath(long playerId) {
+    private Path snapshotPath(String playerId) {
+        validatePlayerId(playerId);
         return directory.resolve(playerId + ".nxps");
     }
 
-    private Path lockPath(long playerId) {
+    private Path lockPath(String playerId) {
+        validatePlayerId(playerId);
         return directory.resolve(playerId + ".lock");
+    }
+
+    private static void validatePlayerId(String playerId) {
+        if (playerId == null || !playerId.matches("[A-Za-z0-9_-]{1,64}")) {
+            throw new IllegalArgumentException("Invalid player XUID");
+        }
     }
 
     private static byte[] decodeHex(String value) {

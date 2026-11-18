@@ -19,7 +19,9 @@ public final class PlayerStateSnapshot {
     public PlayerStateSnapshot(int schemaVersion, String playerId, long revision,
                                long capturedAtEpochMillis, byte[] payload) {
         if (schemaVersion <= 0) throw new IllegalArgumentException("schemaVersion must be positive");
-        if (playerId == null || !playerId.matches("[A-Za-z0-9_-]{1,64}")) {\n            throw new IllegalArgumentException("Invalid player XUID");\n        }
+        if (playerId == null || !playerId.matches("[A-Za-z0-9_-]{1,64}")) {
+            throw new IllegalArgumentException("Invalid player XUID");
+        }
         if (revision < 0) throw new IllegalArgumentException("revision < 0");
         if (capturedAtEpochMillis < 0) throw new IllegalArgumentException("capturedAtEpochMillis < 0");
         if (payload == null) throw new NullPointerException("payload");

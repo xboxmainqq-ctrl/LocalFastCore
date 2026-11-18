@@ -8,4 +8,10 @@ class WorkGraphTest {
  }
  @Test void rejectsCycles(){WorkGraph g=new WorkGraph().add("a",AdaptiveRuntime.Lane.AI,false).add("b",AdaptiveRuntime.Lane.AI,false).dependsOn("b","a").dependsOn("a","b");assertThrows(IllegalStateException.class,g::validate);}
  @Test void deferredWorkCanReturnToPending(){WorkGraph g=new WorkGraph().add("x",AdaptiveRuntime.Lane.BACKGROUND,false);assertEquals(WorkGraph.State.READY,g.ready().get(0).state());g.defer("x");g.reopenDeferred();assertEquals(WorkGraph.State.READY,g.ready().get(0).state());}
+ @Test void runtimeCanDeferExpensiveBackgroundWork(){
+  WorkGraph g=new WorkGraph().add("cleanup",AdaptiveRuntime.Lane.BACKGROUND,false).estimate("cleanup",9_000_000L);
+  AdaptiveRuntime runtime=new AdaptiveRuntime(10_000_000L,2_000_000L);
+  runtime.admit(AdaptiveRuntime.Lane.PLAYER,8_000_000L,true);
+  assertTrue(g.readyFor(runtime).isEmpty());
+ }
 }

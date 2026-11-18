@@ -54,9 +54,10 @@ public final class JdbcPlayerTransferLedger implements PlayerTransferLedger {
             statement.executeUpdate();
             boolean xuidIndexExists = false;
             try (ResultSet indexes = connection.getMetaData().getIndexInfo(
-                    connection.getCatalog(), null, TABLE_NAME, false, false)) {
+                    connection.getCatalog(), null, null, false, false)) {
                 while (indexes.next()) {
-                    if ("nexora_transfer_xuid_revision_idx".equalsIgnoreCase(indexes.getString("INDEX_NAME"))) {
+                    if (TABLE_NAME.equalsIgnoreCase(indexes.getString("TABLE_NAME"))
+                            && "nexora_transfer_xuid_revision_idx".equalsIgnoreCase(indexes.getString("INDEX_NAME"))) {
                         xuidIndexExists = true;
                         break;
                     }

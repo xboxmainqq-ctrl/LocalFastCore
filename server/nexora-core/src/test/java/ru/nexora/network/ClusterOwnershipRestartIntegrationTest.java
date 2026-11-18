@@ -2,6 +2,7 @@ package ru.nexora.network;
 
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import ru.nexora.inventory.ContainerInventory;
 import ru.nexora.inventory.PlayerEquipment;
 import ru.nexora.inventory.PlayerInventory;
@@ -12,7 +13,11 @@ import ru.nexora.persistence.PlayerStateCheckpointService;
 import ru.nexora.world.PlayerData;
 import ru.nexora.world.PlayerVitals;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.file.Path;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -91,6 +96,47 @@ class ClusterOwnershipRestartIntegrationTest {
                 PlayerTransferOwnershipGuard.loginDecision(Optional.of(recovered), "node-a"));
         assertThrows(SecurityException.class,
                 () -> PlayerTransferOwnershipGuard.loginDecision(Optional.of(recovered), "node-b"));
+    }
+
+    @Test
+    void separateJvmNodesEnforceLeaseAndRecoverAfterAbruptOwnerExit(@TempDir Path directory) throws Exception {
+        String databasePath = directory.resolve("nexora-cluster").toAbsolutePath().toString().replace('\\', '/');
+        String url = "jdbc:h2:file:" + databasePath + ";AUTO_SERVER=TRUE;DB_CLOSE_ON_EXIT=FALSE;LOCK_TIMEOUT=10000";
+        new JdbcPlayerOnlineLeaseRegistry(dataSource(url)).initializeSchema();
+
+        long leaseMillis = 1_500L;
+        Process source = startLeaseProcess(url, "hold", "process-xuid", "node-a", leaseMillis);
+        try {
+            BufferedReader sourceOutput = new BufferedReader(new InputStreamReader(source.getInputStream()));
+            assertEquals("ACQUIRED", sourceOutput.readLine(),
+                    "The first independent server JVM must acquire the XUID lease");
+
+            Process competing = startLeaseProcess(url, "try", "process-xuid", "node-b", leaseMillis);
+            assertTrue(competing.waitFor(10, TimeUnit.SECONDS), "The competing node must finish promptly");
+            assertEquals(0, competing.exitValue());
+            assertEquals("REJECTED", new BufferedReader(new InputStreamReader(competing.getInputStream())).readLine(),
+                    "A second JVM must not admit the same XUID while the first lease is live");
+        } finally {
+            source.destroyForcibly();
+            assertTrue(source.waitFor(10, TimeUnit.SECONDS), "The simulated crashed node must terminate");
+        }
+
+        Thread.sleep(leaseMillis + 500L);
+        Process recovered = startLeaseProcess(url, "try", "process-xuid", "node-b", leaseMillis);
+        assertTrue(recovered.waitFor(10, TimeUnit.SECONDS), "Lease recovery must finish promptly");
+        assertEquals(0, recovered.exitValue());
+        assertEquals("ACQUIRED", new BufferedReader(new InputStreamReader(recovered.getInputStream())).readLine(),
+                "A different JVM may acquire the XUID only after the crashed owner's lease expires");
+    }
+
+    private static Process startLeaseProcess(String url, String action, String xuid, String node,
+                                             long leaseMillis) throws Exception {
+        String classpath = System.getProperty("surefire.test.class.path", System.getProperty("java.class.path"));
+        String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
+        return new ProcessBuilder(java, "-cp", classpath, PlayerLeaseProcess.class.getName(),
+                url, action, xuid, node, Long.toString(leaseMillis))
+                .redirectErrorStream(true)
+                .start();
     }
 
     private static JdbcDataSource dataSource(String url) {

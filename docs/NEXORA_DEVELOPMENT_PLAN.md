@@ -293,10 +293,11 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - A frozen source session is resumed only for a durable ABORTED record; it is redirected only for a matching durable COMMITTED record and configured Bedrock route. PREPARED/CLAIMED or missing/ambiguous outcomes remain frozen.
 - Added the operator-console command `transfer recover` so an operator can reconcile source sessions after a peer or database restart without guessing whether ownership committed.
 - CI: 798 tests passed, zero failures on commit `35e90f7`.
-### 41. Shared online XUID lease registry — IMPLEMENTED, CI PENDING
+### 41. Shared online XUID lease registry — IMPLEMENTED, CI VERIFIED
 - Added `PlayerOnlineLeaseRegistry` with in-memory and JDBC implementations. The JDBC table `nexora_player_online_leases` uses XUID as its primary key and atomic conditional UPDATE/INSERT acquisition so only one node can own an unexpired player lease.
 - Shared-ledger bootstrap now initializes the online-lease table when the existing transfer JDBC schema-initialization flag is enabled, and configures the Bedrock session manager with the shared registry.
 - Authenticated login acquires a random per-session lease before restoring player state. Active inbound sessions renew every third of `NEXORA_ONLINE_PLAYER_LEASE_MS` (default 15 seconds); failed renewal is fail-closed. Disconnect and shutdown release the exact node/session lease.
 - Source transfer freeze releases the source online lease; a confirmed abort reacquires it before gameplay resumes. PREPARED/CLAIMED/COMMITTED transfer history continues to fence logins during the handoff gap.
 - Added in-memory expiry/fencing tests, JDBC multi-node exclusivity tests, and a concurrent two-node first-login race test.
+- CI: 802 tests passed, zero failures on implementation commit `68ff1a5`; GitHub Actions build and GitLab publish both succeeded.
 - Remaining validation: process-kill/partition tests with two actual server processes and a production database; the lease uses bounded expiry and is not a consensus protocol for arbitrary clock skew. Nodes must have synchronized clocks and must not continue gameplay when renewal fails.

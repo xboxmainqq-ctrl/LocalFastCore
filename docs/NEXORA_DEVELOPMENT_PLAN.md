@@ -84,10 +84,16 @@ Expose stable NEXORA APIs for gameplay actions, events, contracts and graph task
 ### 16. Persistence and lifecycle — STARTED
 `PlayerLifecycle` now defines CONNECTING → ACTIVE → DISCONNECTING → DISCONNECTED independently from network transport. Save/load and recovery remain next.
 
-### 17. Benchmark laboratory
+### 17. Player persistence and transfer recovery — FOUNDATION STARTED
+- Separate serialized player snapshots from live runtime/player objects.
+- Enforce monotonic revisions, idempotent repeat saves and conflict detection.
+- Keep the storage contract backend-neutral; the current in-memory adapter is explicitly non-durable.
+- Next: durable adapter, transfer ledger, source freeze/destination claim protocol, and crash/restart recovery tests.
+
+### 18. Benchmark laboratory
 Create repeatable workloads and compare NEXORA against reference server implementations using identical scenarios. No superiority claims before measurements.
 
-### 18. Hardening
+### 19. Hardening
 Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-running stability and compatibility testing.
 
 ## Rules to prevent architectural drift

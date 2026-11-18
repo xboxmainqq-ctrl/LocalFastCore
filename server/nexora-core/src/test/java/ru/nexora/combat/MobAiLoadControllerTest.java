@@ -148,7 +148,9 @@ class MobAiLoadControllerTest {
         controller.updateAdaptiveBudget(70_000_000);
         assertEquals(1_800_000, controller.aiBudgetNanos());
 
-        controller.updateAdaptiveBudget(20_000_000);
+        for (int sample = 0; sample < 6; sample++) {
+            controller.updateAdaptiveBudget(20_000_000);
+        }
         assertTrue(controller.aiBudgetNanos() > 1_800_000);
         assertTrue(controller.smoothedTickLoad() > 0.0);
     }

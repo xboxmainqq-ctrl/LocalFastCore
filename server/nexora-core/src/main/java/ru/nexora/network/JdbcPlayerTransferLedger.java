@@ -7,6 +7,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLIntegrityConstraintViolationException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -131,6 +133,31 @@ public final class JdbcPlayerTransferLedger implements PlayerTransferLedger {
             return updated == 1;
         } catch (SQLException exception) {
             throw new IOException("Unable to advance NEXORA transfer ledger record", exception);
+        }
+    }
+
+    @Override
+    public List<PlayerTransferRecord> listRecoverableForTarget(String targetNode, int limit) throws IOException {
+        if (targetNode == null || !targetNode.matches("[A-Za-z0-9._-]{1,64}"))
+            throw new IllegalArgumentException("Invalid target node");
+        if (limit < 1 || limit > 10_000)
+            throw new IllegalArgumentException("Recovery query limit must be 1..10000");
+        String sql = "SELECT " + COLUMNS + " FROM " + TABLE_NAME
+                + " WHERE target_node = ? AND transfer_state IN (?, ?) "
+                + "ORDER BY updated_at ASC, transfer_id ASC";
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, targetNode);
+            statement.setString(2, PlayerTransferRecord.State.CLAIMED.name());
+            statement.setString(3, PlayerTransferRecord.State.COMMITTED.name());
+            statement.setMaxRows(limit);
+            try (ResultSet result = statement.executeQuery()) {
+                List<PlayerTransferRecord> records = new ArrayList<>();
+                while (result.next()) records.add(readRecord(result));
+                return List.copyOf(records);
+            }
+        } catch (SQLException | IllegalArgumentException exception) {
+            throw new IOException("Unable to list recoverable NEXORA transfer records", exception);
         }
     }
 

@@ -96,5 +96,24 @@ class MobAiLoadControllerTest {
         assertEquals(200_000, controller.stats().totalDecisions());
     }
 
+    @Test
+    void adaptiveDistanceTiersKeepNearMobsResponsiveAndThrottleFarMobs() {
+        MobAiLoadController controller = new MobAiLoadController(4);
+
+        assertEquals(1, controller.intervalForDistance(10 * 10));
+        assertEquals(2, controller.intervalForDistance(30 * 30));
+        assertEquals(3, controller.intervalForDistance(60 * 60));
+        assertEquals(4, controller.intervalForDistance(200 * 200));
+
+        assertEquals(MobAiLoadController.Priority.HIGH,
+                controller.priority(10 * 10, false, false));
+        assertEquals(MobAiLoadController.Priority.HIGH,
+                controller.priority(200 * 200, true, false));
+        assertEquals(MobAiLoadController.Priority.HIGH,
+                controller.priority(200 * 200, false, true));
+        assertEquals(MobAiLoadController.Priority.LOW,
+                controller.priority(200 * 200, false, false));
+    }
+
 }
 

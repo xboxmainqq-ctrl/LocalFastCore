@@ -292,6 +292,42 @@ public final class NexoraAiDiagnostics {
         return List.copyOf(result);
     }
 
+    /**
+     * Evaluates each instrumented subsystem from its 5-minute minute buckets.
+     * Sparse observations remain UNKNOWN; thresholds are diagnostic heuristics, not automatic actions.
+     */
+    public synchronized List<SubsystemHealth> subsystemHealth() {
+        long now = nanoClock.getAsLong();
+        long currentMinute = Math.floorDiv(now, LATENCY_BUCKET_NANOS);
+        String observedAt = Instant.now().toString();
+        long uptimeMillis = Math.max(0L, (now - startedAtNanos) / 1_000_000L);
+        List<SubsystemHealth> result = new ArrayList<>();
+        latencyBuckets.forEach((subsystem, buckets) -> {
+            long count = 0, slow = 0, total = 0, max = 0;
+            for (LatencyBucket bucket : buckets.tailMap(currentMinute - 4, true).values()) {
+                count = saturatedAdd(count, bucket.count);
+                slow = saturatedAdd(slow, bucket.slow);
+                total = saturatedAdd(total, bucket.totalNanos);
+                max = Math.max(max, bucket.maxNanos);
+            }
+            double breachRatio = count == 0 ? 0.0 : slow / (double) count;
+            HealthConfidence confidence = count >= 20 ? HealthConfidence.HIGH
+                    : count >= 5 ? HealthConfidence.MEDIUM : HealthConfidence.LOW;
+            SubsystemHealthStatus status = count < 5 ? SubsystemHealthStatus.UNKNOWN
+                    : count >= 10 && breachRatio >= 0.50 ? SubsystemHealthStatus.CRITICAL
+                    : breachRatio >= 0.25 ? SubsystemHealthStatus.DEGRADED
+                    : SubsystemHealthStatus.HEALTHY;
+            String evidence = count == 0 ? "No measurements in the last 5 minutes"
+                    : count + " samples; " + slow + " over budget (" 
+                    + Math.round(breachRatio * 100.0) + "%); average "
+                    + (total / count / 1_000_000L) + " ms; max " + (max / 1_000_000L) + " ms";
+            result.add(new SubsystemHealth(subsystem, status, confidence, count, slow,
+                    breachRatio, count == 0 ? 0 : total / count, max,
+                    observedAt, uptimeMillis, evidence));
+        });
+        return List.copyOf(result);
+    }
+
     private static long saturatedAdd(long left, long right) {
         return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
     }
@@ -434,6 +470,31 @@ public final class NexoraAiDiagnostics {
                     || (!Double.isFinite(maxSystemLoadPerProcessor) && maxSystemLoadPerProcessor != -1.0)
                     || maxSystemLoadPerProcessor < -1.0) {
                 throw new IllegalArgumentException("Invalid activity window summary");
+            }
+        }
+    }
+
+    public enum SubsystemHealthStatus { UNKNOWN, HEALTHY, DEGRADED, CRITICAL }
+    public enum HealthConfidence { LOW, MEDIUM, HIGH }
+
+    public record SubsystemHealth(String subsystem, SubsystemHealthStatus status,
+                                  HealthConfidence confidence, long sampleCount,
+                                  long overBudgetCount, double overBudgetRatio,
+                                  long averageNanos, long maxNanos,
+                                  String observedAt, long uptimeMillis, String evidence) {
+        public SubsystemHealth {
+            Objects.requireNonNull(subsystem, "subsystem");
+            Objects.requireNonNull(status, "status");
+            Objects.requireNonNull(confidence, "confidence");
+            Objects.requireNonNull(observedAt, "observedAt");
+            Objects.requireNonNull(evidence, "evidence");
+            if (subsystem.isBlank() || sampleCount < 0 || overBudgetCount < 0
+                    || overBudgetCount > sampleCount || !Double.isFinite(overBudgetRatio)
+                    || overBudgetRatio < 0.0 || overBudgetRatio > 1.0
+                    || averageNanos < 0 || maxNanos < 0 || uptimeMillis < 0
+                    || (sampleCount == 0 && (overBudgetCount != 0 || overBudgetRatio != 0.0
+                    || averageNanos != 0 || maxNanos != 0))) {
+                throw new IllegalArgumentException("Invalid subsystem health");
             }
         }
     }

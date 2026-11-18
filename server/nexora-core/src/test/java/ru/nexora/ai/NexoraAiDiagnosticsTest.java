@@ -397,6 +397,47 @@ class NexoraAiDiagnosticsTest {
     }
 
     @Test
+    void subsystemHealthDistinguishesHealthyDegradedCriticalAndSparseData() {
+        java.util.concurrent.atomic.AtomicLong clock = new java.util.concurrent.atomic.AtomicLong(60_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        diagnostics.recordSlowOperation("healthy", 10, 50);
+        for (int i = 0; i < 5; i++) diagnostics.recordSlowOperation("degraded", 80, 50);
+        for (int i = 0; i < 10; i++) diagnostics.recordSlowOperation("critical", 80, 50);
+        diagnostics.recordSlowOperation("sparse", 80, 50);
+
+        var health = diagnostics.subsystemHealth();
+        var healthy = health.stream().filter(item -> item.subsystem().equals("healthy")).findFirst().orElseThrow();
+        var degraded = health.stream().filter(item -> item.subsystem().equals("degraded")).findFirst().orElseThrow();
+        var critical = health.stream().filter(item -> item.subsystem().equals("critical")).findFirst().orElseThrow();
+        var sparse = health.stream().filter(item -> item.subsystem().equals("sparse")).findFirst().orElseThrow();
+
+        assertEquals(NexoraAiDiagnostics.SubsystemHealthStatus.UNKNOWN, healthy.status());
+        assertEquals(NexoraAiDiagnostics.SubsystemHealthStatus.DEGRADED, degraded.status());
+        assertEquals(NexoraAiDiagnostics.HealthConfidence.MEDIUM, degraded.confidence());
+        assertEquals(NexoraAiDiagnostics.SubsystemHealthStatus.CRITICAL, critical.status());
+        assertEquals(NexoraAiDiagnostics.HealthConfidence.MEDIUM, critical.confidence());
+        assertEquals(NexoraAiDiagnostics.SubsystemHealthStatus.UNKNOWN, sparse.status());
+        assertEquals(NexoraAiDiagnostics.HealthConfidence.LOW, sparse.confidence());
+        assertEquals(0, sparse.overBudgetCount());
+        assertTrue(critical.evidence().contains("10 over budget"));
+        assertTrue(critical.uptimeMillis() >= 0);
+        assertNotNull(critical.observedAt());
+        assertTrue(diagnostics.recentEvidence().contains("Состояние подсистем"));
+    }
+
+    @Test
+    void subsystemHealthExpiresMeasurementsOutsideFiveMinuteWindow() {
+        java.util.concurrent.atomic.AtomicLong clock = new java.util.concurrent.atomic.AtomicLong(60_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        for (int i = 0; i < 10; i++) diagnostics.recordSlowOperation("mob-ai", 100, 50);
+        assertEquals(NexoraAiDiagnostics.SubsystemHealthStatus.CRITICAL,
+                diagnostics.subsystemHealth().getFirst().status());
+
+        clock.addAndGet(5 * 60_000_000_000L);
+        assertTrue(diagnostics.subsystemHealth().isEmpty());
+    }
+
+    @Test
     void unavailableSystemLoadRemainsUnknownInResourceWindows() {
         NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
         diagnostics.recordResourceSnapshot(new JvmResourceSnapshot(

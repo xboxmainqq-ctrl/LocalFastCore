@@ -36,7 +36,10 @@ public final class ClusterTransportFactory {
         String bindValue = value(environment, "NEXORA_CLUSTER_BIND");
         String peersValue = value(environment, "NEXORA_CLUSTER_PEERS");
         String peerKeysValue = value(environment, "NEXORA_CLUSTER_PEER_KEYS");
-        if (bindValue == null && peersValue == null && peerKeysValue == null) return Optional.empty();
+        String routesValue = value(environment, "NEXORA_CLUSTER_BEDROCK_ROUTES");
+        if (bindValue == null && peersValue == null && peerKeysValue == null && routesValue == null) {
+            return Optional.empty();
+        }
         if (bindValue == null || peersValue == null || peerKeysValue == null) {
             throw new IllegalArgumentException(
                     "NEXORA_CLUSTER_BIND, NEXORA_CLUSTER_PEERS and NEXORA_CLUSTER_PEER_KEYS must be configured together");
@@ -46,7 +49,6 @@ public final class ClusterTransportFactory {
         Map<String, InetSocketAddress> peers = parsePeers(
                 peersValue, localNodeId, "NEXORA_CLUSTER_PEERS");
         if (peers.isEmpty()) throw new IllegalArgumentException("At least one NEXORA_CLUSTER_PEERS entry is required");
-        String routesValue = value(environment, "NEXORA_CLUSTER_BEDROCK_ROUTES");
         Map<String, InetSocketAddress> bedrockRoutes = routesValue == null
                 ? Map.of() : parsePeers(routesValue, localNodeId, "NEXORA_CLUSTER_BEDROCK_ROUTES");
         if (!peers.keySet().containsAll(bedrockRoutes.keySet())) {

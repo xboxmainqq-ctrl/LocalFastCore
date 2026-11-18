@@ -43,6 +43,23 @@ public final class PlayerTransferCoordinator {
         throw new IOException("Transfer claim CAS contention exceeded retry limit");
     }
 
+    /**
+     * Cancels an unpublished-to-destination transfer. The version CAS ensures
+     * a concurrent destination claim wins instead of being incorrectly aborted.
+     */
+    public Optional<PlayerTransferRecord> abortPrepared(UUID id, long nowEpochMillis) throws IOException {
+        if (nowEpochMillis < 0) throw new IllegalArgumentException("Invalid abort time");
+        for (int attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt++) {
+            PlayerTransferRecord current = ledger.get(id).orElseThrow(
+                    () -> new IllegalArgumentException("Unknown transfer: " + id));
+            if (current.state() != PlayerTransferRecord.State.PREPARED) return Optional.empty();
+            if (current.version() == Long.MAX_VALUE) throw new IOException("Transfer record version exhausted");
+            PlayerTransferRecord next = current.abortedPrepared(nowEpochMillis);
+            if (ledger.compareAndSet(id, current.version(), next)) return Optional.of(next);
+        }
+        throw new IOException("Prepared transfer cancellation CAS contention exceeded retry limit");
+    }
+
     public Optional<PlayerTransferRecord> commit(UUID id, long fencingToken,
                                                  long nowEpochMillis) throws IOException {
         return transitionClaim(id, fencingToken, nowEpochMillis, true);

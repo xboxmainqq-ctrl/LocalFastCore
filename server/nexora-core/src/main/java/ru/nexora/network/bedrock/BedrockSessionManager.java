@@ -811,8 +811,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     /**
      * Releases the frozen source session's online XUID lease after its exact
-     * transfer is durably PREPARED (or has advanced to CLAIMED/COMMITTED). Until this point the source retains the lease,
-     * preventing an early destination login in the checkpoint/publication gap.
+     * transfer is durably PREPARED or has advanced to CLAIMED/COMMITTED.
+     * Until this point the source retains the lease, preventing an early
+     * destination login in the checkpoint/publication gap.
      */
     public void releaseOnlinePlayerLeaseAfterPreparedTransfer(String playerXuid, UUID transferId)
             throws IOException {

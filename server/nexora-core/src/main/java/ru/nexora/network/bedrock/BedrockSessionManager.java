@@ -4366,6 +4366,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     state.identity.xuid());
             acquireOnlinePlayerLease(state);
         boolean legacyStateFound = false;
+        boolean authoritativeCheckpointRestored = false;
         PendingPlayerTransferRestoreRegistry.PendingRestore pendingTransfer =
                 pendingTransferRestores.find(state.identity.xuid()).orElse(null);
         if (pendingTransfer != null) {
@@ -4386,6 +4387,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 }
                 state.transferFence = pendingTransfer.fence();
                 legacyStateFound = true;
+                authoritativeCheckpointRestored = true;
             } catch (IOException | RuntimeException exception) {
                 try {
                     if (pendingTransfer.fence().isRevokedOrExpired()) {
@@ -4411,6 +4413,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     restorePlayerProfile(state, restored.profile(),
                             state.identity.displayName() == null ? "unknown" : state.identity.displayName());
                     legacyStateFound = true;
+                    authoritativeCheckpointRestored = true;
                 } else if (latestTransfer != null) {
                     throw new IOException(
                             "Durable transfer exists but its canonical player checkpoint is unavailable");
@@ -4420,7 +4423,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 throw new SecurityException("Unable to restore shared canonical player state", exception);
             }
         }
-        if (!legacyStateFound && inventoryStorage != null) {
+        if (!authoritativeCheckpointRestored && inventoryStorage != null) {
             try {
                 var restored = inventoryStorage.loadState(state.identity.xuid());
                 if (restored.isPresent()) {
@@ -4434,7 +4437,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 throw new SecurityException("Unable to safely restore authenticated player inventory", exception);
             }
         }
-        if (!legacyStateFound && equipmentStorage != null) {
+        if (!authoritativeCheckpointRestored && equipmentStorage != null) {
             try {
                 Optional<PlayerEquipment> restoredEquipment = equipmentStorage.load(state.identity.xuid());
                 if (restoredEquipment.isPresent()) {
@@ -4469,7 +4472,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
         String displayName = state.identity.displayName() == null
                 ? "unknown" : state.identity.displayName();
-        if (!legacyStateFound && playerStorage != null) {
+        if (!authoritativeCheckpointRestored && playerStorage != null) {
             try {
                 Optional<PlayerData> saved = playerStorage.load(state.identity.xuid());
                 if (saved.isPresent()) {
@@ -4481,7 +4484,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         + ": " + exception.getMessage());
             }
         }
-        if (!legacyStateFound && checkpointService != null) {
+        if (!authoritativeCheckpointRestored && transferOwnershipLedger == null && checkpointService != null) {
             try {
                 Optional<PlayerStateBundle> canonical = checkpointService.load(state.identity.xuid());
                 if (canonical.isPresent()) {

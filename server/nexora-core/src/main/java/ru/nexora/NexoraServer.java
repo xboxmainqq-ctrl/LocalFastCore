@@ -1,6 +1,9 @@
 package ru.nexora;
 
 import ru.nexora.network.NetworkRuntimeModule;
+import ru.nexora.network.FilePlayerTransferLedger;
+import ru.nexora.network.PlayerTransferCoordinator;
+import ru.nexora.network.DurableHandoffCoordinator;
 import ru.nexora.gameplay.GameplayRuntimeModule;
 import ru.nexora.network.nethernet.DefaultNetherNetIdentityService;
 import ru.nexora.network.nethernet.NetherNetServerMetadata;
@@ -112,6 +115,12 @@ public final class NexoraServer {
         PlayerStateCheckpointService playerStateCheckpoints = new PlayerStateCheckpointService(
                 new FilePlayerStateStore(Path.of(dataDirectory, "player-state")),
                 new PlayerStateBundleCodec());
+        // The file ledger is a single-host recovery adapter. Multi-host deployments
+        // must replace it with the shared JDBC ledger before enabling cross-host handoff.
+        String transferNodeId = System.getenv().getOrDefault("NEXORA_NODE_ID", "standalone").trim();
+        DurableHandoffCoordinator transferLedger = new DurableHandoffCoordinator(
+                new PlayerTransferCoordinator(
+                        new FilePlayerTransferLedger(Path.of(dataDirectory, "cluster", "transfers"))));
         AtomicReference<WebRtcSdpNegotiator> negotiatorReference = new AtomicReference<>();
         BedrockSessionManager bedrockSessions = new BedrockSessionManager(
                 2225,
@@ -129,6 +138,12 @@ public final class NexoraServer {
                 },
                 event -> System.out.printf("NEXORA: Bedrock packet 0x%02X from %s (%d bytes)%n",
                         event.packet().packetId(), event.networkId(), event.packet().payload().length));
+        ru.nexora.network.PlayerTransferRecoveryService.RecoveryReport transferRecovery =
+                bedrockSessions.recoverPendingTransferRestores(transferLedger, transferNodeId, 10_000);
+        System.out.printf("NEXORA: transfer recovery for node %s scanned %d, restored %d, already pending %d, expired %d, superseded %d%n",
+                transferNodeId, transferRecovery.scanned(), transferRecovery.registered(),
+                transferRecovery.alreadyRegistered(), transferRecovery.expiredClaims(),
+                transferRecovery.supersededRecords());
         GameplayRuntimeModule gameplayRuntime = new GameplayRuntimeModule(
                 bedrockSessions, aiDiagnostics, System.getenv());
         diagnosticsRuntime.safeRepairs().register(
@@ -250,6 +265,7 @@ public final class NexoraServer {
         System.out.println("Player inventories use versioned, checksummed files under " + Path.of(dataDirectory, "inventories").toAbsolutePath());
         System.out.println("Player armor, offhand, cursor and magical equipment use checksummed files under " + Path.of(dataDirectory, "equipment").toAbsolutePath());
         System.out.println("Canonical player shadow checkpoints use versioned snapshots under " + Path.of(dataDirectory, "player-state").toAbsolutePath() + "; legacy files remain login authority during migration.");
+        System.out.println("Local durable player-transfer ledger uses " + Path.of(dataDirectory, "cluster", "transfers").toAbsolutePath() + " (single-host only).");
         System.out.println("Dropped world items use checksummed storage under " + Path.of(dataDirectory, "worlds", "NEXORA World", "items").toAbsolutePath());
         System.out.println("Block-container inventories use checksummed storage under " + Path.of(dataDirectory, "worlds", "NEXORA World", "containers").toAbsolutePath());
         System.out.println("Furnace inventories and burn/cook progress use checksummed storage under " + Path.of(dataDirectory, "worlds", "NEXORA World", "furnaces").toAbsolutePath());

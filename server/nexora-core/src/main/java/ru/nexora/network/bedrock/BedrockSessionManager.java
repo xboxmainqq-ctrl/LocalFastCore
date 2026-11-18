@@ -951,6 +951,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 java.util.Optional<ru.nexora.network.PlayerTransferRecord> afterAbort =
                         ledger.findLatestForPlayer(xuid);
                 if (afterAbort.isPresent()
+                        && afterAbort.orElseThrow().transferId().equals(record.transferId())
                         && afterAbort.orElseThrow().state()
                         == ru.nexora.network.PlayerTransferRecord.State.ABORTED) {
                     unfreezePlayerAfterTransferAbort(xuid);

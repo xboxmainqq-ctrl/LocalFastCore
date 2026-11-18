@@ -589,7 +589,7 @@ class NexoraAiDiagnosticsTest {
         assertFalse(diagnostics.recentEvidence().contains("residentChunks=40"));
 
         clock.addAndGet(10_000_000_000L);
-        diagnostics.recordWorldRuntimeSnapshot(40, 45, 14, 110, 60);
+        diagnostics.recordWorldRuntimeSnapshot(40, 45, 14, 110, 60, 3, 750_000);
         assertTrue(diagnostics.recentEvidence().contains("residentChunks=40"));
         assertTrue(diagnostics.recentEvidence().contains("mobAiDeferredUpdates=60"));
         assertTrue(diagnostics.recentEvidence().contains("mobAiBudgetDeferred=3"));

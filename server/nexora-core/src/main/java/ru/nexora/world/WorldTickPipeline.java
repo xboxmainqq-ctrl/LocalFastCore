@@ -42,6 +42,7 @@ public final class WorldTickPipeline {
         int highPriority = 0;
         int normalPriority = 0;
         int lowPriority = 0;
+        long budgetStart = System.nanoTime();
         for (WorldLivingEntity mob : mobs) {
             if (mob == null || mob.health() <= 0) continue;
 
@@ -70,11 +71,20 @@ public final class WorldTickPipeline {
                 continue;
             }
 
+            long consumedNanos = System.nanoTime() - budgetStart;
+            if (!loadController.admit(mob.runtimeId(), tick, finiteDistanceSquared,
+                    activeTarget, priority, consumedNanos)) {
+                deferred++;
+                continue;
+            }
+
             scheduled++;
+            long decisionStart = System.nanoTime();
             LivingEntityAiService.Decision decision = aiService.decide(
                     mob, players, nowMillis, 0L, null, nearest);
             decisionSink.accept(decision);
             decisions++;
+            loadController.recordBudgetNanos(System.nanoTime() - decisionStart);
         }
 
         return new TickResult(tick, mobs.size(), scheduled, deferred, decisions,

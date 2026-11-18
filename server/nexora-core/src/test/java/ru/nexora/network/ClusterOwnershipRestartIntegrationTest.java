@@ -21,8 +21,9 @@ class ClusterOwnershipRestartIntegrationTest {
     @Test
     void committedTransferSurvivesNodeRegistryRestartAndFencesFormerOwner() throws Exception {
         String url = "jdbc:h2:mem:cluster-restart-committed;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000";
+        java.util.concurrent.atomic.AtomicLong clock = new java.util.concurrent.atomic.AtomicLong(100L);
         JdbcPlayerTransferLedger ledgerBeforeRestart = new JdbcPlayerTransferLedger(dataSource(url));
-        JdbcPlayerOnlineLeaseRegistry leasesBeforeRestart = new JdbcPlayerOnlineLeaseRegistry(dataSource(url));
+        JdbcPlayerOnlineLeaseRegistry leasesBeforeRestart = new JdbcPlayerOnlineLeaseRegistry(dataSource(url), clock::get);
         JdbcPlayerStateStore stateBeforeRestart = new JdbcPlayerStateStore(dataSource(url));
         ledgerBeforeRestart.initializeSchema();
         leasesBeforeRestart.initializeSchema();
@@ -45,7 +46,7 @@ class ClusterOwnershipRestartIntegrationTest {
 
         // New DataSource instances model both server processes restarting against durable shared SQL.
         JdbcPlayerTransferLedger ledgerAfterRestart = new JdbcPlayerTransferLedger(dataSource(url));
-        JdbcPlayerOnlineLeaseRegistry leasesAfterRestart = new JdbcPlayerOnlineLeaseRegistry(dataSource(url));
+        JdbcPlayerOnlineLeaseRegistry leasesAfterRestart = new JdbcPlayerOnlineLeaseRegistry(dataSource(url), clock::get);
         JdbcPlayerStateStore stateAfterRestart = new JdbcPlayerStateStore(dataSource(url));
         DurableHandoffCoordinator recoveredLedger = new DurableHandoffCoordinator(
                 new PlayerTransferCoordinator(ledgerAfterRestart));
@@ -59,9 +60,12 @@ class ClusterOwnershipRestartIntegrationTest {
                 new PlayerStateCheckpointService(stateAfterRestart, new PlayerStateBundleCodec());
         assertEquals(revision, recoveredCheckpoints.loadAtRevision(xuid, revision).orElseThrow().revision());
 
+        clock.set(104L);
         assertTrue(leasesAfterRestart.acquire(xuid, "node-b", "session-b", 104L, 1_000L));
+        clock.set(105L);
         assertFalse(leasesAfterRestart.acquire(xuid, "node-a", "session-a2", 105L, 1_000L));
         assertFalse(leasesAfterRestart.renew(xuid, "node-a", "session-a", 105L, 1_000L));
+        clock.set(1_105L);
         assertFalse(leasesAfterRestart.renew(xuid, "node-b", "session-b", 1_105L, 1_000L),
                 "A crashed destination cannot resurrect an expired session lease");
         assertThrows(SecurityException.class,

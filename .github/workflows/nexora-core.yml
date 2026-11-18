@@ -36,4 +36,4 @@ jobs:
             server/nexora-core/target/nexora-core-*.jar
             server/nexora-core/target/lib/**
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1

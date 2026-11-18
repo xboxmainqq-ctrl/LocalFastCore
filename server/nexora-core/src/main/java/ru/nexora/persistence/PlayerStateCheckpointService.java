@@ -49,7 +49,7 @@ public final class PlayerStateCheckpointService {
      * Writes a new revision even when the serialized player state is unchanged.
      * Transfer revisions are monotonic ownership markers, not just content versions.
      */
-    public PlayerStateStore.SaveResult checkpointForTransfer(
+    public long checkpointForTransfer(
             PlayerStateBundle bundle, long capturedAtEpochMillis
     ) throws IOException {
         Objects.requireNonNull(bundle, "bundle");
@@ -65,7 +65,10 @@ public final class PlayerStateCheckpointService {
                         PlayerStateBundleCodec.SCHEMA_VERSION, xuid, revision + 1,
                         capturedAtEpochMillis, payload);
                 PlayerStateStore.SaveResult result = store.save(snapshot);
-                if (result != PlayerStateStore.SaveResult.STALE) return result;
+                if (result == PlayerStateStore.SaveResult.SAVED
+                        || result == PlayerStateStore.SaveResult.ALREADY_CURRENT) {
+                    return snapshot.revision();
+                }
             }
             throw new IOException("Transfer checkpoint CAS contention exceeded retry limit");
         }

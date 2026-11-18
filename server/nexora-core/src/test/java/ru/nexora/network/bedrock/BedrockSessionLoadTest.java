@@ -57,9 +57,8 @@ class BedrockSessionLoadTest {
             }
 
             assertEquals(CLIENTS, manager.activeSessionCount());
-            assertEquals(CLIENTS, manager.authenticatedPlayerCount() == 0
-                    ? manager.activeSessionCount() : -1,
-                    "all registered peers must remain unauthenticated until Login validation");
+            assertEquals(0, manager.authenticatedPlayerCount(),
+                    "network-settings negotiation alone must not authenticate a player");
             assertEquals(CLIENTS, outboundFrames.size(),
                     "every initial settings request must receive a response");
             assertFalse(manager.awaitNoActiveSessions(Duration.ZERO));
@@ -79,7 +78,7 @@ class BedrockSessionLoadTest {
 
             assertTrue(manager.awaitNoActiveSessions(Duration.ofSeconds(2)));
             assertEquals(0, manager.activeSessionCount());
-            assertEquals(0, manager.inboundChannelCount());
+            assertEquals(0, manager.activeInboundChannelCount());
         } finally {
             executor.shutdownNow();
             manager.close();

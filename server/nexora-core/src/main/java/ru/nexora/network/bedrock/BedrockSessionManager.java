@@ -735,6 +735,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return sessions.size();
     }
 
+    /** Number of active per-peer inbound framing channels, exposed for bounded-load diagnostics. */
+    public int activeInboundChannelCount() {
+        return inbound.activeChannelCount();
+    }
+
     public long authenticatedPlayerCount() {
         return sessions.values().stream().filter(state -> state.loginAuthenticated).count();
     }

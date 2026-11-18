@@ -28,6 +28,7 @@ class MobStuckTrackerTest {
 
         assertNull(tracker.recordBlockedAttempt(9, 0.2, 64, 0, 2_100));
         assertNull(tracker.recordBlockedAttempt(9, 0.2, 64, 0, 3_000));
+        assertNull(tracker.recordBlockedAttempt(9, 0.2, 64, 0, 4_000));
         assertNotNull(tracker.recordBlockedAttempt(9, 0.2, 64, 0, 4_100));
     }
 

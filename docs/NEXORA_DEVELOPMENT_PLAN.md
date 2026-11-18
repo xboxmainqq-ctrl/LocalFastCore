@@ -87,7 +87,8 @@ Expose stable NEXORA APIs for gameplay actions, events, contracts and graph task
 ### 17. Player persistence and transfer recovery — FOUNDATION STARTED
 - Separate serialized player snapshots from live runtime/player objects.
 - Enforce monotonic revisions, idempotent repeat saves and conflict detection.
-- Keep the storage contract backend-neutral; the current in-memory adapter is explicitly non-durable.
+- Keep the storage contract backend-neutral. `InMemoryPlayerStateStore` is test-only; `FilePlayerStateStore` now provides a local durable adapter with bounded files, checksum validation, per-player locks and atomic replacement where supported.
+- The new snapshot store is not yet wired into live Bedrock player saves; existing profile, inventory and equipment stores remain separate.
 - Next: connect snapshots to the live player serialization boundary, add a durable transfer ledger, source freeze/destination claim protocol, and crash/restart recovery tests.
 
 ### 18. Benchmark laboratory

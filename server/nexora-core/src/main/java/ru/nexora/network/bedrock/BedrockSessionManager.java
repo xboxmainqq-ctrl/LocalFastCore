@@ -117,7 +117,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final Map<Long, ru.nexora.combat.ArrowProjectile> mobArrows = new ConcurrentHashMap<>();
     private final Set<Long> poisonMobArrows = ConcurrentHashMap.newKeySet();
     private final AtomicLong nextMobArrowRuntimeId = new AtomicLong(4_000_000L);
-    private final Map<Long, Long> creeperFuseStartedMillis = new ConcurrentHashMap<>();
+    private final ru.nexora.combat.MobFuseTracker mobFuseTracker =
+            new ru.nexora.combat.MobFuseTracker();
     private final Map<Long, Long> endermanTeleportCooldownMillis = new ConcurrentHashMap<>();
     private final ru.nexora.combat.LivingEntityAiService livingEntityAi =
             new ru.nexora.combat.LivingEntityAiService();
@@ -2579,7 +2580,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
         });
         for (WorldLivingEntity mob : world.livingEntities().snapshot()) {
-            if (!ru.nexora.world.WorldPathfinder.isMobFootprintLoaded(world, mob.x(), mob.z())) continue;
+            if (!ru.nexora.world.WorldPathfinder.isMobFootprintLoaded(world, mob.x(), mob.z())) {
+                // A fuse must not keep advancing while its mob is outside loaded world space.
+                if (\"minecraft:creeper\".equals(mob.identifier())) {
+                    mobFuseTracker.clear(mob.runtimeId());
+                }
+                continue;
+            }
             WorldLivingEntity beforePhysics = mob;
             ru.nexora.combat.MobPhysicsService.Result physics = mobPhysics.tick(world, mob);
             mob = physics.entity();
@@ -2950,7 +2957,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             long tick
     ) {
         if (nearest == null) {
-            creeperFuseStartedMillis.remove(creeper.runtimeId());
+            mobFuseTracker.isReadyToDetonate(creeper.runtimeId(), false, nowMillis, 1_500L);
             return false;
         }
         double dx = nearest.x() - creeper.x();
@@ -2958,15 +2965,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         double dz = nearest.z() - creeper.z();
         double distanceSquared = dx * dx + dy * dy + dz * dz;
         if (distanceSquared > 3.0 * 3.0) {
-            creeperFuseStartedMillis.remove(creeper.runtimeId());
+            mobFuseTracker.isReadyToDetonate(creeper.runtimeId(), false, nowMillis, 1_500L);
             return false;
         }
 
-        long fuseStarted = creeperFuseStartedMillis.computeIfAbsent(
-                creeper.runtimeId(), ignored -> nowMillis);
-        if (nowMillis - fuseStarted < 1_500L) return true;
-
-        creeperFuseStartedMillis.remove(creeper.runtimeId());
+        if (!mobFuseTracker.isReadyToDetonate(
+                creeper.runtimeId(), true, nowMillis, 1_500L)) return true;
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
             SessionState player = entry.getValue();
             player.combatLock.lock();
@@ -3254,7 +3258,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         mobFallTracker.clear(runtimeId);
         mobJumpController.clear(runtimeId);
         mobDespawnTracker.clear(runtimeId);
-        creeperFuseStartedMillis.remove(runtimeId);
+        mobFuseTracker.clear(runtimeId);
         endermanTeleportCooldownMillis.remove(runtimeId);
         livingEntityAggroTargets.remove(runtimeId);
         livingEntityAggroExpiresAtMillis.remove(runtimeId);

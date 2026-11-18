@@ -19,8 +19,9 @@ import static org.junit.jupiter.api.Assertions.*;
 class TcpClusterTransportTest {
     @Test
     void sendsAuthenticatedMessageAndRejectsReplay() throws Exception {
-        int portA = freePort();
-        int portB = freePort();
+        int[] ports = freePorts();
+        int portA = ports[0];
+        int portB = ports[1];
         byte[] secret = new byte[32];
         java.util.Arrays.fill(secret, (byte) 7);
         AuthenticatedClusterMessageCodec codecA = new AuthenticatedClusterMessageCodec(secret, 30_000);
@@ -79,6 +80,13 @@ class TcpClusterTransportTest {
 
     private static InetSocketAddress loopback(int port) {
         return new InetSocketAddress(InetAddress.getLoopbackAddress(), port);
+    }
+
+    private static int[] freePorts() throws Exception {
+        try (ServerSocket first = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
+             ServerSocket second = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            return new int[] {first.getLocalPort(), second.getLocalPort()};
+        }
     }
 
     private static int freePort() throws Exception {

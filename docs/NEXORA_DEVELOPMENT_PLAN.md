@@ -306,7 +306,7 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Source transfer freeze releases the source online lease; a confirmed abort reacquires it before gameplay resumes. PREPARED/CLAIMED/COMMITTED transfer history continues to fence logins during the handoff gap.
 - A session that loses its durable transfer fence or global online lease immediately stops gameplay and releases its matching online lease; destination rollback also releases any lease held by a partially activated session.
 - Added in-memory expiry/fencing tests, JDBC multi-node exclusivity tests, and a concurrent two-node first-login race test.
-- CI: 809 tests passed, zero failures on commit `3427de8`; GitHub Actions build succeeded.
+- CI: 809 tests passed, zero failures on commit `3427de8`; GitHub Actions build and GitLab publish both succeeded.
 - Remaining validation: process-kill/partition tests with two actual server processes and a production database; the lease uses bounded expiry and is not a consensus protocol for arbitrary clock skew. Nodes must have synchronized clocks and must not continue gameplay when renewal fails.
 ### 42. Shared ownership restart integration coverage — IMPLEMENTED, CI VERIFIED
 - Added combined JDBC restart tests using independent DataSource/ledger/lease/checkpoint-store instances to model source and destination processes reconnecting to the same durable database.

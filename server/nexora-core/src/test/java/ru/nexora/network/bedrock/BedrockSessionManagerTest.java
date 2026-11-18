@@ -3,6 +3,10 @@ package ru.nexora.network.bedrock;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ru.nexora.network.nethernet.NetherNetClientIdentity;
+import ru.nexora.network.DurableHandoffCoordinator;
+import ru.nexora.network.InMemoryPlayerTransferLedger;
+import ru.nexora.network.PlayerHandoff;
+import ru.nexora.network.PlayerTransferCoordinator;
 import ru.nexora.inventory.ItemStack;
 import ru.nexora.inventory.PlayerInventory;
 import ru.nexora.inventory.PlayerInventoryStorage;
@@ -30,6 +34,7 @@ import java.security.KeyPairGenerator;
 import java.security.Signature;
 import java.security.spec.ECGenParameterSpec;
 import java.util.Base64;
+import java.util.UUID;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -2988,6 +2993,59 @@ class BedrockSessionManagerTest {
         manager.close();
     }
 
+
+    @Test
+    void redirectsFrozenSourceOnlyAfterMatchingTransferIsDurablyCommitted() throws Exception {
+        PlayerStateCheckpointService checkpoints = new PlayerStateCheckpointService(
+                new FilePlayerStateStore(temporaryDirectory.resolve("transfer-redirect-checkpoints")),
+                new PlayerStateBundleCodec());
+        List<byte[]> outboundFrames = new ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("transfer-redirect-world", 0L,
+                        new ru.nexora.world.FlatWorldGenerator()),
+                null, null, null, checkpoints,
+                (networkId, label, frame) -> outboundFrames.add(frame), event -> {});
+        try {
+            manager.onIdentity("transfer-redirect", new NetherNetClientIdentity(
+                    "transfer-token", new byte[] {7}, "redirect-xuid",
+                    "TransferPlayer", "transfer-playfab", "20CA2", null));
+            setSessionField(manager, "transfer-redirect", "loginAuthenticated", true);
+            setSessionField(manager, "transfer-redirect", "clientInitialized", true);
+            setSessionField(manager, "transfer-redirect", "compressionNegotiated", true);
+            setSessionField(manager, "transfer-redirect", "positionInitialized", true);
+            setSessionField(manager, "transfer-redirect", "positionX", 2.0f);
+            setSessionField(manager, "transfer-redirect", "positionY", 65.0f);
+            setSessionField(manager, "transfer-redirect", "positionZ", 3.0f);
+            long revision = manager.freezePlayerForTransfer("redirect-xuid");
+
+            DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
+                    new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
+            UUID transferId = UUID.randomUUID();
+            PlayerHandoff handoff = new PlayerHandoff(transferId, 1L,
+                    "source-node", "target-node", new byte[0]);
+            ledger.prepare(handoff, "redirect-xuid", revision, 100L);
+            var claim = ledger.claim(transferId, "target-node", 101L, 5_000L).orElseThrow();
+
+            assertThrows(java.io.IOException.class, () -> manager.redirectFrozenPlayerToNode(
+                    "redirect-xuid", transferId, claim.fencingToken(), ledger,
+                    "source-node", "target.example.net", 19132));
+            assertTrue(outboundFrames.isEmpty(), "Redirect must not be sent before durable commit");
+
+            ledger.commit(transferId, claim.fencingToken(), 102L).orElseThrow();
+            manager.redirectFrozenPlayerToNode("redirect-xuid", transferId, claim.fencingToken(),
+                    ledger, "source-node", "target.example.net", 19132);
+
+            List<BedrockPacket> sent = outboundFrames.stream()
+                    .flatMap(frame -> decodeOutboundAll(frame, true).stream()).toList();
+            assertEquals(1, sent.size());
+            assertEquals(BedrockTransferPacketCodec.TRANSFER_PACKET_ID, sent.get(0).packetId());
+            assertTrue((boolean) getSessionField(manager, "transfer-redirect", "transferRedirected"));
+            assertTrue((boolean) getSessionField(manager, "transfer-redirect", "rejected"));
+        } finally {
+            manager.close();
+        }
+    }
 
     @Test
     void transferFreezeCheckpointsAndRemovesSourceFromActiveGameplayUntilAbortResume() throws Exception {

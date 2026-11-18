@@ -9,7 +9,7 @@ import java.util.Objects;
  * with the active key; inbound messages may validate against a bounded set of
  * active/previous keys during the configured rotation grace period.
  */
-public final class RotatingClusterMessageCodec {
+public final class RotatingClusterMessageCodec implements ClusterMessageCodec {
     private final AuthenticatedClusterMessageCodec active;
     private final List<AuthenticatedClusterMessageCodec> accepted;
 

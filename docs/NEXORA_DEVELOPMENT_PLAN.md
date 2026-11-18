@@ -260,7 +260,9 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Added a loopback TCP integration test using HMAC-authenticated `TcpClusterTransport` instances for source and destination. The test verifies checkpoint reservation, durable commit and TransferPacket emission.
 - The source coordinator fails closed on uncertain outcomes: it never resumes a source session unless the shared ledger proves ABORTED.
 - CI: 783 tests passed, zero failures on commit `62b6bfc`.
-- Remaining: wire transport/peer/key configuration and these coordinators into `NexoraServer` lifecycle and an authenticated admin/API route; test real client reconnect and process-kill races.
+- Added strict `ClusterTransportFactory` configuration with per-peer HMAC keys, peer allowlists, replay persistence, bounded worker queues and Bedrock route mappings. The transport is now started/stopped by `NetworkRuntimeModule` before public listeners.
+- `NexoraServer` now wires the destination endpoint and exposes operator-console `players` and `transfer <xuid> <target-node>` commands; transfer requests use the configured Bedrock route and source coordinator.
+- Remaining: validate real Bedrock client reconnect, process-kill races and production database failover before enabling this outside a controlled test cluster.
 
 ### 37. Transfer cancellation and remote reservation cleanup — IMPLEMENTED, CI VERIFIED
 - Added CAS-safe PREPARED cancellation. If a destination claim races cancellation, exactly one state transition wins; a stale source cannot abort the newer owner.

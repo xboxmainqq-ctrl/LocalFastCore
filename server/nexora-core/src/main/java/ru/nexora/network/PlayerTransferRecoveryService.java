@@ -73,8 +73,28 @@ public final class PlayerTransferRecoveryService {
             }
             if (record.state() == PlayerTransferRecord.State.CLAIMED
                     && record.leaseExpired(now)) {
-                expiredClaims++;
-                continue;
+                // A destination restart is a safe reconciliation point: revoke
+                // the expired token durably so the source can resume or retry.
+                var aborted = ledger.abort(record.transferId(), record.fencingToken(), now);
+                if (aborted.isPresent()) {
+                    expiredClaims++;
+                    continue;
+                }
+                PlayerTransferRecord latest = ledger.get(record.transferId()).orElse(null);
+                if (latest == null || latest.state() == PlayerTransferRecord.State.ABORTED
+                        || latest.state() == PlayerTransferRecord.State.PREPARED
+                        || (latest.state() == PlayerTransferRecord.State.CLAIMED
+                        && latest.leaseExpired(epochMillis.getAsLong()))) {
+                    expiredClaims++;
+                    continue;
+                }
+                if (!nodeId.equals(latest.targetNode())
+                        || (latest.state() != PlayerTransferRecord.State.CLAIMED
+                        && latest.state() != PlayerTransferRecord.State.COMMITTED)) {
+                    superseded++;
+                    continue;
+                }
+                record = latest;
             }
             if (record.state() != PlayerTransferRecord.State.CLAIMED
                     && record.state() != PlayerTransferRecord.State.COMMITTED) {

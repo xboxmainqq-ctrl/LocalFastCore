@@ -5,7 +5,9 @@ import ru.nexora.combat.LivingEntityAiService;
 import ru.nexora.combat.MobAiLoadController;
 import ru.nexora.runtime.AdaptiveRuntime;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 
@@ -23,6 +25,8 @@ public final class WorldTickPipeline {
     private final ru.nexora.combat.MobAiTaskScheduler taskScheduler;
     private final HotPathProfiler profiler;
     private final AdaptiveRuntime runtime;
+    // Active per-mob attack deadlines; expired entries are pruned at the start of each tick.
+    private final Map<Long, Long> nextAttackAtMillis = new HashMap<>();
 
     public WorldTickPipeline(MobAiLoadController loadController, LivingEntityAiService aiService) {
         this.loadController = Objects.requireNonNull(loadController, "loadController");
@@ -44,6 +48,7 @@ public final class WorldTickPipeline {
         Objects.requireNonNull(players, "players");
         Objects.requireNonNull(decisionSink, "decisionSink");
         runtime.beginTick();
+        nextAttackAtMillis.entrySet().removeIf(entry -> nowMillis >= entry.getValue());
 
         int scheduled = 0;
         int deferred = 0;
@@ -129,7 +134,8 @@ public final class WorldTickPipeline {
             LivingEntityAiService.Decision decision;
             long decisionStarted = System.nanoTime();
             try {
-                decision = aiService.decide(mob, players, nowMillis, 0L, null, nearest);
+                decision = aiService.decide(mob, players, nowMillis,
+                        nextAttackAtMillis.getOrDefault(mob.runtimeId(), 0L), null, nearest);
             } finally {
                 profiler.record(HotPathProfiler.Path.MOB_AI_DECISION,
                         Math.max(0L, System.nanoTime() - decisionStarted));
@@ -151,6 +157,9 @@ public final class WorldTickPipeline {
                 taskScheduler.recordRun(ru.nexora.combat.MobAiTaskScheduler.Task.IDLE);
             }
             decisionSink.accept(decision);
+            if (decision.attack()) {
+                nextAttackAtMillis.put(mob.runtimeId(), attackDeadline(nowMillis));
+            }
             decisions++;
             loadController.recordBudgetNanos(System.nanoTime() - decisionStart);
         }
@@ -173,6 +182,11 @@ public final class WorldTickPipeline {
     private MobAiLoadController.Priority priorityHint(WorldLivingEntity mob) {
         return LivingEntityAiService.isFlyingMob(mob.identifier())
                 ? MobAiLoadController.Priority.HIGH : MobAiLoadController.Priority.NORMAL;
+    }
+
+    private static long attackDeadline(long nowMillis) {
+        long cooldown = LivingEntityAiService.ATTACK_COOLDOWN_MILLIS;
+        return nowMillis > Long.MAX_VALUE - cooldown ? Long.MAX_VALUE : nowMillis + cooldown;
     }
 
     private static double finiteDistance(double value) {

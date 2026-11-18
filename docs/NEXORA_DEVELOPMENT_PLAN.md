@@ -344,3 +344,12 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - This complements the existing full-capacity/round-robin regression; it does not claim measured TPS or replace real Bedrock client/load validation.
 - GitHub Actions artifact retention on the active development branch is now one day to reduce storage pressure while preserving short-lived build artifacts.
 - Validation: commit created; Maven/CI result is pending.
+
+
+### 46. Enforce mob attack cooldowns in the world tick pipeline — IMPLEMENTED, CI PENDING
+- Connected the AI service's per-mob attack deadline to the actual world tick pipeline; the pipeline no longer passes a constant zero cooldown.
+- Cooldowns begin only after the attack decision is successfully delivered to the decision sink.
+- Expired deadlines are pruned during ticks, keeping the temporary state bounded to mobs currently cooling down.
+- Deadline arithmetic saturates at `Long.MAX_VALUE` instead of overflowing near the maximum timestamp.
+- Added regression tests for attacks inside/outside the cooldown window and timestamp overflow.
+- Validation: source and tests committed; Maven/CI result is pending.

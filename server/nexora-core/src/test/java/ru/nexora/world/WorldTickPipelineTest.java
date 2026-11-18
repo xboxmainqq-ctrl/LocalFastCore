@@ -30,6 +30,46 @@ class WorldTickPipelineTest {
         assertTrue(decisions.getFirst().moving());
     }
 
+
+    @Test
+    void hostileMobAttackCooldownIsAppliedAcrossWorldTicks() {
+        WorldTickPipeline pipeline = new WorldTickPipeline(
+                new MobAiLoadController(20), new LivingEntityAiService());
+        WorldLivingEntityManager manager = new WorldLivingEntityManager();
+        WorldLivingEntity mob = manager.spawn("minecraft:zombie", 20, 0, 64, 0);
+        var player = new LivingEntityAiService.PlayerTarget("player", 1.5, 64, 0, true);
+        List<LivingEntityAiService.Decision> decisions = new ArrayList<>();
+
+        pipeline.tick(0, 2_000, List.of(mob), List.of(player), decisions::add);
+        assertTrue(decisions.getFirst().attack());
+
+        decisions.clear();
+        pipeline.tick(1, 2_500, List.of(mob), List.of(player), decisions::add);
+        assertEquals(1, decisions.size());
+        assertFalse(decisions.getFirst().attack());
+
+        decisions.clear();
+        pipeline.tick(2, 3_000, List.of(mob), List.of(player), decisions::add);
+        assertTrue(decisions.getFirst().attack());
+    }
+
+    @Test
+    void attackCooldownDeadlineDoesNotOverflowAtMaximumTimestamp() {
+        WorldTickPipeline pipeline = new WorldTickPipeline(
+                new MobAiLoadController(20), new LivingEntityAiService());
+        WorldLivingEntityManager manager = new WorldLivingEntityManager();
+        WorldLivingEntity mob = manager.spawn("minecraft:zombie", 20, 0, 64, 0);
+        var player = new LivingEntityAiService.PlayerTarget("player", 1.5, 64, 0, true);
+        List<LivingEntityAiService.Decision> decisions = new ArrayList<>();
+
+        pipeline.tick(0, Long.MAX_VALUE - 500, List.of(mob), List.of(player), decisions::add);
+        assertTrue(decisions.getFirst().attack());
+
+        decisions.clear();
+        pipeline.tick(1, Long.MAX_VALUE - 100, List.of(mob), List.of(player), decisions::add);
+        assertFalse(decisions.getFirst().attack());
+    }
+
     @Test
     void activeTargetForcesFullRateEvenWhenFarUpdateSlotWouldDefer() {
         WorldTickPipeline pipeline = new WorldTickPipeline(

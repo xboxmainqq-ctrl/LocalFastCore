@@ -3,6 +3,9 @@ package ru.nexora.gameplay;
 import org.junit.jupiter.api.Test;
 import ru.nexora.runtime.AdaptiveRuntime;
 import ru.nexora.runtime.TaskContract;
+import ru.nexora.runtime.WorkGraph;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -23,7 +26,8 @@ class GameplayGraphTest {
                 .after("effect", "damage")
                 .validate();
 
-        assertEquals(1, graph.ready().size());
-        assertEquals("class-check", graph.ready().get(0).id());
+        List<WorkGraph.NodeView> ready = graph.ready();
+        assertEquals(1, ready.size());
+        assertEquals("class-check", ready.get(0).id());
     }
 }

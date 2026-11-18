@@ -49,6 +49,13 @@ class JdbcPlayerTransferLedgerTest {
         assertFalse(afterRestart.compareAndSet(
                 transferId, recovered.version(), tamperedIdentity),
                 "A CAS transition must not rewrite the authenticated player or transfer endpoints");
+        PlayerTransferRecord regressedState = new PlayerTransferRecord(
+                transferId, recovered.playerXuid(), recovered.sourceNode(), recovered.targetNode(),
+                recovered.playerRevision(), PlayerTransferRecord.State.PREPARED,
+                0L, 0L, recovered.version() + 1, 102L);
+        assertFalse(afterRestart.compareAndSet(
+                transferId, recovered.version(), regressedState),
+                "A terminal or claimed transfer must never regress to PREPARED and reset its fence");
 
         PlayerTransferRecord committed = new PlayerTransferCoordinator(afterRestart)
                 .commit(transferId, claim.fencingToken(), 102L).orElseThrow();

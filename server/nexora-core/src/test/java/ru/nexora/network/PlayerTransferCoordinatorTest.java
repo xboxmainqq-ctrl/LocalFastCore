@@ -36,6 +36,28 @@ class PlayerTransferCoordinatorTest {
     }
 
     @Test
+    void preparedTransferCanBeCancelledButCannotAbortAfterDestinationClaimWins() throws IOException {
+        InMemoryPlayerTransferLedger store = new InMemoryPlayerTransferLedger();
+        PlayerTransferCoordinator coordinator = new PlayerTransferCoordinator(store);
+        UUID id = UUID.randomUUID();
+        assertTrue(coordinator.prepare(PlayerTransferRecord.prepared(
+                id, "xuid-cancel", "node-a", "node-b", 4L, 100L)));
+
+        PlayerTransferRecord aborted = coordinator.abortPrepared(id, 101L).orElseThrow();
+        assertEquals(PlayerTransferRecord.State.ABORTED, aborted.state());
+        assertEquals(0L, aborted.fencingToken());
+        assertTrue(coordinator.claim(id, "node-b", 102L, 5_000L).isEmpty());
+
+        UUID racedId = UUID.randomUUID();
+        coordinator.prepare(PlayerTransferRecord.prepared(
+                racedId, "xuid-race-cancel", "node-a", "node-b", 5L, 100L));
+        PlayerTransferRecord claim = coordinator.claim(racedId, "node-b", 101L, 5_000L).orElseThrow();
+        assertTrue(coordinator.abortPrepared(racedId, 102L).isEmpty());
+        assertEquals(PlayerTransferRecord.State.CLAIMED, coordinator.get(racedId).orElseThrow().state());
+        assertTrue(claim.fencingToken() > 0);
+    }
+
+    @Test
     void fileLedgerPersistsRecordsAndEnforcesCompareAndSetAcrossInstances() throws IOException {
         UUID id = UUID.randomUUID();
         FilePlayerTransferLedger firstStore = new FilePlayerTransferLedger(temporaryDirectory);

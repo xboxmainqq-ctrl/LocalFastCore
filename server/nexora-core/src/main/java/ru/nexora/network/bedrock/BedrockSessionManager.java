@@ -470,6 +470,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (sessionId != null && registry.renew(
                 state.identity.xuid(), nodeId, sessionId, now, onlineLeaseMillis)) {
             state.lastOnlineLeaseRenewalNanos = nanoTime.getAsLong();
+            state.onlineLeaseLost = false;
             return;
         }
         state.onlineLeaseSessionId = null;
@@ -4647,6 +4648,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         ru.nexora.network.DurableHandoffCoordinator ledger = transferOwnershipLedger;
         String nodeId = transferOwnershipNodeId;
         if (ledger == null || nodeId == null || state.identity == null) return;
+        if (state.onlineLeaseLost) {
+            throw new IOException("Player session has already lost global online ownership");
+        }
         long now = nanoTime.getAsLong();
         String leaseSessionId = state.onlineLeaseSessionId;
         ru.nexora.network.PlayerOnlineLeaseRegistry leases = onlineLeaseRegistry;

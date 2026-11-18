@@ -2582,7 +2582,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         for (WorldLivingEntity mob : world.livingEntities().snapshot()) {
             if (!ru.nexora.world.WorldPathfinder.isMobFootprintLoaded(world, mob.x(), mob.z())) {
                 // A fuse must not keep advancing while its mob is outside loaded world space.
-                if (\"minecraft:creeper\".equals(mob.identifier())) {
+                if ("minecraft:creeper".equals(mob.identifier())) {
                     mobFuseTracker.clear(mob.runtimeId());
                 }
                 continue;

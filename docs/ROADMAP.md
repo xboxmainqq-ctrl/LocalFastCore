@@ -65,7 +65,7 @@ These rules apply to all future architecture, implementation, review, and planni
 - [x] Detect repeated inbound frame/byte threshold breaches across consecutive transport windows as review-only signals; skipped windows reset the streak and no peer identifiers or automatic punishment are exposed.
 - [x] Add minute-aligned comparison of Bedrock inbound and mob AI/pathfinding latency over 5-minute and 1-hour windows; report shared-minute co-occurrence and aggregate timings, never causal claims or player identifiers.
 - [x] Add a bounded structured incident timeline with monotonic sequence/uptime ordering, wall-clock timestamps, and sanitized descriptions; correlate broader symptoms without exposing player XUIDs, secrets, or sensitive payloads.
-- [ ] Ensure monitoring is rate-limited and cannot itself overload the server.
+- [x] Keep monitoring rate-limited: one daemon scheduler uses fixed-delay (non-overlapping) observations, defaults to a 30-second interval, isolates observer runtime exceptions, and writes only to bounded diagnostic stores.
 
 ## Priority 3 — Safe AI-assisted repair
 
@@ -143,6 +143,8 @@ Do not consider the mob system finished after the load controller alone. Complet
 
 ## Current next steps
 
-1. Validate the completed runtime-module, bounded scheduler, and graceful-drain integration on CI; fix all regressions before declaring this architecture stage stable.
-2. Continue mob and spawner integration/load checks; real Bedrock client verification remains a separate gate.
-3. Extend subsystem latency and JVM resource telemetry with bounded, low-overhead measurements; three-minute JVM thread-growth, sustained heap-pressure, and repeated latency-breach detection are implemented with sparse-window safeguards. Do not infer true TPS from isolated timings. The operator `/ai admin` snapshot now includes actual mob-decision timings, JVM heap/thread counters, and rolling latency summaries for instrumented subsystems; the diagnostics service also exposes a bounded structured incident timeline; `/ai mob stats` includes the detailed AI execution summary. 5-minute/1-hour minute-bucket latency aggregates are now available; 5-minute/1-hour failure rates and JVM resource-pressure sampling are available. Bedrock inbound and mob AI/pathfinding timings are compared in shared minute buckets; this is co-occurrence, not proof of causality.
+1. Profile measured hot paths in world/chunk access, entity targeting, and Bedrock inbound handling before changing algorithms; record repeatable baselines and avoid inferring global TPS from subsystem timings.
+2. Audit world/chunk loading, entity lifecycle, scheduled work, and save concurrency for bounded cost, data integrity, and safe shutdown; add deterministic regression tests for every fix.
+3. Run authenticated real Bedrock client validation for login, movement, inventory, world replication, mob behavior, and spawner replication. CI integration tests do not replace this gate.
+4. Continue the independent NEXORA architecture: use Nukkit as a reference only, design NEXORA-owned interfaces first, and record compatibility evidence without copying Nukkit source.
+5. Keep operator diagnostics concise and actionable; sustained subsystem latency, JVM heap/thread pressure, repeated subsystem failures, and repeated inbound bursts now have bounded, review-only trend signals. No automatic restarts, throttling, bans, or gameplay changes are performed by these signals.

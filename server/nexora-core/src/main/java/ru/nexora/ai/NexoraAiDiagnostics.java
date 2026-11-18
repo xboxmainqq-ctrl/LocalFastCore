@@ -352,6 +352,7 @@ public final class NexoraAiDiagnostics {
             for (ActivityWindowSummary summary : activity) {
                 result.append("\n- ").append(summary.windowMinutes()).append("m: failures=")
                         .append(summary.failureCount()).append(" (")
+                        .append(summary.observedMinutes()).append("m observed, ")
                         .append(String.format(java.util.Locale.ROOT, "%.2f", summary.failuresPerMinute()))
                         .append("/min), resourceSamples=").append(summary.resourceSampleCount())
                         .append(", pressureSamples=").append(summary.pressureSampleCount())

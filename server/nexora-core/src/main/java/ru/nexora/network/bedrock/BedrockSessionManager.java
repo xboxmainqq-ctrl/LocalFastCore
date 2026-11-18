@@ -628,6 +628,45 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         advertisePlayerList(networkId, state);
     }
 
+    /**
+     * Redirects a source session only after the transfer coordinator has durably
+     * committed ownership to the destination. The session must already be frozen.
+     */
+    public void redirectFrozenPlayerToNode(String playerXuid, String address, int port) {
+        if (playerXuid == null || !playerXuid.matches("[A-Za-z0-9_-]{1,64}")) {
+            throw new IllegalArgumentException("Invalid player XUID");
+        }
+        Map.Entry<String, SessionState> match = null;
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            SessionState candidate = entry.getValue();
+            synchronized (candidate) {
+                if (candidate.identity != null && playerXuid.equals(candidate.identity.xuid())
+                        && candidate.transferFrozen && !candidate.transferRedirected) {
+                    if (match != null) throw new IllegalStateException("Duplicate frozen XUID on source node");
+                    match = entry;
+                }
+            }
+        }
+        if (match == null) throw new IllegalArgumentException("Player has no redirectable frozen source session");
+        String networkId = match.getKey();
+        SessionState state = match.getValue();
+        state.combatLock.lock();
+        try {
+            synchronized (state) {
+                if (sessions.get(networkId) != state || !state.transferFrozen || state.transferRedirected
+                        || state.rejected || state.identity == null
+                        || !playerXuid.equals(state.identity.xuid()) || !state.compressionNegotiated) {
+                    throw new IllegalStateException("Frozen source session is not eligible for redirect");
+                }
+                sendPacket(networkId, BedrockTransferPacketCodec.create(address, port, true), true);
+                state.transferRedirected = true;
+                state.rejected = true;
+            }
+        } finally {
+            state.combatLock.unlock();
+        }
+    }
+
     private void saveAllPlayerState(SessionState state) throws IOException {
         savePlayer(state);
         saveInventory(state);
@@ -6088,6 +6127,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private long entityId;
         private volatile boolean rejected;
         private volatile boolean transferFrozen;
+        private boolean transferRedirected;
         private PlayerTransferFence transferFence;
         private PendingEquipmentForm pendingEquipmentForm;
         private int pendingAiFormId;

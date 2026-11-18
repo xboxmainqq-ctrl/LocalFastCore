@@ -728,6 +728,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
      * and this process can still acquire/renew the exclusive online lease.
      */
     private boolean resumeFrozenPlayerWithoutTransfer(String playerXuid) throws IOException {
+        if (onlineLeaseRegistry == null || transferOwnershipNodeId == null) return false;
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
             SessionState state = entry.getValue();
             state.combatLock.lock();

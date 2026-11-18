@@ -45,6 +45,14 @@ public final class AdaptiveRuntime {
         pressure = pressure == 0.0 ? ratio : pressure * 0.85 + ratio * 0.15;
     }
 
+    public synchronized long adaptEstimate(long measuredP95Nanos, long fallbackNanos) {
+        if (measuredP95Nanos < 0 || fallbackNanos < 0) throw new IllegalArgumentException("negative estimate");
+        long base = measuredP95Nanos > 0 ? measuredP95Nanos : fallbackNanos;
+        if (pressure > 1.05) return Math.min(Long.MAX_VALUE / 2, base + base / 4);
+        if (pressure < 0.75) return Math.max(1L, base * 3 / 4);
+        return base;
+    }
+
     public synchronized double pressure() {
         return pressure;
     }

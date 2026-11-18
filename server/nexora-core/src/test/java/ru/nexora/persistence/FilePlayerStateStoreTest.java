@@ -41,6 +41,16 @@ class FilePlayerStateStoreTest {
     }
 
     @Test
+    void supportsBedrockXuidWithoutNumericConversion() throws IOException {
+        FilePlayerStateStore store = new FilePlayerStateStore(temporaryDirectory);
+        String xuid = "xuid-A_123";
+        PlayerStateSnapshot snapshot = new PlayerStateSnapshot(1, xuid, 1L, 10L, new byte[] {9, 8});
+
+        assertEquals(PlayerStateStore.SaveResult.SAVED, store.save(snapshot));
+        assertEquals(xuid, store.loadLatest(xuid).orElseThrow().playerId());
+    }
+
+    @Test
     void detectsCorruptedSnapshot() throws IOException {
         FilePlayerStateStore store = new FilePlayerStateStore(temporaryDirectory);
         store.save(new PlayerStateSnapshot(1, "12", 1L, 10L, new byte[] {1, 2, 3}));

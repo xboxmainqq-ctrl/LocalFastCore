@@ -581,6 +581,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         try {
                             // A disconnect must not let an expired former owner
                             // overwrite the canonical checkpoint now owned elsewhere.
+                            if (onlineLeaseRegistry != null && state.onlineLeaseSessionId == null) {
+                                throw new IOException("Disconnect persistence has no global online ownership lease");
+                            }
                             assertTransferNodeOwnership(state);
                             returnCraftingGridItems(state);
                             saveAllPlayerState(state);
@@ -4475,6 +4478,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         long now = nanoTime.getAsLong();
         String leaseSessionId = state.onlineLeaseSessionId;
         ru.nexora.network.PlayerOnlineLeaseRegistry leases = onlineLeaseRegistry;
+        if (leases != null && state.loginAuthenticated && leaseSessionId == null) {
+            throw new IOException("Authenticated player session has no global online ownership lease");
+        }
         if (leases != null && leaseSessionId != null) {
             long previousLeaseRenewal = state.lastOnlineLeaseRenewalNanos;
             long renewalInterval = Math.max(500_000_000L, onlineLeaseMillis * 1_000_000L / 3L);

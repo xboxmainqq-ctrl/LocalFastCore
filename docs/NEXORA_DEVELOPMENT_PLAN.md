@@ -292,7 +292,7 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Added a source-side reconciliation API that scans frozen Bedrock sessions and queries the latest durable per-XUID transfer decision.
 - Added recovery for the narrow crash/failure window where the source froze and checkpointed but PREPARED was never published: the session resumes only if the shared ledger confirms no transfer record and the same node can still renew/acquire the exclusive online lease.
 - Duplicate/failed transfer attempts now consult the durable per-XUID decision before any automatic source resume; an existing PREPARED, CLAIMED, or terminal decision keeps the source frozen for normal reconciliation.
-- A frozen source session is resumed only for a durable ABORTED record; it is redirected only for a matching durable COMMITTED record and configured Bedrock route. PREPARED/CLAIMED or missing/ambiguous outcomes remain frozen.
+- A frozen source session is resumed for a durable ABORTED record; it is redirected only for a matching durable COMMITTED record and configured Bedrock route. PREPARED/CLAIMED remain frozen. If no transfer record exists, the source may resume only after it proves it can still acquire/renew its exclusive online lease.
 - Added the operator-console command `transfer recover` so an operator can reconcile source sessions after a peer or database restart without guessing whether ownership committed.
 - CI: 798 tests passed, zero failures on commit `35e90f7`.
 ### 41. Shared online XUID lease registry — IMPLEMENTED, CI VERIFIED
@@ -304,10 +304,11 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Source transfer freeze releases the source online lease; a confirmed abort reacquires it before gameplay resumes. PREPARED/CLAIMED/COMMITTED transfer history continues to fence logins during the handoff gap.
 - A session that loses its durable transfer fence or global online lease immediately stops gameplay and releases its matching online lease; destination rollback also releases any lease held by a partially activated session.
 - Added in-memory expiry/fencing tests, JDBC multi-node exclusivity tests, and a concurrent two-node first-login race test.
-- CI: 802 tests passed, zero failures on implementation commit `68ff1a5`; GitHub Actions build and GitLab publish both succeeded.
+- CI: 805 tests passed, zero failures on implementation commit `a37f99b`; subsequent JDBC lease mutation and source recovery hardening is being revalidated.
 - Remaining validation: process-kill/partition tests with two actual server processes and a production database; the lease uses bounded expiry and is not a consensus protocol for arbitrary clock skew. Nodes must have synchronized clocks and must not continue gameplay when renewal fails.
 ### 42. Shared ownership restart integration coverage — IMPLEMENTED, CI PENDING
 - Added combined JDBC restart tests using independent DataSource/ledger/lease/checkpoint-store instances to model source and destination processes reconnecting to the same durable database.
+- Added source-coordinator tests proving a failed freeze resumes only when no durable per-XUID transfer decision exists; duplicate attempts cannot unfreeze an already-owned transfer.
 - Verified a COMMITTED transfer continues to reject the former source after restart, the destination restores the exact canonical checkpoint revision, the destination lease remains exclusive, and an expired process lease cannot be resurrected by the old session token.
 - Verified an ABORTED transfer restores source-node login authority and rejects the destination after restart.
 - Remaining: run the same scenarios with two actual server JVMs, a production SQL engine, network partitions, and abrupt process termination at each handoff boundary.

@@ -135,3 +135,11 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - `ClusterReplayGuard` rejects duplicate IDs during a bounded in-memory retention window and fails closed at capacity. It does not survive process restart.
 - Loopback transport tests cover message delivery, ACK and duplicate rejection.
 - Next: durable replay/idempotency, key rotation, TLS or private-network confidentiality, process restart/failure injection, and a shared replicated transfer ledger. The transport remains opt-in and is not wired into server startup.
+
+
+### 22. Cluster replay persistence and key rotation — FOUNDATION ADDED
+- `ClusterReplayFilter` decouples transport replay checks from storage.
+- `FileClusterReplayFilter` persists bounded replay markers with checksum validation and cross-process file locking; corruption and capacity exhaustion fail closed.
+- `RotatingClusterMessageCodec` signs with the active HMAC key and accepts up to four configured active/previous keys for staged rotation.
+- Tests cover restart-style replay rejection, expiry, capacity, corruption, symlink rejection, and key rotation.
+- Limitation: replay persistence is local to one host; no shared cluster-wide deduplication or automated secret distribution/rotation exists.

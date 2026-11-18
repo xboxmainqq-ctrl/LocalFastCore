@@ -15,8 +15,7 @@ import ru.nexora.world.WorldItemEntityStorage;
 import ru.nexora.world.WorldLivingEntityStorage;
 import ru.nexora.inventory.ContainerInventoryStorage;
 import ru.nexora.inventory.FurnaceStateStorage;
-import ru.nexora.world.WorldAutosave;
-import ru.nexora.world.WorldFurnaceTicker;
+import ru.nexora.world.WorldRuntimeModule;
 import ru.nexora.world.PlayerDataStorage;
 import ru.nexora.inventory.PlayerInventoryStorage;
 import ru.nexora.inventory.PlayerEquipmentStorage;
@@ -154,22 +153,22 @@ public final class NexoraServer {
         lifecycle.register(signaling);
 
         long autosaveSeconds = config.autosaveSeconds();
-        WorldAutosave autosave = new WorldAutosave(world, Duration.ofSeconds(autosaveSeconds),
+        WorldRuntimeModule worldRuntime = new WorldRuntimeModule(
+                world,
+                Duration.ofSeconds(autosaveSeconds),
                 exception -> {
                     aiDiagnostics.recordFailure("world-autosave", exception);
                     System.err.println("NEXORA: periodic world/player autosave failed: " + exception.getMessage());
                 },
                 bedrockSessions::savePlayers,
                 elapsed -> aiDiagnostics.recordSlowOperation(
-                        "world-autosave", elapsed, Duration.ofSeconds(1).toNanos()));
-        lifecycle.register(autosave);
-        WorldFurnaceTicker furnaceTicker = new WorldFurnaceTicker(world,
+                        "world-autosave", elapsed, Duration.ofSeconds(1).toNanos()),
                 exception -> {
                     aiDiagnostics.recordFailure("furnace-tick", exception);
                     System.err.println("NEXORA: furnace tick failed: " + exception.getMessage());
                 },
                 elapsed -> aiDiagnostics.recordSlowOperation("furnace-tick", elapsed, 50_000_000L));
-        lifecycle.register(furnaceTicker);
+        lifecycle.register(worldRuntime);
         lifecycle.register(aiMonitor);
         try {
             discovery.start();

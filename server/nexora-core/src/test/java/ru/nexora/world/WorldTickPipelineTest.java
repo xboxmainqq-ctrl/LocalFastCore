@@ -169,9 +169,9 @@ class WorldTickPipelineTest {
         List<LivingEntityAiService.PlayerTarget> players = new ArrayList<>();
         for (int i = 0; i < 20; i++) {
             players.add(new LivingEntityAiService.PlayerTarget(
-                    "bystander-" + i, 1.0 + i * 0.1, 64, 0, true));
+                    "bystander-" + i, 30.0 + i, 64, 0, true));
         }
-        var attacker = new LivingEntityAiService.PlayerTarget("attacker", 2.0, 64, 0, true);
+        var attacker = new LivingEntityAiService.PlayerTarget("attacker", 1.5, 64, 0, true);
         players.add(attacker);
         pipeline.recordProvocation(piglin.runtimeId(), "attacker", 2_000);
         List<LivingEntityAiService.Decision> decisions = new ArrayList<>();

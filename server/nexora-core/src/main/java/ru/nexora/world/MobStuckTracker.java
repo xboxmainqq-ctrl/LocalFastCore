@@ -36,14 +36,14 @@ public final class MobStuckTracker {
         }
         State previous = states.get(runtimeId);
         if (previous == null) {
-            put(runtimeId, new State(x, y, z, 0, -1, 0));
+            put(runtimeId, new State(x, y, z, 0, 0, -1));
             return 0;
         }
 
         boolean progressed = Math.sqrt(square(x - previous.x())
                 + square(y - previous.y()) + square(z - previous.z())) > PROGRESS_EPSILON;
         if (progressed) {
-            states.put(runtimeId, new State(x, y, z, 0, -1, nowMillis));
+            states.put(runtimeId, new State(x, y, z, 0, 0, -1));
             return 0;
         }
 
@@ -55,7 +55,7 @@ public final class MobStuckTracker {
             attempt++;
             lastRecovery = nowMillis;
         }
-        states.put(runtimeId, new State(x, y, z, stalls, lastRecovery, nowMillis));
+        states.put(runtimeId, new State(x, y, z, stalls, attempt, lastRecovery));
         return attempt;
     }
 
@@ -83,9 +83,6 @@ public final class MobStuckTracker {
     }
 
     private record State(double x, double y, double z, int stalls,
-                         long lastRecoveryMillis, long lastSampleMillis) {
-        private int recoveryAttempt() {
-            return lastRecoveryMillis < 0 ? 0 : 1;
-        }
+                         int recoveryAttempt, long lastRecoveryMillis) {
     }
 }

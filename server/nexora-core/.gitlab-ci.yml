@@ -17,17 +17,8 @@ nexora-core-verify:
   script:
     - mvn $MAVEN_CLI_OPTS clean verify
     - test -f target/server.jar
-    - jar tf target/server.jar | grep -q '^com/fasterxml/jackson/databind/ObjectMapper.class  artifacts:
-    when: always
-    expire_in: 7 days
-    reports:
-      junit:
-        - target/surefire-reports/TEST-*.xml
-    paths:
-      - target/server.jar
-      - target/surefire-reports/
-
-    - unzip -p target/server.jar META-INF/MANIFEST.MF | grep -q '^Main-Class: ru.nexora.NexoraServer'
+    - jar tf target/server.jar | grep -q "com/fasterxml/jackson/databind/ObjectMapper.class"
+    - unzip -p target/server.jar META-INF/MANIFEST.MF | grep -q "Main-Class: ru.nexora.NexoraServer"
   artifacts:
     when: always
     expire_in: 7 days

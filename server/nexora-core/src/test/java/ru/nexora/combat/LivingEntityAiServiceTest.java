@@ -381,4 +381,16 @@ class LivingEntityAiServiceTest {
                 LivingEntityAiService.attackCooldownMillisFor("minecraft:warden"));
     }
 
+    @Test
+    void rangedAttackCooldownsAreSpeciesSpecific() {
+        assertEquals(1_250L,
+                LivingEntityAiService.rangedAttackCooldownMillisFor("minecraft:skeleton"));
+        assertEquals(1_500L,
+                LivingEntityAiService.rangedAttackCooldownMillisFor("minecraft:guardian"));
+        assertEquals(3_000L,
+                LivingEntityAiService.rangedAttackCooldownMillisFor("minecraft:ghast"));
+        assertEquals(1_000L,
+                LivingEntityAiService.rangedAttackCooldownMillisFor("minecraft:blaze"));
+    }
+
 }

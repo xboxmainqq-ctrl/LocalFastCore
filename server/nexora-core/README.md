@@ -88,11 +88,13 @@ Build and test locally (the GitHub Actions workflow also runs this command for c
 mvn -f server/nexora-core/pom.xml clean verify
 ~~~
 
-The build copies runtime dependencies to server/nexora-core/target/lib/ so the application jar can be launched with its manifest classpath:
+The build creates a standalone executable JAR at `server/nexora-core/target/server.jar`. Runtime dependencies, including Jackson Databind, are packaged inside it; no separate `target/lib` directory is required:
 
 ~~~sh
-java -jar server/nexora-core/target/nexora-core-0.1.0-SNAPSHOT.jar 0.0.0.0 19132 "NEXORA Core" 20
+java -jar server/nexora-core/target/server.jar 0.0.0.0 19132 "NEXORA Core" 20
 ~~~
+
+On Pterodactyl-based hosts, the primary allocation is read from `SERVER_PORT` when no second command-line argument is supplied. `NEXORA_PORT` overrides `SERVER_PORT`; an explicit command-line port takes precedence over both. Bind to `0.0.0.0` inside the container.
 
 The WebRTC implementation uses native libraries supplied by webrtc-java; the deployment host must match a published native classifier and have the required system runtime libraries installed. If the VPS is behind NAT, set NEXORA_STUN_URLS to a semicolon-separated list of STUN URLs so the answer can include a public server-reflexive ICE candidate. Leave it empty on a directly reachable public host; each configured STUN server adds connection-setup latency.
 
@@ -114,7 +116,7 @@ Open the following ports in the VPS firewall:
 - UDP 30000-30199 for WebRTC ICE/DTLS/SCTP traffic.
 - UDP 19132 only for the legacy RakNet discovery experiment.
 
-The WebRTC UDP range is configurable with NEXORA_UDP_PORT_MIN and NEXORA_UDP_PORT_MAX. World and player autosave are configurable with NEXORA_AUTOSAVE_SECONDS (default 300 seconds). Player profiles are stored under data/players/. Player checkpoint files under data/player-state keep the previous verified `.nxps` generation as `.nxps.bak`; on startup/load, a corrupt or missing primary checkpoint is restored from that backup when its checksum and metadata validate. A successful recovery rewrites the primary file before returning the snapshot. The backup is one generation behind and is refreshed only after the current primary has been verified. Set both UDP port bounds to 0 to use the operating system's default ephemeral range. The HTTP listener bind address is configurable with NEXORA_HTTP_BIND; it defaults to the main bind host.
+The WebRTC UDP range is configurable with NEXORA_UDP_PORT_MIN and NEXORA_UDP_PORT_MAX. The host must route this separate UDP range into the container; allocating only the signaling/game port does not expose it. Do not reuse the legacy RakNet UDP port for WebRTC ICE. World and player autosave are configurable with NEXORA_AUTOSAVE_SECONDS (default 300 seconds). Player profiles are stored under data/players/. Player checkpoint files under data/player-state keep the previous verified `.nxps` generation as `.nxps.bak`; on startup/load, a corrupt or missing primary checkpoint is restored from that backup when its checksum and metadata validate. A successful recovery rewrites the primary file before returning the snapshot. The backup is one generation behind and is refreshed only after the current primary has been verified. Set both UDP port bounds to 0 to use the operating system's default ephemeral range. The HTTP listener bind address is configurable with NEXORA_HTTP_BIND; it defaults to the main bind host.
 
 ## Identity key safety
 

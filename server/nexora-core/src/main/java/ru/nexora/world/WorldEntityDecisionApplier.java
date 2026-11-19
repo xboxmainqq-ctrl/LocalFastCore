@@ -78,13 +78,14 @@ public final class WorldEntityDecisionApplier {
                             double step = Math.min(horizontalStep, distance);
                             moveX = distance <= 1.0e-6 ? 0 : dx / distance * step;
                             moveZ = distance <= 1.0e-6 ? 0 : dz / distance * step;
+                            moveY = waypoint.orElseThrow().y() - current.y();
                         } else {
                             moveX = 0;
                             moveZ = 0;
                         }
                     }
                 }
-                if (!WorldCollision.canMoveMob(world, current.identifier(),
+                if (!WorldCollision.canStepMob(world, current.identifier(),
                         current.x(), current.y(), current.z(),
                         current.x() + moveX, current.y() + moveY, current.z() + moveZ)) {
                     moveX = 0;

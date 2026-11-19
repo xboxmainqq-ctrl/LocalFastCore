@@ -152,7 +152,11 @@ public final class WorldLivingEntityManager {
         return List.copyOf(damage);
     }
 
-    private static long safeNextFireDamageAt(long nowMillis) {\n        return nowMillis > Long.MAX_VALUE - 1000L ? Long.MAX_VALUE : nowMillis + 1000L;\n    }\n\n    public synchronized boolean remove(long runtimeId) {
+    private static long safeNextFireDamageAt(long nowMillis) {
+        return nowMillis > Long.MAX_VALUE - 1000L ? Long.MAX_VALUE : nowMillis + 1000L;
+    }
+
+    public synchronized boolean remove(long runtimeId) {
         return entities.remove(runtimeId) != null;
     }
 

@@ -73,4 +73,41 @@ class InboundPeerBudgetTest {
         assertDoesNotThrow(
                 () -> pipeline.onFrame("peer-a", "UnreliableDataChannel", new byte[] {0, 3}));
     }
+    @Test
+    void admitsTwoHundredFiftySixPeersConcurrentlyWithoutCrossPeerBudgetLeakage() throws Exception {
+        int peers = 256;
+        int framesPerPeer = 10;
+        InboundPeerBudget budget = new InboundPeerBudget(5_000, 20, 1_000, peers);
+        NetherNetInboundPipeline pipeline = new NetherNetInboundPipeline(
+                message -> { }, new ru.nexora.ai.NexoraAiGuard(), budget, peers, 64);
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(32);
+        java.util.concurrent.CountDownLatch ready = new java.util.concurrent.CountDownLatch(32);
+        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+        try {
+            java.util.List<java.util.concurrent.Future<?>> tasks = new java.util.ArrayList<>();
+            for (int peer = 0; peer < peers; peer++) {
+                final String peerId = "load-peer-" + peer;
+                tasks.add(executor.submit(() -> {
+                    ready.countDown();
+                    start.await();
+                    for (int frame = 0; frame < framesPerPeer; frame++) {
+                        pipeline.onFrame(peerId, "UnreliableDataChannel", new byte[] {0, 1, 2});
+                    }
+                    return null;
+                }));
+            }
+            ready.await();
+            start.countDown();
+            for (var task : tasks) task.get();
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertEquals(peers * framesPerPeer, pipeline.stats().completedMessages());
+        assertEquals(peers, pipeline.activeChannelCount());
+        assertEquals(peers, pipeline.peerBudgetStats().trackedPeers());
+        assertEquals(peers * framesPerPeer, pipeline.peerBudgetStats().admittedFrames());
+        assertEquals(0, pipeline.peerBudgetStats().rejectedFrames());
+    }
+
 }

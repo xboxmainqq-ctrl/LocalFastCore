@@ -45,6 +45,27 @@ class WorldTest {
     }
 
     @Test
+    void failedChunkGenerationKeepsTheDeferredLoadForRetry() {
+        java.util.concurrent.atomic.AtomicInteger attempts = new java.util.concurrent.atomic.AtomicInteger();
+        World world = new World("NEXORA", 1L, (chunk, seed) -> {
+            if (attempts.getAndIncrement() == 0) throw new IllegalStateException("temporary generation failure");
+            new FlatWorldGenerator().generate(chunk, seed);
+        });
+        WorldChunkResidencyManager residency = new WorldChunkResidencyManager(1, 20);
+        var plan = residency.update(List.of(new WorldChunkResidencyManager.PlayerChunk(0, 0)), 0);
+
+        assertThrows(IllegalStateException.class, () -> world.applyChunkResidencyPlan(plan, 1));
+        assertEquals(5, world.pendingChunkLoadCount());
+        assertEquals(0, world.loadedChunkCount());
+
+        var retry = world.applyChunkResidencyPlan(
+                new WorldChunkResidencyManager(1, 20).update(List.of(), 1), 1);
+        assertEquals(1, retry.loaded());
+        assertEquals(4, world.pendingChunkLoadCount());
+        assertEquals(1, world.loadedChunkCount());
+    }
+
+    @Test
     void flatGeneratorCreatesAStableSpawnPlatform() {
         World world = new World("NEXORA World", 12345L, new FlatWorldGenerator());
 

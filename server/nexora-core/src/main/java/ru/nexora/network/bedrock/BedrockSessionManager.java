@@ -1612,6 +1612,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     public String adminRuntimeSummary() {
         ru.nexora.combat.LivingEntityAiService.Stats ai = livingEntityAi.stats();
         ru.nexora.network.nethernet.InboundPeerBudget.Stats ingress = inbound.peerBudgetStats();
+        ru.nexora.network.nethernet.ReassemblyMemoryBudget.Stats reassembly = inbound.reassemblyMemoryStats();
         StringBuilder summary = new StringBuilder("players=").append(authenticatedPlayerCount())
                 .append(", sessions=").append(activeSessionCount())
                 .append(", mobs=").append(world.livingEntities().snapshot().size())
@@ -1629,6 +1630,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 .append(", inboundRejectedFrames=").append(ingress.rejectedFrames())
                 .append(", inboundRejectedBytes=").append(ingress.rejectedBytes())
                 .append(", inboundTrackedPeers=").append(ingress.trackedPeers())
+                .append(", inboundReassemblyReservedBytes=").append(reassembly.reservedBytes())
+                .append(", inboundReassemblyMaxBytes=").append(reassembly.maxBytes())
+                .append(", inboundReassemblyRejectedReservations=").append(reassembly.rejectedReservations())
                 .append(", outboundQueuedFrames=").append(sessions.values().stream()
                         .mapToInt(state -> state.outboundQueue.frameCount()).sum())
                 .append(", outboundQueuedBytes=").append(sessions.values().stream()

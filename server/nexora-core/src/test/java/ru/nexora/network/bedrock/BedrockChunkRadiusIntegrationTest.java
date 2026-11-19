@@ -80,6 +80,16 @@ class BedrockChunkRadiusIntegrationTest {
             assertEquals(49, allPackets.stream()
                     .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
                     .count());
+
+            String diagnostics = manager.adminRuntimeSummary();
+            assertTrue(diagnostics.contains("chunkStreamingBatches=16"));
+            assertTrue(diagnostics.contains("chunkStreamingCompleted=2"));
+            assertTrue(diagnostics.contains("chunkPacketsEncoded=49"));
+            assertTrue(diagnostics.contains("chunkPacketsReused=9"));
+            assertTrue(diagnostics.contains("chunkStreamingPending=0"));
+            assertTrue(diagnostics.contains("chunkStreamingPendingPeak=45"));
+            assertTrue(diagnostics.contains("chunkStreamingP95Ns="));
+            assertTrue(diagnostics.contains("outboundDrainP95Ns="));
         } finally {
             manager.close();
         }

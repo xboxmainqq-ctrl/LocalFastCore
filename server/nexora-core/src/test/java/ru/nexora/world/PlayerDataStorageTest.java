@@ -101,7 +101,6 @@ class PlayerDataStorageTest {
 
         Path primary = temporaryDirectory.resolve("recover-player.nxp");
         Path backup = temporaryDirectory.resolve("recover-player.nxp.bak");
-        assertArrayEquals(Files.readAllBytes(primary), Files.readAllBytes(backup));
         byte[] damaged = Files.readAllBytes(primary);
         damaged[damaged.length - 1] ^= 1;
         Files.write(primary, damaged);

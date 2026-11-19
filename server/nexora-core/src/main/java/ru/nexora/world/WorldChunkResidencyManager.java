@@ -20,6 +20,8 @@ public final class WorldChunkResidencyManager {
     private final int unloadGraceTicks;
     private final Shape shape;
     private final Set<Long> desiredChunks = new HashSet<>();
+    private final Set<Long> loadScratch = new HashSet<>();
+    private final Set<Long> unloadScratch = new HashSet<>();
     private final Map<Long, Long> lastDesiredTick = new HashMap<>();
     private final Set<Long> resident = new HashSet<>();
     private volatile Set<Long> residentSnapshot = Set.of();
@@ -87,24 +89,28 @@ public final class WorldChunkResidencyManager {
             lastDesiredTick.put(key, tick);
         }
 
-        Set<Long> load = new HashSet<>(desiredChunks);
-        load.removeAll(resident);
-        resident.addAll(load);
+        // Reuse per-manager scratch sets: this method runs on the world hot path
+        // and allocating two new HashSets on every tick creates avoidable GC work.
+        loadScratch.clear();
+        for (long key : desiredChunks) {
+            if (!resident.contains(key)) loadScratch.add(key);
+        }
+        resident.addAll(loadScratch);
 
-        Set<Long> unload = new HashSet<>();
+        unloadScratch.clear();
         for (long key : resident) {
             if (desiredChunks.contains(key)) continue;
             long last = lastDesiredTick.getOrDefault(key, tick);
             if (tick - last >= unloadGraceTicks) {
-                unload.add(key);
+                unloadScratch.add(key);
             }
         }
-        resident.removeAll(unload);
-        for (long key : unload) lastDesiredTick.remove(key);
-        if (!load.isEmpty() || !unload.isEmpty()) {
+        resident.removeAll(unloadScratch);
+        for (long key : unloadScratch) lastDesiredTick.remove(key);
+        if (!loadScratch.isEmpty() || !unloadScratch.isEmpty()) {
             residentSnapshot = Set.copyOf(resident);
         }
-        return new ResidencyPlan(decode(load), decode(unload),
+        return new ResidencyPlan(decode(loadScratch), decode(unloadScratch),
                 resident.size(), desiredChunks.size());
     }
 

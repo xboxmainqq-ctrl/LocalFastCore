@@ -97,4 +97,31 @@ class WorldEntityTickCoordinatorTest {
                 "The coordinator must apply the produced AI movement to the world registry");
     }
 
+
+    @Test
+    void worldBoundCoordinatorKeepsKnockbackInsideLoadedCollisionSpace() {
+        World world = new World("world-coordinator-collision", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
+        world.setBlock(1, 65, 0, BlockType.STONE);
+        world.setBlock(1, 66, 0, BlockType.STONE);
+        WorldLivingEntity mob = world.livingEntities().spawn(
+                "minecraft:zombie", 20, 0.5, 65.0, 0.5);
+        world.livingEntities().setVelocity(mob.runtimeId(), 1.0, 0.0, 0.0).orElseThrow();
+        WorldChunkResidencyManager residency = new WorldChunkResidencyManager(1, 5);
+        WorldTickPipeline pipeline = new WorldTickPipeline(
+                new MobAiLoadController(), new LivingEntityAiService());
+        WorldEntityTickCoordinator coordinator = new WorldEntityTickCoordinator(
+                world, residency, pipeline, new NexoraAiDiagnostics(), 50_000_000L);
+
+        coordinator.tick(0, 1_000,
+                List.of(new WorldChunkResidencyManager.PlayerChunk(0, 0)),
+                List.of(), ignored -> {});
+
+        WorldLivingEntity updated = world.livingEntities().find(mob.runtimeId()).orElseThrow();
+        assertEquals(0.5, updated.x(), 1.0e-6,
+                "Physics must not push a mob through a solid wall");
+        assertEquals(0.0, updated.velocityX(), 1.0e-6,
+                "Blocked knockback must be cancelled");
+    }
+
 }

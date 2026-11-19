@@ -3382,7 +3382,6 @@ class BedrockSessionManagerTest {
     }
 
     private static void completeChunkStreaming(BedrockSessionManager manager, String networkId) throws Exception {
-        Object state = getSessionField(manager, networkId, "chunkStreamingQueue");
         java.lang.reflect.Field sessionsField = BedrockSessionManager.class.getDeclaredField("sessions");
         sessionsField.setAccessible(true);
         Object session = ((java.util.Map<?, ?>) sessionsField.get(manager)).get(networkId);

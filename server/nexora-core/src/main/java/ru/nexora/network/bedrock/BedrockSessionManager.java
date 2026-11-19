@@ -144,6 +144,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private static final long CHAT_RATE_WINDOW_NANOS = 5_000_000_000L;
     private static final int MAX_CHAT_MESSAGES_PER_WINDOW = 5;
     private final Map<Long, ru.nexora.combat.ArrowProjectile> mobArrows = new ConcurrentHashMap<>();
+    private final Map<Long, ru.nexora.combat.FireballProjectile> mobFireballs = new ConcurrentHashMap<>();
     private final Set<Long> poisonMobArrows = ConcurrentHashMap.newKeySet();
     private final ru.nexora.combat.GuardianBeamTracker guardianBeamTracker =
             new ru.nexora.combat.GuardianBeamTracker();
@@ -3517,6 +3518,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 continue;
             }
             if (tickGuardianBeamBehavior(mob, nearestPlayer, nowMillis, tick)
+                    || tickFireballMobBehavior(mob, nearestPlayer, nowMillis)
                     || tickRangedMobBehavior(mob, nearestPlayer, nowMillis)) {
                 mobAiLoadController.recordScheduled(mob.runtimeId());
                 mobAiTaskScheduler.recordRun(ru.nexora.combat.MobAiTaskScheduler.Task.COMBAT);
@@ -3667,6 +3669,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     WorldCollision.isOnGround(world, moved.x(), moved.y(), moved.z())));
         }
         tickMobArrows(tick);
+        tickMobFireballs(tick);
     }
 
     private static float mobMaxHealth(String identifier) {
@@ -3786,6 +3789,127 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 ? Long.MAX_VALUE : nowMillis + cooldownMillis;
         nextMobAttackMillis.put(mob.runtimeId(), nextAttackAt);
         return true;
+    }
+
+
+    /** Ghasts launch heavy fireballs; blazes launch faster, smaller fireballs. */
+    private boolean tickFireballMobBehavior(
+            WorldLivingEntity mob,
+            ru.nexora.combat.LivingEntityAiService.PlayerTarget nearest,
+            long nowMillis
+    ) {
+        String identifier = mob.identifier();
+        boolean ghast = "minecraft:ghast".equals(identifier);
+        boolean blaze = "minecraft:blaze".equals(identifier);
+        if (!ghast && !blaze) return false;
+        if (nearest == null) return true;
+        double dx = nearest.x() - mob.x();
+        double dy = nearest.y() + 0.8 - (mob.y() + (ghast ? 1.8 : 1.2));
+        double dz = nearest.z() - mob.z();
+        double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        double maxRange = ghast ? 16.0 : 14.0;
+        if (distance < 3.0 || distance > maxRange) return true;
+        if (!WorldRaycast.hasLineOfSightInLoadedChunks(world, mob.x(), mob.y() + (ghast ? 1.8 : 1.2),
+                mob.z(), (int) Math.floor(nearest.x()), (int) Math.floor(nearest.y() + 1.0),
+                (int) Math.floor(nearest.z()))) return true;
+        if (nowMillis < nextMobAttackMillis.getOrDefault(mob.runtimeId(), 0L)) return true;
+        if (mobFireballs.size() >= 1_000) return true;
+        double aimY = dy + distance * (ghast ? 0.018 : 0.025);
+        double aimLength = Math.sqrt(dx * dx + aimY * aimY + dz * dz);
+        if (aimLength < 0.0001) return true;
+        long runtimeId = nextMobArrowRuntimeId.getAndIncrement();
+        if (runtimeId <= 0 || runtimeId == Long.MAX_VALUE) {
+            nextMobArrowRuntimeId.set(4_000_000L);
+            runtimeId = nextMobArrowRuntimeId.getAndIncrement();
+        }
+        double speed = ghast ? 1.35 : 1.65;
+        ru.nexora.combat.FireballProjectile fireball = new ru.nexora.combat.FireballProjectile(
+                -runtimeId, runtimeId, "mob:" + mob.runtimeId(),
+                ghast ? "minecraft:fireball" : "minecraft:small_fireball",
+                mob.x(), mob.y() + (ghast ? 1.8 : 1.2), mob.z(),
+                dx / aimLength * speed, aimY / aimLength * speed, dz / aimLength * speed,
+                0, ghast ? 6.0f : 4.0f, ghast ? 5 : 3);
+        mobFireballs.put(runtimeId, fireball);
+        broadcastLivingActorPacket(BedrockFireballActorCodec.createSpawn(fireball));
+        long cooldownMillis = ghast ? 3_000L : 1_500L;
+        nextMobAttackMillis.put(mob.runtimeId(),
+                nowMillis > Long.MAX_VALUE - cooldownMillis ? Long.MAX_VALUE : nowMillis + cooldownMillis);
+        return true;
+    }
+
+    private void tickMobFireballs(long tick) {
+        long nowNanos = Math.max(0L, nanoTime.getAsLong());
+        for (var entry : mobFireballs.entrySet()) {
+            ru.nexora.combat.FireballProjectile current = entry.getValue();
+            ru.nexora.combat.FireballProjectile next = current.advance();
+            boolean removed = next.expired() || isMobFireballPathBlocked(current, next);
+            if (!removed) {
+                for (Map.Entry<String, SessionState> playerEntry : sessions.entrySet()) {
+                    SessionState player = playerEntry.getValue();
+                    if (!player.loginAuthenticated || !player.clientInitialized
+                            || !player.positionInitialized || player.dead || player.vitals.dead()) continue;
+                    double distanceSquared = distanceToSegmentSquared(
+                            player.positionX, player.positionY + 0.9, player.positionZ,
+                            current.x(), current.y(), current.z(), next.x(), next.y(), next.z());
+                    if (distanceSquared > 0.7 * 0.7) continue;
+                    player.combatLock.lock();
+                    try {
+                        synchronized (player) {
+                            if (player.dead || player.vitals.dead()) continue;
+                            List<ItemStack> armor = player.equipment.armorSnapshot().stream()
+                                    .flatMap(Optional::stream).toList();
+                            float damage = ru.nexora.combat.EnchantmentCombatService
+                                    .applyIncomingDamage(current.damage(), armor,
+                                            ru.nexora.combat.EnchantmentCombatService.DamageType.PROJECTILE);
+                            if (damage > 0.0f) {
+                                applyDamage(playerEntry.getKey(), player, damage, tick, "death.attack.fireball");
+                            }
+                            if (!player.dead && !player.vitals.dead() && current.fireDurationSeconds() > 0) {
+                                long durationNanos = current.fireDurationSeconds() * 1_000_000_000L;
+                                player.fireUntilNanos = Math.max(player.fireUntilNanos,
+                                        nowNanos > Long.MAX_VALUE - durationNanos
+                                                ? Long.MAX_VALUE : nowNanos + durationNanos);
+                            }
+                        }
+                    } finally {
+                        player.combatLock.unlock();
+                    }
+                    removed = true;
+                    break;
+                }
+            }
+            if (removed) {
+                if (mobFireballs.remove(entry.getKey(), current)) {
+                    broadcastLivingActorPacket(
+                            BedrockAddItemActorCodec.createRemoveActor(current.uniqueId()));
+                }
+            } else if (mobFireballs.replace(entry.getKey(), current, next)) {
+                broadcastLivingActorPacket(BedrockFireballActorCodec.createMove(next));
+            }
+        }
+    }
+
+    /** Sweeps the full fireball segment and treats unloaded chunks as solid boundaries. */
+    private boolean isMobFireballPathBlocked(
+            ru.nexora.combat.FireballProjectile from,
+            ru.nexora.combat.FireballProjectile to
+    ) {
+        double dx = to.x() - from.x();
+        double dy = to.y() - from.y();
+        double dz = to.z() - from.z();
+        double length = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        int samples = Math.max(1, (int) Math.ceil(length / 0.1));
+        if (samples > 256) return true;
+        for (int sample = 1; sample <= samples; sample++) {
+            double fraction = (double) sample / samples;
+            int blockX = (int) Math.floor(from.x() + dx * fraction);
+            int blockY = (int) Math.floor(from.y() + dy * fraction);
+            int blockZ = (int) Math.floor(from.z() + dz * fraction);
+            if (blockY < WorldChunk.MIN_Y || blockY > WorldChunk.MAX_Y
+                    || !world.isChunkLoadedAt(blockX, blockZ)
+                    || world.getBlock(blockX, blockY, blockZ) != BlockType.AIR) return true;
+        }
+        return false;
     }
 
     private static boolean isRangedMob(String identifier) {
@@ -4130,15 +4254,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
         WorldLivingEntity entity = world.livingEntities().find(runtimeId).orElse(null);
         ru.nexora.combat.ArrowProjectile arrow = mobArrows.get(runtimeId);
-        if (entity == null && arrow == null) {
+        ru.nexora.combat.FireballProjectile fireball = mobFireballs.get(runtimeId);
+        if (entity == null && arrow == null && fireball == null) {
             // Keep unknown actor packet types safe rather than silently dropping them.
             broadcastPacket(packet);
             return;
         }
 
-        double x = entity != null ? entity.x() : arrow.x();
-        double z = entity != null ? entity.z() : arrow.z();
-        long uniqueId = entity != null ? entity.uniqueId() : arrow.uniqueId();
+        double x = entity != null ? entity.x() : arrow != null ? arrow.x() : fireball.x();
+        double z = entity != null ? entity.z() : arrow != null ? arrow.z() : fireball.z();
+        long uniqueId = entity != null ? entity.uniqueId() : arrow != null ? arrow.uniqueId() : fireball.uniqueId();
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
             SessionState recipient = entry.getValue();
             if (!recipient.clientInitialized || recipient.rejected) continue;
@@ -4151,7 +4276,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     visibleIds.add(runtimeId);
                     BedrockPacket spawn = entity != null
                             ? BedrockAddActorCodec.createAddActor(entity)
-                            : BedrockArrowActorCodec.createSpawn(arrow);
+                            : arrow != null ? BedrockArrowActorCodec.createSpawn(arrow)
+                            : BedrockFireballActorCodec.createSpawn(fireball);
                     sendPacket(entry.getKey(), spawn, true);
                 } else if (visibleNow) {
                     sendPacket(entry.getKey(), packet, true);
@@ -4264,6 +4390,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             if (entry.getValue().ownerNetworkId().equals("mob:" + runtimeId)
                     && mobArrows.remove(entry.getKey(), entry.getValue())) {
                 poisonMobArrows.remove(entry.getKey());
+                broadcastLivingActorPacket(
+                        BedrockAddItemActorCodec.createRemoveActor(entry.getValue().uniqueId()));
+            }
+        }
+        for (var entry : mobFireballs.entrySet()) {
+            if (entry.getValue().ownerNetworkId().equals("mob:" + runtimeId)
+                    && mobFireballs.remove(entry.getKey(), entry.getValue())) {
                 broadcastLivingActorPacket(
                         BedrockAddItemActorCodec.createRemoveActor(entry.getValue().uniqueId()));
             }
@@ -6078,6 +6211,26 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 }
             }
         }
+        for (ru.nexora.combat.FireballProjectile fireball : mobFireballs.values()) {
+            boolean visible = isWorldPositionVisible(recipient, fireball.x(), fireball.z());
+            if (visible && recipient.visibleArrowEntityIds.add(fireball.runtimeId())) {
+                try {
+                    sendPacket(recipientNetworkId, BedrockFireballActorCodec.createSpawn(fireball), true);
+                } catch (RuntimeException exception) {
+                    recipient.visibleArrowEntityIds.remove(fireball.runtimeId());
+                    System.err.println("NEXORA: unable to add fireball entering chunk view: "
+                            + exception.getMessage());
+                }
+            } else if (!visible && recipient.visibleArrowEntityIds.remove(fireball.runtimeId())) {
+                try {
+                    sendPacket(recipientNetworkId,
+                            BedrockAddItemActorCodec.createRemoveActor(fireball.uniqueId()), true);
+                } catch (RuntimeException exception) {
+                    System.err.println("NEXORA: unable to remove fireball leaving chunk view: "
+                            + exception.getMessage());
+                }
+            }
+        }
     }
 
     private static boolean isWorldPositionVisible(SessionState recipient, double x, double z) {
@@ -6712,6 +6865,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             for (SessionState state : sessions.values()) releaseOnlinePlayerLease(state);
         }
         sessions.clear();
+        mobArrows.clear();
+        poisonMobArrows.clear();
+        mobFireballs.clear();
+        guardianBeamTracker.clearAll();
     }
 
     @FunctionalInterface

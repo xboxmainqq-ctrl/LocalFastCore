@@ -134,6 +134,40 @@ class AsyncChunkGenerationServiceTest {
         }
     }
 
+
+    @Test
+    void countsGeneratedResultsDiscardedAfterCancellationDuringBackpressure() throws Exception {
+        AtomicInteger generated = new AtomicInteger();
+        AsyncChunkGenerationService service = new AsyncChunkGenerationService(
+                (position, height, seed) -> {
+                    generated.incrementAndGet();
+                    return generator().generate(position, height, seed);
+                },
+                new WorldHeight(0, 64), 0L, 1, 4, 1
+        );
+        service.start();
+        try {
+            ChunkPosition first = new ChunkPosition(0, 0);
+            ChunkPosition second = new ChunkPosition(1, 0);
+            assertEquals(AsyncChunkGenerationService.RequestStatus.ACCEPTED, service.request(first));
+            await(() -> service.completedCount() == 1);
+
+            assertEquals(AsyncChunkGenerationService.RequestStatus.ACCEPTED, service.request(second));
+            await(() -> generated.get() == 2);
+            assertEquals(2, service.pendingCount());
+            assertEquals(0L, service.droppedResults());
+
+            assertTrue(service.cancel(second));
+            await(() -> service.droppedResults() == 1L);
+            assertEquals(1L, service.metrics().droppedResults());
+            assertEquals(1, service.completedCount(), "the first result must remain available");
+            assertTrue(service.isPending(first));
+            assertFalse(service.isPending(second));
+        } finally {
+            service.stop();
+        }
+    }
+
     @Test
     void publishesGeneratorFailuresAsResults() throws Exception {
         AsyncChunkGenerationService service = new AsyncChunkGenerationService(

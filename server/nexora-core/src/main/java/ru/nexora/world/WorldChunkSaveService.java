@@ -77,11 +77,13 @@ public final class WorldChunkSaveService implements AutoCloseable {
             while (true) {
                 WorldChunk.PersistenceSnapshot snapshot = state.chunk.persistenceSnapshot();
                 storage.saveChunkSnapshot(state.chunk.chunkX(), state.chunk.chunkZ(), snapshot.sections());
-                state.chunk.markPersisted(snapshot.revision());
                 boolean complete;
                 synchronized (this) {
-                    complete = !state.chunk.isDirty();
-                    if (complete) inFlight.remove(key, state);
+                    synchronized (state.chunk) {
+                        state.chunk.markPersisted(snapshot.revision());
+                        complete = !state.chunk.isDirty();
+                        if (complete) inFlight.remove(key, state);
+                    }
                 }
                 if (complete) {
                     state.completion.complete(null);

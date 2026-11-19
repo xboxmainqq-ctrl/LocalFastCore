@@ -124,16 +124,16 @@ public final class WorldChunkResidencyManager {
         // priority. Desired chunks beyond the current capacity remain pending:
         // they are offered again on the next update instead of being forgotten.
         int availableSlots = Math.max(0, maximumResidentChunks - resident.size());
-        int acceptedLoads = 0;
+        LinkedHashSet<Long> acceptedLoadKeys = new LinkedHashSet<>();
         for (long key : loadScratch) {
-            if (acceptedLoads >= availableSlots) break;
-            if (resident.add(key)) acceptedLoads++;
+            if (acceptedLoadKeys.size() >= availableSlots) break;
+            if (resident.add(key)) acceptedLoadKeys.add(key);
         }
-        if (!loadScratch.isEmpty() || !unloadScratch.isEmpty()) {
+        if (!acceptedLoadKeys.isEmpty() || !unloadScratch.isEmpty()) {
             residentSnapshot = Set.copyOf(resident);
             residentCoordinateSnapshot = Set.copyOf(decode(resident));
         }
-        return new ResidencyPlan(decode(loadScratch), decode(unloadScratch),
+        return new ResidencyPlan(decode(acceptedLoadKeys), decode(unloadScratch),
                 resident.size(), desiredChunks.size());
     }
 

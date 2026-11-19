@@ -77,7 +77,8 @@ class MobFuseTrackerTest {
         assertEquals(MobFuseTracker.MAX_TRACKED_FUSES, tracker.trackedFuses());
 
         // The access above refreshed id 1, so id 2 must have been evicted.
-        assertFalse(tracker.isReadyToDetonate(1, true, 2_500, 1_500));
+        // id 1 retains its original fuse; id 2 must start a fresh fuse after eviction.
+        assertTrue(tracker.isReadyToDetonate(1, true, 2_500, 1_500));
         assertFalse(tracker.isReadyToDetonate(2, true, 2_500, 1_500));
         assertEquals(MobFuseTracker.MAX_TRACKED_FUSES, tracker.trackedFuses());
     }

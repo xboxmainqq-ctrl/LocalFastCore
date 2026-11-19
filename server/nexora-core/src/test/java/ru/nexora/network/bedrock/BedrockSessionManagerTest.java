@@ -2528,7 +2528,7 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(
                 List.of(new BedrockPacket(0x71, 0, 0, new byte[] {1})), true, 256));
 
-        completeChunkStreaming(manager, "physics-client");
+        completeChunkStreaming(manager, "physics-client", clock);
         int beforeMovement = outboundFrames.size();
         BedrockPacket forward = new BedrockPacket(0x90, 0, 0,
                 movementInputPayload(0.5f, 65.0f, 0.715f, 0.0f, 1L, 0.0f, 1.0f));
@@ -2845,7 +2845,7 @@ class BedrockSessionManagerTest {
         assertEquals(1, newlyStreamedChunks.stream()
                 .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
                 .count(), "The first bounded batch contains one newly exposed column");
-        completeChunkStreaming(manager, "authenticated-client");
+        completeChunkStreaming(manager, "authenticated-client", monotonicClock);
         List<BedrockPacket> remainingChunkBatch = decodeOutboundPackets(outboundFrames.get(20), true);
         assertEquals(2, remainingChunkBatch.stream()
                 .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
@@ -3439,7 +3439,9 @@ class BedrockSessionManagerTest {
         } while (value != 0);
     }
 
-    private static void completeChunkStreaming(BedrockSessionManager manager, String networkId) throws Exception {
+    private static void completeChunkStreaming(
+            BedrockSessionManager manager, String networkId, AtomicLong clock
+    ) throws Exception {
         java.lang.reflect.Field sessionsField = BedrockSessionManager.class.getDeclaredField("sessions");
         sessionsField.setAccessible(true);
         Object session = ((java.util.Map<?, ?>) sessionsField.get(manager)).get(networkId);
@@ -3448,6 +3450,7 @@ class BedrockSessionManagerTest {
         process.setAccessible(true);
         for (int attempt = 0; attempt < 128; attempt++) {
             if (getSessionField(manager, networkId, "chunkStreamingQueue") == null) return;
+            clock.addAndGet(ChunkStreamingBudget.DEFAULT_WINDOW_NANOS);
             process.invoke(manager, networkId, session);
         }
         assertNull(getSessionField(manager, networkId, "chunkStreamingQueue"),

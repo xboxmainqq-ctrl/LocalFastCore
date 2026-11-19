@@ -19,6 +19,7 @@ public final class World {
     private final int spawnY;
     private final int spawnZ;
     private final WorldStorage storage;
+    private final WorldChunkLoadService chunkLoadService;
     private final ConcurrentMap<Long, WorldChunk> chunks = new ConcurrentHashMap<>();
     private final Object pendingChunkLoadLock = new Object();
     private final LinkedHashSet<Long> pendingChunkLoads = new LinkedHashSet<>();
@@ -52,6 +53,7 @@ public final class World {
         this.spawnY = spawnY;
         this.spawnZ = spawnZ;
         this.storage = storage;
+        this.chunkLoadService = storage == null ? null : new WorldChunkLoadService(storage);
         this.itemEntities = new WorldItemEntityManager();
         this.livingEntities = new WorldLivingEntityManager();
         this.containers = null;
@@ -112,6 +114,7 @@ public final class World {
         this.spawnY = spawnY;
         this.spawnZ = spawnZ;
         this.storage = storage;
+        this.chunkLoadService = storage == null ? null : new WorldChunkLoadService(storage);
         this.itemEntities = itemStorage == null
                 ? new WorldItemEntityManager()
                 : new WorldItemEntityManager(itemStorage);
@@ -152,6 +155,49 @@ public final class World {
             generator.generate(chunk, seed);
             return chunk;
         });
+    }
+
+    /** Requests only the persisted chunk read; it never invokes the world generator on a worker. */
+    public java.util.concurrent.CompletableFuture<Optional<WorldChunk>> requestStoredChunkLoad(
+            int chunkX, int chunkZ
+    ) {
+        WorldChunk loaded = chunks.get(chunkKey(chunkX, chunkZ));
+        if (loaded != null) return java.util.concurrent.CompletableFuture.completedFuture(Optional.of(loaded));
+        if (chunkLoadService == null) {
+            return java.util.concurrent.CompletableFuture.completedFuture(Optional.empty());
+        }
+        return chunkLoadService.request(chunkX, chunkZ);
+    }
+
+    /**
+     * Completes a Bedrock streaming load on the world thread. A concurrently loaded live
+     * chunk always wins over the detached disk snapshot.
+     */
+    public WorldChunk getChunkFromPreparedStorageLoad(
+            int chunkX, int chunkZ, Optional<WorldChunk> prepared
+    ) {
+        Objects.requireNonNull(prepared, "prepared");
+        long key = chunkKey(chunkX, chunkZ);
+        WorldChunk existing = chunks.get(key);
+        if (existing != null) return existing;
+        if (prepared.isPresent()) {
+            WorldChunk candidate = prepared.get();
+            if (candidate.chunkX() != chunkX || candidate.chunkZ() != chunkZ) {
+                throw new IllegalArgumentException("Prepared chunk coordinates do not match request");
+            }
+            WorldChunk raced = chunks.putIfAbsent(key, candidate);
+            return raced == null ? candidate : raced;
+        }
+        return chunks.computeIfAbsent(key, ignored -> {
+            WorldChunk generated = new WorldChunk(chunkX, chunkZ);
+            generator.generate(generated, seed);
+            return generated;
+        });
+    }
+
+    /** Stops bounded chunk-storage workers during world shutdown. */
+    public void closeChunkLoadService() {
+        if (chunkLoadService != null) chunkLoadService.close();
     }
 
     public BlockType getBlock(int blockX, int y, int blockZ) {

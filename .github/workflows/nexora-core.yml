@@ -37,8 +37,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nexora-core-${{ github.sha }}
-          path: |
-            server/nexora-core/target/nexora-core-*.jar
-            server/nexora-core/target/lib/**
+          path: server/nexora-core/target/server.jar
           if-no-files-found: error
           retention-days: 1

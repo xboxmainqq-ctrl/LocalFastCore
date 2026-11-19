@@ -75,7 +75,10 @@ public final class LivingEntityAiService {
         if (mob.health() <= 0) return Decision.idle(mob.runtimeId());
 
         if (isHostile(mob.identifier())) {
-            double acquireRange = Math.max(ACQUIRE_RANGE, projectileRangeFor(mob.identifier()));
+            double projectileRange = projectileRangeFor(mob.identifier());
+            // Ranged hostiles acquire a target before it enters firing distance, then close the gap.
+            double acquireRange = projectileRange > 0
+                    ? Math.max(ACQUIRE_RANGE, projectileRange + 8.0) : ACQUIRE_RANGE;
             if (nearest == null || distanceSquared(mob, nearest) > acquireRange * acquireRange) {
                 return Decision.idle(mob.runtimeId());
             }

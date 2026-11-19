@@ -128,6 +128,32 @@ public final class WorldLivingEntityManager {
         return Optional.of(updated);
     }
 
+    /**
+     * Atomically replaces position and velocity together. Physics normally changes both
+     * in one tick; combining them avoids two immutable actor allocations and two map writes.
+     */
+    public synchronized Optional<WorldLivingEntity> updatePhysicsState(
+            long runtimeId,
+            double x, double y, double z,
+            double velocityX, double velocityY, double velocityZ
+    ) {
+        if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
+                || Math.abs(x) > 30_000_000 || Math.abs(z) > 30_000_000
+                || y < WorldChunk.MIN_Y || y > WorldChunk.MAX_Y) {
+            throw new IllegalArgumentException("Living actor position is outside supported bounds");
+        }
+        if (!Double.isFinite(velocityX) || !Double.isFinite(velocityY) || !Double.isFinite(velocityZ)
+                || Math.abs(velocityX) > 100 || Math.abs(velocityY) > 100 || Math.abs(velocityZ) > 100) {
+            throw new IllegalArgumentException("Living actor velocity is outside supported bounds");
+        }
+        WorldLivingEntity entity = entities.get(runtimeId);
+        if (entity == null) return Optional.empty();
+        WorldLivingEntity updated = entity.withPositionAndVelocity(
+                x, y, z, velocityX, velocityY, velocityZ);
+        entities.replace(runtimeId, entity, updated);
+        return Optional.of(updated);
+    }
+
     public synchronized List<DamageResult> tickFire(long nowMillis) {
         if (nowMillis < 0) throw new IllegalArgumentException("nowMillis must be non-negative");
         List<DamageResult> damage = new ArrayList<>();

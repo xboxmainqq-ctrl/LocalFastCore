@@ -91,10 +91,12 @@ class ChunkStreamingBudgetTest {
         int[] admitted = new int[players];
         for (int window = 1; window <= 2; window++) {
             int before = budget.globalUsage();
-            for (int player = 0; player < players; player++) {
-                String session = "player-" + player;
-                for (int chunk = 0; chunk < 4; chunk++) {
-                    if (budget.tryAcquire(session, window * 100L)) admitted[player]++;
+            for (int pass = 0; pass < 2; pass++) {
+                for (int player = 0; player < players; player++) {
+                    String session = "player-" + player;
+                    for (int chunk = 0; chunk < 4; chunk++) {
+                        if (budget.tryAcquire(session, window * 100L)) admitted[player]++;
+                    }
                 }
             }
             assertEquals(64, budget.globalUsage() - before,

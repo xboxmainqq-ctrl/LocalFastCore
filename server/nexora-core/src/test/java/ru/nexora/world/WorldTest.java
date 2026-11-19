@@ -2,6 +2,7 @@ package ru.nexora.world;
 
 import java.util.List;
 import java.nio.file.Path;
+import java.nio.file.Files;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -93,6 +94,33 @@ class WorldTest {
         assertEquals(1, world.loadedChunkCount());
     }
 
+
+    @Test
+    void failedChunkPersistenceKeepsDirtyChunkResidentAndCanRetry() throws Exception {
+        WorldStorage storage = new WorldStorage(temporaryDirectory, "NEXORA");
+        Path blockedTarget = storage.worldDirectory().resolve("chunks").resolve("0_0.nxc");
+        Files.createDirectory(blockedTarget);
+        World world = new World("NEXORA", 1L, (chunk, seed) -> { }, 0, 65, 0, storage);
+        try {
+            world.setBlock(1, 65, 1, BlockType.STONE);
+
+            assertThrows(java.io.UncheckedIOException.class, () -> world.unloadChunk(0, 0));
+            assertEquals(1, world.loadedChunkCount(),
+                    "a failed durable write must never evict the authoritative chunk");
+            assertTrue(world.getChunk(0, 0).isDirty(),
+                    "a failed write must leave the chunk marked dirty for retry");
+
+            Files.delete(blockedTarget);
+            assertTrue(world.unloadChunk(0, 0));
+            assertEquals(0, world.loadedChunkCount());
+
+            WorldChunk restored = storage.loadChunk(0, 0).orElseThrow();
+            assertEquals(BlockType.STONE, restored.getBlock(1, 65, 1));
+            assertFalse(restored.isDirty());
+        } finally {
+            world.closeChunkLoadService();
+        }
+    }
 
     @Test
     void persistedWorldCacheStaysWithinResidencyTargetAcrossPlayerMovement() throws Exception {

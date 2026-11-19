@@ -69,9 +69,13 @@ public record NexoraServerConfig(
      * override the host-provided value for custom deployments.
      */
     private static int serverPortDefault(Map<String, String> environment) {
-        return integerEnvironment(environment, "NEXORA_PORT",
-                integerEnvironment(environment, "SERVER_PORT",
-                        integerEnvironment(environment, "PORT", 19132)));
+        for (String name : List.of("NEXORA_PORT", "SERVER_PORT", "PORT")) {
+            String value = environment.get(name);
+            if (value != null && !value.isBlank()) {
+                return integerEnvironment(environment, name, 19132);
+            }
+        }
+        return 19132;
     }
 
     private static List<String> parseStunUrls(String value) {

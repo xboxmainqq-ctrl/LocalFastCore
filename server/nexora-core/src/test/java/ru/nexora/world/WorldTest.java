@@ -99,10 +99,10 @@ class WorldTest {
     void failedChunkPersistenceKeepsDirtyChunkResidentAndCanRetry() throws Exception {
         WorldStorage storage = new WorldStorage(temporaryDirectory, "NEXORA");
         Path blockedTarget = storage.worldDirectory().resolve("chunks").resolve("0_0.nxc");
-        Files.createDirectory(blockedTarget);
         World world = new World("NEXORA", 1L, (chunk, seed) -> { }, 0, 65, 0, storage);
         try {
             world.setBlock(1, 65, 1, BlockType.STONE);
+            Files.createDirectory(blockedTarget);
 
             assertThrows(java.io.UncheckedIOException.class, () -> world.unloadChunk(0, 0));
             assertEquals(1, world.loadedChunkCount(),

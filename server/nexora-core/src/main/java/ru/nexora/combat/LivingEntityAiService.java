@@ -17,6 +17,7 @@ public final class LivingEntityAiService {
     public static final double ATTACK_RANGE = 1.8;
     public static final double WALK_SPEED_PER_TICK = 0.23;
     public static final double FLEE_RANGE = 6.0;
+    public static final double RANGED_RETREAT_DISTANCE = 4.0;
     public static final long ATTACK_COOLDOWN_MILLIS = 1_000;
     public static final long WANDER_INTERVAL_MILLIS = 3_000;
     public static final float BASE_ATTACK_DAMAGE = 3.0f;
@@ -155,6 +156,12 @@ public final class LivingEntityAiService {
             if (nowMillis >= nextAttackAtMillis) {
                 return new Decision(mob.runtimeId(), target.networkId(), 0, 0, 0,
                         attackDamageFor(mob.identifier()), true, attackStyle);
+            }
+            // Ranged mobs create space while reloading instead of standing still
+            // with an opponent directly on top of them.
+            if (attackStyle == AttackStyle.PROJECTILE
+                    && horizontal < RANGED_RETREAT_DISTANCE) {
+                return flee(mob, target);
             }
             return Decision.idle(mob.runtimeId());
         }

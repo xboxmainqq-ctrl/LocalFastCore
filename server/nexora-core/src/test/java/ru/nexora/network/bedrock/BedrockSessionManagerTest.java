@@ -166,6 +166,24 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void outboundGlobalBudgetRejectsReservationsBeyondConfiguredCap() throws Exception {
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("outbound-global-budget", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                (networkId, label, frame) -> {}, event -> {});
+        try {
+            java.lang.reflect.Method reserve = BedrockSessionManager.class.getDeclaredMethod(
+                    "reserveOutboundBytes", long.class);
+            reserve.setAccessible(true);
+            assertTrue((boolean) reserve.invoke(manager, 64L * 1024L * 1024L));
+            assertFalse((boolean) reserve.invoke(manager, 1L));
+            ((AtomicLong) getManagerField(manager, "outboundQueuedBytesGlobal")).set(0L);
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void adminRuntimeSummaryIncludesActualMobAiAndJvmResourceMetrics() throws Exception {
         ru.nexora.world.World testWorld = new ru.nexora.world.World(
                 "admin-metrics-world", 0L, new ru.nexora.world.FlatWorldGenerator());

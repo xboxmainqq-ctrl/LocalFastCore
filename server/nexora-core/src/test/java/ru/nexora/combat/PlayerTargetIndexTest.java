@@ -41,6 +41,19 @@ class PlayerTargetIndexTest {
     }
 
     @Test
+    void equidistantTargetsPreserveOriginalPlayerOrderAcrossCells() {
+        WorldLivingEntity mob = new WorldLivingEntityManager().spawn(
+                "minecraft:zombie", 20, 0, 64, 0);
+        var first = new LivingEntityAiService.PlayerTarget("first", 10, 64, 0, true);
+        var second = new LivingEntityAiService.PlayerTarget("second", -10, 64, 0, true);
+        List<LivingEntityAiService.PlayerTarget> players = List.of(first, second);
+
+        assertSame(first, new PlayerTargetIndex(players).nearestWithinRange(mob));
+        assertSame(LivingEntityAiService.nearestAlivePlayer(mob, players),
+                new PlayerTargetIndex(players).nearestWithinRange(mob));
+    }
+
+    @Test
     void nearestTargetIncludesExact128BlockBoundary() {
         WorldLivingEntity mob = new WorldLivingEntityManager().spawn(
                 "minecraft:zombie", 20, 0, 64, 0);

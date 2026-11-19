@@ -2824,9 +2824,9 @@ class BedrockSessionManagerTest {
         assertEquals(20, outboundFrames.size());
         assertEquals(0x79, decodeOutbound(outboundFrames.get(18), true).packetId());
         List<BedrockPacket> newlyStreamedChunks = decodeOutboundPackets(outboundFrames.get(19), true);
-        assertEquals(3, newlyStreamedChunks.stream()
+        assertEquals(1, newlyStreamedChunks.stream()
                 .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
-                .count());
+                .count(), "The first bounded batch contains one newly exposed column");
         assertEquals(16.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
 
         monotonicClock.set(2_110_000_000L);

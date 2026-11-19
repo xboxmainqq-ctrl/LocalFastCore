@@ -325,15 +325,15 @@ public final class NexoraAiDiagnostics {
                 + ", maximumResidentChunks=" + maximumResidentChunks
                 + ", desiredChunks=" + desiredChunks
                 + ", pendingChunkLoads=" + pendingChunkLoads
-                + ", chunkBlockStorageBytes=" + loadedChunkBlockStorageBytes
-                + ", chunkSections=" + loadedChunkSections
-                + ", cacheOutsidePlanner=" + Math.max(0, loadedChunks - residentChunks)
-                + ", chunksOverTarget=" + Math.max(0, loadedChunks - maximumResidentChunks)
                 + ", livingEntities=" + livingEntities
                 + ", mobAiFullRateUpdates=" + mobAiFullRateUpdates
                 + ", mobAiDeferredUpdates=" + mobAiDeferredUpdates
                 + ", mobAiBudgetDeferred=" + mobAiBudgetDeferred
                 + ", mobAiBudgetConsumedNanos=" + mobAiBudgetConsumedNanos);
+        appendEvent("WORLD_MEMORY", "chunkBlockStorageBytes=" + loadedChunkBlockStorageBytes
+                + ", chunkSections=" + loadedChunkSections
+                + ", cacheOutsidePlanner=" + Math.max(0, loadedChunks - residentChunks)
+                + ", chunksOverTarget=" + Math.max(0, loadedChunks - maximumResidentChunks));
     }
 
     /** Records the outcome of an allowlisted in-process repair action without user identifiers. */

@@ -19,6 +19,20 @@ class WorldChunkResidencyManagerTest {
     }
 
     @Test
+    void ordersNewResidencyLoadsFromPlayerCenterOutward() {
+        WorldChunkResidencyManager manager = new WorldChunkResidencyManager(2, 20);
+        var plan = manager.update(List.of(new WorldChunkResidencyManager.PlayerChunk(0, 0)), 0);
+
+        assertEquals(new WorldChunkResidencyManager.ChunkCoordinate(0, 0), plan.load().get(0));
+        int previousRing = 0;
+        for (WorldChunkResidencyManager.ChunkCoordinate coordinate : plan.load()) {
+            int ring = Math.max(Math.abs(coordinate.chunkX()), Math.abs(coordinate.chunkZ()));
+            assertTrue(ring >= previousRing, "chunk load order must move outward from the player");
+            previousRing = ring;
+        }
+    }
+
+    @Test
     void keepsChunksDuringGracePeriodAndUnloadsAfterIt() {
         WorldChunkResidencyManager manager = new WorldChunkResidencyManager(2, 20);
         manager.update(List.of(new WorldChunkResidencyManager.PlayerChunk(0, 0)), 0);

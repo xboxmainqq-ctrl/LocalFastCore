@@ -1486,6 +1486,10 @@ class BedrockSessionManagerTest {
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
                 mobWorld, (networkId, label, frame) -> {}, event -> {});
         try {
+            manager.setItemRegistry(new BedrockItemRegistry(List.of(
+                    new BedrockItemRegistry.Entry("minecraft:cobblestone",
+                            new BedrockInventoryContentCodec.ItemDefinition(
+                                    1, 0, 0, new byte[] {10, 0, 0, 0})))));
             manager.onIdentity("blast-player", new NetherNetClientIdentity(
                     "blast-token", new byte[] {33}, "blast-xuid",
                     "BlastPlayer", "playfab-blast", "20CA2", null));
@@ -1517,6 +1521,9 @@ class BedrockSessionManagerTest {
             assertTrue(manager.playerVitals("blast-player").orElseThrow().health() < initialHealth);
             assertEquals(ru.nexora.world.BlockType.AIR, mobWorld.getBlock(6, 66, 0));
             assertEquals(ru.nexora.world.BlockType.CHEST, mobWorld.getBlock(6, 67, 0));
+            assertTrue(mobWorld.itemEntities().snapshot().stream()
+                    .anyMatch(item -> item.stack().itemId().equals("minecraft:cobblestone")),
+                    "Stone destroyed by the blast must create a cobblestone world item");
             assertTrue((long) getSessionField(manager, "blast-player", "fireUntilNanos") > 0L);
         } finally {
             manager.close();

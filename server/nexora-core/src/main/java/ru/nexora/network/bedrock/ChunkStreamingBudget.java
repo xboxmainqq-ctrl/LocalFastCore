@@ -85,7 +85,7 @@ final class ChunkStreamingBudget {
     }
 
     synchronized void unregister(String sessionKey) {
-        if (!registered.remove(sessionKey)) return;
+        registered.remove(sessionKey);
         rotation.remove(sessionKey);
         lastSeen.remove(sessionKey);
         sessionUsage.remove(sessionKey);

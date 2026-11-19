@@ -4408,12 +4408,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (runtimeId <= 0) return;
 
         if (packetId == BedrockAddItemActorCodec.REMOVE_ACTOR_PACKET_ID) {
+            List<byte[]> encodedFrames = null;
             for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
                 SessionState recipient = entry.getValue();
                 boolean wasVisible = recipient.visibleLivingEntityIds.remove(runtimeId)
                         | recipient.visibleArrowEntityIds.remove(runtimeId);
                 if (wasVisible && recipient.clientInitialized && !recipient.rejected) {
-                    sendPacket(entry.getKey(), packet, true);
+                    if (encodedFrames == null) encodedFrames = encodeFrames(List.of(packet), true);
+                    sendEncodedFrames(entry.getKey(), encodedFrames);
                 }
             }
             return;
@@ -4431,6 +4433,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         double x = entity != null ? entity.x() : arrow != null ? arrow.x() : fireball.x();
         double z = entity != null ? entity.z() : arrow != null ? arrow.z() : fireball.z();
         long uniqueId = entity != null ? entity.uniqueId() : arrow != null ? arrow.uniqueId() : fireball.uniqueId();
+        List<byte[]> movementFrames = null;
+        List<byte[]> spawnFrames = null;
+        List<byte[]> removeFrames = null;
+        BedrockPacket spawnPacket = null;
+        BedrockPacket removePacket = null;
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
             SessionState recipient = entry.getValue();
             if (!recipient.clientInitialized || recipient.rejected) continue;
@@ -4441,17 +4448,24 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             try {
                 if (visibleNow && !alreadyVisible) {
                     visibleIds.add(runtimeId);
-                    BedrockPacket spawn = entity != null
-                            ? BedrockAddActorCodec.createAddActor(entity)
-                            : arrow != null ? BedrockArrowActorCodec.createSpawn(arrow)
-                            : BedrockFireballActorCodec.createSpawn(fireball);
-                    sendPacket(entry.getKey(), spawn, true);
+                    if (spawnFrames == null) {
+                        spawnPacket = entity != null
+                                ? BedrockAddActorCodec.createAddActor(entity)
+                                : arrow != null ? BedrockArrowActorCodec.createSpawn(arrow)
+                                : BedrockFireballActorCodec.createSpawn(fireball);
+                        spawnFrames = encodeFrames(List.of(spawnPacket), true);
+                    }
+                    sendEncodedFrames(entry.getKey(), spawnFrames);
                 } else if (visibleNow) {
-                    sendPacket(entry.getKey(), packet, true);
+                    if (movementFrames == null) movementFrames = encodeFrames(List.of(packet), true);
+                    sendEncodedFrames(entry.getKey(), movementFrames);
                 } else if (alreadyVisible) {
                     visibleIds.remove(runtimeId);
-                    sendPacket(entry.getKey(),
-                            BedrockAddItemActorCodec.createRemoveActor(uniqueId), true);
+                    if (removeFrames == null) {
+                        removePacket = BedrockAddItemActorCodec.createRemoveActor(uniqueId);
+                        removeFrames = encodeFrames(List.of(removePacket), true);
+                    }
+                    sendEncodedFrames(entry.getKey(), removeFrames);
                 }
             } catch (RuntimeException exception) {
                 if (visibleNow && !alreadyVisible) visibleIds.remove(runtimeId);
@@ -6923,13 +6937,24 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private void sendPackets(String networkId, List<BedrockPacket> packets, boolean compressionNegotiated) {
+        sendEncodedFrames(networkId, encodeFrames(packets, compressionNegotiated));
+    }
+
+    /**
+     * Encodes and fragments a packet batch once so actor fanout can reuse the immutable
+     * wire representation for every interested client instead of recompressing per recipient.
+     */
+    private List<byte[]> encodeFrames(List<BedrockPacket> packets, boolean compressionNegotiated) {
         byte[] batch = BedrockBatchCodec.encode(
                 packets, compressionNegotiated, compressionThreshold);
-        List<byte[]> frames = NetherNetMessageFramer.fragment(
-                batch, SCTP_MAX_MESSAGE_BYTES, true);
+        return NetherNetMessageFramer.fragment(batch, SCTP_MAX_MESSAGE_BYTES, true);
+    }
+
+    private void sendEncodedFrames(String networkId, List<byte[]> frames) {
         try {
             for (byte[] frame : frames) {
-                outbound.sendFrame(networkId, "ReliableDataChannel", frame);
+                // Give each transport call its own array in case an implementation retains or mutates it.
+                outbound.sendFrame(networkId, "ReliableDataChannel", frame.clone());
             }
         } catch (Exception exception) {
             throw new IllegalStateException("Unable to send Bedrock packet batch", exception);

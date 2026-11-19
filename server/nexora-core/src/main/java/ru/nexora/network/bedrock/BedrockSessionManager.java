@@ -3802,16 +3802,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         boolean ghast = "minecraft:ghast".equals(identifier);
         boolean blaze = "minecraft:blaze".equals(identifier);
         if (!ghast && !blaze) return false;
-        if (nearest == null) return true;
+        if (nearest == null) return false;
         double dx = nearest.x() - mob.x();
         double dy = nearest.y() + 0.8 - (mob.y() + (ghast ? 1.8 : 1.2));
         double dz = nearest.z() - mob.z();
         double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
         double maxRange = ghast ? 16.0 : 14.0;
-        if (distance < 3.0 || distance > maxRange) return true;
+        if (distance < 3.0 || distance > maxRange) return false;
         if (!WorldRaycast.hasLineOfSightInLoadedChunks(world, mob.x(), mob.y() + (ghast ? 1.8 : 1.2),
                 mob.z(), (int) Math.floor(nearest.x()), (int) Math.floor(nearest.y() + 1.0),
-                (int) Math.floor(nearest.z()))) return true;
+                (int) Math.floor(nearest.z()))) return false;
         if (nowMillis < nextMobAttackMillis.getOrDefault(mob.runtimeId(), 0L)) return true;
         if (mobFireballs.size() >= 1_000) return true;
         double aimY = dy + distance * (ghast ? 0.018 : 0.025);

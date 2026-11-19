@@ -66,7 +66,7 @@ Unlike the isolated AI probe above, this workload registers mobs in the real
 `WorldLivingEntityManager`, updates `WorldChunkResidencyManager`, filters resident
 entities through `WorldEntityTickCoordinator`, and executes `WorldTickPipeline`
 including nearest-player targeting, priority scheduling, AI decisions and bounded
-profiler sampling. It repeats 20 ticks at 100, 500, 1,000, 2,000 and 5,000 entities,
+profiler sampling. It warms up for 10 ticks, then measures 20 ticks at 100, 500, 1,000, 2,000 and 5,000 entities,
 with eight synthetic player targets and a resident 8-chunk view distance.
 
 It reports coordinator p50/p95/max, targeting p95, decision p95, produced decisions,
@@ -77,3 +77,9 @@ This still does not start the Bedrock transport/session stack, run collision phy
 apply movement decisions to a live world, measure OS process CPU/RSS, or calculate
 server TPS/MSPT. It is a more complete world-runtime benchmark, not a real-client
 capacity test.
+
+
+The entity registry is keyed by runtime ID in a concurrent sorted map. This preserves
+stable runtime-ID iteration order without sorting a newly allocated entity snapshot
+on every world tick. An atomic entity count keeps population checks constant-time.
+The coordinator benchmark is retained to detect regressions in this hot path.

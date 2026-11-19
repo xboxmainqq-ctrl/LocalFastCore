@@ -308,6 +308,35 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void shutdownSurfacesPlayerPersistenceFailureAndKeepsOnlineLeaseFenced() throws Exception {
+        Path playersDirectory = temporaryDirectory.resolve("shutdown-players");
+        Files.createDirectories(playersDirectory);
+        Files.createDirectory(playersDirectory.resolve("shutdown-xuid.nxp"));
+        PlayerDataStorage profiles = new PlayerDataStorage(playersDirectory);
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("shutdown-save-failure", 0L,
+                        new ru.nexora.world.FlatWorldGenerator()),
+                profiles, null, null, null, (networkId, label, frame) -> {}, event -> {});
+        var leases = new InMemoryPlayerOnlineLeaseRegistry();
+        manager.configureOnlinePlayerLeases(leases, 15_000L);
+        assertTrue(leases.acquire("shutdown-xuid", "node-a", "shutdown-session",
+                System.currentTimeMillis(), 15_000L));
+        manager.onIdentity("shutdown-session", new NetherNetClientIdentity(
+                "shutdown-token", new byte[] {7}, "shutdown-xuid",
+                "ShutdownPlayer", "shutdown-playfab", "20CA2", null));
+        setSessionField(manager, "shutdown-session", "onlineLeaseSessionId", "shutdown-session");
+        setSessionField(manager, "shutdown-session", "loginAuthenticated", true);
+        setSessionField(manager, "shutdown-session", "positionInitialized", true);
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class, manager::close);
+        assertTrue(failure.getMessage().contains("player persistence failures"));
+        assertTrue(leases.renew("shutdown-xuid", "node-a", "shutdown-session",
+                System.currentTimeMillis(), 15_000L),
+                "A failed final save must not release ownership and permit a stale checkpoint takeover");
+    }
+
+    @Test
     void autosaveRetainsGlobalOnlineLeaseAndPersistsCanonicalCheckpoint() throws Exception {
         var checkpoints = new ru.nexora.persistence.PlayerStateCheckpointService(
                 new FilePlayerStateStore(temporaryDirectory), new PlayerStateBundleCodec());

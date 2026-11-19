@@ -787,7 +787,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
             // A frozen source still owns its lease until PREPARED is durable,
             // but it must not be checked against the PREPARED gameplay fence.
-            if (state.transferFrozen || state.rejected || !state.loginAuthenticated) continue;
+            if (state.transferFrozen || state.rejected || state.onlineLeaseLost || !state.loginAuthenticated) continue;
             state.combatLock.lock();
             try {
                 synchronized (state) {

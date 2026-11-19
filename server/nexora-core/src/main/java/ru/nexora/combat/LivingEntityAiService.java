@@ -238,10 +238,11 @@ public final class LivingEntityAiService {
             if (distance < 0.0001) return Decision.idle(mob.runtimeId());
             return new Decision(mob.runtimeId(), threat.networkId(),
                     dx / distance * speed, vertical / distance * speed,
-                    dz / distance * speed, 0, false);
+                    dz / distance * speed, 0, false, attackStyleFor(mob.identifier()));
         }
         return new Decision(mob.runtimeId(), threat.networkId(),
-                dx / length * speed, 0, dz / length * speed, 0, false);
+                dx / length * speed, 0, dz / length * speed, 0, false,
+                attackStyleFor(mob.identifier()));
     }
 
     private Decision wander(WorldLivingEntity mob, long nowMillis) {

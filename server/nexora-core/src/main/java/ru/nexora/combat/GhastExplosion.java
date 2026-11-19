@@ -58,6 +58,22 @@ public final class GhastExplosion {
         return itemId == null ? null : new ItemStack(itemId, 1, 64);
     }
 
+    /** Outward impulse for entities inside the player blast radius. */
+    public static Knockback knockbackAt(double dx, double dy, double dz) {
+        if (!Double.isFinite(dx) || !Double.isFinite(dy) || !Double.isFinite(dz)) return null;
+        double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (distance >= PLAYER_RADIUS) return null;
+        double horizontal = Math.hypot(dx, dz);
+        double strength = 1.15 * (1.0 - distance / PLAYER_RADIUS);
+        double vx = horizontal < 1.0e-6 ? 0.0 : dx / horizontal * strength;
+        double vz = horizontal < 1.0e-6 ? 0.0 : dz / horizontal * strength;
+        double vy = 0.28 + strength * 0.38;
+        return new Knockback(vx, vy, vz);
+    }
+
+    public record Knockback(double velocityX, double velocityY, double velocityZ) {
+    }
+
     public static boolean isInsideBlockBlast(double dx, double dy, double dz) {
         if (!Double.isFinite(dx) || !Double.isFinite(dy) || !Double.isFinite(dz)) return false;
         return dx * dx + dy * dy + dz * dz <= BLOCK_RADIUS * BLOCK_RADIUS;

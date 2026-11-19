@@ -11,6 +11,7 @@ public final class WorldChunk {
     private final int chunkX;
     private final int chunkZ;
     private final ChunkSection[] sections = new ChunkSection[SECTION_COUNT];
+    private long revision;
 
     public WorldChunk(int chunkX, int chunkZ) {
         this.chunkX = chunkX;
@@ -46,6 +47,7 @@ public final class WorldChunk {
             sections[sectionIndex] = section;
         }
         section.set(localX, worldY & 15, localZ, type);
+        revision++;
         if (type == BlockType.AIR && section.isEmpty()) {
             sections[sectionIndex] = null;
         }
@@ -71,6 +73,26 @@ public final class WorldChunk {
     }
 
     /** Takes one consistent, detached snapshot for persistence or packet encoding. */
+    /** Monotonic mutation version used to detect writes racing persistence. */
+    public synchronized long revision() { return revision; }
+
+    /** Consistent detached persistence image and its mutation version. */
+    public synchronized PersistenceSnapshot persistenceSnapshot() {
+        byte[][] raw = new byte[SECTION_COUNT][];
+        for (int index = 0; index < SECTION_COUNT; index++) {
+            raw[index] = sections[index] == null ? null : sections[index].copyRawBlocks();
+        }
+        return new PersistenceSnapshot(revision, raw);
+    }
+
+    public record PersistenceSnapshot(long revision, byte[][] sections) {
+        public PersistenceSnapshot {
+            if (revision < 0 || sections == null || sections.length != SECTION_COUNT) {
+                throw new IllegalArgumentException("Invalid chunk persistence snapshot");
+            }
+        }
+    }
+
     public synchronized byte[][] copySectionsRaw() {
         byte[][] snapshot = new byte[SECTION_COUNT][];
         for (int index = 0; index < SECTION_COUNT; index++) {
@@ -88,6 +110,7 @@ public final class WorldChunk {
         ChunkSection section = new ChunkSection();
         section.loadRawBlocks(raw);
         sections[index] = section.isEmpty() ? null : section;
+        revision++;
     }
 
     public synchronized int highestNonEmptySectionCount() {

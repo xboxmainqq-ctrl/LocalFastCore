@@ -1665,6 +1665,42 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void skeletonUsesItsSpeciesProjectileRangeBeforeLaunchingAnArrow() throws Exception {
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "skeleton-projectile-range-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        mobWorld.getChunk(0, 0);
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {});
+        try {
+            var skeleton = manager.spawnLivingEntity(
+                    "minecraft:skeleton", 20.0f, 0.5, 65.0, 0.5);
+            var outsideRange = new ru.nexora.combat.LivingEntityAiService.PlayerTarget(
+                    "range-target", 13.5, 65.0, 0.5, true);
+            var insideRange = new ru.nexora.combat.LivingEntityAiService.PlayerTarget(
+                    "range-target", 10.5, 65.0, 0.5, true);
+            java.lang.reflect.Method ranged = BedrockSessionManager.class.getDeclaredMethod(
+                    "tickRangedMobBehavior",
+                    ru.nexora.world.WorldLivingEntity.class,
+                    ru.nexora.combat.LivingEntityAiService.PlayerTarget.class,
+                    long.class);
+            ranged.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            java.util.Map<Long, ru.nexora.combat.ArrowProjectile> arrows =
+                    (java.util.Map<Long, ru.nexora.combat.ArrowProjectile>)
+                            getManagerField(manager, "mobArrows");
+
+            assertFalse((Boolean) ranged.invoke(manager, skeleton, outsideRange, 2_000L));
+            assertTrue(arrows.isEmpty(), "Skeleton must not shoot beyond its 12-block range");
+
+            assertTrue((Boolean) ranged.invoke(manager, skeleton, insideRange, 2_100L));
+            assertEquals(1, arrows.size(), "Skeleton should launch an arrow inside its species range");
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void caveSpiderAppliesPoisonButPoisonCannotKillPlayer() throws Exception {
         java.util.concurrent.atomic.AtomicLong clock =
                 new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);

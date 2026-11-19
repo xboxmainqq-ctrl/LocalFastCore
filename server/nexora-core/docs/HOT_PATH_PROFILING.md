@@ -152,3 +152,17 @@ It compares 10,000 actor-chunk lookups against a full scan of 1,000 synthetic
 session chunk sets, asserts that recipient counts match, and reports average lookup
 time plus index build time. It measures recipient selection only, not packet encoding,
 transport queueing or real client delivery.
+
+
+One observed GitHub CI actor-fanout index run (1,000 synthetic sessions, 10,000
+actor-chunk lookups):
+
+| Lookup strategy | Average per actor |
+|---|---:|
+| Scan every session's chunk set | 29.981 us |
+| Reverse chunk-viewer index | 0.826 us |
+
+Index build time for the 1,000 session views was 17.166 ms. The measured lookup
+was roughly 36x faster in this run, with identical aggregate recipient counts
+(85,900). This measures index selection only; it excludes packet serialization,
+network queues and real Bedrock clients.

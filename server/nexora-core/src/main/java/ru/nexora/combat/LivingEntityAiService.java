@@ -272,6 +272,22 @@ public final class LivingEntityAiService {
     }
 
     /**
+     * Species-specific ranged cadence. These are server-side recovery windows between
+     * projectile launches; they are intentionally independent from melee recovery.
+     */
+    public static long rangedAttackCooldownMillisFor(String identifier) {
+        Objects.requireNonNull(identifier, "identifier");
+        return switch (identifier) {
+            case "minecraft:skeleton", "minecraft:stray", "minecraft:bogged",
+                    "minecraft:pillager" -> 1_250L;
+            case "minecraft:guardian", "minecraft:elder_guardian" -> 1_500L;
+            case "minecraft:ghast" -> 3_000L;
+            case "minecraft:blaze" -> 1_000L;
+            default -> ATTACK_COOLDOWN_MILLIS;
+        };
+    }
+
+    /**
      * Species-specific melee cadence. Values are milliseconds between successful attacks.
      * Keep the common baseline stable; slower heavy hitters receive longer recovery windows.
      */

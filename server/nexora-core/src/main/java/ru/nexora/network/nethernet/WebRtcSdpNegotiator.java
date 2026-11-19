@@ -287,6 +287,57 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         }
     }
 
+    /** Aggregate transport diagnostics. RTT values include fresh ICE samples only. */
+    public record TransportSummary(int connectedPeers, int peersWithSamples, int freshPeers,
+                                   int staleOrMissingPeers, double averageRttMillis,
+                                   double maxRttMillis, long bytesSent, long bytesReceived) {
+    }
+
+    public TransportSummary transportSummary(long nowMillis, long maxAgeMillis) {
+        List<TransportMetrics> metrics = sessions.values().stream()
+                .filter(session -> session.connected && !session.sessionClosed.get())
+                .map(PeerSession::transportMetrics)
+                .toList();
+        return summarizeTransportMetrics(metrics.size(), metrics, nowMillis, maxAgeMillis);
+    }
+
+    public static TransportSummary summarizeTransportMetrics(
+            int connectedPeers, List<TransportMetrics> metrics, long nowMillis, long maxAgeMillis) {
+        if (connectedPeers < 0) throw new IllegalArgumentException("connectedPeers must be >= 0");
+        Objects.requireNonNull(metrics, "metrics");
+        if (maxAgeMillis < 0) throw new IllegalArgumentException("maxAgeMillis must be >= 0");
+        int withSamples = 0;
+        int fresh = 0;
+        int staleOrMissing = 0;
+        double rttTotal = 0.0;
+        double maxRtt = 0.0;
+        long bytesSent = 0L;
+        long bytesReceived = 0L;
+        for (TransportMetrics metric : metrics) {
+            if (metric == null || !metric.available()) {
+                staleOrMissing++;
+                continue;
+            }
+            withSamples++;
+            if (metric.bytesSent() >= 0) bytesSent = saturatingAdd(bytesSent, metric.bytesSent());
+            if (metric.bytesReceived() >= 0) bytesReceived = saturatingAdd(bytesReceived, metric.bytesReceived());
+            if (metric.stale(nowMillis, maxAgeMillis)) {
+                staleOrMissing++;
+                continue;
+            }
+            fresh++;
+            rttTotal += metric.rttMillis();
+            maxRtt = Math.max(maxRtt, metric.rttMillis());
+        }
+        return new TransportSummary(connectedPeers, withSamples, fresh, staleOrMissing,
+                fresh == 0 ? -1.0 : rttTotal / fresh, fresh == 0 ? -1.0 : maxRtt,
+                bytesSent, bytesReceived);
+    }
+
+    private static long saturatingAdd(long left, long right) {
+        return Long.MAX_VALUE - left < right ? Long.MAX_VALUE : left + right;
+    }
+
     private void sampleTransportStats() {
         if (closed.get()) return;
         List<PeerSession> active = sessions.values().stream()

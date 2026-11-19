@@ -28,7 +28,8 @@ public final class NexoraAiGuard {
     private static final double MOVEMENT_ERROR_THRESHOLD = 0.75;
     private static final int MOVEMENT_SIGNALS_THRESHOLD = 4;
 
-    private final LinkedHashMap<String, PeerWindow> peers = new LinkedHashMap<>();
+    private final java.util.concurrent.ConcurrentHashMap<String, PeerWindow> peers =
+            new java.util.concurrent.ConcurrentHashMap<>();
     private final LinkedHashMap<String, PlayerSignals> playerSignals = new LinkedHashMap<>();
     private final LinkedHashMap<String, CombatWindow> combatWindows = new LinkedHashMap<>();
     private final LinkedHashMap<String, CombatCase> combatCases = new LinkedHashMap<>();
@@ -36,7 +37,8 @@ public final class NexoraAiGuard {
     private static final long CASE_TTL_NANOS = 1_800_000_000_000L;
     private static final int KILLAURA_HIT_THRESHOLD = 65;
     private static final int KILLAURA_TARGET_SWITCH_THRESHOLD = 4;
-    private long totalSignals;
+    private final java.util.concurrent.atomic.AtomicLong totalSignals =
+            new java.util.concurrent.atomic.AtomicLong();
     private long nextCombatCaseId = 1;
 
     public NexoraAiGuard() {
@@ -62,37 +64,57 @@ public final class NexoraAiGuard {
         Objects.requireNonNull(peerId, "peerId");
         if (peerId.isBlank() || frameBytes < 0) throw new IllegalArgumentException("Invalid inbound frame");
         GuardEvent event = null;
-        synchronized (this) {
-            PeerWindow window = peers.get(peerId);
+        PeerWindow window;
+        while (true) {
+            window = peers.get(peerId);
             if (window == null) {
-                if (peers.size() >= maxTrackedPeers) {
-                    String eldest = peers.keySet().iterator().next();
-                    peers.remove(eldest);
+                synchronized (this) {
+                    window = peers.get(peerId);
+                    if (window == null) {
+                        if (peers.size() >= maxTrackedPeers) {
+                            String eldest = peers.keySet().stream()
+                                    .filter(key -> !key.equals(peerId)).findFirst().orElse(null);
+                            if (eldest != null) {
+                                PeerWindow evicted = peers.get(eldest);
+                                if (evicted != null) {
+                                    synchronized (evicted) {
+                                        peers.remove(eldest, evicted);
+                                    }
+                                }
+                            }
+                        }
+                        window = new PeerWindow(nowNanos);
+                        peers.put(peerId, window);
+                    }
                 }
-                window = new PeerWindow(nowNanos);
-                peers.put(peerId, window);
-            } else if (nowNanos < window.startedAtNanos
-                    || nowNanos - window.startedAtNanos >= windowNanos) {
-                long elapsedWindows = nowNanos < window.startedAtNanos ? 0
-                        : (nowNanos - window.startedAtNanos) / windowNanos;
-                int consecutiveSignalledWindows = elapsedWindows == 1 && window.signalled
-                        ? window.consecutiveSignalledWindows + 1 : 0;
-                window.reset(nowNanos, consecutiveSignalledWindows);
             }
+            synchronized (window) {
+                // If bounded-state eviction raced this lookup, retry against the current map entry.
+                if (peers.get(peerId) != window) continue;
+                if (nowNanos < window.startedAtNanos
+                        || nowNanos - window.startedAtNanos >= windowNanos) {
+                    long elapsedWindows = nowNanos < window.startedAtNanos ? 0
+                            : (nowNanos - window.startedAtNanos) / windowNanos;
+                    int consecutiveSignalledWindows = elapsedWindows == 1 && window.signalled
+                            ? window.consecutiveSignalledWindows + 1 : 0;
+                    window.reset(nowNanos, consecutiveSignalledWindows);
+                }
 
-            window.frames++;
-            window.bytes += frameBytes;
-            if (!window.signalled && (window.frames > maxFramesPerWindow
-                    || window.bytes > maxBytesPerWindow)) {
-                window.signalled = true;
-                totalSignals++;
-                String reason = window.frames > maxFramesPerWindow
-                        ? "frame-rate threshold exceeded" : "inbound-byte threshold exceeded";
-                if (window.consecutiveSignalledWindows > 0) {
-                    reason = "repeated inbound threshold across consecutive windows";
+                window.frames++;
+                window.bytes += frameBytes;
+                if (!window.signalled && (window.frames > maxFramesPerWindow
+                        || window.bytes > maxBytesPerWindow)) {
+                    window.signalled = true;
+                    totalSignals.incrementAndGet();
+                    String reason = window.frames > maxFramesPerWindow
+                            ? "frame-rate threshold exceeded" : "inbound-byte threshold exceeded";
+                    if (window.consecutiveSignalledWindows > 0) {
+                        reason = "repeated inbound threshold across consecutive windows";
+                    }
+                    event = new GuardEvent(window.frames, window.bytes, reason);
                 }
-                event = new GuardEvent(window.frames, window.bytes, reason);
             }
+            break;
         }
         publish(event);
     }
@@ -139,7 +161,7 @@ public final class NexoraAiGuard {
                 }
             }
             if (reason != null) {
-                totalSignals++;
+                totalSignals.incrementAndGet();
                 event = new GuardEvent(signals.horizontalCorrections + signals.verticalCorrections,
                         0, reason);
             }
@@ -318,9 +340,10 @@ public final class NexoraAiGuard {
         }
     }
 
-    public synchronized void onDisconnected(String peerId) {
-        if (peerId != null) {
-            peers.remove(peerId);
+    public void onDisconnected(String peerId) {
+        if (peerId == null) return;
+        peers.remove(peerId);
+        synchronized (this) {
             playerSignals.remove(peerId);
             combatWindows.remove(peerId);
         }
@@ -348,7 +371,7 @@ public final class NexoraAiGuard {
             if (player.horizontalSignalled || player.verticalSignalled || player.reachSignalled) flaggedPlayers++;
         }
         return new Snapshot(peers.size(), signalledPeers, playerSignals.size(),
-                flaggedPlayers, frames, bytes, totalSignals);
+                flaggedPlayers, frames, bytes, totalSignals.get());
     }
 
     public record GuardEvent(long framesInWindow, long bytesInWindow, String reason) {

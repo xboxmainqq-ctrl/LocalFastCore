@@ -152,4 +152,16 @@ class BedrockBatchCodecTest {
                 () -> BedrockBatchCodec.decode(oversized, true));
     }
 
+
+    @Test
+    void preflightsExactEncodedBatchSizeBeforeAllocatingOutput() {
+        List<BedrockPacket> packets = List.of(new BedrockPacket(1, 0, 0, new byte[] {7}));
+        byte[] encoded = BedrockBatchCodec.encode(packets, false, 256, 3);
+
+        assertEquals(3, encoded.length);
+        assertThrows(IllegalArgumentException.class,
+                () -> BedrockBatchCodec.encode(packets, false, 256, 2));
+        assertArrayEquals(new byte[] {7}, BedrockBatchCodec.decode(encoded, false).getFirst().payload());
+    }
+
 }

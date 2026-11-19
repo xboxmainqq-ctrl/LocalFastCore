@@ -90,4 +90,18 @@ class WorldLivingEntityManagerTest {
         assertThrows(IllegalArgumentException.class, () -> manager.setVelocity(1, 101, 0, 0));
         assertThrows(IllegalArgumentException.class, () -> manager.tickFire(-1));
     }
+    @Test
+    void snapshotsRemainOrderedByRuntimeIdWithoutPostSorting() {
+        WorldLivingEntityManager manager = new WorldLivingEntityManager();
+        WorldLivingEntity first = manager.spawn("minecraft:zombie", 20, 0, 64, 0);
+        WorldLivingEntity second = manager.spawn("minecraft:skeleton", 20, 1, 64, 0);
+        WorldLivingEntity third = manager.spawn("minecraft:spider", 20, 2, 64, 0);
+
+        assertEquals(java.util.List.of(first, second, third), manager.snapshot());
+        assertTrue(manager.snapshot().get(0).runtimeId()
+                < manager.snapshot().get(1).runtimeId());
+        assertTrue(manager.snapshot().get(1).runtimeId()
+                < manager.snapshot().get(2).runtimeId());
+    }
+
 }

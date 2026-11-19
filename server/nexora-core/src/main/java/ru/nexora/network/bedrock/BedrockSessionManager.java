@@ -130,6 +130,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final LongSupplier nanoTime;
     private final AutoCloseable furnaceUpdateListener;
     private final Map<String, SessionState> sessions = new ConcurrentHashMap<>();
+    private final ActorReplicationIndex actorReplicationIndex = new ActorReplicationIndex();
     private final Object[] xuidLoginLocks = createXuidLoginLocks();
     private final Object sessionChangeMonitor = new Object();
     private final AtomicLong nextEntityId = new AtomicLong(1);
@@ -603,6 +604,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
             releaseOnlinePlayerLease(state);
             sessions.remove(networkId, state);
+            actorReplicationIndex.removeSession(networkId);
             synchronized (sessionChangeMonitor) {
                 sessionChangeMonitor.notifyAll();
             }
@@ -4413,15 +4415,20 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
         if (packetId == BedrockAddItemActorCodec.REMOVE_ACTOR_PACKET_ID) {
             List<byte[]> encodedFrames = null;
-            for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
-                SessionState recipient = entry.getValue();
+            actorReplicationIndex.forEachActorViewer(runtimeId, networkId -> {
+                SessionState recipient = sessions.get(networkId);
+                if (recipient == null) {
+                    actorReplicationIndex.removeActorViewer(runtimeId, networkId);
+                    return;
+                }
                 boolean wasVisible = recipient.visibleLivingEntityIds.remove(runtimeId)
                         | recipient.visibleArrowEntityIds.remove(runtimeId);
+                actorReplicationIndex.removeActorViewer(runtimeId, networkId);
                 if (wasVisible && recipient.clientInitialized && !recipient.rejected) {
-                    if (encodedFrames == null) encodedFrames = encodeFrames(List.of(packet), true);
-                    sendEncodedFrames(entry.getKey(), encodedFrames);
+                    // The immutable frame batch is shared across all recipients of this despawn.
+                    sendEncodedFrames(networkId, encodeFrames(List.of(packet), true));
                 }
-            }
+            });
             return;
         }
 
@@ -4437,46 +4444,66 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         double x = entity != null ? entity.x() : arrow != null ? arrow.x() : fireball.x();
         double z = entity != null ? entity.z() : arrow != null ? arrow.z() : fireball.z();
         long uniqueId = entity != null ? entity.uniqueId() : arrow != null ? arrow.uniqueId() : fireball.uniqueId();
+        long chunkKey = ((long) Math.floorDiv((int) Math.floor(x), 16) << 32)
+                | (Math.floorDiv((int) Math.floor(z), 16) & 0xffff_ffffL);
         List<byte[]> movementFrames = null;
         List<byte[]> spawnFrames = null;
         List<byte[]> removeFrames = null;
         BedrockPacket spawnPacket = null;
         BedrockPacket removePacket = null;
-        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
-            SessionState recipient = entry.getValue();
-            if (!recipient.clientInitialized || recipient.rejected) continue;
+
+        // New/current viewers are found directly from the actor's current chunk.
+        actorReplicationIndex.forEachChunkViewer(chunkKey, networkId -> {
+            SessionState recipient = sessions.get(networkId);
+            if (recipient == null || !recipient.clientInitialized || recipient.rejected) return;
             Set<Long> visibleIds = entity != null
                     ? recipient.visibleLivingEntityIds : recipient.visibleArrowEntityIds;
-            boolean visibleNow = isWorldPositionVisible(recipient, x, z);
             boolean alreadyVisible = visibleIds.contains(runtimeId);
             try {
-                if (visibleNow && !alreadyVisible) {
+                if (!alreadyVisible) {
                     visibleIds.add(runtimeId);
-                    if (spawnFrames == null) {
-                        spawnPacket = entity != null
-                                ? BedrockAddActorCodec.createAddActor(entity)
-                                : arrow != null ? BedrockArrowActorCodec.createSpawn(arrow)
-                                : BedrockFireballActorCodec.createSpawn(fireball);
-                        spawnFrames = encodeFrames(List.of(spawnPacket), true);
-                    }
-                    sendEncodedFrames(entry.getKey(), spawnFrames);
-                } else if (visibleNow) {
-                    if (movementFrames == null) movementFrames = encodeFrames(List.of(packet), true);
-                    sendEncodedFrames(entry.getKey(), movementFrames);
-                } else if (alreadyVisible) {
-                    visibleIds.remove(runtimeId);
-                    if (removeFrames == null) {
-                        removePacket = BedrockAddItemActorCodec.createRemoveActor(uniqueId);
-                        removeFrames = encodeFrames(List.of(removePacket), true);
-                    }
-                    sendEncodedFrames(entry.getKey(), removeFrames);
+                    actorReplicationIndex.addActorViewer(runtimeId, networkId);
+                    BedrockPacket spawn = entity != null
+                            ? BedrockAddActorCodec.createAddActor(entity)
+                            : arrow != null ? BedrockArrowActorCodec.createSpawn(arrow)
+                            : BedrockFireballActorCodec.createSpawn(fireball);
+                    sendPacket(networkId, spawn, true);
+                } else {
+                    sendPacket(networkId, packet, true);
                 }
             } catch (RuntimeException exception) {
-                if (visibleNow && !alreadyVisible) visibleIds.remove(runtimeId);
+                if (!alreadyVisible) {
+                    visibleIds.remove(runtimeId);
+                    actorReplicationIndex.removeActorViewer(runtimeId, networkId);
+                }
                 System.err.println("NEXORA: unable to sync actor " + runtimeId + " to "
-                        + entry.getKey() + ": " + exception.getMessage());
+                        + networkId + ": " + exception.getMessage());
             }
-        }
+        });
+
+        // Previously tracking viewers outside the new chunk must receive one despawn.
+        actorReplicationIndex.forEachActorViewer(runtimeId, networkId -> {
+            SessionState recipient = sessions.get(networkId);
+            if (recipient == null) {
+                actorReplicationIndex.removeActorViewer(runtimeId, networkId);
+                return;
+            }
+            if (isWorldPositionVisible(recipient, x, z)) return;
+            Set<Long> visibleIds = entity != null
+                    ? recipient.visibleLivingEntityIds : recipient.visibleArrowEntityIds;
+            if (!visibleIds.remove(runtimeId)) {
+                actorReplicationIndex.removeActorViewer(runtimeId, networkId);
+                return;
+            }
+            actorReplicationIndex.removeActorViewer(runtimeId, networkId);
+            try {
+                sendPacket(networkId,
+                        BedrockAddItemActorCodec.createRemoveActor(uniqueId), true);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to remove actor " + runtimeId + " from "
+                        + networkId + ": " + exception.getMessage());
+            }
+        });
     }
 
     private static long readFirstVarLong(byte[] payload) {
@@ -6303,6 +6330,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
         }
         state.sentChunkKeys.retainAll(desiredChunks);
+        actorReplicationIndex.replaceChunkView(networkId, state.sentChunkKeys);
         state.lastChunkX = centerX;
         state.lastChunkZ = centerZ;
         syncVisiblePlayerActors(networkId, state);
@@ -6343,14 +6371,17 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         for (WorldLivingEntity entity : world.livingEntities().snapshot()) {
             boolean visible = isWorldPositionVisible(recipient, entity.x(), entity.z());
             if (visible && recipient.visibleLivingEntityIds.add(entity.runtimeId())) {
+                actorReplicationIndex.addActorViewer(entity.runtimeId(), recipientNetworkId);
                 try {
                     sendPacket(recipientNetworkId, BedrockAddActorCodec.createAddActor(entity), true);
                 } catch (RuntimeException exception) {
                     recipient.visibleLivingEntityIds.remove(entity.runtimeId());
+                    actorReplicationIndex.removeActorViewer(entity.runtimeId(), recipientNetworkId);
                     System.err.println("NEXORA: unable to add living actor entering chunk view: "
                             + exception.getMessage());
                 }
             } else if (!visible && recipient.visibleLivingEntityIds.remove(entity.runtimeId())) {
+                actorReplicationIndex.removeActorViewer(entity.runtimeId(), recipientNetworkId);
                 try {
                     sendPacket(recipientNetworkId,
                             BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()), true);
@@ -6387,14 +6418,17 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         for (ru.nexora.combat.ArrowProjectile arrow : mobArrows.values()) {
             boolean visible = isWorldPositionVisible(recipient, arrow.x(), arrow.z());
             if (visible && recipient.visibleArrowEntityIds.add(arrow.runtimeId())) {
+                actorReplicationIndex.addActorViewer(arrow.runtimeId(), recipientNetworkId);
                 try {
                     sendPacket(recipientNetworkId, BedrockArrowActorCodec.createSpawn(arrow), true);
                 } catch (RuntimeException exception) {
                     recipient.visibleArrowEntityIds.remove(arrow.runtimeId());
+                    actorReplicationIndex.removeActorViewer(arrow.runtimeId(), recipientNetworkId);
                     System.err.println("NEXORA: unable to add projectile entering chunk view: "
                             + exception.getMessage());
                 }
             } else if (!visible && recipient.visibleArrowEntityIds.remove(arrow.runtimeId())) {
+                actorReplicationIndex.removeActorViewer(arrow.runtimeId(), recipientNetworkId);
                 try {
                     sendPacket(recipientNetworkId,
                             BedrockAddItemActorCodec.createRemoveActor(arrow.uniqueId()), true);
@@ -6407,14 +6441,17 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         for (ru.nexora.combat.FireballProjectile fireball : mobFireballs.values()) {
             boolean visible = isWorldPositionVisible(recipient, fireball.x(), fireball.z());
             if (visible && recipient.visibleArrowEntityIds.add(fireball.runtimeId())) {
+                actorReplicationIndex.addActorViewer(fireball.runtimeId(), recipientNetworkId);
                 try {
                     sendPacket(recipientNetworkId, BedrockFireballActorCodec.createSpawn(fireball), true);
                 } catch (RuntimeException exception) {
                     recipient.visibleArrowEntityIds.remove(fireball.runtimeId());
+                    actorReplicationIndex.removeActorViewer(fireball.runtimeId(), recipientNetworkId);
                     System.err.println("NEXORA: unable to add fireball entering chunk view: "
                             + exception.getMessage());
                 }
             } else if (!visible && recipient.visibleArrowEntityIds.remove(fireball.runtimeId())) {
+                actorReplicationIndex.removeActorViewer(fireball.runtimeId(), recipientNetworkId);
                 try {
                     sendPacket(recipientNetworkId,
                             BedrockAddItemActorCodec.createRemoveActor(fireball.uniqueId()), true);
@@ -7069,6 +7106,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             for (SessionState state : sessions.values()) releaseOnlinePlayerLease(state);
         }
         sessions.clear();
+        actorReplicationIndex.clear();
         mobArrows.clear();
         poisonMobArrows.clear();
         mobFireballs.clear();

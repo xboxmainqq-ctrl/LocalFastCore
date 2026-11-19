@@ -66,7 +66,7 @@ class ChunkStreamingBudgetTest {
 
     @Test
     void pausingCompletedViewDoesNotResetTheSessionWindowQuota() {
-        ChunkStreamingBudget budget = new ChunkStreamingBudget(100, 8, 2, 500);
+        ChunkStreamingBudget budget = new ChunkStreamingBudget(100, 8, 1, 500);
 
         assertTrue(budget.tryAcquire("player-a", 0));
         budget.pause("player-a");

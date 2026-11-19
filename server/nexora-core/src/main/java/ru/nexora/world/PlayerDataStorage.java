@@ -66,18 +66,7 @@ public final class PlayerDataStorage {
         }
 
         if (fileBytes.size() > MAX_FILE_BYTES) throw new IOException("NEXORA player profile exceeds size limit");
-        Path temporary = Files.createTempFile(playersDirectory, ".nexora-player-", ".tmp");
-        try {
-            Files.write(temporary, fileBytes.toByteArray());
-            try {
-                Files.move(temporary, target,
-                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException ignored) {
-                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } finally {
-            Files.deleteIfExists(temporary);
-        }
+        ru.nexora.persistence.AtomicFileWriter.writeAtomically(target, fileBytes.toByteArray());
     }
 
     public Optional<PlayerData> load(String xuid) throws IOException {

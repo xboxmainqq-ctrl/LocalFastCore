@@ -3582,8 +3582,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         mobAiLoadController.aiBudgetNanos());
                 mobStuckTracker.clear(mob.runtimeId());
                 if (damagePlayerFromMob(decision.targetNetworkId(), mob, decision.attackDamage(), tick)) {
-                    nextMobAttackMillis.put(mob.runtimeId(),
-                            nowMillis + ru.nexora.combat.LivingEntityAiService.ATTACK_COOLDOWN_MILLIS);
+                    nextMobAttackMillis.put(mob.runtimeId(), mobAttackDeadline(nowMillis,
+                            ru.nexora.combat.LivingEntityAiService.ATTACK_COOLDOWN_MILLIS));
                 }
                 continue;
             }
@@ -5800,6 +5800,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 target.combatLock.unlock();
             }
         }
+    }
+
+    static long mobAttackDeadline(long nowMillis, long cooldownMillis) {
+        if (nowMillis < 0 || cooldownMillis < 0) {
+            throw new IllegalArgumentException("Mob attack timestamps must be non-negative");
+        }
+        return nowMillis > Long.MAX_VALUE - cooldownMillis
+                ? Long.MAX_VALUE : nowMillis + cooldownMillis;
     }
 
     private static long safeAddNanos(long now, long duration) {

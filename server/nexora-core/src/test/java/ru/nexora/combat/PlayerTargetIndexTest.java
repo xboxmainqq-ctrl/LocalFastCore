@@ -54,6 +54,37 @@ class PlayerTargetIndexTest {
     }
 
     @Test
+    void spatialIndexMatchesBoundedLinearScanForLargePlayerSets() {
+        List<LivingEntityAiService.PlayerTarget> players = new java.util.ArrayList<>();
+        for (int i = 0; i < 48; i++) {
+            double x = ((i * 73) % 1_100) - 550.0;
+            double z = ((i * 137) % 1_300) - 650.0;
+            players.add(new LivingEntityAiService.PlayerTarget(
+                    "indexed-" + i, x, 64 + (i % 5), z, i % 11 != 0));
+        }
+        PlayerTargetIndex index = new PlayerTargetIndex(players);
+        WorldLivingEntityManager manager = new WorldLivingEntityManager();
+
+        for (int i = 0; i < 32; i++) {
+            double x = ((i * 191) % 1_000) - 500.0;
+            double z = ((i * 97) % 1_200) - 600.0;
+            WorldLivingEntity mob = manager.spawn("minecraft:zombie", 20, x, 64, z);
+            var expected = LivingEntityAiService.nearestAlivePlayer(mob, players);
+            if (expected != null) {
+                double dx = expected.x() - mob.x();
+                double dy = expected.y() - mob.y();
+                double dz = expected.z() - mob.z();
+                if (dx * dx + dy * dy + dz * dz
+                        > PlayerTargetIndex.SEARCH_RADIUS_SQUARED) {
+                    expected = null;
+                }
+            }
+            assertSame(expected, index.nearestWithinRange(mob),
+                    "Indexed and linear results must match for mob " + i);
+        }
+    }
+
+    @Test
     void nearestTargetIncludesExact128BlockBoundary() {
         WorldLivingEntity mob = new WorldLivingEntityManager().spawn(
                 "minecraft:zombie", 20, 0, 64, 0);

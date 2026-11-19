@@ -179,6 +179,34 @@ class WorldStorageTest {
     }
 
     @Test
+    void restoresPreviousVerifiedChunkWhenPrimaryChecksumIsCorrupted() throws Exception {
+        WorldStorage storage = new WorldStorage(temporaryDirectory, "ChunkRecovery");
+        WorldChunk first = new WorldChunk(2, -3);
+        first.setBlock(1, 70, 1, BlockType.STONE);
+        storage.saveChunk(first);
+        WorldChunk second = new WorldChunk(2, -3);
+        second.setBlock(1, 70, 1, BlockType.GOLD_BLOCK);
+        storage.saveChunk(second);
+
+        Path primary = temporaryDirectory.resolve("ChunkRecovery/chunks/2_-3.nxc");
+        byte[] damaged = Files.readAllBytes(primary);
+        damaged[damaged.length - 1] ^= 0x20;
+        Files.write(primary, damaged);
+
+        WorldChunk restored = storage.loadChunk(2, -3).orElseThrow();
+        assertEquals(BlockType.STONE, restored.getBlock(1, 70, 1));
+        assertArrayEquals(Files.readAllBytes(
+                temporaryDirectory.resolve("ChunkRecovery/chunks/2_-3.nxc.bak")),
+                Files.readAllBytes(primary));
+
+        WorldChunk third = new WorldChunk(2, -3);
+        third.setBlock(1, 70, 1, BlockType.DIAMOND_BLOCK);
+        storage.saveChunk(third);
+        assertEquals(BlockType.DIAMOND_BLOCK,
+                storage.loadChunk(2, -3).orElseThrow().getBlock(1, 70, 1));
+    }
+
+    @Test
     void rejectsUnsafeWorldDirectoryNames() {
         assertThrows(IllegalArgumentException.class,
                 () -> new WorldStorage(temporaryDirectory, "../outside"));

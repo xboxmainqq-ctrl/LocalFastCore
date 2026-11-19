@@ -353,3 +353,10 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Deadline arithmetic saturates at `Long.MAX_VALUE` instead of overflowing near the maximum timestamp.
 - Added regression tests for attacks inside/outside the cooldown window and timestamp overflow.
 - Validation: source and tests committed; Maven/CI result is pending.
+
+
+### 47. Stable mob identity for attack cooldown state — IMPLEMENTED, CI PENDING
+- Attack cooldown deadlines are now keyed by the entity's stable unique ID rather than its runtime ID, preventing a newly spawned mob that reuses a runtime ID from inheriting another mob's cooldown.
+- Added a regression test that attacks with the original mob, replaces it with a distinct entity sharing the runtime ID, and verifies the replacement can attack immediately.
+- Existing deadline expiry and overflow handling remain unchanged.
+- Validation: source and test committed; Maven/CI result is pending.

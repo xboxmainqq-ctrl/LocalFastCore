@@ -6430,7 +6430,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 int chunkX = (int) (key >> 32);
                 int chunkZ = (int) key;
                 CompletableFuture<Optional<WorldChunk>> load = state.pendingChunkLoads.computeIfAbsent(
-                        key, ignored -> world.requestStoredChunkLoad(chunkX, chunkZ));
+                        key, ignored -> world.requestStoredChunkLoad(networkId, chunkX, chunkZ));
                 if (!load.isDone()) {
                     batchReady = false;
                     continue;

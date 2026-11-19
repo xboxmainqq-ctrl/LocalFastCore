@@ -56,6 +56,7 @@ public final class WorldChunkSaveService implements AutoCloseable {
         if (closed) {
             return CompletableFuture.failedFuture(new IllegalStateException("Chunk save service is closed"));
         }
+        if (!chunk.isDirty()) return CompletableFuture.completedFuture(null);
         long key = key(chunk.chunkX(), chunk.chunkZ());
         SaveState existing = inFlight.get(key);
         if (existing != null) return existing.completion;
@@ -76,9 +77,10 @@ public final class WorldChunkSaveService implements AutoCloseable {
             while (true) {
                 WorldChunk.PersistenceSnapshot snapshot = state.chunk.persistenceSnapshot();
                 storage.saveChunkSnapshot(state.chunk.chunkX(), state.chunk.chunkZ(), snapshot.sections());
+                state.chunk.markPersisted(snapshot.revision());
                 boolean complete;
                 synchronized (this) {
-                    complete = state.chunk.revision() == snapshot.revision();
+                    complete = !state.chunk.isDirty();
                     if (complete) inFlight.remove(key, state);
                 }
                 if (complete) {

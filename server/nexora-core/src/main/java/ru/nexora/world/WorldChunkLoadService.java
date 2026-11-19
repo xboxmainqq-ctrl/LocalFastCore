@@ -41,6 +41,7 @@ public final class WorldChunkLoadService implements AutoCloseable {
     private final Map<String, ArrayDeque<Runnable>> pendingBySession = new HashMap<>();
     private final ArrayDeque<String> sessionRotation = new ArrayDeque<>();
     private final Set<String> activeSessions = new HashSet<>();
+    private final Set<CompletableFuture<Optional<WorldChunk>>> queuedFutures = new HashSet<>();
     private final int workers;
     private final int queueCapacity;
     private int queuedLoads;
@@ -98,6 +99,7 @@ public final class WorldChunkLoadService implements AutoCloseable {
                 sessionRotation.addLast(sessionKey);
                 return new ArrayDeque<>();
             });
+            queuedFutures.add(result);
             sessionQueue.addLast(() -> executeLoad(key, chunkX, chunkZ, result, sessionKey));
             queuedLoads++;
             dispatchFairly();
@@ -107,6 +109,9 @@ public final class WorldChunkLoadService implements AutoCloseable {
 
     private void executeLoad(long key, int chunkX, int chunkZ,
                              CompletableFuture<Optional<WorldChunk>> result, String sessionKey) {
+        synchronized (this) {
+            queuedFutures.remove(result);
+        }
         try {
             executor.execute(() -> {
                 try {
@@ -204,11 +209,11 @@ public final class WorldChunkLoadService implements AutoCloseable {
             pendingBySession.clear();
             sessionRotation.clear();
             queuedLoads = 0;
-            for (CompletableFuture<Optional<WorldChunk>> future : inFlight.values()) {
-                if (!future.isDone()) future.completeExceptionally(
-                        new IllegalStateException("Chunk load service is closed"));
+            for (CompletableFuture<Optional<WorldChunk>> future : queuedFutures) {
+                future.completeExceptionally(new IllegalStateException("Chunk load service is closed"));
+                inFlight.values().remove(future);
             }
-            inFlight.clear();
+            queuedFutures.clear();
         }
         executor.shutdown();
         try {

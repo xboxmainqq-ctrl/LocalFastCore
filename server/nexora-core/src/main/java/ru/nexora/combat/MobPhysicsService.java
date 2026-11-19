@@ -3,7 +3,6 @@ package ru.nexora.combat;
 import ru.nexora.world.World;
 import ru.nexora.world.WorldCollision;
 import ru.nexora.world.WorldLivingEntity;
-import ru.nexora.world.WorldPathfinder;
 
 /**
  * Small bounded per-tick actor physics for gravity and knockback.
@@ -24,8 +23,8 @@ public final class MobPhysicsService {
         if (entity.health() <= 0) return new Result(entity, false, false);
 
         boolean flying = LivingEntityAiService.isFlyingMob(entity.identifier());
-        boolean groundedBeforeMove = !flying && WorldCollision.isOnGround(
-                world, entity.x(), entity.y(), entity.z());
+        boolean groundedBeforeMove = !flying && WorldCollision.isMobOnGround(
+                world, entity.identifier(), entity.x(), entity.y(), entity.z(), 0.05);
 
         double vx = entity.velocityX();
         double vy = entity.velocityY();
@@ -43,20 +42,20 @@ public final class MobPhysicsService {
         double y = entity.y();
         double z = entity.z();
         if (Math.abs(vx) > STOP_EPSILON) {
-            if (WorldPathfinder.isMobMovementAreaLoaded(world, x, z, x + vx, z)
-                    && WorldCollision.canMove(world, x, y, z, x + vx, y, z)) x += vx;
+            if (WorldCollision.canMoveMob(world, entity.identifier(),
+                    x, y, z, x + vx, y, z)) x += vx;
             else vx = 0;
         } else vx = 0;
 
         if (Math.abs(vz) > STOP_EPSILON) {
-            if (WorldPathfinder.isMobMovementAreaLoaded(world, x, z, x, z + vz)
-                    && WorldCollision.canMove(world, x, y, z, x, y, z + vz)) z += vz;
+            if (WorldCollision.canMoveMob(world, entity.identifier(),
+                    x, y, z, x, y, z + vz)) z += vz;
             else vz = 0;
         } else vz = 0;
 
         if (Math.abs(vy) > STOP_EPSILON) {
-            if (WorldPathfinder.isMobFootprintLoaded(world, x, z)
-                    && WorldCollision.canMove(world, x, y, z, x, y + vy, z)) {
+            if (WorldCollision.canMoveMob(world, entity.identifier(),
+                    x, y, z, x, y + vy, z)) {
                 y += vy;
             } else if (vy < 0 && isBouncyMob(entity.identifier())) {
                 vy = Math.min(1.2, Math.max(0.2, -vy * 0.8));
@@ -83,7 +82,7 @@ public final class MobPhysicsService {
         }
         boolean groundedAfterMove = !flying
                 && !(isBouncyMob(entity.identifier()) && vy > 0.0)
-                && WorldCollision.isOnGround(world, x, y, z, GROUND_CONTACT_TOLERANCE);
+                && WorldCollision.isMobOnGround(world, entity.identifier(), x, y, z, GROUND_CONTACT_TOLERANCE);
         return new Result(updated, moved, groundedAfterMove);
     }
 

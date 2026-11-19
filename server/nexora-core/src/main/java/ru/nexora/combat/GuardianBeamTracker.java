@@ -33,7 +33,7 @@ public final class GuardianBeamTracker {
             return new Result(true, false, 0.0);
         }
         if (nowMillis < state.nextAttackAtMillis()) {
-            return new Result(false, false, 1.0);
+            return new Result(false, false, 0.0);
         }
         long chargeElapsed = Math.max(0L, nowMillis - state.chargeStartedAtMillis());
         if (chargeElapsed < CHARGE_MILLIS) {
@@ -41,7 +41,7 @@ public final class GuardianBeamTracker {
         }
         long nextAttack = nowMillis > Long.MAX_VALUE - RECOVERY_MILLIS
                 ? Long.MAX_VALUE : nowMillis + RECOVERY_MILLIS;
-        states.put(guardianRuntimeId, new State(targetNetworkId, nowMillis, nextAttack));
+        states.put(guardianRuntimeId, new State(targetNetworkId, nextAttack, nextAttack));
         return new Result(false, true, 1.0);
     }
 

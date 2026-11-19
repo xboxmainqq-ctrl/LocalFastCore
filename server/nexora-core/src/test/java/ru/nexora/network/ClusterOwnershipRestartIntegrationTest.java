@@ -139,11 +139,13 @@ class ClusterOwnershipRestartIntegrationTest {
         Process nodeB = startLeaseProcess(url, "try", "race-process-xuid", "node-b", 10_000L);
         assertTrue(nodeA.waitFor(15, TimeUnit.SECONDS), "Node A must finish its login attempt");
         assertTrue(nodeB.waitFor(15, TimeUnit.SECONDS), "Node B must finish its login attempt");
-        assertEquals(0, nodeA.exitValue());
-        assertEquals(0, nodeB.exitValue());
+        String outputA = new String(nodeA.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        String outputB = new String(nodeB.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        assertEquals(0, nodeA.exitValue(), "Node A process output: " + outputA);
+        assertEquals(0, nodeB.exitValue(), "Node B process output: " + outputB);
 
-        String resultA = new BufferedReader(new InputStreamReader(nodeA.getInputStream())).readLine();
-        String resultB = new BufferedReader(new InputStreamReader(nodeB.getInputStream())).readLine();
+        String resultA = outputA.lines().findFirst().orElse("");
+        String resultB = outputB.lines().findFirst().orElse("");
         assertNotEquals(resultA, resultB,
                 "Exactly one independent JVM may acquire a previously unowned XUID");
         assertTrue(("ACQUIRED".equals(resultA) && "REJECTED".equals(resultB))

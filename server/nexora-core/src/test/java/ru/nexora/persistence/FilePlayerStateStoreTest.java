@@ -63,6 +63,30 @@ class FilePlayerStateStoreTest {
     }
 
     @Test
+    void restoresLastVerifiedGenerationWhenPrimarySnapshotIsCorrupted() throws IOException {
+        FilePlayerStateStore store = new FilePlayerStateStore(temporaryDirectory);
+        PlayerStateSnapshot first = new PlayerStateSnapshot(1, "18", 1L, 10L, new byte[] {1, 2, 3});
+        PlayerStateSnapshot second = new PlayerStateSnapshot(1, "18", 2L, 20L, new byte[] {4, 5, 6});
+        assertEquals(PlayerStateStore.SaveResult.SAVED, store.save(first));
+        assertEquals(PlayerStateStore.SaveResult.SAVED, store.save(second));
+
+        Path primary = temporaryDirectory.resolve("18.nxps");
+        byte[] corrupted = Files.readAllBytes(primary);
+        corrupted[corrupted.length - 1] ^= 0x40;
+        Files.write(primary, corrupted);
+
+        PlayerStateSnapshot recovered = new FilePlayerStateStore(temporaryDirectory)
+                .loadLatest("18").orElseThrow();
+        assertEquals(1L, recovered.revision());
+        assertArrayEquals(new byte[] {1, 2, 3}, recovered.payload());
+
+        // Recovery rewrites the primary, so the next higher revision can be committed.
+        assertEquals(PlayerStateStore.SaveResult.SAVED,
+                store.save(new PlayerStateSnapshot(1, "18", 2L, 30L, new byte[] {7, 8, 9})));
+        assertEquals(2L, store.loadLatest("18").orElseThrow().revision());
+    }
+
+    @Test
     void rejectsConflictingPayloadForSameRevision() throws IOException {
         FilePlayerStateStore store = new FilePlayerStateStore(temporaryDirectory);
         store.save(new PlayerStateSnapshot(1, "15", 2L, 20L, new byte[] {1}));

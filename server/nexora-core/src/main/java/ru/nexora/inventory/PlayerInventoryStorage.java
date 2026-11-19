@@ -110,7 +110,7 @@ public final class PlayerInventoryStorage {
             throw new IOException("NEXORA player inventory exceeds storage limit");
         }
 
-        ru.nexora.persistence.AtomicFileWriter.writeAtomically(target, fileBytes.toByteArray());
+        ru.nexora.persistence.BackupFile.write(target, fileBytes.toByteArray(), this::readStateFile);
     }
 
     private static void writeSlots(DataOutputStream output, List<Optional<ItemStack>> slots, int version) throws IOException {
@@ -148,8 +148,12 @@ public final class PlayerInventoryStorage {
 
     public Optional<PlayerInventoryState> loadState(String xuid) throws IOException {
         Path file = inventoryPath(xuid);
+        return ru.nexora.persistence.BackupFile.load(file, this::readStateFile);
+    }
+
+    private PlayerInventoryState readStateFile(Path file) throws IOException {
         rejectSymlink(file);
-        if (!Files.exists(file)) return Optional.empty();
+        if (!Files.exists(file)) throw new IOException("Player inventory file disappeared during recovery");
         long size = Files.size(file);
         if (size < 12 || size > MAX_FILE_BYTES) {
             throw new IOException("Invalid NEXORA player inventory size");
@@ -203,7 +207,7 @@ public final class PlayerInventoryStorage {
                 readSlots(input, uiSize, version, uiInventory::setSlot);
             }
             if (input.available() != 0) throw new IOException("Trailing data in NEXORA player inventory");
-            return Optional.of(new PlayerInventoryState(inventory, uiInventory));
+            return new PlayerInventoryState(inventory, uiInventory);
         } catch (java.io.EOFException exception) {
             throw new IOException("Truncated NEXORA player inventory", exception);
         }

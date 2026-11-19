@@ -195,10 +195,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             new ru.nexora.combat.MobAiTaskScheduler();
     private final ru.nexora.ai.HotPathProfiler hotPathProfiler =
             new ru.nexora.ai.HotPathProfiler();
-    private final ru.nexora.world.WorldChunkResidencyManager chunkResidency =
-            new ru.nexora.world.WorldChunkResidencyManager(
-                    BedrockChunkRadiusCodec.DEFAULT_RADIUS, 100,
-                    ru.nexora.world.WorldChunkResidencyManager.Shape.SQUARE);
+    private final ru.nexora.world.WorldChunkResidencyManager chunkResidency;
     private volatile boolean serverAuthoritativeMovement;
     private volatile ru.nexora.ai.NexoraAiAssistant aiAssistant;
     private volatile ru.nexora.ai.NexoraAiDiagnostics aiDiagnostics;
@@ -313,7 +310,25 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             Consumer<PacketEvent> packetSink
     ) {
         this(serverProtocol, serverVersion, compressionThreshold, world, playerStorage, inventoryStorage,
-                equipmentStorage, checkpointService, outbound, packetSink, System::nanoTime);
+                equipmentStorage, checkpointService, outbound, packetSink, Integer.MAX_VALUE);
+    }
+
+    /** Creates the production session manager with an explicit world residency ceiling. */
+    public BedrockSessionManager(
+            int serverProtocol,
+            String serverVersion,
+            int compressionThreshold,
+            World world,
+            PlayerDataStorage playerStorage,
+            PlayerInventoryStorage inventoryStorage,
+            PlayerEquipmentStorage equipmentStorage,
+            PlayerStateCheckpointService checkpointService,
+            OutboundFrameSender outbound,
+            Consumer<PacketEvent> packetSink,
+            int maximumResidentChunks
+    ) {
+        this(serverProtocol, serverVersion, compressionThreshold, world, playerStorage, inventoryStorage,
+                equipmentStorage, checkpointService, outbound, packetSink, maximumResidentChunks, System::nanoTime);
     }
 
     BedrockSessionManager(
@@ -387,6 +402,25 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             Consumer<PacketEvent> packetSink,
             LongSupplier nanoTime
     ) {
+        this(serverProtocol, serverVersion, compressionThreshold, world, playerStorage, inventoryStorage,
+                equipmentStorage, checkpointService, outbound, packetSink, Integer.MAX_VALUE, nanoTime);
+    }
+
+    BedrockSessionManager(
+            int serverProtocol,
+            String serverVersion,
+            int compressionThreshold,
+            World world,
+            PlayerDataStorage playerStorage,
+            PlayerInventoryStorage inventoryStorage,
+            PlayerEquipmentStorage equipmentStorage,
+            PlayerStateCheckpointService checkpointService,
+            OutboundFrameSender outbound,
+            Consumer<PacketEvent> packetSink,
+            int maximumResidentChunks,
+            LongSupplier nanoTime
+    ) {
+        if (maximumResidentChunks < 1) throw new IllegalArgumentException("maximumResidentChunks must be positive");
         if (serverProtocol < 1) throw new IllegalArgumentException("serverProtocol must be positive");
         if (serverVersion == null || serverVersion.isBlank()) {
             throw new IllegalArgumentException("serverVersion must not be blank");
@@ -398,6 +432,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         this.serverVersion = serverVersion;
         this.compressionThreshold = compressionThreshold;
         this.world = Objects.requireNonNull(world, "world");
+        this.chunkResidency = new ru.nexora.world.WorldChunkResidencyManager(
+                BedrockChunkRadiusCodec.DEFAULT_RADIUS, 100,
+                ru.nexora.world.WorldChunkResidencyManager.Shape.SQUARE, maximumResidentChunks);
         this.playerStorage = playerStorage;
         this.inventoryStorage = inventoryStorage;
         this.equipmentStorage = equipmentStorage;

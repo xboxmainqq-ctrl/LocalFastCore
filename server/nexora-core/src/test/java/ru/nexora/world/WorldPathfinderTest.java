@@ -90,4 +90,35 @@ class WorldPathfinderTest {
         assertTrue(WorldPathfinder.isSearchAreaLoaded(world, 8.5, 8.5));
     }
 
+
+    @Test
+    void usesSafeDiagonalFirstStepOnOpenGround() {
+        World world = new World("path-diagonal", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
+
+        var step = WorldPathfinder.findNextStep(world,
+                0.5, 65.0, 0.5, 3.5, 3.5, "minecraft:zombie").orElseThrow();
+
+        assertEquals(1.5, step.x(), 1.0e-6);
+        assertEquals(1.5, step.z(), 1.0e-6);
+        assertTrue(WorldCollision.canStepMob(world, "minecraft:zombie",
+                0.5, 65.0, 0.5, step.x(), step.y(), step.z()));
+    }
+
+    @Test
+    void diagonalMovementDoesNotCutThroughBlockedCorner() {
+        World world = new World("path-diagonal-corner", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
+        world.setBlock(1, 65, 0, BlockType.STONE);
+        world.setBlock(0, 65, 1, BlockType.STONE);
+
+        var step = WorldPathfinder.findNextStep(world,
+                0.5, 65.0, 0.5, 2.5, 2.5, "minecraft:zombie").orElseThrow();
+
+        assertFalse(step.x() == 1.5 && step.z() == 1.5,
+                "The mob must not squeeze diagonally through two touching corner blocks");
+        assertTrue(WorldCollision.canStepMob(world, "minecraft:zombie",
+                0.5, 65.0, 0.5, step.x(), step.y(), step.z()));
+    }
+
 }

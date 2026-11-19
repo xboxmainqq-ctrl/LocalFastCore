@@ -6420,8 +6420,17 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 continue;
             }
 
+            // A SubChunkRequest may arrive for the previous published view while
+            // residency pressure is retiring its chunks. Never resurrect chunks from
+            // this read-only network path; only the bounded streaming queue may load them.
+            WorldChunk residentChunk = world.getLoadedChunkOrNull(absoluteChunkX, absoluteChunkZ);
+            if (residentChunk == null) {
+                responses.add(new BedrockSubChunkCodec.Response(
+                        offset, BedrockSubChunkCodec.RESULT_LEVEL_CHUNK_DOES_NOT_EXIST, null));
+                continue;
+            }
             byte[] serialized = BedrockLevelChunkCodec.createSubChunkData(
-                    world.getChunk(absoluteChunkX, absoluteChunkZ), (int) subChunkY);
+                    residentChunk, (int) subChunkY);
             if (serialized == null) {
                 responses.add(new BedrockSubChunkCodec.Response(
                         offset, BedrockSubChunkCodec.RESULT_SUCCESS_ALL_AIR, null));

@@ -54,6 +54,28 @@ class WorldTickPipelineTest {
     }
 
     @Test
+    void reusedRuntimeIdDoesNotInheritPreviousMobsAttackCooldown() {
+        WorldTickPipeline pipeline = new WorldTickPipeline(
+                new MobAiLoadController(20), new LivingEntityAiService());
+        WorldLivingEntityManager manager = new WorldLivingEntityManager();
+        WorldLivingEntity original = manager.spawn("minecraft:zombie", 20, 0, 64, 0);
+        WorldLivingEntity replacement = new WorldLivingEntity(
+                original.uniqueId() + 1, original.runtimeId(), original.identifier(), original.family(),
+                original.x(), original.y(), original.z(), original.velocityX(), original.velocityY(),
+                original.velocityZ(), original.health(), original.maxHealth(),
+                original.fireUntilMillis(), original.nextFireDamageMillis());
+        var player = new LivingEntityAiService.PlayerTarget("player", 1.5, 64, 0, true);
+        List<LivingEntityAiService.Decision> decisions = new ArrayList<>();
+
+        pipeline.tick(0, 2_000, List.of(original), List.of(player), decisions::add);
+        assertTrue(decisions.getFirst().attack());
+
+        decisions.clear();
+        pipeline.tick(1, 2_100, List.of(replacement), List.of(player), decisions::add);
+        assertTrue(decisions.getFirst().attack());
+    }
+
+    @Test
     void attackCooldownDeadlineDoesNotOverflowAtMaximumTimestamp() {
         WorldTickPipeline pipeline = new WorldTickPipeline(
                 new MobAiLoadController(20), new LivingEntityAiService());

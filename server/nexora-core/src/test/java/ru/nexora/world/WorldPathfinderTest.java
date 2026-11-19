@@ -121,4 +121,17 @@ class WorldPathfinderTest {
                 0.5, 65.0, 0.5, step.x(), step.y(), step.z()));
     }
 
+
+    @Test
+    void prioritizesDiagonalStepTowardSouthwestDestination() {
+        World world = new World("path-diagonal-southwest", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
+
+        var step = WorldPathfinder.findNextStep(world,
+                8.5, 65.0, 8.5, 5.5, 5.5, "minecraft:zombie").orElseThrow();
+
+        assertEquals(7.5, step.x(), 1.0e-6);
+        assertEquals(7.5, step.z(), 1.0e-6);
+    }
+
 }

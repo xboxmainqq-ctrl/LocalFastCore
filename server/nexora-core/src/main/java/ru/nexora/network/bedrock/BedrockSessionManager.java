@@ -1580,6 +1580,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return inbound.stats();
     }
 
+    public ru.nexora.network.nethernet.InboundPeerBudget.Stats inboundPeerBudgetStats() {
+        return inbound.peerBudgetStats();
+    }
+
     public long authenticatedPlayerCount() {
         return sessions.values().stream().filter(state -> state.loginAuthenticated).count();
     }
@@ -1607,6 +1611,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     /** Read-only aggregate world/session counters for the authenticated operator assistant. */
     public String adminRuntimeSummary() {
         ru.nexora.combat.LivingEntityAiService.Stats ai = livingEntityAi.stats();
+        ru.nexora.network.nethernet.InboundPeerBudget.Stats ingress = inbound.peerBudgetStats();
         StringBuilder summary = new StringBuilder("players=").append(authenticatedPlayerCount())
                 .append(", sessions=").append(activeSessionCount())
                 .append(", mobs=").append(world.livingEntities().snapshot().size())
@@ -1619,6 +1624,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 .append(", outboundBytesSent=").append(outboundBytesSent.get())
                 .append(", outboundSendFailures=").append(outboundSendFailures.get())
                 .append(", outboundBackpressureRejections=").append(outboundBackpressureRejections.get())
+                .append(", inboundAdmittedFrames=").append(ingress.admittedFrames())
+                .append(", inboundAdmittedBytes=").append(ingress.admittedBytes())
+                .append(", inboundRejectedFrames=").append(ingress.rejectedFrames())
+                .append(", inboundRejectedBytes=").append(ingress.rejectedBytes())
+                .append(", inboundTrackedPeers=").append(ingress.trackedPeers())
                 .append(", outboundQueuedFrames=").append(sessions.values().stream()
                         .mapToInt(state -> state.outboundQueue.frameCount()).sum())
                 .append(", outboundQueuedBytes=").append(sessions.values().stream()

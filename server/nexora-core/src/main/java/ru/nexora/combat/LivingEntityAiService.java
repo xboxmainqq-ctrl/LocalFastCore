@@ -46,10 +46,21 @@ public final class LivingEntityAiService {
     public Decision decide(WorldLivingEntity mob, List<PlayerTarget> players, long nowMillis,
                            long nextAttackAtMillis, String provokedByNetworkId,
                            PlayerTarget nearest) {
+        return decide(mob, players, nowMillis, nextAttackAtMillis, provokedByNetworkId,
+                nearest, findPlayer(players, provokedByNetworkId));
+    }
+
+    /**
+     * Hot-path overload for callers that maintain a player index. Both nearest target and
+     * provoker are resolved once by the index, avoiding a full player-list scan per mob.
+     */
+    public Decision decide(WorldLivingEntity mob, List<PlayerTarget> players, long nowMillis,
+                           long nextAttackAtMillis, String provokedByNetworkId,
+                           PlayerTarget nearest, PlayerTarget provoker) {
         long started = System.nanoTime();
         try {
             return decideInternal(mob, players, nowMillis, nextAttackAtMillis,
-                    provokedByNetworkId, nearest);
+                    nearest, provoker);
         } catch (RuntimeException | Error failure) {
             decisionFailures.increment();
             throw failure;
@@ -63,8 +74,8 @@ public final class LivingEntityAiService {
     }
 
     private Decision decideInternal(WorldLivingEntity mob, List<PlayerTarget> players, long nowMillis,
-                                    long nextAttackAtMillis, String provokedByNetworkId,
-                                    PlayerTarget nearest) {
+                                    long nextAttackAtMillis, PlayerTarget nearest,
+                                    PlayerTarget provoker) {
         Objects.requireNonNull(mob, "mob");
         Objects.requireNonNull(players, "players");
         if (nowMillis < 0 || nextAttackAtMillis < 0) {
@@ -72,6 +83,9 @@ public final class LivingEntityAiService {
         }
         if (nearest != null && !nearest.alive()) {
             throw new IllegalArgumentException("nearest player must be alive");
+        }
+        if (provoker != null && !provoker.alive()) {
+            throw new IllegalArgumentException("provoker must be alive");
         }
         if (mob.health() <= 0) return Decision.idle(mob.runtimeId());
 
@@ -86,7 +100,6 @@ public final class LivingEntityAiService {
             return pursue(mob, nearest, nowMillis, nextAttackAtMillis);
         }
 
-        PlayerTarget provoker = findPlayer(players, provokedByNetworkId);
         if (isPassivePrey(mob.identifier())) {
             if (provoker != null
                     && distanceSquared(mob, provoker) <= ACQUIRE_RANGE * ACQUIRE_RANGE) {

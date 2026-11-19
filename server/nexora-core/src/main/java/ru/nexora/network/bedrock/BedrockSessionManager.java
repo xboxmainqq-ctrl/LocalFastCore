@@ -145,6 +145,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final AtomicLong outboundSendFailures = new AtomicLong();
     private final AtomicLong outboundBackpressureRejections = new AtomicLong();
     private final AtomicLong outboundQueuedBytesGlobal = new AtomicLong();
+    private final AtomicLong chunkStreamingBatches = new AtomicLong();
+    private final AtomicLong chunkStreamingCompleted = new AtomicLong();
+    private final AtomicLong chunkPacketsEncoded = new AtomicLong();
+    private final AtomicLong chunkPacketsReused = new AtomicLong();
+    private final AtomicLong chunkStreamingPendingPeak = new AtomicLong();
     private final AtomicLong nextFormId = new AtomicLong(1);
     private final AtomicLong lastItemActorTickNanos = new AtomicLong(Long.MIN_VALUE);
     private final AtomicLong lastLivingAiTickMillis = new AtomicLong(Long.MIN_VALUE);
@@ -1594,7 +1599,19 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         .mapToInt(state -> state.outboundQueue.frameCount()).sum())
                 .append(", outboundQueuedBytes=").append(sessions.values().stream()
                         .mapToLong(state -> state.outboundQueue.queuedBytes()).sum())
-                .append(", outboundQueuedBytesGlobal=").append(outboundQueuedBytesGlobal.get());
+                .append(", outboundQueuedBytesGlobal=").append(outboundQueuedBytesGlobal.get())
+                .append(", chunkStreamingBatches=").append(chunkStreamingBatches.get())
+                .append(", chunkStreamingCompleted=").append(chunkStreamingCompleted.get())
+                .append(", chunkPacketsEncoded=").append(chunkPacketsEncoded.get())
+                .append(", chunkPacketsReused=").append(chunkPacketsReused.get())
+                .append(", chunkStreamingPending=").append(sessions.values().stream()
+                        .mapToInt(state -> state.chunkStreamingQueue == null
+                                ? 0 : state.chunkStreamingQueue.remaining()).sum())
+                .append(", chunkStreamingPendingPeak=").append(chunkStreamingPendingPeak.get())
+                .append(", chunkStreamingP95Ns=").append(hotPathProfiler.snapshot(
+                        ru.nexora.ai.HotPathProfiler.Path.BEDROCK_CHUNK_STREAMING).p95Nanos())
+                .append(", outboundDrainP95Ns=").append(hotPathProfiler.snapshot(
+                        ru.nexora.ai.HotPathProfiler.Path.BEDROCK_OUTBOUND_DRAIN).p95Nanos());
         ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
         if (diagnostics != null) {
             ru.nexora.ai.JvmResourceSnapshot resources = diagnostics.resourceSnapshot();
@@ -6377,18 +6394,33 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
      * replaces the unfinished traversal; already published chunks are reused.
      */
     private void processChunkStreaming(String networkId, SessionState state) {
+        long startedNanos = nanoTime.getAsLong();
+        try {
+            processChunkStreamingInternal(networkId, state);
+        } finally {
+            hotPathProfiler.record(ru.nexora.ai.HotPathProfiler.Path.BEDROCK_CHUNK_STREAMING,
+                    Math.max(0L, nanoTime.getAsLong() - startedNanos));
+        }
+    }
+
+    private void processChunkStreamingInternal(String networkId, SessionState state) {
         ChunkStreamingQueue queue = state.chunkStreamingQueue;
         if (queue == null) return;
 
         List<Long> chunkKeys = queue.peekBatch(MAX_CHUNKS_PER_SESSION_TICK);
         if (!chunkKeys.isEmpty()) {
+            chunkStreamingBatches.incrementAndGet();
             List<BedrockPacket> packets = new ArrayList<>(MAX_CHUNK_PACKETS_PER_BATCH);
             List<Long> publishedKeys = new ArrayList<>(MAX_CHUNK_PACKETS_PER_BATCH);
             for (long key : chunkKeys) {
-                if (state.sentChunkKeys.contains(key)) continue;
+                if (state.sentChunkKeys.contains(key)) {
+                    chunkPacketsReused.incrementAndGet();
+                    continue;
+                }
                 int chunkX = (int) (key >> 32);
                 int chunkZ = (int) key;
                 packets.add(BedrockLevelChunkCodec.createPacket(world.getChunk(chunkX, chunkZ)));
+                chunkPacketsEncoded.incrementAndGet();
                 publishedKeys.add(key);
                 if (packets.size() >= MAX_CHUNK_PACKETS_PER_BATCH) {
                     flushChunkBatch(networkId, state, packets, publishedKeys);
@@ -6397,6 +6429,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             flushChunkBatch(networkId, state, packets, publishedKeys);
             // Advance only after packet creation and every transport submission succeeded.
             queue.advance(chunkKeys.size());
+            chunkStreamingPendingPeak.accumulateAndGet(queue.remaining(), Math::max);
         }
 
         if (!queue.isComplete()) return;
@@ -6409,6 +6442,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.lastChunkX = queue.centerX();
         state.lastChunkZ = queue.centerZ();
         state.chunkStreamingQueue = null;
+        chunkStreamingCompleted.incrementAndGet();
         syncVisiblePlayerActors(networkId, state);
         syncVisibleWorldActors(networkId, state);
     }
@@ -7228,6 +7262,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private void drainOutboundFrames(String networkId, SessionState state) {
+        long startedNanos = nanoTime.getAsLong();
+        try {
+            drainOutboundFramesInternal(networkId, state);
+        } finally {
+            hotPathProfiler.record(ru.nexora.ai.HotPathProfiler.Path.BEDROCK_OUTBOUND_DRAIN,
+                    Math.max(0L, nanoTime.getAsLong() - startedNanos));
+        }
+    }
+
+    private void drainOutboundFramesInternal(String networkId, SessionState state) {
         int sentFrames = 0;
         long sentBytes = 0L;
         while (sentFrames < MAX_OUTBOUND_FRAMES_PER_DRAIN) {

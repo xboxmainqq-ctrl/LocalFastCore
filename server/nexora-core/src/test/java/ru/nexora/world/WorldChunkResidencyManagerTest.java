@@ -120,4 +120,54 @@ class WorldChunkResidencyManagerTest {
         assertTrue(plan.residentCount() > 13);
         assertEquals(plan.residentCount(), manager.residentChunkCount());
     }
+
+    @Test
+    void enforcesResidentChunkCapacityAndDefersOuterLoads() {
+        WorldChunkResidencyManager manager =
+                new WorldChunkResidencyManager(2, 0, WorldChunkResidencyManager.Shape.CIRCULAR, 4);
+
+        var first = manager.update(List.of(new WorldChunkResidencyManager.PlayerChunk(0, 0)), 0);
+        assertEquals(4, first.load().size());
+        assertEquals(4, first.residentCount());
+        assertEquals(new WorldChunkResidencyManager.ChunkCoordinate(0, 0), first.load().get(0));
+
+        var second = manager.update(List.of(new WorldChunkResidencyManager.PlayerChunk(0, 0)), 1);
+        assertTrue(second.load().isEmpty(), "remaining desired chunks must stay deferred");
+        assertEquals(4, second.residentCount());
+        assertEquals(13, second.desiredCount());
+    }
+
+    @Test
+    void releasesCapacityAndLoadsDeferredChunksOnLaterUpdate() {
+        WorldChunkResidencyManager manager =
+                new WorldChunkResidencyManager(1, 0, WorldChunkResidencyManager.Shape.CIRCULAR, 3);
+        manager.update(List.of(new WorldChunkResidencyManager.PlayerChunk(0, 0)), 0);
+
+        var moved = manager.update(List.of(new WorldChunkResidencyManager.PlayerChunk(10, 0)), 1);
+        assertEquals(3, moved.unload().size());
+        assertEquals(3, moved.load().size());
+        assertEquals(3, moved.residentCount());
+        assertTrue(moved.load().contains(new WorldChunkResidencyManager.ChunkCoordinate(10, 0)));
+    }
+
+    @Test
+    void entityPinnedChunksRemainLoadedEvenWhenTheyExceedCapacity() {
+        WorldChunkResidencyManager manager =
+                new WorldChunkResidencyManager(1, 0, WorldChunkResidencyManager.Shape.CIRCULAR, 2);
+        var pinned = manager.update(List.of(), java.util.Set.of(
+                new WorldChunkResidencyManager.ChunkCoordinate(4, 4),
+                new WorldChunkResidencyManager.ChunkCoordinate(5, 5),
+                new WorldChunkResidencyManager.ChunkCoordinate(6, 6)), 0);
+
+        assertEquals(3, pinned.load().size());
+        assertEquals(3, pinned.residentCount(),
+                "live entity chunks must not be dropped to satisfy a soft memory target");
+    }
+
+    @Test
+    void rejectsNonPositiveResidentChunkCapacity() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new WorldChunkResidencyManager(2, 0,
+                        WorldChunkResidencyManager.Shape.CIRCULAR, 0));
+    }
 }

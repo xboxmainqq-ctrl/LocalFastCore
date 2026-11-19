@@ -65,6 +65,18 @@ class ChunkStreamingBudgetTest {
     }
 
     @Test
+    void pausingCompletedViewDoesNotResetTheSessionWindowQuota() {
+        ChunkStreamingBudget budget = new ChunkStreamingBudget(100, 8, 2, 500);
+
+        assertTrue(budget.tryAcquire("player-a", 0));
+        budget.pause("player-a");
+        assertTrue(budget.tryAcquire("player-b", 1));
+        budget.pause("player-b");
+        assertFalse(budget.tryAcquire("player-a", 2),
+                "A quick view restart cannot reset a player's per-window quota");
+    }
+
+    @Test
     void rejectsInvalidBudgets() {
         assertThrows(IllegalArgumentException.class,
                 () -> new ChunkStreamingBudget(0, 1, 1, 1));

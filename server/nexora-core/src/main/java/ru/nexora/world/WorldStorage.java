@@ -53,27 +53,40 @@ public final class WorldStorage {
 
     public void saveChunk(WorldChunk chunk) throws IOException {
         Objects.requireNonNull(chunk, "chunk");
-        Path target = chunkPath(chunk.chunkX(), chunk.chunkZ());
+        WorldChunk.PersistenceSnapshot snapshot = chunk.persistenceSnapshot();
+        saveChunkSnapshot(chunk.chunkX(), chunk.chunkZ(), snapshot.sections());
+    }
+
+    /** Writes a detached, consistent chunk image without touching live world state. */
+    void saveChunkSnapshot(int chunkX, int chunkZ, byte[][] snapshot) throws IOException {
+        Objects.requireNonNull(snapshot, "snapshot");
+        if (snapshot.length != WorldChunk.SECTION_COUNT) {
+            throw new IllegalArgumentException("Invalid chunk section snapshot");
+        }
+        Path target = chunkPath(chunkX, chunkZ);
         rejectSymlink(target, "chunk file");
 
         ByteArrayOutputStream bodyBytes = new ByteArrayOutputStream(8192);
         try (DataOutputStream output = new DataOutputStream(bodyBytes)) {
             output.writeInt(MAGIC);
             output.writeByte(FORMAT_VERSION);
-            output.writeInt(chunk.chunkX());
-            output.writeInt(chunk.chunkZ());
+            output.writeInt(chunkX);
+            output.writeInt(chunkZ);
             output.writeByte(WorldChunk.SECTION_COUNT);
-            byte[][] snapshot = chunk.copySectionsRaw();
             for (byte[] raw : snapshot) {
                 output.writeBoolean(raw != null);
-                if (raw != null) output.write(raw);
+                if (raw != null) {
+                    if (raw.length != ChunkSection.VOLUME) {
+                        throw new IllegalArgumentException("Invalid chunk section image length");
+                    }
+                    output.write(raw);
+                }
             }
         }
 
         byte[] body = bodyBytes.toByteArray();
         CRC32C checksum = new CRC32C();
         checksum.update(body, 0, body.length);
-
         ByteArrayOutputStream fileBytes = new ByteArrayOutputStream(body.length + Integer.BYTES);
         fileBytes.writeBytes(body);
         try (DataOutputStream output = new DataOutputStream(fileBytes)) {

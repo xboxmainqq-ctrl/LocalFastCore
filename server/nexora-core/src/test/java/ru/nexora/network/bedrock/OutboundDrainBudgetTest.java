@@ -61,8 +61,8 @@ class OutboundDrainBudgetTest {
 
         assertTrue(budget.tryAcquire("idle-player", 10, 0));
         assertFalse(budget.tryAcquire("active-player", 10, 10));
-        assertFalse(budget.tryAcquire("active-player", 190));
-        assertTrue(budget.tryAcquire("active-player", 210));
+        assertFalse(budget.tryAcquire("active-player", 10, 190));
+        assertTrue(budget.tryAcquire("active-player", 10, 210));
     }
 
     @Test

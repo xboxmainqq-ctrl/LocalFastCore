@@ -53,8 +53,8 @@ public final class MobPathCache {
             long mobRuntimeId, World world, double startX, double feetY, double startZ,
             double targetX, double targetZ, long nowMillis, String identifier
     ) {
-        if (mobRuntimeId < 0 || nowMillis < 0) {
-            throw new IllegalArgumentException("Mob id and navigation time must be non-negative");
+        if (mobRuntimeId <= 0 || nowMillis < 0) {
+            throw new IllegalArgumentException("Mob id must be positive and navigation time non-negative");
         }
         if (identifier == null || identifier.isBlank()) {
             throw new IllegalArgumentException("Mob identifier must not be blank");

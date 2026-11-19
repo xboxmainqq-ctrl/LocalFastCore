@@ -222,6 +222,43 @@ class WorldChunkResidencyManagerTest {
     }
 
     @Test
+    void longRunningPlayerMovementKeepsResidencyBoundedAndPlansDeduplicated() {
+        int playerCount = 128;
+        int capacity = 1024;
+        WorldChunkResidencyManager manager = new WorldChunkResidencyManager(
+                8, 40, WorldChunkResidencyManager.Shape.SQUARE, capacity);
+        List<WorldChunkResidencyManager.PlayerChunk> players = new java.util.ArrayList<>();
+        for (int player = 0; player < playerCount; player++) {
+            players.add(new WorldChunkResidencyManager.PlayerChunk(player * 64, -player * 64, 8));
+        }
+
+        for (int tick = 0; tick < 1_000; tick++) {
+            if (tick % 7 == 0) {
+                List<WorldChunkResidencyManager.PlayerChunk> moved = new java.util.ArrayList<>(playerCount);
+                for (int player = 0; player < playerCount; player++) {
+                    int drift = tick / 7;
+                    moved.add(new WorldChunkResidencyManager.PlayerChunk(
+                            player * 64 + drift, -player * 64 - drift, 8));
+                }
+                players = moved;
+            }
+
+            var plan = manager.update(players, tick);
+            assertTrue(plan.residentCount() <= capacity,
+                    "non-pinned residency must remain within the configured target");
+            assertTrue(plan.load().size() <= capacity);
+            assertEquals(plan.load().size(), new java.util.HashSet<>(plan.load()).size(),
+                    "a tick must never request the same chunk more than once");
+            assertEquals(plan.unload().size(), new java.util.HashSet<>(plan.unload()).size(),
+                    "a tick must never unload the same chunk more than once");
+            assertTrue(java.util.Collections.disjoint(plan.load(), plan.unload()),
+                    "a chunk cannot be loaded and unloaded in the same plan");
+            assertEquals(plan.residentCount(), manager.residentChunkCount());
+            assertEquals(plan.residentCount(), manager.residentChunkCoordinates().size());
+        }
+    }
+
+    @Test
     void pinnedChunksAreIncludedInLoadPlanBeforePlayerCapacityIsAllocated() {
         WorldChunkResidencyManager manager = new WorldChunkResidencyManager(
                 2, 0, WorldChunkResidencyManager.Shape.SQUARE, 3);

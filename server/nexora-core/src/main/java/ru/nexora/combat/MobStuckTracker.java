@@ -55,8 +55,10 @@ public final class MobStuckTracker {
             return null;
         }
 
+        long attempts = entry.attempts() == Long.MAX_VALUE
+                ? Long.MAX_VALUE : entry.attempts() + 1;
         Entry updated = new Entry(entry.anchorX(), entry.anchorY(), entry.anchorZ(),
-                entry.startedAtMillis(), nowMillis, entry.attempts() + 1);
+                entry.startedAtMillis(), nowMillis, attempts);
         entries.put(runtimeId, updated);
         long duration = nowMillis - updated.startedAtMillis();
         return duration >= STUCK_AFTER_MILLIS

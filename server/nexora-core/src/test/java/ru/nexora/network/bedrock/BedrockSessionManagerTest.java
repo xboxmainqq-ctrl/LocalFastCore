@@ -461,7 +461,9 @@ class BedrockSessionManagerTest {
             assertEquals(-1L, checkpoints.latestRevision("freeze-lost-xuid"),
                     "A node without the global lease must not publish a new transfer checkpoint");
         } finally {
-            manager.close();
+            // The simulated lease loss must fence persistence and make shutdown
+            // report that the player's final state could not be safely checkpointed.
+            assertThrows(IllegalStateException.class, manager::close);
         }
     }
 

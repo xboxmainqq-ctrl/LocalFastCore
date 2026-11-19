@@ -3583,7 +3583,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 mobStuckTracker.clear(mob.runtimeId());
                 if (damagePlayerFromMob(decision.targetNetworkId(), mob, decision.attackDamage(), tick)) {
                     nextMobAttackMillis.put(mob.runtimeId(), mobAttackDeadline(nowMillis,
-                            ru.nexora.combat.LivingEntityAiService.ATTACK_COOLDOWN_MILLIS));
+                            ru.nexora.combat.LivingEntityAiService.attackCooldownMillisFor(
+                                    mob.identifier())));
                 }
                 continue;
             }

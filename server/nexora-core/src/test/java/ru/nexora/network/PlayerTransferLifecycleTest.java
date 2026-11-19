@@ -79,6 +79,7 @@ class PlayerTransferLifecycleTest {
         InMemoryPlayerTransferLedger store = new InMemoryPlayerTransferLedger();
         DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(new PlayerTransferCoordinator(store));
         FakeSource source = new FakeSource();
+        source.frozen = true; // The existing PREPARED transfer already froze the source.
         PlayerTransferLifecycle lifecycle = new PlayerTransferLifecycle(
                 ledger, source, new FakeDestination(), 5_000);
         PlayerHandoff handoff = handoff();

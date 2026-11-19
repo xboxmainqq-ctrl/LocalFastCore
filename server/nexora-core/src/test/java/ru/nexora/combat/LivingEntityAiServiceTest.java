@@ -103,6 +103,20 @@ class LivingEntityAiServiceTest {
     }
 
     @Test
+    void meleeAttackCadenceUsesSpeciesProfilesAndStableDefault() {
+        assertEquals(1_000L,
+                LivingEntityAiService.attackCooldownMillisFor("minecraft:zombie"));
+        assertEquals(1_250L,
+                LivingEntityAiService.attackCooldownMillisFor("minecraft:spider"));
+        assertEquals(1_500L,
+                LivingEntityAiService.attackCooldownMillisFor("minecraft:ravager"));
+        assertEquals(1_750L,
+                LivingEntityAiService.attackCooldownMillisFor("minecraft:warden"));
+        assertThrows(NullPointerException.class,
+                () -> LivingEntityAiService.attackCooldownMillisFor(null));
+    }
+
+    @Test
     void speciesProfilesAdjustMovementSpeedReachAndDamage() {
         assertTrue(LivingEntityAiService.movementSpeedFor("minecraft:horse")
                 > LivingEntityAiService.movementSpeedFor("minecraft:turtle"));

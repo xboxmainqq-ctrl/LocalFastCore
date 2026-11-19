@@ -3572,6 +3572,19 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             ru.nexora.combat.LivingEntityAiService.Decision decision =
                     livingEntityAi.decide(mob, targets, nowMillis, nextAttackAt,
                             provokedBy, nearestPlayer);
+            double projectileRange = ru.nexora.combat.LivingEntityAiService
+                    .projectileRangeFor(mob.identifier());
+            if (nearestPlayer != null && projectileRange > 0
+                    && nearestPlayerDistanceSquared <= projectileRange * projectileRange) {
+                double eyeHeight = "minecraft:ghast".equals(mob.identifier()) ? 1.8 : 1.2;
+                if (!WorldRaycast.hasLineOfSightInLoadedChunks(world,
+                        mob.x(), mob.y() + eyeHeight, mob.z(),
+                        (int) Math.floor(nearestPlayer.x()),
+                        (int) Math.floor(nearestPlayer.y() + 1.0),
+                        (int) Math.floor(nearestPlayer.z()))) {
+                    decision = livingEntityAi.approach(mob, nearestPlayer);
+                }
+            }
             long decisionElapsedNanos = Math.max(0L, nanoTime.getAsLong() - decisionStartedNanos);
             mobAiLoadController.recordBudgetNanos(decisionElapsedNanos);
             hotPathProfiler.record(ru.nexora.ai.HotPathProfiler.Path.MOB_AI_DECISION, decisionElapsedNanos);

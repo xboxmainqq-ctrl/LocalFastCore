@@ -52,6 +52,25 @@ class NexoraServerConfigTest {
     }
 
     @Test
+    void usesHostAllocatedPortWhenNoCommandLinePortIsProvided() {
+        NexoraServerConfig config = NexoraServerConfig.from(
+                new String[0], Map.of("SERVER_PORT", "23472"));
+
+        assertEquals(23472, config.port());
+    }
+
+    @Test
+    void nexoraPortOverridesHostPortAndCommandLineStillWins() {
+        NexoraServerConfig environmentConfig = NexoraServerConfig.from(
+                new String[0], Map.of("SERVER_PORT", "23472", "NEXORA_PORT", "24567"));
+        NexoraServerConfig argumentConfig = NexoraServerConfig.from(
+                new String[]{"0.0.0.0", "25678"}, Map.of("SERVER_PORT", "23472"));
+
+        assertEquals(24567, environmentConfig.port());
+        assertEquals(25678, argumentConfig.port());
+    }
+
+    @Test
     void rejectsInvalidPortsAndRanges() {
         assertThrows(IllegalArgumentException.class,
                 () -> new NexoraServerConfig("0.0.0.0", 0, "MOTD", 10, "0.0.0.0",

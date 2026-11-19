@@ -2898,10 +2898,10 @@ class BedrockSessionManagerTest {
                 noOpInventoryTransactionPayload(257, 3));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(inventoryTransaction), true, 256));
-        assertEquals(24, outboundFrames.size());
-        assertEquals(0x31, decodeOutbound(outboundFrames.get(23), true).packetId());
+        assertEquals(27, outboundFrames.size());
+        assertEquals(0x31, decodeOutbound(outboundFrames.get(24), true).packetId());
         List<BedrockPacket> inventoryReconciliation = BedrockBatchCodec.decode(
-                reassemble(List.of(outboundFrames.get(23))), true);
+                reassemble(List.of(outboundFrames.get(24))), true);
         assertEquals(5, inventoryReconciliation.size());
         assertEquals(0x1f, inventoryReconciliation.get(1).packetId());
         assertEquals(0x31, inventoryReconciliation.get(2).packetId());
@@ -2935,9 +2935,9 @@ class BedrockSessionManagerTest {
                 commandRequestPayload("/equipment", "Player", "equipment-ui-1", 1L));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(equipmentCommand), true, 256));
-        assertEquals(27, outboundFrames.size());
+        assertEquals(29, outboundFrames.size());
         assertEquals(BedrockModalFormCodec.MODAL_FORM_REQUEST_PACKET_ID,
-                decodeOutbound(outboundFrames.get(26), true).packetId());
+                decodeOutbound(outboundFrames.get(28), true).packetId());
 
         BedrockPacket chooseStaffSlot = new BedrockPacket(0x65, 0, 0,
                 modalFormResponsePayload(1, "1"));

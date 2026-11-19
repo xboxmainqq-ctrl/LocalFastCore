@@ -50,7 +50,7 @@ public record NexoraServerConfig(
         String bindHost = argument(args, 0, "0.0.0.0");
         return new NexoraServerConfig(
                 bindHost,
-                integerArgument(args, 1, 19132, "port"),
+                integerArgument(args, 1, serverPortDefault(environment), "port"),
                 argument(args, 2, "NEXORA Core - Development"),
                 integerArgument(args, 3, 20, "maxPlayers"),
                 environment.getOrDefault("NEXORA_HTTP_BIND", bindHost),
@@ -61,6 +61,17 @@ public record NexoraServerConfig(
                 parseStunUrls(environment.get("NEXORA_STUN_URLS")),
                 integerEnvironment(environment, "NEXORA_MAX_RESIDENT_CHUNKS", 8192)
         );
+    }
+
+    /**
+     * Pterodactyl-style hosts expose the primary allocation as SERVER_PORT.
+     * Explicit command-line arguments still take precedence; NEXORA_PORT can
+     * override the host-provided value for custom deployments.
+     */
+    private static int serverPortDefault(Map<String, String> environment) {
+        return integerEnvironment(environment, "NEXORA_PORT",
+                integerEnvironment(environment, "SERVER_PORT",
+                        integerEnvironment(environment, "PORT", 19132)));
     }
 
     private static List<String> parseStunUrls(String value) {

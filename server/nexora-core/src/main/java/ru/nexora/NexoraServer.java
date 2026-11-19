@@ -399,9 +399,16 @@ public final class NexoraServer {
                                 + ", stale/missing=" + network.staleOrMissingPeers());
                         System.out.println("ICE RTT: avg=" + averageRtt + ", max=" + maxRtt
                                 + " (transport RTT, not Bedrock gameplay ping)");
+                        String sentRate = network.peersWithRate() == 0 ? "n/a"
+                                : String.format(java.util.Locale.ROOT, "%.1f B/s", network.sentBytesPerSecond());
+                        String receivedRate = network.peersWithRate() == 0 ? "n/a"
+                                : String.format(java.util.Locale.ROOT, "%.1f B/s", network.receivedBytesPerSecond());
+                        System.out.println("Transport throughput: sent=" + sentRate
+                                + ", received=" + receivedRate
+                                + ", sampledPeers=" + network.peersWithRate()
+                                + " (WebRTC counter deltas; not gameplay traffic guarantees)");
                         System.out.println("Cumulative transport bytes: sent=" + network.bytesSent()
-                                + ", received=" + network.bytesReceived()
-                                + " (not instantaneous throughput)");
+                                + ", received=" + network.bytesReceived());
                         continue;
                     }
                     if (command.equalsIgnoreCase("transfer recover")) {

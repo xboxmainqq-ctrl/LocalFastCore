@@ -293,7 +293,9 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
                 .filter(session -> session.connected && !session.sessionClosed.get())
                 .toList();
         if (active.isEmpty()) return;
-        long cursor = transportStatsCursor.getAndAdd(TRANSPORT_STATS_BATCH_SIZE);
+        // Advance by one peer each second. Advancing by the batch size can starve
+        // peers when the session count shares a divisor with the batch size.
+        long cursor = transportStatsCursor.getAndIncrement();
         int start = (int) Math.floorMod(cursor, active.size());
         int count = Math.min(TRANSPORT_STATS_BATCH_SIZE, active.size());
         for (int i = 0; i < count; i++) {

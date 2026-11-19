@@ -84,6 +84,7 @@ public final class NetherNetMessageFramer {
         private int pendingSize;
         private int expectedNextHeader;
         private long pendingStartedAtNanos;
+        private boolean closed;
 
         public Reassembler() {
             this(DEFAULT_MAX_MESSAGE_BYTES, DEFAULT_MAX_ASSEMBLY_NANOS, null);
@@ -117,6 +118,9 @@ public final class NetherNetMessageFramer {
         /** Monotonic-time overload for deterministic assembly timeout tests. */
         public synchronized Optional<byte[]> accept(byte[] frame, boolean reliable, long nowNanos) {
             Objects.requireNonNull(frame, "frame");
+            if (closed) {
+                throw new IllegalStateException("NetherNet reassembler is closed");
+            }
             if (pendingBytes != null) {
                 long elapsed = nowNanos - pendingStartedAtNanos;
                 if (elapsed < 0 || elapsed > maxAssemblyNanos) {
@@ -186,6 +190,12 @@ public final class NetherNetMessageFramer {
             pendingSize = 0;
             expectedNextHeader = 0;
             pendingStartedAtNanos = 0L;
+        }
+
+        /** Permanently closes this channel state and releases any retained assembly buffer. */
+        public synchronized void close() {
+            closed = true;
+            reset();
         }
 
         private void ensurePendingCapacity(int required) {

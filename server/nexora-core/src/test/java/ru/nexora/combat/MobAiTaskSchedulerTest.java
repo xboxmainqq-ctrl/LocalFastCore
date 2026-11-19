@@ -56,4 +56,17 @@ class MobAiTaskSchedulerTest {
 
         assertEquals(1, scheduler.stats().deferrals().get(MobAiTaskScheduler.Task.MOVEMENT));
     }
+
+    @Test
+    void taskCountersSaturateInsteadOfWrapping() {
+        assertEquals(1L, MobAiTaskScheduler.saturatedAdd(0, 1));
+        assertEquals(Long.MAX_VALUE,
+                MobAiTaskScheduler.saturatedAdd(Long.MAX_VALUE - 1, 1));
+        assertEquals(Long.MAX_VALUE,
+                MobAiTaskScheduler.saturatedAdd(Long.MAX_VALUE, 1));
+        assertThrows(IllegalArgumentException.class,
+                () -> MobAiTaskScheduler.saturatedAdd(-1, 1));
+        assertThrows(IllegalArgumentException.class,
+                () -> MobAiTaskScheduler.saturatedAdd(1, -1));
+    }
 }

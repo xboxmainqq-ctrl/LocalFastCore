@@ -37,7 +37,7 @@ class InboundTransportConfigTest {
         assertEquals(512, config.maxTrackedPeers());
         assertEquals(128L * 1024L * 1024L, config.createReassemblyMemoryBudget().stats().maxBytes());
         assertEquals(524_288, config.maxFrameBytes());
-        assertEquals(512, config.createPeerBudget().stats().trackedPeers() + 512);
+        assertEquals(0, config.createPeerBudget().stats().trackedPeers());
     }
 
     @Test

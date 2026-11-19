@@ -431,7 +431,9 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
                 }
                 NetherNetOutboundQueue queue = outboundQueues.computeIfAbsent(
                         channelLabel, ignored -> new NetherNetOutboundQueue());
-                if (!queue.isEmpty() || channel.getBufferedAmount() >= OUTBOUND_HIGH_WATERMARK_BYTES) {
+                long bufferedAmount = channel.getBufferedAmount();
+                if (!queue.isEmpty() || bufferedAmount >= OUTBOUND_HIGH_WATERMARK_BYTES
+                        || frame.length > OUTBOUND_HIGH_WATERMARK_BYTES - bufferedAmount) {
                     if (!queue.offer(frame)) {
                         closeForProtocolError("outbound queue limit exceeded on " + channelLabel);
                         throw new IllegalStateException("NetherNet outbound queue limit exceeded");
@@ -457,8 +459,14 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
                 NetherNetOutboundQueue queue = outboundQueues.get(channelLabel);
                 if (queue == null || queue.isEmpty()
                         || channel.getBufferedAmount() > OUTBOUND_LOW_WATERMARK_BYTES) return;
-                while (!queue.isEmpty()
-                        && channel.getBufferedAmount() < OUTBOUND_HIGH_WATERMARK_BYTES) {
+                while (!queue.isEmpty()) {
+                    long bufferedAmount = channel.getBufferedAmount();
+                    int nextFrameSize = queue.nextFrameSize();
+                    if (bufferedAmount >= OUTBOUND_HIGH_WATERMARK_BYTES
+                            || (bufferedAmount > 0
+                            && nextFrameSize > OUTBOUND_HIGH_WATERMARK_BYTES - bufferedAmount)) {
+                        break;
+                    }
                     byte[] frame = queue.poll();
                     try {
                         channel.send(new RTCDataChannelBuffer(ByteBuffer.wrap(frame), true));

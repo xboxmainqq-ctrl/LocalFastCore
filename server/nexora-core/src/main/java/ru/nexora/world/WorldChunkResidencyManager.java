@@ -22,6 +22,7 @@ public final class WorldChunkResidencyManager {
     private final Map<Long, Integer> desiredRefCounts = new HashMap<>();
     private final Map<Long, Long> lastDesiredTick = new HashMap<>();
     private final Set<Long> resident = new HashSet<>();
+    private volatile Set<Long> residentSnapshot = Set.of();
 
     public WorldChunkResidencyManager(int viewDistance, int unloadGraceTicks) {
         this(viewDistance, unloadGraceTicks, Shape.CIRCULAR);
@@ -100,23 +101,28 @@ public final class WorldChunkResidencyManager {
         }
         resident.removeAll(unload);
         for (long key : unload) lastDesiredTick.remove(key);
+        if (!load.isEmpty() || !unload.isEmpty()) {
+            residentSnapshot = Set.copyOf(resident);
+        }
         return new ResidencyPlan(List.copyOf(decode(load)), List.copyOf(decode(unload)),
                 resident.size(), desiredRefCounts.size());
     }
 
-    public synchronized boolean isResident(int chunkX, int chunkZ) {
-        return resident.contains(chunkKey(chunkX, chunkZ));
+    /** Lock-free read against the last fully published residency snapshot. */
+    public boolean isResident(int chunkX, int chunkZ) {
+        return residentSnapshot.contains(chunkKey(chunkX, chunkZ));
     }
 
-    public synchronized boolean isResidentAtBlockPosition(double x, double z) {
+    /** Lock-free read used by entity ticking for every active entity. */
+    public boolean isResidentAtBlockPosition(double x, double z) {
         if (!Double.isFinite(x) || !Double.isFinite(z)) return false;
         int chunkX = (int) Math.floor(x / 16.0);
         int chunkZ = (int) Math.floor(z / 16.0);
-        return resident.contains(chunkKey(chunkX, chunkZ));
+        return residentSnapshot.contains(chunkKey(chunkX, chunkZ));
     }
 
-    public synchronized int residentChunkCount() {
-        return resident.size();
+    public int residentChunkCount() {
+        return residentSnapshot.size();
     }
 
     public int viewDistance() {

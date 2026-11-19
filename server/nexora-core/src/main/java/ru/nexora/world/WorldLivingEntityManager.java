@@ -3,10 +3,9 @@ package ru.nexora.world;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Objects;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -14,7 +13,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class WorldLivingEntityManager {
     private static final int MAX_ENTITIES = 5_000;
     private final AtomicLong nextRuntimeId = new AtomicLong(2_000_000L);
-    private final ConcurrentMap<Long, WorldLivingEntity> entities = new ConcurrentHashMap<>();
+    private final ConcurrentMap<Long, WorldLivingEntity> entities = new ConcurrentSkipListMap<>();
     private final WorldLivingEntityStorage storage;
 
     public WorldLivingEntityManager() {
@@ -67,9 +66,9 @@ public final class WorldLivingEntityManager {
     }
 
     public List<WorldLivingEntity> snapshot() {
-        List<WorldLivingEntity> snapshot = new ArrayList<>(entities.values());
-        snapshot.sort(Comparator.comparingLong(WorldLivingEntity::runtimeId));
-        return List.copyOf(snapshot);
+        // The registry is keyed by runtime ID in a concurrent sorted map, so iteration
+        // is already deterministic and does not need an O(n log n) sort every world tick.
+        return List.copyOf(entities.values());
     }
 
     public synchronized Optional<DamageResult> damage(long runtimeId, float amount) {

@@ -3781,7 +3781,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         double dy = nearest.y() + 1.0 - (mob.y() + 1.2);
         double dz = nearest.z() - mob.z();
         double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (distance < 4.0 || distance > 16.0) return false;
+        double maxRange = ru.nexora.combat.LivingEntityAiService.projectileRangeFor(mob.identifier());
+        if (distance < 4.0 || distance > maxRange) return false;
         if (!WorldRaycast.hasLineOfSightInLoadedChunks(world, mob.x(), mob.y() + 1.2, mob.z(),
                 (int) Math.floor(nearest.x()), (int) Math.floor(nearest.y() + 1.0),
                 (int) Math.floor(nearest.z()))) {
@@ -3829,7 +3830,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         double dy = nearest.y() + 0.8 - (mob.y() + (ghast ? 1.8 : 1.2));
         double dz = nearest.z() - mob.z();
         double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        double maxRange = ghast ? 16.0 : 14.0;
+        double maxRange = ru.nexora.combat.LivingEntityAiService.projectileRangeFor(identifier);
         if (distance < 3.0 || distance > maxRange) return false;
         if (!WorldRaycast.hasLineOfSightInLoadedChunks(world, mob.x(), mob.y() + (ghast ? 1.8 : 1.2),
                 mob.z(), (int) Math.floor(nearest.x()), (int) Math.floor(nearest.y() + 1.0),

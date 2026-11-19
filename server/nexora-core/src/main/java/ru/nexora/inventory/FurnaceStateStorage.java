@@ -58,14 +58,19 @@ public final class FurnaceStateStorage {
         file.put(body.array()).putInt((int) crc.getValue());
         Path target = path(x, y, z);
         rejectSymlink(target);
-        ru.nexora.persistence.AtomicFileWriter.writeAtomically(target, file.array());
+        ru.nexora.persistence.BackupFile.write(target, file.array(), candidate -> readFurnaceFile(candidate, x, y, z));
     }
 
     public synchronized Optional<FurnaceService.FurnaceStateSnapshot> load(int x, int y, int z)
             throws IOException {
-        Path file = path(x, y, z);
+        return ru.nexora.persistence.BackupFile.load(path(x, y, z),
+                candidate -> readFurnaceFile(candidate, x, y, z));
+    }
+
+    private FurnaceService.FurnaceStateSnapshot readFurnaceFile(Path file, int x, int y, int z)
+            throws IOException {
         rejectSymlink(file);
-        if (!Files.exists(file)) return Optional.empty();
+        if (!Files.exists(file)) throw new IOException("Furnace state file disappeared during recovery");
         byte[] bytes = Files.readAllBytes(file);
         if (bytes.length != BODY_V1_BYTES + Integer.BYTES
                 && bytes.length != BODY_V2_BYTES + Integer.BYTES
@@ -95,13 +100,14 @@ public final class FurnaceStateStorage {
                 || pendingExperience < 0 || pendingExperience > FurnaceService.MAX_PENDING_EXPERIENCE_MILLI) {
             throw new IOException("Invalid furnace state values");
         }
-        return Optional.of(new FurnaceService.FurnaceStateSnapshot(burn, progress, total, pendingExperience));
+        return new FurnaceService.FurnaceStateSnapshot(burn, progress, total, pendingExperience);
     }
+
 
     public synchronized void delete(int x, int y, int z) throws IOException {
         Path file = path(x, y, z);
         rejectSymlink(file);
-        Files.deleteIfExists(file);
+        ru.nexora.persistence.BackupFile.delete(file);
     }
 
     private Path path(int x, int y, int z) {

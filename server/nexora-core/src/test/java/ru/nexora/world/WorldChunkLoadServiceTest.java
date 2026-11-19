@@ -188,6 +188,12 @@ class WorldChunkLoadServiceTest {
             ExecutionException failure = assertThrows(ExecutionException.class,
                     () -> failed.get(5, TimeUnit.SECONDS));
             assertInstanceOf(java.io.UncheckedIOException.class, failure.getCause());
+            // Future completion can wake this thread just before the worker's
+            // finally block removes its in-flight bookkeeping entry.
+            long cleanupDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+            while (service.inFlightLoads() != 0 && System.nanoTime() < cleanupDeadline) {
+                Thread.sleep(1);
+            }
             assertEquals(0, service.inFlightLoads());
             assertEquals(0, service.queuedLoads());
 

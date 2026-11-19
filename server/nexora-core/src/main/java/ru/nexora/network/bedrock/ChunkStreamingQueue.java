@@ -58,12 +58,23 @@ final class ChunkStreamingQueue {
         return ((long) x << 32) | (z & 0xffff_ffffL);
     }
 
-    List<Long> nextBatch(int maximum) {
+    List<Long> peekBatch(int maximum) {
         if (maximum < 1) throw new IllegalArgumentException("maximum must be positive");
         int end = Math.min(orderedChunkKeys.size(), cursor + maximum);
-        List<Long> batch = orderedChunkKeys.subList(cursor, end);
-        cursor = end;
-        return List.copyOf(batch);
+        return List.copyOf(orderedChunkKeys.subList(cursor, end));
+    }
+
+    void advance(int count) {
+        if (count < 0 || count > remaining()) {
+            throw new IllegalArgumentException("advance count exceeds remaining chunks");
+        }
+        cursor += count;
+    }
+
+    List<Long> nextBatch(int maximum) {
+        List<Long> batch = peekBatch(maximum);
+        advance(batch.size());
+        return batch;
     }
 
     boolean isComplete() {

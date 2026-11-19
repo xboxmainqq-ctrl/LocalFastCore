@@ -642,15 +642,15 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
                         transportRateSampledAtMillis = 0L;
                     }
                 }
-                if (currentSent >= 0) {
-                    transportBytesSent = currentSent;
+                if (currentSent >= 0) transportBytesSent = currentSent;
+                if (currentReceived >= 0) transportBytesReceived = currentReceived;
+                // Keep both counter baselines on the same timestamp so partial native
+                // reports cannot distort the elapsed-time denominator.
+                if (currentSent >= 0 && currentReceived >= 0) {
                     previousTransportBytesSent = currentSent;
-                }
-                if (currentReceived >= 0) {
-                    transportBytesReceived = currentReceived;
                     previousTransportBytesReceived = currentReceived;
+                    previousTransportCounterAtMillis = sampledAt;
                 }
-                if (currentSent >= 0 && currentReceived >= 0) previousTransportCounterAtMillis = sampledAt;
                 transportStatsSampledAtMillis = sampledAt;
                 return;
             }

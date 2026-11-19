@@ -22,6 +22,7 @@ public final class NetherNetInboundPipeline implements NetherNetDataChannelListe
             new ConcurrentHashMap<>();
     private final Consumer<InboundMessage> messageSink;
     private final NexoraAiGuard guard;
+    private final InboundPeerBudget peerBudget;
     private final LongAdder inboundFrames = new LongAdder();
     private final LongAdder inboundBytes = new LongAdder();
     private final LongAdder completedMessages = new LongAdder();
@@ -40,8 +41,14 @@ public final class NetherNetInboundPipeline implements NetherNetDataChannelListe
 
     public NetherNetInboundPipeline(Consumer<InboundMessage> messageSink, NexoraAiGuard guard,
                                     int maxTrackedChannels, int maxFrameBytes) {
+        this(messageSink, guard, new InboundPeerBudget(), maxTrackedChannels, maxFrameBytes);
+    }
+
+    public NetherNetInboundPipeline(Consumer<InboundMessage> messageSink, NexoraAiGuard guard,
+                                    InboundPeerBudget peerBudget, int maxTrackedChannels, int maxFrameBytes) {
         this.messageSink = Objects.requireNonNull(messageSink, "messageSink");
         this.guard = Objects.requireNonNull(guard, "guard");
+        this.peerBudget = Objects.requireNonNull(peerBudget, "peerBudget");
         if (maxTrackedChannels < 1 || maxFrameBytes < 1 || maxFrameBytes > MAX_INBOUND_FRAME_BYTES) {
             throw new IllegalArgumentException("Invalid inbound pipeline limits");
         }
@@ -70,6 +77,9 @@ public final class NetherNetInboundPipeline implements NetherNetDataChannelListe
             if (frame.length > maxFrameBytes) {
                 throw new IllegalArgumentException("NetherNet inbound frame exceeds "
                         + maxFrameBytes + " byte limit");
+            }
+            if (!peerBudget.tryAcquire(networkId, frame.length, startedAt)) {
+                throw new IllegalStateException("NetherNet inbound peer budget exceeded");
             }
             guard.recordInboundFrame(networkId, frame.length, startedAt);
             ChannelKey key = new ChannelKey(networkId, channelLabel);
@@ -116,11 +126,16 @@ public final class NetherNetInboundPipeline implements NetherNetDataChannelListe
         synchronized (reassemblers) {
             reassemblers.keySet().removeIf(key -> key.networkId().equals(networkId));
         }
+        peerBudget.onDisconnected(networkId);
         guard.onDisconnected(networkId);
     }
 
     public int activeChannelCount() {
         return reassemblers.size();
+    }
+
+    public InboundPeerBudget.Stats peerBudgetStats() {
+        return peerBudget.stats();
     }
 
     /** Aggregate low-overhead inbound framing/dispatch measurements; not a network throughput guarantee. */

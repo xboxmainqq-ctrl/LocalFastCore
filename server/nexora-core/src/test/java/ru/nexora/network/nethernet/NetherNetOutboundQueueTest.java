@@ -41,7 +41,7 @@ class NetherNetOutboundQueueTest {
         assertArrayEquals(new byte[] {1}, queue.poll());
 
         assertTrue(queue.offerAll(java.util.List.of(new byte[] {6}, new byte[] {7, 8})));
-        assertEquals(3, queue.frameCount());
+        assertEquals(2, queue.frameCount());
         assertEquals(3, queue.queuedBytes());
     }
 

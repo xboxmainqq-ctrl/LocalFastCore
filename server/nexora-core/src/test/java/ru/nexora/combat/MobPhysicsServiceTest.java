@@ -121,4 +121,44 @@ class MobPhysicsServiceTest {
         assertFalse(result.grounded());
     }
 
+    @Test
+    void ghastUsesItsWideCollisionBoxInsteadOfPlayerSizedBox() {
+        World world = new World("mob-physics-ghast-width", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
+        world.setBlock(5, 65, 0, ru.nexora.world.BlockType.STONE);
+        var ghast = world.livingEntities().spawn("minecraft:ghast", 30, 2.5, 65, 0.5);
+        ghast = world.livingEntities().setVelocity(ghast.runtimeId(), 1.0, 0, 0).orElseThrow();
+
+        var result = physics.tick(world, ghast);
+
+        assertFalse(result.moved());
+        assertEquals(2.5, result.entity().x(), 0.0001);
+        assertEquals(0, result.entity().velocityX(), 0.0001);
+    }
+
+    @Test
+    void standardMobCanMoveWhereLargeGhastCannotFit() {
+        World world = new World("mob-physics-standard-width", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
+        world.setBlock(5, 65, 0, ru.nexora.world.BlockType.STONE);
+        var zombie = world.livingEntities().spawn("minecraft:zombie", 31, 2.5, 65, 0.5);
+        zombie = world.livingEntities().setVelocity(zombie.runtimeId(), 1.0, 0, 0).orElseThrow();
+
+        var result = physics.tick(world, zombie);
+
+        assertTrue(result.moved());
+        assertEquals(3.5, result.entity().x(), 0.0001);
+    }
+
+    @Test
+    void speciesDimensionsAreBoundedAndDistinctForLargeAndSmallMobs() {
+        var ghast = ru.nexora.world.WorldCollision.dimensionsForMob("minecraft:ghast");
+        var bat = ru.nexora.world.WorldCollision.dimensionsForMob("minecraft:bat");
+
+        assertEquals(4.0, ghast.width());
+        assertEquals(4.0, ghast.height());
+        assertTrue(bat.width() < 1.0);
+        assertTrue(bat.height() < 1.0);
+    }
+
 }

@@ -96,6 +96,42 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void outboundDrainUsesFrameBudgetAndContinuesOnNextSessionPump() throws Exception {
+        List<byte[]> delivered = new ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("outbound-budget", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                (networkId, label, frame) -> delivered.add(frame.clone()), event -> {});
+        try {
+            manager.onIdentity("outbound-budget-session", new NetherNetClientIdentity(
+                    "outbound-budget-token", new byte[] {1}, "outbound-budget-xuid",
+                    "OutboundBudgetPlayer", "outbound-budget-playfab", "20CA2", null));
+            List<byte[]> frames = new ArrayList<>();
+            for (int i = 0; i < 70; i++) frames.add(new byte[] {(byte) i});
+            java.lang.reflect.Method send = BedrockSessionManager.class.getDeclaredMethod(
+                    "sendEncodedFrames", String.class, List.class);
+            send.setAccessible(true);
+            send.invoke(manager, "outbound-budget-session", frames);
+
+            assertEquals(64, delivered.size(), "One drain must respect the frame budget");
+            assertEquals(6, (int) getSessionField(manager, "outbound-budget-session", "outboundQueue")
+                    .getClass().getMethod("frameCount").invoke(
+                            getSessionField(manager, "outbound-budget-session", "outboundQueue")));
+
+            java.lang.reflect.Method pump = BedrockSessionManager.class.getDeclaredMethod(
+                    "drainOutboundForSession", String.class);
+            pump.setAccessible(true);
+            pump.invoke(manager, "outbound-budget-session");
+
+            assertEquals(70, delivered.size());
+            for (int i = 0; i < 70; i++) assertArrayEquals(new byte[] {(byte) i}, delivered.get(i));
+            assertTrue(manager.adminRuntimeSummary().contains("outboundQueuedFrames=0"));
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void adminRuntimeSummaryIncludesActualMobAiAndJvmResourceMetrics() throws Exception {
         ru.nexora.world.World testWorld = new ru.nexora.world.World(
                 "admin-metrics-world", 0L, new ru.nexora.world.FlatWorldGenerator());

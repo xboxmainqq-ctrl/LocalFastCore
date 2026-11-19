@@ -56,8 +56,12 @@ final class ChunkStreamingBudget {
         if (registered.add(sessionKey)) rotation.addLast(sessionKey);
         if (!sessionKey.equals(rotation.peekFirst())) return false;
 
+        if (globalUsage >= globalLimit) {
+            // Keep the first unserved session at the head for the next time window.
+            return false;
+        }
         int usedBySession = sessionUsage.getOrDefault(sessionKey, 0);
-        if (globalUsage >= globalLimit || usedBySession >= sessionLimit) {
+        if (usedBySession >= sessionLimit) {
             rotateHead();
             return false;
         }

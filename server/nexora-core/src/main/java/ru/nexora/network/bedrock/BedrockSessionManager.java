@@ -6,6 +6,7 @@ import ru.nexora.network.nethernet.NetherNetClientIdentity;
 import ru.nexora.network.nethernet.NetherNetDataChannelListener;
 import ru.nexora.network.nethernet.NetherNetInboundPipeline;
 import ru.nexora.network.nethernet.NetherNetMessageFramer;
+import ru.nexora.network.nethernet.NetherNetOutboundQueue;
 import ru.nexora.inventory.PlayerInventory;
 import ru.nexora.inventory.ItemStack;
 import ru.nexora.inventory.PlayerInventoryStorage;
@@ -136,6 +137,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final Object[] xuidLoginLocks = createXuidLoginLocks();
     private final Object sessionChangeMonitor = new Object();
     private final AtomicLong nextEntityId = new AtomicLong(1);
+    private final AtomicLong outboundFramesSent = new AtomicLong();
+    private final AtomicLong outboundBytesSent = new AtomicLong();
+    private final AtomicLong outboundSendFailures = new AtomicLong();
+    private final AtomicLong outboundBackpressureRejections = new AtomicLong();
     private final AtomicLong nextFormId = new AtomicLong(1);
     private final AtomicLong lastItemActorTickNanos = new AtomicLong(Long.MIN_VALUE);
     private final AtomicLong lastLivingAiTickMillis = new AtomicLong(Long.MIN_VALUE);
@@ -605,6 +610,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 state.combatLock.unlock();
             }
             releaseOnlinePlayerLease(state);
+            synchronized (state.outboundLock) {
+                state.outboundQueue.clear();
+            }
             sessions.remove(networkId, state);
             actorReplicationIndex.removeSession(networkId);
             itemActorReplicationIndex.removeSession(networkId);
@@ -1567,7 +1575,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 .append(", mobAiDecisions=").append(ai.decisionCount())
                 .append(", mobAiAvgNs=").append(ai.averageDecisionNanos())
                 .append(", mobAiMaxNs=").append(ai.maxDecisionNanos())
-                .append(", mobAiFailures=").append(ai.failures());
+                .append(", mobAiFailures=").append(ai.failures())
+                .append(", outboundFramesSent=").append(outboundFramesSent.get())
+                .append(", outboundBytesSent=").append(outboundBytesSent.get())
+                .append(", outboundSendFailures=").append(outboundSendFailures.get())
+                .append(", outboundBackpressureRejections=").append(outboundBackpressureRejections.get())
+                .append(", outboundQueuedFrames=").append(sessions.values().stream()
+                        .mapToInt(state -> state.outboundQueue.frameCount()).sum())
+                .append(", outboundQueuedBytes=").append(sessions.values().stream()
+                        .mapToLong(state -> state.outboundQueue.queuedBytes()).sum());
         ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
         if (diagnostics != null) {
             ru.nexora.ai.JvmResourceSnapshot resources = diagnostics.resourceSnapshot();
@@ -7146,12 +7162,49 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private void sendEncodedFrames(String networkId, List<byte[]> frames) {
+        SessionState state = sessions.get(networkId);
+        if (state == null) {
+            sendFramesDirect(networkId, frames);
+            return;
+        }
+        synchronized (state.outboundLock) {
+            // Drain an older transient backlog before admitting more data for this session.
+            drainOutboundFrames(networkId, state);
+            if (!state.outboundQueue.offerAll(frames)) {
+                outboundBackpressureRejections.incrementAndGet();
+                throw new IllegalStateException("Bedrock outbound queue is full for session " + networkId
+                        + " (frames=" + state.outboundQueue.frameCount()
+                        + ", bytes=" + state.outboundQueue.queuedBytes() + ")");
+            }
+            drainOutboundFrames(networkId, state);
+        }
+    }
+
+    private void drainOutboundFrames(String networkId, SessionState state) {
+        byte[] frame;
+        while ((frame = state.outboundQueue.poll()) != null) {
+            try {
+                // The queue owns this copy, so the transport receives an isolated buffer.
+                outbound.sendFrame(networkId, "ReliableDataChannel", frame);
+                outboundFramesSent.incrementAndGet();
+                outboundBytesSent.addAndGet(frame.length);
+            } catch (Exception exception) {
+                outboundSendFailures.incrementAndGet();
+                state.outboundQueue.offerFirst(frame);
+                throw new IllegalStateException("Unable to send Bedrock packet batch", exception);
+            }
+        }
+    }
+
+    private void sendFramesDirect(String networkId, List<byte[]> frames) {
         try {
             for (byte[] frame : frames) {
-                // Give each transport call its own array in case an implementation retains or mutates it.
                 outbound.sendFrame(networkId, "ReliableDataChannel", frame.clone());
+                outboundFramesSent.incrementAndGet();
+                outboundBytesSent.addAndGet(frame.length);
             }
         } catch (Exception exception) {
+            outboundSendFailures.incrementAndGet();
             throw new IllegalStateException("Unable to send Bedrock packet batch", exception);
         }
     }
@@ -7259,6 +7312,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         } finally {
             for (SessionState state : sessions.values()) releaseOnlinePlayerLease(state);
         }
+        for (SessionState state : sessions.values()) {
+            synchronized (state.outboundLock) {
+                state.outboundQueue.clear();
+            }
+        }
         sessions.clear();
         actorReplicationIndex.clear();
         itemActorReplicationIndex.clear();
@@ -7310,6 +7368,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     private static final class SessionState {
         private final ReentrantLock combatLock = new ReentrantLock();
+        private final Object outboundLock = new Object();
+        private final NetherNetOutboundQueue outboundQueue = new NetherNetOutboundQueue();
         private long lastAttackNanos = Long.MIN_VALUE;
         private long chatWindowStartedNanos = Long.MIN_VALUE;
         private int chatMessagesInWindow;

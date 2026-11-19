@@ -99,6 +99,12 @@ final class ChunkStreamingBudget {
         return globalUsage;
     }
 
+    synchronized int globalUsage(long nowNanos) {
+        advanceWindow(nowNanos);
+        evictIdleSessions(nowNanos);
+        return globalUsage;
+    }
+
     private void advanceWindow(long nowNanos) {
         if (windowStartedAt == Long.MIN_VALUE || nowNanos < windowStartedAt
                 || nowNanos - windowStartedAt >= windowNanos) {

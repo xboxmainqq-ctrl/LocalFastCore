@@ -78,6 +78,12 @@ final class ChunkStreamingBudget {
         }
     }
 
+    /** Removes a completed stream from rotation without resetting this window's quota. */
+    synchronized void pause(String sessionKey) {
+        registered.remove(sessionKey);
+        rotation.remove(sessionKey);
+    }
+
     synchronized void unregister(String sessionKey) {
         if (!registered.remove(sessionKey)) return;
         rotation.remove(sessionKey);
@@ -103,14 +109,15 @@ final class ChunkStreamingBudget {
     }
 
     private void evictIdleSessions(long nowNanos) {
-        Iterator<String> iterator = rotation.iterator();
+        Iterator<Map.Entry<String, Long>> iterator = lastSeen.entrySet().iterator();
         while (iterator.hasNext()) {
-            String sessionKey = iterator.next();
-            Long seen = lastSeen.get(sessionKey);
-            if (seen == null || nowNanos < seen || nowNanos - seen > idleSessionNanos) {
+            Map.Entry<String, Long> entry = iterator.next();
+            long seen = entry.getValue();
+            if (nowNanos < seen || nowNanos - seen > idleSessionNanos) {
+                String sessionKey = entry.getKey();
                 iterator.remove();
                 registered.remove(sessionKey);
-                lastSeen.remove(sessionKey);
+                rotation.remove(sessionKey);
                 sessionUsage.remove(sessionKey);
             }
         }

@@ -75,7 +75,8 @@ public final class LivingEntityAiService {
         if (mob.health() <= 0) return Decision.idle(mob.runtimeId());
 
         if (isHostile(mob.identifier())) {
-            if (nearest == null || distanceSquared(mob, nearest) > ACQUIRE_RANGE * ACQUIRE_RANGE) {
+            double acquireRange = Math.max(ACQUIRE_RANGE, projectileRangeFor(mob.identifier()));
+            if (nearest == null || distanceSquared(mob, nearest) > acquireRange * acquireRange) {
                 return Decision.idle(mob.runtimeId());
             }
             return pursue(mob, nearest, nowMillis, nextAttackAtMillis);
@@ -392,7 +393,7 @@ public final class LivingEntityAiService {
                     attackDamage, attack, AttackStyle.MELEE);
         }
 
-        public Decision { 
+        public Decision {
             Objects.requireNonNull(attackStyle, "attackStyle");
             if (mobRuntimeId <= 0 || !Double.isFinite(moveX) || !Double.isFinite(moveY)
                     || !Double.isFinite(moveZ) || !Float.isFinite(attackDamage) || attackDamage < 0) {

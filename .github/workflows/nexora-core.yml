@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - work/nexora-ai-foundation
+      - work/nexora-streaming-optimization
       - nexora/compatibility-edition
     paths:
       - "server/nexora-core/**"

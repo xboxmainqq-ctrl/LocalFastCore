@@ -4,6 +4,11 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -37,6 +42,43 @@ class NetherNetInboundPipelineTest {
         assertTrue(stats.bytes() > reliablePayload.length);
         assertTrue(stats.totalProcessingNanos() >= stats.maxProcessingNanos());
         assertTrue(stats.averageProcessingNanos() >= 0);
+    }
+
+    @Test
+    void processesDifferentPeerChannelsConcurrently() throws Exception {
+        AtomicInteger delivered = new AtomicInteger();
+        NetherNetInboundPipeline pipeline = new NetherNetInboundPipeline(
+                message -> delivered.incrementAndGet(),
+                new ru.nexora.ai.NexoraAiGuard(), 16, 64);
+        int peers = 8;
+        int framesPerPeer = 4;
+        CountDownLatch ready = new CountDownLatch(peers);
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(peers);
+        try {
+            List<Future<?>> tasks = new ArrayList<>();
+            for (int peer = 0; peer < peers; peer++) {
+                String networkId = "parallel-peer-" + peer;
+                tasks.add(executor.submit(() -> {
+                    ready.countDown();
+                    start.await();
+                    for (int frame = 0; frame < framesPerPeer; frame++) {
+                        pipeline.onFrame(networkId, "UnreliableDataChannel", new byte[] {0, 1});
+                    }
+                    return null;
+                }));
+            }
+            ready.await();
+            start.countDown();
+            for (Future<?> task : tasks) task.get();
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertEquals(peers * framesPerPeer, delivered.get());
+        assertEquals(peers, pipeline.activeChannelCount());
+        assertEquals(peers * framesPerPeer, pipeline.stats().completedMessages());
+        assertEquals(0, pipeline.stats().failedFrames());
     }
 
     @Test

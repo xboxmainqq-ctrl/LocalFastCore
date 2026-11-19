@@ -25,4 +25,14 @@ class GhastExplosionTest {
         assertFalse(GhastExplosion.canDestroy(BlockType.OBSIDIAN));
         assertFalse(GhastExplosion.canDestroy(BlockType.BEDROCK));
     }
+    @Test
+    void supportedBlocksHaveConservativeDropsAndGlassDropsNothingWithoutSilkTouch() {
+        assertEquals("minecraft:cobblestone", GhastExplosion.dropFor(BlockType.STONE).itemId());
+        assertEquals("minecraft:dirt", GhastExplosion.dropFor(BlockType.GRASS_BLOCK).itemId());
+        assertEquals("minecraft:oak_log", GhastExplosion.dropFor(BlockType.OAK_LOG).itemId());
+        assertEquals("minecraft:diamond_block", GhastExplosion.dropFor(BlockType.DIAMOND_BLOCK).itemId());
+        assertNull(GhastExplosion.dropFor(BlockType.GLASS));
+        assertNull(GhastExplosion.dropFor(BlockType.CHEST));
+    }
+
 }

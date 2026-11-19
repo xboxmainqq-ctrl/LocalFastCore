@@ -271,6 +271,20 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
     /** A transport-level ICE RTT sample; it is not the Bedrock gameplay ping. */
     public record TransportMetrics(double rttMillis, long bytesSent, long bytesReceived,
                                    long sampledAtMillis) {
+        public boolean available() {
+            return sampledAtMillis > 0 && Double.isFinite(rttMillis) && rttMillis >= 0.0;
+        }
+
+        /** Returns -1 when no sample has been recorded yet. */
+        public long ageMillis(long nowMillis) {
+            return sampledAtMillis <= 0 ? -1L : Math.max(0L, nowMillis - sampledAtMillis);
+        }
+
+        public boolean stale(long nowMillis, long maxAgeMillis) {
+            if (maxAgeMillis < 0) throw new IllegalArgumentException("maxAgeMillis must be >= 0");
+            long age = ageMillis(nowMillis);
+            return age < 0 || age > maxAgeMillis;
+        }
     }
 
     private void sampleTransportStats() {

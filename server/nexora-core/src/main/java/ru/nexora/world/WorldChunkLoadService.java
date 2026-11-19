@@ -8,6 +8,8 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -29,6 +31,8 @@ public final class WorldChunkLoadService implements AutoCloseable {
 
     private final ChunkLoader loader;
     private final ThreadPoolExecutor executor;
+    private final ConcurrentMap<Long, CompletableFuture<Optional<WorldChunk>>> inFlight =
+            new ConcurrentHashMap<>();
 
     public WorldChunkLoadService(WorldStorage storage) {
         this(storage::loadChunk, DEFAULT_WORKERS, DEFAULT_QUEUE_CAPACITY);
@@ -54,8 +58,12 @@ public final class WorldChunkLoadService implements AutoCloseable {
         if (executor.isShutdown()) {
             return CompletableFuture.failedFuture(new IllegalStateException("Chunk load service is closed"));
         }
+        long key = ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
+        CompletableFuture<Optional<WorldChunk>> existing = inFlight.get(key);
+        if (existing != null) return existing;
         CompletableFuture<Optional<WorldChunk>> result = new CompletableFuture<>();
-        // The in-flight map is owned by World, which keeps the future with its streaming queue.
+        existing = inFlight.putIfAbsent(key, result);
+        if (existing != null) return existing;
         try {
             executor.execute(() -> {
                 try {
@@ -65,10 +73,13 @@ public final class WorldChunkLoadService implements AutoCloseable {
                             "Unable to asynchronously load NEXORA chunk " + chunkX + "," + chunkZ, failure));
                 } catch (RuntimeException failure) {
                     result.completeExceptionally(failure);
+                } finally {
+                    inFlight.remove(key, result);
                 }
             });
         } catch (RejectedExecutionException saturated) {
             result.completeExceptionally(saturated);
+            inFlight.remove(key, result);
         }
         return result;
     }

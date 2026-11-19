@@ -38,6 +38,17 @@ class ChunkStreamingQueueTest {
     }
 
     @Test
+    void peekDoesNotConsumeChunksUntilTransportConfirmsAcceptance() {
+        ChunkStreamingQueue queue = new ChunkStreamingQueue(2, 3, 1);
+        List<Long> first = queue.peekBatch(4);
+        assertEquals(first, queue.peekBatch(4));
+        assertEquals(9, queue.remaining());
+        queue.advance(first.size());
+        assertEquals(5, queue.remaining());
+        assertNotEquals(first, queue.peekBatch(4));
+    }
+
+    @Test
     void radiusZeroContainsOnlyTheCenterChunk() {
         ChunkStreamingQueue queue = new ChunkStreamingQueue(-2, 7, 0);
         assertEquals(List.of(ChunkStreamingQueue.chunkKey(-2, 7)), queue.nextBatch(1));

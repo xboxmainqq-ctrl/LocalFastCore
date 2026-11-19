@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class WorldEntityTickLoadBenchmarkTest {
     private static final int WARMUP_TICKS = 10;
-    private static final int TICKS = 20;
+    private static final int TICKS = 60;
     private static final List<String> SPECIES = List.of(
             "minecraft:zombie", "minecraft:skeleton", "minecraft:spider",
             "minecraft:creeper", "minecraft:witch", "minecraft:phantom",

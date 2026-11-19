@@ -74,10 +74,15 @@ class OutboundDrainBudgetTest {
 
         for (int window = 0; window < 2; window++) {
             long now = window * 50L;
-            for (int session = 0; session < sessionCount; session++) {
-                String key = "player-" + session;
-                if (budget.tryAcquire(key, 128, now)) {
-                    admitted[session]++;
+            // Each server pump offers every peer one bounded turn. Repeat
+            // pumps until the window budget is exhausted; a peer that is not
+            // at the rotation head must wait for a later pump.
+            for (int pump = 0; pump < sessionCount; pump++) {
+                for (int session = 0; session < sessionCount; session++) {
+                    String key = "player-" + session;
+                    if (budget.tryAcquire(key, 128, now)) {
+                        admitted[session]++;
+                    }
                 }
             }
             assertEquals(64, budget.globalFrames(now),

@@ -16,6 +16,9 @@ public final class WorldLivingEntityManager {
     private final AtomicLong nextRuntimeId = new AtomicLong(2_000_000L);
     private final AtomicInteger entityCount = new AtomicInteger();
     private final ConcurrentMap<Long, WorldLivingEntity> entities = new ConcurrentSkipListMap<>();
+    // WORLD-owned secondary index: entity IDs grouped by their current chunk.
+    private final Map<ChunkKey, java.util.Set<Long>> entitiesByChunk = new java.util.HashMap<>();
+    private final Map<Long, ChunkKey> entityChunks = new java.util.HashMap<>();
     private final WorldLivingEntityStorage storage;
 
     public WorldLivingEntityManager() {
@@ -31,6 +34,7 @@ public final class WorldLivingEntityManager {
                 throw new IOException("Invalid or duplicate persisted living actor runtime ID");
             }
             entityCount.incrementAndGet();
+            index(entity);
             highestRuntimeId = Math.max(highestRuntimeId, entity.runtimeId());
         }
         nextRuntimeId.set(highestRuntimeId + 1);
@@ -61,12 +65,46 @@ public final class WorldLivingEntityManager {
             throw new IllegalStateException("Duplicate living actor runtime ID");
         }
         entityCount.incrementAndGet();
+        index(entity);
         return entity;
     }
 
     public Optional<WorldLivingEntity> find(long runtimeId) {
         if (runtimeId <= 0) return Optional.empty();
         return Optional.ofNullable(entities.get(runtimeId));
+    }
+
+    /**
+     * Returns one consistent view of total population and actors in resident chunks.
+     * Work is proportional to indexed resident chunks and their occupants, not every
+     * actor in dormant chunks.
+     */
+    public synchronized ChunkSnapshot snapshotInChunks(
+            java.util.Set<WorldChunkResidencyManager.ChunkCoordinate> chunks) {
+        Objects.requireNonNull(chunks, "chunks");
+        java.util.Set<Long> selected = new java.util.TreeSet<>();
+        for (WorldChunkResidencyManager.ChunkCoordinate coordinate : chunks) {
+            if (coordinate == null) continue;
+            java.util.Set<Long> ids = entitiesByChunk.get(new ChunkKey(
+                    coordinate.chunkX(), coordinate.chunkZ()));
+            if (ids != null) selected.addAll(ids);
+        }
+        List<WorldLivingEntity> result = new ArrayList<>(selected.size());
+        for (long id : selected) {
+            WorldLivingEntity entity = entities.get(id);
+            if (entity != null) result.add(entity);
+        }
+        return new ChunkSnapshot(entityCount.get(), result);
+    }
+
+    public record ChunkSnapshot(int totalEntities, List<WorldLivingEntity> residentEntities) {
+        public ChunkSnapshot {
+            if (totalEntities < 0) throw new IllegalArgumentException("totalEntities must be non-negative");
+            residentEntities = List.copyOf(residentEntities);
+            if (residentEntities.size() > totalEntities) {
+                throw new IllegalArgumentException("Resident count cannot exceed total entity count");
+            }
+        }
     }
 
     public List<WorldLivingEntity> snapshot() {
@@ -84,7 +122,10 @@ public final class WorldLivingEntityManager {
         WorldLivingEntity after = before.damage(amount);
         float applied = before.health() - after.health();
         if (after.health() <= 0) {
-            if (entities.remove(runtimeId, before)) entityCount.decrementAndGet();
+            if (entities.remove(runtimeId, before)) {
+                entityCount.decrementAndGet();
+                unindex(runtimeId);
+            }
         } else entities.replace(runtimeId, before, after);
         return Optional.of(new DamageResult(before, after, applied, after.health() <= 0));
     }
@@ -111,6 +152,7 @@ public final class WorldLivingEntityManager {
         if (entity == null) return Optional.empty();
         WorldLivingEntity updated = entity.withPosition(x, y, z);
         entities.replace(runtimeId, entity, updated);
+        reindex(updated);
         return Optional.of(updated);
     }
 
@@ -151,6 +193,7 @@ public final class WorldLivingEntityManager {
         WorldLivingEntity updated = entity.withPositionAndVelocity(
                 x, y, z, velocityX, velocityY, velocityZ);
         entities.replace(runtimeId, entity, updated);
+        reindex(updated);
         return Optional.of(updated);
     }
 
@@ -174,7 +217,10 @@ public final class WorldLivingEntityManager {
                         Math.max(0, before.health() - 1.0f), before.maxHealth(),
                         before.fireUntilMillis(), safeNextFireDamageAt(nowMillis));
                 if (after.health() <= 0) {
-                    if (entities.remove(before.runtimeId(), before)) entityCount.decrementAndGet();
+                    if (entities.remove(before.runtimeId(), before)) {
+                        entityCount.decrementAndGet();
+                        unindex(before.runtimeId());
+                    }
                 } else entities.replace(before.runtimeId(), before, after);
                 damage.add(new DamageResult(before, after, before.health() - after.health(),
                         after.health() <= 0));
@@ -189,8 +235,42 @@ public final class WorldLivingEntityManager {
 
     public synchronized boolean remove(long runtimeId) {
         boolean removed = entities.remove(runtimeId) != null;
-        if (removed) entityCount.decrementAndGet();
+        if (removed) {
+            entityCount.decrementAndGet();
+            unindex(runtimeId);
+        }
         return removed;
+    }
+
+    private void index(WorldLivingEntity entity) {
+        ChunkKey chunk = chunkFor(entity);
+        entityChunks.put(entity.runtimeId(), chunk);
+        entitiesByChunk.computeIfAbsent(chunk, ignored -> new java.util.HashSet<>())
+                .add(entity.runtimeId());
+    }
+
+    private void reindex(WorldLivingEntity entity) {
+        ChunkKey next = chunkFor(entity);
+        ChunkKey previous = entityChunks.get(entity.runtimeId());
+        if (next.equals(previous)) return;
+        unindex(entity.runtimeId());
+        entityChunks.put(entity.runtimeId(), next);
+        entitiesByChunk.computeIfAbsent(next, ignored -> new java.util.HashSet<>())
+                .add(entity.runtimeId());
+    }
+
+    private void unindex(long runtimeId) {
+        ChunkKey previous = entityChunks.remove(runtimeId);
+        if (previous == null) return;
+        java.util.Set<Long> ids = entitiesByChunk.get(previous);
+        if (ids == null) return;
+        ids.remove(runtimeId);
+        if (ids.isEmpty()) entitiesByChunk.remove(previous);
+    }
+
+    private static ChunkKey chunkFor(WorldLivingEntity entity) {
+        return new ChunkKey((int) Math.floor(entity.x() / 16.0),
+                (int) Math.floor(entity.z() / 16.0));
     }
 
     public int size() {

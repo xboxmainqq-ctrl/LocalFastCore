@@ -13,8 +13,8 @@ import java.util.Set;
  *
  * <p>This is intentionally separate from the network layer: networking reports player
  * positions, while the world runtime decides which chunks should remain resident.
- * It does not unload chunks by itself; a future persistence-aware chunk store can
- * consume the returned unload set after flushing dirty state.</p>
+ * It produces bounded load/unload plans; the world applies them by flushing dirty
+ * chunks through its asynchronous persistence service before eviction.</p>
  */
 public final class WorldChunkResidencyManager {
     private final int viewDistance;

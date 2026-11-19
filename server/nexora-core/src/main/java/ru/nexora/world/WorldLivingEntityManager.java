@@ -142,7 +142,7 @@ public final class WorldLivingEntityManager {
                         before.x(), before.y(), before.z(),
                         before.velocityX(), before.velocityY(), before.velocityZ(),
                         Math.max(0, before.health() - 1.0f), before.maxHealth(),
-                        before.fireUntilMillis(), nowMillis + 1000L);
+                        before.fireUntilMillis(), safeNextFireDamageAt(nowMillis));
                 if (after.health() <= 0) entities.remove(before.runtimeId(), before);
                 else entities.replace(before.runtimeId(), before, after);
                 damage.add(new DamageResult(before, after, before.health() - after.health(),
@@ -152,7 +152,7 @@ public final class WorldLivingEntityManager {
         return List.copyOf(damage);
     }
 
-    public synchronized boolean remove(long runtimeId) {
+    private static long safeNextFireDamageAt(long nowMillis) {\n        return nowMillis > Long.MAX_VALUE - 1000L ? Long.MAX_VALUE : nowMillis + 1000L;\n    }\n\n    public synchronized boolean remove(long runtimeId) {
         return entities.remove(runtimeId) != null;
     }
 

@@ -22,6 +22,18 @@ public final class WorkGraph {
         return this;
     }
 
+    /**
+     * Adds a node only when absent. This keeps idempotent schedulers from building
+     * an O(n) snapshot just to check for duplicates and makes check-plus-add atomic.
+     */
+    public synchronized boolean addIfAbsent(String id, TaskContract contract) {
+        requireId(id);
+        Objects.requireNonNull(contract, "contract");
+        if (nodes.containsKey(id)) return false;
+        nodes.put(id, new Node(id, contract));
+        return true;
+    }
+
     /** Compatibility overload for low-level callers. */
     public synchronized WorkGraph add(String id, AdaptiveRuntime.Lane lane, boolean critical) {
         return add(id, new TaskContract(lane, critical, !critical, critical, 0L));

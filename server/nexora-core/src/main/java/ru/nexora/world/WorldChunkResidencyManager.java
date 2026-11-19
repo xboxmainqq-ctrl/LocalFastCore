@@ -20,6 +20,7 @@ public final class WorldChunkResidencyManager {
     private final int viewDistance;
     private final int unloadGraceTicks;
     private final Shape shape;
+    private final int maximumResidentChunks;
     private final Set<Long> desiredChunks = new HashSet<>();
     private final Set<Long> loadScratch = new LinkedHashSet<>();
     private final Set<Long> unloadScratch = new HashSet<>();
@@ -29,19 +30,34 @@ public final class WorldChunkResidencyManager {
     private volatile Set<ChunkCoordinate> residentCoordinateSnapshot = Set.of();
 
     public WorldChunkResidencyManager(int viewDistance, int unloadGraceTicks) {
-        this(viewDistance, unloadGraceTicks, Shape.CIRCULAR);
+        this(viewDistance, unloadGraceTicks, Shape.CIRCULAR, Integer.MAX_VALUE);
     }
 
     public WorldChunkResidencyManager(int viewDistance, int unloadGraceTicks, Shape shape) {
+        this(viewDistance, unloadGraceTicks, shape, Integer.MAX_VALUE);
+    }
+
+    /**
+     * Creates a residency planner with a hard target for resident chunks. Chunks
+     * pinned by active world entities may temporarily exceed this target because
+     * correctness takes priority over evicting live entity state.
+     */
+    public WorldChunkResidencyManager(
+            int viewDistance, int unloadGraceTicks, Shape shape, int maximumResidentChunks
+    ) {
         if (viewDistance < 1 || viewDistance > 32) {
             throw new IllegalArgumentException("viewDistance must be between 1 and 32");
         }
         if (unloadGraceTicks < 0 || unloadGraceTicks > 20 * 60) {
             throw new IllegalArgumentException("unloadGraceTicks must be between 0 and 1200");
         }
+        if (maximumResidentChunks < 1) {
+            throw new IllegalArgumentException("maximumResidentChunks must be positive");
+        }
         this.viewDistance = viewDistance;
         this.unloadGraceTicks = unloadGraceTicks;
         this.shape = java.util.Objects.requireNonNull(shape, "shape");
+        this.maximumResidentChunks = maximumResidentChunks;
     }
 
     public synchronized ResidencyPlan update(List<PlayerChunk> players, long tick) {
@@ -93,20 +109,26 @@ public final class WorldChunkResidencyManager {
             addDesiredChunk(pinned.chunkX(), pinned.chunkZ(), null, 0, tick);
         }
 
-        // Reuse the ordered load scratch set so the world can consume a global
-        // load budget without sacrificing center-out priority.
-        resident.addAll(loadScratch);
-
+        // Expire grace-period chunks first so their slots can be reused by the
+        // newly requested view in this same tick.
         unloadScratch.clear();
         for (long key : resident) {
             if (desiredChunks.contains(key)) continue;
             long last = lastDesiredTick.getOrDefault(key, tick);
-            if (tick - last >= unloadGraceTicks) {
-                unloadScratch.add(key);
-            }
+            if (tick - last >= unloadGraceTicks) unloadScratch.add(key);
         }
         resident.removeAll(unloadScratch);
         for (long key : unloadScratch) lastDesiredTick.remove(key);
+
+        // Enforce a process-local residency target while preserving center-out
+        // priority. Desired chunks beyond the current capacity remain pending:
+        // they are offered again on the next update instead of being forgotten.
+        int availableSlots = Math.max(0, maximumResidentChunks - resident.size());
+        int acceptedLoads = 0;
+        for (long key : loadScratch) {
+            if (acceptedLoads >= availableSlots) break;
+            if (resident.add(key)) acceptedLoads++;
+        }
         if (!loadScratch.isEmpty() || !unloadScratch.isEmpty()) {
             residentSnapshot = Set.copyOf(resident);
             residentCoordinateSnapshot = Set.copyOf(decode(resident));
@@ -153,6 +175,10 @@ public final class WorldChunkResidencyManager {
 
     public int viewDistance() {
         return viewDistance;
+    }
+
+    public int maximumResidentChunks() {
+        return maximumResidentChunks;
     }
 
     private static List<ChunkCoordinate> decode(Set<Long> keys) {

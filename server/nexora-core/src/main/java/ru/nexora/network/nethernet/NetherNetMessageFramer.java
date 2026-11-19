@@ -1,6 +1,7 @@
 package ru.nexora.network.nethernet;
 
-import java.io.ByteArrayOutputStream;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -60,7 +61,8 @@ public final class NetherNetMessageFramer {
             fragments.add(withHeader(remainingFragments, message, offset, length));
             offset += length;
         }
-        return List.copyOf(fragments);
+        // The backing list is local and never escapes; wrap it without copying its array.
+        return Collections.unmodifiableList(fragments);
     }
 
     private static byte[] withHeader(int header, byte[] payload, int offset, int length) {
@@ -77,7 +79,8 @@ public final class NetherNetMessageFramer {
     public static final class Reassembler {
         private final int maxMessageBytes;
         private final long maxAssemblyNanos;
-        private ByteArrayOutputStream pending;
+        private byte[] pendingBytes;
+        private int pendingSize;
         private int expectedNextHeader;
         private long pendingStartedAtNanos;
 
@@ -107,7 +110,7 @@ public final class NetherNetMessageFramer {
         /** Monotonic-time overload for deterministic assembly timeout tests. */
         public synchronized Optional<byte[]> accept(byte[] frame, boolean reliable, long nowNanos) {
             Objects.requireNonNull(frame, "frame");
-            if (pending != null) {
+            if (pendingBytes != null) {
                 long elapsed = nowNanos - pendingStartedAtNanos;
                 if (elapsed < 0 || elapsed > maxAssemblyNanos) {
                     reset();
@@ -138,7 +141,8 @@ public final class NetherNetMessageFramer {
                     System.arraycopy(frame, HEADER_BYTES, payload, 0, payloadLength);
                     return Optional.of(payload);
                 }
-                pending = new ByteArrayOutputStream(Math.min(maxMessageBytes, payloadLength + 256));
+                pendingBytes = new byte[Math.min(maxMessageBytes, Math.max(256, payloadLength))];
+                pendingSize = 0;
                 pendingStartedAtNanos = nowNanos;
                 expectedNextHeader = header - 1;
             } else if (header != expectedNextHeader) {
@@ -147,14 +151,16 @@ public final class NetherNetMessageFramer {
                         + expectedNextHeader + " but received " + header);
             }
 
-            if (pending.size() + payloadLength > maxMessageBytes) {
+            if (payloadLength > maxMessageBytes - pendingSize) {
                 reset();
                 throw new IllegalArgumentException("Reassembled NetherNet message exceeds configured limit");
             }
-            pending.write(frame, HEADER_BYTES, payloadLength);
+            ensurePendingCapacity(pendingSize + payloadLength);
+            System.arraycopy(frame, HEADER_BYTES, pendingBytes, pendingSize, payloadLength);
+            pendingSize += payloadLength;
 
             if (header == 0) {
-                byte[] complete = pending.toByteArray();
+                byte[] complete = Arrays.copyOf(pendingBytes, pendingSize);
                 reset();
                 return Optional.of(complete);
             }
@@ -164,9 +170,17 @@ public final class NetherNetMessageFramer {
         }
 
         public synchronized void reset() {
-            pending = null;
+            pendingBytes = null;
+            pendingSize = 0;
             expectedNextHeader = 0;
             pendingStartedAtNanos = 0L;
+        }
+
+        private void ensurePendingCapacity(int required) {
+            if (required <= pendingBytes.length) return;
+            int grown = Math.max(required, pendingBytes.length << 1);
+            int capacity = Math.min(maxMessageBytes, grown);
+            pendingBytes = Arrays.copyOf(pendingBytes, capacity);
         }
 
         private void ensureWithinLimit(int size) {

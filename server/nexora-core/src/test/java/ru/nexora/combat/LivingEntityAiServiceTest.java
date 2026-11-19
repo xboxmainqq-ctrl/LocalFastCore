@@ -409,6 +409,21 @@ class LivingEntityAiServiceTest {
     }
 
     @Test
+    void blockedRangedTargetStillRetreatsAtPointBlankRange() {
+        WorldLivingEntity skeleton = new WorldLivingEntityManager().spawn(
+                "minecraft:skeleton", 20, 0, 64, 0);
+        var nearby = new LivingEntityAiService.PlayerTarget("player", 2, 64, 0, true);
+
+        var decision = ai.approach(skeleton, nearby);
+
+        assertTrue(decision.moving());
+        assertEquals("player", decision.targetNetworkId());
+        assertEquals(LivingEntityAiService.AttackStyle.PROJECTILE, decision.attackStyle());
+        assertFalse(decision.attack());
+        assertTrue(decision.moveX() < 0);
+    }
+
+    @Test
     void blockedRangedTargetProducesThreeDimensionalApproachForFlyingMobs() {
         WorldLivingEntity ghast = new WorldLivingEntityManager().spawn(
                 "minecraft:ghast", 0, 0, 64, 0);

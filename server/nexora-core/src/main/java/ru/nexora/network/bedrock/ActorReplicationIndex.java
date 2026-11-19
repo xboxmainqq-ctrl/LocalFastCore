@@ -63,6 +63,16 @@ final class ActorReplicationIndex {
         if (viewers != null) viewers.forEach(action);
     }
 
+    Set<String> chunkViewers(long chunkKey) {
+        Set<String> viewers = chunkViewers.get(chunkKey);
+        return viewers == null ? Set.of() : viewers;
+    }
+
+    Set<String> actorViewers(long runtimeId) {
+        Set<String> viewers = actorViewers.get(runtimeId);
+        return viewers == null ? Set.of() : viewers;
+    }
+
     int chunkViewerCount(long chunkKey) {
         Set<String> viewers = chunkViewers.get(chunkKey);
         return viewers == null ? 0 : viewers.size();

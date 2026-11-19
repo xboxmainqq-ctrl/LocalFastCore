@@ -90,20 +90,32 @@ public final class NetherNetInboundPipeline implements NetherNetDataChannelListe
         }
     }
 
-    private synchronized NetherNetMessageFramer.Reassembler reassemblerFor(ChannelKey key) {
+    /**
+     * Existing channels take the concurrent-map fast path. Synchronization is only
+     * needed while creating a previously unseen channel and enforcing the hard cap.
+     */
+    private NetherNetMessageFramer.Reassembler reassemblerFor(ChannelKey key) {
         NetherNetMessageFramer.Reassembler existing = reassemblers.get(key);
         if (existing != null) return existing;
-        if (reassemblers.size() >= maxTrackedChannels) {
-            throw new IllegalStateException("NetherNet inbound channel limit reached");
+
+        synchronized (reassemblers) {
+            existing = reassemblers.get(key);
+            if (existing != null) return existing;
+            if (reassemblers.size() >= maxTrackedChannels) {
+                throw new IllegalStateException("NetherNet inbound channel limit reached");
+            }
+            NetherNetMessageFramer.Reassembler created = new NetherNetMessageFramer.Reassembler();
+            reassemblers.put(key, created);
+            return created;
         }
-        NetherNetMessageFramer.Reassembler created = new NetherNetMessageFramer.Reassembler();
-        reassemblers.put(key, created);
-        return created;
     }
 
     @Override
-    public synchronized void onDisconnected(String networkId) {
-        reassemblers.keySet().removeIf(key -> key.networkId().equals(networkId));
+    public void onDisconnected(String networkId) {
+        Objects.requireNonNull(networkId, "networkId");
+        synchronized (reassemblers) {
+            reassemblers.keySet().removeIf(key -> key.networkId().equals(networkId));
+        }
         guard.onDisconnected(networkId);
     }
 

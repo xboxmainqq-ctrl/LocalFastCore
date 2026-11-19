@@ -27,7 +27,7 @@ class PlayerTransferSourceCoordinatorTest {
                     "source-node", ledger, source, sessions, new FakeTransport(),
                     Duration.ofSeconds(1), () -> 101L);
 
-            assertThrows(IOException.class,
+            assertThrows(IllegalStateException.class,
                     () -> coordinator.transfer(handoff, "source-failure-xuid", "127.0.0.1", 19132));
             assertFalse(source.unfrozen,
                     "A previous PREPARED/CLAIMED transfer must never be undone by a failed duplicate attempt");

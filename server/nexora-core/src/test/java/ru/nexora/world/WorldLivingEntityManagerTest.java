@@ -104,4 +104,23 @@ class WorldLivingEntityManagerTest {
                 < manager.snapshot().get(2).runtimeId());
     }
 
+    @Test
+    void entityCountTracksFireDeathsAndExplicitRemoval() {
+        WorldLivingEntityManager manager = new WorldLivingEntityManager();
+        WorldLivingEntity spider = manager.spawn("minecraft:spider", 1, 0, 64, 0);
+        WorldLivingEntity zombie = manager.spawn("minecraft:zombie", 20, 1, 64, 0);
+        assertEquals(2, manager.size());
+
+        manager.ignite(spider.runtimeId(), 4, 0).orElseThrow();
+        var fireDamage = manager.tickFire(1_000);
+        assertEquals(1, fireDamage.size());
+        assertTrue(fireDamage.getFirst().killed());
+        assertEquals(1, manager.size());
+
+        assertTrue(manager.remove(zombie.runtimeId()));
+        assertEquals(0, manager.size());
+        assertFalse(manager.remove(zombie.runtimeId()));
+        assertEquals(0, manager.size());
+    }
+
 }

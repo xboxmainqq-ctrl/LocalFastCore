@@ -50,8 +50,10 @@ class PlayerTransferProcessIntegrationTest {
             dataSource.setURL(jdbcUrl);
             JdbcPlayerTransferLedger ledgerStorage = new JdbcPlayerTransferLedger(dataSource);
             ledgerStorage.initializeSchema();
+            JdbcPlayerStateStore stateStore = new JdbcPlayerStateStore(dataSource);
+            stateStore.initializeSchema();
             PlayerStateCheckpointService checkpoints = new PlayerStateCheckpointService(
-                    new JdbcPlayerStateStore(dataSource), new PlayerStateBundleCodec());
+                    stateStore, new PlayerStateBundleCodec());
             long revision = checkpoints.checkpointForTransfer(bundle(xuid), System.currentTimeMillis());
             DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
                     new PlayerTransferCoordinator(ledgerStorage));

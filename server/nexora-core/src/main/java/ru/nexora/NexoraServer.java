@@ -297,7 +297,7 @@ public final class NexoraServer {
         }
         readiness.markReady();
         startAiConsole(gameplayRuntime.assistant(), diagnosticsRuntime.safeRepairs(),
-                bedrockSessions, transferNodeId, transferLedger, configuredClusterTransport);
+                bedrockSessions, negotiator, transferNodeId, transferLedger, configuredClusterTransport);
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             readiness.beginShutdown();
@@ -365,6 +365,7 @@ public final class NexoraServer {
             ru.nexora.ai.NexoraAiAssistant assistant,
             ru.nexora.ai.NexoraAiSafeRepairRegistry safeRepairs,
             BedrockSessionManager bedrockSessions,
+            ru.nexora.network.nethernet.WebRtcSdpNegotiator negotiator,
             String localNodeId,
             DurableHandoffCoordinator transferLedger,
             java.util.Optional<ClusterTransportFactory.ConfiguredTransport> clusterTransport
@@ -375,7 +376,7 @@ public final class NexoraServer {
                 while ((line = input.readLine()) != null) {
                     String command = line.trim();
                     if (command.equalsIgnoreCase("help")) {
-                        System.out.println("Server console: players | transfer <xuid> <target-node> | transfer recover | ai <вопрос> | ai status | ai repair list");
+                        System.out.println("Server console: players | network | transfer <xuid> <target-node> | transfer recover | ai <вопрос> | ai status | ai repair list");
                         continue;
                     }
                     if (command.equalsIgnoreCase("players")) {
@@ -383,6 +384,24 @@ public final class NexoraServer {
                             System.out.println(player.xuid() + " | " + player.displayName()
                                     + " | entity=" + player.entityId());
                         }
+                        continue;
+                    }
+                    if (command.equalsIgnoreCase("network")) {
+                        var network = negotiator.transportSummary(System.currentTimeMillis(), 15_000L);
+                        String averageRtt = network.freshPeers() == 0 ? "n/a"
+                                : String.format(java.util.Locale.ROOT, "%.1f ms", network.averageRttMillis());
+                        String maxRtt = network.freshPeers() == 0 ? "n/a"
+                                : String.format(java.util.Locale.ROOT, "%.1f ms", network.maxRttMillis());
+                        System.out.println("NEXORA network: connected=" + network.connectedPeers()
+                                + ", activeSessions=" + negotiator.activeSessionCount()
+                                + ", freshRTT=" + network.freshPeers()
+                                + ", samples=" + network.peersWithSamples()
+                                + ", stale/missing=" + network.staleOrMissingPeers());
+                        System.out.println("ICE RTT: avg=" + averageRtt + ", max=" + maxRtt
+                                + " (transport RTT, not Bedrock gameplay ping)");
+                        System.out.println("Cumulative transport bytes: sent=" + network.bytesSent()
+                                + ", received=" + network.bytesReceived()
+                                + " (not instantaneous throughput)");
                         continue;
                     }
                     if (command.equalsIgnoreCase("transfer recover")) {

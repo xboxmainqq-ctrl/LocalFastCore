@@ -239,6 +239,24 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         return sessions.size();
     }
 
+    /** Current application-side backlog waiting for native WebRTC send capacity. */
+    public record OutboundQueueSummary(int peersWithQueuedFrames, int queuedFrames, long queuedBytes) {
+    }
+
+    public OutboundQueueSummary outboundQueueSummary() {
+        int peers = 0;
+        int frames = 0;
+        long bytes = 0L;
+        for (PeerSession session : sessions.values()) {
+            if (!session.connected || session.sessionClosed.get()) continue;
+            long[] queued = session.outboundQueueSnapshot();
+            if (queued[1] > 0) peers++;
+            frames = (int) Math.min(Integer.MAX_VALUE, (long) frames + queued[1]);
+            bytes = saturatingAdd(bytes, queued[0]);
+        }
+        return new OutboundQueueSummary(peers, frames, bytes);
+    }
+
     /** Sends an already-framed binary NetherNet message to one peer. */
     public void sendFrame(String networkId, String channelLabel, byte[] frame) throws Exception {
         Objects.requireNonNull(frame, "frame");
@@ -581,6 +599,18 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         private TransportRate transportRate() {
             return new TransportRate(transportSentBytesPerSecond, transportReceivedBytesPerSecond,
                     transportRateSampledAtMillis);
+        }
+
+        private long[] outboundQueueSnapshot() {
+            synchronized (outboundLock) {
+                long bytes = 0L;
+                long frames = 0L;
+                for (NetherNetOutboundQueue queue : outboundQueues.values()) {
+                    bytes = saturatingAdd(bytes, queue.queuedBytes());
+                    frames += queue.frameCount();
+                }
+                return new long[] {bytes, frames};
+            }
         }
 
         private void requestTransportStats() {

@@ -20,9 +20,11 @@ class BedrockSubChunkRequestIntegrationTest {
     @Test
     void servesOnlySubChunksInsideTheAdvertisedChunkSet() throws Exception {
         List<Outbound> outbound = new ArrayList<>();
+        World world = new World("subchunk-request-test", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0); // The first requested chunk was actually published and is still resident.
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
-                new World("subchunk-request-test", 0L, new FlatWorldGenerator()),
+                world,
                 (networkId, label, frame) -> outbound.add(new Outbound(networkId, frame)),
                 event -> { });
 

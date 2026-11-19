@@ -139,6 +139,28 @@ class MobAiLoadControllerTest {
         assertThrows(IllegalArgumentException.class, () -> controller.setAiBudgetNanos(50_000_001));
     }
 
+
+    @Test
+    void sustainedDeferralsKeepLowPriorityMobPromotedWithoutCounterWrap() {
+        MobAiLoadController controller = new MobAiLoadController(4);
+        controller.setStarvationPromotionTicks(8);
+        long runtimeId = 1234L;
+
+        for (int tick = 0; tick < 10_000; tick++) {
+            controller.recordDeferred(runtimeId);
+        }
+
+        assertEquals(10_000, controller.starvationTicks(runtimeId));
+        assertEquals(MobAiLoadController.Priority.HIGH,
+                controller.effectivePriority(runtimeId, MobAiLoadController.Priority.LOW));
+    }
+
+    @Test
+    void starvationTrackerRejectsNegativeRuntimeIds() {
+        MobAiLoadController controller = new MobAiLoadController();
+        assertThrows(IllegalArgumentException.class, () -> controller.recordDeferred(-1));
+    }
+
     @Test
     void adaptiveBudgetShrinksUnderTickPressureAndGrowsWhenServerHasHeadroom() {
         MobAiLoadController controller = new MobAiLoadController(4);

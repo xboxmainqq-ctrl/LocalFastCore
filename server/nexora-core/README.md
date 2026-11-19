@@ -147,6 +147,8 @@ The world module includes a deterministic server-side movement simulator (`Playe
 
 ## Cluster transfer (experimental; controlled-cluster validation required)
 
+See [`docs/NEXORA_CLUSTER_ROADMAP.md`](docs/NEXORA_CLUSTER_ROADMAP.md) for the staged single-server-first architecture, future node roles, rollout gates and operational boundaries.
+
 The transfer ledger and canonical player checkpoints must use shared JDBC storage instead of per-host files for a cross-host transfer. Configure a unique node ID on every server process and configure both shared stores:
 
 ~~~sh

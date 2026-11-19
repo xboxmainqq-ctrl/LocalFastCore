@@ -6396,7 +6396,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         ChunkStreamingQueue pending = state.chunkStreamingQueue;
         if (pending == null || pending.centerX() != centerX || pending.centerZ() != centerZ
                 || pending.radius() != state.chunkViewRadius) {
-            chunkStreamingBudget.unregister(networkId);
+            chunkStreamingBudget.yield(networkId, nanoTime.getAsLong());
             state.chunkStreamingQueue = new ChunkStreamingQueue(centerX, centerZ, state.chunkViewRadius);
             state.pendingChunkLoads.clear();
         }
@@ -6487,7 +6487,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.lastChunkZ = queue.centerZ();
         state.chunkStreamingQueue = null;
         state.pendingChunkLoads.clear();
-        chunkStreamingBudget.unregister(networkId);
+        chunkStreamingBudget.pause(networkId);
         chunkStreamingCompleted.incrementAndGet();
         syncVisiblePlayerActors(networkId, state);
         syncVisibleWorldActors(networkId, state);

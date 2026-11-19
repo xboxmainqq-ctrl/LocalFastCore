@@ -90,6 +90,10 @@ class BedrockSessionManagerTest {
             assertTrue(summary.contains("outboundSendFailures=1"));
             assertTrue(summary.contains("outboundQueuedFrames=0"));
             assertTrue(summary.contains("outboundQueuedBytes=0"));
+            assertTrue(summary.contains("inboundAdmittedFrames="));
+            assertTrue(summary.contains("inboundAdmittedBytes="));
+            assertTrue(summary.contains("inboundRejectedFrames="));
+            assertTrue(summary.contains("inboundTrackedPeers="));
         } finally {
             manager.close();
         }

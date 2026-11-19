@@ -9,7 +9,12 @@ import java.util.Set;
 public final class WorldPathfinder {
     private static final int MAX_VISITED = 768;
     private static final int MAX_DEPTH = 16;
-    private static final int[][] DIRECTIONS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+    // Eight-way movement avoids the stair-step zigzag of cardinal-only routing.
+    // Every diagonal edge still passes the full swept-AABB collision check.
+    private static final int[][] DIRECTIONS = {
+            {1, 0}, {-1, 0}, {0, 1}, {0, -1},
+            {1, 1}, {1, -1}, {-1, 1}, {-1, -1}
+    };
 
     private WorldPathfinder() {
     }

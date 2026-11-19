@@ -1440,6 +1440,73 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void rangedMobsUseSpeciesCooldownOnTheLiveBedrockPath() throws Exception {
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "ranged-cooldown-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        mobWorld.getChunk(0, 0);
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {});
+        try {
+            var skeleton = manager.spawnLivingEntity(
+                    "minecraft:skeleton", 20.0f, 0.5, 65.0, 0.5);
+            var target = new ru.nexora.combat.LivingEntityAiService.PlayerTarget(
+                    "cooldown-target", 8.5, 65.0, 0.5, true);
+            java.lang.reflect.Method rangedAttack = BedrockSessionManager.class.getDeclaredMethod(
+                    "tickRangedMobBehavior",
+                    ru.nexora.world.WorldLivingEntity.class,
+                    ru.nexora.combat.LivingEntityAiService.PlayerTarget.class,
+                    long.class);
+            rangedAttack.setAccessible(true);
+
+            assertEquals(true, rangedAttack.invoke(manager, skeleton, target, 1_000L));
+            @SuppressWarnings("unchecked")
+            java.util.Map<Long, Long> deadlines =
+                    (java.util.Map<Long, Long>) getManagerField(manager, "nextMobAttackMillis");
+            assertEquals(2_250L, deadlines.get(skeleton.runtimeId()));
+
+            assertEquals(true, rangedAttack.invoke(manager, skeleton, target, 2_000L));
+            assertEquals(2_250L, deadlines.get(skeleton.runtimeId()),
+                    "A skeleton must not fire again before its 1,250 ms recovery expires");
+
+            assertEquals(true, rangedAttack.invoke(manager, skeleton, target, 2_250L));
+            assertEquals(3_500L, deadlines.get(skeleton.runtimeId()));
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void mobArrowCannotTunnelThroughAThinBlockBetweenTicks() throws Exception {
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "arrow-sweep-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        mobWorld.setBlock(5, 65, 0, ru.nexora.world.BlockType.STONE);
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {});
+        try {
+            @SuppressWarnings("unchecked")
+            java.util.Map<Long, ru.nexora.combat.ArrowProjectile> arrows =
+                    (java.util.Map<Long, ru.nexora.combat.ArrowProjectile>)
+                            getManagerField(manager, "mobArrows");
+            long arrowId = 5_000_002L;
+            arrows.put(arrowId, new ru.nexora.combat.ArrowProjectile(
+                    -arrowId, arrowId, "mob:1",
+                    4.5, 65.5, 0.5, 2.0, 0.0, 0.0, 0));
+
+            java.lang.reflect.Method tickArrows = BedrockSessionManager.class.getDeclaredMethod(
+                    "tickMobArrows", long.class);
+            tickArrows.setAccessible(true);
+            tickArrows.invoke(manager, 1L);
+
+            assertFalse(arrows.containsKey(arrowId),
+                    "The swept arrow segment crosses the stone block even though its endpoint is beyond it");
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void caveSpiderAppliesPoisonButPoisonCannotKillPlayer() throws Exception {
         java.util.concurrent.atomic.AtomicLong clock =
                 new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);

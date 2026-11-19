@@ -660,6 +660,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
             removePlayerListEntry(networkId, state);
             if (state.identity != null) aiGuard.onPlayerDisconnected(state.identity.xuid());
+            boolean persistenceSucceeded = true;
             state.combatLock.lock();
             try {
                 synchronized (state) {
@@ -675,6 +676,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             returnCraftingGridItems(state);
                             saveAllPlayerState(state);
                         } catch (IOException | RuntimeException exception) {
+                            persistenceSucceeded = false;
                             System.err.println("NEXORA: unable to save disconnected player: " + exception.getMessage());
                         }
                     }
@@ -682,7 +684,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             } finally {
                 state.combatLock.unlock();
             }
-            releaseOnlinePlayerLease(state);
+            // Keep ownership fenced until TTL expiry when the final disconnect
+            // snapshot failed; releasing it would admit a second node with stale data.
+            if (persistenceSucceeded) releaseOnlinePlayerLease(state);
             synchronized (state.outboundLock) {
                 state.outboundClosed = true;
                 clearOutboundQueue(state);

@@ -147,6 +147,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final AtomicLong outboundSendFailures = new AtomicLong();
     private final AtomicLong outboundBackpressureRejections = new AtomicLong();
     private final AtomicLong outboundQueuedBytesGlobal = new AtomicLong();
+    private final OutboundDrainBudget outboundDrainBudget = new OutboundDrainBudget();
     private final AtomicLong chunkStreamingBatches = new AtomicLong();
     private final AtomicLong chunkStreamingCompleted = new AtomicLong();
     private final AtomicLong chunkPacketsEncoded = new AtomicLong();
@@ -632,6 +633,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 clearOutboundQueue(state);
             }
             chunkStreamingBudget.unregister(networkId);
+            outboundDrainBudget.unregister(networkId);
             sessions.remove(networkId, state);
             actorReplicationIndex.removeSession(networkId);
             itemActorReplicationIndex.removeSession(networkId);
@@ -1604,6 +1606,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 .append(", outboundQueuedBytes=").append(sessions.values().stream()
                         .mapToLong(state -> state.outboundQueue.queuedBytes()).sum())
                 .append(", outboundQueuedBytesGlobal=").append(outboundQueuedBytesGlobal.get())
+                .append(", outboundDrainBudgetFrames=").append(outboundDrainBudget.globalFrames(nanoTime.getAsLong()))
+                .append(", outboundDrainBudgetBytes=").append(outboundDrainBudget.globalBytes(nanoTime.getAsLong()))
+                .append(", outboundDrainBudgetSessions=").append(outboundDrainBudget.queuedSessions())
                 .append(", chunkStreamingBatches=").append(chunkStreamingBatches.get())
                 .append(", chunkStreamingCompleted=").append(chunkStreamingCompleted.get())
                 .append(", chunkPacketsEncoded=").append(chunkPacketsEncoded.get())
@@ -7324,8 +7329,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         long sentBytes = 0L;
         while (sentFrames < MAX_OUTBOUND_FRAMES_PER_DRAIN) {
             int nextSize = state.outboundQueue.nextFrameSize();
-            if (nextSize < 0) return;
+            if (nextSize < 0) {
+                outboundDrainBudget.pause(networkId);
+                return;
+            }
             if (sentFrames > 0 && nextSize > MAX_OUTBOUND_BYTES_PER_DRAIN - sentBytes) return;
+            if (!outboundDrainBudget.tryAcquire(networkId, nextSize, nanoTime.getAsLong())) return;
             byte[] frame = state.outboundQueue.poll();
             if (frame == null) return;
             try {
@@ -7349,7 +7358,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         SessionState state = sessions.get(networkId);
         if (state == null) return;
         synchronized (state.outboundLock) {
-            if (state.outboundClosed || state.outboundQueue.isEmpty()) return;
+            if (state.outboundClosed) {
+                outboundDrainBudget.unregister(networkId);
+                return;
+            }
+            if (state.outboundQueue.isEmpty()) {
+                outboundDrainBudget.pause(networkId);
+                return;
+            }
             try {
                 drainOutboundFrames(networkId, state);
             } catch (RuntimeException exception) {

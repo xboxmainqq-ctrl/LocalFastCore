@@ -396,7 +396,7 @@ class LivingEntityAiServiceTest {
     @Test
     void blockedRangedTargetProducesGroundApproachIntent() {
         WorldLivingEntity skeleton = new WorldLivingEntityManager().spawn(
-                "minecraft:skeleton", 0, 0, 64, 0);
+                "minecraft:skeleton", 20, 0, 64, 0);
         var target = new LivingEntityAiService.PlayerTarget("player", 10, 64, 0, true);
 
         var decision = ai.approach(skeleton, target);
@@ -426,7 +426,7 @@ class LivingEntityAiServiceTest {
     @Test
     void blockedRangedTargetProducesThreeDimensionalApproachForFlyingMobs() {
         WorldLivingEntity ghast = new WorldLivingEntityManager().spawn(
-                "minecraft:ghast", 0, 0, 64, 0);
+                "minecraft:ghast", 20, 0, 64, 0);
         var target = new LivingEntityAiService.PlayerTarget("player", 10, 70, 0, true);
 
         var decision = ai.approach(ghast, target);

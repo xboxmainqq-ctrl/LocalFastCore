@@ -102,6 +102,10 @@ public final class WorldChunkLoadService implements AutoCloseable {
         return executor.getQueue().size();
     }
 
+    public int inFlightLoads() {
+        return inFlight.size();
+    }
+
     public int remainingQueueCapacity() {
         return executor.getQueue().remainingCapacity();
     }

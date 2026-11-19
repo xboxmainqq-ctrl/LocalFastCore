@@ -152,6 +152,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final AtomicLong chunkPacketsEncoded = new AtomicLong();
     private final AtomicLong chunkPacketsReused = new AtomicLong();
     private final AtomicLong chunkStreamingPendingPeak = new AtomicLong();
+    private final ChunkStreamingBudget chunkStreamingBudget = new ChunkStreamingBudget();
     private final AtomicLong nextFormId = new AtomicLong(1);
     private final AtomicLong lastItemActorTickNanos = new AtomicLong(Long.MIN_VALUE);
     private final AtomicLong lastLivingAiTickMillis = new AtomicLong(Long.MIN_VALUE);
@@ -630,6 +631,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 state.outboundClosed = true;
                 clearOutboundQueue(state);
             }
+            chunkStreamingBudget.unregister(networkId);
             sessions.remove(networkId, state);
             actorReplicationIndex.removeSession(networkId);
             itemActorReplicationIndex.removeSession(networkId);
@@ -1615,6 +1617,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 .append(", chunkIoWorkers=").append(world.activeChunkIoWorkers())
                 .append(", chunkIoQueued=").append(world.queuedChunkIoLoads())
                 .append(", chunkIoInFlight=").append(world.inFlightChunkIoLoads())
+                .append(", chunkEncodingBudgetUsed=").append(chunkStreamingBudget.globalUsage())
+                .append(", chunkEncodingBudgetSessions=").append(chunkStreamingBudget.queuedSessions())
                 .append(", chunkStreamingP95Ns=").append(hotPathProfiler.snapshot(
                         ru.nexora.ai.HotPathProfiler.Path.BEDROCK_CHUNK_STREAMING).p95Nanos())
                 .append(", outboundDrainP95Ns=").append(hotPathProfiler.snapshot(
@@ -6392,6 +6396,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         ChunkStreamingQueue pending = state.chunkStreamingQueue;
         if (pending == null || pending.centerX() != centerX || pending.centerZ() != centerZ
                 || pending.radius() != state.chunkViewRadius) {
+            chunkStreamingBudget.unregister(networkId);
             state.chunkStreamingQueue = new ChunkStreamingQueue(centerX, centerZ, state.chunkViewRadius);
             state.pendingChunkLoads.clear();
         }
@@ -6447,6 +6452,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     }
                     throw failure;
                 }
+                if (!chunkStreamingBudget.tryAcquire(networkId, nanoTime.getAsLong())) {
+                    batchReady = false;
+                    break;
+                }
                 state.pendingChunkLoads.remove(key, load);
                 WorldChunk chunk = world.getChunkFromPreparedStorageLoad(chunkX, chunkZ, prepared);
                 packets.add(BedrockLevelChunkCodec.createPacket(chunk));
@@ -6459,7 +6468,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             flushChunkBatch(networkId, state, packets, publishedKeys);
             // Ready chunks can publish while the rest of this four-key batch waits for disk I/O.
             // Keep the cursor in place until every key is either sent or ready.
-            if (!batchReady) return;
+            if (!batchReady) {
+                chunkStreamingBudget.yield(networkId, nanoTime.getAsLong());
+                return;
+            }
             queue.advance(chunkKeys.size());
             chunkStreamingPendingPeak.accumulateAndGet(queue.remaining(), Math::max);
         }
@@ -6475,6 +6487,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.lastChunkZ = queue.centerZ();
         state.chunkStreamingQueue = null;
         state.pendingChunkLoads.clear();
+        chunkStreamingBudget.unregister(networkId);
         chunkStreamingCompleted.incrementAndGet();
         syncVisiblePlayerActors(networkId, state);
         syncVisibleWorldActors(networkId, state);

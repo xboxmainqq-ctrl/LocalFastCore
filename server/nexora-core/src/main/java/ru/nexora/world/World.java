@@ -432,6 +432,7 @@ public final class World {
             java.util.ArrayList<java.util.concurrent.CompletableFuture<Void>> batch =
                     new java.util.ArrayList<>(128);
             for (WorldChunk chunk : chunks.values()) {
+                if (!chunk.isDirty()) continue;
                 batch.add(chunkSaveService.request(chunk));
                 if (batch.size() == 128) {
                     awaitChunkSaveBatch(batch);

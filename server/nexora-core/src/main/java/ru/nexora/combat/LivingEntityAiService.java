@@ -246,6 +246,21 @@ public final class LivingEntityAiService {
         };
     }
 
+    /**
+     * Species-specific melee cadence. Values are milliseconds between successful attacks.
+     * Keep the common baseline stable; slower heavy hitters receive longer recovery windows.
+     */
+    public static long attackCooldownMillisFor(String identifier) {
+        Objects.requireNonNull(identifier, "identifier");
+        return switch (identifier) {
+            case "minecraft:bee", "minecraft:spider", "minecraft:cave_spider" -> 1_250L;
+            case "minecraft:ravager", "minecraft:hoglin", "minecraft:zoglin" -> 1_500L;
+            case "minecraft:warden", "minecraft:iron_golem", "minecraft:ender_dragon",
+                    "minecraft:wither" -> 1_750L;
+            default -> ATTACK_COOLDOWN_MILLIS;
+        };
+    }
+
     public static float attackDamageFor(String identifier) {
         return switch (identifier) {
             case "minecraft:silverfish" -> 1.0f;

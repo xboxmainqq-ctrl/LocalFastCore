@@ -2,6 +2,7 @@ package ru.nexora.combat;
 
 import java.util.EnumMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLongArray;
 
 public final class MobAiTaskScheduler {
     public enum Task {
@@ -13,15 +14,9 @@ public final class MobAiTaskScheduler {
 
     public enum Admission { RUN, DEFER }
 
-    private final EnumMap<Task, Long> runs = new EnumMap<>(Task.class);
-    private final EnumMap<Task, Long> deferrals = new EnumMap<>(Task.class);
-
-    public MobAiTaskScheduler() {
-        for (Task task : Task.values()) {
-            runs.put(task, 0L);
-            deferrals.put(task, 0L);
-        }
-    }
+    private static final Task[] TASKS = Task.values();
+    private final AtomicLongArray runs = new AtomicLongArray(TASKS.length);
+    private final AtomicLongArray deferrals = new AtomicLongArray(TASKS.length);
 
     public Admission admit(Task task, MobAiLoadController.Priority priority,
                            boolean required, long consumedNanos, long budgetNanos) {
@@ -47,14 +42,22 @@ public final class MobAiTaskScheduler {
         return Admission.DEFER;
     }
 
-    public synchronized void recordRun(Task task) {
+    public void recordRun(Task task) {
         if (task == null) throw new IllegalArgumentException("task must not be null");
-        runs.merge(task, 1L, MobAiTaskScheduler::saturatedAdd);
+        incrementSaturated(runs, task.ordinal());
     }
 
-    public synchronized void recordDeferral(Task task) {
+    public void recordDeferral(Task task) {
         if (task == null) throw new IllegalArgumentException("task must not be null");
-        deferrals.merge(task, 1L, MobAiTaskScheduler::saturatedAdd);
+        incrementSaturated(deferrals, task.ordinal());
+    }
+
+    private static void incrementSaturated(AtomicLongArray counters, int index) {
+        while (true) {
+            long current = counters.get(index);
+            long next = saturatedAdd(current, 1L);
+            if (next == current || counters.compareAndSet(index, current, next)) return;
+        }
     }
 
     static long saturatedAdd(long current, long increment) {
@@ -64,8 +67,14 @@ public final class MobAiTaskScheduler {
         return current > Long.MAX_VALUE - increment ? Long.MAX_VALUE : current + increment;
     }
 
-    public synchronized Stats stats() {
-        return new Stats(Map.copyOf(runs), Map.copyOf(deferrals));
+    public Stats stats() {
+        EnumMap<Task, Long> runSnapshot = new EnumMap<>(Task.class);
+        EnumMap<Task, Long> deferralSnapshot = new EnumMap<>(Task.class);
+        for (Task task : TASKS) {
+            runSnapshot.put(task, runs.get(task.ordinal()));
+            deferralSnapshot.put(task, deferrals.get(task.ordinal()));
+        }
+        return new Stats(runSnapshot, deferralSnapshot);
     }
 
     public record Stats(Map<Task, Long> runs, Map<Task, Long> deferrals) {

@@ -69,6 +69,10 @@ final class OutboundDrainBudget {
         evictIdleSessions(nowNanos);
         lastSeen.put(sessionKey, nowNanos);
         if (registered.add(sessionKey)) rotation.addLast(sessionKey);
+        // A caller gets one fair turn per attempt. If another peer is ahead,
+        // yield that peer's turn instead of requiring it to retry before this
+        // newly active peer can ever make progress.
+        if (!sessionKey.equals(rotation.peekFirst())) rotateHead();
         if (!sessionKey.equals(rotation.peekFirst())) return false;
 
         if (globalFrames >= globalFrameLimit || frameBytes > globalByteLimit - globalBytes) return false;

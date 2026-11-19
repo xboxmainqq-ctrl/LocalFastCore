@@ -94,6 +94,9 @@ class BedrockSessionManagerTest {
             assertTrue(summary.contains("inboundAdmittedBytes="));
             assertTrue(summary.contains("inboundRejectedFrames="));
             assertTrue(summary.contains("inboundTrackedPeers="));
+            assertTrue(summary.contains("inboundReassemblyReservedBytes="));
+            assertTrue(summary.contains("inboundReassemblyMaxBytes="));
+            assertTrue(summary.contains("inboundReassemblyRejectedReservations="));
         } finally {
             manager.close();
         }

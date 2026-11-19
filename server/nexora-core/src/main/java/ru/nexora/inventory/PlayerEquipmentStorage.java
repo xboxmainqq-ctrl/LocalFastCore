@@ -60,13 +60,16 @@ public final class PlayerEquipmentStorage {
 
         Path target = path(xuid);
         rejectSymlink(target);
-        ru.nexora.persistence.AtomicFileWriter.writeAtomically(target, complete.toByteArray());
+        ru.nexora.persistence.BackupFile.write(target, complete.toByteArray(), this::readEquipmentFile);
     }
 
     public Optional<PlayerEquipment> load(String xuid) throws IOException {
-        Path file = path(xuid);
+        return ru.nexora.persistence.BackupFile.load(path(xuid), this::readEquipmentFile);
+    }
+
+    private PlayerEquipment readEquipmentFile(Path file) throws IOException {
         rejectSymlink(file);
-        if (!Files.exists(file)) return Optional.empty();
+        if (!Files.exists(file)) throw new IOException("Player equipment file disappeared during recovery");
         long size = Files.size(file);
         if (size < 9 || size > MAX_FILE_BYTES) throw new IOException("Invalid player equipment file size");
         byte[] bytes = Files.readAllBytes(file);
@@ -95,11 +98,12 @@ public final class PlayerEquipmentStorage {
             if (in.available() != 0) throw new IOException("Trailing player equipment data");
             PlayerEquipment result = new PlayerEquipment();
             result.restore(new PlayerEquipment.Snapshot(armor, offhand, cursor, magic));
-            return Optional.of(result);
+            return result;
         } catch (java.io.EOFException exception) {
             throw new IOException("Truncated player equipment file", exception);
         }
     }
+
 
     private static void writeStack(DataOutputStream out, Optional<ItemStack> optional) throws IOException {
         out.writeBoolean(optional.isPresent());

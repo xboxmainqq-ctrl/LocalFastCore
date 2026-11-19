@@ -110,18 +110,7 @@ public final class PlayerInventoryStorage {
             throw new IOException("NEXORA player inventory exceeds storage limit");
         }
 
-        Path temporary = Files.createTempFile(inventoriesDirectory, ".nexora-inventory-", ".tmp");
-        try {
-            Files.write(temporary, fileBytes.toByteArray());
-            try {
-                Files.move(temporary, target,
-                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException ignored) {
-                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } finally {
-            Files.deleteIfExists(temporary);
-        }
+        ru.nexora.persistence.AtomicFileWriter.writeAtomically(target, fileBytes.toByteArray());
     }
 
     private static void writeSlots(DataOutputStream output, List<Optional<ItemStack>> slots, int version) throws IOException {

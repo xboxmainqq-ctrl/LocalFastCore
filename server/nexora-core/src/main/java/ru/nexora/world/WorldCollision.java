@@ -29,6 +29,33 @@ public final class WorldCollision {
                 dimensions.width() / 2.0, dimensions.height());
     }
 
+    /**
+     * Validates a grounded navigation edge. One-block climbs are performed as lift-then-walk;
+     * one-block drops as walk-then-drop, so mobs cannot clip through the side of a ledge.
+     */
+    public static boolean canStepMob(World world, String identifier,
+                                     double fromX, double fromY, double fromZ,
+                                     double toX, double toY, double toZ) {
+        if (world == null || identifier == null || identifier.isBlank()
+                || !finite(fromX, fromY, fromZ, toX, toY, toZ)) return false;
+        double dy = toY - fromY;
+        if (Math.abs(dy) > 1.001 || Math.hypot(toX - fromX, toZ - fromZ) > 1.5) return false;
+        boolean traversable;
+        if (dy > 0.05) {
+            traversable = canMoveMob(world, identifier, fromX, fromY, fromZ,
+                    fromX, toY, fromZ)
+                    && canMoveMob(world, identifier, fromX, toY, fromZ, toX, toY, toZ);
+        } else if (dy < -0.05) {
+            traversable = canMoveMob(world, identifier, fromX, fromY, fromZ,
+                    toX, fromY, toZ)
+                    && canMoveMob(world, identifier, toX, fromY, toZ, toX, toY, toZ);
+        } else {
+            traversable = canMoveMob(world, identifier, fromX, fromY, fromZ,
+                    toX, toY, toZ);
+        }
+        return traversable && isMobOnGround(world, identifier, toX, toY, toZ, 0.12);
+    }
+
     private static boolean canMove(World world, double fromX, double fromY, double fromZ,
                                    double toX, double toY, double toZ,
                                    double halfWidth, double height) {

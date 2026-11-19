@@ -23,6 +23,7 @@ public final class NetherNetInboundPipeline implements NetherNetDataChannelListe
     private final Consumer<InboundMessage> messageSink;
     private final NexoraAiGuard guard;
     private final InboundPeerBudget peerBudget;
+    private final ReassemblyMemoryBudget reassemblyMemoryBudget;
     private final LongAdder inboundFrames = new LongAdder();
     private final LongAdder inboundBytes = new LongAdder();
     private final LongAdder completedMessages = new LongAdder();
@@ -41,14 +42,23 @@ public final class NetherNetInboundPipeline implements NetherNetDataChannelListe
 
     public NetherNetInboundPipeline(Consumer<InboundMessage> messageSink, NexoraAiGuard guard,
                                     int maxTrackedChannels, int maxFrameBytes) {
-        this(messageSink, guard, new InboundPeerBudget(), maxTrackedChannels, maxFrameBytes);
+        this(messageSink, guard, new InboundPeerBudget(), new ReassemblyMemoryBudget(),
+                maxTrackedChannels, maxFrameBytes);
     }
 
     public NetherNetInboundPipeline(Consumer<InboundMessage> messageSink, NexoraAiGuard guard,
                                     InboundPeerBudget peerBudget, int maxTrackedChannels, int maxFrameBytes) {
+        this(messageSink, guard, peerBudget, new ReassemblyMemoryBudget(),
+                maxTrackedChannels, maxFrameBytes);
+    }
+
+    public NetherNetInboundPipeline(Consumer<InboundMessage> messageSink, NexoraAiGuard guard,
+                                    InboundPeerBudget peerBudget, ReassemblyMemoryBudget reassemblyMemoryBudget,
+                                    int maxTrackedChannels, int maxFrameBytes) {
         this.messageSink = Objects.requireNonNull(messageSink, "messageSink");
         this.guard = Objects.requireNonNull(guard, "guard");
         this.peerBudget = Objects.requireNonNull(peerBudget, "peerBudget");
+        this.reassemblyMemoryBudget = Objects.requireNonNull(reassemblyMemoryBudget, "reassemblyMemoryBudget");
         if (maxTrackedChannels < 1 || maxFrameBytes < 1 || maxFrameBytes > MAX_INBOUND_FRAME_BYTES) {
             throw new IllegalArgumentException("Invalid inbound pipeline limits");
         }
@@ -114,7 +124,9 @@ public final class NetherNetInboundPipeline implements NetherNetDataChannelListe
             if (reassemblers.size() >= maxTrackedChannels) {
                 throw new IllegalStateException("NetherNet inbound channel limit reached");
             }
-            NetherNetMessageFramer.Reassembler created = new NetherNetMessageFramer.Reassembler();
+            NetherNetMessageFramer.Reassembler created = new NetherNetMessageFramer.Reassembler(
+                    NetherNetMessageFramer.DEFAULT_MAX_MESSAGE_BYTES,
+                    NetherNetMessageFramer.DEFAULT_MAX_ASSEMBLY_NANOS, reassemblyMemoryBudget);
             reassemblers.put(key, created);
             return created;
         }
@@ -124,7 +136,14 @@ public final class NetherNetInboundPipeline implements NetherNetDataChannelListe
     public void onDisconnected(String networkId) {
         Objects.requireNonNull(networkId, "networkId");
         synchronized (reassemblers) {
-            reassemblers.keySet().removeIf(key -> key.networkId().equals(networkId));
+            var iterator = reassemblers.entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<ChannelKey, NetherNetMessageFramer.Reassembler> entry = iterator.next();
+                if (entry.getKey().networkId().equals(networkId)) {
+                    entry.getValue().reset();
+                    iterator.remove();
+                }
+            }
         }
         peerBudget.onDisconnected(networkId);
         guard.onDisconnected(networkId);
@@ -136,6 +155,10 @@ public final class NetherNetInboundPipeline implements NetherNetDataChannelListe
 
     public InboundPeerBudget.Stats peerBudgetStats() {
         return peerBudget.stats();
+    }
+
+    public ReassemblyMemoryBudget.Stats reassemblyMemoryStats() {
+        return reassemblyMemoryBudget.stats();
     }
 
     /** Aggregate low-overhead inbound framing/dispatch measurements; not a network throughput guarantee. */

@@ -82,6 +82,54 @@ class WorldChunkLoadServiceTest {
     }
 
     @Test
+    void oneBusySessionCannotOccupyAllWorkersAheadOfAnotherSession() throws Exception {
+        CountDownLatch firstSessionStarted = new CountDownLatch(1);
+        CountDownLatch releaseFirstSession = new CountDownLatch(1);
+        CountDownLatch secondSessionStarted = new CountDownLatch(1);
+        AtomicInteger firstSessionReads = new AtomicInteger();
+        WorldChunkLoadService service = new WorldChunkLoadService((x, z) -> {
+            if (x < 10) {
+                firstSessionReads.incrementAndGet();
+                if (x == 1) {
+                    firstSessionStarted.countDown();
+                    try {
+                        assertTrue(releaseFirstSession.await(5, TimeUnit.SECONDS));
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw new IOException("interrupted", interrupted);
+                    }
+                }
+            } else {
+                secondSessionStarted.countDown();
+            }
+            return Optional.of(new WorldChunk(x, z));
+        }, 2, 8);
+        try {
+            var first = service.request("session-a", 1, 0);
+            assertTrue(firstSessionStarted.await(5, TimeUnit.SECONDS));
+            var second = service.request("session-a", 2, 0);
+            var third = service.request("session-a", 3, 0);
+            var otherPlayer = service.request("session-b", 20, 0);
+
+            assertTrue(secondSessionStarted.await(2, TimeUnit.SECONDS),
+                    "The second worker must serve another session instead of draining session-a");
+            assertEquals(1, firstSessionReads.get(),
+                    "Only one storage read from a session may be active at a time");
+            assertFalse(second.isDone());
+            assertFalse(third.isDone());
+            assertTrue(otherPlayer.get(2, TimeUnit.SECONDS).isPresent());
+
+            releaseFirstSession.countDown();
+            assertTrue(first.get(5, TimeUnit.SECONDS).isPresent());
+            assertTrue(second.get(5, TimeUnit.SECONDS).isPresent());
+            assertTrue(third.get(5, TimeUnit.SECONDS).isPresent());
+        } finally {
+            releaseFirstSession.countDown();
+            service.close();
+        }
+    }
+
+    @Test
     void rejectsInvalidWorkerAndQueueBudgets() {
         assertThrows(IllegalArgumentException.class,
                 () -> new WorldChunkLoadService((x, z) -> Optional.empty(), 0, 1));

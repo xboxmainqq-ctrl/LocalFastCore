@@ -247,4 +247,6 @@ Values are validated at startup and invalid/out-of-range settings fail fast inst
 
 Player profile snapshots retain one previous verified `.nxp` generation as `.nxp.bak`. A profile is rotated only after its current checksum and structure validate; loading restores the backup when the primary is missing or corrupt. If both generations are invalid, loading fails explicitly rather than silently replacing player data.
 
+The shared verified-backup mechanism also protects player inventories (`.nxi.bak`), equipment (`.nxe.bak`), block containers (`.nxc.bak`), furnace state (`.nxf.bak`), mob-spawner state (`mob-spawners.dat.bak`), dropped item actors (`entities.nxe.bak`) and living actors (`living.nxe.bak`). Before rotating a primary file, the storage-specific decoder must validate its full structure and checksum. Recovery validates the backup with the same decoder before restoring it. Container/furnace deletion removes the backup first so deleted state cannot reappear after a restart.
+
 World chunk snapshots under each world's `chunks/` directory also retain one previous verified `.nxc` generation as `.nxc.bak`. A primary chunk is rotated only after its checksum and structure validate; loading restores the backup when the primary is missing or corrupt. If both generations are invalid, loading fails explicitly rather than silently generating an empty chunk.

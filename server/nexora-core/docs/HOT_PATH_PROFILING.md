@@ -166,3 +166,15 @@ Index build time for the 1,000 session views was 17.166 ms. The measured lookup
 was roughly 36x faster in this run, with identical aggregate recipient counts
 (85,900). This measures index selection only; it excludes packet serialization,
 network queues and real Bedrock clients.
+
+
+## Mob physics registry writes
+
+The mob physics hot path now commits position and velocity with one
+`WorldLivingEntityManager.updatePhysicsState` call. When gravity, drag or knockback
+changes both values, the old path constructed and published an immutable actor twice
+(one velocity replacement and one position replacement); the combined path creates
+one replacement and performs one registry write. If neither position nor velocity
+changes, it skips the registry write entirely. Existing physics behavior and collision
+checks are unchanged; the manager test verifies position, velocity, health and fire
+state survive the combined replacement.

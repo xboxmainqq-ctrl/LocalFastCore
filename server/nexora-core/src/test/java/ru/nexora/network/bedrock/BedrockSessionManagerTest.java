@@ -3313,7 +3313,13 @@ class BedrockSessionManagerTest {
         java.lang.reflect.Field chunksField = session.getClass().getDeclaredField("sentChunkKeys");
         chunksField.setAccessible(true);
         long key = ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
-        ((java.util.Set<Long>) chunksField.get(session)).add(key);
+        java.util.Set<Long> sentChunks = (java.util.Set<Long>) chunksField.get(session);
+        sentChunks.add(key);
+        java.lang.reflect.Field indexField =
+                BedrockSessionManager.class.getDeclaredField("actorReplicationIndex");
+        indexField.setAccessible(true);
+        ActorReplicationIndex index = (ActorReplicationIndex) indexField.get(manager);
+        index.replaceChunkView(networkId, sentChunks);
     }
 
     private static void setSessionField(

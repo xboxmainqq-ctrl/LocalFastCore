@@ -65,7 +65,8 @@ public final class PlayerTargetIndex {
                     double dy = candidate.y() - mob.y();
                     double dz = candidate.z() - mob.z();
                     double distanceSquared = dx * dx + dy * dy + dz * dz;
-                    if (distanceSquared < nearestDistanceSquared) {
+                    if ((nearest == null && distanceSquared <= SEARCH_RADIUS_SQUARED)
+                            || distanceSquared < nearestDistanceSquared) {
                         nearestDistanceSquared = distanceSquared;
                         nearest = candidate;
                     }

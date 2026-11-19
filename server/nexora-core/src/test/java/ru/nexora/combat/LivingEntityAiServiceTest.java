@@ -277,4 +277,43 @@ class LivingEntityAiServiceTest {
         assertTrue(decision.moveY() > 0);
     }
 
+
+    @Test
+    void skeletonUsesProjectileIntentAtRangedDistance() {
+        LivingEntityAiService service = new LivingEntityAiService();
+        WorldLivingEntityManager manager = new WorldLivingEntityManager();
+        WorldLivingEntity skeleton = manager.spawn("minecraft:skeleton", 20, 0, 64, 0);
+        var target = new LivingEntityAiService.PlayerTarget("player", 10, 64, 0, true);
+
+        var decision = service.decide(skeleton, List.of(target), 2_000, 0);
+
+        assertTrue(decision.attack());
+        assertEquals(LivingEntityAiService.AttackStyle.PROJECTILE, decision.attackStyle());
+        assertEquals(10.0f, decision.attackDamage());
+    }
+
+    @Test
+    void rangedMobApproachesUntilInsideItsProjectileRange() {
+        LivingEntityAiService service = new LivingEntityAiService();
+        WorldLivingEntityManager manager = new WorldLivingEntityManager();
+        WorldLivingEntity skeleton = manager.spawn("minecraft:skeleton", 20, 0, 64, 0);
+        var target = new LivingEntityAiService.PlayerTarget("player", 20, 64, 0, true);
+
+        var decision = service.decide(skeleton, List.of(target), 2_000, 0);
+
+        assertFalse(decision.attack());
+        assertTrue(decision.moving());
+        assertEquals("player", decision.targetNetworkId());
+    }
+
+    @Test
+    void meleeMobDoesNotInheritProjectileCombatStyle() {
+        assertEquals(LivingEntityAiService.AttackStyle.MELEE,
+                LivingEntityAiService.attackStyleFor("minecraft:zombie"));
+        assertEquals(LivingEntityAiService.AttackStyle.PROJECTILE,
+                LivingEntityAiService.attackStyleFor("minecraft:bogged"));
+        assertEquals(12.0, LivingEntityAiService.projectileRangeFor("minecraft:pillager"));
+        assertEquals(0.0, LivingEntityAiService.projectileRangeFor("minecraft:zombie"));
+    }
+
 }

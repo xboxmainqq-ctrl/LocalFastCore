@@ -309,10 +309,32 @@ public final class NexoraAiDiagnostics {
             long mobAiBudgetDeferred,
             long mobAiBudgetConsumedNanos
     ) {
+        recordWorldRuntimeSnapshot(residentChunks, loadedChunks, maximumResidentChunks,
+                desiredChunks, pendingChunkLoads, loadedChunkBlockStorageBytes, loadedChunkSections,
+                Math.max(0, loadedChunks - residentChunks), livingEntities, mobAiFullRateUpdates,
+                mobAiDeferredUpdates, mobAiBudgetDeferred, mobAiBudgetConsumedNanos);
+    }
+
+    /** Records exact coordinate-based cache drift rather than inferring it from cache sizes. */
+    public void recordWorldRuntimeSnapshot(
+            int residentChunks,
+            int loadedChunks,
+            int maximumResidentChunks,
+            int desiredChunks,
+            int pendingChunkLoads,
+            long loadedChunkBlockStorageBytes,
+            long loadedChunkSections,
+            int cacheOutsidePlanner,
+            int livingEntities,
+            long mobAiFullRateUpdates,
+            long mobAiDeferredUpdates,
+            long mobAiBudgetDeferred,
+            long mobAiBudgetConsumedNanos
+    ) {
         if (residentChunks < 0 || loadedChunks < 0 || maximumResidentChunks < 0
                 || desiredChunks < 0 || pendingChunkLoads < 0 || loadedChunkBlockStorageBytes < 0
-                || loadedChunkSections < 0 || livingEntities < 0 || mobAiFullRateUpdates < 0
-                || mobAiDeferredUpdates < 0 || mobAiBudgetDeferred < 0
+                || loadedChunkSections < 0 || cacheOutsidePlanner < 0 || livingEntities < 0
+                || mobAiFullRateUpdates < 0 || mobAiDeferredUpdates < 0 || mobAiBudgetDeferred < 0
                 || mobAiBudgetConsumedNanos < 0) {
             throw new IllegalArgumentException("World runtime metrics must be non-negative");
         }
@@ -332,7 +354,7 @@ public final class NexoraAiDiagnostics {
                 + ", mobAiBudgetConsumedNanos=" + mobAiBudgetConsumedNanos);
         appendEvent("WORLD_MEMORY", "chunkBlockStorageBytes=" + loadedChunkBlockStorageBytes
                 + ", chunkSections=" + loadedChunkSections
-                + ", cacheOutsidePlanner=" + Math.max(0, loadedChunks - residentChunks)
+                + ", cacheOutsidePlanner=" + cacheOutsidePlanner
                 + ", chunksOverTarget=" + Math.max(0, loadedChunks - maximumResidentChunks));
     }
 

@@ -23,6 +23,16 @@ class MobJumpControllerTest {
     }
 
     @Test
+    void doesNotJumpOnOpenGround() {
+        World world = new World("mob-jump-open-ground", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
+        var mob = world.livingEntities().spawn("minecraft:zombie", 20, 0.5, 65, 0.5);
+
+        assertFalse(new MobJumpController().tryJump(world, mob, 0.73, 0.5, 1_000));
+        assertEquals(0, mob.velocityY(), 0.0001);
+    }
+
+    @Test
     void doesNotJumpThroughTwoBlockWallsOrLowCeilings() {
         World wallWorld = new World("mob-jump-two-block", 0L, new FlatWorldGenerator());
         wallWorld.getChunk(0, 0);

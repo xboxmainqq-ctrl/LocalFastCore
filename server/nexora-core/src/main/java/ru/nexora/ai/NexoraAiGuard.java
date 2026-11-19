@@ -196,7 +196,7 @@ public final class NexoraAiGuard {
                 signals.reachAttempts++;
                 if (signals.reachAttempts >= 5) {
                     signals.reachSignalled = true;
-                    totalSignals++;
+                    totalSignals.incrementAndGet();
                     event = new GuardEvent(signals.reachAttempts, 0,
                             "repeated out-of-range attack attempts (possible reach)");
                 }
@@ -239,7 +239,7 @@ public final class NexoraAiGuard {
             if (!window.signalled && window.hits >= KILLAURA_HIT_THRESHOLD
                     && window.targetSwitches >= KILLAURA_TARGET_SWITCH_THRESHOLD) {
                 window.signalled = true;
-                totalSignals++;
+                totalSignals.incrementAndGet();
                 String safeName = sanitizePlayerName(displayName);
                 String caseId = String.format(java.util.Locale.ROOT, "K-%06d", nextCombatCaseId++);
                 combatCases.put(caseId, new CombatCase(
@@ -363,9 +363,11 @@ public final class NexoraAiGuard {
         long frames = 0;
         long bytes = 0;
         for (PeerWindow peer : peers.values()) {
-            frames += peer.frames;
-            bytes += peer.bytes;
-            if (peer.signalled) signalledPeers++;
+            synchronized (peer) {
+                frames += peer.frames;
+                bytes += peer.bytes;
+                if (peer.signalled) signalledPeers++;
+            }
         }
         for (PlayerSignals player : playerSignals.values()) {
             if (player.horizontalSignalled || player.verticalSignalled || player.reachSignalled) flaggedPlayers++;

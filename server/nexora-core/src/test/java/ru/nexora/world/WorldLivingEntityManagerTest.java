@@ -47,7 +47,9 @@ class WorldLivingEntityManagerTest {
 
         var nextChunk = manager.snapshotInChunks(java.util.Set.of(
                 new WorldChunkResidencyManager.ChunkCoordinate(1, 0)));
-        assertEquals(java.util.List.of(nearby), nextChunk.residentEntities());
+        assertEquals(1, nextChunk.residentEntities().size());
+        assertEquals(nearby.runtimeId(), nextChunk.residentEntities().getFirst().runtimeId());
+        assertEquals(16.25, nextChunk.residentEntities().getFirst().x(), 0.0001);
 
         manager.remove(nearby.runtimeId());
         var afterRemove = manager.snapshotInChunks(java.util.Set.of(

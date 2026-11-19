@@ -84,8 +84,10 @@ public final class WorldEntityTickCoordinator {
         World.ChunkResidencyResult worldChunkResult = world == null
                 ? new World.ChunkResidencyResult(0, 0, 0, 0, 0)
                 : world.applyChunkResidencyPlan(plan);
-        List<WorldLivingEntity> activeEntities = new ArrayList<>();
-        for (WorldLivingEntity entity : entities.snapshot()) {
+        List<WorldLivingEntity> entitySnapshot = entities.snapshot();
+        int totalEntities = entitySnapshot.size();
+        List<WorldLivingEntity> activeEntities = new ArrayList<>(totalEntities);
+        for (WorldLivingEntity entity : entitySnapshot) {
             if (residency.isResidentAtBlockPosition(entity.x(), entity.z())) {
                 activeEntities.add(entity);
             }
@@ -109,8 +111,8 @@ public final class WorldEntityTickCoordinator {
             diagnostics.recordSlowOperation("world-entity-tick",
                     Math.max(0L, System.nanoTime() - started), tickBudgetNanos);
         }
-        return new TickResult(plan, worldChunkResult, entities.size(), activeEntities.size(),
-                entities.size() - activeEntities.size(), aiResult);
+        return new TickResult(plan, worldChunkResult, totalEntities, activeEntities.size(),
+                totalEntities - activeEntities.size(), aiResult);
     }
 
     public record TickResult(

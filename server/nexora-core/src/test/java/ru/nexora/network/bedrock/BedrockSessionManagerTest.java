@@ -2960,6 +2960,7 @@ class BedrockSessionManagerTest {
         assertArrayEquals(new byte[] {0x40, (byte) 0x8c, 0x01, 0x21, 0x30, 0, 0, 0, 0},
                 decodeOutbound(outboundFrames.get(10), true).payload());
         BedrockPacket spawnChunk = outboundFrames.stream()
+                .skip(12) // chunk streaming begins after the fixed login/start-game frames
                 .flatMap(frame -> decodeOutboundPackets(frame, true).stream())
                 .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
                 .findFirst()

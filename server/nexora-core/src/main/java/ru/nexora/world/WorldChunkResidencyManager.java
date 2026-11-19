@@ -26,6 +26,7 @@ public final class WorldChunkResidencyManager {
     private final Map<Long, Long> lastDesiredTick = new HashMap<>();
     private final Set<Long> resident = new HashSet<>();
     private volatile Set<Long> residentSnapshot = Set.of();
+    private volatile Set<ChunkCoordinate> residentCoordinateSnapshot = Set.of();
 
     public WorldChunkResidencyManager(int viewDistance, int unloadGraceTicks) {
         this(viewDistance, unloadGraceTicks, Shape.CIRCULAR);
@@ -108,6 +109,7 @@ public final class WorldChunkResidencyManager {
         for (long key : unloadScratch) lastDesiredTick.remove(key);
         if (!loadScratch.isEmpty() || !unloadScratch.isEmpty()) {
             residentSnapshot = Set.copyOf(resident);
+            residentCoordinateSnapshot = Set.copyOf(decode(resident));
         }
         return new ResidencyPlan(decode(loadScratch), decode(unloadScratch),
                 resident.size(), desiredChunks.size());
@@ -138,6 +140,11 @@ public final class WorldChunkResidencyManager {
         int chunkX = (int) Math.floor(x / 16.0);
         int chunkZ = (int) Math.floor(z / 16.0);
         return residentSnapshot.contains(chunkKey(chunkX, chunkZ));
+    }
+
+    /** Immutable chunk-coordinate view used by spatially indexed world systems. */
+    public Set<ChunkCoordinate> residentChunkCoordinates() {
+        return residentCoordinateSnapshot;
     }
 
     public int residentChunkCount() {

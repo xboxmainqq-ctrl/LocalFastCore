@@ -358,4 +358,27 @@ class LivingEntityAiServiceTest {
         assertEquals(0.0, LivingEntityAiService.projectileRangeFor("minecraft:zombie"));
     }
 
+    @Test
+    void rangedMobRetreatsAtCloseRangeEvenWhenItsCooldownIsReady() {
+        WorldLivingEntity skeleton = new WorldLivingEntityManager().spawn(
+                "minecraft:skeleton", 20, 0, 64, 0);
+        var nearby = new LivingEntityAiService.PlayerTarget("player", 2, 64, 0, true);
+
+        var decision = ai.decide(skeleton, List.of(nearby), 3_000, 0);
+
+        assertFalse(decision.attack());
+        assertTrue(decision.moving());
+        assertTrue(decision.moveX() < 0);
+    }
+
+    @Test
+    void meleeAttackCooldownsAreSpeciesSpecific() {
+        assertEquals(1_000L,
+                LivingEntityAiService.attackCooldownMillisFor("minecraft:zombie"));
+        assertEquals(1_500L,
+                LivingEntityAiService.attackCooldownMillisFor("minecraft:ravager"));
+        assertEquals(1_750L,
+                LivingEntityAiService.attackCooldownMillisFor("minecraft:warden"));
+    }
+
 }

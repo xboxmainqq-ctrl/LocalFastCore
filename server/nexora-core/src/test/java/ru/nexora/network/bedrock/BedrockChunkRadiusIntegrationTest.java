@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -20,11 +21,12 @@ class BedrockChunkRadiusIntegrationTest {
     @Test
     void negotiatesClientRadiusAndReconcilesChunkInterestWithoutResendingColumns() throws Exception {
         List<Outbound> outbound = new ArrayList<>();
+        AtomicLong clock = new AtomicLong();
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
                 new World("chunk-radius-test", 0L, new FlatWorldGenerator()),
                 (networkId, label, frame) -> outbound.add(new Outbound(networkId, frame)),
-                event -> { });
+                event -> { }, clock::get);
 
         try {
             manager.onIdentity("viewer", new NetherNetClientIdentity(
@@ -60,7 +62,7 @@ class BedrockChunkRadiusIntegrationTest {
                     .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
                     .count());
 
-            completeStreaming(manager, session);
+            completeStreaming(manager, session, clock);
             assertEquals(49, sentChunks(session).size());
 
             // Shrinking the view updates the client radius and local interest set,
@@ -95,11 +97,14 @@ class BedrockChunkRadiusIntegrationTest {
         }
     }
 
-    private static void completeStreaming(BedrockSessionManager manager, Object session) throws Exception {
+    private static void completeStreaming(
+            BedrockSessionManager manager, Object session, AtomicLong clock
+    ) throws Exception {
         Method process = BedrockSessionManager.class.getDeclaredMethod(
                 "processChunkStreaming", String.class, session.getClass());
         process.setAccessible(true);
         for (int attempt = 0; attempt < 32 && field(session, "chunkStreamingQueue") != null; attempt++) {
+            clock.addAndGet(ChunkStreamingBudget.DEFAULT_WINDOW_NANOS);
             process.invoke(manager, "viewer", session);
         }
         assertNull(field(session, "chunkStreamingQueue"), "Chunk streaming should finish within the test pump budget");

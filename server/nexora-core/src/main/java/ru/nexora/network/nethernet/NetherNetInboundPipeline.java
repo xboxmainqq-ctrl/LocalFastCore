@@ -41,6 +41,14 @@ public final class NetherNetInboundPipeline implements NetherNetDataChannelListe
     }
 
     public NetherNetInboundPipeline(Consumer<InboundMessage> messageSink, NexoraAiGuard guard,
+                                    InboundTransportConfig config) {
+        this(messageSink, guard,
+                Objects.requireNonNull(config, "config").createPeerBudget(),
+                config.createReassemblyMemoryBudget(),
+                config.maxTrackedChannels(), config.maxFrameBytes());
+    }
+
+    public NetherNetInboundPipeline(Consumer<InboundMessage> messageSink, NexoraAiGuard guard,
                                     int maxTrackedChannels, int maxFrameBytes) {
         this(messageSink, guard, new InboundPeerBudget(), new ReassemblyMemoryBudget(),
                 maxTrackedChannels, maxFrameBytes);

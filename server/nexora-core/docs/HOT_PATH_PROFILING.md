@@ -100,3 +100,31 @@ The existing `BedrockSessionManagerTest` coverage verifies chunk-view spawn,
 despawn and stale-movement behavior. A dedicated fanout benchmark with multiple
 real Bedrock clients is still required to quantify network-thread cost, queueing,
 bytes per second and end-to-end tick latency.
+
+
+## Spatial target lookup and actor replication indexes
+
+The production Bedrock mob tick now builds one immutable `PlayerTargetIndex` per
+world tick. It partitions alive players into 128-block cells; each mob checks only
+the surrounding 3x3 cells and performs exact 3D distance checks. This preserves
+the exact nearest target within 128 blocks, including the boundary. When no player
+is within 128 blocks, the lookup returns no target; this is equivalent for the
+current 16-block hostile acquisition range and 128-block hostile despawn threshold.
+The same index resolves a remembered provoker by network ID in constant expected time.
+
+Bedrock actor replication now maintains reverse indexes from chunk to subscribed
+sessions and from actor runtime ID to sessions that currently track it. Movement
+fanout visits current-chunk subscribers plus previous actor viewers, rather than
+walking every connected session for every actor update. Spawn, despawn and chunk-view
+reconciliation keep these indexes synchronized; disconnect and shutdown clear them.
+Encoded spawn, movement and removal batches are still reused across recipients.
+
+Synthetic microbenchmark:
+`mvn -f server/nexora-core/pom.xml -Dtest=PlayerTargetIndexBenchmarkTest test`
+
+It compares the full player scan against the production index for 1,000 mobs and
+8/64/256/1,024 synthetic players, checks result equivalence, and reports average
+per-mob lookup time plus index-build time. These figures are microbenchmark results,
+not live server TPS or a guarantee for dense player clusters. The Bedrock actor
+replication test also verifies a mob crossing between two client chunk views and
+the reverse-index cleanup on disconnect.

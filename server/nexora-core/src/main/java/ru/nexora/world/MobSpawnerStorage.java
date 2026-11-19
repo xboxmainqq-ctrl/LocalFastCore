@@ -53,12 +53,16 @@ public final class MobSpawnerStorage {
         try (DataOutputStream out = new DataOutputStream(bytes)) {
             out.writeInt((int) checksum.getValue());
         }
-        ru.nexora.persistence.AtomicFileWriter.writeAtomically(file, bytes.toByteArray());
+        ru.nexora.persistence.BackupFile.write(file, bytes.toByteArray(), this::readSpawnerFile);
     }
 
     public synchronized List<MobSpawnerState> load() throws IOException {
+        return ru.nexora.persistence.BackupFile.load(file, this::readSpawnerFile).orElse(List.of());
+    }
+
+    private List<MobSpawnerState> readSpawnerFile(Path file) throws IOException {
         if (Files.isSymbolicLink(file)) throw new IOException("Spawner storage must not be a symlink");
-        if (!Files.exists(file)) return List.of();
+        if (!Files.exists(file)) throw new IOException("Spawner file disappeared during recovery");
         long size = Files.size(file);
         if (size < 13 || size > 1_000_000) throw new IOException("Invalid spawner storage size");
         byte[] bytes = Files.readAllBytes(file);

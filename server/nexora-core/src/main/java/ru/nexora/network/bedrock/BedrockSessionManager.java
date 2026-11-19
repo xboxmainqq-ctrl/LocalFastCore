@@ -7289,12 +7289,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         // peer. Give every currently queued peer a bounded opportunity now that
         // the originating session lock is released; otherwise idle peers can
         // remain queued forever waiting for their own next inbound packet.
-        drainPendingOutboundSessions();
+        drainPendingOutboundSessions(networkId);
     }
 
-    private void drainPendingOutboundSessions() {
+    private void drainPendingOutboundSessions(String alreadyDrainedNetworkId) {
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
-            drainOutboundForSession(entry.getKey());
+            if (!entry.getKey().equals(alreadyDrainedNetworkId)) {
+                drainOutboundForSession(entry.getKey());
+            }
         }
     }
 

@@ -6427,6 +6427,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             List<BedrockPacket> packets = new ArrayList<>(MAX_CHUNK_PACKETS_PER_BATCH);
             List<Long> publishedKeys = new ArrayList<>(MAX_CHUNK_PACKETS_PER_BATCH);
             boolean batchReady = true;
+            boolean budgetDenied = false;
             for (long key : chunkKeys) {
                 if (state.sentChunkKeys.contains(key)) {
                     chunkPacketsReused.incrementAndGet();
@@ -6454,6 +6455,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 }
                 if (!chunkStreamingBudget.tryAcquire(networkId, nanoTime.getAsLong())) {
                     batchReady = false;
+                    budgetDenied = true;
                     break;
                 }
                 state.pendingChunkLoads.remove(key, load);
@@ -6469,7 +6471,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             // Ready chunks can publish while the rest of this four-key batch waits for disk I/O.
             // Keep the cursor in place until every key is either sent or ready.
             if (!batchReady) {
-                chunkStreamingBudget.yield(networkId, nanoTime.getAsLong());
+                if (!budgetDenied) chunkStreamingBudget.yield(networkId, nanoTime.getAsLong());
                 return;
             }
             queue.advance(chunkKeys.size());

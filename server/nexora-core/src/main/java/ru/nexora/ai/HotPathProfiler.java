@@ -21,9 +21,9 @@ public final class HotPathProfiler {
     }
 
     private static final int DEFAULT_WINDOW = 256;
+    private static final Path[] PATHS = Path.values();
 
-    private final int windowSize;
-    private final EnumMap<Path, Window> windows = new EnumMap<>(Path.class);
+    private final Window[] windows;
 
     public HotPathProfiler() {
         this(DEFAULT_WINDOW);
@@ -33,46 +33,38 @@ public final class HotPathProfiler {
         if (windowSize < 1 || windowSize > 4096) {
             throw new IllegalArgumentException("windowSize must be between 1 and 4096");
         }
-        this.windowSize = windowSize;
-        for (Path path : Path.values()) {
-            windows.put(path, new Window(windowSize));
+        windows = new Window[PATHS.length];
+        for (Path path : PATHS) {
+            windows[path.ordinal()] = new Window(windowSize);
         }
     }
 
     public void record(Path path, long elapsedNanos) {
         Objects.requireNonNull(path, "path");
         if (elapsedNanos < 0) throw new IllegalArgumentException("elapsedNanos must be non-negative");
-        synchronized (windows) {
-            windows.get(path).record(elapsedNanos);
-        }
+        windows[path.ordinal()].record(elapsedNanos);
     }
 
     public long estimateNanos(Path path, long fallbackNanos) {
         Objects.requireNonNull(path, "path");
         if (fallbackNanos < 0) throw new IllegalArgumentException("fallbackNanos < 0");
-        synchronized (windows) {
-            Snapshot snapshot = windows.get(path).snapshot();
-            if (snapshot.sampleCount() == 0) return fallbackNanos;
-            long estimate = snapshot.p95Nanos();
-            return estimate > 0 ? estimate : fallbackNanos;
-        }
+        Snapshot snapshot = windows[path.ordinal()].snapshot();
+        if (snapshot.sampleCount() == 0) return fallbackNanos;
+        long estimate = snapshot.p95Nanos();
+        return estimate > 0 ? estimate : fallbackNanos;
     }
 
     public Snapshot snapshot(Path path) {
         Objects.requireNonNull(path, "path");
-        synchronized (windows) {
-            return windows.get(path).snapshot();
-        }
+        return windows[path.ordinal()].snapshot();
     }
 
     public Map<Path, Snapshot> snapshots() {
-        synchronized (windows) {
-            EnumMap<Path, Snapshot> result = new EnumMap<>(Path.class);
-            for (Map.Entry<Path, Window> entry : windows.entrySet()) {
-                result.put(entry.getKey(), entry.getValue().snapshot());
-            }
-            return Map.copyOf(result);
+        EnumMap<Path, Snapshot> result = new EnumMap<>(Path.class);
+        for (Path path : PATHS) {
+            result.put(path, windows[path.ordinal()].snapshot());
         }
+        return Map.copyOf(result);
     }
 
     private static final class Window {
@@ -84,13 +76,13 @@ public final class HotPathProfiler {
             samples = new long[size];
         }
 
-        private void record(long nanos) {
+        private synchronized void record(long nanos) {
             samples[next] = nanos;
             next = (next + 1) % samples.length;
             if (count < samples.length) count++;
         }
 
-        private Snapshot snapshot() {
+        private synchronized Snapshot snapshot() {
             if (count == 0) return new Snapshot(0, 0, 0, 0, 0, samples.length);
             long[] ordered = new long[count];
             int start = (next - count + samples.length) % samples.length;

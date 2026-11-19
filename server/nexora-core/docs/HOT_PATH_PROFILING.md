@@ -192,7 +192,10 @@ the native buffered amount falls to 256 KiB or less. Before each send, the sched
 also accounts for the next frame's size so the projected native buffer stays below
 512 KiB; a single frame larger than that watermark is allowed only when the native
 buffer is empty, avoiding permanent head-of-line blocking. The queue owns its frame copies
-and is cleared when the peer session closes. If the bounded queue is exhausted, the
+and is cleared when the peer session closes. Reliable fragmented inbound messages
+also have a 15-second monotonic assembly deadline; a stalled or backwards-time
+assembly is reset and rejected instead of retaining a partial message indefinitely.
+If the bounded queue is exhausted, the
 session is closed rather than allowing unbounded memory growth or silently dropping
 reliable Bedrock frames. Buffered-amount callbacks only schedule a coalesced drain
 task on the negotiator executor; the callback itself does not call WebRTC send APIs,

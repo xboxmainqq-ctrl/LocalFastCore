@@ -88,7 +88,8 @@ class LivingEntityAiServiceTest {
         assertTrue(LivingEntityAiService.isFlyingMob("minecraft:wither"));
         WorldLivingEntity ghast = new WorldLivingEntityManager().spawn(
                 "minecraft:ghast", 10, 0, 64, 0);
-        var elevated = new LivingEntityAiService.PlayerTarget("player", 8, 74, 0, true);
+        // Keep the player outside projectile range so the flying-hostile path must pursue in 3D.
+        var elevated = new LivingEntityAiService.PlayerTarget("player", 30, 74, 0, true);
         var ghastDecision = ai.decide(ghast, List.of(elevated), 1_000, 0);
         assertTrue(ghastDecision.moving());
         assertTrue(ghastDecision.moveY() > 0);

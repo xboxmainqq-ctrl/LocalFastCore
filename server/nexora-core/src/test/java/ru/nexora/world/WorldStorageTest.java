@@ -18,10 +18,13 @@ class WorldStorageTest {
         WorldStorage storage = new WorldStorage(temporaryDirectory, "NEXORA");
         WorldChunk chunk = new WorldChunk(-2, 3);
         new FlatWorldGenerator().generate(chunk, 99L);
+        assertTrue(chunk.isDirty(), "newly generated chunks must be saved once");
         chunk.setBlock(4, 70, 5, BlockType.STONE);
 
         storage.saveChunk(chunk);
+        assertFalse(chunk.isDirty(), "successful storage writes mark the exact revision clean");
         WorldChunk restored = storage.loadChunk(-2, 3).orElseThrow();
+        assertFalse(restored.isDirty(), "chunks restored from disk start clean");
 
         assertEquals(BlockType.BEDROCK, restored.getBlock(0, 60, 0));
         assertEquals(BlockType.GRASS_BLOCK, restored.getBlock(15, 64, 15));
@@ -91,11 +94,14 @@ class WorldStorageTest {
             assertEquals(0, world.activeChunkSaveWorkers());
             world.saveAll();
             assertEquals(0, world.inFlightChunkSaves(), "saveAll must await every chunk write");
+            assertFalse(world.getChunk(0, 0).isDirty(), "completed autosave marks the chunk clean");
             assertEquals(BlockType.DIAMOND_BLOCK,
                     storage.loadChunk(0, 0).orElseThrow().getBlock(1, 70, 1));
 
             world.setBlock(1, 70, 1, BlockType.GOLD_BLOCK);
+            assertTrue(world.getChunk(0, 0).isDirty(), "a later block edit makes the chunk dirty again");
             world.saveAll();
+            assertFalse(world.getChunk(0, 0).isDirty());
             assertEquals(BlockType.GOLD_BLOCK,
                     storage.loadChunk(0, 0).orElseThrow().getBlock(1, 70, 1));
             assertEquals(0, world.inFlightChunkSaves());
@@ -119,6 +125,45 @@ class WorldStorageTest {
         } finally {
             world.closeChunkLoadService();
         }
+    }
+
+
+    @Test
+    void skipsCleanLoadedChunksAndPersistsThemAgainAfterMutation() throws Exception {
+        WorldStorage storage = new WorldStorage(temporaryDirectory, "DirtyOnly");
+        WorldChunk original = new WorldChunk(5, -3);
+        storage.saveChunk(original);
+        WorldChunk loaded = storage.loadChunk(5, -3).orElseThrow();
+        assertFalse(loaded.isDirty());
+
+        WorldChunkSaveService saves = new WorldChunkSaveService(storage);
+        try {
+            assertTrue(saves.request(loaded).isDone(), "clean chunks need no worker task");
+            assertEquals(0, saves.inFlightSaves());
+
+            loaded.setBlock(1, 70, 1, BlockType.DIAMOND_BLOCK);
+            assertTrue(loaded.isDirty());
+            saves.request(loaded).get(5, java.util.concurrent.TimeUnit.SECONDS);
+            assertFalse(loaded.isDirty());
+            assertEquals(BlockType.DIAMOND_BLOCK,
+                    storage.loadChunk(5, -3).orElseThrow().getBlock(1, 70, 1));
+        } finally {
+            saves.close();
+        }
+    }
+
+    @Test
+    void snapshotCompletionDoesNotClearMutationsMadeDuringDiskWrite() {
+        WorldChunk chunk = new WorldChunk(0, 0);
+        chunk.setBlock(0, 70, 0, BlockType.STONE);
+        WorldChunk.PersistenceSnapshot snapshot = chunk.persistenceSnapshot();
+
+        chunk.setBlock(0, 70, 0, BlockType.GOLD_BLOCK);
+        chunk.markPersisted(snapshot.revision());
+
+        assertTrue(chunk.isDirty(), "the newer revision must remain dirty after an older snapshot is written");
+        chunk.markPersisted(chunk.revision());
+        assertFalse(chunk.isDirty());
     }
 
     @Test

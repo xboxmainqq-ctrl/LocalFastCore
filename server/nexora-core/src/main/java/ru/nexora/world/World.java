@@ -4,6 +4,9 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -18,6 +21,8 @@ public final class World {
     private final int spawnZ;
     private final WorldStorage storage;
     private final ConcurrentMap<Long, WorldChunk> chunks = new ConcurrentHashMap<>();
+    private final Object pendingChunkLoadLock = new Object();
+    private final LinkedHashSet<Long> pendingChunkLoads = new LinkedHashSet<>();
     private final WorldItemEntityManager itemEntities;
     private final WorldLivingEntityManager livingEntities;
     private final WorldContainerManager containers;
@@ -249,19 +254,53 @@ public final class World {
     public ChunkResidencyResult applyChunkResidencyPlan(
             WorldChunkResidencyManager.ResidencyPlan plan
     ) {
+        return applyChunkResidencyPlan(plan, Integer.MAX_VALUE);
+    }
+
+    /**
+     * Applies a residency plan while limiting synchronous chunk loads to a world-wide
+     * budget. Deferred coordinates remain in insertion order and are deduplicated
+     * across players and subsequent world ticks.
+     */
+    public ChunkResidencyResult applyChunkResidencyPlan(
+            WorldChunkResidencyManager.ResidencyPlan plan, int maximumLoads
+    ) {
         Objects.requireNonNull(plan, "plan");
-        int loaded = 0;
+        if (maximumLoads < 0) throw new IllegalArgumentException("maximumLoads must not be negative");
+
         int unloaded = 0;
-        for (WorldChunkResidencyManager.ChunkCoordinate coordinate : plan.load()) {
-            int before = loadedChunkCount();
-            getChunk(coordinate.chunkX(), coordinate.chunkZ());
-            if (loadedChunkCount() > before) loaded++;
+        synchronized (pendingChunkLoadLock) {
+            for (WorldChunkResidencyManager.ChunkCoordinate coordinate : plan.unload()) {
+                pendingChunkLoads.remove(chunkKey(coordinate.chunkX(), coordinate.chunkZ()));
+                if (unloadChunk(coordinate.chunkX(), coordinate.chunkZ())) unloaded++;
+            }
+            for (WorldChunkResidencyManager.ChunkCoordinate coordinate : plan.load()) {
+                long key = chunkKey(coordinate.chunkX(), coordinate.chunkZ());
+                if (!chunks.containsKey(key)) pendingChunkLoads.add(key);
+            }
+
+            int loaded = 0;
+            Iterator<Long> iterator = pendingChunkLoads.iterator();
+            while (iterator.hasNext() && loaded < maximumLoads) {
+                long key = iterator.next();
+                int chunkX = (int) (key >> 32);
+                int chunkZ = (int) key;
+                if (!chunks.containsKey(key)) {
+                    getChunk(chunkX, chunkZ);
+                    loaded++;
+                }
+                iterator.remove();
+            }
+            return new ChunkResidencyResult(plan.load().size(), loaded,
+                    plan.unload().size(), unloaded, plan.unload().size() - unloaded);
         }
-        for (WorldChunkResidencyManager.ChunkCoordinate coordinate : plan.unload()) {
-            if (unloadChunk(coordinate.chunkX(), coordinate.chunkZ())) unloaded++;
+    }
+
+    /** Number of globally deferred chunk loads waiting for a future world tick. */
+    public int pendingChunkLoadCount() {
+        synchronized (pendingChunkLoadLock) {
+            return pendingChunkLoads.size();
         }
-        return new ChunkResidencyResult(plan.load().size(), loaded,
-                plan.unload().size(), unloaded, plan.unload().size() - unloaded);
     }
 
     public record ChunkResidencyResult(

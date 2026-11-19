@@ -8,11 +8,13 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /** Thread-safe registry and lifecycle owner for server-created living actors. */
 public final class WorldLivingEntityManager {
     private static final int MAX_ENTITIES = 5_000;
     private final AtomicLong nextRuntimeId = new AtomicLong(2_000_000L);
+    private final AtomicInteger entityCount = new AtomicInteger();
     private final ConcurrentMap<Long, WorldLivingEntity> entities = new ConcurrentSkipListMap<>();
     private final WorldLivingEntityStorage storage;
 
@@ -28,6 +30,7 @@ public final class WorldLivingEntityManager {
                     || entities.putIfAbsent(entity.runtimeId(), entity) != null) {
                 throw new IOException("Invalid or duplicate persisted living actor runtime ID");
             }
+            entityCount.incrementAndGet();
             highestRuntimeId = Math.max(highestRuntimeId, entity.runtimeId());
         }
         nextRuntimeId.set(highestRuntimeId + 1);
@@ -44,7 +47,7 @@ public final class WorldLivingEntityManager {
             String identifier, WorldLivingEntity.Family family,
             float maxHealth, double x, double y, double z
     ) {
-        if (entities.size() >= MAX_ENTITIES) {
+        if (entityCount.get() >= MAX_ENTITIES) {
             throw new IllegalStateException("Living actor world cap reached");
         }
         long runtimeId = nextRuntimeId.getAndIncrement();
@@ -57,6 +60,7 @@ public final class WorldLivingEntityManager {
         if (entities.putIfAbsent(runtimeId, entity) != null) {
             throw new IllegalStateException("Duplicate living actor runtime ID");
         }
+        entityCount.incrementAndGet();
         return entity;
     }
 
@@ -79,8 +83,9 @@ public final class WorldLivingEntityManager {
         if (before == null) return Optional.empty();
         WorldLivingEntity after = before.damage(amount);
         float applied = before.health() - after.health();
-        if (after.health() <= 0) entities.remove(runtimeId, before);
-        else entities.replace(runtimeId, before, after);
+        if (after.health() <= 0) {
+            if (entities.remove(runtimeId, before)) entityCount.decrementAndGet();
+        } else entities.replace(runtimeId, before, after);
         return Optional.of(new DamageResult(before, after, applied, after.health() <= 0));
     }
 
@@ -142,8 +147,9 @@ public final class WorldLivingEntityManager {
                         before.velocityX(), before.velocityY(), before.velocityZ(),
                         Math.max(0, before.health() - 1.0f), before.maxHealth(),
                         before.fireUntilMillis(), safeNextFireDamageAt(nowMillis));
-                if (after.health() <= 0) entities.remove(before.runtimeId(), before);
-                else entities.replace(before.runtimeId(), before, after);
+                if (after.health() <= 0) {
+                    if (entities.remove(before.runtimeId(), before)) entityCount.decrementAndGet();
+                } else entities.replace(before.runtimeId(), before, after);
                 damage.add(new DamageResult(before, after, before.health() - after.health(),
                         after.health() <= 0));
             }
@@ -156,11 +162,13 @@ public final class WorldLivingEntityManager {
     }
 
     public synchronized boolean remove(long runtimeId) {
-        return entities.remove(runtimeId) != null;
+        boolean removed = entities.remove(runtimeId) != null;
+        if (removed) entityCount.decrementAndGet();
+        return removed;
     }
 
     public int size() {
-        return entities.size();
+        return entityCount.get();
     }
 
     /** Flushes living actors to durable storage; a no-storage manager is a no-op. */

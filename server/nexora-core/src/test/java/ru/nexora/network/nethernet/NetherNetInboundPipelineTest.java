@@ -160,4 +160,44 @@ class NetherNetInboundPipelineTest {
                         NetherNetInboundPipeline.MAX_INBOUND_FRAME_BYTES + 1));
     }
 
+    @Test
+    void enforcesSharedMemoryCapAcrossPeersAndReleasesItOnDisconnect() {
+        ReassemblyMemoryBudget memory = new ReassemblyMemoryBudget(300);
+        NetherNetInboundPipeline pipeline = new NetherNetInboundPipeline(
+                message -> { }, new ru.nexora.ai.NexoraAiGuard(),
+                new InboundPeerBudget(5_000_000_000L, 100, 10_000, 4),
+                memory, 8, 512);
+
+        pipeline.onFrame("peer-memory-a", "ReliableDataChannel", new byte[] {2, 1});
+        assertEquals(256, pipeline.reassemblyMemoryStats().reservedBytes());
+
+        assertThrows(IllegalStateException.class,
+                () -> pipeline.onFrame("peer-memory-b", "ReliableDataChannel", new byte[] {2, 2}));
+        assertEquals(1, pipeline.reassemblyMemoryStats().rejectedReservations());
+
+        pipeline.onDisconnected("peer-memory-a");
+        assertEquals(0, pipeline.reassemblyMemoryStats().reservedBytes());
+
+        assertDoesNotThrow(
+                () -> pipeline.onFrame("peer-memory-b", "ReliableDataChannel", new byte[] {2, 2}));
+        assertEquals(256, pipeline.reassemblyMemoryStats().reservedBytes());
+        pipeline.onDisconnected("peer-memory-b");
+        assertEquals(0, pipeline.reassemblyMemoryStats().reservedBytes());
+    }
+
+    @Test
+    void releasesAggregateMemoryWhenFragmentStreamIsMalformed() {
+        ReassemblyMemoryBudget memory = new ReassemblyMemoryBudget(512);
+        NetherNetInboundPipeline pipeline = new NetherNetInboundPipeline(
+                message -> { }, new ru.nexora.ai.NexoraAiGuard(),
+                new InboundPeerBudget(5_000_000_000L, 100, 10_000, 4),
+                memory, 8, 512);
+
+        pipeline.onFrame("peer-malformed", "ReliableDataChannel", new byte[] {2, 1});
+        assertEquals(256, pipeline.reassemblyMemoryStats().reservedBytes());
+        assertThrows(IllegalArgumentException.class,
+                () -> pipeline.onFrame("peer-malformed", "ReliableDataChannel", new byte[] {0, 2}));
+        assertEquals(0, pipeline.reassemblyMemoryStats().reservedBytes());
+    }
+
 }

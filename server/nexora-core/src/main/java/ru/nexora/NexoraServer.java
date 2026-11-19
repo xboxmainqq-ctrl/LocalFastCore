@@ -412,6 +412,18 @@ public final class NexoraServer {
                                 + ", frames=" + outbound.queuedFrames()
                                 + ", bytes=" + outbound.queuedBytes()
                                 + " (bounded application queue; native WebRTC buffer excluded)");
+                        var inbound = bedrockSessions.inboundStats();
+                        System.out.println("Bedrock ingress: frames=" + inbound.frames()
+                                + ", bytes=" + inbound.bytes()
+                                + ", messages=" + inbound.completedMessages()
+                                + ", failed=" + inbound.failedFrames()
+                                + ", channels=" + inbound.activeChannels());
+                        System.out.println("Ingress processing: avg="
+                                + String.format(java.util.Locale.ROOT, "%.2f us",
+                                        inbound.averageProcessingNanos() / 1_000.0)
+                                + ", max=" + String.format(java.util.Locale.ROOT, "%.2f us",
+                                        inbound.maxProcessingNanos() / 1_000.0)
+                                + " (pipeline framing/dispatch only)");
                         System.out.println("Cumulative transport bytes: sent=" + network.bytesSent()
                                 + ", received=" + network.bytesReceived());
                         continue;

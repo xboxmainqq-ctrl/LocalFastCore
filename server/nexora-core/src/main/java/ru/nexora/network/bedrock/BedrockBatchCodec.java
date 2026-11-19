@@ -126,8 +126,8 @@ public final class BedrockBatchCodec {
             int header = packet.packetId()
                     | (packet.senderSubClientId() << 10)
                     | (packet.targetSubClientId() << 12);
-            encodedLength += unsignedVarIntSize(unsignedVarIntSize(header) + packet.payloadLength())
-                    + unsignedVarIntSize(header) + (long) packet.payloadLength();
+            long packetLength = unsignedVarIntSize(header) + (long) packet.payloadLength();
+            encodedLength += unsignedVarIntSize(packetLength) + packetLength;
             if (encodedLength > maxBatchBytes) {
                 throw new IllegalArgumentException("Encoded Bedrock batch exceeds size limit");
             }

@@ -79,6 +79,15 @@ public final class EntityRegistry {
     }
 
     /**
+     * Returns a detached entity snapshot for the single-threaded simulation loop.
+     * Unlike {@link #snapshot()}, this method does not sort by UUID: simulation
+     * order is intentionally unspecified, avoiding an O(n log n) sort every tick.
+     */
+    public synchronized List<WorldEntity> simulationSnapshot() {
+        return List.copyOf(entities.values());
+    }
+
+    /**
      * Returns entities within an inclusive 3D radius, nearest first.
      * Small searches inspect only intersecting cells; very large searches fall
      * back to a full scan to avoid iterating millions of empty cells.
@@ -97,8 +106,7 @@ public final class EntityRegistry {
                 result.add(entity);
             }
         }
-        result.sort(Comparator.comparingDouble((WorldEntity entity) -> distanceSquared(entity, x, y, z))
-                .thenComparing(entity -> entity.id().toString()));
+        result.sort(Comparator.comparingDouble((WorldEntity entity) -> distanceSquared(entity, x, y, z))                .thenComparing(entity -> entity.id().toString()));
         return List.copyOf(result);
     }
 

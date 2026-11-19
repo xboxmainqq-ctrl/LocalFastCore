@@ -84,6 +84,25 @@ class PlayerEquipmentStorageTest {
     }
 
     @Test
+    void restoresPreviousVerifiedEquipmentWhenPrimaryIsCorrupted() throws Exception {
+        PlayerEquipmentStorage storage = new PlayerEquipmentStorage(directory);
+        PlayerEquipment first = new PlayerEquipment();
+        first.setOffhand(new ItemStack("minecraft:shield", 1, 1));
+        PlayerEquipment second = new PlayerEquipment();
+        second.setOffhand(new ItemStack("minecraft:totem_of_undying", 1, 1));
+        storage.save("recover-equipment", first);
+        storage.save("recover-equipment", second);
+        Path primary = directory.resolve("recover-equipment.nxe");
+        Path backup = directory.resolve("recover-equipment.nxe.bak");
+        byte[] damaged = Files.readAllBytes(primary);
+        damaged[5] ^= 1;
+        Files.write(primary, damaged);
+
+        assertEquals(first.snapshot(), storage.load("recover-equipment").orElseThrow().snapshot());
+        assertArrayEquals(Files.readAllBytes(backup), Files.readAllBytes(primary));
+    }
+
+    @Test
     void rejectsInvalidXuid() throws Exception {
         PlayerEquipmentStorage storage = new PlayerEquipmentStorage(directory);
         assertThrows(IllegalArgumentException.class, () -> storage.save("../escape", new PlayerEquipment()));

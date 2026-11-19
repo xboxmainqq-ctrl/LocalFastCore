@@ -62,6 +62,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.HashSet;
+import java.util.HashMap;
 import java.util.Set;
 import java.util.Map;
 import java.util.Objects;
@@ -70,6 +71,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
@@ -6388,6 +6390,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (pending == null || pending.centerX() != centerX || pending.centerZ() != centerZ
                 || pending.radius() != state.chunkViewRadius) {
             state.chunkStreamingQueue = new ChunkStreamingQueue(centerX, centerZ, state.chunkViewRadius);
+            state.pendingChunkLoads.clear();
         }
         processChunkStreaming(networkId, state);
     }
@@ -6415,6 +6418,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             chunkStreamingBatches.incrementAndGet();
             List<BedrockPacket> packets = new ArrayList<>(MAX_CHUNK_PACKETS_PER_BATCH);
             List<Long> publishedKeys = new ArrayList<>(MAX_CHUNK_PACKETS_PER_BATCH);
+            boolean batchReady = true;
             for (long key : chunkKeys) {
                 if (state.sentChunkKeys.contains(key)) {
                     chunkPacketsReused.incrementAndGet();
@@ -6422,7 +6426,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 }
                 int chunkX = (int) (key >> 32);
                 int chunkZ = (int) key;
-                packets.add(BedrockLevelChunkCodec.createPacket(world.getChunk(chunkX, chunkZ)));
+                CompletableFuture<Optional<WorldChunk>> load = state.pendingChunkLoads.computeIfAbsent(
+                        key, ignored -> world.requestStoredChunkLoad(chunkX, chunkZ));
+                if (!load.isDone()) {
+                    batchReady = false;
+                    continue;
+                }
+                Optional<WorldChunk> prepared = load.join();
+                state.pendingChunkLoads.remove(key, load);
+                WorldChunk chunk = world.getChunkFromPreparedStorageLoad(chunkX, chunkZ, prepared);
+                packets.add(BedrockLevelChunkCodec.createPacket(chunk));
                 chunkPacketsEncoded.incrementAndGet();
                 publishedKeys.add(key);
                 if (packets.size() >= MAX_CHUNK_PACKETS_PER_BATCH) {
@@ -6430,7 +6443,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 }
             }
             flushChunkBatch(networkId, state, packets, publishedKeys);
-            // Advance only after packet creation and every transport submission succeeded.
+            // Ready chunks can publish while the rest of this four-key batch waits for disk I/O.
+            // Keep the cursor in place until every key is either sent or ready.
+            if (!batchReady) return;
             queue.advance(chunkKeys.size());
             chunkStreamingPendingPeak.accumulateAndGet(queue.remaining(), Math::max);
         }
@@ -6445,6 +6460,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.lastChunkX = queue.centerX();
         state.lastChunkZ = queue.centerZ();
         state.chunkStreamingQueue = null;
+        state.pendingChunkLoads.clear();
         chunkStreamingCompleted.incrementAndGet();
         syncVisiblePlayerActors(networkId, state);
         syncVisibleWorldActors(networkId, state);
@@ -7542,6 +7558,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private int lastChunkZ = Integer.MIN_VALUE;
         private volatile int chunkViewRadius = BedrockChunkRadiusCodec.DEFAULT_RADIUS;
         private ChunkStreamingQueue chunkStreamingQueue;
+        private final Map<Long, CompletableFuture<Optional<WorldChunk>>> pendingChunkLoads = new HashMap<>();
         private final Set<Long> sentChunkKeys = ConcurrentHashMap.newKeySet();
         private final Set<Long> visiblePlayerEntityIds = ConcurrentHashMap.newKeySet();
         private final Set<Long> visibleLivingEntityIds = ConcurrentHashMap.newKeySet();

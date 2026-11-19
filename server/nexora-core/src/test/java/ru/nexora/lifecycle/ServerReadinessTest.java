@@ -2,6 +2,8 @@ package ru.nexora.lifecycle;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.atomic.AtomicReference;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class ServerReadinessTest {
@@ -42,5 +44,29 @@ class ServerReadinessTest {
         ServerReadiness readiness = new ServerReadiness();
         readiness.markReady();
         assertThrows(IllegalStateException.class, readiness::markReady);
+    }
+
+    @Test
+    void concurrentStopCallsRemainIdempotent() throws InterruptedException {
+        ServerReadiness readiness = new ServerReadiness();
+        readiness.markReady();
+        readiness.beginShutdown();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Thread[] callers = new Thread[32];
+
+        for (int i = 0; i < callers.length; i++) {
+            callers[i] = new Thread(() -> {
+                try {
+                    readiness.markStopped();
+                } catch (Throwable throwable) {
+                    failure.compareAndSet(null, throwable);
+                }
+            });
+            callers[i].start();
+        }
+        for (Thread caller : callers) caller.join();
+
+        assertNull(failure.get());
+        assertEquals(ServerReadiness.State.STOPPED, readiness.state());
     }
 }

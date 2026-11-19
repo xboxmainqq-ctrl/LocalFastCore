@@ -106,4 +106,52 @@ class NetherNetMessageFramerTest {
                 () -> new NetherNetMessageFramer.Reassembler(1024, 0L));
     }
 
+    @Test
+    void accountsAllocatedCapacityAndReleasesItWhenAssemblyCompletes() {
+        ReassemblyMemoryBudget budget = new ReassemblyMemoryBudget(512);
+        NetherNetMessageFramer.Reassembler reassembler =
+                new NetherNetMessageFramer.Reassembler(1024, 1_000L, budget);
+
+        assertEquals(Optional.empty(), reassembler.accept(new byte[] {1, 10}, true, 1_000L));
+        assertEquals(256, budget.stats().reservedBytes());
+        assertArrayEquals(new byte[] {10, 11},
+                reassembler.accept(new byte[] {0, 11}, true, 1_001L).orElseThrow());
+        assertEquals(0, budget.stats().reservedBytes());
+    }
+
+    @Test
+    void rejectsGrowthWhenAggregateBudgetIsExhaustedAndReleasesReservation() {
+        ReassemblyMemoryBudget budget = new ReassemblyMemoryBudget(300);
+        NetherNetMessageFramer.Reassembler first =
+                new NetherNetMessageFramer.Reassembler(1024, 1_000L, budget);
+        NetherNetMessageFramer.Reassembler second =
+                new NetherNetMessageFramer.Reassembler(1024, 1_000L, budget);
+
+        assertEquals(Optional.empty(), first.accept(new byte[] {2, 1}, true, 2_000L));
+        assertEquals(256, budget.stats().reservedBytes());
+        assertThrows(IllegalStateException.class,
+                () -> second.accept(new byte[] {2, 2}, true, 2_001L));
+        assertEquals(1, budget.stats().rejectedReservations());
+
+        first.reset();
+        assertEquals(0, budget.stats().reservedBytes());
+        assertEquals(Optional.empty(), second.accept(new byte[] {2, 2}, true, 2_002L));
+        assertEquals(256, budget.stats().reservedBytes());
+        second.reset();
+        assertEquals(0, budget.stats().reservedBytes());
+    }
+
+    @Test
+    void releasesAggregateReservationAfterAssemblyTimeout() {
+        ReassemblyMemoryBudget budget = new ReassemblyMemoryBudget(512);
+        NetherNetMessageFramer.Reassembler reassembler =
+                new NetherNetMessageFramer.Reassembler(1024, 10L, budget);
+
+        assertEquals(Optional.empty(), reassembler.accept(new byte[] {1, 10}, true, 3_000L));
+        assertEquals(256, budget.stats().reservedBytes());
+        assertThrows(IllegalArgumentException.class,
+                () -> reassembler.accept(new byte[] {0, 11}, true, 3_011L));
+        assertEquals(0, budget.stats().reservedBytes());
+    }
+
 }

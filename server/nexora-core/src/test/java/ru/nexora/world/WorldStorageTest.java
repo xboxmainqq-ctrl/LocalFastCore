@@ -191,4 +191,44 @@ class WorldStorageTest {
         WorldStorage storage = new WorldStorage(temporaryDirectory, "NEXORA");
         assertTrue(storage.loadChunk(10, -10).isEmpty());
     }
+
+    @Test
+    void unloadPersistsDirtyChunkOnSaveWorkersBeforeEviction() throws Exception {
+        WorldStorage storage = new WorldStorage(temporaryDirectory, "UnloadAsync");
+        World world = new World("UnloadAsync", 12L, new FlatWorldGenerator(), 0, 65, 0, storage);
+        try {
+            world.setBlock(-1, 72, -1, BlockType.DIAMOND_BLOCK);
+            assertEquals(1, world.loadedChunkCount());
+
+            assertTrue(world.unloadChunk(-1, -1));
+            assertEquals(0, world.loadedChunkCount(),
+                    "a successfully persisted chunk should leave the resident cache");
+            assertEquals(BlockType.DIAMOND_BLOCK,
+                    storage.loadChunk(-1, -1).orElseThrow().getBlock(15, 72, 15));
+
+            assertEquals(BlockType.DIAMOND_BLOCK, world.getBlock(-1, 72, -1),
+                    "a later access must restore the persisted chunk");
+            assertEquals(1, world.loadedChunkCount());
+        } finally {
+            world.closeChunkLoadService();
+        }
+    }
+
+    @Test
+    void cleanChunkUnloadDoesNotChangePersistedBlockState() throws Exception {
+        WorldStorage storage = new WorldStorage(temporaryDirectory, "CleanUnload");
+        World world = new World("CleanUnload", 13L, new FlatWorldGenerator(), 0, 65, 0, storage);
+        try {
+            world.setBlock(4, 71, 4, BlockType.GOLD_BLOCK);
+            world.saveAll();
+            assertFalse(world.getChunk(0, 0).isDirty());
+
+            assertTrue(world.unloadChunk(0, 0));
+            assertEquals(0, world.loadedChunkCount());
+            assertEquals(BlockType.GOLD_BLOCK,
+                    storage.loadChunk(0, 0).orElseThrow().getBlock(4, 71, 4));
+        } finally {
+            world.closeChunkLoadService();
+        }
+    }
 }

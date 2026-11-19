@@ -71,6 +71,17 @@ class MobStuckTrackerTest {
     }
 
     @Test
+    void attemptCounterSaturatesWithoutWrappingNegative() {
+        assertEquals(1L, MobStuckTracker.nextAttemptCount(0));
+        assertEquals(Long.MAX_VALUE,
+                MobStuckTracker.nextAttemptCount(Long.MAX_VALUE - 1));
+        assertEquals(Long.MAX_VALUE,
+                MobStuckTracker.nextAttemptCount(Long.MAX_VALUE));
+        assertThrows(IllegalArgumentException.class,
+                () -> MobStuckTracker.nextAttemptCount(-1));
+    }
+
+    @Test
     void rejectsInvalidObservations() {
         MobStuckTracker tracker = new MobStuckTracker();
         assertThrows(IllegalArgumentException.class,

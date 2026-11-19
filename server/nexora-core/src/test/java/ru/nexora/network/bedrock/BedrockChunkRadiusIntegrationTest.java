@@ -103,11 +103,17 @@ class BedrockChunkRadiusIntegrationTest {
         Method process = BedrockSessionManager.class.getDeclaredMethod(
                 "processChunkStreaming", String.class, session.getClass());
         process.setAccessible(true);
-        for (int attempt = 0; attempt < 32 && field(session, "chunkStreamingQueue") != null; attempt++) {
-            clock.addAndGet(ChunkStreamingBudget.DEFAULT_WINDOW_NANOS);
-            process.invoke(manager, "viewer", session);
+        long originalTime = clock.get();
+        try {
+            for (int attempt = 0; attempt < 32 && field(session, "chunkStreamingQueue") != null; attempt++) {
+                clock.addAndGet(ChunkStreamingBudget.DEFAULT_WINDOW_NANOS);
+                process.invoke(manager, "viewer", session);
+            }
+            assertNull(field(session, "chunkStreamingQueue"),
+                    "Chunk streaming should finish within the test pump budget");
+        } finally {
+            clock.set(originalTime);
         }
-        assertNull(field(session, "chunkStreamingQueue"), "Chunk streaming should finish within the test pump budget");
     }
 
     private static BedrockPacket request(int radius, int clientMaximum) {

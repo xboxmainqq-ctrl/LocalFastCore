@@ -70,8 +70,8 @@ public final class MobPathCache {
             WorldPathfinder.Step step = cached.step();
             if (WorldPathfinder.isMobFootprintLoaded(world, startX, startZ, identifier)
                     && WorldPathfinder.isMobFootprintLoaded(world, step.x(), step.z(), identifier)
-                    && WorldCollision.canMoveMob(world, identifier, startX, feetY, startZ,
-                    step.x(), feetY, step.z())) {
+                    && WorldCollision.canStepMob(world, identifier, startX, feetY, startZ,
+                    step.x(), step.y(), step.z())) {
                 recordHit();
                 return Optional.of(step);
             }

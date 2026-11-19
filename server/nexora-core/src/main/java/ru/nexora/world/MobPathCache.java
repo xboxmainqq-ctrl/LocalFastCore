@@ -98,7 +98,7 @@ public final class MobPathCache {
     private synchronized Entry get(long mobRuntimeId, Key key, long nowMillis) {
         Entry entry = entries.get(mobRuntimeId);
         if (entry == null) {
-            misses++;
+            misses = saturatedIncrement(misses);
             return null;
         }
         if (nowMillis >= entry.expiresAtMillis() || !entry.key().equals(key)) {
@@ -114,20 +114,20 @@ public final class MobPathCache {
         while (entries.size() > maxEntries) {
             Long eldest = entries.keySet().iterator().next();
             entries.remove(eldest);
-            evictions++;
+            evictions = saturatedIncrement(evictions);
         }
     }
 
     private synchronized void recordHit() {
-        hits++;
+        hits = saturatedIncrement(hits);
     }
 
     private synchronized void recordBlockedWaypoint() {
-        blockedWaypoints++;
+        blockedWaypoints = saturatedIncrement(blockedWaypoints);
     }
 
     private synchronized void recordRecomputation() {
-        recomputations++;
+        recomputations = saturatedIncrement(recomputations);
     }
 
     /** Returns cumulative cache counters; counters are local to this cache instance. */
@@ -165,6 +165,10 @@ public final class MobPathCache {
         return entries.size();
     }
 
+    private static long saturatedIncrement(long value) {
+        return value == Long.MAX_VALUE ? Long.MAX_VALUE : value + 1;
+    }
+
     private static int cell(double coordinate) {
         return (int) Math.floor(coordinate);
     }
@@ -184,7 +188,7 @@ public final class MobPathCache {
             int entries
     ) {
         public long requests() {
-            return hits + misses;
+            return hits > Long.MAX_VALUE - misses ? Long.MAX_VALUE : hits + misses;
         }
 
         public double hitRate() {

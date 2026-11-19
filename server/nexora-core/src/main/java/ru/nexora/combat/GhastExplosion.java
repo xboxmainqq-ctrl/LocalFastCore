@@ -1,6 +1,7 @@
 package ru.nexora.combat;
 
 import ru.nexora.world.BlockType;
+import ru.nexora.inventory.ItemStack;
 
 /** Bounded ghast blast rules shared by the live combat path and deterministic tests. */
 public final class GhastExplosion {
@@ -29,6 +30,32 @@ public final class GhastExplosion {
                     DIAMOND_BLOCK, EMERALD_BLOCK, OAK_LOG, OAK_PLANKS -> true;
             default -> false;
         };
+    }
+
+    /**
+     * Conservative vanilla-style drops for the currently supported block subset.
+     * Glass intentionally has no drop without Silk Touch; unsupported blocks return null.
+     */
+    public static ItemStack dropFor(BlockType block) {
+        if (block == null) throw new NullPointerException("block");
+        String itemId = switch (block) {
+            case STONE -> "minecraft:cobblestone";
+            case DIRT, GRASS_BLOCK -> "minecraft:dirt";
+            case COBBLESTONE -> "minecraft:cobblestone";
+            case GRAVEL -> "minecraft:gravel";
+            case NETHERRACK -> "minecraft:netherrack";
+            case END_STONE -> "minecraft:end_stone";
+            case COAL_BLOCK -> "minecraft:coal_block";
+            case IRON_BLOCK -> "minecraft:iron_block";
+            case GOLD_BLOCK -> "minecraft:gold_block";
+            case DIAMOND_BLOCK -> "minecraft:diamond_block";
+            case EMERALD_BLOCK -> "minecraft:emerald_block";
+            case OAK_LOG -> "minecraft:oak_log";
+            case OAK_PLANKS -> "minecraft:oak_planks";
+            case GLASS -> null;
+            default -> null;
+        };
+        return itemId == null ? null : new ItemStack(itemId, 1, 64);
     }
 
     public static boolean isInsideBlockBlast(double dx, double dy, double dz) {

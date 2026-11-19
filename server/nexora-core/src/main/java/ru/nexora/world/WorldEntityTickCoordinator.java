@@ -3,6 +3,7 @@ package ru.nexora.world;
 import ru.nexora.ai.NexoraAiDiagnostics;
 import ru.nexora.combat.LivingEntityAiService;
 import ru.nexora.combat.MobAiLoadController;
+import ru.nexora.combat.MobPhysicsService;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,6 +25,8 @@ public final class WorldEntityTickCoordinator {
     private final WorldTickPipeline tickPipeline;
     private final NexoraAiDiagnostics diagnostics;
     private final long tickBudgetNanos;
+    private final WorldEntityDecisionApplier decisionApplier;
+    private final MobPhysicsService physicsService;
 
     public WorldEntityTickCoordinator(
             WorldChunkResidencyManager residency,
@@ -56,6 +59,8 @@ public final class WorldEntityTickCoordinator {
             long tickBudgetNanos
     ) {
         this.world = world;
+        this.decisionApplier = world == null ? null : new WorldEntityDecisionApplier(world, entities);
+        this.physicsService = world == null ? null : new MobPhysicsService();
         this.residency = Objects.requireNonNull(residency, "residency");
         this.entities = Objects.requireNonNull(entities, "entities");
         this.tickPipeline = Objects.requireNonNull(tickPipeline, "tickPipeline");
@@ -71,6 +76,9 @@ public final class WorldEntityTickCoordinator {
             List<LivingEntityAiService.PlayerTarget> players,
             Consumer<LivingEntityAiService.Decision> decisionSink
     ) {
+        Objects.requireNonNull(playerChunks, "playerChunks");
+        Objects.requireNonNull(players, "players");
+        Objects.requireNonNull(decisionSink, "decisionSink");
         long started = System.nanoTime();
         WorldChunkResidencyManager.ResidencyPlan plan = residency.update(playerChunks, tick);
         World.ChunkResidencyResult worldChunkResult = world == null
@@ -85,7 +93,18 @@ public final class WorldEntityTickCoordinator {
 
         WorldTickPipeline.TickResult aiResult;
         try {
-            aiResult = tickPipeline.tick(tick, nowMillis, activeEntities, players, decisionSink);
+            aiResult = tickPipeline.tick(tick, nowMillis, activeEntities, players, decision -> {
+                if (decisionApplier != null) decisionApplier.apply(decision, nowMillis);
+                decisionSink.accept(decision);
+            });
+            // Apply gravity and knockback after AI movement, using fresh registry snapshots
+            // so physics sees positions written by the decision applier in this same tick.
+            if (physicsService != null) {
+                for (WorldLivingEntity active : activeEntities) {
+                    entities.find(active.runtimeId()).ifPresent(current ->
+                            physicsService.tick(world, current));
+                }
+            }
         } finally {
             diagnostics.recordSlowOperation("world-entity-tick",
                     Math.max(0L, System.nanoTime() - started), tickBudgetNanos);

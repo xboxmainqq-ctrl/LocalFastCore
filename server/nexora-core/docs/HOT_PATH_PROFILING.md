@@ -66,7 +66,7 @@ Unlike the isolated AI probe above, this workload registers mobs in the real
 `WorldLivingEntityManager`, updates `WorldChunkResidencyManager`, filters resident
 entities through `WorldEntityTickCoordinator`, and executes `WorldTickPipeline`
 including nearest-player targeting, priority scheduling, AI decisions and bounded
-profiler sampling. It warms up for 10 ticks, then measures 20 ticks at 100, 500, 1,000, 2,000 and 5,000 entities,
+profiler sampling. It warms up for 10 ticks, then measures 60 ticks at 100, 500, 1,000, 2,000 and 5,000 entities,
 with eight synthetic player targets and a resident 8-chunk view distance.
 
 It reports coordinator p50/p95/max, targeting p95, decision p95, produced decisions,

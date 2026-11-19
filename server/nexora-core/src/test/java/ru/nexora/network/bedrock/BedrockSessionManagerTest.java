@@ -2476,6 +2476,7 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(
                 List.of(new BedrockPacket(0x71, 0, 0, new byte[] {1})), true, 256));
 
+        completeChunkStreaming(manager, "physics-client");
         int beforeMovement = outboundFrames.size();
         BedrockPacket forward = new BedrockPacket(0x90, 0, 0,
                 movementInputPayload(0.5f, 65.0f, 0.715f, 0.0f, 1L, 0.0f, 1.0f));
@@ -2691,7 +2692,7 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(stackCompleted), true, 256));
         assertEquals(1, manager.resourcePackReadyCount());
-        assertEquals(15, outboundFrames.size());
+        assertEquals(13, outboundFrames.size());
         assertEquals(0x0b, decodeOutbound(outboundFrames.get(4), true).packetId());
         List<BedrockPacket> startGameBatch = BedrockBatchCodec.decode(
                 reassemble(List.of(outboundFrames.get(4))), true);
@@ -2709,10 +2710,10 @@ class BedrockSessionManagerTest {
                 reassemble(List.of(outboundFrames.get(11))), true);
         assertEquals(BedrockChunkRadiusCodec.UPDATED_PACKET_ID, biomeAndRadius.get(1).packetId());
         List<BedrockPacket> initialChunkPackets = new ArrayList<>();
-        for (int index = 12; index < 15; index++) {
+        for (int index = 12; index < 13; index++) {
             initialChunkPackets.addAll(decodeOutboundPackets(outboundFrames.get(index), true));
         }
-        assertEquals(9, initialChunkPackets.stream()
+        assertEquals(4, initialChunkPackets.stream()
                 .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
                 .count());
 
@@ -2720,10 +2721,10 @@ class BedrockSessionManagerTest {
         BedrockPacket initialized = new BedrockPacket(0x71, 0, 0, new byte[] {1});
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256));
-        assertEquals(18, outboundFrames.size());
-        assertEquals(0x31, decodeOutbound(outboundFrames.get(16), true).packetId());
+        assertEquals(16, outboundFrames.size());
+        assertEquals(0x31, decodeOutbound(outboundFrames.get(14), true).packetId());
         List<BedrockPacket> initialInventoryBatch = BedrockBatchCodec.decode(
-                reassemble(List.of(outboundFrames.get(16))), true);
+                reassemble(List.of(outboundFrames.get(14))), true);
         assertEquals(8, initialInventoryBatch.size());
         assertEquals(0x1f, initialInventoryBatch.get(1).packetId());
         assertEquals(0x31, initialInventoryBatch.get(2).packetId()); // armor container
@@ -3378,6 +3379,22 @@ class BedrockSessionManagerTest {
             value >>>= 7;
             out.write(value == 0 ? next : next | 0x80);
         } while (value != 0);
+    }
+
+    private static void completeChunkStreaming(BedrockSessionManager manager, String networkId) throws Exception {
+        Object state = getSessionField(manager, networkId, "chunkStreamingQueue");
+        java.lang.reflect.Field sessionsField = BedrockSessionManager.class.getDeclaredField("sessions");
+        sessionsField.setAccessible(true);
+        Object session = ((java.util.Map<?, ?>) sessionsField.get(manager)).get(networkId);
+        java.lang.reflect.Method process = BedrockSessionManager.class.getDeclaredMethod(
+                "processChunkStreaming", String.class, session.getClass());
+        process.setAccessible(true);
+        for (int attempt = 0; attempt < 128; attempt++) {
+            if (getSessionField(manager, networkId, "chunkStreamingQueue") == null) return;
+            process.invoke(manager, networkId, session);
+        }
+        assertNull(getSessionField(manager, networkId, "chunkStreamingQueue"),
+                "Chunk streaming should complete within the test pump budget");
     }
 
     private static Object getManagerField(BedrockSessionManager manager, String fieldName)

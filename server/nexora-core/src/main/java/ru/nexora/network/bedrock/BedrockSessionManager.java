@@ -3559,7 +3559,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             if (mobAiTaskScheduler.admit(ru.nexora.combat.MobAiTaskScheduler.Task.NAVIGATION,
                     aiPriority, hasActiveTarget, budgetElapsed, mobAiLoadController.aiBudgetNanos())
                     == ru.nexora.combat.MobAiTaskScheduler.Admission.DEFER) {
-                mobAiTaskScheduler.recordDeferral(ru.nexora.combat.MobAiTaskScheduler.Task.NAVIGATION);
                 mobAiLoadController.recordDeferred(mob.runtimeId());
                 continue;
             }

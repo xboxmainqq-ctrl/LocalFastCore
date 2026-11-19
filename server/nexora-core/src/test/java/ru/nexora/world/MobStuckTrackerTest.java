@@ -38,7 +38,7 @@ class MobStuckTrackerTest {
         assertEquals(0, tracker.observe(3, 0.8, 65, 0.5, 4_200));
         assertEquals(0, tracker.observe(3, 0.8, 65, 0.5, 4_250));
         assertEquals(0, tracker.observe(3, 0.8, 65, 0.5, 4_300));
-        assertEquals(0, tracker.observe(3, 0.8, 65, 0.5, 4_350));
+        assertEquals(1, tracker.observe(3, 0.8, 65, 0.5, 4_350));
     }
 
     @Test

@@ -1608,6 +1608,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         .mapToInt(state -> state.chunkStreamingQueue == null
                                 ? 0 : state.chunkStreamingQueue.remaining()).sum())
                 .append(", chunkStreamingPendingPeak=").append(chunkStreamingPendingPeak.get())
+                .append(", worldChunkLoadsDeferred=").append(world.pendingChunkLoadCount())
+                .append(", worldChunkLoadBudgetPerTick=").append(MAX_WORLD_CHUNK_LOADS_PER_TICK)
                 .append(", chunkStreamingP95Ns=").append(hotPathProfiler.snapshot(
                         ru.nexora.ai.HotPathProfiler.Path.BEDROCK_CHUNK_STREAMING).p95Nanos())
                 .append(", outboundDrainP95Ns=").append(hotPathProfiler.snapshot(
@@ -3488,7 +3490,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         long residencyStartedNanos = nanoTime.getAsLong();
         WorldChunkResidencyManager.ResidencyPlan residencyPlan =
                 chunkResidency.update(playerChunks, entityChunks, Math.max(0L, nowMillis / 50L));
-        world.applyChunkResidencyPlan(residencyPlan);
+        world.applyChunkResidencyPlan(residencyPlan, MAX_WORLD_CHUNK_LOADS_PER_TICK);
         hotPathProfiler.record(ru.nexora.ai.HotPathProfiler.Path.CHUNK_RESIDENCY,
                 Math.max(0L, nanoTime.getAsLong() - residencyStartedNanos));
         ru.nexora.ai.NexoraAiDiagnostics worldDiagnostics = aiDiagnostics;
@@ -6379,6 +6381,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     private static final int MAX_CHUNK_PACKETS_PER_BATCH = 4;
     private static final int MAX_CHUNKS_PER_SESSION_TICK = 4;
+    private static final int MAX_WORLD_CHUNK_LOADS_PER_TICK = 16;
 
     private void sendChunkArea(String networkId, SessionState state, int centerX, int centerZ) {
         ChunkStreamingQueue pending = state.chunkStreamingQueue;

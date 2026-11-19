@@ -158,7 +158,7 @@ public final class WorldTickPipeline {
             }
             decisionSink.accept(decision);
             if (decision.attack()) {
-                nextAttackAtMillis.put(mob.uniqueId(), attackDeadline(nowMillis));
+                nextAttackAtMillis.put(mob.uniqueId(), attackDeadline(nowMillis, mob.identifier()));
             }
             decisions++;
             loadController.recordBudgetNanos(System.nanoTime() - decisionStart);
@@ -184,8 +184,8 @@ public final class WorldTickPipeline {
                 ? MobAiLoadController.Priority.HIGH : MobAiLoadController.Priority.NORMAL;
     }
 
-    private static long attackDeadline(long nowMillis) {
-        long cooldown = LivingEntityAiService.ATTACK_COOLDOWN_MILLIS;
+    private static long attackDeadline(long nowMillis, String mobIdentifier) {
+        long cooldown = LivingEntityAiService.attackCooldownMillisFor(mobIdentifier);
         return nowMillis > Long.MAX_VALUE - cooldown ? Long.MAX_VALUE : nowMillis + cooldown;
     }
 

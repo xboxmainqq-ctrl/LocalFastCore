@@ -46,6 +46,19 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockSessionManagerTest {
     @Test
+    void mobAttackDeadlineSaturatesInsteadOfOverflowing() {
+        assertEquals(Long.MAX_VALUE - 500L,
+                BedrockSessionManager.mobAttackDeadline(Long.MAX_VALUE - 1_000L, 500L));
+        assertEquals(Long.MAX_VALUE,
+                BedrockSessionManager.mobAttackDeadline(Long.MAX_VALUE - 500L, 1_000L));
+        assertEquals(1_500L, BedrockSessionManager.mobAttackDeadline(1_000L, 500L));
+        assertThrows(IllegalArgumentException.class,
+                () -> BedrockSessionManager.mobAttackDeadline(-1L, 500L));
+        assertThrows(IllegalArgumentException.class,
+                () -> BedrockSessionManager.mobAttackDeadline(1_000L, -1L));
+    }
+
+    @Test
     void adminRuntimeSummaryIncludesActualMobAiAndJvmResourceMetrics() throws Exception {
         ru.nexora.world.World testWorld = new ru.nexora.world.World(
                 "admin-metrics-world", 0L, new ru.nexora.world.FlatWorldGenerator());

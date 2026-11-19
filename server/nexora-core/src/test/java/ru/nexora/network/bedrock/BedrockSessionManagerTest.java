@@ -3752,4 +3752,60 @@ class BedrockSessionManagerTest {
         manager.close();
     }
 
+
+    @Test
+    void livingActorReplicationSpawnsAndDespawnsAcrossRecipientChunkViews() throws Exception {
+        Map<String, List<byte[]>> outboundByPlayer = new java.util.concurrent.ConcurrentHashMap<>();
+        ru.nexora.world.World world = new ru.nexora.world.World(
+                "actor-replication-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                world, (networkId, label, frame) -> outboundByPlayer
+                        .computeIfAbsent(networkId, ignored -> new ArrayList<>()).add(frame),
+                event -> {});
+        manager.onIdentity("watcher-a", new NetherNetClientIdentity(
+                "watcher-a-token", new byte[] {31}, "watcher-a-xuid",
+                "WatcherA", "playfab-a", "20CA2", null));
+        manager.onIdentity("watcher-b", new NetherNetClientIdentity(
+                "watcher-b-token", new byte[] {32}, "watcher-b-xuid",
+                "WatcherB", "playfab-b", "20CA2", null));
+        for (String networkId : List.of("watcher-a", "watcher-b")) {
+            setSessionField(manager, networkId, "clientInitialized", true);
+        }
+        subscribeChunk(manager, "watcher-a", 0, 0);
+        subscribeChunk(manager, "watcher-b", 1, 0);
+
+        var zombie = manager.spawnLivingEntity("minecraft:zombie", 20.0f, 15.5, 65.0, 0.5);
+        assertTrue(outboundByPlayer.getOrDefault("watcher-a", List.of()).stream()
+                .flatMap(frame -> decodeOutboundAll(frame, true).stream())
+                .anyMatch(packet -> packet.packetId() == BedrockAddActorCodec.ADD_ACTOR_PACKET_ID));
+        assertFalse(outboundByPlayer.getOrDefault("watcher-b", List.of()).stream()
+                .flatMap(frame -> decodeOutboundAll(frame, true).stream())
+                .anyMatch(packet -> packet.packetId() == BedrockAddActorCodec.ADD_ACTOR_PACKET_ID),
+                "A client outside the actor's chunk view must not receive its spawn");
+
+        world.livingEntities().move(zombie.runtimeId(), 16.5, 65.0, 0.5).orElseThrow();
+        BedrockPacket movement = BedrockMoveActorAbsoluteCodec.create(
+                zombie.runtimeId(), 16.5, 65.0, 0.5, 0.0f, 90.0f, 90.0f, true);
+        java.lang.reflect.Method broadcast = BedrockSessionManager.class
+                .getDeclaredMethod("broadcastLivingActorPacket", BedrockPacket.class);
+        broadcast.setAccessible(true);
+        broadcast.invoke(manager, movement);
+
+        List<BedrockPacket> watcherAPackets = outboundByPlayer.get("watcher-a").stream()
+                .flatMap(frame -> decodeOutboundAll(frame, true).stream()).toList();
+        List<BedrockPacket> watcherBPackets = outboundByPlayer.get("watcher-b").stream()
+                .flatMap(frame -> decodeOutboundAll(frame, true).stream()).toList();
+        assertTrue(watcherAPackets.stream().anyMatch(packet ->
+                packet.packetId() == BedrockAddItemActorCodec.REMOVE_ACTOR_PACKET_ID),
+                "The old chunk watcher must receive RemoveActor");
+        assertTrue(watcherBPackets.stream().anyMatch(packet ->
+                packet.packetId() == BedrockAddActorCodec.ADD_ACTOR_PACKET_ID),
+                "The new chunk watcher must receive AddActor with current actor state");
+        assertFalse(watcherBPackets.stream().anyMatch(packet ->
+                packet.packetId() == BedrockMoveActorAbsoluteCodec.MOVE_ACTOR_ABSOLUTE_PACKET_ID),
+                "A newly tracking client receives a current spawn, not a stale movement delta");
+        manager.close();
+    }
+
 }

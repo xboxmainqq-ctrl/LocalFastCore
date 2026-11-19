@@ -7,6 +7,9 @@ import dev.onvoid.webrtc.RTCAnswerOptions;
 import dev.onvoid.webrtc.RTCConfiguration;
 import dev.onvoid.webrtc.RTCPeerConnection;
 import dev.onvoid.webrtc.RTCPeerConnectionState;
+import dev.onvoid.webrtc.RTCStats;
+import dev.onvoid.webrtc.RTCStatsReport;
+import dev.onvoid.webrtc.RTCStatsType;
 import dev.onvoid.webrtc.RTCDataChannel;
 import dev.onvoid.webrtc.RTCDataChannelBuffer;
 import dev.onvoid.webrtc.RTCDataChannelObserver;
@@ -44,6 +47,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
     private static final long DEFAULT_TIMEOUT_MILLIS = 15_000;
     private static final long OUTBOUND_HIGH_WATERMARK_BYTES = 512L * 1024L;
     private static final long OUTBOUND_LOW_WATERMARK_BYTES = 256L * 1024L;
+    private static final long TRANSPORT_STATS_INTERVAL_SECONDS = 5L;
 
     private final PeerConnectionFactory factory;
     private final NetherNetIdentityService identityService;
@@ -130,6 +134,8 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
             return thread;
         });
         this.sessionReaper.scheduleAtFixedRate(this::reapIdleSessions, 10, 10, TimeUnit.SECONDS);
+        this.sessionReaper.scheduleAtFixedRate(this::sampleTransportStats,
+                TRANSPORT_STATS_INTERVAL_SECONDS, TRANSPORT_STATS_INTERVAL_SECONDS, TimeUnit.SECONDS);
     }
 
     @Override
@@ -255,6 +261,22 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         });
     }
 
+    /** Returns the latest WebRTC transport-level sample, or null for an unknown peer. */
+    public TransportMetrics transportMetrics(String networkId) {
+        PeerSession session = sessions.get(networkId);
+        return session == null ? null : session.transportMetrics();
+    }
+
+    /** A transport-level ICE RTT sample; it is not the Bedrock gameplay ping. */
+    public record TransportMetrics(double rttMillis, long bytesSent, long bytesReceived,
+                                   long sampledAtMillis) {
+    }
+
+    private void sampleTransportStats() {
+        if (closed.get()) return;
+        sessions.values().forEach(PeerSession::requestTransportStats);
+    }
+
     private static CompletableFuture<Void> setRemoteDescription(
             RTCPeerConnection peer,
             String offer
@@ -334,6 +356,11 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         private final Map<String, AtomicBoolean> outboundDrainScheduled = new ConcurrentHashMap<>();
         private final Object outboundLock = new Object();
         private final AtomicBoolean sessionClosed = new AtomicBoolean();
+        private final AtomicBoolean transportStatsPending = new AtomicBoolean();
+        private volatile double transportRttMillis = -1.0;
+        private volatile long transportBytesSent = -1L;
+        private volatile long transportBytesReceived = -1L;
+        private volatile long transportStatsSampledAtMillis;
         private volatile long lastActivityNanos = System.nanoTime();
         private volatile boolean connected;
         private volatile RTCPeerConnection peer;
@@ -424,6 +451,53 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
                     }
                 }
             });
+        }
+
+        private TransportMetrics transportMetrics() {
+            return new TransportMetrics(transportRttMillis, transportBytesSent,
+                    transportBytesReceived, transportStatsSampledAtMillis);
+        }
+
+        private void requestTransportStats() {
+            RTCPeerConnection current = peer;
+            if (sessionClosed.get() || current == null
+                    || !connected || !transportStatsPending.compareAndSet(false, true)) return;
+            try {
+                current.getStats(report -> {
+                    try {
+                        updateTransportMetrics(report);
+                    } finally {
+                        transportStatsPending.set(false);
+                    }
+                });
+            } catch (RuntimeException failure) {
+                transportStatsPending.set(false);
+            }
+        }
+
+        private void updateTransportMetrics(RTCStatsReport report) {
+            if (sessionClosed.get() || report == null) return;
+            for (RTCStats stat : report.getStats().values()) {
+                if (stat.getType() != RTCStatsType.CANDIDATE_PAIR) continue;
+                Map<String, Object> attributes = stat.getAttributes();
+                if (!Boolean.TRUE.equals(attributes.get("nominated"))) continue;
+                if (!"succeeded".equals(attributes.get("state"))) continue;
+                Object rtt = attributes.get("currentRoundTripTime");
+                Object sent = attributes.get("bytesSent");
+                Object received = attributes.get("bytesReceived");
+                if (rtt instanceof Number rttSeconds && Double.isFinite(rttSeconds.doubleValue())
+                        && rttSeconds.doubleValue() >= 0.0) {
+                    transportRttMillis = rttSeconds.doubleValue() * 1000.0;
+                }
+                if (sent instanceof Number sentBytes && sentBytes.longValue() >= 0) {
+                    transportBytesSent = sentBytes.longValue();
+                }
+                if (received instanceof Number receivedBytes && receivedBytes.longValue() >= 0) {
+                    transportBytesReceived = receivedBytes.longValue();
+                }
+                transportStatsSampledAtMillis = System.currentTimeMillis();
+                return;
+            }
         }
 
         private void sendFrame(String channelLabel, RTCDataChannel channel, byte[] frame) throws Exception {

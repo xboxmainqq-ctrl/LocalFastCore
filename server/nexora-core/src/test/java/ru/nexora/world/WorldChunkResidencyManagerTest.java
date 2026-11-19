@@ -271,4 +271,23 @@ class WorldChunkResidencyManagerTest {
         assertTrue(plan.load().size() <= 3);
     }
 
+    @Test
+    void unloadGraceStartsWhenTheLastPlayerLeavesAnEstablishedView() {
+        WorldChunkResidencyManager manager = new WorldChunkResidencyManager(1, 20);
+        var player = List.of(new WorldChunkResidencyManager.PlayerChunk(0, 0));
+
+        manager.update(player, 0);
+        manager.update(player, 100);
+        manager.update(player, 500);
+
+        var grace = manager.update(List.of(), 519);
+        assertTrue(grace.unload().isEmpty(),
+                "A long-lived view must receive its full grace period after departure");
+        assertEquals(5, grace.residentCount());
+
+        var expired = manager.update(List.of(), 520);
+        assertEquals(5, expired.unload().size());
+        assertEquals(0, expired.residentCount());
+    }
+
 }

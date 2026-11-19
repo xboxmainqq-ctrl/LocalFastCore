@@ -180,3 +180,9 @@ The first public NEXORA server does not need:
 - distributed ticking or shared live entity simulation.
 
 These can be designed when actual additional game servers are ready. The initial priority remains a stable, performant standalone server.
+
+## Current validation additions
+
+The test suite now includes a real two-process TCP transport integration test: two independent JVMs bind separate loopback listeners, authenticate with a configured peer key, send a bounded cluster message, and verify receiver delivery plus sender acknowledgement. This complements the existing independent-JVM JDBC online-lease race/restart tests; it does not yet simulate full Bedrock client handoff between two running game servers.
+
+The in-memory `ServerNodeRegistry` now exposes a stable ID-sorted health snapshot that includes stale and unhealthy nodes for operator monitoring. Delayed/out-of-order heartbeats cannot overwrite a newer load/health report. Routing queries continue to return only healthy, non-stale nodes.

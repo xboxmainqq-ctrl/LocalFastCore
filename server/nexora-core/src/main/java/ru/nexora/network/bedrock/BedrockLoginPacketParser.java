@@ -2,6 +2,8 @@ package ru.nexora.network.bedrock;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.StreamReadConstraints;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
@@ -14,8 +16,19 @@ import java.util.List;
 public final class BedrockLoginPacketParser {
     public static final int LOGIN_PACKET_ID = 1;
     public static final int MAX_CONNECTION_REQUEST_BYTES = 2 * 1024 * 1024;
+    public static final int MAX_CERTIFICATE_CHAIN_ENTRIES = 32;
+    public static final int MAX_CERTIFICATE_TOKEN_CHARS = 16_384;
+    public static final int MAX_AUTH_TOKEN_CHARS = 65_536;
+    public static final int MAX_CLIENT_DATA_TOKEN_CHARS = 1_048_576;
+    private static final int MAX_JSON_NESTING_DEPTH = 64;
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = new ObjectMapper(JsonFactory.builder()
+            .streamReadConstraints(StreamReadConstraints.builder()
+                    .maxNestingDepth(MAX_JSON_NESTING_DEPTH)
+                    .maxStringLength(MAX_CLIENT_DATA_TOKEN_CHARS)
+                    .maxNumberLength(128)
+                    .build())
+            .build());
 
     private BedrockLoginPacketParser() {
     }
@@ -76,6 +89,12 @@ public final class BedrockLoginPacketParser {
             if (multiplayerToken.isBlank()) {
                 throw new IllegalArgumentException("Login request is missing its multiplayer token");
             }
+            if (multiplayerToken.length() > MAX_AUTH_TOKEN_CHARS) {
+                throw new IllegalArgumentException("Login multiplayer token exceeds size limit");
+            }
+            if (rawClientDataToken.length() > MAX_CLIENT_DATA_TOKEN_CHARS) {
+                throw new IllegalArgumentException("Login client-data token exceeds size limit");
+            }
 
             List<String> chain = readCertificateChain(root);
             return new LoginRequest(clientProtocol, authenticationType,
@@ -100,10 +119,14 @@ public final class BedrockLoginPacketParser {
         if (chainNode == null) chainNode = root.get("chain");
         if (chainNode == null || !chainNode.isArray()) return List.of();
 
-        List<String> result = new ArrayList<>();
+        if (chainNode.size() > MAX_CERTIFICATE_CHAIN_ENTRIES) {
+            throw new IllegalArgumentException("Login certificate chain contains too many entries");
+        }
+        List<String> result = new ArrayList<>(chainNode.size());
         for (JsonNode token : chainNode) {
-            if (!token.isTextual() || token.asText().isBlank()) {
-                throw new IllegalArgumentException("Invalid token in Login certificate chain");
+            if (!token.isTextual() || token.asText().isBlank()
+                    || token.asText().length() > MAX_CERTIFICATE_TOKEN_CHARS) {
+                throw new IllegalArgumentException("Invalid or oversized token in Login certificate chain");
             }
             result.add(token.asText());
         }

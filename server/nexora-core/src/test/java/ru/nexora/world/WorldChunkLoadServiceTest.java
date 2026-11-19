@@ -177,6 +177,32 @@ class WorldChunkLoadServiceTest {
     }
 
     @Test
+    void failedStorageReadReleasesCoordinateForAnExplicitRetry() throws Exception {
+        AtomicInteger attempts = new AtomicInteger();
+        WorldChunkLoadService service = new WorldChunkLoadService((x, z) -> {
+            if (attempts.getAndIncrement() == 0) throw new IOException("temporary disk failure");
+            return Optional.of(new WorldChunk(x, z));
+        }, 1, 2);
+        try {
+            var failed = service.request("player-a", 9, -2);
+            ExecutionException failure = assertThrows(ExecutionException.class,
+                    () -> failed.get(5, TimeUnit.SECONDS));
+            assertInstanceOf(java.io.UncheckedIOException.class, failure.getCause());
+            assertEquals(0, service.inFlightLoads());
+            assertEquals(0, service.queuedLoads());
+
+            var retried = service.request("player-a", 9, -2);
+            WorldChunk restored = retried.get(5, TimeUnit.SECONDS).orElseThrow();
+            assertEquals(9, restored.chunkX());
+            assertEquals(-2, restored.chunkZ());
+            assertEquals(2, attempts.get(),
+                    "a failed disk read must not leave a poisoned in-flight future behind");
+        } finally {
+            service.close();
+        }
+    }
+
+    @Test
     void rejectsInvalidWorkerAndQueueBudgets() {
         assertThrows(IllegalArgumentException.class,
                 () -> new WorldChunkLoadService((x, z) -> Optional.empty(), 0, 1));

@@ -86,7 +86,7 @@ public final class WorldEntityTickCoordinator {
         WorldLivingEntityManager.ChunkSnapshot entitySnapshot =
                 entities.snapshotInChunks(residency.residentChunkCoordinates());
         int totalEntities = entitySnapshot.totalEntities();
-        List<WorldLivingEntity> activeEntities = new ArrayList<>(entitySnapshot.residentEntities());
+        List<WorldLivingEntity> activeEntities = entitySnapshot.residentEntities();
 
         WorldTickPipeline.TickResult aiResult;
         try {

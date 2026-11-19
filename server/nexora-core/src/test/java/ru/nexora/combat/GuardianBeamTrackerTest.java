@@ -13,7 +13,7 @@ class GuardianBeamTrackerTest {
                 tracker.tick(10L, "player-a", true, 1_000L));
         assertEquals(new GuardianBeamTracker.Result(true, false, 0.5),
                 tracker.tick(10L, "player-a", true, 1_750L));
-        assertEquals(GuardianBeamTracker.Result.IDLE,
+        assertEquals(new GuardianBeamTracker.Result(false, false, 0.0),
                 tracker.tick(10L, "player-a", false, 1_800L));
         assertEquals(new GuardianBeamTracker.Result(true, false, 0.0),
                 tracker.tick(10L, "player-a", true, 1_850L));

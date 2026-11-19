@@ -3904,6 +3904,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private void explodeGhastFireball(
             ru.nexora.combat.FireballProjectile fireball, long tick, long nowNanos
     ) {
+        broadcastPacket(BedrockLevelEventCodec.createExplosionParticle(
+                fireball.x(), fireball.y(), fireball.z()));
         int minX = (int) Math.floor(fireball.x() - ru.nexora.combat.GhastExplosion.BLOCK_RADIUS);
         int maxX = (int) Math.floor(fireball.x() + ru.nexora.combat.GhastExplosion.BLOCK_RADIUS);
         int minY = Math.max(WorldChunk.MIN_Y,

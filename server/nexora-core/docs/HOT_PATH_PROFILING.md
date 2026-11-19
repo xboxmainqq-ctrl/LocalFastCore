@@ -204,3 +204,14 @@ physical route, ISP latency, packet loss, or a saturated uplink. No end-to-end p
 or throughput claim is made. The queue's FIFO, ownership, byte/frame bounds, restore
 order and cleanup are covered by `NetherNetOutboundQueueTest`; live multi-client
 WebRTC congestion testing is still required.
+
+The negotiator also requests a WebRTC `getStats` snapshot every five seconds for
+connected peers. It records the nominated, succeeded ICE candidate pair's
+`currentRoundTripTime` (converted from seconds to milliseconds) and cumulative
+transport bytes sent/received. Sampling is asynchronous and guarded against
+overlapping requests; it does not run on the data-channel callback. This RTT is
+transport/ICE round-trip time, not the Bedrock client's gameplay ping. Data-channel
+traffic does not expose a trustworthy application packet-loss percentage through
+this candidate-pair sample, so NEXORA does not label ICE checks or missing counters
+as player packet loss. A live client test is still needed to validate which native
+stats fields are populated on each deployment platform.

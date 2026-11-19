@@ -94,18 +94,7 @@ public final class WorldStorage {
             output.writeInt((int) checksum.getValue());
         }
 
-        Path temporary = Files.createTempFile(chunksDirectory, ".nexora-chunk-", ".tmp");
-        try {
-            Files.write(temporary, fileBytes.toByteArray());
-            try {
-                Files.move(temporary, target,
-                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException ignored) {
-                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } finally {
-            Files.deleteIfExists(temporary);
-        }
+        ru.nexora.persistence.AtomicFileWriter.writeAtomically(target, fileBytes.toByteArray());
     }
 
     public Optional<WorldChunk> loadChunk(int chunkX, int chunkZ) throws IOException {

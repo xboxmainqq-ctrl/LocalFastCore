@@ -230,3 +230,11 @@ The limits can be tuned through environment variables before starting the server
 | `NEXORA_INBOUND_MAX_FRAME_BYTES` | `1048576` | Maximum size of one inbound frame |
 
 Values are validated at startup and invalid/out-of-range settings fail fast instead of silently falling back. The authenticated operator runtime summary exposes admitted/rejected frame and byte counters, tracked peers, and aggregate reassembly memory usage.
+
+
+## Runtime memory controls
+
+- `NEXORA_MAX_RESIDENT_CHUNKS` sets the per-world player-view residency target. The default is `8192`; values below `1` are rejected at startup. The configured value is passed into the production Bedrock session manager and its world residency planner.
+- The planner prioritizes chunks nearest to players, deduplicates overlapping player views, and defers outer chunks when the target is full. Deferred chunks are reconsidered on later world ticks as capacity becomes available.
+- Chunks containing live world entities are pinned and may temporarily exceed the configured target; preserving live entity state takes priority over the soft memory ceiling. This is a residency target, not a hard JVM heap limit, and direct world API callers can still request chunks outside player-view streaming.
+- The world still limits synchronous residency loads to 16 per simulation tick and persists dirty chunks before eviction.

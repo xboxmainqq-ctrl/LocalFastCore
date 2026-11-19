@@ -128,3 +128,18 @@ per-mob lookup time plus index-build time. These figures are microbenchmark resu
 not live server TPS or a guarantee for dense player clusters. The Bedrock actor
 replication test also verifies a mob crossing between two client chunk views and
 the reverse-index cleanup on disconnect.
+
+
+One observed GitHub CI microbenchmark run (1,000 mobs, four measured rounds; average
+lookup time per mob; environment-dependent):
+
+| Synthetic players | Full scan | Spatial index | Index build |
+|---:|---:|---:|---:|
+| 8 | 0.221 us | 0.237 us | 0.011 ms |
+| 64 | 1.341 us | 0.267 us | 0.083 ms |
+| 256 | 1.023 us | 0.296 us | 0.235 ms |
+| 1,024 | 2.535 us | 0.225 us | 0.630 ms |
+
+The index has a small fixed cost for very small player counts, but in this run it
+reduced per-mob lookup time by roughly 5x at 64 players and 11x at 1,024 players.
+These are synthetic lookup timings, not whole-tick or live-server speedups.

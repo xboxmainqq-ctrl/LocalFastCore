@@ -1,15 +1,16 @@
 package ru.nexora.network.nethernet;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
 
 /**
  * Bounded fixed-window admission budget for inbound NetherNet frames.
  *
  * The defaults deliberately allow substantial Bedrock burst traffic. This is a
- * transport safety ceiling, not a gameplay tick-rate limiter. State is released
- * only when the peer disconnects; unknown peers are rejected when the table is full.
+ * transport safety ceiling, not a gameplay tick-rate limiter. Per-peer windows
+ * are synchronized independently so unrelated players never contend on one lock.
  */
 public final class InboundPeerBudget {
     public static final long DEFAULT_WINDOW_NANOS = 5_000_000_000L;
@@ -21,11 +22,12 @@ public final class InboundPeerBudget {
     private final int maxFramesPerWindow;
     private final long maxBytesPerWindow;
     private final int maxTrackedPeers;
-    private final Map<String, Window> peers = new LinkedHashMap<>();
-    private long admittedFrames;
-    private long admittedBytes;
-    private long rejectedFrames;
-    private long rejectedBytes;
+    private final ConcurrentHashMap<String, Window> peers = new ConcurrentHashMap<>();
+    private final AtomicInteger trackedPeers = new AtomicInteger();
+    private final LongAdder admittedFrames = new LongAdder();
+    private final LongAdder admittedBytes = new LongAdder();
+    private final LongAdder rejectedFrames = new LongAdder();
+    private final LongAdder rejectedBytes = new LongAdder();
 
     public InboundPeerBudget() {
         this(DEFAULT_WINDOW_NANOS, DEFAULT_MAX_FRAMES_PER_WINDOW,
@@ -44,45 +46,70 @@ public final class InboundPeerBudget {
         this.maxTrackedPeers = maxTrackedPeers;
     }
 
-    /** Returns false without mutating the peer's accepted-window counters when over budget. */
-    public synchronized boolean tryAcquire(String peerId, int frameBytes, long nowNanos) {
+    /** Returns false without mutating accepted-window counters when over budget. */
+    public boolean tryAcquire(String peerId, int frameBytes, long nowNanos) {
         Objects.requireNonNull(peerId, "peerId");
         if (peerId.isBlank() || frameBytes < 0) {
             throw new IllegalArgumentException("Invalid inbound peer frame");
         }
-        Window window = peers.get(peerId);
-        if (window == null) {
-            if (peers.size() >= maxTrackedPeers) {
-                rejectedFrames++;
-                rejectedBytes += frameBytes;
+        while (true) {
+            Window window = windowFor(peerId, nowNanos);
+            if (window == null) {
+                rejectedFrames.increment();
+                rejectedBytes.add(frameBytes);
                 return false;
             }
-            window = new Window(nowNanos);
-            peers.put(peerId, window);
-        } else if (nowNanos < window.startedAtNanos
-                || nowNanos - window.startedAtNanos >= windowNanos) {
-            window.reset(nowNanos);
+            synchronized (window) {
+                // Disconnect may have removed this exact window while we waited.
+                // Retry against a new entry instead of admitting into detached state.
+                if (peers.get(peerId) != window) continue;
+                if (nowNanos < window.startedAtNanos
+                        || nowNanos - window.startedAtNanos >= windowNanos) {
+                    window.reset(nowNanos);
+                }
+                if (window.frames >= maxFramesPerWindow
+                        || frameBytes > maxBytesPerWindow - window.bytes) {
+                    rejectedFrames.increment();
+                    rejectedBytes.add(frameBytes);
+                    return false;
+                }
+                window.frames++;
+                window.bytes += frameBytes;
+                admittedFrames.increment();
+                admittedBytes.add(frameBytes);
+                return true;
+            }
         }
-
-        if (window.frames >= maxFramesPerWindow
-                || frameBytes > maxBytesPerWindow - window.bytes) {
-            rejectedFrames++;
-            rejectedBytes += frameBytes;
-            return false;
-        }
-        window.frames++;
-        window.bytes += frameBytes;
-        admittedFrames++;
-        admittedBytes += frameBytes;
-        return true;
     }
 
-    public synchronized void onDisconnected(String peerId) {
-        if (peerId != null) peers.remove(peerId);
+    private Window windowFor(String peerId, long nowNanos) {
+        Window existing = peers.get(peerId);
+        if (existing != null) return existing;
+
+        while (true) {
+            int current = trackedPeers.get();
+            if (current >= maxTrackedPeers) return null;
+            if (trackedPeers.compareAndSet(current, current + 1)) break;
+        }
+        Window created = new Window(nowNanos);
+        existing = peers.putIfAbsent(peerId, created);
+        if (existing == null) return created;
+        trackedPeers.decrementAndGet();
+        return existing;
     }
 
-    public synchronized Stats stats() {
-        return new Stats(admittedFrames, admittedBytes, rejectedFrames, rejectedBytes, peers.size());
+    public void onDisconnected(String peerId) {
+        if (peerId == null) return;
+        Window window = peers.get(peerId);
+        if (window == null) return;
+        synchronized (window) {
+            if (peers.remove(peerId, window)) trackedPeers.decrementAndGet();
+        }
+    }
+
+    public Stats stats() {
+        return new Stats(admittedFrames.sum(), admittedBytes.sum(), rejectedFrames.sum(),
+                rejectedBytes.sum(), trackedPeers.get());
     }
 
     public record Stats(long admittedFrames, long admittedBytes, long rejectedFrames,

@@ -41,6 +41,32 @@ class BedrockLoginPacketParserTest {
     }
 
     @Test
+    void rejectsCertificateChainsWithTooManyEntries() throws Exception {
+        StringBuilder chain = new StringBuilder("{\\"chain\\":[");
+        for (int i = 0; i <= BedrockLoginPacketParser.MAX_CERTIFICATE_CHAIN_ENTRIES; i++) {
+            if (i > 0) chain.append(',');
+            chain.append("\\"token-").append(i).append("\\"");
+        }
+        chain.append("],\\"Token\\":\\"game-server-token\\"}");
+        byte[] payload = loginPayload(2225,
+                connectionRequest(chain.toString(), "client-data-token"));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> BedrockLoginPacketParser.parse(new BedrockPacket(1, 0, 0, payload)));
+    }
+
+    @Test
+    void rejectsOversizedMultiplayerTokenBeforeReturningLoginRequest() throws Exception {
+        String oversizedToken = "x".repeat(BedrockLoginPacketParser.MAX_AUTH_TOKEN_CHARS + 1);
+        String chainJson = "{\\"chain\\":[],\\"Token\\":\\"" + oversizedToken + "\\"}";
+        byte[] payload = loginPayload(2225,
+                connectionRequest(chainJson, "client-data-token"));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> BedrockLoginPacketParser.parse(new BedrockPacket(1, 0, 0, payload)));
+    }
+
+    @Test
     void rejectsUnexpectedPacketAndTruncatedLengths() {
         assertThrows(IllegalArgumentException.class,
                 () -> BedrockLoginPacketParser.parse(new BedrockPacket(2, 0, 0, new byte[8])));

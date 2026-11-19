@@ -360,3 +360,11 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - Added a regression test that attacks with the original mob, replaces it with a distinct entity sharing the runtime ID, and verifies the replacement can attack immediately.
 - Existing deadline expiry and overflow handling remain unchanged.
 - Validation: source and test committed; Maven/CI result is pending.
+
+
+### 48. Species-specific melee recovery — IMPLEMENTED, CI PENDING
+- Added a species-aware attack cooldown profile while preserving the existing 1,000 ms baseline for ordinary mobs.
+- Bees and spiders use a modestly longer recovery; heavy mobs such as ravagers and hoglins recover more slowly; bosses/heavy hitters receive the longest configured interval.
+- WorldTickPipeline now schedules the next attack using the attacking mob's profile and stable unique entity identity.
+- Added tests for heavy-mob recovery timing, baseline compatibility and invalid identifiers.
+- Validation: source and tests committed; Maven/CI result is pending.

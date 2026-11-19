@@ -83,4 +83,40 @@ class WebRtcTransportMetricsTest {
         assertEquals(900L, summary.bytesReceived());
     }
 
+
+    @Test
+    void aggregatesOnlyFreshTransportThroughputSamples() {
+        var metrics = java.util.List.of(
+                new WebRtcSdpNegotiator.TransportMetrics(15.0, 1_000L, 2_000L, 9_500L));
+        var rates = java.util.List.of(
+                new WebRtcSdpNegotiator.TransportRate(1_500.0, 2_500.0, 9_500L),
+                new WebRtcSdpNegotiator.TransportRate(900.0, 1_100.0, 1_000L),
+                new WebRtcSdpNegotiator.TransportRate(-1.0, -1.0, 0L));
+
+        var summary = WebRtcSdpNegotiator.summarizeTransportMetrics(
+                1, metrics, rates, 10_000L, 2_000L);
+
+        assertEquals(1, summary.peersWithRate());
+        assertEquals(1_500.0, summary.sentBytesPerSecond(), 0.0001);
+        assertEquals(2_500.0, summary.receivedBytesPerSecond(), 0.0001);
+    }
+
+    @Test
+    void reportsUnavailableThroughputWhenAllRateSamplesAreStale() {
+        var staleRate = new WebRtcSdpNegotiator.TransportRate(100.0, 200.0, 1_000L);
+        var summary = WebRtcSdpNegotiator.summarizeTransportMetrics(
+                1, java.util.List.of(), java.util.List.of(staleRate), 10_000L, 500L);
+
+        assertEquals(0, summary.peersWithRate());
+        assertEquals(-1.0, summary.sentBytesPerSecond());
+        assertEquals(-1.0, summary.receivedBytesPerSecond());
+    }
+
+    @Test
+    void rejectsNullRateCollection() {
+        assertThrows(NullPointerException.class, () ->
+                WebRtcSdpNegotiator.summarizeTransportMetrics(
+                        0, java.util.List.of(), null, 0L, 1L));
+    }
+
 }

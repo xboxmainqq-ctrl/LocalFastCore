@@ -70,6 +70,12 @@ public final class NetherNetOutboundQueue {
         return frames.size();
     }
 
+    /** Returns the next frame size without removing it, or -1 when empty. */
+    public synchronized int nextFrameSize() {
+        byte[] frame = frames.peekFirst();
+        return frame == null ? -1 : frame.length;
+    }
+
     public synchronized long queuedBytes() {
         return queuedBytes;
     }

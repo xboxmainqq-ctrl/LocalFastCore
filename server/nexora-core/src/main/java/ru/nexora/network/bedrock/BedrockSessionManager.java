@@ -817,7 +817,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             String networkId = entry.getKey();
             SessionState state = entry.getValue();
             synchronized (state) {
-                if (state.transferFrozen || state.rejected || !state.loginAuthenticated) continue;
+                if (state.transferFrozen || state.rejected || state.onlineLeaseLost || !state.loginAuthenticated) continue;
                 try {
                     // Autosave must retain the lease and verify it before any
                     // shared checkpoint write; releasing here would open a

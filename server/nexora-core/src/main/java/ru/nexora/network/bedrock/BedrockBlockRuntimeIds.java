@@ -5,13 +5,21 @@ import ru.nexora.world.BlockType;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.Objects;
 
 /** Protocol-2225 block network IDs: FNV-1a hashes of little-endian vanilla block-state NBT. */
 public final class BedrockBlockRuntimeIds {
+    private static final int[] RUNTIME_IDS = createRuntimeIds();
+
     private BedrockBlockRuntimeIds() {
     }
 
     public static int forBlock(BlockType type) {
+        Objects.requireNonNull(type, "type");
+        return RUNTIME_IDS[type.internalId()];
+    }
+
+    private static int computeRuntimeId(BlockType type) {
         return switch (type) {
             case AIR -> hashState("minecraft:air");
             case STONE -> hashState("minecraft:stone");
@@ -38,6 +46,15 @@ public final class BedrockBlockRuntimeIds {
             case SMOKER -> hashState("minecraft:smoker", "minecraft:cardinal_direction", "south");
             case SPAWNER -> hashState("minecraft:mob_spawner");
         };
+    }
+
+    private static int[] createRuntimeIds() {
+        BlockType[] blocks = BlockType.values();
+        int[] runtimeIds = new int[blocks.length];
+        for (BlockType block : blocks) {
+            runtimeIds[block.internalId()] = computeRuntimeId(block);
+        }
+        return runtimeIds;
     }
 
     static int hashState(String name) {

@@ -83,3 +83,20 @@ The entity registry is keyed by runtime ID in a concurrent sorted map. This pres
 stable runtime-ID iteration order without sorting a newly allocated entity snapshot
 on every world tick. An atomic entity count keeps population checks constant-time.
 The coordinator benchmark is retained to detect regressions in this hot path.
+
+
+## Bedrock actor replication fanout
+
+Actor spawn, movement, and removal broadcasts now encode and fragment each identical
+Bedrock packet batch once per broadcast, then fan the prepared frames out to the
+sessions whose chunk views currently track the actor. Each transport call receives
+its own byte-array copy so a transport implementation cannot mutate another
+recipient's payload. This removes repeated batch construction, compression and
+fragmentation work from the per-recipient loop without changing packet ordering,
+reliability, or visibility decisions.
+
+This is an implementation-level optimization, not a measured throughput claim.
+The existing `BedrockSessionManagerTest` coverage verifies chunk-view spawn,
+despawn and stale-movement behavior. A dedicated fanout benchmark with multiple
+real Bedrock clients is still required to quantify network-thread cost, queueing,
+bytes per second and end-to-end tick latency.

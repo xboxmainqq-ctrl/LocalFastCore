@@ -73,6 +73,23 @@ class MobSpawnerStorageTest {
         assertThrows(java.io.IOException.class, storage::load);
     }
     @Test
+    void restoresPreviousVerifiedSpawnerSnapshotWhenPrimaryIsCorrupted() throws Exception {
+        MobSpawnerStorage storage = new MobSpawnerStorage(temporaryDirectory);
+        var first = java.util.List.of(new MobSpawnerState(1, 65, 2, "minecraft:zombie", 200, 400));
+        var second = java.util.List.of(new MobSpawnerState(1, 65, 2, "minecraft:skeleton", 300, 500));
+        storage.save(first);
+        storage.save(second);
+        Path primary = temporaryDirectory.resolve("mob-spawners.dat");
+        Path backup = temporaryDirectory.resolve("mob-spawners.dat.bak");
+        byte[] damaged = Files.readAllBytes(primary);
+        damaged[5] ^= 1;
+        Files.write(primary, damaged);
+
+        assertEquals(first, storage.load());
+        assertArrayEquals(Files.readAllBytes(backup), Files.readAllBytes(primary));
+    }
+
+    @Test
     void migratesLegacyAbsoluteTimerToConfiguredRemainingDelay() throws Exception {
         ByteArrayOutputStream bodyBytes = new ByteArrayOutputStream();
         try (DataOutputStream out = new DataOutputStream(bodyBytes)) {

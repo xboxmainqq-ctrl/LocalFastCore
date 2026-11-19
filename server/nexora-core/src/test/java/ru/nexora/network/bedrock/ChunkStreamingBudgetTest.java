@@ -83,13 +83,15 @@ class ChunkStreamingBudgetTest {
 
         // Register every active player before measuring a full budget window.
         assertTrue(budget.tryAcquire("player-0", 0));
+        int[] admitted = new int[players];
+        admitted[0] = 1;
         for (int player = 1; player < players; player++) {
             assertFalse(budget.tryAcquire("player-" + player, 0));
         }
         budget.yield("player-0", 0);
-
-        int[] admitted = new int[players];
+ 
         for (int window = 1; window <= 2; window++) {
+            budget.yield("player-0", window * 100L);
             int before = budget.globalUsage();
             for (int pass = 0; pass < 2; pass++) {
                 for (int player = 0; player < players; player++) {

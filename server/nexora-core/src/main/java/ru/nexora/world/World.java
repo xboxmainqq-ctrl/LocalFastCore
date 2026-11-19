@@ -195,6 +195,18 @@ public final class World {
         });
     }
 
+    public int activeChunkIoWorkers() {
+        return chunkLoadService == null ? 0 : chunkLoadService.activeWorkers();
+    }
+
+    public int queuedChunkIoLoads() {
+        return chunkLoadService == null ? 0 : chunkLoadService.queuedLoads();
+    }
+
+    public int inFlightChunkIoLoads() {
+        return chunkLoadService == null ? 0 : chunkLoadService.inFlightLoads();
+    }
+
     /** Stops bounded chunk-storage workers during world shutdown. */
     public void closeChunkLoadService() {
         if (chunkLoadService != null) chunkLoadService.close();

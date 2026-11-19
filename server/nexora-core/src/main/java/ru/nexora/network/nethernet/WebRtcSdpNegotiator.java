@@ -441,7 +441,11 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
                 try {
                     channel.send(new RTCDataChannelBuffer(ByteBuffer.wrap(frame), true));
                 } catch (Exception exception) {
-                    if (channel.getState() == RTCDataChannelState.OPEN && queue.offer(frame)) return;
+                    if (channel.getState() == RTCDataChannelState.OPEN) {
+                        if (queue.offer(frame)) return;
+                        closeForProtocolError("outbound queue limit exceeded after channel back-pressure");
+                        throw new IllegalStateException("NetherNet outbound queue limit exceeded", exception);
+                    }
                     throw exception;
                 }
             }

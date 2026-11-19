@@ -3920,8 +3920,47 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             || !world.isChunkLoadedAt(x, z)) continue;
                     BlockType block = world.getBlock(x, y, z);
                     if (!ru.nexora.combat.GhastExplosion.canDestroy(block)) continue;
-                    world.setBlock(x, y, z, BlockType.AIR);
-                    broadcastBlockUpdate(x, y, z, BlockType.AIR);
+
+                    ItemStack drop = ru.nexora.combat.GhastExplosion.dropFor(block);
+                    if (drop != null && itemRegistry.findByIdentifier(drop.itemId()) == null) {
+                        // Never erase a block when this server build cannot represent its drop.
+                        continue;
+                    }
+                    WorldItemEntity droppedEntity = null;
+                    if (drop != null) {
+                        try {
+                            double dx = x + 0.5 - fireball.x();
+                            double dz = z + 0.5 - fireball.z();
+                            double horizontal = Math.sqrt(dx * dx + dz * dz);
+                            double velocityX = horizontal < 1.0e-6 ? 0.0 : dx / horizontal * 0.18;
+                            double velocityZ = horizontal < 1.0e-6 ? 0.0 : dz / horizontal * 0.18;
+                            droppedEntity = world.itemEntities().spawn(drop,
+                                    x + 0.5, y + 0.55, z + 0.5,
+                                    velocityX, 0.22, velocityZ, System.currentTimeMillis(),
+                                    WorldItemEntityManager.DEFAULT_PICKUP_DELAY_MILLIS, null);
+                        } catch (RuntimeException exception) {
+                            System.err.println("NEXORA: unable to create ghast block drop at "
+                                    + x + " " + y + " " + z + ": " + exception.getMessage());
+                            continue;
+                        }
+                    }
+                    try {
+                        world.setBlock(x, y, z, BlockType.AIR);
+                        broadcastBlockUpdate(x, y, z, BlockType.AIR);
+                        if (droppedEntity != null) {
+                            broadcastItemActor(droppedEntity,
+                                    BedrockAddItemActorCodec.createAddItemActor(droppedEntity, itemRegistry));
+                        }
+                    } catch (RuntimeException exception) {
+                        if (droppedEntity != null) {
+                            try {
+                                world.itemEntities().remove(droppedEntity.runtimeId());
+                            } catch (RuntimeException rollbackFailure) {
+                                exception.addSuppressed(rollbackFailure);
+                            }
+                        }
+                        throw exception;
+                    }
                 }
             }
         }

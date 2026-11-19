@@ -2,6 +2,11 @@ package ru.nexora.world;
 
 import java.io.IOException;
 import java.util.Optional;
+import java.util.ArrayDeque;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -33,6 +38,14 @@ public final class WorldChunkLoadService implements AutoCloseable {
     private final ThreadPoolExecutor executor;
     private final ConcurrentMap<Long, CompletableFuture<Optional<WorldChunk>>> inFlight =
             new ConcurrentHashMap<>();
+    private final Map<String, ArrayDeque<Runnable>> pendingBySession = new HashMap<>();
+    private final ArrayDeque<String> sessionRotation = new ArrayDeque<>();
+    private final Set<String> activeSessions = new HashSet<>();
+    private final int workers;
+    private final int queueCapacity;
+    private int queuedLoads;
+    private int dispatchedLoads;
+    private boolean closed;
 
     public WorldChunkLoadService(WorldStorage storage) {
         this(storage::loadChunk, DEFAULT_WORKERS, DEFAULT_QUEUE_CAPACITY);
@@ -43,6 +56,8 @@ public final class WorldChunkLoadService implements AutoCloseable {
             throw new IllegalArgumentException("Chunk I/O workers and queue capacity must be positive");
         }
         this.loader = java.util.Objects.requireNonNull(loader, "loader");
+        this.workers = workers;
+        this.queueCapacity = queueCapacity;
         AtomicInteger threadNumber = new AtomicInteger();
         ThreadFactory factory = task -> {
             Thread thread = new Thread(task, "nexora-chunk-io-" + threadNumber.incrementAndGet());
@@ -53,17 +68,45 @@ public final class WorldChunkLoadService implements AutoCloseable {
                 new ArrayBlockingQueue<>(queueCapacity), factory, new ThreadPoolExecutor.AbortPolicy());
     }
 
-    /** Starts or joins one storage read. Identical coordinates share the same future while in flight. */
+    /** Starts or joins one storage read, scheduling at most one active read per session. */
     public CompletableFuture<Optional<WorldChunk>> request(int chunkX, int chunkZ) {
-        if (executor.isShutdown()) {
-            return CompletableFuture.failedFuture(new IllegalStateException("Chunk load service is closed"));
-        }
+        return request("default", chunkX, chunkZ);
+    }
+
+    /**
+     * Per-session round-robin admission prevents one player's view from occupying
+     * every worker and queued slot. Duplicate coordinates still share one future.
+     */
+    public CompletableFuture<Optional<WorldChunk>> request(String sessionKey, int chunkX, int chunkZ) {
+        java.util.Objects.requireNonNull(sessionKey, "sessionKey");
+        if (sessionKey.isBlank()) throw new IllegalArgumentException("sessionKey must not be blank");
         long key = ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
-        CompletableFuture<Optional<WorldChunk>> existing = inFlight.get(key);
-        if (existing != null) return existing;
-        CompletableFuture<Optional<WorldChunk>> result = new CompletableFuture<>();
-        existing = inFlight.putIfAbsent(key, result);
-        if (existing != null) return existing;
+        synchronized (this) {
+            if (closed) {
+                return CompletableFuture.failedFuture(new IllegalStateException("Chunk load service is closed"));
+            }
+            CompletableFuture<Optional<WorldChunk>> existing = inFlight.get(key);
+            if (existing != null) return existing;
+            if (queuedLoads >= queueCapacity) {
+                return CompletableFuture.failedFuture(new RejectedExecutionException(
+                        "NEXORA chunk I/O fair queue is full"));
+            }
+            CompletableFuture<Optional<WorldChunk>> result = new CompletableFuture<>();
+            existing = inFlight.putIfAbsent(key, result);
+            if (existing != null) return existing;
+            ArrayDeque<Runnable> sessionQueue = pendingBySession.computeIfAbsent(sessionKey, ignored -> {
+                sessionRotation.addLast(sessionKey);
+                return new ArrayDeque<>();
+            });
+            sessionQueue.addLast(() -> executeLoad(key, chunkX, chunkZ, result, sessionKey));
+            queuedLoads++;
+            dispatchFairly();
+            return result;
+        }
+    }
+
+    private void executeLoad(long key, int chunkX, int chunkZ,
+                             CompletableFuture<Optional<WorldChunk>> result, String sessionKey) {
         try {
             executor.execute(() -> {
                 try {
@@ -75,13 +118,57 @@ public final class WorldChunkLoadService implements AutoCloseable {
                     result.completeExceptionally(failure);
                 } finally {
                     inFlight.remove(key, result);
+                    synchronized (WorldChunkLoadService.this) {
+                        activeSessions.remove(sessionKey);
+                        dispatchedLoads--;
+                        dispatchFairly();
+                    }
                 }
             });
         } catch (RejectedExecutionException saturated) {
             result.completeExceptionally(saturated);
             inFlight.remove(key, result);
+            synchronized (this) {
+                activeSessions.remove(sessionKey);
+                dispatchedLoads--;
+                dispatchFairly();
+            }
         }
-        return result;
+    }
+
+    /** Called only while holding this service's monitor. */
+    private void dispatchFairly() {
+        if (closed) return;
+        int dispatchLimit = workers + queueCapacity;
+        while (dispatchedLoads < dispatchLimit && !sessionRotation.isEmpty()) {
+            int candidates = sessionRotation.size();
+            boolean dispatched = false;
+            for (int i = 0; i < candidates; i++) {
+                String sessionKey = sessionRotation.removeFirst();
+                ArrayDeque<Runnable> queue = pendingBySession.get(sessionKey);
+                if (queue == null || queue.isEmpty()) {
+                    pendingBySession.remove(sessionKey);
+                    continue;
+                }
+                if (activeSessions.contains(sessionKey)) {
+                    sessionRotation.addLast(sessionKey);
+                    continue;
+                }
+                Runnable task = queue.removeFirst();
+                queuedLoads--;
+                activeSessions.add(sessionKey);
+                dispatchedLoads++;
+                if (queue.isEmpty()) {
+                    pendingBySession.remove(sessionKey);
+                } else {
+                    sessionRotation.addLast(sessionKey);
+                }
+                task.run();
+                dispatched = true;
+                break;
+            }
+            if (!dispatched) break;
+        }
     }
 
     /** Synchronous correctness fallback used when the bounded worker queue is saturated. */
@@ -98,20 +185,31 @@ public final class WorldChunkLoadService implements AutoCloseable {
         return executor.getActiveCount();
     }
 
-    public int queuedLoads() {
-        return executor.getQueue().size();
+    public synchronized int queuedLoads() {
+        return queuedLoads + executor.getQueue().size();
     }
 
     public int inFlightLoads() {
         return inFlight.size();
     }
 
-    public int remainingQueueCapacity() {
-        return executor.getQueue().remainingCapacity();
+    public synchronized int remainingQueueCapacity() {
+        return Math.max(0, queueCapacity - queuedLoads);
     }
 
     @Override
     public void close() {
+        synchronized (this) {
+            closed = true;
+            pendingBySession.clear();
+            sessionRotation.clear();
+            queuedLoads = 0;
+            for (CompletableFuture<Optional<WorldChunk>> future : inFlight.values()) {
+                if (!future.isDone()) future.completeExceptionally(
+                        new IllegalStateException("Chunk load service is closed"));
+            }
+            inFlight.clear();
+        }
         executor.shutdown();
         try {
             if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {

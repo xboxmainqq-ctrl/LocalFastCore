@@ -105,6 +105,27 @@ class WorldItemEntityManagerTest {
     }
 
     @Test
+    void restoresPreviousVerifiedDroppedItemSnapshotWhenPrimaryIsCorrupted() throws Exception {
+        WorldItemEntityStorage storage = new WorldItemEntityStorage(temporaryDirectory, "item-recovery");
+        WorldItemEntityManager manager = new WorldItemEntityManager(storage);
+        WorldItemEntity first = manager.spawn(new ItemStack("minecraft:diamond", 2, 64),
+                1, 65, 1, 0, 0, 0, 1000, 0, null);
+        manager.save();
+        manager.spawn(new ItemStack("minecraft:iron_ingot", 3, 64),
+                2, 65, 2, 0, 0, 0, 1000, 0, null);
+        manager.save();
+
+        Path primary = temporaryDirectory.resolve("item-recovery/items/entities.nxe");
+        Path backup = temporaryDirectory.resolve("item-recovery/items/entities.nxe.bak");
+        byte[] damaged = Files.readAllBytes(primary);
+        damaged[damaged.length / 2] ^= 1;
+        Files.write(primary, damaged);
+
+        assertEquals(List.of(first), storage.load());
+        assertArrayEquals(Files.readAllBytes(backup), Files.readAllBytes(primary));
+    }
+
+    @Test
     void mergesNearbyCompatibleStacksAndQueuesRemovedActorForClientSync() {
         World world = new World("item-merge", 0L, new FlatWorldGenerator());
         WorldItemEntityManager manager = new WorldItemEntityManager();

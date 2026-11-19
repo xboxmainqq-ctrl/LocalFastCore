@@ -32,6 +32,12 @@ public final class MobAiTaskScheduler {
             recordRun(task);
             return Admission.RUN;
         }
+        // A zero budget means no optional work is admitted, even when no time
+        // has yet been consumed in this tick. Required/high-priority work bypasses it.
+        if (budgetNanos == 0) {
+            recordDeferral(task);
+            return Admission.DEFER;
+        }
         long weightedBudget = Math.max(1L, budgetNanos / Math.max(1, task.costWeight()));
         if (consumedNanos < weightedBudget) {
             recordRun(task);

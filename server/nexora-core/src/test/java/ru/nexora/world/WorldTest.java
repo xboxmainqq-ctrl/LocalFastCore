@@ -1,11 +1,16 @@
 package ru.nexora.world;
 
 import java.util.List;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class WorldTest {
+    @TempDir
+    Path temporaryDirectory;
+
     @Test
     void appliesChunkResidencyLoadsAcrossTicksWithOneGlobalBudget() {
         World world = new World("NEXORA", 1L, new FlatWorldGenerator());
@@ -68,6 +73,37 @@ class WorldTest {
         assertEquals(1, retry.loaded());
         assertEquals(4, world.pendingChunkLoadCount());
         assertEquals(1, world.loadedChunkCount());
+    }
+
+
+    @Test
+    void persistedWorldCacheStaysWithinResidencyTargetAcrossPlayerMovement() throws Exception {
+        WorldStorage storage = new WorldStorage(temporaryDirectory, "NEXORA");
+        World world = new World("NEXORA", 1L, new FlatWorldGenerator(), 0, 65, 0, storage);
+        WorldChunkResidencyManager residency = new WorldChunkResidencyManager(
+                1, 0, WorldChunkResidencyManager.Shape.SQUARE, 4);
+        try {
+            var firstPlan = residency.update(
+                    List.of(new WorldChunkResidencyManager.PlayerChunk(0, 0)), 0);
+            var firstApply = world.applyChunkResidencyPlan(firstPlan, 4);
+            assertEquals(4, firstApply.loaded());
+            assertEquals(4, world.loadedChunkCount());
+            assertEquals(4, residency.residentChunkCount());
+
+            var movedPlan = residency.update(
+                    List.of(new WorldChunkResidencyManager.PlayerChunk(100, 100)), 1);
+            var movedApply = world.applyChunkResidencyPlan(movedPlan, 4);
+            assertEquals(4, movedApply.unloaded());
+            assertEquals(4, movedApply.loaded());
+            assertEquals(4, world.loadedChunkCount());
+            assertEquals(4, residency.residentChunkCount());
+
+            for (WorldChunkResidencyManager.ChunkCoordinate coordinate : movedPlan.load()) {
+                assertTrue(world.isChunkLoadedAt(coordinate.chunkX() * 16, coordinate.chunkZ() * 16));
+            }
+        } finally {
+            world.closeChunkLoadService();
+        }
     }
 
     @Test

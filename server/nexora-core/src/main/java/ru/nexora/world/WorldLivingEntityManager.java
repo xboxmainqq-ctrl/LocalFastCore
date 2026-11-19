@@ -18,8 +18,8 @@ public final class WorldLivingEntityManager {
     private final AtomicInteger entityCount = new AtomicInteger();
     private final ConcurrentMap<Long, WorldLivingEntity> entities = new ConcurrentSkipListMap<>();
     // WORLD-owned secondary index: entity IDs grouped by their current chunk.
-    private final Map<ChunkKey, java.util.Set<Long>> entitiesByChunk = new java.util.HashMap<>();
-    private final Map<Long, ChunkKey> entityChunks = new java.util.HashMap<>();
+    private final java.util.Map<ChunkKey, java.util.Set<Long>> entitiesByChunk = new java.util.HashMap<>();
+    private final java.util.Map<Long, ChunkKey> entityChunks = new java.util.HashMap<>();
     private final WorldLivingEntityStorage storage;
 
     public WorldLivingEntityManager() {

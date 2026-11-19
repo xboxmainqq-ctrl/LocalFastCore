@@ -217,9 +217,12 @@ cursor advances by one peer per second (rather than one whole batch), preventing
 starvation when the active session count shares a divisor with the batch size.
 `transportMetrics(networkId)` exposes the latest sample; its `available()`,
 `ageMillis(now)` and `stale(now, maxAge)` helpers let callers reject missing or old
-measurements instead of presenting them as current ping. Byte counters are cumulative
-transport totals, not instantaneous throughput; throughput requires comparing two
-timestamped samples. Data-channel traffic does not expose a trustworthy application
-packet-loss percentage through this candidate-pair sample, so NEXORA does not label
-ICE checks or missing counters as player packet loss. A live client test is still
-needed to validate which native stats fields are populated on each deployment platform.
+measurements instead of presenting them as current ping. The server console's
+`network` command reports connected sessions, fresh/stale sample counts, average and
+maximum fresh ICE RTT, and cumulative transport byte totals. Average/max RTT exclude
+stale or missing samples; byte counters remain cumulative and are not instantaneous
+throughput. Throughput requires comparing two timestamped samples. Data-channel
+traffic does not expose a trustworthy application packet-loss percentage through
+this candidate-pair sample, so NEXORA does not label ICE checks or missing counters
+as player packet loss. A live client test is still needed to validate which native
+stats fields are populated on each deployment platform.

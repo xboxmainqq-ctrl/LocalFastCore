@@ -424,6 +424,16 @@ public final class World {
         return chunks.size();
     }
 
+    /** Immutable coordinates for every chunk currently cached, including direct API loads. */
+    public java.util.Set<WorldChunkResidencyManager.ChunkCoordinate> loadedChunkCoordinates() {
+        java.util.Set<WorldChunkResidencyManager.ChunkCoordinate> coordinates = new java.util.HashSet<>();
+        for (WorldChunk chunk : chunks.values()) {
+            coordinates.add(new WorldChunkResidencyManager.ChunkCoordinate(
+                    chunk.chunkX(), chunk.chunkZ()));
+        }
+        return java.util.Set.copyOf(coordinates);
+    }
+
     /** Exact block-array payload across cached chunks; excludes maps, actors and JVM object overhead. */
     public long loadedChunkBlockStorageBytes() {
         long total = 0L;

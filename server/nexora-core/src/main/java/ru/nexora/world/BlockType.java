@@ -27,6 +27,8 @@ public enum BlockType {
     SMOKER(22),
     SPAWNER(23);
 
+    private static final BlockType[] BY_INTERNAL_ID = createLookup();
+
     private final int internalId;
 
     BlockType(int internalId) {
@@ -38,9 +40,18 @@ public enum BlockType {
     }
 
     public static BlockType byInternalId(int id) {
-        for (BlockType type : values()) {
-            if (type.internalId == id) return type;
+        if (id < 0 || id >= BY_INTERNAL_ID.length || BY_INTERNAL_ID[id] == null) {
+            throw new IllegalArgumentException("Unknown internal block ID: " + id);
         }
-        throw new IllegalArgumentException("Unknown internal block ID: " + id);
+        return BY_INTERNAL_ID[id];
+    }
+
+    private static BlockType[] createLookup() {
+        BlockType[] types = values();
+        int maximumId = 0;
+        for (BlockType type : types) maximumId = Math.max(maximumId, type.internalId);
+        BlockType[] lookup = new BlockType[maximumId + 1];
+        for (BlockType type : types) lookup[type.internalId] = type;
+        return lookup;
     }
 }

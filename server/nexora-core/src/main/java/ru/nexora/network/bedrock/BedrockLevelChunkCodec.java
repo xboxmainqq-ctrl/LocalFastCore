@@ -12,6 +12,7 @@ public final class BedrockLevelChunkCodec {
     private static final int NEGATIVE_SUB_CHUNKS = 4;
     private static final int WORLD_BIOME_SECTIONS = 24;
     private static final int PLAINS_BIOME_ID = 1;
+    private static final int BLOCK_TYPE_COUNT = BlockType.values().length;
 
     private BedrockLevelChunkCodec() {
     }
@@ -95,18 +96,19 @@ public final class BedrockLevelChunkCodec {
             return;
         }
 
-        int[] paletteIndexByBlockId = new int[BlockType.values().length];
+        int[] paletteIndexByBlockId = new int[BLOCK_TYPE_COUNT];
         java.util.Arrays.fill(paletteIndexByBlockId, -1);
         int[] palette = new int[paletteIndexByBlockId.length];
         int paletteSize = 0;
         int[] indexes = new int[ChunkSection.VOLUME];
         for (int i = 0; i < raw.length; i++) {
             int blockId = Byte.toUnsignedInt(raw[i]);
+            BlockType type = BlockType.byInternalId(blockId);
             int paletteIndex = paletteIndexByBlockId[blockId];
             if (paletteIndex < 0) {
                 paletteIndex = paletteSize;
                 paletteIndexByBlockId[blockId] = paletteSize;
-                palette[paletteSize++] = BedrockBlockRuntimeIds.forBlock(BlockType.byInternalId(blockId));
+                palette[paletteSize++] = BedrockBlockRuntimeIds.forBlock(type);
             }
             indexes[i] = paletteIndex;
         }

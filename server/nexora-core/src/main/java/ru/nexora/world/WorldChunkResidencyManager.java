@@ -75,6 +75,7 @@ public final class WorldChunkResidencyManager {
         java.util.Objects.requireNonNull(pinnedChunks, "pinnedChunks");
         desiredChunks.clear();
         loadScratch.clear();
+        Set<Long> pinnedKeys = new HashSet<>();
 
         for (PlayerChunk player : players) {
             if (player == null) continue;
@@ -106,6 +107,8 @@ public final class WorldChunkResidencyManager {
 
         for (ChunkCoordinate pinned : pinnedChunks) {
             if (pinned == null) continue;
+            long key = chunkKey(pinned.chunkX(), pinned.chunkZ());
+            pinnedKeys.add(key);
             addDesiredChunk(pinned.chunkX(), pinned.chunkZ(), null, 0, tick);
         }
 
@@ -125,8 +128,14 @@ public final class WorldChunkResidencyManager {
         // they are offered again on the next update instead of being forgotten.
         int availableSlots = Math.max(0, maximumResidentChunks - resident.size());
         LinkedHashSet<Long> acceptedLoadKeys = new LinkedHashSet<>();
+        // Entity-pinned chunks are correctness-critical and may exceed the soft
+        // memory target; player view loads use only the remaining capacity.
+        for (long key : pinnedKeys) {
+            if (resident.add(key)) acceptedLoadKeys.add(key);
+        }
+        availableSlots = Math.max(0, maximumResidentChunks - resident.size());
         for (long key : loadScratch) {
-            if (acceptedLoadKeys.size() >= availableSlots) break;
+            if (acceptedLoadKeys.size() >= pinnedKeys.size() + availableSlots) break;
             if (resident.add(key)) acceptedLoadKeys.add(key);
         }
         if (!acceptedLoadKeys.isEmpty() || !unloadScratch.isEmpty()) {

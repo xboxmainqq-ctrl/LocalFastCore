@@ -817,7 +817,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             String networkId = entry.getKey();
             SessionState state = entry.getValue();
             synchronized (state) {
-                if (state.transferFrozen || !state.loginAuthenticated) continue;
+                if (state.transferFrozen) continue;
                 if (state.onlineLeaseLost) {
                     IOException ownershipFailure = new IOException(
                             "Player persistence was skipped after global online ownership lease loss");
@@ -825,7 +825,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     else failure.addSuppressed(ownershipFailure);
                     continue;
                 }
-                if (state.rejected) continue;
+                if (state.rejected || !state.loginAuthenticated) continue;
                 try {
                     // Autosave must retain the lease and verify it before any
                     // shared checkpoint write; releasing here would open a

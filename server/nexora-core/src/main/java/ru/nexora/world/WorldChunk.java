@@ -12,6 +12,7 @@ public final class WorldChunk {
     private final int chunkZ;
     private final ChunkSection[] sections = new ChunkSection[SECTION_COUNT];
     private long revision;
+    private long persistedRevision = -1L;
 
     public WorldChunk(int chunkX, int chunkZ) {
         this.chunkX = chunkX;
@@ -74,6 +75,22 @@ public final class WorldChunk {
 
     /** Monotonic mutation version used to detect writes racing persistence. */
     public synchronized long revision() { return revision; }
+
+    /** True when this chunk contains generated or mutated data not yet durably stored. */
+    public synchronized boolean isDirty() {
+        return revision != persistedRevision;
+    }
+
+    /**
+     * Marks exactly the written revision as durable. If the chunk changed while the
+     * write was in progress, its newer revision remains dirty for the next write.
+     */
+    public synchronized void markPersisted(long savedRevision) {
+        if (savedRevision < 0 || savedRevision > revision) {
+            throw new IllegalArgumentException("Persisted chunk revision is outside the current revision range");
+        }
+        if (savedRevision > persistedRevision) persistedRevision = savedRevision;
+    }
 
     /** Consistent detached persistence image and its mutation version. */
     public synchronized PersistenceSnapshot persistenceSnapshot() {

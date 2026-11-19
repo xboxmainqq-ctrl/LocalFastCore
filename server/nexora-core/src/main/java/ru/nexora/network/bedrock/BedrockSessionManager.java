@@ -3999,6 +3999,26 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         player.fireUntilNanos = Math.max(player.fireUntilNanos,
                                 nowNanos > Long.MAX_VALUE - duration ? Long.MAX_VALUE : nowNanos + duration);
                     }
+                    if (!player.dead && !player.vitals.dead()) {
+                        ru.nexora.combat.GhastExplosion.Knockback impulse =
+                                ru.nexora.combat.GhastExplosion.knockbackAt(dx, dy, dz);
+                        if (impulse != null) {
+                            if (player.physicsState != null) {
+                                PlayerPhysics.State current = player.physicsState;
+                                player.physicsState = new PlayerPhysics.State(
+                                        current.x(), current.y(), current.z(),
+                                        current.velocityX() + impulse.velocityX(),
+                                        Math.max(current.velocityY(), impulse.velocityY()),
+                                        current.velocityZ() + impulse.velocityZ(),
+                                        current.onGround(), current.fallDistance(), current.landedDistance());
+                                sendMovementCorrection(entry.getKey(), player, Math.max(0, tick));
+                            } else {
+                                sendPacket(entry.getKey(), BedrockActorMotionCodec.createSetActorMotion(
+                                        player.entityId, impulse.velocityX(), impulse.velocityY(),
+                                        impulse.velocityZ(), Math.max(0, tick)), true);
+                            }
+                        }
+                    }
                 }
             } finally {
                 player.combatLock.unlock();

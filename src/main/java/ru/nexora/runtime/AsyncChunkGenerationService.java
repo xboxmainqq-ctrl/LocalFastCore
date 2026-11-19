@@ -275,6 +275,9 @@ public final class AsyncChunkGenerationService implements RuntimeModule {
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
         }
+        // Generation completed, but its result could not be handed off because
+        // the request was cancelled, superseded, interrupted, or the service stopped.
+        droppedResults.incrementAndGet();
         inFlight.remove(request.position, request);
     }
 

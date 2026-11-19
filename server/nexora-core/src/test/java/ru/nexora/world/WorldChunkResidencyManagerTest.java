@@ -8,6 +8,19 @@ import org.junit.jupiter.api.Test;
 class WorldChunkResidencyManagerTest {
 
     @Test
+    void publishesResidentChunkCoordinatesForSpatialQueries() {
+        WorldChunkResidencyManager residency = new WorldChunkResidencyManager(1, 0);
+        residency.update(List.of(new WorldChunkResidencyManager.PlayerChunk(-2, 3)), 0);
+
+        assertTrue(residency.residentChunkCoordinates().contains(
+                new WorldChunkResidencyManager.ChunkCoordinate(-2, 3)));
+        assertEquals(residency.residentChunkCount(), residency.residentChunkCoordinates().size());
+
+        residency.update(List.of(), 1);
+        assertTrue(residency.residentChunkCoordinates().isEmpty());
+    }
+
+    @Test
     void loadsCircularViewAndAvoidsSquareCorners() {
         WorldChunkResidencyManager manager = new WorldChunkResidencyManager(2, 20);
         var plan = manager.update(List.of(new WorldChunkResidencyManager.PlayerChunk(0, 0)), 0);

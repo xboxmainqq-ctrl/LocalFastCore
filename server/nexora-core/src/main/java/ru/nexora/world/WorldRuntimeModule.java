@@ -18,6 +18,7 @@ import java.util.function.LongConsumer;
  * in-flight work, then performs the final world/player save.</p>
  */
 public final class WorldRuntimeModule implements AutoCloseable {
+    private final World world;
     private final WorldAutosave autosave;
     private final WorldFurnaceTicker furnaceTicker;
     private final RuntimeTaskScheduler scheduler;
@@ -53,7 +54,7 @@ public final class WorldRuntimeModule implements AutoCloseable {
             Consumer<RuntimeException> furnaceErrorHandler,
             LongConsumer furnaceObserver
     ) {
-        Objects.requireNonNull(world, "world");
+        this.world = Objects.requireNonNull(world, "world");
         RuntimeTaskScheduler taskScheduler = new RuntimeTaskScheduler(8, Duration.ofSeconds(10));
         WorldFurnaceTicker ticker;
         try {
@@ -178,6 +179,13 @@ public final class WorldRuntimeModule implements AutoCloseable {
         } catch (IOException exception) {
             if (failure == null) failure = exception;
             else failure.addSuppressed(exception);
+        }
+        try {
+            world.closeChunkLoadService();
+        } catch (RuntimeException exception) {
+            IOException closeFailure = new IOException("Unable to stop NEXORA chunk I/O workers", exception);
+            if (failure == null) failure = closeFailure;
+            else failure.addSuppressed(closeFailure);
         }
         if (failure != null) throw failure;
     }

@@ -78,17 +78,7 @@ public final class WorldLivingEntityStorage {
         if (complete.size() > MAX_FILE_BYTES) throw new IOException("Living world entity file exceeds size limit");
 
         rejectSymlink(file);
-        Path temporary = Files.createTempFile(file.getParent(), ".nexora-living-", ".tmp");
-        try {
-            Files.write(temporary, complete.toByteArray());
-            try {
-                Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException ignored) {
-                Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } finally {
-            Files.deleteIfExists(temporary);
-        }
+        ru.nexora.persistence.AtomicFileWriter.writeAtomically(file, complete.toByteArray());
     }
 
     public synchronized List<WorldLivingEntity> load() throws IOException {

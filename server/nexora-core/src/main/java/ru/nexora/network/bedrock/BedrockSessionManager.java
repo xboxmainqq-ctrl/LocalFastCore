@@ -3842,7 +3842,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         for (var entry : mobFireballs.entrySet()) {
             ru.nexora.combat.FireballProjectile current = entry.getValue();
             ru.nexora.combat.FireballProjectile next = current.advance();
-            boolean removed = next.expired() || isMobFireballPathBlocked(current, next);
+            boolean expired = next.expired();
+            boolean blocked = !expired && isMobFireballPathBlocked(current, next);
+            boolean removed = expired || blocked;
+            boolean ghastFireball = "minecraft:fireball".equals(current.identifier());
+            if (blocked && ghastFireball) {
+                explodeGhastFireball(current, tick, nowNanos);
+            }
             if (!removed) {
                 for (Map.Entry<String, SessionState> playerEntry : sessions.entrySet()) {
                     SessionState player = playerEntry.getValue();
@@ -3852,27 +3858,31 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             player.positionX, player.positionY + 0.9, player.positionZ,
                             current.x(), current.y(), current.z(), next.x(), next.y(), next.z());
                     if (distanceSquared > 0.7 * 0.7) continue;
-                    player.combatLock.lock();
-                    try {
-                        synchronized (player) {
-                            if (player.dead || player.vitals.dead()) continue;
-                            List<ItemStack> armor = player.equipment.armorSnapshot().stream()
-                                    .flatMap(Optional::stream).toList();
-                            float damage = ru.nexora.combat.EnchantmentCombatService
-                                    .applyIncomingDamage(current.damage(), armor,
-                                            ru.nexora.combat.EnchantmentCombatService.DamageType.PROJECTILE);
-                            if (damage > 0.0f) {
-                                applyDamage(playerEntry.getKey(), player, damage, tick, "death.attack.fireball");
+                    if (ghastFireball) {
+                        explodeGhastFireball(current, tick, nowNanos);
+                    } else {
+                        player.combatLock.lock();
+                        try {
+                            synchronized (player) {
+                                if (player.dead || player.vitals.dead()) continue;
+                                List<ItemStack> armor = player.equipment.armorSnapshot().stream()
+                                        .flatMap(Optional::stream).toList();
+                                float damage = ru.nexora.combat.EnchantmentCombatService
+                                        .applyIncomingDamage(current.damage(), armor,
+                                                ru.nexora.combat.EnchantmentCombatService.DamageType.PROJECTILE);
+                                if (damage > 0.0f) {
+                                    applyDamage(playerEntry.getKey(), player, damage, tick, "death.attack.fireball");
+                                }
+                                if (!player.dead && !player.vitals.dead() && current.fireDurationSeconds() > 0) {
+                                    long durationNanos = current.fireDurationSeconds() * 1_000_000_000L;
+                                    player.fireUntilNanos = Math.max(player.fireUntilNanos,
+                                            nowNanos > Long.MAX_VALUE - durationNanos
+                                                    ? Long.MAX_VALUE : nowNanos + durationNanos);
+                                }
                             }
-                            if (!player.dead && !player.vitals.dead() && current.fireDurationSeconds() > 0) {
-                                long durationNanos = current.fireDurationSeconds() * 1_000_000_000L;
-                                player.fireUntilNanos = Math.max(player.fireUntilNanos,
-                                        nowNanos > Long.MAX_VALUE - durationNanos
-                                                ? Long.MAX_VALUE : nowNanos + durationNanos);
-                            }
+                        } finally {
+                            player.combatLock.unlock();
                         }
-                    } finally {
-                        player.combatLock.unlock();
                     }
                     removed = true;
                     break;
@@ -3885,6 +3895,74 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 }
             } else if (mobFireballs.replace(entry.getKey(), current, next)) {
                 broadcastLivingActorPacket(BedrockFireballActorCodec.createMove(next));
+            }
+        }
+    }
+
+
+    /** Applies the ghast blast only to resident chunks; protected blocks and containers survive. */
+    private void explodeGhastFireball(
+            ru.nexora.combat.FireballProjectile fireball, long tick, long nowNanos
+    ) {
+        int minX = (int) Math.floor(fireball.x() - ru.nexora.combat.GhastExplosion.BLOCK_RADIUS);
+        int maxX = (int) Math.floor(fireball.x() + ru.nexora.combat.GhastExplosion.BLOCK_RADIUS);
+        int minY = Math.max(WorldChunk.MIN_Y,
+                (int) Math.floor(fireball.y() - ru.nexora.combat.GhastExplosion.BLOCK_RADIUS));
+        int maxY = Math.min(WorldChunk.MAX_Y,
+                (int) Math.floor(fireball.y() + ru.nexora.combat.GhastExplosion.BLOCK_RADIUS));
+        int minZ = (int) Math.floor(fireball.z() - ru.nexora.combat.GhastExplosion.BLOCK_RADIUS);
+        int maxZ = (int) Math.floor(fireball.z() + ru.nexora.combat.GhastExplosion.BLOCK_RADIUS);
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    if (!ru.nexora.combat.GhastExplosion.isInsideBlockBlast(
+                            x + 0.5 - fireball.x(), y + 0.5 - fireball.y(), z + 0.5 - fireball.z())
+                            || !world.isChunkLoadedAt(x, z)) continue;
+                    BlockType block = world.getBlock(x, y, z);
+                    if (!ru.nexora.combat.GhastExplosion.canDestroy(block)) continue;
+                    world.setBlock(x, y, z, BlockType.AIR);
+                    broadcastBlockUpdate(x, y, z, BlockType.AIR);
+                }
+            }
+        }
+
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            SessionState player = entry.getValue();
+            if (!player.loginAuthenticated || !player.clientInitialized
+                    || !player.positionInitialized || player.dead || player.vitals.dead()) continue;
+            double dx = player.positionX - fireball.x();
+            double dy = player.positionY + 0.9 - fireball.y();
+            double dz = player.positionZ - fireball.z();
+            double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            float rawDamage = ru.nexora.combat.GhastExplosion.damageAtDistance(distance);
+            if (rawDamage <= 0.0f) continue;
+            int targetX = (int) Math.floor(player.positionX);
+            int targetY = (int) Math.floor(player.positionY + 1.0);
+            int targetZ = (int) Math.floor(player.positionZ);
+            if (!WorldRaycast.hasLineOfSightInLoadedChunks(world, fireball.x(), fireball.y(),
+                    fireball.z(), targetX, targetY, targetZ)) continue;
+            player.combatLock.lock();
+            try {
+                synchronized (player) {
+                    if (player.dead || player.vitals.dead()) continue;
+                    List<ItemStack> armor = player.equipment.armorSnapshot().stream()
+                            .flatMap(Optional::stream).toList();
+                    float damage = ru.nexora.combat.EnchantmentCombatService.applyIncomingDamage(
+                            rawDamage, armor,
+                            ru.nexora.combat.EnchantmentCombatService.DamageType.EXPLOSION);
+                    if (damage > 0.0f) {
+                        applyDamage(entry.getKey(), player, damage, tick, "death.attack.explosion");
+                    }
+                    if (!player.dead && !player.vitals.dead()
+                            && distance <= ru.nexora.combat.GhastExplosion.BLOCK_RADIUS) {
+                        long duration = ru.nexora.combat.GhastExplosion.FIRE_DURATION_SECONDS
+                                * 1_000_000_000L;
+                        player.fireUntilNanos = Math.max(player.fireUntilNanos,
+                                nowNanos > Long.MAX_VALUE - duration ? Long.MAX_VALUE : nowNanos + duration);
+                    }
+                }
+            } finally {
+                player.combatLock.unlock();
             }
         }
     }

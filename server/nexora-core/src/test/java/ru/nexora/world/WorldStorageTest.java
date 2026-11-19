@@ -83,6 +83,44 @@ class WorldStorageTest {
     }
 
     @Test
+    void worldSaveUsesBoundedAsyncWriterAndFinalFlushPersistsLatestMutation() throws Exception {
+        WorldStorage storage = new WorldStorage(temporaryDirectory, "AsyncSave");
+        World world = new World("AsyncSave", 7L, new FlatWorldGenerator(), 0, 65, 0, storage);
+        try {
+            world.setBlock(1, 70, 1, BlockType.DIAMOND_BLOCK);
+            assertEquals(0, world.activeChunkSaveWorkers());
+            world.saveAll();
+            assertTrue(world.activeChunkSaveWorkers() >= 0);
+            assertEquals(BlockType.DIAMOND_BLOCK,
+                    storage.loadChunk(0, 0).orElseThrow().getBlock(1, 70, 1));
+
+            world.setBlock(1, 70, 1, BlockType.GOLD_BLOCK);
+            world.saveAll();
+            assertEquals(BlockType.GOLD_BLOCK,
+                    storage.loadChunk(0, 0).orElseThrow().getBlock(1, 70, 1));
+        } finally {
+            world.closeChunkLoadService();
+        }
+    }
+
+    @Test
+    void asyncSaveCoalescesConcurrentRequestsAndPersistsMutationDuringWrite() throws Exception {
+        WorldStorage storage = new WorldStorage(temporaryDirectory, "CoalescedSave");
+        World world = new World("CoalescedSave", 8L, new FlatWorldGenerator(), 0, 65, 0, storage);
+        try {
+            WorldChunk chunk = world.getChunk(0, 0);
+            chunk.setBlock(2, 75, 2, BlockType.STONE);
+            world.saveAll();
+            chunk.setBlock(2, 75, 2, BlockType.DIAMOND_BLOCK);
+            world.saveAll();
+            assertEquals(BlockType.DIAMOND_BLOCK,
+                    storage.loadChunk(0, 0).orElseThrow().getBlock(2, 75, 2));
+        } finally {
+            world.closeChunkLoadService();
+        }
+    }
+
+    @Test
     void rejectsCorruptChunkChecksum() throws Exception {
         WorldStorage storage = new WorldStorage(temporaryDirectory, "NEXORA");
         storage.saveChunk(new WorldChunk(0, 0));

@@ -5,10 +5,10 @@ import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 
-/** Bounded four-way grid pathfinder for simple ground-based hostile mob navigation. */
+/** Bounded height-aware grid pathfinder for simple ground-based hostile mob navigation. */
 public final class WorldPathfinder {
-    private static final int MAX_VISITED = 512;
-    private static final int MAX_DEPTH = 12;
+    private static final int MAX_VISITED = 768;
+    private static final int MAX_DEPTH = 16;
     private static final int[][] DIRECTIONS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
 
     private WorldPathfinder() {
@@ -21,7 +21,7 @@ public final class WorldPathfinder {
         return findNextStep(world, startX, feetY, startZ, targetX, targetZ, "minecraft:zombie");
     }
 
-    /** Species-aware bounded path search using the mob's real collision footprint. */
+    /** Species-aware bounded path search with one-block steps and drops. */
     public static Optional<Step> findNextStep(
             World world, double startX, double feetY, double startZ,
             double targetX, double targetZ, String identifier
@@ -38,13 +38,19 @@ public final class WorldPathfinder {
         int startCellZ = (int) Math.floor(startZ);
         int targetCellX = (int) Math.floor(targetX);
         int targetCellZ = (int) Math.floor(targetZ);
+        int startY = (int) Math.floor(feetY + 1.0e-5);
         if (startCellX == targetCellX && startCellZ == targetCellZ) return Optional.empty();
-        if (!isMobFootprintLoaded(world, startX, startZ, identifier)) return Optional.empty();
+        if (!isMobFootprintLoaded(world, startX, startZ, identifier)
+                || !WorldCollision.canOccupyMob(world, identifier, startX, feetY, startZ)
+                || !WorldCollision.isMobOnGround(world, identifier, startX, feetY, startZ, 0.12)) {
+            return Optional.empty();
+        }
 
         ArrayDeque<Node> queue = new ArrayDeque<>();
-        Set<Long> visited = new HashSet<>();
-        queue.add(new Node(startCellX, startCellZ, startCellX, startCellZ, 0));
-        visited.add(key(startCellX, startCellZ));
+        Set<String> visited = new HashSet<>();
+        queue.add(new Node(startCellX, startY, startCellZ,
+                startCellX, startY, startCellZ, 0));
+        visited.add(key(startCellX, startY, startCellZ));
 
         int expanded = 0;
         while (!queue.isEmpty() && expanded < MAX_VISITED) {
@@ -56,22 +62,32 @@ public final class WorldPathfinder {
                 int nextZ = current.z() + direction[1];
                 if (Math.abs((long) nextX - startCellX) > MAX_DEPTH
                         || Math.abs((long) nextZ - startCellZ) > MAX_DEPTH) continue;
-                if (!isMobFootprintLoaded(world, nextX + 0.5, nextZ + 0.5, identifier)) continue;
-                long key = key(nextX, nextZ);
-                if (!visited.add(key)) continue;
+                for (int dy = 1; dy >= -1; dy--) {
+                    int nextY = current.y() + dy;
+                    if (nextY <= WorldChunk.MIN_Y || nextY > WorldChunk.MAX_Y) continue;
+                    double fromX = current.depth() == 0 ? startX : current.x() + 0.5;
+                    double fromZ = current.depth() == 0 ? startZ : current.z() + 0.5;
+                    double fromY = current.depth() == 0 ? feetY : current.y() + (feetY - startY);
+                    double toX = nextX + 0.5;
+                    double toZ = nextZ + 0.5;
+                    double toY = nextY + (feetY - startY);
+                    if (!isMobFootprintLoaded(world, toX, toZ, identifier)) continue;
+                    String key = key(nextX, nextY, nextZ);
+                    if (visited.contains(key)) continue;
+                    if (!WorldCollision.canStepMob(world, identifier,
+                            fromX, fromY, fromZ, toX, toY, toZ)) continue;
+                    visited.add(key);
 
-                double fromX = current.depth() == 0 ? startX : current.x() + 0.5;
-                double fromZ = current.depth() == 0 ? startZ : current.z() + 0.5;
-                double toX = nextX + 0.5;
-                double toZ = nextZ + 0.5;
-                if (!WorldCollision.canMoveMob(world, identifier, fromX, feetY, fromZ, toX, feetY, toZ)) continue;
-
-                int firstX = current.depth() == 0 ? nextX : current.firstX();
-                int firstZ = current.depth() == 0 ? nextZ : current.firstZ();
-                if (nextX == targetCellX && nextZ == targetCellZ) {
-                    return Optional.of(new Step(firstX + 0.5, firstZ + 0.5));
+                    int firstX = current.depth() == 0 ? nextX : current.firstX();
+                    int firstY = current.depth() == 0 ? nextY : current.firstY();
+                    int firstZ = current.depth() == 0 ? nextZ : current.firstZ();
+                    if (nextX == targetCellX && nextZ == targetCellZ) {
+                        return Optional.of(new Step(firstX + 0.5,
+                                firstY + (feetY - startY), firstZ + 0.5));
+                    }
+                    queue.addLast(new Node(nextX, nextY, nextZ,
+                            firstX, firstY, firstZ, current.depth() + 1));
                 }
-                queue.addLast(new Node(nextX, nextZ, firstX, firstZ, current.depth() + 1));
             }
         }
         return Optional.empty();
@@ -131,18 +147,23 @@ public final class WorldPathfinder {
         return true;
     }
 
-    private static long key(int x, int z) {
-        return ((long) x << 32) ^ (z & 0xffff_ffffL);
+    private static String key(int x, int y, int z) {
+        return x + ":" + y + ":" + z;
     }
 
-    private record Node(int x, int z, int firstX, int firstZ, int depth) {
+    private record Node(int x, int y, int z, int firstX, int firstY, int firstZ, int depth) {
     }
 
-    public record Step(double x, double z) {
+    public record Step(double x, double y, double z) {
         public Step {
-            if (!Double.isFinite(x) || !Double.isFinite(z)) {
+            if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) {
                 throw new IllegalArgumentException("Path step must be finite");
             }
+        }
+
+        /** Compatibility constructor for callers that only use horizontal waypoints. */
+        public Step(double x, double z) {
+            this(x, 0, z);
         }
     }
 }

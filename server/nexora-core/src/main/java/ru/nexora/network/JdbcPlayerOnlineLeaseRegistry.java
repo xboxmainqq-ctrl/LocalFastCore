@@ -55,22 +55,46 @@ public final class JdbcPlayerOnlineLeaseRegistry implements PlayerOnlineLeaseReg
     public boolean acquire(String xuid, String node, String session, long now, long leaseMillis)
             throws IOException {
         validate(xuid, node, session, now, leaseMillis);
+        IOException lastFailure = null;
+        // Two JVMs can race between the conditional UPDATE and first INSERT. Retry
+        // transient database lock/serialization conflicts; a uniqueness conflict is
+        // still a normal "lease already owned" result and is never retried.
+        for (int attempt = 0; attempt < 5; attempt++) {
+            try {
+                return acquireOnce(xuid, node, session, leaseMillis);
+            } catch (IOException failure) {
+                if (!isRetryableContention(failure)) throw failure;
+                lastFailure = failure;
+                if (attempt == 4) break;
+                try {
+                    Thread.sleep(10L * (attempt + 1));
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("Interrupted while retrying NEXORA online lease acquisition", interrupted);
+                }
+            }
+        }
+        throw new IOException("Unable to acquire NEXORA online player lease after transient database contention",
+                lastFailure);
+    }
+
+    private boolean acquireOnce(String xuid, String node, String session, long leaseMillis) throws IOException {
         String update = "UPDATE " + TABLE_NAME + " SET node_id = ?, session_id = ?, lease_expires_at = ? "
                 + "WHERE player_xuid = ? AND (lease_expires_at <= ? OR (node_id = ? AND session_id = ?))";
         try (Connection connection = dataSource.getConnection()) {
             long databaseNow = databaseNow(connection);
             long expires = Math.addExact(databaseNow, leaseMillis);
             try (PreparedStatement statement = connection.prepareStatement(update)) {
-            statement.setString(1, node);
-            statement.setString(2, session);
-            statement.setLong(3, expires);
-            statement.setString(4, xuid);
-            statement.setLong(5, databaseNow);
-            statement.setString(6, node);
-            statement.setString(7, session);
-            int updated = statement.executeUpdate();
-            commitIfNeeded(connection);
-            if (updated == 1) return true;
+                statement.setString(1, node);
+                statement.setString(2, session);
+                statement.setLong(3, expires);
+                statement.setString(4, xuid);
+                statement.setLong(5, databaseNow);
+                statement.setString(6, node);
+                statement.setString(7, session);
+                int updated = statement.executeUpdate();
+                commitIfNeeded(connection);
+                if (updated == 1) return true;
             }
         } catch (SQLException failure) {
             throw new IOException("Unable to acquire NEXORA online player lease", failure);
@@ -93,6 +117,23 @@ public final class JdbcPlayerOnlineLeaseRegistry implements PlayerOnlineLeaseReg
             if (isConstraintViolation(failure)) return false;
             throw new IOException("Unable to create NEXORA online player lease", failure);
         }
+    }
+
+    private static boolean isRetryableContention(IOException failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof java.sql.SQLTransientException
+                    || cause instanceof java.sql.SQLTransactionRollbackException) return true;
+            if (cause instanceof SQLException sql) {
+                String state = sql.getSQLState();
+                if (state != null && state.startsWith("40")) return true;
+                if (sql.getErrorCode() == 50200) return true; // H2 lock timeout
+                String message = sql.getMessage();
+                if (message != null && message.toLowerCase(java.util.Locale.ROOT).contains("lock timeout")) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     @Override

@@ -74,4 +74,48 @@ class NetherNetInboundPipelineTest {
         assertThrows(IllegalArgumentException.class,
                 () -> pipeline.onFrame("player-c", "UnknownChannel", new byte[] {0, 1}));
     }
+
+    @Test
+    void rejectsOversizedFrameBeforeCreatingChannelState() {
+        NetherNetInboundPipeline pipeline = new NetherNetInboundPipeline(
+                message -> fail("Oversized frame must not be dispatched"),
+                new ru.nexora.ai.NexoraAiGuard(), 2, 4);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> pipeline.onFrame("player-large", "ReliableDataChannel",
+                        new byte[] {0, 1, 2, 3, 4}));
+        assertEquals(0, pipeline.activeChannelCount());
+        assertEquals(1, pipeline.stats().frames());
+        assertEquals(1, pipeline.stats().failedFrames());
+    }
+
+    @Test
+    void boundsTrackedChannelStateAndReleasesCapacityOnDisconnect() {
+        NetherNetInboundPipeline pipeline = new NetherNetInboundPipeline(
+                message -> { }, new ru.nexora.ai.NexoraAiGuard(), 1, 64);
+
+        pipeline.onFrame("player-one", "ReliableDataChannel", new byte[] {1, 5});
+        assertThrows(IllegalStateException.class,
+                () -> pipeline.onFrame("player-two", "ReliableDataChannel", new byte[] {1, 6}));
+        assertEquals(1, pipeline.activeChannelCount());
+
+        pipeline.onDisconnected("player-one");
+        pipeline.onFrame("player-two", "ReliableDataChannel", new byte[] {1, 6});
+        assertEquals(1, pipeline.activeChannelCount());
+    }
+
+    @Test
+    void rejectsBlankNetworkIdentityAndInvalidPipelineLimits() {
+        NetherNetInboundPipeline pipeline = new NetherNetInboundPipeline(message -> { });
+        assertThrows(IllegalArgumentException.class,
+                () -> pipeline.onFrame(" ", "ReliableDataChannel", new byte[] {0, 1}));
+        assertThrows(IllegalArgumentException.class,
+                () -> new NetherNetInboundPipeline(message -> { },
+                        new ru.nexora.ai.NexoraAiGuard(), 0, 64));
+        assertThrows(IllegalArgumentException.class,
+                () -> new NetherNetInboundPipeline(message -> { },
+                        new ru.nexora.ai.NexoraAiGuard(), 1,
+                        NetherNetInboundPipeline.MAX_INBOUND_FRAME_BYTES + 1));
+    }
+
 }

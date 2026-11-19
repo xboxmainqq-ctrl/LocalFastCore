@@ -289,7 +289,7 @@ class LivingEntityAiServiceTest {
 
         assertTrue(decision.attack());
         assertEquals(LivingEntityAiService.AttackStyle.PROJECTILE, decision.attackStyle());
-        assertEquals(10.0f, decision.attackDamage());
+        assertEquals(LivingEntityAiService.BASE_ATTACK_DAMAGE, decision.attackDamage());
     }
 
     @Test
@@ -297,7 +297,7 @@ class LivingEntityAiServiceTest {
         LivingEntityAiService service = new LivingEntityAiService();
         WorldLivingEntityManager manager = new WorldLivingEntityManager();
         WorldLivingEntity skeleton = manager.spawn("minecraft:skeleton", 20, 0, 64, 0);
-        var target = new LivingEntityAiService.PlayerTarget("player", 20, 64, 0, true);
+        var target = new LivingEntityAiService.PlayerTarget("player", 15, 64, 0, true);
 
         var decision = service.decide(skeleton, List.of(target), 2_000, 0);
 

@@ -55,6 +55,7 @@ public final class WorldStorage {
         Objects.requireNonNull(chunk, "chunk");
         WorldChunk.PersistenceSnapshot snapshot = chunk.persistenceSnapshot();
         saveChunkSnapshot(chunk.chunkX(), chunk.chunkZ(), snapshot.sections());
+        chunk.markPersisted(snapshot.revision());
     }
 
     /** Writes a detached, consistent chunk image without touching live world state. */
@@ -159,6 +160,7 @@ public final class WorldStorage {
                 }
             }
             if (input.available() != 0) throw new IOException("Trailing data in NEXORA chunk file");
+            chunk.markPersisted(chunk.revision());
             return Optional.of(chunk);
         }
     }

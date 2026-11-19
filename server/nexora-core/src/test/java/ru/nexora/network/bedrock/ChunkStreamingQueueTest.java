@@ -49,6 +49,17 @@ class ChunkStreamingQueueTest {
     }
 
     @Test
+    void veryLargeBatchBudgetDoesNotOverflowTheQueueCursor() {
+        ChunkStreamingQueue queue = new ChunkStreamingQueue(4, -7, 2);
+
+        List<Long> peeked = queue.peekBatch(Integer.MAX_VALUE);
+        assertEquals(25, peeked.size());
+        assertEquals(25, queue.remaining());
+        assertEquals(peeked, queue.nextBatch(Integer.MAX_VALUE));
+        assertTrue(queue.isComplete());
+    }
+
+    @Test
     void radiusZeroContainsOnlyTheCenterChunk() {
         ChunkStreamingQueue queue = new ChunkStreamingQueue(-2, 7, 0);
         assertEquals(List.of(ChunkStreamingQueue.chunkKey(-2, 7)), queue.nextBatch(1));

@@ -143,3 +143,12 @@ lookup time per mob; environment-dependent):
 The index has a small fixed cost for very small player counts, but in this run it
 reduced per-mob lookup time by roughly 5x at 64 players and 11x at 1,024 players.
 These are synthetic lookup timings, not whole-tick or live-server speedups.
+
+
+Synthetic actor-fanout index microbenchmark:
+`mvn -f server/nexora-core/pom.xml -Dtest=ActorReplicationIndexBenchmarkTest test`
+
+It compares 10,000 actor-chunk lookups against a full scan of 1,000 synthetic
+session chunk sets, asserts that recipient counts match, and reports average lookup
+time plus index build time. It measures recipient selection only, not packet encoding,
+transport queueing or real client delivery.

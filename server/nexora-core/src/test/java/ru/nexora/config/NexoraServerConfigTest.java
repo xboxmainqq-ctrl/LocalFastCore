@@ -21,6 +21,7 @@ class NexoraServerConfigTest {
         assertEquals(30000, config.udpPortMin());
         assertEquals(30199, config.udpPortMax());
         assertTrue(config.stunUrls().isEmpty());
+        assertEquals(8192, config.maximumResidentChunks());
     }
 
     @Test
@@ -33,7 +34,8 @@ class NexoraServerConfigTest {
                         "NEXORA_AUTOSAVE_SECONDS", "90",
                         "NEXORA_UDP_PORT_MIN", "31000",
                         "NEXORA_UDP_PORT_MAX", "31010",
-                        "NEXORA_STUN_URLS", "stun:one; stun:two ;;"
+                        "NEXORA_STUN_URLS", "stun:one; stun:two ;;",
+                        "NEXORA_MAX_RESIDENT_CHUNKS", "4096"
                 ));
 
         assertEquals("127.0.0.1", config.bindHost());
@@ -46,6 +48,7 @@ class NexoraServerConfigTest {
         assertEquals(31000, config.udpPortMin());
         assertEquals(31010, config.udpPortMax());
         assertEquals(java.util.List.of("stun:one", "stun:two"), config.stunUrls());
+        assertEquals(4096, config.maximumResidentChunks());
     }
 
     @Test
@@ -66,6 +69,14 @@ class NexoraServerConfigTest {
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
                 () -> NexoraServerConfig.from(new String[0], Map.of("NEXORA_AUTOSAVE_SECONDS", "later")));
         assertTrue(exception.getMessage().contains("NEXORA_AUTOSAVE_SECONDS"));
+    }
+
+    @Test
+    void rejectsInvalidResidentChunkCapacity() {
+        assertThrows(IllegalArgumentException.class,
+                () -> NexoraServerConfig.from(new String[0], Map.of("NEXORA_MAX_RESIDENT_CHUNKS", "0")));
+        assertThrows(IllegalArgumentException.class,
+                () -> NexoraServerConfig.from(new String[0], Map.of("NEXORA_MAX_RESIDENT_CHUNKS", "invalid")));
     }
 
     @Test

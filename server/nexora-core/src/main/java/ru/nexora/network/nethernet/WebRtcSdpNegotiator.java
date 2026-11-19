@@ -580,6 +580,11 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
                         return;
                     }
                     ByteBuffer data = buffer.data.duplicate();
+                    if (data.remaining() > NetherNetInboundPipeline.MAX_INBOUND_FRAME_BYTES) {
+                        closeForProtocolError("NetherNet inbound frame exceeds "
+                                + NetherNetInboundPipeline.MAX_INBOUND_FRAME_BYTES + " byte limit");
+                        return;
+                    }
                     byte[] frame = new byte[data.remaining()];
                     data.get(frame);
                     try {

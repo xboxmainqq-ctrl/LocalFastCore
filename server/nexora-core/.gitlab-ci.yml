@@ -23,6 +23,5 @@ nexora-core-verify:
       junit:
         - target/surefire-reports/TEST-*.xml
     paths:
-      - target/*.jar
-      - target/lib/
+      - target/server.jar
       - target/surefire-reports/

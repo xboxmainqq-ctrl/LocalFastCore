@@ -35,4 +35,18 @@ class GhastExplosionTest {
         assertNull(GhastExplosion.dropFor(BlockType.CHEST));
     }
 
+    @Test
+    void knockbackFallsOffWithDistanceAndPushesOutwardAndUpward() {
+        GhastExplosion.Knockback near = GhastExplosion.knockbackAt(1.0, 0.0, 0.0);
+        assertNotNull(near);
+        assertTrue(near.velocityX() > 0.0);
+        assertEquals(0.0, near.velocityZ(), 0.0001);
+        assertTrue(near.velocityY() > 0.0);
+        GhastExplosion.Knockback farther = GhastExplosion.knockbackAt(3.0, 0.0, 0.0);
+        assertNotNull(farther);
+        assertTrue(farther.velocityX() < near.velocityX());
+        assertNull(GhastExplosion.knockbackAt(4.0, 0.0, 0.0));
+        assertNull(GhastExplosion.knockbackAt(Double.NaN, 0.0, 0.0));
+    }
+
 }

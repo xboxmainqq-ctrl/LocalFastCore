@@ -3746,7 +3746,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         mobArrows.put(runtimeId, arrow);
         if ("minecraft:bogged".equals(mob.identifier())) poisonMobArrows.add(runtimeId);
         broadcastLivingActorPacket(BedrockArrowActorCodec.createSpawn(arrow));
-        nextMobAttackMillis.put(mob.runtimeId(), nowMillis + 2_000L);
+        long cooldownMillis = ru.nexora.combat.LivingEntityAiService
+                .rangedAttackCooldownMillisFor(mob.identifier());
+        long nextAttackAt = nowMillis > Long.MAX_VALUE - cooldownMillis
+                ? Long.MAX_VALUE : nowMillis + cooldownMillis;
+        nextMobAttackMillis.put(mob.runtimeId(), nextAttackAt);
         return true;
     }
 
@@ -3764,12 +3768,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             ru.nexora.combat.ArrowProjectile next = current.advance();
             boolean removed = next.expired();
             if (!removed) {
-                int blockX = (int) Math.floor(next.x());
-                int blockY = (int) Math.floor(next.y());
-                int blockZ = (int) Math.floor(next.z());
-                removed = blockY < WorldChunk.MIN_Y || blockY > WorldChunk.MAX_Y
-                        || !world.isChunkLoadedAt(blockX, blockZ)
-                        || world.getBlock(blockX, blockY, blockZ) != BlockType.AIR;
+                removed = isMobArrowPathBlocked(current, next);
             }
             if (!removed) {
                 for (Map.Entry<String, SessionState> playerEntry : sessions.entrySet()) {
@@ -3812,6 +3811,35 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 broadcastLivingActorPacket(BedrockArrowActorCodec.createMove(next, Math.max(0, tick)));
             }
         }
+    }
+
+    /**
+     * Sweeps the whole per-tick arrow segment through loaded voxels. Sampling at
+     * 0.1-block intervals prevents fast projectiles from tunnelling through thin blocks.
+     * Unloaded chunks are treated as a safe stopping boundary and are never generated here.
+     */
+    private boolean isMobArrowPathBlocked(
+            ru.nexora.combat.ArrowProjectile from,
+            ru.nexora.combat.ArrowProjectile to
+    ) {
+        double dx = to.x() - from.x();
+        double dy = to.y() - from.y();
+        double dz = to.z() - from.z();
+        double length = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        int samples = Math.max(1, (int) Math.ceil(length / 0.1));
+        if (samples > 256) return true;
+        for (int sample = 1; sample <= samples; sample++) {
+            double fraction = (double) sample / samples;
+            int blockX = (int) Math.floor(from.x() + dx * fraction);
+            int blockY = (int) Math.floor(from.y() + dy * fraction);
+            int blockZ = (int) Math.floor(from.z() + dz * fraction);
+            if (blockY < WorldChunk.MIN_Y || blockY > WorldChunk.MAX_Y
+                    || !world.isChunkLoadedAt(blockX, blockZ)
+                    || world.getBlock(blockX, blockY, blockZ) != BlockType.AIR) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static double distanceToSegmentSquared(

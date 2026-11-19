@@ -5,10 +5,6 @@ import ru.nexora.world.ChunkSection;
 import ru.nexora.world.WorldChunk;
 
 import java.io.ByteArrayOutputStream;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
 /** Encoder for the protocol-2225 FULL_CHUNK_DATA (LevelChunk) packet. */
 public final class BedrockLevelChunkCodec {
@@ -99,21 +95,22 @@ public final class BedrockLevelChunkCodec {
             return;
         }
 
-        Map<Integer, Integer> paletteIndexes = new LinkedHashMap<>();
-        List<Integer> palette = new ArrayList<>();
+        int[] paletteIndexByBlockId = new int[BlockType.values().length];
+        java.util.Arrays.fill(paletteIndexByBlockId, -1);
+        int[] palette = new int[paletteIndexByBlockId.length];
+        int paletteSize = 0;
         int[] indexes = new int[ChunkSection.VOLUME];
         for (int i = 0; i < raw.length; i++) {
-            BlockType type = BlockType.byInternalId(Byte.toUnsignedInt(raw[i]));
-            int runtimeId = BedrockBlockRuntimeIds.forBlock(type);
-            Integer paletteIndex = paletteIndexes.get(runtimeId);
-            if (paletteIndex == null) {
-                paletteIndex = palette.size();
-                paletteIndexes.put(runtimeId, paletteIndex);
-                palette.add(runtimeId);
+            int blockId = Byte.toUnsignedInt(raw[i]);
+            int paletteIndex = paletteIndexByBlockId[blockId];
+            if (paletteIndex < 0) {
+                paletteIndex = paletteSize;
+                paletteIndexByBlockId[blockId] = paletteSize;
+                palette[paletteSize++] = BedrockBlockRuntimeIds.forBlock(BlockType.byInternalId(blockId));
             }
             indexes[i] = paletteIndex;
         }
-        writePalette(out, indexes, palette);
+        writePalette(out, indexes, palette, paletteSize);
     }
 
     private static boolean isEmpty(byte[] raw) {
@@ -121,15 +118,15 @@ public final class BedrockLevelChunkCodec {
         return true;
     }
 
-    private static void writePalette(Writer out, int[] indexes, List<Integer> palette) {
-        if (palette.size() == 1) {
+    private static void writePalette(Writer out, int[] indexes, int[] palette, int paletteSize) {
+        if (paletteSize == 1) {
             out.byteValue(1); // V0, runtime palette
-            out.varInt32(palette.getFirst());
+            out.varInt32(palette[0]);
             return;
         }
 
         int bits = 1;
-        while ((1 << bits) < palette.size()) bits++;
+        while ((1 << bits) < paletteSize) bits++;
         int entriesPerWord = 32 / bits;
         int wordCount = (indexes.length + entriesPerWord - 1) / entriesPerWord;
         out.byteValue((bits << 1) | 1); // version bits plus runtime-ID flag
@@ -143,8 +140,8 @@ public final class BedrockLevelChunkCodec {
             out.int32(word);
         }
 
-        out.varUInt32(palette.size());
-        for (int runtimeId : palette) out.varInt32(runtimeId);
+        out.varUInt32(paletteSize);
+        for (int index = 0; index < paletteSize; index++) out.varInt32(palette[index]);
     }
 
     private static final class Writer {

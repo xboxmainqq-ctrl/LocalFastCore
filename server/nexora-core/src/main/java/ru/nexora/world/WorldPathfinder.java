@@ -18,7 +18,16 @@ public final class WorldPathfinder {
             World world, double startX, double feetY, double startZ,
             double targetX, double targetZ
     ) {
-        if (world == null || !Double.isFinite(startX) || !Double.isFinite(feetY)
+        return findNextStep(world, startX, feetY, startZ, targetX, targetZ, "minecraft:zombie");
+    }
+
+    /** Species-aware bounded path search using the mob's real collision footprint. */
+    public static Optional<Step> findNextStep(
+            World world, double startX, double feetY, double startZ,
+            double targetX, double targetZ, String identifier
+    ) {
+        if (world == null || identifier == null || identifier.isBlank()
+                || !Double.isFinite(startX) || !Double.isFinite(feetY)
                 || !Double.isFinite(startZ) || !Double.isFinite(targetX)
                 || !Double.isFinite(targetZ) || feetY < WorldChunk.MIN_Y
                 || feetY > WorldChunk.MAX_Y || Math.abs(startX) > 30_000_000
@@ -30,7 +39,7 @@ public final class WorldPathfinder {
         int targetCellX = (int) Math.floor(targetX);
         int targetCellZ = (int) Math.floor(targetZ);
         if (startCellX == targetCellX && startCellZ == targetCellZ) return Optional.empty();
-        if (!isMobFootprintLoaded(world, startX, startZ)) return Optional.empty();
+        if (!isMobFootprintLoaded(world, startX, startZ, identifier)) return Optional.empty();
 
         ArrayDeque<Node> queue = new ArrayDeque<>();
         Set<Long> visited = new HashSet<>();
@@ -47,7 +56,7 @@ public final class WorldPathfinder {
                 int nextZ = current.z() + direction[1];
                 if (Math.abs((long) nextX - startCellX) > MAX_DEPTH
                         || Math.abs((long) nextZ - startCellZ) > MAX_DEPTH) continue;
-                if (!isMobFootprintLoaded(world, nextX + 0.5, nextZ + 0.5)) continue;
+                if (!isMobFootprintLoaded(world, nextX + 0.5, nextZ + 0.5, identifier)) continue;
                 long key = key(nextX, nextZ);
                 if (!visited.add(key)) continue;
 
@@ -55,7 +64,7 @@ public final class WorldPathfinder {
                 double fromZ = current.depth() == 0 ? startZ : current.z() + 0.5;
                 double toX = nextX + 0.5;
                 double toZ = nextZ + 0.5;
-                if (!WorldCollision.canMove(world, fromX, feetY, fromZ, toX, feetY, toZ)) continue;
+                if (!WorldCollision.canMoveMob(world, identifier, fromX, feetY, fromZ, toX, feetY, toZ)) continue;
 
                 int firstX = current.depth() == 0 ? nextX : current.firstX();
                 int firstZ = current.depth() == 0 ? nextZ : current.firstZ();
@@ -101,13 +110,25 @@ public final class WorldPathfinder {
         return true;
     }
 
-    /** Checks all chunks touched by the mob's horizontal 0.6-block footprint without loading any. */
+    /** Checks all chunks touched by a mob's horizontal footprint without loading any. */
     public static boolean isMobFootprintLoaded(World world, double x, double z) {
-        if (world == null || !Double.isFinite(x) || !Double.isFinite(z)) return false;
-        return world.isChunkLoadedAt((int) Math.floor(x - 0.3), (int) Math.floor(z - 0.3))
-                && world.isChunkLoadedAt((int) Math.floor(x - 0.3), (int) Math.floor(z + 0.3))
-                && world.isChunkLoadedAt((int) Math.floor(x + 0.3), (int) Math.floor(z - 0.3))
-                && world.isChunkLoadedAt((int) Math.floor(x + 0.3), (int) Math.floor(z + 0.3));
+        return isMobFootprintLoaded(world, x, z, "minecraft:zombie");
+    }
+
+    public static boolean isMobFootprintLoaded(World world, double x, double z, String identifier) {
+        if (world == null || identifier == null || identifier.isBlank()
+                || !Double.isFinite(x) || !Double.isFinite(z)) return false;
+        double halfWidth = WorldCollision.dimensionsForMob(identifier).width() / 2.0;
+        int minX = (int) Math.floor(x - halfWidth + 1.0e-5);
+        int maxX = (int) Math.floor(x + halfWidth - 1.0e-5);
+        int minZ = (int) Math.floor(z - halfWidth + 1.0e-5);
+        int maxZ = (int) Math.floor(z + halfWidth - 1.0e-5);
+        for (int blockX = minX; blockX <= maxX; blockX++) {
+            for (int blockZ = minZ; blockZ <= maxZ; blockZ++) {
+                if (!world.isChunkLoadedAt(blockX, blockZ)) return false;
+            }
+        }
+        return true;
     }
 
     private static long key(int x, int z) {

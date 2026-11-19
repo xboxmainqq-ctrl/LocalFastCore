@@ -17,7 +17,9 @@ public final class HotPathProfiler {
         MOB_PATHFINDING,
         WORLD_ENTITY_TICK,
         CHUNK_RESIDENCY,
-        BEDROCK_INBOUND
+        BEDROCK_INBOUND,
+        BEDROCK_CHUNK_STREAMING,
+        BEDROCK_OUTBOUND_DRAIN
     }
 
     private static final int DEFAULT_WINDOW = 256;

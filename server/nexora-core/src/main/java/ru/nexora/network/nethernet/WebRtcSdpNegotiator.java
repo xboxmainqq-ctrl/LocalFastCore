@@ -1,6 +1,8 @@
 package ru.nexora.network.nethernet;
 
 import dev.onvoid.webrtc.PeerConnectionFactory;
+import dev.onvoid.webrtc.media.audio.AudioDeviceModule;
+import dev.onvoid.webrtc.media.audio.AudioLayer;
 import dev.onvoid.webrtc.PortAllocatorConfig;
 import dev.onvoid.webrtc.PeerConnectionObserver;
 import dev.onvoid.webrtc.RTCAnswerOptions;
@@ -50,6 +52,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
     private static final int TRANSPORT_STATS_BATCH_SIZE = 32;
 
     private final PeerConnectionFactory factory;
+    private final AudioDeviceModule audioDeviceModule;
     private final NetherNetIdentityService identityService;
     private final NetherNetDataChannelListener dataChannelListener;
     private final int maxSessions;
@@ -130,15 +133,29 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         this.maxUdpPort = maxUdpPort;
         this.timeoutMillis = timeoutMillis;
         PeerConnectionFactory nativeFactory;
+        AudioDeviceModule nativeAudioModule = null;
         try {
-            nativeFactory = new PeerConnectionFactory();
+            // A dedicated Bedrock server has no microphone or speaker. The platform
+            // default ADM attempts to initialize host audio devices and can abort
+            // startup on headless Linux hosts even though NetherNet never uses audio.
+            nativeAudioModule = new AudioDeviceModule(AudioLayer.kDummyAudio);
+            nativeFactory = new PeerConnectionFactory(nativeAudioModule);
         } catch (LinkageError unavailableNativeRuntime) {
+            if (nativeAudioModule != null) {
+                try {
+                    nativeAudioModule.dispose();
+                } catch (RuntimeException ignored) {
+                    // Continue in signaling-only mode when native initialization failed.
+                }
+            }
+            nativeAudioModule = null;
             nativeFactory = null;
             System.err.println("NEXORA: WebRTC native runtime is unavailable; server will continue in "
                     + "signaling-only mode. Install the host libraries required by libwebrtc "
                     + "(for example libXdamage.so.1 on Linux) to enable Bedrock connections. "
                     + "Details: " + unavailableNativeRuntime);
         }
+        this.audioDeviceModule = nativeAudioModule;
         this.factory = nativeFactory;
         this.sessionReaper = Executors.newSingleThreadScheduledExecutor(task -> {
             Thread thread = new Thread(task, "nexora-nethernet-session-reaper");
@@ -491,6 +508,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         sessions.values().forEach(PeerSession::close);
         sessions.clear();
         if (factory != null) factory.dispose();
+        if (audioDeviceModule != null) audioDeviceModule.dispose();
     }
 
     private final class PeerSession implements PeerConnectionObserver {

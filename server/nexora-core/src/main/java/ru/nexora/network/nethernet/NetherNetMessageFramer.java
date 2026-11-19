@@ -1,8 +1,8 @@
 package ru.nexora.network.nethernet;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -134,7 +134,7 @@ public final class NetherNetMessageFramer {
                 throw new IllegalArgumentException("NetherNet fragment exceeds configured message limit");
             }
 
-            if (pending == null) {
+            if (pendingBytes == null) {
                 if (header == 0) {
                     ensureWithinLimit(payloadLength);
                     byte[] payload = new byte[payloadLength];

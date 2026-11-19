@@ -36,6 +36,46 @@ class WorldPathfinderTest {
         assertTrue(WorldPathfinder.findNextStep(world, 0.1, 65, 0.1, 0.9, 0.9).isEmpty());
         assertTrue(WorldPathfinder.findNextStep(world, Double.NaN, 65, 0, 3, 3).isEmpty());
     }
+
+    @Test
+    void findsOneBlockStepUpWithSpeciesCollisionBox() {
+        World world = new World("path-step-up", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
+        world.setBlock(1, 65, 0, BlockType.STONE);
+
+        var step = WorldPathfinder.findNextStep(world,
+                0.5, 65.0, 0.5, 1.5, 0.5, "minecraft:zombie").orElseThrow();
+
+        assertEquals(66.0, step.y(), 1.0e-6);
+        assertTrue(WorldCollision.canStepMob(world, "minecraft:zombie",
+                0.5, 65.0, 0.5, step.x(), step.y(), step.z()));
+    }
+
+    @Test
+    void findsSafeOneBlockDropWithoutPathingIntoVoid() {
+        World world = new World("path-step-down", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
+        world.setBlock(0, 65, 0, BlockType.STONE);
+
+        var step = WorldPathfinder.findNextStep(world,
+                0.5, 66.0, 0.5, 1.5, 0.5, "minecraft:zombie").orElseThrow();
+
+        assertEquals(65.0, step.y(), 1.0e-6);
+        assertTrue(WorldCollision.canStepMob(world, "minecraft:zombie",
+                0.5, 66.0, 0.5, step.x(), step.y(), step.z()));
+    }
+
+    @Test
+    void refusesStepUpWhenThereIsNoHeadroom() {
+        World world = new World("path-step-ceiling", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
+        world.setBlock(1, 65, 0, BlockType.STONE);
+        world.setBlock(0, 66, 0, BlockType.STONE);
+
+        assertFalse(WorldCollision.canStepMob(world, "minecraft:zombie",
+                0.5, 65.0, 0.5, 1.5, 66.0, 0.5));
+    }
+
     @Test
     void reportsSearchAreaResidentOnlyWhenAllRelevantChunksAreLoaded() {
         World world = new World("path-area-loaded", 0L, new FlatWorldGenerator());

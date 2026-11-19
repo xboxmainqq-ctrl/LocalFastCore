@@ -3,6 +3,7 @@ package ru.nexora.world;
 import ru.nexora.ai.HotPathProfiler;
 import ru.nexora.combat.LivingEntityAiService;
 import ru.nexora.combat.MobAiLoadController;
+import ru.nexora.combat.PlayerTargetIndex;
 import ru.nexora.runtime.AdaptiveRuntime;
 
 import java.util.HashMap;
@@ -100,6 +101,9 @@ public final class WorldTickPipeline {
         int normalPriority = 0;
         int lowPriority = 0;
         long budgetStart = System.nanoTime();
+        // Build one immutable player index per world tick. Every mob reuses it for
+        // nearest-target and provoker lookups instead of scanning the player list.
+        PlayerTargetIndex playerIndex = new PlayerTargetIndex(players);
         // A profiler snapshot copies and sorts its bounded sample window. Do this
         // once per tick, not once per mob, so large entity counts stay allocation-light.
         long targetEstimate = runtime.adaptEstimate(
@@ -123,7 +127,7 @@ public final class WorldTickPipeline {
             long targetingStarted = System.nanoTime();
             LivingEntityAiService.PlayerTarget nearest;
             try {
-                nearest = LivingEntityAiService.nearestAlivePlayer(mob, players);
+                nearest = playerIndex.nearestWithinRange(mob);
             } finally {
                 profiler.record(HotPathProfiler.Path.MOB_TARGETING,
                         Math.max(0L, System.nanoTime() - targetingStarted));
@@ -180,9 +184,10 @@ public final class WorldTickPipeline {
             LivingEntityAiService.Decision decision;
             long decisionStarted = System.nanoTime();
             try {
+                String provokerId = provokerFor(mob.runtimeId(), nowMillis);
                 decision = aiService.decide(mob, players, nowMillis,
                         nextAttackAtMillis.getOrDefault(mob.uniqueId(), 0L),
-                        provokerFor(mob.runtimeId(), nowMillis), nearest);
+                        provokerId, nearest, playerIndex.find(provokerId));
             } finally {
                 profiler.record(HotPathProfiler.Path.MOB_AI_DECISION,
                         Math.max(0L, System.nanoTime() - decisionStarted));

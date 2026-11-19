@@ -3448,13 +3448,18 @@ class BedrockSessionManagerTest {
         java.lang.reflect.Method process = BedrockSessionManager.class.getDeclaredMethod(
                 "processChunkStreaming", String.class, session.getClass());
         process.setAccessible(true);
-        for (int attempt = 0; attempt < 128; attempt++) {
-            if (getSessionField(manager, networkId, "chunkStreamingQueue") == null) return;
-            clock.addAndGet(ChunkStreamingBudget.DEFAULT_WINDOW_NANOS);
-            process.invoke(manager, networkId, session);
+        long originalTime = clock.get();
+        try {
+            for (int attempt = 0; attempt < 128; attempt++) {
+                if (getSessionField(manager, networkId, "chunkStreamingQueue") == null) return;
+                clock.addAndGet(ChunkStreamingBudget.DEFAULT_WINDOW_NANOS);
+                process.invoke(manager, networkId, session);
+            }
+            assertNull(getSessionField(manager, networkId, "chunkStreamingQueue"),
+                    "Chunk streaming should complete within the test pump budget");
+        } finally {
+            clock.set(originalTime);
         }
-        assertNull(getSessionField(manager, networkId, "chunkStreamingQueue"),
-                "Chunk streaming should complete within the test pump budget");
     }
 
     private static Object getManagerField(BedrockSessionManager manager, String fieldName)

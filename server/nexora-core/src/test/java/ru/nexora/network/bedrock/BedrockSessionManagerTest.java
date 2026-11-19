@@ -2954,9 +2954,13 @@ class BedrockSessionManagerTest {
 
         assertArrayEquals(new byte[] {0x40, (byte) 0x8c, 0x01, 0x21, 0x30, 0, 0, 0, 0},
                 decodeOutbound(outboundFrames.get(10), true).payload());
-        BedrockPacket spawnChunk = decodeOutbound(outboundFrames.get(12), true);
-        assertEquals(4, Byte.toUnsignedInt(spawnChunk.payload()[0])); // chunk X = 2
-        assertEquals(3, Byte.toUnsignedInt(spawnChunk.payload()[1])); // chunk Z = -2
+        BedrockPacket spawnChunk = outboundFrames.stream()
+                .map(frame -> decodeOutbound(frame, true))
+                .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Initial chunk batch was not sent"));
+        assertEquals(4, Byte.toUnsignedInt(spawnChunk.payload()[0])); // center chunk X = 2
+        assertEquals(3, Byte.toUnsignedInt(spawnChunk.payload()[1])); // center chunk Z = -2
         manager.close();
     }
 

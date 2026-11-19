@@ -86,6 +86,35 @@ class MobPathCacheTest {
     }
 
     @Test
+    void rejectsNegativeMobIdsAndNavigationTimestamps() {
+        World world = new World("mob-path-cache-invalid-time", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
+        MobPathCache cache = new MobPathCache();
+
+        assertThrows(IllegalArgumentException.class, () ->
+                cache.findNextStep(-1L, world, 0.5, 65, 0.5, 2.5, 0.5, 1_000));
+        assertThrows(IllegalArgumentException.class, () ->
+                cache.findNextStep(1L, world, 0.5, 65, 0.5, 2.5, 0.5, -1));
+        assertEquals(0, cache.stats().requests());
+    }
+
+    @Test
+    void ttlAdditionSaturatesInsteadOfOverflowingAtLargeTimestamps() {
+        World world = new World("mob-path-cache-time-overflow", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
+        MobPathCache cache = new MobPathCache(4, 10);
+        long nearMaximum = Long.MAX_VALUE - 5;
+
+        var first = cache.findNextStep(4L, world, 0.5, 65, 0.5, 2.5, 0.5, nearMaximum);
+        var second = cache.findNextStep(4L, world, 0.5, 65, 0.5, 2.5, 0.5, nearMaximum);
+
+        assertTrue(first.isPresent());
+        assertEquals(first, second);
+        assertEquals(1, cache.stats().hits());
+        assertEquals(1, cache.stats().recomputations());
+    }
+
+    @Test
     void emptyCacheHasZeroHitRate() {
         MobPathCache cache = new MobPathCache();
         assertEquals(0.0, cache.stats().hitRate());

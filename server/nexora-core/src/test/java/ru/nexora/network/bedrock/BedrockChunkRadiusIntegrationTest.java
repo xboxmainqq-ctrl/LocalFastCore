@@ -69,7 +69,7 @@ class BedrockChunkRadiusIntegrationTest {
             // while already delivered columns are not retransmitted.
             handleRequest.invoke(manager, message, session, request(1, 8));
             assertEquals(1, field(session, "chunkViewRadius"));
-            completeStreaming(manager, session);
+            completeStreaming(manager, session, clock);
             assertEquals(9, sentChunks(session).size());
             List<BedrockPacket> allPackets = packetsFor(outbound, "viewer");
             assertEquals(2, allPackets.stream()

@@ -133,15 +133,17 @@ the reverse-index cleanup on disconnect.
 One observed GitHub CI microbenchmark run (1,000 mobs, four measured rounds; average
 lookup time per mob; environment-dependent):
 
-| Synthetic players | Full scan | Spatial index | Index build |
+| Synthetic players | Full scan | Adaptive lookup | Index build |
 |---:|---:|---:|---:|
-| 8 | 0.221 us | 0.237 us | 0.011 ms |
-| 64 | 1.341 us | 0.267 us | 0.083 ms |
-| 256 | 1.023 us | 0.296 us | 0.235 ms |
-| 1,024 | 2.535 us | 0.225 us | 0.630 ms |
+| 8 | 0.414 us | 0.215 us | 0.003 ms |
+| 64 | 1.262 us | 0.334 us | 0.453 ms |
+| 256 | 1.126 us | 0.486 us | 0.262 ms |
+| 1,024 | 4.634 us | 0.833 us | 0.534 ms |
 
-The index has a small fixed cost for very small player counts, but in this run it
-reduced per-mob lookup time by roughly 5x at 64 players and 11x at 1,024 players.
+The adaptive path uses a direct scan for up to 16 players and the spatial grid above
+that threshold. In this run it reduced per-mob lookup time by about 3.8x at 64
+players and 5.6x at 1,024 players. The 8-player result is affected by microbenchmark
+noise and should be read as a small-population sanity check, not a guaranteed gain.
 These are synthetic lookup timings, not whole-tick or live-server speedups.
 
 

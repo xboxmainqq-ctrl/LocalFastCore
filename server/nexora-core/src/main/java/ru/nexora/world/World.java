@@ -161,12 +161,18 @@ public final class World {
     public java.util.concurrent.CompletableFuture<Optional<WorldChunk>> requestStoredChunkLoad(
             int chunkX, int chunkZ
     ) {
+        return requestStoredChunkLoad("default", chunkX, chunkZ);
+    }
+
+    public java.util.concurrent.CompletableFuture<Optional<WorldChunk>> requestStoredChunkLoad(
+            String sessionKey, int chunkX, int chunkZ
+    ) {
         WorldChunk loaded = chunks.get(chunkKey(chunkX, chunkZ));
         if (loaded != null) return java.util.concurrent.CompletableFuture.completedFuture(Optional.of(loaded));
         if (chunkLoadService == null) {
             return java.util.concurrent.CompletableFuture.completedFuture(Optional.empty());
         }
-        return chunkLoadService.request(chunkX, chunkZ);
+        return chunkLoadService.request(sessionKey, chunkX, chunkZ);
     }
 
     /**

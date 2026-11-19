@@ -74,4 +74,36 @@ class NetherNetMessageFramerTest {
         assertThrows(IllegalArgumentException.class,
                 () -> reassembler.accept(new byte[] {0, 3, 4}, true));
     }
+
+    @Test
+    void rejectsAndResetsAFragmentAssemblyThatExceedsItsDeadline() {
+        NetherNetMessageFramer.Reassembler reassembler =
+                new NetherNetMessageFramer.Reassembler(1024, 100L);
+
+        assertEquals(Optional.empty(), reassembler.accept(new byte[] {2, 10}, true, 1_000L));
+        assertEquals(Optional.empty(), reassembler.accept(new byte[] {1, 11}, true, 1_050L));
+        assertThrows(IllegalArgumentException.class,
+                () -> reassembler.accept(new byte[] {0, 12}, true, 1_101L));
+
+        // A timed-out partial message is discarded; a fresh unfragmented message works.
+        assertArrayEquals(new byte[] {7},
+                reassembler.accept(new byte[] {0, 7}, true, 1_102L).orElseThrow());
+    }
+
+    @Test
+    void acceptsAssemblyAtTheExactDeadlineBoundary() {
+        NetherNetMessageFramer.Reassembler reassembler =
+                new NetherNetMessageFramer.Reassembler(1024, 100L);
+
+        assertEquals(Optional.empty(), reassembler.accept(new byte[] {1, 10}, true, 2_000L));
+        assertArrayEquals(new byte[] {10, 11},
+                reassembler.accept(new byte[] {0, 11}, true, 2_100L).orElseThrow());
+    }
+
+    @Test
+    void rejectsNonPositiveAssemblyTimeout() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new NetherNetMessageFramer.Reassembler(1024, 0L));
+    }
+
 }

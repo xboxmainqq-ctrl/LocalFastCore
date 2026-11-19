@@ -113,6 +113,10 @@ class MobAiLoadControllerTest {
                 controller.priority(200 * 200, false, true));
         assertEquals(MobAiLoadController.Priority.LOW,
                 controller.priority(200 * 200, false, false));
+        assertThrows(IllegalArgumentException.class,
+                () -> controller.priority(Double.NaN, false, false));
+        assertThrows(IllegalArgumentException.class,
+                () -> controller.priority(-1, false, false));
     }
 
     @Test
@@ -159,6 +163,9 @@ class MobAiLoadControllerTest {
     void starvationTrackerRejectsNegativeRuntimeIds() {
         MobAiLoadController controller = new MobAiLoadController();
         assertThrows(IllegalArgumentException.class, () -> controller.recordDeferred(-1));
+        assertThrows(IllegalArgumentException.class, () -> controller.starvationTicks(-1));
+        assertThrows(IllegalArgumentException.class, () -> controller.recordScheduled(-1));
+        assertThrows(IllegalArgumentException.class, () -> controller.remove(-1));
     }
 
     @Test

@@ -81,3 +81,4 @@ class MobFuseTrackerTest {
         assertFalse(tracker.isReadyToDetonate(2, true, 2_500, 1_500));
         assertEquals(MobFuseTracker.MAX_TRACKED_FUSES, tracker.trackedFuses());
     }
+}

@@ -33,6 +33,20 @@ class WorldChunkResidencyManagerTest {
     }
 
     @Test
+    void publishesLockFreeReadSnapshotAfterLoadAndUnload() {
+        WorldChunkResidencyManager manager = new WorldChunkResidencyManager(1, 0);
+
+        manager.update(List.of(new WorldChunkResidencyManager.PlayerChunk(0, 0)), 0);
+        assertTrue(manager.isResident(0, 0));
+        assertTrue(manager.isResidentAtBlockPosition(0.5, 0.5));
+
+        manager.update(List.of(), 1);
+        assertFalse(manager.isResident(0, 0));
+        assertFalse(manager.isResidentAtBlockPosition(0.5, 0.5));
+        assertEquals(0, manager.residentChunkCount());
+    }
+
+    @Test
     void overlappingPlayersShareChunkResidency() {
         WorldChunkResidencyManager manager = new WorldChunkResidencyManager(2, 20);
         var plan = manager.update(List.of(

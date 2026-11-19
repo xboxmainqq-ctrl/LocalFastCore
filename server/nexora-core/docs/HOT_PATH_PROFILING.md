@@ -226,10 +226,13 @@ measurements instead of presenting them as current ping. Byte totals are retaine
 when the native report contains them even if its RTT field is unavailable. The server console's
 `network` command reports connected sessions, fresh/stale sample counts, average and
 maximum fresh ICE RTT, timestamped sent/received transport bytes-per-second, cumulative
-transport byte totals, and the current bounded application outbound backlog (queued
-frames/bytes and peers with queued frames). The backlog excludes bytes already handed
-to the native WebRTC/SCTP buffer; throughput rates are transport-counter deltas rather
-than decoded Bedrock gameplay payload rates. Average/max RTT exclude
+transport byte totals, the current bounded application outbound backlog (queued
+frames/bytes and peers with queued frames), and Bedrock ingress frame/message/failure
+counts with average/maximum framing-and-dispatch processing time. Ingress timings cover
+the NetherNet framing/dispatch pipeline only, not the downstream Bedrock decoder or
+gameplay handlers. The backlog excludes bytes already handed to the native WebRTC/SCTP
+buffer; throughput rates are transport-counter deltas rather than decoded Bedrock
+gameplay payload rates. Average/max RTT exclude
 stale or missing samples; byte counters remain cumulative. NEXORA also derives
 per-peer sent/received bytes-per-second from successive timestamped counter samples.
 Rates are reported only when both counter baselines are valid, monotonically

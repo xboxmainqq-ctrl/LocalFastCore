@@ -3755,7 +3755,7 @@ class BedrockSessionManagerTest {
 
     @Test
     void livingActorReplicationSpawnsAndDespawnsAcrossRecipientChunkViews() throws Exception {
-        Map<String, List<byte[]>> outboundByPlayer = new java.util.concurrent.ConcurrentHashMap<>();
+        java.util.Map<String, List<byte[]>> outboundByPlayer = new java.util.concurrent.ConcurrentHashMap<>();
         ru.nexora.world.World world = new ru.nexora.world.World(
                 "actor-replication-world", 0L, new ru.nexora.world.FlatWorldGenerator());
         BedrockSessionManager manager = new BedrockSessionManager(

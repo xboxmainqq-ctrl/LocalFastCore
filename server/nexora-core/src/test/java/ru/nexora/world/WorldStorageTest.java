@@ -42,6 +42,47 @@ class WorldStorageTest {
     }
 
     @Test
+    void asynchronouslyPreparesPersistedChunkWithoutRunningGeneratorOnWorker() throws Exception {
+        WorldStorage storage = new WorldStorage(temporaryDirectory, "NEXORA");
+        WorldChunk persisted = new WorldChunk(4, -2);
+        persisted.setBlock(3, 70, 5, BlockType.DIAMOND_ORE);
+        storage.saveChunk(persisted);
+        java.util.concurrent.atomic.AtomicInteger generationCalls = new java.util.concurrent.atomic.AtomicInteger();
+        World world = new World("NEXORA", 2L, (chunk, seed) -> generationCalls.incrementAndGet(),
+                0, 65, 0, storage);
+        try {
+            var prepared = world.requestStoredChunkLoad(4, -2).get(5, java.util.concurrent.TimeUnit.SECONDS);
+            assertTrue(prepared.isPresent());
+            assertEquals(0, generationCalls.get(), "Disk preparation must not invoke the world generator");
+            WorldChunk installed = world.getChunkFromPreparedStorageLoad(4, -2, prepared);
+            assertEquals(BlockType.DIAMOND_ORE, installed.getBlock(3, 70, 5));
+            assertTrue(world.isChunkLoadedAt(4 * 16, -2 * 16));
+            assertEquals(0, generationCalls.get());
+        } finally {
+            world.closeChunkLoadService();
+        }
+    }
+
+    @Test
+    void asynchronouslyPreparedMissingChunkFallsBackToWorldThreadGeneration() throws Exception {
+        WorldStorage storage = new WorldStorage(temporaryDirectory, "NEXORA");
+        java.util.concurrent.atomic.AtomicInteger generationCalls = new java.util.concurrent.atomic.AtomicInteger();
+        World world = new World("NEXORA", 3L, (chunk, seed) -> {
+            generationCalls.incrementAndGet();
+            chunk.setBlock(0, 64, 0, BlockType.GRASS_BLOCK);
+        }, 0, 65, 0, storage);
+        try {
+            var prepared = world.requestStoredChunkLoad(9, 9).get(5, java.util.concurrent.TimeUnit.SECONDS);
+            assertTrue(prepared.isEmpty());
+            WorldChunk generated = world.getChunkFromPreparedStorageLoad(9, 9, prepared);
+            assertEquals(BlockType.GRASS_BLOCK, generated.getBlock(0, 64, 0));
+            assertEquals(1, generationCalls.get());
+        } finally {
+            world.closeChunkLoadService();
+        }
+    }
+
+    @Test
     void rejectsCorruptChunkChecksum() throws Exception {
         WorldStorage storage = new WorldStorage(temporaryDirectory, "NEXORA");
         storage.saveChunk(new WorldChunk(0, 0));

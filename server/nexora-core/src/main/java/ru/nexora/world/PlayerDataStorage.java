@@ -67,6 +67,7 @@ public final class PlayerDataStorage {
 
         if (fileBytes.size() > MAX_FILE_BYTES) throw new IOException("NEXORA player profile exceeds size limit");
         Path backup = backupPath(target);
+        rejectSymlink(backup);
         if (Files.exists(target)) {
             // Never rotate an unverified profile into the recovery slot.
             load(player.xuid());

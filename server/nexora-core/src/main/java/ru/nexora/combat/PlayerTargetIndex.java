@@ -24,27 +24,39 @@ public final class PlayerTargetIndex {
     public static final double SEARCH_RADIUS = 128.0;
     public static final double SEARCH_RADIUS_SQUARED = SEARCH_RADIUS * SEARCH_RADIUS;
     private static final int CELL_SIZE = 128;
+    private static final int LINEAR_SCAN_THRESHOLD = 16;
 
     private final Map<Long, List<IndexedPlayer>> cells;
+    private final List<LivingEntityAiService.PlayerTarget> linearTargets;
+    private final boolean linearScan;
     private final Map<String, LivingEntityAiService.PlayerTarget> byNetworkId;
 
     public PlayerTargetIndex(List<LivingEntityAiService.PlayerTarget> players) {
         Objects.requireNonNull(players, "players");
-        Map<Long, List<IndexedPlayer>> mutableCells = new HashMap<>();
+        boolean useLinearScan = players.size() <= LINEAR_SCAN_THRESHOLD;
+        Map<Long, List<IndexedPlayer>> mutableCells = useLinearScan ? Map.of() : new HashMap<>();
+        List<LivingEntityAiService.PlayerTarget> smallTargets =
+                useLinearScan ? new ArrayList<>(players.size()) : List.of();
         Map<String, LivingEntityAiService.PlayerTarget> mutableIds = new HashMap<>();
         int order = 0;
         for (LivingEntityAiService.PlayerTarget player : players) {
             int playerOrder = order++;
             if (player == null || !player.alive()) continue;
-            int cellX = cell(player.x());
-            int cellZ = cell(player.z());
-            mutableCells.computeIfAbsent(key(cellX, cellZ), ignored -> new ArrayList<>())
-                    .add(new IndexedPlayer(player, playerOrder));
+            if (useLinearScan) {
+                smallTargets.add(player);
+            } else {
+                int cellX = cell(player.x());
+                int cellZ = cell(player.z());
+                mutableCells.computeIfAbsent(key(cellX, cellZ), ignored -> new ArrayList<>())
+                        .add(new IndexedPlayer(player, playerOrder));
+            }
             mutableIds.put(player.networkId(), player);
         }
         // These maps and their bucket lists are privately owned and never mutated
         // after construction; avoid per-tick defensive copies of every bucket.
         this.cells = mutableCells;
+        this.linearTargets = useLinearScan ? List.copyOf(smallTargets) : List.of();
+        this.linearScan = useLinearScan;
         this.byNetworkId = mutableIds;
     }
 
@@ -54,10 +66,24 @@ public final class PlayerTargetIndex {
      */
     public LivingEntityAiService.PlayerTarget nearestWithinRange(WorldLivingEntity mob) {
         Objects.requireNonNull(mob, "mob");
-        int centerX = cell(mob.x());
-        int centerZ = cell(mob.z());
         LivingEntityAiService.PlayerTarget nearest = null;
         double nearestDistanceSquared = SEARCH_RADIUS_SQUARED;
+        if (linearScan) {
+            for (LivingEntityAiService.PlayerTarget candidate : linearTargets) {
+                double dx = candidate.x() - mob.x();
+                double dy = candidate.y() - mob.y();
+                double dz = candidate.z() - mob.z();
+                double distanceSquared = dx * dx + dy * dy + dz * dz;
+                if (distanceSquared <= SEARCH_RADIUS_SQUARED
+                        && (nearest == null || distanceSquared < nearestDistanceSquared)) {
+                    nearestDistanceSquared = distanceSquared;
+                    nearest = candidate;
+                }
+            }
+            return nearest;
+        }
+        int centerX = cell(mob.x());
+        int centerZ = cell(mob.z());
         int nearestOrder = Integer.MAX_VALUE;
         for (int cellX = centerX - 1; cellX <= centerX + 1; cellX++) {
             for (int cellZ = centerZ - 1; cellZ <= centerZ + 1; cellZ++) {

@@ -308,6 +308,33 @@ class LivingEntityAiServiceTest {
     }
 
     @Test
+    void rangedMobRetreatsWhenAnOpponentGetsTooCloseDuringReload() {
+        WorldLivingEntity skeleton = new WorldLivingEntityManager().spawn(
+                "minecraft:skeleton", 20, 0, 64, 0);
+        var nearby = new LivingEntityAiService.PlayerTarget("player", 2, 64, 0, true);
+
+        var decision = ai.decide(skeleton, List.of(nearby), 2_500, 3_000);
+
+        assertFalse(decision.attack());
+        assertTrue(decision.moving());
+        assertTrue(decision.moveX() < 0);
+        assertEquals("player", decision.targetNetworkId());
+    }
+
+    @Test
+    void rangedMobAttacksInsteadOfRetreatingWhenItsCooldownIsReady() {
+        WorldLivingEntity skeleton = new WorldLivingEntityManager().spawn(
+                "minecraft:skeleton", 20, 0, 64, 0);
+        var nearby = new LivingEntityAiService.PlayerTarget("player", 2, 64, 0, true);
+
+        var decision = ai.decide(skeleton, List.of(nearby), 3_000, 2_500);
+
+        assertTrue(decision.attack());
+        assertFalse(decision.moving());
+        assertEquals(LivingEntityAiService.AttackStyle.PROJECTILE, decision.attackStyle());
+    }
+
+    @Test
     void meleeMobDoesNotInheritProjectileCombatStyle() {
         assertEquals(LivingEntityAiService.AttackStyle.MELEE,
                 LivingEntityAiService.attackStyleFor("minecraft:zombie"));

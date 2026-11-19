@@ -114,6 +114,21 @@ class PlayerDataStorageTest {
     }
 
     @Test
+    void failsClosedWhenBothProfileGenerationsAreCorrupted() throws Exception {
+        PlayerDataStorage storage = new PlayerDataStorage(temporaryDirectory);
+        storage.save(new PlayerData("double-fault", "First", "NEXORA", 0, 65, 0, 0, 0, 1));
+        storage.save(new PlayerData("double-fault", "Second", "NEXORA", 1, 66, 1, 0, 0, 2));
+        Path primary = temporaryDirectory.resolve("double-fault.nxp");
+        Path backup = temporaryDirectory.resolve("double-fault.nxp.bak");
+        for (Path file : new Path[]{primary, backup}) {
+            byte[] damaged = Files.readAllBytes(file);
+            damaged[damaged.length - 1] ^= 1;
+            Files.write(file, damaged);
+        }
+        assertThrows(IOException.class, () -> storage.load("double-fault"));
+    }
+
+    @Test
     void rejectsUnsafeXuidAndOutOfWorldCoordinates() {
         assertThrows(IllegalArgumentException.class, () -> new PlayerData(
                 "../outside", "Player", "NEXORA", 0, 65, 0, 0, 0, 1));

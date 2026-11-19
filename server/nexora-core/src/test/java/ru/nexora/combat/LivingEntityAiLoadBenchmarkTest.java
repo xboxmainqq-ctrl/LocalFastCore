@@ -24,8 +24,8 @@ class LivingEntityAiLoadBenchmarkTest {
     );
 
     @Test
-    void reportsAiLoadAtOneHundredFiveHundredAndOneThousandMobs() {
-        for (int mobCount : new int[]{100, 500, 1_000}) {
+    void reportsAiLoadAtIncreasingMobPopulations() {
+        for (int mobCount : new int[]{100, 500, 1_000, 2_000, 5_000}) {
             WorldLivingEntityManager entities = new WorldLivingEntityManager();
             List<WorldLivingEntity> mobs = new ArrayList<>(mobCount);
             for (int i = 0; i < mobCount; i++) {

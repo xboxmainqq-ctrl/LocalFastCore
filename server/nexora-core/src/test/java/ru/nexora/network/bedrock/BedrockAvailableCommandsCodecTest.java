@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockAvailableCommandsCodecTest {
     @Test
-    void advertisesEquipmentCommandWithoutArguments() {
+    void advertisesEquipmentAndAiCommandsWithoutArguments() {
         BedrockPacket packet = BedrockAvailableCommandsCodec.createEquipmentCommands();
         assertEquals(0x4c, packet.packetId());
         Reader in = new Reader(packet.payload());
@@ -20,19 +20,24 @@ class BedrockAvailableCommandsCodecTest {
         assertEquals(0, in.varUInt32()); // enum data
         assertEquals(0, in.varUInt32()); // chained subcommand data
 
-        assertEquals(1, in.varUInt32()); // commands
-        assertEquals("equipment", in.string());
-        assertEquals("Open the NEXORA magical equipment menu", in.string());
-        assertEquals(0, in.uint16());
-        assertEquals("Any", in.string());
-        assertEquals(-1, in.int32());
-        assertEquals(0, in.varUInt32()); // chained subcommand indexes
-        assertEquals(1, in.varUInt32()); // overloads
-        assertFalse(in.bool()); // is chaining
-        assertEquals(0, in.varUInt32()); // no parameters
+        assertEquals(2, in.varUInt32()); // commands
+        assertCommand(in, "equipment", "Open the NEXORA magical equipment menu");
+        assertCommand(in, "ai", "Open the NEXORA AI assistant");
         assertEquals(0, in.varUInt32()); // soft enums
         assertEquals(0, in.varUInt32()); // constraints
         in.requireExhausted();
+    }
+
+    private static void assertCommand(Reader in, String name, String description) {
+        assertEquals(name, in.string());
+        assertEquals(description, in.string());
+        assertEquals(0, in.uint16());
+        assertEquals("Any", in.string());
+        assertEquals(-1, in.int32());
+        assertEquals(0, in.varUInt32());
+        assertEquals(1, in.varUInt32());
+        assertFalse(in.bool());
+        assertEquals(0, in.varUInt32());
     }
 
     private static final class Reader {

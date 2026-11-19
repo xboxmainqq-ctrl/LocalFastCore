@@ -14,11 +14,30 @@ public final class WorldRaycast {
             World world, double startX, double startY, double startZ,
             int targetX, int targetY, int targetZ
     ) {
+        return hasLineOfSight(world, startX, startY, startZ, targetX, targetY, targetZ, false);
+    }
+
+    /** Mob-only variant that never causes an unloaded chunk to be generated. */
+    public static boolean hasLineOfSightInLoadedChunks(
+            World world, double startX, double startY, double startZ,
+            int targetX, int targetY, int targetZ
+    ) {
+        return hasLineOfSight(world, startX, startY, startZ, targetX, targetY, targetZ, true);
+    }
+
+    private static boolean hasLineOfSight(
+            World world, double startX, double startY, double startZ,
+            int targetX, int targetY, int targetZ, boolean requireLoadedChunks
+    ) {
         if (world == null || !Double.isFinite(startX) || !Double.isFinite(startY)
                 || !Double.isFinite(startZ)
                 || targetY < WorldChunk.MIN_Y || targetY > WorldChunk.MAX_Y) {
             return false;
         }
+
+        if (requireLoadedChunks
+                && (!world.isChunkLoadedAt((int) Math.floor(startX), (int) Math.floor(startZ))
+                || !world.isChunkLoadedAt(targetX, targetZ))) return false;
 
         double endX = targetX + 0.5;
         double endY = targetY + 0.5;
@@ -61,6 +80,7 @@ public final class WorldRaycast {
 
             if (x == targetX && y == targetY && z == targetZ) return true;
             if (y < WorldChunk.MIN_Y || y > WorldChunk.MAX_Y) return false;
+            if (requireLoadedChunks && !world.isChunkLoadedAt(x, z)) return false;
             if (world.getBlock(x, y, z) != BlockType.AIR) return false;
         }
         return false;

@@ -3,18 +3,19 @@ package ru.nexora.world;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Objects;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /** Thread-safe registry and lifecycle owner for server-created living actors. */
 public final class WorldLivingEntityManager {
     private static final int MAX_ENTITIES = 5_000;
     private final AtomicLong nextRuntimeId = new AtomicLong(2_000_000L);
-    private final ConcurrentMap<Long, WorldLivingEntity> entities = new ConcurrentHashMap<>();
+    private final AtomicInteger entityCount = new AtomicInteger();
+    private final ConcurrentMap<Long, WorldLivingEntity> entities = new ConcurrentSkipListMap<>();
     private final WorldLivingEntityStorage storage;
 
     public WorldLivingEntityManager() {
@@ -29,6 +30,7 @@ public final class WorldLivingEntityManager {
                     || entities.putIfAbsent(entity.runtimeId(), entity) != null) {
                 throw new IOException("Invalid or duplicate persisted living actor runtime ID");
             }
+            entityCount.incrementAndGet();
             highestRuntimeId = Math.max(highestRuntimeId, entity.runtimeId());
         }
         nextRuntimeId.set(highestRuntimeId + 1);
@@ -45,7 +47,7 @@ public final class WorldLivingEntityManager {
             String identifier, WorldLivingEntity.Family family,
             float maxHealth, double x, double y, double z
     ) {
-        if (entities.size() >= MAX_ENTITIES) {
+        if (entityCount.get() >= MAX_ENTITIES) {
             throw new IllegalStateException("Living actor world cap reached");
         }
         long runtimeId = nextRuntimeId.getAndIncrement();
@@ -58,6 +60,7 @@ public final class WorldLivingEntityManager {
         if (entities.putIfAbsent(runtimeId, entity) != null) {
             throw new IllegalStateException("Duplicate living actor runtime ID");
         }
+        entityCount.incrementAndGet();
         return entity;
     }
 
@@ -67,9 +70,9 @@ public final class WorldLivingEntityManager {
     }
 
     public List<WorldLivingEntity> snapshot() {
-        List<WorldLivingEntity> snapshot = new ArrayList<>(entities.values());
-        snapshot.sort(Comparator.comparingLong(WorldLivingEntity::runtimeId));
-        return List.copyOf(snapshot);
+        // The registry is keyed by runtime ID in a concurrent sorted map, so iteration
+        // is already deterministic and does not need an O(n log n) sort every world tick.
+        return List.copyOf(entities.values());
     }
 
     public synchronized Optional<DamageResult> damage(long runtimeId, float amount) {
@@ -80,8 +83,9 @@ public final class WorldLivingEntityManager {
         if (before == null) return Optional.empty();
         WorldLivingEntity after = before.damage(amount);
         float applied = before.health() - after.health();
-        if (after.health() <= 0) entities.remove(runtimeId, before);
-        else entities.replace(runtimeId, before, after);
+        if (after.health() <= 0) {
+            if (entities.remove(runtimeId, before)) entityCount.decrementAndGet();
+        } else entities.replace(runtimeId, before, after);
         return Optional.of(new DamageResult(before, after, applied, after.health() <= 0));
     }
 
@@ -124,6 +128,32 @@ public final class WorldLivingEntityManager {
         return Optional.of(updated);
     }
 
+    /**
+     * Atomically replaces position and velocity together. Physics normally changes both
+     * in one tick; combining them avoids two immutable actor allocations and two map writes.
+     */
+    public synchronized Optional<WorldLivingEntity> updatePhysicsState(
+            long runtimeId,
+            double x, double y, double z,
+            double velocityX, double velocityY, double velocityZ
+    ) {
+        if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
+                || Math.abs(x) > 30_000_000 || Math.abs(z) > 30_000_000
+                || y < WorldChunk.MIN_Y || y > WorldChunk.MAX_Y) {
+            throw new IllegalArgumentException("Living actor position is outside supported bounds");
+        }
+        if (!Double.isFinite(velocityX) || !Double.isFinite(velocityY) || !Double.isFinite(velocityZ)
+                || Math.abs(velocityX) > 100 || Math.abs(velocityY) > 100 || Math.abs(velocityZ) > 100) {
+            throw new IllegalArgumentException("Living actor velocity is outside supported bounds");
+        }
+        WorldLivingEntity entity = entities.get(runtimeId);
+        if (entity == null) return Optional.empty();
+        WorldLivingEntity updated = entity.withPositionAndVelocity(
+                x, y, z, velocityX, velocityY, velocityZ);
+        entities.replace(runtimeId, entity, updated);
+        return Optional.of(updated);
+    }
+
     public synchronized List<DamageResult> tickFire(long nowMillis) {
         if (nowMillis < 0) throw new IllegalArgumentException("nowMillis must be non-negative");
         List<DamageResult> damage = new ArrayList<>();
@@ -142,9 +172,10 @@ public final class WorldLivingEntityManager {
                         before.x(), before.y(), before.z(),
                         before.velocityX(), before.velocityY(), before.velocityZ(),
                         Math.max(0, before.health() - 1.0f), before.maxHealth(),
-                        before.fireUntilMillis(), nowMillis + 1000L);
-                if (after.health() <= 0) entities.remove(before.runtimeId(), before);
-                else entities.replace(before.runtimeId(), before, after);
+                        before.fireUntilMillis(), safeNextFireDamageAt(nowMillis));
+                if (after.health() <= 0) {
+                    if (entities.remove(before.runtimeId(), before)) entityCount.decrementAndGet();
+                } else entities.replace(before.runtimeId(), before, after);
                 damage.add(new DamageResult(before, after, before.health() - after.health(),
                         after.health() <= 0));
             }
@@ -152,12 +183,18 @@ public final class WorldLivingEntityManager {
         return List.copyOf(damage);
     }
 
+    private static long safeNextFireDamageAt(long nowMillis) {
+        return nowMillis > Long.MAX_VALUE - 1000L ? Long.MAX_VALUE : nowMillis + 1000L;
+    }
+
     public synchronized boolean remove(long runtimeId) {
-        return entities.remove(runtimeId) != null;
+        boolean removed = entities.remove(runtimeId) != null;
+        if (removed) entityCount.decrementAndGet();
+        return removed;
     }
 
     public int size() {
-        return entities.size();
+        return entityCount.get();
     }
 
     /** Flushes living actors to durable storage; a no-storage manager is a no-op. */

@@ -1,0 +1,81 @@
+package ru.nexora.config;
+
+import org.junit.jupiter.api.Test;
+
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class NexoraServerConfigTest {
+    @Test
+    void appliesDefaultsWithoutMutatingInputs() {
+        NexoraServerConfig config = NexoraServerConfig.from(new String[0], Map.of());
+
+        assertEquals("0.0.0.0", config.bindHost());
+        assertEquals(19132, config.port());
+        assertEquals("NEXORA Core - Development", config.motd());
+        assertEquals(20, config.maxPlayers());
+        assertEquals("0.0.0.0", config.httpBindHost());
+        assertEquals("data", config.dataDirectory());
+        assertEquals(300L, config.autosaveSeconds());
+        assertEquals(30000, config.udpPortMin());
+        assertEquals(30199, config.udpPortMax());
+        assertTrue(config.stunUrls().isEmpty());
+    }
+
+    @Test
+    void parsesCommandLineAndEnvironmentConfiguration() {
+        NexoraServerConfig config = NexoraServerConfig.from(
+                new String[]{"127.0.0.1", "19140", "Test Server", "12"},
+                Map.of(
+                        "NEXORA_HTTP_BIND", "127.0.0.2",
+                        "NEXORA_DATA_DIR", "/srv/nexora",
+                        "NEXORA_AUTOSAVE_SECONDS", "90",
+                        "NEXORA_UDP_PORT_MIN", "31000",
+                        "NEXORA_UDP_PORT_MAX", "31010",
+                        "NEXORA_STUN_URLS", "stun:one; stun:two ;;"
+                ));
+
+        assertEquals("127.0.0.1", config.bindHost());
+        assertEquals(19140, config.port());
+        assertEquals("Test Server", config.motd());
+        assertEquals(12, config.maxPlayers());
+        assertEquals("127.0.0.2", config.httpBindHost());
+        assertEquals("/srv/nexora", config.dataDirectory());
+        assertEquals(90L, config.autosaveSeconds());
+        assertEquals(31000, config.udpPortMin());
+        assertEquals(31010, config.udpPortMax());
+        assertEquals(java.util.List.of("stun:one", "stun:two"), config.stunUrls());
+    }
+
+    @Test
+    void rejectsInvalidPortsAndRanges() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new NexoraServerConfig("0.0.0.0", 0, "MOTD", 10, "0.0.0.0",
+                        "data", 60, 30000, 30100, java.util.List.of()));
+        assertThrows(IllegalArgumentException.class,
+                () -> new NexoraServerConfig("0.0.0.0", 19132, "MOTD", 10, "0.0.0.0",
+                        "data", 60, 30100, 30000, java.util.List.of()));
+        assertThrows(IllegalArgumentException.class,
+                () -> new NexoraServerConfig("0.0.0.0", 19132, "MOTD", 0, "0.0.0.0",
+                        "data", 60, 30000, 30100, java.util.List.of()));
+    }
+
+    @Test
+    void reportsMalformedEnvironmentValuesClearly() {
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> NexoraServerConfig.from(new String[0], Map.of("NEXORA_AUTOSAVE_SECONDS", "later")));
+        assertTrue(exception.getMessage().contains("NEXORA_AUTOSAVE_SECONDS"));
+    }
+
+    @Test
+    void doesNotExposeMutableStunList() {
+        java.util.ArrayList<String> urls = new java.util.ArrayList<>(java.util.List.of("stun:one"));
+        NexoraServerConfig config = new NexoraServerConfig("0.0.0.0", 19132, "MOTD", 10, "0.0.0.0",
+                "data", 60, 30000, 30100, urls);
+        urls.add("stun:two");
+
+        assertEquals(java.util.List.of("stun:one"), config.stunUrls());
+        assertThrows(UnsupportedOperationException.class, () -> config.stunUrls().add("stun:three"));
+    }
+}

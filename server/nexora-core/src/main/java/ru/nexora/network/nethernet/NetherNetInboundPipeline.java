@@ -2,20 +2,51 @@ package ru.nexora.network.nethernet;
 
 import java.util.Map;
 import java.util.Objects;
+import ru.nexora.ai.NexoraAiGuard;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
 
 /**
  * Per-channel NetherNet framing/reassembly before the Bedrock batch decoder.
  */
 public final class NetherNetInboundPipeline implements NetherNetDataChannelListener {
+    public static final int MAX_INBOUND_FRAME_BYTES = 1_048_576;
+    public static final int DEFAULT_MAX_TRACKED_CHANNELS = 8_192;
+
+    private final int maxTrackedChannels;
+    private final int maxFrameBytes;
     private final Map<ChannelKey, NetherNetMessageFramer.Reassembler> reassemblers =
             new ConcurrentHashMap<>();
     private final Consumer<InboundMessage> messageSink;
+    private final NexoraAiGuard guard;
+    private final LongAdder inboundFrames = new LongAdder();
+    private final LongAdder inboundBytes = new LongAdder();
+    private final LongAdder completedMessages = new LongAdder();
+    private final LongAdder failedFrames = new LongAdder();
+    private final LongAdder totalProcessingNanos = new LongAdder();
+    private final AtomicLong maxProcessingNanos = new AtomicLong();
+    private final AtomicLong lastProcessingNanos = new AtomicLong();
 
     public NetherNetInboundPipeline(Consumer<InboundMessage> messageSink) {
+        this(messageSink, new NexoraAiGuard());
+    }
+
+    public NetherNetInboundPipeline(Consumer<InboundMessage> messageSink, NexoraAiGuard guard) {
+        this(messageSink, guard, DEFAULT_MAX_TRACKED_CHANNELS, MAX_INBOUND_FRAME_BYTES);
+    }
+
+    public NetherNetInboundPipeline(Consumer<InboundMessage> messageSink, NexoraAiGuard guard,
+                                    int maxTrackedChannels, int maxFrameBytes) {
         this.messageSink = Objects.requireNonNull(messageSink, "messageSink");
+        this.guard = Objects.requireNonNull(guard, "guard");
+        if (maxTrackedChannels < 1 || maxFrameBytes < 1 || maxFrameBytes > MAX_INBOUND_FRAME_BYTES) {
+            throw new IllegalArgumentException("Invalid inbound pipeline limits");
+        }
+        this.maxTrackedChannels = maxTrackedChannels;
+        this.maxFrameBytes = maxFrameBytes;
     }
 
     @Override
@@ -29,21 +60,82 @@ public final class NetherNetInboundPipeline implements NetherNetDataChannelListe
             throw new IllegalArgumentException("Unknown NetherNet channel: " + channelLabel);
         }
 
-        ChannelKey key = new ChannelKey(networkId, channelLabel);
-        NetherNetMessageFramer.Reassembler reassembler =
-                reassemblers.computeIfAbsent(key, ignored -> new NetherNetMessageFramer.Reassembler());
-        Optional<byte[]> complete = reassembler.accept(frame, reliable);
-        complete.ifPresent(payload -> messageSink.accept(
-                new InboundMessage(networkId, channelLabel, reliable, payload)));
+        long startedAt = System.nanoTime();
+        try {
+            Objects.requireNonNull(networkId, "networkId");
+            Objects.requireNonNull(frame, "frame");
+            if (networkId.isBlank()) throw new IllegalArgumentException("NetworkID must not be blank");
+            inboundFrames.increment();
+            inboundBytes.add(frame.length);
+            if (frame.length > maxFrameBytes) {
+                throw new IllegalArgumentException("NetherNet inbound frame exceeds "
+                        + maxFrameBytes + " byte limit");
+            }
+            guard.recordInboundFrame(networkId, frame.length, startedAt);
+            ChannelKey key = new ChannelKey(networkId, channelLabel);
+            NetherNetMessageFramer.Reassembler reassembler = reassemblerFor(key);
+            Optional<byte[]> complete = reassembler.accept(frame, reliable);
+            if (complete.isPresent()) {
+                messageSink.accept(new InboundMessage(networkId, channelLabel, reliable, complete.get()));
+                completedMessages.increment();
+            }
+        } catch (RuntimeException | Error failure) {
+            failedFrames.increment();
+            throw failure;
+        } finally {
+            long elapsed = Math.max(0L, System.nanoTime() - startedAt);
+            totalProcessingNanos.add(elapsed);
+            lastProcessingNanos.set(elapsed);
+            maxProcessingNanos.accumulateAndGet(elapsed, Math::max);
+        }
+    }
+
+    /**
+     * Existing channels take the concurrent-map fast path. Synchronization is only
+     * needed while creating a previously unseen channel and enforcing the hard cap.
+     */
+    private NetherNetMessageFramer.Reassembler reassemblerFor(ChannelKey key) {
+        NetherNetMessageFramer.Reassembler existing = reassemblers.get(key);
+        if (existing != null) return existing;
+
+        synchronized (reassemblers) {
+            existing = reassemblers.get(key);
+            if (existing != null) return existing;
+            if (reassemblers.size() >= maxTrackedChannels) {
+                throw new IllegalStateException("NetherNet inbound channel limit reached");
+            }
+            NetherNetMessageFramer.Reassembler created = new NetherNetMessageFramer.Reassembler();
+            reassemblers.put(key, created);
+            return created;
+        }
     }
 
     @Override
     public void onDisconnected(String networkId) {
-        reassemblers.keySet().removeIf(key -> key.networkId().equals(networkId));
+        Objects.requireNonNull(networkId, "networkId");
+        synchronized (reassemblers) {
+            reassemblers.keySet().removeIf(key -> key.networkId().equals(networkId));
+        }
+        guard.onDisconnected(networkId);
     }
 
     public int activeChannelCount() {
         return reassemblers.size();
+    }
+
+    /** Aggregate low-overhead inbound framing/dispatch measurements; not a network throughput guarantee. */
+    public InboundStats stats() {
+        return new InboundStats(inboundFrames.sum(), inboundBytes.sum(), completedMessages.sum(),
+                failedFrames.sum(), totalProcessingNanos.sum(), maxProcessingNanos.get(),
+                lastProcessingNanos.get(), reassemblers.size());
+    }
+
+    public record InboundStats(long frames, long bytes, long completedMessages, long failedFrames,
+                               long totalProcessingNanos, long maxProcessingNanos,
+                               long lastProcessingNanos, int activeChannels) {
+        public double averageProcessingNanos() {
+            return frames == 0 ? 0.0 : totalProcessingNanos / (double) frames;
+        }
     }
 
     public record InboundMessage(

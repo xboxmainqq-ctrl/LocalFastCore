@@ -97,6 +97,35 @@ class NetherNetSignalingServerTest {
     }
 
     @Test
+    void rejectsNewSessionsWhenAdmissionIsClosedButKeepsMetadataAvailable() throws Exception {
+        AtomicInteger negotiationCalls = new AtomicInteger();
+        try (NetherNetSignalingServer server = new NetherNetSignalingServer(
+                new InetSocketAddress("127.0.0.1", 0),
+                () -> metadata(),
+                (id, offer) -> {
+                    negotiationCalls.incrementAndGet();
+                    return ANSWER;
+                },
+                () -> false)) {
+            server.start();
+
+            assertEquals(200, get(server, "/v1/join").statusCode());
+
+            HttpRequest request = HttpRequest.newBuilder(uri(server, "/v1/join/client-123"))
+                    .header("Content-Type", "application/sdp")
+                    .POST(HttpRequest.BodyPublishers.ofString(OFFER))
+                    .timeout(Duration.ofSeconds(3))
+                    .build();
+            HttpResponse<String> response = HttpClient.newHttpClient().send(
+                    request, HttpResponse.BodyHandlers.ofString());
+
+            assertEquals(503, response.statusCode());
+            assertTrue(response.body().contains("not accepting new sessions"));
+            assertEquals(0, negotiationCalls.get());
+        }
+    }
+
+    @Test
     void returnsServiceUnavailableWhenNegotiationFails() throws Exception {
         try (NetherNetSignalingServer server = server(metadata(), (id, offer) -> {
             throw new IllegalStateException("test failure");

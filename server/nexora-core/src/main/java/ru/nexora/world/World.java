@@ -22,6 +22,7 @@ public final class World {
     private final WorldLivingEntityManager livingEntities;
     private final WorldContainerManager containers;
     private final WorldFurnaceManager furnaces;
+    private final MobSpawnerManager mobSpawners;
     private final CopyOnWriteArrayList<WorldBlockChangeListener> blockChangeListeners = new CopyOnWriteArrayList<>();
 
     public World(String name, long seed, WorldGenerator generator) {
@@ -51,6 +52,8 @@ public final class World {
         this.livingEntities = new WorldLivingEntityManager();
         this.containers = null;
         this.furnaces = null;
+        this.mobSpawners = createMobSpawnerManager(storage);
+        addBlockChangeListener(change -> mobSpawners.onBlockChanged(change, Math.max(0L, System.nanoTime() / 50_000_000L)));
     }
 
     /** Creates a world with durable dropped-item actor storage loaded before play begins. */
@@ -114,6 +117,8 @@ public final class World {
         this.containers = containerStorage == null ? null : new WorldContainerManager(containerStorage);
         this.furnaces = containerStorage == null || furnaceStateStorage == null ? null
                 : new WorldFurnaceManager(containerStorage, furnaceStateStorage);
+        this.mobSpawners = createMobSpawnerManager(storage);
+        addBlockChangeListener(change -> mobSpawners.onBlockChanged(change, Math.max(0L, System.nanoTime() / 50_000_000L)));
     }
 
     public String name() {
@@ -210,8 +215,74 @@ public final class World {
         return Optional.ofNullable(furnaces);
     }
 
+    /** Returns the world-scoped mob spawner controller. */
+    public MobSpawnerManager mobSpawners() {
+        return mobSpawners;
+    }
+
+    /**
+     * Persists and evicts one cached chunk. Chunks are never evicted without durable
+     * storage because doing so could discard player block changes.
+     */
+    public boolean unloadChunk(int chunkX, int chunkZ) {
+        if (storage == null) return false;
+        long key = chunkKey(chunkX, chunkZ);
+        java.util.concurrent.atomic.AtomicBoolean unloaded = new java.util.concurrent.atomic.AtomicBoolean();
+        chunks.computeIfPresent(key, (ignored, chunk) -> {
+            try {
+                storage.saveChunk(chunk);
+            } catch (IOException exception) {
+                throw new UncheckedIOException(
+                        "Unable to persist NEXORA chunk before unload " + chunkX + "," + chunkZ,
+                        exception);
+            }
+            unloaded.set(true);
+            return null;
+        });
+        return unloaded.get();
+    }
+
+    /**
+     * Applies a residency plan to the real world cache. Requested unloads are persisted
+     * before eviction; when durable storage is disabled, chunks remain cached safely.
+     */
+    public ChunkResidencyResult applyChunkResidencyPlan(
+            WorldChunkResidencyManager.ResidencyPlan plan
+    ) {
+        Objects.requireNonNull(plan, "plan");
+        int loaded = 0;
+        int unloaded = 0;
+        for (WorldChunkResidencyManager.ChunkCoordinate coordinate : plan.load()) {
+            int before = loadedChunkCount();
+            getChunk(coordinate.chunkX(), coordinate.chunkZ());
+            if (loadedChunkCount() > before) loaded++;
+        }
+        for (WorldChunkResidencyManager.ChunkCoordinate coordinate : plan.unload()) {
+            if (unloadChunk(coordinate.chunkX(), coordinate.chunkZ())) unloaded++;
+        }
+        return new ChunkResidencyResult(plan.load().size(), loaded,
+                plan.unload().size(), unloaded, plan.unload().size() - unloaded);
+    }
+
+    public record ChunkResidencyResult(
+            int loadRequested, int loaded, int unloadRequested, int unloaded, int retained
+    ) {
+        public ChunkResidencyResult {
+            if (loadRequested < 0 || loaded < 0 || unloadRequested < 0
+                    || unloaded < 0 || retained < 0
+                    || loaded > loadRequested || unloaded + retained != unloadRequested) {
+                throw new IllegalArgumentException("Invalid world chunk residency result");
+            }
+        }
+    }
+
     public int loadedChunkCount() {
         return chunks.size();
+    }
+
+    /** Checks residency without causing a chunk load. */
+    public boolean isChunkLoadedAt(int blockX, int blockZ) {
+        return chunks.containsKey(chunkKey(Math.floorDiv(blockX, 16), Math.floorDiv(blockZ, 16)));
     }
 
     public void saveAll() throws IOException {
@@ -220,8 +291,18 @@ public final class World {
         }
         itemEntities.save();
         livingEntities.save();
+        mobSpawners.save();
         if (containers != null) containers.saveAll();
         if (furnaces != null) furnaces.saveAll();
+    }
+
+    private static MobSpawnerManager createMobSpawnerManager(WorldStorage storage) {
+        if (storage == null) return new MobSpawnerManager();
+        try {
+            return new MobSpawnerManager(new MobSpawnerStorage(storage.worldDirectory()));
+        } catch (IOException exception) {
+            throw new UncheckedIOException("Unable to load NEXORA mob spawners", exception);
+        }
     }
 
     private static long chunkKey(int x, int z) {

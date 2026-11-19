@@ -4,6 +4,10 @@ import org.junit.jupiter.api.Test;
 import ru.nexora.world.BlockType;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.HashSet;
 
 class BedrockBlockRuntimeIdsTest {
     @Test
@@ -32,4 +36,20 @@ class BedrockBlockRuntimeIdsTest {
         assertEquals(0x7fb511dc, BedrockBlockRuntimeIds.forBlock(BlockType.BLAST_FURNACE));
         assertEquals(0xccc0ac65, BedrockBlockRuntimeIds.forBlock(BlockType.SMOKER));
     }
+    @Test
+    void everyInternalBlockMapsToADistinctRuntimeId() {
+        HashSet<Integer> runtimeIds = new HashSet<>();
+        for (BlockType block : BlockType.values()) {
+            assertTrue(runtimeIds.add(BedrockBlockRuntimeIds.forBlock(block)),
+                    "Duplicate Bedrock runtime ID for " + block);
+        }
+    }
+
+    @Test
+    void mobSpawnerHasItsOwnBedrockRuntimeState() {
+        int spawner = BedrockBlockRuntimeIds.forBlock(BlockType.SPAWNER);
+        assertNotEquals(BedrockBlockRuntimeIds.forBlock(BlockType.AIR), spawner);
+        assertNotEquals(BedrockBlockRuntimeIds.forBlock(BlockType.STONE), spawner);
+    }
+
 }

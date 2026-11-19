@@ -3,6 +3,12 @@ package ru.nexora.network.bedrock;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ru.nexora.network.nethernet.NetherNetClientIdentity;
+import ru.nexora.network.DurableHandoffCoordinator;
+import ru.nexora.network.InMemoryPlayerTransferLedger;
+import ru.nexora.network.InMemoryPlayerOnlineLeaseRegistry;
+import ru.nexora.network.PlayerHandoff;
+import ru.nexora.network.PlayerTransferCoordinator;
+import ru.nexora.network.PlayerTransferRecord;
 import ru.nexora.inventory.ItemStack;
 import ru.nexora.inventory.PlayerInventory;
 import ru.nexora.inventory.PlayerInventoryStorage;
@@ -14,6 +20,9 @@ import ru.nexora.world.PlayerDataStorage;
 import ru.nexora.world.PlayerData;
 import ru.nexora.world.PlayerVitals;
 import ru.nexora.world.WorldItemEntity;
+import ru.nexora.persistence.FilePlayerStateStore;
+import ru.nexora.persistence.PlayerStateBundleCodec;
+import ru.nexora.persistence.PlayerStateCheckpointService;
 
 import java.nio.file.Path;
 import java.nio.file.Files;
@@ -27,6 +36,7 @@ import java.security.KeyPairGenerator;
 import java.security.Signature;
 import java.security.spec.ECGenParameterSpec;
 import java.util.Base64;
+import java.util.UUID;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -35,6 +45,486 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockSessionManagerTest {
+    @Test
+    void mobAttackDeadlineSaturatesInsteadOfOverflowing() {
+        assertEquals(Long.MAX_VALUE - 500L,
+                BedrockSessionManager.mobAttackDeadline(Long.MAX_VALUE - 1_000L, 500L));
+        assertEquals(Long.MAX_VALUE,
+                BedrockSessionManager.mobAttackDeadline(Long.MAX_VALUE - 500L, 1_000L));
+        assertEquals(1_500L, BedrockSessionManager.mobAttackDeadline(1_000L, 500L));
+        assertThrows(IllegalArgumentException.class,
+                () -> BedrockSessionManager.mobAttackDeadline(-1L, 500L));
+        assertThrows(IllegalArgumentException.class,
+                () -> BedrockSessionManager.mobAttackDeadline(1_000L, -1L));
+    }
+
+    @Test
+    void adminRuntimeSummaryIncludesActualMobAiAndJvmResourceMetrics() throws Exception {
+        ru.nexora.world.World testWorld = new ru.nexora.world.World(
+                "admin-metrics-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                testWorld, (networkId, label, frame) -> {}, event -> {});
+        manager.spawnLivingEntity("minecraft:zombie", 20.0f, 0.5, 65.0, 0.5);
+        // A tick with no players still exercises a real, idle AI decision for passive mobs only;
+        // hostile mobs with no target remain intentionally idle, so use a cow for a decision.
+        manager.spawnLivingEntity("minecraft:cow", 20.0f, 0.5, 65.0, 0.5);
+        invokeLivingActorTick(manager, 1L);
+        ru.nexora.ai.NexoraAiDiagnostics diagnostics = new ru.nexora.ai.NexoraAiDiagnostics();
+        manager.setAiDiagnostics(diagnostics);
+
+        String summary = manager.adminRuntimeSummary();
+        assertTrue(summary.contains("mobAiDecisions="));
+        assertTrue(summary.contains("mobAiAvgNs="));
+        assertTrue(summary.contains("mobAiMaxNs="));
+        assertTrue(summary.contains("mobAiFailures="));
+        assertTrue(summary.contains("heapUsed="));
+        assertTrue(summary.contains("nonHeapUsed="));
+        assertTrue(summary.contains("threads="));
+        String mobSummary = manager.mobAiDiagnosticsSummary();
+        assertTrue(mobSummary.contains("Mob AI decision algorithm: decisions="));
+        assertTrue(mobSummary.contains(", total="));
+        assertEquals(1, mobSummary.split("Mob spawners:", -1).length - 1,
+                "Spawner metrics should appear once in the operator summary");
+        manager.close();
+    }
+
+    @Test
+    void reconcilesFrozenSourceSessionOnlyFromDurableAbortOrCommit() throws Exception {
+        java.util.List<byte[]> frames = new java.util.ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("transfer-reconcile", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                (networkId, label, frame) -> frames.add(frame), event -> {});
+        try {
+            DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
+                    new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
+            manager.onIdentity("frozen-abort", new NetherNetClientIdentity(
+                    "abort-token", new byte[] {1}, "abort-xuid",
+                    "AbortPlayer", "abort-playfab", "20CA2", null));
+            setSessionField(manager, "frozen-abort", "transferFrozen", true);
+            setSessionField(manager, "frozen-abort", "loginAuthenticated", false);
+            setSessionField(manager, "frozen-abort", "clientInitialized", false);
+            UUID abortedId = UUID.randomUUID();
+            ledger.prepare(new PlayerHandoff(abortedId, 1L, "node-a", "node-b", new byte[0]),
+                    "abort-xuid", 1L, 10L);
+            var abortedClaim = ledger.claim(abortedId, "node-b", 11L, 10_000L).orElseThrow();
+            ledger.abort(abortedId, abortedClaim.fencingToken(), 12L).orElseThrow();
+
+            var abortReport = manager.reconcileFrozenPlayerTransfers(ledger, "node-a", java.util.Map.of());
+            assertEquals(1, abortReport.resumed());
+            assertFalse((boolean) getSessionField(manager, "frozen-abort", "transferFrozen"));
+            assertTrue((boolean) getSessionField(manager, "frozen-abort", "loginAuthenticated"));
+
+            manager.onIdentity("frozen-commit", new NetherNetClientIdentity(
+                    "commit-token", new byte[] {2}, "commit-xuid",
+                    "CommitPlayer", "commit-playfab", "20CA2", null));
+            setSessionField(manager, "frozen-commit", "transferFrozen", true);
+            setSessionField(manager, "frozen-commit", "loginAuthenticated", false);
+            setSessionField(manager, "frozen-commit", "clientInitialized", false);
+            setSessionField(manager, "frozen-commit", "compressionNegotiated", true);
+            UUID committedId = UUID.randomUUID();
+            ledger.prepare(new PlayerHandoff(committedId, 2L, "node-a", "node-b", new byte[0]),
+                    "commit-xuid", 2L, 20L);
+            var committedClaim = ledger.claim(committedId, "node-b", 21L, 10_000L).orElseThrow();
+            ledger.commit(committedId, committedClaim.fencingToken(), 22L).orElseThrow();
+
+            var commitReport = manager.reconcileFrozenPlayerTransfers(ledger, "node-a",
+                    java.util.Map.of("node-b", new java.net.InetSocketAddress("127.0.0.1", 19132)));
+            assertEquals(1, commitReport.redirected());
+            assertTrue((boolean) getSessionField(manager, "frozen-commit", "transferRedirected"));
+            assertFalse(frames.isEmpty());
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void recoversFrozenSourceWhenTransferWasNeverPublishedAndLeaseIsStillOwned() throws Exception {
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("orphan-freeze", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                (networkId, label, frame) -> {}, event -> {});
+        try {
+            DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
+                    new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
+            InMemoryPlayerOnlineLeaseRegistry leases = new InMemoryPlayerOnlineLeaseRegistry();
+            manager.configureOnlinePlayerLeases(leases, 15_000L);
+            manager.configureTransferOwnershipGuard(ledger, "node-a");
+            long now = System.currentTimeMillis();
+            assertTrue(leases.acquire("orphan-xuid", "node-a", "orphan-session", now, 15_000L));
+            manager.onIdentity("orphan-session", new NetherNetClientIdentity(
+                    "orphan-token", new byte[] {3}, "orphan-xuid",
+                    "OrphanPlayer", "orphan-playfab", "20CA2", null));
+            setSessionField(manager, "orphan-session", "transferFrozen", true);
+            setSessionField(manager, "orphan-session", "loginAuthenticated", false);
+            setSessionField(manager, "orphan-session", "clientInitialized", false);
+            setSessionField(manager, "orphan-session", "onlineLeaseSessionId", "orphan-session");
+
+            var report = manager.reconcileFrozenPlayerTransfers(ledger, "node-a", java.util.Map.of());
+
+            assertEquals(1, report.scanned());
+            assertEquals(1, report.resumed());
+            assertEquals(0, report.unresolved());
+            assertFalse((boolean) getSessionField(manager, "orphan-session", "transferFrozen"));
+            assertTrue((boolean) getSessionField(manager, "orphan-session", "loginAuthenticated"));
+            assertTrue(leases.renew("orphan-xuid", "node-a", "orphan-session",
+                    System.currentTimeMillis(), 15_000L));
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void autosaveRetainsGlobalOnlineLeaseAndPersistsCanonicalCheckpoint() throws Exception {
+        var checkpoints = new ru.nexora.persistence.PlayerStateCheckpointService(
+                new FilePlayerStateStore(temporaryDirectory), new PlayerStateBundleCodec());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("autosave-lease", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                null, null, null, checkpoints, (networkId, label, frame) -> {}, event -> {});
+        var leases = new InMemoryPlayerOnlineLeaseRegistry();
+        try {
+            manager.configureOnlinePlayerLeases(leases, 15_000L);
+            DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
+                    new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
+            manager.configureTransferOwnershipGuard(ledger, "node-a");
+            long now = System.currentTimeMillis();
+            assertTrue(leases.acquire("autosave-xuid", "node-a", "autosave-session", now, 15_000L));
+            manager.onIdentity("autosave-session", new NetherNetClientIdentity(
+                    "autosave-token", new byte[] {4}, "autosave-xuid",
+                    "AutosavePlayer", "autosave-playfab", "20CA2", null));
+            setSessionField(manager, "autosave-session", "onlineLeaseSessionId", "autosave-session");
+            setSessionField(manager, "autosave-session", "loginAuthenticated", true);
+            setSessionField(manager, "autosave-session", "clientInitialized", true);
+            setSessionField(manager, "autosave-session", "positionInitialized", true);
+
+            manager.savePlayers();
+
+            assertTrue(leases.renew("autosave-xuid", "node-a", "autosave-session",
+                    System.currentTimeMillis(), 15_000L),
+                    "Periodic autosave must not release the player's global ownership lease");
+            assertTrue(checkpoints.latestRevision("autosave-xuid") >= 0,
+                    "Shared canonical state must be saved while the lease is held");
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void autosaveRejectsSessionAndSkipsCheckpointWhenGlobalLeaseIsLost() throws Exception {
+        var checkpoints = new ru.nexora.persistence.PlayerStateCheckpointService(
+                new FilePlayerStateStore(temporaryDirectory), new PlayerStateBundleCodec());
+        java.util.concurrent.atomic.AtomicBoolean released = new java.util.concurrent.atomic.AtomicBoolean();
+        ru.nexora.network.PlayerOnlineLeaseRegistry lostLease = new ru.nexora.network.PlayerOnlineLeaseRegistry() {
+            @Override public boolean acquire(String xuid, String nodeId, String sessionId, long now, long ttl) {
+                return true;
+            }
+            @Override public boolean renew(String xuid, String nodeId, String sessionId, long now, long ttl) {
+                return false;
+            }
+            @Override public boolean release(String xuid, String nodeId, String sessionId) {
+                released.set(true);
+                return true;
+            }
+        };
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("autosave-lost-lease", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                null, null, null, checkpoints, (networkId, label, frame) -> {}, event -> {});
+        try {
+            manager.configureOnlinePlayerLeases(lostLease, 15_000L);
+            DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
+                    new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
+            manager.configureTransferOwnershipGuard(ledger, "node-a");
+            manager.onIdentity("lost-lease-session", new NetherNetClientIdentity(
+                    "lost-lease-token", new byte[] {5}, "lost-lease-xuid",
+                    "LostLeasePlayer", "lost-lease-playfab", "20CA2", null));
+            setSessionField(manager, "lost-lease-session", "onlineLeaseSessionId", "lost-lease-session");
+            setSessionField(manager, "lost-lease-session", "loginAuthenticated", true);
+            setSessionField(manager, "lost-lease-session", "clientInitialized", true);
+            setSessionField(manager, "lost-lease-session", "positionInitialized", true);
+
+            assertThrows(java.io.IOException.class, manager::savePlayers);
+
+            assertTrue(released.get());
+            assertTrue((boolean) getSessionField(manager, "lost-lease-session", "rejected"));
+            assertFalse((boolean) getSessionField(manager, "lost-lease-session", "loginAuthenticated"));
+            assertEquals(-1L, checkpoints.latestRevision("lost-lease-xuid"),
+                    "A former owner must never overwrite the shared checkpoint after losing its lease");
+
+            manager.onDisconnected("lost-lease-session");
+            assertEquals(-1L, checkpoints.latestRevision("lost-lease-xuid"),
+                    "Disconnect persistence must also skip writes after the lease was lost");
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void transferFreezeDoesNotCheckpointAfterGlobalOwnershipLeaseIsLost() throws Exception {
+        var checkpoints = new ru.nexora.persistence.PlayerStateCheckpointService(
+                new FilePlayerStateStore(temporaryDirectory), new PlayerStateBundleCodec());
+        ru.nexora.network.PlayerOnlineLeaseRegistry lostLease = new ru.nexora.network.PlayerOnlineLeaseRegistry() {
+            @Override public boolean acquire(String xuid, String nodeId, String sessionId, long now, long ttl) {
+                return true;
+            }
+            @Override public boolean renew(String xuid, String nodeId, String sessionId, long now, long ttl) {
+                return false;
+            }
+            @Override public boolean release(String xuid, String nodeId, String sessionId) {
+                return true;
+            }
+        };
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("freeze-lost-lease", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                null, null, null, checkpoints, (networkId, label, frame) -> {}, event -> {});
+        try {
+            manager.configureOnlinePlayerLeases(lostLease, 15_000L);
+            DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
+                    new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
+            manager.configureTransferOwnershipGuard(ledger, "node-a");
+            manager.onIdentity("freeze-lost-session", new NetherNetClientIdentity(
+                    "freeze-lost-token", new byte[] {6}, "freeze-lost-xuid",
+                    "FreezeLostPlayer", "freeze-lost-playfab", "20CA2", null));
+            setSessionField(manager, "freeze-lost-session", "onlineLeaseSessionId", "freeze-lost-session");
+            setSessionField(manager, "freeze-lost-session", "loginAuthenticated", true);
+            setSessionField(manager, "freeze-lost-session", "clientInitialized", true);
+            setSessionField(manager, "freeze-lost-session", "positionInitialized", true);
+
+            assertThrows(java.io.IOException.class,
+                    () -> manager.freezePlayerForTransfer("freeze-lost-xuid"));
+
+            assertFalse((boolean) getSessionField(manager, "freeze-lost-session", "transferFrozen"));
+            assertEquals(-1L, checkpoints.latestRevision("freeze-lost-xuid"),
+                    "A node without the global lease must not publish a new transfer checkpoint");
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void independentHeartbeatRenewsIdleLeaseAndFencesItWhenRenewalFails() throws Exception {
+        java.util.concurrent.atomic.AtomicLong nanos = new java.util.concurrent.atomic.AtomicLong();
+        java.util.concurrent.atomic.AtomicInteger renewals = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger releases = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicBoolean renewalAllowed = new java.util.concurrent.atomic.AtomicBoolean(true);
+        ru.nexora.network.PlayerOnlineLeaseRegistry leases = new ru.nexora.network.PlayerOnlineLeaseRegistry() {
+            @Override public boolean acquire(String xuid, String nodeId, String sessionId, long now, long ttl) {
+                return true;
+            }
+            @Override public boolean renew(String xuid, String nodeId, String sessionId, long now, long ttl) {
+                renewals.incrementAndGet();
+                return renewalAllowed.get();
+            }
+            @Override public boolean release(String xuid, String nodeId, String sessionId) {
+                releases.incrementAndGet();
+                return true;
+            }
+        };
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("idle-heartbeat", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                (networkId, label, frame) -> {}, event -> {}, nanos::get);
+        try {
+            manager.configureOnlinePlayerLeases(leases, 15_000L);
+            DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
+                    new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
+            manager.configureTransferOwnershipGuard(ledger, "node-a");
+            manager.onIdentity("idle-session", new NetherNetClientIdentity(
+                    "idle-token", new byte[] {7}, "idle-xuid",
+                    "IdlePlayer", "idle-playfab", "20CA2", null));
+            setSessionField(manager, "idle-session", "onlineLeaseSessionId", "idle-session");
+            setSessionField(manager, "idle-session", "loginAuthenticated", true);
+            setSessionField(manager, "idle-session", "clientInitialized", true);
+
+            manager.renewOnlinePlayerLeases();
+            assertEquals(1, renewals.get());
+            manager.renewOnlinePlayerLeases();
+            assertEquals(1, renewals.get(), "Heartbeat throttles renewals to the configured lease interval");
+
+            nanos.addAndGet(5_000_000_000L);
+            manager.renewOnlinePlayerLeases();
+            assertEquals(2, renewals.get(), "Idle sessions renew without client movement packets");
+
+            renewalAllowed.set(false);
+            nanos.addAndGet(5_000_000_000L);
+            manager.renewOnlinePlayerLeases();
+            assertEquals(3, renewals.get());
+            assertEquals(1, releases.get());
+            assertTrue((boolean) getSessionField(manager, "idle-session", "rejected"));
+            assertFalse((boolean) getSessionField(manager, "idle-session", "loginAuthenticated"));
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void sourceRecoveryAbortsStaleUnclaimedPreparedTransferAndResumesPlayer() throws Exception {
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("stale-prepared-recovery", 0L,
+                        new ru.nexora.world.FlatWorldGenerator()),
+                (networkId, label, frame) -> {}, event -> {});
+        try {
+            DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
+                    new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
+            manager.onIdentity("stale-prepared-session", new NetherNetClientIdentity(
+                    "stale-prepared-token", new byte[] {8}, "stale-prepared-xuid",
+                    "StalePreparedPlayer", "stale-prepared-playfab", "20CA2", null));
+            setSessionField(manager, "stale-prepared-session", "transferFrozen", true);
+            setSessionField(manager, "stale-prepared-session", "loginAuthenticated", false);
+            setSessionField(manager, "stale-prepared-session", "clientInitialized", false);
+            UUID transferId = UUID.randomUUID();
+            ledger.prepare(new PlayerHandoff(transferId, 1L, "node-a", "node-b", new byte[0]),
+                    "stale-prepared-xuid", 1L, 1L);
+
+            var report = manager.reconcileFrozenPlayerTransfers(ledger, "node-a", java.util.Map.of());
+
+            assertEquals(1, report.resumed());
+            assertEquals(0, report.unresolved());
+            assertEquals(PlayerTransferRecord.State.ABORTED,
+                    ledger.get(transferId).orElseThrow().state());
+            assertFalse((boolean) getSessionField(manager, "stale-prepared-session", "transferFrozen"));
+            assertTrue((boolean) getSessionField(manager, "stale-prepared-session", "loginAuthenticated"));
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void rejectsSecondActiveSessionForSameXuidOnOneNode() throws Exception {
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("duplicate-xuid", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                (networkId, label, frame) -> {}, event -> {});
+        try {
+            manager.onIdentity("first-session", new NetherNetClientIdentity(
+                    "first-token", new byte[] {1}, "same-xuid",
+                    "Player", "first-playfab", "20CA2", null));
+            manager.onIdentity("second-session", new NetherNetClientIdentity(
+                    "second-token", new byte[] {2}, "same-xuid",
+                    "Player", "second-playfab", "20CA2", null));
+            setSessionField(manager, "first-session", "loginAuthenticated", true);
+
+            java.lang.reflect.Method guard = BedrockSessionManager.class.getDeclaredMethod(
+                    "ensureNoDuplicateXuidSession", String.class, String.class);
+            guard.setAccessible(true);
+            java.lang.reflect.InvocationTargetException failure = assertThrows(
+                    java.lang.reflect.InvocationTargetException.class,
+                    () -> guard.invoke(manager, "second-session", "same-xuid"));
+            assertInstanceOf(SecurityException.class, failure.getCause());
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void relaysAuthenticatedChatUsingServerOwnedPlayerName() throws Exception {
+        java.util.List<String> recipients = new java.util.ArrayList<>();
+        java.util.List<byte[]> frames = new java.util.ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("chat-test", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                (networkId, label, frame) -> {
+                    recipients.add(networkId);
+                    frames.add(frame);
+                }, event -> {});
+        manager.onIdentity("chat-sender", new NetherNetClientIdentity(
+                "sender-token", new byte[] {1}, "sender-xuid",
+                "RealSender", "sender-playfab", "20CA2", null));
+        manager.onIdentity("chat-recipient", new NetherNetClientIdentity(
+                "recipient-token", new byte[] {2}, "recipient-xuid",
+                "Recipient", "recipient-playfab", "20CA2", null));
+        for (String id : java.util.List.of("chat-sender", "chat-recipient")) {
+            setSessionField(manager, id, "compressionNegotiated", true);
+            setSessionField(manager, id, "loginAuthenticated", true);
+            setSessionField(manager, id, "clientInitialized", true);
+        }
+
+        BedrockPacket clientChat = BedrockTextCodec.createChatMessage(
+                "SpoofedName", "Hello NEXORA", "sender-xuid", "");
+        sendClientBatch(manager, "chat-sender",
+                BedrockBatchCodec.encode(java.util.List.of(clientChat), true, 256));
+
+        assertTrue(recipients.contains("chat-sender"));
+        assertTrue(recipients.contains("chat-recipient"));
+        boolean recipientReceivedChat = false;
+        for (int i = 0; i < frames.size(); i++) {
+            if (!"chat-recipient".equals(recipients.get(i))) continue;
+            for (BedrockPacket outbound : decodeOutboundPackets(frames.get(i), true)) {
+                if (outbound.packetId() != BedrockTextCodec.TEXT_PACKET_ID) continue;
+                var decoded = BedrockTextCodec.decodeChat(outbound);
+                assertEquals("RealSender", decoded.sourceName());
+                assertEquals("Hello NEXORA", decoded.message());
+                assertEquals("", decoded.xuid());
+                recipientReceivedChat = true;
+            }
+        }
+        assertTrue(recipientReceivedChat);
+        manager.close();
+    }
+
+    @Test
+    void limitsAuthenticatedChatToFiveMessagesPerFiveSecondWindow() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(2_000_000_000L);
+        java.util.List<String> recipients = new java.util.ArrayList<>();
+        java.util.List<byte[]> frames = new java.util.ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("chat-rate-limit-test", 0L,
+                        new ru.nexora.world.FlatWorldGenerator()),
+                (networkId, label, frame) -> {
+                    recipients.add(networkId);
+                    frames.add(frame);
+                }, event -> {}, clock::get);
+        manager.onIdentity("rate-limited-sender", new NetherNetClientIdentity(
+                "rate-token", new byte[] {9}, "rate-xuid",
+                "RateLimited", "rate-playfab", "20CA2", null));
+        setSessionField(manager, "rate-limited-sender", "compressionNegotiated", true);
+        setSessionField(manager, "rate-limited-sender", "loginAuthenticated", true);
+        setSessionField(manager, "rate-limited-sender", "clientInitialized", true);
+
+        for (int index = 0; index < 6; index++) {
+            BedrockPacket chat = BedrockTextCodec.createChatMessage(
+                    "RateLimited", "message-" + index, "rate-xuid", "");
+            sendClientBatch(manager, "rate-limited-sender",
+                    BedrockBatchCodec.encode(java.util.List.of(chat), true, 256));
+            clock.addAndGet(100_000_000L);
+        }
+
+        long delivered = 0;
+        for (int index = 0; index < frames.size(); index++) {
+            if (!"rate-limited-sender".equals(recipients.get(index))) continue;
+            delivered += decodeOutboundPackets(frames.get(index), true).stream()
+                    .filter(packet -> packet.packetId() == BedrockTextCodec.TEXT_PACKET_ID).count();
+        }
+        assertEquals(5, delivered);
+        manager.close();
+    }
+
+    @Test
+    void rejectsChatWithForgedXboxIdentity() throws Exception {
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("chat-forgery-test", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                (networkId, label, frame) -> {}, event -> {});
+        manager.onIdentity("chat-forgery", new NetherNetClientIdentity(
+                "sender-token", new byte[] {1}, "real-xuid",
+                "RealSender", "sender-playfab", "20CA2", null));
+        setSessionField(manager, "chat-forgery", "compressionNegotiated", true);
+        setSessionField(manager, "chat-forgery", "loginAuthenticated", true);
+        setSessionField(manager, "chat-forgery", "clientInitialized", true);
+
+        BedrockPacket forged = BedrockTextCodec.createChatMessage(
+                "RealSender", "forged", "other-xuid", "");
+        assertThrows(SecurityException.class, () -> sendClientBatch(manager, "chat-forgery",
+                BedrockBatchCodec.encode(java.util.List.of(forged), true, 256)));
+        manager.close();
+    }
+
     @TempDir
     Path temporaryDirectory;
     @Test
@@ -726,6 +1216,7 @@ class BedrockSessionManagerTest {
         setSessionField(manager, "reward-killer", "positionX", 0.0f);
         setSessionField(manager, "reward-killer", "positionY", 65.0f);
         setSessionField(manager, "reward-killer", "positionZ", 0.0f);
+        subscribeChunk(manager, "reward-killer", 0, 0);
 
         ItemStack sword = new ItemStack("minecraft:diamond_sword", 1, 1,
                 java.util.Map.of("minecraft:looting", 3));
@@ -772,6 +1263,7 @@ class BedrockSessionManagerTest {
         setSessionField(manager, "ai-player", "positionX", 4.0f);
         setSessionField(manager, "ai-player", "positionY", 65.0f);
         setSessionField(manager, "ai-player", "positionZ", 0.0f);
+        subscribeChunk(manager, "ai-player", 0, 0);
         manager.playerEquipment("ai-player").orElseThrow().setArmor(0,
                 new ItemStack("minecraft:iron_chestplate", 1, 1,
                         java.util.Map.of("minecraft:thorns", 10)));
@@ -817,6 +1309,7 @@ class BedrockSessionManagerTest {
         setSessionField(manager, "mob-attacker", "positionX", 0.0f);
         setSessionField(manager, "mob-attacker", "positionY", 65.0f);
         setSessionField(manager, "mob-attacker", "positionZ", 0.0f);
+        subscribeChunk(manager, "mob-attacker", 0, 0);
 
         ItemStack sword = new ItemStack("minecraft:diamond_sword", 1, 1,
                 java.util.Map.of("minecraft:smite", 3,
@@ -850,6 +1343,603 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void activeSpawnerCreatesAndReplicatesMobBeforeGenericAiScheduling() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(10_000_000_000L);
+        ru.nexora.world.World spawnerWorld = new ru.nexora.world.World(
+                "spawner-ai-integration", 0L, new ru.nexora.world.FlatWorldGenerator());
+        for (int chunkX = -1; chunkX <= 2; chunkX++) {
+            for (int chunkZ = -1; chunkZ <= 2; chunkZ++) spawnerWorld.getChunk(chunkX, chunkZ);
+        }
+        // This distant idle mob is deliberately deferred by the generic AI scheduler
+        // on tick 200. Spawner processing must still run before that scheduling decision.
+        spawnerWorld.livingEntities().spawn("minecraft:cow", 20, 40.5, 65.0, 40.5);
+        spawnerWorld.livingEntities().spawn("minecraft:cow", 20, 41.5, 65.0, 40.5);
+        List<byte[]> outbound = new ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                spawnerWorld, (networkId, label, frame) -> outbound.add(frame),
+                event -> {}, clock::get);
+        manager.onIdentity("spawner-player", new NetherNetClientIdentity(
+                "spawner-token", new byte[] {15}, "spawner-xuid",
+                "SpawnerPlayer", "playfab-spawner", "20CA2", null));
+        setSessionField(manager, "spawner-player", "loginAuthenticated", true);
+        setSessionField(manager, "spawner-player", "clientInitialized", true);
+        setSessionField(manager, "spawner-player", "positionInitialized", true);
+        setSessionField(manager, "spawner-player", "entityId", 115L);
+        setSessionField(manager, "spawner-player", "positionX", 0.5f);
+        setSessionField(manager, "spawner-player", "positionY", 65.0f);
+        setSessionField(manager, "spawner-player", "positionZ", 0.5f);
+        subscribeChunk(manager, "spawner-player", 0, 0);
+
+        spawnerWorld.setBlock(0, 65, 0, ru.nexora.world.BlockType.SPAWNER);
+        assertTrue(spawnerWorld.mobSpawners().configure(
+                0, 65, 0, "minecraft:zombie", 20, 180));
+
+        invokeLivingActorTick(manager, 200L);
+
+        assertTrue(spawnerWorld.livingEntities().snapshot().stream()
+                .anyMatch(entity -> entity.identifier().equals("minecraft:zombie")));
+        assertTrue(outbound.stream().flatMap(frame -> decodeOutboundAll(frame, true).stream())
+                .anyMatch(packet -> packet.packetId() == BedrockAddActorCodec.ADD_ACTOR_PACKET_ID));
+        ru.nexora.combat.MobAiLoadController scheduler =
+                (ru.nexora.combat.MobAiLoadController) getManagerField(manager, "mobAiLoadController");
+        assertTrue(scheduler.stats().deferredUpdates() > 0,
+                "The distant idle mob should be deferred while the active spawner still produces");
+        manager.close();
+    }
+
+    @Test
+    void hostileMobsDespawnAfterLongAbsenceButPassiveMobsRemain() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "mob-natural-despawn-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
+        var zombie = manager.spawnLivingEntity("minecraft:zombie", 20.0f, 0.5, 65.0, 0.5);
+        var cow = manager.spawnLivingEntity("minecraft:cow", 10.0f, 2.5, 65.0, 0.5);
+
+        invokeLivingActorTick(manager, 20L);
+        clock.set(31_000_000_000L);
+        invokeLivingActorTick(manager, 620L);
+
+        assertTrue(mobWorld.livingEntities().find(zombie.runtimeId()).isEmpty());
+        assertTrue(mobWorld.livingEntities().find(cow.runtimeId()).isPresent());
+        manager.close();
+    }
+
+    @Test
+    void boggedArrowAppliesPoisonWhenItHitsAPlayer() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "bogged-poison-arrow-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
+        manager.onIdentity("bogged-player", new NetherNetClientIdentity(
+                "bogged-token", new byte[] {21}, "bogged-xuid",
+                "BoggedPlayer", "playfab-bogged", "20CA2", null));
+        setSessionField(manager, "bogged-player", "loginAuthenticated", true);
+        setSessionField(manager, "bogged-player", "clientInitialized", true);
+        setSessionField(manager, "bogged-player", "positionInitialized", true);
+        setSessionField(manager, "bogged-player", "entityId", 121L);
+        setSessionField(manager, "bogged-player", "positionX", 5.5f);
+        setSessionField(manager, "bogged-player", "positionY", 65.0f);
+        setSessionField(manager, "bogged-player", "positionZ", 0.5f);
+        var bogged = manager.spawnLivingEntity("minecraft:bogged", 16.0f, 0.5, 65.0, 0.5);
+
+        @SuppressWarnings("unchecked")
+        java.util.Map<Long, ru.nexora.combat.ArrowProjectile> arrows =
+                (java.util.Map<Long, ru.nexora.combat.ArrowProjectile>)
+                        getManagerField(manager, "mobArrows");
+        @SuppressWarnings("unchecked")
+        java.util.Set<Long> poisonArrows =
+                (java.util.Set<Long>) getManagerField(manager, "poisonMobArrows");
+        long arrowId = 5_000_001L;
+        arrows.put(arrowId, new ru.nexora.combat.ArrowProjectile(
+                -arrowId, arrowId, "mob:" + bogged.runtimeId(),
+                4.5, 65.9, 0.5, 1.0, 0.0, 0.0, 0));
+        poisonArrows.add(arrowId);
+
+        clock.addAndGet(50_000_000L);
+        invokeLivingActorTick(manager, 1L);
+
+        assertTrue((long) getSessionField(manager, "bogged-player", "poisonUntilNanos") > clock.get());
+        assertFalse(poisonArrows.contains(arrowId));
+        manager.close();
+    }
+
+    @Test
+    void rangedMobsUseSpeciesCooldownOnTheLiveBedrockPath() throws Exception {
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "ranged-cooldown-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        mobWorld.getChunk(0, 0);
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {});
+        try {
+            var skeleton = manager.spawnLivingEntity(
+                    "minecraft:skeleton", 20.0f, 0.5, 65.0, 0.5);
+            var target = new ru.nexora.combat.LivingEntityAiService.PlayerTarget(
+                    "cooldown-target", 8.5, 65.0, 0.5, true);
+            java.lang.reflect.Method rangedAttack = BedrockSessionManager.class.getDeclaredMethod(
+                    "tickRangedMobBehavior",
+                    ru.nexora.world.WorldLivingEntity.class,
+                    ru.nexora.combat.LivingEntityAiService.PlayerTarget.class,
+                    long.class);
+            rangedAttack.setAccessible(true);
+
+            assertEquals(true, rangedAttack.invoke(manager, skeleton, target, 1_000L));
+            @SuppressWarnings("unchecked")
+            java.util.Map<Long, Long> deadlines =
+                    (java.util.Map<Long, Long>) getManagerField(manager, "nextMobAttackMillis");
+            assertEquals(2_250L, deadlines.get(skeleton.runtimeId()));
+
+            assertEquals(true, rangedAttack.invoke(manager, skeleton, target, 2_000L));
+            assertEquals(2_250L, deadlines.get(skeleton.runtimeId()),
+                    "A skeleton must not fire again before its 1,250 ms recovery expires");
+
+            assertEquals(true, rangedAttack.invoke(manager, skeleton, target, 2_250L));
+            assertEquals(3_500L, deadlines.get(skeleton.runtimeId()));
+        } finally {
+            manager.close();
+        }
+    }
+
+
+    @Test
+    void ghastFireballExplosionDamagesNearbyPlayerAndDestroysOrdinaryBlocks() throws Exception {
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "ghast-explosion-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        mobWorld.getChunk(0, 0);
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {});
+        try {
+            manager.setItemRegistry(new BedrockItemRegistry(List.of(
+                    new BedrockItemRegistry.Entry("minecraft:cobblestone",
+                            new BedrockInventoryContentCodec.ItemDefinition(
+                                    1, 0, 0, new byte[] {10, 0, 0, 0})))));
+            manager.onIdentity("blast-player", new NetherNetClientIdentity(
+                    "blast-token", new byte[] {33}, "blast-xuid",
+                    "BlastPlayer", "playfab-blast", "20CA2", null));
+            setSessionField(manager, "blast-player", "loginAuthenticated", true);
+            setSessionField(manager, "blast-player", "clientInitialized", true);
+            setSessionField(manager, "blast-player", "positionInitialized", true);
+            setSessionField(manager, "blast-player", "entityId", 133L);
+            setSessionField(manager, "blast-player", "positionX", 5.5f);
+            setSessionField(manager, "blast-player", "positionY", 65.0f);
+            setSessionField(manager, "blast-player", "positionZ", 0.5f);
+            setSessionField(manager, "blast-player", "physicsState",
+                    ru.nexora.world.PlayerPhysics.spawn(mobWorld, 5.5, 65.0, 0.5));
+            var ghast = manager.spawnLivingEntity("minecraft:ghast", 16.0f, 10.0, 65.0, 0.5);
+            var target = new ru.nexora.combat.LivingEntityAiService.PlayerTarget(
+                    "blast-player", 5.5, 65.0, 0.5, true);
+            java.lang.reflect.Method launch = BedrockSessionManager.class.getDeclaredMethod(
+                    "tickFireballMobBehavior",
+                    ru.nexora.world.WorldLivingEntity.class,
+                    ru.nexora.combat.LivingEntityAiService.PlayerTarget.class, long.class);
+            launch.setAccessible(true);
+            java.lang.reflect.Method tick = BedrockSessionManager.class.getDeclaredMethod(
+                    "tickMobFireballs", long.class);
+            tick.setAccessible(true);
+            float initialHealth = manager.playerVitals("blast-player").orElseThrow().health();
+
+            assertEquals(true, launch.invoke(manager, ghast, target, 1_000L));
+            mobWorld.setBlock(6, 66, 0, ru.nexora.world.BlockType.STONE);
+            mobWorld.setBlock(6, 67, 0, ru.nexora.world.BlockType.CHEST);
+            for (int i = 0; i < 8; i++) tick.invoke(manager, (long) i + 1L);
+
+            assertTrue(manager.playerVitals("blast-player").orElseThrow().health() < initialHealth);
+            assertEquals(ru.nexora.world.BlockType.AIR, mobWorld.getBlock(6, 66, 0));
+            assertEquals(ru.nexora.world.BlockType.CHEST, mobWorld.getBlock(6, 67, 0));
+            assertTrue(mobWorld.itemEntities().snapshot().stream()
+                    .anyMatch(item -> item.stack().itemId().equals("minecraft:cobblestone")),
+                    "Stone destroyed by the blast must create a cobblestone world item");
+            assertTrue((long) getSessionField(manager, "blast-player", "fireUntilNanos") > 0L);
+            ru.nexora.world.PlayerPhysics.State blastedPhysics =
+                    (ru.nexora.world.PlayerPhysics.State) getSessionField(manager, "blast-player", "physicsState");
+            assertTrue(blastedPhysics.velocityY() > 0.0,
+                    "Ghast blast must apply an upward impulse to nearby players");
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void ghastFireballTravelsAsFireballAndDamagesAndIgnitesBedrockPlayer() throws Exception {
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "ghast-fireball-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        mobWorld.getChunk(0, 0);
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {});
+        try {
+            manager.onIdentity("fireball-player", new NetherNetClientIdentity(
+                    "fireball-token", new byte[] {32}, "fireball-xuid",
+                    "FireballPlayer", "playfab-fireball", "20CA2", null));
+            setSessionField(manager, "fireball-player", "loginAuthenticated", true);
+            setSessionField(manager, "fireball-player", "clientInitialized", true);
+            setSessionField(manager, "fireball-player", "positionInitialized", true);
+            setSessionField(manager, "fireball-player", "entityId", 132L);
+            setSessionField(manager, "fireball-player", "positionX", 5.5f);
+            setSessionField(manager, "fireball-player", "positionY", 65.0f);
+            setSessionField(manager, "fireball-player", "positionZ", 0.5f);
+            var ghast = manager.spawnLivingEntity(
+                    "minecraft:ghast", 10.0f, 0.5, 65.0, 0.5);
+            var target = new ru.nexora.combat.LivingEntityAiService.PlayerTarget(
+                    "fireball-player", 5.5, 65.0, 0.5, true);
+            java.lang.reflect.Method launch = BedrockSessionManager.class.getDeclaredMethod(
+                    "tickFireballMobBehavior",
+                    ru.nexora.world.WorldLivingEntity.class,
+                    ru.nexora.combat.LivingEntityAiService.PlayerTarget.class, long.class);
+            launch.setAccessible(true);
+            java.lang.reflect.Method tick = BedrockSessionManager.class.getDeclaredMethod(
+                    "tickMobFireballs", long.class);
+            tick.setAccessible(true);
+            float initialHealth = manager.playerVitals("fireball-player").orElseThrow().health();
+
+            assertEquals(true, launch.invoke(manager, ghast, target, 1_000L));
+            for (int i = 0; i < 5; i++) tick.invoke(manager, (long) i + 1L);
+
+            assertTrue(manager.playerVitals("fireball-player").orElseThrow().health() < initialHealth);
+            assertTrue((long) getSessionField(manager, "fireball-player", "fireUntilNanos") > 0L);
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void guardianBeamChargesBeforeApplyingLongRangeDamage() throws Exception {
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "guardian-beam-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        mobWorld.getChunk(0, 0);
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {});
+        try {
+            manager.onIdentity("guardian-player", new NetherNetClientIdentity(
+                    "guardian-token", new byte[] {31}, "guardian-xuid",
+                    "GuardianPlayer", "playfab-guardian", "20CA2", null));
+            setSessionField(manager, "guardian-player", "loginAuthenticated", true);
+            setSessionField(manager, "guardian-player", "clientInitialized", true);
+            setSessionField(manager, "guardian-player", "positionInitialized", true);
+            setSessionField(manager, "guardian-player", "entityId", 131L);
+            setSessionField(manager, "guardian-player", "positionX", 8.5f);
+            setSessionField(manager, "guardian-player", "positionY", 65.0f);
+            setSessionField(manager, "guardian-player", "positionZ", 0.5f);
+            var guardian = manager.spawnLivingEntity(
+                    "minecraft:guardian", 30.0f, 0.5, 65.0, 0.5);
+            var target = new ru.nexora.combat.LivingEntityAiService.PlayerTarget(
+                    "guardian-player", 8.5, 65.0, 0.5, true);
+            java.lang.reflect.Method beam = BedrockSessionManager.class.getDeclaredMethod(
+                    "tickGuardianBeamBehavior",
+                    ru.nexora.world.WorldLivingEntity.class,
+                    ru.nexora.combat.LivingEntityAiService.PlayerTarget.class,
+                    long.class, long.class);
+            beam.setAccessible(true);
+            float initialHealth = manager.playerVitals("guardian-player").orElseThrow().health();
+
+            assertEquals(true, beam.invoke(manager, guardian, target, 1_000L, 1L));
+            assertEquals(initialHealth,
+                    manager.playerVitals("guardian-player").orElseThrow().health(), 0.0001f);
+            assertEquals(true, beam.invoke(manager, guardian, target, 2_500L, 2L));
+            assertEquals(initialHealth - 5.0f,
+                    manager.playerVitals("guardian-player").orElseThrow().health(), 0.0001f);
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void mobArrowCannotTunnelThroughAThinBlockBetweenTicks() throws Exception {
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "arrow-sweep-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        mobWorld.setBlock(5, 65, 0, ru.nexora.world.BlockType.STONE);
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {});
+        try {
+            @SuppressWarnings("unchecked")
+            java.util.Map<Long, ru.nexora.combat.ArrowProjectile> arrows =
+                    (java.util.Map<Long, ru.nexora.combat.ArrowProjectile>)
+                            getManagerField(manager, "mobArrows");
+            long arrowId = 5_000_002L;
+            arrows.put(arrowId, new ru.nexora.combat.ArrowProjectile(
+                    -arrowId, arrowId, "mob:1",
+                    4.5, 65.5, 0.5, 2.0, 0.0, 0.0, 0));
+
+            java.lang.reflect.Method tickArrows = BedrockSessionManager.class.getDeclaredMethod(
+                    "tickMobArrows", long.class);
+            tickArrows.setAccessible(true);
+            tickArrows.invoke(manager, 1L);
+
+            assertFalse(arrows.containsKey(arrowId),
+                    "The swept arrow segment crosses the stone block even though its endpoint is beyond it");
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void skeletonUsesItsSpeciesProjectileRangeBeforeLaunchingAnArrow() throws Exception {
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "skeleton-projectile-range-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        mobWorld.getChunk(0, 0);
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {});
+        try {
+            var skeleton = manager.spawnLivingEntity(
+                    "minecraft:skeleton", 20.0f, 0.5, 65.0, 0.5);
+            var outsideRange = new ru.nexora.combat.LivingEntityAiService.PlayerTarget(
+                    "range-target", 13.5, 65.0, 0.5, true);
+            var insideRange = new ru.nexora.combat.LivingEntityAiService.PlayerTarget(
+                    "range-target", 10.5, 65.0, 0.5, true);
+            java.lang.reflect.Method ranged = BedrockSessionManager.class.getDeclaredMethod(
+                    "tickRangedMobBehavior",
+                    ru.nexora.world.WorldLivingEntity.class,
+                    ru.nexora.combat.LivingEntityAiService.PlayerTarget.class,
+                    long.class);
+            ranged.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            java.util.Map<Long, ru.nexora.combat.ArrowProjectile> arrows =
+                    (java.util.Map<Long, ru.nexora.combat.ArrowProjectile>)
+                            getManagerField(manager, "mobArrows");
+
+            assertFalse((Boolean) ranged.invoke(manager, skeleton, outsideRange, 2_000L));
+            assertTrue(arrows.isEmpty(), "Skeleton must not shoot beyond its 12-block range");
+
+            assertTrue((Boolean) ranged.invoke(manager, skeleton, insideRange, 2_100L));
+            assertEquals(1, arrows.size(), "Skeleton should launch an arrow inside its species range");
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void caveSpiderAppliesPoisonButPoisonCannotKillPlayer() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "cave-spider-poison-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
+        manager.onIdentity("poison-player", new NetherNetClientIdentity(
+                "poison-token", new byte[] {19}, "poison-xuid",
+                "PoisonPlayer", "playfab-poison", "20CA2", null));
+        setSessionField(manager, "poison-player", "loginAuthenticated", true);
+        setSessionField(manager, "poison-player", "clientInitialized", true);
+        setSessionField(manager, "poison-player", "positionInitialized", true);
+        setSessionField(manager, "poison-player", "entityId", 119L);
+        setSessionField(manager, "poison-player", "positionX", 1.0f);
+        setSessionField(manager, "poison-player", "positionY", 65.0f);
+        setSessionField(manager, "poison-player", "positionZ", 0.5f);
+        var spider = manager.spawnLivingEntity("minecraft:cave_spider", 12.0f, 0.5, 65.0, 0.5);
+
+        clock.addAndGet(50_000_000L);
+        invokeLivingActorTick(manager, 1L);
+        assertTrue((long) getSessionField(manager, "poison-player", "poisonUntilNanos") > clock.get());
+
+        assertTrue(manager.despawnLivingEntity(spider.runtimeId()));
+        setSessionField(manager, "poison-player", "vitals",
+                new ru.nexora.world.PlayerVitals(1.0f, 20, 5.0f, 0.0f));
+        clock.addAndGet(1_000_000_000L);
+        invokeLivingActorTick(manager, 2L);
+
+        ru.nexora.world.PlayerVitals vitals = (ru.nexora.world.PlayerVitals)
+                getSessionField(manager, "poison-player", "vitals");
+        assertEquals(1.0f, vitals.health(), 0.0001f);
+        manager.close();
+    }
+
+    @Test
+    void groundMobJumpsOverSingleBlockDuringAiTick() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "mob-jump-integration", 0L, new ru.nexora.world.FlatWorldGenerator());
+        mobWorld.setBlock(1, 65, 0, ru.nexora.world.BlockType.STONE);
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
+        manager.onIdentity("jump-player", new NetherNetClientIdentity(
+                "jump-token", new byte[] {17}, "jump-xuid",
+                "JumpPlayer", "playfab-jump", "20CA2", null));
+        setSessionField(manager, "jump-player", "loginAuthenticated", true);
+        setSessionField(manager, "jump-player", "clientInitialized", true);
+        setSessionField(manager, "jump-player", "positionInitialized", true);
+        setSessionField(manager, "jump-player", "entityId", 117L);
+        setSessionField(manager, "jump-player", "positionX", 3.5f);
+        setSessionField(manager, "jump-player", "positionY", 65.0f);
+        setSessionField(manager, "jump-player", "positionZ", 0.5f);
+        var zombie = manager.spawnLivingEntity("minecraft:zombie", 20.0f, 0.5, 65.0, 0.5);
+
+        clock.addAndGet(50_000_000L);
+        invokeLivingActorTick(manager, 1L);
+
+        var jumping = mobWorld.livingEntities().find(zombie.runtimeId()).orElseThrow();
+        assertEquals(ru.nexora.combat.MobJumpController.JUMP_VELOCITY,
+                jumping.velocityY(), 0.0001);
+        manager.close();
+    }
+
+    @Test
+    void fallingMobTakesLandingDamageThroughWorldTick() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "mob-fall-damage-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
+        var zombie = manager.spawnLivingEntity("minecraft:zombie", 20.0f, 0.5, 70.0, 0.5);
+
+        for (long tick = 0; tick < 30; tick++) {
+            clock.addAndGet(50_000_000L);
+            invokeLivingActorTick(manager, tick);
+        }
+
+        var landed = mobWorld.livingEntities().find(zombie.runtimeId()).orElseThrow();
+        assertTrue(landed.y() <= 65.1 && landed.y() >= 64.9);
+        assertTrue(landed.health() < 20.0f,
+                "Fall tracking did not apply damage: " + manager.mobAiDiagnosticsSummary()
+                        + "; mobY=" + landed.y() + "; velocityY=" + landed.velocityY());
+        manager.close();
+    }
+
+    @Test
+    void temporaryMobRetaliationTargetExpires() throws Exception {
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "mob-aggro-expiry-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {});
+        var piglin = manager.spawnLivingEntity("minecraft:piglin", 16.0f, 0.5, 65, 0.5);
+        @SuppressWarnings("unchecked")
+        java.util.Map<Long, String> targets =
+                (java.util.Map<Long, String>) getManagerField(manager, "livingEntityAggroTargets");
+        @SuppressWarnings("unchecked")
+        java.util.Map<Long, Long> expiry =
+                (java.util.Map<Long, Long>) getManagerField(manager, "livingEntityAggroExpiresAtMillis");
+        targets.put(piglin.runtimeId(), "attacker");
+        expiry.put(piglin.runtimeId(), 2_000L);
+
+        java.lang.reflect.Method activeProvoker =
+                BedrockSessionManager.class.getDeclaredMethod("activeMobProvoker", long.class, long.class);
+        activeProvoker.setAccessible(true);
+        assertEquals("attacker", activeProvoker.invoke(manager, piglin.runtimeId(), 1_999L));
+        assertNull(activeProvoker.invoke(manager, piglin.runtimeId(), 2_000L));
+        assertFalse(targets.containsKey(piglin.runtimeId()));
+        assertFalse(expiry.containsKey(piglin.runtimeId()));
+        manager.close();
+    }
+
+    @Test
+    void fireDeathClearsTransientMobAiState() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(2_000_000_000L);
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "mob-fire-cleanup-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
+        var zombie = manager.spawnLivingEntity("minecraft:zombie", 1.0f, 0.5, 65.0, 0.5);
+        assertTrue(mobWorld.livingEntities().ignite(zombie.runtimeId(), 5, 1_000).isPresent());
+
+        @SuppressWarnings("unchecked")
+        java.util.Map<Long, Long> attacks =
+                (java.util.Map<Long, Long>) getManagerField(manager, "nextMobAttackMillis");
+        @SuppressWarnings("unchecked")
+        java.util.Map<Long, String> aggro =
+                (java.util.Map<Long, String>) getManagerField(manager, "livingEntityAggroTargets");
+        attacks.put(zombie.runtimeId(), 5_000L);
+        aggro.put(zombie.runtimeId(), "test-player");
+        @SuppressWarnings("unchecked")
+        java.util.Map<Long, ru.nexora.combat.ArrowProjectile> arrows =
+                (java.util.Map<Long, ru.nexora.combat.ArrowProjectile>) getManagerField(manager, "mobArrows");
+        arrows.put(77L, new ru.nexora.combat.ArrowProjectile(
+                -77L, 77L, "mob:" + zombie.runtimeId(),
+                0.5, 66, 0.5, 0.1, 0.1, 0.1, 0));
+        ru.nexora.combat.MobFallTracker falls =
+                (ru.nexora.combat.MobFallTracker) getManagerField(manager, "mobFallTracker");
+        falls.update(zombie.runtimeId(), 80, false, false);
+        ru.nexora.world.MobPathCache cache =
+                (ru.nexora.world.MobPathCache) getManagerField(manager, "mobPathCache");
+        ru.nexora.combat.MobStuckTracker stuck =
+                (ru.nexora.combat.MobStuckTracker) getManagerField(manager, "mobStuckTracker");
+        cache.findNextStep(zombie.runtimeId(), mobWorld, 0.5, 65, 0.5, 3.5, 0.5, 1_000);
+        stuck.recordBlockedAttempt(zombie.runtimeId(), 0.5, 65, 0.5, 1_000);
+        falls.update(zombie.runtimeId(), 80, false, false);
+
+        invokeLivingActorTick(manager, 40L);
+
+        assertTrue(mobWorld.livingEntities().find(zombie.runtimeId()).isEmpty());
+        assertFalse(attacks.containsKey(zombie.runtimeId()));
+        assertFalse(aggro.containsKey(zombie.runtimeId()));
+        assertTrue(arrows.isEmpty());
+        assertEquals(0, cache.size());
+        assertEquals(0, stuck.stats(2_001).tracked());
+        manager.close();
+    }
+
+    @Test
+    void hostileMobNaturallyDespawnsAfterThirtySecondsFarFromPlayers() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "mob-natural-despawn-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
+        var zombie = manager.spawnLivingEntity("minecraft:zombie", 20.0f, 0.5, 65.0, 0.5);
+
+        for (long tick = 0; tick <= 600; tick++) {
+            clock.addAndGet(50_000_000L);
+            invokeLivingActorTick(manager, tick);
+        }
+
+        assertTrue(mobWorld.livingEntities().find(zombie.runtimeId()).isEmpty());
+        manager.close();
+    }
+
+    @Test
+    void despawningMobClearsAllTransientAiState() throws Exception {
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "mob-cleanup-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {});
+        var zombie = manager.spawnLivingEntity("minecraft:zombie", 20.0f, 0.5, 65.0, 0.5);
+
+        @SuppressWarnings("unchecked")
+        java.util.Map<Long, Long> attacks =
+                (java.util.Map<Long, Long>) getManagerField(manager, "nextMobAttackMillis");
+        ru.nexora.combat.MobFuseTracker fuses =
+                (ru.nexora.combat.MobFuseTracker) getManagerField(manager, "mobFuseTracker");
+        @SuppressWarnings("unchecked")
+        java.util.Map<Long, Long> teleports =
+                (java.util.Map<Long, Long>) getManagerField(manager, "endermanTeleportCooldownMillis");
+        @SuppressWarnings("unchecked")
+        java.util.Map<Long, String> aggro =
+                (java.util.Map<Long, String>) getManagerField(manager, "livingEntityAggroTargets");
+        ru.nexora.combat.MobFallTracker falls =
+                (ru.nexora.combat.MobFallTracker) getManagerField(manager, "mobFallTracker");
+        falls.update(zombie.runtimeId(), 80, false, false);
+        attacks.put(zombie.runtimeId(), 100L);
+        assertFalse(fuses.isReadyToDetonate(zombie.runtimeId(), true, 100L, 1_500L));
+        teleports.put(zombie.runtimeId(), 100L);
+        aggro.put(zombie.runtimeId(), "test-player");
+        @SuppressWarnings("unchecked")
+        java.util.Map<Long, ru.nexora.combat.ArrowProjectile> arrows =
+                (java.util.Map<Long, ru.nexora.combat.ArrowProjectile>) getManagerField(manager, "mobArrows");
+        arrows.put(77L, new ru.nexora.combat.ArrowProjectile(
+                -77L, 77L, "mob:" + zombie.runtimeId(),
+                0.5, 66, 0.5, 0.1, 0.1, 0.1, 0));
+
+        ru.nexora.world.MobPathCache cache =
+                (ru.nexora.world.MobPathCache) getManagerField(manager, "mobPathCache");
+        ru.nexora.combat.MobStuckTracker stuck =
+                (ru.nexora.combat.MobStuckTracker) getManagerField(manager, "mobStuckTracker");
+        cache.findNextStep(zombie.runtimeId(), mobWorld, 0.5, 65, 0.5, 3.5, 0.5, 1_000);
+        stuck.recordBlockedAttempt(zombie.runtimeId(), 0.5, 65, 0.5, 1_000);
+
+        assertTrue(manager.despawnLivingEntity(zombie.runtimeId()));
+        assertFalse(attacks.containsKey(zombie.runtimeId()));
+        assertEquals(0, fuses.trackedFuses());
+        assertFalse(teleports.containsKey(zombie.runtimeId()));
+        assertFalse(aggro.containsKey(zombie.runtimeId()));
+        assertEquals(0, cache.size());
+        assertEquals(0, stuck.stats(1_001).tracked());
+        assertEquals(0, falls.stats().airborne());
+        manager.close();
+    }
+
+    @Test
     void negotiatesNetworkSettingsThenDecodesCompressedGameBatch() {
         List<byte[]> outboundFrames = new ArrayList<>();
         AtomicReference<BedrockSessionManager.PacketEvent> received = new AtomicReference<>();
@@ -871,13 +1961,13 @@ class BedrockSessionManagerTest {
 
         byte[] loginPayload = new byte[512];
         java.util.Arrays.fill(loginPayload, (byte) 0x42);
-        BedrockPacket login = new BedrockPacket(9, 0, 0, loginPayload);
-        byte[] compressedLogin = BedrockBatchCodec.encode(List.of(login), true, 256);
+        BedrockPacket unknown = new BedrockPacket(0x7f, 0, 0, loginPayload);
+        byte[] compressedLogin = BedrockBatchCodec.encode(List.of(unknown), true, 256);
         assertEquals(0, Byte.toUnsignedInt(compressedLogin[0]));
         sendClientBatch(manager, "client-1", compressedLogin);
 
         assertNotNull(received.get());
-        assertEquals(9, received.get().packet().packetId());
+        assertEquals(0x7f, received.get().packet().packetId());
         assertArrayEquals(loginPayload, received.get().packet().payload());
     }
 
@@ -1528,7 +2618,7 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(stackCompleted), true, 256));
         assertEquals(1, manager.resourcePackReadyCount());
-        assertEquals(21, outboundFrames.size());
+        assertEquals(15, outboundFrames.size());
         assertEquals(0x0b, decodeOutbound(outboundFrames.get(4), true).packetId());
         List<BedrockPacket> startGameBatch = BedrockBatchCodec.decode(
                 reassemble(List.of(outboundFrames.get(4))), true);
@@ -1542,18 +2632,25 @@ class BedrockSessionManagerTest {
         assertEquals(0x3e, decodeOutbound(outboundFrames.get(9), true).packetId());
         assertEquals(0x79, decodeOutbound(outboundFrames.get(10), true).packetId());
         assertEquals(0x7a, decodeOutbound(outboundFrames.get(11), true).packetId());
-        for (int index = 12; index < 21; index++) {
-            assertEquals(0x3a, decodeOutbound(outboundFrames.get(index), true).packetId());
+        List<BedrockPacket> biomeAndRadius = BedrockBatchCodec.decode(
+                reassemble(List.of(outboundFrames.get(11))), true);
+        assertEquals(BedrockChunkRadiusCodec.UPDATED_PACKET_ID, biomeAndRadius.get(1).packetId());
+        List<BedrockPacket> initialChunkPackets = new ArrayList<>();
+        for (int index = 12; index < 15; index++) {
+            initialChunkPackets.addAll(decodeOutboundPackets(outboundFrames.get(index), true));
         }
+        assertEquals(9, initialChunkPackets.stream()
+                .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
+                .count());
 
         // The server must not announce the player as spawned until the client confirms StartGame.
         BedrockPacket initialized = new BedrockPacket(0x71, 0, 0, new byte[] {1});
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256));
-        assertEquals(24, outboundFrames.size());
-        assertEquals(0x31, decodeOutbound(outboundFrames.get(22), true).packetId());
+        assertEquals(18, outboundFrames.size());
+        assertEquals(0x31, decodeOutbound(outboundFrames.get(16), true).packetId());
         List<BedrockPacket> initialInventoryBatch = BedrockBatchCodec.decode(
-                reassemble(List.of(outboundFrames.get(22))), true);
+                reassemble(List.of(outboundFrames.get(16))), true);
         assertEquals(8, initialInventoryBatch.size());
         assertEquals(0x1f, initialInventoryBatch.get(1).packetId());
         assertEquals(0x31, initialInventoryBatch.get(2).packetId()); // armor container
@@ -1564,7 +2661,7 @@ class BedrockSessionManagerTest {
         assertEquals(BedrockCraftingDataCodec.CRAFTING_DATA_PACKET_ID,
                 initialInventoryBatch.get(6).packetId()); // crafting recipes
         assertEquals(124, Byte.toUnsignedInt(initialInventoryBatch.get(7).payload()[0])); // player UI grid
-        BedrockPacket playerSpawn = decodeOutbound(outboundFrames.get(21), true);
+        BedrockPacket playerSpawn = decodeOutbound(outboundFrames.get(15), true);
         assertEquals(BedrockBatchCodec.PLAY_STATUS_PACKET_ID, playerSpawn.packetId());
         assertEquals(3, ByteBuffer.wrap(playerSpawn.payload()).order(ByteOrder.BIG_ENDIAN).getInt());
         assertEquals(0.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
@@ -1594,7 +2691,7 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(replayedMovement), true, 256));
         assertEquals(1.0f, manager.playerPosition("authenticated-client").orElseThrow().x());
-        assertEquals(24, outboundFrames.size());
+        assertEquals(18, outboundFrames.size());
 
         monotonicClock.set(200_000_000L);
         BedrockPacket implausibleTeleport = new BedrockPacket(0x90, 0, 0,
@@ -1602,7 +2699,7 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(implausibleTeleport), true, 256));
         assertEquals(1.0f, manager.playerPosition("authenticated-client").orElseThrow().x());
-        assertEquals(24, outboundFrames.size());
+        assertEquals(18, outboundFrames.size());
 
         float[] walkPositions = {3.0f, 5.0f, 7.0f, 9.0f, 11.0f, 13.0f, 15.0f, 16.5f};
         long[] walkTimes = {400_000_000L, 650_000_000L, 900_000_000L, 1_150_000_000L,
@@ -1614,13 +2711,14 @@ class BedrockSessionManagerTest {
                             walkPositions[i], 65.0f, 1.0f, 30.0f, 3L + i, false));
             sendClientBatch(manager, "authenticated-client",
                     BedrockBatchCodec.encode(List.of(step), true, 256));
-            if (i < walkPositions.length - 1) assertEquals(24, outboundFrames.size());
+            if (i < walkPositions.length - 1) assertEquals(18, outboundFrames.size());
         }
-        assertEquals(28, outboundFrames.size());
-        assertEquals(0x79, decodeOutbound(outboundFrames.get(24), true).packetId());
-        for (int index = 25; index < 28; index++) {
-            assertEquals(0x3a, decodeOutbound(outboundFrames.get(index), true).packetId());
-        }
+        assertEquals(20, outboundFrames.size());
+        assertEquals(0x79, decodeOutbound(outboundFrames.get(18), true).packetId());
+        List<BedrockPacket> newlyStreamedChunks = decodeOutboundPackets(outboundFrames.get(19), true);
+        assertEquals(3, newlyStreamedChunks.stream()
+                .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
+                .count());
         assertEquals(16.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
 
         monotonicClock.set(2_110_000_000L);
@@ -1629,14 +2727,14 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(speedHack), true, 256));
         assertEquals(16.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
-        assertEquals(28, outboundFrames.size());
+        assertEquals(20, outboundFrames.size());
 
         BedrockPacket invalidBlockPosition = new BedrockPacket(0x90, 0, 0,
                 BedrockPlayerAuthInputCodecTest.blockActionPayload(
                         16.5f, 65.0f, 1.0f, 0, 16, 400, 1, 1, 11L));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(invalidBlockPosition), true, 256));
-        assertEquals(28, outboundFrames.size());
+        assertEquals(20, outboundFrames.size());
 
         monotonicClock.set(3_100_000_000L);
         BedrockPacket startBreak = new BedrockPacket(0x90, 0, 0,
@@ -1644,7 +2742,7 @@ class BedrockSessionManagerTest {
                         16.5f, 65.0f, 1.0f, 0, 16, 64, 1, 1, 12L));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(startBreak), true, 256));
-        assertEquals(28, outboundFrames.size());
+        assertEquals(20, outboundFrames.size());
 
         monotonicClock.set(3_600_000_000L);
         BedrockPacket prematureBreak = new BedrockPacket(0x90, 0, 0,
@@ -1652,7 +2750,7 @@ class BedrockSessionManagerTest {
                         16.5f, 65.0f, 1.0f, 26, 16, 64, 1, 1, 5_000L));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(prematureBreak), true, 256));
-        assertEquals(28, outboundFrames.size()); // too little break time has elapsed
+        assertEquals(20, outboundFrames.size()); // too little break time has elapsed
 
         monotonicClock.set(3_800_000_000L);
         BedrockPacket finishBreak = new BedrockPacket(0x90, 0, 0,
@@ -1660,18 +2758,18 @@ class BedrockSessionManagerTest {
                         16.5f, 65.0f, 1.0f, 26, 16, 64, 1, 1, 5_001L));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(finishBreak), true, 256));
-        assertEquals(31, outboundFrames.size());
-        assertEquals(0x15, decodeOutbound(outboundFrames.get(28), true).packetId());
+        assertEquals(23, outboundFrames.size());
+        assertEquals(0x15, decodeOutbound(outboundFrames.get(20), true).packetId());
 
         // A decoded no-op player-slot transaction is accepted and reconciled with authoritative content.
         BedrockPacket inventoryTransaction = new BedrockPacket(0x1e, 0, 0,
                 noOpInventoryTransactionPayload(257, 3));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(inventoryTransaction), true, 256));
-        assertEquals(32, outboundFrames.size());
-        assertEquals(0x31, decodeOutbound(outboundFrames.get(31), true).packetId());
+        assertEquals(24, outboundFrames.size());
+        assertEquals(0x31, decodeOutbound(outboundFrames.get(23), true).packetId());
         List<BedrockPacket> inventoryReconciliation = BedrockBatchCodec.decode(
-                reassemble(List.of(outboundFrames.get(31))), true);
+                reassemble(List.of(outboundFrames.get(23))), true);
         assertEquals(5, inventoryReconciliation.size());
         assertEquals(0x1f, inventoryReconciliation.get(1).packetId());
         assertEquals(0x31, inventoryReconciliation.get(2).packetId());
@@ -1687,7 +2785,7 @@ class BedrockSessionManagerTest {
                 .count("nexora:arcane_shard"));
         assertEquals(3, manager.playerEquipment("authenticated-client").orElseThrow()
                 .offhand().orElseThrow().count());
-        assertEquals(33, outboundFrames.size());
+        assertEquals(25, outboundFrames.size());
 
         // Equip a registered iron chestplate from the main inventory into armor slot 1.
         BedrockPacket armorTransfer = new BedrockPacket(0x1e, 0, 0,
@@ -1697,7 +2795,7 @@ class BedrockSessionManagerTest {
         assertTrue(manager.playerInventory("authenticated-client").orElseThrow().getSlot(2).isEmpty());
         assertEquals(new ItemStack("minecraft:iron_chestplate", 1, 1),
                 manager.playerEquipment("authenticated-client").orElseThrow().armor(1).orElseThrow());
-        assertEquals(34, outboundFrames.size());
+        assertEquals(26, outboundFrames.size());
 
         // Open the player-facing equipment UI, choose the staff slot, and equip a compatible item.
         inventory.setSlot(4, new ItemStack("minecraft:gold_nugget", 1, 64));
@@ -1705,17 +2803,17 @@ class BedrockSessionManagerTest {
                 commandRequestPayload("/equipment", "Player", "equipment-ui-1", 1L));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(equipmentCommand), true, 256));
-        assertEquals(35, outboundFrames.size());
+        assertEquals(27, outboundFrames.size());
         assertEquals(BedrockModalFormCodec.MODAL_FORM_REQUEST_PACKET_ID,
-                decodeOutbound(outboundFrames.get(34), true).packetId());
+                decodeOutbound(outboundFrames.get(26), true).packetId());
 
         BedrockPacket chooseStaffSlot = new BedrockPacket(0x65, 0, 0,
                 modalFormResponsePayload(1, "1"));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(chooseStaffSlot), true, 256));
-        assertEquals(36, outboundFrames.size());
+        assertEquals(28, outboundFrames.size());
         assertEquals(BedrockModalFormCodec.MODAL_FORM_REQUEST_PACKET_ID,
-                decodeOutbound(outboundFrames.get(35), true).packetId());
+                decodeOutbound(outboundFrames.get(27), true).packetId());
 
         BedrockPacket equipStaff = new BedrockPacket(0x65, 0, 0,
                 modalFormResponsePayload(2, "0"));
@@ -1861,9 +2959,14 @@ class BedrockSessionManagerTest {
 
         assertArrayEquals(new byte[] {0x40, (byte) 0x8c, 0x01, 0x21, 0x30, 0, 0, 0, 0},
                 decodeOutbound(outboundFrames.get(10), true).payload());
-        BedrockPacket spawnChunk = decodeOutbound(outboundFrames.get(12), true);
-        assertEquals(4, Byte.toUnsignedInt(spawnChunk.payload()[0])); // chunk X = 2
-        assertEquals(3, Byte.toUnsignedInt(spawnChunk.payload()[1])); // chunk Z = -2
+        BedrockPacket spawnChunk = outboundFrames.stream()
+                .skip(12) // chunk streaming begins after the fixed login/start-game frames
+                .flatMap(frame -> decodeOutboundPackets(frame, true).stream())
+                .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Initial chunk batch was not sent"));
+        assertEquals(4, Byte.toUnsignedInt(spawnChunk.payload()[0])); // center chunk X = 2
+        assertEquals(3, Byte.toUnsignedInt(spawnChunk.payload()[1])); // center chunk Z = -2
         manager.close();
     }
 
@@ -2081,6 +3184,12 @@ class BedrockSessionManagerTest {
         return BedrockBatchCodec.decode(payload, compressed);
     }
 
+    private static List<BedrockPacket> decodeOutboundPackets(byte[] frame, boolean compressed) {
+        NetherNetMessageFramer.Reassembler reassembler = new NetherNetMessageFramer.Reassembler();
+        byte[] payload = reassembler.accept(frame, true).orElseThrow();
+        return BedrockBatchCodec.decode(payload, compressed);
+    }
+
     private static BedrockPacket decodeOutbound(byte[] frame, boolean compressed) {
         NetherNetMessageFramer.Reassembler reassembler = new NetherNetMessageFramer.Reassembler();
         byte[] payload = reassembler.accept(frame, true).orElseThrow();
@@ -2198,6 +3307,31 @@ class BedrockSessionManagerTest {
         } while (value != 0);
     }
 
+    private static Object getManagerField(BedrockSessionManager manager, String fieldName)
+            throws Exception {
+        java.lang.reflect.Field field = BedrockSessionManager.class.getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return field.get(manager);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void subscribeChunk(BedrockSessionManager manager, String networkId, int chunkX, int chunkZ)
+            throws Exception {
+        java.lang.reflect.Field sessionsField = BedrockSessionManager.class.getDeclaredField("sessions");
+        sessionsField.setAccessible(true);
+        Object session = ((java.util.Map<String, Object>) sessionsField.get(manager)).get(networkId);
+        java.lang.reflect.Field chunksField = session.getClass().getDeclaredField("sentChunkKeys");
+        chunksField.setAccessible(true);
+        long key = ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
+        java.util.Set<Long> sentChunks = (java.util.Set<Long>) chunksField.get(session);
+        sentChunks.add(key);
+        java.lang.reflect.Field indexField =
+                BedrockSessionManager.class.getDeclaredField("actorReplicationIndex");
+        indexField.setAccessible(true);
+        ActorReplicationIndex index = (ActorReplicationIndex) indexField.get(manager);
+        index.replaceChunkView(networkId, sentChunks);
+    }
+
     private static void setSessionField(
             BedrockSessionManager manager, String networkId, String fieldName, Object value
     ) throws Exception {
@@ -2214,6 +3348,20 @@ class BedrockSessionManagerTest {
         field.set(state, value);
     }
 
+    private static Object getSessionField(
+            BedrockSessionManager manager, String networkId, String fieldName
+    ) throws Exception {
+        java.lang.reflect.Field sessionsField = BedrockSessionManager.class.getDeclaredField("sessions");
+        sessionsField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> sessions = (java.util.Map<String, Object>) sessionsField.get(manager);
+        Object state = sessions.get(networkId);
+        assertNotNull(state);
+        java.lang.reflect.Field field = state.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return field.get(state);
+    }
+
     private static void invokeLivingActorTick(
             BedrockSessionManager manager, long tick
     ) throws Exception {
@@ -2221,22 +3369,6 @@ class BedrockSessionManagerTest {
                 "tickWorldLivingActors", long.class);
         method.setAccessible(true);
         method.invoke(manager, tick);
-    }
-
-    private static Object getSessionField(
-            BedrockSessionManager manager, String networkId, String fieldName
-    ) throws Exception {
-        java.lang.reflect.Field sessionsField =
-                BedrockSessionManager.class.getDeclaredField("sessions");
-        sessionsField.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        java.util.Map<String, Object> sessions =
-                (java.util.Map<String, Object>) sessionsField.get(manager);
-        Object state = sessions.get(networkId);
-        assertNotNull(state);
-        java.lang.reflect.Field field = state.getClass().getDeclaredField(fieldName);
-        field.setAccessible(true);
-        return field.get(state);
     }
 
     private static void invokeFireTick(
@@ -2413,6 +3545,296 @@ class BedrockSessionManagerTest {
         out.write(0); // has StackNetId = false
         out.write(0); // block runtime ID
         out.write(0); // user data length
+    }
+
+    @Test
+    void operatorDiagnosticsExposeBoundedWorldAndChunkHotPathSamples() throws Exception {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+        ru.nexora.world.World world = new ru.nexora.world.World(
+                "hot-path-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                world, (networkId, label, frame) -> {}, event -> {}, clock::get);
+
+        invokeLivingActorTick(manager, 20L);
+        String summary = manager.mobAiDiagnosticsSummary();
+
+        assertTrue(summary.contains("WORLD_ENTITY_TICK"));
+        assertTrue(summary.contains("CHUNK_RESIDENCY"));
+        assertTrue(summary.contains("samples=1"));
+        manager.close();
+    }
+
+    @Test
+    void disconnectWritesCanonicalCheckpointAfterLegacyPlayerStores() throws Exception {
+        Path players = temporaryDirectory.resolve("shadow-players");
+        Path inventories = temporaryDirectory.resolve("shadow-inventories");
+        Path equipment = temporaryDirectory.resolve("shadow-equipment");
+        Path checkpoints = temporaryDirectory.resolve("shadow-checkpoints");
+        PlayerDataStorage profileStorage = new PlayerDataStorage(players);
+        PlayerInventoryStorage inventoryStorage = new PlayerInventoryStorage(inventories);
+        PlayerEquipmentStorage equipmentStorage = new PlayerEquipmentStorage(equipment);
+        PlayerStateCheckpointService checkpointService = new PlayerStateCheckpointService(
+                new FilePlayerStateStore(checkpoints), new PlayerStateBundleCodec());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("shadow-checkpoint-world", 0L,
+                        new ru.nexora.world.FlatWorldGenerator()),
+                profileStorage, inventoryStorage, equipmentStorage, checkpointService,
+                (networkId, label, frame) -> {}, event -> {});
+        manager.onIdentity("shadow-player", new NetherNetClientIdentity(
+                "shadow-token", new byte[] {7}, "shadow-xuid",
+                "ShadowPlayer", "shadow-playfab", "20CA2", null));
+        setSessionField(manager, "shadow-player", "loginAuthenticated", true);
+        setSessionField(manager, "shadow-player", "positionInitialized", true);
+        setSessionField(manager, "shadow-player", "positionX", 3.0f);
+        setSessionField(manager, "shadow-player", "positionY", 66.0f);
+        setSessionField(manager, "shadow-player", "positionZ", 4.0f);
+
+        manager.onDisconnected("shadow-player");
+
+        assertTrue(profileStorage.load("shadow-xuid").isPresent());
+        var canonical = checkpointService.load("shadow-xuid").orElseThrow();
+        assertEquals("shadow-xuid", canonical.profile().xuid());
+        assertEquals(3.0f, canonical.profile().x());
+        manager.close();
+    }
+
+
+    @Test
+    void redirectsFrozenSourceOnlyAfterMatchingTransferIsDurablyCommitted() throws Exception {
+        PlayerStateCheckpointService checkpoints = new PlayerStateCheckpointService(
+                new FilePlayerStateStore(temporaryDirectory.resolve("transfer-redirect-checkpoints")),
+                new PlayerStateBundleCodec());
+        List<byte[]> outboundFrames = new ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("transfer-redirect-world", 0L,
+                        new ru.nexora.world.FlatWorldGenerator()),
+                null, null, null, checkpoints,
+                (networkId, label, frame) -> outboundFrames.add(frame), event -> {});
+        try {
+            manager.onIdentity("transfer-redirect", new NetherNetClientIdentity(
+                    "transfer-token", new byte[] {7}, "redirect-xuid",
+                    "TransferPlayer", "transfer-playfab", "20CA2", null));
+            setSessionField(manager, "transfer-redirect", "loginAuthenticated", true);
+            setSessionField(manager, "transfer-redirect", "clientInitialized", true);
+            setSessionField(manager, "transfer-redirect", "compressionNegotiated", true);
+            setSessionField(manager, "transfer-redirect", "positionInitialized", true);
+            setSessionField(manager, "transfer-redirect", "positionX", 2.0f);
+            setSessionField(manager, "transfer-redirect", "positionY", 65.0f);
+            setSessionField(manager, "transfer-redirect", "positionZ", 3.0f);
+            long revision = manager.freezePlayerForTransfer("redirect-xuid");
+
+            DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
+                    new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
+            UUID transferId = UUID.randomUUID();
+            PlayerHandoff handoff = new PlayerHandoff(transferId, 1L,
+                    "source-node", "target-node", new byte[0]);
+            ledger.prepare(handoff, "redirect-xuid", revision, 100L);
+            var claim = ledger.claim(transferId, "target-node", 101L, 5_000L).orElseThrow();
+
+            assertThrows(SecurityException.class, () -> manager.redirectFrozenPlayerToNode(
+                    "redirect-xuid", transferId, claim.fencingToken(), ledger,
+                    "source-node", "target.example.net", 19132));
+            assertTrue(outboundFrames.isEmpty(), "Redirect must not be sent before durable commit");
+
+            ledger.commit(transferId, claim.fencingToken(), 102L).orElseThrow();
+            manager.redirectFrozenPlayerToNode("redirect-xuid", transferId, claim.fencingToken(),
+                    ledger, "source-node", "target.example.net", 19132);
+
+            List<BedrockPacket> sent = outboundFrames.stream()
+                    .flatMap(frame -> decodeOutboundAll(frame, true).stream()).toList();
+            assertEquals(1, sent.size());
+            assertEquals(BedrockTransferPacketCodec.TRANSFER_PACKET_ID, sent.get(0).packetId());
+            assertTrue((boolean) getSessionField(manager, "transfer-redirect", "transferRedirected"));
+            assertTrue((boolean) getSessionField(manager, "transfer-redirect", "rejected"));
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void sourceLeaseRemainsHeldUntilPreparedRecordIsDurable() throws Exception {
+        var checkpoints = new ru.nexora.persistence.PlayerStateCheckpointService(
+                new FilePlayerStateStore(temporaryDirectory), new PlayerStateBundleCodec());
+        var leases = new ru.nexora.network.InMemoryPlayerOnlineLeaseRegistry();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("transfer-lease-order", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                null, null, null, checkpoints, (networkId, label, frame) -> {}, event -> {});
+        try {
+            manager.configureOnlinePlayerLeases(leases, 15_000L);
+            DurableHandoffCoordinator ledger = new DurableHandoffCoordinator(
+                    new PlayerTransferCoordinator(new InMemoryPlayerTransferLedger()));
+            manager.configureTransferOwnershipGuard(ledger, "node-a");
+            long now = System.currentTimeMillis();
+            assertTrue(leases.acquire("lease-order-xuid", "node-a", "lease-order-session", now, 15_000L));
+            manager.onIdentity("lease-order-network", new NetherNetClientIdentity(
+                    "lease-order-token", new byte[] {8}, "lease-order-xuid",
+                    "LeaseOrderPlayer", "lease-order-playfab", "20CA2", null));
+            setSessionField(manager, "lease-order-network", "onlineLeaseSessionId", "lease-order-session");
+            setSessionField(manager, "lease-order-network", "loginAuthenticated", true);
+            setSessionField(manager, "lease-order-network", "clientInitialized", true);
+            setSessionField(manager, "lease-order-network", "positionInitialized", true);
+
+            long revision = manager.freezePlayerForTransfer("lease-order-xuid");
+            setSessionField(manager, "lease-order-network", "lastOnlineLeaseRenewalNanos", Long.MIN_VALUE);
+            java.util.concurrent.locks.ReentrantLock combatLock =
+                    (java.util.concurrent.locks.ReentrantLock) getSessionField(
+                            manager, "lease-order-network", "combatLock");
+            combatLock.lock();
+            try {
+                java.util.concurrent.ExecutorService heartbeat = java.util.concurrent.Executors.newSingleThreadExecutor();
+                try {
+                    heartbeat.submit(manager::renewOnlinePlayerLeases).get(2, java.util.concurrent.TimeUnit.SECONDS);
+                } finally {
+                    heartbeat.shutdownNow();
+                }
+            } finally {
+                combatLock.unlock();
+            }
+            assertTrue(leases.renew("lease-order-xuid", "node-a", "lease-order-session",
+                    now + 1L, 15_000L),
+                    "Frozen source heartbeat renews ownership even while the gameplay lock is held");
+
+            UUID transferId = UUID.randomUUID();
+            PlayerHandoff handoff = new PlayerHandoff(transferId, 1L, "node-a", "node-b", new byte[0]);
+            ledger.prepare(handoff, "lease-order-xuid", revision, now + 2L);
+            var claimed = ledger.claim(transferId, "node-b", now + 3L, 15_000L).orElseThrow();
+            assertEquals(ru.nexora.network.PlayerTransferRecord.State.CLAIMED, claimed.state(),
+                    "Destination may claim the durable PREPARED record before source lease release runs");
+            manager.releaseOnlinePlayerLeaseAfterPreparedTransfer("lease-order-xuid", transferId);
+
+            assertFalse(leases.renew("lease-order-xuid", "node-a", "lease-order-session",
+                    now + 4L, 15_000L));
+            assertTrue(leases.acquire("lease-order-xuid", "node-b", "destination-session",
+                    now + 4L, 15_000L),
+                    "Destination can acquire the XUID only after PREPARED has been durably published");
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void transferFreezeCheckpointsAndRemovesSourceFromActiveGameplayUntilAbortResume() throws Exception {
+        PlayerStateCheckpointService checkpoints = new PlayerStateCheckpointService(
+                new FilePlayerStateStore(temporaryDirectory.resolve("transfer-checkpoints")),
+                new PlayerStateBundleCodec());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("transfer-source-world", 0L,
+                        new ru.nexora.world.FlatWorldGenerator()),
+                null, null, null, checkpoints, (networkId, label, frame) -> {}, event -> {});
+        manager.onIdentity("transfer-source", new NetherNetClientIdentity(
+                "transfer-token", new byte[] {7}, "transfer-xuid",
+                "TransferPlayer", "transfer-playfab", "20CA2", null));
+        setSessionField(manager, "transfer-source", "loginAuthenticated", true);
+        setSessionField(manager, "transfer-source", "clientInitialized", true);
+        setSessionField(manager, "transfer-source", "compressionNegotiated", true);
+        setSessionField(manager, "transfer-source", "positionInitialized", true);
+        manager.playerInventory("transfer-source").orElseThrow().setSlot(
+                0, new ItemStack("minecraft:diamond", 3, 64));
+        setSessionField(manager, "transfer-source", "positionX", 12.0f);
+        setSessionField(manager, "transfer-source", "positionY", 70.0f);
+        setSessionField(manager, "transfer-source", "positionZ", -4.0f);
+
+        long revision = manager.freezePlayerForTransfer("transfer-xuid");
+
+        assertEquals(0L, revision);
+        assertEquals(0L, manager.authenticatedPlayerCount());
+        assertTrue(manager.playerPosition("transfer-source").isEmpty());
+        assertTrue(checkpoints.load("transfer-xuid").isPresent());
+        assertEquals(3, checkpoints.load("transfer-xuid").orElseThrow()
+                .restore().inventory().getSlot(0).orElseThrow().count());
+        assertTrue((boolean) getSessionField(manager, "transfer-source", "transferFrozen"));
+
+        manager.savePlayers();
+        assertEquals(0L, checkpoints.latestRevision("transfer-xuid"),
+                "Periodic saves must not rewrite a frozen source checkpoint");
+        sendClientBatch(manager, "transfer-source", BedrockBatchCodec.encode(
+                List.of(BedrockTextCodec.createChatMessage(
+                        "TransferPlayer", "must-not-be-processed", "transfer-xuid", "")), true, 256));
+        assertEquals(0, (int) getSessionField(manager, "transfer-source", "chatMessagesInWindow"),
+                "Frozen sessions must ignore inbound gameplay packets");
+
+        manager.unfreezePlayerAfterTransferAbort("transfer-xuid");
+
+        assertEquals(1L, manager.authenticatedPlayerCount());
+        assertTrue(manager.playerPosition("transfer-source").isPresent());
+        assertFalse((boolean) getSessionField(manager, "transfer-source", "transferFrozen"));
+        assertEquals(0L, checkpoints.latestRevision("transfer-xuid"));
+        manager.close();
+    }
+
+
+    @Test
+    void livingActorReplicationSpawnsAndDespawnsAcrossRecipientChunkViews() throws Exception {
+        java.util.Map<String, List<byte[]>> outboundByPlayer = new java.util.concurrent.ConcurrentHashMap<>();
+        ru.nexora.world.World world = new ru.nexora.world.World(
+                "actor-replication-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                world, (networkId, label, frame) -> outboundByPlayer
+                        .computeIfAbsent(networkId, ignored -> new ArrayList<>()).add(frame),
+                event -> {});
+        manager.onIdentity("watcher-a", new NetherNetClientIdentity(
+                "watcher-a-token", new byte[] {31}, "watcher-a-xuid",
+                "WatcherA", "playfab-a", "20CA2", null));
+        manager.onIdentity("watcher-b", new NetherNetClientIdentity(
+                "watcher-b-token", new byte[] {32}, "watcher-b-xuid",
+                "WatcherB", "playfab-b", "20CA2", null));
+        for (String networkId : List.of("watcher-a", "watcher-b")) {
+            setSessionField(manager, networkId, "clientInitialized", true);
+        }
+        subscribeChunk(manager, "watcher-a", 0, 0);
+        subscribeChunk(manager, "watcher-b", 1, 0);
+
+        var zombie = manager.spawnLivingEntity("minecraft:zombie", 20.0f, 15.5, 65.0, 0.5);
+        java.lang.reflect.Field actorIndexField =
+                BedrockSessionManager.class.getDeclaredField("actorReplicationIndex");
+        actorIndexField.setAccessible(true);
+        ActorReplicationIndex actorIndex =
+                (ActorReplicationIndex) actorIndexField.get(manager);
+        long firstChunkKey = 0L;
+        assertEquals(1, actorIndex.chunkViewerCount(firstChunkKey));
+        assertEquals(1, actorIndex.actorViewerCount(zombie.runtimeId()));
+        assertTrue(outboundByPlayer.getOrDefault("watcher-a", List.of()).stream()
+                .flatMap(frame -> decodeOutboundAll(frame, true).stream())
+                .anyMatch(packet -> packet.packetId() == BedrockAddActorCodec.ADD_ACTOR_PACKET_ID));
+        assertFalse(outboundByPlayer.getOrDefault("watcher-b", List.of()).stream()
+                .flatMap(frame -> decodeOutboundAll(frame, true).stream())
+                .anyMatch(packet -> packet.packetId() == BedrockAddActorCodec.ADD_ACTOR_PACKET_ID),
+                "A client outside the actor's chunk view must not receive its spawn");
+
+        world.livingEntities().move(zombie.runtimeId(), 16.5, 65.0, 0.5).orElseThrow();
+        BedrockPacket movement = BedrockMoveActorAbsoluteCodec.create(
+                zombie.runtimeId(), 16.5, 65.0, 0.5, 0.0f, 90.0f, 90.0f, true);
+        java.lang.reflect.Method broadcast = BedrockSessionManager.class
+                .getDeclaredMethod("broadcastLivingActorPacket", BedrockPacket.class);
+        broadcast.setAccessible(true);
+        broadcast.invoke(manager, movement);
+
+        List<BedrockPacket> watcherAPackets = outboundByPlayer.get("watcher-a").stream()
+                .flatMap(frame -> decodeOutboundAll(frame, true).stream()).toList();
+        List<BedrockPacket> watcherBPackets = outboundByPlayer.get("watcher-b").stream()
+                .flatMap(frame -> decodeOutboundAll(frame, true).stream()).toList();
+        assertTrue(watcherAPackets.stream().anyMatch(packet ->
+                packet.packetId() == BedrockAddItemActorCodec.REMOVE_ACTOR_PACKET_ID),
+                "The old chunk watcher must receive RemoveActor");
+        assertTrue(watcherBPackets.stream().anyMatch(packet ->
+                packet.packetId() == BedrockAddActorCodec.ADD_ACTOR_PACKET_ID),
+                "The new chunk watcher must receive AddActor with current actor state");
+        assertFalse(watcherBPackets.stream().anyMatch(packet ->
+                packet.packetId() == BedrockMoveActorAbsoluteCodec.MOVE_ACTOR_ABSOLUTE_PACKET_ID),
+                "A newly tracking client receives a current spawn, not a stale movement delta");
+        assertEquals(1, actorIndex.actorViewerCount(zombie.runtimeId()),
+                "Only the new chunk watcher remains indexed for this actor");
+        manager.onDisconnected("watcher-b");
+        assertEquals(0, actorIndex.actorViewerCount(zombie.runtimeId()),
+                "Disconnect removes the session from actor replication indexes");
+        manager.close();
     }
 
 }

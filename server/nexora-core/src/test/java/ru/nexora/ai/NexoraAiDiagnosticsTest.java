@@ -1,0 +1,599 @@
+package ru.nexora.ai;
+
+import org.junit.jupiter.api.Test;
+
+import java.util.concurrent.atomic.AtomicLong;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class NexoraAiDiagnosticsTest {
+    @Test
+    void inspectReturnsHealthyRuntimeSnapshotOnFreshInstance() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+
+        NexoraAiDiagnostics.Snapshot snapshot = diagnostics.inspect();
+
+        assertNotNull(snapshot.health());
+        assertTrue(snapshot.uptimeMillis() >= 0);
+        assertTrue(snapshot.heapUsedBytes() >= 0);
+        assertTrue(snapshot.availableProcessors() >= 1);
+        assertEquals(0, snapshot.recordedFailures());
+        assertEquals("none", snapshot.lastFailure());
+    }
+
+    @Test
+    void resourceSnapshotIsAvailableThroughDiagnostics() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        JvmResourceSnapshot resources = diagnostics.resourceSnapshot();
+
+        assertTrue(resources.heapUsedBytes() >= 0);
+        assertTrue(resources.heapCommittedBytes() >= resources.heapUsedBytes());
+        assertTrue(resources.liveThreadCount() > 0);
+    }
+
+    @Test
+    void reportedFailureIsCountedAndChangesHealthToWarning() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+
+        diagnostics.recordFailure(new IllegalStateException("world tick failed"));
+
+        NexoraAiDiagnostics.Snapshot snapshot = diagnostics.inspect();
+        assertEquals(NexoraAiDiagnostics.Health.WARNING, snapshot.health());
+        assertEquals(1, snapshot.recordedFailures());
+        assertEquals("IllegalStateException: world tick failed", snapshot.lastFailure());
+    }
+
+    @Test
+    void failureDescriptionIsBoundedAndThrowableIsNotRetained() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        diagnostics.recordFailure(new RuntimeException("x".repeat(1000)));
+
+        assertTrue(diagnostics.inspect().lastFailure().length() <= 240);
+    }
+
+    @Test
+    void rejectsNullFailure() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        assertThrows(NullPointerException.class, () -> diagnostics.recordFailure(null));
+    }
+    @Test
+    void slowSubsystemOperationRaisesWarningAndIsReported() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+
+        diagnostics.recordSlowOperation("mob-ai", 75_000_000L, 50_000_000L);
+
+        NexoraAiDiagnostics.Snapshot snapshot = diagnostics.inspect();
+        assertEquals(NexoraAiDiagnostics.Health.WARNING, snapshot.health());
+        assertEquals(1, snapshot.slowOperationCount());
+        assertEquals("mob-ai took 75 ms", snapshot.lastSlowOperation());
+    }
+
+    @Test
+    void guardSignalsAreIncludedAsBoundedIdentifierFreeEvidence() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+
+        diagnostics.recordGuardSignal("frame-rate threshold exceeded: 301 frames, 12000 bytes");
+
+        String evidence = diagnostics.recentEvidence();
+        assertTrue(evidence.contains("[GUARD]"));
+        assertTrue(evidence.contains("frame-rate threshold exceeded"));
+        assertFalse(evidence.contains("peer-xuid"));
+    }
+
+    @Test
+    void operationWithinBudgetIsNotReported() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+
+        diagnostics.recordSlowOperation("mob-ai", 50_000_000L, 50_000_000L);
+
+        assertEquals(0, diagnostics.inspect().slowOperationCount());
+    }
+
+    @Test
+    void rejectsInvalidSlowOperationMeasurement() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        assertThrows(IllegalArgumentException.class,
+                () -> diagnostics.recordSlowOperation(" ", 10, 1));
+        assertThrows(IllegalArgumentException.class,
+                () -> diagnostics.recordSlowOperation("mob-ai", -1, 1));
+        assertThrows(IllegalArgumentException.class,
+                () -> diagnostics.recordSlowOperation("mob-ai", 10, 0));
+    }
+
+    @Test
+    void recentEvidenceIncludesTimestampedFailuresAndSlowOperationsNewestFirst() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+
+        diagnostics.recordFailure(new IllegalStateException("furnace tick failed"));
+        diagnostics.recordSlowOperation("mob-ai", 75_000_000L, 50_000_000L);
+
+        String evidence = diagnostics.recentEvidence();
+        assertTrue(evidence.contains("[SLOW] mob-ai took 75 ms"));
+        assertTrue(evidence.contains("[FAILURE] IllegalStateException: furnace tick failed"));
+        assertTrue(evidence.indexOf("[SLOW]") < evidence.indexOf("[FAILURE]"));
+        assertTrue(evidence.length() <= 1_900);
+    }
+
+    @Test
+    void recentEvidenceIsBoundedToTwelveEvents() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        for (int i = 0; i < 20; i++) {
+            diagnostics.recordFailure(new IllegalStateException("failure-" + i));
+        }
+
+        String evidence = diagnostics.recentEvidence();
+        assertTrue(evidence.contains("failure-19"));
+        assertTrue(evidence.contains("failure-8"));
+        assertFalse(evidence.contains("failure-7"));
+    }
+
+    @Test
+    void recentEvidenceDoesNotExposeStackTraces() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        diagnostics.recordFailure(new IllegalStateException("bounded summary"));
+
+        String evidence = diagnostics.recentEvidence();
+        assertFalse(evidence.contains("at ru.nexora"));
+        assertFalse(evidence.contains("java.lang.Thread"));
+    }
+
+    @Test
+    void incidentTimelineIsStructuredNewestFirstAndBounded() {
+        java.util.concurrent.atomic.AtomicLong clock = new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        diagnostics.recordFailure("world-save", new IllegalStateException("disk busy"));
+        clock.addAndGet(2_000_000_000L);
+        diagnostics.recordSlowOperation("mob-ai", 80, 50);
+
+        var timeline = diagnostics.incidentTimeline();
+        assertEquals(2, timeline.size());
+        assertEquals("SLOW", timeline.get(0).type());
+        assertEquals(2_000, timeline.get(0).uptimeMillis());
+        assertEquals(2, timeline.get(0).sequence());
+        assertEquals("FAILURE", timeline.get(1).type());
+        assertEquals(0, timeline.get(1).uptimeMillis());
+        var initialTimeline = timeline;
+        assertThrows(UnsupportedOperationException.class, () -> initialTimeline.add(initialTimeline.getFirst()));
+
+        for (int index = 0; index < 20; index++) {
+            diagnostics.recordGuardSignal("guard signal " + index);
+        }
+        timeline = diagnostics.incidentTimeline();
+        assertEquals(12, timeline.size());
+        assertEquals(22, timeline.get(0).sequence());
+        assertEquals(11, timeline.get(11).sequence());
+    }
+
+    @Test
+    void diagnosticEvidenceRedactsCredentialLikeValues() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        diagnostics.recordFailure(new IllegalStateException(
+                "request failed Bearer abc.def.ghi api_key=sk-secret access_token=private-token"));
+
+        String evidence = diagnostics.recentEvidence();
+        assertFalse(evidence.contains("abc.def.ghi"));
+        assertFalse(evidence.contains("sk-secret"));
+        assertFalse(evidence.contains("private-token"));
+        assertTrue(evidence.contains("[REDACTED]"));
+    }
+
+    @Test
+    void repeatedFailuresAreGroupedBySubsystemAndExceptionType() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        diagnostics.recordFailure("world-autosave", new IllegalStateException("disk busy"));
+        diagnostics.recordFailure("world-autosave", new IllegalStateException("disk full"));
+        diagnostics.recordFailure("furnace-tick", new IllegalStateException("tick failed"));
+
+        String evidence = diagnostics.recentEvidence();
+        assertTrue(evidence.contains("Повторяющиеся события с момента запуска:"));
+        assertTrue(evidence.contains("FAILURE:world-autosave:IllegalStateException — 2 раз"));
+        assertFalse(evidence.contains("FAILURE:furnace-tick:IllegalStateException — 2 раз"));
+    }
+
+    @Test
+    void repeatedSlowOperationsAreGroupedBySubsystem() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        diagnostics.recordSlowOperation("mob-ai", 80_000_000L, 50_000_000L);
+        diagnostics.recordSlowOperation("mob-ai", 90_000_000L, 50_000_000L);
+        diagnostics.recordSlowOperation("furnace-tick", 70_000_000L, 50_000_000L);
+
+        String evidence = diagnostics.recentEvidence();
+        assertTrue(evidence.contains("SLOW:mob-ai — 2 раз"));
+        assertFalse(evidence.contains("SLOW:furnace-tick — 2 раз"));
+    }
+
+    @Test
+    void repeatedSignatureStorageIsBounded() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        for (int i = 0; i < 24; i++) {
+            diagnostics.recordFailure("subsystem-" + i, new IllegalStateException("failed"));
+        }
+        diagnostics.recordFailure("subsystem-0", new IllegalStateException("failed again"));
+
+        String evidence = diagnostics.recentEvidence();
+        assertTrue(evidence.length() <= 1_900);
+        assertTrue(evidence.contains("FAILURE:subsystem-0:IllegalStateException — 2 раз"));
+    }
+
+
+    @Test
+    void rollingLatencySummaryIncludesFastAndSlowSamples() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        diagnostics.recordSlowOperation("mob-ai", 10, 100);
+        diagnostics.recordSlowOperation("mob-ai", 20, 100);
+        diagnostics.recordSlowOperation("mob-ai", 30, 100);
+        diagnostics.recordSlowOperation("mob-ai", 40, 100);
+
+        var summary = diagnostics.latencySummaries().getFirst();
+        assertEquals("mob-ai", summary.subsystem());
+        assertEquals(4, summary.sampleCount());
+        assertEquals(0, summary.slowOperationCount());
+        assertTrue(summary.windowMillis() <= 60_000);
+        assertEquals(25, summary.averageNanos());
+        assertEquals(40, summary.p95Nanos());
+        assertEquals(40, summary.maxNanos());
+        assertEquals(0, diagnostics.inspect().slowOperationCount());
+    }
+
+    @Test
+    void rollingLatencySummaryCountsOnlyRecentBudgetBreaches() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        diagnostics.recordSlowOperation("mob-ai", 10, 5);
+        diagnostics.recordSlowOperation("mob-ai", 20, 25);
+        diagnostics.recordSlowOperation("mob-ai", 30, 25);
+
+        var summary = diagnostics.latencySummaries().getFirst();
+        assertEquals(3, summary.sampleCount());
+        assertEquals(2, summary.slowOperationCount());
+        assertTrue(summary.windowMillis() >= 1 && summary.windowMillis() <= 60_000);
+        assertEquals(2, diagnostics.inspect().slowOperationCount());
+    }
+
+    @Test
+    void rollingLatencyWindowRetainsOnlyTheMostRecentSixtySamples() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        for (int i = 1; i <= 61; i++) {
+            diagnostics.recordSlowOperation("bedrock-inbound", i, 100);
+        }
+
+        var summary = diagnostics.latencySummaries().getFirst();
+        assertEquals(60, summary.sampleCount());
+        assertEquals(0, summary.slowOperationCount());
+        assertEquals(31, summary.averageNanos());
+        assertEquals(58, summary.p95Nanos());
+        assertEquals(61, summary.maxNanos());
+    }
+
+    @Test
+    void latencyEvidenceIsExplicitlyNotServerTps() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        diagnostics.recordSlowOperation("world-autosave", 75_000_000L, 50_000_000L);
+
+        assertTrue(diagnostics.recentEvidence().contains("Последние замеры длительности подсистем (не TPS):"));
+        assertTrue(diagnostics.recentEvidence().contains("world-autosave"));
+        assertTrue(diagnostics.recentEvidence().contains("window="));
+        assertTrue(diagnostics.recentEvidence().contains("overBudget=1"));
+    }
+
+
+    @Test
+    void longerLatencyWindowsAggregateMinuteBucketsAndExpireOldData() {
+        java.util.concurrent.atomic.AtomicLong clock = new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        diagnostics.recordSlowOperation("mob-ai", 10, 5);
+        clock.addAndGet(60_000_000_000L * 4);
+        diagnostics.recordSlowOperation("mob-ai", 30, 25);
+
+        var summaries = diagnostics.latencyWindowSummaries();
+        var fiveMinutes = summaries.stream().filter(s -> s.windowMinutes() == 5).findFirst().orElseThrow();
+        var hour = summaries.stream().filter(s -> s.windowMinutes() == 60).findFirst().orElseThrow();
+        assertEquals(2, fiveMinutes.sampleCount());
+        assertEquals(2, fiveMinutes.slowOperationCount());
+        assertEquals(2, hour.sampleCount());
+        assertEquals(20, hour.averageNanos());
+
+        clock.addAndGet(60_000_000_000L * 2);
+        var afterExpiry = diagnostics.latencyWindowSummaries();
+        var fiveAfterExpiry = afterExpiry.stream().filter(s -> s.windowMinutes() == 5).findFirst().orElseThrow();
+        assertEquals(1, fiveAfterExpiry.sampleCount());
+        assertEquals(30, fiveAfterExpiry.maxNanos());
+    }
+
+    @Test
+    void activityWindowsTrackFailureRatesAndJvmResourcePressure() {
+        java.util.concurrent.atomic.AtomicLong clock = new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        diagnostics.recordFailure("world-save", new IllegalStateException("disk busy"));
+        diagnostics.recordResourceSnapshot(new JvmResourceSnapshot(
+                95, 100, 100, 10, 10, 2, 2, 1, 2, 5.0));
+        diagnostics.recordResourceSnapshot(new JvmResourceSnapshot(
+                50, 100, 100, 10, 10, 2, 2, 1, 2, 1.0));
+
+        var five = diagnostics.activityWindowSummaries().stream()
+                .filter(summary -> summary.windowMinutes() == 5).findFirst().orElseThrow();
+        assertEquals(1, five.failureCount());
+        assertEquals(1, five.observedMinutes());
+        assertEquals(1.0, five.failuresPerMinute(), 0.0001);
+        assertEquals(2, five.resourceSampleCount());
+        assertEquals(1, five.pressureSampleCount());
+        assertEquals(0.725, five.averageHeapUsageRatio(), 0.0001);
+        assertEquals(0.95, five.maxHeapUsageRatio(), 0.0001);
+        assertEquals(2.5, five.maxSystemLoadPerProcessor(), 0.0001);
+
+        clock.addAndGet(60_000_000_000L * 6);
+        var expiredFive = diagnostics.activityWindowSummaries().stream()
+                .filter(summary -> summary.windowMinutes() == 5).findFirst().orElseThrow();
+        assertEquals(0, expiredFive.failureCount());
+        assertEquals(0, expiredFive.observedMinutes());
+        assertEquals(0.0, expiredFive.failuresPerMinute());
+        assertEquals(0, expiredFive.resourceSampleCount());
+    }
+
+    @Test
+    void resourceSnapshotsAreRecordedByOperatorInspection() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        diagnostics.inspect();
+        var summary = diagnostics.activityWindowSummaries().stream()
+                .filter(item -> item.windowMinutes() == 5).findFirst().orElseThrow();
+        assertEquals(1, summary.resourceSampleCount());
+    }
+    @Test
+    void latencyAlignmentUsesOnlySharedNetworkAndGameplayMinuteBuckets() {
+        java.util.concurrent.atomic.AtomicLong clock = new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        diagnostics.recordSlowOperation("bedrock-inbound", 100, 50);
+        diagnostics.recordSlowOperation("mob-ai", 200, 50);
+        diagnostics.recordSlowOperation("mob-pathfinding", 50, 100);
+        clock.addAndGet(60_000_000_000L);
+        diagnostics.recordSlowOperation("bedrock-inbound", 300, 50);
+        var five = diagnostics.latencyAlignmentSummaries().stream()
+                .filter(summary -> summary.windowMinutes() == 5).findFirst().orElseThrow();
+        assertEquals(1, five.overlappingMinuteBuckets());
+        assertEquals(1, five.networkSampleCount());
+        assertEquals(2, five.gameplaySampleCount());
+        assertEquals(100, five.networkAverageNanos());
+        assertEquals(125, five.gameplayAverageNanos());
+        assertEquals(200, five.gameplayMaxNanos());
+        assertTrue(diagnostics.recentEvidence().contains("не причинность"));
+    }
+
+    @Test
+    void concurrentLatencyRecordingKeepsLongWindowCountsConsistent() throws Exception {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        java.util.concurrent.ExecutorService workers = java.util.concurrent.Executors.newFixedThreadPool(4);
+        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+        try {
+            java.util.List<java.util.concurrent.Future<?>> futures = new java.util.ArrayList<>();
+            for (int worker = 0; worker < 4; worker++) {
+                futures.add(workers.submit(() -> {
+                    start.await();
+                    for (int sample = 0; sample < 250; sample++) {
+                        diagnostics.recordSlowOperation("bedrock-inbound",
+                                sample % 2 == 0 ? 100 : 10, 50);
+                    }
+                    return null;
+                }));
+            }
+            start.countDown();
+            for (var future : futures) future.get();
+        } finally {
+            workers.shutdownNow();
+        }
+        var summary = diagnostics.latencyWindowSummaries().stream()
+                .filter(item -> item.windowMinutes() == 5).findFirst().orElseThrow();
+        assertEquals(1_000, summary.sampleCount());
+        assertEquals(500, summary.slowOperationCount());
+    }
+
+    @Test
+    void latencySubsystemStorageEvictsOldestSubsystemFromBothWindows() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        for (int index = 0; index < 17; index++) {
+            diagnostics.recordSlowOperation("subsystem-" + index, 10, 50);
+        }
+        assertEquals(16, diagnostics.latencySummaries().size());
+        assertFalse(diagnostics.latencyWindowSummaries().stream()
+                .anyMatch(summary -> summary.subsystem().equals("subsystem-0")));
+        assertTrue(diagnostics.latencyWindowSummaries().stream()
+                .anyMatch(summary -> summary.subsystem().equals("subsystem-16")));
+    }
+
+    @Test
+    void subsystemHealthDistinguishesHealthyDegradedCriticalAndSparseData() {
+        java.util.concurrent.atomic.AtomicLong clock = new java.util.concurrent.atomic.AtomicLong(60_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        diagnostics.recordSlowOperation("healthy", 10, 50);
+        for (int i = 0; i < 5; i++) diagnostics.recordSlowOperation("degraded", 80, 50);
+        for (int i = 0; i < 10; i++) diagnostics.recordSlowOperation("critical", 80, 50);
+        diagnostics.recordSlowOperation("sparse", 80, 50);
+
+        var health = diagnostics.subsystemHealth();
+        var healthy = health.stream().filter(item -> item.subsystem().equals("healthy")).findFirst().orElseThrow();
+        var degraded = health.stream().filter(item -> item.subsystem().equals("degraded")).findFirst().orElseThrow();
+        var critical = health.stream().filter(item -> item.subsystem().equals("critical")).findFirst().orElseThrow();
+        var sparse = health.stream().filter(item -> item.subsystem().equals("sparse")).findFirst().orElseThrow();
+
+        assertEquals(NexoraAiDiagnostics.SubsystemHealthStatus.UNKNOWN, healthy.status());
+        assertEquals(NexoraAiDiagnostics.SubsystemHealthStatus.DEGRADED, degraded.status());
+        assertEquals(NexoraAiDiagnostics.HealthConfidence.MEDIUM, degraded.confidence());
+        assertEquals(NexoraAiDiagnostics.SubsystemHealthStatus.CRITICAL, critical.status());
+        assertEquals(NexoraAiDiagnostics.HealthConfidence.MEDIUM, critical.confidence());
+        assertEquals(NexoraAiDiagnostics.SubsystemHealthStatus.UNKNOWN, sparse.status());
+        assertEquals(NexoraAiDiagnostics.HealthConfidence.LOW, sparse.confidence());
+        assertEquals(1, sparse.overBudgetCount());
+        assertTrue(critical.evidence().contains("10 over budget"));
+        assertTrue(critical.uptimeMillis() >= 0);
+        assertNotNull(critical.observedAt());
+        assertTrue(diagnostics.recentEvidence().contains("Состояние подсистем"));
+    }
+
+    @Test
+    void subsystemHealthExpiresMeasurementsOutsideFiveMinuteWindow() {
+        java.util.concurrent.atomic.AtomicLong clock = new java.util.concurrent.atomic.AtomicLong(60_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        for (int i = 0; i < 10; i++) diagnostics.recordSlowOperation("mob-ai", 100, 50);
+        assertEquals(NexoraAiDiagnostics.SubsystemHealthStatus.CRITICAL,
+                diagnostics.subsystemHealth().getFirst().status());
+
+        clock.addAndGet(5 * 60_000_000_000L);
+        var expired = diagnostics.subsystemHealth().getFirst();
+        assertEquals(NexoraAiDiagnostics.SubsystemHealthStatus.UNKNOWN, expired.status());
+        assertEquals(0, expired.sampleCount());
+        assertTrue(expired.evidence().contains("No measurements"));
+    }
+
+    @Test
+    void failureTrendDetectsRepeatedWorldSaveFailuresAcrossThreeMinutes() {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(10_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        for (int minute = 0; minute < 3; minute++) {
+            diagnostics.recordFailure("world-autosave", new java.io.IOException("disk unavailable"));
+            if (minute < 2) clock.addAndGet(60_000_000_000L);
+        }
+
+        var trend = diagnostics.failureTrendSummaries().getFirst();
+        assertEquals("world-autosave", trend.subsystem());
+        assertTrue(trend.enoughSamples());
+        assertEquals(3, trend.observedMinutes());
+        assertEquals(3, trend.failureCount());
+        assertEquals(3, trend.failedMinutes());
+        assertTrue(trend.sustainedFailure());
+        assertTrue(diagnostics.recentEvidence().contains("Повторяющиеся ошибки подсистемы: world-autosave"));
+    }
+
+    @Test
+    void failureTrendRemainsUnknownWhenMinuteBucketIsMissing() {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(10_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        diagnostics.recordFailure("world-autosave", new java.io.IOException("disk unavailable"));
+        clock.addAndGet(120_000_000_000L);
+        diagnostics.recordFailure("world-autosave", new java.io.IOException("disk unavailable"));
+
+        var trend = diagnostics.failureTrendSummaries().getFirst();
+        assertFalse(trend.enoughSamples());
+        assertFalse(trend.sustainedFailure());
+        assertEquals(2, trend.observedMinutes());
+    }
+
+    @Test
+    void latencyTrendRequiresRepeatedBreachesAcrossThreeConsecutiveMinutes() {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(10_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        for (int minute = 0; minute < 3; minute++) {
+            for (int sample = 0; sample < 5; sample++) {
+                diagnostics.recordSlowOperation("world-save", 75, 50);
+            }
+            if (minute < 2) clock.addAndGet(60_000_000_000L);
+        }
+
+        var trend = diagnostics.latencyTrendSummaries().getFirst();
+        assertEquals("world-save", trend.subsystem());
+        assertTrue(trend.enoughSamples());
+        assertEquals(3, trend.observedMinutes());
+        assertEquals(15, trend.sampleCount());
+        assertEquals(15, trend.overBudgetCount());
+        assertEquals(3, trend.overBudgetMinutes());
+        assertTrue(trend.sustainedOverBudget());
+        assertTrue(diagnostics.recentEvidence().contains("Устойчивая задержка: world-save"));
+    }
+
+    @Test
+    void latencyTrendRemainsUnknownWhenOneMinuteIsMissing() {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(10_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        for (int sample = 0; sample < 5; sample++) {
+            diagnostics.recordSlowOperation("world-save", 75, 50);
+        }
+        clock.addAndGet(120_000_000_000L);
+        for (int sample = 0; sample < 5; sample++) {
+            diagnostics.recordSlowOperation("world-save", 75, 50);
+        }
+
+        var trend = diagnostics.latencyTrendSummaries().getFirst();
+        assertFalse(trend.enoughSamples());
+        assertFalse(trend.sustainedOverBudget());
+        assertEquals(2, trend.observedMinutes());
+    }
+
+    @Test
+    void resourceTrendDetectsSustainedThreadGrowthAndHeapPressure() {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(10_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        for (int minute = 0; minute < 3; minute++) {
+            int threads = 100 + minute * 20;
+            for (int sample = 0; sample < 2; sample++) {
+                diagnostics.recordResourceSnapshot(new JvmResourceSnapshot(
+                        95, 100, 100, 10, 10, threads, threads, 1, 4, 0.5));
+            }
+            if (minute < 2) clock.addAndGet(60_000_000_000L);
+        }
+
+        var trend = diagnostics.resourceTrendSummary();
+        assertTrue(trend.enoughSamples());
+        assertEquals(3, trend.observedConsecutiveMinutes());
+        assertEquals(100, trend.firstMinuteAverageThreadCount());
+        assertEquals(140, trend.latestMinuteAverageThreadCount());
+        assertEquals(40, trend.threadGrowth());
+        assertTrue(trend.threadGrowthDetected());
+        assertEquals(3, trend.sustainedHeapPressureMinutes());
+        assertTrue(trend.sustainedHeapPressure());
+        assertTrue(diagnostics.recentEvidence().contains("обнаружен устойчивый рост потоков"));
+    }
+
+    @Test
+    void resourceTrendRemainsUnknownWithMissingMinuteOrSparseSamples() {
+        java.util.concurrent.atomic.AtomicLong clock =
+                new java.util.concurrent.atomic.AtomicLong(10_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+        for (int sample = 0; sample < 2; sample++) {
+            diagnostics.recordResourceSnapshot(new JvmResourceSnapshot(
+                    50, 100, 100, 10, 10, 10, 10, 1, 4, 0.5));
+        }
+        clock.addAndGet(120_000_000_000L);
+        for (int sample = 0; sample < 2; sample++) {
+            diagnostics.recordResourceSnapshot(new JvmResourceSnapshot(
+                    50, 100, 100, 10, 10, 30, 30, 1, 4, 0.5));
+        }
+
+        var trend = diagnostics.resourceTrendSummary();
+        assertFalse(trend.enoughSamples());
+        assertFalse(trend.threadGrowthDetected());
+        assertFalse(trend.sustainedHeapPressure());
+        assertTrue(diagnostics.recentEvidence().contains("недостаточно замеров"));
+    }
+
+    @Test
+    void unavailableSystemLoadRemainsUnknownInResourceWindows() {
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics();
+        diagnostics.recordResourceSnapshot(new JvmResourceSnapshot(
+                50, 100, 100, 10, 10, 2, 2, 1, 2, -1.0));
+        var five = diagnostics.activityWindowSummaries().stream()
+                .filter(summary -> summary.windowMinutes() == 5).findFirst().orElseThrow();
+        assertEquals(-1.0, five.maxSystemLoadPerProcessor());
+        assertTrue(diagnostics.recentEvidence().contains("maxLoad/core=n/a"));
+    }
+
+    @Test
+    void worldRuntimeSnapshotsAreThrottledAndContainOnlyAggregateMetrics() {
+        AtomicLong clock = new AtomicLong(1_000_000_000L);
+        NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
+
+        diagnostics.recordWorldRuntimeSnapshot(25, 30, 12, 100, 50, 2, 500_000);
+        diagnostics.recordWorldRuntimeSnapshot(40, 45, 14, 110, 60, 3, 750_000);
+        assertTrue(diagnostics.recentEvidence().contains("residentChunks=25"));
+        assertFalse(diagnostics.recentEvidence().contains("residentChunks=40"));
+
+        clock.addAndGet(10_000_000_000L);
+        diagnostics.recordWorldRuntimeSnapshot(40, 45, 14, 110, 60, 3, 750_000);
+        assertTrue(diagnostics.recentEvidence().contains("residentChunks=40"));
+        assertTrue(diagnostics.recentEvidence().contains("mobAiDeferredUpdates=60"));
+        assertTrue(diagnostics.recentEvidence().contains("mobAiBudgetDeferred=3"));
+        assertTrue(diagnostics.recentEvidence().contains("mobAiBudgetConsumedNanos=750000"));
+    }
+
+}

@@ -35,6 +35,8 @@ class WorldLivingEntityManagerTest {
                 WorldLivingEntity.familyForIdentifier("minecraft:zombie"));
         assertEquals(WorldLivingEntity.Family.UNDEAD,
                 WorldLivingEntity.familyForIdentifier("minecraft:wither_skeleton"));
+        assertEquals(WorldLivingEntity.Family.UNDEAD,
+                WorldLivingEntity.familyForIdentifier("minecraft:bogged"));
         assertEquals(WorldLivingEntity.Family.ARTHROPOD,
                 WorldLivingEntity.familyForIdentifier("minecraft:cave_spider"));
         assertEquals(WorldLivingEntity.Family.ARTHROPOD,
@@ -78,6 +80,32 @@ class WorldLivingEntityManagerTest {
     }
 
     @Test
+    void updatesPhysicsPositionAndVelocityInOneStateReplacement() {
+        WorldLivingEntityManager manager = new WorldLivingEntityManager();
+        WorldLivingEntity zombie = manager.spawn("minecraft:zombie", 20, 1, 65, 2);
+        manager.ignite(zombie.runtimeId(), 5, 100).orElseThrow();
+
+        WorldLivingEntity updated = manager.updatePhysicsState(
+                zombie.runtimeId(), 1.25, 64.9, 2.5, 0.2, -0.08, 0.1).orElseThrow();
+
+        assertEquals(1.25, updated.x(), 0.0001);
+        assertEquals(64.9, updated.y(), 0.0001);
+        assertEquals(2.5, updated.z(), 0.0001);
+        assertEquals(0.2, updated.velocityX(), 0.0001);
+        assertEquals(-0.08, updated.velocityY(), 0.0001);
+        assertEquals(0.1, updated.velocityZ(), 0.0001);
+        assertEquals(20.0f, updated.health(), 0.0001f);
+        assertEquals(5_100L, updated.fireUntilMillis());
+        assertTrue(manager.updatePhysicsState(999_999, 0, 65, 0, 0, 0, 0).isEmpty());
+        assertThrows(IllegalArgumentException.class,
+                () -> manager.updatePhysicsState(zombie.runtimeId(),
+                        Double.NaN, 65, 0, 0, 0, 0));
+        assertThrows(IllegalArgumentException.class,
+                () -> manager.updatePhysicsState(zombie.runtimeId(),
+                        0, 65, 0, 101, 0, 0));
+    }
+
+    @Test
     void validatesSpawnAndDamageInputs() {
         WorldLivingEntityManager manager = new WorldLivingEntityManager();
         assertThrows(IllegalArgumentException.class, () -> manager.spawn(
@@ -88,4 +116,37 @@ class WorldLivingEntityManagerTest {
         assertThrows(IllegalArgumentException.class, () -> manager.setVelocity(1, 101, 0, 0));
         assertThrows(IllegalArgumentException.class, () -> manager.tickFire(-1));
     }
+    @Test
+    void snapshotsRemainOrderedByRuntimeIdWithoutPostSorting() {
+        WorldLivingEntityManager manager = new WorldLivingEntityManager();
+        WorldLivingEntity first = manager.spawn("minecraft:zombie", 20, 0, 64, 0);
+        WorldLivingEntity second = manager.spawn("minecraft:skeleton", 20, 1, 64, 0);
+        WorldLivingEntity third = manager.spawn("minecraft:spider", 20, 2, 64, 0);
+
+        assertEquals(java.util.List.of(first, second, third), manager.snapshot());
+        assertTrue(manager.snapshot().get(0).runtimeId()
+                < manager.snapshot().get(1).runtimeId());
+        assertTrue(manager.snapshot().get(1).runtimeId()
+                < manager.snapshot().get(2).runtimeId());
+    }
+
+    @Test
+    void entityCountTracksFireDeathsAndExplicitRemoval() {
+        WorldLivingEntityManager manager = new WorldLivingEntityManager();
+        WorldLivingEntity spider = manager.spawn("minecraft:spider", 1, 0, 64, 0);
+        WorldLivingEntity zombie = manager.spawn("minecraft:zombie", 20, 1, 64, 0);
+        assertEquals(2, manager.size());
+
+        manager.ignite(spider.runtimeId(), 4, 0).orElseThrow();
+        var fireDamage = manager.tickFire(1_000);
+        assertEquals(1, fireDamage.size());
+        assertTrue(fireDamage.getFirst().killed());
+        assertEquals(1, manager.size());
+
+        assertTrue(manager.remove(zombie.runtimeId()));
+        assertEquals(0, manager.size());
+        assertFalse(manager.remove(zombie.runtimeId()));
+        assertEquals(0, manager.size());
+    }
+
 }

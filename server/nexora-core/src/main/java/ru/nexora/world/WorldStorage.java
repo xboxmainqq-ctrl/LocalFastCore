@@ -26,6 +26,7 @@ public final class WorldStorage {
             HEADER_BYTES + WorldChunk.SECTION_COUNT * (1 + ChunkSection.VOLUME) + Integer.BYTES;
     private static final Pattern SAFE_WORLD_NAME = Pattern.compile("[A-Za-z0-9 _-]{1,64}");
 
+    private final Path worldDirectory;
     private final Path chunksDirectory;
 
     public WorldStorage(Path rootDirectory, String worldName) throws IOException {
@@ -42,10 +43,13 @@ public final class WorldStorage {
         Files.createDirectories(worldDirectory);
         rejectSymlink(worldDirectory, "world directory");
 
+        this.worldDirectory = worldDirectory;
         this.chunksDirectory = worldDirectory.resolve("chunks");
         Files.createDirectories(chunksDirectory);
         rejectSymlink(chunksDirectory, "chunks directory");
     }
+
+    public Path worldDirectory() { return worldDirectory; }
 
     public void saveChunk(WorldChunk chunk) throws IOException {
         Objects.requireNonNull(chunk, "chunk");

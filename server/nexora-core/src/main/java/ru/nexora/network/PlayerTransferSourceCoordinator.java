@@ -1,0 +1,236 @@
+package ru.nexora.network;
+
+import ru.nexora.network.bedrock.BedrockSessionManager;
+import ru.nexora.network.bedrock.BedrockTransferPacketCodec;
+
+import java.io.IOException;
+import java.time.Duration;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.function.LongSupplier;
+
+/**
+ * Source-side transfer orchestration over an authenticated ClusterTransport.
+ * The source is unfrozen only after a durable ABORTED state; uncertain outcomes
+ * remain frozen, while a durable COMMITTED result triggers the Bedrock redirect.
+ */
+public final class PlayerTransferSourceCoordinator {
+    private final String localNodeId;
+    private final DurableHandoffCoordinator ledger;
+    private final PlayerTransferLifecycle.Source source;
+    private final BedrockSessionManager sessions;
+    private final ClusterTransport transport;
+    private final Duration acknowledgementTimeout;
+    private final LongSupplier epochMillis;
+
+    public PlayerTransferSourceCoordinator(
+            String localNodeId,
+            DurableHandoffCoordinator ledger,
+            PlayerTransferLifecycle.Source source,
+            BedrockSessionManager sessions,
+            ClusterTransport transport,
+            Duration acknowledgementTimeout,
+            LongSupplier epochMillis
+    ) {
+        if (localNodeId == null || !localNodeId.matches("[A-Za-z0-9._-]{1,64}")) {
+            throw new IllegalArgumentException("Invalid local node ID");
+        }
+        this.localNodeId = localNodeId;
+        this.ledger = Objects.requireNonNull(ledger, "ledger");
+        this.source = Objects.requireNonNull(source, "source");
+        this.sessions = Objects.requireNonNull(sessions, "sessions");
+        this.transport = Objects.requireNonNull(transport, "transport");
+        this.acknowledgementTimeout = Objects.requireNonNull(acknowledgementTimeout, "acknowledgementTimeout");
+        if (acknowledgementTimeout.isZero() || acknowledgementTimeout.isNegative()) {
+            throw new IllegalArgumentException("acknowledgementTimeout must be positive");
+        }
+        this.epochMillis = Objects.requireNonNull(epochMillis, "epochMillis");
+    }
+
+    /**
+     * Freezes/checkpoints, publishes PREPARED, requests destination acceptance,
+     * reconciles uncertain delivery from the shared ledger, then redirects.
+     */
+    public PlayerTransferRecord transfer(
+            PlayerHandoff handoff,
+            String playerXuid,
+            String destinationAddress,
+            int destinationPort
+    ) throws IOException {
+        Objects.requireNonNull(handoff, "handoff");
+        if (!localNodeId.equals(handoff.sourceNode())) {
+            throw new SecurityException("Transfer source does not match this node");
+        }
+        if (handoff.targetNode().equals(localNodeId)) {
+            throw new IllegalArgumentException("Transfer target must be another node");
+        }
+        // Validate the redirect target and reject reused transfer IDs before freezing.
+        BedrockTransferPacketCodec.create(destinationAddress, destinationPort, true);
+        if (ledger.get(handoff.transferId()).isPresent()) {
+            throw new IllegalStateException("Transfer ID already exists: " + handoff.transferId());
+        }
+
+        long revision;
+        try {
+            revision = source.freezeAndCheckpoint(handoff);
+        } catch (Exception freezeFailure) {
+            // Freeze can fail after the session was stopped but before PREPARED
+            // was durably published (for example, lease release failed). Try
+            // to resume only through the source adapter's lease-safe path.
+            try {
+                Optional<PlayerTransferRecord> existing = ledger.findLatestForPlayer(playerXuid);
+                if (existing.isEmpty()) {
+                    source.unfreeze(handoff);
+                } else {
+                    freezeFailure.addSuppressed(new IOException(
+                            "A durable transfer decision already exists; source remains frozen"));
+                }
+            } catch (Exception resumeFailure) {
+                freezeFailure.addSuppressed(resumeFailure);
+            }
+            if (freezeFailure instanceof IOException ioFailure) throw ioFailure;
+            throw new IOException("Unable to freeze and checkpoint source player", freezeFailure);
+        }
+        boolean prepared = false;
+        try {
+            ledger.prepare(handoff, playerXuid, revision, epochMillis.getAsLong());
+            prepared = true;
+            source.onPrepared(handoff);
+        } catch (Exception publicationFailure) {
+            try {
+                if (prepared) {
+                    Optional<PlayerTransferRecord> aborted = ledger.abortPrepared(
+                            handoff.transferId(), epochMillis.getAsLong());
+                    if (aborted.isPresent()) resumeAfterAbort(handoff);
+                    else publicationFailure.addSuppressed(new IOException(
+                            "Prepared transfer changed concurrently; source remains frozen"));
+                } else {
+                    Optional<PlayerTransferRecord> stored = ledger.get(handoff.transferId());
+                    if (stored.isEmpty()) {
+                        resumeAfterAbort(handoff);
+                    } else if (stored.filter(record ->
+                            record.state() == PlayerTransferRecord.State.ABORTED
+                                    && record.playerXuid().equals(playerXuid)
+                                    && record.sourceNode().equals(handoff.sourceNode())
+                                    && record.targetNode().equals(handoff.targetNode())).isPresent()) {
+                        resumeAfterAbort(handoff);
+                    } else {
+                        publicationFailure.addSuppressed(new IOException(
+                                "Transfer publication is uncertain or belongs to another attempt; source remains frozen"));
+                    }
+                }
+            } catch (Exception reconciliationFailure) {
+                publicationFailure.addSuppressed(reconciliationFailure);
+            }
+            if (publicationFailure instanceof IOException ioFailure) throw ioFailure;
+            throw new IOException("Unable to publish prepared player transfer", publicationFailure);
+        }
+
+        ClusterMessage request = new ClusterMessage(
+                UUID.randomUUID(), localNodeId, handoff.targetNode(),
+                PlayerTransferClusterEndpoint.ACCEPT_MESSAGE_TYPE,
+                epochMillis.getAsLong(),
+                PlayerTransferClusterEndpoint.encodeTransferId(handoff.transferId()));
+        IOException deliveryFailure = null;
+        try {
+            transport.send(request).toCompletableFuture().get(
+                    Math.max(1L, acknowledgementTimeout.toMillis()), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            deliveryFailure = new IOException("Interrupted while waiting for destination transfer ACK", interrupted);
+        } catch (ExecutionException | TimeoutException | RuntimeException failed) {
+            deliveryFailure = new IOException("Destination transfer acknowledgement was not confirmed", failed);
+        }
+
+        Optional<PlayerTransferRecord> currentValue = ledger.get(handoff.transferId());
+        if (currentValue.isEmpty()) {
+            throw new IOException("Prepared transfer disappeared from the shared ledger", deliveryFailure);
+        }
+        PlayerTransferRecord current = currentValue.orElseThrow();
+        IOException ackFailure = deliveryFailure;
+        if (current.state() == PlayerTransferRecord.State.COMMITTED) {
+            redirect(handoff, playerXuid, current, destinationAddress, destinationPort);
+            return current;
+        }
+        if (current.state() == PlayerTransferRecord.State.ABORTED) {
+            notifyDestinationAbort(handoff, current.fencingToken());
+            resumeAfterAbort(handoff);
+            throw new IOException("Destination aborted the player transfer; source session resumed", ackFailure);
+        }
+
+        Optional<PlayerTransferRecord> aborted = Optional.empty();
+        long now = epochMillis.getAsLong();
+        if (current.state() == PlayerTransferRecord.State.PREPARED) {
+            aborted = ledger.abortPrepared(handoff.transferId(), now);
+        } else if (current.state() == PlayerTransferRecord.State.CLAIMED) {
+            aborted = ledger.abort(handoff.transferId(), current.fencingToken(), now);
+        }
+        if (aborted.isPresent()) {
+            notifyDestinationAbort(handoff,
+                    current.state() == PlayerTransferRecord.State.PREPARED ? 0L : current.fencingToken());
+            resumeAfterAbort(handoff);
+            throw new IOException("Destination did not commit the player transfer; source session resumed", ackFailure);
+        }
+
+        // A concurrent commit/reclaim may have won while cancellation was attempted.
+        Optional<PlayerTransferRecord> reconciledValue = ledger.get(handoff.transferId());
+        if (reconciledValue.isEmpty()) {
+            throw new IOException("Transfer disappeared during outcome reconciliation", ackFailure);
+        }
+        PlayerTransferRecord reconciled = reconciledValue.orElseThrow();
+        if (reconciled.state() == PlayerTransferRecord.State.COMMITTED) {
+            redirect(handoff, playerXuid, reconciled, destinationAddress, destinationPort);
+            return reconciled;
+        }
+        if (reconciled.state() == PlayerTransferRecord.State.ABORTED) {
+            notifyDestinationAbort(handoff, reconciled.fencingToken());
+            resumeAfterAbort(handoff);
+            throw new IOException("Transfer was durably aborted; source session resumed", ackFailure);
+        }
+        throw new IOException("Transfer outcome is uncertain; source remains frozen for recovery", ackFailure);
+    }
+
+    private void notifyDestinationAbort(PlayerHandoff handoff, long fencingToken) {
+        ClusterMessage abort = new ClusterMessage(
+                UUID.randomUUID(), localNodeId, handoff.targetNode(),
+                PlayerTransferClusterEndpoint.ABORT_MESSAGE_TYPE,
+                epochMillis.getAsLong(),
+                PlayerTransferClusterEndpoint.encodeAbortPayload(handoff.transferId(), fencingToken));
+        try {
+            transport.send(abort).whenComplete((ignored, failure) -> {
+                if (failure != null) {
+                    System.err.println("NEXORA: destination cleanup notification failed for transfer "
+                            + handoff.transferId() + ": " + failure.getMessage());
+                }
+            });
+        } catch (RuntimeException failure) {
+            System.err.println("NEXORA: destination cleanup notification failed for transfer "
+                    + handoff.transferId() + ": " + failure.getMessage());
+        }
+    }
+
+    private void resumeAfterAbort(PlayerHandoff handoff) throws IOException {
+        try {
+            source.unfreeze(handoff);
+        } catch (Exception failure) {
+            if (failure instanceof IOException ioFailure) throw ioFailure;
+            throw new IOException("Durable transfer abort was confirmed but source could not resume", failure);
+        }
+    }
+
+    private void redirect(PlayerHandoff handoff, String playerXuid, PlayerTransferRecord committed,
+                          String destinationAddress, int destinationPort) throws IOException {
+        if (!playerXuid.equals(committed.playerXuid())
+                || !handoff.targetNode().equals(committed.targetNode())
+                || !localNodeId.equals(committed.sourceNode())) {
+            throw new SecurityException("Committed transfer identity does not match source request");
+        }
+        sessions.redirectFrozenPlayerToNode(
+                playerXuid, handoff.transferId(), committed.fencingToken(),
+                ledger, localNodeId, destinationAddress, destinationPort);
+    }
+}

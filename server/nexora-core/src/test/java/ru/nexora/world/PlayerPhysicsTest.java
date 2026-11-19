@@ -6,7 +6,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class PlayerPhysicsTest {
     private World world() {
-        return new World("NEXORA", 1L, new FlatWorldGenerator());
+        World world = new World("NEXORA", 1L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
+        return world;
     }
 
     @Test

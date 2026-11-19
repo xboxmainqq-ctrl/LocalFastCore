@@ -1,0 +1,39 @@
+name: Publish NEXORA Core to GitLab
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create standalone NEXORA Core history
+        id: split
+        shell: bash
+        run: |
+          set -euo pipefail
+          split_sha="$(git subtree split --prefix=server/nexora-core HEAD)"
+          echo "sha=$split_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Push NEXORA Core to GitLab
+        env:
+          GITLAB_MIRROR_TOKEN: ${{ secrets.GITLAB_MIRROR_TOKEN }}
+          SPLIT_SHA: ${{ steps.split.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${GITLAB_MIRROR_TOKEN}" ]]; then
+            echo "::error::Add GITLAB_MIRROR_TOKEN as a repository Actions secret."
+            exit 1
+          fi
+          git -c http.extraheader="AUTHORIZATION: basic $(printf 'oauth2:%s' "$GITLAB_MIRROR_TOKEN" | base64 -w0)" \
+            push https://gitlab.com/nerox-group4/Nerox-project.git \
+            "${SPLIT_SHA}:refs/heads/nexora-core-mirror"

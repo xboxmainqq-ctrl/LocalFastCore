@@ -1,5 +1,6 @@
 package ru.nexora.network.bedrock;
 
+import java.io.ByteArrayOutputStream;
 import java.util.Objects;
 
 /** One decoded Bedrock game packet inside a batch. */
@@ -24,5 +25,16 @@ public record BedrockPacket(
     @Override
     public byte[] payload() {
         return payload.clone();
+    }
+
+    /** Payload length without allocating the defensive copy returned by payload(). */
+    int payloadLength() {
+        return payload.length;
+    }
+
+    /** Writes the immutable packet payload without creating an intermediate copy. */
+    void writePayloadTo(ByteArrayOutputStream output) {
+        Objects.requireNonNull(output, "output");
+        output.write(payload, 0, payload.length);
     }
 }

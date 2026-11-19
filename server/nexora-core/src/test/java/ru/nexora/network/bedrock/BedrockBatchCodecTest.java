@@ -129,4 +129,39 @@ class BedrockBatchCodecTest {
         assertThrows(IllegalArgumentException.class,
                 () -> BedrockBatchCodec.decode(encoded, true, 100));
     }
+
+    @Test
+    void rejectsTrailingBytesAfterCompressedBatchWithoutAcceptingPartialPayload() {
+        byte[] payload = new byte[4_096];
+        java.util.Arrays.fill(payload, (byte) 3);
+        byte[] encoded = BedrockBatchCodec.encode(
+                List.of(new BedrockPacket(1, 0, 0, payload)), true, 1);
+        byte[] withTrailingByte = java.util.Arrays.copyOf(encoded, encoded.length + 1);
+        withTrailingByte[withTrailingByte.length - 1] = 42;
+
+        assertThrows(IllegalArgumentException.class,
+                () -> BedrockBatchCodec.decode(withTrailingByte, true));
+    }
+
+    @Test
+    void rejectsCompressedInputWhenEncodedFrameExceedsConfiguredExpansionAllowance() {
+        byte[] oversized = new byte[BedrockBatchCodec.DEFAULT_MAX_BATCH_BYTES + 65_538];
+        oversized[0] = 0;
+
+        assertThrows(IllegalArgumentException.class,
+                () -> BedrockBatchCodec.decode(oversized, true));
+    }
+
+
+    @Test
+    void preflightsExactEncodedBatchSizeBeforeAllocatingOutput() {
+        List<BedrockPacket> packets = List.of(new BedrockPacket(1, 0, 0, new byte[] {7}));
+        byte[] encoded = BedrockBatchCodec.encode(packets, false, 256, 3);
+
+        assertEquals(3, encoded.length);
+        assertThrows(IllegalArgumentException.class,
+                () -> BedrockBatchCodec.encode(packets, false, 256, 2));
+        assertArrayEquals(new byte[] {7}, BedrockBatchCodec.decode(encoded, false).getFirst().payload());
+    }
+
 }

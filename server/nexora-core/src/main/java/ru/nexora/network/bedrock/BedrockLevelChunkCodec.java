@@ -5,10 +5,6 @@ import ru.nexora.world.ChunkSection;
 import ru.nexora.world.WorldChunk;
 
 import java.io.ByteArrayOutputStream;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
 /** Encoder for the protocol-2225 FULL_CHUNK_DATA (LevelChunk) packet. */
 public final class BedrockLevelChunkCodec {
@@ -16,6 +12,7 @@ public final class BedrockLevelChunkCodec {
     private static final int NEGATIVE_SUB_CHUNKS = 4;
     private static final int WORLD_BIOME_SECTIONS = 24;
     private static final int PLAINS_BIOME_ID = 1;
+    private static final int BLOCK_TYPE_COUNT = BlockType.values().length;
 
     private BedrockLevelChunkCodec() {
     }
@@ -66,6 +63,23 @@ public final class BedrockLevelChunkCodec {
         return new BedrockPacket(LEVEL_CHUNK_PACKET_ID, 0, 0, packet.toByteArray());
     }
 
+    /**
+     * Serializes one non-empty Overworld subchunk for SubChunkPacket.
+     * Subchunk Y is absolute (block Y divided by 16), from -4 through 19.
+     * Returns null for an all-air section, which uses SuccessAllAir on the wire.
+     */
+    public static byte[] createSubChunkData(WorldChunk chunk, int subChunkY) {
+        if (chunk == null) throw new IllegalArgumentException("chunk must not be null");
+        if (subChunkY < -4 || subChunkY > 19) {
+            throw new IllegalArgumentException("Overworld subchunk Y must be between -4 and 19");
+        }
+        byte[] raw = chunk.copySectionRaw(subChunkY + NEGATIVE_SUB_CHUNKS);
+        if (raw == null || isEmpty(raw)) return null;
+        Writer out = new Writer();
+        writeSubChunk(out, subChunkY, raw);
+        return out.toByteArray();
+    }
+
     private static void writeEmptySubChunk(Writer out, int sectionY) {
         out.byteValue(9); // SubChunk version 9
         out.byteValue(0); // No block layers
@@ -82,21 +96,25 @@ public final class BedrockLevelChunkCodec {
             return;
         }
 
-        Map<Integer, Integer> paletteIndexes = new LinkedHashMap<>();
-        List<Integer> palette = new ArrayList<>();
+        int[] paletteIndexByBlockId = new int[BLOCK_TYPE_COUNT];
+        int[] palette = new int[paletteIndexByBlockId.length];
+        int paletteSize = 0;
         int[] indexes = new int[ChunkSection.VOLUME];
         for (int i = 0; i < raw.length; i++) {
-            BlockType type = BlockType.byInternalId(Byte.toUnsignedInt(raw[i]));
-            int runtimeId = BedrockBlockRuntimeIds.forBlock(type);
-            Integer paletteIndex = paletteIndexes.get(runtimeId);
-            if (paletteIndex == null) {
-                paletteIndex = palette.size();
-                paletteIndexes.put(runtimeId, paletteIndex);
-                palette.add(runtimeId);
+            int blockId = Byte.toUnsignedInt(raw[i]);
+            BlockType type = BlockType.byInternalId(blockId);
+            int paletteIndexPlusOne = paletteIndexByBlockId[blockId];
+            int paletteIndex;
+            if (paletteIndexPlusOne == 0) {
+                paletteIndex = paletteSize++;
+                paletteIndexByBlockId[blockId] = paletteSize;
+                palette[paletteIndex] = BedrockBlockRuntimeIds.forBlock(type);
+            } else {
+                paletteIndex = paletteIndexPlusOne - 1;
             }
             indexes[i] = paletteIndex;
         }
-        writePalette(out, indexes, palette);
+        writePalette(out, indexes, palette, paletteSize);
     }
 
     private static boolean isEmpty(byte[] raw) {
@@ -104,15 +122,15 @@ public final class BedrockLevelChunkCodec {
         return true;
     }
 
-    private static void writePalette(Writer out, int[] indexes, List<Integer> palette) {
-        if (palette.size() == 1) {
+    private static void writePalette(Writer out, int[] indexes, int[] palette, int paletteSize) {
+        if (paletteSize == 1) {
             out.byteValue(1); // V0, runtime palette
-            out.varInt32(palette.getFirst());
+            out.varInt32(palette[0]);
             return;
         }
 
         int bits = 1;
-        while ((1 << bits) < palette.size()) bits++;
+        while ((1 << bits) < paletteSize) bits++;
         int entriesPerWord = 32 / bits;
         int wordCount = (indexes.length + entriesPerWord - 1) / entriesPerWord;
         out.byteValue((bits << 1) | 1); // version bits plus runtime-ID flag
@@ -126,8 +144,8 @@ public final class BedrockLevelChunkCodec {
             out.int32(word);
         }
 
-        out.varUInt32(palette.size());
-        for (int runtimeId : palette) out.varInt32(runtimeId);
+        out.varUInt32(paletteSize);
+        for (int index = 0; index < paletteSize; index++) out.varInt32(palette[index]);
     }
 
     private static final class Writer {

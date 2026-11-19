@@ -67,6 +67,17 @@ public record WorldLivingEntity(
                 fireUntilMillis, nextFireDamageMillis);
     }
 
+    /** Updates position and velocity together for a single registry replacement in the physics hot path. */
+    public WorldLivingEntity withPositionAndVelocity(
+            double nextX, double nextY, double nextZ,
+            double nextVelocityX, double nextVelocityY, double nextVelocityZ
+    ) {
+        return new WorldLivingEntity(uniqueId, runtimeId, identifier, family,
+                nextX, nextY, nextZ,
+                nextVelocityX, nextVelocityY, nextVelocityZ,
+                health, maxHealth, fireUntilMillis, nextFireDamageMillis);
+    }
+
     public static Family familyForIdentifier(String identifier) {
         Objects.requireNonNull(identifier, "identifier");
         return switch (identifier) {
@@ -74,7 +85,7 @@ public record WorldLivingEntity(
                     "minecraft:zombie_villager", "minecraft:zombie_villager_v2",
                     "minecraft:skeleton", "minecraft:stray", "minecraft:wither_skeleton",
                     "minecraft:wither", "minecraft:phantom", "minecraft:zombified_piglin",
-                    "minecraft:zoglin" -> Family.UNDEAD;
+                    "minecraft:zoglin", "minecraft:bogged" -> Family.UNDEAD;
             case "minecraft:spider", "minecraft:cave_spider",
                     "minecraft:silverfish", "minecraft:endermite", "minecraft:bee" -> Family.ARTHROPOD;
             default -> Family.NORMAL;

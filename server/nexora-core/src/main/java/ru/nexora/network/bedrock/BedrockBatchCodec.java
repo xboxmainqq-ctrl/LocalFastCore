@@ -120,24 +120,31 @@ public final class BedrockBatchCodec {
         }
         if (maxBatchBytes < 1) throw new IllegalArgumentException("maxBatchBytes must be >= 1");
 
-        ByteArrayOutputStream batch = new ByteArrayOutputStream();
+        long encodedLength = 0;
         for (BedrockPacket packet : packets) {
             Objects.requireNonNull(packet, "packet");
             int header = packet.packetId()
                     | (packet.senderSubClientId() << 10)
                     | (packet.targetSubClientId() << 12);
-            byte[] packetHeader = writeUnsignedVarInt(header);
-            byte[] payload = packet.payload();
-            int packetLength = packetHeader.length + payload.length;
-            writeUnsignedVarInt(batch, packetLength);
-            batch.writeBytes(packetHeader);
-            batch.writeBytes(payload);
-            if (batch.size() > maxBatchBytes) {
+            long packetLength = unsignedVarIntSize(header) + (long) packet.payloadLength();
+            encodedLength += unsignedVarIntSize(packetLength) + packetLength;
+            if (encodedLength > maxBatchBytes) {
                 throw new IllegalArgumentException("Encoded Bedrock batch exceeds size limit");
             }
         }
 
-        byte[] raw = batch.toByteArray();
+        BatchBuffer batch = new BatchBuffer((int) encodedLength);
+        for (BedrockPacket packet : packets) {
+            int header = packet.packetId()
+                    | (packet.senderSubClientId() << 10)
+                    | (packet.targetSubClientId() << 12);
+            int packetLength = unsignedVarIntSize(header) + packet.payloadLength();
+            writeUnsignedVarInt(batch, packetLength);
+            writeUnsignedVarInt(batch, header);
+            packet.writePayloadTo(batch);
+        }
+
+        byte[] raw = batch.toOwnedByteArray();
         if (!compressionNegotiated) return raw;
         if (compressionAlgorithm == COMPRESSION_NONE) {
             return withCompressionHeader(COMPRESSION_HEADER_NONE, raw);
@@ -227,6 +234,21 @@ public final class BedrockBatchCodec {
         return new ResourcePackClientResponseData((int) response, name);
     }
 
+    /**
+     * Exact-sized batch output that can transfer its backing array to the encoder.
+     * The buffer never escapes before encoding completes, so an exact-sized array
+     * is safe to return without ByteArrayOutputStream's defensive final copy.
+     */
+    private static final class BatchBuffer extends ByteArrayOutputStream {
+        private BatchBuffer(int capacity) {
+            super(capacity);
+        }
+
+        private byte[] toOwnedByteArray() {
+            return count == buf.length ? buf : java.util.Arrays.copyOf(buf, count);
+        }
+    }
+
     private static void writeString(ByteArrayOutputStream output, String value) {
         byte[] bytes = value.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         writeUnsignedVarInt(output, bytes.length);
@@ -268,17 +290,16 @@ public final class BedrockBatchCodec {
     private static byte[] decodeCompressionFrame(byte[] message, int maxBatchBytes) {
         if (message.length < 2) throw new IllegalArgumentException("Missing Bedrock compression frame");
         int algorithm = Byte.toUnsignedInt(message[0]);
-        byte[] framedPayload = new byte[message.length - 1];
-        System.arraycopy(message, 1, framedPayload, 0, framedPayload.length);
+        int payloadLength = message.length - 1;
 
         return switch (algorithm) {
             case COMPRESSION_HEADER_NONE -> {
-                if (framedPayload.length > maxBatchBytes) {
+                if (payloadLength > maxBatchBytes) {
                     throw new IllegalArgumentException("Uncompressed Bedrock batch exceeds size limit");
                 }
-                yield framedPayload;
+                yield java.util.Arrays.copyOfRange(message, 1, message.length);
             }
-            case COMPRESSION_HEADER_ZLIB -> inflateRaw(framedPayload, maxBatchBytes);
+            case COMPRESSION_HEADER_ZLIB -> inflateRaw(message, 1, payloadLength, maxBatchBytes);
             case COMPRESSION_HEADER_SNAPPY ->
                     throw new UnsupportedOperationException("Snappy compression is not enabled in this build");
             default -> throw new IllegalArgumentException("Unknown Bedrock compression header: " + algorithm);
@@ -312,10 +333,10 @@ public final class BedrockBatchCodec {
         }
     }
 
-    private static byte[] inflateRaw(byte[] input, int maxOutputBytes) {
+    private static byte[] inflateRaw(byte[] input, int offset, int length, int maxOutputBytes) {
         Inflater inflater = new Inflater(true);
         try {
-            inflater.setInput(input);
+            inflater.setInput(input, offset, length);
             ByteArrayOutputStream output = new ByteArrayOutputStream(Math.min(input.length * 2, 8192));
             byte[] buffer = new byte[8192];
             while (!inflater.finished()) {
@@ -359,6 +380,15 @@ public final class BedrockBatchCodec {
             if ((current & 0x80) == 0) return value;
         }
         throw new IllegalArgumentException("Bedrock VarInt exceeds five bytes");
+    }
+
+    private static int unsignedVarIntSize(long value) {
+        if (value < 0 || value > 0xffff_ffffL) {
+            throw new IllegalArgumentException("Bedrock VarInt must be an unsigned 32-bit value");
+        }
+        int size = 1;
+        while ((value >>>= 7) != 0) size++;
+        return size;
     }
 
     private static byte[] writeUnsignedVarInt(long value) {

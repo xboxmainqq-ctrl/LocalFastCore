@@ -33,6 +33,7 @@ import ru.nexora.world.WorldItemEntityManager;
 import ru.nexora.world.WorldLivingEntity;
 import ru.nexora.world.WorldLivingEntityManager;
 import ru.nexora.world.WorldChunk;
+import ru.nexora.world.WorldChunkResidencyManager;
 import ru.nexora.world.WorldCollision;
 import ru.nexora.world.WorldRaycast;
 import ru.nexora.world.WorldPathfinder;
@@ -41,6 +42,12 @@ import ru.nexora.world.PlayerDataStorage;
 import ru.nexora.world.PlayerExperience;
 import ru.nexora.world.PlayerPhysics;
 import ru.nexora.world.PlayerVitals;
+import ru.nexora.persistence.PlayerStateBundle;
+import ru.nexora.persistence.PlayerStateBundleCodec;
+import ru.nexora.persistence.PlayerStateCheckpointService;
+import ru.nexora.network.PlayerTransferFence;
+import ru.nexora.network.PlayerTransferRecoveryService;
+import ru.nexora.network.PendingPlayerTransferRestoreRegistry;
 
 import java.security.KeyFactory;
 import java.security.MessageDigest;
@@ -49,6 +56,7 @@ import java.security.Signature;
 import java.security.spec.X509EncodedKeySpec;
 import java.io.IOException;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -58,6 +66,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.UUID;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
@@ -70,11 +80,23 @@ import java.util.function.LongSupplier;
  * -> PlayStatus -> ResourcePacksInfo -> ResourcePackStack.
  */
 public final class BedrockSessionManager implements NetherNetDataChannelListener, AutoCloseable {
+    public record AuthenticatedPlayer(String xuid, String displayName, long entityId) {
+    }
+
+    public record TransferReconciliationReport(int scanned, int resumed, int redirected, int unresolved) {
+        public TransferReconciliationReport {
+            if (scanned < 0 || resumed < 0 || redirected < 0 || unresolved < 0) {
+                throw new IllegalArgumentException("Transfer reconciliation counts must not be negative");
+            }
+        }
+    }
+
     public static final int LOGIN_FAILED_CLIENT_OLD = 1;
     public static final int LOGIN_FAILED_SERVER_OLD = 2;
     public static final int LOGIN_SUCCESS = 0;
     public static final int DEFAULT_COMPRESSION_THRESHOLD = 256;
     public static final int SCTP_MAX_MESSAGE_BYTES = 262_144;
+    private static final long TRANSFER_OWNERSHIP_RECHECK_NANOS = 5_000_000_000L;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -85,6 +107,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final PlayerDataStorage playerStorage;
     private final PlayerInventoryStorage inventoryStorage;
     private final PlayerEquipmentStorage equipmentStorage;
+    private final PlayerStateCheckpointService checkpointService;
+    private final PendingPlayerTransferRestoreRegistry pendingTransferRestores =
+            new PendingPlayerTransferRestoreRegistry();
+    private volatile ru.nexora.network.DurableHandoffCoordinator transferOwnershipLedger;
+    private volatile String transferOwnershipNodeId;
+    private volatile ru.nexora.network.PlayerOnlineLeaseRegistry onlineLeaseRegistry;
+    private volatile long onlineLeaseMillis = 15_000L;
     private volatile BedrockItemRegistry itemRegistry = BedrockItemRegistry.empty();
     private volatile ArmorSlotRegistry armorSlotRegistry = ArmorSlotRegistry.empty();
     private volatile EquipmentSlotRegistry equipmentSlotRegistry = EquipmentSlotRegistry.empty();
@@ -101,6 +130,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final LongSupplier nanoTime;
     private final AutoCloseable furnaceUpdateListener;
     private final Map<String, SessionState> sessions = new ConcurrentHashMap<>();
+    private final ActorReplicationIndex actorReplicationIndex = new ActorReplicationIndex();
+    private final ActorReplicationIndex itemActorReplicationIndex = new ActorReplicationIndex();
+    private final ActorReplicationIndex playerActorReplicationIndex = new ActorReplicationIndex();
+    private final Object[] xuidLoginLocks = createXuidLoginLocks();
+    private final Object sessionChangeMonitor = new Object();
     private final AtomicLong nextEntityId = new AtomicLong(1);
     private final AtomicLong nextFormId = new AtomicLong(1);
     private final AtomicLong lastItemActorTickNanos = new AtomicLong(Long.MIN_VALUE);
@@ -108,13 +142,61 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final Map<Long, Long> nextMobAttackMillis = new ConcurrentHashMap<>();
     private final Map<Long, MobKillCredit> livingEntityKillCredit = new ConcurrentHashMap<>();
     private final Map<Long, String> livingEntityAggroTargets = new ConcurrentHashMap<>();
+    private final Map<Long, Long> livingEntityAggroExpiresAtMillis = new ConcurrentHashMap<>();
+    private static final long MOB_AGGRO_RETENTION_MILLIS = 10_000L;
+    private static final long CHAT_RATE_WINDOW_NANOS = 5_000_000_000L;
+    private static final int MAX_CHAT_MESSAGES_PER_WINDOW = 5;
     private final Map<Long, ru.nexora.combat.ArrowProjectile> mobArrows = new ConcurrentHashMap<>();
+    private final Map<Long, ru.nexora.combat.FireballProjectile> mobFireballs = new ConcurrentHashMap<>();
+    private final Set<Long> poisonMobArrows = ConcurrentHashMap.newKeySet();
+    private final ru.nexora.combat.GuardianBeamTracker guardianBeamTracker =
+            new ru.nexora.combat.GuardianBeamTracker();
     private final AtomicLong nextMobArrowRuntimeId = new AtomicLong(4_000_000L);
-    private final Map<Long, Long> creeperFuseStartedMillis = new ConcurrentHashMap<>();
+    private final ru.nexora.combat.MobFuseTracker mobFuseTracker =
+            new ru.nexora.combat.MobFuseTracker();
     private final Map<Long, Long> endermanTeleportCooldownMillis = new ConcurrentHashMap<>();
     private final ru.nexora.combat.LivingEntityAiService livingEntityAi =
             new ru.nexora.combat.LivingEntityAiService();
+    private final ru.nexora.combat.MobPhysicsService mobPhysics =
+            new ru.nexora.combat.MobPhysicsService();
+    private final ru.nexora.world.MobPathCache mobPathCache =
+            new ru.nexora.world.MobPathCache();
+    private final ru.nexora.combat.MobStuckTracker mobStuckTracker =
+            new ru.nexora.combat.MobStuckTracker();
+    private final ru.nexora.combat.MobFallTracker mobFallTracker =
+            new ru.nexora.combat.MobFallTracker();
+    private final ru.nexora.combat.MobJumpController mobJumpController =
+            new ru.nexora.combat.MobJumpController();
+    private final ru.nexora.combat.MobClimbController mobClimbController =
+            new ru.nexora.combat.MobClimbController();
+    private final ru.nexora.combat.MobDespawnTracker mobDespawnTracker =
+            new ru.nexora.combat.MobDespawnTracker();
+    private final ru.nexora.combat.MobAiLoadController mobAiLoadController =
+            new ru.nexora.combat.MobAiLoadController();
+    private final ru.nexora.combat.MobAiTaskScheduler mobAiTaskScheduler =
+            new ru.nexora.combat.MobAiTaskScheduler();
+    private final ru.nexora.ai.HotPathProfiler hotPathProfiler =
+            new ru.nexora.ai.HotPathProfiler();
+    private final ru.nexora.world.WorldChunkResidencyManager chunkResidency =
+            new ru.nexora.world.WorldChunkResidencyManager(
+                    BedrockChunkRadiusCodec.DEFAULT_RADIUS, 100,
+                    ru.nexora.world.WorldChunkResidencyManager.Shape.SQUARE);
     private volatile boolean serverAuthoritativeMovement;
+    private volatile ru.nexora.ai.NexoraAiAssistant aiAssistant;
+    private volatile ru.nexora.ai.NexoraAiDiagnostics aiDiagnostics;
+    private final ru.nexora.ai.NexoraAiGuard aiGuard = new ru.nexora.ai.NexoraAiGuard(
+            ru.nexora.ai.NexoraAiGuard.DEFAULT_WINDOW_NANOS,
+            ru.nexora.ai.NexoraAiGuard.DEFAULT_MAX_FRAMES_PER_WINDOW,
+            ru.nexora.ai.NexoraAiGuard.DEFAULT_MAX_BYTES_PER_WINDOW,
+            ru.nexora.ai.NexoraAiGuard.DEFAULT_MAX_TRACKED_PEERS,
+            event -> {
+                ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
+                if (diagnostics != null) {
+                    diagnostics.recordGuardSignal(event.reason() + ": "
+                            + event.framesInWindow() + " frames, "
+                            + event.bytesInWindow() + " bytes in current window");
+                }
+            });
     private final NetherNetInboundPipeline inbound;
 
     public BedrockSessionManager(
@@ -196,7 +278,24 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             Consumer<PacketEvent> packetSink
     ) {
         this(serverProtocol, serverVersion, compressionThreshold, world, playerStorage, inventoryStorage,
-                equipmentStorage, outbound, packetSink, System::nanoTime);
+                equipmentStorage, null, outbound, packetSink, System::nanoTime);
+    }
+
+    /** Enables canonical shadow checkpoints while legacy files remain the login authority. */
+    public BedrockSessionManager(
+            int serverProtocol,
+            String serverVersion,
+            int compressionThreshold,
+            World world,
+            PlayerDataStorage playerStorage,
+            PlayerInventoryStorage inventoryStorage,
+            PlayerEquipmentStorage equipmentStorage,
+            PlayerStateCheckpointService checkpointService,
+            OutboundFrameSender outbound,
+            Consumer<PacketEvent> packetSink
+    ) {
+        this(serverProtocol, serverVersion, compressionThreshold, world, playerStorage, inventoryStorage,
+                equipmentStorage, checkpointService, outbound, packetSink, System::nanoTime);
     }
 
     BedrockSessionManager(
@@ -253,6 +352,23 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             Consumer<PacketEvent> packetSink,
             LongSupplier nanoTime
     ) {
+        this(serverProtocol, serverVersion, compressionThreshold, world, playerStorage, inventoryStorage,
+                equipmentStorage, null, outbound, packetSink, nanoTime);
+    }
+
+    BedrockSessionManager(
+            int serverProtocol,
+            String serverVersion,
+            int compressionThreshold,
+            World world,
+            PlayerDataStorage playerStorage,
+            PlayerInventoryStorage inventoryStorage,
+            PlayerEquipmentStorage equipmentStorage,
+            PlayerStateCheckpointService checkpointService,
+            OutboundFrameSender outbound,
+            Consumer<PacketEvent> packetSink,
+            LongSupplier nanoTime
+    ) {
         if (serverProtocol < 1) throw new IllegalArgumentException("serverProtocol must be positive");
         if (serverVersion == null || serverVersion.isBlank()) {
             throw new IllegalArgumentException("serverVersion must not be blank");
@@ -267,13 +383,172 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         this.playerStorage = playerStorage;
         this.inventoryStorage = inventoryStorage;
         this.equipmentStorage = equipmentStorage;
+        this.checkpointService = checkpointService;
         this.outbound = Objects.requireNonNull(outbound, "outbound");
         this.packetSink = Objects.requireNonNull(packetSink, "packetSink");
         this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime");
-        this.inbound = new NetherNetInboundPipeline(this::handleCompleteMessage);
+        this.inbound = new NetherNetInboundPipeline(this::handleCompleteMessage, aiGuard);
         this.furnaceUpdateListener = this.world.furnaces()
                 .map(manager -> manager.addUpdateListener(this::handleFurnaceUpdate))
                 .orElse(null);
+    }
+
+    /**
+     * Rehydrates durable destination ownership before the network starts accepting logins.
+     * The registry is local to this session manager; the transfer ledger is the source of truth.
+     */
+    public PlayerTransferRecoveryService.RecoveryReport recoverPendingTransferRestores(
+            ru.nexora.network.DurableHandoffCoordinator transferLedger,
+            String nodeId,
+            int limit
+    ) throws IOException {
+        if (checkpointService == null) {
+            throw new IllegalStateException("Canonical player checkpoints are not configured");
+        }
+        PlayerTransferRecoveryService recovery = new PlayerTransferRecoveryService(
+                Objects.requireNonNull(transferLedger, "transferLedger"),
+                pendingTransferRestores,
+                nodeId,
+                System::currentTimeMillis);
+        return recovery.recover(limit);
+    }
+
+    /**
+     * Enables shared-ledger admission fencing before any network session is accepted.
+     * This also makes the shared canonical checkpoint authoritative after a transfer.
+     */
+    public void configureTransferOwnershipGuard(
+            ru.nexora.network.DurableHandoffCoordinator transferLedger, String nodeId
+    ) {
+        Objects.requireNonNull(transferLedger, "transferLedger");
+        if (nodeId == null || !nodeId.matches("[A-Za-z0-9._-]{1,64}")) {
+            throw new IllegalArgumentException("Invalid transfer ownership node ID");
+        }
+        if (!sessions.isEmpty()) {
+            throw new IllegalStateException("Transfer ownership guard must be configured before sessions are created");
+        }
+        if (onlineLeaseRegistry == null) {
+            throw new IllegalStateException("Global online player leases must be configured before transfer ownership");
+        }
+        this.transferOwnershipLedger = transferLedger;
+        this.transferOwnershipNodeId = nodeId;
+    }
+
+    /** Configures the cluster-wide online XUID lease. Must be called before accepting sessions. */
+    public void configureOnlinePlayerLeases(
+            ru.nexora.network.PlayerOnlineLeaseRegistry registry, long leaseMillis
+    ) {
+        Objects.requireNonNull(registry, "registry");
+        if (leaseMillis < 3_000L || leaseMillis > 120_000L) {
+            throw new IllegalArgumentException("Online player lease must be between 3000 and 120000 ms");
+        }
+        if (!sessions.isEmpty()) {
+            throw new IllegalStateException("Online leases must be configured before sessions are created");
+        }
+        this.onlineLeaseRegistry = registry;
+        this.onlineLeaseMillis = leaseMillis;
+    }
+
+    private void acquireOnlinePlayerLease(SessionState state) {
+        ru.nexora.network.PlayerOnlineLeaseRegistry registry = onlineLeaseRegistry;
+        String nodeId = transferOwnershipNodeId;
+        if (registry == null || nodeId == null || state.identity == null) return;
+        String sessionId = UUID.randomUUID().toString();
+        try {
+            if (!registry.acquire(state.identity.xuid(), nodeId, sessionId,
+                    System.currentTimeMillis(), onlineLeaseMillis)) {
+                throw new SecurityException("This player already has an active session on another cluster node");
+            }
+            state.onlineLeaseSessionId = sessionId;
+            state.lastOnlineLeaseRenewalNanos = nanoTime.getAsLong();
+            state.onlineLeaseLost = false;
+        } catch (IOException failure) {
+            throw new SecurityException("Unable to acquire global online player ownership", failure);
+        }
+    }
+
+    private void ensureOnlinePlayerLeaseForResume(SessionState state) throws IOException {
+        ru.nexora.network.PlayerOnlineLeaseRegistry registry = onlineLeaseRegistry;
+        String nodeId = transferOwnershipNodeId;
+        if (registry == null || nodeId == null) return;
+        String sessionId = state.onlineLeaseSessionId;
+        long now = System.currentTimeMillis();
+        if (sessionId != null && registry.renew(
+                state.identity.xuid(), nodeId, sessionId, now, onlineLeaseMillis)) {
+            state.lastOnlineLeaseRenewalNanos = nanoTime.getAsLong();
+            state.onlineLeaseLost = false;
+            return;
+        }
+        state.onlineLeaseSessionId = null;
+        state.lastOnlineLeaseRenewalNanos = Long.MIN_VALUE;
+        try {
+            acquireOnlinePlayerLease(state);
+        } catch (SecurityException leaseFailure) {
+            throw new IOException("Unable to reacquire global online player lease", leaseFailure);
+        }
+    }
+
+    private boolean releaseOnlinePlayerLease(SessionState state) {
+        ru.nexora.network.PlayerOnlineLeaseRegistry registry = onlineLeaseRegistry;
+        String nodeId = transferOwnershipNodeId;
+        String sessionId = state.onlineLeaseSessionId;
+        if (registry == null || nodeId == null || sessionId == null || state.identity == null) return true;
+        try {
+            boolean released = registry.release(state.identity.xuid(), nodeId, sessionId);
+            if (released) {
+                state.onlineLeaseSessionId = null;
+                state.lastOnlineLeaseRenewalNanos = Long.MIN_VALUE;
+            }
+            return released;
+        } catch (IOException failure) {
+            System.err.println("NEXORA: unable to release online XUID lease: " + failure.getMessage());
+            return false;
+        }
+    }
+
+    /** Registers a durable claimed transfer for the next authenticated login of this XUID. */
+    public void registerPendingTransferRestore(
+            PendingPlayerTransferRestoreRegistry.PendingRestore restore
+    ) {
+        if (checkpointService == null) {
+            throw new IllegalStateException("Canonical player checkpoints are not configured");
+        }
+        pendingTransferRestores.register(restore);
+    }
+
+    /** Cancels only the matching local pending registration after a confirmed transfer abort. */
+    public boolean cancelPendingTransferRestore(String playerXuid, UUID transferId, long fencingToken) {
+        return pendingTransferRestores.cancel(playerXuid, transferId, fencingToken);
+    }
+
+    /**
+     * Stops a destination session if it has already consumed the matching pending
+     * restore. This is used only during rollback while the same CLAIMED fence is owned.
+     */
+    public boolean deactivateTransferRestore(String playerXuid, UUID transferId, long fencingToken) {
+        boolean cancelled = pendingTransferRestores.cancel(playerXuid, transferId, fencingToken);
+        boolean stopped = false;
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            SessionState state = entry.getValue();
+            state.combatLock.lock();
+            try {
+                synchronized (state) {
+                    PlayerTransferFence fence = state.transferFence;
+                    if (fence == null || !playerXuid.equals(fence.playerXuid())
+                            || !transferId.equals(fence.transferId())
+                            || fencingToken != fence.fencingToken()) continue;
+                    state.rejected = true;
+                    state.loginAuthenticated = false;
+                    state.clientInitialized = false;
+                    releaseOnlinePlayerLease(state);
+                    removePlayerListEntry(entry.getKey(), state);
+                    stopped = true;
+                }
+            } finally {
+                state.combatLock.unlock();
+            }
+        }
+        return cancelled || stopped;
     }
 
     @Override
@@ -289,52 +564,597 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     @Override
     public void onFrame(String networkId, String channelLabel, byte[] frame) {
-        inbound.onFrame(networkId, channelLabel, frame);
+        long startedNanos = nanoTime.getAsLong();
+        try {
+            inbound.onFrame(networkId, channelLabel, frame);
+        } finally {
+            hotPathProfiler.record(ru.nexora.ai.HotPathProfiler.Path.BEDROCK_INBOUND,
+                    Math.max(0L, nanoTime.getAsLong() - startedNanos));
+        }
     }
 
     @Override
     public void onDisconnected(String networkId) {
         SessionState state = sessions.get(networkId);
         if (state != null) {
+            synchronized (state) {
+                state.rejected = true;
+            }
+            removePlayerListEntry(networkId, state);
+            if (state.identity != null) aiGuard.onPlayerDisconnected(state.identity.xuid());
             state.combatLock.lock();
             try {
                 synchronized (state) {
-                    saveAndClearContainerWindow(state);
-                    try {
-                        returnCraftingGridItems(state);
-                        savePlayer(state);
-                        saveInventory(state);
-                        saveEquipment(state);
-                    } catch (IOException | RuntimeException exception) {
-                        System.err.println("NEXORA: unable to save disconnected player: " + exception.getMessage());
+                    if (!state.transferFrozen) {
+                        saveAndClearContainerWindow(state);
+                        try {
+                            // A disconnect must not let an expired former owner
+                            // overwrite the canonical checkpoint now owned elsewhere.
+                            if (onlineLeaseRegistry != null && state.onlineLeaseSessionId == null) {
+                                throw new IOException("Disconnect persistence has no global online ownership lease");
+                            }
+                            assertTransferNodeOwnership(state);
+                            returnCraftingGridItems(state);
+                            saveAllPlayerState(state);
+                        } catch (IOException | RuntimeException exception) {
+                            System.err.println("NEXORA: unable to save disconnected player: " + exception.getMessage());
+                        }
                     }
                 }
             } finally {
                 state.combatLock.unlock();
             }
+            releaseOnlinePlayerLease(state);
             sessions.remove(networkId, state);
+            actorReplicationIndex.removeSession(networkId);
+            itemActorReplicationIndex.removeSession(networkId);
+            playerActorReplicationIndex.removeSession(networkId);
+            synchronized (sessionChangeMonitor) {
+                sessionChangeMonitor.notifyAll();
+            }
         }
         inbound.onDisconnected(networkId);
     }
 
+    /**
+     * Waits for active network sessions to disconnect during graceful shutdown.
+     * Returns false when the bounded timeout expires; callers must then force-close
+     * transport and let the gameplay module persist remaining sessions.
+     */
+    public boolean awaitNoActiveSessions(Duration timeout) throws InterruptedException {
+        Objects.requireNonNull(timeout, "timeout");
+        if (timeout.isNegative()) throw new IllegalArgumentException("timeout must not be negative");
+        long started = System.nanoTime();
+        long budget = timeout.toNanos();
+        synchronized (sessionChangeMonitor) {
+            while (!sessions.isEmpty()) {
+                long remaining = budget - (System.nanoTime() - started);
+                if (remaining <= 0) return false;
+                long millis = remaining / 1_000_000L;
+                int nanos = (int) (remaining % 1_000_000L);
+                sessionChangeMonitor.wait(millis, nanos);
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Periodic lease heartbeat independent of client movement/input packets.
+     * Idle authenticated players must not lose ownership simply because they
+     * have no gameplay packet to trigger the inbound-path renewal.
+     */
+    public void renewOnlinePlayerLeases() {
+        if (onlineLeaseRegistry == null || transferOwnershipLedger == null) return;
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            String networkId = entry.getKey();
+            SessionState state = entry.getValue();
+            NetherNetClientIdentity identity = state.identity;
+            if (identity == null || state.rejected) continue;
+
+            // Renew outside the gameplay lock. A long checkpoint/save/transfer
+            // must never prevent the lease heartbeat from extending ownership.
+            String leaseSessionId = state.onlineLeaseSessionId;
+            if (leaseSessionId != null) {
+                long nowNanos = nanoTime.getAsLong();
+                long previous = state.lastOnlineLeaseRenewalNanos;
+                long interval = Math.max(500_000_000L, onlineLeaseMillis * 1_000_000L / 3L);
+                if (previous == Long.MIN_VALUE || nowNanos - previous >= interval) {
+                    boolean renewed;
+                    try {
+                        renewed = onlineLeaseRegistry.renew(identity.xuid(), transferOwnershipNodeId,
+                                leaseSessionId, System.currentTimeMillis(), onlineLeaseMillis);
+                    } catch (IOException | RuntimeException failure) {
+                        renewed = false;
+                    }
+                    if (!renewed) {
+                        // A concurrent transfer release may have cleared the token
+                        // after this heartbeat captured it. Fence only if it is
+                        // still the session's current lease.
+                        if (leaseSessionId.equals(state.onlineLeaseSessionId)) {
+                            state.onlineLeaseLost = true;
+                            state.rejected = true;
+                            state.loginAuthenticated = false;
+                            state.clientInitialized = false;
+                            releaseOnlinePlayerLease(state);
+                            removePlayerListEntry(networkId, state);
+                            System.err.println("NEXORA: stopped session after online lease loss for "
+                                    + identity.xuid());
+                        }
+                        continue;
+                    }
+                    if (leaseSessionId.equals(state.onlineLeaseSessionId)) {
+                        state.lastOnlineLeaseRenewalNanos = nowNanos;
+                    }
+                }
+            } else if (state.loginAuthenticated && !state.transferFrozen) {
+                state.onlineLeaseLost = true;
+                state.rejected = true;
+                state.loginAuthenticated = false;
+                state.clientInitialized = false;
+                removePlayerListEntry(networkId, state);
+                System.err.println("NEXORA: stopped session without a global online lease for " + identity.xuid());
+                continue;
+            }
+
+            // A frozen source still owns its lease until PREPARED is durable,
+            // but it must not be checked against the PREPARED gameplay fence.
+            if (state.transferFrozen || state.rejected || !state.loginAuthenticated) continue;
+            state.combatLock.lock();
+            try {
+                synchronized (state) {
+                    if (state.transferFrozen || state.rejected || !state.loginAuthenticated) continue;
+                    try {
+                        assertTransferNodeOwnership(state);
+                    } catch (IOException | RuntimeException ownershipFailure) {
+                        state.onlineLeaseLost = true;
+                        state.rejected = true;
+                        state.loginAuthenticated = false;
+                        state.clientInitialized = false;
+                        releaseOnlinePlayerLease(state);
+                        removePlayerListEntry(networkId, state);
+                        System.err.println("NEXORA: stopped idle/session processing after ownership loss for "
+                                + identity.xuid() + ": " + ownershipFailure.getMessage());
+                    }
+                }
+            } finally {
+                state.combatLock.unlock();
+            }
+        }
+    }
+
     public void savePlayers() throws IOException {
         IOException failure = null;
-        for (SessionState state : sessions.values()) {
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            String networkId = entry.getKey();
+            SessionState state = entry.getValue();
             synchronized (state) {
+                if (state.transferFrozen || state.rejected || !state.loginAuthenticated) continue;
                 try {
-                    savePlayer(state);
-                    saveInventory(state);
-                    saveEquipment(state);
-                } catch (IOException exception) {
-                    if (failure == null) failure = exception;
-                    else failure.addSuppressed(exception);
+                    // Autosave must retain the lease and verify it before any
+                    // shared checkpoint write; releasing here would open a
+                    // duplicate-login window on every save interval.
+                    assertTransferNodeOwnership(state);
+                } catch (IOException | SecurityException ownershipFailure) {
+                    state.rejected = true;
+                    state.loginAuthenticated = false;
+                    state.clientInitialized = false;
+                    releaseOnlinePlayerLease(state);
+                    removePlayerListEntry(networkId, state);
+                    IOException wrapped = new IOException(
+                            "Stopped player autosave after global ownership validation failed",
+                            ownershipFailure);
+                    if (failure == null) failure = wrapped;
+                    else failure.addSuppressed(wrapped);
+                    continue;
+                }
+                try {
+                    saveAllPlayerState(state);
+                } catch (IOException saveFailure) {
+                    if (failure == null) failure = saveFailure;
+                    else failure.addSuppressed(saveFailure);
                 }
             }
         }
         if (failure != null) throw failure;
     }
 
+    /**
+     * Freezes one authenticated player on this node and writes a canonical checkpoint.
+     * The returned revision is the durable revision the destination must restore.
+     */
+    public long freezePlayerForTransfer(String playerXuid) throws IOException {
+        if (checkpointService == null) {
+            throw new IllegalStateException("Canonical player checkpoints are not configured");
+        }
+        if (playerXuid == null || !playerXuid.matches("[A-Za-z0-9_-]{1,64}")) {
+            throw new IllegalArgumentException("Invalid player XUID");
+        }
+        Map.Entry<String, SessionState> match = null;
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            SessionState candidate = entry.getValue();
+            synchronized (candidate) {
+                if (candidate.identity != null && playerXuid.equals(candidate.identity.xuid())) {
+                    if (match != null) throw new IllegalStateException("Duplicate active XUID on source node");
+                    match = entry;
+                }
+            }
+        }
+        if (match == null) throw new IllegalArgumentException("Player is not connected to this source node");
+        String networkId = match.getKey();
+        SessionState state = match.getValue();
+        long revision;
+        state.combatLock.lock();
+        try {
+            synchronized (state) {
+                if (sessions.get(networkId) != state || state.rejected || state.transferFrozen
+                        || !state.loginAuthenticated || !state.clientInitialized
+                        || state.identity == null || !playerXuid.equals(state.identity.xuid())
+                        || !state.positionInitialized) {
+                    throw new IllegalStateException("Player session is not eligible for transfer");
+                }
+                // Do not freeze or checkpoint from a session that has already
+                // lost its cluster-wide ownership lease.
+                assertTransferNodeOwnership(state);
+                state.transferFrozen = true;
+                try {
+                    if (state.openContainerWindowId != 0) closeContainerWindow(networkId, state, true);
+                    returnCraftingGridItems(state);
+                    revision = saveAllPlayerStateForTransfer(state);
+                    if (revision < 0) throw new IOException("Canonical checkpoint was not written");
+                } catch (IOException | RuntimeException failure) {
+                    state.transferFrozen = false;
+                    throw failure;
+                }
+                // Stop inbound gameplay and every tick path gated by authenticated/initialized state.
+                state.loginAuthenticated = false;
+                state.clientInitialized = false;
+            }
+        } finally {
+            state.combatLock.unlock();
+        }
+        // Keep the source lease until PREPARED is durable. The source coordinator
+        // releases it through releaseOnlinePlayerLeaseAfterPreparedTransfer().
+        removePlayerListEntry(networkId, state);
+        return revision;
+    }
+
+    /**
+     * Releases the frozen source session's online XUID lease after its exact
+     * transfer is durably PREPARED or has advanced to CLAIMED/COMMITTED.
+     * Until this point the source retains the lease, preventing an early
+     * destination login in the checkpoint/publication gap.
+     */
+    public void releaseOnlinePlayerLeaseAfterPreparedTransfer(String playerXuid, UUID transferId)
+            throws IOException {
+        Objects.requireNonNull(transferId, "transferId");
+        ru.nexora.network.DurableHandoffCoordinator ledger = transferOwnershipLedger;
+        String nodeId = transferOwnershipNodeId;
+        if (onlineLeaseRegistry == null) return;
+        if (ledger == null || nodeId == null) {
+            throw new IOException("Shared transfer ownership is not configured");
+        }
+        ru.nexora.network.PlayerTransferRecord record = ledger.get(transferId)
+                .orElseThrow(() -> new IOException("Prepared transfer is not present in the durable ledger"));
+        if ((record.state() != ru.nexora.network.PlayerTransferRecord.State.PREPARED
+                && record.state() != ru.nexora.network.PlayerTransferRecord.State.CLAIMED
+                && record.state() != ru.nexora.network.PlayerTransferRecord.State.COMMITTED)
+                || !record.playerXuid().equals(playerXuid)
+                || !record.sourceNode().equals(nodeId)) {
+            throw new SecurityException("Durable transfer record does not match frozen source player");
+        }
+        Map.Entry<String, SessionState> match = null;
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            SessionState candidate = entry.getValue();
+            synchronized (candidate) {
+                if (candidate.identity != null && playerXuid.equals(candidate.identity.xuid())
+                        && candidate.transferFrozen) {
+                    if (match != null) throw new IOException("Duplicate frozen XUID on source node");
+                    match = entry;
+                }
+            }
+        }
+        if (match == null) throw new IOException("Frozen source session is no longer available");
+        SessionState state = match.getValue();
+        state.combatLock.lock();
+        try {
+            synchronized (state) {
+                if (sessions.get(match.getKey()) != state || !state.transferFrozen
+                        || state.identity == null || !playerXuid.equals(state.identity.xuid())) {
+                    throw new IOException("Source session changed before PREPARED lease release");
+                }
+                if (state.onlineLeaseLost) {
+                    throw new IOException("Source lost its online ownership lease during transfer freeze");
+                }
+                if (state.onlineLeaseSessionId == null) {
+                    throw new IOException("Source online ownership lease is missing after PREPARED publication");
+                }
+                if (!releaseOnlinePlayerLease(state)) {
+                    throw new IOException("Unable to release source online lease after PREPARED publication");
+                }
+            }
+        } finally {
+            state.combatLock.unlock();
+        }
+    }
+
+    /**
+     * Resumes a source session only after the transfer ledger has durably confirmed ABORTED.
+     * A disconnected source session is deliberately not recreated here.
+     */
+    public void unfreezePlayerAfterTransferAbort(String playerXuid) throws IOException {
+        if (playerXuid == null || !playerXuid.matches("[A-Za-z0-9_-]{1,64}")) {
+            throw new IllegalArgumentException("Invalid player XUID");
+        }
+        Map.Entry<String, SessionState> match = null;
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            SessionState candidate = entry.getValue();
+            synchronized (candidate) {
+                if (candidate.identity != null && playerXuid.equals(candidate.identity.xuid())
+                        && candidate.transferFrozen) {
+                    if (match != null) throw new IllegalStateException("Duplicate frozen XUID on source node");
+                    match = entry;
+                }
+            }
+        }
+        if (match == null) throw new IOException("Frozen source session is no longer available");
+        String networkId = match.getKey();
+        SessionState state = match.getValue();
+        state.combatLock.lock();
+        try {
+            synchronized (state) {
+                if (sessions.get(networkId) != state || !state.transferFrozen || state.rejected
+                        || state.identity == null || !playerXuid.equals(state.identity.xuid())) {
+                    throw new IOException("Source session cannot be safely resumed");
+                }
+                ensureOnlinePlayerLeaseForResume(state);
+                state.loginAuthenticated = true;
+                state.clientInitialized = true;
+                state.transferFrozen = false;
+            }
+        } finally {
+            state.combatLock.unlock();
+        }
+        try {
+            sendContainerReconciliation(networkId, state);
+        } catch (RuntimeException exception) {
+            System.err.println("NEXORA: unable to reconcile inventory after transfer abort: "
+                    + exception.getMessage());
+        }
+        advertisePlayerList(networkId, state);
+    }
+
+    /**
+     * Recovers a source session frozen before PREPARED could be published.
+     * Resume is allowed only when the shared ledger confirms no transfer record
+     * and this process can still acquire/renew the exclusive online lease.
+     */
+    private boolean resumeFrozenPlayerWithoutTransfer(String playerXuid) throws IOException {
+        if (onlineLeaseRegistry == null || transferOwnershipNodeId == null) return false;
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            SessionState state = entry.getValue();
+            state.combatLock.lock();
+            try {
+                synchronized (state) {
+                    if (state.identity == null || !playerXuid.equals(state.identity.xuid())
+                            || !state.transferFrozen || state.rejected || state.transferFence != null) continue;
+                    try {
+                        ensureOnlinePlayerLeaseForResume(state);
+                    } catch (SecurityException leaseUnavailable) {
+                        return false;
+                    }
+                    state.loginAuthenticated = true;
+                    state.clientInitialized = true;
+                    state.transferFrozen = false;
+                }
+            } finally {
+                state.combatLock.unlock();
+            }
+            try {
+                sendContainerReconciliation(entry.getKey(), state);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to reconcile inventory after orphaned freeze: "
+                        + exception.getMessage());
+            }
+            advertisePlayerList(entry.getKey(), state);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Redirects a source session only after the transfer coordinator has durably
+     * committed ownership to the destination. The session must already be frozen.
+     */
+    public void redirectFrozenPlayerToNode(
+            String playerXuid,
+            UUID transferId,
+            long fencingToken,
+            ru.nexora.network.DurableHandoffCoordinator transferLedger,
+            String localNodeId,
+            String address,
+            int port
+    ) throws IOException {
+        if (playerXuid == null || !playerXuid.matches("[A-Za-z0-9_-]{1,64}")) {
+            throw new IllegalArgumentException("Invalid player XUID");
+        }
+        Objects.requireNonNull(transferId, "transferId");
+        Objects.requireNonNull(transferLedger, "transferLedger");
+        if (fencingToken <= 0 || localNodeId == null || !localNodeId.matches("[A-Za-z0-9._-]{1,64}")) {
+            throw new IllegalArgumentException("Invalid transfer fence or local node ID");
+        }
+        ru.nexora.network.PlayerTransferRecord committed = transferLedger.get(transferId)
+                .orElseThrow(() -> new IOException("Committed transfer record is unavailable"));
+        if (committed.state() != ru.nexora.network.PlayerTransferRecord.State.COMMITTED
+                || committed.fencingToken() != fencingToken
+                || !playerXuid.equals(committed.playerXuid())
+                || !localNodeId.equals(committed.sourceNode())
+                || localNodeId.equals(committed.targetNode())) {
+            throw new SecurityException("Bedrock redirect requires the matching durable COMMITTED transfer");
+        }
+        Map.Entry<String, SessionState> match = null;
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            SessionState candidate = entry.getValue();
+            synchronized (candidate) {
+                if (candidate.identity != null && playerXuid.equals(candidate.identity.xuid())
+                        && candidate.transferFrozen && !candidate.transferRedirected) {
+                    if (match != null) throw new IllegalStateException("Duplicate frozen XUID on source node");
+                    match = entry;
+                }
+            }
+        }
+        if (match == null) throw new IllegalArgumentException("Player has no redirectable frozen source session");
+        String networkId = match.getKey();
+        SessionState state = match.getValue();
+        state.combatLock.lock();
+        try {
+            synchronized (state) {
+                if (sessions.get(networkId) != state || !state.transferFrozen || state.transferRedirected
+                        || state.rejected || state.identity == null
+                        || !playerXuid.equals(state.identity.xuid()) || !state.compressionNegotiated) {
+                    throw new IllegalStateException("Frozen source session is not eligible for redirect");
+                }
+                sendPacket(networkId, BedrockTransferPacketCodec.create(address, port, true), true);
+                state.transferRedirected = true;
+                state.rejected = true;
+            }
+        } finally {
+            state.combatLock.unlock();
+        }
+    }
+
+    /**
+     * Reconciles frozen source sessions after a peer/database restart. Only a
+     * durable ABORTED record resumes gameplay; only COMMITTED ownership redirects.
+     */
+    public TransferReconciliationReport reconcileFrozenPlayerTransfers(
+            ru.nexora.network.DurableHandoffCoordinator ledger,
+            String localNodeId,
+            Map<String, java.net.InetSocketAddress> bedrockRoutes
+    ) throws IOException {
+        Objects.requireNonNull(ledger, "ledger");
+        Objects.requireNonNull(bedrockRoutes, "bedrockRoutes");
+        if (localNodeId == null || !localNodeId.matches("[A-Za-z0-9._-]{1,64}")) {
+            throw new IllegalArgumentException("Invalid local transfer node ID");
+        }
+        List<String> frozenXuids = new ArrayList<>();
+        for (SessionState state : sessions.values()) {
+            synchronized (state) {
+                if (state.identity != null && state.transferFrozen && !state.rejected
+                        && !state.transferRedirected) {
+                    frozenXuids.add(state.identity.xuid());
+                }
+            }
+        }
+        int resumed = 0;
+        int redirected = 0;
+        int unresolved = 0;
+        long now = System.currentTimeMillis();
+        for (String xuid : frozenXuids) {
+            java.util.Optional<ru.nexora.network.PlayerTransferRecord> latest =
+                    ledger.findLatestForPlayer(xuid);
+            if (latest.isEmpty()) {
+                if (resumeFrozenPlayerWithoutTransfer(xuid)) resumed++;
+                else unresolved++;
+                continue;
+            }
+            ru.nexora.network.PlayerTransferRecord record = latest.orElseThrow();
+            if (!localNodeId.equals(record.sourceNode())) {
+                unresolved++;
+                continue;
+            }
+            if (record.state() == ru.nexora.network.PlayerTransferRecord.State.PREPARED
+                    && now >= record.updatedAtEpochMillis()
+                    && now - record.updatedAtEpochMillis() >= 30_000L) {
+                // A stale PREPARED record has not been claimed. The ledger CAS
+                // arbitrates against a destination that may claim concurrently.
+                ledger.abortPrepared(record.transferId(), now);
+                java.util.Optional<ru.nexora.network.PlayerTransferRecord> afterAbort =
+                        ledger.findLatestForPlayer(xuid);
+                if (afterAbort.isPresent()
+                        && afterAbort.orElseThrow().transferId().equals(record.transferId())
+                        && afterAbort.orElseThrow().state()
+                        == ru.nexora.network.PlayerTransferRecord.State.ABORTED) {
+                    unfreezePlayerAfterTransferAbort(xuid);
+                    resumed++;
+                } else {
+                    unresolved++;
+                }
+            } else if (record.state() == ru.nexora.network.PlayerTransferRecord.State.ABORTED) {
+                unfreezePlayerAfterTransferAbort(xuid);
+                resumed++;
+            } else if (record.state() == ru.nexora.network.PlayerTransferRecord.State.COMMITTED) {
+                java.net.InetSocketAddress route = bedrockRoutes.get(record.targetNode());
+                if (route == null) {
+                    unresolved++;
+                    continue;
+                }
+                redirectFrozenPlayerToNode(xuid, record.transferId(), record.fencingToken(),
+                        ledger, localNodeId, route.getHostString(), route.getPort());
+                redirected++;
+            } else {
+                unresolved++;
+            }
+        }
+        return new TransferReconciliationReport(
+                frozenXuids.size(), resumed, redirected, unresolved);
+    }
+
+    private void saveAllPlayerState(SessionState state) throws IOException {
+        // The shared canonical snapshot is the cluster authority; write it
+        // before updating host-local compatibility files.
+        checkpointCanonicalPlayerState(state);
+        savePlayer(state);
+        saveInventory(state);
+        saveEquipment(state);
+    }
+
+    private long saveAllPlayerStateForTransfer(SessionState state) throws IOException {
+        long revision = checkpointCanonicalPlayerState(state, true);
+        savePlayer(state);
+        saveInventory(state);
+        saveEquipment(state);
+        return revision;
+    }
+
+    /** Revalidates destination ownership before any player persistence write. */
+    private static void assertTransferFence(SessionState state) throws IOException {
+        if (state.transferFence != null) state.transferFence.assertCommitted();
+    }
+
+    /**
+     * Writes a canonical aggregate after all legacy components have been saved.
+     * Legacy stores remain the login authority until an explicit migration protocol
+     * can prove that the aggregate is newer and complete.
+     */
+    private void checkpointCanonicalPlayerState(SessionState state) throws IOException {
+        checkpointCanonicalPlayerState(state, false);
+    }
+
+    private long checkpointCanonicalPlayerState(SessionState state, boolean forceTransferRevision) throws IOException {
+        assertTransferFence(state);
+        if (checkpointService == null || !state.loginAuthenticated || !state.positionInitialized
+                || state.identity == null) return -1L;
+        String displayName = state.identity.displayName() == null ? "unknown" : state.identity.displayName();
+        PlayerData profile = new PlayerData(
+                state.identity.xuid(), displayName, world.name(),
+                state.positionX, state.positionY, state.positionZ,
+                state.yaw, state.pitch, System.currentTimeMillis(), state.vitals,
+                state.experiencePoints, state.experienceRemainderMilli);
+        PlayerStateBundle bundle = PlayerStateBundle.capture(
+                profile, state.inventory, state.craftingUiInventory, state.equipment);
+        if (forceTransferRevision) {
+            return checkpointService.checkpointForTransfer(bundle, profile.lastSeenEpochMillis());
+        }
+        ru.nexora.persistence.PlayerStateStore.SaveResult saveResult =
+                checkpointService.checkpoint(bundle, profile.lastSeenEpochMillis());
+        if (saveResult == ru.nexora.persistence.PlayerStateStore.SaveResult.STALE) {
+            throw new IOException("Canonical player checkpoint was superseded by a newer owner revision");
+        }
+        return -1L;
+    }
+
     private void savePlayer(SessionState state) throws IOException {
+        assertTransferFence(state);
         if (playerStorage == null || !state.loginAuthenticated || !state.positionInitialized
                 || state.identity == null) return;
         String displayName = state.identity.displayName() == null ? "unknown" : state.identity.displayName();
@@ -387,11 +1207,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private void saveInventory(SessionState state) throws IOException {
+        assertTransferFence(state);
         if (inventoryStorage == null || !state.loginAuthenticated || state.identity == null) return;
         inventoryStorage.save(state.identity.xuid(), state.inventory, state.craftingUiInventory);
     }
 
     private void saveEquipment(SessionState state) throws IOException {
+        assertTransferFence(state);
         if (equipmentStorage == null || !state.loginAuthenticated || state.identity == null) return;
         equipmentStorage.save(state.identity.xuid(), state.equipment);
     }
@@ -404,16 +1226,359 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         this.serverAuthoritativeMovement = true;
     }
 
+    /** Aggregate-only network anomaly status for trusted operator diagnostics. */
+    public String guardSummary() {
+        return aiGuard.snapshot().summary();
+    }
+
+    /** Read-only moderator review summary; never exposes XUIDs or executes punishments. */
+    public String guardReviewSummary() {
+        return aiGuard.combatReviewSummary(nanoTime.getAsLong());
+    }
+
+    /** Clears only the transient path cache; world and entity state are not modified. */
+    public void clearMobPathCache() {
+        mobPathCache.clear();
+    }
+
+    public int mobPathCacheSize() {
+        return mobPathCache.size();
+    }
+
+    public int expiredMobPathCacheEntries() {
+        return mobPathCache.expiredEntries(Math.max(0L, nanoTime.getAsLong() / 1_000_000L));
+    }
+
+    public int pruneExpiredMobPathCache() {
+        return mobPathCache.pruneExpired(Math.max(0L, nanoTime.getAsLong() / 1_000_000L));
+    }
+
+    private String hotPathProfilerSummary() {
+        StringBuilder summary = new StringBuilder();
+        for (ru.nexora.ai.HotPathProfiler.Path path : ru.nexora.ai.HotPathProfiler.Path.values()) {
+            ru.nexora.ai.HotPathProfiler.Snapshot snapshot = hotPathProfiler.snapshot(path);
+            if (snapshot.sampleCount() == 0) continue;
+            if (summary.length() > 0) summary.append("; ");
+            summary.append(path.name()).append("[").append(snapshot.summary()).append("]");
+        }
+        return summary.length() == 0 ? "no samples" : summary.toString();
+    }
+
+    /** Read-only mob navigation/cache diagnostics for trusted operator console output. */
+    public String mobAiDiagnosticsSummary() {
+        ru.nexora.world.MobPathCache.Stats cache = mobPathCache.stats();
+        ru.nexora.combat.MobStuckTracker.Stats stuck = mobStuckTracker.stats(Math.max(0L, nanoTime.getAsLong() / 1_000_000L));
+        ru.nexora.combat.LivingEntityAiService.Stats aiStats = livingEntityAi.stats();
+        StringBuilder result = new StringBuilder("Mob path cache: ")
+                .append("hits=").append(cache.hits())
+                .append(", misses=").append(cache.misses())
+                .append(", hitRate=").append(Math.round(cache.hitRate() * 1000.0) / 10.0).append('%')
+                .append(", recomputations=").append(cache.recomputations())
+                .append(", blocked=").append(cache.blockedWaypoints())
+                .append(", evictions=").append(cache.evictions())
+                .append(", entries=").append(cache.entries())
+                .append("\nMob stuck tracker: tracked=").append(stuck.tracked())
+                .append(", stuck=").append(stuck.stuck())
+                .append(", evictions=").append(stuck.evictions())
+                .append("\nMob AI load controller: ").append(mobAiLoadController.stats().summary())
+                .append("\nMob AI budget: ").append(mobAiLoadController.budgetStats().summary())
+                .append("\nMob AI tasks: ").append(mobAiTaskScheduler.stats().summary())
+                .append("\nHot paths: ").append(hotPathProfilerSummary())
+                .append("\nMob AI decision algorithm: decisions=").append(aiStats.decisionCount())
+                .append(", total=").append(aiStats.totalDecisionNanos()).append(" ns")
+                .append(", avg=").append(aiStats.averageDecisionNanos()).append(" ns")
+                .append(", last=").append(aiStats.lastDecisionNanos()).append(" ns")
+                .append(", max=").append(aiStats.maxDecisionNanos()).append(" ns")
+                .append(", failures=").append(aiStats.failures())
+                .append("\nMob fall tracker: ").append(mobFallTracker.stats().summary())
+                .append("\nMob jump controller: ").append(mobJumpController.stats().summary())
+                .append("\nMob climb controller: ").append(mobClimbController.stats().summary())
+                .append("\nMob spawners: ").append(world.mobSpawners().stats().summary())
+                .append("\nMob despawn tracker: tracked=").append(mobDespawnTracker.stats().tracked())
+                .append(", evictions=").append(mobDespawnTracker.stats().evictions());
+        ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
+        if (diagnostics == null) {
+            result.append("\nMob AI latency: diagnostics unavailable");
+        } else {
+            boolean found = false;
+            for (ru.nexora.ai.NexoraAiDiagnostics.LatencySummary latency : diagnostics.latencySummaries()) {
+                if (!latency.subsystem().equals("mob-ai")
+                        && !latency.subsystem().equals("mob-pathfinding")) continue;
+                found = true;
+                result.append("\n").append(latency.subsystem())
+                        .append(": samples=").append(latency.sampleCount())
+                        .append(", avg=").append(latency.averageNanos() / 1_000_000L).append(" ms")
+                        .append(", p95=").append(latency.p95Nanos() / 1_000_000L).append(" ms")
+                        .append(", max=").append(latency.maxNanos() / 1_000_000L).append(" ms");
+            }
+            if (!found) result.append("\nMob AI latency: waiting for measurements");
+        }
+        result.append("\nЭто накопительные счётчики и время подсистем, не TPS и не CPU.");
+        return result.toString();
+    }
+
+    /** Lists a small, bounded set of mobs that have made no meaningful movement progress. */
+    public String mobAiStuckSummary() {
+        long now = Math.max(0L, nanoTime.getAsLong() / 1_000_000L);
+        ru.nexora.combat.MobStuckTracker.Stats stats = mobStuckTracker.stats(now);
+        StringBuilder result = new StringBuilder("Застрявшие мобы: ")
+                .append(stats.stuck()).append(" (отслеживается ").append(stats.tracked()).append(')');
+        List<ru.nexora.combat.MobStuckTracker.StuckMob> stuck =
+                mobStuckTracker.stuck(now, 5);
+        if (stuck.isEmpty()) {
+            result.append("\nПодтверждённых случаев пока нет.");
+        } else {
+            for (ru.nexora.combat.MobStuckTracker.StuckMob mob : stuck) {
+                result.append("\n#").append(mob.runtimeId())
+                        .append(": ").append(mob.durationMillis() / 1000.0).append(" сек., попыток=")
+                        .append(mob.attempts());
+            }
+        }
+        result.append("\nОбнаружение только сообщает о проблеме; мобов система не телепортирует.");
+        return result.toString();
+    }
+
+    private void handleMobSpawnerCommand(String networkId, String arguments) {
+        String[] parts = arguments.isBlank() ? new String[0] : arguments.split("\\s+");
+        if (parts.length == 0 || parts[0].equalsIgnoreCase("list")) {
+            List<ru.nexora.world.MobSpawnerState> spawners = world.mobSpawners().snapshot();
+            if (spawners.isEmpty()) {
+                sendAiMessage(networkId, "§b[NEXORA SPAWNER] §fСпавнеров пока нет. "
+                        + "Создать: /ai spawner place <x> <y> <z> [mob] [delay]");
+                return;
+            }
+            StringBuilder result = new StringBuilder("§b[NEXORA SPAWNER] §fСпавнеры: ")
+                    .append(spawners.size());
+            for (ru.nexora.world.MobSpawnerState spawner : spawners.stream().limit(10).toList()) {
+                result.append("\\n").append(spawner.entityIdentifier()).append(" @ ")
+                        .append(spawner.x()).append(' ').append(spawner.y()).append(' ')
+                        .append(spawner.z()).append(" delay=").append(spawner.delayTicks());
+            }
+            sendAiMessage(networkId, result.toString());
+            return;
+        }
+        String action = parts[0].toLowerCase(Locale.ROOT);
+        if (action.equals("help")) {
+            sendAiMessage(networkId, "§b[NEXORA SPAWNER] §fКоманды: /ai spawner list; "
+                    + "/ai spawner place <x> <y> <z> [mob] [delay]; "
+                    + "/ai spawner set <x> <y> <z> <mob> <delay>; "
+                    + "/ai spawner remove <x> <y> <z>. Только для операторов.");
+            return;
+        }
+        try {
+            if (action.equals("place") && (parts.length == 4 || parts.length == 5 || parts.length == 6)) {
+                int x = Integer.parseInt(parts[1]);
+                int y = Integer.parseInt(parts[2]);
+                int z = Integer.parseInt(parts[3]);
+                String identifier = parts.length >= 5 ? normalizeSpawnerIdentifier(parts[4]) : "minecraft:zombie";
+                int delay = parts.length == 6 ? Integer.parseInt(parts[5])
+                        : ru.nexora.world.MobSpawnerState.DEFAULT_DELAY_TICKS;
+                world.setBlock(x, y, z, ru.nexora.world.BlockType.SPAWNER);
+                if (!world.mobSpawners().configure(x, y, z, identifier, delay,
+                        Math.max(0L, nanoTime.getAsLong() / 50_000_000L))) {
+                    world.setBlock(x, y, z, ru.nexora.world.BlockType.AIR);
+                    sendAiMessage(networkId, "§c[NEXORA SPAWNER] Не удалось настроить спавнер.");
+                    return;
+                }
+                broadcastBlockUpdate(x, y, z, ru.nexora.world.BlockType.SPAWNER);
+                sendAiMessage(networkId, "§a[NEXORA SPAWNER] Спавнер установлен: " + identifier
+                        + " (" + x + " " + y + " " + z + "), задержка " + delay + " тиков.");
+                return;
+            }
+            if (action.equals("set") && parts.length == 6) {
+                int x = Integer.parseInt(parts[1]);
+                int y = Integer.parseInt(parts[2]);
+                int z = Integer.parseInt(parts[3]);
+                String identifier = normalizeSpawnerIdentifier(parts[4]);
+                int delay = Integer.parseInt(parts[5]);
+                if (!world.mobSpawners().configure(x, y, z, identifier, delay,
+                        Math.max(0L, nanoTime.getAsLong() / 50_000_000L))) {
+                    sendAiMessage(networkId, "§c[NEXORA SPAWNER] Спавнер не найден или параметры неверны.");
+                    return;
+                }
+                sendAiMessage(networkId, "§a[NEXORA SPAWNER] Настройки обновлены.");
+                return;
+            }
+            if (action.equals("remove") && parts.length == 4) {
+                int x = Integer.parseInt(parts[1]);
+                int y = Integer.parseInt(parts[2]);
+                int z = Integer.parseInt(parts[3]);
+                if (world.getBlock(x, y, z) != ru.nexora.world.BlockType.SPAWNER) {
+                    sendAiMessage(networkId, "§c[NEXORA SPAWNER] В этой точке нет спавнера.");
+                    return;
+                }
+                world.setBlock(x, y, z, ru.nexora.world.BlockType.AIR);
+                broadcastBlockUpdate(x, y, z, ru.nexora.world.BlockType.AIR);
+                sendAiMessage(networkId, "§a[NEXORA SPAWNER] Спавнер удалён.");
+                return;
+            }
+        } catch (IllegalArgumentException exception) {
+            sendAiMessage(networkId, "§c[NEXORA SPAWNER] Неверные координаты, тип моба или задержка.");
+            return;
+        }
+        sendAiMessage(networkId, "§b[NEXORA SPAWNER] §fИспользуй /ai spawner help.");
+    }
+
+    private static String normalizeSpawnerIdentifier(String value) {
+        String identifier = value.contains(":") ? value.toLowerCase(Locale.ROOT)
+                : "minecraft:" + value.toLowerCase(Locale.ROOT);
+        if (!java.util.Set.of(
+                "minecraft:allay", "minecraft:armadillo", "minecraft:axolotl", "minecraft:bat",
+                "minecraft:bee", "minecraft:blaze", "minecraft:bogged", "minecraft:camel",
+                "minecraft:cat", "minecraft:cave_spider", "minecraft:chicken", "minecraft:cod",
+                "minecraft:cow", "minecraft:creeper", "minecraft:dolphin", "minecraft:donkey",
+                "minecraft:drowned", "minecraft:elder_guardian", "minecraft:enderman",
+                "minecraft:endermite", "minecraft:evoker", "minecraft:fox", "minecraft:frog",
+                "minecraft:ghast", "minecraft:glow_squid", "minecraft:goat", "minecraft:hoglin",
+                "minecraft:horse", "minecraft:husk", "minecraft:iron_golem", "minecraft:llama",
+                "minecraft:magma_cube", "minecraft:mooshroom", "minecraft:mule", "minecraft:ocelot",
+                "minecraft:panda", "minecraft:parrot", "minecraft:phantom", "minecraft:pig",
+                "minecraft:piglin", "minecraft:pillager", "minecraft:polar_bear",
+                "minecraft:pufferfish", "minecraft:rabbit", "minecraft:ravager", "minecraft:salmon",
+                "minecraft:sheep", "minecraft:shulker", "minecraft:silverfish", "minecraft:skeleton",
+                "minecraft:slime", "minecraft:sniffer", "minecraft:snow_golem", "minecraft:spider",
+                "minecraft:squid", "minecraft:stray", "minecraft:strider", "minecraft:tadpole",
+                "minecraft:trader_llama", "minecraft:tropical_fish", "minecraft:turtle",
+                "minecraft:vex", "minecraft:villager", "minecraft:vindicator",
+                "minecraft:wandering_trader", "minecraft:warden", "minecraft:witch",
+                "minecraft:wither", "minecraft:wither_skeleton", "minecraft:wolf",
+                "minecraft:zoglin", "minecraft:zombie", "minecraft:zombie_villager",
+                "minecraft:zombified_piglin").contains(identifier)) {
+            throw new IllegalArgumentException("Unsupported spawner mob");
+        }
+        return identifier;
+    }
+
+    private void handleAiGuardCommand(String networkId, SessionState state, String arguments) {
+        String[] parts = arguments.isBlank() ? new String[0] : arguments.split("\\s+", 2);
+        if (parts.length == 0 || parts[0].equalsIgnoreCase("status")) {
+            sendAiMessage(networkId, "§b[NEXORA AI GUARD] §f" + guardSummary()
+                    + "\n" + guardReviewSummary()
+                    + "\nДела: /ai guard cases; карточка: /ai guard case <ID>.");
+            return;
+        }
+        String action = parts[0].toLowerCase(Locale.ROOT);
+        if (action.equals("help")) {
+            sendAiMessage(networkId, "§b[NEXORA AI GUARD] §fКоманды: /ai guard, /ai guard cases, "
+                    + "/ai guard case <ID>, /ai guard confirm <ID>, /ai guard dismiss <ID>. "
+                    + "Подтверждение фиксирует решение модератора, но не применяет наказание.");
+            return;
+        }
+        if (action.equals("cases")) {
+            java.util.List<ru.nexora.ai.NexoraAiGuard.CombatCaseView> cases =
+                    aiGuard.combatCases(nanoTime.getAsLong());
+            if (cases.isEmpty()) {
+                sendAiMessage(networkId, "§b[NEXORA AI GUARD] §fОткрытых или сохранённых KillAura-дел нет.");
+                return;
+            }
+            StringBuilder result = new StringBuilder("§b[NEXORA AI GUARD] §fПоследние дела:");
+            for (ru.nexora.ai.NexoraAiGuard.CombatCaseView value : cases.stream().limit(8).toList()) {
+                result.append("\n").append(value.id()).append(" — ").append(value.displayName())
+                        .append(": ").append(value.hits()).append(" hits / 5s, ")
+                        .append(value.targetSwitches()).append(" переключений [")
+                        .append(value.status()).append("]");
+            }
+            result.append("\nОткрыть: /ai guard case <ID>");
+            sendAiMessage(networkId, result.toString());
+            return;
+        }
+        if (parts.length != 2 || parts[1].isBlank()) {
+            sendAiMessage(networkId, "§b[NEXORA AI GUARD] §fУкажи ID дела. Команда: /ai guard help.");
+            return;
+        }
+        String caseId = parts[1].trim();
+        if (action.equals("case")) {
+            ru.nexora.ai.NexoraAiGuard.CombatCaseView value =
+                    aiGuard.findCombatCase(caseId, nanoTime.getAsLong()).orElse(null);
+            if (value == null) {
+                sendAiMessage(networkId, "§b[NEXORA AI GUARD] §fДело не найдено или срок хранения истёк.");
+            } else {
+                sendAiMessage(networkId, "§b[NEXORA AI GUARD] §fДело " + value.id()
+                        + "\nИгрок: " + value.displayName()
+                        + "\nСигнал: " + value.hits() + " успешных попаданий / 5 секунд; "
+                        + value.targetSwitches() + " переключений цели."
+                        + "\nСтатус: " + value.status()
+                        + "\nРешение модератора: " + (value.reviewed() ? "уже зафиксировано" : "не принято")
+                        + "\nПодтверждение не запускает бан/кик и не меняет состояние игрока.");
+            }
+            return;
+        }
+        if (action.equals("confirm") || action.equals("dismiss")) {
+            String reviewerXuid = state.identity == null ? null : state.identity.xuid();
+            ru.nexora.ai.NexoraAiGuard.CombatCaseView value = aiGuard.reviewCombatCase(
+                    caseId, reviewerXuid, action.equals("confirm"), nanoTime.getAsLong()).orElse(null);
+            if (value == null) {
+                sendAiMessage(networkId, "§b[NEXORA AI GUARD] §fНе удалось изменить дело: проверь ID и убедись, что оно ещё OPEN.");
+            } else {
+                sendAiMessage(networkId, "§b[NEXORA AI GUARD] §fДело " + value.id()
+                        + (action.equals("confirm") ? " подтверждено модератором." : " помечено как ложное срабатывание.")
+                        + " Наказание автоматически не применялось.");
+            }
+            return;
+        }
+        sendAiMessage(networkId, "§b[NEXORA AI GUARD] §fНеизвестная команда. Используй /ai guard help.");
+    }
+
     public int activeSessionCount() {
         return sessions.size();
+    }
+
+    /** Number of active per-peer inbound framing channels, exposed for bounded-load diagnostics. */
+    public int activeInboundChannelCount() {
+        return inbound.activeChannelCount();
+    }
+
+    /** Aggregate frame/dispatch measurements for operator diagnostics and load tests. */
+    public NetherNetInboundPipeline.InboundStats inboundStats() {
+        return inbound.stats();
     }
 
     public long authenticatedPlayerCount() {
         return sessions.values().stream().filter(state -> state.loginAuthenticated).count();
     }
 
+    /** Immutable authenticated player identities for operator routing and diagnostics. */
+    public List<AuthenticatedPlayer> authenticatedPlayers() {
+        List<AuthenticatedPlayer> players = new ArrayList<>();
+        for (SessionState state : sessions.values()) {
+            synchronized (state) {
+                if (state.identity == null || !state.loginAuthenticated || !state.clientInitialized
+                        || state.rejected || state.transferFrozen) continue;
+                players.add(new AuthenticatedPlayer(
+                        state.identity.xuid(), state.identity.displayName(), state.entityId));
+            }
+        }
+        players.sort(java.util.Comparator.comparing(AuthenticatedPlayer::displayName,
+                String.CASE_INSENSITIVE_ORDER));
+        return List.copyOf(players);
+    }
+
     public long resourcePackReadyCount() {
         return sessions.values().stream().filter(state -> state.resourcePacksCompleted).count();
+    }
+
+    /** Read-only aggregate world/session counters for the authenticated operator assistant. */
+    public String adminRuntimeSummary() {
+        ru.nexora.combat.LivingEntityAiService.Stats ai = livingEntityAi.stats();
+        StringBuilder summary = new StringBuilder("players=").append(authenticatedPlayerCount())
+                .append(", sessions=").append(activeSessionCount())
+                .append(", mobs=").append(world.livingEntities().snapshot().size())
+                .append(", droppedItems=").append(world.itemEntities().snapshot().size())
+                .append(", mobAiDecisions=").append(ai.decisionCount())
+                .append(", mobAiAvgNs=").append(ai.averageDecisionNanos())
+                .append(", mobAiMaxNs=").append(ai.maxDecisionNanos())
+                .append(", mobAiFailures=").append(ai.failures());
+        ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
+        if (diagnostics != null) {
+            ru.nexora.ai.JvmResourceSnapshot resources = diagnostics.resourceSnapshot();
+            summary.append(", heapUsed=").append(resources.heapUsedBytes())
+                    .append(", heapCommitted=").append(resources.heapCommittedBytes())
+                    .append(", heapMax=").append(resources.heapMaxBytes())
+                    .append(", nonHeapUsed=").append(resources.nonHeapUsedBytes())
+                    .append(", threads=").append(resources.liveThreadCount())
+                    .append(", peakThreads=").append(resources.peakThreadCount());
+        }
+        return summary.toString();
     }
 
     /**
@@ -634,11 +1799,39 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private void handleCompleteMessage(NetherNetInboundPipeline.InboundMessage message) {
+        long processingStartedNanos = nanoTime.getAsLong();
         SessionState state = sessions.computeIfAbsent(message.networkId(), ignored -> new SessionState());
         state.combatLock.lock();
         try {
           synchronized (state) {
-            if (state.rejected) return;
+            if (state.rejected || state.transferFrozen) return;
+            if (state.identity != null) {
+                try {
+                    assertTransferNodeOwnership(state);
+                } catch (IOException | SecurityException ownershipLost) {
+                    state.rejected = true;
+                    state.loginAuthenticated = false;
+                    state.clientInitialized = false;
+                    releaseOnlinePlayerLease(state);
+                    removePlayerListEntry(message.networkId(), state);
+                    System.err.println("NEXORA: stopped Bedrock session after node ownership changed: "
+                            + ownershipLost.getMessage());
+                    return;
+                }
+            }
+            if (state.transferFence != null) {
+                try {
+                    state.transferFence.assertCurrent();
+                } catch (IOException staleFence) {
+                    state.rejected = true;
+                    state.loginAuthenticated = false;
+                    state.clientInitialized = false;
+                    removePlayerListEntry(message.networkId(), state);
+                    System.err.println("NEXORA: stopped Bedrock session after transfer ownership was lost: "
+                            + staleFence.getMessage());
+                    return;
+                }
+            }
 
             if (!state.compressionNegotiated) {
                 handleNetworkSettingsRequest(message, state);
@@ -649,6 +1842,20 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             boolean resourcePacksInfoWasSent = state.resourcePacksInfoSent;
             boolean resourcePackStackWasSent = state.resourcePackStackSent;
             for (BedrockPacket packet : packets) {
+                if (state.transferFence != null) {
+                    try {
+                        state.transferFence.assertCurrent();
+                    } catch (IOException staleFence) {
+                        state.rejected = true;
+                        state.loginAuthenticated = false;
+                        state.clientInitialized = false;
+                        releaseOnlinePlayerLease(state);
+                        removePlayerListEntry(message.networkId(), state);
+                        System.err.println("NEXORA: stopped Bedrock batch after transfer ownership was lost: "
+                                + staleFence.getMessage());
+                        return;
+                    }
+                }
                 switch (packet.packetId()) {
                     case BedrockLoginPacketParser.LOGIN_PACKET_ID -> handleLogin(message, state, packet);
                     case BedrockBatchCodec.CLIENT_TO_SERVER_HANDSHAKE_PACKET_ID ->
@@ -656,7 +1863,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     case BedrockBatchCodec.RESOURCE_PACK_CLIENT_RESPONSE_PACKET_ID ->
                             handleResourcePackResponse(message.networkId(), state, packet,
                                     resourcePacksInfoWasSent, resourcePackStackWasSent);
+                    case BedrockSubChunkCodec.SUB_CHUNK_REQUEST_PACKET_ID ->
+                            handleSubChunkRequest(message, state, packet);
                     case 0x71 -> handleClientInitialized(message, state, packet);
+                    case BedrockChunkRadiusCodec.REQUEST_PACKET_ID ->
+                            handleChunkRadiusRequest(message, state, packet);
                     case BedrockPlayerAuthInputCodec.PLAYER_AUTH_INPUT_PACKET_ID ->
                             handlePlayerAuthInput(message.networkId(), state, packet);
                     case BedrockPlayerActionCodec.PLAYER_ACTION_PACKET_ID ->
@@ -669,6 +1880,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             handleCraftingEvent(message, state, packet);
                     case BedrockMobEquipmentCodec.MOB_EQUIPMENT_PACKET_ID ->
                             handleMobEquipment(message, state, packet);
+                    case BedrockTextCodec.TEXT_PACKET_ID -> handleChatMessage(message, state, packet);
                     case BedrockCommandRequestCodec.COMMAND_REQUEST_PACKET_ID ->
                             handleCommandRequest(message, state, packet);
                     case BedrockModalFormCodec.MODAL_FORM_RESPONSE_PACKET_ID ->
@@ -682,6 +1894,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
           }
         } finally {
             state.combatLock.unlock();
+            ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
+            if (diagnostics != null) {
+                diagnostics.recordSlowOperation("bedrock-inbound",
+                        Math.max(0L, nanoTime.getAsLong() - processingStartedNanos), 50_000_000L);
+            }
         }
     }
 
@@ -1222,8 +2439,82 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         int chunkX = Math.floorDiv((int) Math.floor(x), 16);
         int chunkZ = Math.floorDiv((int) Math.floor(z), 16);
         sendPacket(networkId, BedrockStartGameCodec.createChunkPublisherUpdate(
-                (int) Math.floor(x), (int) Math.floor(y), (int) Math.floor(z)), true);
+                (int) Math.floor(x), (int) Math.floor(y), (int) Math.floor(z), state.chunkViewRadius), true);
         sendChunkArea(networkId, state, chunkX, chunkZ);
+    }
+
+    private void handleChatMessage(
+            NetherNetInboundPipeline.InboundMessage message, SessionState state, BedrockPacket packet
+    ) {
+        if (!message.reliable()) {
+            throw new SecurityException("TextPacket chat must arrive on ReliableDataChannel");
+        }
+        if (!state.loginAuthenticated || !state.clientInitialized || state.dead || state.vitals.dead()
+                || state.identity == null) {
+            throw new SecurityException("Chat arrived before the authenticated player was ready");
+        }
+
+        BedrockTextCodec.DecodedChat chat;
+        try {
+            chat = BedrockTextCodec.decodeChat(packet);
+        } catch (IllegalArgumentException exception) {
+            state.rejected = true;
+            throw new SecurityException("Malformed Bedrock chat TextPacket", exception);
+        }
+        if (!chat.xuid().isBlank() && !chat.xuid().equals(state.identity.xuid())) {
+            state.rejected = true;
+            throw new SecurityException("Chat XUID does not match the authenticated player");
+        }
+
+        String cleanMessage;
+        try {
+            cleanMessage = sanitizeChatMessage(chat.message());
+        } catch (SecurityException exception) {
+            state.rejected = true;
+            throw exception;
+        }
+        if (cleanMessage.isEmpty()) return;
+        long now = nanoTime.getAsLong();
+        if (!allowChatMessage(state, now)) return;
+
+        String displayName = state.identity.displayName();
+        if (displayName == null || displayName.isBlank()) displayName = "Player";
+        // XUID is intentionally empty in the outgoing packet until player-list replication
+        // is implemented; Bedrock clients otherwise may hide chat from unknown XUIDs.
+        BedrockPacket outgoing = BedrockTextCodec.createChatMessage(displayName, cleanMessage, "", "");
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            SessionState recipient = entry.getValue();
+            if (!recipient.loginAuthenticated || !recipient.clientInitialized || recipient.rejected) continue;
+            try {
+                sendPacket(entry.getKey(), outgoing, true);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to deliver chat message to " + entry.getKey()
+                        + ": " + exception.getMessage());
+            }
+        }
+    }
+
+    private static String sanitizeChatMessage(String message) {
+        StringBuilder clean = new StringBuilder(message.length());
+        message.codePoints().filter(codePoint -> !Character.isISOControl(codePoint))
+                .forEach(clean::appendCodePoint);
+        String result = clean.toString().strip();
+        if (result.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 512) {
+            throw new SecurityException("Chat message exceeds 512 UTF-8 bytes");
+        }
+        return result;
+    }
+
+    private static boolean allowChatMessage(SessionState state, long nowNanos) {
+        if (state.chatWindowStartedNanos == Long.MIN_VALUE
+                || nowNanos < state.chatWindowStartedNanos
+                || nowNanos - state.chatWindowStartedNanos >= CHAT_RATE_WINDOW_NANOS) {
+            state.chatWindowStartedNanos = nowNanos;
+            state.chatMessagesInWindow = 0;
+        }
+        if (state.chatMessagesInWindow >= MAX_CHAT_MESSAGES_PER_WINDOW) return false;
+        state.chatMessagesInWindow++;
+        return true;
     }
 
     private void handleCommandRequest(
@@ -1251,7 +2542,248 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             openEquipmentMenu(message.networkId(), state, "");
             return;
         }
+        if (normalized.startsWith("/ai spawner") || normalized.startsWith("/ai mob")
+                || normalized.startsWith("/ai guard") || normalized.equals("/ai admin")
+                || normalized.startsWith("/ai admin ")) {
+            sendAiMessage(message.networkId(),
+                    "§c[NEXORA AI] Технические сведения и диагностика доступны только через консоль сервера.");
+            return;
+        }
+        if (normalized.equals("/ai")) {
+            if (aiAssistant == null || !aiAssistant.isEnabled()) {
+                sendAiMessage(message.networkId(), "§b[NEXORA AI] §fПомощник сейчас недоступен. Попробуй позже или обратись к администрации.");
+            } else {
+                openAiForm(message.networkId(), state);
+            }
+            return;
+        }
+        if (normalized.startsWith("/ai ")) {
+            handleAiChat(message.networkId(), state, command.command().trim().substring(4).trim(), false);
+            return;
+        }
         packetSink.accept(new PacketEvent(message.networkId(), message.channelLabel(), packet));
+    }
+
+    /** Installs the optional runtime diagnostics observer. */
+    public void setAiDiagnostics(ru.nexora.ai.NexoraAiDiagnostics diagnostics) {
+        this.aiDiagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
+    }
+
+    /** Installs the optional in-game assistant. */
+    public void setAiAssistant(ru.nexora.ai.NexoraAiAssistant assistant) {
+        this.aiAssistant = Objects.requireNonNull(assistant, "assistant");
+    }
+
+    private void openAiForm(String networkId, SessionState state) {
+        long next = nextFormId.getAndIncrement();
+        if (next < 1 || next > Integer.MAX_VALUE) {
+            throw new IllegalStateException("Bedrock form ID space exhausted");
+        }
+        com.fasterxml.jackson.databind.node.ObjectNode form = MAPPER.createObjectNode();
+        form.put("type", "custom_form");
+        form.put("title", "NEXORA AI");
+        com.fasterxml.jackson.databind.node.ArrayNode content = form.putArray("content");
+        content.addObject().put("type", "input")
+                .put("text", "Задай вопрос игровому помощнику")
+                .put("placeholder", "Например: как работает копьё?")
+                .put("default", "");
+        state.pendingAiFormId = (int) next;
+        try {
+            sendPacket(networkId, BedrockModalFormCodec.createRequest(
+                    (int) next, MAPPER.writeValueAsString(form)), true);
+        } catch (IOException exception) {
+            state.pendingAiFormId = 0;
+            throw new IllegalStateException("Unable to open NexoraAI chat form", exception);
+        }
+    }
+
+    private boolean isAiAdmin(SessionState state) {
+        ru.nexora.ai.NexoraAiAssistant assistant = aiAssistant;
+        return assistant != null && state.identity != null && assistant.isAdmin(state.identity.xuid());
+    }
+
+    private void handleAiChat(String networkId, SessionState state, String prompt, boolean admin) {
+        if (prompt.equalsIgnoreCase("help")) {
+            sendAiMessage(networkId, "§b[NEXORA AI] §fКоманды: /ai, /ai <вопрос>, /ai clear, /ai status. "
+                    + "Помогу с игровыми командами, правилами, механиками и публичными возможностями сервера.");
+            return;
+        }
+        if (admin && handleAiAdminProposalCommand(networkId, state, prompt)) return;
+        if (prompt.equalsIgnoreCase("clear") || prompt.equalsIgnoreCase("reset")) {
+            String conversationId = state.identity != null && state.identity.xuid() != null
+                    && !state.identity.xuid().isBlank() ? state.identity.xuid() : networkId;
+            ru.nexora.ai.NexoraAiAssistant assistant = aiAssistant;
+            if (assistant != null) assistant.clearConversation(conversationId, admin);
+            sendAiMessage(networkId, "§b[NEXORA AI] §fКонтекст этого диалога очищен.");
+            return;
+        }
+        if (prompt.equalsIgnoreCase("status")) {
+            ru.nexora.ai.NexoraAiAssistant configured = aiAssistant;
+            sendAiMessage(networkId, "§b[NEXORA AI] §fСтатус: "
+                    + (configured != null && configured.isEnabled() ? "готов к работе" : "временно недоступен"));
+            return;
+        }
+        if (prompt.isBlank()) {
+            sendAiMessage(networkId, "§b[NEXORA AI] §fНапиши вопрос после /ai.");
+            return;
+        }
+        if (prompt.length() > 600) {
+            sendAiMessage(networkId, "§b[NEXORA AI] §fМаксимальная длина вопроса — 600 символов.");
+            return;
+        }
+        if (admin && !isAiAdmin(state)) {
+            sendAiMessage(networkId, "§c[NEXORA AI] Нет доступа к режиму администрации.");
+            return;
+        }
+        ru.nexora.ai.NexoraAiAssistant assistant = aiAssistant;
+        if (assistant == null || !assistant.isEnabled()) {
+            sendAiMessage(networkId, "§b[NEXORA AI] §fПомощник сейчас недоступен. Обратись к администрации.");
+            return;
+        }
+        String playerName = state.identity == null || state.identity.displayName() == null
+                ? "Игрок" : state.identity.displayName();
+        String conversationId = state.identity != null && state.identity.xuid() != null
+                && !state.identity.xuid().isBlank() ? state.identity.xuid() : networkId;
+        ru.nexora.ai.NexoraAiAssistant.AskResult result = assistant.ask(
+                conversationId, playerName, prompt, admin, reply -> {
+                    SessionState current = sessions.get(networkId);
+                    if (current == state && current.loginAuthenticated && current.clientInitialized) {
+                        sendAiMessage(networkId, "§b[NEXORA AI] §f" + reply);
+                    }
+                });
+        if (result == ru.nexora.ai.NexoraAiAssistant.AskResult.RATE_LIMITED) {
+            sendAiMessage(networkId, "§b[NEXORA AI] §fПодожди несколько секунд перед следующим вопросом.");
+        } else if (result == ru.nexora.ai.NexoraAiAssistant.AskResult.ACCEPTED) {
+            sendAiMessage(networkId, "§b[NEXORA AI] §fДумаю...");
+        } else {
+            sendAiMessage(networkId, "§b[NEXORA AI] §fИИ не настроен.");
+        }
+    }
+
+    private boolean handleAiAdminProposalCommand(String networkId, SessionState state, String prompt) {
+        if (!prompt.equalsIgnoreCase("proposals")
+                && !prompt.toLowerCase(Locale.ROOT).startsWith("plan ")
+                && !prompt.toLowerCase(Locale.ROOT).startsWith("proposal ")
+                && !prompt.toLowerCase(Locale.ROOT).startsWith("approve ")
+                && !prompt.toLowerCase(Locale.ROOT).startsWith("reject ")) {
+            return false;
+        }
+        if (!isAiAdmin(state)) {
+            sendAiMessage(networkId, "§c[NEXORA AI] Нет доступа к предложениям исправлений.");
+            return true;
+        }
+        ru.nexora.ai.NexoraAiAssistant assistant = aiAssistant;
+        if (assistant == null) {
+            sendAiMessage(networkId, "§b[NEXORA AI] §fСервис NexoraAI недоступен.");
+            return true;
+        }
+
+        String normalized = prompt.trim();
+        String lower = normalized.toLowerCase(Locale.ROOT);
+        if (lower.equals("proposals")) {
+            java.util.List<ru.nexora.ai.NexoraAiRepairProposals.Proposal> proposals =
+                    assistant.repairProposals(state.identity.xuid());
+            if (proposals.isEmpty()) {
+                sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §fПредложений пока нет.");
+                return true;
+            }
+            StringBuilder listing = new StringBuilder("§b[NEXORA AI ADMIN] §fПредложения:");
+            for (ru.nexora.ai.NexoraAiRepairProposals.Proposal proposal : proposals.stream().limit(8).toList()) {
+                listing.append("\n").append(proposal.id()).append(" — ")
+                        .append(repairProposalStatus(proposal.status()));
+            }
+            sendAiMessage(networkId, listing.toString());
+            return true;
+        }
+
+        if (lower.startsWith("plan ")) {
+            if (!assistant.isEnabled()) {
+                sendAiMessage(networkId, "§b[NEXORA AI] §fТехнические планы доступны только через консоль сервера.");
+                return true;
+            }
+            String issue = normalized.substring(5).trim();
+            if (issue.isEmpty() || issue.length() > 300) {
+                sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §fУкажи проблему (1–300 символов).");
+                return true;
+            }
+            String xuid = state.identity.xuid();
+            String operatorName = state.identity.displayName() == null ? "Оператор" : state.identity.displayName();
+            ru.nexora.ai.NexoraAiAssistant.AskResult result = assistant.createRepairProposal(
+                    xuid, operatorName, issue, proposal -> {
+                        SessionState current = sessions.get(networkId);
+                        if (current != state || !current.loginAuthenticated || !current.clientInitialized) return;
+                        if (proposal == null) {
+                            sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §fНе удалось создать план. Проверь ответ провайдера и повтори позже.");
+                        } else {
+                            sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §fСоздано " + proposal.id()
+                                    + " (ожидает проверки). Одобрение не применяет изменения. "
+                                    + "Посмотреть: /ai admin proposal " + proposal.id());
+                        }
+                    });
+            if (result == ru.nexora.ai.NexoraAiAssistant.AskResult.RATE_LIMITED) {
+                sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §fПодожди несколько секунд.");
+            } else if (result == ru.nexora.ai.NexoraAiAssistant.AskResult.ACCEPTED) {
+                sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §fГотовлю план. Он будет только рекомендацией.");
+            } else {
+                sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §fИИ не настроен.");
+            }
+            return true;
+        }
+
+        String[] parts = normalized.split("\\s+", 2);
+        if (parts.length != 2 || parts[1].isBlank()) {
+            sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §fУкажи ID предложения.");
+            return true;
+        }
+        String id = parts[1].trim();
+        if (lower.startsWith("proposal ")) {
+            ru.nexora.ai.NexoraAiRepairProposals.Proposal proposal =
+                    assistant.repairProposal(state.identity.xuid(), id).orElse(null);
+            if (proposal == null) {
+                sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §fПредложение не найдено или истекло.");
+            } else {
+                sendAiMessage(networkId, "§b[NEXORA AI ADMIN] §f" + proposal.id() + " — "
+                        + repairProposalStatus(proposal.status()) + "\nСоздал: " + proposal.requesterXuid()
+                        + "\nРешение: " + (proposal.reviewedByXuid() == null ? "ещё не принято"
+                        : proposal.reviewedByXuid() + " в " + proposal.reviewedAt())
+                        + "\nПроблема: " + proposal.issue() + "\nПлан: " + proposal.plan());
+            }
+            return true;
+        }
+        if (lower.startsWith("approve ")) {
+            ru.nexora.ai.NexoraAiRepairProposals.Proposal proposal =
+                    assistant.approveRepairProposal(state.identity.xuid(), id).orElse(null);
+            sendAiMessage(networkId, proposal == null
+                    ? "§b[NEXORA AI ADMIN] §fНе удалось одобрить: проверь ID и статус."
+                    : "§b[NEXORA AI ADMIN] §f" + proposal.id()
+                    + " одобрено только для ручной проверки. Ничего не применено.");
+            return true;
+        }
+        if (lower.startsWith("reject ")) {
+            ru.nexora.ai.NexoraAiRepairProposals.Proposal proposal =
+                    assistant.rejectRepairProposal(state.identity.xuid(), id).orElse(null);
+            sendAiMessage(networkId, proposal == null
+                    ? "§b[NEXORA AI ADMIN] §fНе удалось отклонить: проверь ID и статус."
+                    : "§b[NEXORA AI ADMIN] §f" + proposal.id() + " отклонено.");
+            return true;
+        }
+        return false;
+    }
+
+    private static String repairProposalStatus(ru.nexora.ai.NexoraAiRepairProposals.Status status) {
+        return switch (status) {
+            case PENDING_REVIEW -> "ожидает проверки";
+            case APPROVED_FOR_MANUAL_REVIEW -> "одобрено для ручной проверки";
+            case REJECTED -> "отклонено";
+        };
+    }
+
+    private void sendAiMessage(String networkId, String message) {
+        try {
+            sendPacket(networkId, BedrockTextCodec.createSystemMessage(message), true);
+        } catch (RuntimeException exception) {
+            System.err.println("NEXORA AI: unable to send reply: " + exception.getMessage());
+        }
     }
 
     private void handleModalFormResponse(
@@ -1268,6 +2800,19 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             response = BedrockModalFormCodec.decodeResponse(packet);
         } catch (IllegalArgumentException exception) {
             throw new SecurityException("Malformed Bedrock ModalFormResponse", exception);
+        }
+        if (state.pendingAiFormId != 0 && state.pendingAiFormId == response.formId()) {
+            state.pendingAiFormId = 0;
+            if (response.cancelled()) return;
+            try {
+                com.fasterxml.jackson.databind.JsonNode answer = MAPPER.readTree(response.responseJson());
+                if (answer != null && answer.isArray() && answer.size() > 0 && answer.get(0).isTextual()) {
+                    handleAiChat(message.networkId(), state, answer.get(0).asText().trim(), false);
+                }
+            } catch (IOException exception) {
+                throw new SecurityException("Invalid JSON in NexoraAI form response", exception);
+            }
+            return;
         }
         PendingEquipmentForm pending = state.pendingEquipmentForm;
         if (pending == null || pending.formId() != response.formId()) return;
@@ -1599,6 +3144,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 double dy = target.positionY - attacker.positionY;
                 double dz = target.positionZ - attacker.positionZ;
                 double distanceSquared = dx * dx + dy * dy + dz * dz;
+                aiGuard.recordOutOfReachAttack(
+                        attacker.identity == null ? networkId : attacker.identity.xuid(),
+                        Math.sqrt(distanceSquared), maximumWeaponReach(weapon), now);
                 if (!isWithinWeaponReach(weapon, distanceSquared)) return;
                 int targetBlockX = (int) Math.floor(target.positionX);
                 int targetBlockY = (int) Math.floor(target.positionY + 1.0);
@@ -1633,6 +3181,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 if (finalDamage > 0.0f) {
                     applyDamage(targetNetworkId, target, finalDamage,
                             target.lastInputTick, "death.attack.generic");
+                    aiGuard.recordSuccessfulAttack(
+                            attacker.identity == null ? networkId : attacker.identity.xuid(),
+                            attacker.identity == null ? null : attacker.identity.displayName(),
+                            target.identity == null ? targetNetworkId : target.identity.xuid(), now);
                 }
                 applyKnockback(targetNetworkId, target, attacker,
                         Math.max(effect.knockbackLevel(),
@@ -1683,6 +3235,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         double dy = target.y() - attacker.positionY;
         double dz = target.z() - attacker.positionZ;
         double distanceSquared = dx * dx + dy * dy + dz * dz;
+        aiGuard.recordOutOfReachAttack(
+                attacker.identity == null ? attackerNetworkId : attacker.identity.xuid(),
+                Math.sqrt(distanceSquared), maximumWeaponReach(weapon), nowNanos);
         if (!isWithinWeaponReach(weapon, distanceSquared)) return;
         int targetBlockX = (int) Math.floor(target.x());
         int targetBlockY = (int) Math.floor(target.y() + 1.0);
@@ -1708,16 +3263,24 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                                 : (float) attacker.physicsState.fallDistance());
         var damage = world.livingEntities().damage(target.runtimeId(), effect.damage()).orElse(null);
         if (damage == null) return;
+        aiGuard.recordSuccessfulAttack(
+                attacker.identity == null ? attackerNetworkId : attacker.identity.xuid(),
+                attacker.identity == null ? null : attacker.identity.displayName(),
+                "entity:" + target.runtimeId(), nowNanos);
         broadcastPacketExcept(attackerNetworkId,
                 BedrockAnimateCodec.createSwing(attacker.entityId, BedrockAnimateCodec.MAIN_HAND));
         applySpearLunge(attackerNetworkId, attacker, weapon);
         if (damage.killed()) {
             grantMobRewards(attackerNetworkId, attacker, target, weapon == null ? 0 : weapon.enchantments().getOrDefault("minecraft:looting", 0));
-            nextMobAttackMillis.remove(target.runtimeId());
+            cleanupLivingEntityRuntimeState(target.runtimeId());
             broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(target.uniqueId()));
             return;
         }
         livingEntityAggroTargets.put(target.runtimeId(), attackerNetworkId);
+        long aggroNowMillis = Math.max(0L, nowNanos / 1_000_000L);
+        livingEntityAggroExpiresAtMillis.put(target.runtimeId(),
+                aggroNowMillis > Long.MAX_VALUE - MOB_AGGRO_RETENTION_MILLIS
+                        ? Long.MAX_VALUE : aggroNowMillis + MOB_AGGRO_RETENTION_MILLIS);
         if (effect.fireDurationSeconds() > 0) {
             livingEntityKillCredit.put(target.runtimeId(), new MobKillCredit(attackerNetworkId,
                     weapon.enchantments().getOrDefault("minecraft:looting", 0)));
@@ -1809,11 +3372,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     private void tickWorldLivingActors(long tick) {
         long nowMillis = Math.max(0, nanoTime.getAsLong() / 1_000_000L);
+        tickPlayerPoisonEffects(tick);
         for (WorldLivingEntityManager.DamageResult result : world.livingEntities().tickFire(nowMillis)) {
             WorldLivingEntity entity = result.current();
             if (result.killed()) {
-                nextMobAttackMillis.remove(entity.runtimeId());
-                MobKillCredit credit = livingEntityKillCredit.remove(entity.runtimeId());
+                MobKillCredit credit = livingEntityKillCredit.get(entity.runtimeId());
+                cleanupLivingEntityRuntimeState(entity.runtimeId());
                 SessionState killer = credit == null ? null : sessions.get(credit.networkId());
                 if (killer != null) {
                     killer.combatLock.lock();
@@ -1835,93 +3399,409 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         long previousTick = lastLivingAiTickMillis.get();
         if (previousTick != Long.MIN_VALUE && nowMillis - previousTick < 50) return;
         if (!lastLivingAiTickMillis.compareAndSet(previousTick, nowMillis)) return;
-        tickLivingEntityAi(nowMillis, tick);
+        long aiStartedNanos = nanoTime.getAsLong();
+        try {
+            tickLivingEntityAi(nowMillis, tick, aiStartedNanos);
+        } catch (RuntimeException failure) {
+            ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
+            if (diagnostics != null) diagnostics.recordFailure(failure);
+            throw failure;
+        } finally {
+            long elapsedNanos = Math.max(0L, nanoTime.getAsLong() - aiStartedNanos);
+            hotPathProfiler.record(ru.nexora.ai.HotPathProfiler.Path.WORLD_ENTITY_TICK, elapsedNanos);
+            mobAiLoadController.updateAdaptiveBudget(elapsedNanos);
+            ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
+            if (diagnostics != null) {
+                diagnostics.recordSlowOperation("mob-ai", elapsedNanos, 50_000_000L);
+            }
+        }
     }
 
-    private void tickLivingEntityAi(long nowMillis, long tick) {
+    private void tickLivingEntityAi(long nowMillis, long tick, long aiStartedNanos) {
         List<ru.nexora.combat.LivingEntityAiService.PlayerTarget> targets = new ArrayList<>();
+        List<ru.nexora.world.WorldChunkResidencyManager.PlayerChunk> playerChunks = new ArrayList<>();
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
             SessionState player = entry.getValue();
             if (!player.loginAuthenticated || !player.clientInitialized || !player.positionInitialized
                     || player.dead || player.vitals.dead()) continue;
             targets.add(new ru.nexora.combat.LivingEntityAiService.PlayerTarget(
                     entry.getKey(), player.positionX, player.positionY, player.positionZ, true));
+            playerChunks.add(new ru.nexora.world.WorldChunkResidencyManager.PlayerChunk(
+                    Math.floorDiv((int) Math.floor(player.positionX), 16),
+                    Math.floorDiv((int) Math.floor(player.positionZ), 16),
+                    player.chunkViewRadius));
         }
-        for (WorldLivingEntity mob : world.livingEntities().snapshot()) {
-            if ("minecraft:creeper".equals(mob.identifier())
-                    && tickCreeperBehavior(mob, targets, nowMillis, tick)) {
-                continue;
+        // One spatial index per world tick replaces O(mobs * players) full-list
+        // target scans with a bounded 3x3 cell lookup and O(1) provoker lookup.
+        ru.nexora.combat.PlayerTargetIndex playerTargetIndex =
+                new ru.nexora.combat.PlayerTargetIndex(targets);
+        Set<WorldChunkResidencyManager.ChunkCoordinate> entityChunks = new HashSet<>();
+        for (WorldLivingEntity entity : world.livingEntities().snapshot()) {
+            entityChunks.add(new WorldChunkResidencyManager.ChunkCoordinate(
+                    Math.floorDiv((int) Math.floor(entity.x()), 16),
+                    Math.floorDiv((int) Math.floor(entity.z()), 16)));
+        }
+        long residencyStartedNanos = nanoTime.getAsLong();
+        WorldChunkResidencyManager.ResidencyPlan residencyPlan =
+                chunkResidency.update(playerChunks, entityChunks, Math.max(0L, nowMillis / 50L));
+        world.applyChunkResidencyPlan(residencyPlan);
+        hotPathProfiler.record(ru.nexora.ai.HotPathProfiler.Path.CHUNK_RESIDENCY,
+                Math.max(0L, nanoTime.getAsLong() - residencyStartedNanos));
+        ru.nexora.ai.NexoraAiDiagnostics worldDiagnostics = aiDiagnostics;
+        if (worldDiagnostics != null) {
+            ru.nexora.combat.MobAiLoadController.Stats schedulerStats = mobAiLoadController.stats();
+            ru.nexora.combat.MobAiLoadController.BudgetStats budgetStats =
+                    mobAiLoadController.budgetStats();
+            worldDiagnostics.recordWorldRuntimeSnapshot(
+                    residencyPlan.residentCount(), world.loadedChunkCount(),
+                    world.livingEntities().size(),
+                    schedulerStats.fullRateUpdates(), schedulerStats.deferredUpdates(),
+                    budgetStats.deferredTasks(), budgetStats.consumedNanos());
+        }
+        List<ru.nexora.world.MobSpawnerManager.PlayerPosition> spawnerPlayers = new ArrayList<>();
+        for (ru.nexora.combat.LivingEntityAiService.PlayerTarget player : targets) {
+            spawnerPlayers.add(new ru.nexora.world.MobSpawnerManager.PlayerPosition(
+                    player.x(), player.y(), player.z()));
+        }
+        world.mobSpawners().tick(world, Math.max(0L, nowMillis / 50L), spawnerPlayers, request -> {
+            try {
+                spawnLivingEntity(request.identifier(), mobMaxHealth(request.identifier()),
+                        request.x(), request.y(), request.z());
+                return true;
+            } catch (IllegalStateException capacityReached) {
+                return false;
             }
-            if (tickRangedMobBehavior(mob, targets, nowMillis)) continue;
-            long nextAttackAt = nextMobAttackMillis.getOrDefault(mob.runtimeId(), 0L);
-            ru.nexora.combat.LivingEntityAiService.Decision decision =
-                    livingEntityAi.decide(mob, targets, nowMillis, nextAttackAt,
-                            livingEntityAggroTargets.get(mob.runtimeId()));
-            if (decision.attack()) {
-                if (damagePlayerFromMob(decision.targetNetworkId(), mob, decision.attackDamage(), tick)) {
-                    nextMobAttackMillis.put(mob.runtimeId(),
-                            nowMillis + ru.nexora.combat.LivingEntityAiService.ATTACK_COOLDOWN_MILLIS);
+        });
+        for (WorldLivingEntity mob : world.livingEntities().snapshot()) {
+            if (!chunkResidency.isResidentAtBlockPosition(mob.x(), mob.z())
+                    || !ru.nexora.world.WorldPathfinder.isMobFootprintLoaded(world, mob.x(), mob.z())) {
+                // A fuse must not keep advancing while its mob is outside loaded world space.
+                if ("minecraft:creeper".equals(mob.identifier())) {
+                    mobFuseTracker.clear(mob.runtimeId());
                 }
                 continue;
             }
-            if (!decision.moving()) continue;
+            WorldLivingEntity beforePhysics = mob;
+            ru.nexora.combat.MobPhysicsService.Result physics = mobPhysics.tick(world, mob);
+            mob = physics.entity();
+            boolean velocityChanged = beforePhysics.velocityX() != mob.velocityX()
+                    || beforePhysics.velocityY() != mob.velocityY()
+                    || beforePhysics.velocityZ() != mob.velocityZ();
+            if (physics.moved()) mobStuckTracker.clear(mob.runtimeId());
+            if (physics.moved() || velocityChanged) {
+                float physicsYaw = (float) Math.toDegrees(
+                        Math.atan2(-mob.velocityX(), mob.velocityZ()));
+                broadcastLivingActorPacket(BedrockMoveActorAbsoluteCodec.create(
+                        mob.runtimeId(), mob.x(), mob.y(), mob.z(), 0.0f,
+                        physicsYaw, physicsYaw, physics.grounded()));
+            }
+            ru.nexora.combat.MobFallTracker.Result fall =
+                    mobFallTracker.update(mob.runtimeId(), mob.y(), physics.grounded(),
+                            ru.nexora.combat.LivingEntityAiService.isFlyingMob(mob.identifier())
+                                    || "minecraft:slime".equals(mob.identifier())
+                                    || "minecraft:magma_cube".equals(mob.identifier()));
+            if (fall.damage() > 0) {
+                WorldLivingEntityManager.DamageResult fallDamage =
+                        world.livingEntities().damage(mob.runtimeId(), fall.damage()).orElse(null);
+                if (fallDamage != null && fallDamage.killed()) {
+                    cleanupLivingEntityRuntimeState(mob.runtimeId());
+                    broadcastLivingActorPacket(
+                            BedrockAddItemActorCodec.createRemoveActor(mob.uniqueId()));
+                    continue;
+                }
+                if (fallDamage != null) {
+                    mob = fallDamage.current();
+                    broadcastLivingActorPacket(BedrockVitalsCodec.createActorHealthUpdate(
+                            mob.runtimeId(), mob.health(), mob.maxHealth(), Math.max(0, tick)));
+                }
+            }
+            long targetingStartedNanos = nanoTime.getAsLong();
+            ru.nexora.combat.LivingEntityAiService.PlayerTarget nearestPlayer =
+                    playerTargetIndex.nearestWithinRange(mob);
+            hotPathProfiler.record(ru.nexora.ai.HotPathProfiler.Path.MOB_TARGETING,
+                    Math.max(0L, nanoTime.getAsLong() - targetingStartedNanos));
+            if ("minecraft:creeper".equals(mob.identifier())
+                    && tickCreeperBehavior(mob, nearestPlayer, nowMillis, tick)) {
+                mobAiLoadController.recordScheduled(mob.runtimeId());
+                mobAiTaskScheduler.recordRun(ru.nexora.combat.MobAiTaskScheduler.Task.COMBAT);
+                mobStuckTracker.clear(mob.runtimeId());
+                continue;
+            }
+            if (tickGuardianBeamBehavior(mob, nearestPlayer, nowMillis, tick)
+                    || tickFireballMobBehavior(mob, nearestPlayer, nowMillis)
+                    || tickRangedMobBehavior(mob, nearestPlayer, nowMillis)) {
+                mobAiLoadController.recordScheduled(mob.runtimeId());
+                mobAiTaskScheduler.recordRun(ru.nexora.combat.MobAiTaskScheduler.Task.COMBAT);
+                mobStuckTracker.clear(mob.runtimeId());
+                continue;
+            }
+            double nearestPlayerDistanceSquared = Double.POSITIVE_INFINITY;
+            if (nearestPlayer != null) {
+                double dx = nearestPlayer.x() - mob.x();
+                double dy = nearestPlayer.y() - mob.y();
+                double dz = nearestPlayer.z() - mob.z();
+                nearestPlayerDistanceSquared = dx * dx + dy * dy + dz * dz;
+            }
+            if (mobDespawnTracker.shouldDespawn(mob.runtimeId(),
+                    ru.nexora.combat.LivingEntityAiService.isHostile(mob.identifier()),
+                    nearestPlayerDistanceSquared, nowMillis)) {
+                despawnLivingEntity(mob.runtimeId());
+                continue;
+            }
+            String provokedBy = activeMobProvoker(mob.runtimeId(), nowMillis);
+            boolean hasActiveTarget = provokedBy != null;
+            // Use the server's monotonic 50 ms AI cadence, not a client-provided input tick.
+            // Different players have independent input counters and must not perturb mob scheduling.
+            long serverAiTick = Math.max(0L, nowMillis / 50L);
+            ru.nexora.combat.MobAiLoadController.Priority basePriority =
+                    mobAiLoadController.priority(nearestPlayerDistanceSquared, hasActiveTarget, false);
+            ru.nexora.combat.MobAiLoadController.Priority aiPriority =
+                    mobAiLoadController.effectivePriority(mob.runtimeId(), basePriority);
+            boolean starvationPromoted = aiPriority == ru.nexora.combat.MobAiLoadController.Priority.HIGH
+                    && basePriority != ru.nexora.combat.MobAiLoadController.Priority.HIGH;
+            if (!mobAiLoadController.shouldUpdate(mob.runtimeId(), serverAiTick,
+                    nearestPlayerDistanceSquared, hasActiveTarget || starvationPromoted)) {
+                mobAiLoadController.recordDeferred(mob.runtimeId());
+                mobAiTaskScheduler.recordDeferral(ru.nexora.combat.MobAiTaskScheduler.Task.NAVIGATION);
+                continue;
+            }
+            long budgetElapsed = Math.max(0L, nanoTime.getAsLong() - aiStartedNanos);
+            if (mobAiTaskScheduler.admit(ru.nexora.combat.MobAiTaskScheduler.Task.NAVIGATION,
+                    aiPriority, hasActiveTarget, budgetElapsed, mobAiLoadController.aiBudgetNanos())
+                    == ru.nexora.combat.MobAiTaskScheduler.Admission.DEFER) {
+                mobAiLoadController.recordDeferred(mob.runtimeId());
+                continue;
+            }
+            if (!mobAiLoadController.admit(mob.runtimeId(), serverAiTick,
+                    nearestPlayerDistanceSquared, hasActiveTarget, aiPriority, budgetElapsed)) {
+                mobAiLoadController.recordDeferred(mob.runtimeId());
+                continue;
+            }
+            long nextAttackAt = nextMobAttackMillis.getOrDefault(mob.runtimeId(), 0L);
+            long decisionStartedNanos = nanoTime.getAsLong();
+            ru.nexora.combat.LivingEntityAiService.Decision decision =
+                    livingEntityAi.decide(mob, targets, nowMillis, nextAttackAt,
+                            provokedBy, nearestPlayer, playerTargetIndex.find(provokedBy));
+            double projectileRange = ru.nexora.combat.LivingEntityAiService
+                    .projectileRangeFor(mob.identifier());
+            if (nearestPlayer != null && projectileRange > 0
+                    && nearestPlayerDistanceSquared <= projectileRange * projectileRange) {
+                double eyeHeight = "minecraft:ghast".equals(mob.identifier()) ? 1.8 : 1.2;
+                if (!WorldRaycast.hasLineOfSightInLoadedChunks(world,
+                        mob.x(), mob.y() + eyeHeight, mob.z(),
+                        (int) Math.floor(nearestPlayer.x()),
+                        (int) Math.floor(nearestPlayer.y() + 1.0),
+                        (int) Math.floor(nearestPlayer.z()))) {
+                    decision = livingEntityAi.approach(mob, nearestPlayer);
+                }
+            }
+            long decisionElapsedNanos = Math.max(0L, nanoTime.getAsLong() - decisionStartedNanos);
+            mobAiLoadController.recordBudgetNanos(decisionElapsedNanos);
+            hotPathProfiler.record(ru.nexora.ai.HotPathProfiler.Path.MOB_AI_DECISION, decisionElapsedNanos);
+            if (decision.attack()) {
+                mobAiLoadController.recordScheduled(mob.runtimeId());
+                mobAiTaskScheduler.admit(ru.nexora.combat.MobAiTaskScheduler.Task.COMBAT,
+                        aiPriority, true, Math.max(0L, nanoTime.getAsLong() - aiStartedNanos),
+                        mobAiLoadController.aiBudgetNanos());
+                mobStuckTracker.clear(mob.runtimeId());
+                // Projectile attacks are executed only by the line-of-sight-aware
+                // ranged handlers above; never convert a blocked shot into melee damage.
+                if (decision.attackStyle() == ru.nexora.combat.LivingEntityAiService.AttackStyle.MELEE
+                        && damagePlayerFromMob(decision.targetNetworkId(), mob,
+                        decision.attackDamage(), tick)) {
+                    nextMobAttackMillis.put(mob.runtimeId(), mobAttackDeadline(nowMillis,
+                            ru.nexora.combat.LivingEntityAiService.attackCooldownMillisFor(
+                                    mob.identifier())));
+                }
+                continue;
+            }
+            if (!decision.moving()) {
+                mobAiLoadController.recordScheduled(mob.runtimeId());
+                mobAiTaskScheduler.recordRun(ru.nexora.combat.MobAiTaskScheduler.Task.IDLE);
+                mobStuckTracker.clear(mob.runtimeId());
+                continue;
+            }
+            if (mobAiTaskScheduler.admit(ru.nexora.combat.MobAiTaskScheduler.Task.MOVEMENT,
+                    aiPriority, aiPriority == ru.nexora.combat.MobAiLoadController.Priority.HIGH,
+                    Math.max(0L, nanoTime.getAsLong() - aiStartedNanos),
+                    mobAiLoadController.aiBudgetNanos())
+                    == ru.nexora.combat.MobAiTaskScheduler.Admission.DEFER) {
+                // admit() already records the task-level deferral; only starvation is tracked here.
+                mobAiLoadController.recordDeferred(mob.runtimeId());
+                continue;
+            }
+            // Clear starvation only after the movement task itself is admitted.
+            // If the movement budget rejects it, its deferred count must survive this tick.
+            mobAiLoadController.recordScheduled(mob.runtimeId());
             double nextX = mob.x() + decision.moveX();
             double nextY = mob.y() + decision.moveY();
             double nextZ = mob.z() + decision.moveZ();
-            if (!WorldCollision.canMove(world, mob.x(), mob.y(), mob.z(), nextX, nextY, nextZ)) {
+            if (!ru.nexora.world.WorldPathfinder.isMobFootprintLoaded(world, nextX, nextZ)
+                    || !WorldCollision.canMove(world, mob.x(), mob.y(), mob.z(), nextX, nextY, nextZ)) {
+                // Try a collision-checked one-block jump before spending work on pathfinding.
+                // The controller refuses flying mobs, unloaded chunks, and jumps without headroom.
+                if (mobJumpController.tryJump(world, mob, nextX, nextZ, nowMillis)) {
+                    mobStuckTracker.clear(mob.runtimeId());
+                    continue;
+                }
+                if (mobClimbController.tryClimb(world, mob, nextX, nextZ)) {
+                    mobStuckTracker.clear(mob.runtimeId());
+                    continue;
+                }
                 double desiredX = mob.x() + decision.moveX() * 8.0;
                 double desiredZ = mob.z() + decision.moveZ() * 8.0;
-                WorldPathfinder.Step waypoint = WorldPathfinder.findNextStep(
-                        world, mob.x(), mob.y(), mob.z(), desiredX, desiredZ).orElse(null);
-                if (waypoint == null) continue;
+                long pathStartedNanos = nanoTime.getAsLong();
+                WorldPathfinder.Step waypoint;
+                try {
+                    waypoint = mobPathCache.findNextStep(mob.runtimeId(), world,
+                            mob.x(), mob.y(), mob.z(), desiredX, desiredZ, nowMillis).orElse(null);
+                } finally {
+                    ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
+                    long pathElapsedNanos = Math.max(0L, nanoTime.getAsLong() - pathStartedNanos);
+                    hotPathProfiler.record(ru.nexora.ai.HotPathProfiler.Path.MOB_PATHFINDING, pathElapsedNanos);
+                    if (diagnostics != null) {
+                        diagnostics.recordSlowOperation("mob-pathfinding", pathElapsedNanos, 5_000_000L);
+                    }
+                }
+                if (waypoint == null) {
+                    if (ru.nexora.world.WorldPathfinder.isSearchAreaLoaded(world, mob.x(), mob.z())) {
+                        mobStuckTracker.recordBlockedAttempt(
+                                mob.runtimeId(), mob.x(), mob.y(), mob.z(), nowMillis);
+                    } else {
+                        mobStuckTracker.clear(mob.runtimeId());
+                    }
+                    continue;
+                }
                 double dx = waypoint.x() - mob.x();
                 double dz = waypoint.z() - mob.z();
                 double length = Math.hypot(dx, dz);
-                if (length < 0.0001) continue;
+                if (length < 0.0001) {
+                    mobStuckTracker.recordBlockedAttempt(mob.runtimeId(), mob.x(), mob.y(), mob.z(), nowMillis);
+                    continue;
+                }
                 double step = Math.min(
-                        ru.nexora.combat.LivingEntityAiService.WALK_SPEED_PER_TICK, length);
+                        ru.nexora.combat.LivingEntityAiService.movementSpeedFor(mob.identifier()), length);
                 nextX = mob.x() + dx / length * step;
                 nextZ = mob.z() + dz / length * step;
-                if (!WorldCollision.canMove(world, mob.x(), mob.y(), mob.z(), nextX, nextY, nextZ)) continue;
+                if (!WorldCollision.canMove(world, mob.x(), mob.y(), mob.z(), nextX, nextY, nextZ)) {
+                    mobStuckTracker.recordBlockedAttempt(mob.runtimeId(), mob.x(), mob.y(), mob.z(), nowMillis);
+                    continue;
+                }
             }
             WorldLivingEntity moved = world.livingEntities().move(
                     mob.runtimeId(), nextX, nextY, nextZ).orElse(null);
-            if (moved == null) continue;
+            if (moved == null) {
+                mobStuckTracker.clear(mob.runtimeId());
+                continue;
+            }
+            mobStuckTracker.clear(mob.runtimeId());
             float yaw = (float) Math.toDegrees(Math.atan2(-decision.moveX(), decision.moveZ()));
             broadcastLivingActorPacket(BedrockMoveActorAbsoluteCodec.create(
                     moved.runtimeId(), moved.x(), moved.y(), moved.z(), 0.0f, yaw, yaw,
                     WorldCollision.isOnGround(world, moved.x(), moved.y(), moved.z())));
         }
         tickMobArrows(tick);
+        tickMobFireballs(tick);
+    }
+
+    private static float mobMaxHealth(String identifier) {
+        return switch (identifier) {
+            case "minecraft:chicken", "minecraft:snow_golem" -> 4.0f;
+            case "minecraft:cod", "minecraft:tropical_fish", "minecraft:salmon",
+                    "minecraft:pufferfish", "minecraft:rabbit" -> 3.0f;
+            case "minecraft:silverfish", "minecraft:endermite" -> 8.0f;
+            case "minecraft:sheep" -> 8.0f;
+            case "minecraft:tadpole" -> 6.0f;
+            case "minecraft:bat", "minecraft:parrot" -> 6.0f;
+            case "minecraft:wolf" -> 8.0f;
+            case "minecraft:bee", "minecraft:cat", "minecraft:ocelot",
+                    "minecraft:fox", "minecraft:pig", "minecraft:cow",
+                    "minecraft:mooshroom", "minecraft:goat", "minecraft:frog",
+                    "minecraft:glow_squid", "minecraft:squid" -> 10.0f;
+            case "minecraft:armadillo" -> 12.0f;
+            case "minecraft:axolotl" -> 14.0f;
+            case "minecraft:vex" -> 14.0f;
+            case "minecraft:donkey", "minecraft:mule", "minecraft:llama",
+                    "minecraft:trader_llama" -> 15.0f;
+            case "minecraft:piglin", "minecraft:bogged" -> 16.0f;
+            case "minecraft:panda", "minecraft:blaze" -> 20.0f;
+            case "minecraft:polar_bear" -> 30.0f;
+            case "minecraft:horse", "minecraft:allay", "minecraft:strider" -> 20.0f;
+            case "minecraft:camel" -> 32.0f;
+            case "minecraft:turtle" -> 30.0f;
+            case "minecraft:cave_spider" -> 12.0f;
+            case "minecraft:guardian", "minecraft:shulker", "minecraft:breeze" -> 30.0f;
+            case "minecraft:witch" -> 26.0f;
+            case "minecraft:pillager", "minecraft:vindicator", "minecraft:evoker" -> 24.0f;
+            case "minecraft:slime", "minecraft:magma_cube" -> 1.0f;
+            case "minecraft:creeper", "minecraft:skeleton", "minecraft:stray",
+                    "minecraft:husk", "minecraft:drowned", "minecraft:zombie",
+                    "minecraft:zombie_villager", "minecraft:phantom",
+                    "minecraft:wither_skeleton" -> 20.0f;
+            case "minecraft:enderman", "minecraft:hoglin", "minecraft:zoglin" -> 40.0f;
+            case "minecraft:ravager", "minecraft:iron_golem" -> 100.0f;
+            case "minecraft:elder_guardian" -> 80.0f;
+            case "minecraft:warden" -> 500.0f;
+            case "minecraft:ender_dragon" -> 200.0f;
+            case "minecraft:ghast" -> 10.0f;
+            case "minecraft:wither" -> 300.0f;
+            default -> 20.0f;
+        };
+    }
+
+    private boolean tickGuardianBeamBehavior(
+            WorldLivingEntity guardian,
+            ru.nexora.combat.LivingEntityAiService.PlayerTarget target,
+            long nowMillis,
+            long tick
+    ) {
+        String identifier = guardian.identifier();
+        if (!"minecraft:guardian".equals(identifier)
+                && !"minecraft:elder_guardian".equals(identifier)) return false;
+        if (target == null) {
+            guardianBeamTracker.clear(guardian.runtimeId());
+            return true;
+        }
+        double dx = target.x() - guardian.x();
+        double dy = target.y() + 1.0 - (guardian.y() + 1.2);
+        double dz = target.z() - guardian.z();
+        double distanceSquared = dx * dx + dy * dy + dz * dz;
+        boolean inRange = distanceSquared >= 3.0 * 3.0 && distanceSquared <= 14.0 * 14.0;
+        boolean visible = inRange && WorldRaycast.hasLineOfSightInLoadedChunks(
+                world, guardian.x(), guardian.y() + 1.2,
+                guardian.z(), (int) Math.floor(target.x()),
+                (int) Math.floor(target.y() + 1.0), (int) Math.floor(target.z()));
+        ru.nexora.combat.GuardianBeamTracker.Result result = guardianBeamTracker.tick(
+                guardian.runtimeId(), target.networkId(), visible, nowMillis);
+        if (result.fired()) {
+            float damage = "minecraft:elder_guardian".equals(identifier) ? 6.0f : 5.0f;
+            damagePlayerFromMob(target.networkId(), guardian, damage, tick, 14.0);
+        }
+        return true;
     }
 
     private boolean tickRangedMobBehavior(
             WorldLivingEntity mob,
-            List<ru.nexora.combat.LivingEntityAiService.PlayerTarget> targets,
+            ru.nexora.combat.LivingEntityAiService.PlayerTarget nearest,
             long nowMillis
     ) {
         if (!isRangedMob(mob.identifier())) return false;
-        ru.nexora.combat.LivingEntityAiService.PlayerTarget nearest = targets.stream()
-                .filter(Objects::nonNull)
-                .min(java.util.Comparator.comparingDouble(player -> {
-                    double dx = player.x() - mob.x();
-                    double dy = player.y() - mob.y();
-                    double dz = player.z() - mob.z();
-                    return dx * dx + dy * dy + dz * dz;
-                })).orElse(null);
         if (nearest == null) return false;
         double dx = nearest.x() - mob.x();
         double dy = nearest.y() + 1.0 - (mob.y() + 1.2);
         double dz = nearest.z() - mob.z();
         double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (distance < 4.0 || distance > 16.0) return false;
-        if (!WorldRaycast.hasLineOfSight(world, mob.x(), mob.y() + 1.2, mob.z(),
+        double horizontalDistance = Math.hypot(dx, dz);
+        double maxRange = ru.nexora.combat.LivingEntityAiService.projectileRangeFor(mob.identifier());
+        if (horizontalDistance < ru.nexora.combat.LivingEntityAiService.RANGED_RETREAT_DISTANCE
+                || distance > maxRange) return false;
+        if (!WorldRaycast.hasLineOfSightInLoadedChunks(world, mob.x(), mob.y() + 1.2, mob.z(),
                 (int) Math.floor(nearest.x()), (int) Math.floor(nearest.y() + 1.0),
                 (int) Math.floor(nearest.z()))) {
             return false;
         }
         if (nowMillis < nextMobAttackMillis.getOrDefault(mob.runtimeId(), 0L)) return true;
-        if (mobArrows.size() >= 2_000) return true;
+        if (mobArrows.size() >= 2_000) return false;
         double speed = 1.8;
         double aimY = dy + distance * 0.025;
         double aimLength = Math.sqrt(dx * dx + aimY * aimY + dz * dz);
@@ -1936,14 +3816,282 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 mob.x(), mob.y() + 1.2, mob.z(),
                 dx / aimLength * speed, aimY / aimLength * speed, dz / aimLength * speed, 0);
         mobArrows.put(runtimeId, arrow);
+        if ("minecraft:bogged".equals(mob.identifier())) poisonMobArrows.add(runtimeId);
         broadcastLivingActorPacket(BedrockArrowActorCodec.createSpawn(arrow));
-        nextMobAttackMillis.put(mob.runtimeId(), nowMillis + 2_000L);
+        long cooldownMillis = ru.nexora.combat.LivingEntityAiService
+                .rangedAttackCooldownMillisFor(mob.identifier());
+        long nextAttackAt = nowMillis > Long.MAX_VALUE - cooldownMillis
+                ? Long.MAX_VALUE : nowMillis + cooldownMillis;
+        nextMobAttackMillis.put(mob.runtimeId(), nextAttackAt);
         return true;
+    }
+
+
+    /** Ghasts launch heavy fireballs; blazes launch faster, smaller fireballs. */
+    private boolean tickFireballMobBehavior(
+            WorldLivingEntity mob,
+            ru.nexora.combat.LivingEntityAiService.PlayerTarget nearest,
+            long nowMillis
+    ) {
+        String identifier = mob.identifier();
+        boolean ghast = "minecraft:ghast".equals(identifier);
+        boolean blaze = "minecraft:blaze".equals(identifier);
+        if (!ghast && !blaze) return false;
+        if (nearest == null) return false;
+        double dx = nearest.x() - mob.x();
+        double dy = nearest.y() + 0.8 - (mob.y() + (ghast ? 1.8 : 1.2));
+        double dz = nearest.z() - mob.z();
+        double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        double horizontalDistance = Math.hypot(dx, dz);
+        double maxRange = ru.nexora.combat.LivingEntityAiService.projectileRangeFor(identifier);
+        if (horizontalDistance < ru.nexora.combat.LivingEntityAiService.RANGED_RETREAT_DISTANCE
+                || distance > maxRange) return false;
+        if (!WorldRaycast.hasLineOfSightInLoadedChunks(world, mob.x(), mob.y() + (ghast ? 1.8 : 1.2),
+                mob.z(), (int) Math.floor(nearest.x()), (int) Math.floor(nearest.y() + 1.0),
+                (int) Math.floor(nearest.z()))) return false;
+        if (nowMillis < nextMobAttackMillis.getOrDefault(mob.runtimeId(), 0L)) return true;
+        if (mobFireballs.size() >= 1_000) return true;
+        double aimY = dy + distance * (ghast ? 0.018 : 0.025);
+        double aimLength = Math.sqrt(dx * dx + aimY * aimY + dz * dz);
+        if (aimLength < 0.0001) return true;
+        long runtimeId = nextMobArrowRuntimeId.getAndIncrement();
+        if (runtimeId <= 0 || runtimeId == Long.MAX_VALUE) {
+            nextMobArrowRuntimeId.set(4_000_000L);
+            runtimeId = nextMobArrowRuntimeId.getAndIncrement();
+        }
+        double speed = ghast ? 1.35 : 1.65;
+        ru.nexora.combat.FireballProjectile fireball = new ru.nexora.combat.FireballProjectile(
+                -runtimeId, runtimeId, "mob:" + mob.runtimeId(),
+                ghast ? "minecraft:fireball" : "minecraft:small_fireball",
+                mob.x(), mob.y() + (ghast ? 1.8 : 1.2), mob.z(),
+                dx / aimLength * speed, aimY / aimLength * speed, dz / aimLength * speed,
+                0, ghast ? 6.0f : 4.0f, ghast ? 5 : 3);
+        mobFireballs.put(runtimeId, fireball);
+        broadcastLivingActorPacket(BedrockFireballActorCodec.createSpawn(fireball));
+        long cooldownMillis = ru.nexora.combat.LivingEntityAiService
+                .rangedAttackCooldownMillisFor(identifier);
+        nextMobAttackMillis.put(mob.runtimeId(),
+                nowMillis > Long.MAX_VALUE - cooldownMillis ? Long.MAX_VALUE : nowMillis + cooldownMillis);
+        return true;
+    }
+
+    private void tickMobFireballs(long tick) {
+        long nowNanos = Math.max(0L, nanoTime.getAsLong());
+        for (var entry : mobFireballs.entrySet()) {
+            ru.nexora.combat.FireballProjectile current = entry.getValue();
+            ru.nexora.combat.FireballProjectile next = current.advance();
+            boolean expired = next.expired();
+            boolean blocked = !expired && isMobFireballPathBlocked(current, next);
+            boolean removed = expired || blocked;
+            boolean ghastFireball = "minecraft:fireball".equals(current.identifier());
+            if (blocked && ghastFireball) {
+                explodeGhastFireball(current, tick, nowNanos);
+            }
+            if (!removed) {
+                for (Map.Entry<String, SessionState> playerEntry : sessions.entrySet()) {
+                    SessionState player = playerEntry.getValue();
+                    if (!player.loginAuthenticated || !player.clientInitialized
+                            || !player.positionInitialized || player.dead || player.vitals.dead()) continue;
+                    double distanceSquared = distanceToSegmentSquared(
+                            player.positionX, player.positionY + 0.9, player.positionZ,
+                            current.x(), current.y(), current.z(), next.x(), next.y(), next.z());
+                    if (distanceSquared > 0.7 * 0.7) continue;
+                    if (ghastFireball) {
+                        explodeGhastFireball(current, tick, nowNanos);
+                    } else {
+                        player.combatLock.lock();
+                        try {
+                            synchronized (player) {
+                                if (player.dead || player.vitals.dead()) continue;
+                                List<ItemStack> armor = player.equipment.armorSnapshot().stream()
+                                        .flatMap(Optional::stream).toList();
+                                float damage = ru.nexora.combat.EnchantmentCombatService
+                                        .applyIncomingDamage(current.damage(), armor,
+                                                ru.nexora.combat.EnchantmentCombatService.DamageType.PROJECTILE);
+                                if (damage > 0.0f) {
+                                    applyDamage(playerEntry.getKey(), player, damage, tick, "death.attack.fireball");
+                                }
+                                if (!player.dead && !player.vitals.dead() && current.fireDurationSeconds() > 0) {
+                                    long durationNanos = current.fireDurationSeconds() * 1_000_000_000L;
+                                    player.fireUntilNanos = Math.max(player.fireUntilNanos,
+                                            nowNanos > Long.MAX_VALUE - durationNanos
+                                                    ? Long.MAX_VALUE : nowNanos + durationNanos);
+                                }
+                            }
+                        } finally {
+                            player.combatLock.unlock();
+                        }
+                    }
+                    removed = true;
+                    break;
+                }
+            }
+            if (removed) {
+                if (mobFireballs.remove(entry.getKey(), current)) {
+                    broadcastLivingActorPacket(
+                            BedrockAddItemActorCodec.createRemoveActor(current.uniqueId()));
+                }
+            } else if (mobFireballs.replace(entry.getKey(), current, next)) {
+                broadcastLivingActorPacket(BedrockFireballActorCodec.createMove(next));
+            }
+        }
+    }
+
+
+    /** Applies the ghast blast only to resident chunks; protected blocks and containers survive. */
+    private void explodeGhastFireball(
+            ru.nexora.combat.FireballProjectile fireball, long tick, long nowNanos
+    ) {
+        broadcastPacket(BedrockLevelEventCodec.createExplosionParticle(
+                fireball.x(), fireball.y(), fireball.z()));
+        int minX = (int) Math.floor(fireball.x() - ru.nexora.combat.GhastExplosion.BLOCK_RADIUS);
+        int maxX = (int) Math.floor(fireball.x() + ru.nexora.combat.GhastExplosion.BLOCK_RADIUS);
+        int minY = Math.max(WorldChunk.MIN_Y,
+                (int) Math.floor(fireball.y() - ru.nexora.combat.GhastExplosion.BLOCK_RADIUS));
+        int maxY = Math.min(WorldChunk.MAX_Y,
+                (int) Math.floor(fireball.y() + ru.nexora.combat.GhastExplosion.BLOCK_RADIUS));
+        int minZ = (int) Math.floor(fireball.z() - ru.nexora.combat.GhastExplosion.BLOCK_RADIUS);
+        int maxZ = (int) Math.floor(fireball.z() + ru.nexora.combat.GhastExplosion.BLOCK_RADIUS);
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    if (!ru.nexora.combat.GhastExplosion.isInsideBlockBlast(
+                            x + 0.5 - fireball.x(), y + 0.5 - fireball.y(), z + 0.5 - fireball.z())
+                            || !world.isChunkLoadedAt(x, z)) continue;
+                    BlockType block = world.getBlock(x, y, z);
+                    if (!ru.nexora.combat.GhastExplosion.canDestroy(block)) continue;
+
+                    ItemStack drop = ru.nexora.combat.GhastExplosion.dropFor(block);
+                    if (drop != null && itemRegistry.findByIdentifier(drop.itemId()) == null) {
+                        // Never erase a block when this server build cannot represent its drop.
+                        continue;
+                    }
+                    WorldItemEntity droppedEntity = null;
+                    if (drop != null) {
+                        try {
+                            double dx = x + 0.5 - fireball.x();
+                            double dz = z + 0.5 - fireball.z();
+                            double horizontal = Math.sqrt(dx * dx + dz * dz);
+                            double velocityX = horizontal < 1.0e-6 ? 0.0 : dx / horizontal * 0.18;
+                            double velocityZ = horizontal < 1.0e-6 ? 0.0 : dz / horizontal * 0.18;
+                            droppedEntity = world.itemEntities().spawn(drop,
+                                    x + 0.5, y + 0.55, z + 0.5,
+                                    velocityX, 0.22, velocityZ, System.currentTimeMillis(),
+                                    WorldItemEntityManager.DEFAULT_PICKUP_DELAY_MILLIS, null);
+                        } catch (RuntimeException exception) {
+                            System.err.println("NEXORA: unable to create ghast block drop at "
+                                    + x + " " + y + " " + z + ": " + exception.getMessage());
+                            continue;
+                        }
+                    }
+                    try {
+                        world.setBlock(x, y, z, BlockType.AIR);
+                        broadcastBlockUpdate(x, y, z, BlockType.AIR);
+                        if (droppedEntity != null) {
+                            broadcastItemActor(droppedEntity,
+                                    BedrockAddItemActorCodec.createAddItemActor(droppedEntity, itemRegistry));
+                        }
+                    } catch (RuntimeException exception) {
+                        if (droppedEntity != null) {
+                            try {
+                                world.itemEntities().remove(droppedEntity.runtimeId());
+                            } catch (RuntimeException rollbackFailure) {
+                                exception.addSuppressed(rollbackFailure);
+                            }
+                        }
+                        throw exception;
+                    }
+                }
+            }
+        }
+
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            SessionState player = entry.getValue();
+            if (!player.loginAuthenticated || !player.clientInitialized
+                    || !player.positionInitialized || player.dead || player.vitals.dead()) continue;
+            double dx = player.positionX - fireball.x();
+            double dy = player.positionY + 0.9 - fireball.y();
+            double dz = player.positionZ - fireball.z();
+            double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            float rawDamage = ru.nexora.combat.GhastExplosion.damageAtDistance(distance);
+            if (rawDamage <= 0.0f) continue;
+            int targetX = (int) Math.floor(player.positionX);
+            int targetY = (int) Math.floor(player.positionY + 1.0);
+            int targetZ = (int) Math.floor(player.positionZ);
+            if (!WorldRaycast.hasLineOfSightInLoadedChunks(world, fireball.x(), fireball.y(),
+                    fireball.z(), targetX, targetY, targetZ)) continue;
+            player.combatLock.lock();
+            try {
+                synchronized (player) {
+                    if (player.dead || player.vitals.dead()) continue;
+                    List<ItemStack> armor = player.equipment.armorSnapshot().stream()
+                            .flatMap(Optional::stream).toList();
+                    float damage = ru.nexora.combat.EnchantmentCombatService.applyIncomingDamage(
+                            rawDamage, armor,
+                            ru.nexora.combat.EnchantmentCombatService.DamageType.EXPLOSION);
+                    if (damage > 0.0f) {
+                        applyDamage(entry.getKey(), player, damage, tick, "death.attack.explosion");
+                    }
+                    if (!player.dead && !player.vitals.dead()
+                            && distance <= ru.nexora.combat.GhastExplosion.BLOCK_RADIUS) {
+                        long duration = ru.nexora.combat.GhastExplosion.FIRE_DURATION_SECONDS
+                                * 1_000_000_000L;
+                        player.fireUntilNanos = Math.max(player.fireUntilNanos,
+                                nowNanos > Long.MAX_VALUE - duration ? Long.MAX_VALUE : nowNanos + duration);
+                    }
+                    if (!player.dead && !player.vitals.dead()) {
+                        ru.nexora.combat.GhastExplosion.Knockback impulse =
+                                ru.nexora.combat.GhastExplosion.knockbackAt(dx, dy, dz);
+                        if (impulse != null) {
+                            if (player.physicsState != null) {
+                                PlayerPhysics.State current = player.physicsState;
+                                player.physicsState = new PlayerPhysics.State(
+                                        current.x(), current.y(), current.z(),
+                                        current.velocityX() + impulse.velocityX(),
+                                        Math.max(current.velocityY(), impulse.velocityY()),
+                                        current.velocityZ() + impulse.velocityZ(),
+                                        current.onGround(), current.fallDistance(), current.landedDistance());
+                                sendMovementCorrection(entry.getKey(), player, Math.max(0, tick));
+                            } else {
+                                sendPacket(entry.getKey(), BedrockActorMotionCodec.createSetActorMotion(
+                                        player.entityId, impulse.velocityX(), impulse.velocityY(),
+                                        impulse.velocityZ(), Math.max(0, tick)), true);
+                            }
+                        }
+                    }
+                }
+            } finally {
+                player.combatLock.unlock();
+            }
+        }
+    }
+
+    /** Sweeps the full fireball segment and treats unloaded chunks as solid boundaries. */
+    private boolean isMobFireballPathBlocked(
+            ru.nexora.combat.FireballProjectile from,
+            ru.nexora.combat.FireballProjectile to
+    ) {
+        double dx = to.x() - from.x();
+        double dy = to.y() - from.y();
+        double dz = to.z() - from.z();
+        double length = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        int samples = Math.max(1, (int) Math.ceil(length / 0.1));
+        if (samples > 256) return true;
+        for (int sample = 1; sample <= samples; sample++) {
+            double fraction = (double) sample / samples;
+            int blockX = (int) Math.floor(from.x() + dx * fraction);
+            int blockY = (int) Math.floor(from.y() + dy * fraction);
+            int blockZ = (int) Math.floor(from.z() + dz * fraction);
+            if (blockY < WorldChunk.MIN_Y || blockY > WorldChunk.MAX_Y
+                    || !world.isChunkLoadedAt(blockX, blockZ)
+                    || world.getBlock(blockX, blockY, blockZ) != BlockType.AIR) return true;
+        }
+        return false;
     }
 
     private static boolean isRangedMob(String identifier) {
         return switch (identifier) {
-            case "minecraft:skeleton", "minecraft:stray", "minecraft:wither_skeleton",
+            case "minecraft:skeleton", "minecraft:stray",
                     "minecraft:bogged", "minecraft:pillager" -> true;
             default -> false;
         };
@@ -1955,11 +4103,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             ru.nexora.combat.ArrowProjectile next = current.advance();
             boolean removed = next.expired();
             if (!removed) {
-                int blockX = (int) Math.floor(next.x());
-                int blockY = (int) Math.floor(next.y());
-                int blockZ = (int) Math.floor(next.z());
-                removed = blockY < WorldChunk.MIN_Y || blockY > WorldChunk.MAX_Y
-                        || world.getBlock(blockX, blockY, blockZ) != BlockType.AIR;
+                removed = isMobArrowPathBlocked(current, next);
             }
             if (!removed) {
                 for (Map.Entry<String, SessionState> playerEntry : sessions.entrySet()) {
@@ -1983,6 +4127,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             if (damage > 0.0f) {
                                 applyDamage(playerEntry.getKey(), player, damage, tick, "death.attack.arrow");
                             }
+                            if (poisonMobArrows.contains(entry.getKey())
+                                    && !player.dead && !player.vitals.dead()) applyPoison(player);
                         }
                     } finally {
                         player.combatLock.unlock();
@@ -1993,12 +4139,42 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
             if (removed) {
                 if (mobArrows.remove(entry.getKey(), current)) {
+                    poisonMobArrows.remove(entry.getKey());
                     broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(current.uniqueId()));
                 }
             } else if (mobArrows.replace(entry.getKey(), current, next)) {
                 broadcastLivingActorPacket(BedrockArrowActorCodec.createMove(next, Math.max(0, tick)));
             }
         }
+    }
+
+    /**
+     * Sweeps the whole per-tick arrow segment through loaded voxels. Sampling at
+     * 0.1-block intervals prevents fast projectiles from tunnelling through thin blocks.
+     * Unloaded chunks are treated as a safe stopping boundary and are never generated here.
+     */
+    private boolean isMobArrowPathBlocked(
+            ru.nexora.combat.ArrowProjectile from,
+            ru.nexora.combat.ArrowProjectile to
+    ) {
+        double dx = to.x() - from.x();
+        double dy = to.y() - from.y();
+        double dz = to.z() - from.z();
+        double length = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        int samples = Math.max(1, (int) Math.ceil(length / 0.1));
+        if (samples > 256) return true;
+        for (int sample = 1; sample <= samples; sample++) {
+            double fraction = (double) sample / samples;
+            int blockX = (int) Math.floor(from.x() + dx * fraction);
+            int blockY = (int) Math.floor(from.y() + dy * fraction);
+            int blockZ = (int) Math.floor(from.z() + dz * fraction);
+            if (blockY < WorldChunk.MIN_Y || blockY > WorldChunk.MAX_Y
+                    || !world.isChunkLoadedAt(blockX, blockZ)
+                    || world.getBlock(blockX, blockY, blockZ) != BlockType.AIR) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static double distanceToSegmentSquared(
@@ -2039,7 +4215,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 int blockX = (int) Math.floor(candidateX);
                 int blockY = (int) Math.floor(candidateY);
                 int blockZ = (int) Math.floor(candidateZ);
-                if (blockY <= WorldChunk.MIN_Y || blockY + 2 > WorldChunk.MAX_Y) continue;
+                if (blockY <= WorldChunk.MIN_Y || blockY + 2 > WorldChunk.MAX_Y
+                        || !ru.nexora.world.WorldPathfinder.isMobFootprintLoaded(world, candidateX, candidateZ)) continue;
                 if (world.getBlock(blockX, blockY - 1, blockZ) == BlockType.AIR
                         || world.getBlock(blockX, blockY, blockZ) != BlockType.AIR
                         || world.getBlock(blockX, blockY + 1, blockZ) != BlockType.AIR
@@ -2049,6 +4226,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         enderman.runtimeId(), candidateX, candidateY, candidateZ).orElse(null);
                 if (moved == null) return;
                 endermanTeleportCooldownMillis.put(enderman.runtimeId(), nowMillis + 1_000L);
+                mobPathCache.remove(enderman.runtimeId());
+                mobStuckTracker.clear(enderman.runtimeId());
+                mobFallTracker.clear(enderman.runtimeId());
+                mobDespawnTracker.clear(enderman.runtimeId());
                 float yaw = (float) Math.toDegrees(Math.atan2(-awayX, awayZ));
                 broadcastLivingActorPacket(BedrockMoveActorAbsoluteCodec.create(
                         moved.runtimeId(), moved.x(), moved.y(), moved.z(), 0.0f, yaw, yaw,
@@ -2061,20 +4242,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     private boolean tickCreeperBehavior(
             WorldLivingEntity creeper,
-            List<ru.nexora.combat.LivingEntityAiService.PlayerTarget> targets,
+            ru.nexora.combat.LivingEntityAiService.PlayerTarget nearest,
             long nowMillis,
             long tick
     ) {
-        ru.nexora.combat.LivingEntityAiService.PlayerTarget nearest = targets.stream()
-                .filter(Objects::nonNull)
-                .min(java.util.Comparator.comparingDouble(player -> {
-                    double dx = player.x() - creeper.x();
-                    double dy = player.y() - creeper.y();
-                    double dz = player.z() - creeper.z();
-                    return dx * dx + dy * dy + dz * dz;
-                })).orElse(null);
         if (nearest == null) {
-            creeperFuseStartedMillis.remove(creeper.runtimeId());
+            mobFuseTracker.isReadyToDetonate(creeper.runtimeId(), false, nowMillis, 1_500L);
             return false;
         }
         double dx = nearest.x() - creeper.x();
@@ -2082,15 +4255,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         double dz = nearest.z() - creeper.z();
         double distanceSquared = dx * dx + dy * dy + dz * dz;
         if (distanceSquared > 3.0 * 3.0) {
-            creeperFuseStartedMillis.remove(creeper.runtimeId());
+            mobFuseTracker.isReadyToDetonate(creeper.runtimeId(), false, nowMillis, 1_500L);
             return false;
         }
 
-        long fuseStarted = creeperFuseStartedMillis.computeIfAbsent(
-                creeper.runtimeId(), ignored -> nowMillis);
-        if (nowMillis - fuseStarted < 1_500L) return true;
-
-        creeperFuseStartedMillis.remove(creeper.runtimeId());
+        if (!mobFuseTracker.isReadyToDetonate(
+                creeper.runtimeId(), true, nowMillis, 1_500L)) return true;
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
             SessionState player = entry.getValue();
             player.combatLock.lock();
@@ -2118,9 +4288,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
         }
         if (world.livingEntities().remove(creeper.runtimeId())) {
-            nextMobAttackMillis.remove(creeper.runtimeId());
-            livingEntityKillCredit.remove(creeper.runtimeId());
-            livingEntityAggroTargets.remove(creeper.runtimeId());
+            cleanupLivingEntityRuntimeState(creeper.runtimeId());
             broadcastLivingActorPacket(
                     BedrockAddItemActorCodec.createRemoveActor(creeper.uniqueId()));
         }
@@ -2128,6 +4296,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private boolean damagePlayerFromMob(String networkId, WorldLivingEntity mob, float amount, long tick) {
+        return damagePlayerFromMob(networkId, mob, amount, tick,
+                ru.nexora.combat.LivingEntityAiService.attackRangeFor(mob.identifier()));
+    }
+
+    private boolean damagePlayerFromMob(
+            String networkId, WorldLivingEntity mob, float amount, long tick, double maxRange
+    ) {
         SessionState target = sessions.get(networkId);
         if (target == null) return false;
         target.combatLock.lock();
@@ -2138,13 +4313,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 double rangeX = target.positionX - mob.x();
                 double rangeY = target.positionY - mob.y();
                 double rangeZ = target.positionZ - mob.z();
-                if (rangeX * rangeX + rangeY * rangeY + rangeZ * rangeZ
-                        > ru.nexora.combat.LivingEntityAiService.ATTACK_RANGE
-                                * ru.nexora.combat.LivingEntityAiService.ATTACK_RANGE) return false;
+                if (!Double.isFinite(maxRange) || maxRange <= 0
+                        || rangeX * rangeX + rangeY * rangeY + rangeZ * rangeZ
+                        > maxRange * maxRange) return false;
                 int targetBlockX = (int) Math.floor(target.positionX);
                 int targetBlockY = (int) Math.floor(target.positionY + 1.0);
                 int targetBlockZ = (int) Math.floor(target.positionZ);
-                if (!WorldRaycast.hasLineOfSight(world, mob.x(), mob.y() + 1.2, mob.z(),
+                if (!WorldRaycast.hasLineOfSightInLoadedChunks(world, mob.x(), mob.y() + 1.2, mob.z(),
                         targetBlockX, targetBlockY, targetBlockZ)) return false;
                 List<ItemStack> armor = target.equipment.armorSnapshot().stream()
                         .flatMap(Optional::stream).toList();
@@ -2153,6 +4328,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                                 ru.nexora.combat.EnchantmentCombatService.DamageType.GENERIC);
                 if (mitigatedDamage > 0.0f) {
                     applyDamage(networkId, target, mitigatedDamage, tick, "death.attack.mob");
+                    if (!target.vitals.dead() && "minecraft:cave_spider".equals(mob.identifier())) {
+                        applyPoison(target);
+                    }
                 }
                 if (!target.vitals.dead() && !armor.isEmpty()) {
                     double[] rolls = new double[armor.size()];
@@ -2172,10 +4350,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         var thornsDamage = world.livingEntities().damage(mob.runtimeId(), reflected).orElse(null);
                         if (thornsDamage != null) {
                             if (thornsDamage.killed()) {
-                                livingEntityKillCredit.remove(mob.runtimeId());
-                                livingEntityAggroTargets.remove(mob.runtimeId());
                                 grantMobRewards(networkId, target, mob, 0);
-                                nextMobAttackMillis.remove(mob.runtimeId());
+                                cleanupLivingEntityRuntimeState(mob.runtimeId());
                                 broadcastLivingActorPacket(
                                         BedrockAddItemActorCodec.createRemoveActor(mob.uniqueId()));
                             } else {
@@ -2215,27 +4391,160 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private void sendExistingLivingActors(String networkId) {
-        for (ru.nexora.combat.ArrowProjectile arrow : mobArrows.values()) {
+        SessionState recipient = sessions.get(networkId);
+        if (recipient != null) syncVisibleWorldActors(networkId, recipient);
+    }
+
+    /**
+     * Routes mob and projectile packets only to clients that currently track the actor.
+     * If an actor crosses into a subscribed chunk it is spawned there; when it leaves,
+     * clients receive RemoveActor instead of continuing to receive global movement updates.
+     */
+    private void broadcastLivingActorPacket(BedrockPacket packet) {
+        int packetId = packet.packetId();
+        if (packetId != BedrockAddActorCodec.ADD_ACTOR_PACKET_ID
+                && packetId != BedrockAddItemActorCodec.REMOVE_ACTOR_PACKET_ID
+                && packetId != BedrockMoveActorAbsoluteCodec.MOVE_ACTOR_ABSOLUTE_PACKET_ID
+                && packetId != BedrockVitalsCodec.UPDATE_ATTRIBUTES_PACKET_ID
+                && packetId != BedrockActorMotionCodec.SET_ACTOR_MOTION_PACKET_ID) {
+            broadcastPacket(packet);
+            return;
+        }
+
+        boolean uniqueIdEncoded = packetId == BedrockAddActorCodec.ADD_ACTOR_PACKET_ID
+                || packetId == BedrockAddItemActorCodec.REMOVE_ACTOR_PACKET_ID;
+        long encodedId = readFirstVarLong(packet.payload());
+        long runtimeId = uniqueIdEncoded ? Math.abs((encodedId >>> 1) ^ -(encodedId & 1L)) : encodedId;
+        if (runtimeId <= 0) return;
+
+        if (packetId == BedrockAddItemActorCodec.REMOVE_ACTOR_PACKET_ID) {
+            List<byte[]> encodedFrames = null;
+            for (String networkId : actorReplicationIndex.actorViewers(runtimeId)) {
+                SessionState recipient = sessions.get(networkId);
+                if (recipient == null) {
+                    actorReplicationIndex.removeActorViewer(runtimeId, networkId);
+                    continue;
+                }
+                boolean wasVisible = recipient.visibleLivingEntityIds.remove(runtimeId)
+                        | recipient.visibleArrowEntityIds.remove(runtimeId);
+                actorReplicationIndex.removeActorViewer(runtimeId, networkId);
+                if (wasVisible && recipient.clientInitialized && !recipient.rejected) {
+                    if (encodedFrames == null) encodedFrames = encodeFrames(List.of(packet), true);
+                    sendEncodedFrames(networkId, encodedFrames);
+                }
+            }
+            return;
+        }
+
+        WorldLivingEntity entity = world.livingEntities().find(runtimeId).orElse(null);
+        ru.nexora.combat.ArrowProjectile arrow = mobArrows.get(runtimeId);
+        ru.nexora.combat.FireballProjectile fireball = mobFireballs.get(runtimeId);
+        if (entity == null && arrow == null && fireball == null) {
+            // Keep unknown actor packet types safe rather than silently dropping them.
+            broadcastPacket(packet);
+            return;
+        }
+
+        double x = entity != null ? entity.x() : arrow != null ? arrow.x() : fireball.x();
+        double z = entity != null ? entity.z() : arrow != null ? arrow.z() : fireball.z();
+        long uniqueId = entity != null ? entity.uniqueId() : arrow != null ? arrow.uniqueId() : fireball.uniqueId();
+        int chunkX = Math.floorDiv((int) Math.floor(x), 16);
+        int chunkZ = Math.floorDiv((int) Math.floor(z), 16);
+        long chunkKey = ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
+        List<byte[]> movementFrames = null;
+        List<byte[]> spawnFrames = null;
+        List<byte[]> removeFrames = null;
+
+        // New/current viewers are found directly from the actor's current chunk.
+        for (String networkId : actorReplicationIndex.chunkViewers(chunkKey)) {
+            SessionState recipient = sessions.get(networkId);
+            if (recipient == null || !recipient.clientInitialized || recipient.rejected) continue;
+            Set<Long> visibleIds = entity != null
+                    ? recipient.visibleLivingEntityIds : recipient.visibleArrowEntityIds;
+            boolean alreadyVisible = visibleIds.contains(runtimeId);
             try {
-                sendPacket(networkId, BedrockArrowActorCodec.createSpawn(arrow), true);
+                if (!alreadyVisible) {
+                    visibleIds.add(runtimeId);
+                    actorReplicationIndex.addActorViewer(runtimeId, networkId);
+                    if (spawnFrames == null) {
+                        BedrockPacket spawn = entity != null
+                                ? BedrockAddActorCodec.createAddActor(entity)
+                                : arrow != null ? BedrockArrowActorCodec.createSpawn(arrow)
+                                : BedrockFireballActorCodec.createSpawn(fireball);
+                        spawnFrames = encodeFrames(List.of(spawn), true);
+                    }
+                    sendEncodedFrames(networkId, spawnFrames);
+                } else {
+                    if (movementFrames == null) movementFrames = encodeFrames(List.of(packet), true);
+                    sendEncodedFrames(networkId, movementFrames);
+                }
             } catch (RuntimeException exception) {
-                System.err.println("NEXORA: unable to send existing arrow to " + networkId
-                        + ": " + exception.getMessage());
+                if (!alreadyVisible) {
+                    visibleIds.remove(runtimeId);
+                    actorReplicationIndex.removeActorViewer(runtimeId, networkId);
+                }
+                System.err.println("NEXORA: unable to sync actor " + runtimeId + " to "
+                        + networkId + ": " + exception.getMessage());
             }
         }
-        for (WorldLivingEntity entity : world.livingEntities().snapshot()) {
+
+        // Previously tracking viewers outside the new chunk must receive one despawn.
+        for (String networkId : actorReplicationIndex.actorViewers(runtimeId)) {
+            SessionState recipient = sessions.get(networkId);
+            if (recipient == null) {
+                actorReplicationIndex.removeActorViewer(runtimeId, networkId);
+                continue;
+            }
+            if (isWorldPositionVisible(recipient, x, z)) continue;
+            Set<Long> visibleIds = entity != null
+                    ? recipient.visibleLivingEntityIds : recipient.visibleArrowEntityIds;
+            if (!visibleIds.remove(runtimeId)) {
+                actorReplicationIndex.removeActorViewer(runtimeId, networkId);
+                continue;
+            }
+            actorReplicationIndex.removeActorViewer(runtimeId, networkId);
             try {
-                sendPacket(networkId, BedrockAddActorCodec.createAddActor(entity), true);
+                if (removeFrames == null) {
+                    removeFrames = encodeFrames(
+                            List.of(BedrockAddItemActorCodec.createRemoveActor(uniqueId)), true);
+                }
+                sendEncodedFrames(networkId, removeFrames);
             } catch (RuntimeException exception) {
-                System.err.println("NEXORA: unable to send existing living actor to " + networkId
-                        + ": " + exception.getMessage());
+                System.err.println("NEXORA: unable to remove actor " + runtimeId + " from "
+                        + networkId + ": " + exception.getMessage());
             }
         }
     }
 
-    private void broadcastLivingActorPacket(BedrockPacket packet) {
-        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
-            if (entry.getValue().clientInitialized) sendPacket(entry.getKey(), packet, true);
+    private static long readFirstVarLong(byte[] payload) {
+        long value = 0;
+        int shift = 0;
+        for (int index = 0; index < Math.min(payload.length, 10); index++) {
+            int current = Byte.toUnsignedInt(payload[index]);
+            if (index == 9 && (current & 0xfe) != 0) {
+                throw new IllegalArgumentException("Actor ID VarLong exceeds 64 bits");
+            }
+            value |= (long) (current & 0x7f) << shift;
+            if ((current & 0x80) == 0) return value;
+            shift += 7;
+        }
+        throw new IllegalArgumentException("Truncated actor ID VarLong");
+    }
+
+    /**
+     * Explicitly prepares every chunk touched by an actor's 0.6-block horizontal footprint.
+     * This is called only when an actor is spawned or placed; collision and movement queries
+     * never load chunks as a side effect.
+     */
+    private void ensureActorFootprintChunksLoaded(double x, double z) {
+        int minChunkX = Math.floorDiv((int) Math.floor(x - 0.3), 16);
+        int maxChunkX = Math.floorDiv((int) Math.floor(x + 0.3), 16);
+        int minChunkZ = Math.floorDiv((int) Math.floor(z - 0.3), 16);
+        int maxChunkZ = Math.floorDiv((int) Math.floor(z + 0.3), 16);
+        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+                world.getChunk(chunkX, chunkZ);
+            }
         }
     }
 
@@ -2244,6 +4553,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             String identifier, WorldLivingEntity.Family family,
             float maxHealth, double x, double y, double z
     ) {
+        if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
+                || Math.abs(x) > 30_000_000 || Math.abs(z) > 30_000_000
+                || y < WorldChunk.MIN_Y || y > WorldChunk.MAX_Y) {
+            throw new IllegalArgumentException("Living actor position is outside supported bounds");
+        }
+        ensureActorFootprintChunksLoaded(x, z);
         WorldLivingEntity entity = world.livingEntities().spawn(identifier, family, maxHealth, x, y, z);
         broadcastLivingActorPacket(BedrockAddActorCodec.createAddActor(entity));
         return entity;
@@ -2261,18 +4576,53 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     public boolean despawnLivingEntity(long runtimeId) {
         WorldLivingEntity entity = world.livingEntities().find(runtimeId).orElse(null);
         if (entity == null || !world.livingEntities().remove(runtimeId)) return false;
-        nextMobAttackMillis.remove(runtimeId);
-        creeperFuseStartedMillis.remove(runtimeId);
-        endermanTeleportCooldownMillis.remove(runtimeId);
-        livingEntityAggroTargets.remove(runtimeId);
-        for (var entry : mobArrows.entrySet()) {
-            if (entry.getValue().ownerNetworkId().equals("mob:" + runtimeId)) {
-                mobArrows.remove(entry.getKey(), entry.getValue());
-            }
-        }
-        livingEntityKillCredit.remove(runtimeId);
+        cleanupLivingEntityRuntimeState(runtimeId);
         broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()));
         return true;
+    }
+
+    private String activeMobProvoker(long runtimeId, long nowMillis) {
+        String provoker = livingEntityAggroTargets.get(runtimeId);
+        if (provoker == null) return null;
+        Long expiresAt = livingEntityAggroExpiresAtMillis.get(runtimeId);
+        if (expiresAt == null || nowMillis >= expiresAt) {
+            livingEntityAggroTargets.remove(runtimeId, provoker);
+            livingEntityAggroExpiresAtMillis.remove(runtimeId);
+            return null;
+        }
+        return provoker;
+    }
+
+    /** Clears every transient subsystem reference when a mob dies or is despawned. */
+    private void cleanupLivingEntityRuntimeState(long runtimeId) {
+        nextMobAttackMillis.remove(runtimeId);
+        guardianBeamTracker.clear(runtimeId);
+        mobAiLoadController.remove(runtimeId);
+        mobPathCache.remove(runtimeId);
+        mobStuckTracker.clear(runtimeId);
+        mobFallTracker.clear(runtimeId);
+        mobJumpController.clear(runtimeId);
+        mobDespawnTracker.clear(runtimeId);
+        mobFuseTracker.clear(runtimeId);
+        endermanTeleportCooldownMillis.remove(runtimeId);
+        livingEntityAggroTargets.remove(runtimeId);
+        livingEntityAggroExpiresAtMillis.remove(runtimeId);
+        livingEntityKillCredit.remove(runtimeId);
+        for (var entry : mobArrows.entrySet()) {
+            if (entry.getValue().ownerNetworkId().equals("mob:" + runtimeId)
+                    && mobArrows.remove(entry.getKey(), entry.getValue())) {
+                poisonMobArrows.remove(entry.getKey());
+                broadcastLivingActorPacket(
+                        BedrockAddItemActorCodec.createRemoveActor(entry.getValue().uniqueId()));
+            }
+        }
+        for (var entry : mobFireballs.entrySet()) {
+            if (entry.getValue().ownerNetworkId().equals("mob:" + runtimeId)
+                    && mobFireballs.remove(entry.getKey(), entry.getValue())) {
+                broadcastLivingActorPacket(
+                        BedrockAddItemActorCodec.createRemoveActor(entry.getValue().uniqueId()));
+            }
+        }
     }
 
     /**
@@ -2341,6 +4691,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     /** Spears require 2 blocks of minimum reach and have a 4.5 block maximum reach. */
+    private static double maximumWeaponReach(ItemStack weapon) {
+        return ru.nexora.combat.SpearCombatStats.forItem(weapon)
+                .map(ru.nexora.combat.SpearCombatStats.Profile::maximumReach)
+                .orElse(3.5);
+    }
+
     private static boolean isWithinWeaponReach(ItemStack weapon, double distanceSquared) {
         var spearProfile = ru.nexora.combat.SpearCombatStats.forItem(weapon);
         return spearProfile.map(profile -> profile.isWithinReach(distanceSquared))
@@ -2538,11 +4894,75 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (!state.identity.gameServerToken().equals(login.multiplayerToken())) {
             throw new SecurityException("Login GameServerToken does not match the verified NetherNet identity");
         }
-        verifyClientDataToken(login.rawClientDataToken(), state.identity);
-        if (inventoryStorage != null) {
+        JsonNode clientData = verifyClientDataToken(login.rawClientDataToken(), state.identity);
+        synchronized (xuidLoginLock(state.identity.xuid())) {
+            ensureNoDuplicateXuidSession(message.networkId(), state.identity.xuid());
+            ru.nexora.network.PlayerTransferRecord latestTransfer = assertPlayerMayLogin(
+                    state.identity.xuid());
+            acquireOnlinePlayerLease(state);
+        boolean legacyStateFound = false;
+        boolean authoritativeCheckpointRestored = false;
+        PendingPlayerTransferRestoreRegistry.PendingRestore pendingTransfer =
+                pendingTransferRestores.find(state.identity.xuid()).orElse(null);
+        if (pendingTransfer != null) {
+            try {
+                pendingTransfer.fence().assertCurrent();
+                PlayerStateCheckpointService.LoadedCheckpoint loaded = checkpointService
+                        .loadAtRevision(state.identity.xuid(), pendingTransfer.checkpointRevision())
+                        .orElseThrow(() -> new IOException("Exact transfer checkpoint revision is unavailable"));
+                PlayerStateBundle.Restored restored = loaded.bundle().restore();
+                state.inventory = restored.inventory();
+                state.craftingUiInventory.restore(restored.craftingUi().snapshot());
+                state.equipment = restored.equipment();
+                restorePlayerProfile(state, restored.profile(),
+                        state.identity.displayName() == null ? "unknown" : state.identity.displayName());
+                pendingTransfer.fence().assertCurrent();
+                if (!pendingTransferRestores.consume(pendingTransfer)) {
+                    throw new IOException("Pending transfer restore was concurrently cancelled");
+                }
+                state.transferFence = pendingTransfer.fence();
+                legacyStateFound = true;
+                authoritativeCheckpointRestored = true;
+            } catch (IOException | RuntimeException exception) {
+                try {
+                    if (pendingTransfer.fence().isRevokedOrExpired()) {
+                        pendingTransferRestores.cancel(state.identity.xuid(),
+                                pendingTransfer.fence().transferId(),
+                                pendingTransfer.fence().fencingToken());
+                    }
+                } catch (IOException cleanupFailure) {
+                    exception.addSuppressed(cleanupFailure);
+                }
+                state.rejected = true;
+                throw new SecurityException("Unable to safely restore claimed transfer checkpoint", exception);
+            }
+        }
+        if (!legacyStateFound && transferOwnershipLedger != null) {
+            try {
+                Optional<PlayerStateBundle> canonical = checkpointService.load(state.identity.xuid());
+                if (canonical.isPresent()) {
+                    PlayerStateBundle.Restored restored = canonical.orElseThrow().restore();
+                    state.inventory = restored.inventory();
+                    state.craftingUiInventory.restore(restored.craftingUi().snapshot());
+                    state.equipment = restored.equipment();
+                    restorePlayerProfile(state, restored.profile(),
+                            state.identity.displayName() == null ? "unknown" : state.identity.displayName());
+                    legacyStateFound = true;
+                    authoritativeCheckpointRestored = true;
+                } else if (latestTransfer != null) {
+                    throw new IOException(
+                            "Durable transfer exists but its canonical player checkpoint is unavailable");
+                }
+            } catch (IOException | RuntimeException exception) {
+                state.rejected = true;
+                throw new SecurityException("Unable to restore shared canonical player state", exception);
+            }
+        }
+        if (!authoritativeCheckpointRestored && inventoryStorage != null) {
             try {
                 var restored = inventoryStorage.loadState(state.identity.xuid());
                 if (restored.isPresent()) {
+                    legacyStateFound = true;
                     state.inventory = restored.orElseThrow().inventory();
                     state.craftingUiInventory.restore(
                             restored.orElseThrow().craftingUiInventory().snapshot());
@@ -2552,9 +4972,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 throw new SecurityException("Unable to safely restore authenticated player inventory", exception);
             }
         }
-        if (equipmentStorage != null) {
+        if (!authoritativeCheckpointRestored && equipmentStorage != null) {
             try {
-                state.equipment = equipmentStorage.load(state.identity.xuid()).orElseGet(PlayerEquipment::new);
+                Optional<PlayerEquipment> restoredEquipment = equipmentStorage.load(state.identity.xuid());
+                if (restoredEquipment.isPresent()) {
+                    legacyStateFound = true;
+                    state.equipment = restoredEquipment.orElseThrow();
+                } else {
+                    state.equipment = new PlayerEquipment();
+                }
             } catch (IOException | RuntimeException exception) {
                 state.rejected = true;
                 throw new SecurityException("Unable to safely restore authenticated player equipment", exception);
@@ -2567,37 +4993,163 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (state.entityId < 1) {
             throw new IllegalStateException("NEXORA entity ID space exhausted");
         }
+        try {
+            state.playerDeviceId = clientData.path("DeviceId").asText("");
+            state.platformChatId = clientData.path("PlatformOnlineId").asText("");
+            state.buildPlatform = BedrockPlayerSkinCodec.buildPlatform(clientData);
+            state.playerListEntry = createPlayerListEntry(state.identity, clientData, state.entityId);
+        } catch (RuntimeException exception) {
+            // Cosmetic data must never prevent an otherwise authenticated player from joining.
+            state.playerListEntry = null;
+            System.err.println("NEXORA: player-list skin data rejected for " + state.identity.xuid()
+                    + ": " + exception.getMessage());
+        }
 
         String displayName = state.identity.displayName() == null
                 ? "unknown" : state.identity.displayName();
-        if (playerStorage != null) {
+        if (!authoritativeCheckpointRestored && playerStorage != null) {
             try {
                 Optional<PlayerData> saved = playerStorage.load(state.identity.xuid());
                 if (saved.isPresent()) {
-                    PlayerData player = saved.get();
-                    state.vitals = player.vitals();
-                    state.experiencePoints = player.experiencePoints();
-                    state.experienceRemainderMilli = player.experienceRemainderMilli();
-                    state.dead = state.vitals.dead();
-                    if (player.worldName().equals(world.name())
-                            && WorldCollision.canOccupy(world, player.x(), player.y(), player.z())) {
-                        state.positionX = player.x();
-                        state.positionY = player.y();
-                        state.positionZ = player.z();
-                        state.yaw = player.yaw();
-                        state.pitch = player.pitch();
-                        state.positionInitialized = true;
-                    } else if (player.worldName().equals(world.name())) {
-                        System.err.println("NEXORA: saved position for " + displayName
-                                + " is obstructed; using the world spawn");
-                    }
+                    legacyStateFound = true;
+                    restorePlayerProfile(state, saved.orElseThrow(), displayName);
                 }
             } catch (IOException | RuntimeException exception) {
                 System.err.println("NEXORA: unable to load player profile for " + displayName
                         + ": " + exception.getMessage());
             }
         }
+        if (!authoritativeCheckpointRestored && transferOwnershipLedger == null && checkpointService != null) {
+            try {
+                Optional<PlayerStateBundle> canonical = checkpointService.load(state.identity.xuid());
+                if (canonical.isPresent()) {
+                    PlayerStateBundle.Restored restored = canonical.orElseThrow().restore();
+                    state.inventory = restored.inventory();
+                    state.craftingUiInventory.restore(restored.craftingUi().snapshot());
+                    state.equipment = restored.equipment();
+                    restorePlayerProfile(state, restored.profile(), displayName);
+                    System.out.println("NEXORA: restored canonical player checkpoint for " + displayName
+                            + " because no legacy player components were present");
+                }
+            } catch (IOException | RuntimeException exception) {
+                state.rejected = true;
+                throw new SecurityException("Unable to safely restore canonical player checkpoint", exception);
+            }
+        }
         System.out.printf("NEXORA: authenticated player %s%n", displayName);
+        }
+    }
+
+    private ru.nexora.network.PlayerTransferRecord assertPlayerMayLogin(String xuid) {
+        ru.nexora.network.DurableHandoffCoordinator ledger = transferOwnershipLedger;
+        String nodeId = transferOwnershipNodeId;
+        if (ledger == null || nodeId == null) return null;
+        try {
+            java.util.Optional<ru.nexora.network.PlayerTransferRecord> latest =
+                    ledger.findLatestForPlayer(xuid);
+            long now = System.currentTimeMillis();
+            if (latest.isPresent()) {
+                ru.nexora.network.PlayerTransferRecord record = latest.orElseThrow();
+                if (record.state() == ru.nexora.network.PlayerTransferRecord.State.PREPARED
+                        && nodeId.equals(record.sourceNode())
+                        && now >= record.updatedAtEpochMillis()
+                        && now - record.updatedAtEpochMillis() >= 30_000L) {
+                    ledger.abortPrepared(record.transferId(), now);
+                    latest = ledger.findLatestForPlayer(xuid);
+                } else if (record.state() == ru.nexora.network.PlayerTransferRecord.State.CLAIMED
+                        && record.leaseExpired(now)) {
+                    // An expired claim can no longer commit. Whichever node
+                    // wins this CAS revokes the old fence before login proceeds.
+                    ledger.abort(record.transferId(), record.fencingToken(), now);
+                    latest = ledger.findLatestForPlayer(xuid);
+                }
+            }
+            ru.nexora.network.PlayerTransferOwnershipGuard.loginDecision(latest, nodeId);
+            return latest.orElse(null);
+        } catch (IOException failure) {
+            throw new SecurityException("Unable to verify durable player ownership before login", failure);
+        }
+    }
+
+    private void assertTransferNodeOwnership(SessionState state) throws IOException {
+        ru.nexora.network.DurableHandoffCoordinator ledger = transferOwnershipLedger;
+        String nodeId = transferOwnershipNodeId;
+        if (ledger == null || nodeId == null || state.identity == null) return;
+        if (state.onlineLeaseLost) {
+            throw new IOException("Player session has already lost global online ownership");
+        }
+        long now = nanoTime.getAsLong();
+        String leaseSessionId = state.onlineLeaseSessionId;
+        ru.nexora.network.PlayerOnlineLeaseRegistry leases = onlineLeaseRegistry;
+        if (leases != null && state.loginAuthenticated && leaseSessionId == null) {
+            throw new IOException("Authenticated player session has no global online ownership lease");
+        }
+        if (leases != null && leaseSessionId != null) {
+            long previousLeaseRenewal = state.lastOnlineLeaseRenewalNanos;
+            long renewalInterval = Math.max(500_000_000L, onlineLeaseMillis * 1_000_000L / 3L);
+            if (previousLeaseRenewal == Long.MIN_VALUE || now - previousLeaseRenewal >= renewalInterval) {
+                if (!leases.renew(state.identity.xuid(), nodeId, leaseSessionId,
+                        System.currentTimeMillis(), onlineLeaseMillis)) {
+                    state.onlineLeaseLost = true;
+                    throw new IOException("Global online player lease expired or was acquired by another node");
+                }
+                state.lastOnlineLeaseRenewalNanos = now;
+            }
+        }
+        long previous = state.lastTransferOwnershipCheckNanos;
+        if (previous != Long.MIN_VALUE && now - previous < TRANSFER_OWNERSHIP_RECHECK_NANOS) return;
+        java.util.Optional<ru.nexora.network.PlayerTransferRecord> latest =
+                ledger.findLatestForPlayer(state.identity.xuid());
+        if (!ru.nexora.network.PlayerTransferOwnershipGuard.mayProcessSession(latest, nodeId)) {
+            throw new IOException("Latest durable transfer decision assigns this player to another node or is unresolved");
+        }
+        state.lastTransferOwnershipCheckNanos = now;
+    }
+
+    private Object xuidLoginLock(String xuid) {
+        return xuidLoginLocks[Math.floorMod(xuid.hashCode(), xuidLoginLocks.length)];
+    }
+
+    private void ensureNoDuplicateXuidSession(String incomingNetworkId, String xuid) {
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            if (entry.getKey().equals(incomingNetworkId)) continue;
+            SessionState existing = entry.getValue();
+            synchronized (existing) {
+                if (!existing.rejected && existing.identity != null
+                        && xuid.equals(existing.identity.xuid())
+                        && (existing.loginAuthenticated || existing.transferFrozen)) {
+                    throw new SecurityException("XUID already has an active or transferring session on this node");
+                }
+            }
+        }
+    }
+
+    private static Object[] createXuidLoginLocks() {
+        Object[] locks = new Object[256];
+        for (int i = 0; i < locks.length; i++) locks[i] = new Object();
+        return locks;
+    }
+
+    private void restorePlayerProfile(SessionState state, PlayerData player, String displayName) {
+        state.vitals = player.vitals();
+        state.experiencePoints = player.experiencePoints();
+        state.experienceRemainderMilli = player.experienceRemainderMilli();
+        state.dead = state.vitals.dead();
+        if (player.worldName().equals(world.name())) {
+            ensureActorFootprintChunksLoaded(player.x(), player.z());
+        }
+        if (player.worldName().equals(world.name())
+                && WorldCollision.canOccupy(world, player.x(), player.y(), player.z())) {
+            state.positionX = player.x();
+            state.positionY = player.y();
+            state.positionZ = player.z();
+            state.yaw = player.yaw();
+            state.pitch = player.pitch();
+            state.positionInitialized = true;
+        } else if (player.worldName().equals(world.name())) {
+            System.err.println("NEXORA: saved position for " + displayName
+                    + " is obstructed; using the world spawn");
+        }
     }
 
     private void handleClientHandshake(String networkId, SessionState state, BedrockPacket packet) {
@@ -2651,11 +5203,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         state.positionX = world.spawnX() + 0.5f;
                         state.positionY = world.spawnY();
                         state.positionZ = world.spawnZ() + 0.5f;
+                        ensureActorFootprintChunksLoaded(state.positionX, state.positionZ);
                         if (!WorldCollision.canOccupy(world, state.positionX, state.positionY, state.positionZ)) {
                             throw new IllegalStateException("Configured NEXORA world spawn is obstructed");
                         }
                         state.positionInitialized = true;
                     }
+                    // Loading the player's destination is an explicit spawn operation.
+                    // Collision probes themselves remain read-only and never generate chunks.
+                    ensureActorFootprintChunksLoaded(state.positionX, state.positionZ);
                     if (serverAuthoritativeMovement) {
                         state.physicsState = PlayerPhysics.spawn(
                                 world, state.positionX, state.positionY, state.positionZ);
@@ -2685,7 +5241,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             sendPacket(networkId, worldPacket, true);
                         }
                     }
-                    sendPacket(networkId, BedrockBiomeDefinitionCodec.createPacket(), true);
+                    sendPackets(networkId, List.of(
+                            BedrockBiomeDefinitionCodec.createPacket(),
+                            BedrockChunkRadiusCodec.createUpdatedPacket(state.chunkViewRadius)), true);
                     sendInitialChunkArea(networkId, state);
                 }
                 System.out.printf("NEXORA: resource-pack negotiation completed for %s%n", networkId);
@@ -2752,6 +5310,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.yaw = input.yaw();
         state.pitch = input.pitch();
         state.lastInputTick = input.tick();
+        broadcastPlayerMovement(networkId, state);
 
         for (BedrockPlayerAuthInputCodec.BlockAction action : input.blockActions()) {
             handleBlockAction(networkId, state, action);
@@ -2763,7 +5322,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         int chunkZ = Math.floorDiv((int) Math.floor(input.z()), 16);
         if (chunkX != state.lastChunkX || chunkZ != state.lastChunkZ) {
             sendPacket(networkId, BedrockStartGameCodec.createChunkPublisherUpdate(
-                    (int) Math.floor(input.x()), (int) Math.floor(input.y()), (int) Math.floor(input.z())), true);
+                    (int) Math.floor(input.x()), (int) Math.floor(input.y()), (int) Math.floor(input.z()),
+                    state.chunkViewRadius), true);
             sendChunkArea(networkId, state, chunkX, chunkZ);
         }
     }
@@ -2818,6 +5378,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         double errorY = input.y() - next.y();
         double errorZ = input.z() - next.z();
         boolean correctionNeeded = errorX * errorX + errorY * errorY + errorZ * errorZ > 0.0625;
+        aiGuard.recordMovementDiscrepancy(
+                state.identity == null ? networkId : state.identity.xuid(),
+                Math.hypot(errorX, errorZ), Math.abs(errorY), nanoTime.getAsLong());
         double previousX = state.positionX;
         double previousZ = state.positionZ;
         boolean sprinting = input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.SPRINTING);
@@ -2832,6 +5395,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.lastInputTick = input.tick();
         state.lastMovementNanos = nanoTime.getAsLong();
         state.hasReceivedInput = true;
+        broadcastPlayerMovement(networkId, state);
         double horizontalDistance = Math.hypot(state.positionX - previousX, state.positionZ - previousZ);
         updateSurvivalVitals(networkId, state, input.tick(), horizontalDistance, sprinting, jumpStarted);
         if (next.landedDistance() > 3.0) {
@@ -2859,7 +5423,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (chunkX != state.lastChunkX || chunkZ != state.lastChunkZ) {
             sendPacket(networkId, BedrockStartGameCodec.createChunkPublisherUpdate(
                     (int) Math.floor(state.positionX), (int) Math.floor(state.positionY),
-                    (int) Math.floor(state.positionZ)), true);
+                    (int) Math.floor(state.positionZ), state.chunkViewRadius), true);
             sendChunkArea(networkId, state, chunkX, chunkZ);
         }
     }
@@ -3285,6 +5849,54 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
+
+    private void applyPoison(SessionState target) {
+        long now = nanoTime.getAsLong();
+        if (target.poisonUntilNanos <= now) {
+            target.nextPoisonDamageNanos = safeAddNanos(now, 1_000_000_000L);
+        }
+        target.poisonUntilNanos = safeAddNanos(now, 4_000_000_000L);
+    }
+
+    private void tickPlayerPoisonEffects(long tick) {
+        long now = nanoTime.getAsLong();
+        for (var entry : sessions.entrySet()) {
+            SessionState target = entry.getValue();
+            target.combatLock.lock();
+            try {
+                synchronized (target) {
+                    if (target.poisonUntilNanos == Long.MIN_VALUE) continue;
+                    if (!target.loginAuthenticated || target.dead || target.vitals.dead()
+                            || now >= target.poisonUntilNanos) {
+                        target.poisonUntilNanos = Long.MIN_VALUE;
+                        target.nextPoisonDamageNanos = Long.MIN_VALUE;
+                        continue;
+                    }
+                    if (now < target.nextPoisonDamageNanos) continue;
+                    target.nextPoisonDamageNanos = safeAddNanos(now, 1_000_000_000L);
+                    float poisonDamage = Math.min(1.0f, Math.max(0.0f, target.vitals.health() - 1.0f));
+                    if (poisonDamage > 0.0f) {
+                        applyDamage(entry.getKey(), target, poisonDamage, tick, "death.attack.poison");
+                    }
+                }
+            } finally {
+                target.combatLock.unlock();
+            }
+        }
+    }
+
+    static long mobAttackDeadline(long nowMillis, long cooldownMillis) {
+        if (nowMillis < 0 || cooldownMillis < 0) {
+            throw new IllegalArgumentException("Mob attack timestamps must be non-negative");
+        }
+        return nowMillis > Long.MAX_VALUE - cooldownMillis
+                ? Long.MAX_VALUE : nowMillis + cooldownMillis;
+    }
+
+    private static long safeAddNanos(long now, long duration) {
+        return now > Long.MAX_VALUE - duration ? Long.MAX_VALUE : now + duration;
+    }
+
     private void tickPlayerFire(String networkId, SessionState state, long tick) {
         long now = nanoTime.getAsLong();
         if (state.fireUntilNanos == Long.MIN_VALUE) return;
@@ -3544,7 +6156,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     private static String blockDropItemId(BlockType block) {
         return switch (block) {
-            case AIR, BEDROCK -> null;
+            case AIR, BEDROCK, SPAWNER -> null;
             case STONE -> "minecraft:cobblestone";
             case GRASS_BLOCK -> "minecraft:dirt";
             case DIRT -> "minecraft:dirt";
@@ -3607,7 +6219,100 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case OAK_LOG -> 2_000_000_000L;
             case OAK_PLANKS -> 2_000_000_000L;
             case CRAFTING_TABLE, FURNACE, BLAST_FURNACE, SMOKER -> 2_500_000_000L;
+            case SPAWNER -> 5_000_000_000L;
         };
+    }
+
+    private void handleSubChunkRequest(
+            NetherNetInboundPipeline.InboundMessage message, SessionState state, BedrockPacket packet
+    ) {
+        if (!message.reliable()) {
+            throw new SecurityException("SubChunkRequest must arrive on ReliableDataChannel");
+        }
+        if (!state.loginAuthenticated || !state.gameStarted || !state.positionInitialized
+                || state.sentChunkKeys.isEmpty()) {
+            throw new SecurityException("SubChunkRequest arrived before chunk streaming was ready");
+        }
+
+        BedrockSubChunkCodec.Request request;
+        try {
+            request = BedrockSubChunkCodec.decodeRequest(packet);
+        } catch (IllegalArgumentException exception) {
+            state.rejected = true;
+            throw new SecurityException("Malformed Bedrock SubChunkRequest", exception);
+        }
+
+        List<BedrockSubChunkCodec.Response> responses = new ArrayList<>(request.offsets().size());
+        for (BedrockSubChunkCodec.Offset offset : request.offsets()) {
+            if (request.dimension() != 0) {
+                responses.add(new BedrockSubChunkCodec.Response(
+                        offset, BedrockSubChunkCodec.RESULT_WRONG_DIMENSION, null));
+                continue;
+            }
+            long chunkX = (long) request.centerX() + offset.x();
+            long subChunkY = (long) request.centerY() + offset.y();
+            long chunkZ = (long) request.centerZ() + offset.z();
+            if (chunkX < Integer.MIN_VALUE || chunkX > Integer.MAX_VALUE
+                    || chunkZ < Integer.MIN_VALUE || chunkZ > Integer.MAX_VALUE
+                    || subChunkY < -4 || subChunkY > 19) {
+                responses.add(new BedrockSubChunkCodec.Response(
+                        offset, BedrockSubChunkCodec.RESULT_INDEX_OUT_OF_BOUNDS, null));
+                continue;
+            }
+
+            int absoluteChunkX = (int) chunkX;
+            int absoluteChunkZ = (int) chunkZ;
+            long chunkKey = ((long) absoluteChunkX << 32) | (absoluteChunkZ & 0xffff_ffffL);
+            if (!state.sentChunkKeys.contains(chunkKey)) {
+                responses.add(new BedrockSubChunkCodec.Response(
+                        offset, BedrockSubChunkCodec.RESULT_LEVEL_CHUNK_DOES_NOT_EXIST, null));
+                continue;
+            }
+
+            byte[] serialized = BedrockLevelChunkCodec.createSubChunkData(
+                    world.getChunk(absoluteChunkX, absoluteChunkZ), (int) subChunkY);
+            if (serialized == null) {
+                responses.add(new BedrockSubChunkCodec.Response(
+                        offset, BedrockSubChunkCodec.RESULT_SUCCESS_ALL_AIR, null));
+            } else {
+                responses.add(new BedrockSubChunkCodec.Response(
+                        offset, BedrockSubChunkCodec.RESULT_SUCCESS, serialized));
+            }
+        }
+
+        if (!responses.isEmpty()) {
+            sendPacket(message.networkId(), BedrockSubChunkCodec.createResponsePacket(request, responses), true);
+        }
+    }
+
+    private void handleChunkRadiusRequest(
+            NetherNetInboundPipeline.InboundMessage message, SessionState state, BedrockPacket packet
+    ) {
+        if (!message.reliable()) {
+            throw new SecurityException("RequestChunkRadius must arrive on ReliableDataChannel");
+        }
+        if (!state.loginAuthenticated || !state.gameStarted || !state.positionInitialized) {
+            throw new SecurityException("RequestChunkRadius arrived before the world was ready");
+        }
+        BedrockChunkRadiusCodec.Request request;
+        try {
+            request = BedrockChunkRadiusCodec.decodeRequest(packet);
+        } catch (IllegalArgumentException exception) {
+            state.rejected = true;
+            throw new SecurityException("Malformed Bedrock RequestChunkRadius", exception);
+        }
+        int radius = BedrockChunkRadiusCodec.negotiateRadius(request);
+        int previousRadius = state.chunkViewRadius;
+        state.chunkViewRadius = radius;
+        sendPacket(message.networkId(), BedrockChunkRadiusCodec.createUpdatedPacket(radius), true);
+        if (previousRadius != radius || state.lastChunkX == Integer.MIN_VALUE) {
+            sendPacket(message.networkId(), BedrockStartGameCodec.createChunkPublisherUpdate(
+                    (int) Math.floor(state.positionX), (int) Math.floor(state.positionY),
+                    (int) Math.floor(state.positionZ), state.chunkViewRadius), true);
+            int centerX = Math.floorDiv((int) Math.floor(state.positionX), 16);
+            int centerZ = Math.floorDiv((int) Math.floor(state.positionZ), 16);
+            sendChunkArea(message.networkId(), state, centerX, centerZ);
+        }
     }
 
     private void sendInitialChunkArea(String networkId, SessionState state) {
@@ -3616,36 +6321,224 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         sendChunkArea(networkId, state, centerX, centerZ);
     }
 
+    private static final int MAX_CHUNK_PACKETS_PER_BATCH = 4;
+
     private void sendChunkArea(String networkId, SessionState state, int centerX, int centerZ) {
-        int radius = 1;
-        Set<Long> desiredChunks = new HashSet<>();
+        int radius = state.chunkViewRadius;
+        int diameter = radius * 2 + 1;
+        Set<Long> desiredChunks = new HashSet<>(diameter * diameter * 2);
+        List<BedrockPacket> pendingPackets = new ArrayList<>(MAX_CHUNK_PACKETS_PER_BATCH);
+        List<Long> pendingChunkKeys = new ArrayList<>(MAX_CHUNK_PACKETS_PER_BATCH);
+
+        // Visit each ring exactly once. The previous nested-square scan revisited
+        // inner cells for every ring, making traversal O(radius^3) instead of O(radius^2).
         for (int ring = 0; ring <= radius; ring++) {
-            for (int offsetZ = -ring; offsetZ <= ring; offsetZ++) {
-                for (int offsetX = -ring; offsetX <= ring; offsetX++) {
-                    if (Math.max(Math.abs(offsetX), Math.abs(offsetZ)) != ring) continue;
-                    int chunkX = centerX + offsetX;
-                    int chunkZ = centerZ + offsetZ;
-                    long key = ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
-                    desiredChunks.add(key);
-                    if (state.sentChunkKeys.add(key)) {
-                        WorldChunk chunk = world.getChunk(chunkX, chunkZ);
-                        sendPacket(networkId, BedrockLevelChunkCodec.createPacket(chunk), true);
-                        if (itemRegistry != null) {
-                            for (WorldItemEntity entity : world.itemEntities().snapshot()) {
-                                if (Math.floorDiv((int) Math.floor(entity.x()), 16) == chunkX
-                                        && Math.floorDiv((int) Math.floor(entity.z()), 16) == chunkZ) {
-                                    sendPacket(networkId,
-                                            BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry), true);
-                                }
-                            }
-                        }
+            if (ring == 0) {
+                queueChunkForStreaming(networkId, centerX, centerZ, state,
+                        desiredChunks, pendingPackets, pendingChunkKeys);
+                flushChunkBatch(networkId, state, pendingPackets, pendingChunkKeys);
+                continue;
+            }
+            int min = -ring;
+            int max = ring;
+            for (int offsetX = min; offsetX <= max; offsetX++) {
+                queueChunkForStreaming(networkId, centerX + offsetX, centerZ + min, state,
+                        desiredChunks, pendingPackets, pendingChunkKeys);
+                queueChunkForStreaming(networkId, centerX + offsetX, centerZ + max, state,
+                        desiredChunks, pendingPackets, pendingChunkKeys);
+            }
+            for (int offsetZ = min + 1; offsetZ < max; offsetZ++) {
+                queueChunkForStreaming(networkId, centerX + min, centerZ + offsetZ, state,
+                        desiredChunks, pendingPackets, pendingChunkKeys);
+                queueChunkForStreaming(networkId, centerX + max, centerZ + offsetZ, state,
+                        desiredChunks, pendingPackets, pendingChunkKeys);
+            }
+        }
+        flushChunkBatch(networkId, state, pendingPackets, pendingChunkKeys);
+        state.sentChunkKeys.retainAll(desiredChunks);
+        actorReplicationIndex.replaceChunkView(networkId, state.sentChunkKeys);
+        itemActorReplicationIndex.replaceChunkView(networkId, state.sentChunkKeys);
+        playerActorReplicationIndex.replaceChunkView(networkId, state.sentChunkKeys);
+        state.lastChunkX = centerX;
+        state.lastChunkZ = centerZ;
+        syncVisiblePlayerActors(networkId, state);
+        syncVisibleWorldActors(networkId, state);
+    }
+
+    private void queueChunkForStreaming(
+            String networkId, int chunkX, int chunkZ, SessionState state,
+            Set<Long> desiredChunks, List<BedrockPacket> pendingPackets,
+            List<Long> pendingChunkKeys
+    ) {
+        long key = ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
+        desiredChunks.add(key);
+        if (state.sentChunkKeys.contains(key)) return;
+        pendingPackets.add(BedrockLevelChunkCodec.createPacket(world.getChunk(chunkX, chunkZ)));
+        pendingChunkKeys.add(key);
+        if (pendingPackets.size() >= MAX_CHUNK_PACKETS_PER_BATCH) {
+            flushChunkBatch(networkId, state, pendingPackets, pendingChunkKeys);
+        }
+    }
+
+    private void flushChunkBatch(
+            String networkId, SessionState state,
+            List<BedrockPacket> pendingPackets, List<Long> pendingChunkKeys
+    ) {
+        if (pendingPackets.isEmpty()) return;
+        // Only publish chunk keys after the complete batch was accepted by the transport.
+        sendPackets(networkId, pendingPackets, true);
+        state.sentChunkKeys.addAll(pendingChunkKeys);
+        pendingPackets.clear();
+        pendingChunkKeys.clear();
+    }
+
+    /** Reconciles remote player actors whenever a client's published chunk view changes. */
+    private void syncVisiblePlayerActors(String recipientNetworkId, SessionState recipient) {
+        if (!recipient.clientInitialized || !recipient.playerListAdvertised) return;
+        BedrockPacket remove = null;
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            if (entry.getKey().equals(recipientNetworkId)) continue;
+            SessionState player = entry.getValue();
+            if (!player.clientInitialized || !player.playerListAdvertised
+                    || player.playerListEntry == null) continue;
+            boolean visible = isPlayerChunkVisible(recipient, player);
+            if (visible && recipient.visiblePlayerEntityIds.add(player.entityId)) {
+                playerActorReplicationIndex.addActorViewer(player.entityId, recipientNetworkId);
+                try {
+                    sendPacket(recipientNetworkId, createAddPlayerPacket(player), true);
+                } catch (RuntimeException exception) {
+                    recipient.visiblePlayerEntityIds.remove(player.entityId);
+                    playerActorReplicationIndex.removeActorViewer(player.entityId, recipientNetworkId);
+                    System.err.println("NEXORA: unable to add player entering chunk view: " + exception.getMessage());
+                }
+            } else if (!visible && recipient.visiblePlayerEntityIds.remove(player.entityId)) {
+                playerActorReplicationIndex.removeActorViewer(player.entityId, recipientNetworkId);
+                if (remove == null) remove = BedrockAddItemActorCodec.createRemoveActor(player.entityId);
+                try {
+                    sendPacket(recipientNetworkId, remove, true);
+                } catch (RuntimeException exception) {
+                    System.err.println("NEXORA: unable to remove player leaving chunk view: " + exception.getMessage());
+                }
+            }
+        }
+    }
+
+    /** Reconciles server-owned mobs and projectiles against the recipient's loaded chunk set. */
+    private void syncVisibleWorldActors(String recipientNetworkId, SessionState recipient) {
+        if (!recipient.clientInitialized || recipient.rejected) return;
+        for (WorldLivingEntity entity : world.livingEntities().snapshot()) {
+            boolean visible = isWorldPositionVisible(recipient, entity.x(), entity.z());
+            if (visible && recipient.visibleLivingEntityIds.add(entity.runtimeId())) {
+                actorReplicationIndex.addActorViewer(entity.runtimeId(), recipientNetworkId);
+                try {
+                    sendPacket(recipientNetworkId, BedrockAddActorCodec.createAddActor(entity), true);
+                } catch (RuntimeException exception) {
+                    recipient.visibleLivingEntityIds.remove(entity.runtimeId());
+                    actorReplicationIndex.removeActorViewer(entity.runtimeId(), recipientNetworkId);
+                    System.err.println("NEXORA: unable to add living actor entering chunk view: "
+                            + exception.getMessage());
+                }
+            } else if (!visible && recipient.visibleLivingEntityIds.remove(entity.runtimeId())) {
+                actorReplicationIndex.removeActorViewer(entity.runtimeId(), recipientNetworkId);
+                try {
+                    sendPacket(recipientNetworkId,
+                            BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()), true);
+                } catch (RuntimeException exception) {
+                    System.err.println("NEXORA: unable to remove living actor leaving chunk view: "
+                            + exception.getMessage());
+                }
+            }
+        }
+        if (itemRegistry != null) {
+            for (WorldItemEntity entity : world.itemEntities().snapshot()) {
+                if (itemRegistry.findByIdentifier(entity.stack().itemId()) == null) continue;
+                boolean visible = isWorldPositionVisible(recipient, entity.x(), entity.z());
+                if (visible && recipient.visibleItemEntityIds.add(entity.runtimeId())) {
+                    itemActorReplicationIndex.addActorViewer(entity.runtimeId(), recipientNetworkId);
+                    try {
+                        sendPacket(recipientNetworkId,
+                                BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry), true);
+                    } catch (RuntimeException exception) {
+                        recipient.visibleItemEntityIds.remove(entity.runtimeId());
+                        itemActorReplicationIndex.removeActorViewer(entity.runtimeId(), recipientNetworkId);
+                        System.err.println("NEXORA: unable to add dropped item entering chunk view: "
+                                + exception.getMessage());
+                    }
+                } else if (!visible && recipient.visibleItemEntityIds.remove(entity.runtimeId())) {
+                    itemActorReplicationIndex.removeActorViewer(entity.runtimeId(), recipientNetworkId);
+                    try {
+                        sendPacket(recipientNetworkId,
+                                BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()), true);
+                    } catch (RuntimeException exception) {
+                        System.err.println("NEXORA: unable to remove dropped item leaving chunk view: "
+                                + exception.getMessage());
                     }
                 }
             }
         }
-        state.sentChunkKeys.retainAll(desiredChunks);
-        state.lastChunkX = centerX;
-        state.lastChunkZ = centerZ;
+        for (ru.nexora.combat.ArrowProjectile arrow : mobArrows.values()) {
+            boolean visible = isWorldPositionVisible(recipient, arrow.x(), arrow.z());
+            if (visible && recipient.visibleArrowEntityIds.add(arrow.runtimeId())) {
+                actorReplicationIndex.addActorViewer(arrow.runtimeId(), recipientNetworkId);
+                try {
+                    sendPacket(recipientNetworkId, BedrockArrowActorCodec.createSpawn(arrow), true);
+                } catch (RuntimeException exception) {
+                    recipient.visibleArrowEntityIds.remove(arrow.runtimeId());
+                    actorReplicationIndex.removeActorViewer(arrow.runtimeId(), recipientNetworkId);
+                    System.err.println("NEXORA: unable to add projectile entering chunk view: "
+                            + exception.getMessage());
+                }
+            } else if (!visible && recipient.visibleArrowEntityIds.remove(arrow.runtimeId())) {
+                actorReplicationIndex.removeActorViewer(arrow.runtimeId(), recipientNetworkId);
+                try {
+                    sendPacket(recipientNetworkId,
+                            BedrockAddItemActorCodec.createRemoveActor(arrow.uniqueId()), true);
+                } catch (RuntimeException exception) {
+                    System.err.println("NEXORA: unable to remove projectile leaving chunk view: "
+                            + exception.getMessage());
+                }
+            }
+        }
+        for (ru.nexora.combat.FireballProjectile fireball : mobFireballs.values()) {
+            boolean visible = isWorldPositionVisible(recipient, fireball.x(), fireball.z());
+            if (visible && recipient.visibleArrowEntityIds.add(fireball.runtimeId())) {
+                actorReplicationIndex.addActorViewer(fireball.runtimeId(), recipientNetworkId);
+                try {
+                    sendPacket(recipientNetworkId, BedrockFireballActorCodec.createSpawn(fireball), true);
+                } catch (RuntimeException exception) {
+                    recipient.visibleArrowEntityIds.remove(fireball.runtimeId());
+                    actorReplicationIndex.removeActorViewer(fireball.runtimeId(), recipientNetworkId);
+                    System.err.println("NEXORA: unable to add fireball entering chunk view: "
+                            + exception.getMessage());
+                }
+            } else if (!visible && recipient.visibleArrowEntityIds.remove(fireball.runtimeId())) {
+                actorReplicationIndex.removeActorViewer(fireball.runtimeId(), recipientNetworkId);
+                try {
+                    sendPacket(recipientNetworkId,
+                            BedrockAddItemActorCodec.createRemoveActor(fireball.uniqueId()), true);
+                } catch (RuntimeException exception) {
+                    System.err.println("NEXORA: unable to remove fireball leaving chunk view: "
+                            + exception.getMessage());
+                }
+            }
+        }
+    }
+
+    private static boolean isWorldPositionVisible(SessionState recipient, double x, double z) {
+        if (!Double.isFinite(x) || !Double.isFinite(z)
+                || Math.abs(x) > 30_000_000 || Math.abs(z) > 30_000_000) return false;
+        int chunkX = Math.floorDiv((int) Math.floor(x), 16);
+        int chunkZ = Math.floorDiv((int) Math.floor(z), 16);
+        long key = ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
+        return recipient.sentChunkKeys.contains(key);
+    }
+
+    private static boolean isPlayerChunkVisible(SessionState recipient, SessionState player) {
+        if (!Float.isFinite(player.positionX) || !Float.isFinite(player.positionZ)) return false;
+        int chunkX = Math.floorDiv((int) Math.floor(player.positionX), 16);
+        int chunkZ = Math.floorDiv((int) Math.floor(player.positionZ), 16);
+        long key = ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
+        return recipient.sentChunkKeys.contains(key);
     }
 
     private void handleClientInitialized(
@@ -3662,11 +6555,33 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (state.clientInitialized) {
             throw new SecurityException("Duplicate SetLocalPlayerAsInitialized packet");
         }
+        if (state.transferFence != null) {
+            try {
+                state.transferFence.assertCommitted();
+            } catch (IOException uncommitted) {
+                state.rejected = true;
+                throw new SecurityException("Destination ownership is not committed; gameplay admission denied",
+                        uncommitted);
+            }
+        }
         long runtimeEntityId = readUnsignedVarLong(packet.payload());
         if (runtimeEntityId != state.entityId) {
             throw new SecurityException("SetLocalPlayerAsInitialized runtime ID does not match this player");
         }
+        if (transferOwnershipLedger != null) {
+            try {
+                // First login on a cluster node may have migrated legacy local files.
+                // Persist the complete canonical aggregate before admitting gameplay.
+                checkpointCanonicalPlayerState(state);
+            } catch (IOException | RuntimeException failure) {
+                state.rejected = true;
+                state.loginAuthenticated = false;
+                throw new SecurityException("Unable to persist shared canonical player state before admission",
+                        failure);
+            }
+        }
         state.clientInitialized = true;
+        advertisePlayerList(message.networkId(), state);
         sendPacket(message.networkId(), BedrockBatchCodec.createPlayStatus(3), true);
         sendInitialPlayerInventory(message.networkId(), state);
         sendExistingLivingActors(message.networkId());
@@ -3823,17 +6738,83 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private void broadcastItemActor(WorldItemEntity entity, BedrockPacket packet) {
+        boolean removing = packet.packetId() == BedrockItemActorCodec.REMOVE_ACTOR_PACKET_ID;
+        long runtimeId = entity.runtimeId();
+        if (removing) {
+            List<byte[]> removeFrames = null;
+            for (String networkId : itemActorReplicationIndex.actorViewers(runtimeId)) {
+                SessionState recipient = sessions.get(networkId);
+                itemActorReplicationIndex.removeActorViewer(runtimeId, networkId);
+                if (recipient == null || !recipient.visibleItemEntityIds.remove(runtimeId)
+                        || !recipient.clientInitialized || recipient.rejected) continue;
+                try {
+                    if (removeFrames == null) removeFrames = encodeFrames(List.of(packet), true);
+                    sendEncodedFrames(networkId, removeFrames);
+                } catch (RuntimeException exception) {
+                    System.err.println("NEXORA: unable to remove item actor from " + networkId
+                            + ": " + exception.getMessage());
+                }
+            }
+            return;
+        }
+
         int chunkX = Math.floorDiv((int) Math.floor(entity.x()), 16);
         int chunkZ = Math.floorDiv((int) Math.floor(entity.z()), 16);
         long chunkKey = ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
-        for (var entry : sessions.entrySet()) {
-            SessionState recipient = entry.getValue();
-            if (!recipient.clientInitialized || recipient.rejected
-                    || !recipient.sentChunkKeys.contains(chunkKey)) continue;
+        List<byte[]> movementFrames = null;
+        List<byte[]> spawnFrames = null;
+        List<byte[]> removeFrames = null;
+
+        // Visit only sessions subscribed to the item's current chunk.
+        for (String networkId : itemActorReplicationIndex.chunkViewers(chunkKey)) {
+            SessionState recipient = sessions.get(networkId);
+            if (recipient == null || !recipient.clientInitialized || recipient.rejected) continue;
+            boolean alreadyVisible = recipient.visibleItemEntityIds.contains(runtimeId);
             try {
-                sendPacket(entry.getKey(), packet, true);
+                if (!alreadyVisible) {
+                    if (itemRegistry.findByIdentifier(entity.stack().itemId()) == null) continue;
+                    recipient.visibleItemEntityIds.add(runtimeId);
+                    itemActorReplicationIndex.addActorViewer(runtimeId, networkId);
+                    if (spawnFrames == null) {
+                        spawnFrames = encodeFrames(
+                                List.of(BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry)), true);
+                    }
+                    sendEncodedFrames(networkId, spawnFrames);
+                } else {
+                    if (movementFrames == null) movementFrames = encodeFrames(List.of(packet), true);
+                    sendEncodedFrames(networkId, movementFrames);
+                }
             } catch (RuntimeException exception) {
-                System.err.println("NEXORA: unable to sync item actor to " + entry.getKey()
+                if (!alreadyVisible) {
+                    recipient.visibleItemEntityIds.remove(runtimeId);
+                    itemActorReplicationIndex.removeActorViewer(runtimeId, networkId);
+                }
+                System.err.println("NEXORA: unable to sync item actor to " + networkId
+                        + ": " + exception.getMessage());
+            }
+        }
+
+        // Previous viewers that no longer subscribe to this chunk receive one despawn.
+        for (String networkId : itemActorReplicationIndex.actorViewers(runtimeId)) {
+            SessionState recipient = sessions.get(networkId);
+            if (recipient == null) {
+                itemActorReplicationIndex.removeActorViewer(runtimeId, networkId);
+                continue;
+            }
+            if (isWorldPositionVisible(recipient, entity.x(), entity.z())) continue;
+            if (!recipient.visibleItemEntityIds.remove(runtimeId)) {
+                itemActorReplicationIndex.removeActorViewer(runtimeId, networkId);
+                continue;
+            }
+            itemActorReplicationIndex.removeActorViewer(runtimeId, networkId);
+            try {
+                if (removeFrames == null) {
+                    removeFrames = encodeFrames(
+                            List.of(BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId())), true);
+                }
+                sendEncodedFrames(networkId, removeFrames);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to remove item actor from " + networkId
                         + ": " + exception.getMessage());
             }
         }
@@ -3934,25 +6915,242 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         throw new IllegalArgumentException("Unsigned VarLong is too long");
     }
 
+    private BedrockPlayerListCodec.AddEntry createPlayerListEntry(
+            NetherNetClientIdentity identity, JsonNode clientData, long actorUniqueId
+    ) {
+        UUID playerUuid = parsePlayerUuid(identity.identityUuid());
+        if (playerUuid == null) playerUuid = parsePlayerUuid(clientData.path("SelfSignedId").asText(""));
+        if (playerUuid == null) {
+            playerUuid = UUID.nameUUIDFromBytes(
+                    ("NEXORA:" + identity.xuid()).getBytes(StandardCharsets.UTF_8));
+        }
+        String playerName = identity.displayName() == null || identity.displayName().isBlank()
+                ? "Player" : identity.displayName();
+        return new BedrockPlayerListCodec.AddEntry(
+                playerUuid,
+                actorUniqueId,
+                playerName,
+                identity.xuid(),
+                identity.playFabId(),
+                clientData.path("PlatformOnlineId").asText(""),
+                BedrockPlayerSkinCodec.buildPlatform(clientData),
+                BedrockPlayerSkinCodec.encode(clientData),
+                false,
+                false,
+                false,
+                0);
+    }
+
+    /** Sends the current player-list snapshot, then advertises this player to existing clients. */
+    private synchronized void advertisePlayerList(String networkId, SessionState joining) {
+        if (joining.rejected || joining.playerListAdvertised || joining.playerListEntry == null) return;
+        List<BedrockPlayerListCodec.AddEntry> snapshot = new ArrayList<>();
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            if (entry.getKey().equals(networkId)) continue;
+            SessionState existing = entry.getValue();
+            if (existing.clientInitialized && existing.playerListAdvertised
+                    && existing.playerListEntry != null) {
+                snapshot.add(existing.playerListEntry);
+            }
+        }
+        snapshot.add(joining.playerListEntry);
+        try {
+            sendPacket(networkId, BedrockPlayerListCodec.createAdd(snapshot), true);
+            joining.playerListAdvertised = true;
+        } catch (RuntimeException exception) {
+            System.err.println("NEXORA: unable to send player-list snapshot to " + networkId
+                    + ": " + exception.getMessage());
+            return;
+        }
+        // Spawn only actors inside the joining client's currently published chunk view.
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            if (entry.getKey().equals(networkId)) continue;
+            SessionState existing = entry.getValue();
+            if (!existing.clientInitialized || !existing.playerListAdvertised
+                    || existing.playerListEntry == null
+                    || !isPlayerChunkVisible(joining, existing)) continue;
+            try {
+                sendPacket(networkId, createAddPlayerPacket(existing), true);
+                joining.visiblePlayerEntityIds.add(existing.entityId);
+                playerActorReplicationIndex.addActorViewer(existing.entityId, networkId);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to spawn existing player for " + networkId
+                        + ": " + exception.getMessage());
+            }
+        }
+        BedrockPacket addListEntry = BedrockPlayerListCodec.createAdd(List.of(joining.playerListEntry));
+        BedrockPacket addPlayer = createAddPlayerPacket(joining);
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            if (entry.getKey().equals(networkId)) continue;
+            SessionState recipient = entry.getValue();
+            if (!recipient.clientInitialized || !recipient.playerListAdvertised) continue;
+            try {
+                // The client must know the UUID/skin before AddPlayer can create the remote actor.
+                sendPacket(entry.getKey(), addListEntry, true);
+                if (isPlayerChunkVisible(recipient, joining)) {
+                    sendPacket(entry.getKey(), addPlayer, true);
+                    recipient.visiblePlayerEntityIds.add(joining.entityId);
+                    playerActorReplicationIndex.addActorViewer(joining.entityId, entry.getKey());
+                }
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to advertise and spawn joining player for "
+                        + entry.getKey() + ": " + exception.getMessage());
+            }
+        }
+    }
+
+    /** Removes a disconnected player from every remaining initialized client's list. */
+    private synchronized void removePlayerListEntry(String networkId, SessionState leaving) {
+        if (!leaving.playerListAdvertised || leaving.playerListEntry == null) return;
+        leaving.playerListAdvertised = false;
+        BedrockPacket remove = BedrockPlayerListCodec.createRemove(
+                List.of(leaving.playerListEntry.uuid()));
+        BedrockPacket removeActor = BedrockAddItemActorCodec.createRemoveActor(leaving.entityId);
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            if (entry.getKey().equals(networkId)) continue;
+            SessionState recipient = entry.getValue();
+            if (!recipient.clientInitialized || !recipient.playerListAdvertised) continue;
+            try {
+                if (recipient.visiblePlayerEntityIds.remove(leaving.entityId)) {
+                    playerActorReplicationIndex.removeActorViewer(leaving.entityId, entry.getKey());
+                    sendPacket(entry.getKey(), removeActor, true);
+                }
+                sendPacket(entry.getKey(), remove, true);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to remove disconnected player from " + entry.getKey()
+                        + ": " + exception.getMessage());
+            }
+        }
+    }
+
+    private static UUID parsePlayerUuid(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+    }
+
+    private BedrockPacket createAddPlayerPacket(SessionState player) {
+        BedrockPlayerListCodec.AddEntry entry = Objects.requireNonNull(
+                player.playerListEntry, "playerListEntry");
+        return BedrockAddPlayerCodec.createSpawn(new BedrockAddPlayerCodec.SpawnData(
+                entry.uuid(),
+                entry.playerName(),
+                player.entityId,
+                player.platformChatId,
+                player.positionX,
+                player.positionY + 1.62,
+                player.positionZ,
+                (float) player.velocityX,
+                (float) player.velocityY,
+                (float) player.velocityZ,
+                player.pitch,
+                player.yaw,
+                player.yaw,
+                player.playerDeviceId,
+                player.buildPlatform));
+    }
+
+    private void broadcastPlayerMovement(String sourceNetworkId, SessionState player) {
+        if (!player.clientInitialized || !player.playerListAdvertised || player.playerListEntry == null) return;
+        boolean onGround = player.physicsState != null && player.physicsState.onGround();
+        BedrockPacket movement = BedrockMoveActorAbsoluteCodec.create(
+                player.entityId, player.positionX, player.positionY + 1.62, player.positionZ,
+                player.pitch, player.yaw, player.yaw, onGround);
+        int chunkX = Math.floorDiv((int) Math.floor(player.positionX), 16);
+        int chunkZ = Math.floorDiv((int) Math.floor(player.positionZ), 16);
+        long chunkKey = ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
+        List<byte[]> movementFrames = null;
+        List<byte[]> spawnFrames = null;
+        List<byte[]> removeFrames = null;
+
+        // Current recipients come directly from the player's destination chunk.
+        for (String networkId : playerActorReplicationIndex.chunkViewers(chunkKey)) {
+            if (networkId.equals(sourceNetworkId)) continue;
+            SessionState recipient = sessions.get(networkId);
+            if (recipient == null || !recipient.clientInitialized || !recipient.playerListAdvertised) continue;
+            boolean alreadyVisible = recipient.visiblePlayerEntityIds.contains(player.entityId);
+            try {
+                if (!alreadyVisible) {
+                    recipient.visiblePlayerEntityIds.add(player.entityId);
+                    playerActorReplicationIndex.addActorViewer(player.entityId, networkId);
+                    if (spawnFrames == null) {
+                        spawnFrames = encodeFrames(List.of(createAddPlayerPacket(player), movement), true);
+                    }
+                    sendEncodedFrames(networkId, spawnFrames);
+                } else {
+                    if (movementFrames == null) movementFrames = encodeFrames(List.of(movement), true);
+                    sendEncodedFrames(networkId, movementFrames);
+                }
+            } catch (RuntimeException exception) {
+                if (!alreadyVisible) {
+                    recipient.visiblePlayerEntityIds.remove(player.entityId);
+                    playerActorReplicationIndex.removeActorViewer(player.entityId, networkId);
+                }
+                System.err.println("NEXORA: unable to sync player movement to " + networkId
+                        + ": " + exception.getMessage());
+            }
+        }
+
+        // Previously visible recipients outside the new chunk receive one despawn.
+        for (String networkId : playerActorReplicationIndex.actorViewers(player.entityId)) {
+            if (networkId.equals(sourceNetworkId)) continue;
+            SessionState recipient = sessions.get(networkId);
+            if (recipient == null) {
+                playerActorReplicationIndex.removeActorViewer(player.entityId, networkId);
+                continue;
+            }
+            if (isPlayerChunkVisible(recipient, player)) continue;
+            if (!recipient.visiblePlayerEntityIds.remove(player.entityId)) {
+                playerActorReplicationIndex.removeActorViewer(player.entityId, networkId);
+                continue;
+            }
+            playerActorReplicationIndex.removeActorViewer(player.entityId, networkId);
+            try {
+                if (removeFrames == null) {
+                    removeFrames = encodeFrames(
+                            List.of(BedrockAddItemActorCodec.createRemoveActor(player.entityId)), true);
+                }
+                sendEncodedFrames(networkId, removeFrames);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to sync player despawn to " + networkId
+                        + ": " + exception.getMessage());
+            }
+        }
+    }
+
     private void sendPacket(String networkId, BedrockPacket packet, boolean compressionNegotiated) {
         sendPackets(networkId, List.of(packet), compressionNegotiated);
     }
 
     private void sendPackets(String networkId, List<BedrockPacket> packets, boolean compressionNegotiated) {
+        sendEncodedFrames(networkId, encodeFrames(packets, compressionNegotiated));
+    }
+
+    /**
+     * Encodes and fragments a packet batch once so actor fanout can reuse the immutable
+     * wire representation for every interested client instead of recompressing per recipient.
+     */
+    private List<byte[]> encodeFrames(List<BedrockPacket> packets, boolean compressionNegotiated) {
         byte[] batch = BedrockBatchCodec.encode(
                 packets, compressionNegotiated, compressionThreshold);
-        List<byte[]> frames = NetherNetMessageFramer.fragment(
-                batch, SCTP_MAX_MESSAGE_BYTES, true);
+        return NetherNetMessageFramer.fragment(batch, SCTP_MAX_MESSAGE_BYTES, true);
+    }
+
+    private void sendEncodedFrames(String networkId, List<byte[]> frames) {
         try {
             for (byte[] frame : frames) {
-                outbound.sendFrame(networkId, "ReliableDataChannel", frame);
+                // Give each transport call its own array in case an implementation retains or mutates it.
+                outbound.sendFrame(networkId, "ReliableDataChannel", frame.clone());
             }
         } catch (Exception exception) {
             throw new IllegalStateException("Unable to send Bedrock packet batch", exception);
         }
     }
 
-    private static void verifyClientDataToken(String token, NetherNetClientIdentity identity) {
+    private static JsonNode verifyClientDataToken(String token, NetherNetClientIdentity identity) {
         try {
             String[] parts = token.split("\\.", -1);
             if (parts.length != 3 || parts[2].isEmpty()) {
@@ -3991,6 +7189,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             if (notBefore != null && (!notBefore.canConvertToLong() || now + 30 < notBefore.asLong())) {
                 throw new SecurityException("Client-data JWT is not active yet");
             }
+            return claims;
         } catch (SecurityException exception) {
             throw exception;
         } catch (Exception exception) {
@@ -4038,6 +7237,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         for (SessionState state : sessions.values()) {
             synchronized (state) {
+                if (state.transferFrozen) continue;
                 try {
                     returnCraftingGridItems(state);
                 } catch (IOException | RuntimeException exception) {
@@ -4050,8 +7250,17 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             savePlayers();
         } catch (IOException exception) {
             System.err.println("NEXORA: unable to save player profiles on shutdown: " + exception.getMessage());
+        } finally {
+            for (SessionState state : sessions.values()) releaseOnlinePlayerLease(state);
         }
         sessions.clear();
+        actorReplicationIndex.clear();
+        itemActorReplicationIndex.clear();
+        playerActorReplicationIndex.clear();
+        mobArrows.clear();
+        poisonMobArrows.clear();
+        mobFireballs.clear();
+        guardianBeamTracker.clearAll();
     }
 
     @FunctionalInterface
@@ -4096,6 +7305,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private static final class SessionState {
         private final ReentrantLock combatLock = new ReentrantLock();
         private long lastAttackNanos = Long.MIN_VALUE;
+        private long chatWindowStartedNanos = Long.MIN_VALUE;
+        private int chatMessagesInWindow;
         private long lastCombatDamageNanos = Long.MIN_VALUE;
         private long spearChargeStartedNanos = Long.MIN_VALUE;
         private long spearChargeReleasedNanos = Long.MIN_VALUE;
@@ -4104,6 +7315,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private ItemStack spearChargeItemSnapshot;
         private long fireUntilNanos = Long.MIN_VALUE;
         private long nextFireDamageNanos = Long.MIN_VALUE;
+        private long poisonUntilNanos = Long.MIN_VALUE;
+        private long nextPoisonDamageNanos = Long.MIN_VALUE;
         private PlayerInventory inventory = new PlayerInventory();
         private PlayerEquipment equipment = new PlayerEquipment();
         private PlayerVitals vitals = PlayerVitals.DEFAULT;
@@ -4140,11 +7353,24 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private double movementBudget = 2.0;
         private int lastChunkX = Integer.MIN_VALUE;
         private int lastChunkZ = Integer.MIN_VALUE;
+        private volatile int chunkViewRadius = BedrockChunkRadiusCodec.DEFAULT_RADIUS;
         private final Set<Long> sentChunkKeys = ConcurrentHashMap.newKeySet();
+        private final Set<Long> visiblePlayerEntityIds = ConcurrentHashMap.newKeySet();
+        private final Set<Long> visibleLivingEntityIds = ConcurrentHashMap.newKeySet();
+        private final Set<Long> visibleArrowEntityIds = ConcurrentHashMap.newKeySet();
+        private final Set<Long> visibleItemEntityIds = ConcurrentHashMap.newKeySet();
         private BreakTarget breakTarget;
         private long entityId;
-        private boolean rejected;
+        private volatile boolean rejected;
+        private volatile boolean transferFrozen;
+        private boolean transferRedirected;
+        private PlayerTransferFence transferFence;
+        private long lastTransferOwnershipCheckNanos = Long.MIN_VALUE;
+        private volatile String onlineLeaseSessionId;
+        private volatile long lastOnlineLeaseRenewalNanos = Long.MIN_VALUE;
+        private volatile boolean onlineLeaseLost;
         private PendingEquipmentForm pendingEquipmentForm;
+        private int pendingAiFormId;
         private int nextContainerWindowId = 1;
         private int openContainerWindowId;
         private int openContainerType = BedrockContainerPacketCodec.CONTAINER_TYPE;
@@ -4157,6 +7383,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private final ContainerInventory craftingUiInventory =
                 new ContainerInventory(BedrockInventoryContentCodec.PLAYER_UI_SIZE);
         private int clientProtocol;
-        private NetherNetClientIdentity identity;
+        private volatile NetherNetClientIdentity identity;
+        private BedrockPlayerListCodec.AddEntry playerListEntry;
+        private volatile boolean playerListAdvertised;
+        private String playerDeviceId = "";
+        private String platformChatId = "";
+        private int buildPlatform = -1;
     }
 }

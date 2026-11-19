@@ -241,10 +241,14 @@ public final class WorldItemEntityManager {
                 }
             }
 
-            for (WorldItemEntity first : snapshot()) {
+            // Candidate IDs are stable for this merge pass. Rebuilding and sorting a
+            // full entity snapshot for every outer-loop actor made this phase allocate
+            // repeatedly and added avoidable sorting work to the O(n^2) pair scan.
+            List<WorldItemEntity> mergeCandidates = snapshot();
+            for (WorldItemEntity first : mergeCandidates) {
                 WorldItemEntity currentFirst = entities.get(first.runtimeId());
                 if (currentFirst == null) continue;
-                for (WorldItemEntity second : snapshot()) {
+                for (WorldItemEntity second : mergeCandidates) {
                     if (second.runtimeId() <= currentFirst.runtimeId()) continue;
                     WorldItemEntity currentSecond = entities.get(second.runtimeId());
                     if (currentSecond == null || !canMerge(currentFirst, currentSecond)) continue;

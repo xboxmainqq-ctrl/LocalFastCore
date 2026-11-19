@@ -7,6 +7,9 @@ import dev.onvoid.webrtc.RTCAnswerOptions;
 import dev.onvoid.webrtc.RTCConfiguration;
 import dev.onvoid.webrtc.RTCPeerConnection;
 import dev.onvoid.webrtc.RTCPeerConnectionState;
+import dev.onvoid.webrtc.RTCStats;
+import dev.onvoid.webrtc.RTCStatsReport;
+import dev.onvoid.webrtc.RTCStatsType;
 import dev.onvoid.webrtc.RTCDataChannel;
 import dev.onvoid.webrtc.RTCDataChannelBuffer;
 import dev.onvoid.webrtc.RTCDataChannelObserver;
@@ -26,6 +29,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -41,6 +45,9 @@ import java.util.concurrent.ScheduledExecutorService;
  */
 public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
     private static final long DEFAULT_TIMEOUT_MILLIS = 15_000;
+    private static final long OUTBOUND_HIGH_WATERMARK_BYTES = 512L * 1024L;
+    private static final long OUTBOUND_LOW_WATERMARK_BYTES = 256L * 1024L;
+    private static final int TRANSPORT_STATS_BATCH_SIZE = 32;
 
     private final PeerConnectionFactory factory;
     private final NetherNetIdentityService identityService;
@@ -54,6 +61,8 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
     private final Semaphore sessionPermits;
     private final ScheduledExecutorService sessionReaper;
     private final AtomicBoolean closed = new AtomicBoolean();
+    private final java.util.concurrent.atomic.AtomicLong transportStatsCursor =
+            new java.util.concurrent.atomic.AtomicLong();
 
     public WebRtcSdpNegotiator(
             NetherNetIdentityService identityService,
@@ -127,6 +136,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
             return thread;
         });
         this.sessionReaper.scheduleAtFixedRate(this::reapIdleSessions, 10, 10, TimeUnit.SECONDS);
+        this.sessionReaper.scheduleAtFixedRate(this::sampleTransportStats, 1, 1, TimeUnit.SECONDS);
     }
 
     @Override
@@ -229,6 +239,24 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         return sessions.size();
     }
 
+    /** Current application-side backlog waiting for native WebRTC send capacity. */
+    public record OutboundQueueSummary(int peersWithQueuedFrames, int queuedFrames, long queuedBytes) {
+    }
+
+    public OutboundQueueSummary outboundQueueSummary() {
+        int peers = 0;
+        int frames = 0;
+        long bytes = 0L;
+        for (PeerSession session : sessions.values()) {
+            if (!session.connected || session.sessionClosed.get()) continue;
+            long[] queued = session.outboundQueueSnapshot();
+            if (queued[1] > 0) peers++;
+            frames = (int) Math.min(Integer.MAX_VALUE, (long) frames + queued[1]);
+            bytes = saturatingAdd(bytes, queued[0]);
+        }
+        return new OutboundQueueSummary(peers, frames, bytes);
+    }
+
     /** Sends an already-framed binary NetherNet message to one peer. */
     public void sendFrame(String networkId, String channelLabel, byte[] frame) throws Exception {
         Objects.requireNonNull(frame, "frame");
@@ -238,7 +266,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         if (channel == null || channel.getState() != RTCDataChannelState.OPEN) {
             throw new IllegalStateException("NetherNet data channel is not open: " + channelLabel);
         }
-        channel.send(new RTCDataChannelBuffer(ByteBuffer.wrap(frame), true));
+        session.sendFrame(channelLabel, channel, frame);
     }
 
     private void reapIdleSessions() {
@@ -250,6 +278,135 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
                 session.close();
             }
         });
+    }
+
+    /** Returns the latest WebRTC transport-level sample, or null for an unknown peer. */
+    public TransportMetrics transportMetrics(String networkId) {
+        PeerSession session = sessions.get(networkId);
+        return session == null ? null : session.transportMetrics();
+    }
+
+    /** A transport-level ICE RTT sample; it is not the Bedrock gameplay ping. */
+    public record TransportMetrics(double rttMillis, long bytesSent, long bytesReceived,
+                                   long sampledAtMillis) {
+        public boolean available() {
+            return sampledAtMillis > 0 && Double.isFinite(rttMillis) && rttMillis >= 0.0;
+        }
+
+        /** Returns -1 when no sample has been recorded yet. */
+        public long ageMillis(long nowMillis) {
+            return sampledAtMillis <= 0 ? -1L : Math.max(0L, nowMillis - sampledAtMillis);
+        }
+
+        public boolean stale(long nowMillis, long maxAgeMillis) {
+            if (maxAgeMillis < 0) throw new IllegalArgumentException("maxAgeMillis must be >= 0");
+            long age = ageMillis(nowMillis);
+            return age < 0 || age > maxAgeMillis;
+        }
+    }
+
+    /** Aggregate transport diagnostics. RTT values include fresh ICE samples only. */
+    public record TransportRate(double sentBytesPerSecond, double receivedBytesPerSecond,
+                                long sampledAtMillis) {
+        public boolean available() {
+            return sampledAtMillis > 0 && Double.isFinite(sentBytesPerSecond)
+                    && Double.isFinite(receivedBytesPerSecond)
+                    && sentBytesPerSecond >= 0.0 && receivedBytesPerSecond >= 0.0;
+        }
+
+        public boolean stale(long nowMillis, long maxAgeMillis) {
+            if (maxAgeMillis < 0) throw new IllegalArgumentException("maxAgeMillis must be >= 0");
+            return sampledAtMillis <= 0 || Math.max(0L, nowMillis - sampledAtMillis) > maxAgeMillis;
+        }
+    }
+
+    public record TransportSummary(int connectedPeers, int peersWithSamples, int freshPeers,
+                                   int staleOrMissingPeers, double averageRttMillis,
+                                   double maxRttMillis, long bytesSent, long bytesReceived,
+                                   int peersWithRate, double sentBytesPerSecond,
+                                   double receivedBytesPerSecond) {
+    }
+
+    public TransportSummary transportSummary(long nowMillis, long maxAgeMillis) {
+        List<PeerSession> active = sessions.values().stream()
+                .filter(session -> session.connected && !session.sessionClosed.get())
+                .toList();
+        List<TransportMetrics> metrics = active.stream().map(PeerSession::transportMetrics).toList();
+        List<TransportRate> rates = active.stream().map(PeerSession::transportRate).toList();
+        return summarizeTransportMetrics(metrics.size(), metrics, rates, nowMillis, maxAgeMillis);
+    }
+
+    public static TransportSummary summarizeTransportMetrics(
+            int connectedPeers, List<TransportMetrics> metrics, long nowMillis, long maxAgeMillis) {
+        return summarizeTransportMetrics(connectedPeers, metrics, List.of(), nowMillis, maxAgeMillis);
+    }
+
+    public static TransportSummary summarizeTransportMetrics(
+            int connectedPeers, List<TransportMetrics> metrics, List<TransportRate> rates,
+            long nowMillis, long maxAgeMillis) {
+        if (connectedPeers < 0) throw new IllegalArgumentException("connectedPeers must be >= 0");
+        Objects.requireNonNull(metrics, "metrics");
+        Objects.requireNonNull(rates, "rates");
+        if (maxAgeMillis < 0) throw new IllegalArgumentException("maxAgeMillis must be >= 0");
+        int withSamples = 0;
+        int fresh = 0;
+        int staleOrMissing = 0;
+        double rttTotal = 0.0;
+        double maxRtt = 0.0;
+        long bytesSent = 0L;
+        long bytesReceived = 0L;
+        int peersWithRate = 0;
+        double sentBytesPerSecond = 0.0;
+        double receivedBytesPerSecond = 0.0;
+        for (TransportMetrics metric : metrics) {
+            if (metric == null || metric.sampledAtMillis() <= 0) {
+                staleOrMissing++;
+                continue;
+            }
+            withSamples++;
+            if (metric.bytesSent() >= 0) bytesSent = saturatingAdd(bytesSent, metric.bytesSent());
+            if (metric.bytesReceived() >= 0) bytesReceived = saturatingAdd(bytesReceived, metric.bytesReceived());
+            if (metric.stale(nowMillis, maxAgeMillis) || !metric.available()) {
+                staleOrMissing++;
+                continue;
+            }
+            fresh++;
+            rttTotal += metric.rttMillis();
+            maxRtt = Math.max(maxRtt, metric.rttMillis());
+        }
+        for (TransportRate rate : rates) {
+            if (rate != null && rate.available() && !rate.stale(nowMillis, maxAgeMillis)) {
+                peersWithRate++;
+                sentBytesPerSecond += rate.sentBytesPerSecond();
+                receivedBytesPerSecond += rate.receivedBytesPerSecond();
+            }
+        }
+        return new TransportSummary(connectedPeers, withSamples, fresh, staleOrMissing,
+                fresh == 0 ? -1.0 : rttTotal / fresh, fresh == 0 ? -1.0 : maxRtt,
+                bytesSent, bytesReceived, peersWithRate,
+                peersWithRate == 0 ? -1.0 : sentBytesPerSecond,
+                peersWithRate == 0 ? -1.0 : receivedBytesPerSecond);
+    }
+
+    private static long saturatingAdd(long left, long right) {
+        return Long.MAX_VALUE - left < right ? Long.MAX_VALUE : left + right;
+    }
+
+    private void sampleTransportStats() {
+        if (closed.get()) return;
+        List<PeerSession> active = sessions.values().stream()
+                .filter(session -> session.connected && !session.sessionClosed.get())
+                .sorted(java.util.Comparator.comparing(session -> session.networkId))
+                .toList();
+        if (active.isEmpty()) return;
+        // Advance by one peer each second. Advancing by the batch size can starve
+        // peers when the session count shares a divisor with the batch size.
+        long cursor = transportStatsCursor.getAndIncrement();
+        int start = (int) Math.floorMod(cursor, active.size());
+        int count = Math.min(TRANSPORT_STATS_BATCH_SIZE, active.size());
+        for (int i = 0; i < count; i++) {
+            active.get((start + i) % active.size()).requestTransportStats();
+        }
     }
 
     private static CompletableFuture<Void> setRemoteDescription(
@@ -327,7 +484,21 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         private final NetherNetClientIdentity identity;
         private final CompletableFuture<Void> iceGatheringComplete = new CompletableFuture<>();
         private final Map<String, RTCDataChannel> channels = new ConcurrentHashMap<>();
+        private final Map<String, NetherNetOutboundQueue> outboundQueues = new ConcurrentHashMap<>();
+        private final Map<String, AtomicBoolean> outboundDrainScheduled = new ConcurrentHashMap<>();
+        private final Object outboundLock = new Object();
         private final AtomicBoolean sessionClosed = new AtomicBoolean();
+        private final AtomicBoolean transportStatsPending = new AtomicBoolean();
+        private volatile double transportRttMillis = -1.0;
+        private volatile long transportBytesSent = -1L;
+        private volatile long transportBytesReceived = -1L;
+        private volatile long transportStatsSampledAtMillis;
+        private volatile long previousTransportBytesSent = -1L;
+        private volatile long previousTransportBytesReceived = -1L;
+        private volatile long previousTransportCounterAtMillis;
+        private volatile double transportSentBytesPerSecond = -1.0;
+        private volatile double transportReceivedBytesPerSecond = -1.0;
+        private volatile long transportRateSampledAtMillis;
         private volatile long lastActivityNanos = System.nanoTime();
         private volatile boolean connected;
         private volatile RTCPeerConnection peer;
@@ -391,7 +562,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
             channel.registerObserver(new RTCDataChannelObserver() {
                 @Override
                 public void onBufferedAmountChange(long sentDataSize) {
-                    // The core will add explicit back-pressure when outbound game batches are wired.
+                    scheduleOutboundDrain(label, channel);
                 }
 
                 @Override
@@ -409,6 +580,11 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
                         return;
                     }
                     ByteBuffer data = buffer.data.duplicate();
+                    if (data.remaining() > NetherNetInboundPipeline.MAX_INBOUND_FRAME_BYTES) {
+                        closeForProtocolError("NetherNet inbound frame exceeds "
+                                + NetherNetInboundPipeline.MAX_INBOUND_FRAME_BYTES + " byte limit");
+                        return;
+                    }
                     byte[] frame = new byte[data.remaining()];
                     data.get(frame);
                     try {
@@ -418,6 +594,189 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
                     }
                 }
             });
+        }
+
+        private TransportMetrics transportMetrics() {
+            return new TransportMetrics(transportRttMillis, transportBytesSent,
+                    transportBytesReceived, transportStatsSampledAtMillis);
+        }
+
+        private TransportRate transportRate() {
+            return new TransportRate(transportSentBytesPerSecond, transportReceivedBytesPerSecond,
+                    transportRateSampledAtMillis);
+        }
+
+        private long[] outboundQueueSnapshot() {
+            synchronized (outboundLock) {
+                long bytes = 0L;
+                long frames = 0L;
+                for (NetherNetOutboundQueue queue : outboundQueues.values()) {
+                    bytes = saturatingAdd(bytes, queue.queuedBytes());
+                    frames += queue.frameCount();
+                }
+                return new long[] {bytes, frames};
+            }
+        }
+
+        private void requestTransportStats() {
+            RTCPeerConnection current = peer;
+            if (sessionClosed.get() || current == null
+                    || !connected || !transportStatsPending.compareAndSet(false, true)) return;
+            try {
+                current.getStats(report -> {
+                    try {
+                        updateTransportMetrics(report);
+                    } finally {
+                        transportStatsPending.set(false);
+                    }
+                });
+            } catch (RuntimeException failure) {
+                transportStatsPending.set(false);
+            }
+        }
+
+        private void updateTransportMetrics(RTCStatsReport report) {
+            if (sessionClosed.get() || report == null) return;
+            for (RTCStats stat : report.getStats().values()) {
+                if (stat.getType() != RTCStatsType.CANDIDATE_PAIR) continue;
+                Map<String, Object> attributes = stat.getAttributes();
+                if (!Boolean.TRUE.equals(attributes.get("nominated"))) continue;
+                if (!"succeeded".equals(attributes.get("state"))) continue;
+                Object rtt = attributes.get("currentRoundTripTime");
+                Object sent = attributes.get("bytesSent");
+                Object received = attributes.get("bytesReceived");
+                if (rtt instanceof Number rttSeconds && Double.isFinite(rttSeconds.doubleValue())
+                        && rttSeconds.doubleValue() >= 0.0) {
+                    transportRttMillis = rttSeconds.doubleValue() * 1000.0;
+                }
+                long sampledAt = System.currentTimeMillis();
+                long currentSent = sent instanceof Number sentBytes && sentBytes.longValue() >= 0
+                        ? sentBytes.longValue() : -1L;
+                long currentReceived = received instanceof Number receivedBytes && receivedBytes.longValue() >= 0
+                        ? receivedBytes.longValue() : -1L;
+                long elapsedMillis = sampledAt - previousTransportCounterAtMillis;
+                if (elapsedMillis > 0) {
+                    if (currentSent >= 0 && previousTransportBytesSent >= 0
+                            && currentSent >= previousTransportBytesSent) {
+                        transportSentBytesPerSecond =
+                                (currentSent - previousTransportBytesSent) * 1000.0 / elapsedMillis;
+                    } else {
+                        transportSentBytesPerSecond = -1.0;
+                    }
+                    if (currentReceived >= 0 && previousTransportBytesReceived >= 0
+                            && currentReceived >= previousTransportBytesReceived) {
+                        transportReceivedBytesPerSecond =
+                                (currentReceived - previousTransportBytesReceived) * 1000.0 / elapsedMillis;
+                    } else {
+                        transportReceivedBytesPerSecond = -1.0;
+                    }
+                    if (currentSent >= 0 && currentReceived >= 0
+                            && previousTransportBytesSent >= 0 && previousTransportBytesReceived >= 0) {
+                        transportRateSampledAtMillis = sampledAt;
+                    } else {
+                        transportRateSampledAtMillis = 0L;
+                    }
+                }
+                if (currentSent >= 0) transportBytesSent = currentSent;
+                if (currentReceived >= 0) transportBytesReceived = currentReceived;
+                // Keep both counter baselines on the same timestamp so partial native
+                // reports cannot distort the elapsed-time denominator.
+                if (currentSent >= 0 && currentReceived >= 0) {
+                    previousTransportBytesSent = currentSent;
+                    previousTransportBytesReceived = currentReceived;
+                    previousTransportCounterAtMillis = sampledAt;
+                }
+                transportStatsSampledAtMillis = sampledAt;
+                return;
+            }
+        }
+
+        private void sendFrame(String channelLabel, RTCDataChannel channel, byte[] frame) throws Exception {
+            synchronized (outboundLock) {
+                if (sessionClosed.get() || channel.getState() != RTCDataChannelState.OPEN) {
+                    throw new IllegalStateException("NetherNet data channel is not open: " + channelLabel);
+                }
+                NetherNetOutboundQueue queue = outboundQueues.computeIfAbsent(
+                        channelLabel, ignored -> new NetherNetOutboundQueue());
+                long bufferedAmount = channel.getBufferedAmount();
+                if (!queue.isEmpty() || bufferedAmount >= OUTBOUND_HIGH_WATERMARK_BYTES
+                        || frame.length > OUTBOUND_HIGH_WATERMARK_BYTES - bufferedAmount) {
+                    if (!queue.offer(frame)) {
+                        closeForProtocolError("outbound queue limit exceeded on " + channelLabel);
+                        throw new IllegalStateException("NetherNet outbound queue limit exceeded");
+                    }
+                    return;
+                }
+                try {
+                    channel.send(new RTCDataChannelBuffer(ByteBuffer.wrap(frame), true));
+                } catch (Exception exception) {
+                    if (channel.getState() == RTCDataChannelState.OPEN) {
+                        if (queue.offer(frame)) return;
+                        closeForProtocolError("outbound queue limit exceeded after channel back-pressure");
+                        throw new IllegalStateException("NetherNet outbound queue limit exceeded", exception);
+                    }
+                    throw exception;
+                }
+            }
+        }
+
+        private void scheduleOutboundDrain(String channelLabel, RTCDataChannel channel) {
+            if (sessionClosed.get()) return;
+            AtomicBoolean scheduled = outboundDrainScheduled.computeIfAbsent(
+                    channelLabel, ignored -> new AtomicBoolean());
+            if (!scheduled.compareAndSet(false, true)) return;
+            try {
+                sessionReaper.execute(() -> {
+                    try {
+                        drainOutbound(channelLabel, channel);
+                    } finally {
+                        scheduled.set(false);
+                        if (canDrainOutbound(channelLabel, channel)) {
+                            scheduleOutboundDrain(channelLabel, channel);
+                        }
+                    }
+                });
+            } catch (RejectedExecutionException ignored) {
+                scheduled.set(false);
+            }
+        }
+
+        private boolean canDrainOutbound(String channelLabel, RTCDataChannel channel) {
+            if (sessionClosed.get() || channel.getState() != RTCDataChannelState.OPEN) return false;
+            NetherNetOutboundQueue queue = outboundQueues.get(channelLabel);
+            if (queue == null || queue.isEmpty()) return false;
+            long bufferedAmount = channel.getBufferedAmount();
+            if (bufferedAmount > OUTBOUND_LOW_WATERMARK_BYTES) return false;
+            int nextFrameSize = queue.nextFrameSize();
+            return bufferedAmount == 0
+                    || nextFrameSize <= OUTBOUND_HIGH_WATERMARK_BYTES - bufferedAmount;
+        }
+
+        private void drainOutbound(String channelLabel, RTCDataChannel channel) {
+            synchronized (outboundLock) {
+                if (sessionClosed.get() || channel.getState() != RTCDataChannelState.OPEN) return;
+                NetherNetOutboundQueue queue = outboundQueues.get(channelLabel);
+                if (queue == null || queue.isEmpty()
+                        || channel.getBufferedAmount() > OUTBOUND_LOW_WATERMARK_BYTES) return;
+                while (!queue.isEmpty()) {
+                    long bufferedAmount = channel.getBufferedAmount();
+                    int nextFrameSize = queue.nextFrameSize();
+                    if (bufferedAmount >= OUTBOUND_HIGH_WATERMARK_BYTES
+                            || (bufferedAmount > 0
+                            && nextFrameSize > OUTBOUND_HIGH_WATERMARK_BYTES - bufferedAmount)) {
+                        break;
+                    }
+                    byte[] frame = queue.poll();
+                    try {
+                        channel.send(new RTCDataChannelBuffer(ByteBuffer.wrap(frame), true));
+                    } catch (Exception exception) {
+                        queue.offerFirst(frame);
+                        closeForProtocolError("unable to drain outbound queue on " + channelLabel
+                                + ": " + exception.getMessage());
+                        return;
+                    }
+                }
+            }
         }
 
         private void closeForProtocolError(String reason) {
@@ -438,6 +797,9 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
                 }
             });
             channels.clear();
+            outboundQueues.values().forEach(NetherNetOutboundQueue::clear);
+            outboundQueues.clear();
+            outboundDrainScheduled.clear();
             try {
                 dataChannelListener.onDisconnected(networkId);
             } catch (RuntimeException ignored) {

@@ -37,4 +37,14 @@ class WorldRaycastTest {
         assertFalse(WorldRaycast.hasLineOfSight(world, Double.NaN, 65, 0, 1, 65, 0));
         assertFalse(WorldRaycast.hasLineOfSight(world, 0.5, 65, 0.5, 1, 400, 0));
     }
+    @Test
+    void mobRaycastDoesNotLoadAnUnloadedTargetChunk() {
+        World world = new World("mob-ray-unloaded", 1L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
+
+        assertFalse(WorldRaycast.hasLineOfSightInLoadedChunks(
+                world, 15.5, 66.2, 0.5, 20, 65, 0));
+        assertEquals(1, world.loadedChunkCount());
+    }
+
 }

@@ -22,6 +22,7 @@ Official Mojang onboarding guide: https://mojang.github.io/bedrock-protocol-docs
 - Single-chest gameplay foundation: protocol-2225 chest block/item state, validated chest placement and interaction, ContainerOpen/ContainerClose packets, 27-slot InventoryContent synchronization, active-window ownership checks, atomic player↔chest InventoryTransaction validation, and coordinate-keyed CRC32C persistence. Chest contents are never silently destroyed: breaking a non-empty chest is currently blocked until atomic item spill/drop is implemented. Double chests, trapped chests and other container types remain pending.
 
 - Java 21 / Maven project.
+- Protocol-2225 player chat: accepts TextPacket chat only from authenticated, initialized players over the reliable channel; checks any supplied XUID against the verified session, ignores the client-supplied display name, strips control characters, caps messages at 512 UTF-8 bytes and 5 messages per 5 seconds, and broadcasts using the authenticated gamertag. Outgoing chat XUID is left empty until player-list replication is implemented so clients do not hide messages from unknown senders. System and chat TextPackets use the protocol-2225 body variants.
 - Legacy RakNet unconnected ping/pong codec and UDP discovery responder (for protocol study; not sufficient for modern clients).
 - NetherNet server metadata model and JSON serialization.
 - NetherNet HTTP signaling endpoint:
@@ -64,8 +65,9 @@ The following list is intentionally conservative: a protocol stage is only consi
 
 - The main bootstrap now starts the NetherNet HTTP signaling endpoint and the WebRTC answerer alongside the legacy UDP discovery experiment.
 - NEXORA's signaling listener is plain HTTP; production TLS termination is provided by the documented Caddy reverse-proxy example. The application does not terminate TLS itself.
-- Protocol-2225 `ContainerOpen`/`ContainerClose` and chest `InventoryContent` are integrated with live single-chest interaction. The session manager validates reach and target block state, opens a 27-slot window, routes only active-window inventory transactions, reconciles both inventories, and saves on transfer, close, death and disconnect. Non-empty chest breaking is intentionally blocked until item spills can be committed atomically; double/trapped chests remain pending.\n- Chunk streaming currently uses a fixed 3x3 window; configurable view distance, explicit chunk unload handling, biome variation, item-actor bounce, death inventory drops, tool-aware hardness, more complex food effects, atomic non-empty chest spilling, double/trapped chests, shaped crafting-table recipes, sneak/swim/fly movement modifiers and player/mob entity replication are not implemented. Basic server-owned gravity, jumping, walking/sprinting and block collision are now integrated into the production PlayerAuthInput path, but movement constants and corrections still need validation with real Android/Windows Bedrock clients. Player profiles and survival vitals are persisted. The world is still not playable until the remaining gameplay paths and an Android-client end-to-end test are complete.
-- Outbound gameplay support includes login/bootstrap packets, LevelChunk, UpdateBlock, PlayStatus, initial player inventory/equipment synchronization, the full supported-subset ItemRegistry packet, single-chest ContainerOpen/Close and content synchronization, plus protocol-2225 CraftingData/CraftingEvent for the current 2x2 recipe subset. Entity replication, chat, crafting-table windows, most other interactive UI packets and full vanilla recipe coverage remain pending.
+- Protocol-2225 `ContainerOpen`/`ContainerClose` and chest `InventoryContent` are integrated with live single-chest interaction. The session manager validates reach and target block state, opens a 27-slot window, routes only active-window inventory transactions, reconciles both inventories, and saves on transfer, close, death and disconnect. Non-empty chest breaking is intentionally blocked until item spills can be committed atomically; double/trapped chests remain pending.
+- Chunk streaming currently uses a fixed 3x3 window; configurable view distance, explicit chunk unload handling, biome variation, item-actor bounce, death inventory drops, tool-aware hardness, more complex food effects, atomic non-empty chest spilling, double/trapped chests, shaped crafting-table recipes, sneak/swim/fly movement modifiers and player/mob entity replication are not implemented. Basic server-owned gravity, jumping, walking/sprinting and block collision are now integrated into the production PlayerAuthInput path, but movement constants and corrections still need validation with real Android/Windows Bedrock clients. Player profiles and survival vitals are persisted. The world is still not playable until the remaining gameplay paths and an Android-client end-to-end test are complete.
+- Outbound gameplay support includes login/bootstrap packets, LevelChunk, UpdateBlock, PlayStatus, initial player inventory/equipment synchronization, the full supported-subset ItemRegistry packet, single-chest ContainerOpen/Close and content synchronization, plus protocol-2225 CraftingData/CraftingEvent for the current 2x2 recipe subset. Entity replication, crafting-table windows, most other interactive UI packets and full vanilla recipe coverage remain pending.
 - Guest/offline authentication is not supported; the current login path requires an authenticated Xbox Live GameServerToken.
 - No Android-client end-to-end connection test.
 
@@ -140,3 +142,62 @@ Dropped-item actors are now represented in the world item manager and synchroniz
 ## Player movement simulation
 
 The world module includes a deterministic server-side movement simulator (`PlayerPhysics`) with bounded tick duration, walking/sprinting, jump impulse, gravity, ground contact, axis-separated wall collision and safe spawn validation. The production Bedrock session manager now feeds PlayerAuthInput movement vectors and sprint/jump flags into that simulator, stores authoritative position/velocity, and emits tick-associated CorrectPlayerMovePrediction packets when client prediction diverges. StartGame provides a 20-tick correction rewind window. This is the first integrated movement pass; water, sneak/fly, knockback, effects, fall damage and Android/Windows client tuning remain follow-up work.
+
+## Cluster transfer (experimental; controlled-cluster validation required)
+
+The transfer ledger and canonical player checkpoints must use shared JDBC storage instead of per-host files for a cross-host transfer. Configure a unique node ID on every server process and configure both shared stores:
+
+~~~sh
+NEXORA_NODE_ID=survival-01
+NEXORA_TRANSFER_JDBC_URL=jdbc:postgresql://db.example.internal:5432/nexora
+NEXORA_TRANSFER_JDBC_USER=nexora
+NEXORA_TRANSFER_JDBC_PASSWORD=replace-with-secret
+NEXORA_TRANSFER_JDBC_INITIALIZE_SCHEMA=false
+NEXORA_ONLINE_PLAYER_LEASE_MS=15000
+NEXORA_PLAYER_STATE_JDBC_URL=jdbc:postgresql://db.example.internal:5432/nexora
+NEXORA_PLAYER_STATE_JDBC_USER=nexora
+NEXORA_PLAYER_STATE_JDBC_PASSWORD=replace-with-secret
+NEXORA_PLAYER_STATE_JDBC_INITIALIZE_SCHEMA=false
+~~~
+
+- The first three JDBC environment variables in each group configure the corresponding store; credentials must be provided as a pair.
+- Set the two `*_INITIALIZE_SCHEMA` flags to `true` only when intentionally allowing startup to create the tables. Prefer deployment-managed schema migrations in production.
+- Startup validates connectivity and all three shared schemas (transfer ledger, online leases, canonical player checkpoints) before enabling the Bedrock listener, even when schema initialization is disabled. Missing migrations fail startup rather than surfacing on the first player login.
+- The matching JDBC driver must be present on the runtime classpath. The player checkpoint schema initializer currently supports H2, PostgreSQL and MySQL/MariaDB.
+- All nodes must read and write the same strongly consistent primary database for transfer decisions, checkpoints and online leases. Do not route ownership reads through asynchronous replicas. Online lease expiry uses the database `CURRENT_TIMESTAMP`; keep node clocks synchronized with NTP as transfer-record timestamps and handoff claims also use epoch milliseconds.
+- When a shared transfer ledger is selected, startup refuses to continue unless player checkpoints are also configured as shared. This prevents a destination from claiming a transfer whose inventory/equipment/position snapshot exists only on another host's local disk.
+- The same JDBC connection settings also create/use `nexora_player_online_leases`. A successful Bedrock login atomically acquires one XUID lease; active sessions are checked by an independent one-second monitoring-lane heartbeat that renews outside gameplay/session locks (including during long checkpoints) and renews it every third of `NEXORA_ONLINE_PLAYER_LEASE_MS` (default 15 seconds), even while idle. Disconnect releases it; during transfer, the source keeps renewing it while frozen and releases it only after the exact PREPARED record is durably written. If publication or release fails, the source remains fenced until the ledger confirms ABORTED and it safely reacquires ownership. A second node cannot admit the same XUID until the first lease is released or expires. A node that cannot renew is stopped fail-closed. Periodic autosave and disconnect persistence validate ownership before writing shared player state; autosave keeps the lease rather than releasing it.
+- `NEXORA_TRANSFER_JDBC_INITIALIZE_SCHEMA=true` also initializes the online-lease table. Use the same shared SQL database on every node; local file-backed mode only protects duplicate sessions within one process.
+
+For deployment-managed migrations, create the online lease table before starting nodes:
+~~~sql
+CREATE TABLE nexora_player_online_leases (
+    player_xuid VARCHAR(64) PRIMARY KEY,
+    node_id VARCHAR(64) NOT NULL,
+    session_id VARCHAR(128) NOT NULL,
+    lease_expires_at BIGINT NOT NULL
+);
+~~~
+
+- Leave both JDBC URLs unset for the single-host file-backed development mode.
+
+**Important:** shared SQL storage is only the persistence foundation. Authenticated TCP peer transport, destination endpoint and source coordinator are wired when cluster configuration is present; the operator console can request a transfer. The protocol-2225 TransferPacket redirect is guarded by a matching durable COMMITTED record. This remains an experimental controlled-cluster feature, not a production guarantee: real Bedrock client reconnect, actual multi-process kill/restart races, network partitions and production database failover still require end-to-end validation. A shared JDBC online-XUID lease now prevents duplicate admission even before the first transfer record; the source and destination both fail closed when they lose ownership. Do not enable it on public production servers until the remaining end-to-end checks are complete.
+
+For an authenticated TCP cluster link, configure the cluster listener, each peer's cluster endpoint, each peer's Bedrock client route, and a distinct pairwise HMAC key for every peer:
+
+~~~sh
+NEXORA_CLUSTER_BIND=10.20.0.1:19133
+NEXORA_CLUSTER_PEERS=survival-02=10.20.0.2:19133
+NEXORA_CLUSTER_BEDROCK_ROUTES=survival-02=bedrock-02.example.net:19132
+NEXORA_CLUSTER_PEER_KEYS=survival-02=BASE64_PAIRWISE_KEY
+NEXORA_TRANSFER_LEASE_MS=15000
+~~~
+
+Generate at least 32 random bytes per node pair and Base64-encode them. Configure the same pairwise key under the opposite peer ID on both nodes; do not reuse one key across unrelated peers. HMAC authenticates messages but does not encrypt the TCP stream, so keep the cluster listener on a private network/VPN or behind an authenticated encrypted tunnel. The Bedrock route is the address the client will connect to after the target commits the transfer.
+
+Once the cluster transport is active, the server process console exposes:
+- `players` — list authenticated players with their XUID and entity ID
+- `transfer <xuid> <target-node>` — request a transfer through the authenticated peer transport
+- `transfer recover` — reconcile frozen source sessions after a peer/database restart; aborts a stale unclaimed PREPARED transfer after its 30-second grace period, resumes only on durable ABORTED, and redirects only on durable COMMITTED
+
+The transfer command is operator-console only. A player is frozen before the transfer is published; the source resumes only after a durable abort, and redirects only after the target's durable commit. If the outcome cannot be confirmed, the source remains frozen for recovery rather than risking two active copies. In shared-ledger mode, login and active-session processing consult the latest per-XUID transfer decision, and every login prefers the shared canonical checkpoint even when no prior transfer record exists. Host-local profile/inventory files are only fallback migration sources when no canonical snapshot has yet been created. If a player has no canonical snapshot yet, the first successful Bedrock initialization writes the restored aggregate to shared storage before gameplay is admitted. Expired claims are durably revoked during startup recovery or login reconciliation.

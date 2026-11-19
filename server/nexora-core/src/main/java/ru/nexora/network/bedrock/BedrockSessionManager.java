@@ -3571,6 +3571,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     Math.floorDiv((int) Math.floor(entity.x()), 16),
                     Math.floorDiv((int) Math.floor(entity.z()), 16)));
         }
+        // Dropped items are world-owned actors too: keep their backing chunks
+        // resident until pickup/despawn so physics and persistence never target
+        // an evicted chunk.
+        for (ru.nexora.world.WorldItemEntity entity : world.itemEntities().snapshot()) {
+            entityChunks.add(new WorldChunkResidencyManager.ChunkCoordinate(
+                    Math.floorDiv((int) Math.floor(entity.x()), 16),
+                    Math.floorDiv((int) Math.floor(entity.z()), 16)));
+        }
         long residencyStartedNanos = nanoTime.getAsLong();
         WorldChunkResidencyManager.ResidencyPlan residencyPlan =
                 chunkResidency.update(playerChunks, entityChunks, Math.max(0L, nowMillis / 50L));

@@ -98,6 +98,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     public static final int DEFAULT_COMPRESSION_THRESHOLD = 256;
     public static final int SCTP_MAX_MESSAGE_BYTES = 262_144;
     private static final long TRANSFER_OWNERSHIP_RECHECK_NANOS = 5_000_000_000L;
+    private static final int MAX_OUTBOUND_FRAMES_PER_DRAIN = 64;
+    private static final long MAX_OUTBOUND_BYTES_PER_DRAIN = 1L * 1024L * 1024L;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -573,6 +575,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         try {
             inbound.onFrame(networkId, channelLabel, frame);
         } finally {
+            drainOutboundForSession(networkId);
             hotPathProfiler.record(ru.nexora.ai.HotPathProfiler.Path.BEDROCK_INBOUND,
                     Math.max(0L, nanoTime.getAsLong() - startedNanos));
         }
@@ -7189,17 +7192,41 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private void drainOutboundFrames(String networkId, SessionState state) {
-        byte[] frame;
-        while ((frame = state.outboundQueue.poll()) != null) {
+        int sentFrames = 0;
+        long sentBytes = 0L;
+        while (sentFrames < MAX_OUTBOUND_FRAMES_PER_DRAIN) {
+            int nextSize = state.outboundQueue.nextFrameSize();
+            if (nextSize < 0) return;
+            if (sentFrames > 0 && nextSize > MAX_OUTBOUND_BYTES_PER_DRAIN - sentBytes) return;
+            byte[] frame = state.outboundQueue.poll();
+            if (frame == null) return;
             try {
                 // The queue owns this copy, so the transport receives an isolated buffer.
                 outbound.sendFrame(networkId, "ReliableDataChannel", frame);
                 outboundFramesSent.incrementAndGet();
                 outboundBytesSent.addAndGet(frame.length);
+                sentFrames++;
+                sentBytes += frame.length;
             } catch (Exception exception) {
                 outboundSendFailures.incrementAndGet();
                 state.outboundQueue.offerFirst(frame);
                 throw new IllegalStateException("Unable to send Bedrock packet batch", exception);
+            }
+        }
+    }
+
+    /** Gives a pending session backlog another bounded drain opportunity after inbound work. */
+    private void drainOutboundForSession(String networkId) {
+        SessionState state = sessions.get(networkId);
+        if (state == null) return;
+        synchronized (state.outboundLock) {
+            if (state.outboundClosed || state.outboundQueue.isEmpty()) return;
+            try {
+                drainOutboundFrames(networkId, state);
+            } catch (RuntimeException exception) {
+                // Keep the failed frame at the queue head; a later inbound/send callback retries it.
+                System.err.println("NEXORA: outbound queue drain deferred for " + networkId
+                        + ": " + exception.getMessage());
             }
         }
     }

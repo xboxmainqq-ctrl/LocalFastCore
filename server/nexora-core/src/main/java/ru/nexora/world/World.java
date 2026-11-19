@@ -388,6 +388,21 @@ public final class World {
         return chunks.containsKey(chunkKey(Math.floorDiv(blockX, 16), Math.floorDiv(blockZ, 16)));
     }
 
+    /**
+     * Reads a block only when its chunk is already resident.
+     *
+     * @return the block, or {@code null} when the chunk is not loaded; never triggers
+     *         generation or disk I/O. Collision queries use this to avoid a separate
+     *         residency lookup followed by a second chunk-map lookup.
+     */
+    public BlockType getLoadedBlockOrNull(int blockX, int y, int blockZ) {
+        int chunkX = Math.floorDiv(blockX, 16);
+        int chunkZ = Math.floorDiv(blockZ, 16);
+        WorldChunk chunk = chunks.get(chunkKey(chunkX, chunkZ));
+        if (chunk == null) return null;
+        return chunk.getBlock(Math.floorMod(blockX, 16), y, Math.floorMod(blockZ, 16));
+    }
+
     public void saveAll() throws IOException {
         if (storage != null) {
             for (WorldChunk chunk : chunks.values()) storage.saveChunk(chunk);

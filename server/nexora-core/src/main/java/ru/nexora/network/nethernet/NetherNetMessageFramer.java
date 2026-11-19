@@ -79,20 +79,26 @@ public final class NetherNetMessageFramer {
     public static final class Reassembler {
         private final int maxMessageBytes;
         private final long maxAssemblyNanos;
+        private final ReassemblyMemoryBudget memoryBudget;
         private byte[] pendingBytes;
         private int pendingSize;
         private int expectedNextHeader;
         private long pendingStartedAtNanos;
 
         public Reassembler() {
-            this(DEFAULT_MAX_MESSAGE_BYTES, DEFAULT_MAX_ASSEMBLY_NANOS);
+            this(DEFAULT_MAX_MESSAGE_BYTES, DEFAULT_MAX_ASSEMBLY_NANOS, null);
         }
 
         public Reassembler(int maxMessageBytes) {
-            this(maxMessageBytes, DEFAULT_MAX_ASSEMBLY_NANOS);
+            this(maxMessageBytes, DEFAULT_MAX_ASSEMBLY_NANOS, null);
         }
 
         public Reassembler(int maxMessageBytes, long maxAssemblyNanos) {
+            this(maxMessageBytes, maxAssemblyNanos, null);
+        }
+
+        public Reassembler(int maxMessageBytes, long maxAssemblyNanos,
+                           ReassemblyMemoryBudget memoryBudget) {
             if (maxMessageBytes < 1 || maxMessageBytes > DEFAULT_MAX_MESSAGE_BYTES) {
                 throw new IllegalArgumentException("maxMessageBytes must be 1..4 MiB");
             }
@@ -101,6 +107,7 @@ public final class NetherNetMessageFramer {
             }
             this.maxMessageBytes = maxMessageBytes;
             this.maxAssemblyNanos = maxAssemblyNanos;
+            this.memoryBudget = memoryBudget;
         }
 
         public synchronized Optional<byte[]> accept(byte[] frame, boolean reliable) {
@@ -141,7 +148,9 @@ public final class NetherNetMessageFramer {
                     System.arraycopy(frame, HEADER_BYTES, payload, 0, payloadLength);
                     return Optional.of(payload);
                 }
-                pendingBytes = new byte[Math.min(maxMessageBytes, Math.max(256, payloadLength))];
+                int initialCapacity = Math.min(maxMessageBytes, Math.max(256, payloadLength));
+                reserveCapacity(initialCapacity);
+                pendingBytes = new byte[initialCapacity];
                 pendingSize = 0;
                 pendingStartedAtNanos = nowNanos;
                 expectedNextHeader = header - 1;
@@ -170,6 +179,9 @@ public final class NetherNetMessageFramer {
         }
 
         public synchronized void reset() {
+            if (pendingBytes != null && memoryBudget != null) {
+                memoryBudget.release(pendingBytes.length);
+            }
             pendingBytes = null;
             pendingSize = 0;
             expectedNextHeader = 0;
@@ -180,7 +192,15 @@ public final class NetherNetMessageFramer {
             if (required <= pendingBytes.length) return;
             int grown = Math.max(required, pendingBytes.length << 1);
             int capacity = Math.min(maxMessageBytes, grown);
+            reserveCapacity(capacity - pendingBytes.length);
             pendingBytes = Arrays.copyOf(pendingBytes, capacity);
+        }
+
+        private void reserveCapacity(int additionalBytes) {
+            if (memoryBudget != null && !memoryBudget.tryReserve(additionalBytes)) {
+                reset();
+                throw new IllegalStateException("Aggregate NetherNet reassembly memory budget exceeded");
+            }
         }
 
         private void ensureWithinLimit(int size) {

@@ -80,9 +80,9 @@ class OutboundDrainBudgetTest {
                     admitted[session]++;
                 }
             }
-            assertEquals(64, budget.globalFrames(now + 49),
+            assertEquals(64, budget.globalFrames(now),
                     "Each window must stop exactly at the aggregate frame cap");
-            assertEquals(64 * 128L, budget.globalBytes(now + 49));
+            assertEquals(64 * 128L, budget.globalBytes(now));
         }
 
         for (int session = 0; session < sessionCount; session++) {

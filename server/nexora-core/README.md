@@ -245,4 +245,6 @@ Values are validated at startup and invalid/out-of-range settings fail fast inst
 - The asynchronous chunk-save queue drains accepted writes during normal shutdown. If a shutdown timeout forces queued tasks to be abandoned, their futures are completed exceptionally instead of remaining pending forever; new dirty-save requests after closure are rejected and leave chunks dirty for an explicit retry.
 
 
+Player profile snapshots retain one previous verified `.nxp` generation as `.nxp.bak`. A profile is rotated only after its current checksum and structure validate; loading restores the backup when the primary is missing or corrupt. If both generations are invalid, loading fails explicitly rather than silently replacing player data.
+
 World chunk snapshots under each world's `chunks/` directory also retain one previous verified `.nxc` generation as `.nxc.bak`. A primary chunk is rotated only after its checksum and structure validate; loading restores the backup when the primary is missing or corrupt. If both generations are invalid, loading fails explicitly rather than silently generating an empty chunk.

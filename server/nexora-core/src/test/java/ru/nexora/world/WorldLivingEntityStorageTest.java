@@ -54,6 +54,26 @@ class WorldLivingEntityStorageTest {
     }
 
     @Test
+    void restoresPreviousVerifiedLivingActorSnapshotWhenPrimaryIsCorrupted() throws Exception {
+        WorldLivingEntityStorage storage = new WorldLivingEntityStorage(temp, "actor-recovery");
+        WorldLivingEntityManager manager = new WorldLivingEntityManager(storage);
+        WorldLivingEntity zombie = manager.spawn("minecraft:zombie", 20, 1, 65, 1);
+        manager.save();
+        manager.move(zombie.runtimeId(), 5, 65, 5);
+        manager.save();
+
+        Path primary = temp.resolve("actor-recovery/entities/living.nxe");
+        Path backup = temp.resolve("actor-recovery/entities/living.nxe.bak");
+        byte[] damaged = Files.readAllBytes(primary);
+        damaged[damaged.length / 2] ^= 1;
+        Files.write(primary, damaged);
+
+        assertEquals(1, storage.load().size());
+        assertEquals(1.0, storage.load().get(0).x(), 0.0001);
+        assertArrayEquals(Files.readAllBytes(backup), Files.readAllBytes(primary));
+    }
+
+    @Test
     void rejectsChecksumCorruption() throws Exception {
         WorldLivingEntityStorage storage = new WorldLivingEntityStorage(temp, "corrupt-world");
         WorldLivingEntityManager manager = new WorldLivingEntityManager(storage);

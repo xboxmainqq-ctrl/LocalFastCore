@@ -48,7 +48,7 @@ class ServerNodeRegistryTest {
         assertEquals(10L, statuses.getLast().ageNanos());
     }
 
-    private static ServerNode node(String id, boolean healthy, long players) {
+    private static ServerNode node(String id, boolean healthy, int players) {
         return new ServerNode(id, "127.0.0.1:19132", "survival", healthy,
                 new LoadSnapshot(players, 2, 3, 4, 5, 0.1));
     }

@@ -65,7 +65,9 @@ final class ChunkStreamingQueue {
 
     List<Long> peekBatch(int maximum) {
         if (maximum < 1) throw new IllegalArgumentException("maximum must be positive");
-        int end = Math.min(orderedChunkKeys.size(), cursor + maximum);
+        // Clamp before addition: cursor + maximum can overflow for large caller budgets.
+        int count = Math.min(maximum, remaining());
+        int end = cursor + count;
         return List.copyOf(orderedChunkKeys.subList(cursor, end));
     }
 

@@ -56,8 +56,10 @@ class ChunkStreamingQueueTest {
     }
 
     @Test
-    void rejectsInvalidRadiusAndBudget() {
+    void rejectsInvalidRadiusBudgetAndAdvanceCount() {
         assertThrows(IllegalArgumentException.class, () -> new ChunkStreamingQueue(0, 0, 33));
-        assertThrows(IllegalArgumentException.class, () -> new ChunkStreamingQueue(0, 0, -1).nextBatch(0));
+        ChunkStreamingQueue queue = new ChunkStreamingQueue(0, 0, 0);
+        assertThrows(IllegalArgumentException.class, () -> queue.peekBatch(0));
+        assertThrows(IllegalArgumentException.class, () -> queue.advance(2));
     }
 }

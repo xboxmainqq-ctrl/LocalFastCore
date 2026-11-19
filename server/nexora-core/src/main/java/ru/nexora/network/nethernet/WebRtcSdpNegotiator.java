@@ -47,7 +47,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
     private static final long DEFAULT_TIMEOUT_MILLIS = 15_000;
     private static final long OUTBOUND_HIGH_WATERMARK_BYTES = 512L * 1024L;
     private static final long OUTBOUND_LOW_WATERMARK_BYTES = 256L * 1024L;
-    private static final long TRANSPORT_STATS_INTERVAL_SECONDS = 5L;
+    private static final int TRANSPORT_STATS_BATCH_SIZE = 32;
 
     private final PeerConnectionFactory factory;
     private final NetherNetIdentityService identityService;
@@ -61,6 +61,8 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
     private final Semaphore sessionPermits;
     private final ScheduledExecutorService sessionReaper;
     private final AtomicBoolean closed = new AtomicBoolean();
+    private final java.util.concurrent.atomic.AtomicLong transportStatsCursor =
+            new java.util.concurrent.atomic.AtomicLong();
 
     public WebRtcSdpNegotiator(
             NetherNetIdentityService identityService,
@@ -134,8 +136,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
             return thread;
         });
         this.sessionReaper.scheduleAtFixedRate(this::reapIdleSessions, 10, 10, TimeUnit.SECONDS);
-        this.sessionReaper.scheduleAtFixedRate(this::sampleTransportStats,
-                TRANSPORT_STATS_INTERVAL_SECONDS, TRANSPORT_STATS_INTERVAL_SECONDS, TimeUnit.SECONDS);
+        this.sessionReaper.scheduleAtFixedRate(this::sampleTransportStats, 1, 1, TimeUnit.SECONDS);
     }
 
     @Override
@@ -274,7 +275,16 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
 
     private void sampleTransportStats() {
         if (closed.get()) return;
-        sessions.values().forEach(PeerSession::requestTransportStats);
+        List<PeerSession> active = sessions.values().stream()
+                .filter(session -> session.connected && !session.sessionClosed.get())
+                .toList();
+        if (active.isEmpty()) return;
+        long cursor = transportStatsCursor.getAndAdd(TRANSPORT_STATS_BATCH_SIZE);
+        int start = (int) Math.floorMod(cursor, active.size());
+        int count = Math.min(TRANSPORT_STATS_BATCH_SIZE, active.size());
+        for (int i = 0; i < count; i++) {
+            active.get((start + i) % active.size()).requestTransportStats();
+        }
     }
 
     private static CompletableFuture<Void> setRemoteDescription(

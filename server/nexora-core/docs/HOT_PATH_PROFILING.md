@@ -242,6 +242,20 @@ candidate-pair sample, so NEXORA does not label ICE checks or missing counters
 as player packet loss. A live client test is still needed to validate which native
 stats fields are populated on each deployment platform.
 
+## Synthetic NetherNet inbound pipeline benchmark
+
+Run the bounded ingress micro-load with:
+
+```bash
+mvn -f server/nexora-core/pom.xml -Dtest=NetherNetInboundPipelineLoadBenchmarkTest test
+```
+
+The probe drives the production frame validation, per-channel reassembler lookup,
+message ownership copy and dispatch path across 64 synthetic peers and both channel
+types. It reports frame throughput and per-frame p50/p95/max processing time. It is
+a JVM-side synthetic microbenchmark only: it excludes native WebRTC/SCTP, encryption,
+Bedrock batch decoding, world-thread scheduling and real network conditions.
+
 ## NetherNet inbound admission and reassembly bounds
 
 The inbound data-channel observer rejects frames larger than 1 MiB before allocating

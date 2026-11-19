@@ -23,3 +23,32 @@ These values are **subsystem timings, not TPS**. They must not be used to infer 
 5. Only optimize a hot path after a repeatable baseline shows that the path is materially expensive.
 
 The current instrumentation is intentionally conservative: it observes execution cost without changing scheduling policy or gameplay behavior.
+
+
+## Synthetic mob-AI load benchmark
+
+Run the repeatable AI workload from the repository root:
+
+```bash
+mvn -f server/nexora-core/pom.xml -Dtest=LivingEntityAiLoadBenchmarkTest test
+```
+
+The test drives the actual `LivingEntityAiService` target-selection/decision path and
+`MobAiLoadController` distance-aware scheduler with mixed mob species and eight
+synthetic player targets. It reports workloads at 100, 500, 1,000, 2,000 and 5,000
+mobs over 20 simulated ticks.
+
+Reported values:
+
+- `decisions` — number of AI decisions actually executed after scheduling.
+- `tick_p50_ms`, `tick_p95_ms`, `tick_max_ms` — measured wall time for one synthetic
+  mob-processing pass, across the 20 passes.
+- `ai_avg_us`, `ai_max_us` — time spent inside the AI decision algorithm.
+- `deferred` — mob updates skipped by the distance-aware scheduler.
+
+The benchmark is deterministic in workload shape, but wall-clock values depend on the
+CI runner/JVM and are diagnostic rather than pass/fail thresholds. It is **not** a
+live-server stress test: it does not start a Bedrock listener, authenticate real clients,
+run the full world tick/physics pipeline, or measure process CPU/RAM and server TPS.
+Use it to compare AI/scheduler changes; use a separate real-client server soak test
+before making capacity or production-readiness claims.

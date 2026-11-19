@@ -14,6 +14,7 @@ public final class NetherNetMessageFramer {
     public static final int HEADER_BYTES = 1;
     public static final int MAX_FRAGMENTS = 256;
     public static final int DEFAULT_MAX_MESSAGE_BYTES = 4 * 1024 * 1024;
+    public static final long DEFAULT_MAX_ASSEMBLY_NANOS = 15_000_000_000L;
 
     private NetherNetMessageFramer() {
     }
@@ -75,22 +76,44 @@ public final class NetherNetMessageFramer {
      */
     public static final class Reassembler {
         private final int maxMessageBytes;
+        private final long maxAssemblyNanos;
         private ByteArrayOutputStream pending;
         private int expectedNextHeader;
+        private long pendingStartedAtNanos;
 
         public Reassembler() {
-            this(DEFAULT_MAX_MESSAGE_BYTES);
+            this(DEFAULT_MAX_MESSAGE_BYTES, DEFAULT_MAX_ASSEMBLY_NANOS);
         }
 
         public Reassembler(int maxMessageBytes) {
+            this(maxMessageBytes, DEFAULT_MAX_ASSEMBLY_NANOS);
+        }
+
+        public Reassembler(int maxMessageBytes, long maxAssemblyNanos) {
             if (maxMessageBytes < 1 || maxMessageBytes > DEFAULT_MAX_MESSAGE_BYTES) {
                 throw new IllegalArgumentException("maxMessageBytes must be 1..4 MiB");
             }
+            if (maxAssemblyNanos < 1) {
+                throw new IllegalArgumentException("maxAssemblyNanos must be positive");
+            }
             this.maxMessageBytes = maxMessageBytes;
+            this.maxAssemblyNanos = maxAssemblyNanos;
         }
 
         public synchronized Optional<byte[]> accept(byte[] frame, boolean reliable) {
+            return accept(frame, reliable, System.nanoTime());
+        }
+
+        /** Monotonic-time overload for deterministic assembly timeout tests. */
+        public synchronized Optional<byte[]> accept(byte[] frame, boolean reliable, long nowNanos) {
             Objects.requireNonNull(frame, "frame");
+            if (pending != null) {
+                long elapsed = nowNanos - pendingStartedAtNanos;
+                if (elapsed < 0 || elapsed > maxAssemblyNanos) {
+                    reset();
+                    throw new IllegalArgumentException("Fragmented NetherNet message assembly timed out");
+                }
+            }
             if (frame.length < HEADER_BYTES) {
                 reset();
                 throw new IllegalArgumentException("NetherNet frame is missing its header byte");
@@ -116,6 +139,7 @@ public final class NetherNetMessageFramer {
                     return Optional.of(payload);
                 }
                 pending = new ByteArrayOutputStream(Math.min(maxMessageBytes, payloadLength + 256));
+                pendingStartedAtNanos = nowNanos;
                 expectedNextHeader = header - 1;
             } else if (header != expectedNextHeader) {
                 reset();
@@ -142,6 +166,7 @@ public final class NetherNetMessageFramer {
         public synchronized void reset() {
             pending = null;
             expectedNextHeader = 0;
+            pendingStartedAtNanos = 0L;
         }
 
         private void ensureWithinLimit(int size) {

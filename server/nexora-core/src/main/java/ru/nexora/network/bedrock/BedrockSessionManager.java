@@ -7285,6 +7285,17 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
             drainOutboundFrames(networkId, state);
         }
+        // A frame admitted for one peer may rotate the global budget to another
+        // peer. Give every currently queued peer a bounded opportunity now that
+        // the originating session lock is released; otherwise idle peers can
+        // remain queued forever waiting for their own next inbound packet.
+        drainPendingOutboundSessions();
+    }
+
+    private void drainPendingOutboundSessions() {
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            drainOutboundForSession(entry.getKey());
+        }
     }
 
     private static long outboundFrameBytes(List<byte[]> frames) {

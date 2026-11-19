@@ -215,4 +215,16 @@ NetherNet ingress now has two independent bounded layers before Bedrock batch de
 - Incomplete reliable messages share a hard 64 MiB process-wide memory reservation budget. Reservations count allocated buffer capacity (including growth slack), not only received payload bytes; an admission that would exceed the cap is rejected before allocating more memory. Completion, malformed streams, timeout, and peer disconnect release reservations.
 - Operator runtime diagnostics expose currently reserved reassembly bytes, the process-wide cap, and rejected memory reservations. The AI guard remains observational and does not autonomously punish players.
 
-The frame budget and aggregate reassembly-memory budget are configurable through their constructors for tests and embedding. Production defaults are currently code-defined; operator-facing configuration and adaptive thresholds remain future work. The authenticated operator runtime summary exposes admitted/rejected frame and byte counters, tracked peers, and aggregate reassembly memory usage.
+The limits can be tuned through environment variables before starting the server:
+
+| Variable | Default | Meaning |
+| --- | ---: | --- |
+| `NEXORA_INBOUND_WINDOW_MS` | `5000` | Per-peer accounting window |
+| `NEXORA_INBOUND_MAX_FRAMES` | `4096` | Frames allowed per peer per window |
+| `NEXORA_INBOUND_MAX_BYTES` | `16777216` | Bytes allowed per peer per window |
+| `NEXORA_INBOUND_MAX_PEERS` | `1024` | Maximum peers tracked by the admission budget |
+| `NEXORA_INBOUND_MAX_REASSEMBLY_BYTES` | `67108864` | Process-wide incomplete-message buffer reservation cap |
+| `NEXORA_INBOUND_MAX_CHANNELS` | `8192` | Maximum tracked peer data channels |
+| `NEXORA_INBOUND_MAX_FRAME_BYTES` | `1048576` | Maximum size of one inbound frame |
+
+Values are validated at startup and invalid/out-of-range settings fail fast instead of silently falling back. The authenticated operator runtime summary exposes admitted/rejected frame and byte counters, tracked peers, and aggregate reassembly memory usage.

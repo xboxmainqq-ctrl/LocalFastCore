@@ -3840,7 +3840,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 0, ghast ? 6.0f : 4.0f, ghast ? 5 : 3);
         mobFireballs.put(runtimeId, fireball);
         broadcastLivingActorPacket(BedrockFireballActorCodec.createSpawn(fireball));
-        long cooldownMillis = ghast ? 3_000L : 1_500L;
+        long cooldownMillis = ru.nexora.combat.LivingEntityAiService
+                .rangedAttackCooldownMillisFor(identifier);
         nextMobAttackMillis.put(mob.runtimeId(),
                 nowMillis > Long.MAX_VALUE - cooldownMillis ? Long.MAX_VALUE : nowMillis + cooldownMillis);
         return true;

@@ -288,23 +288,47 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
     }
 
     /** Aggregate transport diagnostics. RTT values include fresh ICE samples only. */
+    public record TransportRate(double sentBytesPerSecond, double receivedBytesPerSecond,
+                                long sampledAtMillis) {
+        public boolean available() {
+            return sampledAtMillis > 0 && Double.isFinite(sentBytesPerSecond)
+                    && Double.isFinite(receivedBytesPerSecond)
+                    && sentBytesPerSecond >= 0.0 && receivedBytesPerSecond >= 0.0;
+        }
+
+        public boolean stale(long nowMillis, long maxAgeMillis) {
+            if (maxAgeMillis < 0) throw new IllegalArgumentException("maxAgeMillis must be >= 0");
+            return sampledAtMillis <= 0 || Math.max(0L, nowMillis - sampledAtMillis) > maxAgeMillis;
+        }
+    }
+
     public record TransportSummary(int connectedPeers, int peersWithSamples, int freshPeers,
                                    int staleOrMissingPeers, double averageRttMillis,
-                                   double maxRttMillis, long bytesSent, long bytesReceived) {
+                                   double maxRttMillis, long bytesSent, long bytesReceived,
+                                   int peersWithRate, double sentBytesPerSecond,
+                                   double receivedBytesPerSecond) {
     }
 
     public TransportSummary transportSummary(long nowMillis, long maxAgeMillis) {
-        List<TransportMetrics> metrics = sessions.values().stream()
+        List<PeerSession> active = sessions.values().stream()
                 .filter(session -> session.connected && !session.sessionClosed.get())
-                .map(PeerSession::transportMetrics)
                 .toList();
-        return summarizeTransportMetrics(metrics.size(), metrics, nowMillis, maxAgeMillis);
+        List<TransportMetrics> metrics = active.stream().map(PeerSession::transportMetrics).toList();
+        List<TransportRate> rates = active.stream().map(PeerSession::transportRate).toList();
+        return summarizeTransportMetrics(metrics.size(), metrics, rates, nowMillis, maxAgeMillis);
     }
 
     public static TransportSummary summarizeTransportMetrics(
             int connectedPeers, List<TransportMetrics> metrics, long nowMillis, long maxAgeMillis) {
+        return summarizeTransportMetrics(connectedPeers, metrics, List.of(), nowMillis, maxAgeMillis);
+    }
+
+    public static TransportSummary summarizeTransportMetrics(
+            int connectedPeers, List<TransportMetrics> metrics, List<TransportRate> rates,
+            long nowMillis, long maxAgeMillis) {
         if (connectedPeers < 0) throw new IllegalArgumentException("connectedPeers must be >= 0");
         Objects.requireNonNull(metrics, "metrics");
+        Objects.requireNonNull(rates, "rates");
         if (maxAgeMillis < 0) throw new IllegalArgumentException("maxAgeMillis must be >= 0");
         int withSamples = 0;
         int fresh = 0;
@@ -313,6 +337,9 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         double maxRtt = 0.0;
         long bytesSent = 0L;
         long bytesReceived = 0L;
+        int peersWithRate = 0;
+        double sentBytesPerSecond = 0.0;
+        double receivedBytesPerSecond = 0.0;
         for (TransportMetrics metric : metrics) {
             if (metric == null || metric.sampledAtMillis() <= 0) {
                 staleOrMissing++;
@@ -329,9 +356,18 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
             rttTotal += metric.rttMillis();
             maxRtt = Math.max(maxRtt, metric.rttMillis());
         }
+        for (TransportRate rate : rates) {
+            if (rate != null && rate.available() && !rate.stale(nowMillis, maxAgeMillis)) {
+                peersWithRate++;
+                sentBytesPerSecond += rate.sentBytesPerSecond();
+                receivedBytesPerSecond += rate.receivedBytesPerSecond();
+            }
+        }
         return new TransportSummary(connectedPeers, withSamples, fresh, staleOrMissing,
                 fresh == 0 ? -1.0 : rttTotal / fresh, fresh == 0 ? -1.0 : maxRtt,
-                bytesSent, bytesReceived);
+                bytesSent, bytesReceived, peersWithRate,
+                peersWithRate == 0 ? -1.0 : sentBytesPerSecond,
+                peersWithRate == 0 ? -1.0 : receivedBytesPerSecond);
     }
 
     private static long saturatingAdd(long left, long right) {
@@ -439,6 +475,12 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         private volatile long transportBytesSent = -1L;
         private volatile long transportBytesReceived = -1L;
         private volatile long transportStatsSampledAtMillis;
+        private volatile long previousTransportBytesSent = -1L;
+        private volatile long previousTransportBytesReceived = -1L;
+        private volatile long previousTransportCounterAtMillis;
+        private volatile double transportSentBytesPerSecond = -1.0;
+        private volatile double transportReceivedBytesPerSecond = -1.0;
+        private volatile long transportRateSampledAtMillis;
         private volatile long lastActivityNanos = System.nanoTime();
         private volatile boolean connected;
         private volatile RTCPeerConnection peer;
@@ -536,6 +578,11 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
                     transportBytesReceived, transportStatsSampledAtMillis);
         }
 
+        private TransportRate transportRate() {
+            return new TransportRate(transportSentBytesPerSecond, transportReceivedBytesPerSecond,
+                    transportRateSampledAtMillis);
+        }
+
         private void requestTransportStats() {
             RTCPeerConnection current = peer;
             if (sessionClosed.get() || current == null
@@ -567,13 +614,44 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
                         && rttSeconds.doubleValue() >= 0.0) {
                     transportRttMillis = rttSeconds.doubleValue() * 1000.0;
                 }
-                if (sent instanceof Number sentBytes && sentBytes.longValue() >= 0) {
-                    transportBytesSent = sentBytes.longValue();
+                long sampledAt = System.currentTimeMillis();
+                long currentSent = sent instanceof Number sentBytes && sentBytes.longValue() >= 0
+                        ? sentBytes.longValue() : -1L;
+                long currentReceived = received instanceof Number receivedBytes && receivedBytes.longValue() >= 0
+                        ? receivedBytes.longValue() : -1L;
+                long elapsedMillis = sampledAt - previousTransportCounterAtMillis;
+                if (elapsedMillis > 0) {
+                    if (currentSent >= 0 && previousTransportBytesSent >= 0
+                            && currentSent >= previousTransportBytesSent) {
+                        transportSentBytesPerSecond =
+                                (currentSent - previousTransportBytesSent) * 1000.0 / elapsedMillis;
+                    } else {
+                        transportSentBytesPerSecond = -1.0;
+                    }
+                    if (currentReceived >= 0 && previousTransportBytesReceived >= 0
+                            && currentReceived >= previousTransportBytesReceived) {
+                        transportReceivedBytesPerSecond =
+                                (currentReceived - previousTransportBytesReceived) * 1000.0 / elapsedMillis;
+                    } else {
+                        transportReceivedBytesPerSecond = -1.0;
+                    }
+                    if (currentSent >= 0 && currentReceived >= 0
+                            && previousTransportBytesSent >= 0 && previousTransportBytesReceived >= 0) {
+                        transportRateSampledAtMillis = sampledAt;
+                    } else {
+                        transportRateSampledAtMillis = 0L;
+                    }
                 }
-                if (received instanceof Number receivedBytes && receivedBytes.longValue() >= 0) {
-                    transportBytesReceived = receivedBytes.longValue();
+                if (currentSent >= 0) {
+                    transportBytesSent = currentSent;
+                    previousTransportBytesSent = currentSent;
                 }
-                transportStatsSampledAtMillis = System.currentTimeMillis();
+                if (currentReceived >= 0) {
+                    transportBytesReceived = currentReceived;
+                    previousTransportBytesReceived = currentReceived;
+                }
+                if (currentSent >= 0 && currentReceived >= 0) previousTransportCounterAtMillis = sampledAt;
+                transportStatsSampledAtMillis = sampledAt;
                 return;
             }
         }

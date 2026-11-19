@@ -115,6 +115,10 @@ class BedrockActorVisibilityIntegrationTest {
                     packetsFor(outbound, "viewer").getLast().packetId());
 
             sentChunks(session).add(chunkKey(2, 0));
+            Field itemIndexField = BedrockSessionManager.class.getDeclaredField("itemActorReplicationIndex");
+            itemIndexField.setAccessible(true);
+            ((ActorReplicationIndex) itemIndexField.get(manager))
+                    .replaceChunkView("viewer", sentChunks(session));
             broadcast.invoke(manager, moved, BedrockItemActorCodec.createMove(moved, true, 2L));
             assertTrue(visibleItems(session).contains(item.runtimeId()));
             assertEquals(BedrockAddItemActorCodec.ADD_ITEM_ACTOR_PACKET_ID,

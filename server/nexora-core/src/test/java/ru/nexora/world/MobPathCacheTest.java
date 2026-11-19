@@ -94,6 +94,8 @@ class MobPathCacheTest {
         assertThrows(IllegalArgumentException.class, () ->
                 cache.findNextStep(-1L, world, 0.5, 65, 0.5, 2.5, 0.5, 1_000));
         assertThrows(IllegalArgumentException.class, () ->
+                cache.findNextStep(0L, world, 0.5, 65, 0.5, 2.5, 0.5, 1_000));
+        assertThrows(IllegalArgumentException.class, () ->
                 cache.findNextStep(1L, world, 0.5, 65, 0.5, 2.5, 0.5, -1));
         assertEquals(0, cache.stats().requests());
     }

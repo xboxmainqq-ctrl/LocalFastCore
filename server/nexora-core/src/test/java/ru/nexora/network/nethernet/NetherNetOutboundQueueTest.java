@@ -32,6 +32,20 @@ class NetherNetOutboundQueueTest {
     }
 
     @Test
+    void batchOfferIsAtomicWhenEitherBoundWouldBeExceeded() {
+        NetherNetOutboundQueue queue = new NetherNetOutboundQueue(4, 3);
+        assertTrue(queue.offer(new byte[] {1}));
+        assertFalse(queue.offerAll(java.util.List.of(new byte[] {2, 3, 4}, new byte[] {5})));
+        assertEquals(1, queue.frameCount());
+        assertEquals(1, queue.queuedBytes());
+        assertArrayEquals(new byte[] {1}, queue.poll());
+
+        assertTrue(queue.offerAll(java.util.List.of(new byte[] {6}, new byte[] {7, 8})));
+        assertEquals(3, queue.frameCount());
+        assertEquals(3, queue.queuedBytes());
+    }
+
+    @Test
     void restoresFailedFrameToHeadWithoutChangingOrder() {
         NetherNetOutboundQueue queue = new NetherNetOutboundQueue(32, 4);
         assertTrue(queue.offer(new byte[] {1}));

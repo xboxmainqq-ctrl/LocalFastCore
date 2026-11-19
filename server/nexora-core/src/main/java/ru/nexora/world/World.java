@@ -260,15 +260,21 @@ public final class World {
         int chunkZ = Math.floorDiv(blockZ, 16);
         int localX = Math.floorMod(blockX, 16);
         int localZ = Math.floorMod(blockZ, 16);
-        WorldChunk chunk = getChunk(chunkX, chunkZ);
-        // Keep each chunk's mutation and corresponding event publication ordered,
-        // without serialising independent chunks against one another.
-        synchronized (chunk) {
-            BlockType previous = chunk.setBlockAndGetPrevious(localX, y, localZ, type);
-            if (previous == type) return;
-            BlockChange change = new BlockChange(blockX, y, blockZ, previous, type);
-            for (WorldBlockChangeListener listener : blockChangeListeners) {
-                listener.onBlockChanged(change);
+        long key = chunkKey(chunkX, chunkZ);
+        while (true) {
+            WorldChunk chunk = getChunk(chunkX, chunkZ);
+            // An unload may have removed this instance while this mutation waited
+            // for its monitor. Never mutate a detached chunk: retry against the
+            // currently authoritative map entry instead.
+            synchronized (chunk) {
+                if (chunks.get(key) != chunk) continue;
+                BlockType previous = chunk.setBlockAndGetPrevious(localX, y, localZ, type);
+                if (previous == type) return;
+                BlockChange change = new BlockChange(blockX, y, blockZ, previous, type);
+                for (WorldBlockChangeListener listener : blockChangeListeners) {
+                    listener.onBlockChanged(change);
+                }
+                return;
             }
         }
     }
@@ -319,19 +325,30 @@ public final class World {
     public boolean unloadChunk(int chunkX, int chunkZ) {
         if (storage == null) return false;
         long key = chunkKey(chunkX, chunkZ);
-        java.util.concurrent.atomic.AtomicBoolean unloaded = new java.util.concurrent.atomic.AtomicBoolean();
-        chunks.computeIfPresent(key, (ignored, chunk) -> {
+        while (true) {
+            WorldChunk chunk = chunks.get(key);
+            if (chunk == null) return false;
             try {
-                storage.saveChunk(chunk);
-            } catch (IOException exception) {
-                throw new UncheckedIOException(
-                        "Unable to persist NEXORA chunk before unload " + chunkX + "," + chunkZ,
-                        exception);
+                // Disk I/O runs on the bounded save workers, not the world tick.
+                // A mutation racing this write leaves the chunk dirty and forces
+                // another snapshot before eviction.
+                chunkSaveService.request(chunk).join();
+            } catch (java.util.concurrent.CompletionException failure) {
+                Throwable cause = failure.getCause();
+                if (cause instanceof IOException io) {
+                    throw new UncheckedIOException(
+                            "Unable to persist NEXORA chunk before unload " + chunkX + "," + chunkZ, io);
+                }
+                throw failure;
             }
-            unloaded.set(true);
-            return null;
-        });
-        return unloaded.get();
+            synchronized (chunk) {
+                if (chunks.get(key) != chunk) continue;
+                if (chunk.isDirty()) continue;
+                // setBlock verifies this same identity under the chunk monitor,
+                // so no mutation can be applied to the chunk after this removal.
+                return chunks.remove(key, chunk);
+            }
+        }
     }
 
     /**

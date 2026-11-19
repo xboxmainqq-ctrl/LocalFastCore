@@ -117,6 +117,7 @@ public final class World {
         this.spawnZ = spawnZ;
         this.storage = storage;
         this.chunkLoadService = storage == null ? null : new WorldChunkLoadService(storage);
+        this.chunkSaveService = storage == null ? null : new WorldChunkSaveService(storage);
         this.itemEntities = itemStorage == null
                 ? new WorldItemEntityManager()
                 : new WorldItemEntityManager(itemStorage);
@@ -235,6 +236,10 @@ public final class World {
 
     public int queuedChunkSaves() {
         return chunkSaveService == null ? 0 : chunkSaveService.queuedSaves();
+    }
+
+    public int inFlightChunkSaves() {
+        return chunkSaveService == null ? 0 : chunkSaveService.inFlightSaves();
     }
 
     public BlockType getBlock(int blockX, int y, int blockZ) {

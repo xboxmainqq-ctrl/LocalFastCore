@@ -55,6 +55,23 @@ class FurnaceStateStorageTest {
     }
 
     @Test
+    void restoresPreviousVerifiedFurnaceStateWhenPrimaryIsCorrupted() throws Exception {
+        FurnaceStateStorage storage = new FurnaceStateStorage(temporaryDirectory, "recovery-world");
+        var first = new FurnaceService.FurnaceStateSnapshot(100, 20, 200);
+        var second = new FurnaceService.FurnaceStateSnapshot(150, 40, 200);
+        storage.save(4, 65, 9, first);
+        storage.save(4, 65, 9, second);
+        Path primary = temporaryDirectory.resolve("recovery-world/furnaces/4_65_9.nxf");
+        Path backup = temporaryDirectory.resolve("recovery-world/furnaces/4_65_9.nxf.bak");
+        byte[] damaged = Files.readAllBytes(primary);
+        damaged[8] ^= 1;
+        Files.write(primary, damaged);
+
+        assertEquals(first, storage.load(4, 65, 9).orElseThrow());
+        assertArrayEquals(Files.readAllBytes(backup), Files.readAllBytes(primary));
+    }
+
+    @Test
     void rejectsInvalidStateValues() throws Exception {
         FurnaceStateStorage storage = new FurnaceStateStorage(temporaryDirectory, "NEXORA");
         assertThrows(IllegalArgumentException.class, () ->

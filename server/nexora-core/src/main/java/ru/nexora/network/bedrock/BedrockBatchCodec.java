@@ -120,9 +120,21 @@ public final class BedrockBatchCodec {
         }
         if (maxBatchBytes < 1) throw new IllegalArgumentException("maxBatchBytes must be >= 1");
 
-        ByteArrayOutputStream batch = new ByteArrayOutputStream();
+        long encodedLength = 0;
         for (BedrockPacket packet : packets) {
             Objects.requireNonNull(packet, "packet");
+            int header = packet.packetId()
+                    | (packet.senderSubClientId() << 10)
+                    | (packet.targetSubClientId() << 12);
+            encodedLength += unsignedVarIntSize(unsignedVarIntSize(header) + packet.payloadLength())
+                    + unsignedVarIntSize(header) + (long) packet.payloadLength();
+            if (encodedLength > maxBatchBytes) {
+                throw new IllegalArgumentException("Encoded Bedrock batch exceeds size limit");
+            }
+        }
+
+        BatchBuffer batch = new BatchBuffer((int) encodedLength);
+        for (BedrockPacket packet : packets) {
             int header = packet.packetId()
                     | (packet.senderSubClientId() << 10)
                     | (packet.targetSubClientId() << 12);
@@ -130,12 +142,9 @@ public final class BedrockBatchCodec {
             writeUnsignedVarInt(batch, packetLength);
             writeUnsignedVarInt(batch, header);
             packet.writePayloadTo(batch);
-            if (batch.size() > maxBatchBytes) {
-                throw new IllegalArgumentException("Encoded Bedrock batch exceeds size limit");
-            }
         }
 
-        byte[] raw = batch.toByteArray();
+        byte[] raw = batch.toOwnedByteArray();
         if (!compressionNegotiated) return raw;
         if (compressionAlgorithm == COMPRESSION_NONE) {
             return withCompressionHeader(COMPRESSION_HEADER_NONE, raw);
@@ -223,6 +232,21 @@ public final class BedrockBatchCodec {
             throw new IllegalArgumentException("Trailing bytes in ResourcePackClientResponse");
         }
         return new ResourcePackClientResponseData((int) response, name);
+    }
+
+    /**
+     * Exact-sized batch output that can transfer its backing array to the encoder.
+     * The buffer never escapes before encoding completes, so an exact-sized array
+     * is safe to return without ByteArrayOutputStream's defensive final copy.
+     */
+    private static final class BatchBuffer extends ByteArrayOutputStream {
+        private BatchBuffer(int capacity) {
+            super(capacity);
+        }
+
+        private byte[] toOwnedByteArray() {
+            return count == buf.length ? buf : java.util.Arrays.copyOf(buf, count);
+        }
     }
 
     private static void writeString(ByteArrayOutputStream output, String value) {

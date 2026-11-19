@@ -135,7 +135,7 @@ public final class WorldTickPipeline {
             long decisionStarted = System.nanoTime();
             try {
                 decision = aiService.decide(mob, players, nowMillis,
-                        nextAttackAtMillis.getOrDefault(mob.runtimeId(), 0L), null, nearest);
+                        nextAttackAtMillis.getOrDefault(mob.uniqueId(), 0L), null, nearest);
             } finally {
                 profiler.record(HotPathProfiler.Path.MOB_AI_DECISION,
                         Math.max(0L, System.nanoTime() - decisionStarted));
@@ -158,7 +158,7 @@ public final class WorldTickPipeline {
             }
             decisionSink.accept(decision);
             if (decision.attack()) {
-                nextAttackAtMillis.put(mob.runtimeId(), attackDeadline(nowMillis));
+                nextAttackAtMillis.put(mob.uniqueId(), attackDeadline(nowMillis));
             }
             decisions++;
             loadController.recordBudgetNanos(System.nanoTime() - decisionStart);

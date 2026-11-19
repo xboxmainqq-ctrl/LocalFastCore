@@ -6435,7 +6435,18 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     batchReady = false;
                     continue;
                 }
-                Optional<WorldChunk> prepared = load.join();
+                Optional<WorldChunk> prepared;
+                try {
+                    prepared = load.join();
+                } catch (java.util.concurrent.CompletionException failure) {
+                    if (failure.getCause() instanceof java.util.concurrent.RejectedExecutionException) {
+                        // Keep this chunk pending and retry on a later input tick once I/O capacity frees.
+                        state.pendingChunkLoads.remove(key, load);
+                        batchReady = false;
+                        continue;
+                    }
+                    throw failure;
+                }
                 state.pendingChunkLoads.remove(key, load);
                 WorldChunk chunk = world.getChunkFromPreparedStorageLoad(chunkX, chunkZ, prepared);
                 packets.add(BedrockLevelChunkCodec.createPacket(chunk));

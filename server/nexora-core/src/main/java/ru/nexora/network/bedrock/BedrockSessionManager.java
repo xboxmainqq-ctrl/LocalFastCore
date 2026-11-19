@@ -145,6 +145,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private static final int MAX_CHAT_MESSAGES_PER_WINDOW = 5;
     private final Map<Long, ru.nexora.combat.ArrowProjectile> mobArrows = new ConcurrentHashMap<>();
     private final Set<Long> poisonMobArrows = ConcurrentHashMap.newKeySet();
+    private final ru.nexora.combat.GuardianBeamTracker guardianBeamTracker =
+            new ru.nexora.combat.GuardianBeamTracker();
     private final AtomicLong nextMobArrowRuntimeId = new AtomicLong(4_000_000L);
     private final ru.nexora.combat.MobFuseTracker mobFuseTracker =
             new ru.nexora.combat.MobFuseTracker();
@@ -3514,7 +3516,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 mobStuckTracker.clear(mob.runtimeId());
                 continue;
             }
-            if (tickRangedMobBehavior(mob, nearestPlayer, nowMillis)) {
+            if (tickGuardianBeamBehavior(mob, nearestPlayer, nowMillis, tick)
+                    || tickRangedMobBehavior(mob, nearestPlayer, nowMillis)) {
                 mobAiLoadController.recordScheduled(mob.runtimeId());
                 mobAiTaskScheduler.recordRun(ru.nexora.combat.MobAiTaskScheduler.Task.COMBAT);
                 mobStuckTracker.clear(mob.runtimeId());
@@ -3709,6 +3712,37 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             case "minecraft:wither" -> 300.0f;
             default -> 20.0f;
         };
+    }
+
+    private boolean tickGuardianBeamBehavior(
+            WorldLivingEntity guardian,
+            ru.nexora.combat.LivingEntityAiService.PlayerTarget target,
+            long nowMillis,
+            long tick
+    ) {
+        String identifier = guardian.identifier();
+        if (!"minecraft:guardian".equals(identifier)
+                && !"minecraft:elder_guardian".equals(identifier)) return false;
+        if (target == null) {
+            guardianBeamTracker.clear(guardian.runtimeId());
+            return true;
+        }
+        double dx = target.x() - guardian.x();
+        double dy = target.y() + 1.0 - (guardian.y() + 1.2);
+        double dz = target.z() - guardian.z();
+        double distanceSquared = dx * dx + dy * dy + dz * dz;
+        boolean inRange = distanceSquared >= 3.0 * 3.0 && distanceSquared <= 14.0 * 14.0;
+        boolean visible = inRange && WorldRaycast.hasLineOfSightInLoadedChunks(
+                world, guardian.x(), guardian.y() + 1.2,
+                guardian.z(), (int) Math.floor(target.x()),
+                (int) Math.floor(target.y() + 1.0), (int) Math.floor(target.z()));
+        ru.nexora.combat.GuardianBeamTracker.Result result = guardianBeamTracker.tick(
+                guardian.runtimeId(), target.networkId(), visible, nowMillis);
+        if (result.fired()) {
+            float damage = "minecraft:elder_guardian".equals(identifier) ? 6.0f : 5.0f;
+            damagePlayerFromMob(target.networkId(), guardian, damage, tick, 14.0);
+        }
+        return true;
     }
 
     private boolean tickRangedMobBehavior(
@@ -3961,6 +3995,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private boolean damagePlayerFromMob(String networkId, WorldLivingEntity mob, float amount, long tick) {
+        return damagePlayerFromMob(networkId, mob, amount, tick,
+                ru.nexora.combat.LivingEntityAiService.attackRangeFor(mob.identifier()));
+    }
+
+    private boolean damagePlayerFromMob(
+            String networkId, WorldLivingEntity mob, float amount, long tick, double maxRange
+    ) {
         SessionState target = sessions.get(networkId);
         if (target == null) return false;
         target.combatLock.lock();
@@ -3971,10 +4012,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 double rangeX = target.positionX - mob.x();
                 double rangeY = target.positionY - mob.y();
                 double rangeZ = target.positionZ - mob.z();
-                double attackRange =
-                        ru.nexora.combat.LivingEntityAiService.attackRangeFor(mob.identifier());
-                if (rangeX * rangeX + rangeY * rangeY + rangeZ * rangeZ
-                        > attackRange * attackRange) return false;
+                if (!Double.isFinite(maxRange) || maxRange <= 0
+                        || rangeX * rangeX + rangeY * rangeY + rangeZ * rangeZ
+                        > maxRange * maxRange) return false;
                 int targetBlockX = (int) Math.floor(target.positionX);
                 int targetBlockY = (int) Math.floor(target.positionY + 1.0);
                 int targetBlockZ = (int) Math.floor(target.positionZ);
@@ -4208,6 +4248,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     /** Clears every transient subsystem reference when a mob dies or is despawned. */
     private void cleanupLivingEntityRuntimeState(long runtimeId) {
         nextMobAttackMillis.remove(runtimeId);
+        guardianBeamTracker.clear(runtimeId);
         mobAiLoadController.remove(runtimeId);
         mobPathCache.remove(runtimeId);
         mobStuckTracker.clear(runtimeId);

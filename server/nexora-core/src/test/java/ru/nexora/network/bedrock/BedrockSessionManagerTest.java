@@ -59,6 +59,43 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void outboundFramesRemainOrderedAcrossTransientTransportFailure() throws Exception {
+        java.util.concurrent.atomic.AtomicInteger attempts = new java.util.concurrent.atomic.AtomicInteger();
+        List<byte[]> delivered = new ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new ru.nexora.world.World("outbound-order", 0L, new ru.nexora.world.FlatWorldGenerator()),
+                (networkId, label, frame) -> {
+                    if (attempts.getAndIncrement() == 0) throw new java.io.IOException("temporary transport failure");
+                    delivered.add(frame.clone());
+                }, event -> {});
+        try {
+            manager.onIdentity("outbound-session", new NetherNetClientIdentity(
+                    "outbound-token", new byte[] {1}, "outbound-xuid",
+                    "OutboundPlayer", "outbound-playfab", "20CA2", null));
+            java.lang.reflect.Method send = BedrockSessionManager.class.getDeclaredMethod(
+                    "sendEncodedFrames", String.class, List.class);
+            send.setAccessible(true);
+
+            assertThrows(java.lang.reflect.InvocationTargetException.class,
+                    () -> send.invoke(manager, "outbound-session", List.of(new byte[] {1}, new byte[] {2})));
+            send.invoke(manager, "outbound-session", List.of(new byte[] {3}));
+
+            assertEquals(3, delivered.size());
+            assertArrayEquals(new byte[] {1}, delivered.get(0));
+            assertArrayEquals(new byte[] {2}, delivered.get(1));
+            assertArrayEquals(new byte[] {3}, delivered.get(2));
+            String summary = manager.adminRuntimeSummary();
+            assertTrue(summary.contains("outboundFramesSent=3"));
+            assertTrue(summary.contains("outboundSendFailures=1"));
+            assertTrue(summary.contains("outboundQueuedFrames=0"));
+            assertTrue(summary.contains("outboundQueuedBytes=0"));
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void adminRuntimeSummaryIncludesActualMobAiAndJvmResourceMetrics() throws Exception {
         ru.nexora.world.World testWorld = new ru.nexora.world.World(
                 "admin-metrics-world", 0L, new ru.nexora.world.FlatWorldGenerator());

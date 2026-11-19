@@ -60,17 +60,7 @@ public final class PlayerEquipmentStorage {
 
         Path target = path(xuid);
         rejectSymlink(target);
-        Path temporary = Files.createTempFile(directory, ".nexora-equipment-", ".tmp");
-        try {
-            Files.write(temporary, complete.toByteArray());
-            try {
-                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException ignored) {
-                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } finally {
-            Files.deleteIfExists(temporary);
-        }
+        ru.nexora.persistence.AtomicFileWriter.writeAtomically(target, complete.toByteArray());
     }
 
     public Optional<PlayerEquipment> load(String xuid) throws IOException {

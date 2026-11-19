@@ -233,9 +233,11 @@ anomaly observer keeps per-peer windows and updates them under peer-local locks,
 traffic from different peers does not serialize on one global accounting lock. Its
 bounded peer admission/eviction path is separate from the hot update path. Ingress
 timings cover the NetherNet framing/dispatch pipeline only, not the downstream Bedrock
-decoder or gameplay handlers. The backlog excludes bytes already handed to the native WebRTC/SCTP
-buffer; throughput rates are transport-counter deltas rather than decoded Bedrock
-gameplay payload rates. Average/max RTT exclude
+decoder or gameplay handlers. The compressed Bedrock batch decoder now feeds the
+Inflater directly from the encoded frame offset, avoiding an extra full-size copy of
+the compressed payload before decompression. The backlog excludes bytes already handed
+to the native WebRTC/SCTP buffer; throughput rates are transport-counter deltas rather
+than decoded Bedrock gameplay payload rates. Average/max RTT exclude
 stale or missing samples; byte counters remain cumulative. NEXORA also derives
 per-peer sent/received bytes-per-second from successive timestamped counter samples.
 Rates are reported only when both counter baselines are valid, monotonically

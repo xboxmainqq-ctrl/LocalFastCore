@@ -3581,7 +3581,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         aiPriority, true, Math.max(0L, nanoTime.getAsLong() - aiStartedNanos),
                         mobAiLoadController.aiBudgetNanos());
                 mobStuckTracker.clear(mob.runtimeId());
-                if (damagePlayerFromMob(decision.targetNetworkId(), mob, decision.attackDamage(), tick)) {
+                // Projectile attacks are executed only by the line-of-sight-aware
+                // ranged handlers above; never convert a blocked shot into melee damage.
+                if (decision.attackStyle() == ru.nexora.combat.LivingEntityAiService.AttackStyle.MELEE
+                        && damagePlayerFromMob(decision.targetNetworkId(), mob,
+                        decision.attackDamage(), tick)) {
                     nextMobAttackMillis.put(mob.runtimeId(), mobAttackDeadline(nowMillis,
                             ru.nexora.combat.LivingEntityAiService.attackCooldownMillisFor(
                                     mob.identifier())));

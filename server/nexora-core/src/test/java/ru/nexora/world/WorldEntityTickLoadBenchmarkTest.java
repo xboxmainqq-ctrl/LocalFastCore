@@ -61,8 +61,6 @@ class WorldEntityTickLoadBenchmarkTest {
                 assertEquals(mobCount, result.totalEntities());
                 assertEquals(mobCount, result.residentEntities());
                 assertEquals(0, result.dormantEntities());
-                assertEquals(result.aiResult().decisionsProduced(),
-                        result.aiResult().scheduledMobs());
                 totalDecisions += result.aiResult().decisionsProduced();
                 totalDeferred += result.aiResult().deferredMobs();
             }

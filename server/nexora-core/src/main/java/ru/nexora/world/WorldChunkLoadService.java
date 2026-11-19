@@ -139,7 +139,7 @@ public final class WorldChunkLoadService implements AutoCloseable {
     /** Called only while holding this service's monitor. */
     private void dispatchFairly() {
         if (closed) return;
-        int dispatchLimit = workers + queueCapacity;
+        int dispatchLimit = workers;
         while (dispatchedLoads < dispatchLimit && !sessionRotation.isEmpty()) {
             int candidates = sessionRotation.size();
             boolean dispatched = false;

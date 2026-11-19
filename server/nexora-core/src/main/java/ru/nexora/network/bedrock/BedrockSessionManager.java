@@ -611,6 +611,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
             releaseOnlinePlayerLease(state);
             synchronized (state.outboundLock) {
+                state.outboundClosed = true;
                 state.outboundQueue.clear();
             }
             sessions.remove(networkId, state);
@@ -7168,8 +7169,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             return;
         }
         synchronized (state.outboundLock) {
-            if (state.rejected) {
-                state.outboundQueue.clear();
+            if (state.outboundClosed) {
                 throw new IllegalStateException("Cannot send Bedrock frames to a disconnected session");
             }
             // Drain an older transient backlog before admitting more data for this session.
@@ -7318,6 +7318,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         for (SessionState state : sessions.values()) {
             synchronized (state.outboundLock) {
+                state.outboundClosed = true;
                 state.outboundQueue.clear();
             }
         }
@@ -7374,6 +7375,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private final ReentrantLock combatLock = new ReentrantLock();
         private final Object outboundLock = new Object();
         private final NetherNetOutboundQueue outboundQueue = new NetherNetOutboundQueue();
+        private boolean outboundClosed;
         private long lastAttackNanos = Long.MIN_VALUE;
         private long chatWindowStartedNanos = Long.MIN_VALUE;
         private int chatMessagesInWindow;

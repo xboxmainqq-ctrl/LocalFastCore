@@ -77,6 +77,34 @@ class ChunkStreamingBudgetTest {
     }
 
     @Test
+    void rotatesGlobalAdmissionAcross128PlayersOverSuccessiveWindows() {
+        int players = 128;
+        ChunkStreamingBudget budget = new ChunkStreamingBudget(100, 64, 4, 500);
+
+        // Register every active player before measuring a full budget window.
+        assertTrue(budget.tryAcquire("player-0", 0));
+        for (int player = 1; player < players; player++) {
+            assertFalse(budget.tryAcquire("player-" + player, 0));
+        }
+        budget.yield("player-0", 0);
+
+        int[] admitted = new int[players];
+        for (int window = 1; window <= 2; window++) {
+            int before = budget.globalUsage();
+            for (int player = 0; player < players; player++) {
+                String session = "player-" + player;
+                for (int chunk = 0; chunk < 4; chunk++) {
+                    if (budget.tryAcquire(session, window * 100L)) admitted[player]++;
+                }
+            }
+            assertEquals(64, budget.globalUsage() - before,
+                    "Global packet encoding must never exceed 64 chunks in one window");
+        }
+        assertTrue(java.util.Arrays.stream(admitted).allMatch(count -> count >= 1),
+                "Round-robin rotation must serve every player across two budget windows");
+    }
+
+    @Test
     void rejectsInvalidBudgets() {
         assertThrows(IllegalArgumentException.class,
                 () -> new ChunkStreamingBudget(0, 1, 1, 1));

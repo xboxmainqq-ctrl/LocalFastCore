@@ -53,6 +53,9 @@ public final class MobPathCache {
             long mobRuntimeId, World world, double startX, double feetY, double startZ,
             double targetX, double targetZ, long nowMillis, String identifier
     ) {
+        if (mobRuntimeId < 0 || nowMillis < 0) {
+            throw new IllegalArgumentException("Mob id and navigation time must be non-negative");
+        }
         if (identifier == null || identifier.isBlank()) {
             throw new IllegalArgumentException("Mob identifier must not be blank");
         }
@@ -83,9 +86,13 @@ public final class MobPathCache {
         recordRecomputation();
         // Do not cache "no path": terrain can open at any time and should be retried immediately.
         if (computed.isPresent()) {
-            put(mobRuntimeId, new Entry(key, computed.orElseThrow(), nowMillis + ttlMillis));
+            put(mobRuntimeId, new Entry(key, computed.orElseThrow(), expiresAt(nowMillis)));
         }
         return computed;
+    }
+
+    private long expiresAt(long nowMillis) {
+        return nowMillis > Long.MAX_VALUE - ttlMillis ? Long.MAX_VALUE : nowMillis + ttlMillis;
     }
 
     private synchronized Entry get(long mobRuntimeId, Key key, long nowMillis) {

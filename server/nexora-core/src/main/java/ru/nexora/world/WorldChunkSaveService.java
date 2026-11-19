@@ -10,6 +10,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -64,7 +65,7 @@ public final class WorldChunkSaveService implements AutoCloseable {
         SaveState state = new SaveState(chunk);
         inFlight.put(key, state);
         try {
-            executor.execute(() -> persist(key, state));
+            executor.execute(new SaveTask(key, state));
         } catch (RejectedExecutionException saturated) {
             inFlight.remove(key, state);
             state.completion.completeExceptionally(saturated);
@@ -123,15 +124,46 @@ public final class WorldChunkSaveService implements AutoCloseable {
         executor.shutdown();
         try {
             if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
-                executor.shutdownNow();
+                failAbandoned(executor.shutdownNow(),
+                        new IllegalStateException("Chunk save task was not started before shutdown timeout"));
                 if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
                     throw new IllegalStateException("NEXORA chunk save workers did not stop");
                 }
             }
         } catch (InterruptedException interrupted) {
-            executor.shutdownNow();
+            failAbandoned(executor.shutdownNow(),
+                    new CompletionException("Chunk save task was abandoned after shutdown interruption", interrupted));
             Thread.currentThread().interrupt();
             throw new CompletionException("Interrupted while stopping NEXORA chunk save workers", interrupted);
+        }
+    }
+
+    /**
+     * shutdownNow returns queued tasks that never entered persist(). Complete their
+     * futures explicitly so callers cannot wait forever on work that was discarded.
+     */
+    private void failAbandoned(List<Runnable> abandoned, RuntimeException failure) {
+        for (Runnable runnable : abandoned) {
+            if (!(runnable instanceof SaveTask task)) continue;
+            synchronized (this) {
+                inFlight.remove(task.key, task.state);
+            }
+            task.state.completion.completeExceptionally(failure);
+        }
+    }
+
+    private final class SaveTask implements Runnable {
+        private final long key;
+        private final SaveState state;
+
+        private SaveTask(long key, SaveState state) {
+            this.key = key;
+            this.state = state;
+        }
+
+        @Override
+        public void run() {
+            persist(key, state);
         }
     }
 

@@ -3599,7 +3599,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     Math.max(0L, nanoTime.getAsLong() - aiStartedNanos),
                     mobAiLoadController.aiBudgetNanos())
                     == ru.nexora.combat.MobAiTaskScheduler.Admission.DEFER) {
-                mobAiTaskScheduler.recordDeferral(ru.nexora.combat.MobAiTaskScheduler.Task.MOVEMENT);
+                // admit() already records the task-level deferral; only starvation is tracked here.
                 mobAiLoadController.recordDeferred(mob.runtimeId());
                 continue;
             }

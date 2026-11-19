@@ -39,11 +39,10 @@ public final class PlayerTargetIndex {
             mutableCells.computeIfAbsent(key(cellX, cellZ), ignored -> new ArrayList<>()).add(player);
             mutableIds.put(player.networkId(), player);
         }
-        Map<Long, List<LivingEntityAiService.PlayerTarget>> frozenCells =
-                new HashMap<>(mutableCells.size());
-        mutableCells.forEach((key, value) -> frozenCells.put(key, List.copyOf(value)));
-        this.cells = Map.copyOf(frozenCells);
-        this.byNetworkId = Map.copyOf(mutableIds);
+        // These maps and their bucket lists are privately owned and never mutated
+        // after construction; avoid per-tick defensive copies of every bucket.
+        this.cells = mutableCells;
+        this.byNetworkId = mutableIds;
     }
 
     /**

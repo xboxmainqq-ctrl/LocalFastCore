@@ -14,8 +14,8 @@ import java.util.concurrent.atomic.LongAdder;
  */
 public final class InboundPeerBudget {
     public static final long DEFAULT_WINDOW_NANOS = 5_000_000_000L;
-    public static final int DEFAULT_MAX_FRAMES_PER_WINDOW = 1_200;
-    public static final long DEFAULT_MAX_BYTES_PER_WINDOW = 8L * 1024L * 1024L;
+    public static final int DEFAULT_MAX_FRAMES_PER_WINDOW = 4_096;
+    public static final long DEFAULT_MAX_BYTES_PER_WINDOW = 16L * 1024L * 1024L;
     public static final int DEFAULT_MAX_TRACKED_PEERS = 1_024;
 
     private final long windowNanos;

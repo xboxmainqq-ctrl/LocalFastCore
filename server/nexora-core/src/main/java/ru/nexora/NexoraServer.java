@@ -164,7 +164,9 @@ public final class NexoraServer {
                     active.sendFrame(networkId, channelLabel, frame);
                 },
                 event -> System.out.printf("NEXORA: Bedrock packet 0x%02X from %s (%d bytes)%n",
-                        event.packet().packetId(), event.networkId(), event.packet().payload().length));
+                        event.packet().packetId(), event.networkId(), event.packet().payload().length),
+                config.maximumResidentChunks());
+
         if (configuredTransferLedger.shared()) {
             bedrockSessions.configureOnlinePlayerLeases(
                     configuredTransferLedger.onlineLeases(), onlinePlayerLeaseMillis);
@@ -236,6 +238,8 @@ public final class NexoraServer {
                 negotiator,
                 readiness::isAcceptingConnections);
 
+        System.out.printf("NEXORA: world chunk residency target is %d resident chunks (entity-pinned chunks may exceed it).%n",
+                config.maximumResidentChunks());
         long autosaveSeconds = config.autosaveSeconds();
         WorldRuntimeModule worldRuntime = new WorldRuntimeModule(
                 world,

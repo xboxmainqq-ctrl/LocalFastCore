@@ -80,17 +80,7 @@ public final class WorldItemEntityStorage {
         if (complete.size() > MAX_FILE_BYTES) throw new IOException("Dropped world item file exceeds size limit");
 
         rejectSymlink(file);
-        Path temporary = Files.createTempFile(file.getParent(), ".nexora-items-", ".tmp");
-        try {
-            Files.write(temporary, complete.toByteArray());
-            try {
-                Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException ignored) {
-                Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } finally {
-            Files.deleteIfExists(temporary);
-        }
+        ru.nexora.persistence.AtomicFileWriter.writeAtomically(file, complete.toByteArray());
     }
 
     public synchronized List<WorldItemEntity> load() throws IOException {

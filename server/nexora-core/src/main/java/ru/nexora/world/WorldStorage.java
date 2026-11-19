@@ -94,11 +94,52 @@ public final class WorldStorage {
             output.writeInt((int) checksum.getValue());
         }
 
+        Path backup = chunkBackupPath(chunkX, chunkZ);
+        rejectSymlink(backup, "chunk backup file");
+        if (Files.exists(target)) {
+            try {
+                // Only rotate a primary generation after its checksum and structure validate.
+                if (loadChunkFile(target, chunkX, chunkZ).isPresent()) {
+                    ru.nexora.persistence.AtomicFileWriter.writeAtomically(
+                            backup, Files.readAllBytes(target));
+                }
+            } catch (IOException corruptPreviousGeneration) {
+                // Never replace a known-good backup with an unverified primary.
+            }
+        }
         ru.nexora.persistence.AtomicFileWriter.writeAtomically(target, fileBytes.toByteArray());
     }
 
     public Optional<WorldChunk> loadChunk(int chunkX, int chunkZ) throws IOException {
-        Path file = chunkPath(chunkX, chunkZ);
+        Path primary = chunkPath(chunkX, chunkZ);
+        Path backup = chunkBackupPath(chunkX, chunkZ);
+        rejectSymlink(primary, "chunk file");
+        rejectSymlink(backup, "chunk backup file");
+        IOException primaryFailure = null;
+        try {
+            Optional<WorldChunk> current = loadChunkFile(primary, chunkX, chunkZ);
+            if (current.isPresent()) return current;
+        } catch (IOException corruptPrimary) {
+            primaryFailure = corruptPrimary;
+        }
+
+        try {
+            Optional<WorldChunk> previous = loadChunkFile(backup, chunkX, chunkZ);
+            if (previous.isPresent()) {
+                ru.nexora.persistence.AtomicFileWriter.writeAtomically(
+                        primary, Files.readAllBytes(backup));
+                return previous;
+            }
+        } catch (IOException corruptBackup) {
+            if (primaryFailure != null) primaryFailure.addSuppressed(corruptBackup);
+            else throw corruptBackup;
+        }
+
+        if (primaryFailure != null) throw primaryFailure;
+        return Optional.empty();
+    }
+
+    private Optional<WorldChunk> loadChunkFile(Path file, int chunkX, int chunkZ) throws IOException {
         rejectSymlink(file, "chunk file");
         if (!Files.exists(file)) return Optional.empty();
 
@@ -156,6 +197,10 @@ public final class WorldStorage {
 
     private Path chunkPath(int x, int z) {
         return chunksDirectory.resolve(x + "_" + z + ".nxc");
+    }
+
+    private Path chunkBackupPath(int x, int z) {
+        return chunksDirectory.resolve(x + "_" + z + ".nxc.bak");
     }
 
     private static void rejectSymlink(Path path, String description) throws IOException {

@@ -42,12 +42,15 @@ class BedrockLoginPacketParserTest {
 
     @Test
     void rejectsCertificateChainsWithTooManyEntries() throws Exception {
-        StringBuilder chain = new StringBuilder("{\\"chain\\":[");
+        String quote = Character.toString('"');
+        StringBuilder chain = new StringBuilder("{").append(quote).append("chain")
+                .append(quote).append(":[");
         for (int i = 0; i <= BedrockLoginPacketParser.MAX_CERTIFICATE_CHAIN_ENTRIES; i++) {
             if (i > 0) chain.append(',');
-            chain.append("\\"token-").append(i).append("\\"");
+            chain.append(quote).append("token-").append(i).append(quote);
         }
-        chain.append("],\\"Token\\":\\"game-server-token\\"}");
+        chain.append("],").append(quote).append("Token").append(quote)
+                .append(':').append(quote).append("game-server-token").append(quote).append('}');
         byte[] payload = loginPayload(2225,
                 connectionRequest(chain.toString(), "client-data-token"));
 
@@ -57,8 +60,10 @@ class BedrockLoginPacketParserTest {
 
     @Test
     void rejectsOversizedMultiplayerTokenBeforeReturningLoginRequest() throws Exception {
+        String quote = Character.toString('"');
         String oversizedToken = "x".repeat(BedrockLoginPacketParser.MAX_AUTH_TOKEN_CHARS + 1);
-        String chainJson = "{\\"chain\\":[],\\"Token\\":\\"" + oversizedToken + "\\"}";
+        String chainJson = "{" + quote + "chain" + quote + ":[]," + quote + "Token" + quote
+                + ":" + quote + oversizedToken + quote + "}";
         byte[] payload = loginPayload(2225,
                 connectionRequest(chainJson, "client-data-token"));
 

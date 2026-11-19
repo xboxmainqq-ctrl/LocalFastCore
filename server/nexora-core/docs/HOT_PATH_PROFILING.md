@@ -228,9 +228,12 @@ when the native report contains them even if its RTT field is unavailable. The s
 maximum fresh ICE RTT, timestamped sent/received transport bytes-per-second, cumulative
 transport byte totals, the current bounded application outbound backlog (queued
 frames/bytes and peers with queued frames), and Bedrock ingress frame/message/failure
-counts with average/maximum framing-and-dispatch processing time. Ingress timings cover
-the NetherNet framing/dispatch pipeline only, not the downstream Bedrock decoder or
-gameplay handlers. The backlog excludes bytes already handed to the native WebRTC/SCTP
+counts with average/maximum framing-and-dispatch processing time. The inbound
+anomaly observer keeps per-peer windows and updates them under peer-local locks, so
+traffic from different peers does not serialize on one global accounting lock. Its
+bounded peer admission/eviction path is separate from the hot update path. Ingress
+timings cover the NetherNet framing/dispatch pipeline only, not the downstream Bedrock
+decoder or gameplay handlers. The backlog excludes bytes already handed to the native WebRTC/SCTP
 buffer; throughput rates are transport-counter deltas rather than decoded Bedrock
 gameplay payload rates. Average/max RTT exclude
 stale or missing samples; byte counters remain cumulative. NEXORA also derives

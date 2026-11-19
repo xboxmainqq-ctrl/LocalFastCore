@@ -3559,6 +3559,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             if (mobAiTaskScheduler.admit(ru.nexora.combat.MobAiTaskScheduler.Task.NAVIGATION,
                     aiPriority, hasActiveTarget, budgetElapsed, mobAiLoadController.aiBudgetNanos())
                     == ru.nexora.combat.MobAiTaskScheduler.Admission.DEFER) {
+                mobAiTaskScheduler.recordDeferral(ru.nexora.combat.MobAiTaskScheduler.Task.NAVIGATION);
                 mobAiLoadController.recordDeferred(mob.runtimeId());
                 continue;
             }
@@ -3567,7 +3568,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 mobAiLoadController.recordDeferred(mob.runtimeId());
                 continue;
             }
-            mobAiLoadController.recordScheduled(mob.runtimeId());
             long nextAttackAt = nextMobAttackMillis.getOrDefault(mob.runtimeId(), 0L);
             long decisionStartedNanos = nanoTime.getAsLong();
             ru.nexora.combat.LivingEntityAiService.Decision decision =
@@ -3577,6 +3577,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             mobAiLoadController.recordBudgetNanos(decisionElapsedNanos);
             hotPathProfiler.record(ru.nexora.ai.HotPathProfiler.Path.MOB_AI_DECISION, decisionElapsedNanos);
             if (decision.attack()) {
+                mobAiLoadController.recordScheduled(mob.runtimeId());
                 mobAiTaskScheduler.admit(ru.nexora.combat.MobAiTaskScheduler.Task.COMBAT,
                         aiPriority, true, Math.max(0L, nanoTime.getAsLong() - aiStartedNanos),
                         mobAiLoadController.aiBudgetNanos());
@@ -3588,6 +3589,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 continue;
             }
             if (!decision.moving()) {
+                mobAiLoadController.recordScheduled(mob.runtimeId());
                 mobAiTaskScheduler.recordRun(ru.nexora.combat.MobAiTaskScheduler.Task.IDLE);
                 mobStuckTracker.clear(mob.runtimeId());
                 continue;
@@ -3601,6 +3603,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 mobAiLoadController.recordDeferred(mob.runtimeId());
                 continue;
             }
+            // Clear starvation only after the movement task itself is admitted.
+            // If the movement budget rejects it, its deferred count must survive this tick.
+            mobAiLoadController.recordScheduled(mob.runtimeId());
             double nextX = mob.x() + decision.moveX();
             double nextY = mob.y() + decision.moveY();
             double nextZ = mob.z() + decision.moveZ();

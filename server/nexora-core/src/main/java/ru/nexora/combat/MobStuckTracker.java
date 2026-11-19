@@ -55,8 +55,7 @@ public final class MobStuckTracker {
             return null;
         }
 
-        long attempts = entry.attempts() == Long.MAX_VALUE
-                ? Long.MAX_VALUE : entry.attempts() + 1;
+        long attempts = nextAttemptCount(entry.attempts());
         Entry updated = new Entry(entry.anchorX(), entry.anchorY(), entry.anchorZ(),
                 entry.startedAtMillis(), nowMillis, attempts);
         entries.put(runtimeId, updated);
@@ -113,6 +112,11 @@ public final class MobStuckTracker {
             entries.remove(eldest);
             evictions++;
         }
+    }
+
+    static long nextAttemptCount(long attempts) {
+        if (attempts < 0) throw new IllegalArgumentException("attempts must be non-negative");
+        return attempts == Long.MAX_VALUE ? Long.MAX_VALUE : attempts + 1;
     }
 
     private static void validate(long runtimeId, double x, double y, double z, long nowMillis) {

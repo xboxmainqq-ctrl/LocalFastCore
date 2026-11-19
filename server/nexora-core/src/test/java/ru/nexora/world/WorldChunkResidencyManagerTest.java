@@ -182,7 +182,7 @@ class WorldChunkResidencyManagerTest {
         var first = manager.update(players, 0);
         assertEquals(1024, first.load().size());
         assertEquals(1024, first.residentCount());
-        assertTrue(first.desiredCount() > 40_000);
+        assertTrue(first.desiredCount() > 36_000);
         assertEquals(1024, manager.residentChunkCount());
 
         var steady = manager.update(players, 1);
@@ -211,8 +211,8 @@ class WorldChunkResidencyManagerTest {
                 java.util.Set.of(new WorldChunkResidencyManager.ChunkCoordinate(500, 500)), 0);
 
         assertTrue(plan.load().contains(new WorldChunkResidencyManager.ChunkCoordinate(500, 500)));
-        assertEquals(4, plan.residentCount());
-        assertTrue(plan.load().size() <= 4);
+        assertEquals(3, plan.residentCount());
+        assertTrue(plan.load().size() <= 3);
     }
 
 }

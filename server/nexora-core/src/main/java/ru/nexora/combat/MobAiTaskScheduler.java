@@ -48,11 +48,20 @@ public final class MobAiTaskScheduler {
     }
 
     public synchronized void recordRun(Task task) {
-        runs.merge(task, 1L, Long::sum);
+        if (task == null) throw new IllegalArgumentException("task must not be null");
+        runs.merge(task, 1L, MobAiTaskScheduler::saturatedAdd);
     }
 
     public synchronized void recordDeferral(Task task) {
-        deferrals.merge(task, 1L, Long::sum);
+        if (task == null) throw new IllegalArgumentException("task must not be null");
+        deferrals.merge(task, 1L, MobAiTaskScheduler::saturatedAdd);
+    }
+
+    static long saturatedAdd(long current, long increment) {
+        if (current < 0 || increment < 0) {
+            throw new IllegalArgumentException("AI task counters must be non-negative");
+        }
+        return current > Long.MAX_VALUE - increment ? Long.MAX_VALUE : current + increment;
     }
 
     public synchronized Stats stats() {

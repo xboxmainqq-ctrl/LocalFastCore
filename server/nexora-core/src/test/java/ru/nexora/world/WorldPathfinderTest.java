@@ -77,6 +77,18 @@ class WorldPathfinderTest {
     }
 
     @Test
+    void supportsNegativeWorldCoordinatesWithPackedVisitedKeys() {
+        World world = new World("path-negative-coordinates", 0L, new FlatWorldGenerator());
+        world.getChunk(-1, -1);
+
+        var step = WorldPathfinder.findNextStep(world,
+                -8.5, 65.0, -8.5, -5.5, -5.5, "minecraft:zombie").orElseThrow();
+
+        assertEquals(-7.5, step.x(), 1.0e-6);
+        assertEquals(-7.5, step.z(), 1.0e-6);
+    }
+
+    @Test
     void reportsSearchAreaResidentOnlyWhenAllRelevantChunksAreLoaded() {
         World world = new World("path-area-loaded", 0L, new FlatWorldGenerator());
         world.getChunk(0, 0);

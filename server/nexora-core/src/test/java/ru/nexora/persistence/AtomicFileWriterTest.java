@@ -19,10 +19,12 @@ class AtomicFileWriterTest {
         byte[] first = new byte[] {1, 2, 3, 4};
         byte[] second = new byte[] {9, 8, 7, 6, 5};
 
-        AtomicFileWriter.writeAtomically(target, first);
+        AtomicFileWriter.WriteResult firstWrite = AtomicFileWriter.writeAtomically(target, first);
+        assertTrue(firstWrite.fileContentsForced());
         assertArrayEquals(first, Files.readAllBytes(target));
 
-        AtomicFileWriter.writeAtomically(target, second);
+        AtomicFileWriter.WriteResult replacement = AtomicFileWriter.writeAtomically(target, second);
+        assertTrue(replacement.fileContentsForced());
         assertArrayEquals(second, Files.readAllBytes(target));
         try (var files = Files.list(directory)) {
             List<Path> remaining = files.toList();

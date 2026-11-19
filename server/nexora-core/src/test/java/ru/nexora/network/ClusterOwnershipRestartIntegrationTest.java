@@ -101,7 +101,7 @@ class ClusterOwnershipRestartIntegrationTest {
     @Test
     void separateJvmNodesEnforceLeaseAndRecoverAfterAbruptOwnerExit(@TempDir Path directory) throws Exception {
         String databasePath = directory.resolve("nexora-cluster").toAbsolutePath().toString().replace('\\', '/');
-        String url = "jdbc:h2:file:" + databasePath + ";AUTO_SERVER=TRUE;DB_CLOSE_ON_EXIT=FALSE;LOCK_TIMEOUT=10000";
+        String url = "jdbc:h2:file:" + databasePath + ";AUTO_SERVER=TRUE;LOCK_TIMEOUT=10000";
         new JdbcPlayerOnlineLeaseRegistry(dataSource(url)).initializeSchema();
 
         long leaseMillis = 1_500L;
@@ -132,7 +132,7 @@ class ClusterOwnershipRestartIntegrationTest {
     @Test
     void simultaneousIndependentJvmLoginsHaveExactlyOneLeaseWinner(@TempDir Path directory) throws Exception {
         String databasePath = directory.resolve("nexora-race").toAbsolutePath().toString().replace('\\', '/');
-        String url = "jdbc:h2:file:" + databasePath + ";AUTO_SERVER=TRUE;DB_CLOSE_ON_EXIT=FALSE;LOCK_TIMEOUT=10000";
+        String url = "jdbc:h2:file:" + databasePath + ";AUTO_SERVER=TRUE;LOCK_TIMEOUT=10000";
         new JdbcPlayerOnlineLeaseRegistry(dataSource(url)).initializeSchema();
 
         Process nodeA = startLeaseProcess(url, "try", "race-process-xuid", "node-a", 10_000L);

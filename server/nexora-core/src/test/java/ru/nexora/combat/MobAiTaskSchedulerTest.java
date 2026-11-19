@@ -2,6 +2,12 @@ package ru.nexora.combat;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class MobAiTaskSchedulerTest {
@@ -55,6 +61,33 @@ class MobAiTaskSchedulerTest {
                         MobAiLoadController.Priority.NORMAL, false, 50, 10));
 
         assertEquals(1, scheduler.stats().deferrals().get(MobAiTaskScheduler.Task.MOVEMENT));
+    }
+
+    @Test
+    void taskCountersRemainExactUnderConcurrentUpdates() throws Exception {
+        MobAiTaskScheduler scheduler = new MobAiTaskScheduler();
+        int workers = 8;
+        int incrementsPerWorker = 2_000;
+        ExecutorService executor = Executors.newFixedThreadPool(workers);
+        try {
+            List<Future<?>> tasks = new ArrayList<>();
+            for (int worker = 0; worker < workers; worker++) {
+                tasks.add(executor.submit(() -> {
+                    for (int i = 0; i < incrementsPerWorker; i++) {
+                        scheduler.recordRun(MobAiTaskScheduler.Task.IDLE);
+                        scheduler.recordDeferral(MobAiTaskScheduler.Task.NAVIGATION);
+                    }
+                }));
+            }
+            for (Future<?> task : tasks) task.get();
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertEquals((long) workers * incrementsPerWorker,
+                scheduler.stats().runs().get(MobAiTaskScheduler.Task.IDLE));
+        assertEquals((long) workers * incrementsPerWorker,
+                scheduler.stats().deferrals().get(MobAiTaskScheduler.Task.NAVIGATION));
     }
 
     @Test

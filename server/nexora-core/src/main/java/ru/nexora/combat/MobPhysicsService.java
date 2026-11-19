@@ -73,12 +73,9 @@ public final class MobPhysicsService {
         boolean velocityChanged = vx != entity.velocityX()
                 || vy != entity.velocityY() || vz != entity.velocityZ();
         WorldLivingEntity updated = entity;
-        if (velocityChanged) {
-            updated = world.livingEntities().setVelocity(entity.runtimeId(), vx, vy, vz)
-                    .orElse(updated);
-        }
-        if (moved) {
-            updated = world.livingEntities().move(entity.runtimeId(), x, y, z).orElse(updated);
+        if (velocityChanged || moved) {
+            updated = world.livingEntities().updatePhysicsState(
+                    entity.runtimeId(), x, y, z, vx, vy, vz).orElse(updated);
         }
         boolean groundedAfterMove = !flying
                 && !(isBouncyMob(entity.identifier()) && vy > 0.0)

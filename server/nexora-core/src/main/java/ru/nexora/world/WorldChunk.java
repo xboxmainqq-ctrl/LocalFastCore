@@ -73,6 +73,22 @@ public final class WorldChunk {
         return sections[index] == null ? null : sections[index].copyRawBlocks();
     }
 
+    /** Exact bytes held by the chunk's allocated block-section arrays (excludes JVM object overhead). */
+    public synchronized long allocatedBlockStorageBytes() {
+        long bytes = 0L;
+        for (ChunkSection section : sections) {
+            if (section != null) bytes += ChunkSection.VOLUME;
+        }
+        return bytes;
+    }
+
+    /** Number of allocated non-empty block sections. */
+    public synchronized int allocatedSectionCount() {
+        int count = 0;
+        for (ChunkSection section : sections) if (section != null) count++;
+        return count;
+    }
+
     /** Monotonic mutation version used to detect writes racing persistence. */
     public synchronized long revision() { return revision; }
 

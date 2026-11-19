@@ -519,7 +519,8 @@ class BedrockSessionManagerTest {
             assertTrue((boolean) getSessionField(manager, "idle-session", "rejected"));
             assertFalse((boolean) getSessionField(manager, "idle-session", "loginAuthenticated"));
         } finally {
-            manager.close();
+            assertThrows(IllegalStateException.class, manager::close,
+                    "shutdown must surface the state that could not be persisted after lease loss");
         }
     }
 

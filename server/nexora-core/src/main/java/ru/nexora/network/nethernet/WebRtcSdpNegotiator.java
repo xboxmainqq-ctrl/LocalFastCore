@@ -26,6 +26,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -330,6 +331,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         private final CompletableFuture<Void> iceGatheringComplete = new CompletableFuture<>();
         private final Map<String, RTCDataChannel> channels = new ConcurrentHashMap<>();
         private final Map<String, NetherNetOutboundQueue> outboundQueues = new ConcurrentHashMap<>();
+        private final Map<String, AtomicBoolean> outboundDrainScheduled = new ConcurrentHashMap<>();
         private final Object outboundLock = new Object();
         private final AtomicBoolean sessionClosed = new AtomicBoolean();
         private volatile long lastActivityNanos = System.nanoTime();
@@ -395,7 +397,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
             channel.registerObserver(new RTCDataChannelObserver() {
                 @Override
                 public void onBufferedAmountChange(long sentDataSize) {
-                    drainOutbound(label, channel);
+                    scheduleOutboundDrain(label, channel);
                 }
 
                 @Override
@@ -453,6 +455,38 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
             }
         }
 
+        private void scheduleOutboundDrain(String channelLabel, RTCDataChannel channel) {
+            if (sessionClosed.get()) return;
+            AtomicBoolean scheduled = outboundDrainScheduled.computeIfAbsent(
+                    channelLabel, ignored -> new AtomicBoolean());
+            if (!scheduled.compareAndSet(false, true)) return;
+            try {
+                sessionReaper.execute(() -> {
+                    try {
+                        drainOutbound(channelLabel, channel);
+                    } finally {
+                        scheduled.set(false);
+                        if (canDrainOutbound(channelLabel, channel)) {
+                            scheduleOutboundDrain(channelLabel, channel);
+                        }
+                    }
+                });
+            } catch (RejectedExecutionException ignored) {
+                scheduled.set(false);
+            }
+        }
+
+        private boolean canDrainOutbound(String channelLabel, RTCDataChannel channel) {
+            if (sessionClosed.get() || channel.getState() != RTCDataChannelState.OPEN) return false;
+            NetherNetOutboundQueue queue = outboundQueues.get(channelLabel);
+            if (queue == null || queue.isEmpty()) return false;
+            long bufferedAmount = channel.getBufferedAmount();
+            if (bufferedAmount > OUTBOUND_LOW_WATERMARK_BYTES) return false;
+            int nextFrameSize = queue.nextFrameSize();
+            return bufferedAmount == 0
+                    || nextFrameSize <= OUTBOUND_HIGH_WATERMARK_BYTES - bufferedAmount;
+        }
+
         private void drainOutbound(String channelLabel, RTCDataChannel channel) {
             synchronized (outboundLock) {
                 if (sessionClosed.get() || channel.getState() != RTCDataChannelState.OPEN) return;
@@ -500,6 +534,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
             channels.clear();
             outboundQueues.values().forEach(NetherNetOutboundQueue::clear);
             outboundQueues.clear();
+            outboundDrainScheduled.clear();
             try {
                 dataChannelListener.onDisconnected(networkId);
             } catch (RuntimeException ignored) {

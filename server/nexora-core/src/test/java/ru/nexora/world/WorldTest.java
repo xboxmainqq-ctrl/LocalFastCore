@@ -25,6 +25,21 @@ class WorldTest {
     }
 
     @Test
+    void loadedChunkLookupNeverGeneratesOrLoadsMissingChunks() {
+        java.util.concurrent.atomic.AtomicInteger generated = new java.util.concurrent.atomic.AtomicInteger();
+        World world = new World("NEXORA", 1L, (chunk, seed) -> generated.incrementAndGet());
+
+        assertNull(world.getLoadedChunkOrNull(7, -4));
+        assertFalse(world.isChunkLoadedAt(7 * 16, -4 * 16));
+        assertEquals(0, generated.get());
+        assertEquals(0, world.loadedChunkCount());
+
+        WorldChunk loaded = world.getChunk(7, -4);
+        assertSame(loaded, world.getLoadedChunkOrNull(7, -4));
+        assertEquals(1, generated.get());
+    }
+
+    @Test
     void reportsExactAllocatedBlockSectionBytesWithoutCountingEmptySections() {
         World world = new World("NEXORA", 1L, (chunk, seed) -> { });
 

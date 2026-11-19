@@ -7168,6 +7168,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             return;
         }
         synchronized (state.outboundLock) {
+            if (state.rejected) {
+                state.outboundQueue.clear();
+                throw new IllegalStateException("Cannot send Bedrock frames to a disconnected session");
+            }
             // Drain an older transient backlog before admitting more data for this session.
             drainOutboundFrames(networkId, state);
             if (!state.outboundQueue.offerAll(frames)) {

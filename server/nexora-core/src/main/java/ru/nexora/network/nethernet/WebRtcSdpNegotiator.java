@@ -129,7 +129,17 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         this.minUdpPort = minUdpPort;
         this.maxUdpPort = maxUdpPort;
         this.timeoutMillis = timeoutMillis;
-        this.factory = new PeerConnectionFactory();
+        PeerConnectionFactory nativeFactory;
+        try {
+            nativeFactory = new PeerConnectionFactory();
+        } catch (LinkageError unavailableNativeRuntime) {
+            nativeFactory = null;
+            System.err.println("NEXORA: WebRTC native runtime is unavailable; server will continue in "
+                    + "signaling-only mode. Install the host libraries required by libwebrtc "
+                    + "(for example libXdamage.so.1 on Linux) to enable Bedrock connections. "
+                    + "Details: " + unavailableNativeRuntime);
+        }
+        this.factory = nativeFactory;
         this.sessionReaper = Executors.newSingleThreadScheduledExecutor(task -> {
             Thread thread = new Thread(task, "nexora-nethernet-session-reaper");
             thread.setDaemon(true);
@@ -142,6 +152,10 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
     @Override
     public String createAnswer(String networkId, String sdpOffer) throws Exception {
         if (closed.get()) throw new IllegalStateException("WebRTC negotiator is closed");
+        if (factory == null) {
+            throw new IllegalStateException(
+                    "WebRTC is unavailable because the host is missing required native libraries");
+        }
         Objects.requireNonNull(networkId, "networkId");
         Objects.requireNonNull(sdpOffer, "sdpOffer");
         if (networkId.isBlank()) {
@@ -476,7 +490,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         sessionReaper.shutdownNow();
         sessions.values().forEach(PeerSession::close);
         sessions.clear();
-        factory.dispose();
+        if (factory != null) factory.dispose();
     }
 
     private final class PeerSession implements PeerConnectionObserver {

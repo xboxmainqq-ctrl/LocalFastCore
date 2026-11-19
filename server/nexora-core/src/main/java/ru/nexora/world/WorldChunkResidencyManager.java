@@ -133,10 +133,14 @@ public final class WorldChunkResidencyManager {
         for (long key : pinnedKeys) {
             if (resident.add(key)) acceptedLoadKeys.add(key);
         }
-        availableSlots = Math.max(0, maximumResidentChunks - resident.size());
+        int playerLoadSlots = Math.max(0, maximumResidentChunks - resident.size());
+        int acceptedPlayerLoads = 0;
         for (long key : loadScratch) {
-            if (acceptedLoadKeys.size() >= pinnedKeys.size() + availableSlots) break;
-            if (resident.add(key)) acceptedLoadKeys.add(key);
+            if (acceptedPlayerLoads >= playerLoadSlots) break;
+            if (resident.add(key)) {
+                acceptedLoadKeys.add(key);
+                acceptedPlayerLoads++;
+            }
         }
         if (!acceptedLoadKeys.isEmpty() || !unloadScratch.isEmpty()) {
             residentSnapshot = Set.copyOf(resident);

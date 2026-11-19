@@ -82,6 +82,9 @@ public final class MobAiLoadController {
     }
 
     public Priority priority(double distanceSquared, boolean activeTarget, boolean specialBehavior) {
+        if (Double.isNaN(distanceSquared) || distanceSquared < 0) {
+            throw new IllegalArgumentException("Invalid mob priority distance");
+        }
         if (activeTarget || specialBehavior || distanceSquared <= NEAR_DISTANCE * NEAR_DISTANCE) {
             return Priority.HIGH;
         }
@@ -126,6 +129,7 @@ public final class MobAiLoadController {
     }
 
     public int starvationTicks(long runtimeId) {
+        if (runtimeId < 0) throw new IllegalArgumentException("runtimeId must be non-negative");
         return starvationTicks.getOrDefault(runtimeId, 0);
     }
 
@@ -145,10 +149,12 @@ public final class MobAiLoadController {
     }
 
     public void recordScheduled(long runtimeId) {
+        if (runtimeId < 0) throw new IllegalArgumentException("runtimeId must be non-negative");
         starvationTicks.remove(runtimeId);
     }
 
     public void remove(long runtimeId) {
+        if (runtimeId < 0) throw new IllegalArgumentException("runtimeId must be non-negative");
         starvationTicks.remove(runtimeId);
     }
 

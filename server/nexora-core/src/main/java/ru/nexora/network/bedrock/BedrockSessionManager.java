@@ -100,6 +100,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private static final long TRANSFER_OWNERSHIP_RECHECK_NANOS = 5_000_000_000L;
     private static final int MAX_OUTBOUND_FRAMES_PER_DRAIN = 64;
     private static final long MAX_OUTBOUND_BYTES_PER_DRAIN = 1L * 1024L * 1024L;
+    private static final long MAX_TOTAL_OUTBOUND_QUEUED_BYTES = 64L * 1024L * 1024L;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -143,6 +144,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final AtomicLong outboundBytesSent = new AtomicLong();
     private final AtomicLong outboundSendFailures = new AtomicLong();
     private final AtomicLong outboundBackpressureRejections = new AtomicLong();
+    private final AtomicLong outboundQueuedBytesGlobal = new AtomicLong();
     private final AtomicLong nextFormId = new AtomicLong(1);
     private final AtomicLong lastItemActorTickNanos = new AtomicLong(Long.MIN_VALUE);
     private final AtomicLong lastLivingAiTickMillis = new AtomicLong(Long.MIN_VALUE);
@@ -590,7 +592,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
             synchronized (state.outboundLock) {
                 state.outboundClosed = true;
-                state.outboundQueue.clear();
+                clearOutboundQueue(state);
             }
             removePlayerListEntry(networkId, state);
             if (state.identity != null) aiGuard.onPlayerDisconnected(state.identity.xuid());
@@ -619,7 +621,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             releaseOnlinePlayerLease(state);
             synchronized (state.outboundLock) {
                 state.outboundClosed = true;
-                state.outboundQueue.clear();
+                clearOutboundQueue(state);
             }
             sessions.remove(networkId, state);
             actorReplicationIndex.removeSession(networkId);
@@ -1591,7 +1593,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 .append(", outboundQueuedFrames=").append(sessions.values().stream()
                         .mapToInt(state -> state.outboundQueue.frameCount()).sum())
                 .append(", outboundQueuedBytes=").append(sessions.values().stream()
-                        .mapToLong(state -> state.outboundQueue.queuedBytes()).sum());
+                        .mapToLong(state -> state.outboundQueue.queuedBytes()).sum())
+                .append(", outboundQueuedBytesGlobal=").append(outboundQueuedBytesGlobal.get());
         ru.nexora.ai.NexoraAiDiagnostics diagnostics = aiDiagnostics;
         if (diagnostics != null) {
             ru.nexora.ai.JvmResourceSnapshot resources = diagnostics.resourceSnapshot();
@@ -7181,7 +7184,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
             // Drain an older transient backlog before admitting more data for this session.
             drainOutboundFrames(networkId, state);
+            long batchBytes = outboundFrameBytes(frames);
+            if (!reserveOutboundBytes(batchBytes)) {
+                outboundBackpressureRejections.incrementAndGet();
+                throw new IllegalStateException("NEXORA global outbound queue budget is full");
+            }
             if (!state.outboundQueue.offerAll(frames)) {
+                outboundQueuedBytesGlobal.addAndGet(-batchBytes);
                 outboundBackpressureRejections.incrementAndGet();
                 throw new IllegalStateException("Bedrock outbound queue is full for session " + networkId
                         + " (frames=" + state.outboundQueue.frameCount()
@@ -7189,6 +7198,33 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
             drainOutboundFrames(networkId, state);
         }
+    }
+
+    private static long outboundFrameBytes(List<byte[]> frames) {
+        long total = 0L;
+        for (byte[] frame : frames) {
+            Objects.requireNonNull(frame, "outbound frame");
+            if (frame.length > Long.MAX_VALUE - total) {
+                throw new IllegalArgumentException("Outbound frame batch size overflow");
+            }
+            total += frame.length;
+        }
+        return total;
+    }
+
+    private boolean reserveOutboundBytes(long bytes) {
+        if (bytes < 0 || bytes > MAX_TOTAL_OUTBOUND_QUEUED_BYTES) return false;
+        while (true) {
+            long current = outboundQueuedBytesGlobal.get();
+            if (bytes > MAX_TOTAL_OUTBOUND_QUEUED_BYTES - current) return false;
+            if (outboundQueuedBytesGlobal.compareAndSet(current, current + bytes)) return true;
+        }
+    }
+
+    private void clearOutboundQueue(SessionState state) {
+        long releasedBytes = state.outboundQueue.queuedBytes();
+        state.outboundQueue.clear();
+        if (releasedBytes != 0L) outboundQueuedBytesGlobal.addAndGet(-releasedBytes);
     }
 
     private void drainOutboundFrames(String networkId, SessionState state) {
@@ -7205,6 +7241,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 outbound.sendFrame(networkId, "ReliableDataChannel", frame);
                 outboundFramesSent.incrementAndGet();
                 outboundBytesSent.addAndGet(frame.length);
+                outboundQueuedBytesGlobal.addAndGet(-frame.length);
                 sentFrames++;
                 sentBytes += frame.length;
             } catch (Exception exception) {

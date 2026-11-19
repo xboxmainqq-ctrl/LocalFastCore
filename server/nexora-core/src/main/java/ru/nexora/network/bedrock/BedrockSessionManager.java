@@ -7387,7 +7387,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         for (SessionState state : sessions.values()) {
             synchronized (state.outboundLock) {
                 state.outboundClosed = true;
-                state.outboundQueue.clear();
+                clearOutboundQueue(state);
             }
         }
         sessions.clear();

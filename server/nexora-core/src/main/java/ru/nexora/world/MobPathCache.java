@@ -44,11 +44,23 @@ public final class MobPathCache {
             double targetZ,
             long nowMillis
     ) {
+        return findNextStep(mobRuntimeId, world, startX, feetY, startZ,
+                targetX, targetZ, nowMillis, "minecraft:zombie");
+    }
+
+    /** Species-aware cached navigation; cache keys include the mob identity and destination cells. */
+    public Optional<WorldPathfinder.Step> findNextStep(
+            long mobRuntimeId, World world, double startX, double feetY, double startZ,
+            double targetX, double targetZ, long nowMillis, String identifier
+    ) {
+        if (identifier == null || identifier.isBlank()) {
+            throw new IllegalArgumentException("Mob identifier must not be blank");
+        }
         if (world == null || !Double.isFinite(startX) || !Double.isFinite(feetY)
                 || !Double.isFinite(startZ) || !Double.isFinite(targetX)
                 || !Double.isFinite(targetZ)) {
             return WorldPathfinder.findNextStep(
-                    world, startX, feetY, startZ, targetX, targetZ);
+                    world, startX, feetY, startZ, targetX, targetZ, identifier);
         }
 
         Key key = new Key(cell(startX), cell(feetY), cell(startZ),
@@ -56,9 +68,10 @@ public final class MobPathCache {
         Entry cached = get(mobRuntimeId, key, nowMillis);
         if (cached != null) {
             WorldPathfinder.Step step = cached.step();
-            if (WorldPathfinder.isMobFootprintLoaded(world, startX, startZ)
-                    && WorldPathfinder.isMobFootprintLoaded(world, step.x(), step.z())
-                    && WorldCollision.canMove(world, startX, feetY, startZ, step.x(), feetY, step.z())) {
+            if (WorldPathfinder.isMobFootprintLoaded(world, startX, startZ, identifier)
+                    && WorldPathfinder.isMobFootprintLoaded(world, step.x(), step.z(), identifier)
+                    && WorldCollision.canMoveMob(world, identifier, startX, feetY, startZ,
+                    step.x(), feetY, step.z())) {
                 recordHit();
                 return Optional.of(step);
             }
@@ -66,7 +79,7 @@ public final class MobPathCache {
         }
 
         Optional<WorldPathfinder.Step> computed = WorldPathfinder.findNextStep(
-                world, startX, feetY, startZ, targetX, targetZ);
+                world, startX, feetY, startZ, targetX, targetZ, identifier);
         recordRecomputation();
         // Do not cache "no path": terrain can open at any time and should be retried immediately.
         if (computed.isPresent()) {

@@ -90,6 +90,31 @@ class PlayerDataStorageTest {
     }
 
     @Test
+    void restoresPreviousVerifiedProfileWhenPrimaryChecksumIsCorrupted() throws Exception {
+        PlayerDataStorage storage = new PlayerDataStorage(temporaryDirectory);
+        PlayerData previous = new PlayerData("recover-player", "Before", "NEXORA",
+                1, 65, 2, 0, 0, 10);
+        PlayerData latest = new PlayerData("recover-player", "After", "NEXORA",
+                9, 70, 8, 0, 0, 20);
+        storage.save(previous);
+        storage.save(latest);
+
+        Path primary = temporaryDirectory.resolve("recover-player.nxp");
+        Path backup = temporaryDirectory.resolve("recover-player.nxp.bak");
+        assertArrayEquals(Files.readAllBytes(primary), Files.readAllBytes(backup));
+        byte[] damaged = Files.readAllBytes(primary);
+        damaged[damaged.length - 1] ^= 1;
+        Files.write(primary, damaged);
+
+        assertEquals(previous, storage.load("recover-player").orElseThrow());
+        assertArrayEquals(Files.readAllBytes(backup), Files.readAllBytes(primary));
+        PlayerData newer = new PlayerData("recover-player", "Recovered", "NEXORA",
+                11, 72, 12, 0, 0, 30);
+        storage.save(newer);
+        assertEquals(newer, storage.load("recover-player").orElseThrow());
+    }
+
+    @Test
     void rejectsUnsafeXuidAndOutOfWorldCoordinates() {
         assertThrows(IllegalArgumentException.class, () -> new PlayerData(
                 "../outside", "Player", "NEXORA", 0, 65, 0, 0, 0, 1));

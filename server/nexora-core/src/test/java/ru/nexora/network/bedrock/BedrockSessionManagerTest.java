@@ -3022,6 +3022,8 @@ class BedrockSessionManagerTest {
                 BedrockBatchCodec.encode(List.of(initialized), true, 256)));
 
         manager.onDisconnected("authenticated-client");
+        // Duplicate transport close callbacks must not persist/release a session twice.
+        manager.onDisconnected("authenticated-client");
         var savedPlayer = playerStorage.load("123456789").orElseThrow();
         assertEquals(16.5f, savedPlayer.x());
         assertEquals(65.0f, savedPlayer.y());

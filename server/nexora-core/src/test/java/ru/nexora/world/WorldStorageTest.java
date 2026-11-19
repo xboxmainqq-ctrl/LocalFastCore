@@ -45,7 +45,7 @@ class WorldStorageTest {
     void asynchronouslyPreparesPersistedChunkWithoutRunningGeneratorOnWorker() throws Exception {
         WorldStorage storage = new WorldStorage(temporaryDirectory, "NEXORA");
         WorldChunk persisted = new WorldChunk(4, -2);
-        persisted.setBlock(3, 70, 5, BlockType.GOLD_ORE);
+        persisted.setBlock(3, 70, 5, BlockType.DIAMOND_BLOCK);
         storage.saveChunk(persisted);
         java.util.concurrent.atomic.AtomicInteger generationCalls = new java.util.concurrent.atomic.AtomicInteger();
         World world = new World("NEXORA", 2L, (chunk, seed) -> generationCalls.incrementAndGet(),
@@ -55,7 +55,7 @@ class WorldStorageTest {
             assertTrue(prepared.isPresent());
             assertEquals(0, generationCalls.get(), "Disk preparation must not invoke the world generator");
             WorldChunk installed = world.getChunkFromPreparedStorageLoad(4, -2, prepared);
-            assertEquals(BlockType.GOLD_ORE, installed.getBlock(3, 70, 5));
+            assertEquals(BlockType.DIAMOND_BLOCK, installed.getBlock(3, 70, 5));
             assertTrue(world.isChunkLoadedAt(4 * 16, -2 * 16));
             assertEquals(0, generationCalls.get());
         } finally {

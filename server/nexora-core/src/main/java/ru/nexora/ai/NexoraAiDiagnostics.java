@@ -310,6 +310,34 @@ public final class NexoraAiDiagnostics {
                 + ", mobAiBudgetConsumedNanos=" + mobAiBudgetConsumedNanos);
     }
 
+    /** Records actual allocated block-array bytes and planner/cache divergence. */
+    public void recordWorldRuntimeSnapshot(
+            int residentChunks,
+            int loadedChunks,
+            int maximumResidentChunks,
+            int desiredChunks,
+            int pendingChunkLoads,
+            long loadedChunkBlockStorageBytes,
+            long loadedChunkSections,
+            int livingEntities,
+            long mobAiFullRateUpdates,
+            long mobAiDeferredUpdates,
+            long mobAiBudgetDeferred,
+            long mobAiBudgetConsumedNanos
+    ) {
+        if (loadedChunkBlockStorageBytes < 0 || loadedChunkSections < 0) {
+            throw new IllegalArgumentException("World chunk memory metrics must be non-negative");
+        }
+        recordWorldRuntimeSnapshot(residentChunks, loadedChunks, maximumResidentChunks,
+                desiredChunks, pendingChunkLoads, livingEntities, mobAiFullRateUpdates,
+                mobAiDeferredUpdates, mobAiBudgetDeferred, mobAiBudgetConsumedNanos);
+        // Memory metrics are emitted independently so legacy throttled snapshots remain compatible.
+        appendEvent("WORLD_MEMORY", "chunkBlockStorageBytes=" + loadedChunkBlockStorageBytes
+                + ", chunkSections=" + loadedChunkSections
+                + ", cacheOutsidePlanner=" + Math.max(0, loadedChunks - residentChunks)
+                + ", chunksOverTarget=" + Math.max(0, loadedChunks - maximumResidentChunks));
+    }
+
     /** Records the outcome of an allowlisted in-process repair action without user identifiers. */
     public void recordRepairExecution(String actionId, String status, String detail) {
         Objects.requireNonNull(actionId, "actionId");

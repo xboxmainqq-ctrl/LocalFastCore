@@ -139,7 +139,9 @@ public final class MobAiLoadController {
 
     public void recordDeferred(long runtimeId) {
         if (runtimeId < 0) throw new IllegalArgumentException("runtimeId must be non-negative");
-        starvationTicks.merge(runtimeId, 1, Integer::sum);
+        // A server can run for years; never let a long-starved mob wrap back to LOW priority.
+        starvationTicks.compute(runtimeId, (ignored, current) ->
+                current == null ? 1 : current == Integer.MAX_VALUE ? current : current + 1);
     }
 
     public void recordScheduled(long runtimeId) {

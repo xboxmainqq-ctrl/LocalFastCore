@@ -1612,6 +1612,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 .append(", chunkStreamingPendingPeak=").append(chunkStreamingPendingPeak.get())
                 .append(", worldChunkLoadsDeferred=").append(world.pendingChunkLoadCount())
                 .append(", worldChunkLoadBudgetPerTick=").append(MAX_WORLD_CHUNK_LOADS_PER_TICK)
+                .append(", chunkIoWorkers=").append(world.activeChunkIoWorkers())
+                .append(", chunkIoQueued=").append(world.queuedChunkIoLoads())
+                .append(", chunkIoInFlight=").append(world.inFlightChunkIoLoads())
                 .append(", chunkStreamingP95Ns=").append(hotPathProfiler.snapshot(
                         ru.nexora.ai.HotPathProfiler.Path.BEDROCK_CHUNK_STREAMING).p95Nanos())
                 .append(", outboundDrainP95Ns=").append(hotPathProfiler.snapshot(

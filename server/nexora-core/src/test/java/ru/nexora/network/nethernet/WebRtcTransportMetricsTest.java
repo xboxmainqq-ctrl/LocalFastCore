@@ -70,4 +70,17 @@ class WebRtcTransportMetricsTest {
                 WebRtcSdpNegotiator.summarizeTransportMetrics(0, java.util.List.of(), 0L, -1L));
     }
 
+    @Test
+    void retainsByteTotalsWhenFreshStatsHaveNoUsableRtt() {
+        var bytesOnly = new WebRtcSdpNegotiator.TransportMetrics(-1.0, 700L, 900L, 9_500L);
+        var summary = WebRtcSdpNegotiator.summarizeTransportMetrics(
+                1, java.util.List.of(bytesOnly), 10_000L, 2_000L);
+
+        assertEquals(1, summary.peersWithSamples());
+        assertEquals(0, summary.freshPeers());
+        assertEquals(1, summary.staleOrMissingPeers());
+        assertEquals(700L, summary.bytesSent());
+        assertEquals(900L, summary.bytesReceived());
+    }
+
 }

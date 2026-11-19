@@ -3,7 +3,6 @@ package ru.nexora.network.bedrock;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.function.Consumer;
 
 /**
  * Reverse indexes for actor replication.
@@ -46,21 +45,10 @@ final class ActorReplicationIndex {
     void removeActorViewer(long runtimeId, String networkId) {
         if (runtimeId <= 0) return;
         remove(actorViewers, runtimeId, networkId);
-        Set<Long> actors = actorsBySession.get(networkId);
-        if (actors != null) {
+        actorsBySession.computeIfPresent(networkId, (ignored, actors) -> {
             actors.remove(runtimeId);
-            if (actors.isEmpty()) actorsBySession.remove(networkId, actors);
-        }
-    }
-
-    void forEachChunkViewer(long chunkKey, Consumer<String> action) {
-        Set<String> viewers = chunkViewers.get(chunkKey);
-        if (viewers != null) viewers.forEach(action);
-    }
-
-    void forEachActorViewer(long runtimeId, Consumer<String> action) {
-        Set<String> viewers = actorViewers.get(runtimeId);
-        if (viewers != null) viewers.forEach(action);
+            return actors.isEmpty() ? null : actors;
+        });
     }
 
     Set<String> chunkViewers(long chunkKey) {
@@ -102,9 +90,9 @@ final class ActorReplicationIndex {
     }
 
     private static <K> void remove(ConcurrentMap<K, Set<String>> index, K key, String value) {
-        Set<String> values = index.get(key);
-        if (values == null) return;
-        values.remove(value);
-        if (values.isEmpty()) index.remove(key, values);
+        index.computeIfPresent(key, (ignored, values) -> {
+            values.remove(value);
+            return values.isEmpty() ? null : values;
+        });
     }
 }

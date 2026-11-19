@@ -97,14 +97,10 @@ public final class WorldStorage {
         Path backup = chunkBackupPath(chunkX, chunkZ);
         rejectSymlink(backup, "chunk backup file");
         if (Files.exists(target)) {
-            try {
-                // Only rotate a primary generation after its checksum and structure validate.
-                if (loadChunkFile(target, chunkX, chunkZ).isPresent()) {
-                    ru.nexora.persistence.AtomicFileWriter.writeAtomically(
-                            backup, Files.readAllBytes(target));
-                }
-            } catch (IOException corruptPreviousGeneration) {
-                // Never replace a known-good backup with an unverified primary.
+            // Fail closed on an unreadable primary: never replace it before it is verified.
+            if (loadChunkFile(target, chunkX, chunkZ).isPresent()) {
+                ru.nexora.persistence.AtomicFileWriter.writeAtomically(
+                        backup, Files.readAllBytes(target));
             }
         }
         ru.nexora.persistence.AtomicFileWriter.writeAtomically(target, fileBytes.toByteArray());

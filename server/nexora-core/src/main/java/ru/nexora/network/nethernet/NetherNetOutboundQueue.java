@@ -43,6 +43,28 @@ public final class NetherNetOutboundQueue {
         return true;
     }
 
+    /**
+     * Atomically appends a batch. No frame is added when either queue bound would be exceeded.
+     */
+    public synchronized boolean offerAll(java.util.List<byte[]> batch) {
+        Objects.requireNonNull(batch, "batch");
+        if (batch.isEmpty()) return true;
+        if (batch.size() > maxQueuedFrames - frames.size()) return false;
+        long additionalBytes = 0L;
+        for (byte[] frame : batch) {
+            Objects.requireNonNull(frame, "frame");
+            if (frame.length == 0 || frame.length > maxQueuedBytes - additionalBytes) return false;
+            additionalBytes += frame.length;
+        }
+        if (additionalBytes > maxQueuedBytes - queuedBytes) return false;
+        for (byte[] frame : batch) {
+            byte[] owned = frame.clone();
+            frames.addLast(owned);
+            queuedBytes += owned.length;
+        }
+        return true;
+    }
+
     /** Removes the oldest frame, or returns null when empty. */
     public synchronized byte[] poll() {
         byte[] frame = frames.pollFirst();

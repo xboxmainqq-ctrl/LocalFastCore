@@ -62,7 +62,10 @@ public final class WorldPathfinder {
             Node current = queue.removeFirst();
             expanded++;
             if (current.depth() >= MAX_DEPTH) continue;
-            for (int[] direction : DIRECTIONS) {
+            int[] directionOrder = directionOrder(
+                    targetCellX - current.x(), targetCellZ - current.z());
+            for (int directionIndex : directionOrder) {
+                int[] direction = DIRECTIONS[directionIndex];
                 int nextX = current.x() + direction[0];
                 int nextZ = current.z() + direction[1];
                 if (Math.abs((long) nextX - startCellX) > MAX_DEPTH
@@ -150,6 +153,28 @@ public final class WorldPathfinder {
             }
         }
         return true;
+    }
+
+    /**
+     * Expands neighbors that point toward the destination first. The search remains breadth-first,
+     * so shortest-step routing is preserved while equal-length routes choose a useful first move.
+     */
+    private static int[] directionOrder(int targetDx, int targetDz) {
+        int[] order = {0, 1, 2, 3, 4, 5, 6, 7};
+        int[] scores = new int[DIRECTIONS.length];
+        for (int i = 0; i < DIRECTIONS.length; i++) {
+            scores[i] = DIRECTIONS[i][0] * targetDx + DIRECTIONS[i][1] * targetDz;
+        }
+        for (int i = 1; i < order.length; i++) {
+            int selected = order[i];
+            int j = i - 1;
+            while (j >= 0 && scores[order[j]] < scores[selected]) {
+                order[j + 1] = order[j];
+                j--;
+            }
+            order[j + 1] = selected;
+        }
+        return order;
     }
 
     private static String key(int x, int y, int z) {

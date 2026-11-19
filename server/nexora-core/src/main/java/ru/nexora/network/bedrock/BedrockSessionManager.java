@@ -5320,7 +5320,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
         int chunkX = Math.floorDiv((int) Math.floor(input.x()), 16);
         int chunkZ = Math.floorDiv((int) Math.floor(input.z()), 16);
-        if (chunkX != state.lastChunkX || chunkZ != state.lastChunkZ) {
+        if (isChunkViewCenterDifferent(state, chunkX, chunkZ)) {
             sendPacket(networkId, BedrockStartGameCodec.createChunkPublisherUpdate(
                     (int) Math.floor(input.x()), (int) Math.floor(input.y()), (int) Math.floor(input.z()),
                     state.chunkViewRadius), true);
@@ -5422,7 +5422,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
         int chunkX = Math.floorDiv((int) Math.floor(state.positionX), 16);
         int chunkZ = Math.floorDiv((int) Math.floor(state.positionZ), 16);
-        if (chunkX != state.lastChunkX || chunkZ != state.lastChunkZ) {
+        if (isChunkViewCenterDifferent(state, chunkX, chunkZ)) {
             sendPacket(networkId, BedrockStartGameCodec.createChunkPublisherUpdate(
                     (int) Math.floor(state.positionX), (int) Math.floor(state.positionY),
                     (int) Math.floor(state.positionZ), state.chunkViewRadius), true);
@@ -6323,6 +6323,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         int centerX = Math.floorDiv((int) Math.floor(state.positionX), 16);
         int centerZ = Math.floorDiv((int) Math.floor(state.positionZ), 16);
         sendChunkArea(networkId, state, centerX, centerZ);
+    }
+
+    private static boolean isChunkViewCenterDifferent(SessionState state, int centerX, int centerZ) {
+        ChunkStreamingQueue pending = state.chunkStreamingQueue;
+        if (pending != null) {
+            return pending.centerX() != centerX || pending.centerZ() != centerZ;
+        }
+        return state.lastChunkX != centerX || state.lastChunkZ != centerZ;
     }
 
     private static final int MAX_CHUNK_PACKETS_PER_BATCH = 4;

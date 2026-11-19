@@ -52,14 +52,16 @@ class WorldTest {
             new FlatWorldGenerator().generate(chunk, seed);
         });
         WorldChunkResidencyManager residency = new WorldChunkResidencyManager(1, 20);
-        var plan = residency.update(List.of(new WorldChunkResidencyManager.PlayerChunk(0, 0)), 0);
+        var player = List.of(new WorldChunkResidencyManager.PlayerChunk(0, 0));
+        var plan = residency.update(player, 0);
 
         assertThrows(IllegalStateException.class, () -> world.applyChunkResidencyPlan(plan, 1));
         assertEquals(5, world.pendingChunkLoadCount());
         assertEquals(0, world.loadedChunkCount());
 
-        var retry = world.applyChunkResidencyPlan(
-                new WorldChunkResidencyManager(1, 20).update(List.of(), 1), 1);
+        var retryPlan = residency.update(player, 1);
+        assertTrue(retryPlan.load().isEmpty());
+        var retry = world.applyChunkResidencyPlan(retryPlan, 1);
         assertEquals(1, retry.loaded());
         assertEquals(4, world.pendingChunkLoadCount());
         assertEquals(1, world.loadedChunkCount());

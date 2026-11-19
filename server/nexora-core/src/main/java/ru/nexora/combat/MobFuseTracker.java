@@ -1,6 +1,6 @@
 package ru.nexora.combat;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -8,7 +8,8 @@ import java.util.Map;
  * or observing a clock rollback resets the fuse instead of preserving stale progress.
  */
 public final class MobFuseTracker {
-    private final Map<Long, Long> startedAtMillis = new HashMap<>();
+    public static final int MAX_TRACKED_FUSES = 4_096;
+    private final Map<Long, Long> startedAtMillis = new LinkedHashMap<>(16, 0.75f, true);
 
     public synchronized boolean isReadyToDetonate(long runtimeId, boolean withinRange,
                                                    long nowMillis, long fuseMillis) {
@@ -20,8 +21,15 @@ public final class MobFuseTracker {
             return false;
         }
 
-        Long startedAt = startedAtMillis.putIfAbsent(runtimeId, nowMillis);
-        if (startedAt == null) return false;
+        Long startedAt = startedAtMillis.get(runtimeId);
+        if (startedAt == null) {
+            startedAtMillis.put(runtimeId, nowMillis);
+            while (startedAtMillis.size() > MAX_TRACKED_FUSES) {
+                Long eldest = startedAtMillis.keySet().iterator().next();
+                startedAtMillis.remove(eldest);
+            }
+            return false;
+        }
         if (nowMillis < startedAt) {
             startedAtMillis.put(runtimeId, nowMillis);
             return false;

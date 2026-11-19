@@ -1,6 +1,6 @@
 package ru.nexora.runtime;
 
-import java.util.HashMap;
+import java.util.HashMap;\nimport java.util.HashSet;\nimport java.util.Set;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -23,7 +23,7 @@ public final class EntityTickEngine {
     private final World world;
     private final int itemDespawnTicks;
     private final Map<UUID, ItemState> itemStates = new HashMap<>();
-    private final Map<UUID, MobState> mobStates = new HashMap<>();
+    private final Map<UUID, MobState> mobStates = new HashMap<>();\n    // Reused each tick: avoids Optional creation and repeated registry locking during stale-state cleanup.\n    private final Set<UUID> activeEntityIds = new HashSet<>();
     private long currentTick;
 
     public EntityTickEngine(EntityRegistry entities, World world) {
@@ -45,8 +45,10 @@ public final class EntityTickEngine {
         int movedMobs = 0;
         int movedItems = 0;
         int despawnedItems = 0;
+        activeEntityIds.clear();
 
-        for (WorldEntity entity : entities.snapshot()) {
+        for (WorldEntity entity : entities.simulationSnapshot()) {
+            activeEntityIds.add(entity.id());
             if (entity.type() == WorldEntity.Type.ITEM) {
                 ItemTickResult result = tickItem(entity);
                 if (result.moved()) {
@@ -60,8 +62,10 @@ public final class EntityTickEngine {
             }
         }
 
-        itemStates.keySet().removeIf(id -> entities.find(id).isEmpty());
-        mobStates.keySet().removeIf(id -> entities.find(id).isEmpty());
+        // The snapshot is the tick's consistent view. Entities concurrently
+        // added or removed are reconciled on the next tick.
+        itemStates.keySet().removeIf(id -> !activeEntityIds.contains(id));
+        mobStates.keySet().removeIf(id -> !activeEntityIds.contains(id));
         return new TickResult(currentTick, movedMobs, movedItems, despawnedItems);
     }
 

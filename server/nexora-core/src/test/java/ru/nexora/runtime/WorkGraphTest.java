@@ -6,6 +6,13 @@ class WorkGraphTest {
   WorkGraph g=new WorkGraph().add("target",AdaptiveRuntime.Lane.AI,true).add("move",AdaptiveRuntime.Lane.AI,false).dependsOn("move","target");
   assertEquals(1,g.ready().size()); g.start("target"); assertTrue(g.ready().stream().noneMatch(n->n.id().equals("move"))); g.complete("target"); assertTrue(g.ready().stream().anyMatch(n->n.id().equals("move")));
  }
+ @Test void addIfAbsentIsAtomicAndDoesNotDuplicateNodes(){
+  WorkGraph g=new WorkGraph();
+  TaskContract contract=TaskContract.ordered(AdaptiveRuntime.Lane.WORLD,250_000L);
+  assertTrue(g.addIfAbsent("chunk-load-1-2",contract));
+  assertFalse(g.addIfAbsent("chunk-load-1-2",contract));
+  assertEquals(1,g.snapshot().size());
+ }
  @Test void rejectsCycles(){WorkGraph g=new WorkGraph().add("a",AdaptiveRuntime.Lane.AI,false).add("b",AdaptiveRuntime.Lane.AI,false).dependsOn("b","a").dependsOn("a","b");assertThrows(IllegalStateException.class,g::validate);}
  @Test void deferredWorkCanReturnToPending(){WorkGraph g=new WorkGraph().add("x",AdaptiveRuntime.Lane.BACKGROUND,false);assertEquals(WorkGraph.State.READY,g.ready().get(0).state());g.defer("x");g.reopenDeferred();assertEquals(WorkGraph.State.READY,g.ready().get(0).state());}
  @Test void runtimeCanDeferExpensiveBackgroundWork(){

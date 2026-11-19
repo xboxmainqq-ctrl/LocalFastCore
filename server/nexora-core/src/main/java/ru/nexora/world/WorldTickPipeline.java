@@ -100,19 +100,22 @@ public final class WorldTickPipeline {
         int normalPriority = 0;
         int lowPriority = 0;
         long budgetStart = System.nanoTime();
+        // A profiler snapshot copies and sorts its bounded sample window. Do this
+        // once per tick, not once per mob, so large entity counts stay allocation-light.
+        long targetEstimate = runtime.adaptEstimate(
+                profiler.snapshot(HotPathProfiler.Path.MOB_TARGETING).p95Nanos(), 50_000L);
         for (WorldLivingEntity mob : mobs) {
             if (mob == null || mob.health() <= 0) continue;
 
-            long targetEstimate = runtime.adaptEstimate(
-                    profiler.snapshot(HotPathProfiler.Path.MOB_TARGETING).p95Nanos(), 50_000L);
+            MobAiLoadController.Priority hint = priorityHint(mob);
             if (runtime.admit(AdaptiveRuntime.Lane.AI, targetEstimate,
-                    priorityHint(mob) == MobAiLoadController.Priority.HIGH)
+                    hint == MobAiLoadController.Priority.HIGH)
                     == AdaptiveRuntime.Admission.DEFER) {
                 deferred++;
                 continue;
             }
             if (taskScheduler.admit(ru.nexora.combat.MobAiTaskScheduler.Task.TARGETING,
-                    priorityHint(mob), true, 0, loadController.aiBudgetNanos())
+                    hint, true, 0, loadController.aiBudgetNanos())
                     == ru.nexora.combat.MobAiTaskScheduler.Admission.DEFER) {
                 deferred++;
                 continue;

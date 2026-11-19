@@ -8,6 +8,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -125,6 +129,49 @@ class WorldChunkLoadServiceTest {
             assertTrue(third.get(5, TimeUnit.SECONDS).isPresent());
         } finally {
             releaseFirstSession.countDown();
+            service.close();
+        }
+    }
+
+    @Test
+    void roundRobinSchedulerHandles128SessionsWithoutPerSessionReadBursts() throws Exception {
+        int sessionCount = 128;
+        int readsPerSession = 4;
+        ConcurrentMap<Integer, AtomicInteger> activeBySession = new ConcurrentHashMap<>();
+        ConcurrentMap<Integer, AtomicInteger> peakBySession = new ConcurrentHashMap<>();
+        AtomicInteger completedReads = new AtomicInteger();
+        WorldChunkLoadService service = new WorldChunkLoadService((x, z) -> {
+            int session = Math.floorDiv(x, 10);
+            int active = activeBySession.computeIfAbsent(session, ignored -> new AtomicInteger())
+                    .incrementAndGet();
+            peakBySession.computeIfAbsent(session, ignored -> new AtomicInteger())
+                    .accumulateAndGet(active, Math::max);
+            try {
+                Thread.sleep(1L);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new IOException("interrupted", interrupted);
+            } finally {
+                activeBySession.get(session).decrementAndGet();
+            }
+            completedReads.incrementAndGet();
+            return Optional.of(new WorldChunk(x, z));
+        }, 2, sessionCount * readsPerSession);
+        try {
+            List<java.util.concurrent.CompletableFuture<Optional<WorldChunk>>> futures =
+                    new ArrayList<>(sessionCount * readsPerSession);
+            for (int session = 0; session < sessionCount; session++) {
+                for (int offset = 0; offset < readsPerSession; offset++) {
+                    futures.add(service.request("player-" + session, session * 10 + offset, 0));
+                }
+            }
+            for (var future : futures) assertTrue(future.get(15, TimeUnit.SECONDS).isPresent());
+            assertEquals(sessionCount * readsPerSession, completedReads.get());
+            assertEquals(sessionCount, peakBySession.size());
+            assertTrue(peakBySession.values().stream().allMatch(peak -> peak.get() == 1),
+                    "No player's storage requests may run concurrently with another request from that player");
+            assertEquals(0, service.queuedLoads());
+        } finally {
             service.close();
         }
     }

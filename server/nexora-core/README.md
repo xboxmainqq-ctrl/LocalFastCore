@@ -209,7 +209,7 @@ The transfer command is operator-console only. A player is frozen before the tra
 
 NetherNet ingress now has two independent bounded layers before Bedrock batch decoding:
 
-- A per-peer fixed-window ceiling of 1,200 frames or 8 MiB per five seconds (whichever is reached first). This is intentionally a generous transport safety ceiling, not a 20-tick gameplay limiter; normal movement and replication traffic should remain well below it.
+- A per-peer fixed-window ceiling of 4,096 frames or 16 MiB per five seconds (whichever is reached first). This is intentionally a generous transport safety ceiling, not a 20-tick gameplay limiter; normal movement and replication traffic should remain well below it.
 - A bounded peer table (1,024 peers by default). Unknown peers are rejected while the table is full rather than evicting active peers and allowing identity churn to bypass the budget. Disconnect releases the peer's budget state.
 - Existing per-frame size (1 MiB), per-channel reassembly (4 MiB / 256 fragments / 15 seconds), and tracked-channel limits remain in force. Rejections are explicit and counted; the ingress pipeline does not silently discard a reliable fragment and continue with a corrupted stream.
 

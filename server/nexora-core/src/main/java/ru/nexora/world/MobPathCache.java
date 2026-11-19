@@ -3,6 +3,7 @@ package ru.nexora.world;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Small per-world cache for repeated mob navigation requests.
@@ -17,11 +18,11 @@ public final class MobPathCache {
     private final int maxEntries;
     private final long ttlMillis;
     private final Map<Long, Entry> entries = new LinkedHashMap<>(16, 0.75f, true);
-    private long hits;
-    private long misses;
-    private long recomputations;
-    private long blockedWaypoints;
-    private long evictions;
+    private final AtomicLong hits = new AtomicLong();
+    private final AtomicLong misses = new AtomicLong();
+    private final AtomicLong recomputations = new AtomicLong();
+    private final AtomicLong blockedWaypoints = new AtomicLong();
+    private final AtomicLong evictions = new AtomicLong();
 
     public MobPathCache() {
         this(DEFAULT_MAX_ENTRIES, DEFAULT_TTL_MILLIS);
@@ -98,12 +99,12 @@ public final class MobPathCache {
     private synchronized Entry get(long mobRuntimeId, Key key, long nowMillis) {
         Entry entry = entries.get(mobRuntimeId);
         if (entry == null) {
-            misses = saturatedIncrement(misses);
+            incrementSaturated(misses);
             return null;
         }
         if (nowMillis >= entry.expiresAtMillis() || !entry.key().equals(key)) {
             entries.remove(mobRuntimeId);
-            misses++;
+            incrementSaturated(misses);
             return null;
         }
         return entry;
@@ -114,25 +115,26 @@ public final class MobPathCache {
         while (entries.size() > maxEntries) {
             Long eldest = entries.keySet().iterator().next();
             entries.remove(eldest);
-            evictions = saturatedIncrement(evictions);
+            incrementSaturated(evictions);
         }
     }
 
-    private synchronized void recordHit() {
-        hits = saturatedIncrement(hits);
+    private void recordHit() {
+        incrementSaturated(hits);
     }
 
-    private synchronized void recordBlockedWaypoint() {
-        blockedWaypoints = saturatedIncrement(blockedWaypoints);
+    private void recordBlockedWaypoint() {
+        incrementSaturated(blockedWaypoints);
     }
 
-    private synchronized void recordRecomputation() {
-        recomputations = saturatedIncrement(recomputations);
+    private void recordRecomputation() {
+        incrementSaturated(recomputations);
     }
 
     /** Returns cumulative cache counters; counters are local to this cache instance. */
     public synchronized Stats stats() {
-        return new Stats(hits, misses, recomputations, blockedWaypoints, evictions, entries.size());
+        return new Stats(hits.get(), misses.get(), recomputations.get(),
+                blockedWaypoints.get(), evictions.get(), entries.size());
     }
 
     /** Counts expired entries without mutating the cache. */
@@ -165,8 +167,12 @@ public final class MobPathCache {
         return entries.size();
     }
 
-    private static long saturatedIncrement(long value) {
-        return value == Long.MAX_VALUE ? Long.MAX_VALUE : value + 1;
+    private static void incrementSaturated(AtomicLong counter) {
+        long current;
+        do {
+            current = counter.get();
+            if (current == Long.MAX_VALUE) return;
+        } while (!counter.compareAndSet(current, current + 1));
     }
 
     private static int cell(double coordinate) {

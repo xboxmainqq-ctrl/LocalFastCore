@@ -585,6 +585,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             synchronized (state) {
                 state.rejected = true;
             }
+            synchronized (state.outboundLock) {
+                state.outboundClosed = true;
+                state.outboundQueue.clear();
+            }
             removePlayerListEntry(networkId, state);
             if (state.identity != null) aiGuard.onPlayerDisconnected(state.identity.xuid());
             state.combatLock.lock();

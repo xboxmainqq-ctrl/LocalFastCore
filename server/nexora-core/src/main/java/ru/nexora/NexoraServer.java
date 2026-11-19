@@ -407,6 +407,11 @@ public final class NexoraServer {
                                 + ", received=" + receivedRate
                                 + ", sampledPeers=" + network.peersWithRate()
                                 + " (WebRTC counter deltas; not gameplay traffic guarantees)");
+                        var outbound = negotiator.outboundQueueSummary();
+                        System.out.println("Outbound backlog: peers=" + outbound.peersWithQueuedFrames()
+                                + ", frames=" + outbound.queuedFrames()
+                                + ", bytes=" + outbound.queuedBytes()
+                                + " (bounded application queue; native WebRTC buffer excluded)");
                         System.out.println("Cumulative transport bytes: sent=" + network.bytesSent()
                                 + ", received=" + network.bytesReceived());
                         continue;

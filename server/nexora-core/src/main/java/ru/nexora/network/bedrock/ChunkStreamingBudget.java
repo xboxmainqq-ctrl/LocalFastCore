@@ -73,7 +73,8 @@ final class ChunkStreamingBudget {
         evictIdleSessions(nowNanos);
         if (registered.contains(sessionKey)) {
             lastSeen.put(sessionKey, nowNanos);
-            if (sessionKey.equals(rotation.peekFirst())) rotateHead();
+            rotation.remove(sessionKey);
+            rotation.addLast(sessionKey);
         }
     }
 

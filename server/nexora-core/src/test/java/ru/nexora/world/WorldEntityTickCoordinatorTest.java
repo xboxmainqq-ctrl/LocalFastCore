@@ -51,4 +51,50 @@ class WorldEntityTickCoordinatorTest {
         assertTrue(residency.isResidentAtBlockPosition(-16, -16));
         assertFalse(residency.isResidentAtBlockPosition(48, 48));
     }
+
+    @Test
+    void worldBoundCoordinatorAppliesGravityToResidentMobs() {
+        World world = new World("world-coordinator-physics", 0L, new FlatWorldGenerator());
+        WorldLivingEntity mob = world.livingEntities().spawn(
+                "minecraft:zombie", 20, 0.5, 70.0, 0.5);
+        WorldChunkResidencyManager residency = new WorldChunkResidencyManager(1, 5);
+        WorldTickPipeline pipeline = new WorldTickPipeline(
+                new MobAiLoadController(), new LivingEntityAiService());
+        WorldEntityTickCoordinator coordinator = new WorldEntityTickCoordinator(
+                world, residency, pipeline, new NexoraAiDiagnostics(), 50_000_000L);
+
+        coordinator.tick(0, 1_000,
+                List.of(new WorldChunkResidencyManager.PlayerChunk(0, 0)),
+                List.of(), ignored -> {});
+
+        WorldLivingEntity updated = world.livingEntities().find(mob.runtimeId()).orElseThrow();
+        assertTrue(updated.y() < mob.y(),
+                "The world coordinator must apply gravity to resident mobs");
+        assertTrue(updated.velocityY() < 0,
+                "Gravity must persist vertical velocity for the next world tick");
+    }
+
+    @Test
+    void worldBoundCoordinatorAppliesAiMovementBeforePhysics() {
+        World world = new World("world-coordinator-ai-apply", 0L, new FlatWorldGenerator());
+        WorldLivingEntity mob = world.livingEntities().spawn(
+                "minecraft:zombie", 20, 0.5, 65.0, 0.5);
+        WorldChunkResidencyManager residency = new WorldChunkResidencyManager(1, 5);
+        WorldTickPipeline pipeline = new WorldTickPipeline(
+                new MobAiLoadController(), new LivingEntityAiService());
+        WorldEntityTickCoordinator coordinator = new WorldEntityTickCoordinator(
+                world, residency, pipeline, new NexoraAiDiagnostics(), 50_000_000L);
+        var target = new LivingEntityAiService.PlayerTarget("player", 4.5, 65.0, 0.5, true);
+        List<LivingEntityAiService.Decision> decisions = new ArrayList<>();
+
+        coordinator.tick(0, 1_000,
+                List.of(new WorldChunkResidencyManager.PlayerChunk(0, 0)),
+                List.of(target), decisions::add);
+
+        WorldLivingEntity updated = world.livingEntities().find(mob.runtimeId()).orElseThrow();
+        assertFalse(decisions.isEmpty(), "The AI pipeline should produce a mob decision");
+        assertTrue(updated.x() > mob.x(),
+                "The coordinator must apply the produced AI movement to the world registry");
+    }
+
 }

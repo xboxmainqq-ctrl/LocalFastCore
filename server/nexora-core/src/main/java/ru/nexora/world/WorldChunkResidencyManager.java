@@ -3,6 +3,7 @@ package ru.nexora.world;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -20,7 +21,7 @@ public final class WorldChunkResidencyManager {
     private final int unloadGraceTicks;
     private final Shape shape;
     private final Set<Long> desiredChunks = new HashSet<>();
-    private final Set<Long> loadScratch = new HashSet<>();
+    private final Set<Long> loadScratch = new LinkedHashSet<>();
     private final Set<Long> unloadScratch = new HashSet<>();
     private final Map<Long, Long> lastDesiredTick = new HashMap<>();
     private final Set<Long> resident = new HashSet<>();
@@ -56,6 +57,7 @@ public final class WorldChunkResidencyManager {
         java.util.Objects.requireNonNull(players, "players");
         java.util.Objects.requireNonNull(pinnedChunks, "pinnedChunks");
         desiredChunks.clear();
+        loadScratch.clear();
 
         for (PlayerChunk player : players) {
             if (player == null) continue;
@@ -63,38 +65,35 @@ public final class WorldChunkResidencyManager {
             if (playerRadius < 1 || playerRadius > 32) {
                 throw new IllegalArgumentException("Player view distance must be between 1 and 32");
             }
-            int minX = player.chunkX() - playerRadius;
-            int maxX = player.chunkX() + playerRadius;
-            int minZ = player.chunkZ() - playerRadius;
-            int maxZ = player.chunkZ() + playerRadius;
-            for (int x = minX; x <= maxX; x++) {
-                for (int z = minZ; z <= maxZ; z++) {
-                    // Circular residency avoids loading the four extreme corners
-                    // of a square view distance.
-                    long dx = (long) x - player.chunkX();
-                    long dz = (long) z - player.chunkZ();
-                    if (shape == Shape.CIRCULAR
-                            && dx * dx + dz * dz > (long) playerRadius * playerRadius) continue;
-                    long key = chunkKey(x, z);
-                    desiredChunks.add(key);
-                    lastDesiredTick.put(key, tick);
+            // Queue new chunks center-out so the player's immediate surroundings
+            // become resident before the outer edge of a large view distance.
+            for (int ring = 0; ring <= playerRadius; ring++) {
+                if (ring == 0) {
+                    addDesiredChunk(player.chunkX(), player.chunkZ(), player, playerRadius, tick);
+                    continue;
+                }
+                for (int offset = -ring; offset <= ring; offset++) {
+                    addDesiredChunk(player.chunkX() + offset, player.chunkZ() - ring,
+                            player, playerRadius, tick);
+                    addDesiredChunk(player.chunkX() + offset, player.chunkZ() + ring,
+                            player, playerRadius, tick);
+                }
+                for (int offset = -ring + 1; offset < ring; offset++) {
+                    addDesiredChunk(player.chunkX() - ring, player.chunkZ() + offset,
+                            player, playerRadius, tick);
+                    addDesiredChunk(player.chunkX() + ring, player.chunkZ() + offset,
+                            player, playerRadius, tick);
                 }
             }
         }
 
         for (ChunkCoordinate pinned : pinnedChunks) {
             if (pinned == null) continue;
-            long key = chunkKey(pinned.chunkX(), pinned.chunkZ());
-            desiredChunks.add(key);
-            lastDesiredTick.put(key, tick);
+            addDesiredChunk(pinned.chunkX(), pinned.chunkZ(), null, 0, tick);
         }
 
-        // Reuse per-manager scratch sets: this method runs on the world hot path
-        // and allocating two new HashSets on every tick creates avoidable GC work.
-        loadScratch.clear();
-        for (long key : desiredChunks) {
-            if (!resident.contains(key)) loadScratch.add(key);
-        }
+        // Reuse the ordered load scratch set so the world can consume a global
+        // load budget without sacrificing center-out priority.
         resident.addAll(loadScratch);
 
         unloadScratch.clear();
@@ -112,6 +111,20 @@ public final class WorldChunkResidencyManager {
         }
         return new ResidencyPlan(decode(loadScratch), decode(unloadScratch),
                 resident.size(), desiredChunks.size());
+    }
+
+    private void addDesiredChunk(
+            int chunkX, int chunkZ, PlayerChunk player, int playerRadius, long tick
+    ) {
+        if (player != null && shape == Shape.CIRCULAR) {
+            long dx = (long) chunkX - player.chunkX();
+            long dz = (long) chunkZ - player.chunkZ();
+            if (dx * dx + dz * dz > (long) playerRadius * playerRadius) return;
+        }
+        long key = chunkKey(chunkX, chunkZ);
+        if (!desiredChunks.add(key)) return;
+        lastDesiredTick.put(key, tick);
+        if (!resident.contains(key)) loadScratch.add(key);
     }
 
     /** Lock-free read against the last fully published residency snapshot. */

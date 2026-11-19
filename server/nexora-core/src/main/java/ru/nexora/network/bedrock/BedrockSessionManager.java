@@ -7594,12 +7594,21 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 }
             }
         }
+        IOException persistenceFailure = null;
         try {
+            // Do not report a clean shutdown when any authenticated player's
+            // aggregate or compatibility persistence failed. The lifecycle must
+            // receive this failure so operators and service managers can detect it.
             savePlayers();
         } catch (IOException exception) {
-            System.err.println("NEXORA: unable to save player profiles on shutdown: " + exception.getMessage());
-        } finally {
-            for (SessionState state : sessions.values()) releaseOnlinePlayerLease(state);
+            persistenceFailure = exception;
+            System.err.println("NEXORA: player persistence failed during shutdown: " + exception.getMessage());
+        }
+        for (SessionState state : sessions.values()) {
+            // On persistence failure, keep shared ownership fenced until its TTL
+            // expires. Releasing it immediately could let another node admit the
+            // player using an older durable checkpoint.
+            if (persistenceFailure == null) releaseOnlinePlayerLease(state);
         }
         for (SessionState state : sessions.values()) {
             synchronized (state.outboundLock) {
@@ -7615,6 +7624,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         poisonMobArrows.clear();
         mobFireballs.clear();
         guardianBeamTracker.clearAll();
+        if (persistenceFailure != null) {
+            throw new IllegalStateException(
+                    "NEXORA shutdown completed with player persistence failures; inspect suppressed save errors",
+                    persistenceFailure);
+        }
     }
 
     @FunctionalInterface

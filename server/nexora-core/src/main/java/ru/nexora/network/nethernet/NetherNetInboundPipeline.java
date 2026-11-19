@@ -13,6 +13,11 @@ import java.util.function.Consumer;
  * Per-channel NetherNet framing/reassembly before the Bedrock batch decoder.
  */
 public final class NetherNetInboundPipeline implements NetherNetDataChannelListener {
+    public static final int MAX_INBOUND_FRAME_BYTES = 1_048_576;
+    public static final int DEFAULT_MAX_TRACKED_CHANNELS = 8_192;
+
+    private final int maxTrackedChannels;
+    private final int maxFrameBytes;
     private final Map<ChannelKey, NetherNetMessageFramer.Reassembler> reassemblers =
             new ConcurrentHashMap<>();
     private final Consumer<InboundMessage> messageSink;
@@ -30,8 +35,18 @@ public final class NetherNetInboundPipeline implements NetherNetDataChannelListe
     }
 
     public NetherNetInboundPipeline(Consumer<InboundMessage> messageSink, NexoraAiGuard guard) {
+        this(messageSink, guard, DEFAULT_MAX_TRACKED_CHANNELS, MAX_INBOUND_FRAME_BYTES);
+    }
+
+    public NetherNetInboundPipeline(Consumer<InboundMessage> messageSink, NexoraAiGuard guard,
+                                    int maxTrackedChannels, int maxFrameBytes) {
         this.messageSink = Objects.requireNonNull(messageSink, "messageSink");
         this.guard = Objects.requireNonNull(guard, "guard");
+        if (maxTrackedChannels < 1 || maxFrameBytes < 1 || maxFrameBytes > MAX_INBOUND_FRAME_BYTES) {
+            throw new IllegalArgumentException("Invalid inbound pipeline limits");
+        }
+        this.maxTrackedChannels = maxTrackedChannels;
+        this.maxFrameBytes = maxFrameBytes;
     }
 
     @Override
@@ -46,13 +61,19 @@ public final class NetherNetInboundPipeline implements NetherNetDataChannelListe
         }
 
         long startedAt = System.nanoTime();
-        inboundFrames.increment();
-        inboundBytes.add(frame.length);
         try {
+            Objects.requireNonNull(networkId, "networkId");
+            Objects.requireNonNull(frame, "frame");
+            if (networkId.isBlank()) throw new IllegalArgumentException("NetworkID must not be blank");
+            inboundFrames.increment();
+            inboundBytes.add(frame.length);
+            if (frame.length > maxFrameBytes) {
+                throw new IllegalArgumentException("NetherNet inbound frame exceeds "
+                        + maxFrameBytes + " byte limit");
+            }
             guard.recordInboundFrame(networkId, frame.length, startedAt);
             ChannelKey key = new ChannelKey(networkId, channelLabel);
-            NetherNetMessageFramer.Reassembler reassembler =
-                    reassemblers.computeIfAbsent(key, ignored -> new NetherNetMessageFramer.Reassembler());
+            NetherNetMessageFramer.Reassembler reassembler = reassemblerFor(key);
             Optional<byte[]> complete = reassembler.accept(frame, reliable);
             if (complete.isPresent()) {
                 messageSink.accept(new InboundMessage(networkId, channelLabel, reliable, complete.get()));
@@ -69,8 +90,19 @@ public final class NetherNetInboundPipeline implements NetherNetDataChannelListe
         }
     }
 
+    private synchronized NetherNetMessageFramer.Reassembler reassemblerFor(ChannelKey key) {
+        NetherNetMessageFramer.Reassembler existing = reassemblers.get(key);
+        if (existing != null) return existing;
+        if (reassemblers.size() >= maxTrackedChannels) {
+            throw new IllegalStateException("NetherNet inbound channel limit reached");
+        }
+        NetherNetMessageFramer.Reassembler created = new NetherNetMessageFramer.Reassembler();
+        reassemblers.put(key, created);
+        return created;
+    }
+
     @Override
-    public void onDisconnected(String networkId) {
+    public synchronized void onDisconnected(String networkId) {
         reassemblers.keySet().removeIf(key -> key.networkId().equals(networkId));
         guard.onDisconnected(networkId);
     }

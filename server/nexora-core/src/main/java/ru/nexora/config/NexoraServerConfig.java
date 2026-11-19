@@ -16,7 +16,8 @@ public record NexoraServerConfig(
         long autosaveSeconds,
         int udpPortMin,
         int udpPortMax,
-        List<String> stunUrls
+        List<String> stunUrls,
+        int maximumResidentChunks
 ) {
     public NexoraServerConfig {
         bindHost = requireText(bindHost, "bindHost");
@@ -25,6 +26,7 @@ public record NexoraServerConfig(
         dataDirectory = requireText(dataDirectory, "dataDirectory");
         if (port < 1 || port > 65535) throw new IllegalArgumentException("port must be between 1 and 65535");
         if (maxPlayers < 1) throw new IllegalArgumentException("maxPlayers must be positive");
+        if (maximumResidentChunks < 1) throw new IllegalArgumentException("maximumResidentChunks must be positive");
         if (autosaveSeconds < 1) throw new IllegalArgumentException("autosaveSeconds must be positive");
         if (udpPortMin < 1 || udpPortMax > 65535 || udpPortMin > udpPortMax) {
             throw new IllegalArgumentException("Invalid WebRTC UDP port range");
@@ -32,6 +34,14 @@ public record NexoraServerConfig(
         stunUrls = List.copyOf(Objects.requireNonNull(stunUrls, "stunUrls")).stream()
                 .map(value -> requireText(value, "STUN URL"))
                 .toList();
+    }
+
+    /** Backwards-compatible constructor for callers that predate residency limits. */
+    public NexoraServerConfig(String bindHost, int port, String motd, int maxPlayers,
+            String httpBindHost, String dataDirectory, long autosaveSeconds,
+            int udpPortMin, int udpPortMax, List<String> stunUrls) {
+        this(bindHost, port, motd, maxPlayers, httpBindHost, dataDirectory, autosaveSeconds,
+                udpPortMin, udpPortMax, stunUrls, 8192);
     }
 
     public static NexoraServerConfig from(String[] args, Map<String, String> environment) {
@@ -48,7 +58,8 @@ public record NexoraServerConfig(
                 longEnvironment(environment, "NEXORA_AUTOSAVE_SECONDS", 300L),
                 integerEnvironment(environment, "NEXORA_UDP_PORT_MIN", 30000),
                 integerEnvironment(environment, "NEXORA_UDP_PORT_MAX", 30199),
-                parseStunUrls(environment.get("NEXORA_STUN_URLS"))
+                parseStunUrls(environment.get("NEXORA_STUN_URLS")),
+                integerEnvironment(environment, "NEXORA_MAX_RESIDENT_CHUNKS", 8192)
         );
     }
 

@@ -77,9 +77,15 @@ public final class MobPhysicsService {
             updated = world.livingEntities().updatePhysicsState(
                     entity.runtimeId(), x, y, z, vx, vy, vz).orElse(updated);
         }
-        boolean groundedAfterMove = !flying
-                && !(isBouncyMob(entity.identifier()) && vy > 0.0)
-                && WorldCollision.isMobOnGround(world, entity.identifier(), x, y, z, GROUND_CONTACT_TOLERANCE);
+        boolean groundedAfterMove = false;
+        if (!flying && !(isBouncyMob(entity.identifier()) && vy > 0.0)) {
+            // A stationary mob that was already grounded cannot change its contact
+            // state during this physics step. Reuse the first probe instead of
+            // repeating the collision scan for every idle entity every tick.
+            groundedAfterMove = !moved && groundedBeforeMove
+                    || WorldCollision.isMobOnGround(world, entity.identifier(),
+                    x, y, z, GROUND_CONTACT_TOLERANCE);
+        }
         return new Result(updated, moved, groundedAfterMove);
     }
 

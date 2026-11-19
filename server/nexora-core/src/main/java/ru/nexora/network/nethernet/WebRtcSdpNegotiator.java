@@ -314,14 +314,14 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         long bytesSent = 0L;
         long bytesReceived = 0L;
         for (TransportMetrics metric : metrics) {
-            if (metric == null || !metric.available()) {
+            if (metric == null || metric.sampledAtMillis() <= 0) {
                 staleOrMissing++;
                 continue;
             }
             withSamples++;
             if (metric.bytesSent() >= 0) bytesSent = saturatingAdd(bytesSent, metric.bytesSent());
             if (metric.bytesReceived() >= 0) bytesReceived = saturatingAdd(bytesReceived, metric.bytesReceived());
-            if (metric.stale(nowMillis, maxAgeMillis)) {
+            if (metric.stale(nowMillis, maxAgeMillis) || !metric.available()) {
                 staleOrMissing++;
                 continue;
             }

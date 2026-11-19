@@ -126,12 +126,10 @@ public final class BedrockBatchCodec {
             int header = packet.packetId()
                     | (packet.senderSubClientId() << 10)
                     | (packet.targetSubClientId() << 12);
-            byte[] packetHeader = writeUnsignedVarInt(header);
-            byte[] payload = packet.payload();
-            int packetLength = packetHeader.length + payload.length;
+            int packetLength = unsignedVarIntSize(header) + packet.payloadLength();
             writeUnsignedVarInt(batch, packetLength);
-            batch.writeBytes(packetHeader);
-            batch.writeBytes(payload);
+            writeUnsignedVarInt(batch, header);
+            packet.writePayloadTo(batch);
             if (batch.size() > maxBatchBytes) {
                 throw new IllegalArgumentException("Encoded Bedrock batch exceeds size limit");
             }
@@ -358,6 +356,15 @@ public final class BedrockBatchCodec {
             if ((current & 0x80) == 0) return value;
         }
         throw new IllegalArgumentException("Bedrock VarInt exceeds five bytes");
+    }
+
+    private static int unsignedVarIntSize(long value) {
+        if (value < 0 || value > 0xffff_ffffL) {
+            throw new IllegalArgumentException("Bedrock VarInt must be an unsigned 32-bit value");
+        }
+        int size = 1;
+        while ((value >>>= 7) != 0) size++;
+        return size;
     }
 
     private static byte[] writeUnsignedVarInt(long value) {

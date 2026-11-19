@@ -59,7 +59,7 @@ class InboundPeerBudgetTest {
 
     @Test
     void pipelineRejectsPeerOverBudgetAndDisconnectResetsPeerState() {
-        InboundPeerBudget budget = new InboundPeerBudget(1_000, 1, 100, 4);
+        InboundPeerBudget budget = new InboundPeerBudget(5_000_000_000L, 1, 100, 4);
         NetherNetInboundPipeline pipeline = new NetherNetInboundPipeline(
                 message -> { }, new ru.nexora.ai.NexoraAiGuard(), budget, 4, 64);
 

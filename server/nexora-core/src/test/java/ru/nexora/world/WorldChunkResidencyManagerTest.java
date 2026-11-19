@@ -202,6 +202,25 @@ class WorldChunkResidencyManagerTest {
         assertEquals(1024, manager.residentChunkCount());
     }
 
+
+    @Test
+    void reclaimsGraceChunksWhenCapacityPressureWouldOtherwiseStallMovement() {
+        WorldChunkResidencyManager manager = new WorldChunkResidencyManager(
+                1, 100, WorldChunkResidencyManager.Shape.SQUARE, 9);
+        var initial = manager.update(
+                List.of(new WorldChunkResidencyManager.PlayerChunk(0, 0)), 0);
+        assertEquals(9, initial.load().size());
+
+        var moved = manager.update(
+                List.of(new WorldChunkResidencyManager.PlayerChunk(1, 0)), 1);
+
+        assertEquals(3, moved.unload().size());
+        assertEquals(3, moved.load().size());
+        assertEquals(9, moved.residentCount());
+        assertTrue(moved.load().contains(new WorldChunkResidencyManager.ChunkCoordinate(2, 0)));
+        assertTrue(moved.unload().contains(new WorldChunkResidencyManager.ChunkCoordinate(-1, 0)));
+    }
+
     @Test
     void pinnedChunksAreIncludedInLoadPlanBeforePlayerCapacityIsAllocated() {
         WorldChunkResidencyManager manager = new WorldChunkResidencyManager(

@@ -41,6 +41,8 @@ import java.util.concurrent.ScheduledExecutorService;
  */
 public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
     private static final long DEFAULT_TIMEOUT_MILLIS = 15_000;
+    private static final long OUTBOUND_HIGH_WATERMARK_BYTES = 512L * 1024L;
+    private static final long OUTBOUND_LOW_WATERMARK_BYTES = 256L * 1024L;
 
     private final PeerConnectionFactory factory;
     private final NetherNetIdentityService identityService;
@@ -238,7 +240,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         if (channel == null || channel.getState() != RTCDataChannelState.OPEN) {
             throw new IllegalStateException("NetherNet data channel is not open: " + channelLabel);
         }
-        channel.send(new RTCDataChannelBuffer(ByteBuffer.wrap(frame), true));
+        session.sendFrame(channelLabel, channel, frame);
     }
 
     private void reapIdleSessions() {
@@ -327,6 +329,8 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         private final NetherNetClientIdentity identity;
         private final CompletableFuture<Void> iceGatheringComplete = new CompletableFuture<>();
         private final Map<String, RTCDataChannel> channels = new ConcurrentHashMap<>();
+        private final Map<String, NetherNetOutboundQueue> outboundQueues = new ConcurrentHashMap<>();
+        private final Object outboundLock = new Object();
         private final AtomicBoolean sessionClosed = new AtomicBoolean();
         private volatile long lastActivityNanos = System.nanoTime();
         private volatile boolean connected;
@@ -391,7 +395,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
             channel.registerObserver(new RTCDataChannelObserver() {
                 @Override
                 public void onBufferedAmountChange(long sentDataSize) {
-                    // The core will add explicit back-pressure when outbound game batches are wired.
+                    drainOutbound(label, channel);
                 }
 
                 @Override
@@ -420,6 +424,50 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
             });
         }
 
+        private void sendFrame(String channelLabel, RTCDataChannel channel, byte[] frame) throws Exception {
+            synchronized (outboundLock) {
+                if (sessionClosed.get() || channel.getState() != RTCDataChannelState.OPEN) {
+                    throw new IllegalStateException("NetherNet data channel is not open: " + channelLabel);
+                }
+                NetherNetOutboundQueue queue = outboundQueues.computeIfAbsent(
+                        channelLabel, ignored -> new NetherNetOutboundQueue());
+                if (!queue.isEmpty() || channel.getBufferedAmount() >= OUTBOUND_HIGH_WATERMARK_BYTES) {
+                    if (!queue.offer(frame)) {
+                        closeForProtocolError("outbound queue limit exceeded on " + channelLabel);
+                        throw new IllegalStateException("NetherNet outbound queue limit exceeded");
+                    }
+                    return;
+                }
+                try {
+                    channel.send(new RTCDataChannelBuffer(ByteBuffer.wrap(frame), true));
+                } catch (Exception exception) {
+                    if (channel.getState() == RTCDataChannelState.OPEN && queue.offer(frame)) return;
+                    throw exception;
+                }
+            }
+        }
+
+        private void drainOutbound(String channelLabel, RTCDataChannel channel) {
+            synchronized (outboundLock) {
+                if (sessionClosed.get() || channel.getState() != RTCDataChannelState.OPEN) return;
+                NetherNetOutboundQueue queue = outboundQueues.get(channelLabel);
+                if (queue == null || queue.isEmpty()
+                        || channel.getBufferedAmount() > OUTBOUND_LOW_WATERMARK_BYTES) return;
+                while (!queue.isEmpty()
+                        && channel.getBufferedAmount() < OUTBOUND_HIGH_WATERMARK_BYTES) {
+                    byte[] frame = queue.poll();
+                    try {
+                        channel.send(new RTCDataChannelBuffer(ByteBuffer.wrap(frame), true));
+                    } catch (Exception exception) {
+                        queue.offerFirst(frame);
+                        closeForProtocolError("unable to drain outbound queue on " + channelLabel
+                                + ": " + exception.getMessage());
+                        return;
+                    }
+                }
+            }
+        }
+
         private void closeForProtocolError(String reason) {
             System.err.println("NEXORA: closing NetherNet session " + networkId + ": " + reason);
             sessions.remove(networkId, this);
@@ -438,6 +486,8 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
                 }
             });
             channels.clear();
+            outboundQueues.values().forEach(NetherNetOutboundQueue::clear);
+            outboundQueues.clear();
             try {
                 dataChannelListener.onDisconnected(networkId);
             } catch (RuntimeException ignored) {

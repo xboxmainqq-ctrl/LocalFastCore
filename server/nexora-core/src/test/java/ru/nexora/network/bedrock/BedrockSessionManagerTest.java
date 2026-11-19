@@ -2771,7 +2771,7 @@ class BedrockSessionManagerTest {
         assertEquals(124, Byte.toUnsignedInt(initialInventoryBatch.get(7).payload()[0])); // player UI grid
         BedrockPacket playStatus = decodeOutbound(outboundFrames.get(13), true);
         assertEquals(BedrockBatchCodec.PLAY_STATUS_PACKET_ID, playStatus.packetId());
-        assertEquals(3, ByteBuffer.wrap(playerSpawn.payload()).order(ByteOrder.BIG_ENDIAN).getInt());
+        assertEquals(3, ByteBuffer.wrap(playStatus.payload()).order(ByteOrder.BIG_ENDIAN).getInt());
         assertEquals(0.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
         assertEquals(65.0f, manager.playerPosition("authenticated-client").orElseThrow().y());
 

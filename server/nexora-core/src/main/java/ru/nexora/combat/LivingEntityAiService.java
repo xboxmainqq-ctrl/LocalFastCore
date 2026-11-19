@@ -185,6 +185,37 @@ public final class LivingEntityAiService {
                 dx / horizontal * step, 0, dz / horizontal * step, 0, false);
     }
 
+    /**
+     * Produces a collision-checked movement intent toward a ranged target when a wall
+     * blocks the shot. The world adapter still validates chunks, collisions and pathing.
+     */
+    public Decision approach(WorldLivingEntity mob, PlayerTarget target) {
+        Objects.requireNonNull(mob, "mob");
+        Objects.requireNonNull(target, "target");
+        if (!target.alive()) throw new IllegalArgumentException("target must be alive");
+        if (mob.health() <= 0) return Decision.idle(mob.runtimeId());
+
+        double dx = target.x() - mob.x();
+        double dy = target.y() - mob.y();
+        double dz = target.z() - mob.z();
+        double speed = movementSpeedFor(mob.identifier());
+        if (isFlyingMob(mob.identifier())) {
+            double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            if (distance < 0.0001) return Decision.idle(mob.runtimeId());
+            double step = Math.min(speed, Math.max(0, distance - 1.0));
+            return new Decision(mob.runtimeId(), target.networkId(),
+                    dx / distance * step, dy / distance * step, dz / distance * step,
+                    0, false, attackStyleFor(mob.identifier()));
+        }
+
+        double horizontal = Math.hypot(dx, dz);
+        if (horizontal < 0.0001) return Decision.idle(mob.runtimeId());
+        double step = Math.min(speed, Math.max(0, horizontal - 1.0));
+        return new Decision(mob.runtimeId(), target.networkId(),
+                dx / horizontal * step, 0, dz / horizontal * step,
+                0, false, attackStyleFor(mob.identifier()));
+    }
+
     private Decision flee(WorldLivingEntity mob, PlayerTarget threat) {
         double dx = mob.x() - threat.x();
         double dz = mob.z() - threat.z();

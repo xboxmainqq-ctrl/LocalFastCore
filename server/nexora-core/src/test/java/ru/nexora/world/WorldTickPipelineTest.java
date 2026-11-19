@@ -97,6 +97,61 @@ class WorldTickPipelineTest {
     }
 
     @Test
+    void neutralMobRetaliatesAgainstThePlayerWhoProvokedIt() {
+        WorldTickPipeline pipeline = new WorldTickPipeline(
+                new MobAiLoadController(20), new LivingEntityAiService());
+        WorldLivingEntityManager manager = new WorldLivingEntityManager();
+        WorldLivingEntity piglin = manager.spawn("minecraft:piglin", 20, 0, 64, 0);
+        var attacker = new LivingEntityAiService.PlayerTarget("attacker", 1.5, 64, 0, true);
+        List<LivingEntityAiService.Decision> decisions = new ArrayList<>();
+
+        pipeline.recordProvocation(piglin.runtimeId(), "attacker", 1_000);
+        pipeline.tick(0, 1_000, List.of(piglin), List.of(attacker), decisions::add);
+
+        assertEquals(1, decisions.size());
+        assertEquals("attacker", decisions.getFirst().targetNetworkId());
+        assertTrue(decisions.getFirst().attack());
+    }
+
+    @Test
+    void neutralMobForgetsProvocationAfterTenSecondsOrWhenCleared() {
+        WorldTickPipeline pipeline = new WorldTickPipeline(
+                new MobAiLoadController(20), new LivingEntityAiService());
+        WorldLivingEntityManager manager = new WorldLivingEntityManager();
+        WorldLivingEntity piglin = manager.spawn("minecraft:piglin", 20, 0, 64, 0);
+        var attacker = new LivingEntityAiService.PlayerTarget("attacker", 1.5, 64, 0, true);
+        List<LivingEntityAiService.Decision> decisions = new ArrayList<>();
+
+        pipeline.recordProvocation(piglin.runtimeId(), "attacker", 1_000);
+        pipeline.tick(0, 11_000, List.of(piglin), List.of(attacker), decisions::add);
+
+        assertEquals(1, decisions.size());
+        assertNull(decisions.getFirst().targetNetworkId());
+        assertFalse(decisions.getFirst().attack());
+
+        pipeline.recordProvocation(piglin.runtimeId(), "attacker", 12_000);
+        pipeline.clearProvocation(piglin.runtimeId());
+        decisions.clear();
+        pipeline.tick(1, 12_001, List.of(piglin), List.of(attacker), decisions::add);
+
+        assertNull(decisions.getFirst().targetNetworkId());
+        assertFalse(decisions.getFirst().attack());
+    }
+
+    @Test
+    void rejectsInvalidMobProvocations() {
+        WorldTickPipeline pipeline = new WorldTickPipeline(
+                new MobAiLoadController(20), new LivingEntityAiService());
+
+        assertThrows(IllegalArgumentException.class,
+                () -> pipeline.recordProvocation(-1, "player", 1));
+        assertThrows(IllegalArgumentException.class,
+                () -> pipeline.recordProvocation(1, "", 1));
+        assertThrows(IllegalArgumentException.class,
+                () -> pipeline.recordProvocation(1, "player", -1));
+    }
+
+    @Test
     void attackCooldownProfilesRejectNullAndKeepBaselineForOrdinaryMobs() {
         assertEquals(LivingEntityAiService.ATTACK_COOLDOWN_MILLIS,
                 LivingEntityAiService.attackCooldownMillisFor("minecraft:zombie"));

@@ -12,6 +12,24 @@ class WorldTest {
     Path temporaryDirectory;
 
     @Test
+    void reportsExactAllocatedBlockSectionBytesWithoutCountingEmptySections() {
+        World world = new World("NEXORA", 1L, new FlatWorldGenerator());
+
+        world.setBlock(1, 65, 1, BlockType.STONE);
+        assertEquals(1, world.loadedChunkCount());
+        assertEquals(1L, world.loadedChunkSectionCount());
+        assertEquals(4096L, world.loadedChunkBlockStorageBytes());
+
+        world.setBlock(1, 80, 1, BlockType.STONE);
+        assertEquals(2L, world.loadedChunkSectionCount());
+        assertEquals(8192L, world.loadedChunkBlockStorageBytes());
+
+        world.setBlock(1, 65, 1, BlockType.AIR);
+        assertEquals(1L, world.loadedChunkSectionCount());
+        assertEquals(4096L, world.loadedChunkBlockStorageBytes());
+    }
+
+    @Test
     void appliesChunkResidencyLoadsAcrossTicksWithOneGlobalBudget() {
         World world = new World("NEXORA", 1L, new FlatWorldGenerator());
         WorldChunkResidencyManager residency = new WorldChunkResidencyManager(2, 20);

@@ -169,23 +169,7 @@ public final class FilePlayerStateStore implements PlayerStateStore {
     }
 
     private void writeAtomically(Path target, byte[] bytes) throws IOException {
-        Path temporary = Files.createTempFile(directory, ".nexora-state-", ".tmp");
-        try {
-            try (FileChannel channel = FileChannel.open(temporary,
-                    StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
-                ByteBuffer buffer = ByteBuffer.wrap(bytes);
-                while (buffer.hasRemaining()) channel.write(buffer);
-                channel.force(true);
-            }
-            try {
-                Files.move(temporary, target,
-                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException unsupported) {
-                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } finally {
-            Files.deleteIfExists(temporary);
-        }
+        AtomicFileWriter.writeAtomically(target, bytes);
     }
 
     private static Object[] createLocks() {

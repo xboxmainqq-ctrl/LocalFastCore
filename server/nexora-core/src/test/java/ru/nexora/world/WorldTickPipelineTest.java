@@ -107,6 +107,40 @@ class WorldTickPipelineTest {
     }
 
     @Test
+    void rangedMobUsesItsOwnProjectileCooldownProfile() {
+        WorldTickPipeline pipeline = new WorldTickPipeline(
+                new MobAiLoadController(20), new LivingEntityAiService());
+        WorldLivingEntityManager manager = new WorldLivingEntityManager();
+        WorldLivingEntity skeleton = manager.spawn("minecraft:skeleton", 20, 0, 64, 0);
+        var player = new LivingEntityAiService.PlayerTarget("player", 8, 64, 0, true);
+        List<LivingEntityAiService.Decision> decisions = new ArrayList<>();
+
+        pipeline.tick(0, 2_000, List.of(skeleton), List.of(player), decisions::add);
+        assertTrue(decisions.getFirst().attack());
+        assertEquals(LivingEntityAiService.AttackStyle.PROJECTILE, decisions.getFirst().attackStyle());
+
+        decisions.clear();
+        pipeline.tick(1, 3_000, List.of(skeleton), List.of(player), decisions::add);
+        assertFalse(decisions.getFirst().attack());
+
+        decisions.clear();
+        pipeline.tick(2, 3_250, List.of(skeleton), List.of(player), decisions::add);
+        assertTrue(decisions.getFirst().attack());
+    }
+
+    @Test
+    void rangedCooldownProfilesAreSpeciesSpecificAndValidateInput() {
+        assertEquals(1_250L,
+                LivingEntityAiService.rangedAttackCooldownMillisFor("minecraft:skeleton"));
+        assertEquals(3_000L,
+                LivingEntityAiService.rangedAttackCooldownMillisFor("minecraft:ghast"));
+        assertEquals(LivingEntityAiService.ATTACK_COOLDOWN_MILLIS,
+                LivingEntityAiService.rangedAttackCooldownMillisFor("minecraft:zombie"));
+        assertThrows(NullPointerException.class,
+                () -> LivingEntityAiService.rangedAttackCooldownMillisFor(null));
+    }
+
+    @Test
     void attackCooldownDeadlineDoesNotOverflowAtMaximumTimestamp() {
         WorldTickPipeline pipeline = new WorldTickPipeline(
                 new MobAiLoadController(20), new LivingEntityAiService());

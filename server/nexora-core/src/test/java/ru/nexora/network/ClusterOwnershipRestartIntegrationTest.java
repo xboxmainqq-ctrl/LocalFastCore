@@ -1,6 +1,7 @@
 package ru.nexora.network;
 
 import org.h2.jdbcx.JdbcDataSource;
+import org.h2.tools.Server;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ru.nexora.inventory.ContainerInventory;
@@ -132,25 +133,33 @@ class ClusterOwnershipRestartIntegrationTest {
     @Test
     void simultaneousIndependentJvmLoginsHaveExactlyOneLeaseWinner(@TempDir Path directory) throws Exception {
         String databasePath = directory.resolve("nexora-race").toAbsolutePath().toString().replace('\\', '/');
-        String url = "jdbc:h2:file:" + databasePath + ";AUTO_SERVER=TRUE;LOCK_TIMEOUT=10000";
-        new JdbcPlayerOnlineLeaseRegistry(dataSource(url)).initializeSchema();
+        // One H2 TCP server owns the file database; child JVMs are clients. This
+        // isolates the lease race from AUTO_SERVER file-lock startup races.
+        Server databaseServer = Server.createTcpServer("-tcpPort", "0", "-ifNotExists").start();
+        String url = "jdbc:h2:tcp://127.0.0.1:" + databaseServer.getPort() + "/" + databasePath
+                + ";LOCK_TIMEOUT=10000";
+        try {
+            new JdbcPlayerOnlineLeaseRegistry(dataSource(url)).initializeSchema();
 
-        Process nodeA = startLeaseProcess(url, "try", "race-process-xuid", "node-a", 10_000L);
-        Process nodeB = startLeaseProcess(url, "try", "race-process-xuid", "node-b", 10_000L);
-        assertTrue(nodeA.waitFor(15, TimeUnit.SECONDS), "Node A must finish its login attempt");
-        assertTrue(nodeB.waitFor(15, TimeUnit.SECONDS), "Node B must finish its login attempt");
-        String outputA = new String(nodeA.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-        String outputB = new String(nodeB.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-        assertEquals(0, nodeA.exitValue(), "Node A process output: " + outputA);
-        assertEquals(0, nodeB.exitValue(), "Node B process output: " + outputB);
+            Process nodeA = startLeaseProcess(url, "try", "race-process-xuid", "node-a", 10_000L);
+            Process nodeB = startLeaseProcess(url, "try", "race-process-xuid", "node-b", 10_000L);
+            assertTrue(nodeA.waitFor(15, TimeUnit.SECONDS), "Node A must finish its login attempt");
+            assertTrue(nodeB.waitFor(15, TimeUnit.SECONDS), "Node B must finish its login attempt");
+            String outputA = new String(nodeA.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            String outputB = new String(nodeB.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            assertEquals(0, nodeA.exitValue(), "Node A process output: " + outputA);
+            assertEquals(0, nodeB.exitValue(), "Node B process output: " + outputB);
 
-        String resultA = outputA.lines().findFirst().orElse("");
-        String resultB = outputB.lines().findFirst().orElse("");
-        assertNotEquals(resultA, resultB,
-                "Exactly one independent JVM may acquire a previously unowned XUID");
-        assertTrue(("ACQUIRED".equals(resultA) && "REJECTED".equals(resultB))
-                        || ("REJECTED".equals(resultA) && "ACQUIRED".equals(resultB)),
-                "Unexpected lease outcomes: node-a=" + resultA + ", node-b=" + resultB);
+            String resultA = outputA.lines().findFirst().orElse("");
+            String resultB = outputB.lines().findFirst().orElse("");
+            assertNotEquals(resultA, resultB,
+                    "Exactly one independent JVM may acquire a previously unowned XUID");
+            assertTrue(("ACQUIRED".equals(resultA) && "REJECTED".equals(resultB))
+                            || ("REJECTED".equals(resultA) && "ACQUIRED".equals(resultB)),
+                    "Unexpected lease outcomes: node-a=" + resultA + ", node-b=" + resultB);
+        } finally {
+            databaseServer.stop();
+        }
     }
 
     private static Process startLeaseProcess(String url, String action, String xuid, String node,

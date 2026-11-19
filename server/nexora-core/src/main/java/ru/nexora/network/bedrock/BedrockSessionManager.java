@@ -3592,7 +3592,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     mobAiLoadController.budgetStats();
             worldDiagnostics.recordWorldRuntimeSnapshot(
                     residencyPlan.residentCount(), world.loadedChunkCount(),
-                    world.livingEntities().size(),
+                    chunkResidency.maximumResidentChunks(), residencyPlan.desiredCount(),
+                    world.pendingChunkLoadCount(), world.livingEntities().size(),
                     schedulerStats.fullRateUpdates(), schedulerStats.deferredUpdates(),
                     budgetStats.deferredTasks(), budgetStats.consumedNanos());
         }

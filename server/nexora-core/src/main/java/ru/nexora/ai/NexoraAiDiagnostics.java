@@ -288,29 +288,13 @@ public final class NexoraAiDiagnostics {
             long mobAiBudgetDeferred,
             long mobAiBudgetConsumedNanos
     ) {
-        if (residentChunks < 0 || loadedChunks < 0 || maximumResidentChunks < 0
-                || desiredChunks < 0 || pendingChunkLoads < 0 || livingEntities < 0
-                || mobAiFullRateUpdates < 0 || mobAiDeferredUpdates < 0
-                || mobAiBudgetDeferred < 0 || mobAiBudgetConsumedNanos < 0) {
-            throw new IllegalArgumentException("World runtime metrics must be non-negative");
-        }
-        long now = nanoClock.getAsLong();
-        long previous = lastWorldSnapshotNanos.get();
-        if (previous != Long.MIN_VALUE && now - previous < 10_000_000_000L) return;
-        if (!lastWorldSnapshotNanos.compareAndSet(previous, now)) return;
-        appendEvent("WORLD", "residentChunks=" + residentChunks
-                + ", loadedChunks=" + loadedChunks
-                + ", maximumResidentChunks=" + maximumResidentChunks
-                + ", desiredChunks=" + desiredChunks
-                + ", pendingChunkLoads=" + pendingChunkLoads
-                + ", livingEntities=" + livingEntities
-                + ", mobAiFullRateUpdates=" + mobAiFullRateUpdates
-                + ", mobAiDeferredUpdates=" + mobAiDeferredUpdates
-                + ", mobAiBudgetDeferred=" + mobAiBudgetDeferred
-                + ", mobAiBudgetConsumedNanos=" + mobAiBudgetConsumedNanos);
+        recordWorldRuntimeSnapshot(residentChunks, loadedChunks, maximumResidentChunks,
+                desiredChunks, pendingChunkLoads, 0L, 0L, livingEntities,
+                mobAiFullRateUpdates, mobAiDeferredUpdates, mobAiBudgetDeferred,
+                mobAiBudgetConsumedNanos);
     }
 
-    /** Records actual allocated block-array bytes and planner/cache divergence. */
+    /** Records planner/cache divergence and exact allocated block-array payload in one throttled event. */
     public void recordWorldRuntimeSnapshot(
             int residentChunks,
             int loadedChunks,
@@ -325,17 +309,31 @@ public final class NexoraAiDiagnostics {
             long mobAiBudgetDeferred,
             long mobAiBudgetConsumedNanos
     ) {
-        if (loadedChunkBlockStorageBytes < 0 || loadedChunkSections < 0) {
-            throw new IllegalArgumentException("World chunk memory metrics must be non-negative");
+        if (residentChunks < 0 || loadedChunks < 0 || maximumResidentChunks < 0
+                || desiredChunks < 0 || pendingChunkLoads < 0 || loadedChunkBlockStorageBytes < 0
+                || loadedChunkSections < 0 || livingEntities < 0 || mobAiFullRateUpdates < 0
+                || mobAiDeferredUpdates < 0 || mobAiBudgetDeferred < 0
+                || mobAiBudgetConsumedNanos < 0) {
+            throw new IllegalArgumentException("World runtime metrics must be non-negative");
         }
-        recordWorldRuntimeSnapshot(residentChunks, loadedChunks, maximumResidentChunks,
-                desiredChunks, pendingChunkLoads, livingEntities, mobAiFullRateUpdates,
-                mobAiDeferredUpdates, mobAiBudgetDeferred, mobAiBudgetConsumedNanos);
-        // Memory metrics are emitted independently so legacy throttled snapshots remain compatible.
-        appendEvent("WORLD_MEMORY", "chunkBlockStorageBytes=" + loadedChunkBlockStorageBytes
+        long now = nanoClock.getAsLong();
+        long previous = lastWorldSnapshotNanos.get();
+        if (previous != Long.MIN_VALUE && now - previous < 10_000_000_000L) return;
+        if (!lastWorldSnapshotNanos.compareAndSet(previous, now)) return;
+        appendEvent("WORLD", "residentChunks=" + residentChunks
+                + ", loadedChunks=" + loadedChunks
+                + ", maximumResidentChunks=" + maximumResidentChunks
+                + ", desiredChunks=" + desiredChunks
+                + ", pendingChunkLoads=" + pendingChunkLoads
+                + ", chunkBlockStorageBytes=" + loadedChunkBlockStorageBytes
                 + ", chunkSections=" + loadedChunkSections
                 + ", cacheOutsidePlanner=" + Math.max(0, loadedChunks - residentChunks)
-                + ", chunksOverTarget=" + Math.max(0, loadedChunks - maximumResidentChunks));
+                + ", chunksOverTarget=" + Math.max(0, loadedChunks - maximumResidentChunks)
+                + ", livingEntities=" + livingEntities
+                + ", mobAiFullRateUpdates=" + mobAiFullRateUpdates
+                + ", mobAiDeferredUpdates=" + mobAiDeferredUpdates
+                + ", mobAiBudgetDeferred=" + mobAiBudgetDeferred
+                + ", mobAiBudgetConsumedNanos=" + mobAiBudgetConsumedNanos);
     }
 
     /** Records the outcome of an allowlisted in-process repair action without user identifiers. */

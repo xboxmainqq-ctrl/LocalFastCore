@@ -79,17 +79,7 @@ public final class ContainerInventoryStorage {
             out.writeInt((int) checksum.getValue());
         }
         if (fileBytes.size() > MAX_FILE_BYTES) throw new IOException("Container inventory exceeds storage limit");
-        Path temporary = Files.createTempFile(containersDirectory, ".nexora-container-", ".tmp");
-        try {
-            Files.write(temporary, fileBytes.toByteArray());
-            try {
-                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException ignored) {
-                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } finally {
-            Files.deleteIfExists(temporary);
-        }
+        ru.nexora.persistence.AtomicFileWriter.writeAtomically(target, fileBytes.toByteArray());
     }
 
     public synchronized Optional<ContainerInventory> load(int x, int y, int z) throws IOException {

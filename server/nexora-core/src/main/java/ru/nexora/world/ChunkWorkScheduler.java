@@ -16,17 +16,12 @@ public final class ChunkWorkScheduler {
 
     public void scheduleLoad(ChunkKey key) {
         String id = "chunk-load-" + key.x() + "-" + key.z();
-        if (exists(id)) return;
-        graph.add(id, TaskContract.ordered(AdaptiveRuntime.Lane.WORLD, 250_000L));
+        graph.addIfAbsent(id, TaskContract.ordered(AdaptiveRuntime.Lane.WORLD, 250_000L));
     }
 
     public void scheduleUnload(ChunkKey key) {
         String id = "chunk-unload-" + key.x() + "-" + key.z();
-        if (exists(id)) return;
-        graph.add(id, TaskContract.deferrable(AdaptiveRuntime.Lane.WORLD, 150_000L));
+        graph.addIfAbsent(id, TaskContract.deferrable(AdaptiveRuntime.Lane.WORLD, 150_000L));
     }
 
-    private boolean exists(String id) {
-        return graph.snapshot().stream().anyMatch(n -> n.id().equals(id));
-    }
 }

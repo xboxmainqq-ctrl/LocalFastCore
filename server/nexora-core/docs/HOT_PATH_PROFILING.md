@@ -52,3 +52,28 @@ live-server stress test: it does not start a Bedrock listener, authenticate real
 run the full world tick/physics pipeline, or measure process CPU/RAM and server TPS.
 Use it to compare AI/scheduler changes; use a separate real-client server soak test
 before making capacity or production-readiness claims.
+
+
+## Full world entity-tick benchmark
+
+Run the end-to-end in-process world coordinator workload:
+
+```bash
+mvn -f server/nexora-core/pom.xml -Dtest=WorldEntityTickLoadBenchmarkTest test
+```
+
+Unlike the isolated AI probe above, this workload registers mobs in the real
+`WorldLivingEntityManager`, updates `WorldChunkResidencyManager`, filters resident
+entities through `WorldEntityTickCoordinator`, and executes `WorldTickPipeline`
+including nearest-player targeting, priority scheduling, AI decisions and bounded
+profiler sampling. It repeats 20 ticks at 100, 500, 1,000, 2,000 and 5,000 entities,
+with eight synthetic player targets and a resident 8-chunk view distance.
+
+It reports coordinator p50/p95/max, targeting p95, decision p95, produced decisions,
+deferred work and resident chunk count. The profiler retains a bounded recent window,
+so subsystem sample counts are intentionally capped.
+
+This still does not start the Bedrock transport/session stack, run collision physics,
+apply movement decisions to a live world, measure OS process CPU/RSS, or calculate
+server TPS/MSPT. It is a more complete world-runtime benchmark, not a real-client
+capacity test.

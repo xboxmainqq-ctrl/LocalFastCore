@@ -15,6 +15,7 @@ public final class WorldEntityDecisionApplier {
     private final WorldLivingEntityManager entities;
     private final World world;
     private final MobPathCache pathCache;
+    private final MobStuckTracker stuckTracker = new MobStuckTracker();
 
     public WorldEntityDecisionApplier(WorldLivingEntityManager entities) {
         this(null, entities, new MobPathCache());
@@ -56,21 +57,37 @@ public final class WorldEntityDecisionApplier {
             if (world != null && !LivingEntityAiService.isFlyingMob(current.identifier())) {
                 double nextX = current.x() + moveX;
                 double nextZ = current.z() + moveZ;
-                if (!WorldCollision.canMoveMob(world, current.identifier(),
-                        current.x(), current.y(), current.z(), nextX, current.y(), nextZ)) {
+                int recoveryAttempt = stuckTracker.observe(current.runtimeId(),
+                        current.x(), current.y(), current.z(), nowMillis);
+                boolean directBlocked = !WorldCollision.canMoveMob(world, current.identifier(),
+                        current.x(), current.y(), current.z(), nextX, current.y(), nextZ);
+                if (directBlocked || recoveryAttempt > 0) {
                     double horizontalStep = Math.hypot(moveX, moveZ);
                     double directionLength = Math.hypot(moveX, moveZ);
                     if (horizontalStep <= 1.0e-6 || directionLength <= 1.0e-6) {
                         moveX = 0;
                         moveZ = 0;
                     } else {
-                        // Search a short distance in the intended direction; the actual
-                        // movement remains capped to this tick's original AI speed.
-                        double goalX = current.x() + moveX / directionLength * 8.0;
-                        double goalZ = current.z() + moveZ / directionLength * 8.0;
+                        // Ordinary detours continue forward. Repeatedly stationary mobs
+                        // invalidate the old route and probe alternating side corridors.
+                        if (recoveryAttempt > 0) pathCache.remove(current.runtimeId());
+                        double forwardX = moveX / directionLength;
+                        double forwardZ = moveZ / directionLength;
+                        double side = recoveryAttempt == 0 ? 0
+                                : (recoveryAttempt % 2 == 1 ? 3.0 : -3.0);
+                        double goalX = current.x() + forwardX * 8.0 - forwardZ * side;
+                        double goalZ = current.z() + forwardZ * 8.0 + forwardX * side;
                         var waypoint = pathCache.findNextStep(current.runtimeId(), world,
                                 current.x(), current.y(), current.z(), goalX, goalZ,
                                 nowMillis, current.identifier());
+                        if (waypoint.isEmpty() && recoveryAttempt > 0) {
+                            // If one side is sealed, try the other before declaring no route.
+                            goalX = current.x() + forwardX * 8.0 + forwardZ * side;
+                            goalZ = current.z() + forwardZ * 8.0 - forwardX * side;
+                            waypoint = pathCache.findNextStep(current.runtimeId(), world,
+                                    current.x(), current.y(), current.z(), goalX, goalZ,
+                                    nowMillis, current.identifier());
+                        }
                         if (waypoint.isPresent()) {
                             double dx = waypoint.orElseThrow().x() - current.x();
                             double dz = waypoint.orElseThrow().z() - current.z();
@@ -81,6 +98,7 @@ public final class WorldEntityDecisionApplier {
                             moveY = waypoint.orElseThrow().y() - current.y();
                         } else {
                             moveX = 0;
+                            moveY = 0;
                             moveZ = 0;
                         }
                     }

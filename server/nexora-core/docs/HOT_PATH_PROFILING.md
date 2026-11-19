@@ -258,7 +258,8 @@ mvn -f server/nexora-core/pom.xml -Dtest=NetherNetInboundPipelineLoadBenchmarkTe
 
 The probe drives the production frame validation, per-channel reassembler lookup,
 message ownership copy and dispatch path across 64 synthetic peers and both channel
-types. It reports frame throughput and per-frame p50/p95/max processing time. It is
+types. It reports sequential frame throughput and per-frame p50/p95/max processing
+time, plus concurrent ingress throughput with 32 independent peer callbacks. It is
 a JVM-side synthetic microbenchmark only: it excludes native WebRTC/SCTP, encryption,
 Bedrock batch decoding, world-thread scheduling and real network conditions.
 

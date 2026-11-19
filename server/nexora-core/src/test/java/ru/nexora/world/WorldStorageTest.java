@@ -90,7 +90,7 @@ class WorldStorageTest {
             world.setBlock(1, 70, 1, BlockType.DIAMOND_BLOCK);
             assertEquals(0, world.activeChunkSaveWorkers());
             world.saveAll();
-            assertTrue(world.activeChunkSaveWorkers() >= 0);
+            assertEquals(0, world.inFlightChunkSaves(), "saveAll must await every chunk write");
             assertEquals(BlockType.DIAMOND_BLOCK,
                     storage.loadChunk(0, 0).orElseThrow().getBlock(1, 70, 1));
 
@@ -98,6 +98,7 @@ class WorldStorageTest {
             world.saveAll();
             assertEquals(BlockType.GOLD_BLOCK,
                     storage.loadChunk(0, 0).orElseThrow().getBlock(1, 70, 1));
+            assertEquals(0, world.inFlightChunkSaves());
         } finally {
             world.closeChunkLoadService();
         }

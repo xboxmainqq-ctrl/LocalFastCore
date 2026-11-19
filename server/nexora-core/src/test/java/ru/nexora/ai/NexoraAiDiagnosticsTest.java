@@ -583,9 +583,12 @@ class NexoraAiDiagnosticsTest {
         AtomicLong clock = new AtomicLong(1_000_000_000L);
         NexoraAiDiagnostics diagnostics = new NexoraAiDiagnostics(clock::get);
 
-        diagnostics.recordWorldRuntimeSnapshot(25, 30, 12, 100, 50, 2, 500_000);
-        diagnostics.recordWorldRuntimeSnapshot(40, 45, 14, 110, 60, 3, 750_000);
+        diagnostics.recordWorldRuntimeSnapshot(25, 30, 8192, 9000, 12, 12, 100, 50, 2, 500_000);
+        diagnostics.recordWorldRuntimeSnapshot(40, 45, 8192, 9100, 8, 14, 110, 60, 3, 750_000);
         assertTrue(diagnostics.recentEvidence().contains("residentChunks=25"));
+        assertTrue(diagnostics.recentEvidence().contains("maximumResidentChunks=8192"));
+        assertTrue(diagnostics.recentEvidence().contains("desiredChunks=9000"));
+        assertTrue(diagnostics.recentEvidence().contains("pendingChunkLoads=12"));
         assertFalse(diagnostics.recentEvidence().contains("residentChunks=40"));
 
         clock.addAndGet(10_000_000_000L);

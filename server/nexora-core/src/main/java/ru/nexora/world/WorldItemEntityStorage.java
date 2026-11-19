@@ -80,12 +80,16 @@ public final class WorldItemEntityStorage {
         if (complete.size() > MAX_FILE_BYTES) throw new IOException("Dropped world item file exceeds size limit");
 
         rejectSymlink(file);
-        ru.nexora.persistence.AtomicFileWriter.writeAtomically(file, complete.toByteArray());
+        ru.nexora.persistence.BackupFile.write(file, complete.toByteArray(), this::readEntityFile);
     }
 
     public synchronized List<WorldItemEntity> load() throws IOException {
+        return ru.nexora.persistence.BackupFile.load(file, this::readEntityFile).orElse(List.of());
+    }
+
+    private List<WorldItemEntity> readEntityFile(Path file) throws IOException {
         rejectSymlink(file);
-        if (!Files.exists(file)) return List.of();
+        if (!Files.exists(file)) throw new IOException("World entity file disappeared during recovery");
         long size = Files.size(file);
         if (size < 9 || size > MAX_FILE_BYTES) throw new IOException("Invalid dropped world item file size");
         byte[] bytes = Files.readAllBytes(file);

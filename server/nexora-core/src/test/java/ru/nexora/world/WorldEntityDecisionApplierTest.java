@@ -74,8 +74,8 @@ class WorldEntityDecisionApplierTest {
         assertTrue(result.moved());
         assertTrue(moved.z() > 0.5,
                 "The mob should move sideways around the blocking wall");
-        assertNotEquals(0.5, moved.x(), 1.0e-6,
-                "The mob should take a side waypoint rather than push into the wall");
+        assertEquals(0.5, moved.x(), 1.0e-6,
+                "The first safe waypoint runs parallel to the wall");
         assertTrue(WorldCollision.canOccupyMob(world, mob.identifier(),
                 moved.x(), moved.y(), moved.z()));
     }

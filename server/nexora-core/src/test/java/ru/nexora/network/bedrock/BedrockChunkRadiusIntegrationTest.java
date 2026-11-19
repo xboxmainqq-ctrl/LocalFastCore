@@ -50,19 +50,24 @@ class BedrockChunkRadiusIntegrationTest {
             handleRequest.invoke(manager, message, session, request(3, 8));
 
             assertEquals(3, field(session, "chunkViewRadius"));
-            assertEquals(49, sentChunks(session).size());
+            assertEquals(4, sentChunks(session).size(),
+                    "Only the first bounded chunk batch should be sent immediately");
             List<BedrockPacket> firstBatch = packetsFor(outbound, "viewer");
             assertEquals(BedrockChunkRadiusCodec.UPDATED_PACKET_ID, firstBatch.getFirst().packetId());
             assertEquals(0x79, firstBatch.get(1).packetId());
             assertEquals(112, Byte.toUnsignedInt(firstBatch.get(1).payload()[4]));
-            assertEquals(49, firstBatch.stream()
+            assertEquals(4, firstBatch.stream()
                     .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
                     .count());
+
+            completeStreaming(manager, session);
+            assertEquals(49, sentChunks(session).size());
 
             // Shrinking the view updates the client radius and local interest set,
             // while already delivered columns are not retransmitted.
             handleRequest.invoke(manager, message, session, request(1, 8));
             assertEquals(1, field(session, "chunkViewRadius"));
+            completeStreaming(manager, session);
             assertEquals(9, sentChunks(session).size());
             List<BedrockPacket> allPackets = packetsFor(outbound, "viewer");
             assertEquals(2, allPackets.stream()
@@ -78,6 +83,16 @@ class BedrockChunkRadiusIntegrationTest {
         } finally {
             manager.close();
         }
+    }
+
+    private static void completeStreaming(BedrockSessionManager manager, Object session) throws Exception {
+        Method process = BedrockSessionManager.class.getDeclaredMethod(
+                "processChunkStreaming", String.class, session.getClass());
+        process.setAccessible(true);
+        for (int attempt = 0; attempt < 32 && field(session, "chunkStreamingQueue") != null; attempt++) {
+            process.invoke(manager, "viewer", session);
+        }
+        assertNull(field(session, "chunkStreamingQueue"), "Chunk streaming should finish within the test pump budget");
     }
 
     private static BedrockPacket request(int radius, int clientMaximum) {

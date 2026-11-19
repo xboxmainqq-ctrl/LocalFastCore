@@ -14,10 +14,10 @@ class WorldPathfinderTest {
         var step = WorldPathfinder.findNextStep(world,
                 0.5, 65.0, 0.5, 3.5, 0.5).orElseThrow();
 
-        assertFalse(step.x() == 1.5 && step.z() == 0.5,
-                "The first waypoint must not pass through the blocking block");
-        assertTrue(WorldCollision.canMove(world,
-                0.5, 65.0, 0.5, step.x(), 65.0, step.z()));
+        assertTrue(WorldCollision.canStepMob(world, "minecraft:zombie",
+                0.5, 65.0, 0.5, step.x(), step.y(), step.z()));
+        assertTrue(step.y() > 65.0 || step.x() != 1.5 || step.z() != 0.5,
+                "A waypoint over the obstacle is safe only when the mob has stepped onto it");
     }
 
     @Test

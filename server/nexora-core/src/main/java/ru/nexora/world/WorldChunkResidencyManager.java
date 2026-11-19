@@ -126,7 +126,6 @@ public final class WorldChunkResidencyManager {
         // Enforce a process-local residency target while preserving center-out
         // priority. Desired chunks beyond the current capacity remain pending:
         // they are offered again on the next update instead of being forgotten.
-        int availableSlots = Math.max(0, maximumResidentChunks - resident.size());
         LinkedHashSet<Long> acceptedLoadKeys = new LinkedHashSet<>();
         // Entity-pinned chunks are correctness-critical and may exceed the soft
         // memory target; player view loads use only the remaining capacity.

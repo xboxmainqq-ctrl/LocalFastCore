@@ -194,7 +194,9 @@ also accounts for the next frame's size so the projected native buffer stays bel
 buffer is empty, avoiding permanent head-of-line blocking. The queue owns its frame copies
 and is cleared when the peer session closes. If the bounded queue is exhausted, the
 session is closed rather than allowing unbounded memory growth or silently dropping
-reliable Bedrock frames.
+reliable Bedrock frames. Buffered-amount callbacks only schedule a coalesced drain
+task on the negotiator executor; the callback itself does not call WebRTC send APIs,
+avoiding re-entrant native calls on the data-channel observer thread.
 
 This is congestion containment, not a direct ping reduction: it limits queued memory
 and prevents unlimited application-side buildup, but cannot improve the player's

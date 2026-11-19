@@ -179,7 +179,10 @@ public final class WorldChunkResidencyManager {
             if (dx * dx + dz * dz > (long) playerRadius * playerRadius) return;
         }
         long key = chunkKey(chunkX, chunkZ);
-        if (!desiredChunks.add(key)) return;
+        desiredChunks.add(key);
+        // Refresh on every update, including chunks already requested by another
+        // player or retained in the current view. Grace starts when the final
+        // player leaves, not when the chunk first entered residency.
         lastDesiredTick.put(key, tick);
         if (!resident.contains(key)) loadScratch.add(key);
     }

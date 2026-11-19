@@ -7,7 +7,7 @@ import java.util.Set;
 
 /** Bounded four-way grid pathfinder for simple ground-based hostile mob navigation. */
 public final class WorldPathfinder {
-    private static final int MAX_VISITED = 256;
+    private static final int MAX_VISITED = 512;
     private static final int MAX_DEPTH = 12;
     private static final int[][] DIRECTIONS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
 

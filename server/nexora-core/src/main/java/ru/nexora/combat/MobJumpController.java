@@ -47,6 +47,12 @@ public final class MobJumpController {
             return false;
         }
 
+        // A jump is an obstacle response, not a periodic hop on open terrain.
+        if (WorldCollision.canMove(world, mob.x(), mob.y(), mob.z(), nextX, mob.y(), nextZ)) {
+            rejected++;
+            return false;
+        }
+
         double raisedY = mob.y() + JUMP_CLEARANCE;
         if (!WorldPathfinder.isMobMovementAreaLoaded(world, mob.x(), mob.z(), mob.x(), mob.z())
                 || !WorldPathfinder.isMobMovementAreaLoaded(world, mob.x(), mob.z(), nextX, nextZ)

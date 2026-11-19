@@ -19,7 +19,7 @@ public final class WorldChunkResidencyManager {
     private final int viewDistance;
     private final int unloadGraceTicks;
     private final Shape shape;
-    private final Map<Long, Integer> desiredRefCounts = new HashMap<>();
+    private final Set<Long> desiredChunks = new HashSet<>();
     private final Map<Long, Long> lastDesiredTick = new HashMap<>();
     private final Set<Long> resident = new HashSet<>();
     private volatile Set<Long> residentSnapshot = Set.of();
@@ -53,7 +53,7 @@ public final class WorldChunkResidencyManager {
         if (tick < 0) throw new IllegalArgumentException("tick must be non-negative");
         java.util.Objects.requireNonNull(players, "players");
         java.util.Objects.requireNonNull(pinnedChunks, "pinnedChunks");
-        desiredRefCounts.clear();
+        desiredChunks.clear();
 
         for (PlayerChunk player : players) {
             if (player == null) continue;
@@ -74,7 +74,7 @@ public final class WorldChunkResidencyManager {
                     if (shape == Shape.CIRCULAR
                             && dx * dx + dz * dz > (long) playerRadius * playerRadius) continue;
                     long key = chunkKey(x, z);
-                    desiredRefCounts.merge(key, 1, Integer::sum);
+                    desiredChunks.add(key);
                     lastDesiredTick.put(key, tick);
                 }
             }
@@ -83,17 +83,17 @@ public final class WorldChunkResidencyManager {
         for (ChunkCoordinate pinned : pinnedChunks) {
             if (pinned == null) continue;
             long key = chunkKey(pinned.chunkX(), pinned.chunkZ());
-            desiredRefCounts.merge(key, 1, Integer::sum);
+            desiredChunks.add(key);
             lastDesiredTick.put(key, tick);
         }
 
-        Set<Long> load = new HashSet<>(desiredRefCounts.keySet());
+        Set<Long> load = new HashSet<>(desiredChunks);
         load.removeAll(resident);
         resident.addAll(load);
 
         Set<Long> unload = new HashSet<>();
-        for (long key : new ArrayList<>(resident)) {
-            if (desiredRefCounts.containsKey(key)) continue;
+        for (long key : resident) {
+            if (desiredChunks.contains(key)) continue;
             long last = lastDesiredTick.getOrDefault(key, tick);
             if (tick - last >= unloadGraceTicks) {
                 unload.add(key);
@@ -104,8 +104,8 @@ public final class WorldChunkResidencyManager {
         if (!load.isEmpty() || !unload.isEmpty()) {
             residentSnapshot = Set.copyOf(resident);
         }
-        return new ResidencyPlan(List.copyOf(decode(load)), List.copyOf(decode(unload)),
-                resident.size(), desiredRefCounts.size());
+        return new ResidencyPlan(decode(load), decode(unload),
+                resident.size(), desiredChunks.size());
     }
 
     /** Lock-free read against the last fully published residency snapshot. */

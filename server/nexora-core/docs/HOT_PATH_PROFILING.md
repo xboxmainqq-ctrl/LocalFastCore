@@ -205,8 +205,10 @@ or throughput claim is made. The queue's FIFO, ownership, byte/frame bounds, res
 order and cleanup are covered by `NetherNetOutboundQueueTest`; live multi-client
 WebRTC congestion testing is still required.
 
-The negotiator also requests a WebRTC `getStats` snapshot every five seconds for
-connected peers. It records the nominated, succeeded ICE candidate pair's
+The negotiator also requests WebRTC `getStats` snapshots in a round-robin batch,
+with at most 32 connected peers sampled per second. This avoids issuing a burst of
+stats requests for every player at once on larger servers. It records the nominated,
+succeeded ICE candidate pair's
 `currentRoundTripTime` (converted from seconds to milliseconds) and cumulative
 transport bytes sent/received. Sampling is asynchronous and guarded against
 overlapping requests; it does not run on the data-channel callback. This RTT is

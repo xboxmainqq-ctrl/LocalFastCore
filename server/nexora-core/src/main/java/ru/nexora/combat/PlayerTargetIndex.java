@@ -25,18 +25,21 @@ public final class PlayerTargetIndex {
     public static final double SEARCH_RADIUS_SQUARED = SEARCH_RADIUS * SEARCH_RADIUS;
     private static final int CELL_SIZE = 128;
 
-    private final Map<Long, List<LivingEntityAiService.PlayerTarget>> cells;
+    private final Map<Long, List<IndexedPlayer>> cells;
     private final Map<String, LivingEntityAiService.PlayerTarget> byNetworkId;
 
     public PlayerTargetIndex(List<LivingEntityAiService.PlayerTarget> players) {
         Objects.requireNonNull(players, "players");
-        Map<Long, List<LivingEntityAiService.PlayerTarget>> mutableCells = new HashMap<>();
+        Map<Long, List<IndexedPlayer>> mutableCells = new HashMap<>();
         Map<String, LivingEntityAiService.PlayerTarget> mutableIds = new HashMap<>();
+        int order = 0;
         for (LivingEntityAiService.PlayerTarget player : players) {
+            int playerOrder = order++;
             if (player == null || !player.alive()) continue;
             int cellX = cell(player.x());
             int cellZ = cell(player.z());
-            mutableCells.computeIfAbsent(key(cellX, cellZ), ignored -> new ArrayList<>()).add(player);
+            mutableCells.computeIfAbsent(key(cellX, cellZ), ignored -> new ArrayList<>())
+                    .add(new IndexedPlayer(player, playerOrder));
             mutableIds.put(player.networkId(), player);
         }
         // These maps and their bucket lists are privately owned and never mutated
@@ -55,18 +58,23 @@ public final class PlayerTargetIndex {
         int centerZ = cell(mob.z());
         LivingEntityAiService.PlayerTarget nearest = null;
         double nearestDistanceSquared = SEARCH_RADIUS_SQUARED;
+        int nearestOrder = Integer.MAX_VALUE;
         for (int cellX = centerX - 1; cellX <= centerX + 1; cellX++) {
             for (int cellZ = centerZ - 1; cellZ <= centerZ + 1; cellZ++) {
-                List<LivingEntityAiService.PlayerTarget> candidates = cells.get(key(cellX, cellZ));
+                List<IndexedPlayer> candidates = cells.get(key(cellX, cellZ));
                 if (candidates == null) continue;
-                for (LivingEntityAiService.PlayerTarget candidate : candidates) {
+                for (IndexedPlayer indexed : candidates) {
+                    LivingEntityAiService.PlayerTarget candidate = indexed.target();
                     double dx = candidate.x() - mob.x();
                     double dy = candidate.y() - mob.y();
                     double dz = candidate.z() - mob.z();
                     double distanceSquared = dx * dx + dy * dy + dz * dz;
-                    if ((nearest == null && distanceSquared <= SEARCH_RADIUS_SQUARED)
-                            || distanceSquared < nearestDistanceSquared) {
+                    if (distanceSquared < nearestDistanceSquared
+                            || (nearest == null && distanceSquared == SEARCH_RADIUS_SQUARED)
+                            || (distanceSquared == nearestDistanceSquared
+                            && indexed.order() < nearestOrder)) {
                         nearestDistanceSquared = distanceSquared;
+                        nearestOrder = indexed.order();
                         nearest = candidate;
                     }
                 }
@@ -84,6 +92,8 @@ public final class PlayerTargetIndex {
     public int playerCount() {
         return byNetworkId.size();
     }
+
+    private record IndexedPlayer(LivingEntityAiService.PlayerTarget target, int order) { }
 
     private static int cell(double coordinate) {
         return (int) Math.floor(coordinate / CELL_SIZE);

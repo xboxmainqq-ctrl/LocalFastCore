@@ -3425,6 +3425,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     Math.floorDiv((int) Math.floor(player.positionZ), 16),
                     player.chunkViewRadius));
         }
+        // One spatial index per world tick replaces O(mobs * players) full-list
+        // target scans with a bounded 3x3 cell lookup and O(1) provoker lookup.
+        ru.nexora.combat.PlayerTargetIndex playerTargetIndex =
+                new ru.nexora.combat.PlayerTargetIndex(targets);
         Set<WorldChunkResidencyManager.ChunkCoordinate> entityChunks = new HashSet<>();
         for (WorldLivingEntity entity : world.livingEntities().snapshot()) {
             entityChunks.add(new WorldChunkResidencyManager.ChunkCoordinate(
@@ -3507,7 +3511,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
             long targetingStartedNanos = nanoTime.getAsLong();
             ru.nexora.combat.LivingEntityAiService.PlayerTarget nearestPlayer =
-                    ru.nexora.combat.LivingEntityAiService.nearestAlivePlayer(mob, targets);
+                    playerTargetIndex.nearestWithinRange(mob);
             hotPathProfiler.record(ru.nexora.ai.HotPathProfiler.Path.MOB_TARGETING,
                     Math.max(0L, nanoTime.getAsLong() - targetingStartedNanos));
             if ("minecraft:creeper".equals(mob.identifier())
@@ -3571,7 +3575,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             long decisionStartedNanos = nanoTime.getAsLong();
             ru.nexora.combat.LivingEntityAiService.Decision decision =
                     livingEntityAi.decide(mob, targets, nowMillis, nextAttackAt,
-                            provokedBy, nearestPlayer);
+                            provokedBy, nearestPlayer, playerTargetIndex.find(provokedBy));
             double projectileRange = ru.nexora.combat.LivingEntityAiService
                     .projectileRangeFor(mob.identifier());
             if (nearestPlayer != null && projectileRange > 0

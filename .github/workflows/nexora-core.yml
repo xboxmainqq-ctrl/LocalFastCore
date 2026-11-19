@@ -32,6 +32,19 @@ jobs:
           cache: maven
       - name: Build and test
         run: mvn --batch-mode --no-transfer-progress -f server/nexora-core/pom.xml clean verify
+      - name: Verify standalone JAR contents
+        run: |
+          test -f server/nexora-core/target/server.jar
+          jar tf server/nexora-core/target/server.jar | grep -q '^com/fasterxml/jackson/databind/ObjectMapper.class
+        if: success() && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexora-core-${{ github.sha }}
+          path: server/nexora-core/target/server.jar
+          if-no-files-found: error
+          retention-days: 1
+
+          unzip -p server/nexora-core/target/server.jar META-INF/MANIFEST.MF | grep -q '^Main-Class: ru.nexora.NexoraServer'
       - name: Upload runnable server package
         if: success() && github.event_name == 'push'
         uses: actions/upload-artifact@v4

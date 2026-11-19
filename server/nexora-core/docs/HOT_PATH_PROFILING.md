@@ -223,9 +223,14 @@ measurements instead of presenting them as current ping. Byte totals are retaine
 when the native report contains them even if its RTT field is unavailable. The server console's
 `network` command reports connected sessions, fresh/stale sample counts, average and
 maximum fresh ICE RTT, and cumulative transport byte totals. Average/max RTT exclude
-stale or missing samples; byte counters remain cumulative and are not instantaneous
-throughput. Throughput requires comparing two timestamped samples. Data-channel
-traffic does not expose a trustworthy application packet-loss percentage through
-this candidate-pair sample, so NEXORA does not label ICE checks or missing counters
+stale or missing samples; byte counters remain cumulative. NEXORA also derives
+per-peer sent/received bytes-per-second from successive timestamped counter samples.
+Rates are reported only when both counter baselines are valid, monotonically
+increasing and time-aligned; counter resets or incomplete native reports invalidate
+the rate until a new baseline pair is available. Stale rates are excluded from the
+aggregate, and the console reports how many peers contributed. These are WebRTC
+transport rates, not guaranteed gameplay payload throughput. Data-channel traffic
+does not expose a trustworthy application packet-loss percentage through this
+candidate-pair sample, so NEXORA does not label ICE checks or missing counters
 as player packet loss. A live client test is still needed to validate which native
 stats fields are populated on each deployment platform.

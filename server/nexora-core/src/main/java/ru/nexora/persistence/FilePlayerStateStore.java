@@ -59,7 +59,9 @@ public final class FilePlayerStateStore implements PlayerStateStore {
                  FileLock ignored = lockChannel.lock()) {
                 Path target = snapshotPath(snapshot.playerId());
                 rejectSymlink(target);
-                Optional<PlayerStateSnapshot> current = read(target, snapshot.playerId());
+                Path backup = backupPath(snapshot.playerId());
+                rejectSymlink(backup);
+                Optional<PlayerStateSnapshot> current = readRecovering(target, backup, snapshot.playerId());
                 if (current.isPresent()) {
                     PlayerStateSnapshot stored = current.orElseThrow();
                     if (snapshot.revision() < stored.revision()) return SaveResult.STALE;
@@ -71,6 +73,10 @@ public final class FilePlayerStateStore implements PlayerStateStore {
                         throw new IllegalStateException("Conflicting player snapshot revision "
                                 + snapshot.revision() + " for player " + snapshot.playerId());
                     }
+                }
+                if (current.isPresent() && Files.exists(target)) {
+                    // Preserve the last verified generation before replacing the primary snapshot.
+                    AtomicFileWriter.writeAtomically(backup, Files.readAllBytes(target));
                 }
                 writeAtomically(target, encode(snapshot));
                 return SaveResult.SAVED;
@@ -89,7 +95,9 @@ public final class FilePlayerStateStore implements PlayerStateStore {
                  FileLock ignored = lockChannel.lock()) {
                 Path target = snapshotPath(playerId);
                 rejectSymlink(target);
-                return read(target, playerId);
+                Path backup = backupPath(playerId);
+                rejectSymlink(backup);
+                return readRecovering(target, backup, playerId);
             }
         }
     }
@@ -168,6 +176,32 @@ public final class FilePlayerStateStore implements PlayerStateStore {
         }
     }
 
+    private Optional<PlayerStateSnapshot> readRecovering(
+            Path primary, Path backup, String playerId) throws IOException {
+        IOException primaryFailure = null;
+        try {
+            Optional<PlayerStateSnapshot> current = read(primary, playerId);
+            if (current.isPresent()) return current;
+        } catch (IOException corruptPrimary) {
+            primaryFailure = corruptPrimary;
+        }
+
+        try {
+            Optional<PlayerStateSnapshot> previous = read(backup, playerId);
+            if (previous.isPresent()) {
+                // Restore a known-good generation so subsequent saves can continue normally.
+                writeAtomically(primary, encode(previous.orElseThrow()));
+                return previous;
+            }
+        } catch (IOException corruptBackup) {
+            if (primaryFailure != null) primaryFailure.addSuppressed(corruptBackup);
+            else throw corruptBackup;
+        }
+
+        if (primaryFailure != null) throw primaryFailure;
+        return Optional.empty();
+    }
+
     private void writeAtomically(Path target, byte[] bytes) throws IOException {
         AtomicFileWriter.writeAtomically(target, bytes);
     }
@@ -190,6 +224,11 @@ public final class FilePlayerStateStore implements PlayerStateStore {
     private Path lockPath(String playerId) {
         validatePlayerId(playerId);
         return directory.resolve(playerId + ".lock");
+    }
+
+    private Path backupPath(String playerId) {
+        validatePlayerId(playerId);
+        return directory.resolve(playerId + ".nxps.bak");
     }
 
     private static void validatePlayerId(String playerId) {

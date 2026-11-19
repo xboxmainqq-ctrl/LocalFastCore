@@ -264,4 +264,39 @@ class NexoraAiGuardTest {
         assertTrue(guard.findCombatCase(created.id(), 1_804_000_000_001L).isEmpty());
     }
 
+
+    @Test
+    void recordsConcurrentPeerTrafficWithoutGlobalCounterLoss() throws Exception {
+        int peerCount = 32;
+        int framesPerPeer = 100;
+        java.util.concurrent.CopyOnWriteArrayList<NexoraAiGuard.GuardEvent> events =
+                new java.util.concurrent.CopyOnWriteArrayList<>();
+        NexoraAiGuard guard = new NexoraAiGuard(
+                1_000_000_000L, 50, 10_000_000L, peerCount, events::add);
+        java.util.concurrent.ExecutorService workers =
+                java.util.concurrent.Executors.newFixedThreadPool(peerCount);
+        try {
+            List<java.util.concurrent.Callable<Void>> tasks = new ArrayList<>();
+            for (int peer = 0; peer < peerCount; peer++) {
+                final int peerIndex = peer;
+                tasks.add(() -> {
+                    for (int frame = 0; frame < framesPerPeer; frame++) {
+                        guard.recordInboundFrame("peer-" + peerIndex, 100, frame);
+                    }
+                    return null;
+                });
+            }
+            for (var result : workers.invokeAll(tasks)) result.get();
+        } finally {
+            workers.shutdownNow();
+        }
+
+        NexoraAiGuard.Snapshot snapshot = guard.snapshot();
+        assertEquals(peerCount, snapshot.trackedPeers());
+        assertEquals(peerCount * (long) framesPerPeer, snapshot.framesInCurrentWindows());
+        assertEquals(peerCount * (long) framesPerPeer * 100, snapshot.bytesInCurrentWindows());
+        assertEquals(peerCount, snapshot.totalSignalsSinceStart());
+        assertEquals(peerCount, events.size());
+    }
+
 }

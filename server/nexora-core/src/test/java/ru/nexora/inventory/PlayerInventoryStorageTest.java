@@ -80,6 +80,25 @@ class PlayerInventoryStorageTest {
     }
 
     @Test
+    void restoresPreviousVerifiedInventoryWhenPrimaryIsCorrupted() throws Exception {
+        PlayerInventoryStorage storage = new PlayerInventoryStorage(temporaryDirectory);
+        PlayerInventory first = new PlayerInventory();
+        first.setSlot(0, new ItemStack("minecraft:stone", 3, 64));
+        PlayerInventory second = new PlayerInventory();
+        second.setSlot(0, new ItemStack("minecraft:diamond", 7, 64));
+        storage.save("recover-inventory", first);
+        storage.save("recover-inventory", second);
+        Path primary = temporaryDirectory.resolve("recover-inventory.nxi");
+        Path backup = temporaryDirectory.resolve("recover-inventory.nxi.bak");
+        byte[] damaged = Files.readAllBytes(primary);
+        damaged[5] ^= 1;
+        Files.write(primary, damaged);
+
+        assertEquals(first.getSlot(0), storage.load("recover-inventory").orElseThrow().getSlot(0));
+        assertArrayEquals(Files.readAllBytes(backup), Files.readAllBytes(primary));
+    }
+
+    @Test
     void rejectsInvalidPlayerIdentifiers() throws Exception {
         PlayerInventoryStorage storage = new PlayerInventoryStorage(temporaryDirectory);
         assertThrows(IllegalArgumentException.class, () -> storage.save("../outside", new PlayerInventory()));

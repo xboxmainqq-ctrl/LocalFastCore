@@ -1478,6 +1478,52 @@ class BedrockSessionManagerTest {
 
 
     @Test
+    void ghastFireballExplosionDamagesNearbyPlayerAndDestroysOrdinaryBlocks() throws Exception {
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "ghast-explosion-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        mobWorld.getChunk(0, 0);
+        mobWorld.setBlock(6, 66, 0, ru.nexora.world.BlockType.STONE);
+        mobWorld.setBlock(6, 67, 0, ru.nexora.world.BlockType.CHEST);
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {});
+        try {
+            manager.onIdentity("blast-player", new NetherNetClientIdentity(
+                    "blast-token", new byte[] {33}, "blast-xuid",
+                    "BlastPlayer", "playfab-blast", "20CA2", null));
+            setSessionField(manager, "blast-player", "loginAuthenticated", true);
+            setSessionField(manager, "blast-player", "clientInitialized", true);
+            setSessionField(manager, "blast-player", "positionInitialized", true);
+            setSessionField(manager, "blast-player", "entityId", 133L);
+            setSessionField(manager, "blast-player", "positionX", 5.5f);
+            setSessionField(manager, "blast-player", "positionY", 65.0f);
+            setSessionField(manager, "blast-player", "positionZ", 0.5f);
+            var ghast = manager.spawnLivingEntity("minecraft:ghast", 16.0f, 10.0, 65.0, 0.5);
+            var target = new ru.nexora.combat.LivingEntityAiService.PlayerTarget(
+                    "blast-player", 5.5, 65.0, 0.5, true);
+            java.lang.reflect.Method launch = BedrockSessionManager.class.getDeclaredMethod(
+                    "tickFireballMobBehavior",
+                    ru.nexora.world.WorldLivingEntity.class,
+                    ru.nexora.combat.LivingEntityAiService.PlayerTarget.class, long.class);
+            launch.setAccessible(true);
+            java.lang.reflect.Method tick = BedrockSessionManager.class.getDeclaredMethod(
+                    "tickMobFireballs", long.class);
+            tick.setAccessible(true);
+            float initialHealth = manager.playerVitals("blast-player").orElseThrow().health();
+
+            assertEquals(true, launch.invoke(manager, ghast, target, 1_000L));
+            for (int i = 0; i < 8; i++) tick.invoke(manager, (long) i + 1L);
+
+            assertTrue(manager.playerVitals("blast-player").orElseThrow().health() < initialHealth);
+            assertEquals(ru.nexora.world.BlockType.AIR, mobWorld.getBlock(6, 66, 0));
+            assertEquals(ru.nexora.world.BlockType.CHEST, mobWorld.getBlock(6, 67, 0));
+            assertTrue((long) getSessionField(manager, "blast-player", "fireUntilNanos") > 0L);
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void ghastFireballTravelsAsFireballAndDamagesAndIgnitesBedrockPlayer() throws Exception {
         ru.nexora.world.World mobWorld = new ru.nexora.world.World(
                 "ghast-fireball-world", 0L, new ru.nexora.world.FlatWorldGenerator());

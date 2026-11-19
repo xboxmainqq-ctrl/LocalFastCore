@@ -53,17 +53,7 @@ public final class MobSpawnerStorage {
         try (DataOutputStream out = new DataOutputStream(bytes)) {
             out.writeInt((int) checksum.getValue());
         }
-        Path temporary = Files.createTempFile(file.getParent(), ".nexora-spawners-", ".tmp");
-        try {
-            Files.write(temporary, bytes.toByteArray());
-            try {
-                Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException ignored) {
-                Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } finally {
-            Files.deleteIfExists(temporary);
-        }
+        ru.nexora.persistence.AtomicFileWriter.writeAtomically(file, bytes.toByteArray());
     }
 
     public synchronized List<MobSpawnerState> load() throws IOException {

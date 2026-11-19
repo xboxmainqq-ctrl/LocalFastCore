@@ -6345,12 +6345,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         ChunkStreamingQueue queue = state.chunkStreamingQueue;
         if (queue == null) return;
 
-        List<Long> chunkKeys = queue.nextBatch(MAX_CHUNKS_PER_SESSION_TICK);
+        List<Long> chunkKeys = queue.peekBatch(MAX_CHUNKS_PER_SESSION_TICK);
         if (!chunkKeys.isEmpty()) {
-            List<BedrockPacket> packets = new ArrayList<>(Math.min(
-                    MAX_CHUNK_PACKETS_PER_BATCH, chunkKeys.size()));
-            List<Long> publishedKeys = new ArrayList<>(Math.min(
-                    MAX_CHUNK_PACKETS_PER_BATCH, chunkKeys.size()));
+            List<BedrockPacket> packets = new ArrayList<>(MAX_CHUNK_PACKETS_PER_BATCH);
+            List<Long> publishedKeys = new ArrayList<>(MAX_CHUNK_PACKETS_PER_BATCH);
             for (long key : chunkKeys) {
                 if (state.sentChunkKeys.contains(key)) continue;
                 int chunkX = (int) (key >> 32);
@@ -6362,6 +6360,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 }
             }
             flushChunkBatch(networkId, state, packets, publishedKeys);
+            // Advance only after packet creation and every transport submission succeeded.
+            queue.advance(chunkKeys.size());
         }
 
         if (!queue.isComplete()) return;

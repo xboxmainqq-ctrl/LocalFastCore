@@ -5,6 +5,8 @@ import org.h2.tools.Server;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ru.nexora.inventory.ContainerInventory;
+import ru.nexora.inventory.EquipmentSlot;
+import ru.nexora.inventory.ItemStack;
 import ru.nexora.inventory.PlayerEquipment;
 import ru.nexora.inventory.PlayerInventory;
 import ru.nexora.persistence.JdbcPlayerStateStore;
@@ -64,7 +66,10 @@ class ClusterOwnershipRestartIntegrationTest {
                 PlayerTransferOwnershipGuard.loginDecision(Optional.of(committed), "node-b"));
         PlayerStateCheckpointService recoveredCheckpoints =
                 new PlayerStateCheckpointService(stateAfterRestart, new PlayerStateBundleCodec());
-        assertEquals(revision, recoveredCheckpoints.loadAtRevision(xuid, revision).orElseThrow().revision());
+        var restoredCheckpoint = recoveredCheckpoints.loadAtRevision(xuid, revision).orElseThrow();
+        assertEquals(revision, restoredCheckpoint.revision());
+        assertEquals(bundle(xuid), restoredCheckpoint.bundle(),
+                "The destination node must recover the exact position, vitals, inventory, crafting, armor, offhand and RPG equipment after restart");
 
         clock.set(104L);
         assertTrue(leasesAfterRestart.acquire(xuid, "node-b", "session-b", 104L, 1_000L));
@@ -179,9 +184,27 @@ class ClusterOwnershipRestartIntegrationTest {
     }
 
     private static PlayerStateBundle bundle(String xuid) {
-        PlayerData profile = new PlayerData(xuid, "RestartPlayer", "world",
-                12.0f, 65.0f, -8.0f, 90.0f, 0.0f, 100L, PlayerVitals.DEFAULT, 37, 200);
-        return PlayerStateBundle.capture(profile, new PlayerInventory(),
-                new ContainerInventory(PlayerStateBundle.CRAFTING_UI_SLOT_COUNT), new PlayerEquipment());
+        PlayerData profile = new PlayerData(xuid, "RestartPlayer", "survival",
+                12.5f, 71.0f, -8.25f, 135.0f, -12.0f, 100L,
+                new PlayerVitals(17.5f, 16, 3.25f, 0.75f), 237, 650);
+        PlayerInventory inventory = new PlayerInventory();
+        inventory.setSlot(2, new ItemStack("minecraft:diamond_sword", 1, 1,
+                java.util.Map.of("minecraft:sharpness", 5, "minecraft:unbreaking", 3), 4));
+        inventory.setSlot(17, new ItemStack("minecraft:ender_pearl", 12, 16));
+        inventory.selectHotbarSlot(2);
+
+        ContainerInventory crafting = new ContainerInventory(PlayerStateBundle.CRAFTING_UI_SLOT_COUNT);
+        crafting.setSlot(28, new ItemStack("minecraft:diamond", 7, 64));
+
+        PlayerEquipment equipment = new PlayerEquipment();
+        equipment.setArmor(0, new ItemStack("minecraft:diamond_helmet", 1, 1));
+        equipment.setArmor(1, new ItemStack("minecraft:diamond_chestplate", 1, 1));
+        equipment.setOffhand(new ItemStack("minecraft:totem_of_undying", 1, 1));
+        equipment.setCursor(new ItemStack("minecraft:emerald", 3, 64));
+        equipment.setMagicSlot(EquipmentSlot.MAGIC_STAFF,
+                new ItemStack("nexora:arcane_staff", 1, 1,
+                        java.util.Map.of("nexora:arcane_power", 4), 2));
+        equipment.setMagicSlot(EquipmentSlot.RING_LEFT, new ItemStack("nexora:ring_of_vitality", 1, 1));
+        return PlayerStateBundle.capture(profile, inventory, crafting, equipment);
     }
 }

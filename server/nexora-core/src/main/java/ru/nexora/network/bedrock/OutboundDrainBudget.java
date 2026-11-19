@@ -18,7 +18,7 @@ final class OutboundDrainBudget {
     static final long DEFAULT_WINDOW_NANOS = 50_000_000L;
     static final int DEFAULT_GLOBAL_FRAMES = 256;
     static final long DEFAULT_GLOBAL_BYTES = 4L * 1024L * 1024L;
-    static final int DEFAULT_SESSION_FRAMES = 64;
+    static final int DEFAULT_SESSION_FRAMES = 256;
     static final long DEFAULT_SESSION_BYTES = 4L * 1024L * 1024L;
     static final long DEFAULT_IDLE_SESSION_NANOS = 250_000_000L;
 

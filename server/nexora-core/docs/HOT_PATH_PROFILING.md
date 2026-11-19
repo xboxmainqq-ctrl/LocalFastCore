@@ -188,7 +188,10 @@ The WebRTC send path now observes each data channel's buffered byte count before
 submitting another frame. At 512 KiB of native WebRTC buffering, additional frames
 are placed in a per-channel FIFO instead of being pushed into the SCTP send buffer.
 The FIFO is bounded to 4 MiB and 2,048 frames per channel; it drains in order after
-the native buffered amount falls to 256 KiB or less. The queue owns its frame copies
+the native buffered amount falls to 256 KiB or less. Before each send, the scheduler
+also accounts for the next frame's size so the projected native buffer stays below
+512 KiB; a single frame larger than that watermark is allowed only when the native
+buffer is empty, avoiding permanent head-of-line blocking. The queue owns its frame copies
 and is cleared when the peer session closes. If the bounded queue is exhausted, the
 session is closed rather than allowing unbounded memory growth or silently dropping
 reliable Bedrock frames.

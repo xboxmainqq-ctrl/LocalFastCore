@@ -6317,30 +6317,73 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         sendChunkArea(networkId, state, centerX, centerZ);
     }
 
+    private static final int MAX_CHUNK_PACKETS_PER_BATCH = 4;
+
     private void sendChunkArea(String networkId, SessionState state, int centerX, int centerZ) {
         int radius = state.chunkViewRadius;
-        Set<Long> desiredChunks = new HashSet<>();
+        int diameter = radius * 2 + 1;
+        Set<Long> desiredChunks = new HashSet<>(diameter * diameter * 2);
+        List<BedrockPacket> pendingPackets = new ArrayList<>(MAX_CHUNK_PACKETS_PER_BATCH);
+        List<Long> pendingChunkKeys = new ArrayList<>(MAX_CHUNK_PACKETS_PER_BATCH);
+
+        // Visit each ring exactly once. The previous nested-square scan revisited
+        // inner cells for every ring, making traversal O(radius^3) instead of O(radius^2).
         for (int ring = 0; ring <= radius; ring++) {
-            for (int offsetZ = -ring; offsetZ <= ring; offsetZ++) {
-                for (int offsetX = -ring; offsetX <= ring; offsetX++) {
-                    if (Math.max(Math.abs(offsetX), Math.abs(offsetZ)) != ring) continue;
-                    int chunkX = centerX + offsetX;
-                    int chunkZ = centerZ + offsetZ;
-                    long key = ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
-                    desiredChunks.add(key);
-                    if (state.sentChunkKeys.add(key)) {
-                        WorldChunk chunk = world.getChunk(chunkX, chunkZ);
-                        sendPacket(networkId, BedrockLevelChunkCodec.createPacket(chunk), true);
-                    }
-                }
+            if (ring == 0) {
+                queueChunkForStreaming(networkId, centerX, centerZ, state,
+                        desiredChunks, pendingPackets, pendingChunkKeys);
+                flushChunkBatch(networkId, state, pendingPackets, pendingChunkKeys);
+                continue;
+            }
+            int min = -ring;
+            int max = ring;
+            for (int offsetX = min; offsetX <= max; offsetX++) {
+                queueChunkForStreaming(networkId, centerX + offsetX, centerZ + min, state,
+                        desiredChunks, pendingPackets, pendingChunkKeys);
+                queueChunkForStreaming(networkId, centerX + offsetX, centerZ + max, state,
+                        desiredChunks, pendingPackets, pendingChunkKeys);
+            }
+            for (int offsetZ = min + 1; offsetZ < max; offsetZ++) {
+                queueChunkForStreaming(networkId, centerX + min, centerZ + offsetZ, state,
+                        desiredChunks, pendingPackets, pendingChunkKeys);
+                queueChunkForStreaming(networkId, centerX + max, centerZ + offsetZ, state,
+                        desiredChunks, pendingPackets, pendingChunkKeys);
             }
         }
+        flushChunkBatch(networkId, state, pendingPackets, pendingChunkKeys);
         state.sentChunkKeys.retainAll(desiredChunks);
         actorReplicationIndex.replaceChunkView(networkId, state.sentChunkKeys);
         state.lastChunkX = centerX;
         state.lastChunkZ = centerZ;
         syncVisiblePlayerActors(networkId, state);
         syncVisibleWorldActors(networkId, state);
+    }
+
+    private void queueChunkForStreaming(
+            String networkId, int chunkX, int chunkZ, SessionState state,
+            Set<Long> desiredChunks, List<BedrockPacket> pendingPackets,
+            List<Long> pendingChunkKeys
+    ) {
+        long key = ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
+        desiredChunks.add(key);
+        if (state.sentChunkKeys.contains(key)) return;
+        pendingPackets.add(BedrockLevelChunkCodec.createPacket(world.getChunk(chunkX, chunkZ)));
+        pendingChunkKeys.add(key);
+        if (pendingPackets.size() >= MAX_CHUNK_PACKETS_PER_BATCH) {
+            flushChunkBatch(networkId, state, pendingPackets, pendingChunkKeys);
+        }
+    }
+
+    private void flushChunkBatch(
+            String networkId, SessionState state,
+            List<BedrockPacket> pendingPackets, List<Long> pendingChunkKeys
+    ) {
+        if (pendingPackets.isEmpty()) return;
+        // Only publish chunk keys after the complete batch was accepted by the transport.
+        sendPackets(networkId, pendingPackets, true);
+        state.sentChunkKeys.addAll(pendingChunkKeys);
+        pendingPackets.clear();
+        pendingChunkKeys.clear();
     }
 
     /** Reconciles remote player actors whenever a client's published chunk view changes. */

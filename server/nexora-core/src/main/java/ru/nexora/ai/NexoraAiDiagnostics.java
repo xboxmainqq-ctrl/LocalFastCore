@@ -271,7 +271,25 @@ public final class NexoraAiDiagnostics {
             long mobAiBudgetDeferred,
             long mobAiBudgetConsumedNanos
     ) {
-        if (residentChunks < 0 || loadedChunks < 0 || livingEntities < 0
+        recordWorldRuntimeSnapshot(residentChunks, loadedChunks, 0, 0, 0, livingEntities,
+                mobAiFullRateUpdates, mobAiDeferredUpdates, mobAiBudgetDeferred, mobAiBudgetConsumedNanos);
+    }
+
+    /** Records planner target, actual cache occupancy and deferred work alongside gameplay metrics. */
+    public void recordWorldRuntimeSnapshot(
+            int residentChunks,
+            int loadedChunks,
+            int maximumResidentChunks,
+            int desiredChunks,
+            int pendingChunkLoads,
+            int livingEntities,
+            long mobAiFullRateUpdates,
+            long mobAiDeferredUpdates,
+            long mobAiBudgetDeferred,
+            long mobAiBudgetConsumedNanos
+    ) {
+        if (residentChunks < 0 || loadedChunks < 0 || maximumResidentChunks < 0
+                || desiredChunks < 0 || pendingChunkLoads < 0 || livingEntities < 0
                 || mobAiFullRateUpdates < 0 || mobAiDeferredUpdates < 0
                 || mobAiBudgetDeferred < 0 || mobAiBudgetConsumedNanos < 0) {
             throw new IllegalArgumentException("World runtime metrics must be non-negative");
@@ -282,6 +300,9 @@ public final class NexoraAiDiagnostics {
         if (!lastWorldSnapshotNanos.compareAndSet(previous, now)) return;
         appendEvent("WORLD", "residentChunks=" + residentChunks
                 + ", loadedChunks=" + loadedChunks
+                + ", maximumResidentChunks=" + maximumResidentChunks
+                + ", desiredChunks=" + desiredChunks
+                + ", pendingChunkLoads=" + pendingChunkLoads
                 + ", livingEntities=" + livingEntities
                 + ", mobAiFullRateUpdates=" + mobAiFullRateUpdates
                 + ", mobAiDeferredUpdates=" + mobAiDeferredUpdates

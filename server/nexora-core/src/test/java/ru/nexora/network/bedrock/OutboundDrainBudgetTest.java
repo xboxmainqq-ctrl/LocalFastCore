@@ -66,6 +66,32 @@ class OutboundDrainBudgetTest {
     }
 
     @Test
+    void distributesGlobalCapacityAcrossOneHundredTwentyEightSessionsAcrossWindows() {
+        int sessionCount = 128;
+        OutboundDrainBudget budget = new OutboundDrainBudget(
+                50, 64, 64 * 1024, 1, 1024, 500);
+        int[] admitted = new int[sessionCount];
+
+        for (int window = 0; window < 2; window++) {
+            long now = window * 50L;
+            for (int session = 0; session < sessionCount; session++) {
+                String key = "player-" + session;
+                if (budget.tryAcquire(key, 128, now + session)) {
+                    admitted[session]++;
+                }
+            }
+            assertEquals(64, budget.globalFrames(now + 49),
+                    "Each window must stop exactly at the aggregate frame cap");
+            assertEquals(64 * 128L, budget.globalBytes(now + 49));
+        }
+
+        for (int session = 0; session < sessionCount; session++) {
+            assertEquals(1, admitted[session],
+                    "Every session must receive one frame before any session receives another");
+        }
+    }
+
+    @Test
     void rejectsInvalidBudgetsAndFrameSizes() {
         assertThrows(IllegalArgumentException.class,
                 () -> new OutboundDrainBudget(0, 1, 1, 1, 1, 1));

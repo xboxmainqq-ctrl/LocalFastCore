@@ -76,6 +76,37 @@ class WorldTickPipelineTest {
     }
 
     @Test
+    void heavyMobUsesLongerSpeciesSpecificAttackCooldown() {
+        WorldTickPipeline pipeline = new WorldTickPipeline(
+                new MobAiLoadController(20), new LivingEntityAiService());
+        WorldLivingEntityManager manager = new WorldLivingEntityManager();
+        WorldLivingEntity warden = manager.spawn("minecraft:warden", 20, 0, 64, 0);
+        var player = new LivingEntityAiService.PlayerTarget("player", 1.5, 64, 0, true);
+        List<LivingEntityAiService.Decision> decisions = new ArrayList<>();
+
+        pipeline.tick(0, 2_000, List.of(warden), List.of(player), decisions::add);
+        assertTrue(decisions.getFirst().attack());
+
+        decisions.clear();
+        pipeline.tick(1, 3_500, List.of(warden), List.of(player), decisions::add);
+        assertFalse(decisions.getFirst().attack());
+
+        decisions.clear();
+        pipeline.tick(2, 3_750, List.of(warden), List.of(player), decisions::add);
+        assertTrue(decisions.getFirst().attack());
+    }
+
+    @Test
+    void attackCooldownProfilesRejectNullAndKeepBaselineForOrdinaryMobs() {
+        assertEquals(LivingEntityAiService.ATTACK_COOLDOWN_MILLIS,
+                LivingEntityAiService.attackCooldownMillisFor("minecraft:zombie"));
+        assertTrue(LivingEntityAiService.attackCooldownMillisFor("minecraft:warden")
+                > LivingEntityAiService.ATTACK_COOLDOWN_MILLIS);
+        assertThrows(NullPointerException.class,
+                () -> LivingEntityAiService.attackCooldownMillisFor(null));
+    }
+
+    @Test
     void attackCooldownDeadlineDoesNotOverflowAtMaximumTimestamp() {
         WorldTickPipeline pipeline = new WorldTickPipeline(
                 new MobAiLoadController(20), new LivingEntityAiService());

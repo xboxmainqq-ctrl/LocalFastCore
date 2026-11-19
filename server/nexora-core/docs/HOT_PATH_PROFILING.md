@@ -180,3 +180,22 @@ one replacement and performs one registry write. If neither position nor velocit
 changes, it skips the registry write entirely. Existing physics behavior and collision
 checks are unchanged; the manager test verifies position, velocity, health and fire
 state survive the combined replacement.
+
+
+## NetherNet outbound back-pressure
+
+The WebRTC send path now observes each data channel's buffered byte count before
+submitting another frame. At 512 KiB of native WebRTC buffering, additional frames
+are placed in a per-channel FIFO instead of being pushed into the SCTP send buffer.
+The FIFO is bounded to 4 MiB and 2,048 frames per channel; it drains in order after
+the native buffered amount falls to 256 KiB or less. The queue owns its frame copies
+and is cleared when the peer session closes. If the bounded queue is exhausted, the
+session is closed rather than allowing unbounded memory growth or silently dropping
+reliable Bedrock frames.
+
+This is congestion containment, not a direct ping reduction: it limits queued memory
+and prevents unlimited application-side buildup, but cannot improve the player's
+physical route, ISP latency, packet loss, or a saturated uplink. No end-to-end ping
+or throughput claim is made. The queue's FIFO, ownership, byte/frame bounds, restore
+order and cleanup are covered by `NetherNetOutboundQueueTest`; live multi-client
+WebRTC congestion testing is still required.

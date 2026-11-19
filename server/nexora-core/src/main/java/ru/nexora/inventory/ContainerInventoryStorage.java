@@ -79,13 +79,17 @@ public final class ContainerInventoryStorage {
             out.writeInt((int) checksum.getValue());
         }
         if (fileBytes.size() > MAX_FILE_BYTES) throw new IOException("Container inventory exceeds storage limit");
-        ru.nexora.persistence.AtomicFileWriter.writeAtomically(target, fileBytes.toByteArray());
+        ru.nexora.persistence.BackupFile.write(target, fileBytes.toByteArray(), candidate -> readContainerFile(candidate, x, y, z));
     }
 
     public synchronized Optional<ContainerInventory> load(int x, int y, int z) throws IOException {
         Path file = containerPath(x, y, z);
+        return ru.nexora.persistence.BackupFile.load(file, candidate -> readContainerFile(candidate, x, y, z));
+    }
+
+    private ContainerInventory readContainerFile(Path file, int x, int y, int z) throws IOException {
         rejectSymlink(file);
-        if (!Files.exists(file)) return Optional.empty();
+        if (!Files.exists(file)) throw new IOException("Container file disappeared during recovery");
         long size = Files.size(file);
         if (size < 19 || size > MAX_FILE_BYTES) throw new IOException("Invalid NEXORA container file size");
         byte[] bytes = Files.readAllBytes(file);
@@ -128,16 +132,17 @@ public final class ContainerInventoryStorage {
                 }
             }
             if (in.available() != 0) throw new IOException("Trailing data in NEXORA container file");
-            return Optional.of(inventory);
+            return inventory;
         } catch (java.io.EOFException exception) {
             throw new IOException("Truncated NEXORA container file", exception);
         }
     }
 
+
     public synchronized void delete(int x, int y, int z) throws IOException {
         Path file = containerPath(x, y, z);
         rejectSymlink(file);
-        Files.deleteIfExists(file);
+        ru.nexora.persistence.BackupFile.delete(file);
     }
 
     private Path containerPath(int x, int y, int z) {

@@ -596,18 +596,22 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     public void onDisconnected(String networkId) {
         SessionState state = sessions.get(networkId);
         if (state != null) {
+            boolean alreadyDisconnecting;
             synchronized (state) {
-                if (state.disconnecting) {
-                    inbound.onDisconnected(networkId);
-                    return;
+                alreadyDisconnecting = state.disconnecting;
+                if (!alreadyDisconnecting) {
+                    state.disconnecting = true;
+                    state.rejected = true;
+                    // Drop session-owned references without cancelling shared, deduplicated
+                    // world I/O futures that another connected player may also be awaiting.
+                    state.pendingChunkLoads.clear();
+                    state.chunkStreamingQueue = null;
+                    state.sentChunkKeys.clear();
                 }
-                state.disconnecting = true;
-                state.rejected = true;
-                // Drop session-owned references without cancelling shared, deduplicated
-                // world I/O futures that another connected player may also be awaiting.
-                state.pendingChunkLoads.clear();
-                state.chunkStreamingQueue = null;
-                state.sentChunkKeys.clear();
+            }
+            if (alreadyDisconnecting) {
+                inbound.onDisconnected(networkId);
+                return;
             }
             synchronized (state.outboundLock) {
                 state.outboundClosed = true;

@@ -13,7 +13,7 @@ class WorldTest {
 
     @Test
     void reportsExactAllocatedBlockSectionBytesWithoutCountingEmptySections() {
-        World world = new World("NEXORA", 1L, new FlatWorldGenerator());
+        World world = new World("NEXORA", 1L, (chunk, seed) -> { });
 
         world.setBlock(1, 65, 1, BlockType.STONE);
         assertEquals(1, world.loadedChunkCount());

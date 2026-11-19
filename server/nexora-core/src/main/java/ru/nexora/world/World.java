@@ -278,6 +278,7 @@ public final class World {
                 if (!chunks.containsKey(key)) pendingChunkLoads.add(key);
             }
 
+            int loadRequested = pendingChunkLoads.size();
             int loaded = 0;
             Iterator<Long> iterator = pendingChunkLoads.iterator();
             while (iterator.hasNext() && loaded < maximumLoads) {
@@ -290,7 +291,7 @@ public final class World {
                 }
                 iterator.remove();
             }
-            return new ChunkResidencyResult(plan.load().size(), loaded,
+            return new ChunkResidencyResult(loadRequested, loaded,
                     plan.unload().size(), unloaded, plan.unload().size() - unloaded);
         }
     }

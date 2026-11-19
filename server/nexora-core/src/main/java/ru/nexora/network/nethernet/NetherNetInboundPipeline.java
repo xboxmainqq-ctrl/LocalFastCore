@@ -140,7 +140,7 @@ public final class NetherNetInboundPipeline implements NetherNetDataChannelListe
             while (iterator.hasNext()) {
                 Map.Entry<ChannelKey, NetherNetMessageFramer.Reassembler> entry = iterator.next();
                 if (entry.getKey().networkId().equals(networkId)) {
-                    entry.getValue().reset();
+                    entry.getValue().close();
                     iterator.remove();
                 }
             }

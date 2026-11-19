@@ -214,10 +214,13 @@ transport bytes sent/received. Sampling is asynchronous and guarded against
 overlapping requests; it does not run on the data-channel callback. This RTT is
 transport/ICE round-trip time, not the Bedrock client's gameplay ping. The round-robin
 cursor advances by one peer per second (rather than one whole batch), preventing
-starvation when the active session count shares a divisor with the batch size.
+starvation when the active session count shares a divisor with the batch size. Peers
+are sorted by network ID before each snapshot so the round-robin order remains stable
+while the connected set is unchanged.
 `transportMetrics(networkId)` exposes the latest sample; its `available()`,
 `ageMillis(now)` and `stale(now, maxAge)` helpers let callers reject missing or old
-measurements instead of presenting them as current ping. The server console's
+measurements instead of presenting them as current ping. Byte totals are retained
+when the native report contains them even if its RTT field is unavailable. The server console's
 `network` command reports connected sessions, fresh/stale sample counts, average and
 maximum fresh ICE RTT, and cumulative transport byte totals. Average/max RTT exclude
 stale or missing samples; byte counters remain cumulative and are not instantaneous

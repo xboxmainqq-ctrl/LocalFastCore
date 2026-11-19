@@ -424,6 +424,25 @@ public final class World {
         return chunks.size();
     }
 
+    /** Exact block-array payload across cached chunks; excludes maps, actors and JVM object overhead. */
+    public long loadedChunkBlockStorageBytes() {
+        long total = 0L;
+        for (WorldChunk chunk : chunks.values()) {
+            long bytes = chunk.allocatedBlockStorageBytes();
+            total = total > Long.MAX_VALUE - bytes ? Long.MAX_VALUE : total + bytes;
+        }
+        return total;
+    }
+
+    /** Number of allocated 4096-byte block sections across the current world cache. */
+    public long loadedChunkSectionCount() {
+        long total = 0L;
+        for (WorldChunk chunk : chunks.values()) {
+            total += chunk.allocatedSectionCount();
+        }
+        return total;
+    }
+
     /** Checks residency without causing a chunk load. */
     public boolean isChunkLoadedAt(int blockX, int blockZ) {
         return chunks.containsKey(chunkKey(Math.floorDiv(blockX, 16), Math.floorDiv(blockZ, 16)));

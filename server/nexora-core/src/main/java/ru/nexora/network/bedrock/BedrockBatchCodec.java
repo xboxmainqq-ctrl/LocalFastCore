@@ -268,17 +268,16 @@ public final class BedrockBatchCodec {
     private static byte[] decodeCompressionFrame(byte[] message, int maxBatchBytes) {
         if (message.length < 2) throw new IllegalArgumentException("Missing Bedrock compression frame");
         int algorithm = Byte.toUnsignedInt(message[0]);
-        byte[] framedPayload = new byte[message.length - 1];
-        System.arraycopy(message, 1, framedPayload, 0, framedPayload.length);
+        int payloadLength = message.length - 1;
 
         return switch (algorithm) {
             case COMPRESSION_HEADER_NONE -> {
-                if (framedPayload.length > maxBatchBytes) {
+                if (payloadLength > maxBatchBytes) {
                     throw new IllegalArgumentException("Uncompressed Bedrock batch exceeds size limit");
                 }
-                yield framedPayload;
+                yield java.util.Arrays.copyOfRange(message, 1, message.length);
             }
-            case COMPRESSION_HEADER_ZLIB -> inflateRaw(framedPayload, maxBatchBytes);
+            case COMPRESSION_HEADER_ZLIB -> inflateRaw(message, 1, payloadLength, maxBatchBytes);
             case COMPRESSION_HEADER_SNAPPY ->
                     throw new UnsupportedOperationException("Snappy compression is not enabled in this build");
             default -> throw new IllegalArgumentException("Unknown Bedrock compression header: " + algorithm);
@@ -312,10 +311,10 @@ public final class BedrockBatchCodec {
         }
     }
 
-    private static byte[] inflateRaw(byte[] input, int maxOutputBytes) {
+    private static byte[] inflateRaw(byte[] input, int offset, int length, int maxOutputBytes) {
         Inflater inflater = new Inflater(true);
         try {
-            inflater.setInput(input);
+            inflater.setInput(input, offset, length);
             ByteArrayOutputStream output = new ByteArrayOutputStream(Math.min(input.length * 2, 8192));
             byte[] buffer = new byte[8192];
             while (!inflater.finished()) {

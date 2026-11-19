@@ -18,8 +18,9 @@ final class ActorReplicationIndex {
     private final ConcurrentMap<String, Set<Long>> actorsBySession = new ConcurrentHashMap<>();
 
     void replaceChunkView(String networkId, Set<Long> desiredChunks) {
-        Set<Long> next = ConcurrentHashMap.newKeySet();
-        next.addAll(desiredChunks);
+        // Session-owned chunk snapshots are immutable; only reverse buckets need
+        // concurrent sets because they are updated by multiple sessions.
+        Set<Long> next = Set.copyOf(desiredChunks);
         Set<Long> previous = chunksBySession.put(networkId, next);
         if (previous != null) {
             for (long key : previous) {

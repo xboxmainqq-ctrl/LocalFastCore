@@ -152,6 +152,12 @@ public final class LivingEntityAiService {
         AttackStyle attackStyle = attackStyleFor(mob.identifier());
         double attackRange = attackStyle == AttackStyle.PROJECTILE
                 ? projectileRangeFor(mob.identifier()) : attackRangeFor(mob.identifier());
+        // Ranged species must create space even when their cooldown is ready.
+        // Otherwise a close target can be misinterpreted as a projectile attack.
+        if (attackStyle == AttackStyle.PROJECTILE
+                && horizontal < RANGED_RETREAT_DISTANCE) {
+            return flee(mob, target);
+        }
         if (distanceSquared <= attackRange * attackRange) {
             if (nowMillis >= nextAttackAtMillis) {
                 return new Decision(mob.runtimeId(), target.networkId(), 0, 0, 0,

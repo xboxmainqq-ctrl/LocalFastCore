@@ -6,6 +6,44 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class WorldTest {
     @Test
+    void appliesChunkResidencyLoadsAcrossTicksWithOneGlobalBudget() {
+        World world = new World("NEXORA", 1L, new FlatWorldGenerator());
+        WorldChunkResidencyManager residency = new WorldChunkResidencyManager(2, 20);
+        var player = List.of(new WorldChunkResidencyManager.PlayerChunk(0, 0));
+
+        var initial = residency.update(player, 0);
+        var firstTick = world.applyChunkResidencyPlan(initial, 3);
+        assertEquals(3, firstTick.loaded());
+        assertEquals(3, world.loadedChunkCount());
+        assertEquals(10, world.pendingChunkLoadCount());
+
+        var nextTick = residency.update(player, 1);
+        assertTrue(nextTick.load().isEmpty(), "the residency manager must not re-request resident chunks");
+        var secondTick = world.applyChunkResidencyPlan(nextTick, 3);
+        assertEquals(3, secondTick.loaded());
+        assertEquals(6, world.loadedChunkCount());
+        assertEquals(7, world.pendingChunkLoadCount());
+    }
+
+    @Test
+    void unloadPlanCancelsChunkLoadsThatHaveNotStarted() {
+        World world = new World("NEXORA", 1L, new FlatWorldGenerator());
+        WorldChunkResidencyManager residency = new WorldChunkResidencyManager(1, 0);
+        var initial = residency.update(
+                List.of(new WorldChunkResidencyManager.PlayerChunk(0, 0)), 0);
+        world.applyChunkResidencyPlan(initial, 1);
+        assertEquals(4, world.pendingChunkLoadCount());
+
+        var departed = residency.update(List.of(), 1);
+        world.applyChunkResidencyPlan(departed, 1);
+
+        assertEquals(0, world.pendingChunkLoadCount(),
+                "chunks no longer in the residency plan must not remain queued");
+        assertEquals(1, world.loadedChunkCount(),
+                "the no-storage world keeps already generated chunks rather than discarding data");
+    }
+
+    @Test
     void flatGeneratorCreatesAStableSpawnPlatform() {
         World world = new World("NEXORA World", 12345L, new FlatWorldGenerator());
 

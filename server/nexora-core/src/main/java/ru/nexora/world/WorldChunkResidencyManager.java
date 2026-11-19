@@ -132,6 +132,27 @@ public final class WorldChunkResidencyManager {
         for (long key : pinnedKeys) {
             if (resident.add(key)) acceptedLoadKeys.add(key);
         }
+
+        // Grace is opportunistic, not a reason to stall a player's new view.
+        // Under capacity pressure, retire only no-longer-desired, non-pinned
+        // residents early so overlapping chunks remain warm and new center-out
+        // candidates can enter the cache immediately.
+        int pendingDesiredLoads = 0;
+        for (long key : loadScratch) {
+            if (!resident.contains(key)) pendingDesiredLoads++;
+        }
+        if (resident.size() + pendingDesiredLoads > maximumResidentChunks) {
+            var iterator = resident.iterator();
+            while (iterator.hasNext()
+                    && resident.size() + pendingDesiredLoads > maximumResidentChunks) {
+                long key = iterator.next();
+                if (desiredChunks.contains(key) || pinnedKeys.contains(key)) continue;
+                iterator.remove();
+                unloadScratch.add(key);
+                lastDesiredTick.remove(key);
+            }
+        }
+
         int playerLoadSlots = Math.max(0, maximumResidentChunks - resident.size());
         int acceptedPlayerLoads = 0;
         for (long key : loadScratch) {

@@ -54,7 +54,7 @@ class WorldChunkResidencyManagerTest {
 
         var pinned = manager.update(List.of(),
                 java.util.Set.of(new WorldChunkResidencyManager.ChunkCoordinate(0, 0)), 1);
-        assertTrue(pinned.unload().isEmpty());
+        assertEquals(4, pinned.unload().size(), "only the entity-pinned chunk should remain");
         assertTrue(manager.isResident(0, 0));
         assertEquals(1, pinned.residentCount());
 

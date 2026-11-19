@@ -38,8 +38,19 @@ class ChunkStreamingBudgetTest {
 
         assertTrue(budget.tryAcquire("idle-player", 0));
         assertFalse(budget.tryAcquire("active-player", 10));
-        assertTrue(budget.tryAcquire("active-player", 250),
-                "Idle queue entries expire and active sessions can continue");
+        assertFalse(budget.tryAcquire("active-player", 190));
+        assertTrue(budget.tryAcquire("active-player", 210),
+                "Idle queue entries expire while recently active sessions remain registered");
+    }
+
+    @Test
+    void waitingSessionYieldsItsTurnToReadySessions() {
+        ChunkStreamingBudget budget = new ChunkStreamingBudget(100, 8, 2, 500);
+
+        assertTrue(budget.tryAcquire("waiting-player", 0));
+        assertFalse(budget.tryAcquire("ready-player", 1));
+        budget.yield("waiting-player", 2);
+        assertTrue(budget.tryAcquire("ready-player", 3));
     }
 
     @Test

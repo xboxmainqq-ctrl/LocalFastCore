@@ -393,4 +393,32 @@ class LivingEntityAiServiceTest {
                 LivingEntityAiService.rangedAttackCooldownMillisFor("minecraft:blaze"));
     }
 
+    @Test
+    void blockedRangedTargetProducesGroundApproachIntent() {
+        WorldLivingEntity skeleton = new WorldLivingEntityManager().spawn(
+                "minecraft:skeleton", 0, 0, 64, 0);
+        var target = new LivingEntityAiService.PlayerTarget("player", 10, 64, 0, true);
+
+        var decision = ai.approach(skeleton, target);
+
+        assertTrue(decision.moving());
+        assertEquals("player", decision.targetNetworkId());
+        assertEquals(LivingEntityAiService.AttackStyle.PROJECTILE, decision.attackStyle());
+        assertFalse(decision.attack());
+        assertTrue(decision.moveX() > 0);
+    }
+
+    @Test
+    void blockedRangedTargetProducesThreeDimensionalApproachForFlyingMobs() {
+        WorldLivingEntity ghast = new WorldLivingEntityManager().spawn(
+                "minecraft:ghast", 0, 0, 64, 0);
+        var target = new LivingEntityAiService.PlayerTarget("player", 10, 70, 0, true);
+
+        var decision = ai.approach(ghast, target);
+
+        assertTrue(decision.moving());
+        assertTrue(decision.moveX() > 0);
+        assertTrue(decision.moveY() > 0);
+    }
+
 }

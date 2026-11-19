@@ -25,7 +25,7 @@ class NetherNetInboundPipelineLoadBenchmarkTest {
         frame[0] = 0;
 
         for (int i = 0; i < WARMUP_FRAMES; i++) {
-            pipeline.onFrame("warmup-" + (i % PEERS), "ReliableDataChannel", frame);
+            pipeline.onFrame("load-" + (i % PEERS), "ReliableDataChannel", frame);
         }
 
         long[] samples = new long[MEASURED_FRAMES];

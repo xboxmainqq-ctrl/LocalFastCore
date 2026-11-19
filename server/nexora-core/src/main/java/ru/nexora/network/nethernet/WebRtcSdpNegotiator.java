@@ -342,6 +342,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
         if (closed.get()) return;
         List<PeerSession> active = sessions.values().stream()
                 .filter(session -> session.connected && !session.sessionClosed.get())
+                .sorted(java.util.Comparator.comparing(session -> session.networkId))
                 .toList();
         if (active.isEmpty()) return;
         // Advance by one peer each second. Advancing by the batch size can starve

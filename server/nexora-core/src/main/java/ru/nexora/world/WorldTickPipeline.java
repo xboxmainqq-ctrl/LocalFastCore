@@ -6,6 +6,7 @@ import ru.nexora.combat.MobAiLoadController;
 import ru.nexora.runtime.AdaptiveRuntime;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -27,6 +28,9 @@ public final class WorldTickPipeline {
     private final AdaptiveRuntime runtime;
     // Active per-mob attack deadlines; expired entries are pruned at the start of each tick.
     private final Map<Long, Long> nextAttackAtMillis = new HashMap<>();
+    private static final int MAX_TRACKED_PROVOCATIONS = 4_096;
+    private static final long PROVOCATION_DURATION_MILLIS = 10_000L;
+    private final Map<Long, Provocation> provocations = new LinkedHashMap<>(16, 0.75f, true);
 
     public WorldTickPipeline(MobAiLoadController loadController, LivingEntityAiService aiService) {
         this.loadController = Objects.requireNonNull(loadController, "loadController");
@@ -35,6 +39,42 @@ public final class WorldTickPipeline {
         this.profiler = new HotPathProfiler();
         this.runtime = new AdaptiveRuntime(50_000_000L, 5_000_000L);
     }
+
+    /**
+     * Records the player who last damaged a neutral mob. The target remains valid for
+     * ten seconds, allowing the mob to retaliate even if the damage event and AI tick
+     * happen on different server ticks.
+     */
+    public synchronized void recordProvocation(long mobRuntimeId, String playerNetworkId,
+                                               long nowMillis) {
+        if (mobRuntimeId < 0 || nowMillis < 0 || playerNetworkId == null
+                || playerNetworkId.isBlank()) {
+            throw new IllegalArgumentException("Invalid mob provocation");
+        }
+        long expiresAt = nowMillis > Long.MAX_VALUE - PROVOCATION_DURATION_MILLIS
+                ? Long.MAX_VALUE : nowMillis + PROVOCATION_DURATION_MILLIS;
+        provocations.put(mobRuntimeId, new Provocation(playerNetworkId, expiresAt));
+        while (provocations.size() > MAX_TRACKED_PROVOCATIONS) {
+            Long eldest = provocations.keySet().iterator().next();
+            provocations.remove(eldest);
+        }
+    }
+
+    public synchronized void clearProvocation(long mobRuntimeId) {
+        provocations.remove(mobRuntimeId);
+    }
+
+    private synchronized String provokerFor(long mobRuntimeId, long nowMillis) {
+        Provocation provocation = provocations.get(mobRuntimeId);
+        if (provocation == null) return null;
+        if (nowMillis >= provocation.expiresAtMillis()) {
+            provocations.remove(mobRuntimeId);
+            return null;
+        }
+        return provocation.playerNetworkId();
+    }
+
+    private record Provocation(String playerNetworkId, long expiresAtMillis) { }
 
     public TickResult tick(
             long tick,
@@ -49,6 +89,9 @@ public final class WorldTickPipeline {
         Objects.requireNonNull(decisionSink, "decisionSink");
         runtime.beginTick();
         nextAttackAtMillis.entrySet().removeIf(entry -> nowMillis >= entry.getValue());
+        synchronized (this) {
+            provocations.entrySet().removeIf(entry -> nowMillis >= entry.getValue().expiresAtMillis());
+        }
 
         int scheduled = 0;
         int deferred = 0;
@@ -135,7 +178,8 @@ public final class WorldTickPipeline {
             long decisionStarted = System.nanoTime();
             try {
                 decision = aiService.decide(mob, players, nowMillis,
-                        nextAttackAtMillis.getOrDefault(mob.uniqueId(), 0L), null, nearest);
+                        nextAttackAtMillis.getOrDefault(mob.uniqueId(), 0L),
+                        provokerFor(mob.runtimeId(), nowMillis), nearest);
             } finally {
                 profiler.record(HotPathProfiler.Path.MOB_AI_DECISION,
                         Math.max(0L, System.nanoTime() - decisionStarted));

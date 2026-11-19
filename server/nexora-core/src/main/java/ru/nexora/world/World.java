@@ -20,6 +20,7 @@ public final class World {
     private final int spawnZ;
     private final WorldStorage storage;
     private final WorldChunkLoadService chunkLoadService;
+    private final WorldChunkSaveService chunkSaveService;
     private final ConcurrentMap<Long, WorldChunk> chunks = new ConcurrentHashMap<>();
     private final Object pendingChunkLoadLock = new Object();
     private final LinkedHashSet<Long> pendingChunkLoads = new LinkedHashSet<>();
@@ -54,6 +55,7 @@ public final class World {
         this.spawnZ = spawnZ;
         this.storage = storage;
         this.chunkLoadService = storage == null ? null : new WorldChunkLoadService(storage);
+        this.chunkSaveService = storage == null ? null : new WorldChunkSaveService(storage);
         this.itemEntities = new WorldItemEntityManager();
         this.livingEntities = new WorldLivingEntityManager();
         this.containers = null;
@@ -215,7 +217,24 @@ public final class World {
 
     /** Stops bounded chunk-storage workers during world shutdown. */
     public void closeChunkLoadService() {
-        if (chunkLoadService != null) chunkLoadService.close();
+        RuntimeException failure = null;
+        if (chunkLoadService != null) {
+            try { chunkLoadService.close(); } catch (RuntimeException exception) { failure = exception; }
+        }
+        if (chunkSaveService != null) {
+            try { chunkSaveService.close(); } catch (RuntimeException exception) {
+                if (failure == null) failure = exception; else failure.addSuppressed(exception);
+            }
+        }
+        if (failure != null) throw failure;
+    }
+
+    public int activeChunkSaveWorkers() {
+        return chunkSaveService == null ? 0 : chunkSaveService.activeWorkers();
+    }
+
+    public int queuedChunkSaves() {
+        return chunkSaveService == null ? 0 : chunkSaveService.queuedSaves();
     }
 
     public BlockType getBlock(int blockX, int y, int blockZ) {
@@ -405,13 +424,34 @@ public final class World {
 
     public void saveAll() throws IOException {
         if (storage != null) {
-            for (WorldChunk chunk : chunks.values()) storage.saveChunk(chunk);
+            java.util.ArrayList<java.util.concurrent.CompletableFuture<Void>> batch =
+                    new java.util.ArrayList<>(128);
+            for (WorldChunk chunk : chunks.values()) {
+                batch.add(chunkSaveService.request(chunk));
+                if (batch.size() == 128) {
+                    awaitChunkSaveBatch(batch);
+                    batch.clear();
+                }
+            }
+            if (!batch.isEmpty()) awaitChunkSaveBatch(batch);
         }
         itemEntities.save();
         livingEntities.save();
         mobSpawners.save();
         if (containers != null) containers.saveAll();
         if (furnaces != null) furnaces.saveAll();
+    }
+
+    private static void awaitChunkSaveBatch(java.util.List<java.util.concurrent.CompletableFuture<Void>> batch)
+            throws IOException {
+        try {
+            java.util.concurrent.CompletableFuture.allOf(
+                    batch.toArray(java.util.concurrent.CompletableFuture[]::new)).join();
+        } catch (java.util.concurrent.CompletionException failure) {
+            Throwable cause = failure.getCause();
+            if (cause instanceof IOException io) throw io;
+            throw new IOException("Unable to persist NEXORA chunks", cause == null ? failure : cause);
+        }
     }
 
     private static MobSpawnerManager createMobSpawnerManager(WorldStorage storage) {

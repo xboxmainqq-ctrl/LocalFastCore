@@ -36,13 +36,18 @@ final class ChunkStreamingQueue {
             }
             int min = -ring;
             int max = ring;
+            // Walk the perimeter clockwise: north edge, east edge, south edge, west edge.
             for (int offsetX = min; offsetX <= max; offsetX++) {
                 add(ordered, desired, centerX + offsetX, centerZ + min);
+            }
+            for (int offsetZ = min + 1; offsetZ <= max; offsetZ++) {
+                add(ordered, desired, centerX + max, centerZ + offsetZ);
+            }
+            for (int offsetX = max - 1; offsetX >= min; offsetX--) {
                 add(ordered, desired, centerX + offsetX, centerZ + max);
             }
-            for (int offsetZ = min + 1; offsetZ < max; offsetZ++) {
+            for (int offsetZ = max - 1; offsetZ > min; offsetZ--) {
                 add(ordered, desired, centerX + min, centerZ + offsetZ);
-                add(ordered, desired, centerX + max, centerZ + offsetZ);
             }
         }
         this.orderedChunkKeys = List.copyOf(ordered);

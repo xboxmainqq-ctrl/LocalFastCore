@@ -144,11 +144,13 @@ public final class LivingEntityAiService {
         double dz = target.z() - mob.z();
         double horizontal = Math.hypot(dx, dz);
         double distanceSquared = dx * dx + dy * dy + dz * dz;
-        double attackRange = attackRangeFor(mob.identifier());
+        AttackStyle attackStyle = attackStyleFor(mob.identifier());
+        double attackRange = attackStyle == AttackStyle.PROJECTILE
+                ? projectileRangeFor(mob.identifier()) : attackRangeFor(mob.identifier());
         if (distanceSquared <= attackRange * attackRange) {
             if (nowMillis >= nextAttackAtMillis) {
                 return new Decision(mob.runtimeId(), target.networkId(), 0, 0, 0,
-                        attackDamageFor(mob.identifier()), true);
+                        attackDamageFor(mob.identifier()), true, attackStyle);
             }
             return Decision.idle(mob.runtimeId());
         }
@@ -206,6 +208,28 @@ public final class LivingEntityAiService {
         mixed *= 0xff51afd7ed558ccdL;
         mixed ^= mixed >>> 33;
         return (mixed & 0x1fffffffffffffL) / (double) 0x20000000000000L * Math.PI * 2.0;
+    }
+
+    /** Selects the combat delivery mode; this is an intent for the world adapter to execute. */
+    public static AttackStyle attackStyleFor(String identifier) {
+        Objects.requireNonNull(identifier, "identifier");
+        return switch (identifier) {
+            case "minecraft:skeleton", "minecraft:stray", "minecraft:bogged",
+                    "minecraft:pillager", "minecraft:blaze", "minecraft:ghast",
+                    "minecraft:guardian", "minecraft:elder_guardian" -> AttackStyle.PROJECTILE;
+            default -> AttackStyle.MELEE;
+        };
+    }
+
+    /** Effective projectile engagement range in blocks, before line-of-sight checks by the world adapter. */
+    public static double projectileRangeFor(String identifier) {
+        return switch (identifier) {
+            case "minecraft:ghast" -> 16.0;
+            case "minecraft:guardian", "minecraft:elder_guardian", "minecraft:blaze" -> 14.0;
+            case "minecraft:skeleton", "minecraft:stray", "minecraft:bogged",
+                    "minecraft:pillager" -> 12.0;
+            default -> 0.0;
+        };
     }
 
     /** Species-specific melee reach, measured in blocks. */
@@ -353,10 +377,23 @@ public final class LivingEntityAiService {
         }
     }
 
+    public enum AttackStyle {
+        MELEE,
+        PROJECTILE
+    }
+
     public record Decision(long mobRuntimeId, String targetNetworkId,
                            double moveX, double moveY, double moveZ,
-                           float attackDamage, boolean attack) {
-        public Decision {
+                           float attackDamage, boolean attack, AttackStyle attackStyle) {
+        public Decision(long mobRuntimeId, String targetNetworkId,
+                        double moveX, double moveY, double moveZ,
+                        float attackDamage, boolean attack) {
+            this(mobRuntimeId, targetNetworkId, moveX, moveY, moveZ,
+                    attackDamage, attack, AttackStyle.MELEE);
+        }
+
+        public Decision { 
+            Objects.requireNonNull(attackStyle, "attackStyle");
             if (mobRuntimeId <= 0 || !Double.isFinite(moveX) || !Double.isFinite(moveY)
                     || !Double.isFinite(moveZ) || !Float.isFinite(attackDamage) || attackDamage < 0) {
                 throw new IllegalArgumentException("Invalid living actor AI decision");

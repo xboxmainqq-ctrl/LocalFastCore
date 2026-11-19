@@ -1500,6 +1500,8 @@ class BedrockSessionManagerTest {
             setSessionField(manager, "blast-player", "positionX", 5.5f);
             setSessionField(manager, "blast-player", "positionY", 65.0f);
             setSessionField(manager, "blast-player", "positionZ", 0.5f);
+            setSessionField(manager, "blast-player", "physicsState",
+                    ru.nexora.world.PlayerPhysics.spawn(mobWorld, 5.5, 65.0, 0.5));
             var ghast = manager.spawnLivingEntity("minecraft:ghast", 16.0f, 10.0, 65.0, 0.5);
             var target = new ru.nexora.combat.LivingEntityAiService.PlayerTarget(
                     "blast-player", 5.5, 65.0, 0.5, true);
@@ -1525,6 +1527,10 @@ class BedrockSessionManagerTest {
                     .anyMatch(item -> item.stack().itemId().equals("minecraft:cobblestone")),
                     "Stone destroyed by the blast must create a cobblestone world item");
             assertTrue((long) getSessionField(manager, "blast-player", "fireUntilNanos") > 0L);
+            ru.nexora.world.PlayerPhysics.State blastedPhysics =
+                    (ru.nexora.world.PlayerPhysics.State) getSessionField(manager, "blast-player", "physicsState");
+            assertTrue(blastedPhysics.velocityY() > 0.0,
+                    "Ghast blast must apply an upward impulse to nearby players");
         } finally {
             manager.close();
         }

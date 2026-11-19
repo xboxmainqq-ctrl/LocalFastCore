@@ -139,6 +139,51 @@ class WorldTickPipelineTest {
     }
 
     @Test
+    void indexedTargetSelectionIsUsedForLargePlayerLists() {
+        WorldTickPipeline pipeline = new WorldTickPipeline(
+                new MobAiLoadController(20), new LivingEntityAiService());
+        WorldLivingEntity mob = new WorldLivingEntityManager().spawn(
+                "minecraft:zombie", 20, 0, 64, 0);
+        List<LivingEntityAiService.PlayerTarget> players = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            players.add(new LivingEntityAiService.PlayerTarget(
+                    "far-" + i, 80 + i, 64, 80 + i, true));
+        }
+        var nearest = new LivingEntityAiService.PlayerTarget("nearest", 1.5, 64, 0, true);
+        players.add(nearest);
+        List<LivingEntityAiService.Decision> decisions = new ArrayList<>();
+
+        pipeline.tick(0, 2_000, List.of(mob), players, decisions::add);
+
+        assertEquals(1, decisions.size());
+        assertEquals("nearest", decisions.getFirst().targetNetworkId());
+        assertTrue(decisions.getFirst().attack());
+    }
+
+    @Test
+    void indexedProvokerLookupWorksForLargePlayerLists() {
+        WorldTickPipeline pipeline = new WorldTickPipeline(
+                new MobAiLoadController(20), new LivingEntityAiService());
+        WorldLivingEntity piglin = new WorldLivingEntityManager().spawn(
+                "minecraft:piglin", 20, 0, 64, 0);
+        List<LivingEntityAiService.PlayerTarget> players = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            players.add(new LivingEntityAiService.PlayerTarget(
+                    "bystander-" + i, 1.0 + i * 0.1, 64, 0, true));
+        }
+        var attacker = new LivingEntityAiService.PlayerTarget("attacker", 2.0, 64, 0, true);
+        players.add(attacker);
+        pipeline.recordProvocation(piglin.runtimeId(), "attacker", 2_000);
+        List<LivingEntityAiService.Decision> decisions = new ArrayList<>();
+
+        pipeline.tick(0, 2_000, List.of(piglin), players, decisions::add);
+
+        assertEquals(1, decisions.size());
+        assertEquals("attacker", decisions.getFirst().targetNetworkId());
+        assertTrue(decisions.getFirst().attack());
+    }
+
+    @Test
     void rejectsInvalidMobProvocations() {
         WorldTickPipeline pipeline = new WorldTickPipeline(
                 new MobAiLoadController(20), new LivingEntityAiService());

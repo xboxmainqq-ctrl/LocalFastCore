@@ -32,7 +32,7 @@ class NetherNetInboundPipelineLoadBenchmarkTest {
         long started = System.nanoTime();
         for (int i = 0; i < MEASURED_FRAMES; i++) {
             long frameStarted = System.nanoTime();
-            pipeline.onFrame("load-" + (i % PEERS),
+            pipeline.onFrame("load-" + ((i / 2) % PEERS),
                     (i & 1) == 0 ? "ReliableDataChannel" : "UnreliableDataChannel", frame);
             samples[i] = Math.max(0L, System.nanoTime() - frameStarted);
         }

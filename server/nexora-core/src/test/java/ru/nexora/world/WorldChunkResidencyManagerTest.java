@@ -170,4 +170,49 @@ class WorldChunkResidencyManagerTest {
                 () -> new WorldChunkResidencyManager(2, 0,
                         WorldChunkResidencyManager.Shape.CIRCULAR, 0));
     }
+    @Test
+    void capsWidelySeparatedPlayerViewsAndReusesCapacityAfterMovement() {
+        WorldChunkResidencyManager manager = new WorldChunkResidencyManager(
+                8, 0, WorldChunkResidencyManager.Shape.SQUARE, 1024);
+        List<WorldChunkResidencyManager.PlayerChunk> players = new java.util.ArrayList<>();
+        for (int index = 0; index < 128; index++) {
+            players.add(new WorldChunkResidencyManager.PlayerChunk(index * 64, -index * 64, 8));
+        }
+
+        var first = manager.update(players, 0);
+        assertEquals(1024, first.load().size());
+        assertEquals(1024, first.residentCount());
+        assertTrue(first.desiredCount() > 40_000);
+        assertEquals(1024, manager.residentChunkCount());
+
+        var steady = manager.update(players, 1);
+        assertTrue(steady.load().isEmpty());
+        assertEquals(1024, steady.residentCount());
+        assertEquals(first.desiredCount(), steady.desiredCount());
+
+        List<WorldChunkResidencyManager.PlayerChunk> moved = new java.util.ArrayList<>();
+        for (int index = 0; index < 128; index++) {
+            moved.add(new WorldChunkResidencyManager.PlayerChunk(index * 64 + 10_000,
+                    -index * 64 - 10_000, 8));
+        }
+        var afterMove = manager.update(moved, 2);
+        assertEquals(1024, afterMove.unload().size());
+        assertEquals(1024, afterMove.load().size());
+        assertEquals(1024, afterMove.residentCount());
+        assertEquals(1024, manager.residentChunkCount());
+    }
+
+    @Test
+    void pinnedChunksAreIncludedInLoadPlanBeforePlayerCapacityIsAllocated() {
+        WorldChunkResidencyManager manager = new WorldChunkResidencyManager(
+                2, 0, WorldChunkResidencyManager.Shape.SQUARE, 3);
+        var plan = manager.update(
+                List.of(new WorldChunkResidencyManager.PlayerChunk(0, 0)),
+                java.util.Set.of(new WorldChunkResidencyManager.ChunkCoordinate(500, 500)), 0);
+
+        assertTrue(plan.load().contains(new WorldChunkResidencyManager.ChunkCoordinate(500, 500)));
+        assertEquals(4, plan.residentCount());
+        assertTrue(plan.load().size() <= 4);
+    }
+
 }

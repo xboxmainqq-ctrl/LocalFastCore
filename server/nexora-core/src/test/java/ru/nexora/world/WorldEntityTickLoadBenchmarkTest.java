@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * tick pipeline together. It remains a synthetic in-process test, not a live server soak.
  */
 class WorldEntityTickLoadBenchmarkTest {
+    private static final int WARMUP_TICKS = 10;
     private static final int TICKS = 20;
     private static final List<String> SPECIES = List.of(
             "minecraft:zombie", "minecraft:skeleton", "minecraft:spider",
@@ -53,16 +54,18 @@ class WorldEntityTickLoadBenchmarkTest {
             long totalDecisions = 0;
             long totalDeferred = 0;
 
-            for (int tick = 0; tick < TICKS; tick++) {
+            for (int tick = 0; tick < WARMUP_TICKS + TICKS; tick++) {
                 long started = System.nanoTime();
                 WorldEntityTickCoordinator.TickResult result = coordinator.tick(
                         tick, tick * 50L, playerChunks, players, ignored -> { });
-                tickNanos[tick] = Math.max(0L, System.nanoTime() - started);
                 assertEquals(mobCount, result.totalEntities());
                 assertEquals(mobCount, result.residentEntities());
                 assertEquals(0, result.dormantEntities());
-                totalDecisions += result.aiResult().decisionsProduced();
-                totalDeferred += result.aiResult().deferredMobs();
+                if (tick >= WARMUP_TICKS) {
+                    tickNanos[tick - WARMUP_TICKS] = Math.max(0L, System.nanoTime() - started);
+                    totalDecisions += result.aiResult().decisionsProduced();
+                    totalDeferred += result.aiResult().deferredMobs();
+                }
             }
 
             java.util.Arrays.sort(tickNanos);

@@ -368,3 +368,12 @@ Stress tests, failure tests, cycle tests, starvation tests, load spikes, long-ru
 - WorldTickPipeline now schedules the next attack using the attacking mob's profile and stable unique entity identity.
 - Added tests for heavy-mob recovery timing, baseline compatibility and invalid identifiers.
 - Validation: source and tests committed; Maven/CI result is pending.
+
+
+### 49. Ranged combat intent for projectile mobs — IMPLEMENTED, CI PENDING
+- Added explicit MELEE versus PROJECTILE attack styles to AI decisions while retaining the existing constructor for callers that use the earlier decision shape.
+- Skeletons, strays, bogged, pillagers, blazes, ghasts and guardians now hold position and emit projectile attack intent inside species-specific engagement ranges; outside that range they continue closing distance.
+- Ghasts receive a 16-block range, blaze/guardian families 14 blocks, and skeleton-family/pillager mobs 12 blocks.
+- The AI emits intent only: projectile creation, trajectory, collision, line-of-sight and impact damage still belong to the authoritative world adapter and are not claimed as implemented here.
+- Added tests for ranged attack selection, approach behavior and melee compatibility.
+- Validation: source and tests committed; Maven/CI result is pending.

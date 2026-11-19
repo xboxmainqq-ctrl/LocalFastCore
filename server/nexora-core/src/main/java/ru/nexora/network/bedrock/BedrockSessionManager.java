@@ -3593,7 +3593,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             worldDiagnostics.recordWorldRuntimeSnapshot(
                     residencyPlan.residentCount(), world.loadedChunkCount(),
                     chunkResidency.maximumResidentChunks(), residencyPlan.desiredCount(),
-                    world.pendingChunkLoadCount(), world.livingEntities().size(),
+                    world.pendingChunkLoadCount(), world.loadedChunkBlockStorageBytes(),
+                    world.loadedChunkSectionCount(), world.livingEntities().size(),
                     schedulerStats.fullRateUpdates(), schedulerStats.deferredUpdates(),
                     budgetStats.deferredTasks(), budgetStats.consumedNanos());
         }

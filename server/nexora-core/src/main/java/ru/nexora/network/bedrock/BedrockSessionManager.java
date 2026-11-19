@@ -405,7 +405,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         this.outbound = Objects.requireNonNull(outbound, "outbound");
         this.packetSink = Objects.requireNonNull(packetSink, "packetSink");
         this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime");
-        this.inbound = new NetherNetInboundPipeline(this::handleCompleteMessage, aiGuard);
+        this.inbound = new NetherNetInboundPipeline(this::handleCompleteMessage, aiGuard,
+                ru.nexora.network.nethernet.InboundTransportConfig.fromEnvironment(System.getenv()));
         this.furnaceUpdateListener = this.world.furnaces()
                 .map(manager -> manager.addUpdateListener(this::handleFurnaceUpdate))
                 .orElse(null);

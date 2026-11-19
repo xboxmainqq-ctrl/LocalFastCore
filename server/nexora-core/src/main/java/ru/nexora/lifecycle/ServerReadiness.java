@@ -34,12 +34,14 @@ public final class ServerReadiness {
     }
 
     public void markStopped() {
-        State current = state.get();
-        if (current == State.STOPPED) return;
-        if (current != State.STOPPING) {
-            throw new IllegalStateException("Server can become stopped only from STOPPING (was "
-                    + current + ")");
+        while (true) {
+            State current = state.get();
+            if (current == State.STOPPED) return;
+            if (current != State.STOPPING) {
+                throw new IllegalStateException(
+                        "Server can become stopped only from STOPPING (was " + current + ")");
+            }
+            if (state.compareAndSet(State.STOPPING, State.STOPPED)) return;
         }
-        if (!state.compareAndSet(State.STOPPING, State.STOPPED)) markStopped();
     }
 }

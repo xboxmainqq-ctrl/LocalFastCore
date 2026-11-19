@@ -3782,6 +3782,14 @@ class BedrockSessionManagerTest {
         subscribeChunk(manager, "watcher-b", 1, 0);
 
         var zombie = manager.spawnLivingEntity("minecraft:zombie", 20.0f, 15.5, 65.0, 0.5);
+        java.lang.reflect.Field actorIndexField =
+                BedrockSessionManager.class.getDeclaredField("actorReplicationIndex");
+        actorIndexField.setAccessible(true);
+        ActorReplicationIndex actorIndex =
+                (ActorReplicationIndex) actorIndexField.get(manager);
+        long firstChunkKey = 0L;
+        assertEquals(1, actorIndex.chunkViewerCount(firstChunkKey));
+        assertEquals(1, actorIndex.actorViewerCount(zombie.runtimeId()));
         assertTrue(outboundByPlayer.getOrDefault("watcher-a", List.of()).stream()
                 .flatMap(frame -> decodeOutboundAll(frame, true).stream())
                 .anyMatch(packet -> packet.packetId() == BedrockAddActorCodec.ADD_ACTOR_PACKET_ID));
@@ -3811,6 +3819,11 @@ class BedrockSessionManagerTest {
         assertFalse(watcherBPackets.stream().anyMatch(packet ->
                 packet.packetId() == BedrockMoveActorAbsoluteCodec.MOVE_ACTOR_ABSOLUTE_PACKET_ID),
                 "A newly tracking client receives a current spawn, not a stale movement delta");
+        assertEquals(1, actorIndex.actorViewerCount(zombie.runtimeId()),
+                "Only the new chunk watcher remains indexed for this actor");
+        manager.onDisconnected("watcher-b");
+        assertEquals(0, actorIndex.actorViewerCount(zombie.runtimeId()),
+                "Disconnect removes the session from actor replication indexes");
         manager.close();
     }
 

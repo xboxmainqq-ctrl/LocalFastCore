@@ -76,7 +76,7 @@ class OutboundDrainBudgetTest {
             long now = window * 50L;
             for (int session = 0; session < sessionCount; session++) {
                 String key = "player-" + session;
-                if (budget.tryAcquire(key, 128, now + session)) {
+                if (budget.tryAcquire(key, 128, now)) {
                     admitted[session]++;
                 }
             }

@@ -241,3 +241,17 @@ does not expose a trustworthy application packet-loss percentage through this
 candidate-pair sample, so NEXORA does not label ICE checks or missing counters
 as player packet loss. A live client test is still needed to validate which native
 stats fields are populated on each deployment platform.
+
+## NetherNet inbound admission and reassembly bounds
+
+The inbound data-channel observer rejects frames larger than 1 MiB before allocating
+a second byte-array copy. The inbound pipeline independently enforces the same
+configurable ceiling and caps tracked per-peer/channel reassembly state at 8,192
+channels. Disconnect releases that peer's channel state. Reliable fragmented messages
+are limited to 4 MiB total and expire after 15 seconds of monotonic elapsed time;
+invalid order, oversized fragments, and expired assemblies are reset and rejected.
+
+These limits bound application-owned frame copies and partial reassembly state. They
+do not replace native WebRTC/SCTP implementation limits, and they do not prove
+protection against every transport-level denial-of-service pattern. Live multi-client
+testing is still needed to validate realistic Bedrock frame sizes and throughput.

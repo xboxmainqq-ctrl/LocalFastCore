@@ -613,6 +613,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 inbound.onDisconnected(networkId);
                 return;
             }
+            // Release partial inbound fragments and per-peer admission state before
+            // persistence can block this disconnect callback.
+            inbound.onDisconnected(networkId);
             synchronized (state.outboundLock) {
                 state.outboundClosed = true;
                 clearOutboundQueue(state);
@@ -655,8 +658,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             synchronized (sessionChangeMonitor) {
                 sessionChangeMonitor.notifyAll();
             }
+        } else {
+            inbound.onDisconnected(networkId);
         }
-        inbound.onDisconnected(networkId);
     }
 
     /**

@@ -154,4 +154,37 @@ class MobPathCacheTest {
         assertEquals(1, cache.stats().recomputations());
     }
 
+
+    @Test
+    void recordsConcurrentRequestsWithoutLosingCacheCounters() throws Exception {
+        World world = new World("mob-path-cache-concurrent", 0L, new FlatWorldGenerator());
+        world.getChunk(0, 0);
+        MobPathCache cache = new MobPathCache(64, 1_000);
+        int workers = 8;
+        int requestsPerWorker = 40;
+        var executor = java.util.concurrent.Executors.newFixedThreadPool(workers);
+        try {
+            var tasks = new java.util.ArrayList<java.util.concurrent.Callable<Void>>();
+            for (int worker = 0; worker < workers; worker++) {
+                final long mobId = worker + 1L;
+                tasks.add(() -> {
+                    for (int request = 0; request < requestsPerWorker; request++) {
+                        assertTrue(cache.findNextStep(mobId, world,
+                                0.5, 65, 0.5, 3.5, 0.5, 5_000 + request).isPresent());
+                    }
+                    return null;
+                });
+            }
+            for (var result : executor.invokeAll(tasks)) result.get();
+        } finally {
+            executor.shutdownNow();
+        }
+
+        MobPathCache.Stats stats = cache.stats();
+        assertEquals(workers * (requestsPerWorker - 1L), stats.hits());
+        assertEquals(workers, stats.misses());
+        assertEquals(workers, stats.recomputations());
+        assertEquals(workers * requestsPerWorker, stats.requests());
+    }
+
 }

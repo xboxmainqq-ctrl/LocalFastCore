@@ -59,8 +59,8 @@ public final class BackupFile {
         Path backup = backupPath(primary);
         rejectSymlink(primary);
         rejectSymlink(backup);
-        Files.deleteIfExists(primary);
         Files.deleteIfExists(backup);
+        Files.deleteIfExists(primary);
     }
 
     public static Path backupPath(Path primary) {

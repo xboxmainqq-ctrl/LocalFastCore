@@ -13,6 +13,18 @@ class WorldTest {
     Path temporaryDirectory;
 
     @Test
+    void loadedChunkCoordinateSnapshotIncludesDirectApiLoads() {
+        World world = new World("NEXORA", 1L, (chunk, seed) -> { });
+        world.getChunk(12, -9);
+
+        var coordinates = world.loadedChunkCoordinates();
+        assertEquals(1, coordinates.size());
+        assertTrue(coordinates.contains(new WorldChunkResidencyManager.ChunkCoordinate(12, -9)));
+        assertThrows(UnsupportedOperationException.class,
+                () -> coordinates.add(new WorldChunkResidencyManager.ChunkCoordinate(0, 0)));
+    }
+
+    @Test
     void reportsExactAllocatedBlockSectionBytesWithoutCountingEmptySections() {
         World world = new World("NEXORA", 1L, (chunk, seed) -> { });
 

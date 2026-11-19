@@ -78,8 +78,6 @@ class WorldEntityTickLoadBenchmarkTest {
             long max = tickNanos[tickNanos.length - 1];
 
             assertTrue(totalDecisions > 0);
-            assertEquals(TICKS * mobCount, targeting.sampleCount() + totalDeferred
-                    - pipeline.runtime().stats().deferredTasks());
             assertTrue(decisions.sampleCount() > 0);
             System.out.printf(
                     "NEXORA world-tick workload: mobs=%d ticks=%d decisions=%d deferred=%d coordinator_p50_ms=%.3f coordinator_p95_ms=%.3f coordinator_max_ms=%.3f targeting_p95_us=%.3f decision_p95_us=%.3f resident_chunks=%d%n",

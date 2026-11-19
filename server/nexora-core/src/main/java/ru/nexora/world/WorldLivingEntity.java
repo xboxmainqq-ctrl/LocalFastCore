@@ -67,6 +67,17 @@ public record WorldLivingEntity(
                 fireUntilMillis, nextFireDamageMillis);
     }
 
+    /** Updates position and velocity together for a single registry replacement in the physics hot path. */
+    public WorldLivingEntity withPositionAndVelocity(
+            double nextX, double nextY, double nextZ,
+            double nextVelocityX, double nextVelocityY, double nextVelocityZ
+    ) {
+        return new WorldLivingEntity(uniqueId, runtimeId, identifier, family,
+                nextX, nextY, nextZ,
+                nextVelocityX, nextVelocityY, nextVelocityZ,
+                health, maxHealth, fireUntilMillis, nextFireDamageMillis);
+    }
+
     public static Family familyForIdentifier(String identifier) {
         Objects.requireNonNull(identifier, "identifier");
         return switch (identifier) {

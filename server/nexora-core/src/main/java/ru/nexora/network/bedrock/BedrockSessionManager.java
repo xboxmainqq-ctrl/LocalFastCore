@@ -132,6 +132,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final Map<String, SessionState> sessions = new ConcurrentHashMap<>();
     private final ActorReplicationIndex actorReplicationIndex = new ActorReplicationIndex();
     private final ActorReplicationIndex itemActorReplicationIndex = new ActorReplicationIndex();
+    private final ActorReplicationIndex playerActorReplicationIndex = new ActorReplicationIndex();
     private final Object[] xuidLoginLocks = createXuidLoginLocks();
     private final Object sessionChangeMonitor = new Object();
     private final AtomicLong nextEntityId = new AtomicLong(1);
@@ -607,6 +608,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             sessions.remove(networkId, state);
             actorReplicationIndex.removeSession(networkId);
             itemActorReplicationIndex.removeSession(networkId);
+            playerActorReplicationIndex.removeSession(networkId);
             synchronized (sessionChangeMonitor) {
                 sessionChangeMonitor.notifyAll();
             }
@@ -6356,6 +6358,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.sentChunkKeys.retainAll(desiredChunks);
         actorReplicationIndex.replaceChunkView(networkId, state.sentChunkKeys);
         itemActorReplicationIndex.replaceChunkView(networkId, state.sentChunkKeys);
+        playerActorReplicationIndex.replaceChunkView(networkId, state.sentChunkKeys);
         state.lastChunkX = centerX;
         state.lastChunkZ = centerZ;
         syncVisiblePlayerActors(networkId, state);
@@ -6400,13 +6403,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     || player.playerListEntry == null) continue;
             boolean visible = isPlayerChunkVisible(recipient, player);
             if (visible && recipient.visiblePlayerEntityIds.add(player.entityId)) {
+                playerActorReplicationIndex.addActorViewer(player.entityId, recipientNetworkId);
                 try {
                     sendPacket(recipientNetworkId, createAddPlayerPacket(player), true);
                 } catch (RuntimeException exception) {
                     recipient.visiblePlayerEntityIds.remove(player.entityId);
+                    playerActorReplicationIndex.removeActorViewer(player.entityId, recipientNetworkId);
                     System.err.println("NEXORA: unable to add player entering chunk view: " + exception.getMessage());
                 }
             } else if (!visible && recipient.visiblePlayerEntityIds.remove(player.entityId)) {
+                playerActorReplicationIndex.removeActorViewer(player.entityId, recipientNetworkId);
                 if (remove == null) remove = BedrockAddItemActorCodec.createRemoveActor(player.entityId);
                 try {
                     sendPacket(recipientNetworkId, remove, true);
@@ -6966,6 +6972,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             try {
                 sendPacket(networkId, createAddPlayerPacket(existing), true);
                 joining.visiblePlayerEntityIds.add(existing.entityId);
+                playerActorReplicationIndex.addActorViewer(existing.entityId, networkId);
             } catch (RuntimeException exception) {
                 System.err.println("NEXORA: unable to spawn existing player for " + networkId
                         + ": " + exception.getMessage());
@@ -6983,6 +6990,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 if (isPlayerChunkVisible(recipient, joining)) {
                     sendPacket(entry.getKey(), addPlayer, true);
                     recipient.visiblePlayerEntityIds.add(joining.entityId);
+                    playerActorReplicationIndex.addActorViewer(joining.entityId, entry.getKey());
                 }
             } catch (RuntimeException exception) {
                 System.err.println("NEXORA: unable to advertise and spawn joining player for "
@@ -7004,6 +7012,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             if (!recipient.clientInitialized || !recipient.playerListAdvertised) continue;
             try {
                 if (recipient.visiblePlayerEntityIds.remove(leaving.entityId)) {
+                    playerActorReplicationIndex.removeActorViewer(leaving.entityId, entry.getKey());
                     sendPacket(entry.getKey(), removeActor, true);
                 }
                 sendPacket(entry.getKey(), remove, true);
@@ -7048,33 +7057,65 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (!player.clientInitialized || !player.playerListAdvertised || player.playerListEntry == null) return;
         boolean onGround = player.physicsState != null && player.physicsState.onGround();
         BedrockPacket movement = BedrockMoveActorAbsoluteCodec.create(
-                player.entityId,
-                player.positionX,
-                player.positionY + 1.62,
-                player.positionZ,
-                player.pitch,
-                player.yaw,
-                player.yaw,
-                onGround);
-        BedrockPacket spawn = null;
-        BedrockPacket remove = BedrockAddItemActorCodec.createRemoveActor(player.entityId);
-        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
-            if (entry.getKey().equals(sourceNetworkId)) continue;
-            SessionState recipient = entry.getValue();
-            if (!recipient.clientInitialized || !recipient.playerListAdvertised) continue;
-            boolean visible = isPlayerChunkVisible(recipient, player);
+                player.entityId, player.positionX, player.positionY + 1.62, player.positionZ,
+                player.pitch, player.yaw, player.yaw, onGround);
+        int chunkX = Math.floorDiv((int) Math.floor(player.positionX), 16);
+        int chunkZ = Math.floorDiv((int) Math.floor(player.positionZ), 16);
+        long chunkKey = ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
+        List<byte[]> movementFrames = null;
+        List<byte[]> spawnFrames = null;
+        List<byte[]> removeFrames = null;
+
+        // Current recipients come directly from the player's destination chunk.
+        for (String networkId : playerActorReplicationIndex.chunkViewers(chunkKey)) {
+            if (networkId.equals(sourceNetworkId)) continue;
+            SessionState recipient = sessions.get(networkId);
+            if (recipient == null || !recipient.clientInitialized || !recipient.playerListAdvertised) continue;
+            boolean alreadyVisible = recipient.visiblePlayerEntityIds.contains(player.entityId);
             try {
-                if (visible) {
-                    if (recipient.visiblePlayerEntityIds.add(player.entityId)) {
-                        if (spawn == null) spawn = createAddPlayerPacket(player);
-                        sendPacket(entry.getKey(), spawn, true);
+                if (!alreadyVisible) {
+                    recipient.visiblePlayerEntityIds.add(player.entityId);
+                    playerActorReplicationIndex.addActorViewer(player.entityId, networkId);
+                    if (spawnFrames == null) {
+                        spawnFrames = encodeFrames(List.of(createAddPlayerPacket(player), movement), true);
                     }
-                    sendPacket(entry.getKey(), movement, true);
-                } else if (recipient.visiblePlayerEntityIds.remove(player.entityId)) {
-                    sendPacket(entry.getKey(), remove, true);
+                    sendEncodedFrames(networkId, spawnFrames);
+                } else {
+                    if (movementFrames == null) movementFrames = encodeFrames(List.of(movement), true);
+                    sendEncodedFrames(networkId, movementFrames);
                 }
             } catch (RuntimeException exception) {
-                System.err.println("NEXORA: unable to sync player movement to " + entry.getKey()
+                if (!alreadyVisible) {
+                    recipient.visiblePlayerEntityIds.remove(player.entityId);
+                    playerActorReplicationIndex.removeActorViewer(player.entityId, networkId);
+                }
+                System.err.println("NEXORA: unable to sync player movement to " + networkId
+                        + ": " + exception.getMessage());
+            }
+        }
+
+        // Previously visible recipients outside the new chunk receive one despawn.
+        for (String networkId : playerActorReplicationIndex.actorViewers(player.entityId)) {
+            if (networkId.equals(sourceNetworkId)) continue;
+            SessionState recipient = sessions.get(networkId);
+            if (recipient == null) {
+                playerActorReplicationIndex.removeActorViewer(player.entityId, networkId);
+                continue;
+            }
+            if (isPlayerChunkVisible(recipient, player)) continue;
+            if (!recipient.visiblePlayerEntityIds.remove(player.entityId)) {
+                playerActorReplicationIndex.removeActorViewer(player.entityId, networkId);
+                continue;
+            }
+            playerActorReplicationIndex.removeActorViewer(player.entityId, networkId);
+            try {
+                if (removeFrames == null) {
+                    removeFrames = encodeFrames(
+                            List.of(BedrockAddItemActorCodec.createRemoveActor(player.entityId)), true);
+                }
+                sendEncodedFrames(networkId, removeFrames);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to sync player despawn to " + networkId
                         + ": " + exception.getMessage());
             }
         }
@@ -7215,6 +7256,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         sessions.clear();
         actorReplicationIndex.clear();
         itemActorReplicationIndex.clear();
+        playerActorReplicationIndex.clear();
         mobArrows.clear();
         poisonMobArrows.clear();
         mobFireballs.clear();

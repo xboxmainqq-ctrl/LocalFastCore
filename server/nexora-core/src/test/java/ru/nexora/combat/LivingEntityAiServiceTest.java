@@ -355,6 +355,9 @@ class LivingEntityAiServiceTest {
         assertEquals(LivingEntityAiService.AttackStyle.PROJECTILE,
                 LivingEntityAiService.attackStyleFor("minecraft:bogged"));
         assertEquals(12.0, LivingEntityAiService.projectileRangeFor("minecraft:pillager"));
+        assertEquals(12.0, LivingEntityAiService.projectileRangeFor("minecraft:skeleton"));
+        assertEquals(14.0, LivingEntityAiService.projectileRangeFor("minecraft:blaze"));
+        assertEquals(16.0, LivingEntityAiService.projectileRangeFor("minecraft:ghast"));
         assertEquals(0.0, LivingEntityAiService.projectileRangeFor("minecraft:zombie"));
     }
 

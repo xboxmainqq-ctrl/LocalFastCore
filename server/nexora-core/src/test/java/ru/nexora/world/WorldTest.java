@@ -180,6 +180,44 @@ class WorldTest {
     }
 
     @Test
+    void repeatedLongDistanceMovementPersistsAndRestoresDirtyChunksWithinCapacity() throws Exception {
+        WorldStorage storage = new WorldStorage(temporaryDirectory, "NEXORA");
+        World world = new World("NEXORA", 1L, (chunk, seed) -> { }, 0, 65, 0, storage);
+        WorldChunkResidencyManager residency = new WorldChunkResidencyManager(
+                1, 100, WorldChunkResidencyManager.Shape.SQUARE, 9);
+        try {
+            var initial = residency.update(
+                    List.of(new WorldChunkResidencyManager.PlayerChunk(0, 0)), 0);
+            assertEquals(9, world.applyChunkResidencyPlan(initial, 9).loaded());
+            world.setBlock(1, 65, 1, BlockType.DIAMOND_BLOCK);
+
+            for (int step = 1; step <= 40; step++) {
+                var plan = residency.update(
+                        List.of(new WorldChunkResidencyManager.PlayerChunk(step, 0)), step);
+                var applied = world.applyChunkResidencyPlan(plan, 9);
+                assertEquals(9, applied.unloaded() + world.loadedChunkCount() - applied.loaded(),
+                        "movement must reconcile the old view before admitting the new view");
+                assertTrue(world.loadedChunkCount() <= 9,
+                        "the actual persisted world cache must stay within its residency target");
+                assertEquals(9, residency.residentChunkCount());
+            }
+
+            var returned = residency.update(
+                    List.of(new WorldChunkResidencyManager.PlayerChunk(0, 0)), 41);
+            var restored = world.applyChunkResidencyPlan(returned, 9);
+            assertEquals(9, restored.loaded());
+            assertEquals(9, world.loadedChunkCount());
+
+            WorldChunk origin = world.getLoadedChunkOrNull(0, 0);
+            assertNotNull(origin, "the original chunk must be resident again");
+            assertEquals(BlockType.DIAMOND_BLOCK, origin.getBlock(1, 65, 1),
+                    "dirty block data must survive repeated view eviction and disk reload");
+        } finally {
+            world.closeChunkLoadService();
+        }
+    }
+
+    @Test
     void flatGeneratorCreatesAStableSpawnPlatform() {
         World world = new World("NEXORA World", 12345L, new FlatWorldGenerator());
 

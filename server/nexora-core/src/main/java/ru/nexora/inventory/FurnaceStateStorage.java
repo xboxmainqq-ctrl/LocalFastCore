@@ -58,17 +58,7 @@ public final class FurnaceStateStorage {
         file.put(body.array()).putInt((int) crc.getValue());
         Path target = path(x, y, z);
         rejectSymlink(target);
-        Path temporary = Files.createTempFile(directory, ".nexora-furnace-", ".tmp");
-        try {
-            Files.write(temporary, file.array());
-            try {
-                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException ignored) {
-                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } finally {
-            Files.deleteIfExists(temporary);
-        }
+        ru.nexora.persistence.AtomicFileWriter.writeAtomically(target, file.array());
     }
 
     public synchronized Optional<FurnaceService.FurnaceStateSnapshot> load(int x, int y, int z)

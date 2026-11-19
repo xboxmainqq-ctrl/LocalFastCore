@@ -37,8 +37,8 @@ class MobPathCacheTest {
                 .orElseThrow();
 
         assertNotEquals(original, replacement);
-        assertTrue(WorldCollision.canMove(world, 0.5, 65, 0.5,
-                replacement.x(), 65, replacement.z()));
+        assertTrue(WorldCollision.canStepMob(world, "minecraft:zombie",
+                0.5, 65, 0.5, replacement.x(), replacement.y(), replacement.z()));
         assertEquals(1, cache.stats().blockedWaypoints());
         assertEquals(2, cache.stats().recomputations());
     }

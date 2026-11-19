@@ -2898,7 +2898,7 @@ class BedrockSessionManagerTest {
                 noOpInventoryTransactionPayload(257, 3));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(inventoryTransaction), true, 256));
-        assertEquals(27, outboundFrames.size());
+        assertEquals(25, outboundFrames.size());
         assertEquals(0x31, decodeOutbound(outboundFrames.get(24), true).packetId());
         List<BedrockPacket> inventoryReconciliation = BedrockBatchCodec.decode(
                 reassemble(List.of(outboundFrames.get(24))), true);
@@ -2917,7 +2917,7 @@ class BedrockSessionManagerTest {
                 .count("nexora:arcane_shard"));
         assertEquals(3, manager.playerEquipment("authenticated-client").orElseThrow()
                 .offhand().orElseThrow().count());
-        assertEquals(25, outboundFrames.size());
+        assertEquals(26, outboundFrames.size());
 
         // Equip a registered iron chestplate from the main inventory into armor slot 1.
         BedrockPacket armorTransfer = new BedrockPacket(0x1e, 0, 0,
@@ -2927,7 +2927,7 @@ class BedrockSessionManagerTest {
         assertTrue(manager.playerInventory("authenticated-client").orElseThrow().getSlot(2).isEmpty());
         assertEquals(new ItemStack("minecraft:iron_chestplate", 1, 1),
                 manager.playerEquipment("authenticated-client").orElseThrow().armor(1).orElseThrow());
-        assertEquals(26, outboundFrames.size());
+        assertEquals(27, outboundFrames.size());
 
         // Open the player-facing equipment UI, choose the staff slot, and equip a compatible item.
         inventory.setSlot(4, new ItemStack("minecraft:gold_nugget", 1, 64));
@@ -2935,17 +2935,17 @@ class BedrockSessionManagerTest {
                 commandRequestPayload("/equipment", "Player", "equipment-ui-1", 1L));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(equipmentCommand), true, 256));
-        assertEquals(29, outboundFrames.size());
+        assertEquals(28, outboundFrames.size());
         assertEquals(BedrockModalFormCodec.MODAL_FORM_REQUEST_PACKET_ID,
-                decodeOutbound(outboundFrames.get(28), true).packetId());
+                decodeOutbound(outboundFrames.get(27), true).packetId());
 
         BedrockPacket chooseStaffSlot = new BedrockPacket(0x65, 0, 0,
                 modalFormResponsePayload(1, "1"));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(chooseStaffSlot), true, 256));
-        assertEquals(28, outboundFrames.size());
+        assertEquals(29, outboundFrames.size());
         assertEquals(BedrockModalFormCodec.MODAL_FORM_REQUEST_PACKET_ID,
-                decodeOutbound(outboundFrames.get(27), true).packetId());
+                decodeOutbound(outboundFrames.get(28), true).packetId());
 
         BedrockPacket equipStaff = new BedrockPacket(0x65, 0, 0,
                 modalFormResponsePayload(2, "0"));

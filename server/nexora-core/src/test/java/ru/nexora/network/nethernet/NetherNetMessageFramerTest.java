@@ -154,4 +154,19 @@ class NetherNetMessageFramerTest {
         assertEquals(0, budget.stats().reservedBytes());
     }
 
+    @Test
+    void closedReassemblerCannotRetainLateFragmentsAfterDisconnect() {
+        ReassemblyMemoryBudget budget = new ReassemblyMemoryBudget(512);
+        NetherNetMessageFramer.Reassembler reassembler =
+                new NetherNetMessageFramer.Reassembler(1024, 1_000L, budget);
+        assertEquals(Optional.empty(), reassembler.accept(new byte[] {1, 10}, true, 4_000L));
+        assertEquals(256, budget.stats().reservedBytes());
+
+        reassembler.close();
+
+        assertEquals(0, budget.stats().reservedBytes());
+        assertThrows(IllegalStateException.class,
+                () -> reassembler.accept(new byte[] {0, 11}, true, 4_001L));
+    }
+
 }

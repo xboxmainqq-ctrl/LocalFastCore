@@ -6333,12 +6333,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         int previousRadius = state.chunkViewRadius;
         state.chunkViewRadius = radius;
         sendPacket(message.networkId(), BedrockChunkRadiusCodec.createUpdatedPacket(radius), true);
-        if (previousRadius != radius || state.lastChunkX == Integer.MIN_VALUE) {
+        int centerX = Math.floorDiv((int) Math.floor(state.positionX), 16);
+        int centerZ = Math.floorDiv((int) Math.floor(state.positionZ), 16);
+        if (previousRadius != radius || isChunkViewCenterDifferent(state, centerX, centerZ)) {
             sendPacket(message.networkId(), BedrockStartGameCodec.createChunkPublisherUpdate(
                     (int) Math.floor(state.positionX), (int) Math.floor(state.positionY),
                     (int) Math.floor(state.positionZ), state.chunkViewRadius), true);
-            int centerX = Math.floorDiv((int) Math.floor(state.positionX), 16);
-            int centerZ = Math.floorDiv((int) Math.floor(state.positionZ), 16);
             sendChunkArea(message.networkId(), state, centerX, centerZ);
         }
     }

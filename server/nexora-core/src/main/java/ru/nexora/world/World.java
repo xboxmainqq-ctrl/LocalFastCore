@@ -453,9 +453,14 @@ public final class World {
         return total;
     }
 
+    /** Looks up a chunk already in the authoritative cache without loading or generating it. */
+    public WorldChunk getLoadedChunkOrNull(int chunkX, int chunkZ) {
+        return chunks.get(chunkKey(chunkX, chunkZ));
+    }
+
     /** Checks residency without causing a chunk load. */
     public boolean isChunkLoadedAt(int blockX, int blockZ) {
-        return chunks.containsKey(chunkKey(Math.floorDiv(blockX, 16), Math.floorDiv(blockZ, 16)));
+        return getLoadedChunkOrNull(Math.floorDiv(blockX, 16), Math.floorDiv(blockZ, 16)) != null;
     }
 
     /**

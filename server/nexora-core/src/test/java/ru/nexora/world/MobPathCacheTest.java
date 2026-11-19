@@ -124,6 +124,15 @@ class MobPathCacheTest {
     }
 
     @Test
+    void requestCountSaturatesInsteadOfOverflowing() {
+        MobPathCache.Stats stats = new MobPathCache.Stats(
+                Long.MAX_VALUE, 1, 0, 0, 0, 0);
+
+        assertEquals(Long.MAX_VALUE, stats.requests());
+        assertEquals(1.0, stats.hitRate());
+    }
+
+    @Test
     void statsSummaryIsCompactAndContainsOnlyAggregateCounters() {
         MobPathCache.Stats stats = new MobPathCache.Stats(9, 1, 1, 0, 0, 1);
 

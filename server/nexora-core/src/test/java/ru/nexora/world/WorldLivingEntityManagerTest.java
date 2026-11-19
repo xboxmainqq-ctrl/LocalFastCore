@@ -30,6 +30,34 @@ class WorldLivingEntityManagerTest {
     }
 
     @Test
+    void residentChunkSnapshotUsesSpatialIndexAndTracksCrossChunkMovement() {
+        WorldLivingEntityManager manager = new WorldLivingEntityManager();
+        WorldLivingEntity nearby = manager.spawn("minecraft:zombie", 20, 15.5, 64, 0);
+        WorldLivingEntity dormant = manager.spawn("minecraft:skeleton", 20, 80, 64, 80);
+
+        var first = manager.snapshotInChunks(java.util.Set.of(
+                new WorldChunkResidencyManager.ChunkCoordinate(0, 0)));
+        assertEquals(2, first.totalEntities());
+        assertEquals(java.util.List.of(nearby), first.residentEntities());
+
+        manager.move(nearby.runtimeId(), 16.25, 64, 0).orElseThrow();
+        var afterMove = manager.snapshotInChunks(java.util.Set.of(
+                new WorldChunkResidencyManager.ChunkCoordinate(0, 0)));
+        assertTrue(afterMove.residentEntities().isEmpty());
+
+        var nextChunk = manager.snapshotInChunks(java.util.Set.of(
+                new WorldChunkResidencyManager.ChunkCoordinate(1, 0)));
+        assertEquals(java.util.List.of(nearby), nextChunk.residentEntities());
+
+        manager.remove(nearby.runtimeId());
+        var afterRemove = manager.snapshotInChunks(java.util.Set.of(
+                new WorldChunkResidencyManager.ChunkCoordinate(1, 0)));
+        assertEquals(1, afterRemove.totalEntities());
+        assertTrue(afterRemove.residentEntities().isEmpty());
+        assertEquals(dormant.runtimeId(), manager.snapshot().getFirst().runtimeId());
+    }
+
+    @Test
     void infersUndeadAndArthropodFamiliesForCombatEnchantments() {
         assertEquals(WorldLivingEntity.Family.UNDEAD,
                 WorldLivingEntity.familyForIdentifier("minecraft:zombie"));

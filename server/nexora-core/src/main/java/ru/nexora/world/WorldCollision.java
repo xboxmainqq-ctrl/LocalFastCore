@@ -108,8 +108,9 @@ public final class WorldCollision {
         if (!withinWorldBorder(minX, maxX, minZ, maxZ)) return false;
         for (int blockX = (int) Math.floor(minX); blockX <= (int) Math.floor(maxX); blockX++) {
             for (int blockZ = (int) Math.floor(minZ); blockZ <= (int) Math.floor(maxZ); blockZ++) {
-                if (!world.isChunkLoadedAt(blockX, blockZ)) return false;
-                if (world.getBlock(blockX, supportY, blockZ) != BlockType.AIR) return true;
+                BlockType block = world.getLoadedBlockOrNull(blockX, supportY, blockZ);
+                if (block == null) return false;
+                if (block != BlockType.AIR) return true;
             }
         }
         return false;
@@ -145,8 +146,7 @@ public final class WorldCollision {
         for (int blockX = firstX; blockX <= lastX; blockX++) {
             for (int blockY = firstY; blockY <= lastY; blockY++) {
                 for (int blockZ = firstZ; blockZ <= lastZ; blockZ++) {
-                    if (!world.isChunkLoadedAt(blockX, blockZ)
-                            || world.getBlock(blockX, blockY, blockZ) != BlockType.AIR) return false;
+                    if (world.getLoadedBlockOrNull(blockX, blockY, blockZ) != BlockType.AIR) return false;
                 }
             }
         }

@@ -44,6 +44,18 @@ class NetherNetOutboundQueueTest {
     }
 
     @Test
+    void exposesNextFrameSizeWithoutRemovingFrame() {
+        NetherNetOutboundQueue queue = new NetherNetOutboundQueue(32, 4);
+        assertEquals(-1, queue.nextFrameSize());
+        assertTrue(queue.offer(new byte[] {1, 2, 3}));
+        assertEquals(3, queue.nextFrameSize());
+        assertEquals(1, queue.frameCount());
+        assertEquals(3, queue.queuedBytes());
+        assertArrayEquals(new byte[] {1, 2, 3}, queue.poll());
+        assertEquals(-1, queue.nextFrameSize());
+    }
+
+    @Test
     void clearReleasesAllQueuedAccounting() {
         NetherNetOutboundQueue queue = new NetherNetOutboundQueue(32, 4);
         assertTrue(queue.offer(new byte[] {1, 2, 3}));

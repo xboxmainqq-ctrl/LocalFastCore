@@ -14,6 +14,7 @@ class WorldTest {
 
         var initial = residency.update(player, 0);
         var firstTick = world.applyChunkResidencyPlan(initial, 3);
+        assertEquals(13, firstTick.loadRequested());
         assertEquals(3, firstTick.loaded());
         assertEquals(3, world.loadedChunkCount());
         assertEquals(10, world.pendingChunkLoadCount());
@@ -21,6 +22,7 @@ class WorldTest {
         var nextTick = residency.update(player, 1);
         assertTrue(nextTick.load().isEmpty(), "the residency manager must not re-request resident chunks");
         var secondTick = world.applyChunkResidencyPlan(nextTick, 3);
+        assertEquals(10, secondTick.loadRequested());
         assertEquals(3, secondTick.loaded());
         assertEquals(6, world.loadedChunkCount());
         assertEquals(7, world.pendingChunkLoadCount());
@@ -62,6 +64,7 @@ class WorldTest {
         var retryPlan = residency.update(player, 1);
         assertTrue(retryPlan.load().isEmpty());
         var retry = world.applyChunkResidencyPlan(retryPlan, 1);
+        assertEquals(5, retry.loadRequested());
         assertEquals(1, retry.loaded());
         assertEquals(4, world.pendingChunkLoadCount());
         assertEquals(1, world.loadedChunkCount());

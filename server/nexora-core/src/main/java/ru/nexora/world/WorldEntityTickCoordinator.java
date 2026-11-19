@@ -5,7 +5,6 @@ import ru.nexora.combat.LivingEntityAiService;
 import ru.nexora.combat.MobAiLoadController;
 import ru.nexora.combat.MobPhysicsService;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -84,14 +83,10 @@ public final class WorldEntityTickCoordinator {
         World.ChunkResidencyResult worldChunkResult = world == null
                 ? new World.ChunkResidencyResult(0, 0, 0, 0, 0)
                 : world.applyChunkResidencyPlan(plan);
-        List<WorldLivingEntity> entitySnapshot = entities.snapshot();
-        int totalEntities = entitySnapshot.size();
-        List<WorldLivingEntity> activeEntities = new ArrayList<>(totalEntities);
-        for (WorldLivingEntity entity : entitySnapshot) {
-            if (residency.isResidentAtBlockPosition(entity.x(), entity.z())) {
-                activeEntities.add(entity);
-            }
-        }
+        WorldLivingEntityManager.ChunkSnapshot entitySnapshot =
+                entities.snapshotInChunks(residency.residentChunkCoordinates());
+        int totalEntities = entitySnapshot.totalEntities();
+        List<WorldLivingEntity> activeEntities = new ArrayList<>(entitySnapshot.residentEntities());
 
         WorldTickPipeline.TickResult aiResult;
         try {

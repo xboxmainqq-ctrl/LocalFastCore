@@ -1476,6 +1476,51 @@ class BedrockSessionManagerTest {
         }
     }
 
+
+    @Test
+    void ghastFireballTravelsAsFireballAndDamagesAndIgnitesBedrockPlayer() throws Exception {
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "ghast-fireball-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        mobWorld.getChunk(0, 0);
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {});
+        try {
+            manager.onIdentity("fireball-player", new NetherNetClientIdentity(
+                    "fireball-token", new byte[] {32}, "fireball-xuid",
+                    "FireballPlayer", "playfab-fireball", "20CA2", null));
+            setSessionField(manager, "fireball-player", "loginAuthenticated", true);
+            setSessionField(manager, "fireball-player", "clientInitialized", true);
+            setSessionField(manager, "fireball-player", "positionInitialized", true);
+            setSessionField(manager, "fireball-player", "entityId", 132L);
+            setSessionField(manager, "fireball-player", "positionX", 5.5f);
+            setSessionField(manager, "fireball-player", "positionY", 65.0f);
+            setSessionField(manager, "fireball-player", "positionZ", 0.5f);
+            var ghast = manager.spawnLivingEntity(
+                    "minecraft:ghast", 10.0f, 0.5, 65.0, 0.5);
+            var target = new ru.nexora.combat.LivingEntityAiService.PlayerTarget(
+                    "fireball-player", 5.5, 65.0, 0.5, true);
+            java.lang.reflect.Method launch = BedrockSessionManager.class.getDeclaredMethod(
+                    "tickFireballMobBehavior",
+                    ru.nexora.world.WorldLivingEntity.class,
+                    ru.nexora.combat.LivingEntityAiService.PlayerTarget.class, long.class);
+            launch.setAccessible(true);
+            java.lang.reflect.Method tick = BedrockSessionManager.class.getDeclaredMethod(
+                    "tickMobFireballs", long.class);
+            tick.setAccessible(true);
+            float initialHealth = manager.playerVitals("fireball-player").orElseThrow().health();
+
+            assertEquals(true, launch.invoke(manager, ghast, target, 1_000L));
+            for (int i = 0; i < 5; i++) tick.invoke(manager, (long) i + 1L);
+
+            assertEquals(initialHealth - 6.0f,
+                    manager.playerVitals("fireball-player").orElseThrow().health(), 0.0001f);
+            assertTrue((long) getSessionField(manager, "fireball-player", "fireUntilNanos") > 0L);
+        } finally {
+            manager.close();
+        }
+    }
+
     @Test
     void guardianBeamChargesBeforeApplyingLongRangeDamage() throws Exception {
         ru.nexora.world.World mobWorld = new ru.nexora.world.World(

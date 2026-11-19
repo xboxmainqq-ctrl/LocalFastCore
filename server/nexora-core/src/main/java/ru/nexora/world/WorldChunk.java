@@ -72,7 +72,6 @@ public final class WorldChunk {
         return sections[index] == null ? null : sections[index].copyRawBlocks();
     }
 
-    /** Takes one consistent, detached snapshot for persistence or packet encoding. */
     /** Monotonic mutation version used to detect writes racing persistence. */
     public synchronized long revision() { return revision; }
 
@@ -104,7 +103,10 @@ public final class WorldChunk {
     public synchronized void loadSectionRaw(int index, byte[] raw) {
         if (index < 0 || index >= SECTION_COUNT) throw new IndexOutOfBoundsException("Invalid section index");
         if (raw == null) {
-            sections[index] = null;
+            if (sections[index] != null) {
+                sections[index] = null;
+                revision++;
+            }
             return;
         }
         ChunkSection section = new ChunkSection();

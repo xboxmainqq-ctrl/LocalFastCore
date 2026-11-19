@@ -198,6 +198,11 @@ public final class LivingEntityAiService {
         double dx = target.x() - mob.x();
         double dy = target.y() - mob.y();
         double dz = target.z() - mob.z();
+        // A blocked shot must not make a ranged mob walk into an opponent at point-blank range.
+        if (attackStyleFor(mob.identifier()) == AttackStyle.PROJECTILE
+                && Math.hypot(dx, dz) < RANGED_RETREAT_DISTANCE) {
+            return flee(mob, target);
+        }
         double speed = movementSpeedFor(mob.identifier());
         if (isFlyingMob(mob.identifier())) {
             double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);

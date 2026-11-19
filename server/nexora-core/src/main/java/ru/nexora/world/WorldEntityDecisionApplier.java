@@ -43,6 +43,8 @@ public final class WorldEntityDecisionApplier {
         if (nowMillis < 0) throw new IllegalArgumentException("nowMillis must be non-negative");
         var entity = entities.find(decision.mobRuntimeId());
         if (entity.isEmpty() || entity.get().health() <= 0) {
+            pathCache.remove(decision.mobRuntimeId());
+            stuckTracker.reset(decision.mobRuntimeId());
             return new ApplyResult(decision.mobRuntimeId(), false, false, false, 0);
         }
 

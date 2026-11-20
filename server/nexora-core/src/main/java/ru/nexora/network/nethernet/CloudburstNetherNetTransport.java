@@ -498,6 +498,7 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
     private static final class CapturingMinecraftTokenTrust implements TokenTrust {
         private static final long TOKEN_RETENTION_NANOS = TimeUnit.SECONDS.toNanos(60);
         private static final int MAX_TOKENS_PER_KEY = 8;
+        private static final int MAX_PENDING_KEYS = 1_024;
         private final TokenTrust delegate;
         private final Map<String, ConcurrentLinkedDeque<TokenEntry>> pending = new ConcurrentHashMap<>();
 
@@ -512,13 +513,21 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
             if (cpk == null || cpk.isBlank()) {
                 throw new SecurityException("Minecraft GameServerToken has no cpk");
             }
-            ConcurrentLinkedDeque<TokenEntry> queue =
-                    pending.computeIfAbsent(cpk, ignored -> new ConcurrentLinkedDeque<>());
             long now = System.nanoTime();
-            TokenEntry entry = new TokenEntry(identity.assertion().token(), now);
-            queue.addLast(entry);
-            while (queue.size() > MAX_TOKENS_PER_KEY) queue.pollFirst();
-            purgeExpired(queue, now);
+            synchronized (pending) {
+                purgeExpiredKeys(now);
+                ConcurrentLinkedDeque<TokenEntry> queue = pending.get(cpk);
+                if (queue == null) {
+                    if (pending.size() >= MAX_PENDING_KEYS) {
+                        throw new SecurityException("Too many pending NetherNet identity keys");
+                    }
+                    queue = new ConcurrentLinkedDeque<>();
+                    pending.put(cpk, queue);
+                }
+                queue.addLast(new TokenEntry(identity.assertion().token(), now));
+                while (queue.size() > MAX_TOKENS_PER_KEY) queue.pollFirst();
+                purgeExpired(queue, now);
+            }
             return claims;
         }
 
@@ -528,13 +537,24 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
         }
 
         String take(String cpk) {
-            ConcurrentLinkedDeque<TokenEntry> queue = pending.get(cpk);
-            if (queue == null) return null;
-            long now = System.nanoTime();
-            purgeExpired(queue, now);
-            TokenEntry entry = queue.pollFirst();
-            if (queue.isEmpty()) pending.remove(cpk, queue);
-            return entry == null ? null : entry.token();
+            synchronized (pending) {
+                ConcurrentLinkedDeque<TokenEntry> queue = pending.get(cpk);
+                if (queue == null) return null;
+                long now = System.nanoTime();
+                purgeExpired(queue, now);
+                TokenEntry entry = queue.pollFirst();
+                if (queue.isEmpty()) pending.remove(cpk, queue);
+                return entry == null ? null : entry.token();
+            }
+        }
+
+        private void purgeExpiredKeys(long now) {
+            var iterator = pending.entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<String, ConcurrentLinkedDeque<TokenEntry>> entry = iterator.next();
+                purgeExpired(entry.getValue(), now);
+                if (entry.getValue().isEmpty()) iterator.remove();
+            }
         }
 
         private static void purgeExpired(ConcurrentLinkedDeque<TokenEntry> queue, long now) {

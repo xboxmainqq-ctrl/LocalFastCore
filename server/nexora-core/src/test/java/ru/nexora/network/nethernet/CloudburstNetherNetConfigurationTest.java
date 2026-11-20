@@ -19,8 +19,8 @@ class CloudburstNetherNetConfigurationTest {
     void suppliesStableDefaultsWithoutOptionalDeploymentSettings() {
         var result = config(Map.of(), 23472, 23472, List.of());
 
-        assertEquals("storm.mcpehost.ru", result.advertisedHost());
-        assertEquals(23472, result.publicUdpPort());
+        assertNull(result.advertisedHost());
+        assertEquals(0, result.publicUdpPort());
         assertEquals("NEXOR", result.identityDomain());
         assertNull(result.httpsCertificate());
         assertNull(result.httpsPrivateKey());
@@ -90,10 +90,11 @@ class CloudburstNetherNetConfigurationTest {
         assertThrows(IllegalArgumentException.class, () -> config(
                 Map.of("NEXORA_PUBLIC_UDP_PORT", "40000"),
                 30000, 30000, List.of()));
-        assertThrows(IllegalArgumentException.class, () -> config(
-                Map.of("NEXORA_ADVERTISED_HOST", "play.nexor.example",
-                        "NEXORA_PUBLIC_UDP_PORT", "40000"),
-                30000, 30000, List.of()));
+        var translated = config(Map.of(
+                "NEXORA_ADVERTISED_HOST", "play.nexor.example",
+                "NEXORA_PUBLIC_UDP_PORT", "40000"),
+                30000, 30000, List.of());
+        assertEquals(40000, translated.publicUdpPort());
     }
 
     @Test

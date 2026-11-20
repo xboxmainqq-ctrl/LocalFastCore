@@ -23,6 +23,8 @@ public final class WorldAutosave implements AutoCloseable {
     private final RuntimeTaskScheduler.TaskHandle task;
     private final Object saveLock = new Object();
     private final AtomicBoolean closed = new AtomicBoolean();
+    // Guarded by saveLock; a failed shutdown flush remains retryable on a later close().
+    private boolean finalSaveCompleted;
     private final LongAdder saveAttempts = new LongAdder();
     private final LongAdder successfulSaves = new LongAdder();
     private final LongAdder failedSaves = new LongAdder();
@@ -106,14 +108,21 @@ public final class WorldAutosave implements AutoCloseable {
 
     @Override
     public void close() throws IOException {
-        if (!closed.compareAndSet(false, true)) return;
-        task.cancel();
-        synchronized (saveLock) {
-            // Wait for any in-flight periodic save before the final flush.
+        boolean firstClose = closed.compareAndSet(false, true);
+        if (firstClose) {
+            task.cancel();
+            synchronized (saveLock) {
+                // Wait for any in-flight periodic save before stopping the scheduler.
+            }
+            if (ownsScheduler) scheduler.close();
         }
-        if (ownsScheduler) scheduler.close();
         synchronized (saveLock) {
-            flushAllMeasured();
+            // Do not mark shutdown complete until every persistence target has flushed.
+            // If disk I/O fails transiently, a subsequent close() retries the final save.
+            if (!finalSaveCompleted) {
+                flushAllMeasured();
+                finalSaveCompleted = true;
+            }
         }
     }
 

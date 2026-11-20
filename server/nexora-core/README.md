@@ -80,7 +80,7 @@ Initial stable game target: **Bedrock 1.26.62 / game protocol 2225**. The transp
 
 ## Legacy RakNet discovery experiment
 
-The bootstrap runs the modern NetherNet signaling endpoint over TCP and keeps the legacy RakNet discovery responder over UDP on the same port. The transport path can establish WebRTC data channels, but it is not yet a playable server.
+The bootstrap runs Cloudburst NetherNet signaling over TCP, ICE/DTLS/SCTP over the configured UDP port range, and keeps the legacy RakNet discovery responder as a separate UDP experiment. The Cloudburst transport is wired to NEXORA's Bedrock session manager, but a successful real Bedrock-client connection has not yet been verified; do not treat the current build as a playable public server.
 
 Build and test locally (the GitHub Actions workflow also runs this command for changes under server/nexora-core):
 
@@ -255,36 +255,39 @@ World chunk snapshots under each world's `chunks/` directory also retain one pre
 
 ## NetherNet runtime readiness (important)
 
-NEXORA must not report a usable modern Bedrock transport when only the HTTP signaling endpoint is running. Startup now fails if the native WebRTC runtime cannot initialize; there is no signaling-only fallback. This prevents a server process from appearing healthy while every real Bedrock join is guaranteed to fail.
+The production bootstrap now uses CloudburstMC's `netty-transport-nethernet` over Netty, with `libdatachannel-java` for native WebRTC/ICE/DTLS/SCTP transport. Cloudburst owns HTTP(S) signaling, GameServerToken verification, the detached DTLS-fingerprint identity assertion, ICE negotiation, data-channel segmentation and reassembly. NEXORA adapts the validated `PlayerInfo` identity into its Bedrock session manager and keeps its existing message-framing layer inside the server only; those private frames are not sent over the wire.
 
-The current implementation uses the `webrtc-java` binding and its packaged native WebRTC runtime. The deployment host must use a supported native platform and install the system libraries required by that native runtime. On Linux, a missing `libXdamage.so.1` is one known loader failure; install the matching distribution package (commonly `libxdamage1`) and inspect the complete linker error for any additional missing libraries. Keep the UDP range configured by `NEXORA_UDP_PORT_MIN` and `NEXORA_UDP_PORT_MAX` reachable from the public Internet, or provide correct NAT/port forwarding. STUN helps discover a server-reflexive address; it does not replace UDP reachability or a TURN relay.
+The Cloudburst transport is an Apache-2.0 dependency, not copied Nukkit code. Nukkit-MOT remains a protocol and deployment reference; NEXORA does not depend on Nukkit at runtime. The older `webrtc-java` negotiator and identity implementation remain in the source tree for compatibility/tests, but the production bootstrap no longer starts them. Native initialization happens while the NetherNet listener binds and startup fails if the required native runtime cannot load; there is no signaling-only fallback. If startup reports a missing native library, install the matching operating-system package and inspect the full linker error.
 
-Nukkit-MOT's NetherNet implementation is a useful compatibility reference: it builds on CloudburstMC's `netty-transport-nethernet` signaling/transport stack and `libdatachannel-java`, and includes operational handling for UDP port publication, shared-port relay, persistent operator identity, HTTPS signaling and ICE candidate reachability. NEXORA currently has its own HTTP signaling and `webrtc-java` peer-connection path; it has **not** yet ported Nukkit's transport stack or its shared-port relay. Do not treat the two implementations as interchangeable, and do not copy Nukkit classes without their transitive dependencies and LGPL-3.0 notices.
+The configured UDP range must be reachable from clients. STUN discovery requires a fixed ICE UDP port, so when STUN is configured without an advertised host, set `NEXORA_UDP_PORT_MIN` and `NEXORA_UDP_PORT_MAX` to the same port. An explicit advertised host can be used instead of STUN. STUN or an advertised address does not create a UDP relay and does not solve symmetric NAT/CGNAT.
 
+### Public ICE candidate advertisement
 
-### Public ICE candidate mapping
-
-For a server behind a router with a one-to-one UDP port forward, NEXORA can advertise the externally reachable host address instead of private host-candidate addresses:
+For a server behind a router, NEXORA can append an externally reachable host endpoint to the signed SDP answer. The identity assertion signs the DTLS fingerprint, not the candidate address, so adding an advertised endpoint does not change the fingerprint being authenticated.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `NEXORA_ADVERTISED_HOST` | unset | Public IPv4/IPv6 address or DNS hostname placed in UDP host ICE candidates |
-| `NEXORA_PUBLIC_UDP_PORT` | unset | Optional first externally forwarded UDP port; maps the configured internal UDP range by preserving each port's offset |
+| `NEXORA_ADVERTISED_HOST` | unset | Public IPv4/IPv6 address or DNS hostname announced to joining clients |
+| `NEXORA_PUBLIC_UDP_PORT` | unset | Optional external UDP port; requires `NEXORA_ADVERTISED_HOST` and a fixed internal ICE port (set UDP min and max to the same value) |
+| `NEXORA_UDP_PORT_MIN` / `NEXORA_UDP_PORT_MAX` | `30000` / `30199` | Internal UDP ICE range; forward the full range when using a range |
 
-Example for a router forwarding UDP `30000-30199` to the same internal range, with no port translation:
+Example with the same public and internal UDP range:
 
-```bash
+```sh
 NEXORA_ADVERTISED_HOST=play.example.net
+NEXORA_UDP_PORT_MIN=30000
+NEXORA_UDP_PORT_MAX=30199
 ```
 
-Example when internal UDP `30000-30199` is forwarded to external UDP `40000-40199`:
+Example with a single internal UDP port forwarded to a different public port:
 
-```bash
+```sh
 NEXORA_ADVERTISED_HOST=play.example.net
+NEXORA_UDP_PORT_MIN=30000
+NEXORA_UDP_PORT_MAX=30000
 NEXORA_PUBLIC_UDP_PORT=40000
 ```
 
-The mapper changes only UDP `typ host` candidates. Server-reflexive and relay candidates remain ICE-generated and untouched. It runs after the server identity assertion is created; the assertion binds the DTLS fingerprint, so changing only candidate address/port fields does not alter the signed fingerprint payload. The public UDP range must still be forwarded and reachable; this feature does not create a UDP relay or solve symmetric NAT/CGNAT. Do not set a public port base unless the router forwards the complete configured range with the same port offset.
+When `NEXORA_ADVERTISED_HOST` is set, it takes precedence over configured STUN URLs because Cloudburst does not combine explicit advertised endpoints and STUN discovery in one signaling instance. If an external port is supplied, the router must forward that public port to the fixed internal ICE port. If no external port is supplied, the announced hostname uses the actual ICE port; forward the full configured range without port translation.
 
-This is a transport-readiness improvement, not proof of end-to-end Bedrock compatibility. A real client join still has to pass the complete NetherNet handshake, Bedrock login/resource-pack flow, StartGame, chunk bootstrap and client initialization on a publicly reachable deployment.
-
+This transport integration is a substantial implementation step, not proof of end-to-end Bedrock compatibility. A real client join still has to pass the complete NetherNet handshake, Bedrock login/resource-pack flow, StartGame, chunk bootstrap and client initialization on a publicly reachable deployment.

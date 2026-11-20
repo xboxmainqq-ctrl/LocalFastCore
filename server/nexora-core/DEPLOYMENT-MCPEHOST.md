@@ -23,7 +23,7 @@ For the MCPEHost allocation, the intended values are:
 - `NEXORA_ADVERTISED_HOST=storm.mcpehost.ru`
 - `NEXORA_PUBLIC_UDP_PORT=23472`
 
-These values must be supplied through the hosting panel's environment/startup configuration if supported. Do not assume that editing `server.properties` sets them.
+These values must be supplied explicitly through the hosting panel's environment/startup configuration if supported. NEXORA does not hardcode the MCPEHost hostname as a global default, so another deployment cannot accidentally advertise this server. Do not assume that editing `server.properties` sets them.
 
 ## Public connection prerequisites
 

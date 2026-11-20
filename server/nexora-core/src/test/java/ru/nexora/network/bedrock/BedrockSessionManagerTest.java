@@ -1875,10 +1875,14 @@ class BedrockSessionManagerTest {
                 tickArrows.invoke(manager, step + 1L);
             }
 
-            assertTrue(manager.snapshotMobArrowsInChunkKeys(java.util.Set.of(1L)).stream()
+            assertTrue(manager.snapshotMobArrowsInChunkKeys(java.util.Set.of(1L << 32)).stream()
                     .anyMatch(arrow -> arrow.x() > 16.0),
                     "The projectile index must move the arrow into its new chunk");
             assertTrue(manager.snapshotMobArrowsInChunkKeys(java.util.Set.of(firstChunk)).isEmpty());
+
+            assertTrue(manager.despawnLivingEntity(nearbySkeleton.runtimeId()));
+            assertTrue(manager.snapshotMobArrowsInChunkKeys(java.util.Set.of(1L << 32)).isEmpty(),
+                    "Despawning a mob must also remove its projectiles from the chunk index");
         } finally {
             manager.close();
         }

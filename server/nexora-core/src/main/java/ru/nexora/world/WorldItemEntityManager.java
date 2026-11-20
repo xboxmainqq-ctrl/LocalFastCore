@@ -7,6 +7,8 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -245,10 +247,29 @@ public final class WorldItemEntityManager {
             // full entity snapshot for every outer-loop actor made this phase allocate
             // repeatedly and added avoidable sorting work to the O(n^2) pair scan.
             List<WorldItemEntity> mergeCandidates = snapshot();
+            Map<MergeCell, List<WorldItemEntity>> mergeBuckets = new HashMap<>();
+            for (WorldItemEntity candidate : mergeCandidates) {
+                mergeBuckets.computeIfAbsent(mergeCell(candidate), ignored -> new ArrayList<>()).add(candidate);
+            }
             for (WorldItemEntity first : mergeCandidates) {
                 WorldItemEntity currentFirst = entities.get(first.runtimeId());
                 if (currentFirst == null) continue;
-                for (WorldItemEntity second : mergeCandidates) {
+
+                // Only actors in the same or adjacent cells can be within the merge radius.
+                // Candidate order remains runtime-ID order to keep merges deterministic.
+                MergeCell cell = mergeCell(currentFirst);
+                List<WorldItemEntity> nearby = new ArrayList<>();
+                for (long dx = -1; dx <= 1; dx++) {
+                    for (long dy = -1; dy <= 1; dy++) {
+                        for (long dz = -1; dz <= 1; dz++) {
+                            List<WorldItemEntity> bucket = mergeBuckets.get(
+                                    new MergeCell(cell.x() + dx, cell.y() + dy, cell.z() + dz));
+                            if (bucket != null) nearby.addAll(bucket);
+                        }
+                    }
+                }
+                nearby.sort(Comparator.comparingLong(WorldItemEntity::runtimeId));
+                for (WorldItemEntity second : nearby) {
                     if (second.runtimeId() <= currentFirst.runtimeId()) continue;
                     WorldItemEntity currentSecond = entities.get(second.runtimeId());
                     if (currentSecond == null || !canMerge(currentFirst, currentSecond)) continue;
@@ -283,6 +304,16 @@ public final class WorldItemEntityManager {
             for (WorldItemEntity entity : before) entities.put(entity.runtimeId(), entity);
             throw exception;
         }
+    }
+
+    private static MergeCell mergeCell(WorldItemEntity entity) {
+        return new MergeCell(
+                (long) Math.floor(entity.x() / DEFAULT_MERGE_RADIUS),
+                (long) Math.floor(entity.y() / DEFAULT_MERGE_RADIUS),
+                (long) Math.floor(entity.z() / DEFAULT_MERGE_RADIUS));
+    }
+
+    private record MergeCell(long x, long y, long z) {
     }
 
     private static boolean canMerge(WorldItemEntity first, WorldItemEntity second) {

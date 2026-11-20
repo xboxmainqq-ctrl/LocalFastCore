@@ -1867,7 +1867,13 @@ class BedrockSessionManagerTest {
             java.lang.reflect.Method tickArrows = BedrockSessionManager.class.getDeclaredMethod(
                     "tickMobArrows", long.class);
             tickArrows.setAccessible(true);
-            tickArrows.invoke(manager, 1L);
+            // Advance until the arrow actually crosses the 16-block chunk edge.
+            // A single tick is not guaranteed to cover the remaining distance.
+            for (int step = 0; step < 20
+                    && manager.snapshotMobArrowsInChunkKeys(java.util.Set.of(firstChunk)).stream()
+                    .anyMatch(arrow -> arrow.x() <= 16.0); step++) {
+                tickArrows.invoke(manager, step + 1L);
+            }
 
             assertTrue(manager.snapshotMobArrowsInChunkKeys(java.util.Set.of(1L)).stream()
                     .anyMatch(arrow -> arrow.x() > 16.0),

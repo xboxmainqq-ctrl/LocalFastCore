@@ -37,6 +37,9 @@ record CloudburstNetherNetConfiguration(
         }
 
         String host = blankToNull(environment.get("NEXORA_ADVERTISED_HOST"));
+        if (host == null && stunUrls.isEmpty()) {
+            host = "storm.mcpehost.ru";
+        }
         if (host != null && !ADVERTISED_HOST.matcher(host).matches()) {
             throw new IllegalArgumentException(
                     "NEXORA_ADVERTISED_HOST must be a DNS name or IP address without a scheme or port");
@@ -47,6 +50,13 @@ record CloudburstNetherNetConfiguration(
         }
 
         int publicPort = parsePort(environment.get("NEXORA_PUBLIC_UDP_PORT"));
+        if (host != null && udpPortMin != udpPortMax) {
+            throw new IllegalArgumentException(
+                    "NEXORA_ADVERTISED_HOST requires a fixed ICE UDP port; set NEXORA_UDP_PORT_MIN and NEXORA_UDP_PORT_MAX to the same value");
+        }
+        if (host != null && publicPort == 0) {
+            publicPort = udpPortMin;
+        }
         if (publicPort > 0 && host == null) {
             throw new IllegalArgumentException(
                     "NEXORA_PUBLIC_UDP_PORT requires NEXORA_ADVERTISED_HOST");

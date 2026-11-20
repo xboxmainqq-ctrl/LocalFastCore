@@ -171,6 +171,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final Map<Long, Set<Long>> mobFireballIdsByChunk = new ConcurrentHashMap<>();
     private final Map<Long, Long> mobArrowChunkById = new ConcurrentHashMap<>();
     private final Map<Long, Long> mobFireballChunkById = new ConcurrentHashMap<>();
+    // Owner indexes make mob-death projectile cleanup proportional to that mob's projectiles.
+    private final Map<String, Set<Long>> mobArrowIdsByOwner = new ConcurrentHashMap<>();
+    private final Map<String, Long> mobArrowOwnerById = new ConcurrentHashMap<>();
+    private final Map<String, Set<Long>> mobFireballIdsByOwner = new ConcurrentHashMap<>();
+    private final Map<String, Long> mobFireballOwnerById = new ConcurrentHashMap<>();
     private final Set<Long> poisonMobArrows = ConcurrentHashMap.newKeySet();
     private final ru.nexora.combat.GuardianBeamTracker guardianBeamTracker =
             new ru.nexora.combat.GuardianBeamTracker();
@@ -3982,6 +3987,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 dx / aimLength * speed, aimY / aimLength * speed, dz / aimLength * speed, 0);
         mobArrows.put(runtimeId, arrow);
         indexProjectile(mobArrowIdsByChunk, mobArrowChunkById, runtimeId, arrow.x(), arrow.z());
+        indexProjectileOwner(mobArrowIdsByOwner, mobArrowOwnerById, runtimeId, arrow.ownerNetworkId());
         if ("minecraft:bogged".equals(mob.identifier())) poisonMobArrows.add(runtimeId);
         broadcastLivingActorPacket(BedrockArrowActorCodec.createSpawn(arrow));
         long cooldownMillis = ru.nexora.combat.LivingEntityAiService
@@ -4035,6 +4041,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         mobFireballs.put(runtimeId, fireball);
         indexProjectile(mobFireballIdsByChunk, mobFireballChunkById,
                 runtimeId, fireball.x(), fireball.z());
+        indexProjectileOwner(mobFireballIdsByOwner, mobFireballOwnerById,
+                runtimeId, fireball.ownerNetworkId());
         broadcastLivingActorPacket(BedrockFireballActorCodec.createSpawn(fireball));
         long cooldownMillis = ru.nexora.combat.LivingEntityAiService
                 .rangedAttackCooldownMillisFor(identifier);
@@ -4105,6 +4113,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             if (removed) {
                 if (mobFireballs.remove(entry.getKey(), current)) {
                     unindexProjectile(mobFireballIdsByChunk, mobFireballChunkById, entry.getKey());
+                    unindexProjectileOwner(mobFireballIdsByOwner, mobFireballOwnerById, entry.getKey());
                     broadcastLivingActorPacket(
                             BedrockAddItemActorCodec.createRemoveActor(current.uniqueId()));
                 }
@@ -4339,6 +4348,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             if (removed) {
                 if (mobArrows.remove(entry.getKey(), current)) {
                     unindexProjectile(mobArrowIdsByChunk, mobArrowChunkById, entry.getKey());
+                    unindexProjectileOwner(mobArrowIdsByOwner, mobArrowOwnerById, entry.getKey());
                     poisonMobArrows.remove(entry.getKey());
                     broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(current.uniqueId()));
                 }
@@ -4810,21 +4820,30 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         livingEntityAggroTargets.remove(runtimeId);
         livingEntityAggroExpiresAtMillis.remove(runtimeId);
         livingEntityKillCredit.remove(runtimeId);
-        for (var entry : mobArrows.entrySet()) {
-            if (entry.getValue().ownerNetworkId().equals("mob:" + runtimeId)
-                    && mobArrows.remove(entry.getKey(), entry.getValue())) {
-                unindexProjectile(mobArrowIdsByChunk, mobArrowChunkById, entry.getKey());
-                poisonMobArrows.remove(entry.getKey());
-                broadcastLivingActorPacket(
-                        BedrockAddItemActorCodec.createRemoveActor(entry.getValue().uniqueId()));
+        String ownerKey = "mob:" + runtimeId;
+        Set<Long> ownedArrows = mobArrowIdsByOwner.remove(ownerKey);
+        if (ownedArrows != null) {
+            for (long projectileId : List.copyOf(ownedArrows)) {
+                ru.nexora.combat.ArrowProjectile arrow = mobArrows.get(projectileId);
+                if (arrow != null && mobArrows.remove(projectileId, arrow)) {
+                    unindexProjectile(mobArrowIdsByChunk, mobArrowChunkById, projectileId);
+                    mobArrowOwnerById.remove(projectileId, ownerKey);
+                    poisonMobArrows.remove(projectileId);
+                    broadcastLivingActorPacket(
+                            BedrockAddItemActorCodec.createRemoveActor(arrow.uniqueId()));
+                }
             }
         }
-        for (var entry : mobFireballs.entrySet()) {
-            if (entry.getValue().ownerNetworkId().equals("mob:" + runtimeId)
-                    && mobFireballs.remove(entry.getKey(), entry.getValue())) {
-                unindexProjectile(mobFireballIdsByChunk, mobFireballChunkById, entry.getKey());
-                broadcastLivingActorPacket(
-                        BedrockAddItemActorCodec.createRemoveActor(entry.getValue().uniqueId()));
+        Set<Long> ownedFireballs = mobFireballIdsByOwner.remove(ownerKey);
+        if (ownedFireballs != null) {
+            for (long projectileId : List.copyOf(ownedFireballs)) {
+                ru.nexora.combat.FireballProjectile fireball = mobFireballs.get(projectileId);
+                if (fireball != null && mobFireballs.remove(projectileId, fireball)) {
+                    unindexProjectile(mobFireballIdsByChunk, mobFireballChunkById, projectileId);
+                    mobFireballOwnerById.remove(projectileId, ownerKey);
+                    broadcastLivingActorPacket(
+                            BedrockAddItemActorCodec.createRemoveActor(fireball.uniqueId()));
+                }
             }
         }
     }
@@ -6836,6 +6855,26 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (ids.isEmpty()) idsByChunk.remove(key, ids);
     }
 
+    private static void indexProjectileOwner(
+            Map<String, Set<Long>> idsByOwner, Map<Long, String> ownerById,
+            long runtimeId, String ownerNetworkId
+    ) {
+        ownerById.put(runtimeId, ownerNetworkId);
+        idsByOwner.computeIfAbsent(ownerNetworkId, ignored -> ConcurrentHashMap.newKeySet())
+                .add(runtimeId);
+    }
+
+    private static void unindexProjectileOwner(
+            Map<String, Set<Long>> idsByOwner, Map<Long, String> ownerById, long runtimeId
+    ) {
+        String owner = ownerById.remove(runtimeId);
+        if (owner == null) return;
+        Set<Long> ids = idsByOwner.get(owner);
+        if (ids == null) return;
+        ids.remove(runtimeId);
+        if (ids.isEmpty()) idsByOwner.remove(owner, ids);
+    }
+
     private static void reindexProjectile(
             Map<Long, Set<Long>> idsByChunk, Map<Long, Long> chunkById,
             long runtimeId, double oldX, double oldZ, double newX, double newZ
@@ -7795,10 +7834,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         mobArrows.clear();
         mobArrowIdsByChunk.clear();
         mobArrowChunkById.clear();
+        mobArrowIdsByOwner.clear();
+        mobArrowOwnerById.clear();
         poisonMobArrows.clear();
         mobFireballs.clear();
         mobFireballIdsByChunk.clear();
         mobFireballChunkById.clear();
+        mobFireballIdsByOwner.clear();
+        mobFireballOwnerById.clear();
         guardianBeamTracker.clearAll();
         if (persistenceFailure != null) {
             throw new IllegalStateException(

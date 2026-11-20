@@ -6679,7 +6679,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
         }
         if (itemRegistry != null) {
-            for (WorldItemEntity entity : world.itemEntities().snapshot()) {
+            for (WorldItemEntity entity : world.itemEntities().snapshotInChunkKeys(recipient.sentChunkKeys)) {
                 if (itemRegistry.findByIdentifier(entity.stack().itemId()) == null) continue;
                 boolean visible = isWorldPositionVisible(recipient, entity.x(), entity.z());
                 if (visible && recipient.visibleItemEntityIds.add(entity.runtimeId())) {

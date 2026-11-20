@@ -28,6 +28,9 @@ public final class WorldItemEntityManager {
     private final List<WorldItemEntity> removedByTick = new ArrayList<>();
     private final AtomicLong nextRuntimeId = new AtomicLong(1_000_000);
     private final ConcurrentMap<Long, WorldItemEntity> entities = new ConcurrentHashMap<>();
+    // WORLD-owned secondary index avoids scanning every dropped item when a client publishes chunks.
+    private final Map<Long, java.util.Set<Long>> entitiesByChunk = new HashMap<>();
+    private final Map<Long, Long> entityChunkKeys = new HashMap<>();
     private final WorldItemEntityStorage storage;
 
     public WorldItemEntityManager() {
@@ -43,6 +46,7 @@ public final class WorldItemEntityManager {
                     || entities.putIfAbsent(entity.runtimeId(), entity) != null) {
                 throw new IOException("Invalid or duplicate persisted dropped-item runtime ID");
             }
+            index(entity);
             highestRuntimeId = Math.max(highestRuntimeId, entity.runtimeId());
         }
         nextRuntimeId.set(highestRuntimeId + 1);
@@ -63,10 +67,12 @@ public final class WorldItemEntityManager {
                 x, y, z, velocityX, velocityY, velocityZ,
                 nowMillis + pickupDelayMillis, ownerXuid);
         entities.put(runtimeId, entity);
+        index(entity);
         try {
             persist();
         } catch (RuntimeException exception) {
             entities.remove(runtimeId, entity);
+            unindex(runtimeId);
             throw exception;
         }
         return entity;
@@ -89,9 +95,11 @@ public final class WorldItemEntityManager {
             if (!entities.remove(runtimeId, entity)) return false;
             try {
                 persist();
+                unindex(runtimeId);
                 return true;
             } catch (RuntimeException exception) {
                 entities.putIfAbsent(runtimeId, entity);
+                index(entity);
                 throw exception;
             }
         }
@@ -106,11 +114,13 @@ public final class WorldItemEntityManager {
         if (entities.putIfAbsent(entity.runtimeId(), entity) != null) {
             throw new IllegalStateException("Item actor runtime ID is already present");
         }
+        index(entity);
         nextRuntimeId.accumulateAndGet(entity.runtimeId() + 1, Math::max);
         try {
             persist();
         } catch (RuntimeException exception) {
             entities.remove(entity.runtimeId(), entity);
+            unindex(entity.runtimeId());
             throw exception;
         }
     }
@@ -151,11 +161,13 @@ public final class WorldItemEntityManager {
                     inventory.restore(before, selectedSlot);
                     return false;
                 }
+                unindex(runtimeId);
                 try {
                     persist();
                     return true;
                 } catch (RuntimeException exception) {
                     entities.putIfAbsent(runtimeId, entity);
+                    index(entity);
                     inventory.restore(before, selectedSlot);
                     throw exception;
                 }
@@ -202,6 +214,7 @@ public final class WorldItemEntityManager {
                 if (nowMillis >= 0 && nowMillis >= current.pickupAvailableAtMillis()
                         && nowMillis - current.pickupAvailableAtMillis() >= DEFAULT_DESPAWN_AGE_MILLIS) {
                     if (entities.remove(current.runtimeId(), current)) {
+                        unindex(current.runtimeId());
                         removed.add(current);
                         changed = true;
                         durableChanged = true;
@@ -238,6 +251,7 @@ public final class WorldItemEntityManager {
                         nextX, nextY, nextZ, vx, vy, vz,
                         current.pickupAvailableAtMillis(), current.ownerXuid());
                 if (!updated.equals(current) && entities.replace(current.runtimeId(), current, updated)) {
+                    reindex(updated);
                     moved.add(updated);
                     changed = true;
                 }
@@ -287,6 +301,7 @@ public final class WorldItemEntityManager {
                             currentFirst.ownerXuid());
                     entities.put(currentFirst.runtimeId(), currentFirst);
                     if (entities.remove(currentSecond.runtimeId(), currentSecond)) {
+                        unindex(currentSecond.runtimeId());
                         removed.add(currentSecond);
                         durableChanged = true;
                     }
@@ -301,9 +316,63 @@ public final class WorldItemEntityManager {
             return List.copyOf(moved);
         } catch (RuntimeException exception) {
             entities.clear();
-            for (WorldItemEntity entity : before) entities.put(entity.runtimeId(), entity);
+            entitiesByChunk.clear();
+            entityChunkKeys.clear();
+            for (WorldItemEntity entity : before) {
+                entities.put(entity.runtimeId(), entity);
+                index(entity);
+            }
             throw exception;
         }
+    }
+
+    /** Returns dropped items only from chunks currently published to a recipient. */
+    public synchronized List<WorldItemEntity> snapshotInChunkKeys(java.util.Set<Long> chunkKeys) {
+        Objects.requireNonNull(chunkKeys, "chunkKeys");
+        java.util.Set<Long> selected = new java.util.TreeSet<>();
+        for (Long chunkKey : chunkKeys) {
+            if (chunkKey == null) continue;
+            java.util.Set<Long> ids = entitiesByChunk.get(chunkKey);
+            if (ids != null) selected.addAll(ids);
+        }
+        List<WorldItemEntity> result = new ArrayList<>(selected.size());
+        for (long id : selected) {
+            WorldItemEntity entity = entities.get(id);
+            if (entity != null) result.add(entity);
+        }
+        return List.copyOf(result);
+    }
+
+    private void index(WorldItemEntity entity) {
+        long key = chunkKey(entity);
+        entityChunkKeys.put(entity.runtimeId(), key);
+        entitiesByChunk.computeIfAbsent(key, ignored -> new java.util.HashSet<>())
+                .add(entity.runtimeId());
+    }
+
+    private void reindex(WorldItemEntity entity) {
+        long next = chunkKey(entity);
+        Long previous = entityChunkKeys.get(entity.runtimeId());
+        if (previous != null && previous == next) return;
+        unindex(entity.runtimeId());
+        entityChunkKeys.put(entity.runtimeId(), next);
+        entitiesByChunk.computeIfAbsent(next, ignored -> new java.util.HashSet<>())
+                .add(entity.runtimeId());
+    }
+
+    private void unindex(long runtimeId) {
+        Long previous = entityChunkKeys.remove(runtimeId);
+        if (previous == null) return;
+        java.util.Set<Long> ids = entitiesByChunk.get(previous);
+        if (ids == null) return;
+        ids.remove(runtimeId);
+        if (ids.isEmpty()) entitiesByChunk.remove(previous);
+    }
+
+    private static long chunkKey(WorldItemEntity entity) {
+        int chunkX = (int) Math.floor(entity.x() / 16.0);
+        int chunkZ = (int) Math.floor(entity.z() / 16.0);
+        return ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
     }
 
     private static MergeCell mergeCell(WorldItemEntity entity) {

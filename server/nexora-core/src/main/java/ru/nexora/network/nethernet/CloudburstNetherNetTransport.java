@@ -27,9 +27,10 @@ import ru.nexora.network.bedrock.BedrockSessionManager;
 import tel.schich.libdatachannel.PeerConnectionConfiguration;
 
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.Inet6Address;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
-import java.security.GeneralSecurityException;
 import java.security.interfaces.ECPublicKey;
 import java.util.List;
 import java.util.Map;
@@ -160,12 +161,8 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
             signalingBuilder.setRequiresTls(true);
         }
         if (configuration.advertisedHost() != null) {
-            String host = configuration.advertisedHost();
-            String endpointHost = host.contains(":") && !host.startsWith("[")
-                    ? "[" + host + "]" : host;
-            String endpoint = configuration.publicUdpPort() > 0
-                    ? endpointHost + ":" + configuration.publicUdpPort() : endpointHost;
-            signalingBuilder.setAdvertisedAddresses(List.of(endpoint));
+            signalingBuilder.setAdvertisedAddresses(resolveAdvertisedEndpoints(
+                    configuration.advertisedHost(), configuration.publicUdpPort()));
         } else if (!stunUrls.isEmpty()) {
             signalingBuilder.setStunServers(stunUrls);
         }
@@ -407,6 +404,29 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
         EventLoopGroup group = eventLoopGroup;
         eventLoopGroup = null;
         if (group != null) group.shutdownGracefully(0, 2, TimeUnit.SECONDS).syncUninterruptibly();
+    }
+
+    static List<String> resolveAdvertisedEndpoints(String host, int port) throws IOException {
+        if (host == null || host.isBlank()) {
+            throw new IllegalArgumentException("Advertised host must not be blank");
+        }
+        if (port < 0 || port > 65535) {
+            throw new IllegalArgumentException("Advertised UDP port must be between 0 and 65535");
+        }
+        InetAddress[] resolved = InetAddress.getAllByName(host);
+        LinkedHashSet<String> endpoints = new LinkedHashSet<>();
+        for (InetAddress address : resolved) {
+            String ip = address.getHostAddress();
+            int zone = ip.indexOf('%');
+            if (zone >= 0) ip = ip.substring(0, zone);
+            String endpoint = address instanceof Inet6Address ? "[" + ip + "]" : ip;
+            if (port > 0) endpoint += ":" + port;
+            endpoints.add(endpoint);
+        }
+        if (endpoints.isEmpty()) {
+            throw new IOException("NEXORA_ADVERTISED_HOST did not resolve to any IP addresses: " + host);
+        }
+        return List.copyOf(endpoints);
     }
 
     private static String requireText(String value, String name) {

@@ -133,6 +133,7 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
                         .setServeHttp(true)
                         .setIceOnLocalPort(false)
                         .setMaxPendingJoins(MAX_PENDING_TOKEN_BINDINGS)
+                        .setMaxConnectionsPerAddress((int) Math.min(4096L, Math.max(8L, maxPlayers * 2L + 8L)))
                         .setPlayerFilter((host, player) -> {
                             long now = System.nanoTime();
                             synchronized (admissionLock) {

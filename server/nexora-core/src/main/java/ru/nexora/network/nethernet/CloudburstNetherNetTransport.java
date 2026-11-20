@@ -549,11 +549,10 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
         }
 
         private void purgeExpiredKeys(long now) {
-            var iterator = pending.entrySet().iterator();
-            while (iterator.hasNext()) {
-                Map.Entry<String, ConcurrentLinkedDeque<TokenEntry>> entry = iterator.next();
-                purgeExpired(entry.getValue(), now);
-                if (entry.getValue().isEmpty()) iterator.remove();
+            for (Map.Entry<String, ConcurrentLinkedDeque<TokenEntry>> entry : pending.entrySet()) {
+                ConcurrentLinkedDeque<TokenEntry> queue = entry.getValue();
+                purgeExpired(queue, now);
+                if (queue.isEmpty()) pending.remove(entry.getKey(), queue);
             }
         }
 

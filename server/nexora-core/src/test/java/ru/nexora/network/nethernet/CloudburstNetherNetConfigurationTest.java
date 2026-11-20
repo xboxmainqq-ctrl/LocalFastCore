@@ -83,7 +83,14 @@ class CloudburstNetherNetConfigurationTest {
     }
 
     @Test
-    void requiresFixedIcePortForStunDiscoveryWithoutAdvertisedHost() {
+    void rejectsCombiningAdvertisedHostWithStunDiscovery() {
+        assertThrows(IllegalArgumentException.class, () -> config(
+                Map.of("NEXORA_ADVERTISED_HOST", "play.nexor.example"),
+                30000, 30000, List.of("stun:stun.example.net:3478")));
+    }
+
+    @Test
+    void requiresFixedIcePortForStunDiscovery() {
         assertThrows(IllegalArgumentException.class, () -> config(
                 Map.of(), 30000, 30199, List.of("stun:stun.example.net:3478")));
 

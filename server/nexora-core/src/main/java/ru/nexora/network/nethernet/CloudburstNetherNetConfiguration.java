@@ -37,9 +37,6 @@ record CloudburstNetherNetConfiguration(
         }
 
         String host = blankToNull(environment.get("NEXORA_ADVERTISED_HOST"));
-        if (host == null && stunUrls.isEmpty()) {
-            host = "storm.mcpehost.ru";
-        }
         if (host != null && !ADVERTISED_HOST.matcher(host).matches()) {
             throw new IllegalArgumentException(
                     "NEXORA_ADVERTISED_HOST must be a DNS name or IP address without a scheme or port");

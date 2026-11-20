@@ -16,14 +16,14 @@ The Maven build produces `server/nexora-core/target/server.jar` (the shaded stan
 
 NEXORA's current NetherNet transport uses the allocated server port for TCP signaling and a fixed UDP ICE port. A single allocation such as 23472 must be reachable on both TCP and UDP. The server's old Nukkit `server.properties` file is not automatically the configuration source for NEXORA; the process reads NEXORA environment variables.
 
-For the MCPEHost allocation, the intended values are:
+For this MCPEHost deployment, the intended values are:
 - `SERVER_PORT=23472` (or the host's injected port variable)
 - `NEXORA_UDP_PORT_MIN=23472`
 - `NEXORA_UDP_PORT_MAX=23472`
-- `NEXORA_ADVERTISED_HOST=storm.mcpehost.ru`
+- `NEXORA_ADVERTISED_HOST=nexor.mcbe.in`
 - `NEXORA_PUBLIC_UDP_PORT=23472`
 
-These values must be supplied explicitly through the hosting panel's environment/startup configuration if supported. NEXORA does not hardcode the MCPEHost hostname as a global default, so another deployment cannot accidentally advertise this server. Do not assume that editing `server.properties` sets them.
+Supply these values through the hosting panel's environment/startup configuration. The hostname is specific to this deployment and is intentionally not hardcoded as a global default, so another deployment cannot accidentally advertise this server. Do not assume that editing `server.properties` sets them. Confirm in the panel that allocation 23472 is enabled for both TCP and UDP before relying on it.
 
 ## Public connection prerequisites
 

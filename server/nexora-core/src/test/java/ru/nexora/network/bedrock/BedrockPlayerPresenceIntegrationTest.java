@@ -125,7 +125,7 @@ class BedrockPlayerPresenceIntegrationTest {
             set(moving, "positionY", 65.0f);
             set(moving, "positionZ", 1.0f);
             PlayerInventory movingInventory = (PlayerInventory) field(moving, "inventory");
-            movingInventory.setSlot(0, new ItemStack("minecraft:diamond_sword", 1, 1));
+            movingInventory.setSlot(0, new ItemStack("minecraft:diamond", 3, 64));
             movingInventory.selectHotbarSlot(0);
 
             Field indexField = BedrockSessionManager.class.getDeclaredField("playerActorReplicationIndex");

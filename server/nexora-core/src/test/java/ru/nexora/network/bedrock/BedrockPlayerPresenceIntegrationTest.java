@@ -47,11 +47,13 @@ class BedrockPlayerPresenceIntegrationTest {
 
             assertEquals(List.of(
                     BedrockPlayerListCodec.PLAYER_LIST_PACKET_ID,
-                    BedrockAddPlayerCodec.ADD_PLAYER_PACKET_ID),
+                    BedrockAddPlayerCodec.ADD_PLAYER_PACKET_ID,
+                    BedrockMobEquipmentCodec.MOB_EQUIPMENT_PACKET_ID),
                     packetIds(forJoining));
             assertEquals(List.of(
                     BedrockPlayerListCodec.PLAYER_LIST_PACKET_ID,
-                    BedrockAddPlayerCodec.ADD_PLAYER_PACKET_ID),
+                    BedrockAddPlayerCodec.ADD_PLAYER_PACKET_ID,
+                    BedrockMobEquipmentCodec.MOB_EQUIPMENT_PACKET_ID),
                     packetIds(forExisting));
 
             // The joining client receives both list entries in its snapshot.
@@ -128,7 +130,10 @@ class BedrockPlayerPresenceIntegrationTest {
 
             Field indexField = BedrockSessionManager.class.getDeclaredField("playerActorReplicationIndex");
             indexField.setAccessible(true);
-            ((ActorReplicationIndex) indexField.get(manager)).replaceChunkView("viewer", sentChunks(viewer));
+            ActorReplicationIndex replicationIndex = (ActorReplicationIndex) indexField.get(manager);
+            replicationIndex.replaceChunkView("viewer", sentChunks(viewer));
+            assertTrue(replicationIndex.chunkViewers(0L).contains("viewer"),
+                    "viewer must be indexed for the player's current chunk");
 
             Method movement = BedrockSessionManager.class.getDeclaredMethod(
                     "broadcastPlayerMovement", String.class, moving.getClass());

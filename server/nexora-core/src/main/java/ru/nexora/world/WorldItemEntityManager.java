@@ -143,7 +143,7 @@ public final class WorldItemEntityManager {
             if (entities.get(runtimeId) != entity) return false;
             if (nowMillis < entity.pickupAvailableAtMillis()) return false;
             if (entity.ownerXuid() != null && !entity.ownerXuid().equals(playerXuid)
-                    && nowMillis < entity.pickupAvailableAtMillis() + 2_000) return false;
+                    && nowMillis - entity.pickupAvailableAtMillis() < 2_000) return false;
             double dx = playerX - entity.x();
             double dy = playerY - entity.y();
             double dz = playerZ - entity.z();

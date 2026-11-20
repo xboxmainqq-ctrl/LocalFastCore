@@ -173,9 +173,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final Map<Long, Long> mobFireballChunkById = new ConcurrentHashMap<>();
     // Owner indexes make mob-death projectile cleanup proportional to that mob's projectiles.
     private final Map<String, Set<Long>> mobArrowIdsByOwner = new ConcurrentHashMap<>();
-    private final Map<String, Long> mobArrowOwnerById = new ConcurrentHashMap<>();
+    private final Map<Long, String> mobArrowOwnerById = new ConcurrentHashMap<>();
     private final Map<String, Set<Long>> mobFireballIdsByOwner = new ConcurrentHashMap<>();
-    private final Map<String, Long> mobFireballOwnerById = new ConcurrentHashMap<>();
+    private final Map<Long, String> mobFireballOwnerById = new ConcurrentHashMap<>();
     private final Set<Long> poisonMobArrows = ConcurrentHashMap.newKeySet();
     private final ru.nexora.combat.GuardianBeamTracker guardianBeamTracker =
             new ru.nexora.combat.GuardianBeamTracker();

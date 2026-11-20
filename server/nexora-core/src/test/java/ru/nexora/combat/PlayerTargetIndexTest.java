@@ -85,6 +85,43 @@ class PlayerTargetIndexTest {
     }
 
     @Test
+    void segmentCandidatesMatchExpandedThreeDimensionalBoundsAcrossCells() {
+        List<LivingEntityAiService.PlayerTarget> players = new java.util.ArrayList<>();
+        for (int i = 0; i < 96; i++) {
+            double x = ((i * 83) % 1_200) - 600.0;
+            double y = 50 + ((i * 17) % 45);
+            double z = ((i * 131) % 1_400) - 700.0;
+            players.add(new LivingEntityAiService.PlayerTarget(
+                    "segment-" + i, x, y, z, i % 13 != 0));
+        }
+        // Include exact edge candidates, a vertically distant player and a dead candidate.
+        players.add(new LivingEntityAiService.PlayerTarget("edge", 128.5, 65.0, 128.5, true));
+        players.add(new LivingEntityAiService.PlayerTarget("too-high", 128.5, 90.0, 128.5, true));
+        players.add(new LivingEntityAiService.PlayerTarget("dead-edge", 128.5, 65.0, 128.5, false));
+        PlayerTargetIndex index = new PlayerTargetIndex(players);
+
+        List<LivingEntityAiService.PlayerTarget> expected = players.stream()
+                .filter(LivingEntityAiService.PlayerTarget::alive)
+                .filter(target -> target.x() >= 127.8 && target.x() <= 129.2
+                        && target.y() >= 64.3 && target.y() <= 66.7
+                        && target.z() >= 127.8 && target.z() <= 129.2)
+                .toList();
+
+        assertEquals(expected, index.withinSegment(
+                128.0, 65.5, 128.0, 129.0, 65.5, 129.0, 0.7));
+    }
+
+    @Test
+    void segmentCandidatesUseLinearFallbackForSmallPlayerSets() {
+        var inside = new LivingEntityAiService.PlayerTarget("inside", 2.0, 65.0, 2.0, true);
+        var outside = new LivingEntityAiService.PlayerTarget("outside", 20.0, 65.0, 20.0, true);
+        PlayerTargetIndex index = new PlayerTargetIndex(List.of(inside, outside));
+
+        assertEquals(List.of(inside), index.withinSegment(
+                0, 65, 0, 4, 65, 4, 0.5));
+    }
+
+    @Test
     void nearestTargetIncludesExact128BlockBoundary() {
         WorldLivingEntity mob = new WorldLivingEntityManager().spawn(
                 "minecraft:zombie", 20, 0, 64, 0);

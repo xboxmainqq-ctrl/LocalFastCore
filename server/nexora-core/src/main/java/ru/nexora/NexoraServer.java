@@ -10,12 +10,9 @@ import ru.nexora.network.bedrock.BedrockPlayerTransferSource;
 import ru.nexora.network.CheckpointedPlayerTransferDestination;
 import ru.nexora.network.DurableHandoffCoordinator;
 import ru.nexora.gameplay.GameplayRuntimeModule;
-import ru.nexora.network.nethernet.DefaultNetherNetIdentityService;
-import ru.nexora.network.nethernet.NetherNetServerMetadata;
+import ru.nexora.network.nethernet.CloudburstNetherNetTransport;
 import ru.nexora.network.bedrock.BedrockSessionManager;
 import ru.nexora.network.bedrock.BedrockPendingTransferActivator;
-import ru.nexora.network.nethernet.NetherNetSignalingServer;
-import ru.nexora.network.nethernet.WebRtcSdpNegotiator;
 import ru.nexora.network.raknet.BedrockServerStatus;
 import ru.nexora.network.raknet.RakNetDiscoveryServer;
 import ru.nexora.world.FlatWorldGenerator;
@@ -51,7 +48,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * NEXORA Core bootstrap. Modern Bedrock transport is NetherNet over WebRTC.
+ * NEXORA Core bootstrap. Modern Bedrock transport is Cloudburst NetherNet over WebRTC.
  */
 public final class NexoraServer {
     private NexoraServer() {
@@ -102,8 +99,6 @@ public final class NexoraServer {
         });
         NexoraAiDiagnostics aiDiagnostics = diagnosticsRuntime.diagnostics();
         String dataDirectory = config.dataDirectory();
-        DefaultNetherNetIdentityService identityService =
-                new DefaultNetherNetIdentityService(Path.of(dataDirectory, "identity"));
         WorldStorage worldStorage = new WorldStorage(Path.of(dataDirectory, "worlds"), "NEXORA World");
         WorldItemEntityStorage itemStorage = new WorldItemEntityStorage(
                 Path.of(dataDirectory, "worlds"), "NEXORA World");
@@ -148,7 +143,7 @@ public final class NexoraServer {
                 "NEXORA_TRANSFER_LEASE_MS", 15_000L, 1_000L, 120_000L);
         long onlinePlayerLeaseMillis = longEnvironmentValue(
                 "NEXORA_ONLINE_PLAYER_LEASE_MS", 15_000L, 3_000L, 120_000L);
-        AtomicReference<WebRtcSdpNegotiator> negotiatorReference = new AtomicReference<>();
+        AtomicReference<CloudburstNetherNetTransport> transportReference = new AtomicReference<>();
         BedrockSessionManager bedrockSessions = new BedrockSessionManager(
                 2225,
                 "1.26.62",
@@ -159,8 +154,8 @@ public final class NexoraServer {
                 equipmentStorage,
                 playerStateCheckpoints,
                 (networkId, channelLabel, frame) -> {
-                    WebRtcSdpNegotiator active = negotiatorReference.get();
-                    if (active == null) throw new IllegalStateException("WebRTC transport is not ready");
+                    CloudburstNetherNetTransport active = transportReference.get();
+                    if (active == null) throw new IllegalStateException("NetherNet transport is not ready");
                     active.sendFrame(networkId, channelLabel, frame);
                 },
                 event -> System.out.printf("NEXORA: Bedrock packet 0x%02X from %s (%d bytes)%n",
@@ -221,29 +216,19 @@ public final class NexoraServer {
         List<String> stunUrls = config.stunUrls();
         int udpPortMin = config.udpPortMin();
         int udpPortMax = config.udpPortMax();
-        ru.nexora.network.nethernet.NetherNetSdpCandidateMapper candidateMapper =
-                ru.nexora.network.nethernet.NetherNetSdpCandidateMapper.fromEnvironment(
-                        System.getenv(), udpPortMin, udpPortMax);
-        if (candidateMapper.isEnabled()) {
-            System.out.println("NEXORA: public NetherNet host candidate mapping is enabled.");
-        }
-        WebRtcSdpNegotiator negotiator = new WebRtcSdpNegotiator(
-                identityService, bedrockSessions, maxPlayers, stunUrls,
-                udpPortMin, udpPortMax, 15_000, candidateMapper);
-        negotiatorReference.set(negotiator);
-        NetherNetSignalingServer signaling = new NetherNetSignalingServer(
+        CloudburstNetherNetTransport transport = new CloudburstNetherNetTransport(
                 signalingAddress,
-                () -> new NetherNetServerMetadata(
-                        motd,
-                        2225,
-                        "1.26.62",
-                        world.name(),
-                        (int) Math.min(bedrockSessions.authenticatedPlayerCount(), maxPlayers),
-                        maxPlayers,
-                        0
-                ),
-                negotiator,
-                readiness::isAcceptingConnections);
+                motd,
+                world.name(),
+                maxPlayers,
+                udpPortMin,
+                udpPortMax,
+                stunUrls,
+                System.getenv(),
+                Path.of(dataDirectory),
+                bedrockSessions,
+                () -> (int) Math.min(bedrockSessions.authenticatedPlayerCount(), maxPlayers));
+        transportReference.set(transport);
 
         System.out.printf("NEXORA: world chunk residency target is %d resident chunks (entity-pinned chunks may exceed it).%n",
                 config.maximumResidentChunks());
@@ -272,8 +257,8 @@ public final class NexoraServer {
         NetworkRuntimeModule networkRuntime = new NetworkRuntimeModule(
                 clusterService,
                 NetworkRuntimeModule.service(discovery::start, discovery),
-                NetworkRuntimeModule.service(signaling::start, signaling),
-                negotiator,
+                NetworkRuntimeModule.service(transport::start, transport),
+                () -> {},
                 () -> {
                     try {
                         if (!bedrockSessions.awaitNoActiveSessions(Duration.ofSeconds(5))) {
@@ -308,7 +293,7 @@ public final class NexoraServer {
         }
         readiness.markReady();
         startAiConsole(gameplayRuntime.assistant(), diagnosticsRuntime.safeRepairs(),
-                bedrockSessions, negotiator, transferNodeId, transferLedger, configuredClusterTransport);
+                bedrockSessions, transport, transferNodeId, transferLedger, configuredClusterTransport);
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             readiness.beginShutdown();
@@ -325,14 +310,14 @@ public final class NexoraServer {
             }
         }, "nexora-shutdown"));
 
-        System.out.printf("NEXORA NetherNet signaling listening on TCP %s:%d%n", httpBindHost, port);
+        System.out.printf("NEXORA Cloudburst NetherNet signaling listening on TCP %s:%d%n", httpBindHost, port);
         System.out.printf("NEXORA legacy RakNet discovery listening on UDP %s:%d%n", bindHost, port);
-        System.out.println("WebRTC sessions use the persistent operator identity in data/identity/.");
-        System.out.println("Plain HTTP signaling is enabled; use HTTPS in production.");
+        System.out.println("NetherNet identity is persisted at data/identity/nethernet-operator.pem.");
+        System.out.println("Use HTTPS in production (TLS reverse proxy or configured signaling TLS).");
         if (!stunUrls.isEmpty()) {
             System.out.println("Configured STUN endpoints: " + String.join(", ", stunUrls));
         }
-        System.out.printf("WebRTC ICE UDP port range: %d-%d%n", udpPortMin, udpPortMax);
+        System.out.printf("NetherNet ICE UDP port range: %d-%d%n", udpPortMin, udpPortMax);
         System.out.println("Bedrock NetworkSettings, authenticated Login and StartGame bootstrap are active.");
         System.out.println("World chunks use versioned, checksummed files under " + Path.of(dataDirectory, "worlds").toAbsolutePath());
         System.out.println("Player profiles use versioned, checksummed files under " + Path.of(dataDirectory, "players").toAbsolutePath());
@@ -376,7 +361,7 @@ public final class NexoraServer {
             ru.nexora.ai.NexoraAiAssistant assistant,
             ru.nexora.ai.NexoraAiSafeRepairRegistry safeRepairs,
             BedrockSessionManager bedrockSessions,
-            ru.nexora.network.nethernet.WebRtcSdpNegotiator negotiator,
+            CloudburstNetherNetTransport transport,
             String localNodeId,
             DurableHandoffCoordinator transferLedger,
             java.util.Optional<ClusterTransportFactory.ConfiguredTransport> clusterTransport
@@ -398,32 +383,10 @@ public final class NexoraServer {
                         continue;
                     }
                     if (command.equalsIgnoreCase("network")) {
-                        var network = negotiator.transportSummary(System.currentTimeMillis(), 15_000L);
-                        String averageRtt = network.freshPeers() == 0 ? "n/a"
-                                : String.format(java.util.Locale.ROOT, "%.1f ms", network.averageRttMillis());
-                        String maxRtt = network.freshPeers() == 0 ? "n/a"
-                                : String.format(java.util.Locale.ROOT, "%.1f ms", network.maxRttMillis());
-                        System.out.println("NEXORA network: connected=" + network.connectedPeers()
-                                + ", activeSessions=" + negotiator.activeSessionCount()
-                                + ", freshRTT=" + network.freshPeers()
-                                + ", samples=" + network.peersWithSamples()
-                                + ", stale/missing=" + network.staleOrMissingPeers());
-                        System.out.println("ICE RTT: avg=" + averageRtt + ", max=" + maxRtt
-                                + " (transport RTT, not Bedrock gameplay ping)");
-                        String sentRate = network.peersWithRate() == 0 ? "n/a"
-                                : String.format(java.util.Locale.ROOT, "%.1f B/s", network.sentBytesPerSecond());
-                        String receivedRate = network.peersWithRate() == 0 ? "n/a"
-                                : String.format(java.util.Locale.ROOT, "%.1f B/s", network.receivedBytesPerSecond());
-                        System.out.println("Transport throughput: sent=" + sentRate
-                                + ", received=" + receivedRate
-                                + ", sampledPeers=" + network.peersWithRate()
-                                + " (WebRTC counter deltas; not gameplay traffic guarantees)");
-                        var outbound = negotiator.outboundQueueSummary();
-                        System.out.println("Outbound backlog: peers=" + outbound.peersWithQueuedFrames()
-                                + ", frames=" + outbound.queuedFrames()
-                                + ", bytes=" + outbound.queuedBytes()
-                                + " (bounded application queue; native WebRTC buffer excluded)");
                         var inbound = bedrockSessions.inboundStats();
+                        System.out.println("NEXORA network: activeNetherNetPeers=" + transport.connectedPeerCount()
+                                + ", authenticatedPlayers=" + bedrockSessions.authenticatedPlayerCount()
+                                + ", transportStarted=" + transport.isStarted());
                         System.out.println("Bedrock ingress: frames=" + inbound.frames()
                                 + ", bytes=" + inbound.bytes()
                                 + ", messages=" + inbound.completedMessages()
@@ -435,8 +398,8 @@ public final class NexoraServer {
                                 + ", max=" + String.format(java.util.Locale.ROOT, "%.2f us",
                                         inbound.maxProcessingNanos() / 1_000.0)
                                 + " (pipeline framing/dispatch only)");
-                        System.out.println("Cumulative transport bytes: sent=" + network.bytesSent()
-                                + ", received=" + network.bytesReceived());
+                        System.out.println("Cumulative transport bytes: sent=" + transport.bytesSent()
+                                + ", received=" + transport.bytesReceived());
                         continue;
                     }
                     if (command.equalsIgnoreCase("transfer recover")) {

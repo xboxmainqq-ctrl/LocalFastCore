@@ -41,6 +41,10 @@ record CloudburstNetherNetConfiguration(
             throw new IllegalArgumentException(
                     "NEXORA_ADVERTISED_HOST must be a DNS name or IP address without a scheme or port");
         }
+        if (host != null && !stunUrls.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "NEXORA_ADVERTISED_HOST and NEXORA_STUN_URLS are mutually exclusive; configure only one ICE discovery mode");
+        }
 
         int publicPort = parsePort(environment.get("NEXORA_PUBLIC_UDP_PORT"));
         if (publicPort > 0 && host == null) {
@@ -51,7 +55,7 @@ record CloudburstNetherNetConfiguration(
             throw new IllegalArgumentException(
                     "NEXORA_PUBLIC_UDP_PORT requires a fixed ICE port: set NEXORA_UDP_PORT_MIN and NEXORA_UDP_PORT_MAX to the same port");
         }
-        if (!stunUrls.isEmpty() && host == null && udpPortMin != udpPortMax) {
+        if (!stunUrls.isEmpty() && udpPortMin != udpPortMax) {
             throw new IllegalArgumentException(
                     "Cloudburst STUN discovery requires one fixed ICE UDP port; set NEXORA_UDP_PORT_MIN and NEXORA_UDP_PORT_MAX to the same value");
         }

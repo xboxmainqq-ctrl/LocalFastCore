@@ -221,8 +221,15 @@ public final class NexoraServer {
         List<String> stunUrls = config.stunUrls();
         int udpPortMin = config.udpPortMin();
         int udpPortMax = config.udpPortMax();
+        ru.nexora.network.nethernet.NetherNetSdpCandidateMapper candidateMapper =
+                ru.nexora.network.nethernet.NetherNetSdpCandidateMapper.fromEnvironment(
+                        System.getenv(), udpPortMin, udpPortMax);
+        if (candidateMapper.isEnabled()) {
+            System.out.println("NEXORA: public NetherNet host candidate mapping is enabled.");
+        }
         WebRtcSdpNegotiator negotiator = new WebRtcSdpNegotiator(
-                identityService, bedrockSessions, maxPlayers, stunUrls, udpPortMin, udpPortMax);
+                identityService, bedrockSessions, maxPlayers, stunUrls,
+                udpPortMin, udpPortMax, 15_000, candidateMapper);
         negotiatorReference.set(negotiator);
         NetherNetSignalingServer signaling = new NetherNetSignalingServer(
                 signalingAddress,

@@ -75,6 +75,45 @@ class DefaultNetherNetIdentityServiceTest {
     }
 
     @Test
+    void requiresExactMinecraftIssuerAndAudienceClaims() throws Exception {
+        DefaultNetherNetIdentityService service =
+                new DefaultNetherNetIdentityService(tempDirectory);
+        long now = java.time.Instant.now().getEpochSecond();
+        JsonNode valid = MAPPER.readTree("{"
+                + "\"iss\":\"" + DefaultNetherNetIdentityService.DEFAULT_ISSUER + "\","
+                + "\"aud\":\"" + DefaultNetherNetIdentityService.DEFAULT_AUDIENCE + "\","
+                + "\"exp\":" + (now + 300)
+                + "}");
+        assertDoesNotThrow(() -> service.validateStandardClaims(valid));
+
+        JsonNode missingIssuer = MAPPER.readTree("{"
+                + "\"aud\":\"" + DefaultNetherNetIdentityService.DEFAULT_AUDIENCE + "\","
+                + "\"exp\":" + (now + 300)
+                + "}");
+        assertThrows(SecurityException.class, () -> service.validateStandardClaims(missingIssuer));
+
+        JsonNode wrongIssuer = MAPPER.readTree("{"
+                + "\"iss\":\"https://attacker.example/\","
+                + "\"aud\":\"" + DefaultNetherNetIdentityService.DEFAULT_AUDIENCE + "\","
+                + "\"exp\":" + (now + 300)
+                + "}");
+        assertThrows(SecurityException.class, () -> service.validateStandardClaims(wrongIssuer));
+
+        JsonNode missingAudience = MAPPER.readTree("{"
+                + "\"iss\":\"" + DefaultNetherNetIdentityService.DEFAULT_ISSUER + "\","
+                + "\"exp\":" + (now + 300)
+                + "}");
+        assertThrows(SecurityException.class, () -> service.validateStandardClaims(missingAudience));
+
+        JsonNode wrongAudience = MAPPER.readTree("{"
+                + "\"iss\":\"" + DefaultNetherNetIdentityService.DEFAULT_ISSUER + "\","
+                + "\"aud\":\"api://another-service\","
+                + "\"exp\":" + (now + 300)
+                + "}");
+        assertThrows(SecurityException.class, () -> service.validateStandardClaims(wrongAudience));
+    }
+
+    @Test
     void refusesToAppendDuplicateIdentity() throws Exception {
         DefaultNetherNetIdentityService service =
                 new DefaultNetherNetIdentityService(tempDirectory);

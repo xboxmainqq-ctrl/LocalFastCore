@@ -6655,27 +6655,42 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     /** Reconciles server-owned mobs and projectiles against the recipient's loaded chunk set. */
     private void syncVisibleWorldActors(String recipientNetworkId, SessionState recipient) {
         if (!recipient.clientInitialized || recipient.rejected) return;
-        for (WorldLivingEntity entity : world.livingEntities().snapshot()) {
-            boolean visible = isWorldPositionVisible(recipient, entity.x(), entity.z());
-            if (visible && recipient.visibleLivingEntityIds.add(entity.runtimeId())) {
-                actorReplicationIndex.addActorViewer(entity.runtimeId(), recipientNetworkId);
-                try {
-                    sendPacket(recipientNetworkId, BedrockAddActorCodec.createAddActor(entity), true);
-                } catch (RuntimeException exception) {
-                    recipient.visibleLivingEntityIds.remove(entity.runtimeId());
-                    actorReplicationIndex.removeActorViewer(entity.runtimeId(), recipientNetworkId);
-                    System.err.println("NEXORA: unable to add living actor entering chunk view: "
-                            + exception.getMessage());
-                }
-            } else if (!visible && recipient.visibleLivingEntityIds.remove(entity.runtimeId())) {
+        java.util.Set<ru.nexora.world.WorldChunkResidencyManager.ChunkCoordinate> residentChunks =
+                new java.util.HashSet<>(recipient.sentChunkKeys.size());
+        for (long chunkKey : recipient.sentChunkKeys) {
+            residentChunks.add(new ru.nexora.world.WorldChunkResidencyManager.ChunkCoordinate(
+                    (int) (chunkKey >> 32), (int) chunkKey));
+        }
+        // The living-actor manager maintains a chunk index, so a newly published view
+        // only visits mobs in those chunks rather than every dormant world actor.
+        for (WorldLivingEntity entity : world.livingEntities()
+                .snapshotInChunks(residentChunks).residentEntities()) {
+            if (!isWorldPositionVisible(recipient, entity.x(), entity.z())
+                    || !recipient.visibleLivingEntityIds.add(entity.runtimeId())) continue;
+            actorReplicationIndex.addActorViewer(entity.runtimeId(), recipientNetworkId);
+            try {
+                sendPacket(recipientNetworkId, BedrockAddActorCodec.createAddActor(entity), true);
+            } catch (RuntimeException exception) {
+                recipient.visibleLivingEntityIds.remove(entity.runtimeId());
                 actorReplicationIndex.removeActorViewer(entity.runtimeId(), recipientNetworkId);
-                try {
-                    sendPacket(recipientNetworkId,
-                            BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()), true);
-                } catch (RuntimeException exception) {
-                    System.err.println("NEXORA: unable to remove living actor leaving chunk view: "
-                            + exception.getMessage());
-                }
+                System.err.println("NEXORA: unable to add living actor entering chunk view: "
+                        + exception.getMessage());
+            }
+        }
+        // Actors that were visible before a view change may have walked out of it.
+        // Reconcile only this recipient's visible set; dormant actors are never scanned.
+        for (long runtimeId : java.util.List.copyOf(recipient.visibleLivingEntityIds)) {
+            WorldLivingEntity entity = world.livingEntities().find(runtimeId).orElse(null);
+            if (entity != null && isWorldPositionVisible(recipient, entity.x(), entity.z())) continue;
+            if (!recipient.visibleLivingEntityIds.remove(runtimeId)) continue;
+            actorReplicationIndex.removeActorViewer(runtimeId, recipientNetworkId);
+            if (entity == null) continue; // Explicit death/despawn replication owns this removal.
+            try {
+                sendPacket(recipientNetworkId,
+                        BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()), true);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to remove living actor leaving chunk view: "
+                        + exception.getMessage());
             }
         }
         if (itemRegistry != null) {

@@ -5111,6 +5111,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (state.identity == null) throw new SecurityException("Login has no verified NetherNet identity");
 
         BedrockLoginPacketParser.LoginRequest login = BedrockLoginPacketParser.parse(packet);
+        if (login.clientProtocol() != state.clientProtocol || state.clientProtocol != serverProtocol) {
+            throw new SecurityException("Login protocol does not match the negotiated Bedrock protocol");
+        }
         if (login.authenticationType() != 0) {
             throw new SecurityException("Only authenticated Xbox Live login is supported");
         }

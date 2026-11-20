@@ -2020,6 +2020,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     case BedrockSubChunkCodec.SUB_CHUNK_REQUEST_PACKET_ID ->
                             handleSubChunkRequest(message, state, packet);
                     case 0x71 -> handleClientInitialized(message, state, packet);
+                    case 0x9c -> handlePacketViolationWarning(message, packet);
                     case BedrockChunkRadiusCodec.REQUEST_PACKET_ID ->
                             handleChunkRadiusRequest(message, state, packet);
                     case BedrockPlayerAuthInputCodec.PLAYER_AUTH_INPUT_PACKET_ID ->
@@ -2054,6 +2055,63 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         Math.max(0L, nanoTime.getAsLong() - processingStartedNanos), 50_000_000L);
             }
         }
+    }
+
+    /** Logs the client's structured warning when it rejects a malformed server packet. */
+    private void handlePacketViolationWarning(
+            NetherNetInboundPipeline.InboundMessage message, BedrockPacket packet
+    ) {
+        byte[] payload = packet.payload();
+        try {
+            int[] offset = {0};
+            int violationType = readPacketViolationVarInt(payload, offset);
+            int severity = readPacketViolationVarInt(payload, offset);
+            int rejectedPacketId = readPacketViolationVarInt(payload, offset);
+            int contextLength = readPacketViolationVarUInt(payload, offset);
+            if (contextLength < 0 || contextLength > payload.length - offset[0]) {
+                throw new IllegalArgumentException("invalid context length " + contextLength);
+            }
+            String context = new String(payload, offset[0], contextLength, StandardCharsets.UTF_8);
+            offset[0] += contextLength;
+            if (offset[0] != payload.length) {
+                throw new IllegalArgumentException("trailing bytes " + (payload.length - offset[0]));
+            }
+            System.err.printf(
+                    "NEXORA: client PacketViolationWarning from %s: type=%d severity=%d rejectedPacket=0x%02X context=%s%n",
+                    message.networkId(), violationType, severity, rejectedPacketId, context);
+        } catch (RuntimeException malformed) {
+            System.err.printf(
+                    "NEXORA: malformed client PacketViolationWarning from %s (%d bytes): %s; payload=%s%n",
+                    message.networkId(), payload.length, malformed.getMessage(), toHex(payload));
+        }
+    }
+
+    private static int readPacketViolationVarInt(byte[] data, int[] offset) {
+        int raw = readPacketViolationVarUInt(data, offset);
+        return (raw >>> 1) ^ -(raw & 1);
+    }
+
+    private static int readPacketViolationVarUInt(byte[] data, int[] offset) {
+        int value = 0;
+        int shift = 0;
+        while (true) {
+            if (offset[0] >= data.length || shift > 28) {
+                throw new IllegalArgumentException("truncated or oversized VarUInt32");
+            }
+            int next = Byte.toUnsignedInt(data[offset[0]++]);
+            if (shift == 28 && (next & 0xf0) != 0) {
+                throw new IllegalArgumentException("VarUInt32 out of range");
+            }
+            value |= (next & 0x7f) << shift;
+            if ((next & 0x80) == 0) return value;
+            shift += 7;
+        }
+    }
+
+    private static String toHex(byte[] data) {
+        StringBuilder result = new StringBuilder(data.length * 2);
+        for (byte value : data) result.append(String.format("%02X", Byte.toUnsignedInt(value)));
+        return result.toString();
     }
 
     private void handleCraftingEvent(

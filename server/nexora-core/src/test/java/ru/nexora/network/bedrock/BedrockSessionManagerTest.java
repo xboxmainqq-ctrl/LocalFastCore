@@ -1880,9 +1880,19 @@ class BedrockSessionManagerTest {
                     "The projectile index must move the arrow into its new chunk");
             assertTrue(manager.snapshotMobArrowsInChunkKeys(java.util.Set.of(firstChunk)).isEmpty());
 
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, java.util.Set<Long>> arrowsByOwner =
+                    (java.util.Map<String, java.util.Set<Long>>) getManagerField(
+                            manager, "mobArrowIdsByOwner");
+            String ownerKey = "mob:" + nearbySkeleton.runtimeId();
+            assertEquals(1, arrowsByOwner.get(ownerKey).size(),
+                    "Each spawned projectile must be indexed by its owning mob");
+
             assertTrue(manager.despawnLivingEntity(nearbySkeleton.runtimeId()));
             assertTrue(manager.snapshotMobArrowsInChunkKeys(java.util.Set.of(1L << 32)).isEmpty(),
                     "Despawning a mob must also remove its projectiles from the chunk index");
+            assertFalse(arrowsByOwner.containsKey(ownerKey),
+                    "Despawning a mob must remove its owner index without scanning unrelated projectiles");
         } finally {
             manager.close();
         }

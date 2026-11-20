@@ -54,6 +54,22 @@ public final class WorldRuntimeModule implements AutoCloseable {
             Consumer<RuntimeException> furnaceErrorHandler,
             LongConsumer furnaceObserver
     ) {
+        this(world, autosaveInterval, autosaveErrorHandler, additionalSave, playerLeaseHeartbeat,
+                leaseHeartbeatErrorHandler, autosaveObserver, furnaceErrorHandler, furnaceObserver, null);
+    }
+
+    public WorldRuntimeModule(
+            World world,
+            Duration autosaveInterval,
+            Consumer<IOException> autosaveErrorHandler,
+            WorldAutosave.SaveHook additionalSave,
+            Runnable playerLeaseHeartbeat,
+            Consumer<RuntimeException> leaseHeartbeatErrorHandler,
+            LongConsumer autosaveObserver,
+            Consumer<RuntimeException> furnaceErrorHandler,
+            LongConsumer furnaceObserver,
+            Runnable initialChunkStreamingTick
+    ) {
         this.world = Objects.requireNonNull(world, "world");
         RuntimeTaskScheduler taskScheduler = new RuntimeTaskScheduler(8, Duration.ofSeconds(10));
         WorldFurnaceTicker ticker;
@@ -104,6 +120,25 @@ public final class WorldRuntimeModule implements AutoCloseable {
                             }
                         },
                         1, 1, TimeUnit.SECONDS);
+            } catch (RuntimeException exception) {
+                try { saveService.close(); } catch (IOException closeFailure) { exception.addSuppressed(closeFailure); }
+                try { ticker.close(); } catch (IOException closeFailure) { exception.addSuppressed(closeFailure); }
+                try { taskScheduler.close(); } catch (IOException closeFailure) { exception.addSuppressed(closeFailure); }
+                throw exception;
+            }
+        }
+        if (initialChunkStreamingTick != null) {
+            try {
+                taskScheduler.scheduleWithFixedDelay(
+                        RuntimeTaskScheduler.Lane.TICK,
+                        () -> {
+                            try {
+                                initialChunkStreamingTick.run();
+                            } catch (RuntimeException failure) {
+                                if (furnaceErrorHandler != null) furnaceErrorHandler.accept(failure);
+                            }
+                        },
+                        50, 50, TimeUnit.MILLISECONDS);
             } catch (RuntimeException exception) {
                 try { saveService.close(); } catch (IOException closeFailure) { exception.addSuppressed(closeFailure); }
                 try { ticker.close(); } catch (IOException closeFailure) { exception.addSuppressed(closeFailure); }

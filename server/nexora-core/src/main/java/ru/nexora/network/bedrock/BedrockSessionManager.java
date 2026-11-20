@@ -7966,7 +7966,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private boolean resourcePacksInfoSent;
         private boolean resourcePackStackSent;
         private volatile boolean resourcePacksCompleted;
-        private boolean gameStarted;
+        private volatile boolean gameStarted;
         private volatile boolean clientInitialized;
         private boolean positionInitialized;
         private float positionX;
@@ -7985,7 +7985,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private int lastChunkX = Integer.MIN_VALUE;
         private int lastChunkZ = Integer.MIN_VALUE;
         private volatile int chunkViewRadius = BedrockChunkRadiusCodec.DEFAULT_RADIUS;
-        private ChunkStreamingQueue chunkStreamingQueue;
+        private volatile ChunkStreamingQueue chunkStreamingQueue;
         private final Map<Long, CompletableFuture<Optional<WorldChunk>>> pendingChunkLoads = new HashMap<>();
         private final Set<Long> sentChunkKeys = ConcurrentHashMap.newKeySet();
         private final Set<Long> visiblePlayerEntityIds = ConcurrentHashMap.newKeySet();

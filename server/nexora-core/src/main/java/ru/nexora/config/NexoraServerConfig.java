@@ -60,7 +60,7 @@ public record NexoraServerConfig(
             String value = environment.get(name);
             if (value != null && !value.isBlank()) return integerEnvironment(environment, name, 19132);
         }
-        return 19132;
+        return 23472;
     }
 
     private static List<String> parseStunUrls(String value) {

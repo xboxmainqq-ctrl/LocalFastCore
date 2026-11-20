@@ -1,49 +1,45 @@
 # MCPEHost deployment notes
 
-This is an initial deployment checklist for the NEXORA Core development build.
+This checklist is for the NEXORA Core standalone JAR on MCPEHost.
 
-## JAR name
+## JAR and Java
 
-The Maven build produces `server/nexora-core/target/server.jar` (the shaded standalone JAR). For the MCPEHost custom Java core option, use the `/server.jar` placement shown by the panel. Do not rename it to `nukkit.jar`.
-
-## Runtime
-
+- Build the latest `main` branch from this repository. The Maven output is `server/nexora-core/target/server.jar`.
+- Upload that newly built file as `server.jar` to the server root in MCPEHost. An older JAR can still contain the old `19132` default even when the source code has already been corrected.
 - Select Java OpenJDK 21.
-- Start with a conservative heap setting appropriate to the purchased RAM; leave memory for native WebRTC buffers and the operating system. Do not set `-Xmx` equal to all allocated RAM.
-- Keep the existing server files backed up. Do not delete Nukkit files until NEXORA has passed a separate test.
+- Keep the existing server files backed up. Do not delete Nukkit files until NEXORA has passed a separate client test.
 
-## Networking requirements
+## This deployment's network defaults
 
-NEXORA's current NetherNet transport uses the allocated server port for TCP signaling and a fixed UDP ICE port. A single allocation such as 23472 must be reachable on both TCP and UDP. The server's old Nukkit `server.properties` file is not automatically the configuration source for NEXORA; the process reads NEXORA environment variables.
+The current NEXORA source already has MCPEHost-friendly defaults, so you do **not** need to create environment variables just to use this allocation:
 
-For this MCPEHost deployment, the intended values are:
-- `SERVER_PORT=23472` (or the host's injected port variable)
-- `NEXORA_UDP_PORT_MIN=23472`
-- `NEXORA_UDP_PORT_MAX=23472`
-- `NEXORA_ADVERTISED_HOST=nexor.mcbe.in`
-- `NEXORA_PUBLIC_UDP_PORT=23472`
+- TCP NetherNet signaling port: `23472` by default.
+- UDP ICE port range: `23472-23472` by default.
+- Advertised host: `nexor.mcbe.in` by default.
+- Advertised public UDP port: `23472` by default (same as the fixed ICE port).
 
-Supply these values through the hosting panel's environment/startup configuration. The hostname is specific to this deployment and is intentionally not hardcoded as a global default, so another deployment cannot accidentally advertise this server. Do not assume that editing `server.properties` sets them. Confirm in the panel that allocation 23472 is enabled for both TCP and UDP before relying on it.
+The defaults are implemented in `NexoraServerConfig` and `CloudburstNetherNetConfiguration`. Explicit command-line arguments or environment values such as `NEXORA_PORT`, `SERVER_PORT`, `PORT`, `NEXORA_UDP_PORT_MIN`, `NEXORA_UDP_PORT_MAX`, or `NEXORA_ADVERTISED_HOST` can override them. If the startup command explicitly passes `19132`, that old argument must be removed or changed; a default cannot override an explicit argument.
 
-## Public connection prerequisites
+In the MCPEHost allocation settings, confirm that port `23472` is assigned to this server for both TCP and UDP. The hostname must resolve to the host endpoint assigned to this server. A DNS name alone does not provide UDP forwarding.
 
-- Public NetherNet signaling requires HTTPS. If the panel cannot mount a certificate/key pair or provide a TLS reverse proxy, public retail-client connections are not ready.
-- The advertised hostname and UDP allocation must actually route to the container. A hostname alone does not provide UDP forwarding or TLS.
-- Query/RCON settings from the old Nukkit configuration do not enable those services in NEXORA.
+## HTTPS is still required for public clients
 
-## Validation status
+The current built-in signaling listener uses plain HTTP unless both HTTPS certificate and private-key files are configured. Public Bedrock NetherNet clients require HTTPS. If MCPEHost does not provide a TLS reverse proxy or a way to mount a certificate and key for this process, the server may listen on the correct port and still reject/fail public client connections. Do not treat a successful startup as proof that this requirement is solved.
 
-A successful Maven build and startup smoke test do not prove that a retail Minecraft Bedrock client can join. Before inviting players, validate process startup on the host, TCP signaling, public UDP/ICE reachability, HTTPS, authenticated Bedrock login, resource-pack completion, world bootstrap and client initialization.
+## Validation after uploading the new JAR
 
-The current project remains under active development. Treat a first host deployment as an isolated technical test, not a production server.
+1. Stop the server and back up the existing `server.jar`.
+2. Upload the freshly built `server.jar` from the latest `main` branch.
+3. Start the server and inspect the console.
+4. Confirm the log says signaling is listening on port `23472`, and the ICE range is `23472-23472` (not `19132`).
+5. Check the HTTPS warning and public UDP reachability separately.
+6. Test with a real Bedrock client and confirm it reaches the world.
 
-## Diagnosing a Terracotta disconnect
+A successful Maven build or open TCP port alone does not prove that a Bedrock client can join. Keep the previous server files backed up until a real client completes login and world initialization.
 
-Check the NEXORA startup log before changing the server address:
+## Diagnostic messages
 
-- `NetherNet signaling listening ... (plain HTTP)` means this process has no built-in TLS certificate. A public Bedrock connection needs HTTPS; use a valid certificate/key pair or a TLS reverse proxy that forwards the complete signaling endpoint.
-- `no public ICE address or STUN server is configured` means the server has no public ICE candidate configured. Set `NEXORA_ADVERTISED_HOST` with a fixed, publicly reachable UDP allocation, or configure a supported STUN setup.
-- `NetherNet peer established` means signaling and the initial peer activation succeeded.
-- `first Bedrock data received` means the WebRTC data channel delivered data to NEXORA. If this appears but login still fails, inspect the following Bedrock protocol/login messages.
-
-A successful JAR build or an open TCP port alone does not establish that the Bedrock client can join. Keep the existing Nukkit server backed up until a real client reaches the world.
+- `NetherNet signaling listening ... (plain HTTP)`: no built-in TLS certificate is configured.
+- `no public ICE address or STUN server is configured`: public ICE addressing was not configured in the running JAR; check that the latest JAR was uploaded and that no startup overrides are set.
+- `NetherNet peer established`: signaling and initial peer activation succeeded.
+- `first Bedrock data received`: the WebRTC data channel delivered data to NEXORA. If login still fails after this, inspect the following Bedrock protocol/login messages.

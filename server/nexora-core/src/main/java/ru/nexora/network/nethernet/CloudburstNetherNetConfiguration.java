@@ -36,7 +36,12 @@ record CloudburstNetherNetConfiguration(
             throw new IllegalArgumentException("Invalid NetherNet UDP port range");
         }
 
-        String host = blankToNull(environment.getOrDefault("NEXORA_ADVERTISED_HOST", "nexor.mcbe.in"));
+        String configuredHost = blankToNull(environment.get("NEXORA_ADVERTISED_HOST"));
+        // Apply this deployment-specific hostname only for its known single-port allocation.
+        // Other installations keep generic behavior and can configure their own host or STUN.
+        String host = configuredHost != null ? configuredHost
+                : stunUrls.isEmpty() && udpPortMin == 23472 && udpPortMax == 23472
+                        ? "nexor.mcbe.in" : null;
         if (host != null && !ADVERTISED_HOST.matcher(host).matches()) {
             throw new IllegalArgumentException(
                     "NEXORA_ADVERTISED_HOST must be a DNS name or IP address without a scheme or port");

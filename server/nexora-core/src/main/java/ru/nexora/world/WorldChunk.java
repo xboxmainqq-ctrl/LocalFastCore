@@ -122,6 +122,25 @@ public final class WorldChunk {
             if (revision < 0 || sections == null || sections.length != SECTION_COUNT) {
                 throw new IllegalArgumentException("Invalid chunk persistence snapshot");
             }
+            byte[][] detached = new byte[sections.length][];
+            for (int index = 0; index < sections.length; index++) {
+                byte[] section = sections[index];
+                if (section != null && section.length != ChunkSection.VOLUME) {
+                    throw new IllegalArgumentException("Invalid chunk persistence section length");
+                }
+                detached[index] = section == null ? null : section.clone();
+            }
+            sections = detached;
+        }
+
+        /** Returns a deep copy so persistence consumers cannot mutate the captured image. */
+        @Override
+        public byte[][] sections() {
+            byte[][] detached = new byte[sections.length][];
+            for (int index = 0; index < sections.length; index++) {
+                detached[index] = sections[index] == null ? null : sections[index].clone();
+            }
+            return detached;
         }
     }
 

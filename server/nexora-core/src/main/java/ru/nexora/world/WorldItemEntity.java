@@ -23,8 +23,12 @@ public record WorldItemEntity(
         Objects.requireNonNull(stack, "stack");
         if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
                 || !Double.isFinite(velocityX) || !Double.isFinite(velocityY)
-                || !Double.isFinite(velocityZ)) {
-            throw new IllegalArgumentException("Item actor position and velocity must be finite");
+                || !Double.isFinite(velocityZ)
+                || Math.abs(x) > 30_000_000 || Math.abs(z) > 30_000_000
+                || y < WorldChunk.MIN_Y || y > WorldChunk.MAX_Y
+                || Math.abs(velocityX) > 100 || Math.abs(velocityY) > 100
+                || Math.abs(velocityZ) > 100) {
+            throw new IllegalArgumentException("Item actor position or velocity is outside supported bounds");
         }
         if (pickupAvailableAtMillis < 0) throw new IllegalArgumentException("Invalid pickup availability time");
         if (ownerXuid != null && !ownerXuid.matches("[A-Za-z0-9_-]{1,64}")) {

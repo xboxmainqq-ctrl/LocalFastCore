@@ -419,6 +419,17 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
         Channel current = serverChannel;
         serverChannel = null;
         if (current != null) current.close().syncUninterruptibly();
+        for (Channel peer : List.copyOf(channels.values())) {
+            peer.close().syncUninterruptibly();
+        }
+        for (String networkId : List.copyOf(channels.keySet())) {
+            try {
+                sessions.onDisconnected(networkId);
+            } catch (RuntimeException failure) {
+                System.err.println("NEXORA: failed to persist peer during NetherNet shutdown "
+                        + networkId + ": " + failure.getMessage());
+            }
+        }
         NetherNetHTTPServerSignaling currentSignaling = signaling;
         signaling = null;
         if (currentSignaling != null) currentSignaling.close();

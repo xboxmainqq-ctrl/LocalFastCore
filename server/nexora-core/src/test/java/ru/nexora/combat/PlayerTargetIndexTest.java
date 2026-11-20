@@ -102,9 +102,9 @@ class PlayerTargetIndexTest {
 
         List<LivingEntityAiService.PlayerTarget> expected = players.stream()
                 .filter(LivingEntityAiService.PlayerTarget::alive)
-                .filter(target -> target.x() >= 127.8 && target.x() <= 129.2
-                        && target.y() >= 64.3 && target.y() <= 66.7
-                        && target.z() >= 127.8 && target.z() <= 129.2)
+                .filter(target -> target.x() >= 127.3 && target.x() <= 129.7
+                        && target.y() >= 64.8 && target.y() <= 66.2
+                        && target.z() >= 127.3 && target.z() <= 129.7)
                 .toList();
 
         assertEquals(expected, index.withinSegment(

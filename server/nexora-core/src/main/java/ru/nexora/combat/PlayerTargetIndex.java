@@ -109,6 +109,62 @@ public final class PlayerTargetIndex {
         return nearest;
     }
 
+    /**
+     * Returns alive players inside the segment's axis-aligned bounds expanded by radius.
+     * The caller performs the exact point-to-segment distance test. Large populations
+     * inspect only intersecting X/Z cells; small populations use a compact linear scan.
+     */
+    public List<LivingEntityAiService.PlayerTarget> withinSegment(
+            double ax, double ay, double az, double bx, double by, double bz, double radius
+    ) {
+        if (!Double.isFinite(ax) || !Double.isFinite(ay) || !Double.isFinite(az)
+                || !Double.isFinite(bx) || !Double.isFinite(by) || !Double.isFinite(bz)
+                || !Double.isFinite(radius) || radius < 0) {
+            throw new IllegalArgumentException("Invalid projectile segment bounds");
+        }
+        double minX = Math.min(ax, bx) - radius;
+        double maxX = Math.max(ax, bx) + radius;
+        double minY = Math.min(ay, by) - radius;
+        double maxY = Math.max(ay, by) + radius;
+        double minZ = Math.min(az, bz) - radius;
+        double maxZ = Math.max(az, bz) + radius;
+        List<LivingEntityAiService.PlayerTarget> result = new ArrayList<>();
+        if (linearScan) {
+            for (LivingEntityAiService.PlayerTarget target : linearTargets) {
+                if (insideBounds(target, minX, minY, minZ, maxX, maxY, maxZ)) result.add(target);
+            }
+            return List.copyOf(result);
+        }
+        int minCellX = cell(minX);
+        int maxCellX = cell(maxX);
+        int minCellZ = cell(minZ);
+        int maxCellZ = cell(maxZ);
+        List<IndexedPlayer> indexed = new ArrayList<>();
+        for (int cellX = minCellX; cellX <= maxCellX; cellX++) {
+            for (int cellZ = minCellZ; cellZ <= maxCellZ; cellZ++) {
+                List<IndexedPlayer> bucket = cells.get(key(cellX, cellZ));
+                if (bucket == null) continue;
+                for (IndexedPlayer candidate : bucket) {
+                    if (insideBounds(candidate.target(), minX, minY, minZ, maxX, maxY, maxZ)) {
+                        indexed.add(candidate);
+                    }
+                }
+            }
+        }
+        indexed.sort((left, right) -> Integer.compare(left.order(), right.order()));
+        for (IndexedPlayer candidate : indexed) result.add(candidate.target());
+        return List.copyOf(result);
+    }
+
+    private static boolean insideBounds(
+            LivingEntityAiService.PlayerTarget target,
+            double minX, double minY, double minZ, double maxX, double maxY, double maxZ
+    ) {
+        return target.x() >= minX && target.x() <= maxX
+                && target.y() >= minY && target.y() <= maxY
+                && target.z() >= minZ && target.z() <= maxZ;
+    }
+
     /** O(1) lookup for a mob's remembered attacker/provoker. */
     public LivingEntityAiService.PlayerTarget find(String networkId) {
         if (networkId == null || networkId.isBlank()) return null;

@@ -166,6 +166,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private static final int MAX_CHAT_MESSAGES_PER_WINDOW = 5;
     private final Map<Long, ru.nexora.combat.ArrowProjectile> mobArrows = new ConcurrentHashMap<>();
     private final Map<Long, ru.nexora.combat.FireballProjectile> mobFireballs = new ConcurrentHashMap<>();
+    // Projectile actor visibility is indexed by chunk just like mobs and dropped items.
+    private final Map<Long, Set<Long>> mobArrowIdsByChunk = new ConcurrentHashMap<>();
+    private final Map<Long, Set<Long>> mobFireballIdsByChunk = new ConcurrentHashMap<>();
+    private final Map<Long, Long> mobArrowChunkById = new ConcurrentHashMap<>();
+    private final Map<Long, Long> mobFireballChunkById = new ConcurrentHashMap<>();
     private final Set<Long> poisonMobArrows = ConcurrentHashMap.newKeySet();
     private final ru.nexora.combat.GuardianBeamTracker guardianBeamTracker =
             new ru.nexora.combat.GuardianBeamTracker();
@@ -3976,6 +3981,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 mob.x(), mob.y() + 1.2, mob.z(),
                 dx / aimLength * speed, aimY / aimLength * speed, dz / aimLength * speed, 0);
         mobArrows.put(runtimeId, arrow);
+        indexProjectile(mobArrowIdsByChunk, mobArrowChunkById, runtimeId, arrow.x(), arrow.z());
         if ("minecraft:bogged".equals(mob.identifier())) poisonMobArrows.add(runtimeId);
         broadcastLivingActorPacket(BedrockArrowActorCodec.createSpawn(arrow));
         long cooldownMillis = ru.nexora.combat.LivingEntityAiService
@@ -4027,6 +4033,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 dx / aimLength * speed, aimY / aimLength * speed, dz / aimLength * speed,
                 0, ghast ? 6.0f : 4.0f, ghast ? 5 : 3);
         mobFireballs.put(runtimeId, fireball);
+        indexProjectile(mobFireballIdsByChunk, mobFireballChunkById,
+                runtimeId, fireball.x(), fireball.z());
         broadcastLivingActorPacket(BedrockFireballActorCodec.createSpawn(fireball));
         long cooldownMillis = ru.nexora.combat.LivingEntityAiService
                 .rangedAttackCooldownMillisFor(identifier);
@@ -4088,10 +4096,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
             if (removed) {
                 if (mobFireballs.remove(entry.getKey(), current)) {
+                    unindexProjectile(mobFireballIdsByChunk, mobFireballChunkById, entry.getKey());
                     broadcastLivingActorPacket(
                             BedrockAddItemActorCodec.createRemoveActor(current.uniqueId()));
                 }
             } else if (mobFireballs.replace(entry.getKey(), current, next)) {
+                reindexProjectile(mobFireballIdsByChunk, mobFireballChunkById,
+                        entry.getKey(), current.x(), current.z(), next.x(), next.z());
                 broadcastLivingActorPacket(BedrockFireballActorCodec.createMove(next));
             }
         }
@@ -4299,10 +4310,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
             if (removed) {
                 if (mobArrows.remove(entry.getKey(), current)) {
+                    unindexProjectile(mobArrowIdsByChunk, mobArrowChunkById, entry.getKey());
                     poisonMobArrows.remove(entry.getKey());
                     broadcastLivingActorPacket(BedrockAddItemActorCodec.createRemoveActor(current.uniqueId()));
                 }
             } else if (mobArrows.replace(entry.getKey(), current, next)) {
+                reindexProjectile(mobArrowIdsByChunk, mobArrowChunkById,
+                        entry.getKey(), current.x(), current.z(), next.x(), next.z());
                 broadcastLivingActorPacket(BedrockArrowActorCodec.createMove(next, Math.max(0, tick)));
             }
         }
@@ -6720,52 +6734,115 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 }
             }
         }
-        for (ru.nexora.combat.ArrowProjectile arrow : mobArrows.values()) {
-            boolean visible = isWorldPositionVisible(recipient, arrow.x(), arrow.z());
-            if (visible && recipient.visibleArrowEntityIds.add(arrow.runtimeId())) {
-                actorReplicationIndex.addActorViewer(arrow.runtimeId(), recipientNetworkId);
-                try {
-                    sendPacket(recipientNetworkId, BedrockArrowActorCodec.createSpawn(arrow), true);
-                } catch (RuntimeException exception) {
-                    recipient.visibleArrowEntityIds.remove(arrow.runtimeId());
-                    actorReplicationIndex.removeActorViewer(arrow.runtimeId(), recipientNetworkId);
-                    System.err.println("NEXORA: unable to add projectile entering chunk view: "
-                            + exception.getMessage());
-                }
-            } else if (!visible && recipient.visibleArrowEntityIds.remove(arrow.runtimeId())) {
+        // Only inspect projectiles indexed in chunks already published to this client.
+        for (ru.nexora.combat.ArrowProjectile arrow : snapshotMobArrowsInChunkKeys(recipient.sentChunkKeys)) {
+            if (!recipient.visibleArrowEntityIds.add(arrow.runtimeId())) continue;
+            actorReplicationIndex.addActorViewer(arrow.runtimeId(), recipientNetworkId);
+            try {
+                sendPacket(recipientNetworkId, BedrockArrowActorCodec.createSpawn(arrow), true);
+            } catch (RuntimeException exception) {
+                recipient.visibleArrowEntityIds.remove(arrow.runtimeId());
                 actorReplicationIndex.removeActorViewer(arrow.runtimeId(), recipientNetworkId);
-                try {
-                    sendPacket(recipientNetworkId,
-                            BedrockAddItemActorCodec.createRemoveActor(arrow.uniqueId()), true);
-                } catch (RuntimeException exception) {
-                    System.err.println("NEXORA: unable to remove projectile leaving chunk view: "
-                            + exception.getMessage());
-                }
+                System.err.println("NEXORA: unable to add projectile entering chunk view: "
+                        + exception.getMessage());
             }
         }
-        for (ru.nexora.combat.FireballProjectile fireball : mobFireballs.values()) {
-            boolean visible = isWorldPositionVisible(recipient, fireball.x(), fireball.z());
-            if (visible && recipient.visibleArrowEntityIds.add(fireball.runtimeId())) {
-                actorReplicationIndex.addActorViewer(fireball.runtimeId(), recipientNetworkId);
-                try {
-                    sendPacket(recipientNetworkId, BedrockFireballActorCodec.createSpawn(fireball), true);
-                } catch (RuntimeException exception) {
-                    recipient.visibleArrowEntityIds.remove(fireball.runtimeId());
-                    actorReplicationIndex.removeActorViewer(fireball.runtimeId(), recipientNetworkId);
-                    System.err.println("NEXORA: unable to add fireball entering chunk view: "
-                            + exception.getMessage());
-                }
-            } else if (!visible && recipient.visibleArrowEntityIds.remove(fireball.runtimeId())) {
+        for (ru.nexora.combat.FireballProjectile fireball
+                : snapshotMobFireballsInChunkKeys(recipient.sentChunkKeys)) {
+            if (!recipient.visibleArrowEntityIds.add(fireball.runtimeId())) continue;
+            actorReplicationIndex.addActorViewer(fireball.runtimeId(), recipientNetworkId);
+            try {
+                sendPacket(recipientNetworkId, BedrockFireballActorCodec.createSpawn(fireball), true);
+            } catch (RuntimeException exception) {
+                recipient.visibleArrowEntityIds.remove(fireball.runtimeId());
                 actorReplicationIndex.removeActorViewer(fireball.runtimeId(), recipientNetworkId);
-                try {
-                    sendPacket(recipientNetworkId,
-                            BedrockAddItemActorCodec.createRemoveActor(fireball.uniqueId()), true);
-                } catch (RuntimeException exception) {
-                    System.err.println("NEXORA: unable to remove fireball leaving chunk view: "
-                            + exception.getMessage());
-                }
+                System.err.println("NEXORA: unable to add fireball entering chunk view: "
+                        + exception.getMessage());
             }
         }
+        // Reconcile only projectiles this recipient was already tracking; no global scan.
+        for (long runtimeId : List.copyOf(recipient.visibleArrowEntityIds)) {
+            ru.nexora.combat.ArrowProjectile arrow = mobArrows.get(runtimeId);
+            ru.nexora.combat.FireballProjectile fireball = mobFireballs.get(runtimeId);
+            if (arrow != null && isWorldPositionVisible(recipient, arrow.x(), arrow.z())) continue;
+            if (fireball != null && isWorldPositionVisible(recipient, fireball.x(), fireball.z())) continue;
+            if (!recipient.visibleArrowEntityIds.remove(runtimeId)) continue;
+            actorReplicationIndex.removeActorViewer(runtimeId, recipientNetworkId);
+            if (arrow == null && fireball == null) continue; // Explicit despawn owns this removal.
+            long uniqueId = arrow != null ? arrow.uniqueId() : fireball.uniqueId();
+            try {
+                sendPacket(recipientNetworkId,
+                        BedrockAddItemActorCodec.createRemoveActor(uniqueId), true);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to remove projectile leaving chunk view: "
+                        + exception.getMessage());
+            }
+        }
+    }
+
+    private static long projectileChunkKey(double x, double z) {
+        int chunkX = Math.floorDiv((int) Math.floor(x), 16);
+        int chunkZ = Math.floorDiv((int) Math.floor(z), 16);
+        return ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
+    }
+
+    private static void indexProjectile(
+            Map<Long, Set<Long>> idsByChunk, Map<Long, Long> chunkById,
+            long runtimeId, double x, double z
+    ) {
+        long key = projectileChunkKey(x, z);
+        chunkById.put(runtimeId, key);
+        idsByChunk.computeIfAbsent(key, ignored -> ConcurrentHashMap.newKeySet()).add(runtimeId);
+    }
+
+    private static void unindexProjectile(
+            Map<Long, Set<Long>> idsByChunk, Map<Long, Long> chunkById, long runtimeId
+    ) {
+        Long key = chunkById.remove(runtimeId);
+        if (key == null) return;
+        Set<Long> ids = idsByChunk.get(key);
+        if (ids == null) return;
+        ids.remove(runtimeId);
+        if (ids.isEmpty()) idsByChunk.remove(key, ids);
+    }
+
+    private static void reindexProjectile(
+            Map<Long, Set<Long>> idsByChunk, Map<Long, Long> chunkById,
+            long runtimeId, double oldX, double oldZ, double newX, double newZ
+    ) {
+        long previous = projectileChunkKey(oldX, oldZ);
+        long next = projectileChunkKey(newX, newZ);
+        if (previous == next) return;
+        unindexProjectile(idsByChunk, chunkById, runtimeId);
+        indexProjectile(idsByChunk, chunkById, runtimeId, newX, newZ);
+    }
+
+    List<ru.nexora.combat.ArrowProjectile> snapshotMobArrowsInChunkKeys(Set<Long> chunkKeys) {
+        java.util.TreeSet<Long> ids = new java.util.TreeSet<>();
+        for (long key : chunkKeys) {
+            Set<Long> inChunk = mobArrowIdsByChunk.get(key);
+            if (inChunk != null) ids.addAll(inChunk);
+        }
+        List<ru.nexora.combat.ArrowProjectile> result = new ArrayList<>(ids.size());
+        for (long id : ids) {
+            ru.nexora.combat.ArrowProjectile arrow = mobArrows.get(id);
+            if (arrow != null) result.add(arrow);
+        }
+        return List.copyOf(result);
+    }
+
+    List<ru.nexora.combat.FireballProjectile> snapshotMobFireballsInChunkKeys(Set<Long> chunkKeys) {
+        java.util.TreeSet<Long> ids = new java.util.TreeSet<>();
+        for (long key : chunkKeys) {
+            Set<Long> inChunk = mobFireballIdsByChunk.get(key);
+            if (inChunk != null) ids.addAll(inChunk);
+        }
+        List<ru.nexora.combat.FireballProjectile> result = new ArrayList<>(ids.size());
+        for (long id : ids) {
+            ru.nexora.combat.FireballProjectile fireball = mobFireballs.get(id);
+            if (fireball != null) result.add(fireball);
+        }
+        return List.copyOf(result);
     }
 
     private static boolean isWorldPositionVisible(SessionState recipient, double x, double z) {

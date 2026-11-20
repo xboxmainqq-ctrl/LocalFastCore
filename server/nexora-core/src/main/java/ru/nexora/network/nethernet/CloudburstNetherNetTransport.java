@@ -61,8 +61,7 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
     private final int udpPortMin;
     private final int udpPortMax;
     private final List<String> stunUrls;
-    private final String advertisedHost;
-    private final int publicUdpPort;
+    private final CloudburstNetherNetConfiguration configuration;
     private final Path dataDirectory;
     private final BedrockSessionManager sessions;
     private final IntSupplier playerCount;
@@ -106,20 +105,9 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
         this.dataDirectory = Objects.requireNonNull(dataDirectory, "dataDirectory");
         this.sessions = Objects.requireNonNull(sessions, "sessions");
         this.playerCount = Objects.requireNonNull(playerCount, "playerCount");
-        Map<String, String> env = Objects.requireNonNull(environment, "environment");
-        this.advertisedHost = blankToNull(env.get("NEXORA_ADVERTISED_HOST"));
-        this.publicUdpPort = parsePort(env.get("NEXORA_PUBLIC_UDP_PORT"), 0);
-        if (this.publicUdpPort > 0 && udpPortMin != udpPortMax) {
-            throw new IllegalArgumentException(
-                    "NEXORA_PUBLIC_UDP_PORT requires a fixed ICE port: set NEXORA_UDP_PORT_MIN and NEXORA_UDP_PORT_MAX to the same port");
-        }
-        if (this.publicUdpPort > 0 && this.advertisedHost == null) {
-            throw new IllegalArgumentException("NEXORA_PUBLIC_UDP_PORT requires NEXORA_ADVERTISED_HOST");
-        }
-        if (!this.stunUrls.isEmpty() && this.advertisedHost == null && udpPortMin != udpPortMax) {
-            throw new IllegalArgumentException(
-                    "Cloudburst STUN discovery requires one fixed ICE UDP port; set NEXORA_UDP_PORT_MIN and NEXORA_UDP_PORT_MAX to the same value");
-        }
+        this.configuration = CloudburstNetherNetConfiguration.fromEnvironment(
+                Objects.requireNonNull(environment, "environment"),
+                dataDirectory, udpPortMin, udpPortMax, this.stunUrls);
     }
 
     public synchronized void start() throws IOException {
@@ -130,7 +118,7 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
         try {
             identity = OperatorIdentity.fromPemOrCreate(
                     dataDirectory.resolve("identity").resolve("nethernet-operator.pem").toFile(),
-                    System.getenv().getOrDefault("NEXORA_IDENTITY_DOMAIN", "NEXOR"));
+                    configuration.identityDomain());
         } catch (Exception failure) {
             throw new IOException("Unable to load persistent NetherNet operator identity", failure);
         }
@@ -162,11 +150,18 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
                                 .setSelfSignedAuth(false)
                                 .build());
 
-        if (advertisedHost != null) {
-            String endpointHost = advertisedHost.contains(":") && !advertisedHost.startsWith("[")
-                    ? "[" + advertisedHost + "]" : advertisedHost;
-            String endpoint = publicUdpPort > 0
-                    ? endpointHost + ":" + publicUdpPort : endpointHost;
+        if (configuration.httpsCertificate() != null) {
+            signalingBuilder.setHttpsPem(
+                    configuration.httpsCertificate().toFile(),
+                    configuration.httpsPrivateKey().toFile());
+            signalingBuilder.setRequiresTls(true);
+        }
+        if (configuration.advertisedHost() != null) {
+            String host = configuration.advertisedHost();
+            String endpointHost = host.contains(":") && !host.startsWith("[")
+                    ? "[" + host + "]" : host;
+            String endpoint = configuration.publicUdpPort() > 0
+                    ? endpointHost + ":" + configuration.publicUdpPort() : endpointHost;
             signalingBuilder.setAdvertisedAddresses(List.of(endpoint));
         } else if (!stunUrls.isEmpty()) {
             signalingBuilder.setStunServers(stunUrls);
@@ -397,21 +392,6 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
         EventLoopGroup group = eventLoopGroup;
         eventLoopGroup = null;
         if (group != null) group.shutdownGracefully(0, 2, TimeUnit.SECONDS).syncUninterruptibly();
-    }
-
-    private static int parsePort(String raw, int fallback) {
-        if (raw == null || raw.isBlank()) return fallback;
-        try {
-            int value = Integer.parseInt(raw.trim());
-            if (value < 0 || value > 65535) throw new NumberFormatException("outside 0..65535");
-            return value;
-        } catch (NumberFormatException failure) {
-            throw new IllegalArgumentException("Invalid NEXORA_PUBLIC_UDP_PORT", failure);
-        }
-    }
-
-    private static String blankToNull(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private static String requireText(String value, String name) {

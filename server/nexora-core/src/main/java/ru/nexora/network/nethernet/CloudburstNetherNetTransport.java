@@ -114,6 +114,10 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
         if (this.publicUdpPort > 0 && this.advertisedHost == null) {
             throw new IllegalArgumentException("NEXORA_PUBLIC_UDP_PORT requires NEXORA_ADVERTISED_HOST");
         }
+        if (!this.stunUrls.isEmpty() && this.advertisedHost == null && udpPortMin != udpPortMax) {
+            throw new IllegalArgumentException(
+                    "Cloudburst STUN discovery requires one fixed ICE UDP port; set NEXORA_UDP_PORT_MIN and NEXORA_UDP_PORT_MAX to the same value");
+        }
     }
 
     public synchronized void start() throws IOException {
@@ -241,6 +245,10 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
                     }
                 });
 
+        if (udpPortMin == udpPortMax) {
+            bootstrap.option(NetherChannelOption.NETHER_SERVER_ICE_ADDRESS,
+                    new InetSocketAddress("0.0.0.0", udpPortMin));
+        }
         ChannelFuture bind = bootstrap.bind(signalingAddress).syncUninterruptibly();
         if (!bind.isSuccess()) {
             close();

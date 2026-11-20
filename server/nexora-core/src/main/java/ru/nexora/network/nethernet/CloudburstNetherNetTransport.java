@@ -250,6 +250,7 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
                         });
                         child.pipeline().addLast(new SimpleChannelInboundHandler<ByteBuf>() {
                             private boolean reliable = true;
+                            private final AtomicBoolean firstBedrockFrame = new AtomicBoolean();
 
                             @Override
                             public void channelActive(ChannelHandlerContext context) throws Exception {
@@ -266,6 +267,8 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
                                         admitted.set(true);
                                     }
                                     sessions.onIdentity(networkId, clientIdentity);
+                                    System.out.printf("NEXORA: NetherNet peer established: %s (%s)%n",
+                                            player.displayName(), networkId);
                                     super.channelActive(context);
                                 } catch (Exception failure) {
                                     child.close();
@@ -291,13 +294,18 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
                                         payload, MAX_SCTP_MESSAGE_BYTES, reliable)) {
                                     sessions.onFrame(networkId, label, frame);
                                 }
+                                if (firstBedrockFrame.compareAndSet(false, true)) {
+                                    System.out.printf("NEXORA: first Bedrock data received from %s (%d bytes, %s)%n",
+                                            networkId, payload.length, label);
+                                }
                                 bytesReceived.addAndGet(payload.length);
                             }
 
                             @Override
                             public void exceptionCaught(ChannelHandlerContext context, Throwable cause) {
-                                System.err.println("NEXORA: NetherNet peer " + networkId
-                                        + " failed: " + cause.getMessage());
+                                System.err.printf("NEXORA: NetherNet peer %s failed (%s): %s%n",
+                                        networkId, cause.getClass().getSimpleName(), cause.getMessage());
+                                cause.printStackTrace(System.err);
                                 child.close();
                             }
                         });
@@ -315,6 +323,25 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
                     + signalingAddress, bind.cause());
         }
         serverChannel = bind.channel();
+
+        boolean builtInHttps = configuration.httpsCertificate() != null;
+        System.out.printf("NEXORA: NetherNet signaling listening at %s (%s)%n",
+                signalingAddress, builtInHttps ? "built-in HTTPS" : "plain HTTP");
+        System.out.printf("NEXORA: NetherNet ICE UDP port range: %d-%d%n", udpPortMin, udpPortMax);
+        if (configuration.advertisedHost() != null) {
+            System.out.printf("NEXORA: advertised ICE endpoint: %s:%d/UDP%n",
+                    configuration.advertisedHost(), configuration.publicUdpPort());
+        } else if (!stunUrls.isEmpty()) {
+            System.out.printf("NEXORA: ICE discovery uses STUN: %s%n", String.join(", ", stunUrls));
+        } else {
+            System.err.println("NEXORA: WARNING: no public ICE address or STUN server is configured; "
+                    + "remote Bedrock clients may fail to establish the peer connection.");
+        }
+        if (!builtInHttps) {
+            System.err.println("NEXORA: WARNING: signaling has no built-in HTTPS. Public Bedrock clients "
+                    + "require HTTPS; configure NEXORA_HTTPS_CERT_FILE and NEXORA_HTTPS_KEY_FILE, "
+                    + "or terminate TLS at a correctly configured reverse proxy.");
+        }
     }
 
     public void sendFrame(String networkId, String channelLabel, byte[] frame) {

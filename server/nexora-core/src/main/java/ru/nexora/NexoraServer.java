@@ -70,7 +70,7 @@ public final class NexoraServer {
         BedrockServerStatus legacyStatus = new BedrockServerStatus(
                 motd,
                 2225,
-                "1.26.62",
+                "1.26.66",
                 0,
                 maxPlayers,
                 "Legacy RakNet discovery only",
@@ -146,7 +146,7 @@ public final class NexoraServer {
         AtomicReference<CloudburstNetherNetTransport> transportReference = new AtomicReference<>();
         BedrockSessionManager bedrockSessions = new BedrockSessionManager(
                 2225,
-                "1.26.62",
+                "1.26.66",
                 BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
                 world,
                 playerStorage,

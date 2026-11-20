@@ -36,3 +36,14 @@ These values must be supplied explicitly through the hosting panel's environment
 A successful Maven build and startup smoke test do not prove that a retail Minecraft Bedrock client can join. Before inviting players, validate process startup on the host, TCP signaling, public UDP/ICE reachability, HTTPS, authenticated Bedrock login, resource-pack completion, world bootstrap and client initialization.
 
 The current project remains under active development. Treat a first host deployment as an isolated technical test, not a production server.
+
+## Diagnosing a Terracotta disconnect
+
+Check the NEXORA startup log before changing the server address:
+
+- `NetherNet signaling listening ... (plain HTTP)` means this process has no built-in TLS certificate. A public Bedrock connection needs HTTPS; use a valid certificate/key pair or a TLS reverse proxy that forwards the complete signaling endpoint.
+- `no public ICE address or STUN server is configured` means the server has no public ICE candidate configured. Set `NEXORA_ADVERTISED_HOST` with a fixed, publicly reachable UDP allocation, or configure a supported STUN setup.
+- `NetherNet peer established` means signaling and the initial peer activation succeeded.
+- `first Bedrock data received` means the WebRTC data channel delivered data to NEXORA. If this appears but login still fails, inspect the following Bedrock protocol/login messages.
+
+A successful JAR build or an open TCP port alone does not establish that the Bedrock client can join. Keep the existing Nukkit server backed up until a real client reaches the world.

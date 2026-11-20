@@ -148,8 +148,11 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
                                 .build());
 
         if (advertisedHost != null) {
-            signalingBuilder.setAdvertisedAddresses(List.of(
-                    InetSocketAddress.createUnresolved(advertisedHost, publicUdpPort)));
+            String endpointHost = advertisedHost.contains(":") && !advertisedHost.startsWith("[")
+                    ? "[" + advertisedHost + "]" : advertisedHost;
+            String endpoint = publicUdpPort > 0
+                    ? endpointHost + ":" + publicUdpPort : endpointHost;
+            signalingBuilder.setAdvertisedAddresses(List.of(endpoint));
         } else if (!stunUrls.isEmpty()) {
             signalingBuilder.setStunServers(stunUrls);
         }

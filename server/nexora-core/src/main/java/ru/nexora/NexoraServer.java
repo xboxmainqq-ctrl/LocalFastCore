@@ -253,7 +253,8 @@ public final class NexoraServer {
                     aiDiagnostics.recordFailure("furnace-tick", exception);
                     System.err.println("NEXORA: furnace tick failed: " + exception.getMessage());
                 },
-                elapsed -> aiDiagnostics.recordSlowOperation("furnace-tick", elapsed, 50_000_000L));
+                elapsed -> aiDiagnostics.recordSlowOperation("furnace-tick", elapsed, 50_000_000L),
+                bedrockSessions::tickInitialChunkStreams);
 
         NetworkRuntimeModule networkRuntime = new NetworkRuntimeModule(
                 clusterService,

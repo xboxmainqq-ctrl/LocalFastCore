@@ -19,8 +19,8 @@ class CloudburstNetherNetConfigurationTest {
     void suppliesStableDefaultsWithoutOptionalDeploymentSettings() {
         var result = config(Map.of(), 23472, 23472, List.of());
 
-        assertNull(result.advertisedHost());
-        assertEquals(0, result.publicUdpPort());
+        assertEquals("nexor.mcbe.in", result.advertisedHost());
+        assertEquals(23472, result.publicUdpPort());
         assertEquals("NEXOR", result.identityDomain());
         assertNull(result.httpsCertificate());
         assertNull(result.httpsPrivateKey());

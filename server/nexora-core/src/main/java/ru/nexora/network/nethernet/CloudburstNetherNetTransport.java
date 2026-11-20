@@ -41,6 +41,7 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BooleanSupplier;
 import java.util.function.IntSupplier;
 
 /**
@@ -67,6 +68,7 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
     private final Path dataDirectory;
     private final BedrockSessionManager sessions;
     private final IntSupplier playerCount;
+    private final BooleanSupplier admissionAllowed;
     private final CapturingMinecraftTokenTrust tokenTrust = new CapturingMinecraftTokenTrust();
     private final Map<String, TokenEntry> validatedTokensByNetworkId = new ConcurrentHashMap<>();
     private final Object admissionLock = new Object();
@@ -92,7 +94,8 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
             Map<String, String> environment,
             Path dataDirectory,
             BedrockSessionManager sessions,
-            IntSupplier playerCount
+            IntSupplier playerCount,
+            BooleanSupplier admissionAllowed
     ) {
         this.signalingAddress = Objects.requireNonNull(signalingAddress, "signalingAddress");
         this.motd = requireText(motd, "motd");
@@ -108,6 +111,7 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
         this.dataDirectory = Objects.requireNonNull(dataDirectory, "dataDirectory");
         this.sessions = Objects.requireNonNull(sessions, "sessions");
         this.playerCount = Objects.requireNonNull(playerCount, "playerCount");
+        this.admissionAllowed = Objects.requireNonNull(admissionAllowed, "admissionAllowed");
         this.configuration = CloudburstNetherNetConfiguration.fromEnvironment(
                 Objects.requireNonNull(environment, "environment"),
                 dataDirectory, udpPortMin, udpPortMax, this.stunUrls);
@@ -135,6 +139,7 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
                         .setMaxPendingJoins(MAX_PENDING_TOKEN_BINDINGS)
                         .setMaxConnectionsPerAddress((int) Math.min(4096L, Math.max(8L, maxPlayers * 2L + 8L)))
                         .setPlayerFilter((host, player) -> {
+                            if (!admissionAllowed.getAsBoolean()) return JoinRefusal.REJECTED;
                             long now = System.nanoTime();
                             synchronized (admissionLock) {
                                 purgeExpiredNetworkTokens(now);

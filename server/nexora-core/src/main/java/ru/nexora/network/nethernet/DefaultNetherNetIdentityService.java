@@ -71,7 +71,7 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
     private long lastForcedJwksRefreshMillis;
 
     public DefaultNetherNetIdentityService(Path keyDirectory) throws IOException, GeneralSecurityException {
-        this(keyDirectory, DEFAULT_JWKS_URI, DEFAULT_ISSUER, null, "self");
+        this(keyDirectory, DEFAULT_JWKS_URI, DEFAULT_ISSUER, DEFAULT_AUDIENCE, "self");
     }
 
     public DefaultNetherNetIdentityService(
@@ -267,34 +267,27 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
         }
     }
 
-    private void validateStandardClaims(JsonNode claims) {
-        JsonNode issuerNode = claims.get("iss");
-        if (issuerNode != null && !issuerNode.isNull()) {
-            if (!issuerNode.isTextual()) throw new SecurityException("Invalid GameServerToken issuer");
-            String issuer = issuerNode.asText();
-            if (!expectedIssuer.equals(issuer)) {
-                String tokenIssuerHost;
-                try {
-                    tokenIssuerHost = URI.create(issuer).getHost();
-                } catch (IllegalArgumentException exception) {
-                    tokenIssuerHost = null;
-                }
-                String expectedHost = URI.create(expectedIssuer).getHost();
-                if (tokenIssuerHost == null || !tokenIssuerHost.equalsIgnoreCase(expectedHost)) {
-                    throw new SecurityException("Unexpected GameServerToken issuer");
-                }
-            }
+    void validateStandardClaims(JsonNode claims) {
+        String issuer = requiredText(claims, "iss");
+        if (!expectedIssuer.equals(issuer)) {
+            throw new SecurityException("Unexpected GameServerToken issuer");
         }
 
-        JsonNode audience = claims.get("aud");
-        if (expectedAudience != null && audience != null && !audience.isNull()) {
-            boolean audienceMatches = audience.isTextual() && expectedAudience.equals(audience.asText());
-            if (audience.isArray()) {
+        if (expectedAudience != null) {
+            JsonNode audience = claims.get("aud");
+            boolean audienceMatches = audience != null
+                    && audience.isTextual() && expectedAudience.equals(audience.asText());
+            if (audience != null && audience.isArray()) {
                 for (JsonNode item : audience) {
-                    if (item.isTextual() && expectedAudience.equals(item.asText())) audienceMatches = true;
+                    if (item.isTextual() && expectedAudience.equals(item.asText())) {
+                        audienceMatches = true;
+                        break;
+                    }
                 }
             }
-            if (!audienceMatches) throw new SecurityException("Unexpected GameServerToken audience");
+            if (!audienceMatches) {
+                throw new SecurityException("Missing or unexpected GameServerToken audience");
+            }
         }
 
         long now = Instant.now().getEpochSecond();
@@ -302,11 +295,17 @@ public final class DefaultNetherNetIdentityService implements NetherNetIdentityS
         if (expires == null || !expires.canConvertToLong()) {
             throw new SecurityException("GameServerToken is missing a valid expiry");
         }
-        if (now > expires.asLong() + 30) throw new SecurityException("GameServerToken has expired");
+        if (now > expires.asLong() + 30) {
+            throw new SecurityException("GameServerToken has expired");
+        }
         JsonNode notBefore = claims.get("nbf");
         if (notBefore != null) {
-            if (!notBefore.canConvertToLong()) throw new SecurityException("Invalid GameServerToken not-before claim");
-            if (now + 30 < notBefore.asLong()) throw new SecurityException("GameServerToken is not active yet");
+            if (!notBefore.canConvertToLong()) {
+                throw new SecurityException("Invalid GameServerToken not-before claim");
+            }
+            if (now + 30 < notBefore.asLong()) {
+                throw new SecurityException("GameServerToken is not active yet");
+            }
         }
     }
 

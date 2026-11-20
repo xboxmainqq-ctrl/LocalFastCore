@@ -79,6 +79,27 @@ class WorldAutosaveTest {
     }
 
     @Test
+    void retriesFinalShutdownFlushAfterTransientPersistenceFailure() throws Exception {
+        World world = new World("NEXORA", 1L, new FlatWorldGenerator());
+        AtomicInteger attempts = new AtomicInteger();
+        WorldAutosave autosave = new WorldAutosave(world, Duration.ofHours(1),
+                ignored -> {}, () -> {
+                    if (attempts.incrementAndGet() == 1) {
+                        throw new java.io.IOException("temporary disk failure");
+                    }
+                });
+
+        assertThrows(java.io.IOException.class, autosave::close);
+        autosave.close();
+
+        assertEquals(2, attempts.get());
+        WorldAutosave.SaveStats stats = autosave.saveStats();
+        assertEquals(2, stats.attempts());
+        assertEquals(1, stats.failedSaves());
+        assertEquals(1, stats.successfulSaves());
+    }
+
+    @Test
     void rejectsNonPositiveAutosaveIntervals() {
         World world = new World("NEXORA", 1L, new FlatWorldGenerator());
 

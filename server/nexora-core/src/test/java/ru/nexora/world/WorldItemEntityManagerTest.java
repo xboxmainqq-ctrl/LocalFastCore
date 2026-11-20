@@ -162,6 +162,23 @@ class WorldItemEntityManagerTest {
     }
 
     @Test
+    void keepsSpatiallySeparatedDroppedItemsInSeparateMergeBuckets() {
+        World world = new World("item-merge-spatial-buckets", 0L, new FlatWorldGenerator());
+        WorldItemEntityManager manager = new WorldItemEntityManager();
+        for (int i = 0; i < 256; i++) {
+            manager.spawn(new ItemStack("minecraft:diamond", 1, 64),
+                    i * 3.0 + 0.5, 65.125, 0.5, 0, 0, 0, 0, 0, "same-owner");
+        }
+
+        manager.tick(world, 0.05, 100);
+
+        assertEquals(256, manager.size());
+        assertEquals(256, manager.snapshot().stream()
+                .mapToInt(entity -> entity.stack().count()).sum());
+        assertTrue(manager.drainRemovedByTick().isEmpty());
+    }
+
+    @Test
     void doesNotMergeStacksWithDifferentEnchantmentMetadata() {
         World world = new World("item-enchantment-merge", 0L, new FlatWorldGenerator());
         WorldItemEntityManager manager = new WorldItemEntityManager();

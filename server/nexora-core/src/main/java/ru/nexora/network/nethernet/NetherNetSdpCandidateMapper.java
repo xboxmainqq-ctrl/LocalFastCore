@@ -32,8 +32,9 @@ public final class NetherNetSdpCandidateMapper {
                 || host.startsWith(".") || host.endsWith("."))) {
             throw new IllegalArgumentException("NEXORA_ADVERTISED_HOST must be an IP address or DNS host without a scheme or port");
         }
-        if (internalUdpPortMin < 1024 || internalUdpPortMax > 65535
-                || internalUdpPortMin > internalUdpPortMax) {
+        boolean dynamicRange = internalUdpPortMin == 0 && internalUdpPortMax == 0;
+        if (!dynamicRange && (internalUdpPortMin < 1024 || internalUdpPortMax > 65535
+                || internalUdpPortMin > internalUdpPortMax)) {
             throw new IllegalArgumentException("Invalid internal UDP candidate port range");
         }
         if (publicUdpPortBase < 0 || publicUdpPortBase > 65535) {
@@ -41,6 +42,9 @@ public final class NetherNetSdpCandidateMapper {
         }
         if (publicUdpPortBase > 0 && host == null) {
             throw new IllegalArgumentException("NEXORA_PUBLIC_UDP_PORT requires NEXORA_ADVERTISED_HOST");
+        }
+        if (publicUdpPortBase > 0 && dynamicRange) {
+            throw new IllegalArgumentException("NEXORA_PUBLIC_UDP_PORT requires a fixed internal UDP port range");
         }
         if (publicUdpPortBase > 0
                 && publicUdpPortBase + (internalUdpPortMax - internalUdpPortMin) > 65535) {
@@ -100,7 +104,8 @@ public final class NetherNetSdpCandidateMapper {
             } catch (NumberFormatException exception) {
                 throw new IllegalArgumentException("Malformed UDP host ICE candidate port", exception);
             }
-            if (port < internalUdpPortMin || port > internalUdpPortMax) {
+            if (publicUdpPortBase > 0
+                    && (port < internalUdpPortMin || port > internalUdpPortMax)) {
                 throw new IllegalArgumentException("Host ICE candidate port is outside configured UDP range: " + port);
             }
             fields[4] = advertisedHost;

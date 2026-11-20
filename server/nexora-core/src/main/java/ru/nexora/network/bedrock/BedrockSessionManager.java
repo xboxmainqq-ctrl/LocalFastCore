@@ -5101,6 +5101,17 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 clientProtocol, message.networkId());
     }
 
+    static void validateLoginProtocol(
+            BedrockLoginPacketParser.LoginRequest login,
+            int negotiatedProtocol,
+            int requiredProtocol
+    ) {
+        Objects.requireNonNull(login, "login");
+        if (negotiatedProtocol != requiredProtocol || login.clientProtocol() != negotiatedProtocol) {
+            throw new SecurityException("Login protocol does not match the negotiated Bedrock protocol");
+        }
+    }
+
     private void handleLogin(
             NetherNetInboundPipeline.InboundMessage message,
             SessionState state,
@@ -5111,9 +5122,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (state.identity == null) throw new SecurityException("Login has no verified NetherNet identity");
 
         BedrockLoginPacketParser.LoginRequest login = BedrockLoginPacketParser.parse(packet);
-        if (login.clientProtocol() != state.clientProtocol || state.clientProtocol != serverProtocol) {
-            throw new SecurityException("Login protocol does not match the negotiated Bedrock protocol");
-        }
+        validateLoginProtocol(login, state.clientProtocol, serverProtocol);
         if (login.authenticationType() != 0) {
             throw new SecurityException("Only authenticated Xbox Live login is supported");
         }

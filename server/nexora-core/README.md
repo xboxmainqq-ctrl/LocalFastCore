@@ -284,7 +284,7 @@ NEXORA_ADVERTISED_HOST=play.example.net
 NEXORA_PUBLIC_UDP_PORT=40000
 ```
 
-The mapper changes only UDP `typ host` candidates. Server-reflexive and relay candidates remain ICE-generated and untouched. The public UDP range must still be forwarded and reachable; this feature does not create a UDP relay or solve symmetric NAT/CGNAT. Do not set a public port base unless the router forwards the complete configured range with the same port offset.
+The mapper changes only UDP `typ host` candidates. Server-reflexive and relay candidates remain ICE-generated and untouched. It runs after the server identity assertion is created; the assertion binds the DTLS fingerprint, so changing only candidate address/port fields does not alter the signed fingerprint payload. The public UDP range must still be forwarded and reachable; this feature does not create a UDP relay or solve symmetric NAT/CGNAT. Do not set a public port base unless the router forwards the complete configured range with the same port offset.
 
 This is a transport-readiness improvement, not proof of end-to-end Bedrock compatibility. A real client join still has to pass the complete NetherNet handshake, Bedrock login/resource-pack flow, StartGame, chunk bootstrap and client initialization on a publicly reachable deployment.
 

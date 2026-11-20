@@ -125,6 +125,53 @@ class WorldItemEntityManagerTest {
     }
 
     @Test
+    void chunkIndexTracksSpawnMovementPickupMergeAndRemoval() {
+        World world = new World("item-chunk-index", 0L, new FlatWorldGenerator());
+        WorldItemEntityManager manager = new WorldItemEntityManager();
+        long west = chunkKey(0, 0);
+        long east = chunkKey(1, 0);
+        WorldItemEntity crossing = manager.spawn(new ItemStack("minecraft:diamond", 1, 64),
+                15.95, 65.125, 0.5, 4.0, 0, 0, 0, 0, null);
+
+        assertEquals(List.of(crossing), manager.snapshotInChunkKeys(java.util.Set.of(west)));
+        assertTrue(manager.snapshotInChunkKeys(java.util.Set.of(east)).isEmpty());
+
+        manager.tick(world, 0.05, 100);
+        WorldItemEntity moved = manager.find(crossing.runtimeId()).orElseThrow();
+        assertTrue(moved.x() >= 16.0);
+        assertTrue(manager.snapshotInChunkKeys(java.util.Set.of(west)).isEmpty());
+        assertEquals(List.of(moved), manager.snapshotInChunkKeys(java.util.Set.of(east)));
+
+        assertTrue(manager.remove(crossing.runtimeId()));
+        assertTrue(manager.snapshotInChunkKeys(java.util.Set.of(east)).isEmpty());
+    }
+
+    @Test
+    void chunkIndexIsRebuiltFromStorageAndUpdatedAfterPickupAndMerge() throws Exception {
+        WorldItemEntityStorage storage = new WorldItemEntityStorage(temporaryDirectory, "item-chunk-index-load");
+        WorldItemEntityManager manager = new WorldItemEntityManager(storage);
+        WorldItemEntity first = manager.spawn(new ItemStack("minecraft:diamond", 2, 64),
+                17, 65.125, 1, 0, 0, 0, 0, 0, "owner");
+        WorldItemEntity second = manager.spawn(new ItemStack("minecraft:diamond", 3, 64),
+                17.2, 65.125, 1, 0, 0, 0, 0, 0, "owner");
+        WorldItemEntityManager restored = new WorldItemEntityManager(storage);
+        long east = chunkKey(1, 0);
+
+        assertEquals(List.of(first, second), restored.snapshotInChunkKeys(java.util.Set.of(east)));
+        restored.tick(new World("item-chunk-index-merge", 0L, new FlatWorldGenerator()), 0.05, 100);
+        assertEquals(1, restored.snapshotInChunkKeys(java.util.Set.of(east)).size());
+
+        WorldItemEntity remaining = restored.snapshotInChunkKeys(java.util.Set.of(east)).getFirst();
+        PlayerInventory inventory = new PlayerInventory();
+        assertTrue(restored.pickup(remaining.runtimeId(), inventory, "owner", 17, 65.125, 1, 101));
+        assertTrue(restored.snapshotInChunkKeys(java.util.Set.of(east)).isEmpty());
+    }
+
+    private static long chunkKey(int chunkX, int chunkZ) {
+        return ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
+    }
+
+    @Test
     void mergesNearbyCompatibleStacksAndQueuesRemovedActorForClientSync() {
         World world = new World("item-merge", 0L, new FlatWorldGenerator());
         WorldItemEntityManager manager = new WorldItemEntityManager();

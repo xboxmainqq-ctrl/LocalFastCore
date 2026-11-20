@@ -3,6 +3,7 @@ name: NEXORA Core
 on:
   push:
     branches:
+      - main
       - work/nexora-ai-foundation
       - work/nexora-streaming-optimization
       - nexora/compatibility-edition
@@ -13,6 +14,7 @@ on:
     paths:
       - "server/nexora-core/**"
       - ".github/workflows/nexora-core.yml"
+  workflow_dispatch:
 
 concurrency:
   group: nexora-core-${{ github.ref }}

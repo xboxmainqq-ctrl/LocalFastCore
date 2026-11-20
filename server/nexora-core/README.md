@@ -94,7 +94,9 @@ The production transport uses native libraries supplied by `libdatachannel-java`
 
 ## HTTPS and firewall deployment
 
-For production, prefer HTTPS signaling. A reverse proxy can terminate TLS while NEXORA serves HTTP on loopback:
+The Cloudburst NetherNet signaling server listens on the configured main TCP port. For production, either configure built-in HTTPS with `NEXORA_HTTPS_CERT_FILE` and `NEXORA_HTTPS_KEY_FILE`, or bind signaling to loopback with `NEXORA_HTTP_BIND=127.0.0.1` and terminate TLS at a reverse proxy such as Caddy. The proxy must forward the complete NetherNet HTTP signaling endpoint, including the join request body and response.
+
+Example reverse-proxy deployment:
 
 ~~~sh
 NEXORA_HTTP_BIND=127.0.0.1
@@ -106,20 +108,15 @@ Copy Caddyfile.example to your Caddy configuration and replace example.com with 
 
 Open the following ports in the VPS firewall:
 
-- TCP 443 for HTTPS signaling through Caddy (or TCP 19132 for direct HTTP signaling).
-- UDP 30000-30199 for NetherNet ICE/DTLS/SCTP traffic (or the exact configured fixed port when using STUN/public port translation).
+- TCP 443 for HTTPS signaling through Caddy (or the configured main TCP port when using built-in HTTPS).
+- UDP 30000-30199 for NetherNet ICE/DTLS/SCTP traffic, or the exact configured fixed port when using STUN/public port translation.
 - UDP 19132 only for the legacy RakNet discovery experiment.
 
-The NetherNet UDP range is configurable with `NEXORA_UDP_PORT_MIN` and `NEXORA_UDP_PORT_MAX`. The host must route this separate UDP range into the container; allocating only the signaling/game port does not expose it. Do not reuse the legacy RakNet UDP port for ICE. When using STUN without `NEXORA_ADVERTISED_HOST`, set both UDP bounds to one fixed port. World and player autosave are configurable with `NEXORA_AUTOSAVE_SECONDS` (default 300 seconds). Player profiles are stored under `data/players/`. Player checkpoint files under `data/player-state` keep the previous verified `.nxps` generation as `.nxps.bak`; on startup/load, a corrupt or missing primary checkpoint is restored from that backup when its checksum and metadata validate. A successful recovery rewrites the primary file before returning the snapshot. The HTTP listener bind address is configurable with `NEXORA_HTTP_BIND`; it defaults to the main bind host.
+The NetherNet UDP range is configurable with `NEXORA_UDP_PORT_MIN` and `NEXORA_UDP_PORT_MAX`. The host must route this separate UDP range into the container; exposing only the signaling TCP port does not expose ICE traffic. Do not reuse the legacy RakNet UDP port for ICE. When using STUN without `NEXORA_ADVERTISED_HOST`, set both UDP bounds to one fixed port. World and player autosave are configurable with `NEXORA_AUTOSAVE_SECONDS` (default 300 seconds). Player profiles are stored under `data/players/`. Player checkpoint files under `data/player-state` keep the previous verified `.nxps` generation as `.nxps.bak`; on startup/load, a corrupt or missing primary checkpoint is restored from that backup when its checksum and metadata validate. A successful recovery rewrites the primary file before returning the snapshot. The HTTP listener bind address is configurable with `NEXORA_HTTP_BIND`; it defaults to the main bind host.
 
 ## Identity key safety
 
-The first initialization of DefaultNetherNetIdentityService creates:
-
-- nethernet-identity.pk8 — private P-384 key; keep it secret and back it up securely.
-- nethernet-identity.x509 — matching public key.
-
-Keep both files together and persistent across restarts and server migrations. By default they live in data/identity; set NEXORA_DATA_DIR to a persistent data-volume path to relocate them. If one is missing or the keypair does not match, startup fails rather than silently rotating the server identity.
+Cloudburst creates the persistent operator identity file `data/identity/nethernet-operator.pem` on first startup. Keep it secret and back it up securely. It must remain stable across normal restarts and server migrations because it identifies the server to Bedrock clients. Do not delete it to troubleshoot a connection; rotate it only as a deliberate server-identity change. The directory can be relocated with `NEXORA_DATA_DIR`.
 
 ## Engineering rules
 

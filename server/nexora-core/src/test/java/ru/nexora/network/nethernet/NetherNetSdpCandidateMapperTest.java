@@ -7,11 +7,11 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 class NetherNetSdpCandidateMapperTest {
-    private static final String SDP = "v=0\\r\\n"
-            + "a=candidate:1 1 udp 2122260223 192.168.1.20 30000 typ host generation 0\\r\\n"
-            + "a=candidate:2 1 udp 1686052607 203.0.113.5 45000 typ srflx raddr 192.168.1.20 rport 30000\\r\\n"
-            + "a=candidate:3 1 tcp 1518280447 192.168.1.20 9 typ host tcptype active\\r\\n"
-            + "a=end-of-candidates\\r\\n";
+    private static final String SDP = "v=0\r\n"
+            + "a=candidate:1 1 udp 2122260223 192.168.1.20 30000 typ host generation 0\r\n"
+            + "a=candidate:2 1 udp 1686052607 203.0.113.5 45000 typ srflx raddr 192.168.1.20 rport 30000\r\n"
+            + "a=candidate:3 1 tcp 1518280447 192.168.1.20 9 typ host tcptype active\r\n"
+            + "a=end-of-candidates\r\n";
 
     @Test
     void rewritesOnlyUdpHostCandidatesAndMapsForwardedPortRange() {
@@ -23,7 +23,7 @@ class NetherNetSdpCandidateMapperTest {
         assertTrue(result.contains("a=candidate:1 1 udp 2122260223 play.example.net 40000 typ host"));
         assertTrue(result.contains("a=candidate:2 1 udp 1686052607 203.0.113.5 45000 typ srflx"));
         assertTrue(result.contains("a=candidate:3 1 tcp 1518280447 192.168.1.20 9 typ host"));
-        assertTrue(result.endsWith("a=end-of-candidates\\r\\n"));
+        assertTrue(result.endsWith("a=end-of-candidates\r\n"));
     }
 
     @Test
@@ -62,7 +62,7 @@ class NetherNetSdpCandidateMapperTest {
 
     @Test
     void rejectsCandidateOutsideConfiguredPortRangeWhenPortMappingIsEnabled() {
-        String outside = "v=0\\r\\na=candidate:1 1 udp 100 192.168.1.20 31000 typ host\\r\\n";
+        String outside = "v=0\r\na=candidate:1 1 udp 100 192.168.1.20 31000 typ host\r\n";
         NetherNetSdpCandidateMapper mapper =
                 new NetherNetSdpCandidateMapper("play.example.net", 40000, 30000, 30199);
         assertThrows(IllegalArgumentException.class, () -> mapper.rewrite(outside));

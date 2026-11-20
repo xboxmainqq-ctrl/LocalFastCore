@@ -30,8 +30,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
-import java.util.ArrayList;
-import java.util.Base64;
+import java.security.interfaces.ECPublicKey;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -53,6 +52,7 @@ import java.util.function.IntSupplier;
 public final class CloudburstNetherNetTransport implements AutoCloseable {
     private static final int MAX_SCTP_MESSAGE_BYTES = 256 * 1024;
     private static final int MAX_OUTBOUND_CHANNELS = 16_384;
+    private static final int MAX_PENDING_TOKEN_BINDINGS = 128;
 
     private final InetSocketAddress signalingAddress;
     private final String motd;
@@ -130,10 +130,13 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
                         .setServeHttp(true)
                         .setIceOnLocalPort(false)
                         .setPlayerFilter((host, player) -> {
+                            long now = System.nanoTime();
+                            purgeExpiredNetworkTokens(now);
                             String cpk = claim(player.claims(), "cpk");
                             String token = cpk == null ? null : tokenTrust.take(cpk);
-                            if (token == null || validatedTokensByNetworkId.putIfAbsent(
-                                    player.networkId(), new TokenEntry(token, System.nanoTime())) != null) {
+                            if (token == null || validatedTokensByNetworkId.size() >= MAX_PENDING_TOKEN_BINDINGS
+                                    || validatedTokensByNetworkId.putIfAbsent(
+                                            player.networkId(), new TokenEntry(token, now)) != null) {
                                 return JoinRefusal.REJECTED;
                             }
                             return null;
@@ -296,6 +299,7 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
             } else {
                 System.err.println("NEXORA: NetherNet send failed for " + networkId
                         + ": " + future.cause());
+                channel.close();
             }
         });
     }
@@ -313,6 +317,12 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
             outboundAssemblers.put(key, current);
             return current;
         }
+    }
+
+    private void purgeExpiredNetworkTokens(long nowNanos) {
+        long retention = TimeUnit.SECONDS.toNanos(60);
+        validatedTokensByNetworkId.entrySet().removeIf(entry ->
+                nowNanos - entry.getValue().createdAtNanos() > retention);
     }
 
     private void removeOutboundAssemblers(String networkId) {
@@ -333,7 +343,12 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
         if (encodedKey == null || encodedKey.isBlank()) {
             throw new SecurityException("Validated NetherNet identity has no cpk");
         }
-        byte[] publicKeyDer = Base64.getDecoder().decode(encodedKey);
+        java.security.PublicKey clientKey = player.clientPublicKey();
+        if (!(clientKey instanceof ECPublicKey ecKey)
+                || ecKey.getParams().getCurve().getField().getFieldSize() != 384) {
+            throw new SecurityException("Validated NetherNet client key is not P-384");
+        }
+        byte[] publicKeyDer = clientKey.getEncoded();
         TokenEntry tokenEntry = validatedTokensByNetworkId.remove(player.networkId());
         if (tokenEntry == null
                 || System.nanoTime() - tokenEntry.createdAtNanos() > TimeUnit.SECONDS.toNanos(60)) {

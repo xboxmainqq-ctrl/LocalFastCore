@@ -58,10 +58,10 @@ Official Mojang onboarding guide: https://mojang.github.io/bedrock-protocol-docs
 
 ## Not implemented / not wired yet
 
-The following list is intentionally conservative: a protocol stage is only considered implemented after its packet format, state transitions and tests are present. A passing unit test is not a substitute for a real Android Bedrock connection test.
+The following list is intentionally conservative: a protocol stage is only considered implemented after its packet format, state transitions and tests are present. A passing unit test is not a substitute for a real Bedrock-client connection test.
 
-- The main bootstrap now starts the NetherNet HTTP signaling endpoint and the WebRTC answerer alongside the legacy UDP discovery experiment.
-- NEXORA's signaling listener is plain HTTP; production TLS termination is provided by the documented Caddy reverse-proxy example. The application does not terminate TLS itself.
+- The Cloudburst NetherNet transport is integrated into the main bootstrap and feeds authenticated peers into the Bedrock session manager; public ICE reachability and retail-client login still require end-to-end verification.
+- Built-in HTTPS is available through PEM certificate/key environment settings. Without those settings, signaling is plain HTTP and must stay behind a TLS reverse proxy for public deployment.
 - Protocol-2225 `ContainerOpen`/`ContainerClose` and chest `InventoryContent` are integrated with live single-chest interaction. The session manager validates reach and target block state, opens a 27-slot window, routes only active-window inventory transactions, reconciles both inventories, and saves on transfer, close, death and disconnect. Non-empty chest breaking is intentionally blocked until item spills can be committed atomically; double/trapped chests remain pending.
 - Chunk streaming currently uses a fixed 3x3 window; configurable view distance, explicit chunk unload handling, biome variation, item-actor bounce, death inventory drops, tool-aware hardness, more complex food effects, atomic non-empty chest spilling, double/trapped chests, shaped crafting-table recipes, sneak/swim/fly movement modifiers and player/mob entity replication are not implemented. Basic server-owned gravity, jumping, walking/sprinting and block collision are now integrated into the production PlayerAuthInput path, but movement constants and corrections still need validation with real Android/Windows Bedrock clients. Player profiles and survival vitals are persisted. The world is still not playable until the remaining gameplay paths and a real Bedrock-client end-to-end test are complete.
 - Outbound gameplay support includes login/bootstrap packets, LevelChunk, UpdateBlock, PlayStatus, initial player inventory/equipment synchronization, the full supported-subset ItemRegistry packet, single-chest ContainerOpen/Close and content synchronization, plus protocol-2225 CraftingData/CraftingEvent for the current 2x2 recipe subset. Entity replication, crafting-table windows, most other interactive UI packets and full vanilla recipe coverage remain pending.
@@ -72,7 +72,7 @@ The following list is intentionally conservative: a protocol stage is only consi
 
 Initial stable game target: **Bedrock 1.26.62 / game protocol 2225**. The transport target is NetherNet. Re-check Mojang's official protocol reference before changing either value.
 
-## Legacy RakNet discovery experiment
+## Network listeners: NetherNet and legacy RakNet
 
 The bootstrap runs Cloudburst NetherNet signaling over TCP, ICE/DTLS/SCTP over the configured UDP port range, and keeps the legacy RakNet discovery responder as a separate UDP experiment. The Cloudburst transport is wired to NEXORA's Bedrock session manager, but a successful real Bedrock-client connection has not yet been verified; do not treat the current build as a playable public server.
 
@@ -90,7 +90,7 @@ java -jar server/nexora-core/target/server.jar 0.0.0.0 19132 "NEXORA Core" 20
 
 On Pterodactyl-based hosts, the primary allocation is read from `SERVER_PORT` when no second command-line argument is supplied. `NEXORA_PORT` overrides `SERVER_PORT`; an explicit command-line port takes precedence over both. Bind to `0.0.0.0` inside the container.
 
-The production transport uses native libraries supplied by `libdatachannel-java`. Native initialization is checked when the listener binds; inspect the full linker error if a required system library is missing. If the VPS is behind NAT, set `NEXORA_ADVERTISED_HOST` to its public address or configure `NEXORA_STUN_URLS` (semicolon-separated). STUN discovery requires `NEXORA_UDP_PORT_MIN` and `NEXORA_UDP_PORT_MAX` to be the same fixed port when no advertised host is configured.
+The production transport uses native libraries supplied by `libdatachannel-java`. Native initialization is checked when the listener binds; inspect the full linker error if a required system library is missing. If the VPS is behind NAT, set `NEXORA_ADVERTISED_HOST` to a public DNS name or IP address (DNS names are resolved to numeric candidates at startup), or configure `NEXORA_STUN_URLS` (semicolon-separated). STUN discovery requires `NEXORA_UDP_PORT_MIN` and `NEXORA_UDP_PORT_MAX` to be the same fixed port when no advertised host is configured.
 
 ## HTTPS and firewall deployment
 
@@ -246,7 +246,7 @@ World chunk snapshots under each world's `chunks/` directory also retain one pre
 
 ## NetherNet runtime readiness and deployment
 
-The production bootstrap now uses CloudburstMC's `netty-transport-nethernet` with `libdatachannel-java`. The earlier in-tree `webrtc-java` SDP negotiator and custom HTTP signaling classes are legacy development code and are not used by the server bootstrap.
+The production bootstrap now uses CloudburstMC's `netty-transport-nethernet` with `libdatachannel-java`. The earlier in-tree custom WebRTC negotiator, HTTP signaling and identity-service classes are legacy development code and are not used by the server bootstrap.
 
 Cloudburst validates the retail Minecraft identity assertion and its detached signature before accepting a player. NEXORA then binds the validated identity to the Bedrock Login GameServerToken and the client's login key. The server identity is persisted at `data/identity/nethernet-operator.pem`; back it up securely and keep it stable across restarts.
 
@@ -278,7 +278,7 @@ Cloudburst's STUN discovery and fixed public UDP port mapping require a fixed IC
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `NEXORA_ADVERTISED_HOST` | unset | Public DNS name or IP address advertised to clients |
+| `NEXORA_ADVERTISED_HOST` | unset | Public DNS name or IP address resolved to numeric candidates at startup |
 | `NEXORA_PUBLIC_UDP_PORT` | unset | Public UDP port advertised when the router translates the fixed internal ICE port |
 | `NEXORA_STUN_URLS` | unset | Semicolon-separated STUN URLs |
 

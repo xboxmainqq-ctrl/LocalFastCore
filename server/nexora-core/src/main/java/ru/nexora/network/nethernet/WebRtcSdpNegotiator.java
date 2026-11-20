@@ -60,6 +60,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
     private final List<String> iceServerUrls;
     private final int minUdpPort;
     private final int maxUdpPort;
+    private final NetherNetSdpCandidateMapper candidateMapper;
     private final Map<String, PeerSession> sessions = new ConcurrentHashMap<>();
     private final Semaphore sessionPermits;
     private final ScheduledExecutorService sessionReaper;
@@ -114,7 +115,23 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
             int maxUdpPort,
             long timeoutMillis
     ) {
+        this(identityService, dataChannelListener, maxSessions, iceServerUrls,
+                minUdpPort, maxUdpPort, timeoutMillis,
+                new NetherNetSdpCandidateMapper(null, 0, minUdpPort, maxUdpPort));
+    }
+
+    public WebRtcSdpNegotiator(
+            NetherNetIdentityService identityService,
+            NetherNetDataChannelListener dataChannelListener,
+            int maxSessions,
+            List<String> iceServerUrls,
+            int minUdpPort,
+            int maxUdpPort,
+            long timeoutMillis,
+            NetherNetSdpCandidateMapper candidateMapper
+    ) {
         this.identityService = Objects.requireNonNull(identityService, "identityService");
+        this.candidateMapper = Objects.requireNonNull(candidateMapper, "candidateMapper");
         this.dataChannelListener = Objects.requireNonNull(dataChannelListener, "dataChannelListener");
         if (maxSessions < 1) throw new IllegalArgumentException("maxSessions must be >= 1");
         if (timeoutMillis < 1) throw new IllegalArgumentException("timeoutMillis must be >= 1");
@@ -258,7 +275,7 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
                     || !signedAnswer.contains("a=identity:")) {
                 throw new SecurityException("Server identity service did not produce a signed a=identity assertion");
             }
-            return signedAnswer;
+            return candidateMapper.rewrite(signedAnswer);
         } catch (Exception exception) {
             sessions.remove(networkId, session);
             session.close();

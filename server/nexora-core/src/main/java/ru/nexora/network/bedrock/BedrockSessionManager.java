@@ -3865,8 +3865,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     moved.runtimeId(), moved.x(), moved.y(), moved.z(), 0.0f, yaw, yaw,
                     WorldCollision.isOnGround(world, moved.x(), moved.y(), moved.z())));
         }
-        tickMobArrows(tick);
-        tickMobFireballs(tick);
+        tickMobArrows(tick, playerTargetIndex);
+        tickMobFireballs(tick, playerTargetIndex);
     }
 
     private static float mobMaxHealth(String identifier) {
@@ -4044,6 +4044,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     private void tickMobFireballs(long tick) {
+        tickMobFireballs(tick, snapshotPlayerTargetIndex());
+    }
+
+    private void tickMobFireballs(long tick, ru.nexora.combat.PlayerTargetIndex playerIndex) {
         long nowNanos = Math.max(0L, nanoTime.getAsLong());
         for (var entry : mobFireballs.entrySet()) {
             ru.nexora.combat.FireballProjectile current = entry.getValue();
@@ -4056,8 +4060,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 explodeGhastFireball(current, tick, nowNanos);
             }
             if (!removed) {
-                for (Map.Entry<String, SessionState> playerEntry : sessions.entrySet()) {
-                    SessionState player = playerEntry.getValue();
+                for (ru.nexora.combat.LivingEntityAiService.PlayerTarget candidate
+                        : playerIndex.withinSegment(current.x(), current.y(), current.z(),
+                                next.x(), next.y(), next.z(), 0.7)) {
+                    String playerNetworkId = candidate.networkId();
+                    SessionState player = sessions.get(playerNetworkId);
+                    if (player == null) continue;
                     if (!player.loginAuthenticated || !player.clientInitialized
                             || !player.positionInitialized || player.dead || player.vitals.dead()) continue;
                     double distanceSquared = distanceToSegmentSquared(
@@ -4077,7 +4085,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                                         .applyIncomingDamage(current.damage(), armor,
                                                 ru.nexora.combat.EnchantmentCombatService.DamageType.PROJECTILE);
                                 if (damage > 0.0f) {
-                                    applyDamage(playerEntry.getKey(), player, damage, tick, "death.attack.fireball");
+                                    applyDamage(playerNetworkId, player, damage, tick, "death.attack.fireball");
                                 }
                                 if (!player.dead && !player.vitals.dead() && current.fireDurationSeconds() > 0) {
                                     long durationNanos = current.fireDurationSeconds() * 1_000_000_000L;
@@ -4268,7 +4276,23 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         };
     }
 
+    private ru.nexora.combat.PlayerTargetIndex snapshotPlayerTargetIndex() {
+        List<ru.nexora.combat.LivingEntityAiService.PlayerTarget> targets = new ArrayList<>();
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            SessionState player = entry.getValue();
+            if (!player.loginAuthenticated || !player.clientInitialized || !player.positionInitialized
+                    || player.dead || player.vitals.dead()) continue;
+            targets.add(new ru.nexora.combat.LivingEntityAiService.PlayerTarget(
+                    entry.getKey(), player.positionX, player.positionY, player.positionZ, true));
+        }
+        return new ru.nexora.combat.PlayerTargetIndex(targets);
+    }
+
     private void tickMobArrows(long tick) {
+        tickMobArrows(tick, snapshotPlayerTargetIndex());
+    }
+
+    private void tickMobArrows(long tick, ru.nexora.combat.PlayerTargetIndex playerIndex) {
         for (var entry : mobArrows.entrySet()) {
             ru.nexora.combat.ArrowProjectile current = entry.getValue();
             ru.nexora.combat.ArrowProjectile next = current.advance();
@@ -4277,9 +4301,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 removed = isMobArrowPathBlocked(current, next);
             }
             if (!removed) {
-                for (Map.Entry<String, SessionState> playerEntry : sessions.entrySet()) {
-                    SessionState player = playerEntry.getValue();
-                    if (next.ageTicks() <= 5 && current.ownerNetworkId().equals(playerEntry.getKey())) continue;
+                for (ru.nexora.combat.LivingEntityAiService.PlayerTarget candidate
+                        : playerIndex.withinSegment(current.x(), current.y(), current.z(),
+                                next.x(), next.y(), next.z(), 0.55)) {
+                    String playerNetworkId = candidate.networkId();
+                    SessionState player = sessions.get(playerNetworkId);
+                    if (player == null) continue;
+                    if (next.ageTicks() <= 5 && current.ownerNetworkId().equals(playerNetworkId)) continue;
                     if (!player.loginAuthenticated || !player.clientInitialized
                             || !player.positionInitialized || player.dead || player.vitals.dead()) continue;
                     double distanceSquared = distanceToSegmentSquared(
@@ -4296,7 +4324,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                                     .applyIncomingDamage(4.0f, armor,
                                             ru.nexora.combat.EnchantmentCombatService.DamageType.PROJECTILE);
                             if (damage > 0.0f) {
-                                applyDamage(playerEntry.getKey(), player, damage, tick, "death.attack.arrow");
+                                applyDamage(playerNetworkId, player, damage, tick, "death.attack.arrow");
                             }
                             if (poisonMobArrows.contains(entry.getKey())
                                     && !player.dead && !player.vitals.dead()) applyPoison(player);

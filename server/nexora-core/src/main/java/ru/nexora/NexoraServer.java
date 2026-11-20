@@ -257,7 +257,7 @@ public final class NexoraServer {
 
         NetworkRuntimeModule networkRuntime = new NetworkRuntimeModule(
                 clusterService,
-                NetworkRuntimeModule.service(discovery::start, discovery),
+                NetworkRuntimeModule.service(() -> {}, discovery),
                 NetworkRuntimeModule.service(transport::start, transport),
                 () -> {},
                 () -> {
@@ -312,7 +312,7 @@ public final class NexoraServer {
         }, "nexora-shutdown"));
 
         System.out.printf("NEXORA Cloudburst NetherNet signaling listening on TCP %s:%d%n", httpBindHost, port);
-        System.out.printf("NEXORA legacy RakNet discovery listening on UDP %s:%d%n", bindHost, port);
+        System.out.println("NEXORA legacy RakNet discovery is disabled; the allocated UDP port is reserved for NetherNet ICE.");
         System.out.println("NetherNet identity is persisted at data/identity/nethernet-operator.pem.");
         System.out.println("Use HTTPS in production (TLS reverse proxy or configured signaling TLS).");
         if (!stunUrls.isEmpty()) {

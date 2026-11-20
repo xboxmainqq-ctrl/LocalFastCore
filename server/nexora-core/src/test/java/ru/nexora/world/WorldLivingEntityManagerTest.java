@@ -93,6 +93,28 @@ class WorldLivingEntityManagerTest {
     }
 
     @Test
+    void fireProcessingUsesOnlyBurningActorsAndCleansTheSecondaryIndex() {
+        WorldLivingEntityManager manager = new WorldLivingEntityManager();
+        for (int i = 0; i < 1_000; i++) {
+            manager.spawn("minecraft:zombie", 20, i * 2.0, 64, 0);
+        }
+        WorldLivingEntity burning = manager.spawn("minecraft:spider", 2, 2_100, 64, 0);
+        assertEquals(0, manager.burningEntityCount());
+
+        manager.ignite(burning.runtimeId(), 2, 0).orElseThrow();
+        assertEquals(1, manager.burningEntityCount());
+        assertEquals(1, manager.tickFire(1_000).size());
+        assertEquals(1, manager.burningEntityCount());
+        assertTrue(manager.tickFire(2_000).isEmpty());
+        assertEquals(0, manager.burningEntityCount());
+
+        manager.ignite(burning.runtimeId(), 5, 3_000).orElseThrow();
+        assertEquals(1, manager.burningEntityCount());
+        manager.damage(burning.runtimeId(), 100).orElseThrow();
+        assertEquals(0, manager.burningEntityCount());
+    }
+
+    @Test
     void movesLivingActorWithoutChangingHealthOrCombatState() {
         WorldLivingEntityManager manager = new WorldLivingEntityManager();
         WorldLivingEntity zombie = manager.spawn("minecraft:zombie", 20, 1, 65, 2);

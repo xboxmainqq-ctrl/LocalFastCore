@@ -99,6 +99,57 @@ class BedrockPlayerPresenceIntegrationTest {
 
 
     @Test
+    void remotePlayerSpawnsAndDespawnsAsMovementCrossesPublishedChunkView() throws Exception {
+        List<Outbound> outbound = new ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new World("player-movement-visibility-test", 0L, new FlatWorldGenerator()),
+                (networkId, label, frame) -> outbound.add(new Outbound(networkId, frame)),
+                event -> { });
+
+        try {
+            manager.onIdentity("viewer", identity("viewer", "Viewer"));
+            manager.onIdentity("moving", identity("moving", "MovingPlayer"));
+            Object viewer = session(manager, "viewer");
+            Object moving = session(manager, "moving");
+            prepareSession(viewer, entry("00000000-0000-0000-0000-000000000401", 401, "Viewer"));
+            prepareSession(moving, entry("00000000-0000-0000-0000-000000000402", 402, "MovingPlayer"));
+            set(viewer, "playerListAdvertised", true);
+            set(moving, "playerListAdvertised", true);
+            set(moving, "positionX", 1.0);
+            set(moving, "positionY", 65.0);
+            set(moving, "positionZ", 1.0);
+
+            Field indexField = BedrockSessionManager.class.getDeclaredField("playerActorReplicationIndex");
+            indexField.setAccessible(true);
+            ((ActorReplicationIndex) indexField.get(manager)).replaceChunkView("viewer", sentChunks(viewer));
+
+            Method movement = BedrockSessionManager.class.getDeclaredMethod(
+                    "broadcastPlayerMovement", String.class, moving.getClass());
+            movement.setAccessible(true);
+            movement.invoke(manager, "moving", moving);
+
+            assertTrue(visibleActors(viewer).contains(402L));
+            assertEquals(List.of(
+                    BedrockAddPlayerCodec.ADD_PLAYER_PACKET_ID,
+                    BedrockMoveActorAbsoluteCodec.MOVE_ACTOR_ABSOLUTE_PACKET_ID),
+                    packetIds(packetsFor(outbound, "viewer")));
+
+            set(moving, "positionX", 33.0);
+            movement.invoke(manager, "moving", moving);
+
+            assertFalse(visibleActors(viewer).contains(402L));
+            assertEquals(List.of(
+                    BedrockAddPlayerCodec.ADD_PLAYER_PACKET_ID,
+                    BedrockMoveActorAbsoluteCodec.MOVE_ACTOR_ABSOLUTE_PACKET_ID,
+                    BedrockAddItemActorCodec.REMOVE_ACTOR_PACKET_ID),
+                    packetIds(packetsFor(outbound, "viewer")));
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void doesNotAdvertiseSessionAlreadyMarkedRejected() throws Exception {
         List<Outbound> outbound = new ArrayList<>();
         BedrockSessionManager manager = new BedrockSessionManager(

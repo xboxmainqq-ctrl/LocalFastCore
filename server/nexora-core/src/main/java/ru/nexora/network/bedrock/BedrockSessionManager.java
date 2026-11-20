@@ -6633,7 +6633,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             if (visible && recipient.visiblePlayerEntityIds.add(player.entityId)) {
                 playerActorReplicationIndex.addActorViewer(player.entityId, recipientNetworkId);
                 try {
-                    sendPacket(recipientNetworkId, createAddPlayerPacket(player), true);
+                    sendPackets(recipientNetworkId, createRemotePlayerSpawnPackets(player), true);
                 } catch (RuntimeException exception) {
                     recipient.visiblePlayerEntityIds.remove(player.entityId);
                     playerActorReplicationIndex.removeActorViewer(player.entityId, recipientNetworkId);
@@ -7198,7 +7198,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     || existing.playerListEntry == null
                     || !isPlayerChunkVisible(joining, existing)) continue;
             try {
-                sendPacket(networkId, createAddPlayerPacket(existing), true);
+                sendPackets(networkId, createRemotePlayerSpawnPackets(existing), true);
                 joining.visiblePlayerEntityIds.add(existing.entityId);
                 playerActorReplicationIndex.addActorViewer(existing.entityId, networkId);
             } catch (RuntimeException exception) {
@@ -7207,7 +7207,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
         }
         BedrockPacket addListEntry = BedrockPlayerListCodec.createAdd(List.of(joining.playerListEntry));
-        BedrockPacket addPlayer = createAddPlayerPacket(joining);
+        List<BedrockPacket> addPlayer = createRemotePlayerSpawnPackets(joining);
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
             if (entry.getKey().equals(networkId)) continue;
             SessionState recipient = entry.getValue();
@@ -7216,7 +7216,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 // The client must know the UUID/skin before AddPlayer can create the remote actor.
                 sendPacket(entry.getKey(), addListEntry, true);
                 if (isPlayerChunkVisible(recipient, joining)) {
-                    sendPacket(entry.getKey(), addPlayer, true);
+                    sendPackets(entry.getKey(), addPlayer, true);
                     recipient.visiblePlayerEntityIds.add(joining.entityId);
                     playerActorReplicationIndex.addActorViewer(joining.entityId, entry.getKey());
                 }
@@ -7258,6 +7258,18 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         } catch (IllegalArgumentException exception) {
             return null;
         }
+    }
+
+    /** Builds a complete remote-player spawn, including the currently held hotbar item. */
+    private List<BedrockPacket> createRemotePlayerSpawnPackets(SessionState player) {
+        List<BedrockPacket> packets = new ArrayList<>();
+        packets.add(createAddPlayerPacket(player));
+        BedrockItemRegistry registry = itemRegistry;
+        if (registry != null) {
+            packets.add(BedrockMobEquipmentCodec.createPlayerEquipment(
+                    player.entityId, player.inventory, registry));
+        }
+        return List.copyOf(packets);
     }
 
     private BedrockPacket createAddPlayerPacket(SessionState player) {
@@ -7305,7 +7317,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     recipient.visiblePlayerEntityIds.add(player.entityId);
                     playerActorReplicationIndex.addActorViewer(player.entityId, networkId);
                     if (spawnFrames == null) {
-                        spawnFrames = encodeFrames(List.of(createAddPlayerPacket(player), movement), true);
+                        List<BedrockPacket> spawnPackets = new ArrayList<>(createRemotePlayerSpawnPackets(player));
+                        spawnPackets.add(movement);
+                        spawnFrames = encodeFrames(spawnPackets, true);
                     }
                     sendEncodedFrames(networkId, spawnFrames);
                 } else {

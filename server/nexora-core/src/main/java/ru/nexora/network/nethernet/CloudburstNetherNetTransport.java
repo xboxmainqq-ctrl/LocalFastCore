@@ -23,7 +23,6 @@ import org.cloudburstmc.netty.util.nethernet.OperatorIdentity;
 import org.cloudburstmc.netty.util.nethernet.PlayerInfo;
 import org.cloudburstmc.netty.util.nethernet.TokenTrust;
 import org.jose4j.jwt.JwtClaims;
-import ru.nexora.network.bedrock.BedrockSessionManager;
 import tel.schich.libdatachannel.PeerConnectionConfiguration;
 
 import java.io.IOException;
@@ -66,10 +65,10 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
     private final List<String> stunUrls;
     private final CloudburstNetherNetConfiguration configuration;
     private final Path dataDirectory;
-    private final BedrockSessionManager sessions;
+    private final NetherNetDataChannelListener sessions;
     private final IntSupplier playerCount;
     private final BooleanSupplier admissionAllowed;
-    private final CapturingMinecraftTokenTrust tokenTrust = new CapturingMinecraftTokenTrust();
+    private final CapturingMinecraftTokenTrust tokenTrust;
     private final Map<String, TokenEntry> validatedTokensByNetworkId = new ConcurrentHashMap<>();
     private final Object admissionLock = new Object();
     private final Map<String, Channel> channels = new ConcurrentHashMap<>();
@@ -93,9 +92,28 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
             List<String> stunUrls,
             Map<String, String> environment,
             Path dataDirectory,
-            BedrockSessionManager sessions,
+            NetherNetDataChannelListener sessions,
             IntSupplier playerCount,
             BooleanSupplier admissionAllowed
+    ) {
+        this(signalingAddress, motd, worldName, maxPlayers, udpPortMin, udpPortMax, stunUrls,
+                environment, dataDirectory, sessions, playerCount, admissionAllowed, TokenTrust.MINECRAFT_AUTH);
+    }
+
+    CloudburstNetherNetTransport(
+            InetSocketAddress signalingAddress,
+            String motd,
+            String worldName,
+            int maxPlayers,
+            int udpPortMin,
+            int udpPortMax,
+            List<String> stunUrls,
+            Map<String, String> environment,
+            Path dataDirectory,
+            NetherNetDataChannelListener sessions,
+            IntSupplier playerCount,
+            BooleanSupplier admissionAllowed,
+            TokenTrust tokenTrustDelegate
     ) {
         this.signalingAddress = Objects.requireNonNull(signalingAddress, "signalingAddress");
         this.motd = requireText(motd, "motd");
@@ -112,6 +130,8 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
         this.sessions = Objects.requireNonNull(sessions, "sessions");
         this.playerCount = Objects.requireNonNull(playerCount, "playerCount");
         this.admissionAllowed = Objects.requireNonNull(admissionAllowed, "admissionAllowed");
+        this.tokenTrust = new CapturingMinecraftTokenTrust(
+                Objects.requireNonNull(tokenTrustDelegate, "tokenTrustDelegate"));
         this.configuration = CloudburstNetherNetConfiguration.fromEnvironment(
                 Objects.requireNonNull(environment, "environment"),
                 dataDirectory, udpPortMin, udpPortMax, this.stunUrls);
@@ -478,11 +498,16 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
     private static final class CapturingMinecraftTokenTrust implements TokenTrust {
         private static final long TOKEN_RETENTION_NANOS = TimeUnit.SECONDS.toNanos(60);
         private static final int MAX_TOKENS_PER_KEY = 8;
+        private final TokenTrust delegate;
         private final Map<String, ConcurrentLinkedDeque<TokenEntry>> pending = new ConcurrentHashMap<>();
+
+        private CapturingMinecraftTokenTrust(TokenTrust delegate) {
+            this.delegate = Objects.requireNonNull(delegate, "delegate");
+        }
 
         @Override
         public JwtClaims claims(Identity identity) throws Exception {
-            JwtClaims claims = TokenTrust.MINECRAFT_AUTH.claims(identity);
+            JwtClaims claims = delegate.claims(identity);
             String cpk = claims.getClaimValueAsString("cpk");
             if (cpk == null || cpk.isBlank()) {
                 throw new SecurityException("Minecraft GameServerToken has no cpk");
@@ -499,7 +524,7 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
 
         @Override
         public void prepare() {
-            TokenTrust.MINECRAFT_AUTH.prepare();
+            delegate.prepare();
         }
 
         String take(String cpk) {

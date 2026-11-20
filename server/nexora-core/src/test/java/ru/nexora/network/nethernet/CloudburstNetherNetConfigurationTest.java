@@ -46,7 +46,7 @@ class CloudburstNetherNetConfigurationTest {
                 "NEXORA_HTTPS_CERT_FILE", "certs/fullchain.pem",
                 "NEXORA_HTTPS_KEY_FILE", "certs/privkey.pem",
                 "NEXORA_IDENTITY_DOMAIN", "play.nexor.example"),
-                30000, 30199, List.of());
+                30000, 30000, List.of());
 
         assertEquals(Path.of("server-data/certs/fullchain.pem"), result.httpsCertificate());
         assertEquals(Path.of("server-data/certs/privkey.pem"), result.httpsPrivateKey());
@@ -58,7 +58,7 @@ class CloudburstNetherNetConfigurationTest {
         var result = config(Map.of(
                 "NEXORA_HTTPS_CERT_FILE", "/etc/ssl/nexor/fullchain.pem",
                 "NEXORA_HTTPS_KEY_FILE", "/etc/ssl/nexor/privkey.pem"),
-                30000, 30199, List.of());
+                30000, 30000, List.of());
 
         assertEquals(Path.of("/etc/ssl/nexor/fullchain.pem"), result.httpsCertificate());
         assertEquals(Path.of("/etc/ssl/nexor/privkey.pem"), result.httpsPrivateKey());
@@ -68,10 +68,10 @@ class CloudburstNetherNetConfigurationTest {
     void requiresCertificateAndPrivateKeyTogether() {
         assertThrows(IllegalArgumentException.class, () -> config(
                 Map.of("NEXORA_HTTPS_CERT_FILE", "cert.pem"),
-                30000, 30199, List.of()));
+                30000, 30000, List.of()));
         assertThrows(IllegalArgumentException.class, () -> config(
                 Map.of("NEXORA_HTTPS_KEY_FILE", "key.pem"),
-                30000, 30199, List.of()));
+                30000, 30000, List.of()));
     }
 
     @Test
@@ -93,7 +93,7 @@ class CloudburstNetherNetConfigurationTest {
         assertThrows(IllegalArgumentException.class, () -> config(
                 Map.of("NEXORA_ADVERTISED_HOST", "play.nexor.example",
                         "NEXORA_PUBLIC_UDP_PORT", "40000"),
-                30000, 30199, List.of()));
+                30000, 30000, List.of()));
     }
 
     @Test
@@ -131,7 +131,7 @@ class CloudburstNetherNetConfigurationTest {
                 30000, 30000, List.of()));
         assertThrows(IllegalArgumentException.class, () -> config(
                 Map.of("NEXORA_IDENTITY_DOMAIN", "bad domain"),
-                30000, 30199, List.of()));
+                30000, 30000, List.of()));
         assertThrows(IllegalArgumentException.class, () -> config(
                 Map.of(), 0, 30199, List.of()));
     }

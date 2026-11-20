@@ -9,9 +9,9 @@ class NexoraServerConfigTest {
     void defaultsIceToTheMainAllocationForSinglePortHosts() {
         NexoraServerConfig config = NexoraServerConfig.from(new String[0], Map.of());
         assertEquals("0.0.0.0", config.bindHost());
-        assertEquals(19132, config.port());
-        assertEquals(19132, config.udpPortMin());
-        assertEquals(19132, config.udpPortMax());
+        assertEquals(23472, config.port());
+        assertEquals(23472, config.udpPortMin());
+        assertEquals(23472, config.udpPortMax());
         assertEquals("NEXORA Core - Development", config.motd());
         assertEquals(20, config.maxPlayers());
         assertEquals("0.0.0.0", config.httpBindHost());

@@ -49,4 +49,4 @@ jobs:
           name: nexora-core-${{ github.sha }}
           path: server/nexora-core/target/server.jar
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7

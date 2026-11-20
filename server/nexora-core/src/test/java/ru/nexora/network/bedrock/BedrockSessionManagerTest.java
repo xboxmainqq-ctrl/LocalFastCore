@@ -1829,6 +1829,56 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void projectileChunkIndexesFilterDormantChunksAndFollowMovement() throws Exception {
+        ru.nexora.world.World mobWorld = new ru.nexora.world.World(
+                "projectile-chunk-index-world", 0L, new ru.nexora.world.FlatWorldGenerator());
+        mobWorld.getChunk(0, 0);
+        mobWorld.getChunk(1, 0);
+        mobWorld.getChunk(5, 0);
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                mobWorld, (networkId, label, frame) -> {}, event -> {});
+        try {
+            var nearbySkeleton = manager.spawnLivingEntity(
+                    "minecraft:skeleton", 20.0f, 15.5, 65.0, 0.5);
+            var distantSkeleton = manager.spawnLivingEntity(
+                    "minecraft:skeleton", 20.0f, 80.5, 65.0, 0.5);
+            java.lang.reflect.Method ranged = BedrockSessionManager.class.getDeclaredMethod(
+                    "tickRangedMobBehavior",
+                    ru.nexora.world.WorldLivingEntity.class,
+                    ru.nexora.combat.LivingEntityAiService.PlayerTarget.class,
+                    long.class);
+            ranged.setAccessible(true);
+            assertTrue((Boolean) ranged.invoke(manager, nearbySkeleton,
+                    new ru.nexora.combat.LivingEntityAiService.PlayerTarget(
+                            "near-target", 23.5, 65.0, 0.5, true), 1_000L));
+            assertTrue((Boolean) ranged.invoke(manager, distantSkeleton,
+                    new ru.nexora.combat.LivingEntityAiService.PlayerTarget(
+                            "far-target", 88.5, 65.0, 0.5, true), 1_000L));
+
+            long firstChunk = 0L;
+            long fifthChunk = 5L << 32;
+            assertEquals(1, manager.snapshotMobArrowsInChunkKeys(java.util.Set.of(firstChunk)).size());
+            assertEquals(1, manager.snapshotMobArrowsInChunkKeys(java.util.Set.of(fifthChunk)).size());
+            assertTrue(manager.snapshotMobArrowsInChunkKeys(java.util.Set.of(firstChunk))
+                    .stream().noneMatch(arrow -> arrow.x() > 64.0),
+                    "A recipient in chunk zero must not enumerate projectiles in distant chunks");
+
+            java.lang.reflect.Method tickArrows = BedrockSessionManager.class.getDeclaredMethod(
+                    "tickMobArrows", long.class);
+            tickArrows.setAccessible(true);
+            tickArrows.invoke(manager, 1L);
+
+            assertTrue(manager.snapshotMobArrowsInChunkKeys(java.util.Set.of(1L)).stream()
+                    .anyMatch(arrow -> arrow.x() > 16.0),
+                    "The projectile index must move the arrow into its new chunk");
+            assertTrue(manager.snapshotMobArrowsInChunkKeys(java.util.Set.of(firstChunk)).isEmpty());
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void skeletonUsesItsSpeciesProjectileRangeBeforeLaunchingAnArrow() throws Exception {
         ru.nexora.world.World mobWorld = new ru.nexora.world.World(
                 "skeleton-projectile-range-world", 0L, new ru.nexora.world.FlatWorldGenerator());

@@ -70,7 +70,7 @@ The following list is intentionally conservative: a protocol stage is only consi
 
 ## Protocol target
 
-Initial stable game target: **Bedrock 1.26.62 / game protocol 2225**. The transport target is NetherNet. Re-check Mojang's official protocol reference before changing either value.
+Initial stable game target: **Bedrock 1.26.66 / game protocol 2225**. The transport target is NetherNet. Re-check Mojang's official protocol reference before changing either value.
 
 ## Network listeners: NetherNet and legacy RakNet
 

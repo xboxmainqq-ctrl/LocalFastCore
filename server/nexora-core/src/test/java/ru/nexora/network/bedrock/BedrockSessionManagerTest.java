@@ -2079,6 +2079,16 @@ class BedrockSessionManagerTest {
         arrows.put(77L, new ru.nexora.combat.ArrowProjectile(
                 -77L, 77L, "mob:" + zombie.runtimeId(),
                 0.5, 66, 0.5, 0.1, 0.1, 0.1, 0));
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, java.util.Set<Long>> arrowsByOwner =
+                (java.util.Map<String, java.util.Set<Long>>) getManagerField(
+                        manager, "mobArrowIdsByOwner");
+        @SuppressWarnings("unchecked")
+        java.util.Map<Long, String> arrowOwnerById =
+                (java.util.Map<Long, String>) getManagerField(manager, "mobArrowOwnerById");
+        String zombieOwnerKey = "mob:" + zombie.runtimeId();
+        arrowsByOwner.computeIfAbsent(zombieOwnerKey, ignored -> new java.util.HashSet<>()).add(77L);
+        arrowOwnerById.put(77L, zombieOwnerKey);
         ru.nexora.combat.MobFallTracker falls =
                 (ru.nexora.combat.MobFallTracker) getManagerField(manager, "mobFallTracker");
         falls.update(zombie.runtimeId(), 80, false, false);

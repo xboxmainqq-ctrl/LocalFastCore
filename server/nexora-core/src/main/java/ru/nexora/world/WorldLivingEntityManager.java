@@ -2,6 +2,8 @@ package ru.nexora.world;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.Objects;
 import java.util.List;
 import java.util.Map;
@@ -20,6 +22,8 @@ public final class WorldLivingEntityManager {
     // WORLD-owned secondary index: entity IDs grouped by their current chunk.
     private final java.util.Map<ChunkKey, java.util.Set<Long>> entitiesByChunk = new java.util.HashMap<>();
     private final java.util.Map<Long, ChunkKey> entityChunks = new java.util.HashMap<>();
+    // Only actors with an active fire timer need per-tick fire processing.
+    private final Set<Long> burningEntityIds = new HashSet<>();
     private final WorldLivingEntityStorage storage;
 
     public WorldLivingEntityManager() {
@@ -36,6 +40,7 @@ public final class WorldLivingEntityManager {
             }
             entityCount.incrementAndGet();
             index(entity);
+            if (entity.fireUntilMillis() != 0) burningEntityIds.add(entity.runtimeId());
             highestRuntimeId = Math.max(highestRuntimeId, entity.runtimeId());
         }
         nextRuntimeId.set(highestRuntimeId + 1);
@@ -126,6 +131,7 @@ public final class WorldLivingEntityManager {
             if (entities.remove(runtimeId, before)) {
                 entityCount.decrementAndGet();
                 unindex(runtimeId);
+                burningEntityIds.remove(runtimeId);
             }
         } else entities.replace(runtimeId, before, after);
         return Optional.of(new DamageResult(before, after, applied, after.health() <= 0));
@@ -138,6 +144,8 @@ public final class WorldLivingEntityManager {
         if (entity == null) return Optional.empty();
         WorldLivingEntity updated = entity.ignite(durationSeconds, nowMillis);
         entities.replace(runtimeId, entity, updated);
+        if (updated.fireUntilMillis() == 0) burningEntityIds.remove(runtimeId);
+        else burningEntityIds.add(runtimeId);
         return Optional.of(updated);
     }
 
@@ -201,8 +209,13 @@ public final class WorldLivingEntityManager {
     public synchronized List<DamageResult> tickFire(long nowMillis) {
         if (nowMillis < 0) throw new IllegalArgumentException("nowMillis must be non-negative");
         List<DamageResult> damage = new ArrayList<>();
-        for (WorldLivingEntity before : entities.values()) {
-            if (before.fireUntilMillis() == 0) continue;
+        // Snapshot only burning IDs: idle mobs no longer participate in this scan.
+        for (long runtimeId : new ArrayList<>(burningEntityIds)) {
+            WorldLivingEntity before = entities.get(runtimeId);
+            if (before == null || before.fireUntilMillis() == 0) {
+                burningEntityIds.remove(runtimeId);
+                continue;
+            }
             if (nowMillis >= before.fireUntilMillis()) {
                 WorldLivingEntity cleared = new WorldLivingEntity(
                         before.uniqueId(), before.runtimeId(), before.identifier(), before.family(),
@@ -210,6 +223,7 @@ public final class WorldLivingEntityManager {
                         before.velocityX(), before.velocityY(), before.velocityZ(),
                         before.health(), before.maxHealth(), 0, 0);
                 entities.replace(before.runtimeId(), before, cleared);
+                burningEntityIds.remove(before.runtimeId());
             } else if (nowMillis >= before.nextFireDamageMillis()) {
                 WorldLivingEntity after = new WorldLivingEntity(
                         before.uniqueId(), before.runtimeId(), before.identifier(), before.family(),
@@ -221,6 +235,7 @@ public final class WorldLivingEntityManager {
                     if (entities.remove(before.runtimeId(), before)) {
                         entityCount.decrementAndGet();
                         unindex(before.runtimeId());
+                        burningEntityIds.remove(before.runtimeId());
                     }
                 } else entities.replace(before.runtimeId(), before, after);
                 damage.add(new DamageResult(before, after, before.health() - after.health(),
@@ -239,6 +254,7 @@ public final class WorldLivingEntityManager {
         if (removed) {
             entityCount.decrementAndGet();
             unindex(runtimeId);
+            burningEntityIds.remove(runtimeId);
         }
         return removed;
     }
@@ -276,6 +292,11 @@ public final class WorldLivingEntityManager {
 
     public int size() {
         return entityCount.get();
+    }
+
+    /** Number of actors with active fire timers, maintained without scanning the registry. */
+    public synchronized int burningEntityCount() {
+        return burningEntityIds.size();
     }
 
     /** Flushes living actors to durable storage; a no-storage manager is a no-op. */

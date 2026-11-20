@@ -6583,18 +6583,20 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private static final int MAX_WORLD_CHUNK_LOADS_PER_TICK = 16;
 
     private void sendChunkArea(String networkId, SessionState state, int centerX, int centerZ) {
-        ChunkStreamingQueue pending = state.chunkStreamingQueue;
-        if (pending == null || pending.centerX() != centerX || pending.centerZ() != centerZ
-                || pending.radius() != state.chunkViewRadius) {
-            chunkStreamingBudget.yield(networkId, nanoTime.getAsLong());
-            state.chunkStreamingQueue = new ChunkStreamingQueue(centerX, centerZ, state.chunkViewRadius);
-            state.pendingChunkLoads.clear();
+        synchronized (chunkStreamingMonitor) {
+            ChunkStreamingQueue pending = state.chunkStreamingQueue;
+            if (pending == null || pending.centerX() != centerX || pending.centerZ() != centerZ
+                    || pending.radius() != state.chunkViewRadius) {
+                chunkStreamingBudget.yield(networkId, nanoTime.getAsLong());
+                state.chunkStreamingQueue = new ChunkStreamingQueue(centerX, centerZ, state.chunkViewRadius);
+                state.pendingChunkLoads.clear();
+            }
+            processChunkStreaming(networkId, state);
         }
-        processChunkStreaming(networkId, state);
     }
 
     /**
-     * Encodes only a bounded number of chunks per player input tick. A changed center
+     * Encodes a bounded number of chunks on each world tick until the initial view is sent. A changed center
      * replaces the unfinished traversal; already published chunks are reused.
      */
     public void tickInitialChunkStreams() {

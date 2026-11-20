@@ -261,5 +261,30 @@ The current implementation uses the `webrtc-java` binding and its packaged nativ
 
 Nukkit-MOT's NetherNet implementation is a useful compatibility reference: it builds on CloudburstMC's `netty-transport-nethernet` signaling/transport stack and `libdatachannel-java`, and includes operational handling for UDP port publication, shared-port relay, persistent operator identity, HTTPS signaling and ICE candidate reachability. NEXORA currently has its own HTTP signaling and `webrtc-java` peer-connection path; it has **not** yet ported Nukkit's transport stack or its shared-port relay. Do not treat the two implementations as interchangeable, and do not copy Nukkit classes without their transitive dependencies and LGPL-3.0 notices.
 
+
+### Public ICE candidate mapping
+
+For a server behind a router with a one-to-one UDP port forward, NEXORA can advertise the externally reachable host address instead of private host-candidate addresses:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `NEXORA_ADVERTISED_HOST` | unset | Public IPv4/IPv6 address or DNS hostname placed in UDP host ICE candidates |
+| `NEXORA_PUBLIC_UDP_PORT` | unset | Optional first externally forwarded UDP port; maps the configured internal UDP range by preserving each port's offset |
+
+Example for a router forwarding UDP `30000-30199` to the same internal range, with no port translation:
+
+```bash
+NEXORA_ADVERTISED_HOST=play.example.net
+```
+
+Example when internal UDP `30000-30199` is forwarded to external UDP `40000-40199`:
+
+```bash
+NEXORA_ADVERTISED_HOST=play.example.net
+NEXORA_PUBLIC_UDP_PORT=40000
+```
+
+The mapper changes only UDP `typ host` candidates. Server-reflexive and relay candidates remain ICE-generated and untouched. The public UDP range must still be forwarded and reachable; this feature does not create a UDP relay or solve symmetric NAT/CGNAT. Do not set a public port base unless the router forwards the complete configured range with the same port offset.
+
 This is a transport-readiness improvement, not proof of end-to-end Bedrock compatibility. A real client join still has to pass the complete NetherNet handshake, Bedrock login/resource-pack flow, StartGame, chunk bootstrap and client initialization on a publicly reachable deployment.
 

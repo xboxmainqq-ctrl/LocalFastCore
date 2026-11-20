@@ -21,7 +21,7 @@ class WorldChunkPersistenceSnapshotTest {
 
         assertArrayEquals(expected[8], snapshot.sections()[8]);
         WorldChunk restored = new WorldChunk(-4, 9);
-        restored.loadSectionRaw(6, snapshot.sections()[8]);
+        restored.loadSectionRaw(8, snapshot.sections()[8]);
         assertEquals(BlockType.DIAMOND_BLOCK, restored.getBlock(3, 70, 5));
     }
 

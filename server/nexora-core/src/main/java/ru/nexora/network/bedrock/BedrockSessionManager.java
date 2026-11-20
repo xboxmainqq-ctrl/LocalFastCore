@@ -4061,8 +4061,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
             if (!removed) {
                 for (ru.nexora.combat.LivingEntityAiService.PlayerTarget candidate
-                        : playerIndex.withinSegment(current.x(), current.y(), current.z(),
-                                next.x(), next.y(), next.z(), 0.7)) {
+                        : playerIndex.withinSegment(current.x(), current.y() - 0.9, current.z(),
+                                next.x(), next.y() - 0.9, next.z(), 0.7)) {
                     String playerNetworkId = candidate.networkId();
                     SessionState player = sessions.get(playerNetworkId);
                     if (player == null) continue;
@@ -4302,8 +4302,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
             if (!removed) {
                 for (ru.nexora.combat.LivingEntityAiService.PlayerTarget candidate
-                        : playerIndex.withinSegment(current.x(), current.y(), current.z(),
-                                next.x(), next.y(), next.z(), 0.55)) {
+                        : playerIndex.withinSegment(current.x(), current.y() - 0.9, current.z(),
+                                next.x(), next.y() - 0.9, next.z(), 0.55)) {
                     String playerNetworkId = candidate.networkId();
                     SessionState player = sessions.get(playerNetworkId);
                     if (player == null) continue;
@@ -4813,6 +4813,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         for (var entry : mobArrows.entrySet()) {
             if (entry.getValue().ownerNetworkId().equals("mob:" + runtimeId)
                     && mobArrows.remove(entry.getKey(), entry.getValue())) {
+                unindexProjectile(mobArrowIdsByChunk, mobArrowChunkById, entry.getKey());
                 poisonMobArrows.remove(entry.getKey());
                 broadcastLivingActorPacket(
                         BedrockAddItemActorCodec.createRemoveActor(entry.getValue().uniqueId()));
@@ -4821,6 +4822,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         for (var entry : mobFireballs.entrySet()) {
             if (entry.getValue().ownerNetworkId().equals("mob:" + runtimeId)
                     && mobFireballs.remove(entry.getKey(), entry.getValue())) {
+                unindexProjectile(mobFireballIdsByChunk, mobFireballChunkById, entry.getKey());
                 broadcastLivingActorPacket(
                         BedrockAddItemActorCodec.createRemoveActor(entry.getValue().uniqueId()));
             }
@@ -7791,8 +7793,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         itemActorReplicationIndex.clear();
         playerActorReplicationIndex.clear();
         mobArrows.clear();
+        mobArrowIdsByChunk.clear();
+        mobArrowChunkById.clear();
         poisonMobArrows.clear();
         mobFireballs.clear();
+        mobFireballIdsByChunk.clear();
+        mobFireballChunkById.clear();
         guardianBeamTracker.clearAll();
         if (persistenceFailure != null) {
             throw new IllegalStateException(

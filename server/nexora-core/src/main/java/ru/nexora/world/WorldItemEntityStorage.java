@@ -56,6 +56,7 @@ public final class WorldItemEntityStorage {
         if (entities.size() > MAX_ENTITIES) throw new IOException("Too many dropped world item entities");
         ByteArrayOutputStream bodyBytes = new ByteArrayOutputStream(Math.min(4096, entities.size() * 96));
         Set<Long> runtimeIds = new HashSet<>();
+        Set<Long> uniqueIds = new HashSet<>();
         try (DataOutputStream out = new DataOutputStream(bodyBytes)) {
             out.writeInt(MAGIC);
             out.writeByte(VERSION);
@@ -63,6 +64,7 @@ public final class WorldItemEntityStorage {
             for (WorldItemEntity entity : entities) {
                 Objects.requireNonNull(entity, "entity");
                 if (!runtimeIds.add(entity.runtimeId())) throw new IOException("Duplicate dropped item runtime ID");
+                if (!uniqueIds.add(entity.uniqueId())) throw new IOException("Duplicate dropped item unique ID");
                 writeEntity(out, entity);
                 if (bodyBytes.size() > MAX_FILE_BYTES - Integer.BYTES) {
                     throw new IOException("Dropped world item file exceeds size limit");
@@ -107,9 +109,11 @@ public final class WorldItemEntityStorage {
             if (count < 0 || count > MAX_ENTITIES) throw new IOException("Invalid dropped world item count");
             List<WorldItemEntity> result = new ArrayList<>(count);
             Set<Long> runtimeIds = new HashSet<>();
+            Set<Long> uniqueIds = new HashSet<>();
             for (int i = 0; i < count; i++) {
                 WorldItemEntity entity = readEntity(in, version);
                 if (!runtimeIds.add(entity.runtimeId())) throw new IOException("Duplicate dropped item runtime ID");
+                if (!uniqueIds.add(entity.uniqueId())) throw new IOException("Duplicate dropped item unique ID");
                 result.add(entity);
             }
             if (in.available() != 0) throw new IOException("Trailing dropped world item data");

@@ -142,6 +142,19 @@ class WorldItemEntityManagerTest {
     }
 
     @Test
+    void rejectsDuplicateDroppedItemUniqueIds() throws Exception {
+        WorldItemEntityStorage storage = new WorldItemEntityStorage(temporaryDirectory, "duplicate-item-unique-id");
+        WorldItemEntity first = new WorldItemEntity(-10, 10,
+                new ItemStack("minecraft:diamond", 1, 64),
+                0, 65, 0, 0, 0, 0, 0, null);
+        WorldItemEntity second = new WorldItemEntity(-10, 11,
+                new ItemStack("minecraft:iron_ingot", 1, 64),
+                1, 65, 0, 0, 0, 0, 0, null);
+
+        assertThrows(IOException.class, () -> storage.save(List.of(first, second)));
+    }
+
+    @Test
     void chunkIndexTracksSpawnMovementPickupMergeAndRemoval() {
         World world = new World("item-chunk-index", 0L, new FlatWorldGenerator());
         WorldItemEntityManager manager = new WorldItemEntityManager();

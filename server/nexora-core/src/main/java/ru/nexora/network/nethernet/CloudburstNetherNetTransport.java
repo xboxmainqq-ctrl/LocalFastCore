@@ -15,6 +15,7 @@ import org.cloudburstmc.netty.channel.nethernet.NetherNetChannelFactory;
 import org.cloudburstmc.netty.channel.nethernet.NetherNetChildChannel;
 import org.cloudburstmc.netty.channel.nethernet.NetherNetPacket;
 import org.cloudburstmc.netty.channel.nethernet.config.NetherChannelOption;
+import org.cloudburstmc.netty.channel.nethernet.signaling.JoinRefusal;
 import org.cloudburstmc.netty.channel.nethernet.signaling.NetherNetHTTPServerSignaling;
 import org.cloudburstmc.netty.channel.nethernet.signaling.PongData;
 import org.cloudburstmc.netty.util.nethernet.Identity;
@@ -66,6 +67,7 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
     private final BedrockSessionManager sessions;
     private final IntSupplier playerCount;
     private final CapturingMinecraftTokenTrust tokenTrust = new CapturingMinecraftTokenTrust();
+    private final Map<String, TokenEntry> validatedTokensByNetworkId = new ConcurrentHashMap<>();
     private final Map<String, Channel> channels = new ConcurrentHashMap<>();
     private final Map<ChannelKey, NetherNetMessageFramer.Reassembler> outboundAssemblers =
             new ConcurrentHashMap<>();
@@ -139,6 +141,15 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
                         .setTokenTrust(tokenTrust)
                         .setServeHttp(true)
                         .setIceOnLocalPort(false)
+                        .setPlayerFilter((host, player) -> {
+                            String cpk = claim(player.claims(), "cpk");
+                            String token = cpk == null ? null : tokenTrust.take(cpk);
+                            if (token == null || validatedTokensByNetworkId.putIfAbsent(
+                                    player.networkId(), new TokenEntry(token, System.nanoTime())) != null) {
+                                return JoinRefusal.REJECTED;
+                            }
+                            return null;
+                        })
                         .setMotdProvider((host, remoteAddress, client) -> new PongData.Builder()
                                 .setServerName(motd)
                                 .setProtocol(2225)
@@ -191,6 +202,7 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
                         child.closeFuture().addListener(ignored -> {
                             if (admitted.get()) {
                                 channels.remove(networkId, child);
+                                validatedTokensByNetworkId.remove(networkId);
                                 removeOutboundAssemblers(networkId);
                                 sessions.onDisconnected(networkId);
                             }
@@ -327,10 +339,12 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
             throw new SecurityException("Validated NetherNet identity has no cpk");
         }
         byte[] publicKeyDer = Base64.getDecoder().decode(encodedKey);
-        String token = tokenTrust.take(encodedKey);
-        if (token == null) {
-            throw new SecurityException("Validated NetherNet GameServerToken was not retained");
+        TokenEntry tokenEntry = validatedTokensByNetworkId.remove(player.networkId());
+        if (tokenEntry == null
+                || System.nanoTime() - tokenEntry.createdAtNanos() > TimeUnit.SECONDS.toNanos(60)) {
+            throw new SecurityException("Validated NetherNet GameServerToken was not retained for this NetworkID");
         }
+        String token = tokenEntry.token();
         return new NetherNetClientIdentity(
                 token,
                 publicKeyDer,
@@ -379,6 +393,7 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
         }
         outboundAssemblers.clear();
         channels.clear();
+        validatedTokensByNetworkId.clear();
         EventLoopGroup group = eventLoopGroup;
         eventLoopGroup = null;
         if (group != null) group.shutdownGracefully(0, 2, TimeUnit.SECONDS).syncUninterruptibly();

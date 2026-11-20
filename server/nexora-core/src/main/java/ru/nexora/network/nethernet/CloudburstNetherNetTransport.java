@@ -159,9 +159,11 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
                         .setMaxPendingJoins(MAX_PENDING_TOKEN_BINDINGS)
                         .setMaxConnectionsPerAddress((int) Math.min(4096L, Math.max(8L, maxPlayers * 2L + 8L)))
                         .setPlayerFilter((host, player) -> {
-                            if (!admissionAllowed.getAsBoolean()) return JoinRefusal.REJECTED;
                             long now = System.nanoTime();
                             synchronized (admissionLock) {
+                                if (closed.get() || !admissionAllowed.getAsBoolean()) {
+                                    return JoinRefusal.REJECTED;
+                                }
                                 purgeExpiredNetworkTokens(now);
                                 String networkId = player.networkId();
                                 if (networkId == null || networkId.isBlank() || channels.containsKey(networkId)) {
@@ -254,6 +256,9 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
                                 try {
                                     NetherNetClientIdentity clientIdentity;
                                     synchronized (admissionLock) {
+                                        if (closed.get() || !admissionAllowed.getAsBoolean()) {
+                                            throw new SecurityException("Server is not accepting new NetherNet peers");
+                                        }
                                         clientIdentity = toClientIdentity(player);
                                         if (channels.putIfAbsent(networkId, child) != null) {
                                             throw new SecurityException("NetworkID already has an active transport");
@@ -436,6 +441,10 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
     @Override
     public synchronized void close() {
         if (!closed.compareAndSet(false, true)) return;
+        // Wait for any admission or activation callback that entered before the closed flag.
+        synchronized (admissionLock) {
+            // The closed flag is now visible to all later admission callbacks.
+        }
         Channel current = serverChannel;
         serverChannel = null;
         if (current != null) current.close().syncUninterruptibly();

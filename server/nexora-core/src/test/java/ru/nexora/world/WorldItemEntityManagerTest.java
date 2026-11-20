@@ -282,6 +282,12 @@ class WorldItemEntityManagerTest {
         assertThrows(IllegalArgumentException.class, () -> manager.spawn(
                 new ItemStack("minecraft:diamond", 1, 64),
                 0, 65, 0, 0, 0, 0, 1000, 0, "../invalid"));
+        assertThrows(IllegalArgumentException.class, () -> manager.spawn(
+                new ItemStack("minecraft:diamond", 1, 64),
+                0, WorldChunk.MAX_Y + 1.0, 0, 0, 0, 0, 1000, 0, null));
+        assertThrows(IllegalArgumentException.class, () -> manager.spawn(
+                new ItemStack("minecraft:diamond", 1, 64),
+                0, 65, 0, 100.01, 0, 0, 1000, 0, null));
     }
 
     @Test

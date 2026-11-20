@@ -21,7 +21,10 @@ import java.util.zip.CRC32C;
 /** Versioned, checksummed, atomic persistence for block containers addressed by world coordinates. */
 public final class ContainerInventoryStorage {
     private static final int MAGIC = 0x4e584354; // NXCT
-    private static final int FORMAT_VERSION = 1;
+    private static final int FORMAT_VERSION = 2;
+    private static final int ITEM_METADATA_FORMAT_VERSION = 2;
+    private static final int MAX_ENCHANTMENTS_PER_ITEM = 32;
+    private static final int MAX_ENCHANTMENT_ID_BYTES = 128;
     private static final int MAX_FILE_BYTES = 16_384;
     private static final int MAX_ITEM_ID_BYTES = 128;
     private static final Pattern SAFE_WORLD_NAME = Pattern.compile("[A-Za-z0-9 _-]{1,64}");
@@ -68,6 +71,17 @@ public final class ContainerInventoryStorage {
                 out.write(id);
                 out.writeByte(stack.count());
                 out.writeByte(stack.maxStackSize());
+                out.writeByte(stack.enchantments().size());
+                for (var enchantment : stack.enchantments().entrySet()) {
+                    byte[] enchantmentId = enchantment.getKey().getBytes(StandardCharsets.UTF_8);
+                    if (enchantmentId.length < 3 || enchantmentId.length > MAX_ENCHANTMENT_ID_BYTES) {
+                        throw new IOException("Container enchantment ID exceeds storage limit");
+                    }
+                    out.writeByte(enchantmentId.length);
+                    out.write(enchantmentId);
+                    out.writeByte(enchantment.getValue());
+                }
+                out.writeByte(stack.repairCost());
             }
         }
         byte[] body = bodyBytes.toByteArray();
@@ -103,7 +117,9 @@ public final class ContainerInventoryStorage {
         try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(bytes, 0, bodyLength))) {
             if (in.readInt() != MAGIC) throw new IOException("Invalid NEXORA container magic");
             int version = in.readUnsignedByte();
-            if (version != FORMAT_VERSION) throw new IOException("Unsupported NEXORA container version: " + version);
+            if (version != 1 && version != FORMAT_VERSION) {
+                throw new IOException("Unsupported NEXORA container version: " + version);
+            }
             if (in.readInt() != x || in.readInt() != y || in.readInt() != z) {
                 throw new IOException("NEXORA container coordinates do not match its file name");
             }
@@ -125,8 +141,40 @@ public final class ContainerInventoryStorage {
                 } catch (CharacterCodingException exception) {
                     throw new IOException("Invalid UTF-8 item ID in container", exception);
                 }
+                int count = in.readUnsignedByte();
+                int maxStackSize = in.readUnsignedByte();
+                java.util.Map<String, Integer> enchantments = new java.util.LinkedHashMap<>();
+                int repairCost = 0;
+                if (version >= ITEM_METADATA_FORMAT_VERSION) {
+                    int enchantmentCount = in.readUnsignedByte();
+                    if (enchantmentCount > MAX_ENCHANTMENTS_PER_ITEM) {
+                        throw new IOException("Too many enchantments in container item");
+                    }
+                    for (int i = 0; i < enchantmentCount; i++) {
+                        int enchantmentIdLength = in.readUnsignedByte();
+                        if (enchantmentIdLength < 3 || enchantmentIdLength > MAX_ENCHANTMENT_ID_BYTES) {
+                            throw new IOException("Invalid container enchantment ID length");
+                        }
+                        byte[] enchantmentBytes = new byte[enchantmentIdLength];
+                        in.readFully(enchantmentBytes);
+                        String enchantmentId;
+                        try {
+                            enchantmentId = StandardCharsets.UTF_8.newDecoder()
+                                    .onMalformedInput(CodingErrorAction.REPORT)
+                                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                                    .decode(ByteBuffer.wrap(enchantmentBytes)).toString();
+                        } catch (CharacterCodingException exception) {
+                            throw new IOException("Invalid UTF-8 enchantment ID in container", exception);
+                        }
+                        int level = in.readUnsignedByte();
+                        if (enchantments.putIfAbsent(enchantmentId, level) != null) {
+                            throw new IOException("Duplicate container enchantment ID");
+                        }
+                    }
+                    repairCost = in.readUnsignedByte();
+                }
                 try {
-                    inventory.setSlot(slot, new ItemStack(itemId, in.readUnsignedByte(), in.readUnsignedByte()));
+                    inventory.setSlot(slot, new ItemStack(itemId, count, maxStackSize, enchantments, repairCost));
                 } catch (IllegalArgumentException exception) {
                     throw new IOException("Invalid item stack in container", exception);
                 }

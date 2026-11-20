@@ -17,13 +17,27 @@ class CloudburstNetherNetConfigurationTest {
 
     @Test
     void suppliesStableDefaultsWithoutOptionalDeploymentSettings() {
-        var result = config(Map.of(), 30000, 30199, List.of());
+        var result = config(Map.of(), 23472, 23472, List.of());
 
-        assertNull(result.advertisedHost());
-        assertEquals(0, result.publicUdpPort());
+        assertEquals("storm.mcpehost.ru", result.advertisedHost());
+        assertEquals(23472, result.publicUdpPort());
         assertEquals("NEXOR", result.identityDomain());
         assertNull(result.httpsCertificate());
         assertNull(result.httpsPrivateKey());
+    }
+
+    @Test
+    void usesHostDomainOnlyWhenStunDiscoveryIsNotConfigured() {
+        var result = config(Map.of(), 23472, 23472, List.of("stun:stun.example.net:3478"));
+        assertNull(result.advertisedHost());
+        assertEquals(0, result.publicUdpPort());
+    }
+
+    @Test
+    void requiresFixedIcePortForAdvertisedHost() {
+        assertThrows(IllegalArgumentException.class, () -> config(
+                Map.of("NEXORA_ADVERTISED_HOST", "storm.mcpehost.ru"),
+                23472, 23473, List.of()));
     }
 
     @Test

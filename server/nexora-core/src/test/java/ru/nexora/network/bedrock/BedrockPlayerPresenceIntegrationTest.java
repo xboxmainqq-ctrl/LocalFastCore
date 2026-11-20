@@ -116,9 +116,9 @@ class BedrockPlayerPresenceIntegrationTest {
             prepareSession(moving, entry("00000000-0000-0000-0000-000000000402", 402, "MovingPlayer"));
             set(viewer, "playerListAdvertised", true);
             set(moving, "playerListAdvertised", true);
-            set(moving, "positionX", 1.0);
-            set(moving, "positionY", 65.0);
-            set(moving, "positionZ", 1.0);
+            set(moving, "positionX", 1.0f);
+            set(moving, "positionY", 65.0f);
+            set(moving, "positionZ", 1.0f);
 
             Field indexField = BedrockSessionManager.class.getDeclaredField("playerActorReplicationIndex");
             indexField.setAccessible(true);
@@ -135,7 +135,7 @@ class BedrockPlayerPresenceIntegrationTest {
                     BedrockMoveActorAbsoluteCodec.MOVE_ACTOR_ABSOLUTE_PACKET_ID),
                     packetIds(packetsFor(outbound, "viewer")));
 
-            set(moving, "positionX", 33.0);
+            set(moving, "positionX", 33.0f);
             movement.invoke(manager, "moving", moving);
 
             assertFalse(visibleActors(viewer).contains(402L));

@@ -1,6 +1,8 @@
 package ru.nexora.network.bedrock;
 
 import org.junit.jupiter.api.Test;
+import ru.nexora.inventory.ItemStack;
+import ru.nexora.inventory.PlayerInventory;
 import ru.nexora.network.nethernet.NetherNetClientIdentity;
 import ru.nexora.network.nethernet.NetherNetMessageFramer;
 import ru.nexora.world.FlatWorldGenerator;
@@ -106,6 +108,7 @@ class BedrockPlayerPresenceIntegrationTest {
                 new World("player-movement-visibility-test", 0L, new FlatWorldGenerator()),
                 (networkId, label, frame) -> outbound.add(new Outbound(networkId, frame)),
                 event -> { });
+        manager.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
 
         try {
             manager.onIdentity("viewer", identity("viewer", "Viewer"));
@@ -119,6 +122,9 @@ class BedrockPlayerPresenceIntegrationTest {
             set(moving, "positionX", 1.0f);
             set(moving, "positionY", 65.0f);
             set(moving, "positionZ", 1.0f);
+            PlayerInventory movingInventory = (PlayerInventory) field(moving, "inventory");
+            movingInventory.setSlot(0, new ItemStack("minecraft:diamond_sword", 1, 1));
+            movingInventory.selectHotbarSlot(0);
 
             Field indexField = BedrockSessionManager.class.getDeclaredField("playerActorReplicationIndex");
             indexField.setAccessible(true);
@@ -132,6 +138,7 @@ class BedrockPlayerPresenceIntegrationTest {
             assertTrue(visibleActors(viewer).contains(402L));
             assertEquals(List.of(
                     BedrockAddPlayerCodec.ADD_PLAYER_PACKET_ID,
+                    BedrockMobEquipmentCodec.MOB_EQUIPMENT_PACKET_ID,
                     BedrockMoveActorAbsoluteCodec.MOVE_ACTOR_ABSOLUTE_PACKET_ID),
                     packetIds(packetsFor(outbound, "viewer")));
 
@@ -141,6 +148,7 @@ class BedrockPlayerPresenceIntegrationTest {
             assertFalse(visibleActors(viewer).contains(402L));
             assertEquals(List.of(
                     BedrockAddPlayerCodec.ADD_PLAYER_PACKET_ID,
+                    BedrockMobEquipmentCodec.MOB_EQUIPMENT_PACKET_ID,
                     BedrockMoveActorAbsoluteCodec.MOVE_ACTOR_ABSOLUTE_PACKET_ID,
                     BedrockAddItemActorCodec.REMOVE_ACTOR_PACKET_ID),
                     packetIds(packetsFor(outbound, "viewer")));

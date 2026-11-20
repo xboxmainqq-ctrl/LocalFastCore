@@ -163,6 +163,52 @@ class BedrockPlayerPresenceIntegrationTest {
     }
 
     @Test
+    void broadcastsAuthoritativeHeldItemChangesToVisiblePlayers() throws Exception {
+        List<Outbound> outbound = new ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new World("player-equipment-broadcast-test", 0L, new FlatWorldGenerator()),
+                (networkId, label, frame) -> outbound.add(new Outbound(networkId, frame)),
+                event -> { });
+        manager.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
+
+        try {
+            manager.onIdentity("viewer", identity("viewer", "Viewer"));
+            manager.onIdentity("moving", identity("moving", "MovingPlayer"));
+            Object viewer = session(manager, "viewer");
+            Object moving = session(manager, "moving");
+            prepareSession(viewer, entry("00000000-0000-0000-0000-000000000501", 501, "Viewer"));
+            prepareSession(moving, entry("00000000-0000-0000-0000-000000000502", 502, "MovingPlayer"));
+            set(viewer, "playerListAdvertised", true);
+            set(moving, "playerListAdvertised", true);
+
+            PlayerInventory inventory = (PlayerInventory) field(moving, "inventory");
+            ItemStack held = new ItemStack("minecraft:diamond", 2, 64);
+            inventory.setSlot(0, held);
+            inventory.selectHotbarSlot(0);
+
+            Field indexField = BedrockSessionManager.class.getDeclaredField("playerActorReplicationIndex");
+            indexField.setAccessible(true);
+            ((ActorReplicationIndex) indexField.get(manager)).addActorViewer(502L, "viewer");
+            visibleActors(viewer).add(502L);
+
+            Method sync = BedrockSessionManager.class.getDeclaredMethod(
+                    "sendInventoryAndEquipmentState", String.class, moving.getClass());
+            sync.setAccessible(true);
+            sync.invoke(manager, "moving", moving);
+
+            List<BedrockPacket> packets = packetsFor(outbound, "viewer");
+            assertEquals(List.of(BedrockMobEquipmentCodec.MOB_EQUIPMENT_PACKET_ID), packetIds(packets));
+            BedrockMobEquipmentCodec.DecodedEquipment decoded =
+                    BedrockMobEquipmentCodec.decode(packets.get(0), BedrockVanillaItemCatalog.createRegistry());
+            assertEquals(502L, decoded.runtimeEntityId());
+            assertEquals(held, decoded.item().orElseThrow());
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void doesNotAdvertiseSessionAlreadyMarkedRejected() throws Exception {
         List<Outbound> outbound = new ArrayList<>();
         BedrockSessionManager manager = new BedrockSessionManager(

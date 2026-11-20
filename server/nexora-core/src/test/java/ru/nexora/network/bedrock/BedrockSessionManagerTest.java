@@ -4027,6 +4027,42 @@ class BedrockSessionManagerTest {
                 "A newly tracking client receives a current spawn, not a stale movement delta");
         assertEquals(1, actorIndex.actorViewerCount(zombie.runtimeId()),
                 "Only the new chunk watcher remains indexed for this actor");
+
+        // A chunk-view refresh must discover actors through the resident-chunk index,
+        // and must also remove actors already visible to this recipient after they walk out.
+        java.lang.reflect.Field sessionsField =
+                BedrockSessionManager.class.getDeclaredField("sessions");
+        sessionsField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> sessions =
+                (java.util.Map<String, Object>) sessionsField.get(manager);
+        Object watcherAState = sessions.get("watcher-a");
+        java.lang.reflect.Method syncVisible = BedrockSessionManager.class.getDeclaredMethod(
+                "syncVisibleWorldActors", String.class, watcherAState.getClass());
+        syncVisible.setAccessible(true);
+
+        world.livingEntities().move(zombie.runtimeId(), 8.5, 65.0, 0.5).orElseThrow();
+        int watcherASpawnsBeforeRefresh = (int) outboundByPlayer.get("watcher-a").stream()
+                .flatMap(frame -> decodeOutboundAll(frame, true).stream())
+                .filter(packet -> packet.packetId() == BedrockAddActorCodec.ADD_ACTOR_PACKET_ID).count();
+        syncVisible.invoke(manager, "watcher-a", watcherAState);
+        int watcherASpawnsAfterRefresh = (int) outboundByPlayer.get("watcher-a").stream()
+                .flatMap(frame -> decodeOutboundAll(frame, true).stream())
+                .filter(packet -> packet.packetId() == BedrockAddActorCodec.ADD_ACTOR_PACKET_ID).count();
+        assertEquals(watcherASpawnsBeforeRefresh + 1, watcherASpawnsAfterRefresh,
+                "A mob moved into a resident chunk must spawn on the next view reconciliation");
+
+        world.livingEntities().move(zombie.runtimeId(), 24.5, 65.0, 0.5).orElseThrow();
+        int watcherARemovalsBeforeRefresh = (int) outboundByPlayer.get("watcher-a").stream()
+                .flatMap(frame -> decodeOutboundAll(frame, true).stream())
+                .filter(packet -> packet.packetId() == BedrockAddItemActorCodec.REMOVE_ACTOR_PACKET_ID).count();
+        syncVisible.invoke(manager, "watcher-a", watcherAState);
+        int watcherARemovalsAfterRefresh = (int) outboundByPlayer.get("watcher-a").stream()
+                .flatMap(frame -> decodeOutboundAll(frame, true).stream())
+                .filter(packet -> packet.packetId() == BedrockAddItemActorCodec.REMOVE_ACTOR_PACKET_ID).count();
+        assertEquals(watcherARemovalsBeforeRefresh + 1, watcherARemovalsAfterRefresh,
+                "A visible mob that walks outside the resident chunks must despawn");
+
         manager.onDisconnected("watcher-b");
         assertEquals(0, actorIndex.actorViewerCount(zombie.runtimeId()),
                 "Disconnect removes the session from actor replication indexes");

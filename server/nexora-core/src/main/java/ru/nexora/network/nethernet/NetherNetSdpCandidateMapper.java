@@ -114,6 +114,6 @@ public final class NetherNetSdpCandidateMapper {
             }
             rewritten.add(String.join(" ", fields));
         }
-        return String.join("\\r\\n", rewritten);
+        return String.join("\r\n", rewritten);
     }
 }

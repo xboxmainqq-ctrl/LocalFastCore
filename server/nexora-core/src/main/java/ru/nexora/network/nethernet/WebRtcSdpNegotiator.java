@@ -144,16 +144,16 @@ public final class WebRtcSdpNegotiator implements SdpNegotiator, AutoCloseable {
             if (nativeAudioModule != null) {
                 try {
                     nativeAudioModule.dispose();
-                } catch (RuntimeException ignored) {
-                    // Continue in signaling-only mode when native initialization failed.
+                } catch (RuntimeException disposeFailure) {
+                    unavailableNativeRuntime.addSuppressed(disposeFailure);
                 }
             }
-            nativeAudioModule = null;
-            nativeFactory = null;
-            System.err.println("NEXORA: WebRTC native runtime is unavailable; server will continue in "
-                    + "signaling-only mode. Install the host libraries required by libwebrtc "
-                    + "(for example libXdamage.so.1 on Linux) to enable Bedrock connections. "
-                    + "Details: " + unavailableNativeRuntime);
+            throw new IllegalStateException(
+                    "Cannot start NEXORA NetherNet transport: the native WebRTC runtime could not be initialized. "
+                            + "Install the native libraries required by the packaged libwebrtc runtime "
+                            + "(on Linux, check libXdamage.so.1 and the other system dependencies), "
+                            + "then restart the server. NEXORA will not start in signaling-only mode.",
+                    unavailableNativeRuntime);
         }
         this.audioDeviceModule = nativeAudioModule;
         this.factory = nativeFactory;

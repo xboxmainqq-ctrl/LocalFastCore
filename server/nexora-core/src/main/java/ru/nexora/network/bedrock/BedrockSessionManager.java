@@ -71,6 +71,9 @@ import java.util.Optional;
 import java.util.UUID;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
@@ -223,6 +226,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 }
             });
     private final NetherNetInboundPipeline inbound;
+    private final Object chunkStreamingMonitor = new Object();
+    private final ScheduledExecutorService initialChunkPump = Executors.newSingleThreadScheduledExecutor(task -> {
+        Thread thread = new Thread(task, "nexora-initial-chunk-pump");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     public BedrockSessionManager(
             int serverProtocol,
@@ -457,6 +466,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         this.furnaceUpdateListener = this.world.furnaces()
                 .map(manager -> manager.addUpdateListener(this::handleFurnaceUpdate))
                 .orElse(null);
+        // Initial chunks must continue streaming before SetLocalPlayerAsInitialized:
+        // Bedrock waits for its initial view before sending that acknowledgement.
+        this.initialChunkPump.scheduleWithFixedDelay(this::pumpInitialChunkStreams, 50, 50, TimeUnit.MILLISECONDS);
     }
 
     /**
@@ -6596,13 +6608,29 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
      * Encodes only a bounded number of chunks per player input tick. A changed center
      * replaces the unfinished traversal; already published chunks are reused.
      */
+    private void pumpInitialChunkStreams() {
+        for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            SessionState state = entry.getValue();
+            if (!state.gameStarted || state.clientInitialized || state.rejected
+                    || state.chunkStreamingQueue == null) continue;
+            try {
+                processChunkStreaming(entry.getKey(), state);
+            } catch (RuntimeException failure) {
+                System.err.println("NEXORA: initial chunk streaming failed for " + entry.getKey()
+                        + ": " + failure.getMessage());
+            }
+        }
+    }
+
     private void processChunkStreaming(String networkId, SessionState state) {
-        long startedNanos = nanoTime.getAsLong();
-        try {
-            processChunkStreamingInternal(networkId, state);
-        } finally {
-            hotPathProfiler.record(ru.nexora.ai.HotPathProfiler.Path.BEDROCK_CHUNK_STREAMING,
-                    Math.max(0L, nanoTime.getAsLong() - startedNanos));
+        synchronized (chunkStreamingMonitor) {
+            long startedNanos = nanoTime.getAsLong();
+            try {
+                processChunkStreamingInternal(networkId, state);
+            } finally {
+                hotPathProfiler.record(ru.nexora.ai.HotPathProfiler.Path.BEDROCK_CHUNK_STREAMING,
+                        Math.max(0L, nanoTime.getAsLong() - startedNanos));
+            }
         }
     }
 
@@ -7800,6 +7828,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     @Override
     public void close() {
+        initialChunkPump.shutdownNow();
         if (furnaceUpdateListener != null) {
             try { furnaceUpdateListener.close(); }
             catch (Exception exception) {

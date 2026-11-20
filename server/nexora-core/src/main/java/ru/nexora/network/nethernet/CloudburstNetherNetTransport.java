@@ -125,7 +125,7 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
             identity = OperatorIdentity.fromPemOrCreate(
                     dataDirectory.resolve("identity").resolve("nethernet-operator.pem").toFile(),
                     System.getenv().getOrDefault("NEXORA_IDENTITY_DOMAIN", "NEXOR"));
-        } catch (GeneralSecurityException | IOException | RuntimeException failure) {
+        } catch (Exception failure) {
             throw new IOException("Unable to load persistent NetherNet operator identity", failure);
         }
 

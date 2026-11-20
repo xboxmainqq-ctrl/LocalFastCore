@@ -142,6 +142,11 @@ public final class WorldChunk {
             }
             return detached;
         }
+
+        /** Internal read-only view for the storage writer; never expose beyond this package. */
+        byte[][] sectionsForStorage() {
+            return sections;
+        }
     }
 
     public synchronized byte[][] copySectionsRaw() {

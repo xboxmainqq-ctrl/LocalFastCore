@@ -48,6 +48,23 @@ class WorldItemEntityManagerTest {
     }
 
     @Test
+    void ownerPickupLockDoesNotOverflowNearMaximumTimestamp() {
+        WorldItemEntityManager manager = new WorldItemEntityManager();
+        WorldItemEntity entity = manager.spawn(new ItemStack("minecraft:diamond", 1, 64),
+                0, 65, 0, 0, 0, 0, Long.MAX_VALUE - 500, 500, "owner-xuid");
+        PlayerInventory otherInventory = new PlayerInventory();
+        PlayerInventory ownerInventory = new PlayerInventory();
+
+        assertEquals(Long.MAX_VALUE, entity.pickupAvailableAtMillis());
+        assertFalse(manager.pickup(entity.runtimeId(), otherInventory, "other-xuid",
+                0, 65, 0, Long.MAX_VALUE));
+        assertEquals(0, otherInventory.count("minecraft:diamond"));
+        assertTrue(manager.pickup(entity.runtimeId(), ownerInventory, "owner-xuid",
+                0, 65, 0, Long.MAX_VALUE));
+        assertEquals(1, ownerInventory.count("minecraft:diamond"));
+    }
+
+    @Test
     void doesNotPartiallyInsertOrDeleteWhenInventoryCannotFitWholeStack() {
         WorldItemEntityManager manager = new WorldItemEntityManager();
         WorldItemEntity entity = manager.spawn(new ItemStack("minecraft:diamond", 2, 64),

@@ -54,6 +54,7 @@ public final class WorldLivingEntityStorage {
         if (entities.size() > MAX_ENTITIES) throw new IOException("Too many living world entities");
         ByteArrayOutputStream bodyBytes = new ByteArrayOutputStream(Math.min(4096, entities.size() * 128));
         Set<Long> runtimeIds = new HashSet<>();
+        Set<Long> uniqueIds = new HashSet<>();
         try (DataOutputStream out = new DataOutputStream(bodyBytes)) {
             out.writeInt(MAGIC);
             out.writeByte(VERSION);
@@ -61,6 +62,7 @@ public final class WorldLivingEntityStorage {
             for (WorldLivingEntity entity : entities) {
                 Objects.requireNonNull(entity, "entity");
                 if (!runtimeIds.add(entity.runtimeId())) throw new IOException("Duplicate living actor runtime ID");
+                if (!uniqueIds.add(entity.uniqueId())) throw new IOException("Duplicate living actor unique ID");
                 writeEntity(out, entity);
                 if (bodyBytes.size() > MAX_FILE_BYTES - Integer.BYTES) {
                     throw new IOException("Living world entity file exceeds size limit");
@@ -105,9 +107,11 @@ public final class WorldLivingEntityStorage {
             if (count < 0 || count > MAX_ENTITIES) throw new IOException("Invalid living world entity count");
             List<WorldLivingEntity> result = new ArrayList<>(count);
             Set<Long> runtimeIds = new HashSet<>();
+            Set<Long> uniqueIds = new HashSet<>();
             for (int i = 0; i < count; i++) {
                 WorldLivingEntity entity = readEntity(in);
                 if (!runtimeIds.add(entity.runtimeId())) throw new IOException("Duplicate living actor runtime ID");
+                if (!uniqueIds.add(entity.uniqueId())) throw new IOException("Duplicate living actor unique ID");
                 result.add(entity);
             }
             if (in.available() != 0) throw new IOException("Trailing living world entity data");

@@ -2184,6 +2184,23 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void loginMustUseTheProtocolNegotiatedInNetworkSettings() {
+        BedrockLoginPacketParser.LoginRequest matching =
+                new BedrockLoginPacketParser.LoginRequest(2225, 0, "token", "client", java.util.List.of());
+        assertDoesNotThrow(() -> BedrockSessionManager.validateLoginProtocol(matching, 2225, 2225));
+    }
+
+    @Test
+    void rejectsLoginWhenItsProtocolDiffersFromNegotiatedProtocol() {
+        BedrockLoginPacketParser.LoginRequest mismatched =
+                new BedrockLoginPacketParser.LoginRequest(2193, 0, "token", "client", java.util.List.of());
+        assertThrows(SecurityException.class,
+                () -> BedrockSessionManager.validateLoginProtocol(mismatched, 2225, 2225));
+        assertThrows(SecurityException.class,
+                () -> BedrockSessionManager.validateLoginProtocol(mismatched, 2193, 2225));
+    }
+
+    @Test
     void negotiatesNetworkSettingsThenDecodesCompressedGameBatch() {
         List<byte[]> outboundFrames = new ArrayList<>();
         AtomicReference<BedrockSessionManager.PacketEvent> received = new AtomicReference<>();

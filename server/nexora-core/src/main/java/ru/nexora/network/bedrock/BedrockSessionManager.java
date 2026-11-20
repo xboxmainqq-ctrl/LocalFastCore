@@ -5272,6 +5272,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 throw new SecurityException("Unable to safely restore canonical player checkpoint", exception);
             }
         }
+        // NetherNet already provides an encrypted DTLS transport. Bedrock's
+        // ServerToClientHandshake/ClientToServerHandshake exchange is optional;
+        // waiting for ClientToServerHandshake without first sending the server
+        // handshake deadlocks the vanilla client immediately after Login.
+        state.clientHandshakeReceived = true;
+        state.resourcePacksInfoSent = true;
+        sendPacket(message.networkId(), BedrockBatchCodec.createPlayStatus(LOGIN_SUCCESS), true);
+        sendPacket(message.networkId(), BedrockBatchCodec.createResourcePacksInfo(), true);
+        System.out.printf("NEXORA: sent LoginSuccess and ResourcePacksInfo to %s (NetherNet DTLS; Bedrock handshake skipped)%n",
+                displayName);
         System.out.printf("NEXORA: authenticated player %s%n", displayName);
         }
     }
@@ -5418,6 +5428,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         BedrockBatchCodec.ResourcePackClientResponseData response =
                 BedrockBatchCodec.parseResourcePackClientResponse(packet);
+        System.out.printf("NEXORA: resource-pack response from %s: %s (%d)%n",
+                networkId, response.name(), response.response());
         switch (response.response()) {
             case 0 -> throw new SecurityException("Client refused resource-pack negotiation");
             case 1 -> throw new SecurityException("Client requested packs from an empty server pack list");
@@ -5482,7 +5494,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             BedrockChunkRadiusCodec.createUpdatedPacket(state.chunkViewRadius)), true);
                     sendInitialChunkArea(networkId, state);
                 }
-                System.out.printf("NEXORA: resource-pack negotiation completed for %s%n", networkId);
+                System.out.printf("NEXORA: resource-pack negotiation completed for %s; StartGame and initial chunks queued%n",
+                        networkId);
             }
             default -> throw new IllegalArgumentException("Unknown resource-pack response");
         }

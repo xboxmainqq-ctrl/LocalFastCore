@@ -227,7 +227,8 @@ public final class NexoraServer {
                 System.getenv(),
                 Path.of(dataDirectory),
                 bedrockSessions,
-                () -> (int) Math.min(bedrockSessions.authenticatedPlayerCount(), maxPlayers));
+                () -> (int) Math.min(bedrockSessions.authenticatedPlayerCount(), maxPlayers),
+                readiness::isAcceptingConnections);
         transportReference.set(transport);
 
         System.out.printf("NEXORA: world chunk residency target is %d resident chunks (entity-pinned chunks may exceed it).%n",

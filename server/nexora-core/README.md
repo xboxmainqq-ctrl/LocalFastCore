@@ -25,17 +25,11 @@ Official Mojang onboarding guide: https://mojang.github.io/bedrock-protocol-docs
 - Protocol-2225 player chat: accepts TextPacket chat only from authenticated, initialized players over the reliable channel; checks any supplied XUID against the verified session, ignores the client-supplied display name, strips control characters, caps messages at 512 UTF-8 bytes and 5 messages per 5 seconds, and broadcasts using the authenticated gamertag. Outgoing chat XUID is left empty until player-list replication is implemented so clients do not hide messages from unknown senders. System and chat TextPackets use the protocol-2225 body variants.
 - Legacy RakNet unconnected ping/pong codec and UDP discovery responder (for protocol study; not sufficient for modern clients).
 - NetherNet server metadata model and JSON serialization.
-- NetherNet HTTP signaling endpoint:
-  - GET /v1/join returns server metadata.
-  - POST /v1/join/{networkId} validates the SDP request and delegates negotiation.
-  - Request size limit, content-type validation, bounded worker pool, and explicit error responses.
-- WebRTC SDP answerer using webrtc-java, with full ICE gathering and peer-session limits.
-- NetherNet identity implementation:
-  - Verifies client GameServerToken RS256 signatures against a configurable Minecraft auth JWKS endpoint.
-  - Checks the configured issuer and validates expiry/not-before when those claims are present; audience validation can be enabled through the identity-service constructor.
-  - Verifies the client's ES384 detached DTLS-fingerprint assertion.
-  - Creates a persistent P-384 server identity keypair, self-signed server JWT and signed fingerprint assertion.
-- NetherNet message framing and reliable-channel fragmentation/reassembly with size limits.
+- Modern NetherNet transport is provided by CloudburstMC `netty-transport-nethernet` over `libdatachannel-java`: the library owns HTTP(S) signaling, Minecraft GameServerToken validation, detached DTLS-fingerprint identity verification, ICE, DTLS, SCTP and Bedrock data-channel delivery.
+- NEXORA's `CloudburstNetherNetTransport` adapter binds accepted authenticated peers to `BedrockSessionManager`, maps reliable/unreliable delivery, applies bounded Bedrock message framing, and tears down player state on transport close.
+- The transport uses a persistent operator identity file under `data/identity/nethernet-operator.pem`; do not delete or regenerate it between normal restarts.
+- Optional built-in HTTPS accepts a PEM certificate chain and private key. Without those files, the signaling listener is plain HTTP and must be placed behind a correctly configured TLS reverse proxy before public deployment.
+- UDP ICE ports are separate from the TCP signaling listener. A fixed ICE port is used when STUN discovery or public UDP port mapping is configured.
 - WebRTC DTLS provides transport encryption; the legacy Bedrock application-layer cipher is intentionally disabled on NetherNet.
 - Bedrock packet batch codec: VarInt packet lengths and headers, protocol 2225 RequestNetworkSettings parsing, NetworkSettings response, raw-DEFLATE compression framing and uncompressed framing.
 - Initial Bedrock session stage: validates the requested protocol, sends NetworkSettings, and switches to negotiated compression.
@@ -253,41 +247,61 @@ The shared verified-backup mechanism also protects player inventories (`.nxi.bak
 
 World chunk snapshots under each world's `chunks/` directory also retain one previous verified `.nxc` generation as `.nxc.bak`. A primary chunk is rotated only after its checksum and structure validate; loading restores the backup when the primary is missing or corrupt. If both generations are invalid, loading fails explicitly rather than silently generating an empty chunk.
 
-## NetherNet runtime readiness (important)
+## NetherNet runtime readiness and deployment
 
-The production bootstrap now uses CloudburstMC's `netty-transport-nethernet` over Netty, with `libdatachannel-java` for native WebRTC/ICE/DTLS/SCTP transport. Cloudburst owns HTTP(S) signaling, GameServerToken verification, the detached DTLS-fingerprint identity assertion, ICE negotiation, data-channel segmentation and reassembly. NEXORA adapts the validated `PlayerInfo` identity into its Bedrock session manager and keeps its existing message-framing layer inside the server only; those private frames are not sent over the wire.
+The production bootstrap now uses CloudburstMC's `netty-transport-nethernet` with `libdatachannel-java`. The earlier in-tree `webrtc-java` SDP negotiator and custom HTTP signaling classes are legacy development code and are not used by the server bootstrap.
 
-The Cloudburst transport is an Apache-2.0 dependency, not copied Nukkit code. Nukkit-MOT remains a protocol and deployment reference; NEXORA does not depend on Nukkit at runtime. The older `webrtc-java` negotiator and identity implementation remain in the source tree for compatibility/tests, but the production bootstrap no longer starts them. Native initialization happens while the NetherNet listener binds and startup fails if the required native runtime cannot load; there is no signaling-only fallback. If startup reports a missing native library, install the matching operating-system package and inspect the full linker error.
+Cloudburst validates the retail Minecraft identity assertion and its detached signature before accepting a player. NEXORA then binds the validated identity to the Bedrock Login GameServerToken and the client's login key. The server identity is persisted at `data/identity/nethernet-operator.pem`; back it up securely and keep it stable across restarts.
 
-The configured UDP range must be reachable from clients. STUN discovery requires a fixed ICE UDP port, so when STUN is configured without an advertised host, set `NEXORA_UDP_PORT_MIN` and `NEXORA_UDP_PORT_MAX` to the same port. An explicit advertised host can be used instead of STUN. STUN or an advertised address does not create a UDP relay and does not solve symmetric NAT/CGNAT.
+### Signaling HTTPS
 
-### Public ICE candidate advertisement
-
-For a server behind a router, NEXORA can append an externally reachable host endpoint to the signed SDP answer. The identity assertion signs the DTLS fingerprint, not the candidate address, so adding an advertised endpoint does not change the fingerprint being authenticated.
+The Cloudburst signaling listener can serve HTTPS directly with PEM files:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `NEXORA_ADVERTISED_HOST` | unset | Public IPv4/IPv6 address or DNS hostname announced to joining clients |
-| `NEXORA_PUBLIC_UDP_PORT` | unset | Optional external UDP port; requires `NEXORA_ADVERTISED_HOST` and a fixed internal ICE port (set UDP min and max to the same value) |
-| `NEXORA_UDP_PORT_MIN` / `NEXORA_UDP_PORT_MAX` | `30000` / `30199` | Internal UDP ICE range; forward the full range when using a range |
+| `NEXORA_HTTPS_CERT_FILE` | unset | PEM certificate chain; relative paths resolve under the server data directory |
+| `NEXORA_HTTPS_KEY_FILE` | unset | Matching unencrypted PEM private key; relative paths resolve under the server data directory |
+| `NEXORA_IDENTITY_DOMAIN` | `NEXOR` | Stable operator identity domain |
 
-Example with the same public and internal UDP range:
+Set both HTTPS file variables together. When configured, NEXORA enables TLS and rejects plaintext signaling requests. If neither is configured, signaling is plain HTTP; expose it publicly only through a TLS reverse proxy that forwards the NetherNet signaling routes correctly.
 
-```sh
-NEXORA_ADVERTISED_HOST=play.example.net
-NEXORA_UDP_PORT_MIN=30000
-NEXORA_UDP_PORT_MAX=30199
+Example:
+
+```bash
+NEXORA_HTTPS_CERT_FILE=certs/fullchain.pem
+NEXORA_HTTPS_KEY_FILE=certs/privkey.pem
+NEXORA_IDENTITY_DOMAIN=play.nexor.example
 ```
 
-Example with a single internal UDP port forwarded to a different public port:
+### ICE and UDP reachability
 
-```sh
-NEXORA_ADVERTISED_HOST=play.example.net
+The signaling endpoint uses the main server TCP port. WebRTC ICE/DTLS/SCTP traffic uses the UDP range configured by `NEXORA_UDP_PORT_MIN` and `NEXORA_UDP_PORT_MAX` (defaults: `30000-30199`). Forward and allow the complete configured range through the host firewall, router and container network. STUN discovers public reflexive candidates but does not open inbound UDP ports and does not replace TURN or a real UDP relay behind restrictive NAT/CGNAT.
+
+Cloudburst's STUN discovery and fixed public UDP port mapping require a fixed ICE port: set `NEXORA_UDP_PORT_MIN` and `NEXORA_UDP_PORT_MAX` to the same reachable port when using `NEXORA_STUN_URLS` or `NEXORA_PUBLIC_UDP_PORT`.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `NEXORA_ADVERTISED_HOST` | unset | Public DNS name or IP address advertised to clients |
+| `NEXORA_PUBLIC_UDP_PORT` | unset | Public UDP port advertised when the router translates the fixed internal ICE port |
+| `NEXORA_STUN_URLS` | unset | Semicolon-separated STUN URLs |
+
+For a direct public host with a fixed ICE port:
+
+```bash
 NEXORA_UDP_PORT_MIN=30000
 NEXORA_UDP_PORT_MAX=30000
+NEXORA_STUN_URLS=stun:stun.example.net:3478
+```
+
+For a router forwarding internal UDP `30000` to public UDP `40000`:
+
+```bash
+NEXORA_UDP_PORT_MIN=30000
+NEXORA_UDP_PORT_MAX=30000
+NEXORA_ADVERTISED_HOST=play.nexor.example
 NEXORA_PUBLIC_UDP_PORT=40000
 ```
 
-When `NEXORA_ADVERTISED_HOST` is set, it takes precedence over configured STUN URLs because Cloudburst does not combine explicit advertised endpoints and STUN discovery in one signaling instance. If an external port is supplied, the router must forward that public port to the fixed internal ICE port. If no external port is supplied, the announced hostname uses the actual ICE port; forward the full configured range without port translation.
+The advertised endpoint does not create a relay. Symmetric NAT, CGNAT, blocked UDP or an incorrect port forward can still prevent connections.
 
-This transport integration is a substantial implementation step, not proof of end-to-end Bedrock compatibility. A real client join still has to pass the complete NetherNet handshake, Bedrock login/resource-pack flow, StartGame, chunk bootstrap and client initialization on a publicly reachable deployment.
+A successful Maven build and a running signaling listener do not prove that a retail Bedrock client can join. End-to-end validation must still cover the public ICE path, DTLS/SCTP channels, authenticated Login, resource-pack completion, StartGame, chunk bootstrap and client initialization.

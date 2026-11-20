@@ -272,7 +272,7 @@ NEXORA_IDENTITY_DOMAIN=play.nexor.example
 
 ### ICE and UDP reachability
 
-The signaling endpoint uses the main server TCP port. WebRTC ICE/DTLS/SCTP traffic uses the UDP range configured by `NEXORA_UDP_PORT_MIN` and `NEXORA_UDP_PORT_MAX` (defaults: `30000-30199`). Forward and allow the complete configured range through the host firewall, router and container network. STUN discovers public reflexive candidates but does not open inbound UDP ports and does not replace TURN or a real UDP relay behind restrictive NAT/CGNAT.
+The signaling endpoint uses the main server TCP port. By default, NetherNet ICE/DTLS/SCTP uses that same allocated port as a single fixed UDP port (`NEXORA_UDP_PORT_MIN` = `NEXORA_UDP_PORT_MAX` = server port). This matches single-allocation game hosts such as Pterodactyl. Operators can explicitly override both variables when the host provides a separate UDP allocation or range. Forward and allow the configured UDP port through the host firewall and container network. The legacy RakNet discovery listener is disabled in the production bootstrap so it cannot occupy the same UDP socket; its old query/ping behavior is not currently provided. STUN discovers public reflexive candidates but does not open inbound UDP ports and does not replace TURN or a real UDP relay behind restrictive NAT/CGNAT.
 
 Cloudburst's STUN discovery and fixed public UDP port mapping require a fixed ICE port: set `NEXORA_UDP_PORT_MIN` and `NEXORA_UDP_PORT_MAX` to the same reachable port when using `NEXORA_STUN_URLS` or `NEXORA_PUBLIC_UDP_PORT`. `NEXORA_ADVERTISED_HOST` and `NEXORA_STUN_URLS` are mutually exclusive; configure only one.
 
@@ -285,16 +285,16 @@ Cloudburst's STUN discovery and fixed public UDP port mapping require a fixed IC
 For STUN discovery with a fixed ICE port:
 
 ```bash
-NEXORA_UDP_PORT_MIN=30000
-NEXORA_UDP_PORT_MAX=30000
+NEXORA_UDP_PORT_MIN=23472
+NEXORA_UDP_PORT_MAX=23472
 NEXORA_STUN_URLS=stun:stun.example.net:3478
 ```
 
 For a router forwarding internal UDP `30000` to public UDP `40000`:
 
 ```bash
-NEXORA_UDP_PORT_MIN=30000
-NEXORA_UDP_PORT_MAX=30000
+NEXORA_UDP_PORT_MIN=23472
+NEXORA_UDP_PORT_MAX=23472
 NEXORA_ADVERTISED_HOST=play.nexor.example
 NEXORA_PUBLIC_UDP_PORT=40000
 ```

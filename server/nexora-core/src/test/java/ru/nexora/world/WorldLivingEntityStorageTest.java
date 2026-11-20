@@ -74,6 +74,19 @@ class WorldLivingEntityStorageTest {
     }
 
     @Test
+    void rejectsDuplicateLivingActorUniqueIds() throws Exception {
+        WorldLivingEntityStorage storage = new WorldLivingEntityStorage(temp, "duplicate-unique-id");
+        WorldLivingEntity first = new WorldLivingEntity(
+                -10, 10, "minecraft:zombie", WorldLivingEntity.Family.UNDEAD,
+                0, 65, 0, 0, 0, 0, 20, 20, 0, 0);
+        WorldLivingEntity second = new WorldLivingEntity(
+                -10, 11, "minecraft:spider", WorldLivingEntity.Family.ARTHROPOD,
+                1, 65, 0, 0, 0, 0, 16, 16, 0, 0);
+
+        assertThrows(IOException.class, () -> storage.save(java.util.List.of(first, second)));
+    }
+
+    @Test
     void rejectsChecksumCorruption() throws Exception {
         WorldLivingEntityStorage storage = new WorldLivingEntityStorage(temp, "corrupt-world");
         WorldLivingEntityManager manager = new WorldLivingEntityManager(storage);

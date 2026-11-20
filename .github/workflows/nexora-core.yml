@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - main
-      - work/nexora-ai-foundation
-      - work/nexora-streaming-optimization
-      - nexora/compatibility-edition
     paths:
       - "server/nexora-core/**"
       - ".github/workflows/nexora-core.yml"
@@ -38,6 +35,12 @@ jobs:
         run: |
           test -f server/nexora-core/target/server.jar
           jar tf server/nexora-core/target/server.jar | grep -q "com/fasterxml/jackson/databind/ObjectMapper.class"
+          jar tf server/nexora-core/target/server.jar | grep -q "org/cloudburstmc/netty/channel/nethernet/NetherNetChannelFactory.class"
+          jar tf server/nexora-core/target/server.jar | grep -q "tel/schich/libdatachannel/PeerConnection.class"
+          if jar tf server/nexora-core/target/server.jar | grep -q "dev/onvoid/webrtc/"; then
+            echo "Legacy webrtc-java classes must not be packaged with the Cloudburst transport"
+            exit 1
+          fi
           unzip -p server/nexora-core/target/server.jar META-INF/MANIFEST.MF | grep -q "Main-Class: ru.nexora.NexoraServer"
       - name: Upload runnable server package
         if: success() && github.event_name == 'push'

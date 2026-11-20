@@ -25,7 +25,7 @@ public final class ContainerInventoryStorage {
     private static final int ITEM_METADATA_FORMAT_VERSION = 2;
     private static final int MAX_ENCHANTMENTS_PER_ITEM = 32;
     private static final int MAX_ENCHANTMENT_ID_BYTES = 128;
-    private static final int MAX_FILE_BYTES = 16_384;
+    private static final int MAX_FILE_BYTES = 2 * 1024 * 1024;
     private static final int MAX_ITEM_ID_BYTES = 128;
     private static final Pattern SAFE_WORLD_NAME = Pattern.compile("[A-Za-z0-9 _-]{1,64}");
 

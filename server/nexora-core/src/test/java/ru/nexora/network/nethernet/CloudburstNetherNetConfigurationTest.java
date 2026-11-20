@@ -92,6 +92,17 @@ class CloudburstNetherNetConfigurationTest {
     }
 
     @Test
+    void resolvesDnsAdvertisedHostsToNumericCloudburstEndpoints() throws Exception {
+        var endpoints = CloudburstNetherNetTransport.resolveAdvertisedEndpoints("localhost", 40000);
+
+        assertFalse(endpoints.isEmpty());
+        assertTrue(endpoints.stream().allMatch(endpoint ->
+                endpoint.endsWith(":40000")));
+        assertTrue(endpoints.stream().allMatch(endpoint ->
+                endpoint.matches("(?:[0-9.]+|\\[[0-9a-fA-F:]+\\]):40000")));
+    }
+
+    @Test
     void rejectsInvalidPortsAndIdentityDomains() {
         assertThrows(IllegalArgumentException.class, () -> config(
                 Map.of("NEXORA_PUBLIC_UDP_PORT", "not-a-port",

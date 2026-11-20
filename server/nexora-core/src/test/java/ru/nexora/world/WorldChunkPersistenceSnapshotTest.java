@@ -15,13 +15,13 @@ class WorldChunkPersistenceSnapshotTest {
         byte[][] expected = snapshot.sections();
 
         // Neither the caller's original image nor an accessor result may mutate the snapshot.
-        sourceSections[6][0] ^= 0x7f;
+        sourceSections[8][0] ^= 0x7f;
         byte[][] exposed = snapshot.sections();
-        exposed[6][0] ^= 0x7f;
+        exposed[8][0] ^= 0x7f;
 
-        assertArrayEquals(expected[6], snapshot.sections()[6]);
+        assertArrayEquals(expected[8], snapshot.sections()[8]);
         WorldChunk restored = new WorldChunk(-4, 9);
-        restored.loadSectionRaw(6, snapshot.sections()[6]);
+        restored.loadSectionRaw(6, snapshot.sections()[8]);
         assertEquals(BlockType.DIAMOND_BLOCK, restored.getBlock(3, 70, 5));
     }
 

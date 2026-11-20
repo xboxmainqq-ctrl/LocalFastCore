@@ -69,6 +69,7 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
     private final IntSupplier playerCount;
     private final CapturingMinecraftTokenTrust tokenTrust = new CapturingMinecraftTokenTrust();
     private final Map<String, TokenEntry> validatedTokensByNetworkId = new ConcurrentHashMap<>();
+    private final Object admissionLock = new Object();
     private final Map<String, Channel> channels = new ConcurrentHashMap<>();
     private final Map<ChannelKey, NetherNetMessageFramer.Reassembler> outboundAssemblers =
             new ConcurrentHashMap<>();
@@ -131,17 +132,28 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
                         .setTokenTrust(tokenTrust)
                         .setServeHttp(true)
                         .setIceOnLocalPort(false)
+                        .setMaxPendingJoins(MAX_PENDING_TOKEN_BINDINGS)
                         .setPlayerFilter((host, player) -> {
                             long now = System.nanoTime();
-                            purgeExpiredNetworkTokens(now);
-                            String cpk = claim(player.claims(), "cpk");
-                            String token = cpk == null ? null : tokenTrust.take(cpk);
-                            if (token == null || validatedTokensByNetworkId.size() >= MAX_PENDING_TOKEN_BINDINGS
-                                    || validatedTokensByNetworkId.putIfAbsent(
-                                            player.networkId(), new TokenEntry(token, now)) != null) {
-                                return JoinRefusal.REJECTED;
+                            synchronized (admissionLock) {
+                                purgeExpiredNetworkTokens(now);
+                                String networkId = player.networkId();
+                                if (networkId == null || networkId.isBlank() || channels.containsKey(networkId)) {
+                                    return JoinRefusal.REJECTED;
+                                }
+                                String cpk = claim(player.claims(), "cpk");
+                                String token = cpk == null ? null : tokenTrust.take(cpk);
+                                if (token == null) return JoinRefusal.REJECTED;
+                                if (channels.size() + validatedTokensByNetworkId.size() >= maxPlayers
+                                        || validatedTokensByNetworkId.size() >= MAX_PENDING_TOKEN_BINDINGS) {
+                                    return JoinRefusal.FULL;
+                                }
+                                if (validatedTokensByNetworkId.putIfAbsent(
+                                        networkId, new TokenEntry(token, now)) != null) {
+                                    return JoinRefusal.REJECTED;
+                                }
+                                return null;
                             }
-                            return null;
                         })
                         .setMotdProvider((host, remoteAddress, client) -> new PongData.Builder()
                                 .setServerName(motd)
@@ -195,10 +207,15 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
                         }
                         String networkId = player.networkId();
                         AtomicBoolean admitted = new AtomicBoolean();
+                        TokenEntry tokenReservation = validatedTokensByNetworkId.get(networkId);
                         child.closeFuture().addListener(ignored -> {
+                            synchronized (admissionLock) {
+                                if (tokenReservation != null) {
+                                    validatedTokensByNetworkId.remove(networkId, tokenReservation);
+                                }
+                                if (admitted.get()) channels.remove(networkId, child);
+                            }
                             if (admitted.get()) {
-                                channels.remove(networkId, child);
-                                validatedTokensByNetworkId.remove(networkId);
                                 removeOutboundAssemblers(networkId);
                                 sessions.onDisconnected(networkId);
                             }
@@ -209,11 +226,14 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
                             @Override
                             public void channelActive(ChannelHandlerContext context) throws Exception {
                                 try {
-                                    NetherNetClientIdentity clientIdentity = toClientIdentity(player);
-                                    if (channels.putIfAbsent(networkId, child) != null) {
-                                        throw new SecurityException("NetworkID already has an active transport");
+                                    NetherNetClientIdentity clientIdentity;
+                                    synchronized (admissionLock) {
+                                        clientIdentity = toClientIdentity(player);
+                                        if (channels.putIfAbsent(networkId, child) != null) {
+                                            throw new SecurityException("NetworkID already has an active transport");
+                                        }
+                                        admitted.set(true);
                                     }
-                                    admitted.set(true);
                                     sessions.onIdentity(networkId, clientIdentity);
                                     super.channelActive(context);
                                 } catch (Exception failure) {

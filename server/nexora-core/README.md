@@ -90,7 +90,7 @@ java -jar server/nexora-core/target/server.jar 0.0.0.0 19132 "NEXORA Core" 20
 
 On Pterodactyl-based hosts, the primary allocation is read from `SERVER_PORT` when no second command-line argument is supplied. `NEXORA_PORT` overrides `SERVER_PORT`; an explicit command-line port takes precedence over both. Bind to `0.0.0.0` inside the container.
 
-The production transport uses native libraries supplied by `libdatachannel-java`. Native initialization is checked when the listener binds; inspect the full linker error if a required system library is missing. If the VPS is behind NAT, set `NEXORA_ADVERTISED_HOST` to a public DNS name or IP address (DNS names are resolved to numeric candidates at startup), or configure `NEXORA_STUN_URLS` (semicolon-separated). STUN discovery requires `NEXORA_UDP_PORT_MIN` and `NEXORA_UDP_PORT_MAX` to be the same fixed port when no advertised host is configured.
+The production transport uses native libraries supplied by `libdatachannel-java`. Native initialization is checked when the listener binds; inspect the full linker error if a required system library is missing. If the VPS is behind NAT, choose one ICE discovery mode: set `NEXORA_ADVERTISED_HOST` to a public DNS name or IP address (DNS names are resolved to numeric candidates at startup), or configure `NEXORA_STUN_URLS` (semicolon-separated). These two settings are mutually exclusive. STUN discovery requires `NEXORA_UDP_PORT_MIN` and `NEXORA_UDP_PORT_MAX` to be the same fixed port.
 
 ## HTTPS and firewall deployment
 
@@ -112,7 +112,7 @@ Open the following ports in the VPS firewall:
 - UDP 30000-30199 for NetherNet ICE/DTLS/SCTP traffic, or the exact configured fixed port when using STUN/public port translation.
 - UDP 19132 only for the legacy RakNet discovery experiment.
 
-The NetherNet UDP range is configurable with `NEXORA_UDP_PORT_MIN` and `NEXORA_UDP_PORT_MAX`. The host must route this separate UDP range into the container; exposing only the signaling TCP port does not expose ICE traffic. Do not reuse the legacy RakNet UDP port for ICE. When using STUN without `NEXORA_ADVERTISED_HOST`, set both UDP bounds to one fixed port. World and player autosave are configurable with `NEXORA_AUTOSAVE_SECONDS` (default 300 seconds). Player profiles are stored under `data/players/`. Player checkpoint files under `data/player-state` keep the previous verified `.nxps` generation as `.nxps.bak`; on startup/load, a corrupt or missing primary checkpoint is restored from that backup when its checksum and metadata validate. A successful recovery rewrites the primary file before returning the snapshot. The HTTP listener bind address is configurable with `NEXORA_HTTP_BIND`; it defaults to the main bind host.
+The NetherNet UDP range is configurable with `NEXORA_UDP_PORT_MIN` and `NEXORA_UDP_PORT_MAX`. The host must route this separate UDP range into the container; exposing only the signaling TCP port does not expose ICE traffic. Do not reuse the legacy RakNet UDP port for ICE. When using STUN, set both UDP bounds to one fixed port. Do not configure `NEXORA_ADVERTISED_HOST` at the same time as `NEXORA_STUN_URLS`. World and player autosave are configurable with `NEXORA_AUTOSAVE_SECONDS` (default 300 seconds). Player profiles are stored under `data/players/`. Player checkpoint files under `data/player-state` keep the previous verified `.nxps` generation as `.nxps.bak`; on startup/load, a corrupt or missing primary checkpoint is restored from that backup when its checksum and metadata validate. A successful recovery rewrites the primary file before returning the snapshot. The HTTP listener bind address is configurable with `NEXORA_HTTP_BIND`; it defaults to the main bind host.
 
 ## Identity key safety
 
@@ -274,7 +274,7 @@ NEXORA_IDENTITY_DOMAIN=play.nexor.example
 
 The signaling endpoint uses the main server TCP port. WebRTC ICE/DTLS/SCTP traffic uses the UDP range configured by `NEXORA_UDP_PORT_MIN` and `NEXORA_UDP_PORT_MAX` (defaults: `30000-30199`). Forward and allow the complete configured range through the host firewall, router and container network. STUN discovers public reflexive candidates but does not open inbound UDP ports and does not replace TURN or a real UDP relay behind restrictive NAT/CGNAT.
 
-Cloudburst's STUN discovery and fixed public UDP port mapping require a fixed ICE port: set `NEXORA_UDP_PORT_MIN` and `NEXORA_UDP_PORT_MAX` to the same reachable port when using `NEXORA_STUN_URLS` or `NEXORA_PUBLIC_UDP_PORT`.
+Cloudburst's STUN discovery and fixed public UDP port mapping require a fixed ICE port: set `NEXORA_UDP_PORT_MIN` and `NEXORA_UDP_PORT_MAX` to the same reachable port when using `NEXORA_STUN_URLS` or `NEXORA_PUBLIC_UDP_PORT`. `NEXORA_ADVERTISED_HOST` and `NEXORA_STUN_URLS` are mutually exclusive; configure only one.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -282,7 +282,7 @@ Cloudburst's STUN discovery and fixed public UDP port mapping require a fixed IC
 | `NEXORA_PUBLIC_UDP_PORT` | unset | Public UDP port advertised when the router translates the fixed internal ICE port |
 | `NEXORA_STUN_URLS` | unset | Semicolon-separated STUN URLs |
 
-For a direct public host with a fixed ICE port:
+For STUN discovery with a fixed ICE port:
 
 ```bash
 NEXORA_UDP_PORT_MIN=30000

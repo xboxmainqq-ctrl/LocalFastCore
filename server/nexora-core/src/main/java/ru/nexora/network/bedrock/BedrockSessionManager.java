@@ -1901,6 +1901,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         packets.addAll(createEquipmentReconciliationPackets(state));
         packets.add(BedrockInventoryContentCodec.createPlayerUiInventory(state.craftingUiInventory, itemRegistry));
         sendPackets(networkId, packets, true);
+        broadcastPlayerEquipment(networkId, state);
     }
 
     /**
@@ -7121,6 +7122,29 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             clearSpearCharge(state);
         }
         state.inventory.selectHotbarSlot(equipment.hotbarSlot());
+        broadcastPlayerEquipment(networkId, state);
+    }
+
+    /** Publishes authoritative held-item changes to clients that currently see this player. */
+    private void broadcastPlayerEquipment(String sourceNetworkId, SessionState player) {
+        BedrockItemRegistry registry = itemRegistry;
+        if (registry == null || player == null || player.entityId <= 0) return;
+        BedrockPacket equipment = BedrockMobEquipmentCodec.createPlayerEquipment(
+                player.entityId, player.inventory, registry);
+        List<byte[]> frames = null;
+        for (String networkId : playerActorReplicationIndex.actorViewers(player.entityId)) {
+            if (networkId.equals(sourceNetworkId)) continue;
+            SessionState recipient = sessions.get(networkId);
+            if (recipient == null || !recipient.clientInitialized || !recipient.playerListAdvertised
+                    || !recipient.visiblePlayerEntityIds.contains(player.entityId)) continue;
+            try {
+                if (frames == null) frames = encodeFrames(List.of(equipment), true);
+                sendEncodedFrames(networkId, frames);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to broadcast held item to " + networkId
+                        + ": " + exception.getMessage());
+            }
+        }
     }
 
     private static long readUnsignedVarLong(byte[] payload) {

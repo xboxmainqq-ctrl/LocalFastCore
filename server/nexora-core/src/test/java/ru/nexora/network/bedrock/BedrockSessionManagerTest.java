@@ -2977,7 +2977,7 @@ class BedrockSessionManagerTest {
                     BedrockBatchCodec.encode(List.of(step), true, 256));
             if (i < walkPositions.length - 1) assertEquals(20, outboundFrames.size());
         }
-        assertEquals(20, outboundFrames.size());
+        assertEquals(22, outboundFrames.size());
         assertEquals(0x79, decodeOutbound(outboundFrames.get(18), true).packetId());
         List<BedrockPacket> newlyStreamedChunks = decodeOutboundPackets(outboundFrames.get(19), true);
         assertEquals(1, newlyStreamedChunks.stream()

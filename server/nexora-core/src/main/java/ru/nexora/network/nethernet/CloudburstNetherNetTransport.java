@@ -14,6 +14,7 @@ import io.netty.channel.EventLoopGroup;
 import org.cloudburstmc.netty.channel.nethernet.NetherNetChannelFactory;
 import org.cloudburstmc.netty.channel.nethernet.NetherNetChildChannel;
 import org.cloudburstmc.netty.channel.nethernet.NetherNetPacket;
+import org.cloudburstmc.netty.channel.nethernet.NetherNetConstants;
 import org.cloudburstmc.netty.channel.nethernet.config.NetherChannelOption;
 import org.cloudburstmc.netty.channel.nethernet.signaling.JoinRefusal;
 import org.cloudburstmc.netty.channel.nethernet.signaling.NetherNetHTTPServerSignaling;
@@ -52,7 +53,7 @@ import java.util.function.IntSupplier;
  * private framing on the wire.
  */
 public final class CloudburstNetherNetTransport implements AutoCloseable {
-    private static final int MAX_SCTP_MESSAGE_BYTES = 256 * 1024;
+    private static final int MAX_SCTP_MESSAGE_BYTES = NetherNetConstants.MAX_ADVERTISED_MESSAGE_SIZE;
     private static final int MAX_OUTBOUND_CHANNELS = 16_384;
     private static final int MAX_PENDING_TOKEN_BINDINGS = 128;
 
@@ -210,6 +211,7 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
         signaling = signalingBuilder.build();
 
         PeerConnectionConfiguration peerConfig = PeerConnectionConfiguration.DEFAULT
+                .withMaxMessageSize(NetherNetConstants.MAX_ADVERTISED_MESSAGE_SIZE)
                 .withPortRangeBegin(udpPortMin)
                 .withPortRangeEnd(udpPortMax);
 

@@ -2912,9 +2912,9 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256));
         assertEquals(18, outboundFrames.size());
-        assertEquals(0x31, decodeOutbound(outboundFrames.get(17), true).packetId());
+        assertEquals(0x31, decodeOutbound(outboundFrames.get(16), true).packetId());
         List<BedrockPacket> initialInventoryBatch = BedrockBatchCodec.decode(
-                reassemble(List.of(outboundFrames.get(17))), true);
+                reassemble(List.of(outboundFrames.get(16))), true);
         assertEquals(8, initialInventoryBatch.size());
         assertEquals(0x1f, initialInventoryBatch.get(1).packetId());
         assertEquals(0x31, initialInventoryBatch.get(2).packetId()); // armor container
@@ -2925,7 +2925,7 @@ class BedrockSessionManagerTest {
         assertEquals(BedrockCraftingDataCodec.CRAFTING_DATA_PACKET_ID,
                 initialInventoryBatch.get(6).packetId()); // crafting recipes
         assertEquals(124, Byte.toUnsignedInt(initialInventoryBatch.get(7).payload()[0])); // player UI grid
-        BedrockPacket playStatus = decodeOutbound(outboundFrames.get(16), true);
+        BedrockPacket playStatus = decodeOutbound(outboundFrames.get(15), true);
         assertEquals(BedrockBatchCodec.PLAY_STATUS_PACKET_ID, playStatus.packetId());
         assertEquals(3, ByteBuffer.wrap(playStatus.payload()).order(ByteOrder.BIG_ENDIAN).getInt());
         assertEquals(0.5f, manager.playerPosition("authenticated-client").orElseThrow().x());

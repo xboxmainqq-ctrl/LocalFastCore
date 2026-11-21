@@ -50,9 +50,9 @@ class BedrockLevelChunkCodecTest {
         subChunks.skip(256 * Integer.BYTES);
         assertEquals(4, subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varUInt32());
-        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.BEDROCK), subChunks.varInt32());
-        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.STONE), subChunks.varInt32());
-        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.DIRT), subChunks.varInt32());
+        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.BEDROCK), subChunks.varUInt32());
+        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.STONE), subChunks.varUInt32());
+        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.DIRT), subChunks.varUInt32());
 
         // Section Y=4 contains grass and air: a one-bit packed palette.
         assertEquals(9, subChunks.byteValue());
@@ -61,8 +61,8 @@ class BedrockLevelChunkCodecTest {
         assertEquals(3, subChunks.byteValue()); // V1, runtime IDs
         subChunks.skip(128 * Integer.BYTES);
         assertEquals(2, subChunks.varInt32());
-        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.GRASS_BLOCK), subChunks.varInt32());
-        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
+        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.GRASS_BLOCK), subChunks.varUInt32());
+        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varUInt32());
 
         for (int section = 0; section < 24; section++) {
             assertEquals(1, subChunks.byteValue()); // singleton plains biome palette

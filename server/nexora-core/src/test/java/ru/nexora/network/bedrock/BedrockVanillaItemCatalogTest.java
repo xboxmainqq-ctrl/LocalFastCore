@@ -1,14 +1,19 @@
 package ru.nexora.network.bedrock;
 
 import org.junit.jupiter.api.Test;
+import org.cloudburstmc.nbt.NBTInputStream;
+import org.cloudburstmc.nbt.NbtMap;
+import org.cloudburstmc.nbt.NbtUtils;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockVanillaItemCatalogTest {
     @Test
-    void registersOnlyItemsWithCompleteProtocol2225ClientDefinitions() {
+    void registersOnlyItemsWithCompleteProtocol2225ClientDefinitions() throws IOException {
         BedrockItemRegistry registry = BedrockVanillaItemCatalog.createRegistry();
         assertTrue(registry.size() >= 60);
 
@@ -84,6 +89,7 @@ class BedrockVanillaItemCatalogTest {
         assertEquals(2, coal.itemVersion());
         assertTrue(coal.componentBased());
         assertEquals(16, coal.componentData().length);
+        assertTrue(readNetworkNbt(coal).getCompound("components").isEmpty());
         assertNull(registry.findByIdentifier("minecraft:apple")); // component-based; not yet catalogued
 
         int[] spearIds = {858, 859, 860, 861, 862, 863, 864};
@@ -99,6 +105,9 @@ class BedrockVanillaItemCatalogTest {
             assertTrue(spear.componentBased());
             assertEquals(1, spear.maxStackSize());
             assertTrue(spear.componentData().length > 1_000);
+            NbtMap spearComponents = readNetworkNbt(spear).getCompound("components");
+            assertTrue(spearComponents.containsKey("minecraft:kinetic_weapon"));
+            assertTrue(spearComponents.containsKey("item_properties"));
         }
 
         for (BedrockItemRegistry.Entry entry : registry.entries()) {
@@ -109,6 +118,15 @@ class BedrockVanillaItemCatalogTest {
             }
         }
 
+    }
+
+    private static NbtMap readNetworkNbt(BedrockItemRegistry.Entry entry) throws IOException {
+        try (NBTInputStream reader = NbtUtils.createNetworkReader(
+                new ByteArrayInputStream(entry.componentData()))) {
+            Object tag = reader.readTag();
+            assertInstanceOf(NbtMap.class, tag);
+            return (NbtMap) tag;
+        }
     }
 
     @Test

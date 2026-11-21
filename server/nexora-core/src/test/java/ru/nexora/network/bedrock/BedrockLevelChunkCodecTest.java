@@ -76,7 +76,7 @@ class BedrockLevelChunkCodecTest {
     }
 
     @Test
-    void emptyChunkHasNoSerializedSubChunksOrBiomePalettes() {
+    void emptyChunkHasNoBlockSubChunksButKeepsFullHeightBiomePalettes() {
         BedrockPacket packet = BedrockLevelChunkCodec.createPacket(new WorldChunk(0, 0));
         Reader reader = new Reader(packet.payload());
 

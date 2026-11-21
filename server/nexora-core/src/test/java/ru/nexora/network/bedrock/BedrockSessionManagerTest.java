@@ -3592,6 +3592,16 @@ class BedrockSessionManagerTest {
         try {
             for (int attempt = 0; attempt < 128; attempt++) {
                 if (getSessionField(manager, networkId, "chunkStreamingQueue") == null) return;
+                // World storage loads are asynchronous. Await only the futures already
+                // requested by this session before advancing the deterministic stream pump.
+                Object pendingValue = getSessionField(manager, networkId, "pendingChunkLoads");
+                if (pendingValue instanceof java.util.Map<?, ?> pending) {
+                    for (Object value : pending.values()) {
+                        if (value instanceof java.util.concurrent.CompletableFuture<?> future) {
+                            future.join();
+                        }
+                    }
+                }
                 clock.addAndGet(ChunkStreamingBudget.DEFAULT_WINDOW_NANOS);
                 process.invoke(manager, networkId, session);
             }

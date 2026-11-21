@@ -66,7 +66,7 @@ class BedrockStartGameCodecTest {
         List<BedrockPacket> packets = BedrockStartGameCodec.createInitialWorldPackets(
                 9, "NEXORA World", "1.26.62", "1.26.62", 0.5f, 65.0f, 0.5f);
 
-        assertEquals(List.of(0x0b, 0x0a, 0x3c, 0x3b, 0x2b, 0x3e, 0x79),
+        assertEquals(List.of(0x0a, 0x0b, 0x2b, 0x3c, 0x3b, 0x3e, 0x79),
                 packets.stream().map(BedrockPacket::packetId).toList());
         assertArrayEquals(new byte[] {0, (byte) 0x82, 1, 0, 0x30, 0, 0, 0, 0},
                 packets.get(6).payload());

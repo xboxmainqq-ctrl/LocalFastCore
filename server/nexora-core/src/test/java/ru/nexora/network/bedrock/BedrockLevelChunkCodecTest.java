@@ -39,7 +39,7 @@ class BedrockLevelChunkCodecTest {
             assertEquals(1, subChunks.byteValue());
             assertEquals(sectionY, subChunks.byteValue());
             assertEquals(1, subChunks.byteValue()); // singleton air palette
-            assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
+            assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varUInt32());
         }
 
         // Section Y=3 contains air, bedrock, stone and dirt: a two-bit packed palette.

@@ -42,6 +42,13 @@ class BedrockVanillaItemCatalogTest {
         assertEquals(887, registry.findByIdentifier("minecraft:glow_berries")
                 .networkDefinition().runtimeItemId());
         assertEquals(0, registry.findByIdentifier("minecraft:glow_berries").itemVersion());
+        assertFalse(registry.findByIdentifier("minecraft:glow_berries").componentBased());
+        assertTrue(registry.findByIdentifier("minecraft:glow_berries").componentData().length > 3);
+        assertTrue(readNetworkNbt(registry.findByIdentifier("minecraft:glow_berries"))
+                .getCompound("components").containsKey("minecraft:food"));
+        assertTrue(registry.findByIdentifier("minecraft:bread").componentData().length > 3);
+        assertTrue(readNetworkNbt(registry.findByIdentifier("minecraft:bread"))
+                .getCompound("components").containsKey("minecraft:food"));
         assertEquals(2, registry.findByIdentifier("minecraft:diamond").itemVersion());
         assertEquals(346, registry.findByIdentifier("minecraft:iron_helmet")
                 .networkDefinition().runtimeItemId());
@@ -111,9 +118,12 @@ class BedrockVanillaItemCatalogTest {
         }
 
         for (BedrockItemRegistry.Entry entry : registry.entries()) {
-            if (entry.componentBased()) {
-                assertTrue(entry.componentData().length > 3);
+            if (entry.componentData().length > 3) {
+                assertTrue(readNetworkNbt(entry).containsKey("components"),
+                        "Component NBT must be wrapped for " + entry.namespacedId());
             } else {
+                assertFalse(entry.componentBased(),
+                        "Component-based items must have their complete NBT: " + entry.namespacedId());
                 assertArrayEquals(new byte[] {10, 0, 0}, entry.componentData());
             }
         }

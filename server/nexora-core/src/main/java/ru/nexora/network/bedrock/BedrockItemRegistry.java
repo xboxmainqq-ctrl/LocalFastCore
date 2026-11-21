@@ -106,6 +106,9 @@ public final class BedrockItemRegistry implements BedrockInventoryContentCodec.I
             if (componentData.length < 3 || componentData.length > 1_048_576) {
                 throw new IllegalArgumentException("componentData must be a complete bounded network-NBT tag");
             }
+            if (componentBased && java.util.Arrays.equals(componentData, EMPTY_COMPOUND_NBT)) {
+                throw new IllegalArgumentException("component-based items require their full client component NBT");
+            }
         }
 
         @Override

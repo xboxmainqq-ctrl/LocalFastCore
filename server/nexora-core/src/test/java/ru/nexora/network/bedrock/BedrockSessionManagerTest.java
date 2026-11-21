@@ -2031,6 +2031,7 @@ class BedrockSessionManagerTest {
         generator.initialize(new ECGenParameterSpec("secp384r1"));
         KeyPair clientKey = generator.generateKeyPair();
         List<byte[]> outboundFrames = new ArrayList<>();
+        AtomicLong clock = new AtomicLong();
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
                 world, null, null, null,

@@ -17,7 +17,7 @@ public final class BedrockPlayerSkinCodec {
     private static final int MAX_SKIN_JSON_BYTES = 512 * 1024;
     private static final Set<Integer> PIECE_TYPES = Set.of(
             0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
-            15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29);
+            15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28);
 
     private BedrockPlayerSkinCodec() { }
 
@@ -85,7 +85,7 @@ public final class BedrockPlayerSkinCodec {
         Set<String> tintKeys = new HashSet<>();
         writeVarUInt32(out, tints.size());
         for (JsonNode tint : tints) {
-            String key = text(tint, "PieceType", "");
+            String key = pieceTintWireType(text(tint, "PieceType", ""));
             if (key.isBlank() || !tintKeys.add(key)) {
                 throw new IllegalArgumentException("Invalid or duplicate persona tint key");
             }
@@ -186,9 +186,15 @@ public final class BedrockPlayerSkinCodec {
             case "faceaccessory", "face_accessory" -> 17; case "head" -> 18; case "legs" -> 19;
             case "leftleg", "left_leg" -> 20; case "rightleg", "right_leg" -> 21; case "arms" -> 22;
             case "leftarm", "left_arm" -> 23; case "rightarm", "right_arm" -> 24; case "capes" -> 25;
-            case "classicskin", "classic_skin" -> 26; case "emote" -> 27; case "coco" -> 28;
-            case "unsupported" -> 29; default -> -1;
+            case "classicskin", "classic_skin" -> 26; case "emote" -> 27;
+            case "unsupported" -> 28; default -> -1;
         };
+    }
+    private static String pieceTintWireType(String value) {
+        String normalized = value.toLowerCase(java.util.Locale.ROOT);
+        if (normalized.equals("persona_hand")) return "hands";
+        if (normalized.startsWith("persona_")) return normalized.substring("persona_".length());
+        return normalized;
     }
     private static int parseColor(String value) {
         if (value == null || value.isBlank()) return 0;

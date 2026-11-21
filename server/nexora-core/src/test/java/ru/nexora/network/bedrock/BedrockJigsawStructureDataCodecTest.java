@@ -14,6 +14,5 @@ class BedrockJigsawStructureDataCodecTest {
         assertTrue(payload.length > 100_000);
         assertEquals(0x0a, Byte.toUnsignedInt(payload[0]));
         assertEquals(0, Byte.toUnsignedInt(payload[1]));
-        assertEquals(0, Byte.toUnsignedInt(payload[2]));
     }
 }

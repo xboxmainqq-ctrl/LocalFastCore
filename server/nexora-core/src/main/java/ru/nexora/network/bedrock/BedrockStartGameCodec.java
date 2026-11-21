@@ -207,37 +207,18 @@ public final class BedrockStartGameCodec {
     }
 
     private static byte[] emptyJigsawStructureNbt() {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        out.write(0x0a); // TAG_Compound
-        writeNbtString(out, ""); // unnamed root compound
-        writeEmptyCompoundList(out, "processors");
-        writeEmptyCompoundList(out, "template_pools");
-        writeEmptyCompoundList(out, "jigsaws");
-        writeEmptyCompoundList(out, "structure_sets");
-        out.write(0x00); // TAG_End
-        return out.toByteArray();
-    }
-
-    private static void writeEmptyCompoundList(ByteArrayOutputStream out, String name) {
-        out.write(0x09); // TAG_List
-        writeNbtString(out, name);
-        out.write(0x0a); // list element type: TAG_Compound
-        writeInt32LittleEndian(out, 0);
-    }
-
-    private static void writeNbtString(ByteArrayOutputStream out, String value) {
-        byte[] encoded = value.getBytes(StandardCharsets.UTF_8);
-        if (encoded.length > 0xffff) throw new IllegalArgumentException("NBT string is too long");
-        out.write(encoded.length & 0xff);
-        out.write((encoded.length >>> 8) & 0xff);
-        out.writeBytes(encoded);
-    }
-
-    private static void writeInt32LittleEndian(ByteArrayOutputStream out, int value) {
-        out.write(value & 0xff);
-        out.write((value >>> 8) & 0xff);
-        out.write((value >>> 16) & 0xff);
-        out.write((value >>> 24) & 0xff);
+        // Use the pinned 1.26.60 GameData payload. A hand-built empty compound is
+        // not a substitute for the server's actual jigsaw rule registry.
+        try (var input = BedrockStartGameCodec.class.getResourceAsStream(
+                "/gamedata/kaooot/jigsaw_structure_data.nbt")) {
+            if (input == null) {
+                throw new IllegalStateException(
+                        "Missing protocol 2225 resource: gamedata/kaooot/jigsaw_structure_data.nbt");
+            }
+            return input.readAllBytes();
+        } catch (java.io.IOException exception) {
+            throw new IllegalStateException("Unable to load protocol 2225 jigsaw structure data", exception);
+        }
     }
 
     private static BedrockPacket packet(int id, byte[] payload) {

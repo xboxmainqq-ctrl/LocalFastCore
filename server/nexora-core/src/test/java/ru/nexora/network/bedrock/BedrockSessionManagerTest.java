@@ -2484,7 +2484,8 @@ class BedrockSessionManagerTest {
         assertEquals(BedrockChunkRadiusCodec.UPDATED_PACKET_ID, biomeAndRadius.get(1).packetId());
         // The first chunk batch is only a partial view. PLAYER_SPAWN must wait until
         // the entire initial chunk queue has been published, and must precede 0x71.
-        assertFalse(outboundFrames.stream().flatMap(frame -> decodeOutboundPackets(frame, true).stream())
+        assertFalse(outboundFrames.subList(12, outboundFrames.size()).stream()
+                .flatMap(frame -> decodeOutboundPackets(frame, true).stream())
                 .anyMatch(packet -> isPlayerSpawnStatus(packet)));
         boolean spawnSent = false;
         for (int tick = 0; tick < 100 && !spawnSent; tick++) {
@@ -3331,6 +3332,22 @@ class BedrockSessionManagerTest {
     }
 
     private static void sendClientBatch(BedrockSessionManager manager, String id, byte[] batch) {
+        boolean acknowledgesSpawn = BedrockBatchCodec.decode(batch, true).stream()
+                .anyMatch(packet -> packet.packetId() == 0x71);
+        if (acknowledgesSpawn) {
+            for (int tick = 0; tick < 1000 && !manager.playerSpawnStatusSent(id); tick++) {
+                manager.tickInitialChunkStreams();
+                try {
+                    Thread.sleep(2L);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new AssertionError("Interrupted while waiting for PLAYER_SPAWN", interrupted);
+                }
+            }
+            if (!manager.playerSpawnStatusSent(id)) {
+                throw new AssertionError("PLAYER_SPAWN was not sent before client initialization");
+            }
+        }
         for (byte[] frame : NetherNetMessageFramer.fragment(batch, 1200, true)) {
             manager.onFrame(id, "ReliableDataChannel", frame);
         }

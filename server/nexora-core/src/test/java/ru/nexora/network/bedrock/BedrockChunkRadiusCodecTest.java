@@ -15,7 +15,7 @@ class BedrockChunkRadiusCodecTest {
 
         assertEquals(12, decoded.radius());
         assertEquals(6, decoded.clientMaximumRadius());
-        assertEquals(6, BedrockChunkRadiusCodec.negotiateRadius(decoded));
+        assertEquals(4, BedrockChunkRadiusCodec.negotiateRadius(decoded));
     }
 
     @Test
@@ -23,8 +23,7 @@ class BedrockChunkRadiusCodecTest {
         BedrockChunkRadiusCodec.Request request =
                 new BedrockChunkRadiusCodec.Request(200, 255);
 
-        assertEquals(BedrockChunkRadiusCodec.MAX_SERVER_RADIUS,
-                BedrockChunkRadiusCodec.negotiateRadius(request));
+        assertEquals(4, BedrockChunkRadiusCodec.negotiateRadius(request));
     }
 
     @Test
@@ -53,13 +52,13 @@ class BedrockChunkRadiusCodecTest {
 
     @Test
     void createsChunkRadiusUpdatedPacketWithNegotiatedRadius() {
-        BedrockPacket packet = BedrockChunkRadiusCodec.createUpdatedPacket(8);
+        BedrockPacket packet = BedrockChunkRadiusCodec.createUpdatedPacket(4);
 
         assertEquals(0x46, packet.packetId());
-        assertArrayEquals(new byte[] {16}, packet.payload());
+        assertArrayEquals(new byte[] {8}, packet.payload());
         assertThrows(IllegalArgumentException.class,
                 () -> BedrockChunkRadiusCodec.createUpdatedPacket(0));
         assertThrows(IllegalArgumentException.class,
-                () -> BedrockChunkRadiusCodec.createUpdatedPacket(9));
+                () -> BedrockChunkRadiusCodec.createUpdatedPacket(5));
     }
 }

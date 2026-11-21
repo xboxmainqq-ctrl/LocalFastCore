@@ -2482,19 +2482,20 @@ class BedrockSessionManagerTest {
         List<BedrockPacket> biomeAndRadius = BedrockBatchCodec.decode(
                 reassemble(List.of(outboundFrames.get(11))), true);
         assertEquals(BedrockChunkRadiusCodec.UPDATED_PACKET_ID, biomeAndRadius.get(1).packetId());
-        // The first chunk batch is only a partial view. PLAYER_SPAWN must wait until
-        // the entire initial chunk queue has been published, and must precede 0x71.
+        // Nukkit/Cloudburst release the client after 56 spawn chunks; smaller
+        // initial views release it once their complete chunk queue is published.
         assertFalse(outboundFrames.subList(12, outboundFrames.size()).stream()
                 .flatMap(frame -> decodeOutboundPackets(frame, true).stream())
                 .anyMatch(packet -> isPlayerSpawnStatus(packet)));
         boolean spawnSent = false;
         for (int tick = 0; tick < 100 && !spawnSent; tick++) {
             manager.tickInitialChunkStreams();
-            spawnSent = outboundFrames.stream().flatMap(frame -> decodeOutboundPackets(frame, true).stream())
+            spawnSent = outboundFrames.subList(12, outboundFrames.size()).stream()
+                    .flatMap(frame -> decodeOutboundPackets(frame, true).stream())
                     .anyMatch(BedrockSessionManagerTest::isPlayerSpawnStatus);
             if (!spawnSent) Thread.sleep(10L);
         }
-        assertTrue(spawnSent, "PLAYER_SPAWN must be sent after the initial chunk stream completes");
+        assertTrue(spawnSent, "PLAYER_SPAWN must be sent after the spawn chunk threshold");
         List<BedrockPacket> initialChunkPackets = new ArrayList<>();
         for (int index = 12; index < outboundFrames.size(); index++) {
             initialChunkPackets.addAll(decodeOutboundPackets(outboundFrames.get(index), true));

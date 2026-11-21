@@ -1,21 +1,33 @@
 package ru.nexora.network.bedrock;
 
 import ru.nexora.world.BlockType;
+import org.cloudburstmc.nbt.NBTInputStream;
+import org.cloudburstmc.nbt.NBTOutputStream;
+import org.cloudburstmc.nbt.NbtMap;
+import org.cloudburstmc.nbt.NbtUtils;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Curated protocol-2225 vanilla item subset with verified runtime IDs, including common stackable items, placeable blocks and armor.
  *
  * IDs, ItemVersion values and component flags are checked against the
- * PowerNukkitX/GameData r/26_u6 item_palette.json (protocol 2225). Component-based
- * items are omitted until their complete client component NBT is registered.
+ * PowerNukkitX/GameData r/26_u6 item_palette.json and item_components.nbt
+ * (protocol 2225). Component definitions are converted with Cloudburst NBT.
  * Armor and shields use a maximum stack size of one. This is intentionally not
  * a complete vanilla catalog.
  */
 public final class BedrockVanillaItemCatalog {
     private static final byte[] EMPTY_NETWORK_NBT = {10, 0, 0};
+    private static final Map<String, byte[]> COMPONENT_NBT = loadComponentNbt();
 
     private BedrockVanillaItemCatalog() {
     }
@@ -44,6 +56,7 @@ public final class BedrockVanillaItemCatalog {
         addBlock(entries, "blast_furnace", -196, BlockType.BLAST_FURNACE);
         addBlock(entries, "smoker", -198, BlockType.SMOKER);
 
+        addComponent(entries, "coal", 304, 2, 64);
         add(entries, "diamond", 306, 2, 64);
         add(entries, "iron_ingot", 307, 2, 64);
         add(entries, "gold_ingot", 308, 2, 64);
@@ -113,7 +126,13 @@ public final class BedrockVanillaItemCatalog {
         add(entries, "cooked_mutton", 561, 0, 64);
         add(entries, "ink_sac", 416, 2, 64);
         add(entries, "glow_ink_sac", 514, 2, 64);
-        // Component-based items are intentionally omitted until their full client NBT is registered.
+        addComponent(entries, "copper_spear", 858, 1, 1);
+        addComponent(entries, "diamond_spear", 859, 1, 1);
+        addComponent(entries, "golden_spear", 860, 1, 1);
+        addComponent(entries, "iron_spear", 861, 1, 1);
+        addComponent(entries, "netherite_spear", 862, 1, 1);
+        addComponent(entries, "stone_spear", 863, 1, 1);
+        addComponent(entries, "wooden_spear", 864, 1, 1);
         add(entries, "leather_helmet", 338, 2, 1);
         add(entries, "leather_chestplate", 339, 2, 1);
         add(entries, "leather_leggings", 340, 2, 1);
@@ -142,6 +161,56 @@ public final class BedrockVanillaItemCatalog {
         add(entries, "elytra", 574, 2, 1);
         add(entries, "shield", 358, 2, 1);
         return new BedrockItemRegistry(entries);
+    }
+
+    private static Map<String, byte[]> loadComponentNbt() {
+        String resource = "/bedrock/item_components_2225.nbt.gz.b64";
+        try (InputStream encoded = BedrockVanillaItemCatalog.class.getResourceAsStream(resource)) {
+            if (encoded == null) {
+                throw new IllegalStateException("Missing protocol-2225 item component data: " + resource);
+            }
+            byte[] compressed = Base64.getMimeDecoder().decode(encoded.readAllBytes());
+            try (NBTInputStream input = NbtUtils.createGZIPReader(new ByteArrayInputStream(compressed))) {
+                Object root = input.readTag();
+                if (!(root instanceof NbtMap items)) {
+                    throw new IllegalStateException("Protocol-2225 item component resource root is not a compound");
+                }
+                Map<String, byte[]> result = new HashMap<>();
+                for (Map.Entry<String, Object> item : items.entrySet()) {
+                    if (!(item.getValue() instanceof NbtMap itemTag)) {
+                        continue;
+                    }
+                    NbtMap wrapped = NbtMap.builder()
+                            .putCompound("components", itemTag.getCompound("components"))
+                            .build();
+                    ByteArrayOutputStream output = new ByteArrayOutputStream();
+                    try (NBTOutputStream writer = NbtUtils.createNetworkWriter(output)) {
+                        writer.writeTag(wrapped);
+                    }
+                    result.put(item.getKey(), output.toByteArray());
+                }
+                return Map.copyOf(result);
+            }
+        } catch (IOException exception) {
+            throw new ExceptionInInitializerError(exception);
+        }
+    }
+
+    private static void addComponent(List<BedrockItemRegistry.Entry> entries,
+                                     String path, int runtimeId, int itemVersion, int maxStackSize) {
+        String identifier = "minecraft:" + path;
+        byte[] componentData = COMPONENT_NBT.get(identifier);
+        if (componentData == null) {
+            throw new IllegalStateException("Missing client component NBT for " + identifier);
+        }
+        entries.add(new BedrockItemRegistry.Entry(
+                identifier,
+                new BedrockInventoryContentCodec.ItemDefinition(runtimeId, 0, 0, new byte[0]),
+                maxStackSize,
+                true,
+                itemVersion,
+                componentData
+        ));
     }
 
     private static void addBlock(List<BedrockItemRegistry.Entry> entries,

@@ -6,11 +6,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockVanillaItemCatalogTest {
     @Test
-    void registersVerifiedProtocol2225ItemsIncludingComponentBasedSpears() {
+    void registersVerifiedProtocol2225ItemsWithoutUnsupportedComponentItems() {
         BedrockItemRegistry registry = BedrockVanillaItemCatalog.createRegistry();
         assertTrue(registry.size() >= 60);
 
-        assertEquals(263, registry.findByIdentifier("minecraft:coal").networkDefinition().runtimeItemId());
         assertEquals(61, registry.findByIdentifier("minecraft:furnace").networkDefinition().runtimeItemId());
         assertEquals(-196, registry.findByIdentifier("minecraft:blast_furnace").networkDefinition().runtimeItemId());
         assertEquals(-198, registry.findByIdentifier("minecraft:smoker").networkDefinition().runtimeItemId());
@@ -74,6 +73,7 @@ class BedrockVanillaItemCatalogTest {
                 registry.findByIdentifier("minecraft:cobblestone").networkDefinition().blockRuntimeId());
 
         assertNull(registry.findByIdentifier("minecraft:air"));
+        assertNull(registry.findByIdentifier("minecraft:coal")); // component-based; requires its captured component NBT
         assertNull(registry.findByIdentifier("minecraft:apple")); // component-based; not yet catalogued
 
         String[] removedSpears = {

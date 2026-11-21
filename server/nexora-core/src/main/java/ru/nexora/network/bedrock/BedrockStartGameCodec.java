@@ -180,8 +180,11 @@ public final class BedrockStartGameCodec {
             float spawnX, float spawnY, float spawnZ, float pitch, float yaw
     ) {
         return List.of(
-                // Match the reference login flow: world time precedes StartGame.
+                // Match the 1.26.60+ pre-join sequence: world time, required structure
+                // metadata, empty voxel-shape registry, then StartGame.
                 packet(0x0a, varIntPayload(0)),
+                createJigsawStructureData(),
+                createVoxelShapes(),
                 create(entityId, worldName, gameVersion, baseGameVersion, worldSeed,
                         spawnBlockX, spawnBlockY, spawnBlockZ, spawnX, spawnY, spawnZ, pitch, yaw),
                 packet(0x2b, setSpawnPositionPayload(spawnBlockX, spawnBlockY, spawnBlockZ)),
@@ -191,6 +194,50 @@ public final class BedrockStartGameCodec {
                 createChunkPublisherUpdate(
                         (int) Math.floor(spawnX), (int) Math.floor(spawnY), (int) Math.floor(spawnZ))
         );
+    }
+
+    /** Required by Bedrock 1.26.60+ before StartGame (Boat / InitialConnection-148). */
+    public static BedrockPacket createJigsawStructureData() {
+        return packet(0x139, emptyJigsawStructureNbt());
+    }
+
+    /** Empty custom voxel-shape registry, also required before StartGame in protocol 2225. */
+    public static BedrockPacket createVoxelShapes() {
+        return packet(0x151, new byte[4]);
+    }
+
+    private static byte[] emptyJigsawStructureNbt() {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        out.write(0x0a); // TAG_Compound
+        writeNbtString(out, ""); // unnamed root compound
+        writeEmptyCompoundList(out, "processors");
+        writeEmptyCompoundList(out, "template_pools");
+        writeEmptyCompoundList(out, "jigsaws");
+        writeEmptyCompoundList(out, "structure_sets");
+        out.write(0x00); // TAG_End
+        return out.toByteArray();
+    }
+
+    private static void writeEmptyCompoundList(ByteArrayOutputStream out, String name) {
+        out.write(0x09); // TAG_List
+        writeNbtString(out, name);
+        out.write(0x0a); // list element type: TAG_Compound
+        writeInt32LittleEndian(out, 0);
+    }
+
+    private static void writeNbtString(ByteArrayOutputStream out, String value) {
+        byte[] encoded = value.getBytes(StandardCharsets.UTF_8);
+        if (encoded.length > 0xffff) throw new IllegalArgumentException("NBT string is too long");
+        out.write(encoded.length & 0xff);
+        out.write((encoded.length >>> 8) & 0xff);
+        out.writeBytes(encoded);
+    }
+
+    private static void writeInt32LittleEndian(ByteArrayOutputStream out, int value) {
+        out.write(value & 0xff);
+        out.write((value >>> 8) & 0xff);
+        out.write((value >>> 16) & 0xff);
+        out.write((value >>> 24) & 0xff);
     }
 
     private static BedrockPacket packet(int id, byte[] payload) {

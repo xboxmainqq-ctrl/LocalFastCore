@@ -27,16 +27,20 @@ public final class BedrockLevelChunkCodec {
                 break;
             }
         }
-        int positiveSectionCount = Math.max(0, highestSection - NEGATIVE_SUB_CHUNKS);
-        int subChunkCount = NEGATIVE_SUB_CHUNKS + positiveSectionCount;
+        // A full LevelChunk serializes every section from the dimension's
+        // minimum Y (-4) through the highest non-empty section. The packet
+        // count is exactly that number; it is not a fixed four-section prefix.
+        int subChunkCount = highestSection;
 
         Writer chunkData = new Writer();
-        for (int sectionY = -NEGATIVE_SUB_CHUNKS; sectionY < 0; sectionY++) {
-            writeEmptySubChunk(chunkData, sectionY);
-        }
-        for (int sectionY = 0; sectionY < positiveSectionCount; sectionY++) {
-            byte[] section = sections[sectionY + NEGATIVE_SUB_CHUNKS];
-            writeSubChunk(chunkData, sectionY, section);
+        for (int sectionIndex = 0; sectionIndex < subChunkCount; sectionIndex++) {
+            int sectionY = sectionIndex - NEGATIVE_SUB_CHUNKS;
+            byte[] section = sections[sectionIndex];
+            if (section == null) {
+                writeEmptySubChunk(chunkData, sectionY);
+            } else {
+                writeSubChunk(chunkData, sectionY, section);
+            }
         }
 
         // LevelChunk's serialized biome storage count matches SubChunksCount.

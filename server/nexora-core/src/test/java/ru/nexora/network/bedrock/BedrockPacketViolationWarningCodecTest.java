@@ -26,13 +26,11 @@ class BedrockPacketViolationWarningCodecTest {
     }
 
     @Test
-    void decodesNegativeSignedVarIntValuesWithoutLosingBits() {
-        byte[] payload = new byte[] {
-                1, 0, 0, 0
-        };
-        var violation = BedrockPacketViolationWarningCodec.decode(
-                new BedrockPacket(0x9C, 0, 0, payload));
-        assertEquals(-1, violation.type());
+    void rejectsNegativeViolationEnumValues() {
+        byte[] payload = new byte[] {1, 0, 0, 0}; // zig-zag VarInt32(-1)
+        assertThrows(IllegalArgumentException.class, () ->
+                BedrockPacketViolationWarningCodec.decode(
+                        new BedrockPacket(0x9C, 0, 0, payload)));
     }
 
     @Test

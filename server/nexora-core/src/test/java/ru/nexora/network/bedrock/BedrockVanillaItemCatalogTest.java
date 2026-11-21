@@ -99,7 +99,7 @@ class BedrockVanillaItemCatalogTest {
         assertTrue(readNetworkNbt(coal).getCompound("components").isEmpty());
         assertNotNull(registry.findByIdentifier("minecraft:apple")); // present in the official full palette
 
-        int[] spearIds = {858, 859, 860, 861, 862, 863, 864};
+        int[] spearIds = {855, 856, 857, 858, 859, 860, 861};
         String[] spearNames = {
                 "copper_spear", "diamond_spear", "golden_spear", "iron_spear",
                 "netherite_spear", "stone_spear", "wooden_spear"

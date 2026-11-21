@@ -42,7 +42,7 @@ class BedrockItemRegistryPacketCodecTest {
 
     @Test
     void copiesComponentDataAndRejectsInvalidRegistryMetadata() {
-        byte[] nbt = new byte[] {10, 0, 0};
+        byte[] nbt = new byte[] {10, 0, 3, 1, 120, 1, 0, 0, 0, 0};
         BedrockItemRegistry.Entry entry = new BedrockItemRegistry.Entry(
                 "nexora:crystal",
                 new BedrockInventoryContentCodec.ItemDefinition(300, 0, 0, new byte[0]),

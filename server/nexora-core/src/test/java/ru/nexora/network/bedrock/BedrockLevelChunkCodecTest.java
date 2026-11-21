@@ -20,7 +20,8 @@ class BedrockLevelChunkCodecTest {
         assertEquals(3, reader.varInt32());
         assertEquals(0, reader.varInt32()); // Overworld
         assertEquals(9, reader.varUInt32()); // four negative plus five positive sub-chunks
-        assertFalse(reader.bool()); // cache disabled; optional request limit and cache metadata are omitted
+        assertFalse(reader.bool()); // cache disabled
+        assertEquals(0, reader.varUInt32()); // mandatory empty cache-metadata array
 
         byte[] data = reader.byteArray();
         assertFalse(reader.bool()); // clientBiomeUpdate
@@ -80,7 +81,8 @@ class BedrockLevelChunkCodecTest {
         reader.varInt32();
         reader.varInt32();
         assertEquals(4, reader.varUInt32());
-        assertFalse(reader.bool()); // cache disabled; optional request limit and cache metadata are omitted
+        assertFalse(reader.bool()); // cache disabled
+        assertEquals(0, reader.varUInt32()); // mandatory empty cache-metadata array
         byte[] data = reader.byteArray();
         reader.bool();
         assertTrue(reader.exhausted());

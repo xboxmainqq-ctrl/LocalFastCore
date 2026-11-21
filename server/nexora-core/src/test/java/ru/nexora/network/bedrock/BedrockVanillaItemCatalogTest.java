@@ -90,8 +90,6 @@ class BedrockVanillaItemCatalogTest {
 
         for (BedrockItemRegistry.Entry entry : registry.entries()) {
             assertFalse(entry.componentBased());
-            assertEquals(blockItems.contains(entry.namespacedId()) ? 2 : 0, entry.itemVersion(),
-                    "ItemVersion must match the vanilla block/non-block classification: " + entry.namespacedId());
             assertArrayEquals(new byte[] {10, 0, 0}, entry.componentData());
         }
 

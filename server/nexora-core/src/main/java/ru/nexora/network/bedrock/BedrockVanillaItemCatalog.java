@@ -14,7 +14,7 @@ import java.util.List;
  * use a maximum stack size of one. This is intentionally not a complete vanilla catalog.
  */
 public final class BedrockVanillaItemCatalog {
-    private static final byte[] EMPTY_NETWORK_NBT = {10, 0, 0, 0};
+    private static final byte[] EMPTY_NETWORK_NBT = {10, 0, 0};
 
     private BedrockVanillaItemCatalog() {
     }

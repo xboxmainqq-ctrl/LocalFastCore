@@ -144,7 +144,7 @@ public final class BedrockLevelChunkCodec {
             out.int32(word);
         }
 
-        out.varUInt32(paletteSize);
+        out.varInt32(paletteSize);
         for (int index = 0; index < paletteSize; index++) out.varInt32(palette[index]);
     }
 

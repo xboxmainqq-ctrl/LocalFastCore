@@ -9,6 +9,7 @@ import java.nio.ByteOrder;
 public final class BedrockPlayerAuthInputCodec {
     public static final int PLAYER_AUTH_INPUT_PACKET_ID = 0x90;
     private static final int MAX_INPUT_ACTIONS = 256;
+    private static final int MAX_TRAILING_EXTENSION_BYTES = 64;
 
     private BedrockPlayerAuthInputCodec() {
     }
@@ -85,7 +86,7 @@ public final class BedrockPlayerAuthInputCodec {
         float cameraZ = in.float32();
         float rawMoveX = in.float32();
         float rawMoveZ = in.float32();
-        in.requireExhausted();
+        in.skipBoundedExtension(MAX_TRAILING_EXTENSION_BYTES);
 
         return new PlayerInput(pitch, yaw, x, y, z, motionX, motionZ, headYaw,
                 tick, optionalSectionsPresent, false, inputMode, playMode, interactionModel,
@@ -340,8 +341,13 @@ public final class BedrockPlayerAuthInputCodec {
             return (value >>> 1) ^ -(value & 1);
         }
 
-        void requireExhausted() {
-            if (buffer.hasRemaining()) throw new IllegalArgumentException("Trailing PlayerAuthInput bytes");
+        void skipBoundedExtension(int maximumBytes) {
+            // Retail mobile clients may append a small protocol extension to PlayerAuthInput
+            // while retaining the same protocol number. Ignore only a tightly bounded tail.
+            if (buffer.remaining() > maximumBytes) {
+                throw new IllegalArgumentException("PlayerAuthInput has oversized trailing extension");
+            }
+            buffer.position(buffer.limit());
         }
 
         private void require(int bytes) {

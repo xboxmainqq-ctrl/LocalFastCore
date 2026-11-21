@@ -5579,9 +5579,21 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
 
+    static boolean shouldProcessPlayerAuthInput(boolean clientInitialized) {
+        return clientInitialized;
+    }
+
     private void handlePlayerAuthInput(String networkId, SessionState state, BedrockPacket packet) {
-        if (!state.clientInitialized) {
-            throw new SecurityException("PlayerAuthInput arrived before client initialization");
+        if (!shouldProcessPlayerAuthInput(state.clientInitialized)) {
+            // Bedrock may begin sending movement ticks while the spawn acknowledgement
+            // is still in flight. Ignore these pre-admission inputs; do not tear down
+            // the NetherNet session. The client will send fresh input after packet 0x71.
+            if (!state.preInitializationInputObserved) {
+                state.preInitializationInputObserved = true;
+                System.out.printf("NEXORA: ignoring PlayerAuthInput from %s until SetLocalPlayerAsInitialized is received%n",
+                        networkId);
+            }
+            return;
         }
         if (state.dead) return;
         BedrockPlayerAuthInputCodec.PlayerInput input = BedrockPlayerAuthInputCodec.decode(packet);
@@ -8111,6 +8123,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private volatile boolean gameStarted;
         private boolean playerSpawnSent;
         private volatile boolean clientInitialized;
+        private boolean preInitializationInputObserved;
         private boolean positionInitialized;
         private float positionX;
         private float positionY;

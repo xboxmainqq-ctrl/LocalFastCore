@@ -3255,6 +3255,11 @@ class BedrockSessionManagerTest {
         writeFloat32(out, 0); writeFloat32(out, 0);
         writeVarULong(out, tick);
         writeFloat32(out, 0); writeFloat32(out, 0); writeFloat32(out, 0);
+        out.write(1); // HasItemInteraction
+        out.write(0); // HasItemStackRequest
+        out.write(0); // HasBlockActions
+        out.write(0); // HasVehicleRotation
+        out.write(0); // HasPredictedVehicle
         writeVarInt(out, 0); // legacy request ID
         writeVarUInt(out, 0); // no inventory mutation
         writeVarInt(out, 0); // block interaction

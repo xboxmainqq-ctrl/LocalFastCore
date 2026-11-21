@@ -10,7 +10,6 @@ import java.io.ByteArrayOutputStream;
 public final class BedrockLevelChunkCodec {
     public static final int LEVEL_CHUNK_PACKET_ID = 0x3a;
     private static final int NEGATIVE_SUB_CHUNKS = 4;
-    private static final int WORLD_BIOME_SECTIONS = 24;
     private static final int PLAINS_BIOME_ID = 1;
     private static final int BLOCK_TYPE_COUNT = BlockType.values().length;
 
@@ -40,9 +39,11 @@ public final class BedrockLevelChunkCodec {
             writeSubChunk(chunkData, sectionY, section);
         }
 
-        // The Overworld's 3D biome palette spans all 24 vertical sections, even when
-        // only a small number of block sub-chunks are sent with this initial column.
-        for (int i = 0; i < WORLD_BIOME_SECTIONS; i++) {
+        // LevelChunk payload contains one 16x16x16 biome palette for each
+        // serialized subchunk. Sending all 24 world sections here, regardless
+        // of SubChunksCount, shifts the following border/entity fields and
+        // makes the client parse biome bytes as an oversized collection.
+        for (int i = 0; i < subChunkCount; i++) {
             chunkData.byteValue(1); // singleton palette, runtime-ID flag
             chunkData.varInt32(PLAINS_BIOME_ID);
         }

@@ -5544,8 +5544,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     )) {
                         if (worldPacket.packetId() == 0x0b) {
                             // Bedrock requires ItemRegistry immediately after StartGame.
-                            sendPackets(networkId, List.of(worldPacket,
-                                    BedrockItemRegistryPacketCodec.createPacket(itemRegistry)), true);
+                            BedrockPacket itemRegistryPacket =
+                                    BedrockItemRegistryPacketCodec.createPacket(itemRegistry);
+                            sendPackets(networkId, List.of(worldPacket, itemRegistryPacket), true);
+                            System.out.printf(
+                                    "NEXORA: queued ItemRegistry for %s (protocol=%d, entries=%d, payload=%d bytes)%n",
+                                    networkId, serverProtocol, itemRegistry.size(), itemRegistryPacket.payloadLength());
                         } else {
                             sendPacket(networkId, worldPacket, true);
                         }

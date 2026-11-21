@@ -21,6 +21,7 @@ class BedrockLevelChunkCodecTest {
         assertEquals(0, reader.varInt32()); // Overworld
         int subChunkCount = reader.varUInt32();
         assertEquals(9, subChunkCount); // four negative plus five positive sub-chunks
+        assertFalse(reader.bool()); // optional client request subchunk limit is absent
         assertFalse(reader.bool()); // cacheEnabled = false
         assertEquals(0, reader.varUInt32()); // empty blob hash array
 
@@ -39,7 +40,7 @@ class BedrockLevelChunkCodecTest {
             assertEquals(1, subChunks.byteValue());
             assertEquals(sectionY, subChunks.byteValue());
             assertEquals(1, subChunks.byteValue()); // singleton air palette
-            assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varUInt32());
+            assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
         }
 
         // Section Y=3 contains air, bedrock, stone and dirt: a two-bit packed palette.
@@ -49,10 +50,10 @@ class BedrockLevelChunkCodecTest {
         assertEquals(5, subChunks.byteValue()); // V2, runtime IDs
         subChunks.skip(256 * Integer.BYTES);
         assertEquals(4, subChunks.varInt32());
-        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varUInt32());
-        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.BEDROCK), subChunks.varUInt32());
-        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.STONE), subChunks.varUInt32());
-        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.DIRT), subChunks.varUInt32());
+        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
+        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.BEDROCK), subChunks.varInt32());
+        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.STONE), subChunks.varInt32());
+        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.DIRT), subChunks.varInt32());
 
         // Section Y=4 contains grass and air: a one-bit packed palette.
         assertEquals(9, subChunks.byteValue());
@@ -61,12 +62,11 @@ class BedrockLevelChunkCodecTest {
         assertEquals(3, subChunks.byteValue()); // V1, runtime IDs
         subChunks.skip(128 * Integer.BYTES);
         assertEquals(2, subChunks.varInt32());
-        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.GRASS_BLOCK), subChunks.varUInt32());
-        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varUInt32());
+        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.GRASS_BLOCK), subChunks.varInt32());
+        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
 
-        // The Overworld biome column always spans all 24 sections (-4 through 19),
-        // independently of how many block subchunks are serialized.
-        for (int section = 0; section < 24; section++) {
+        // Exactly one biome storage follows each serialized block subchunk.
+        for (int section = 0; section < subChunkCount; section++) {
             assertEquals(1, subChunks.byteValue()); // singleton plains biome palette
             assertEquals(1, subChunks.varInt32());
         }
@@ -85,6 +85,7 @@ class BedrockLevelChunkCodecTest {
         reader.varInt32();
         int subChunkCount = reader.varUInt32();
         assertEquals(4, subChunkCount);
+        assertFalse(reader.bool()); // optional client request subchunk limit is absent
         assertFalse(reader.bool()); // cacheEnabled = false
         assertEquals(0, reader.varUInt32()); // empty blob hash array
         byte[] data = reader.byteArray();
@@ -97,7 +98,7 @@ class BedrockLevelChunkCodecTest {
             assertEquals(0, chunkData.byteValue());
             assertEquals(sectionY & 0xff, chunkData.byteValue());
         }
-        for (int section = 0; section < 24; section++) {
+        for (int section = 0; section < subChunkCount; section++) {
             assertEquals(1, chunkData.byteValue());
             assertEquals(1, chunkData.varInt32());
         }

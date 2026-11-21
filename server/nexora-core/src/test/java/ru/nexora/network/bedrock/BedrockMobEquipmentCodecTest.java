@@ -70,9 +70,9 @@ class BedrockMobEquipmentCodecTest {
     void acceptsEquipmentDescriptorWithStackNetIdFromModernClient() {
         byte[] withoutNetId = payload(123, 306, 1, 0, 1, 0, 0, 2);
         byte[] withNetId = new byte[withoutNetId.length + 1];
-        System.arraycopy(withoutNetId, 0, withNetId, 0, 8);
-        withNetId[8] = 84; // ZigZag VarInt32 value 42
-        System.arraycopy(withoutNetId, 8, withNetId, 9, withoutNetId.length - 8);
+        System.arraycopy(withoutNetId, 0, withNetId, 0, 7);
+        withNetId[7] = 84; // ZigZag VarInt32 value 42
+        System.arraycopy(withoutNetId, 7, withNetId, 8, withoutNetId.length - 7);
 
         var decoded = BedrockMobEquipmentCodec.decode(
                 new BedrockPacket(0x1f, 0, 0, withNetId), REGISTRY);

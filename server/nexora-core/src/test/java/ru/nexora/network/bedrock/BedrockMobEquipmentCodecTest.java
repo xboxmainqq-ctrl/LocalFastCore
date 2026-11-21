@@ -67,6 +67,21 @@ class BedrockMobEquipmentCodecTest {
     }
 
     @Test
+    void acceptsEquipmentDescriptorWithStackNetIdFromModernClient() {
+        byte[] withoutNetId = payload(123, 306, 1, 0, 1, 0, 0, 2);
+        byte[] withNetId = new byte[withoutNetId.length + 1];
+        System.arraycopy(withoutNetId, 0, withNetId, 0, 8);
+        withNetId[8] = 84; // ZigZag VarInt32 value 42
+        System.arraycopy(withoutNetId, 8, withNetId, 9, withoutNetId.length - 8);
+
+        var decoded = BedrockMobEquipmentCodec.decode(
+                new BedrockPacket(0x1f, 0, 0, withNetId), REGISTRY);
+        assertEquals(123, decoded.runtimeEntityId());
+        assertEquals(new ItemStack("minecraft:diamond", 1, 64), decoded.item().orElseThrow());
+        assertEquals(2, decoded.inventorySlot());
+    }
+
+    @Test
     void rejectsUnknownItemsForgedDefinitionsAndMalformedPackets() {
         byte[] unknown = payload(123, 999, 1, 0, 0, 0, 0, 0);
         assertThrows(IllegalArgumentException.class, () ->

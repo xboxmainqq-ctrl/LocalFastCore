@@ -174,7 +174,10 @@ public final class BedrockPlayerSkinCodec {
         try { return UUID.fromString(value); } catch (IllegalArgumentException ignored) { return new UUID(0L, 0L); }
     }
     private static int pieceType(String value) {
-        return switch (value.toLowerCase(java.util.Locale.ROOT)) {
+        String normalized = value.toLowerCase(java.util.Locale.ROOT);
+        if (normalized.startsWith("persona_")) normalized = normalized.substring("persona_".length());
+        if (normalized.equals("hand")) normalized = "hands";
+        return switch (normalized) {
             case "unknown" -> 0; case "skeleton" -> 1; case "body" -> 2; case "skin" -> 3;
             case "bottom" -> 4; case "feet" -> 5; case "dress" -> 6; case "top" -> 7;
             case "high_pants", "highpants" -> 8; case "hands" -> 9; case "outerwear" -> 10;

@@ -141,7 +141,8 @@ public final class BedrockStartGameCodec {
         out.string(UUID.randomUUID().toString()); // MultiPlayerCorrelationID
         out.bool(false);                    // EnableItemStackNetManager: disabled until request handling is implemented
         out.string(gameVersion);
-        out.bytes(new byte[] {0x0a, 0, 0, 0}); // Empty network-little-endian NBT compound
+        out.varUInt32(0);                   // Player property integer entries: empty
+        out.varUInt32(0);                   // Player property float entries: empty
         out.uint64(0);                      // ServerBlockStateChecksum
         out.bytes(new byte[16]);            // Empty WorldTemplateID
         out.bool(false);                    // ClientSideGeneration

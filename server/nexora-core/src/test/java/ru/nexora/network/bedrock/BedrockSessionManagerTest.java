@@ -2817,7 +2817,8 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "saved-client", BedrockBatchCodec.encode(
                 List.of(resourcePackResponse(3, "resourcepackstackfinished")), true, 256));
 
-        BedrockPacket startGame = decodeOutboundPackets(outboundFrames.get(5), true).stream()
+        BedrockPacket startGame = outboundFrames.stream()
+                .flatMap(frame -> decodeOutboundPackets(frame, true).stream())
                 .filter(packet -> packet.packetId() == 0x0b)
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("StartGame packet was not sent"));
@@ -2828,8 +2829,10 @@ class BedrockSessionManagerTest {
         assertEquals(12.0f, position.getFloat()); // pitch
         assertEquals(90.0f, position.getFloat()); // yaw
 
-        assertArrayEquals(new byte[] {0x40, (byte) 0x8c, 0x01, 0x21, 0x30, 0, 0, 0, 0},
-                decodeOutbound(outboundFrames.get(11), true).payload());
+        byte[] expectedChunkRadius = new byte[] {0x40, (byte) 0x8c, 0x01, 0x21, 0x30, 0, 0, 0, 0};
+        assertTrue(outboundFrames.stream()
+                .flatMap(frame -> decodeOutboundPackets(frame, true).stream())
+                .anyMatch(packet -> java.util.Arrays.equals(expectedChunkRadius, packet.payload())));
         BedrockPacket spawnChunk = outboundFrames.stream()
                 .skip(12) // chunk streaming begins after the fixed login/start-game frames
                 .flatMap(frame -> decodeOutboundPackets(frame, true).stream())

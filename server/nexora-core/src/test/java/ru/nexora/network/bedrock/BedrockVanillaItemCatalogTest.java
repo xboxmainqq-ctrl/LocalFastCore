@@ -15,7 +15,7 @@ class BedrockVanillaItemCatalogTest {
     @Test
     void registersOnlyItemsWithCompleteProtocol2225ClientDefinitions() throws IOException {
         BedrockItemRegistry registry = BedrockVanillaItemCatalog.createRegistry();
-        assertTrue(registry.size() >= 60);
+        assertTrue(registry.size() > 1_000, "the full vanilla 1.26.60 palette must be registered");
 
         assertEquals(61, registry.findByIdentifier("minecraft:furnace").networkDefinition().runtimeItemId());
         assertEquals(-196, registry.findByIdentifier("minecraft:blast_furnace").networkDefinition().runtimeItemId());
@@ -97,7 +97,7 @@ class BedrockVanillaItemCatalogTest {
         assertTrue(coal.componentBased());
         assertEquals(16, coal.componentData().length);
         assertTrue(readNetworkNbt(coal).getCompound("components").isEmpty());
-        assertNull(registry.findByIdentifier("minecraft:apple")); // component-based; not yet catalogued
+        assertNotNull(registry.findByIdentifier("minecraft:apple")); // present in the official full palette
 
         int[] spearIds = {858, 859, 860, 861, 862, 863, 864};
         String[] spearNames = {
@@ -145,6 +145,6 @@ class BedrockVanillaItemCatalogTest {
                 BedrockVanillaItemCatalog.createRegistry());
         assertEquals(BedrockItemRegistryPacketCodec.ITEM_REGISTRY_PACKET_ID, packet.packetId());
         assertTrue(packet.payload().length > 500);
-        assertTrue(packet.payload().length < 32_768);
+        assertTrue(packet.payload().length < 4 * 1024 * 1024);
     }
 }

@@ -2043,6 +2043,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             handleModalFormResponse(message, state, packet);
                     case BedrockTakeItemActorCodec.TAKE_ITEM_ACTOR_PACKET_ID ->
                             handleTakeItemActor(message, state, packet);
+                    case BedrockLoadingScreenCodec.PACKET_ID ->
+                            handleLoadingScreen(networkId, state, packet);
                     default -> packetSink.accept(new PacketEvent(
                             message.networkId(), message.channelLabel(), packet));
                 }
@@ -7002,6 +7004,26 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
+    private void handleLoadingScreen(String networkId, SessionState state, BedrockPacket packet) {
+        if (!state.gameStarted) {
+            throw new SecurityException("Loading screen state arrived before StartGame");
+        }
+        BedrockLoadingScreenCodec.LoadingScreen loadingScreen =
+                BedrockLoadingScreenCodec.decode(packet);
+        if (loadingScreen.screenId() != null) {
+            // NEXORA currently has no server-initiated ChangeDimension flow. Initial world join
+            // must therefore use the optional, absent loading-screen ID from protocol 2225.
+            throw new SecurityException("Unexpected loading screen ID without a pending dimension transition");
+        }
+        if (loadingScreen.isStart()) {
+            state.initialLoadingScreenStarted = true;
+            System.out.printf("NEXORA: client %s opened the initial world loading screen%n", networkId);
+        } else {
+            state.initialLoadingScreenEnded = true;
+            System.out.printf("NEXORA: client %s closed the initial world loading screen%n", networkId);
+        }
+    }
+
     private void handleClientInitialized(
             NetherNetInboundPipeline.InboundMessage message,
             SessionState state,
@@ -7997,6 +8019,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private boolean resourcePackStackSent;
         private volatile boolean resourcePacksCompleted;
         private volatile boolean gameStarted;
+        private boolean initialLoadingScreenStarted;
+        private boolean initialLoadingScreenEnded;
         private volatile boolean clientInitialized;
         private boolean positionInitialized;
         private float positionX;

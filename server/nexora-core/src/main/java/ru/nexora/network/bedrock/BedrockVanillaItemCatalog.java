@@ -6,7 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Curated protocol-2225 vanilla item subset with verified runtime IDs, including common stackable items, placeable blocks and armor. Component-based items are excluded until their real component NBT is available.
+ * Curated protocol-2225 vanilla item subset with verified runtime IDs, including common stackable items, placeable blocks and armor.
  *
  * IDs and ItemVersion values are transcribed from the protocol-2225 item-state
  * palette (runtime_item_states_2225.json, Nukkit-MOT reference revision
@@ -42,6 +42,7 @@ public final class BedrockVanillaItemCatalog {
         addBlock(entries, "furnace", 61, BlockType.FURNACE);
         addBlock(entries, "blast_furnace", -196, BlockType.BLAST_FURNACE);
         addBlock(entries, "smoker", -198, BlockType.SMOKER);
+        add(entries, "coal", 263, 0, 64);
         add(entries, "diamond", 306, 2, 64);
         add(entries, "iron_ingot", 307, 2, 64);
         add(entries, "gold_ingot", 308, 2, 64);
@@ -111,6 +112,14 @@ public final class BedrockVanillaItemCatalog {
         add(entries, "cooked_mutton", 561, 0, 64);
         add(entries, "ink_sac", 416, 2, 64);
         add(entries, "glow_ink_sac", 514, 2, 64);
+        // Protocol-2225 component-based spear item states (version 1).
+        addComponent(entries, "copper_spear", 855);
+        addComponent(entries, "diamond_spear", 856);
+        addComponent(entries, "golden_spear", 857);
+        addComponent(entries, "iron_spear", 858);
+        addComponent(entries, "netherite_spear", 859);
+        addComponent(entries, "stone_spear", 860);
+        addComponent(entries, "wooden_spear", 861);
         add(entries, "leather_helmet", 338, 2, 1);
         add(entries, "leather_chestplate", 339, 2, 1);
         add(entries, "leather_leggings", 340, 2, 1);
@@ -148,6 +157,18 @@ public final class BedrockVanillaItemCatalog {
                 new BedrockInventoryContentCodec.ItemDefinition(
                         runtimeId, 0, Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(blockType)), new byte[0]),
                 64, false, 2, EMPTY_NETWORK_NBT
+        ));
+    }
+
+    private static void addComponent(List<BedrockItemRegistry.Entry> entries,
+                                     String path, int runtimeId) {
+        entries.add(new BedrockItemRegistry.Entry(
+                "minecraft:" + path,
+                new BedrockInventoryContentCodec.ItemDefinition(runtimeId, 0, 0, new byte[0]),
+                1,
+                true,
+                1,
+                EMPTY_NETWORK_NBT
         ));
     }
 

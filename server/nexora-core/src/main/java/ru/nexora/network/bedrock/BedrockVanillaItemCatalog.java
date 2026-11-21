@@ -42,7 +42,6 @@ public final class BedrockVanillaItemCatalog {
         addBlock(entries, "furnace", 61, BlockType.FURNACE);
         addBlock(entries, "blast_furnace", -196, BlockType.BLAST_FURNACE);
         addBlock(entries, "smoker", -198, BlockType.SMOKER);
-        add(entries, "coal", 263, 0, 64);
         add(entries, "diamond", 306, 2, 64);
         add(entries, "iron_ingot", 307, 2, 64);
         add(entries, "gold_ingot", 308, 2, 64);

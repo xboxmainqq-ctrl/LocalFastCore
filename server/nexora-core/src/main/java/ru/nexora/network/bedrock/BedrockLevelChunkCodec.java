@@ -10,7 +10,6 @@ import java.io.ByteArrayOutputStream;
 public final class BedrockLevelChunkCodec {
     public static final int LEVEL_CHUNK_PACKET_ID = 0x3a;
     private static final int NEGATIVE_SUB_CHUNKS = 4;
-    private static final int TOTAL_BIOME_SECTIONS = 24;
     private static final int PLAINS_BIOME_ID = 1;
     private static final int BLOCK_TYPE_COUNT = BlockType.values().length;
 
@@ -40,12 +39,11 @@ public final class BedrockLevelChunkCodec {
             writeSubChunk(chunkData, sectionY, section);
         }
 
-        // LevelChunk carries biome storage for the full dimension height, not
-        // only for the block subchunks included above. The Overworld spans
-        // 24 sections (-4 through 19), even when only a few block sections
-        // contain data. Omitting the remaining biome palettes misaligns the
-        // border-block and block-entity tail on the client.
-        for (int i = 0; i < TOTAL_BIOME_SECTIONS; i++) {
+        // LevelChunk's serialized biome storage count matches SubChunksCount.
+        // Each sent block subchunk has exactly one biome paletted storage.
+        // Writing the full world height here shifts the border-block and
+        // block-entity tail and makes the client parse biome bytes as NBT.
+        for (int i = 0; i < subChunkCount; i++) {
             chunkData.byteValue(1); // singleton palette, runtime-ID flag
             chunkData.varInt32(PLAINS_BIOME_ID);
         }
@@ -96,7 +94,7 @@ public final class BedrockLevelChunkCodec {
         out.byteValue(sectionY);
         if (raw == null || isEmpty(raw)) {
             out.byteValue(1); // V0 singleton palette, runtime IDs
-            out.varUInt32(Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(BlockType.AIR)));
+            out.varInt32(BedrockBlockRuntimeIds.forBlock(BlockType.AIR));
             return;
         }
 
@@ -121,6 +119,17 @@ public final class BedrockLevelChunkCodec {
         writePalette(out, indexes, palette, paletteSize);
     }
 
+    private static int minimumPaletteBits(int paletteSize) {
+        if (paletteSize < 2 || paletteSize > ChunkSection.VOLUME) {
+            throw new IllegalArgumentException("Palette size must be between 2 and " + ChunkSection.VOLUME);
+        }
+        // Bedrock omits 7-bit storage; these are the protocol's supported widths.
+        for (int bits : new int[] {1, 2, 3, 4, 5, 6, 8, 16}) {
+            if ((1 << bits) >= paletteSize) return bits;
+        }
+        throw new IllegalArgumentException("Palette exceeds supported Bedrock storage width: " + paletteSize);
+    }
+
     private static boolean isEmpty(byte[] raw) {
         for (byte value : raw) if (value != 0) return false;
         return true;
@@ -129,12 +138,11 @@ public final class BedrockLevelChunkCodec {
     private static void writePalette(Writer out, int[] indexes, int[] palette, int paletteSize) {
         if (paletteSize == 1) {
             out.byteValue(1); // V0, runtime palette
-            out.varUInt32(Integer.toUnsignedLong(palette[0]));
+            out.varInt32(palette[0]);
             return;
         }
 
-        int bits = 1;
-        while ((1 << bits) < paletteSize) bits++;
+        int bits = minimumPaletteBits(paletteSize);
         int entriesPerWord = 32 / bits;
         int wordCount = (indexes.length + entriesPerWord - 1) / entriesPerWord;
         out.byteValue((bits << 1) | 1); // version bits plus runtime-ID flag
@@ -149,9 +157,11 @@ public final class BedrockLevelChunkCodec {
         }
 
         out.varInt32(paletteSize);
-        // StartGame advertises BlockNetworkIdsAreHashes=true: hashes are unsigned 32-bit values.
+        // StartGame advertises BlockNetworkIdsAreHashes=true. The 32-bit
+        // hashes retain their raw bits but are serialized as signed VarInt32,
+        // matching the Bedrock network palette encoding.
         for (int index = 0; index < paletteSize; index++) {
-            out.varUInt32(Integer.toUnsignedLong(palette[index]));
+            out.varInt32(palette[index]);
         }
     }
 

@@ -1913,7 +1913,7 @@ class BedrockSessionManagerTest {
         byte[] protocol = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(2225).array();
         BedrockPacket settings = new BedrockPacket(
                 BedrockBatchCodec.REQUEST_NETWORK_SETTINGS_PACKET_ID, 0, 0, protocol);
-        sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(settings), false, 256));
+        sendInitializedClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(settings), false, 256));
 
         String rawClientDataToken = signClientDataToken(clientKey);
         String certificate = "{\"chain\":[]}";
@@ -2042,7 +2042,7 @@ class BedrockSessionManagerTest {
         byte[] protocol = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(2225).array();
         BedrockPacket settings = new BedrockPacket(
                 BedrockBatchCodec.REQUEST_NETWORK_SETTINGS_PACKET_ID, 0, 0, protocol);
-        sendClientBatch(manager, "chest-client", BedrockBatchCodec.encode(List.of(settings), false, 256));
+        sendInitializedClientBatch(manager, "chest-client", BedrockBatchCodec.encode(List.of(settings), false, 256));
 
         String rawClientDataToken = signClientDataToken(clientKey);
         String certificate = "{\"chain\":[]}";
@@ -2129,7 +2129,7 @@ class BedrockSessionManagerTest {
         byte[] protocol = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(2225).array();
         BedrockPacket settings = new BedrockPacket(
                 BedrockBatchCodec.REQUEST_NETWORK_SETTINGS_PACKET_ID, 0, 0, protocol);
-        sendClientBatch(manager, "food-client", BedrockBatchCodec.encode(List.of(settings), false, 256));
+        sendInitializedClientBatch(manager, "food-client", BedrockBatchCodec.encode(List.of(settings), false, 256));
 
         String rawClientDataToken = signClientDataToken(clientKey);
         String certificate = "{\"chain\":[]}";
@@ -2225,7 +2225,7 @@ class BedrockSessionManagerTest {
         byte[] protocol = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(2225).array();
         BedrockPacket settings = new BedrockPacket(
                 BedrockBatchCodec.REQUEST_NETWORK_SETTINGS_PACKET_ID, 0, 0, protocol);
-        sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(List.of(settings), false, 256));
+        sendInitializedClientBatch(manager, "physics-client", BedrockBatchCodec.encode(List.of(settings), false, 256));
 
         String rawClientDataToken = signClientDataToken(clientKey);
         String certificate = "{\"chain\":[]}";
@@ -2504,7 +2504,7 @@ class BedrockSessionManagerTest {
                 .count() >= 4);
 
         BedrockPacket initialized = new BedrockPacket(0x71, 0, 0, new byte[] {1});
-        sendClientBatch(manager, "authenticated-client",
+        sendInitializedClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256));
         List<BedrockPacket> initialInventoryBatch = outboundFrames.stream()
                 .map(frame -> decodeOutboundPackets(frame, true))
@@ -3332,25 +3332,25 @@ class BedrockSessionManagerTest {
     }
 
     private static void sendClientBatch(BedrockSessionManager manager, String id, byte[] batch) {
-        boolean acknowledgesSpawn = BedrockBatchCodec.decode(batch, true).stream()
-                .anyMatch(packet -> packet.packetId() == 0x71);
-        if (acknowledgesSpawn) {
-            for (int tick = 0; tick < 1000 && !manager.playerSpawnStatusSent(id); tick++) {
-                manager.tickInitialChunkStreams();
-                try {
-                    Thread.sleep(2L);
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                    throw new AssertionError("Interrupted while waiting for PLAYER_SPAWN", interrupted);
-                }
-            }
-            if (!manager.playerSpawnStatusSent(id)) {
-                throw new AssertionError("PLAYER_SPAWN was not sent before client initialization");
-            }
-        }
         for (byte[] frame : NetherNetMessageFramer.fragment(batch, 1200, true)) {
             manager.onFrame(id, "ReliableDataChannel", frame);
         }
+    }
+
+    private static void sendInitializedClientBatch(BedrockSessionManager manager, String id, byte[] batch) {
+        for (int tick = 0; tick < 1000 && !manager.playerSpawnStatusSent(id); tick++) {
+            manager.tickInitialChunkStreams();
+            try {
+                Thread.sleep(2L);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError("Interrupted while waiting for PLAYER_SPAWN", interrupted);
+            }
+        }
+        if (!manager.playerSpawnStatusSent(id)) {
+            throw new AssertionError("PLAYER_SPAWN was not sent before client initialization");
+        }
+        sendClientBatch(manager, id, batch);
     }
 
     private static byte[] reassemble(List<byte[]> frames) {

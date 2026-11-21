@@ -78,19 +78,35 @@ class BedrockVanillaItemCatalogTest {
                 registry.findByIdentifier("minecraft:cobblestone").networkDefinition().blockRuntimeId());
 
         assertNull(registry.findByIdentifier("minecraft:air"));
-        assertNull(registry.findByIdentifier("minecraft:coal"),
-                "Component-based coal must not be advertised without its client component NBT");
+        BedrockItemRegistry.Entry coal = registry.findByIdentifier("minecraft:coal");
+        assertNotNull(coal);
+        assertEquals(304, coal.networkDefinition().runtimeItemId());
+        assertEquals(2, coal.itemVersion());
+        assertTrue(coal.componentBased());
+        assertEquals(16, coal.componentData().length);
         assertNull(registry.findByIdentifier("minecraft:apple")); // component-based; not yet catalogued
 
-        for (String spear : List.of("copper_spear", "diamond_spear", "golden_spear", "iron_spear",
-                "netherite_spear", "stone_spear", "wooden_spear")) {
-            assertNull(registry.findByIdentifier("minecraft:" + spear),
-                    "Component-based item must not be advertised without its complete client NBT");
+        int[] spearIds = {858, 859, 860, 861, 862, 863, 864};
+        String[] spearNames = {
+                "copper_spear", "diamond_spear", "golden_spear", "iron_spear",
+                "netherite_spear", "stone_spear", "wooden_spear"
+        };
+        for (int i = 0; i < spearNames.length; i++) {
+            BedrockItemRegistry.Entry spear = registry.findByIdentifier("minecraft:" + spearNames[i]);
+            assertNotNull(spear);
+            assertEquals(spearIds[i], spear.networkDefinition().runtimeItemId());
+            assertEquals(1, spear.itemVersion());
+            assertTrue(spear.componentBased());
+            assertEquals(1, spear.maxStackSize());
+            assertTrue(spear.componentData().length > 1_000);
         }
 
         for (BedrockItemRegistry.Entry entry : registry.entries()) {
-            assertFalse(entry.componentBased());
-            assertArrayEquals(new byte[] {10, 0, 0}, entry.componentData());
+            if (entry.componentBased()) {
+                assertTrue(entry.componentData().length > 3);
+            } else {
+                assertArrayEquals(new byte[] {10, 0, 0}, entry.componentData());
+            }
         }
 
     }
@@ -101,6 +117,6 @@ class BedrockVanillaItemCatalogTest {
                 BedrockVanillaItemCatalog.createRegistry());
         assertEquals(BedrockItemRegistryPacketCodec.ITEM_REGISTRY_PACKET_ID, packet.packetId());
         assertTrue(packet.payload().length > 500);
-        assertTrue(packet.payload().length < 16_384);
+        assertTrue(packet.payload().length < 32_768);
     }
 }

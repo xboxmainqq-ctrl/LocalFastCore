@@ -5544,9 +5544,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     )) {
                         if (worldPacket.packetId() == 0x0b) {
                             // Bedrock requires ItemRegistry immediately after StartGame.
+                            BedrockPacket jigsawStructureDataPacket =
+                                    BedrockJigsawStructureDataCodec.createPacket();
                             BedrockPacket itemRegistryPacket =
                                     BedrockItemRegistryPacketCodec.createPacket(itemRegistry);
-                            sendPackets(networkId, List.of(worldPacket, itemRegistryPacket), true);
+                            // Protocol 2193+ clients require the complete jigsaw rules before StartGame.
+                            sendPackets(networkId, List.of(
+                                    jigsawStructureDataPacket, worldPacket, itemRegistryPacket), true);
+                            System.out.printf(
+                                    "NEXORA: queued JigsawStructureData for %s (protocol=%d, payload=%d bytes)%n",
+                                    networkId, state.clientProtocol, jigsawStructureDataPacket.payloadLength());
                             System.out.printf(
                                     "NEXORA: queued ItemRegistry for %s (protocol=%d, entries=%d, payload=%d bytes)%n",
                                     networkId, serverProtocol, itemRegistry.size(), itemRegistryPacket.payloadLength());

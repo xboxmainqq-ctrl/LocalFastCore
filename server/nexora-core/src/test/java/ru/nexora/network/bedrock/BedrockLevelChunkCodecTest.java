@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockLevelChunkCodecTest {
     @Test
-    void encodesAProtocol2225ChunkWithNegativeSubChunksAndMatchingBiomePalettes() {
+    void encodesAProtocol2225ChunkWithOneBiomePalettePerSerializedSubChunk() {
         WorldChunk chunk = new WorldChunk(-2, 3);
         new FlatWorldGenerator().generate(chunk, 1L);
 
@@ -76,7 +76,7 @@ class BedrockLevelChunkCodecTest {
     }
 
     @Test
-    void emptyChunkSendsOneBiomePaletteForEachOfItsFourNegativeSubChunks() {
+    void emptyChunkHasNoSerializedSubChunksOrBiomePalettes() {
         BedrockPacket packet = BedrockLevelChunkCodec.createPacket(new WorldChunk(0, 0));
         Reader reader = new Reader(packet.payload());
 
@@ -84,7 +84,7 @@ class BedrockLevelChunkCodecTest {
         reader.varInt32();
         reader.varInt32();
         int subChunkCount = reader.varUInt32();
-        assertEquals(4, subChunkCount);
+        assertEquals(0, subChunkCount);
         assertFalse(reader.bool()); // optional client request subchunk limit is absent
         assertFalse(reader.bool()); // cacheEnabled = false
         assertEquals(0, reader.varUInt32()); // empty blob hash array
@@ -93,11 +93,6 @@ class BedrockLevelChunkCodecTest {
         assertTrue(reader.exhausted());
 
         Reader chunkData = new Reader(data);
-        for (int sectionY = -4; sectionY < 0; sectionY++) {
-            assertEquals(9, chunkData.byteValue());
-            assertEquals(0, chunkData.byteValue());
-            assertEquals(sectionY & 0xff, chunkData.byteValue());
-        }
         for (int section = 0; section < subChunkCount; section++) {
             assertEquals(1, chunkData.byteValue());
             assertEquals(1, chunkData.varInt32());
@@ -105,7 +100,39 @@ class BedrockLevelChunkCodecTest {
         assertEquals(0, chunkData.byteValue()); // border blocks
         assertEquals(0, chunkData.byteValue()); // block entities
         assertTrue(chunkData.exhausted());
-        assertEquals(12 + 24 * 2 + 2, data.length);
+        assertEquals(2, data.length);
+    }
+
+    @Test
+    void preservesBlocksInTheLowestNegativeOverworldSubChunk() {
+        WorldChunk chunk = new WorldChunk(0, 0);
+        chunk.setBlock(1, WorldChunk.MIN_Y, 2, ru.nexora.world.BlockType.STONE);
+
+        BedrockPacket packet = BedrockLevelChunkCodec.createPacket(chunk);
+        Reader reader = new Reader(packet.payload());
+        reader.varInt32();
+        reader.varInt32();
+        reader.varInt32();
+        assertEquals(1, reader.varUInt32());
+        assertFalse(reader.bool()); // optional client request subchunk limit absent
+        assertFalse(reader.bool()); // cache disabled
+        assertEquals(0, reader.varUInt32());
+        byte[] data = reader.byteArray();
+        reader.bool();
+        assertTrue(reader.exhausted());
+
+        Reader chunkData = new Reader(data);
+        assertEquals(9, chunkData.byteValue());
+        assertEquals(1, chunkData.byteValue());
+        assertEquals(0xfc, chunkData.byteValue()); // signed subchunk Y = -4
+        assertEquals(1, chunkData.byteValue()); // uniform storage header
+        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.STONE),
+                chunkData.varInt32());
+        assertEquals(1, chunkData.byteValue()); // one biome storage for one subchunk
+        assertEquals(1, chunkData.varInt32()); // plains
+        assertEquals(0, chunkData.byteValue()); // border blocks
+        assertEquals(0, chunkData.byteValue()); // block entities
+        assertTrue(chunkData.exhausted());
     }
 
     private static final class Reader {

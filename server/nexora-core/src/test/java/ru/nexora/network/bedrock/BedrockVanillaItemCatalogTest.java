@@ -3,6 +3,7 @@ package ru.nexora.network.bedrock;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -24,6 +25,8 @@ class BedrockVanillaItemCatalogTest {
                 registry.findByIdentifier("minecraft:furnace").networkDefinition().blockRuntimeId());
         assertEquals(306, registry.findByIdentifier("minecraft:diamond")
                 .networkDefinition().runtimeItemId());
+        assertEquals(0, registry.findByIdentifier("minecraft:diamond").itemVersion(),
+                "Vanilla non-block items use ItemVersion.LEGACY");
         assertEquals(425, registry.findByIdentifier("minecraft:ender_pearl")
                 .networkDefinition().runtimeItemId());
         assertEquals(277, registry.findByIdentifier("minecraft:rotten_flesh")
@@ -39,6 +42,7 @@ class BedrockVanillaItemCatalogTest {
                 .networkDefinition().runtimeItemId());
         assertEquals(346, registry.findByIdentifier("minecraft:iron_helmet")
                 .networkDefinition().runtimeItemId());
+        assertEquals(0, registry.findByIdentifier("minecraft:iron_helmet").itemVersion());
         assertEquals(347, registry.findByIdentifier("minecraft:iron_chestplate")
                 .networkDefinition().runtimeItemId());
         assertEquals(1, registry.findByIdentifier("minecraft:iron_chestplate").maxStackSize());
@@ -84,8 +88,17 @@ class BedrockVanillaItemCatalogTest {
                     "Component-based item must not be advertised without its complete client NBT");
         }
 
+        Set<String> blockItems = Set.of(
+                "minecraft:stone", "minecraft:grass_block", "minecraft:dirt", "minecraft:cobblestone",
+                "minecraft:gravel", "minecraft:glass", "minecraft:obsidian", "minecraft:netherrack",
+                "minecraft:end_stone", "minecraft:coal_block", "minecraft:iron_block", "minecraft:gold_block",
+                "minecraft:diamond_block", "minecraft:emerald_block", "minecraft:chest", "minecraft:oak_log",
+                "minecraft:oak_planks", "minecraft:crafting_table", "minecraft:furnace",
+                "minecraft:blast_furnace", "minecraft:smoker");
         for (BedrockItemRegistry.Entry entry : registry.entries()) {
             assertFalse(entry.componentBased());
+            assertEquals(blockItems.contains(entry.namespacedId()) ? 2 : 0, entry.itemVersion(),
+                    "ItemVersion must match the vanilla block/non-block classification: " + entry.namespacedId());
             assertArrayEquals(new byte[] {10, 0, 0}, entry.componentData());
         }
 

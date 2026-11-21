@@ -64,8 +64,9 @@ class BedrockLevelChunkCodecTest {
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.GRASS_BLOCK), subChunks.varUInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varUInt32());
 
-        // Exactly one biome palette follows each serialized subchunk.
-        for (int section = 0; section < subChunkCount; section++) {
+        // The Overworld biome column always spans all 24 sections (-4 through 19),
+        // independently of how many block subchunks are serialized.
+        for (int section = 0; section < 24; section++) {
             assertEquals(1, subChunks.byteValue()); // singleton plains biome palette
             assertEquals(1, subChunks.varInt32());
         }
@@ -96,14 +97,14 @@ class BedrockLevelChunkCodecTest {
             assertEquals(0, chunkData.byteValue());
             assertEquals(sectionY & 0xff, chunkData.byteValue());
         }
-        for (int section = 0; section < subChunkCount; section++) {
+        for (int section = 0; section < 24; section++) {
             assertEquals(1, chunkData.byteValue());
             assertEquals(1, chunkData.varInt32());
         }
         assertEquals(0, chunkData.byteValue()); // border blocks
         assertEquals(0, chunkData.byteValue()); // block entities
         assertTrue(chunkData.exhausted());
-        assertEquals(12 + 4 * 2 + 2, data.length);
+        assertEquals(12 + 24 * 2 + 2, data.length);
     }
 
     private static final class Reader {

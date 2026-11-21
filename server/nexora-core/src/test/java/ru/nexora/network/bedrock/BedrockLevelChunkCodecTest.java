@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockLevelChunkCodecTest {
     @Test
-    void encodesAProtocol2225ChunkWithOneBiomePalettePerSerializedSubChunk() {
+    void encodesAProtocol2225ChunkWithFullHeightBiomePalettes() {
         WorldChunk chunk = new WorldChunk(-2, 3);
         new FlatWorldGenerator().generate(chunk, 1L);
 
@@ -65,8 +65,8 @@ class BedrockLevelChunkCodecTest {
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.GRASS_BLOCK), subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
 
-        // Exactly one biome storage follows each serialized block subchunk.
-        for (int section = 0; section < subChunkCount; section++) {
+        // The biome column covers all 24 Overworld sections, not only sent block subchunks.
+        for (int section = 0; section < WorldChunk.SECTION_COUNT; section++) {
             assertEquals(1, subChunks.byteValue()); // singleton plains biome palette
             assertEquals(1, subChunks.varInt32());
         }
@@ -93,14 +93,14 @@ class BedrockLevelChunkCodecTest {
         assertTrue(reader.exhausted());
 
         Reader chunkData = new Reader(data);
-        for (int section = 0; section < subChunkCount; section++) {
+        for (int section = 0; section < WorldChunk.SECTION_COUNT; section++) {
             assertEquals(1, chunkData.byteValue());
             assertEquals(1, chunkData.varInt32());
         }
         assertEquals(0, chunkData.byteValue()); // border blocks
         assertEquals(0, chunkData.byteValue()); // block entities
         assertTrue(chunkData.exhausted());
-        assertEquals(2, data.length);
+        assertEquals(2 + WorldChunk.SECTION_COUNT * 2, data.length);
     }
 
     @Test
@@ -128,8 +128,10 @@ class BedrockLevelChunkCodecTest {
         assertEquals(1, chunkData.byteValue()); // uniform storage header
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.STONE),
                 chunkData.varInt32());
-        assertEquals(1, chunkData.byteValue()); // one biome storage for one subchunk
-        assertEquals(1, chunkData.varInt32()); // plains
+        for (int section = 0; section < WorldChunk.SECTION_COUNT; section++) {
+            assertEquals(1, chunkData.byteValue()); // singleton plains biome palette
+            assertEquals(1, chunkData.varInt32()); // plains
+        }
         assertEquals(0, chunkData.byteValue()); // border blocks
         assertEquals(0, chunkData.byteValue()); // block entities
         assertTrue(chunkData.exhausted());

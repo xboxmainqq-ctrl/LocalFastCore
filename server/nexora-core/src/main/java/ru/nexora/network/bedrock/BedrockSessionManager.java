@@ -2020,6 +2020,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     case BedrockSubChunkCodec.SUB_CHUNK_REQUEST_PACKET_ID ->
                             handleSubChunkRequest(message, state, packet);
                     case 0x71 -> handleClientInitialized(message, state, packet);
+                    case BedrockPacketViolationWarningCodec.PACKET_ID ->
+                            handlePacketViolationWarning(message.networkId(), packet);
                     case BedrockChunkRadiusCodec.REQUEST_PACKET_ID ->
                             handleChunkRadiusRequest(message, state, packet);
                     case BedrockPlayerAuthInputCodec.PLAYER_AUTH_INPUT_PACKET_ID ->
@@ -6976,6 +6978,28 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         int chunkZ = Math.floorDiv((int) Math.floor(player.positionZ), 16);
         long key = ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
         return recipient.sentChunkKeys.contains(key);
+    }
+
+    private void handlePacketViolationWarning(String networkId, BedrockPacket packet) {
+        try {
+            BedrockPacketViolationWarningCodec.Violation violation =
+                    BedrockPacketViolationWarningCodec.decode(packet);
+            String type = BedrockPacketViolationWarningCodec.typeName(violation.type());
+            String severity = BedrockPacketViolationWarningCodec.severityName(violation.severity());
+            String rawHex = java.util.HexFormat.of().formatHex(packet.payload());
+            System.err.println("NEXORA: client PacketViolationWarning from " + networkId
+                    + ": type=" + type + " (" + violation.type() + ")"
+                    + ", severity=" + severity + " (" + violation.severity() + ")"
+                    + ", offendingServerPacket=0x" + Integer.toHexString(violation.packetId()).toUpperCase(Locale.ROOT)
+                    + " (" + violation.packetId() + ")"
+                    + ", context=\"" + violation.context().replace("\\", "\\\\")
+                            .replace("\"", "\\\"").replace("\\n", " ") + "\""
+                    + ", rawPayloadHex=" + rawHex);
+        } catch (IllegalArgumentException malformed) {
+            String rawHex = java.util.HexFormat.of().formatHex(packet.payload());
+            System.err.println("NEXORA: malformed client PacketViolationWarning from " + networkId
+                    + ": " + malformed.getMessage() + ", rawPayloadHex=" + rawHex);
+        }
     }
 
     private void handleClientInitialized(

@@ -2482,23 +2482,33 @@ class BedrockSessionManagerTest {
         List<BedrockPacket> biomeAndRadius = BedrockBatchCodec.decode(
                 reassemble(List.of(outboundFrames.get(11))), true);
         assertEquals(BedrockChunkRadiusCodec.UPDATED_PACKET_ID, biomeAndRadius.get(1).packetId());
+        // The first chunk batch is only a partial view. PLAYER_SPAWN must wait until
+        // the entire initial chunk queue has been published, and must precede 0x71.
+        assertFalse(outboundFrames.stream().flatMap(frame -> decodeOutboundPackets(frame, true).stream())
+                .anyMatch(packet -> isPlayerSpawnStatus(packet)));
+        boolean spawnSent = false;
+        for (int tick = 0; tick < 100 && !spawnSent; tick++) {
+            manager.tickInitialChunkStreams();
+            spawnSent = outboundFrames.stream().flatMap(frame -> decodeOutboundPackets(frame, true).stream())
+                    .anyMatch(BedrockSessionManagerTest::isPlayerSpawnStatus);
+            if (!spawnSent) Thread.sleep(10L);
+        }
+        assertTrue(spawnSent, "PLAYER_SPAWN must be sent after the initial chunk stream completes");
         List<BedrockPacket> initialChunkPackets = new ArrayList<>();
-        for (int index = 12; index < 13; index++) {
+        for (int index = 12; index < outboundFrames.size(); index++) {
             initialChunkPackets.addAll(decodeOutboundPackets(outboundFrames.get(index), true));
         }
-        assertEquals(4, initialChunkPackets.stream()
+        assertTrue(initialChunkPackets.stream()
                 .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
-                .count());
+                .count() >= 4);
 
-        // The server must not announce the player as spawned until the client confirms StartGame.
         BedrockPacket initialized = new BedrockPacket(0x71, 0, 0, new byte[] {1});
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256));
-        assertEquals(16, outboundFrames.size());
-        assertEquals(0x31, decodeOutbound(outboundFrames.get(14), true).packetId());
-        List<BedrockPacket> initialInventoryBatch = BedrockBatchCodec.decode(
-                reassemble(List.of(outboundFrames.get(14))), true);
-        assertEquals(8, initialInventoryBatch.size());
+        List<BedrockPacket> initialInventoryBatch = outboundFrames.stream()
+                .map(frame -> decodeOutboundPackets(frame, true))
+                .filter(packets -> packets.size() == 8 && packets.getFirst().packetId() == 0x31)
+                .findFirst().orElseThrow();
         assertEquals(0x1f, initialInventoryBatch.get(1).packetId());
         assertEquals(0x31, initialInventoryBatch.get(2).packetId()); // armor container
         assertEquals(0x31, initialInventoryBatch.get(3).packetId()); // offhand container
@@ -2508,9 +2518,6 @@ class BedrockSessionManagerTest {
         assertEquals(BedrockCraftingDataCodec.CRAFTING_DATA_PACKET_ID,
                 initialInventoryBatch.get(6).packetId()); // crafting recipes
         assertEquals(124, Byte.toUnsignedInt(initialInventoryBatch.get(7).payload()[0])); // player UI grid
-        BedrockPacket playStatus = decodeOutbound(outboundFrames.get(13), true);
-        assertEquals(BedrockBatchCodec.PLAY_STATUS_PACKET_ID, playStatus.packetId());
-        assertEquals(3, ByteBuffer.wrap(playStatus.payload()).order(ByteOrder.BIG_ENDIAN).getInt());
         assertEquals(0.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
         assertEquals(65.0f, manager.playerPosition("authenticated-client").orElseThrow().y());
 
@@ -3046,6 +3053,12 @@ class BedrockSessionManagerTest {
         NetherNetMessageFramer.Reassembler reassembler = new NetherNetMessageFramer.Reassembler();
         byte[] payload = reassembler.accept(frame, true).orElseThrow();
         return BedrockBatchCodec.decode(payload, compressed);
+    }
+
+    private static boolean isPlayerSpawnStatus(BedrockPacket packet) {
+        return packet.packetId() == BedrockBatchCodec.PLAY_STATUS_PACKET_ID
+                && packet.payload().length == Integer.BYTES
+                && ByteBuffer.wrap(packet.payload()).order(ByteOrder.BIG_ENDIAN).getInt() == 3;
     }
 
     private static BedrockPacket decodeOutbound(byte[] frame, boolean compressed) {

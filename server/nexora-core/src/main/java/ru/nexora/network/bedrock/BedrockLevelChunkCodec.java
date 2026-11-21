@@ -147,7 +147,10 @@ public final class BedrockLevelChunkCodec {
         }
 
         out.varInt32(paletteSize);
-        for (int index = 0; index < paletteSize; index++) out.varInt32(palette[index]);
+        // StartGame advertises BlockNetworkIdsAreHashes=true: hashes are unsigned 32-bit values.
+        for (int index = 0; index < paletteSize; index++) {
+            out.varUInt32(Integer.toUnsignedLong(palette[index]));
+        }
     }
 
     private static final class Writer {

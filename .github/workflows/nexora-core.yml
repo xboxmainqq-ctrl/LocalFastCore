@@ -23,6 +23,16 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+      - name: Check out official Bedrock 1.26.60 GameData
+        uses: actions/checkout@v4
+        with:
+          repository: PowerNukkitX/GameData
+          ref: r/26_u6
+          path: .gamedata
+      - name: Install pinned GameData resources
+        run: |
+          mkdir -p server/nexora-core/src/main/resources/gamedata
+          cp -R .gamedata/src/main/resources/gamedata/kaooot server/nexora-core/src/main/resources/gamedata/
       - name: Set up Java 21
         uses: actions/setup-java@v5
         with:

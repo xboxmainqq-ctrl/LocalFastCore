@@ -215,11 +215,13 @@ public final class BedrockVanillaItemCatalog {
 
     private static void addBlock(List<BedrockItemRegistry.Entry> entries,
                                  String path, int runtimeId, BlockType blockType) {
+        String identifier = "minecraft:" + path;
+        byte[] componentData = COMPONENT_NBT.getOrDefault(identifier, EMPTY_NETWORK_NBT);
         entries.add(new BedrockItemRegistry.Entry(
-                "minecraft:" + path,
+                identifier,
                 new BedrockInventoryContentCodec.ItemDefinition(
                         runtimeId, 0, Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(blockType)), new byte[0]),
-                64, false, 2, EMPTY_NETWORK_NBT
+                64, false, 2, componentData
         ));
     }
 

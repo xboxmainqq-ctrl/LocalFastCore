@@ -234,7 +234,7 @@ public final class BedrockStartGameCodec {
         Writer out = new Writer();
         out.varInt32(x); out.varInt32(y); out.varInt32(z);
         out.varUInt32(viewDiameterBlocks);
-        out.uint32(0);
+        out.varUInt32(0); // empty server-built-chunks array
         return out.toByteArray();
     }
 

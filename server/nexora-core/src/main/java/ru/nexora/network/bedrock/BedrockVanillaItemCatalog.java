@@ -112,14 +112,6 @@ public final class BedrockVanillaItemCatalog {
         add(entries, "cooked_mutton", 561, 0, 64);
         add(entries, "ink_sac", 416, 2, 64);
         add(entries, "glow_ink_sac", 514, 2, 64);
-        // Protocol-2225 component-based spear item states (version 1).
-        addComponent(entries, "copper_spear", 855);
-        addComponent(entries, "diamond_spear", 856);
-        addComponent(entries, "golden_spear", 857);
-        addComponent(entries, "iron_spear", 858);
-        addComponent(entries, "netherite_spear", 859);
-        addComponent(entries, "stone_spear", 860);
-        addComponent(entries, "wooden_spear", 861);
         add(entries, "leather_helmet", 338, 2, 1);
         add(entries, "leather_chestplate", 339, 2, 1);
         add(entries, "leather_leggings", 340, 2, 1);

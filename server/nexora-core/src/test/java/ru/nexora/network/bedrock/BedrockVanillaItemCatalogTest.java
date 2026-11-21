@@ -77,6 +77,8 @@ class BedrockVanillaItemCatalogTest {
         assertNull(registry.findByIdentifier("minecraft:copper_spear")); // component-based; real component NBT not bundled yet
         assertNull(registry.findByIdentifier("minecraft:apple")); // component-based; not yet catalogued
 
+        for (BedrockItemRegistry.Entry entry : registry.entries()) {
+            assertFalse(entry.componentBased(), entry.namespacedId() + " must not use placeholder component data");
             assertArrayEquals(new byte[] {10, 0, 0}, entry.componentData());
         }
     }

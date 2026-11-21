@@ -2881,16 +2881,16 @@ class BedrockSessionManagerTest {
                 BedrockBatchCodec.encode(List.of(stackCompleted), true, 256));
         assertEquals(1, manager.resourcePackReadyCount());
         assertEquals(13, outboundFrames.size());
-        assertEquals(0x0b, decodeOutbound(outboundFrames.get(4), true).packetId());
+        assertEquals(0x0a, decodeOutbound(outboundFrames.get(4), true).packetId()); // SetTime precedes StartGame
+        assertEquals(0x0b, decodeOutbound(outboundFrames.get(5), true).packetId());
         List<BedrockPacket> startGameBatch = BedrockBatchCodec.decode(
-                reassemble(List.of(outboundFrames.get(4))), true);
+                reassemble(List.of(outboundFrames.get(5))), true);
         assertEquals(2, startGameBatch.size());
         assertEquals(BedrockItemRegistryPacketCodec.ITEM_REGISTRY_PACKET_ID,
                 startGameBatch.get(1).packetId());
-        assertEquals(0x0a, decodeOutbound(outboundFrames.get(5), true).packetId());
-        assertEquals(0x3c, decodeOutbound(outboundFrames.get(6), true).packetId());
-        assertEquals(0x3b, decodeOutbound(outboundFrames.get(7), true).packetId());
-        assertEquals(0x2b, decodeOutbound(outboundFrames.get(8), true).packetId());
+        assertEquals(0x2b, decodeOutbound(outboundFrames.get(6), true).packetId());
+        assertEquals(0x3c, decodeOutbound(outboundFrames.get(7), true).packetId());
+        assertEquals(0x3b, decodeOutbound(outboundFrames.get(8), true).packetId());
         assertEquals(0x3e, decodeOutbound(outboundFrames.get(9), true).packetId());
         assertEquals(0x79, decodeOutbound(outboundFrames.get(10), true).packetId());
         assertEquals(0x7a, decodeOutbound(outboundFrames.get(11), true).packetId());
@@ -3219,7 +3219,7 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "saved-client", BedrockBatchCodec.encode(
                 List.of(resourcePackResponse(3, "resourcepackstackfinished")), true, 256));
 
-        BedrockPacket startGame = decodeOutbound(outboundFrames.get(4), true);
+        BedrockPacket startGame = decodeOutbound(outboundFrames.get(5), true);
         ByteBuffer position = ByteBuffer.wrap(startGame.payload(), 3, 20).order(ByteOrder.LITTLE_ENDIAN);
         assertEquals(32.5f, position.getFloat());
         assertEquals(70.0f, position.getFloat());

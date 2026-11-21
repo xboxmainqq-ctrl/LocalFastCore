@@ -98,8 +98,10 @@ class BedrockVanillaItemCatalogTest {
         assertEquals(16, coal.componentData().length);
         assertTrue(readNetworkNbt(coal).getCompound("components").isEmpty());
         assertNotNull(registry.findByIdentifier("minecraft:apple")); // present in the official full palette
+        assertEquals(76, registry.entries().stream().filter(BedrockItemRegistry.Entry::componentBased).count(),
+                "the protocol-2225 palette contains 76 component-based items");
 
-        int[] spearIds = {855, 856, 857, 858, 859, 860, 861};
+        int[] spearIds = {858, 859, 860, 861, 862, 863, 864};
         String[] spearNames = {
                 "copper_spear", "diamond_spear", "golden_spear", "iron_spear",
                 "netherite_spear", "stone_spear", "wooden_spear"

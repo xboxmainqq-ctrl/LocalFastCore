@@ -53,12 +53,12 @@ class BedrockStartGameCodecTest {
         int propertyOffset = versionOffset + serverVersion.length;
 
         assertTrue(versionOffset >= 0);
-        assertTrue(propertyOffset + 3 < payload.length);
-        // PlayerPropertyData is one empty network little-endian NBT compound.
-        assertArrayEquals(new byte[] {0x0a, 0, 0, 0},
-                java.util.Arrays.copyOfRange(payload, propertyOffset, propertyOffset + 4));
+        assertTrue(propertyOffset + 2 < payload.length);
+        // Network NBT uses varint string lengths: root compound, empty name, end tag.
+        assertArrayEquals(new byte[] {0x0a, 0, 0},
+                java.util.Arrays.copyOfRange(payload, propertyOffset, propertyOffset + 3));
         // The next field is the fixed-width server block type registry checksum.
-        assertEquals(0, Byte.toUnsignedInt(payload[propertyOffset + 4]));
+        assertEquals(0, Byte.toUnsignedInt(payload[propertyOffset + 3]));
     }
 
     @Test

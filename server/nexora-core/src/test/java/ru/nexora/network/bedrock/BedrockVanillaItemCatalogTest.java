@@ -3,7 +3,6 @@ package ru.nexora.network.bedrock;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -13,7 +12,6 @@ class BedrockVanillaItemCatalogTest {
         BedrockItemRegistry registry = BedrockVanillaItemCatalog.createRegistry();
         assertTrue(registry.size() >= 60);
 
-        assertEquals(263, registry.findByIdentifier("minecraft:coal").networkDefinition().runtimeItemId());
         assertEquals(61, registry.findByIdentifier("minecraft:furnace").networkDefinition().runtimeItemId());
         assertEquals(-196, registry.findByIdentifier("minecraft:blast_furnace").networkDefinition().runtimeItemId());
         assertEquals(-198, registry.findByIdentifier("minecraft:smoker").networkDefinition().runtimeItemId());
@@ -38,8 +36,10 @@ class BedrockVanillaItemCatalogTest {
         assertEquals(289, registry.findByIdentifier("minecraft:cooked_rabbit").networkDefinition().runtimeItemId());
         assertEquals(560, registry.findByIdentifier("minecraft:mutton").networkDefinition().runtimeItemId());
         assertEquals(561, registry.findByIdentifier("minecraft:cooked_mutton").networkDefinition().runtimeItemId());
-        assertEquals(884, registry.findByIdentifier("minecraft:glow_berries")
+        assertEquals(887, registry.findByIdentifier("minecraft:glow_berries")
                 .networkDefinition().runtimeItemId());
+        assertEquals(0, registry.findByIdentifier("minecraft:glow_berries").itemVersion());
+        assertEquals(2, registry.findByIdentifier("minecraft:diamond").itemVersion());
         assertEquals(346, registry.findByIdentifier("minecraft:iron_helmet")
                 .networkDefinition().runtimeItemId());
         assertEquals(0, registry.findByIdentifier("minecraft:iron_helmet").itemVersion());
@@ -80,6 +80,8 @@ class BedrockVanillaItemCatalogTest {
                 registry.findByIdentifier("minecraft:cobblestone").networkDefinition().blockRuntimeId());
 
         assertNull(registry.findByIdentifier("minecraft:air"));
+        assertNull(registry.findByIdentifier("minecraft:coal"),
+                "Component-based coal must not be advertised without its client component NBT");
         assertNull(registry.findByIdentifier("minecraft:apple")); // component-based; not yet catalogued
 
         for (String spear : List.of("copper_spear", "diamond_spear", "golden_spear", "iron_spear",
@@ -88,13 +90,6 @@ class BedrockVanillaItemCatalogTest {
                     "Component-based item must not be advertised without its complete client NBT");
         }
 
-        Set<String> blockItems = Set.of(
-                "minecraft:stone", "minecraft:grass_block", "minecraft:dirt", "minecraft:cobblestone",
-                "minecraft:gravel", "minecraft:glass", "minecraft:obsidian", "minecraft:netherrack",
-                "minecraft:end_stone", "minecraft:coal_block", "minecraft:iron_block", "minecraft:gold_block",
-                "minecraft:diamond_block", "minecraft:emerald_block", "minecraft:chest", "minecraft:oak_log",
-                "minecraft:oak_planks", "minecraft:crafting_table", "minecraft:furnace",
-                "minecraft:blast_furnace", "minecraft:smoker");
         for (BedrockItemRegistry.Entry entry : registry.entries()) {
             assertFalse(entry.componentBased());
             assertEquals(blockItems.contains(entry.namespacedId()) ? 2 : 0, entry.itemVersion(),

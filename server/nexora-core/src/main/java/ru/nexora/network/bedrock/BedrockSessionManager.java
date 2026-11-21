@@ -5564,6 +5564,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     sendPackets(networkId, List.of(
                             BedrockBiomeDefinitionCodec.createPacket(),
                             BedrockChunkRadiusCodec.createUpdatedPacket(state.chunkViewRadius)), true);
+                    // Publish the initial chunk center/radius before the first LevelChunk packets.
+                    sendPacket(networkId, BedrockStartGameCodec.createChunkPublisherUpdate(
+                            (int) Math.floor(state.positionX), (int) Math.floor(state.positionY),
+                            (int) Math.floor(state.positionZ), state.chunkViewRadius), true);
                     sendInitialChunkArea(networkId, state);
                 }
                 System.out.printf("NEXORA: resource-pack negotiation completed for %s; StartGame and initial chunks queued%n",

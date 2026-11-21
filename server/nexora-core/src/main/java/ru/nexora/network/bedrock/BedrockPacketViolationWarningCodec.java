@@ -55,8 +55,8 @@ public final class BedrockPacketViolationWarningCodec {
 
     public record Violation(int type, int severity, int packetId, String context) {
         public Violation {
-            if (type < 0) throw new IllegalArgumentException("type must not be negative");
-            if (severity < 0) throw new IllegalArgumentException("severity must not be negative");
+            if (type < -1) throw new IllegalArgumentException("type must be -1 or non-negative");
+            if (severity < -1) throw new IllegalArgumentException("severity must be -1 or non-negative");
             if (packetId < 0 || packetId > 0x3ff) {
                 throw new IllegalArgumentException("packetId must be in 0..1023");
             }

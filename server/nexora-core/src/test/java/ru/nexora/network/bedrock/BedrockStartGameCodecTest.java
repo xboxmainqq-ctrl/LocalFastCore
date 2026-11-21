@@ -45,7 +45,7 @@ class BedrockStartGameCodecTest {
     }
 
     @Test
-    void encodesEmptyPlayerPropertySyncDataAsTwoEmptyLists() {
+    void encodesEmptyPlayerPropertyDataAsNetworkNbtCompound() {
         byte[] payload = BedrockStartGameCodec.create(
                 7, "NEXORA World", "1.26.62", "1.26.62", 0.5f, 65.0f, 0.5f).payload();
         byte[] serverVersion = "1.26.62".getBytes(StandardCharsets.UTF_8);
@@ -53,12 +53,12 @@ class BedrockStartGameCodecTest {
         int propertyOffset = versionOffset + serverVersion.length;
 
         assertTrue(versionOffset >= 0);
-        assertTrue(propertyOffset + 1 < payload.length);
-        // PropertySyncData = int-entry array length followed by float-entry array length.
-        assertArrayEquals(new byte[] {0, 0},
-                java.util.Arrays.copyOfRange(payload, propertyOffset, propertyOffset + 2));
+        assertTrue(propertyOffset + 3 < payload.length);
+        // PlayerPropertyData is one empty network little-endian NBT compound.
+        assertArrayEquals(new byte[] {0x0a, 0, 0, 0},
+                java.util.Arrays.copyOfRange(payload, propertyOffset, propertyOffset + 4));
         // The next field is the fixed-width server block type registry checksum.
-        assertEquals(0, Byte.toUnsignedInt(payload[propertyOffset + 2]));
+        assertEquals(0, Byte.toUnsignedInt(payload[propertyOffset + 4]));
     }
 
     @Test

@@ -55,9 +55,8 @@ public final class BedrockLevelChunkCodec {
         packet.varInt32(chunk.chunkZ());
         packet.varInt32(0); // Overworld dimension
         packet.varUInt32(subChunkCount);
-        packet.bool(false); // requestSubChunks optional is absent
-        packet.bool(false); // client chunk cache disabled
-        packet.varUInt32(0); // no blob hashes
+        // Client Request SubChunk Limit is optional and is omitted outside request mode.
+        packet.bool(false); // client chunk cache disabled; cache metadata is then omitted too
         packet.byteArray(data);
         packet.bool(false); // clientBiomeUpdate
 

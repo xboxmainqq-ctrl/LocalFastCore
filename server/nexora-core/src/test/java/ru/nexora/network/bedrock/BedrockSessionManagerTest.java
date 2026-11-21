@@ -2883,19 +2883,19 @@ class BedrockSessionManagerTest {
         assertEquals(15, outboundFrames.size());
         assertEquals(0x0a, decodeOutbound(outboundFrames.get(4), true).packetId()); // SetTime
         assertEquals(0x139, decodeOutbound(outboundFrames.get(5), true).packetId()); // JigsawStructureData
-        assertEquals(0x151, decodeOutbound(outboundFrames.get(12), true).packetId()); // VoxelShapes
-        assertEquals(0x0b, decodeOutbound(outboundFrames.get(13), true).packetId()); // StartGame
+        assertEquals(0x151, decodeOutbound(outboundFrames.get(6), true).packetId()); // VoxelShapes
+        assertEquals(0x0b, decodeOutbound(outboundFrames.get(7), true).packetId()); // StartGame
         List<BedrockPacket> startGameBatch = BedrockBatchCodec.decode(
                 reassemble(List.of(outboundFrames.get(7))), true);
         assertEquals(2, startGameBatch.size());
         assertEquals(BedrockItemRegistryPacketCodec.ITEM_REGISTRY_PACKET_ID,
                 startGameBatch.get(1).packetId());
-        assertEquals(0x2b, decodeOutbound(outboundFrames.get(6), true).packetId());
-        assertEquals(0x3c, decodeOutbound(outboundFrames.get(7), true).packetId());
-        assertEquals(0x3b, decodeOutbound(outboundFrames.get(8), true).packetId());
-        assertEquals(0x3e, decodeOutbound(outboundFrames.get(9), true).packetId());
-        assertEquals(0x79, decodeOutbound(outboundFrames.get(10), true).packetId());
-        assertEquals(0x7a, decodeOutbound(outboundFrames.get(11), true).packetId());
+        assertEquals(0x2b, decodeOutbound(outboundFrames.get(8), true).packetId());
+        assertEquals(0x3c, decodeOutbound(outboundFrames.get(9), true).packetId());
+        assertEquals(0x3b, decodeOutbound(outboundFrames.get(10), true).packetId());
+        assertEquals(0x3e, decodeOutbound(outboundFrames.get(11), true).packetId());
+        assertEquals(0x79, decodeOutbound(outboundFrames.get(12), true).packetId());
+        assertEquals(0x7a, decodeOutbound(outboundFrames.get(13), true).packetId());
         List<BedrockPacket> biomeAndRadius = BedrockBatchCodec.decode(
                 reassemble(List.of(outboundFrames.get(13))), true);
         assertEquals(BedrockChunkRadiusCodec.UPDATED_PACKET_ID, biomeAndRadius.get(1).packetId());

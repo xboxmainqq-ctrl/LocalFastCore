@@ -79,7 +79,7 @@ public final class BedrockItemRegistry implements BedrockInventoryContentCodec.I
             int itemVersion,
             byte[] componentData
     ) {
-        private static final byte[] EMPTY_COMPOUND_NBT = new byte[] {10, 0, 0, 0};
+        private static final byte[] EMPTY_COMPOUND_NBT = new byte[] {10, 0, 0};
 
         public Entry(String namespacedId, BedrockInventoryContentCodec.ItemDefinition networkDefinition) {
             this(namespacedId, networkDefinition, 64, false, 2, EMPTY_COMPOUND_NBT);
@@ -103,7 +103,7 @@ public final class BedrockItemRegistry implements BedrockInventoryContentCodec.I
                 throw new IllegalArgumentException("itemVersion must be one of 0 (Legacy), 1 (DataDriven), or 2 (None)");
             }
             componentData = Objects.requireNonNull(componentData, "componentData").clone();
-            if (componentData.length < 4 || componentData.length > 1_048_576) {
+            if (componentData.length < 3 || componentData.length > 1_048_576) {
                 throw new IllegalArgumentException("componentData must be a complete bounded network-NBT tag");
             }
         }

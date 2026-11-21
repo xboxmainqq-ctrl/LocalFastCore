@@ -180,12 +180,13 @@ public final class BedrockStartGameCodec {
             float spawnX, float spawnY, float spawnZ, float pitch, float yaw
     ) {
         return List.of(
+                // Match the reference login flow: world time precedes StartGame.
+                packet(0x0a, varIntPayload(0)),
                 create(entityId, worldName, gameVersion, baseGameVersion, worldSeed,
                         spawnBlockX, spawnBlockY, spawnBlockZ, spawnX, spawnY, spawnZ, pitch, yaw),
-                packet(0x0a, varIntPayload(0)),
+                packet(0x2b, setSpawnPositionPayload(spawnBlockX, spawnBlockY, spawnBlockZ)),
                 packet(0x3c, varUIntPayload(1)),
                 packet(0x3b, new byte[] {1}),
-                packet(0x2b, setSpawnPositionPayload(spawnBlockX, spawnBlockY, spawnBlockZ)),
                 packet(0x3e, varIntPayload(0)),
                 createChunkPublisherUpdate(
                         (int) Math.floor(spawnX), (int) Math.floor(spawnY), (int) Math.floor(spawnZ))

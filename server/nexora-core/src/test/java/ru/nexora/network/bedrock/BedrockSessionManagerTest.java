@@ -2534,6 +2534,7 @@ class BedrockSessionManagerTest {
         assertEquals(1, inventory.heldItem().orElseThrow().count());
 
         monotonicClock.set(100_000_000L);
+        int outboundFramesBeforeMovement = outboundFrames.size();
         BedrockPacket movement = new BedrockPacket(0x90, 0, 0,
                 BedrockPlayerAuthInputCodecTest.movementPayload(1.0f, 65.0f, 1.0f, 30.0f, 0L, false));
         sendClientBatch(manager, "authenticated-client",
@@ -2550,7 +2551,7 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(replayedMovement), true, 256));
         assertEquals(1.0f, manager.playerPosition("authenticated-client").orElseThrow().x());
-        assertEquals(17, outboundFrames.size());
+        assertEquals(outboundFramesBeforeMovement, outboundFrames.size());
 
         monotonicClock.set(200_000_000L);
         BedrockPacket implausibleTeleport = new BedrockPacket(0x90, 0, 0,
@@ -2558,7 +2559,7 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(implausibleTeleport), true, 256));
         assertEquals(1.0f, manager.playerPosition("authenticated-client").orElseThrow().x());
-        assertEquals(17, outboundFrames.size());
+        assertEquals(outboundFramesBeforeMovement, outboundFrames.size());
 
         float[] walkPositions = {3.0f, 5.0f, 7.0f, 9.0f, 11.0f, 13.0f, 15.0f, 16.5f};
         long[] walkTimes = {400_000_000L, 650_000_000L, 900_000_000L, 1_150_000_000L,

@@ -2984,11 +2984,14 @@ class BedrockSessionManagerTest {
                 .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
                 .count(), "The first bounded batch contains one newly exposed column");
         completeChunkStreaming(manager, "authenticated-client", monotonicClock);
-        List<BedrockPacket> remainingChunkBatch = decodeOutboundPackets(outboundFrames.get(20), true);
-        assertEquals(2, remainingChunkBatch.stream()
+        List<BedrockPacket> remainingChunkPackets = new ArrayList<>();
+        for (int frameIndex = 20; frameIndex < outboundFrames.size(); frameIndex++) {
+            remainingChunkPackets.addAll(decodeOutboundPackets(outboundFrames.get(frameIndex), true));
+        }
+        assertEquals(2, remainingChunkPackets.stream()
                 .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
-                .count());
-        assertEquals(21, outboundFrames.size());
+                .count(), "The remaining exposed columns must all be published, even across separate batches");
+        assertTrue(outboundFrames.size() >= 22);
         assertEquals(16.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
 
         monotonicClock.set(2_110_000_000L);

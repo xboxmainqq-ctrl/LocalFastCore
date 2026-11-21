@@ -60,15 +60,20 @@ public final class BedrockSubChunkCodec {
             out.byteValue(response.offset().y());
             out.byteValue(response.offset().z());
             out.byteValue(response.result());
+            byte[] serialized = response.serializedSubChunk();
             if (response.result() == RESULT_SUCCESS) {
-                byte[] serialized = Objects.requireNonNull(response.serializedSubChunk(),
-                        "Successful subchunk response requires serialized data");
-                out.byteArray(serialized);
-            } else if (response.serializedSubChunk() != null) {
+                Objects.requireNonNull(serialized, "Successful subchunk response requires serialized data");
+            } else if (serialized != null) {
                 throw new IllegalArgumentException("Only successful responses may include serialized subchunk data");
             }
-            out.byteValue(0); // Heightmap: NoData
-            out.byteValue(0); // Render heightmap: NoData
+            out.bool(serialized != null); // Optional serialized subchunk presence
+            if (serialized != null) out.byteArray(serialized);
+
+            out.byteValue(0); // Heightmap type: NoData
+            out.bool(false); // Optional heightmap array absent
+            out.byteValue(0); // Render heightmap type: NoData
+            out.bool(false); // Optional render heightmap array absent
+            out.bool(false); // Optional blob ID absent (cache disabled)
         }
         return new BedrockPacket(SUB_CHUNK_PACKET_ID, 0, 0, out.toByteArray());
     }

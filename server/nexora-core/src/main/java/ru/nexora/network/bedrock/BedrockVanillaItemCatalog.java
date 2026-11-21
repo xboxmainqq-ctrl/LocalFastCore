@@ -225,13 +225,15 @@ public final class BedrockVanillaItemCatalog {
 
     private static void add(List<BedrockItemRegistry.Entry> entries,
                             String path, int runtimeId, int itemVersion, int maxStackSize) {
+        String identifier = "minecraft:" + path;
+        byte[] componentData = COMPONENT_NBT.getOrDefault(identifier, EMPTY_NETWORK_NBT);
         entries.add(new BedrockItemRegistry.Entry(
-                "minecraft:" + path,
+                identifier,
                 new BedrockInventoryContentCodec.ItemDefinition(runtimeId, 0, 0, new byte[0]),
                 maxStackSize,
                 false,
                 itemVersion,
-                EMPTY_NETWORK_NBT
+                componentData
         ));
     }
 }

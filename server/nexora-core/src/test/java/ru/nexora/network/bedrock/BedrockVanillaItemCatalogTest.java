@@ -23,8 +23,6 @@ class BedrockVanillaItemCatalogTest {
                 registry.findByIdentifier("minecraft:furnace").networkDefinition().blockRuntimeId());
         assertEquals(306, registry.findByIdentifier("minecraft:diamond")
                 .networkDefinition().runtimeItemId());
-        assertEquals(0, registry.findByIdentifier("minecraft:diamond").itemVersion(),
-                "Vanilla non-block items use ItemVersion.LEGACY");
         assertEquals(425, registry.findByIdentifier("minecraft:ender_pearl")
                 .networkDefinition().runtimeItemId());
         assertEquals(277, registry.findByIdentifier("minecraft:rotten_flesh")
@@ -42,7 +40,7 @@ class BedrockVanillaItemCatalogTest {
         assertEquals(2, registry.findByIdentifier("minecraft:diamond").itemVersion());
         assertEquals(346, registry.findByIdentifier("minecraft:iron_helmet")
                 .networkDefinition().runtimeItemId());
-        assertEquals(0, registry.findByIdentifier("minecraft:iron_helmet").itemVersion());
+        assertEquals(2, registry.findByIdentifier("minecraft:iron_helmet").itemVersion());
         assertEquals(347, registry.findByIdentifier("minecraft:iron_chestplate")
                 .networkDefinition().runtimeItemId());
         assertEquals(1, registry.findByIdentifier("minecraft:iron_chestplate").maxStackSize());

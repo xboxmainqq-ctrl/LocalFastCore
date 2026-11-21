@@ -6821,6 +6821,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         System.out.printf("NEXORA: initial chunk stream completed for %s (sent=%d elapsedMs=%d)%n",
                 networkId, state.sentChunkKeys.size(), elapsedMillis);
         state.chunkStreamingStartedNanos = Long.MIN_VALUE;
+        // Bedrock clients send SetLocalPlayerAsInitialized only after receiving PLAYER_SPAWN.
+        // Publish it once the initial chunk view is fully available to break the login handshake cycle.
+        if (!state.playerSpawnSent) {
+            sendPacket(networkId, BedrockBatchCodec.createPlayStatus(3), true);
+            state.playerSpawnSent = true;
+            System.out.printf("NEXORA: player spawn status sent for %s after initial chunks (chunks=%d)%n",
+                    networkId, state.sentChunkKeys.size());
+        }
         syncVisiblePlayerActors(networkId, state);
         syncVisibleWorldActors(networkId, state);
     }
@@ -7095,6 +7103,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (!state.gameStarted) {
             throw new SecurityException("SetLocalPlayerAsInitialized arrived before StartGame");
         }
+        if (!state.playerSpawnSent) {
+            throw new SecurityException("SetLocalPlayerAsInitialized arrived before PLAYER_SPAWN");
+        }
         if (state.clientInitialized) {
             throw new SecurityException("Duplicate SetLocalPlayerAsInitialized packet");
         }
@@ -7127,7 +7138,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         System.out.printf("NEXORA: client initialization acknowledged for %s (entityId=%d chunksSent=%d chunkStreamPending=%s)%n",
                 message.networkId(), state.entityId, state.sentChunkKeys.size(), state.chunkStreamingQueue != null);
         advertisePlayerList(message.networkId(), state);
-        sendPacket(message.networkId(), BedrockBatchCodec.createPlayStatus(3), true);
         sendInitialPlayerInventory(message.networkId(), state);
         sendExistingLivingActors(message.networkId());
         if (state.dead) handleDeath(message.networkId(), state, "death.attack.generic");
@@ -8081,6 +8091,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private boolean resourcePackStackSent;
         private volatile boolean resourcePacksCompleted;
         private volatile boolean gameStarted;
+        private boolean playerSpawnSent;
         private volatile boolean clientInitialized;
         private boolean positionInitialized;
         private float positionX;

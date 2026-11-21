@@ -18,10 +18,8 @@
 
     <repositories>
         <repository>
-            <id>powernukkitx-releases</id>
-            <url>https://repo.powernukkitx.org/releases</url>
-            <releases><enabled>true</enabled></releases>
-            <snapshots><enabled>true</enabled></snapshots>
+            <id>jitpack</id>
+            <url>https://jitpack.io</url>
         </repository>
         <repository>
             <id>opencollab-snapshots</id>

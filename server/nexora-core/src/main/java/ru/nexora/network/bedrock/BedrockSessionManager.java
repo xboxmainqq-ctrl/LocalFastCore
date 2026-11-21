@@ -6675,6 +6675,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 chunkStreamingBudget.yield(networkId, nanoTime.getAsLong());
                 state.chunkStreamingQueue = new ChunkStreamingQueue(centerX, centerZ, state.chunkViewRadius);
                 state.pendingChunkLoads.clear();
+                state.chunkStreamingStartedNanos = nanoTime.getAsLong();
+                state.lastChunkStreamingDiagnosticNanos = Long.MIN_VALUE;
+                System.out.printf("NEXORA: initial chunk stream started for %s (center=%d,%d radius=%d target=%d)%n",
+                        networkId, centerX, centerZ, state.chunkViewRadius,
+                        state.chunkStreamingQueue.desiredChunkKeys().size());
             }
             processChunkStreaming(networkId, state);
         }
@@ -6738,13 +6743,21 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 try {
                     prepared = load.join();
                 } catch (java.util.concurrent.CompletionException failure) {
-                    if (failure.getCause() instanceof java.util.concurrent.RejectedExecutionException) {
+                    Throwable cause = failure.getCause() == null ? failure : failure.getCause();
+                    state.pendingChunkLoads.remove(key, load);
+                    batchReady = false;
+                    long now = nanoTime.getAsLong();
+                    if (cause instanceof java.util.concurrent.RejectedExecutionException) {
                         // Keep this chunk pending and retry on a later input tick once I/O capacity frees.
-                        state.pendingChunkLoads.remove(key, load);
-                        batchReady = false;
                         continue;
                     }
-                    throw failure;
+                    if (state.lastChunkStreamingDiagnosticNanos == Long.MIN_VALUE
+                            || now - state.lastChunkStreamingDiagnosticNanos >= 5_000_000_000L) {
+                        state.lastChunkStreamingDiagnosticNanos = now;
+                        System.err.printf("NEXORA: chunk storage load failed for %s at %d,%d: %s%n",
+                                networkId, chunkX, chunkZ, cause.toString());
+                    }
+                    continue;
                 }
                 if (!chunkStreamingBudget.tryAcquire(networkId, nanoTime.getAsLong())) {
                     batchReady = false;
@@ -6764,10 +6777,25 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             // Ready chunks can publish while the rest of this four-key batch waits for disk I/O.
             // Keep the cursor in place until every key is either sent or ready.
             if (!batchReady) {
-                if (!budgetDenied) chunkStreamingBudget.yield(networkId, nanoTime.getAsLong());
+                long now = nanoTime.getAsLong();
+                if (state.lastChunkStreamingDiagnosticNanos == Long.MIN_VALUE
+                        || now - state.lastChunkStreamingDiagnosticNanos >= 5_000_000_000L) {
+                    state.lastChunkStreamingDiagnosticNanos = now;
+                    long loading = state.pendingChunkLoads.values().stream().filter(future -> !future.isDone()).count();
+                    long failed = state.pendingChunkLoads.values().stream().filter(CompletableFuture::isCompletedExceptionally).count();
+                    System.out.printf("NEXORA: chunk stream waiting for %s (sent=%d remaining=%d pendingIo=%d failedIo=%d budgetDenied=%s)%n",
+                            networkId, state.sentChunkKeys.size(), queue.remaining(), loading, failed, budgetDenied);
+                }
+                if (!budgetDenied) chunkStreamingBudget.yield(networkId, now);
                 return;
             }
             queue.advance(chunkKeys.size());
+            if (state.lastChunkStreamingDiagnosticNanos == Long.MIN_VALUE
+                    || nanoTime.getAsLong() - state.lastChunkStreamingDiagnosticNanos >= 5_000_000_000L) {
+                state.lastChunkStreamingDiagnosticNanos = nanoTime.getAsLong();
+                System.out.printf("NEXORA: chunk stream progress for %s (sent=%d remaining=%d)%n",
+                        networkId, state.sentChunkKeys.size(), queue.remaining());
+            }
             chunkStreamingPendingPeak.accumulateAndGet(queue.remaining(), Math::max);
         }
 
@@ -6784,6 +6812,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.pendingChunkLoads.clear();
         chunkStreamingBudget.pause(networkId);
         chunkStreamingCompleted.incrementAndGet();
+        long elapsedMillis = state.chunkStreamingStartedNanos == Long.MIN_VALUE ? -1L
+                : Math.max(0L, nanoTime.getAsLong() - state.chunkStreamingStartedNanos) / 1_000_000L;
+        System.out.printf("NEXORA: initial chunk stream completed for %s (sent=%d elapsedMs=%d)%n",
+                networkId, state.sentChunkKeys.size(), elapsedMillis);
+        state.chunkStreamingStartedNanos = Long.MIN_VALUE;
         syncVisiblePlayerActors(networkId, state);
         syncVisibleWorldActors(networkId, state);
     }
@@ -7087,6 +7120,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
         }
         state.clientInitialized = true;
+        System.out.printf("NEXORA: client initialization acknowledged for %s (entityId=%d chunksSent=%d chunkStreamPending=%s)%n",
+                message.networkId(), state.entityId, state.sentChunkKeys.size(), state.chunkStreamingQueue != null);
         advertisePlayerList(message.networkId(), state);
         sendPacket(message.networkId(), BedrockBatchCodec.createPlayStatus(3), true);
         sendInitialPlayerInventory(message.networkId(), state);
@@ -8061,6 +8096,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private int lastChunkZ = Integer.MIN_VALUE;
         private volatile int chunkViewRadius = BedrockChunkRadiusCodec.DEFAULT_RADIUS;
         private volatile ChunkStreamingQueue chunkStreamingQueue;
+        private long chunkStreamingStartedNanos = Long.MIN_VALUE;
+        private long lastChunkStreamingDiagnosticNanos = Long.MIN_VALUE;
         private final Map<Long, CompletableFuture<Optional<WorldChunk>>> pendingChunkLoads = new HashMap<>();
         private final Set<Long> sentChunkKeys = ConcurrentHashMap.newKeySet();
         private final Set<Long> visiblePlayerEntityIds = ConcurrentHashMap.newKeySet();

@@ -2988,9 +2988,9 @@ class BedrockSessionManagerTest {
         for (int frameIndex = 20; frameIndex < outboundFrames.size(); frameIndex++) {
             remainingChunkPackets.addAll(decodeOutboundPackets(outboundFrames.get(frameIndex), true));
         }
-        assertEquals(2, remainingChunkPackets.stream()
+        assertEquals(3, remainingChunkPackets.stream()
                 .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
-                .count(), "The remaining exposed columns must all be published, even across separate batches");
+                .count(), "All three remaining exposed columns must be published, even across separate batches");
         assertTrue(outboundFrames.size() >= 22);
         assertEquals(16.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
 

@@ -1069,7 +1069,7 @@ class BedrockSessionManagerTest {
         clock.addAndGet(100_000_000L);
         BedrockPacket cancelledRelease = new BedrockPacket(
                 BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID, 0, 0,
-                itemReleasePayload(1, 0, 856, 1, 0.5f, 65.0f, 0.5f));
+                itemReleasePayload(1, 0, 859, 1, 0.5f, 65.0f, 0.5f));
         sendClientBatch(manager, "charge-cancel-player",
                 BedrockBatchCodec.encode(List.of(cancelledRelease), true, 256));
         assertEquals(Long.MIN_VALUE,
@@ -1086,7 +1086,7 @@ class BedrockSessionManagerTest {
         manager.playerInventory("charge-cancel-player").orElseThrow().setSlot(0, woodenSpear);
         BedrockPacket changedItemRelease = new BedrockPacket(
                 BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID, 0, 0,
-                itemReleasePayload(0, 0, 861, 1, 0.5f, 65.0f, 0.5f));
+                itemReleasePayload(0, 0, 864, 1, 0.5f, 65.0f, 0.5f));
         sendClientBatch(manager, "charge-cancel-player",
                 BedrockBatchCodec.encode(List.of(changedItemRelease), true, 256));
         assertEquals(Long.MIN_VALUE,
@@ -1103,20 +1103,20 @@ class BedrockSessionManagerTest {
                 getSessionField(manager, "charge-cancel-player", "spearChargeStartedNanos"));
         BedrockPacket moveSpearOut = new BedrockPacket(
                 BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID, 0, 0,
-                movePlayerInventorySlotPayload(0, 1, 856, 1));
+                movePlayerInventorySlotPayload(0, 1, 859, 1));
         sendClientBatch(manager, "charge-cancel-player",
                 BedrockBatchCodec.encode(List.of(moveSpearOut), true, 256));
         assertEquals(Long.MIN_VALUE,
                 getSessionField(manager, "charge-cancel-player", "spearChargeStartedNanos"));
         BedrockPacket moveSpearBack = new BedrockPacket(
                 BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID, 0, 0,
-                movePlayerInventorySlotPayload(1, 0, 856, 1));
+                movePlayerInventorySlotPayload(1, 0, 859, 1));
         sendClientBatch(manager, "charge-cancel-player",
                 BedrockBatchCodec.encode(List.of(moveSpearBack), true, 256));
         clock.addAndGet(100_000_000L);
         BedrockPacket staleRelease = new BedrockPacket(
                 BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID, 0, 0,
-                itemReleasePayload(0, 0, 856, 1, 0.5f, 65.0f, 0.5f));
+                itemReleasePayload(0, 0, 859, 1, 0.5f, 65.0f, 0.5f));
         sendClientBatch(manager, "charge-cancel-player",
                 BedrockBatchCodec.encode(List.of(staleRelease), true, 256));
         assertEquals(Long.MIN_VALUE,
@@ -1175,7 +1175,7 @@ class BedrockSessionManagerTest {
                 getSessionField(manager, "charge-slot-player", "spearChargeStartedNanos"));
 
         BedrockPacket selectOtherSlot = new BedrockPacket(0x1f, 0, 0,
-                mobEquipmentPayload(124L, 861, 1, 1));
+                mobEquipmentPayload(124L, 864, 1, 1));
         sendClientBatch(manager, "charge-slot-player",
                 BedrockBatchCodec.encode(List.of(selectOtherSlot), true, 256));
         assertEquals(1, manager.playerInventory("charge-slot-player").orElseThrow().selectedHotbarSlot());

@@ -47,6 +47,7 @@ public final class BedrockLevelChunkCodec {
             chunkData.varInt32(PLAINS_BIOME_ID);
         }
         chunkData.byteValue(0); // Border blocks
+        chunkData.byteValue(0); // Empty network-NBT block-entity list (TAG_End)
 
         byte[] data = chunkData.toByteArray();
         Writer packet = new Writer();

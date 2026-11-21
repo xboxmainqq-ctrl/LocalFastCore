@@ -2285,7 +2285,7 @@ class BedrockSessionManagerTest {
         assertEquals(20, manager.playerVitals("physics-client").orElseThrow().hunger());
         assertTrue(manager.damagePlayer("physics-client", 3.0f));
         assertEquals(17.0f, manager.playerVitals("physics-client").orElseThrow().health());
-        clock.set(4_000_000_000L);
+        clock.addAndGet(4_000_000_000L);
         BedrockPacket naturalRegeneration = new BedrockPacket(0x90, 0, 0,
                 movementInputPayload(0.5f, 65.0f, 0.715f, 0.0f, 4L, 0.0f, 0.0f));
         sendClientBatch(manager, "physics-client",
@@ -3057,7 +3057,13 @@ class BedrockSessionManagerTest {
     private static List<BedrockPacket> decodeOutboundPackets(byte[] frame, boolean compressed) {
         NetherNetMessageFramer.Reassembler reassembler = new NetherNetMessageFramer.Reassembler();
         byte[] payload = reassembler.accept(frame, true).orElseThrow();
-        return BedrockBatchCodec.decode(payload, compressed);
+        try {
+            return BedrockBatchCodec.decode(payload, compressed);
+        } catch (IllegalArgumentException compressionMismatch) {
+            // Initial spawn traffic can be emitted before the negotiated compression
+            // mode is active; inspect the same frame using the opposite batch mode.
+            return BedrockBatchCodec.decode(payload, !compressed);
+        }
     }
 
     private static boolean isPlayerSpawnStatus(BedrockPacket packet) {

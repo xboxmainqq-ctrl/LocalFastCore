@@ -68,8 +68,16 @@ class BedrockStartGameCodecTest {
 
         assertEquals(List.of(0x0a, 0x139, 0x151, 0x0b, 0x2b, 0x3c, 0x3b, 0x3e, 0x79),
                 packets.stream().map(BedrockPacket::packetId).toList());
-        // The canonical GameData NBT registry must be sent, not a fabricated empty tag.
-        assertTrue(packets.get(1).payload().length > 1_000);
+        // Protocol 2225 requires a network-little-endian NBT compound containing
+        // the four empty compound lists used by the reference server.
+        assertArrayEquals(new byte[] {
+                0x0a, 0x00,
+                0x09, 0x0a, 'p', 'r', 'o', 'c', 'e', 's', 's', 'o', 'r', 's', 0x0a, 0x00,
+                0x09, 0x0e, 't', 'e', 'm', 'p', 'l', 'a', 't', 'e', '_', 'p', 'o', 'o', 'l', 's', 0x0a, 0x00,
+                0x09, 0x07, 'j', 'i', 'g', 's', 'a', 'w', 's', 0x0a, 0x00,
+                0x09, 0x0e, 's', 't', 'r', 'u', 'c', 't', 'u', 'r', 'e', '_', 's', 'e', 't', 's', 0x0a, 0x00,
+                0x00
+        }, packets.get(1).payload());
         assertArrayEquals(new byte[4], packets.get(2).payload());
         assertArrayEquals(new byte[] {0, (byte) 0x82, 1, 0, 0x30, 0, 0, 0, 0},
                 packets.get(8).payload());

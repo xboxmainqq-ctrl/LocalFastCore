@@ -6715,6 +6715,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         playerActorReplicationIndex.replaceChunkView(networkId, state.sentChunkKeys);
         state.lastChunkX = queue.centerX();
         state.lastChunkZ = queue.centerZ();
+        if (!state.clientInitialized) {
+            System.out.printf("NEXORA: initial chunk view published for %s: center=(%d,%d), chunks=%d%n",
+                    networkId, queue.centerX(), queue.centerZ(), state.sentChunkKeys.size());
+        }
         state.chunkStreamingQueue = null;
         state.pendingChunkLoads.clear();
         chunkStreamingBudget.pause(networkId);
@@ -7080,6 +7084,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
         }
         state.clientInitialized = true;
+        System.out.printf("NEXORA: SetLocalPlayerAsInitialized accepted from %s (runtimeId=%d); admitting gameplay.%n",
+                message.networkId(), runtimeEntityId);
         advertisePlayerList(message.networkId(), state);
         sendPacket(message.networkId(), BedrockBatchCodec.createPlayStatus(3), true);
         sendInitialPlayerInventory(message.networkId(), state);

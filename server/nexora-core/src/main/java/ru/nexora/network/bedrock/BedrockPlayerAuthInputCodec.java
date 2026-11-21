@@ -9,6 +9,7 @@ import java.nio.ByteOrder;
 public final class BedrockPlayerAuthInputCodec {
     public static final int PLAYER_AUTH_INPUT_PACKET_ID = 0x90;
     private static final int MAX_INPUT_ACTIONS = 256;
+    private static final int MAX_TRAILING_EXTENSION_BYTES = 64;
 
     private BedrockPlayerAuthInputCodec() {
     }
@@ -85,7 +86,7 @@ public final class BedrockPlayerAuthInputCodec {
         float cameraZ = in.float32();
         float rawMoveX = in.float32();
         float rawMoveZ = in.float32();
-        in.requireExhausted();
+        in.skipBoundedExtension(MAX_TRAILING_EXTENSION_BYTES);
 
         return new PlayerInput(pitch, yaw, x, y, z, motionX, motionZ, headYaw,
                 tick, optionalSectionsPresent, false, inputMode, playMode, interactionModel,
@@ -123,10 +124,11 @@ public final class BedrockPlayerAuthInputCodec {
         public static final int PERFORM_ITEM_STACK_REQUEST = 36;
         public static final int IS_IN_CLIENT_PREDICTED_VEHICLE = 45;
         public static final int START_JUMPING = 31;
-        public static final int START_USING_ITEM = 52;
-        public static final int START_SPIN_ATTACK = 53;
+        public static final int START_USING_ITEM = 53;
+        public static final int START_SPIN_ATTACK = 56;
         public static final int JUMP_PRESSED_RAW = 60;
         public static final int JUMP_CURRENT_RAW = 61;
+        public static final int STOP_SPIN_ATTACK = 57;
 
         private InputAction() {
         }
@@ -340,8 +342,14 @@ public final class BedrockPlayerAuthInputCodec {
             return (value >>> 1) ^ -(value & 1);
         }
 
-        void requireExhausted() {
-            if (buffer.hasRemaining()) throw new IllegalArgumentException("Trailing PlayerAuthInput bytes");
+        void skipBoundedExtension(int maximumBytes) {
+            // Some retail/mobile builds append bounded protocol extension bytes while
+            // retaining the same Bedrock protocol number. The movement fields above are
+            // already decoded; ignore only a small trailing extension, never arbitrary data.
+            if (buffer.remaining() > maximumBytes) {
+                throw new IllegalArgumentException("PlayerAuthInput has oversized trailing extension");
+            }
+            buffer.position(buffer.limit());
         }
 
         private void require(int bytes) {

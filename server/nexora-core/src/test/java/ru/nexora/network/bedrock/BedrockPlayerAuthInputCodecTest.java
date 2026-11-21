@@ -47,12 +47,12 @@ class BedrockPlayerAuthInputCodecTest {
                         movementPayload(0, 65, 0, 0, 16L, false,
                                 BedrockPlayerAuthInputCodec.InputAction.START_SPIN_ATTACK)));
 
-        assertEquals(52, BedrockPlayerAuthInputCodec.InputAction.START_USING_ITEM);
-        assertEquals(53, BedrockPlayerAuthInputCodec.InputAction.START_SPIN_ATTACK);
-        assertTrue(usingItem.hasInputAction(52));
-        assertFalse(usingItem.hasInputAction(53));
-        assertTrue(spinAttack.hasInputAction(53));
-        assertFalse(spinAttack.hasInputAction(52));
+        assertEquals(53, BedrockPlayerAuthInputCodec.InputAction.START_USING_ITEM);
+        assertEquals(56, BedrockPlayerAuthInputCodec.InputAction.START_SPIN_ATTACK);
+        assertTrue(usingItem.hasInputAction(53));
+        assertFalse(usingItem.hasInputAction(56));
+        assertTrue(spinAttack.hasInputAction(56));
+        assertFalse(spinAttack.hasInputAction(53));
     }
 
     @Test
@@ -155,6 +155,26 @@ class BedrockPlayerAuthInputCodecTest {
         assertTrue(input.blockActions().isEmpty());
         assertTrue(input.hasInputAction(
                 BedrockPlayerAuthInputCodec.InputAction.IS_IN_CLIENT_PREDICTED_VEHICLE));
+    }
+
+    @Test
+    void acceptsSmallTrailingRetailClientExtensionBytes() {
+        byte[] base = movementPayload(0.5f, 65.0f, 0.5f, 90.0f, 22L, false);
+        byte[] extended = java.util.Arrays.copyOf(base, base.length + 8);
+        extended[base.length] = 0x11;
+        extended[base.length + 1] = 0x22;
+        var input = BedrockPlayerAuthInputCodec.decode(new BedrockPacket(0x90, 0, 0, extended));
+        assertEquals(0.5f, input.x());
+        assertEquals(65.0f, input.y());
+        assertEquals(22L, input.tick());
+    }
+
+    @Test
+    void rejectsOversizedTrailingExtensionBytes() {
+        byte[] base = movementPayload(0, 65, 0, 0, 23L, false);
+        byte[] extended = java.util.Arrays.copyOf(base, base.length + 65);
+        assertThrows(IllegalArgumentException.class,
+                () -> BedrockPlayerAuthInputCodec.decode(new BedrockPacket(0x90, 0, 0, extended)));
     }
 
     @Test

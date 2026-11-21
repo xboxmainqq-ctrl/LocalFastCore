@@ -10,7 +10,8 @@ public final class BedrockChunkRadiusCodec {
     public static final int REQUEST_PACKET_ID = 0x45;
     public static final int UPDATED_PACKET_ID = 0x46;
     public static final int DEFAULT_RADIUS = 1;
-    public static final int MAX_SERVER_RADIUS = 8;
+    // Keep the active view deliberately small; newly explored chunks stream as the player moves.
+    public static final int MAX_SERVER_RADIUS = 4;
 
     private BedrockChunkRadiusCodec() {
     }

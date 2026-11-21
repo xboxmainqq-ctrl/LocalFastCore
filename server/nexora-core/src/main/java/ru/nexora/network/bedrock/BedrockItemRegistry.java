@@ -33,6 +33,9 @@ public final class BedrockItemRegistry implements BedrockInventoryContentCodec.I
                 throw new IllegalArgumentException("Duplicate item identifier: " + entry.namespacedId());
             }
             int runtimeId = entry.networkDefinition().runtimeItemId();
+            if (runtimeId < Short.MIN_VALUE || runtimeId > Short.MAX_VALUE) {
+                throw new IllegalArgumentException("Bedrock runtime item ID must fit signed int16: " + runtimeId);
+            }
             if (runtimeIds.putIfAbsent(runtimeId, entry) != null) {
                 throw new IllegalArgumentException("Duplicate Bedrock runtime item ID: " + runtimeId);
             }
@@ -79,7 +82,7 @@ public final class BedrockItemRegistry implements BedrockInventoryContentCodec.I
             int itemVersion,
             byte[] componentData
     ) {
-        private static final byte[] EMPTY_COMPOUND_NBT = new byte[] {10, 0, 0, 0};
+        private static final byte[] EMPTY_COMPOUND_NBT = new byte[] {10, 0, 0};
 
         public Entry(String namespacedId, BedrockInventoryContentCodec.ItemDefinition networkDefinition) {
             this(namespacedId, networkDefinition, 64, false, 2, EMPTY_COMPOUND_NBT);
@@ -103,8 +106,36 @@ public final class BedrockItemRegistry implements BedrockInventoryContentCodec.I
                 throw new IllegalArgumentException("itemVersion must be one of 0 (Legacy), 1 (DataDriven), or 2 (None)");
             }
             componentData = Objects.requireNonNull(componentData, "componentData").clone();
-            if (componentData.length < 4 || componentData.length > 1_048_576) {
+            if (componentData.length < 3 || componentData.length > 1_048_576) {
                 throw new IllegalArgumentException("componentData must be a complete bounded network-NBT tag");
+            }
+            validateNetworkNbtCompound(componentData);
+        }
+
+        /**
+         * Item Component Data is a network-NBT named compound. Validate its root
+         * tag and variable-length root name before the bytes reach the packet writer.
+         * Deeper tag payloads remain opaque so captured protocol-specific compounds
+         * can be preserved byte-for-byte.
+         */
+        private static void validateNetworkNbtCompound(byte[] data) {
+            if (Byte.toUnsignedInt(data[0]) != 10) {
+                throw new IllegalArgumentException("Item component data must start with TAG_Compound");
+            }
+            long nameLength = 0;
+            int shift = 0;
+            int offset = 1;
+            while (true) {
+                if (offset >= data.length || shift > 28) {
+                    throw new IllegalArgumentException("Truncated network-NBT root name length");
+                }
+                int next = Byte.toUnsignedInt(data[offset++]);
+                nameLength |= (long) (next & 0x7f) << shift;
+                if ((next & 0x80) == 0) break;
+                shift += 7;
+            }
+            if (nameLength > 32_767 || nameLength > data.length - offset - 1L) {
+                throw new IllegalArgumentException("Invalid network-NBT root name length");
             }
         }
 

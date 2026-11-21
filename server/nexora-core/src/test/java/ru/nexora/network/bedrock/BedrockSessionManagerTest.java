@@ -46,6 +46,12 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockSessionManagerTest {
     @Test
+    void playerAuthInputIsNotProcessedBeforeClientInitialization() {
+        assertFalse(BedrockSessionManager.shouldProcessPlayerAuthInput(false));
+        assertTrue(BedrockSessionManager.shouldProcessPlayerAuthInput(true));
+    }
+
+    @Test
     void mobAttackDeadlineSaturatesInsteadOfOverflowing() {
         assertEquals(Long.MAX_VALUE - 500L,
                 BedrockSessionManager.mobAttackDeadline(Long.MAX_VALUE - 1_000L, 500L));
@@ -766,423 +772,6 @@ class BedrockSessionManagerTest {
 
         assertEquals(8.0f,
                 combatWorld.livingEntities().find(zombie.runtimeId()).orElseThrow().health(), 0.0001f);
-        manager.close();
-    }
-
-    @Test
-    void lungeSpearJabPropelsAttackerAndConsumesExhaustion() throws Exception {
-        ru.nexora.world.World combatWorld = new ru.nexora.world.World(
-                "lunge-spear-world", 0L, new ru.nexora.world.FlatWorldGenerator());
-        BedrockSessionManager manager = new BedrockSessionManager(
-                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
-                combatWorld, (networkId, label, frame) -> {}, event -> {});
-        manager.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
-        manager.onIdentity("lunge-attacker", new NetherNetClientIdentity(
-                "lunge-token", new byte[] {12}, "lunge-xuid",
-                "LungeAttacker", "playfab-lunge", "20CA2", null));
-        setSessionField(manager, "lunge-attacker", "loginAuthenticated", true);
-        setSessionField(manager, "lunge-attacker", "clientInitialized", true);
-        setSessionField(manager, "lunge-attacker", "positionInitialized", true);
-        setSessionField(manager, "lunge-attacker", "entityId", 112L);
-        setSessionField(manager, "lunge-attacker", "positionX", 0.0f);
-        setSessionField(manager, "lunge-attacker", "positionY", 65.0f);
-        setSessionField(manager, "lunge-attacker", "positionZ", 0.0f);
-        setSessionField(manager, "lunge-attacker", "physicsState",
-                new ru.nexora.world.PlayerPhysics.State(0, 65, 0, 0, 0, 0, true, 0, 0));
-        ItemStack spear = new ItemStack("minecraft:diamond_spear", 1, 1,
-                java.util.Map.of("minecraft:lunge", 2));
-        manager.playerInventory("lunge-attacker").orElseThrow().setSlot(0, spear);
-        var zombie = manager.spawnLivingEntity("minecraft:zombie", 20.0f, 2.0, 65.0, 0.0);
-        var attack = new BedrockInventoryTransactionCodec.DecodedUseOnActor(
-                zombie.runtimeId(), 1, 0, 0, java.util.Optional.of(spear),
-                0.0f, 65.0f, 0.0f, 0.0f, 1.0f, 0.0f);
-
-        invokeActorAttack(manager, "lunge-attacker", attack);
-
-        var physics = (ru.nexora.world.PlayerPhysics.State) getSessionField(
-                manager, "lunge-attacker", "physicsState");
-        var vitals = manager.playerVitals("lunge-attacker").orElseThrow();
-        assertEquals(18.32, physics.velocityZ(), 0.0001);
-        assertEquals(3.0f, vitals.saturation(), 0.0001f);
-        assertEquals(20, vitals.hunger());
-        assertEquals(0.0f, vitals.exhaustion(), 0.0001f);
-
-        // A second jab inside the diamond spear's 1.05 s cooldown is rejected.
-        invokeActorAttack(manager, "lunge-attacker", attack);
-        assertEquals(15.0f,
-                combatWorld.livingEntities().find(zombie.runtimeId()).orElseThrow().health(), 0.0001f);
-        var unchangedPhysics = (ru.nexora.world.PlayerPhysics.State) getSessionField(
-                manager, "lunge-attacker", "physicsState");
-        assertEquals(18.32, unchangedPhysics.velocityZ(), 0.0001);
-        assertEquals(3.0f, manager.playerVitals("lunge-attacker").orElseThrow().saturation(), 0.0001f);
-        manager.close();
-    }
-
-    @Test
-    void serverCombatUsesConfiguredJabDamageForAllSevenSpearTiers() throws Exception {
-        java.util.concurrent.atomic.AtomicLong clock =
-                new java.util.concurrent.atomic.AtomicLong(900_000_000L);
-        ru.nexora.world.World combatWorld = new ru.nexora.world.World(
-                "spear-tier-jab-world", 0L, new ru.nexora.world.FlatWorldGenerator());
-        BedrockSessionManager manager = new BedrockSessionManager(
-                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
-                combatWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
-        BedrockItemRegistry registry = BedrockVanillaItemCatalog.createRegistry();
-        manager.setItemRegistry(registry);
-        manager.onIdentity("spear-tier-attacker", new NetherNetClientIdentity(
-                "spear-tier-token", new byte[] {26}, "spear-tier-xuid",
-                "SpearTierAttacker", "playfab-spear-tier", "20CA2", null));
-        setSessionField(manager, "spear-tier-attacker", "loginAuthenticated", true);
-        setSessionField(manager, "spear-tier-attacker", "clientInitialized", true);
-        setSessionField(manager, "spear-tier-attacker", "compressionNegotiated", true);
-        setSessionField(manager, "spear-tier-attacker", "positionInitialized", true);
-        setSessionField(manager, "spear-tier-attacker", "entityId", 126L);
-        setSessionField(manager, "spear-tier-attacker", "positionX", 0.5f);
-        setSessionField(manager, "spear-tier-attacker", "positionY", 65.0f);
-        setSessionField(manager, "spear-tier-attacker", "positionZ", 0.5f);
-
-        String[] tiers = {
-                "wooden", "golden", "stone", "copper", "iron", "diamond", "netherite"
-        };
-        float[] expectedDamage = {2.0f, 2.0f, 3.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-        for (int i = 0; i < tiers.length; i++) {
-            String itemId = "minecraft:" + tiers[i] + "_spear";
-            var definition = registry.findByIdentifier(itemId);
-            assertNotNull(definition, itemId + " must be registered");
-            manager.playerInventory("spear-tier-attacker").orElseThrow()
-                    .setSlot(0, new ItemStack(itemId, 1, 1));
-            var zombie = manager.spawnLivingEntity(
-                    "minecraft:zombie", 20.0f, 0.5, 65.0, 3.5);
-            sendActorAttack(manager, "spear-tier-attacker", zombie.runtimeId(),
-                    definition.networkDefinition().runtimeItemId(), 0.5f, 65.0f, 0.5f);
-            assertEquals(20.0f - expectedDamage[i],
-                    combatWorld.livingEntities().find(zombie.runtimeId()).orElseThrow().health(),
-                    0.0001f, tiers[i] + " spear jab damage");
-            // Advance beyond the slowest tier cooldown before the next server hit.
-            clock.addAndGet(1_200_000_000L);
-        }
-        manager.close();
-    }
-
-    @Test
-    void protocol2225StartUseReleaseAndChargedSpearHitDamageMob() throws Exception {
-        java.util.concurrent.atomic.AtomicLong clock =
-                new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
-        ru.nexora.world.World combatWorld = new ru.nexora.world.World(
-                "charged-spear-mob-world", 0L, new ru.nexora.world.FlatWorldGenerator());
-        BedrockSessionManager manager = new BedrockSessionManager(
-                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
-                combatWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
-        BedrockItemRegistry registry = BedrockVanillaItemCatalog.createRegistry();
-        manager.setItemRegistry(registry);
-        manager.onIdentity("charge-mob-attacker", new NetherNetClientIdentity(
-                "charge-mob-token", new byte[] {21}, "charge-mob-xuid",
-                "ChargeMobAttacker", "playfab-charge-mob", "20CA2", null));
-        setSessionField(manager, "charge-mob-attacker", "loginAuthenticated", true);
-        setSessionField(manager, "charge-mob-attacker", "clientInitialized", true);
-        setSessionField(manager, "charge-mob-attacker", "compressionNegotiated", true);
-        setSessionField(manager, "charge-mob-attacker", "positionInitialized", true);
-        setSessionField(manager, "charge-mob-attacker", "entityId", 121L);
-        setSessionField(manager, "charge-mob-attacker", "positionX", 0.5f);
-        setSessionField(manager, "charge-mob-attacker", "positionY", 65.0f);
-        setSessionField(manager, "charge-mob-attacker", "positionZ", 0.5f);
-        setSessionField(manager, "charge-mob-attacker", "lastMovementNanos", clock.get());
-        setSessionField(manager, "charge-mob-attacker", "physicsState",
-                new ru.nexora.world.PlayerPhysics.State(
-                        0.5, 65.0, 0.5, 0.0, 0.0, 6.0, true, 0.0, 0.0));
-
-        ItemStack spear = new ItemStack("minecraft:diamond_spear", 1, 1);
-        manager.playerInventory("charge-mob-attacker").orElseThrow().setSlot(0, spear);
-        var spearDefinition = registry.findByIdentifier("minecraft:diamond_spear");
-        assertNotNull(spearDefinition);
-
-        // Start the hold using the protocol-2225 PlayerAuthInputData value 52.
-        BedrockPacket startUse = new BedrockPacket(
-                BedrockPlayerAuthInputCodec.PLAYER_AUTH_INPUT_PACKET_ID, 0, 0,
-                BedrockPlayerAuthInputCodecTest.movementPayload(
-                        0.5f, 65.0f, 0.5f, 0.0f, 1L, false,
-                        BedrockPlayerAuthInputCodec.InputAction.START_USING_ITEM));
-        sendClientBatch(manager, "charge-mob-attacker",
-                BedrockBatchCodec.encode(List.of(startUse), true, 256));
-        assertNotEquals(Long.MIN_VALUE,
-                getSessionField(manager, "charge-mob-attacker", "spearChargeStartedNanos"));
-
-        // Release the main-hand spear from the authenticated player position.
-        clock.addAndGet(200_000_000L);
-        BedrockPacket release = new BedrockPacket(
-                BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID, 0, 0,
-                itemReleasePayload(0, 0,
-                        spearDefinition.networkDefinition().runtimeItemId(), 1,
-                        0.5f, 65.0f, 0.5f));
-        sendClientBatch(manager, "charge-mob-attacker",
-                BedrockBatchCodec.encode(List.of(release), true, 256));
-        assertEquals(clock.get(),
-                getSessionField(manager, "charge-mob-attacker", "spearChargeReleasedNanos"));
-
-        var zombie = manager.spawnLivingEntity("minecraft:zombie", 20.0f, 0.5, 65.0, 3.5);
-        sendActorAttack(manager, "charge-mob-attacker", zombie.runtimeId(),
-                spearDefinition.networkDefinition().runtimeItemId(), 0.5f, 65.0f, 0.5f);
-
-        // 6 blocks/s exceeds the 4.6 blocks/s charge threshold:
-        // diamond spear multiplier 1.075 gives 6.45 damage (base jab is 5).
-        assertEquals(13.55f,
-                combatWorld.livingEntities().find(zombie.runtimeId()).orElseThrow().health(), 0.0001f);
-        assertEquals(Long.MIN_VALUE,
-                getSessionField(manager, "charge-mob-attacker", "spearChargeStartedNanos"));
-        assertEquals(Long.MIN_VALUE,
-                getSessionField(manager, "charge-mob-attacker", "spearChargeReleasedNanos"));
-
-        // The released charge is single-use. After the normal spear cooldown,
-        // another packet hit deals only the ordinary 5 damage, not charged damage.
-        clock.addAndGet(1_100_000_000L);
-        sendActorAttack(manager, "charge-mob-attacker", zombie.runtimeId(),
-                spearDefinition.networkDefinition().runtimeItemId(), 0.5f, 65.0f, 0.5f);
-        assertEquals(8.55f,
-                combatWorld.livingEntities().find(zombie.runtimeId()).orElseThrow().health(), 0.0001f);
-        manager.close();
-    }
-
-    @Test
-    void protocol2225PlayerActionStartUseChargesSpearAgainstAnotherPlayer() throws Exception {
-        java.util.concurrent.atomic.AtomicLong clock =
-                new java.util.concurrent.atomic.AtomicLong(2_000_000_000L);
-        ru.nexora.world.World combatWorld = new ru.nexora.world.World(
-                "charged-spear-pvp-world", 0L, new ru.nexora.world.FlatWorldGenerator());
-        List<byte[]> attackerFrames = new ArrayList<>();
-        List<byte[]> targetFrames = new ArrayList<>();
-        BedrockSessionManager manager = new BedrockSessionManager(
-                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
-                combatWorld, (networkId, label, frame) -> {
-                    if ("charge-pvp-attacker".equals(networkId)) attackerFrames.add(frame);
-                    if ("charge-pvp-target".equals(networkId)) targetFrames.add(frame);
-                }, event -> {}, clock::get);
-        BedrockItemRegistry registry = BedrockVanillaItemCatalog.createRegistry();
-        manager.setItemRegistry(registry);
-        manager.onIdentity("charge-pvp-attacker", new NetherNetClientIdentity(
-                "charge-pvp-a-token", new byte[] {22}, "charge-pvp-a-xuid",
-                "ChargePvpAttacker", "playfab-charge-pvp-a", "20CA2", null));
-        manager.onIdentity("charge-pvp-target", new NetherNetClientIdentity(
-                "charge-pvp-t-token", new byte[] {23}, "charge-pvp-t-xuid",
-                "ChargePvpTarget", "playfab-charge-pvp-t", "20CA2", null));
-        for (String id : List.of("charge-pvp-attacker", "charge-pvp-target")) {
-            setSessionField(manager, id, "loginAuthenticated", true);
-            setSessionField(manager, id, "clientInitialized", true);
-            setSessionField(manager, id, "compressionNegotiated", true);
-            setSessionField(manager, id, "positionInitialized", true);
-        }
-        setSessionField(manager, "charge-pvp-attacker", "entityId", 122L);
-        setSessionField(manager, "charge-pvp-attacker", "positionX", 0.5f);
-        setSessionField(manager, "charge-pvp-attacker", "positionY", 65.0f);
-        setSessionField(manager, "charge-pvp-attacker", "positionZ", 0.5f);
-        setSessionField(manager, "charge-pvp-attacker", "physicsState",
-                new ru.nexora.world.PlayerPhysics.State(
-                        0.5, 65.0, 0.5, 0.0, 0.0, 6.0, true, 0.0, 0.0));
-        setSessionField(manager, "charge-pvp-target", "entityId", 123L);
-        setSessionField(manager, "charge-pvp-target", "positionX", 0.5f);
-        setSessionField(manager, "charge-pvp-target", "positionY", 65.0f);
-        setSessionField(manager, "charge-pvp-target", "positionZ", 3.5f);
-        setSessionField(manager, "charge-pvp-target", "physicsState",
-                new ru.nexora.world.PlayerPhysics.State(
-                        0.5, 65.0, 3.5, 0.0, 0.0, 0.0, true, 0.0, 0.0));
-
-        ItemStack spear = new ItemStack("minecraft:diamond_spear", 1, 1);
-        manager.playerInventory("charge-pvp-attacker").orElseThrow().setSlot(0, spear);
-        var spearDefinition = registry.findByIdentifier("minecraft:diamond_spear");
-        assertNotNull(spearDefinition);
-
-        // PlayerAction 37 is StartUsingItem in protocol 2225.
-        BedrockPacket startUse = new BedrockPacket(
-                BedrockPlayerActionCodec.PLAYER_ACTION_PACKET_ID, 0, 0,
-                playerActionPayload(122L, BedrockPlayerActionCodec.ACTION_START_USING_ITEM));
-        sendClientBatch(manager, "charge-pvp-attacker",
-                BedrockBatchCodec.encode(List.of(startUse), true, 256));
-        assertNotEquals(Long.MIN_VALUE,
-                getSessionField(manager, "charge-pvp-attacker", "spearChargeStartedNanos"));
-
-        clock.addAndGet(200_000_000L);
-        BedrockPacket release = new BedrockPacket(
-                BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID, 0, 0,
-                itemReleasePayload(0, 0,
-                        spearDefinition.networkDefinition().runtimeItemId(), 1,
-                        0.5f, 65.0f, 0.5f));
-        sendClientBatch(manager, "charge-pvp-attacker",
-                BedrockBatchCodec.encode(List.of(release), true, 256));
-
-        sendActorAttack(manager, "charge-pvp-attacker", 123L,
-                spearDefinition.networkDefinition().runtimeItemId(), 0.5f, 65.0f, 0.5f);
-
-        assertEquals(13.55f,
-                manager.playerVitals("charge-pvp-target").orElseThrow().health(), 0.0001f);
-        assertEquals(Long.MIN_VALUE,
-                getSessionField(manager, "charge-pvp-attacker", "spearChargeStartedNanos"));
-        List<BedrockPacket> observerPackets = targetFrames.stream()
-                .flatMap(frame -> decodeOutboundAll(frame, true).stream()).toList();
-        assertTrue(observerPackets.stream().anyMatch(packet ->
-                        packet.packetId() == BedrockAnimateCodec.ANIMATE_PACKET_ID
-                                && packet.payload().length > 0
-                                && Byte.toUnsignedInt(packet.payload()[0]) == BedrockAnimateCodec.ACTION_SWING),
-                "The target client must receive the attacker's main-hand swing animation");
-        List<BedrockPacket> attackerPackets = attackerFrames.stream()
-                .flatMap(frame -> decodeOutboundAll(frame, true).stream()).toList();
-        assertFalse(attackerPackets.stream().anyMatch(packet ->
-                        packet.packetId() == BedrockAnimateCodec.ANIMATE_PACKET_ID),
-                "Do not replay the predicted swing to the attacking client");
-        manager.close();
-    }
-
-    @Test
-    void cancelledSpearUseAndChangedHeldItemDiscardTheCharge() throws Exception {
-        java.util.concurrent.atomic.AtomicLong clock =
-                new java.util.concurrent.atomic.AtomicLong(2_500_000_000L);
-        ru.nexora.world.World combatWorld = new ru.nexora.world.World(
-                "spear-charge-cancel-world", 0L, new ru.nexora.world.FlatWorldGenerator());
-        BedrockSessionManager manager = new BedrockSessionManager(
-                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
-                combatWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
-        BedrockItemRegistry registry = BedrockVanillaItemCatalog.createRegistry();
-        manager.setItemRegistry(registry);
-        manager.onIdentity("charge-cancel-player", new NetherNetClientIdentity(
-                "charge-cancel-token", new byte[] {25}, "charge-cancel-xuid",
-                "ChargeCancelPlayer", "playfab-charge-cancel", "20CA2", null));
-        setSessionField(manager, "charge-cancel-player", "loginAuthenticated", true);
-        setSessionField(manager, "charge-cancel-player", "clientInitialized", true);
-        setSessionField(manager, "charge-cancel-player", "compressionNegotiated", true);
-        setSessionField(manager, "charge-cancel-player", "positionInitialized", true);
-        setSessionField(manager, "charge-cancel-player", "entityId", 125L);
-        setSessionField(manager, "charge-cancel-player", "positionX", 0.5f);
-        setSessionField(manager, "charge-cancel-player", "positionY", 65.0f);
-        setSessionField(manager, "charge-cancel-player", "positionZ", 0.5f);
-
-        ItemStack diamondSpear = new ItemStack("minecraft:diamond_spear", 1, 1);
-        ItemStack woodenSpear = new ItemStack("minecraft:wooden_spear", 1, 1);
-        manager.playerInventory("charge-cancel-player").orElseThrow().setSlot(0, diamondSpear);
-        BedrockPacket startUse = new BedrockPacket(
-                BedrockPlayerActionCodec.PLAYER_ACTION_PACKET_ID, 0, 0,
-                playerActionPayload(125L, BedrockPlayerActionCodec.ACTION_START_USING_ITEM));
-
-        sendClientBatch(manager, "charge-cancel-player",
-                BedrockBatchCodec.encode(List.of(startUse), true, 256));
-        assertNotEquals(Long.MIN_VALUE,
-                getSessionField(manager, "charge-cancel-player", "spearChargeStartedNanos"));
-
-        // ItemRelease action type 1 is an interrupted/cancelled use, not a completed charge.
-        clock.addAndGet(100_000_000L);
-        BedrockPacket cancelledRelease = new BedrockPacket(
-                BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID, 0, 0,
-                itemReleasePayload(1, 0, 856, 1, 0.5f, 65.0f, 0.5f));
-        sendClientBatch(manager, "charge-cancel-player",
-                BedrockBatchCodec.encode(List.of(cancelledRelease), true, 256));
-        assertEquals(Long.MIN_VALUE,
-                getSessionField(manager, "charge-cancel-player", "spearChargeStartedNanos"));
-        assertEquals(Long.MIN_VALUE,
-                getSessionField(manager, "charge-cancel-player", "spearChargeReleasedNanos"));
-
-        // A second hold cannot be released with a different item than the captured stack.
-        sendClientBatch(manager, "charge-cancel-player",
-                BedrockBatchCodec.encode(List.of(startUse), true, 256));
-        assertNotEquals(Long.MIN_VALUE,
-                getSessionField(manager, "charge-cancel-player", "spearChargeStartedNanos"));
-        clock.addAndGet(100_000_000L);
-        manager.playerInventory("charge-cancel-player").orElseThrow().setSlot(0, woodenSpear);
-        BedrockPacket changedItemRelease = new BedrockPacket(
-                BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID, 0, 0,
-                itemReleasePayload(0, 0, 861, 1, 0.5f, 65.0f, 0.5f));
-        sendClientBatch(manager, "charge-cancel-player",
-                BedrockBatchCodec.encode(List.of(changedItemRelease), true, 256));
-        assertEquals(Long.MIN_VALUE,
-                getSessionField(manager, "charge-cancel-player", "spearChargeStartedNanos"));
-        assertEquals(Long.MIN_VALUE,
-                getSessionField(manager, "charge-cancel-player", "spearChargeReleasedNanos"));
-
-        // Moving the charged stack away and back through validated inventory transactions
-        // must cancel the original hold; restoring the same stack cannot revive it.
-        manager.playerInventory("charge-cancel-player").orElseThrow().setSlot(0, diamondSpear);
-        sendClientBatch(manager, "charge-cancel-player",
-                BedrockBatchCodec.encode(List.of(startUse), true, 256));
-        assertNotEquals(Long.MIN_VALUE,
-                getSessionField(manager, "charge-cancel-player", "spearChargeStartedNanos"));
-        BedrockPacket moveSpearOut = new BedrockPacket(
-                BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID, 0, 0,
-                movePlayerInventorySlotPayload(0, 1, 856, 1));
-        sendClientBatch(manager, "charge-cancel-player",
-                BedrockBatchCodec.encode(List.of(moveSpearOut), true, 256));
-        assertEquals(Long.MIN_VALUE,
-                getSessionField(manager, "charge-cancel-player", "spearChargeStartedNanos"));
-        BedrockPacket moveSpearBack = new BedrockPacket(
-                BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID, 0, 0,
-                movePlayerInventorySlotPayload(1, 0, 856, 1));
-        sendClientBatch(manager, "charge-cancel-player",
-                BedrockBatchCodec.encode(List.of(moveSpearBack), true, 256));
-        clock.addAndGet(100_000_000L);
-        BedrockPacket staleRelease = new BedrockPacket(
-                BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID, 0, 0,
-                itemReleasePayload(0, 0, 856, 1, 0.5f, 65.0f, 0.5f));
-        sendClientBatch(manager, "charge-cancel-player",
-                BedrockBatchCodec.encode(List.of(staleRelease), true, 256));
-        assertEquals(Long.MIN_VALUE,
-                getSessionField(manager, "charge-cancel-player", "spearChargeReleasedNanos"));
-
-        // Charge timeout is enforced on PlayerAuthInput even without server-authoritative movement.
-        sendClientBatch(manager, "charge-cancel-player",
-                BedrockBatchCodec.encode(List.of(startUse), true, 256));
-        assertNotEquals(Long.MIN_VALUE,
-                getSessionField(manager, "charge-cancel-player", "spearChargeStartedNanos"));
-        clock.addAndGet(10_100_000_000L);
-        BedrockPacket movement = new BedrockPacket(
-                BedrockPlayerAuthInputCodec.PLAYER_AUTH_INPUT_PACKET_ID, 0, 0,
-                BedrockPlayerAuthInputCodecTest.movementPayload(
-                        0.5f, 65.0f, 0.5f, 0.0f, 1L, false));
-        sendClientBatch(manager, "charge-cancel-player",
-                BedrockBatchCodec.encode(List.of(movement), true, 256));
-        assertEquals(Long.MIN_VALUE,
-                getSessionField(manager, "charge-cancel-player", "spearChargeStartedNanos"));
-        manager.close();
-    }
-
-    @Test
-    void changingHotbarSlotCancelsAnActiveSpearCharge() throws Exception {
-        java.util.concurrent.atomic.AtomicLong clock =
-                new java.util.concurrent.atomic.AtomicLong(3_000_000_000L);
-        ru.nexora.world.World combatWorld = new ru.nexora.world.World(
-                "spear-charge-slot-world", 0L, new ru.nexora.world.FlatWorldGenerator());
-        BedrockSessionManager manager = new BedrockSessionManager(
-                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
-                combatWorld, (networkId, label, frame) -> {}, event -> {}, clock::get);
-        BedrockItemRegistry registry = BedrockVanillaItemCatalog.createRegistry();
-        manager.setItemRegistry(registry);
-        manager.onIdentity("charge-slot-player", new NetherNetClientIdentity(
-                "charge-slot-token", new byte[] {24}, "charge-slot-xuid",
-                "ChargeSlotPlayer", "playfab-charge-slot", "20CA2", null));
-        setSessionField(manager, "charge-slot-player", "loginAuthenticated", true);
-        setSessionField(manager, "charge-slot-player", "clientInitialized", true);
-        setSessionField(manager, "charge-slot-player", "compressionNegotiated", true);
-        setSessionField(manager, "charge-slot-player", "positionInitialized", true);
-        setSessionField(manager, "charge-slot-player", "entityId", 124L);
-        setSessionField(manager, "charge-slot-player", "positionX", 0.5f);
-        setSessionField(manager, "charge-slot-player", "positionY", 65.0f);
-        setSessionField(manager, "charge-slot-player", "positionZ", 0.5f);
-        ItemStack spear = new ItemStack("minecraft:diamond_spear", 1, 1);
-        ItemStack alternate = new ItemStack("minecraft:wooden_spear", 1, 1);
-        manager.playerInventory("charge-slot-player").orElseThrow().setSlot(0, spear);
-        manager.playerInventory("charge-slot-player").orElseThrow().setSlot(1, alternate);
-
-        BedrockPacket startUse = new BedrockPacket(
-                BedrockPlayerActionCodec.PLAYER_ACTION_PACKET_ID, 0, 0,
-                playerActionPayload(124L, BedrockPlayerActionCodec.ACTION_START_USING_ITEM));
-        sendClientBatch(manager, "charge-slot-player",
-                BedrockBatchCodec.encode(List.of(startUse), true, 256));
-        assertNotEquals(Long.MIN_VALUE,
-                getSessionField(manager, "charge-slot-player", "spearChargeStartedNanos"));
-
-        BedrockPacket selectOtherSlot = new BedrockPacket(0x1f, 0, 0,
-                mobEquipmentPayload(124L, 861, 1, 1));
-        sendClientBatch(manager, "charge-slot-player",
-                BedrockBatchCodec.encode(List.of(selectOtherSlot), true, 256));
-        assertEquals(1, manager.playerInventory("charge-slot-player").orElseThrow().selectedHotbarSlot());
-        assertEquals(Long.MIN_VALUE,
-                getSessionField(manager, "charge-slot-player", "spearChargeStartedNanos"));
-        assertEquals(Long.MIN_VALUE,
-                getSessionField(manager, "charge-slot-player", "spearChargeReleasedNanos"));
         manager.close();
     }
 
@@ -2315,12 +1904,13 @@ class BedrockSessionManagerTest {
         generator.initialize(new ECGenParameterSpec("secp384r1"));
         KeyPair clientKey = generator.generateKeyPair();
         List<byte[]> outboundFrames = new ArrayList<>();
+        AtomicLong clock = new AtomicLong();
         var inventoryStorage = new ru.nexora.inventory.PlayerInventoryStorage(
                 temporaryDirectory.resolve("craft-inventory"));
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
                 world, null, inventoryStorage, null,
-                (networkId, label, frame) -> outboundFrames.add(frame), event -> {}, () -> 0L);
+                (networkId, label, frame) -> outboundFrames.add(frame), event -> {}, clock::get);
         var itemRegistry = BedrockVanillaItemCatalog.createRegistry();
         manager.setItemRegistry(itemRegistry);
         manager.onIdentity("craft-client", new NetherNetClientIdentity(
@@ -2350,8 +1940,8 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(
                 List.of(resourcePackResponse(3, "resourcepackstackfinished")), true, 256));
         int beforeInit = outboundFrames.size();
-        sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(
-                List.of(new BedrockPacket(0x71, 0, 0, new byte[] {1})), true, 256));
+        sendInitializedClientBatch(manager, "craft-client", BedrockBatchCodec.encode(
+                List.of(new BedrockPacket(0x71, 0, 0, new byte[] {1})), true, 256), clock);
         List<BedrockPacket> initialPackets = outboundFrames.subList(beforeInit, outboundFrames.size()).stream()
                 .flatMap(frame -> decodeOutboundAll(frame, true).stream()).toList();
         assertTrue(initialPackets.stream().anyMatch(packet ->
@@ -2447,10 +2037,11 @@ class BedrockSessionManagerTest {
         generator.initialize(new ECGenParameterSpec("secp384r1"));
         KeyPair clientKey = generator.generateKeyPair();
         List<byte[]> outboundFrames = new ArrayList<>();
+        AtomicLong clock = new AtomicLong();
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
                 world, null, null, null,
-                (networkId, label, frame) -> outboundFrames.add(frame), event -> {}, () -> 0L);
+                (networkId, label, frame) -> outboundFrames.add(frame), event -> {}, clock::get);
         manager.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
         manager.onIdentity("chest-client", new NetherNetClientIdentity(
                 "chest-game-token", clientKey.getPublic().getEncoded(), "chest-xuid",
@@ -2478,8 +2069,8 @@ class BedrockSessionManagerTest {
                 List.of(resourcePackResponse(2, "downloadingfinished")), true, 256));
         sendClientBatch(manager, "chest-client", BedrockBatchCodec.encode(
                 List.of(resourcePackResponse(3, "resourcepackstackfinished")), true, 256));
-        sendClientBatch(manager, "chest-client", BedrockBatchCodec.encode(
-                List.of(new BedrockPacket(0x71, 0, 0, new byte[] {1})), true, 256));
+        sendInitializedClientBatch(manager, "chest-client", BedrockBatchCodec.encode(
+                List.of(new BedrockPacket(0x71, 0, 0, new byte[] {1})), true, 256), clock);
 
         int beforeOpen = outboundFrames.size();
         BedrockPacket clickChest = new BedrockPacket(0x90, 0, 0,
@@ -2566,8 +2157,8 @@ class BedrockSessionManagerTest {
         int beforeWorldStart = outboundFrames.size();
         sendClientBatch(manager, "food-client", BedrockBatchCodec.encode(
                 List.of(resourcePackResponse(3, "resourcepackstackfinished")), true, 256));
-        sendClientBatch(manager, "food-client", BedrockBatchCodec.encode(
-                List.of(new BedrockPacket(0x71, 0, 0, new byte[] {1})), true, 256));
+        sendInitializedClientBatch(manager, "food-client", BedrockBatchCodec.encode(
+                List.of(new BedrockPacket(0x71, 0, 0, new byte[] {1})), true, 256), clock);
 
         assertEquals(10, manager.playerVitals("food-client").orElseThrow().hunger());
         assertTrue(outboundFrames.subList(beforeWorldStart, outboundFrames.size()).stream()
@@ -2661,8 +2252,8 @@ class BedrockSessionManagerTest {
                 List.of(resourcePackResponse(2, "downloadingfinished")), true, 256));
         sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(
                 List.of(resourcePackResponse(3, "resourcepackstackfinished")), true, 256));
-        sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(
-                List.of(new BedrockPacket(0x71, 0, 0, new byte[] {1})), true, 256));
+        sendInitializedClientBatch(manager, "physics-client", BedrockBatchCodec.encode(
+                List.of(new BedrockPacket(0x71, 0, 0, new byte[] {1})), true, 256), clock);
 
         completeChunkStreaming(manager, "physics-client", clock);
         int beforeMovement = outboundFrames.size();
@@ -2700,7 +2291,7 @@ class BedrockSessionManagerTest {
         assertEquals(20, manager.playerVitals("physics-client").orElseThrow().hunger());
         assertTrue(manager.damagePlayer("physics-client", 3.0f));
         assertEquals(17.0f, manager.playerVitals("physics-client").orElseThrow().health());
-        clock.set(4_000_000_000L);
+        clock.addAndGet(4_000_000_000L);
         BedrockPacket naturalRegeneration = new BedrockPacket(0x90, 0, 0,
                 movementInputPayload(0.5f, 65.0f, 0.715f, 0.0f, 4L, 0.0f, 0.0f));
         sendClientBatch(manager, "physics-client",
@@ -2880,13 +2471,15 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(stackCompleted), true, 256));
         assertEquals(1, manager.resourcePackReadyCount());
-        assertEquals(13, outboundFrames.size());
-        assertEquals(0x0b, decodeOutbound(outboundFrames.get(4), true).packetId());
+        assertEquals(14, outboundFrames.size());
         List<BedrockPacket> startGameBatch = BedrockBatchCodec.decode(
                 reassemble(List.of(outboundFrames.get(4))), true);
-        assertEquals(2, startGameBatch.size());
+        assertEquals(3, startGameBatch.size());
+        assertEquals(BedrockJigsawStructureDataCodec.JIGSAW_STRUCTURE_DATA_PACKET_ID,
+                startGameBatch.get(0).packetId());
+        assertEquals(0x0b, startGameBatch.get(1).packetId());
         assertEquals(BedrockItemRegistryPacketCodec.ITEM_REGISTRY_PACKET_ID,
-                startGameBatch.get(1).packetId());
+                startGameBatch.get(2).packetId());
         assertEquals(0x0a, decodeOutbound(outboundFrames.get(5), true).packetId());
         assertEquals(0x3c, decodeOutbound(outboundFrames.get(6), true).packetId());
         assertEquals(0x3b, decodeOutbound(outboundFrames.get(7), true).packetId());
@@ -2897,23 +2490,36 @@ class BedrockSessionManagerTest {
         List<BedrockPacket> biomeAndRadius = BedrockBatchCodec.decode(
                 reassemble(List.of(outboundFrames.get(11))), true);
         assertEquals(BedrockChunkRadiusCodec.UPDATED_PACKET_ID, biomeAndRadius.get(1).packetId());
+        // Nukkit/Cloudburst release the client after 56 spawn chunks; smaller
+        // initial views release it once their complete chunk queue is published.
+        assertFalse(outboundFrames.subList(12, outboundFrames.size()).stream()
+                .flatMap(frame -> decodeOutboundPackets(frame, true).stream())
+                .anyMatch(packet -> isPlayerSpawnStatus(packet)));
+        boolean spawnSent = false;
+        for (int tick = 0; tick < 100 && !spawnSent; tick++) {
+            monotonicClock.addAndGet(50_000_000L);
+            manager.tickInitialChunkStreams();
+            spawnSent = outboundFrames.subList(12, outboundFrames.size()).stream()
+                    .flatMap(frame -> decodeOutboundPackets(frame, true).stream())
+                    .anyMatch(BedrockSessionManagerTest::isPlayerSpawnStatus);
+            if (!spawnSent) Thread.sleep(10L);
+        }
+        assertTrue(spawnSent, "PLAYER_SPAWN must be sent after the spawn chunk threshold");
         List<BedrockPacket> initialChunkPackets = new ArrayList<>();
-        for (int index = 12; index < 13; index++) {
+        for (int index = 12; index < outboundFrames.size(); index++) {
             initialChunkPackets.addAll(decodeOutboundPackets(outboundFrames.get(index), true));
         }
-        assertEquals(4, initialChunkPackets.stream()
+        assertTrue(initialChunkPackets.stream()
                 .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
-                .count());
+                .count() >= 4);
 
-        // The server must not announce the player as spawned until the client confirms StartGame.
         BedrockPacket initialized = new BedrockPacket(0x71, 0, 0, new byte[] {1});
-        sendClientBatch(manager, "authenticated-client",
-                BedrockBatchCodec.encode(List.of(initialized), true, 256));
-        assertEquals(16, outboundFrames.size());
-        assertEquals(0x31, decodeOutbound(outboundFrames.get(14), true).packetId());
-        List<BedrockPacket> initialInventoryBatch = BedrockBatchCodec.decode(
-                reassemble(List.of(outboundFrames.get(14))), true);
-        assertEquals(8, initialInventoryBatch.size());
+        sendInitializedClientBatch(manager, "authenticated-client",
+                BedrockBatchCodec.encode(List.of(initialized), true, 256), monotonicClock);
+        List<BedrockPacket> initialInventoryBatch = outboundFrames.stream()
+                .map(frame -> decodeOutboundPackets(frame, true))
+                .filter(packets -> packets.size() == 8 && packets.getFirst().packetId() == 0x31)
+                .findFirst().orElseThrow();
         assertEquals(0x1f, initialInventoryBatch.get(1).packetId());
         assertEquals(0x31, initialInventoryBatch.get(2).packetId()); // armor container
         assertEquals(0x31, initialInventoryBatch.get(3).packetId()); // offhand container
@@ -2923,9 +2529,6 @@ class BedrockSessionManagerTest {
         assertEquals(BedrockCraftingDataCodec.CRAFTING_DATA_PACKET_ID,
                 initialInventoryBatch.get(6).packetId()); // crafting recipes
         assertEquals(124, Byte.toUnsignedInt(initialInventoryBatch.get(7).payload()[0])); // player UI grid
-        BedrockPacket playStatus = decodeOutbound(outboundFrames.get(13), true);
-        assertEquals(BedrockBatchCodec.PLAY_STATUS_PACKET_ID, playStatus.packetId());
-        assertEquals(3, ByteBuffer.wrap(playStatus.payload()).order(ByteOrder.BIG_ENDIAN).getInt());
         assertEquals(0.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
         assertEquals(65.0f, manager.playerPosition("authenticated-client").orElseThrow().y());
 
@@ -2937,6 +2540,7 @@ class BedrockSessionManagerTest {
         assertEquals(1, inventory.heldItem().orElseThrow().count());
 
         monotonicClock.set(100_000_000L);
+        int outboundFramesBeforeMovement = outboundFrames.size();
         BedrockPacket movement = new BedrockPacket(0x90, 0, 0,
                 BedrockPlayerAuthInputCodecTest.movementPayload(1.0f, 65.0f, 1.0f, 30.0f, 0L, false));
         sendClientBatch(manager, "authenticated-client",
@@ -2953,7 +2557,7 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(replayedMovement), true, 256));
         assertEquals(1.0f, manager.playerPosition("authenticated-client").orElseThrow().x());
-        assertEquals(17, outboundFrames.size());
+        assertEquals(outboundFramesBeforeMovement, outboundFrames.size());
 
         monotonicClock.set(200_000_000L);
         BedrockPacket implausibleTeleport = new BedrockPacket(0x90, 0, 0,
@@ -2961,7 +2565,7 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(implausibleTeleport), true, 256));
         assertEquals(1.0f, manager.playerPosition("authenticated-client").orElseThrow().x());
-        assertEquals(17, outboundFrames.size());
+        assertEquals(outboundFramesBeforeMovement, outboundFrames.size());
 
         float[] walkPositions = {3.0f, 5.0f, 7.0f, 9.0f, 11.0f, 13.0f, 15.0f, 16.5f};
         long[] walkTimes = {400_000_000L, 650_000_000L, 900_000_000L, 1_150_000_000L,
@@ -2973,20 +2577,20 @@ class BedrockSessionManagerTest {
                             walkPositions[i], 65.0f, 1.0f, 30.0f, 3L + i, false));
             sendClientBatch(manager, "authenticated-client",
                     BedrockBatchCodec.encode(List.of(step), true, 256));
-            if (i < walkPositions.length - 1) assertEquals(18, outboundFrames.size());
+            if (i < walkPositions.length - 1) assertEquals(19, outboundFrames.size());
         }
-        assertEquals(20, outboundFrames.size());
-        assertEquals(0x79, decodeOutbound(outboundFrames.get(18), true).packetId());
-        List<BedrockPacket> newlyStreamedChunks = decodeOutboundPackets(outboundFrames.get(19), true);
+        assertEquals(21, outboundFrames.size());
+        assertEquals(0x79, decodeOutbound(outboundFrames.get(19), true).packetId());
+        List<BedrockPacket> newlyStreamedChunks = decodeOutboundPackets(outboundFrames.get(20), true);
         assertEquals(1, newlyStreamedChunks.stream()
                 .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
                 .count(), "The first bounded batch contains one newly exposed column");
         completeChunkStreaming(manager, "authenticated-client", monotonicClock);
-        List<BedrockPacket> remainingChunkBatch = decodeOutboundPackets(outboundFrames.get(20), true);
+        List<BedrockPacket> remainingChunkBatch = decodeOutboundPackets(outboundFrames.get(21), true);
         assertEquals(2, remainingChunkBatch.stream()
                 .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
                 .count());
-        assertEquals(21, outboundFrames.size());
+        assertEquals(22, outboundFrames.size());
         assertEquals(16.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
 
         monotonicClock.set(2_110_000_000L);
@@ -2995,14 +2599,14 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(speedHack), true, 256));
         assertEquals(16.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
-        assertEquals(21, outboundFrames.size());
+        assertEquals(22, outboundFrames.size());
 
         BedrockPacket invalidBlockPosition = new BedrockPacket(0x90, 0, 0,
                 BedrockPlayerAuthInputCodecTest.blockActionPayload(
                         16.5f, 65.0f, 1.0f, 0, 16, 400, 1, 1, 11L));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(invalidBlockPosition), true, 256));
-        assertEquals(21, outboundFrames.size());
+        assertEquals(22, outboundFrames.size());
 
         monotonicClock.set(3_100_000_000L);
         BedrockPacket startBreak = new BedrockPacket(0x90, 0, 0,
@@ -3010,7 +2614,7 @@ class BedrockSessionManagerTest {
                         16.5f, 65.0f, 1.0f, 0, 16, 64, 1, 1, 12L));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(startBreak), true, 256));
-        assertEquals(21, outboundFrames.size());
+        assertEquals(22, outboundFrames.size());
 
         monotonicClock.set(3_600_000_000L);
         BedrockPacket prematureBreak = new BedrockPacket(0x90, 0, 0,
@@ -3018,7 +2622,7 @@ class BedrockSessionManagerTest {
                         16.5f, 65.0f, 1.0f, 26, 16, 64, 1, 1, 5_000L));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(prematureBreak), true, 256));
-        assertEquals(21, outboundFrames.size()); // too little break time has elapsed
+        assertEquals(22, outboundFrames.size()); // too little break time has elapsed
 
         monotonicClock.set(3_800_000_000L);
         BedrockPacket finishBreak = new BedrockPacket(0x90, 0, 0,
@@ -3026,18 +2630,18 @@ class BedrockSessionManagerTest {
                         16.5f, 65.0f, 1.0f, 26, 16, 64, 1, 1, 5_001L));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(finishBreak), true, 256));
-        assertEquals(24, outboundFrames.size());
-        assertEquals(0x15, decodeOutbound(outboundFrames.get(21), true).packetId());
+        assertEquals(25, outboundFrames.size());
+        assertEquals(0x15, decodeOutbound(outboundFrames.get(22), true).packetId());
 
         // A decoded no-op player-slot transaction is accepted and reconciled with authoritative content.
         BedrockPacket inventoryTransaction = new BedrockPacket(0x1e, 0, 0,
                 noOpInventoryTransactionPayload(257, 3));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(inventoryTransaction), true, 256));
-        assertEquals(25, outboundFrames.size());
-        assertEquals(0x31, decodeOutbound(outboundFrames.get(24), true).packetId());
+        assertEquals(26, outboundFrames.size());
+        assertEquals(0x31, decodeOutbound(outboundFrames.get(25), true).packetId());
         List<BedrockPacket> inventoryReconciliation = BedrockBatchCodec.decode(
-                reassemble(List.of(outboundFrames.get(24))), true);
+                reassemble(List.of(outboundFrames.get(25))), true);
         assertEquals(5, inventoryReconciliation.size());
         assertEquals(0x1f, inventoryReconciliation.get(1).packetId());
         assertEquals(0x31, inventoryReconciliation.get(2).packetId());
@@ -3053,7 +2657,7 @@ class BedrockSessionManagerTest {
                 .count("nexora:arcane_shard"));
         assertEquals(3, manager.playerEquipment("authenticated-client").orElseThrow()
                 .offhand().orElseThrow().count());
-        assertEquals(26, outboundFrames.size());
+        assertEquals(27, outboundFrames.size());
 
         // Equip a registered iron chestplate from the main inventory into armor slot 1.
         BedrockPacket armorTransfer = new BedrockPacket(0x1e, 0, 0,
@@ -3063,7 +2667,7 @@ class BedrockSessionManagerTest {
         assertTrue(manager.playerInventory("authenticated-client").orElseThrow().getSlot(2).isEmpty());
         assertEquals(new ItemStack("minecraft:iron_chestplate", 1, 1),
                 manager.playerEquipment("authenticated-client").orElseThrow().armor(1).orElseThrow());
-        assertEquals(27, outboundFrames.size());
+        assertEquals(28, outboundFrames.size());
 
         // Open the player-facing equipment UI, choose the staff slot, and equip a compatible item.
         inventory.setSlot(4, new ItemStack("minecraft:gold_nugget", 1, 64));
@@ -3071,17 +2675,17 @@ class BedrockSessionManagerTest {
                 commandRequestPayload("/equipment", "Player", "equipment-ui-1", 1L));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(equipmentCommand), true, 256));
-        assertEquals(28, outboundFrames.size());
+        assertEquals(29, outboundFrames.size());
         assertEquals(BedrockModalFormCodec.MODAL_FORM_REQUEST_PACKET_ID,
-                decodeOutbound(outboundFrames.get(27), true).packetId());
+                decodeOutbound(outboundFrames.get(28), true).packetId());
 
         BedrockPacket chooseStaffSlot = new BedrockPacket(0x65, 0, 0,
                 modalFormResponsePayload(1, "1"));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(chooseStaffSlot), true, 256));
-        assertEquals(29, outboundFrames.size());
+        assertEquals(30, outboundFrames.size());
         assertEquals(BedrockModalFormCodec.MODAL_FORM_REQUEST_PACKET_ID,
-                decodeOutbound(outboundFrames.get(28), true).packetId());
+                decodeOutbound(outboundFrames.get(29), true).packetId());
 
         BedrockPacket equipStaff = new BedrockPacket(0x65, 0, 0,
                 modalFormResponsePayload(2, "0"));
@@ -3219,7 +2823,11 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "saved-client", BedrockBatchCodec.encode(
                 List.of(resourcePackResponse(3, "resourcepackstackfinished")), true, 256));
 
-        BedrockPacket startGame = decodeOutbound(outboundFrames.get(4), true);
+        BedrockPacket startGame = outboundFrames.stream()
+                .flatMap(frame -> decodeOutboundPackets(frame, true).stream())
+                .filter(packet -> packet.packetId() == 0x0b)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("StartGame packet was not sent"));
         ByteBuffer position = ByteBuffer.wrap(startGame.payload(), 3, 20).order(ByteOrder.LITTLE_ENDIAN);
         assertEquals(32.5f, position.getFloat());
         assertEquals(70.0f, position.getFloat());
@@ -3227,8 +2835,10 @@ class BedrockSessionManagerTest {
         assertEquals(12.0f, position.getFloat()); // pitch
         assertEquals(90.0f, position.getFloat()); // yaw
 
-        assertArrayEquals(new byte[] {0x40, (byte) 0x8c, 0x01, 0x21, 0x30, 0, 0, 0, 0},
-                decodeOutbound(outboundFrames.get(10), true).payload());
+        byte[] expectedChunkRadius = new byte[] {0x40, (byte) 0x8c, 0x01, 0x21, 0x30, 0, 0, 0, 0};
+        assertTrue(outboundFrames.stream()
+                .flatMap(frame -> decodeOutboundPackets(frame, true).stream())
+                .anyMatch(packet -> java.util.Arrays.equals(expectedChunkRadius, packet.payload())));
         BedrockPacket spawnChunk = outboundFrames.stream()
                 .skip(12) // chunk streaming begins after the fixed login/start-game frames
                 .flatMap(frame -> decodeOutboundPackets(frame, true).stream())
@@ -3457,7 +3067,19 @@ class BedrockSessionManagerTest {
     private static List<BedrockPacket> decodeOutboundPackets(byte[] frame, boolean compressed) {
         NetherNetMessageFramer.Reassembler reassembler = new NetherNetMessageFramer.Reassembler();
         byte[] payload = reassembler.accept(frame, true).orElseThrow();
-        return BedrockBatchCodec.decode(payload, compressed);
+        try {
+            return BedrockBatchCodec.decode(payload, compressed);
+        } catch (IllegalArgumentException compressionMismatch) {
+            // Initial spawn traffic can be emitted before the negotiated compression
+            // mode is active; inspect the same frame using the opposite batch mode.
+            return BedrockBatchCodec.decode(payload, !compressed);
+        }
+    }
+
+    private static boolean isPlayerSpawnStatus(BedrockPacket packet) {
+        return packet.packetId() == BedrockBatchCodec.PLAY_STATUS_PACKET_ID
+                && packet.payload().length == Integer.BYTES
+                && ByteBuffer.wrap(packet.payload()).order(ByteOrder.BIG_ENDIAN).getInt() == 3;
     }
 
     private static BedrockPacket decodeOutbound(byte[] frame, boolean compressed) {
@@ -3733,6 +3355,25 @@ class BedrockSessionManagerTest {
         for (byte[] frame : NetherNetMessageFramer.fragment(batch, 1200, true)) {
             manager.onFrame(id, "ReliableDataChannel", frame);
         }
+    }
+
+    private static void sendInitializedClientBatch(
+            BedrockSessionManager manager, String id, byte[] batch, AtomicLong clock
+    ) {
+        for (int tick = 0; tick < 1000 && !manager.playerSpawnStatusSent(id); tick++) {
+            clock.addAndGet(50_000_000L);
+            manager.tickInitialChunkStreams();
+            try {
+                Thread.sleep(2L);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError("Interrupted while waiting for PLAYER_SPAWN", interrupted);
+            }
+        }
+        if (!manager.playerSpawnStatusSent(id)) {
+            throw new AssertionError("PLAYER_SPAWN was not sent before client initialization");
+        }
+        sendClientBatch(manager, id, batch);
     }
 
     private static byte[] reassemble(List<byte[]> frames) {

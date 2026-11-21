@@ -10,7 +10,7 @@ import java.io.ByteArrayOutputStream;
 public final class BedrockLevelChunkCodec {
     public static final int LEVEL_CHUNK_PACKET_ID = 0x3a;
     private static final int NEGATIVE_SUB_CHUNKS = 4;
-    private static final int WORLD_BIOME_SECTIONS = 24;
+    private static final int BIOME_SECTION_COUNT = WorldChunk.SECTION_COUNT;
     private static final int PLAINS_BIOME_ID = 1;
     private static final int BLOCK_TYPE_COUNT = BlockType.values().length;
 
@@ -28,25 +28,31 @@ public final class BedrockLevelChunkCodec {
                 break;
             }
         }
-        int positiveSectionCount = Math.max(0, highestSection - NEGATIVE_SUB_CHUNKS);
-        int subChunkCount = NEGATIVE_SUB_CHUNKS + positiveSectionCount;
+        // A full LevelChunk serializes every section from the dimension's
+        // minimum Y (-4) through the highest non-empty section. The packet
+        // count is exactly that number; it is not a fixed four-section prefix.
+        int subChunkCount = highestSection;
 
         Writer chunkData = new Writer();
-        for (int sectionY = -NEGATIVE_SUB_CHUNKS; sectionY < 0; sectionY++) {
-            writeEmptySubChunk(chunkData, sectionY);
-        }
-        for (int sectionY = 0; sectionY < positiveSectionCount; sectionY++) {
-            byte[] section = sections[sectionY + NEGATIVE_SUB_CHUNKS];
-            writeSubChunk(chunkData, sectionY, section);
+        for (int sectionIndex = 0; sectionIndex < subChunkCount; sectionIndex++) {
+            int sectionY = sectionIndex - NEGATIVE_SUB_CHUNKS;
+            byte[] section = sections[sectionIndex];
+            if (section == null) {
+                writeEmptySubChunk(chunkData, sectionY);
+            } else {
+                writeSubChunk(chunkData, sectionY, section);
+            }
         }
 
-        // The Overworld's 3D biome palette spans all 24 vertical sections, even when
-        // only a small number of block sub-chunks are sent with this initial column.
-        for (int i = 0; i < WORLD_BIOME_SECTIONS; i++) {
+        // Bedrock's Overworld biome column is serialized for the full dimension
+        // height (24 sections), independently of the block SubChunksCount.
+        // The client decodes one biome storage for every vertical section.
+        for (int i = 0; i < BIOME_SECTION_COUNT; i++) {
             chunkData.byteValue(1); // singleton palette, runtime-ID flag
             chunkData.varInt32(PLAINS_BIOME_ID);
         }
-        chunkData.byteValue(0); // Border blocks
+        chunkData.byteValue(0); // Border blocks: empty list
+        chunkData.byteValue(0); // Block entities: empty network-NBT list (TAG_End)
 
         byte[] data = chunkData.toByteArray();
         Writer packet = new Writer();
@@ -54,9 +60,10 @@ public final class BedrockLevelChunkCodec {
         packet.varInt32(chunk.chunkZ());
         packet.varInt32(0); // Overworld dimension
         packet.varUInt32(subChunkCount);
-        packet.bool(false); // requestSubChunks optional is absent
-        packet.bool(false); // client chunk cache disabled
-        packet.varUInt32(0); // no blob hashes
+        // Optional Client Request SubChunk Limit: presence=false.
+        packet.bool(false);
+        packet.bool(false); // cacheEnabled = false
+        packet.varUInt32(0); // empty blob hash array, still length-prefixed when cache is disabled
         packet.byteArray(data);
         packet.bool(false); // clientBiomeUpdate
 
@@ -117,6 +124,17 @@ public final class BedrockLevelChunkCodec {
         writePalette(out, indexes, palette, paletteSize);
     }
 
+    private static int minimumPaletteBits(int paletteSize) {
+        if (paletteSize < 2 || paletteSize > ChunkSection.VOLUME) {
+            throw new IllegalArgumentException("Palette size must be between 2 and " + ChunkSection.VOLUME);
+        }
+        // Bedrock omits 7-bit storage; these are the protocol's supported widths.
+        for (int bits : new int[] {1, 2, 3, 4, 5, 6, 8, 16}) {
+            if ((1 << bits) >= paletteSize) return bits;
+        }
+        throw new IllegalArgumentException("Palette exceeds supported Bedrock storage width: " + paletteSize);
+    }
+
     private static boolean isEmpty(byte[] raw) {
         for (byte value : raw) if (value != 0) return false;
         return true;
@@ -129,8 +147,7 @@ public final class BedrockLevelChunkCodec {
             return;
         }
 
-        int bits = 1;
-        while ((1 << bits) < paletteSize) bits++;
+        int bits = minimumPaletteBits(paletteSize);
         int entriesPerWord = 32 / bits;
         int wordCount = (indexes.length + entriesPerWord - 1) / entriesPerWord;
         out.byteValue((bits << 1) | 1); // version bits plus runtime-ID flag
@@ -144,8 +161,13 @@ public final class BedrockLevelChunkCodec {
             out.int32(word);
         }
 
-        out.varUInt32(paletteSize);
-        for (int index = 0; index < paletteSize; index++) out.varInt32(palette[index]);
+        out.varInt32(paletteSize);
+        // StartGame advertises BlockNetworkIdsAreHashes=true. The 32-bit
+        // hashes retain their raw bits but are serialized as signed VarInt32,
+        // matching the Bedrock network palette encoding.
+        for (int index = 0; index < paletteSize; index++) {
+            out.varInt32(palette[index]);
+        }
     }
 
     private static final class Writer {

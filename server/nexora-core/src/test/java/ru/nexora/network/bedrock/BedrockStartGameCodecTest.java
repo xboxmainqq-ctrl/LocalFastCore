@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -42,6 +43,24 @@ class BedrockStartGameCodecTest {
         assertTrue(versionOffset >= 0);
         assertTrue(versionOffset >= 2);
         assertEquals(0, Byte.toUnsignedInt(payload[versionOffset - 2]));
+    }
+
+    @Test
+    void encodesPlayerPropertyDataAsNetworkNbtAndKeepsFollowingFieldsAligned() {
+        byte[] payload = BedrockStartGameCodec.create(
+                7, "NEXORA World", "1.26.62", "1.26.62", 0.5f, 65.0f, 0.5f).payload();
+        byte[] serverVersion = "1.26.62".getBytes(StandardCharsets.UTF_8);
+        int versionOffset = lastIndexOf(payload, serverVersion);
+        assertTrue(versionOffset >= 0);
+
+        int nbtOffset = versionOffset + serverVersion.length;
+        assertArrayEquals(new byte[] {0x0a, 0, 0},
+                Arrays.copyOfRange(payload, nbtOffset, nbtOffset + 3));
+        assertArrayEquals(new byte[8],
+                Arrays.copyOfRange(payload, nbtOffset + 3, nbtOffset + 11));
+        assertArrayEquals(new byte[16],
+                Arrays.copyOfRange(payload, nbtOffset + 11, nbtOffset + 27));
+        assertEquals(35, payload.length - nbtOffset);
     }
 
     @Test

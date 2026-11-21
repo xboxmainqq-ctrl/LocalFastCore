@@ -58,6 +58,23 @@ class BedrockItemRegistryTest {
     }
 
     @Test
+    void rejectsRuntimeIdsOutsideSignedInt16WireRange() {
+        assertThrows(IllegalArgumentException.class, () -> new BedrockItemRegistry(List.of(
+                entry("nexora:too_large", 32_768))));
+        assertThrows(IllegalArgumentException.class, () -> new BedrockItemRegistry(List.of(
+                entry("nexora:too_small", -32_769))));
+    }
+
+    @Test
+    void rejectsMalformedNetworkNbtRootForItemComponentData() {
+        var definition = new BedrockInventoryContentCodec.ItemDefinition(300, 0, 0, new byte[0]);
+        assertThrows(IllegalArgumentException.class, () -> new BedrockItemRegistry.Entry(
+                "nexora:wrong_root", definition, 64, false, 2, new byte[] {9, 0, 0}));
+        assertThrows(IllegalArgumentException.class, () -> new BedrockItemRegistry.Entry(
+                "nexora:truncated_name", definition, 64, false, 2, new byte[] {10, 2, 'x'}));
+    }
+
+    @Test
     void emptyRegistryIsSafeAndUsableAsInventoryResolver() {
         var registry = BedrockItemRegistry.empty();
         assertEquals(0, registry.size());

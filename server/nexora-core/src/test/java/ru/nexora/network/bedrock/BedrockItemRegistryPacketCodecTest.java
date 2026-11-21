@@ -23,7 +23,7 @@ class BedrockItemRegistryPacketCodecTest {
                         64,
                         false,
                         2,
-                        new byte[] {10, 0, 0, 0}
+                        new byte[] {10, 0, 0}
                 )
         ));
 
@@ -36,13 +36,13 @@ class BedrockItemRegistryPacketCodecTest {
                 1, 1, // runtime ID 257, little-endian int16
                 0,    // not component-based
                 4,    // ZigZag varint32(2): ItemVersion None
-                10, 0, 0, 0 // empty named network-NBT compound
+                10, 0, 0 // empty named network-NBT compound
         }, packet.payload());
     }
 
     @Test
     void copiesComponentDataAndRejectsInvalidRegistryMetadata() {
-        byte[] nbt = new byte[] {10, 0, 0, 0};
+        byte[] nbt = new byte[] {10, 0, 0};
         BedrockItemRegistry.Entry entry = new BedrockItemRegistry.Entry(
                 "nexora:crystal",
                 new BedrockInventoryContentCodec.ItemDefinition(300, 0, 0, new byte[0]),

@@ -14,7 +14,7 @@ import java.util.List;
  * use a maximum stack size of one. This is intentionally not a complete vanilla catalog.
  */
 public final class BedrockVanillaItemCatalog {
-    private static final byte[] EMPTY_NETWORK_NBT = {10, 0, 0, 0};
+    private static final byte[] EMPTY_NETWORK_NBT = {10, 0, 0};
 
     private BedrockVanillaItemCatalog() {
     }
@@ -42,7 +42,6 @@ public final class BedrockVanillaItemCatalog {
         addBlock(entries, "furnace", 61, BlockType.FURNACE);
         addBlock(entries, "blast_furnace", -196, BlockType.BLAST_FURNACE);
         addBlock(entries, "smoker", -198, BlockType.SMOKER);
-        add(entries, "coal", 263, 0, 64);
         add(entries, "diamond", 306, 2, 64);
         add(entries, "iron_ingot", 307, 2, 64);
         add(entries, "gold_ingot", 308, 2, 64);
@@ -112,14 +111,6 @@ public final class BedrockVanillaItemCatalog {
         add(entries, "cooked_mutton", 561, 0, 64);
         add(entries, "ink_sac", 416, 2, 64);
         add(entries, "glow_ink_sac", 514, 2, 64);
-        // Protocol-2225 component-based spear item states (version 1).
-        addComponent(entries, "copper_spear", 855);
-        addComponent(entries, "diamond_spear", 856);
-        addComponent(entries, "golden_spear", 857);
-        addComponent(entries, "iron_spear", 858);
-        addComponent(entries, "netherite_spear", 859);
-        addComponent(entries, "stone_spear", 860);
-        addComponent(entries, "wooden_spear", 861);
         add(entries, "leather_helmet", 338, 2, 1);
         add(entries, "leather_chestplate", 339, 2, 1);
         add(entries, "leather_leggings", 340, 2, 1);

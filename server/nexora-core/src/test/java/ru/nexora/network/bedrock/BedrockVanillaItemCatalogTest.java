@@ -6,11 +6,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockVanillaItemCatalogTest {
     @Test
-    void registersVerifiedProtocol2225ItemsIncludingComponentBasedSpears() {
+    void registersVerifiedProtocol2225ItemsWithoutUnsupportedComponentItems() {
         BedrockItemRegistry registry = BedrockVanillaItemCatalog.createRegistry();
         assertTrue(registry.size() >= 60);
 
-        assertEquals(263, registry.findByIdentifier("minecraft:coal").networkDefinition().runtimeItemId());
         assertEquals(61, registry.findByIdentifier("minecraft:furnace").networkDefinition().runtimeItemId());
         assertEquals(-196, registry.findByIdentifier("minecraft:blast_furnace").networkDefinition().runtimeItemId());
         assertEquals(-198, registry.findByIdentifier("minecraft:smoker").networkDefinition().runtimeItemId());
@@ -74,32 +73,20 @@ class BedrockVanillaItemCatalogTest {
                 registry.findByIdentifier("minecraft:cobblestone").networkDefinition().blockRuntimeId());
 
         assertNull(registry.findByIdentifier("minecraft:air"));
+        assertNull(registry.findByIdentifier("minecraft:coal")); // component-based; requires its captured component NBT
         assertNull(registry.findByIdentifier("minecraft:apple")); // component-based; not yet catalogued
 
-        int[][] spearIds = {
-                {855, 1}, {856, 1}, {857, 1}, {858, 1}, {859, 1}, {860, 1}, {861, 1}
-        };
-        String[] spearNames = {
+        String[] removedSpears = {
                 "copper_spear", "diamond_spear", "golden_spear", "iron_spear",
                 "netherite_spear", "stone_spear", "wooden_spear"
         };
-        for (int i = 0; i < spearNames.length; i++) {
-            BedrockItemRegistry.Entry spear = registry.findByIdentifier("minecraft:" + spearNames[i]);
-            assertNotNull(spear);
-            assertEquals(spearIds[i][0], spear.networkDefinition().runtimeItemId());
-            assertEquals(1, spear.itemVersion());
-            assertTrue(spear.componentBased());
-            assertEquals(1, spear.maxStackSize());
+        for (String spear : removedSpears) {
+            assertNull(registry.findByIdentifier("minecraft:" + spear));
         }
 
         for (BedrockItemRegistry.Entry entry : registry.entries()) {
-            if (entry.namespacedId().endsWith("_spear")) {
-                assertTrue(entry.componentBased());
-                assertEquals(1, entry.itemVersion());
-            } else {
-                assertFalse(entry.componentBased());
-            }
-            assertEquals(4, entry.componentData().length);
+            assertFalse(entry.componentBased());
+            assertArrayEquals(new byte[] {10, 0, 0}, entry.componentData());
         }
     }
 

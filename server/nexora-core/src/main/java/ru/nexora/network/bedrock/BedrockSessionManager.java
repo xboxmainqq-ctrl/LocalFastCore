@@ -100,6 +100,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     public static final int DEFAULT_COMPRESSION_THRESHOLD = 256;
     public static final int SCTP_MAX_MESSAGE_BYTES = 262_144;
     private static final long TRANSFER_OWNERSHIP_RECHECK_NANOS = 5_000_000_000L;
+    private static final int INITIAL_SPAWN_CHUNK_THRESHOLD = 56;
     private static final int MAX_OUTBOUND_FRAMES_PER_DRAIN = 64;
     private static final long MAX_OUTBOUND_BYTES_PER_DRAIN = 1L * 1024L * 1024L;
     private static final long MAX_TOTAL_OUTBOUND_QUEUED_BYTES = 64L * 1024L * 1024L;
@@ -2020,6 +2021,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     case BedrockSubChunkCodec.SUB_CHUNK_REQUEST_PACKET_ID ->
                             handleSubChunkRequest(message, state, packet);
                     case 0x71 -> handleClientInitialized(message, state, packet);
+                    case 0x9c -> handlePacketViolationWarning(message, packet);
                     case BedrockChunkRadiusCodec.REQUEST_PACKET_ID ->
                             handleChunkRadiusRequest(message, state, packet);
                     case BedrockPlayerAuthInputCodec.PLAYER_AUTH_INPUT_PACKET_ID ->
@@ -2054,6 +2056,63 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         Math.max(0L, nanoTime.getAsLong() - processingStartedNanos), 50_000_000L);
             }
         }
+    }
+
+    /** Logs the client's structured warning when it rejects a malformed server packet. */
+    private void handlePacketViolationWarning(
+            NetherNetInboundPipeline.InboundMessage message, BedrockPacket packet
+    ) {
+        byte[] payload = packet.payload();
+        try {
+            int[] offset = {0};
+            int violationType = readPacketViolationVarInt(payload, offset);
+            int severity = readPacketViolationVarInt(payload, offset);
+            int rejectedPacketId = readPacketViolationVarInt(payload, offset);
+            int contextLength = readPacketViolationVarUInt(payload, offset);
+            if (contextLength < 0 || contextLength > payload.length - offset[0]) {
+                throw new IllegalArgumentException("invalid context length " + contextLength);
+            }
+            String context = new String(payload, offset[0], contextLength, StandardCharsets.UTF_8);
+            offset[0] += contextLength;
+            if (offset[0] != payload.length) {
+                throw new IllegalArgumentException("trailing bytes " + (payload.length - offset[0]));
+            }
+            System.err.printf(
+                    "NEXORA: client PacketViolationWarning from %s: type=%d severity=%d rejectedPacket=0x%02X context=%s%n",
+                    message.networkId(), violationType, severity, rejectedPacketId, context);
+        } catch (RuntimeException malformed) {
+            System.err.printf(
+                    "NEXORA: malformed client PacketViolationWarning from %s (%d bytes): %s; payload=%s%n",
+                    message.networkId(), payload.length, malformed.getMessage(), toHex(payload));
+        }
+    }
+
+    private static int readPacketViolationVarInt(byte[] data, int[] offset) {
+        int raw = readPacketViolationVarUInt(data, offset);
+        return (raw >>> 1) ^ -(raw & 1);
+    }
+
+    private static int readPacketViolationVarUInt(byte[] data, int[] offset) {
+        int value = 0;
+        int shift = 0;
+        while (true) {
+            if (offset[0] >= data.length || shift > 28) {
+                throw new IllegalArgumentException("truncated or oversized VarUInt32");
+            }
+            int next = Byte.toUnsignedInt(data[offset[0]++]);
+            if (shift == 28 && (next & 0xf0) != 0) {
+                throw new IllegalArgumentException("VarUInt32 out of range");
+            }
+            value |= (next & 0x7f) << shift;
+            if ((next & 0x80) == 0) return value;
+            shift += 7;
+        }
+    }
+
+    private static String toHex(byte[] data) {
+        StringBuilder result = new StringBuilder(data.length * 2);
+        for (byte value : data) result.append(String.format("%02X", Byte.toUnsignedInt(value)));
+        return result.toString();
     }
 
     private void handleCraftingEvent(
@@ -5486,8 +5545,19 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     )) {
                         if (worldPacket.packetId() == 0x0b) {
                             // Bedrock requires ItemRegistry immediately after StartGame.
-                            sendPackets(networkId, List.of(worldPacket,
-                                    BedrockItemRegistryPacketCodec.createPacket(itemRegistry)), true);
+                            BedrockPacket jigsawStructureDataPacket =
+                                    BedrockJigsawStructureDataCodec.createPacket();
+                            BedrockPacket itemRegistryPacket =
+                                    BedrockItemRegistryPacketCodec.createPacket(itemRegistry);
+                            // Protocol 2193+ clients require the complete jigsaw rules before StartGame.
+                            sendPackets(networkId, List.of(
+                                    jigsawStructureDataPacket, worldPacket, itemRegistryPacket), true);
+                            System.out.printf(
+                                    "NEXORA: queued JigsawStructureData for %s (protocol=%d, payload=%d bytes)%n",
+                                    networkId, state.clientProtocol, jigsawStructureDataPacket.payloadLength());
+                            System.out.printf(
+                                    "NEXORA: queued ItemRegistry for %s (protocol=%d, entries=%d, payload=%d bytes)%n",
+                                    networkId, serverProtocol, itemRegistry.size(), itemRegistryPacket.payloadLength());
                         } else {
                             sendPacket(networkId, worldPacket, true);
                         }
@@ -5495,6 +5565,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     sendPackets(networkId, List.of(
                             BedrockBiomeDefinitionCodec.createPacket(),
                             BedrockChunkRadiusCodec.createUpdatedPacket(state.chunkViewRadius)), true);
+                    // Publish the initial chunk center/radius before the first LevelChunk packets.
+                    sendPacket(networkId, BedrockStartGameCodec.createChunkPublisherUpdate(
+                            (int) Math.floor(state.positionX), (int) Math.floor(state.positionY),
+                            (int) Math.floor(state.positionZ), state.chunkViewRadius), true);
                     sendInitialChunkArea(networkId, state);
                 }
                 System.out.printf("NEXORA: resource-pack negotiation completed for %s; StartGame and initial chunks queued%n",
@@ -5505,9 +5579,21 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
 
+    static boolean shouldProcessPlayerAuthInput(boolean clientInitialized) {
+        return clientInitialized;
+    }
+
     private void handlePlayerAuthInput(String networkId, SessionState state, BedrockPacket packet) {
-        if (!state.clientInitialized) {
-            throw new SecurityException("PlayerAuthInput arrived before client initialization");
+        if (!shouldProcessPlayerAuthInput(state.clientInitialized)) {
+            // Bedrock may begin sending movement ticks while the spawn acknowledgement
+            // is still in flight. Ignore these pre-admission inputs; do not tear down
+            // the NetherNet session. The client will send fresh input after packet 0x71.
+            if (!state.preInitializationInputObserved) {
+                state.preInitializationInputObserved = true;
+                System.out.printf("NEXORA: ignoring PlayerAuthInput from %s until SetLocalPlayerAsInitialized is received%n",
+                        networkId);
+            }
+            return;
         }
         if (state.dead) return;
         BedrockPlayerAuthInputCodec.PlayerInput input = BedrockPlayerAuthInputCodec.decode(packet);
@@ -6606,6 +6692,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 chunkStreamingBudget.yield(networkId, nanoTime.getAsLong());
                 state.chunkStreamingQueue = new ChunkStreamingQueue(centerX, centerZ, state.chunkViewRadius);
                 state.pendingChunkLoads.clear();
+                state.chunkStreamingStartedNanos = nanoTime.getAsLong();
+                state.lastChunkStreamingDiagnosticNanos = Long.MIN_VALUE;
+                System.out.printf("NEXORA: initial chunk stream started for %s (center=%d,%d radius=%d target=%d)%n",
+                        networkId, centerX, centerZ, state.chunkViewRadius,
+                        state.chunkStreamingQueue.desiredChunkKeys().size());
             }
             processChunkStreaming(networkId, state);
         }
@@ -6669,13 +6760,21 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 try {
                     prepared = load.join();
                 } catch (java.util.concurrent.CompletionException failure) {
-                    if (failure.getCause() instanceof java.util.concurrent.RejectedExecutionException) {
+                    Throwable cause = failure.getCause() == null ? failure : failure.getCause();
+                    state.pendingChunkLoads.remove(key, load);
+                    batchReady = false;
+                    long now = nanoTime.getAsLong();
+                    if (cause instanceof java.util.concurrent.RejectedExecutionException) {
                         // Keep this chunk pending and retry on a later input tick once I/O capacity frees.
-                        state.pendingChunkLoads.remove(key, load);
-                        batchReady = false;
                         continue;
                     }
-                    throw failure;
+                    if (state.lastChunkStreamingDiagnosticNanos == Long.MIN_VALUE
+                            || now - state.lastChunkStreamingDiagnosticNanos >= 5_000_000_000L) {
+                        state.lastChunkStreamingDiagnosticNanos = now;
+                        System.err.printf("NEXORA: chunk storage load failed for %s at %d,%d: %s%n",
+                                networkId, chunkX, chunkZ, cause.toString());
+                    }
+                    continue;
                 }
                 if (!chunkStreamingBudget.tryAcquire(networkId, nanoTime.getAsLong())) {
                     batchReady = false;
@@ -6695,10 +6794,25 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             // Ready chunks can publish while the rest of this four-key batch waits for disk I/O.
             // Keep the cursor in place until every key is either sent or ready.
             if (!batchReady) {
-                if (!budgetDenied) chunkStreamingBudget.yield(networkId, nanoTime.getAsLong());
+                long now = nanoTime.getAsLong();
+                if (state.lastChunkStreamingDiagnosticNanos == Long.MIN_VALUE
+                        || now - state.lastChunkStreamingDiagnosticNanos >= 5_000_000_000L) {
+                    state.lastChunkStreamingDiagnosticNanos = now;
+                    long loading = state.pendingChunkLoads.values().stream().filter(future -> !future.isDone()).count();
+                    long failed = state.pendingChunkLoads.values().stream().filter(CompletableFuture::isCompletedExceptionally).count();
+                    System.out.printf("NEXORA: chunk stream waiting for %s (sent=%d remaining=%d pendingIo=%d failedIo=%d budgetDenied=%s)%n",
+                            networkId, state.sentChunkKeys.size(), queue.remaining(), loading, failed, budgetDenied);
+                }
+                if (!budgetDenied) chunkStreamingBudget.yield(networkId, now);
                 return;
             }
             queue.advance(chunkKeys.size());
+            if (state.lastChunkStreamingDiagnosticNanos == Long.MIN_VALUE
+                    || nanoTime.getAsLong() - state.lastChunkStreamingDiagnosticNanos >= 5_000_000_000L) {
+                state.lastChunkStreamingDiagnosticNanos = nanoTime.getAsLong();
+                System.out.printf("NEXORA: chunk stream progress for %s (sent=%d remaining=%d)%n",
+                        networkId, state.sentChunkKeys.size(), queue.remaining());
+            }
             chunkStreamingPendingPeak.accumulateAndGet(queue.remaining(), Math::max);
         }
 
@@ -6715,8 +6829,26 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.pendingChunkLoads.clear();
         chunkStreamingBudget.pause(networkId);
         chunkStreamingCompleted.incrementAndGet();
+        long elapsedMillis = state.chunkStreamingStartedNanos == Long.MIN_VALUE ? -1L
+                : Math.max(0L, nanoTime.getAsLong() - state.chunkStreamingStartedNanos) / 1_000_000L;
+        System.out.printf("NEXORA: initial chunk stream completed for %s (sent=%d elapsedMs=%d)%n",
+                networkId, state.sentChunkKeys.size(), elapsedMillis);
+        state.chunkStreamingStartedNanos = Long.MIN_VALUE;
+        // Small view distances may never reach the normal 56-chunk threshold.
+        // In that case, the complete initial view is sufficient to release the client.
+        if (!state.playerSpawnSent) {
+            sendPlayerSpawnStatus(networkId, state, "initial view complete");
+        }
         syncVisiblePlayerActors(networkId, state);
         syncVisibleWorldActors(networkId, state);
+    }
+
+    private void sendPlayerSpawnStatus(String networkId, SessionState state, String reason) {
+        if (state.playerSpawnSent) return;
+        sendPacket(networkId, BedrockBatchCodec.createPlayStatus(3), true);
+        state.playerSpawnSent = true;
+        System.out.printf("NEXORA: player spawn status sent for %s (%s, chunks=%d)%n",
+                networkId, reason, state.sentChunkKeys.size());
     }
 
     private void flushChunkBatch(
@@ -6729,6 +6861,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.sentChunkKeys.addAll(pendingChunkKeys);
         pendingPackets.clear();
         pendingChunkKeys.clear();
+        // Match the established Nukkit/Cloudburst login policy: allow the client
+        // to leave the loading screen after a useful spawn area is available,
+        // without waiting for the entire view distance to finish streaming.
+        if (!state.playerSpawnSent
+                && state.sentChunkKeys.size() >= INITIAL_SPAWN_CHUNK_THRESHOLD) {
+            sendPlayerSpawnStatus(networkId, state, "spawn threshold");
+        }
     }
 
     /** Reconciles remote player actors whenever a client's published chunk view changes. */
@@ -6978,6 +7117,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return recipient.sentChunkKeys.contains(key);
     }
 
+    boolean playerSpawnStatusSent(String networkId) {
+        SessionState state = sessions.get(networkId);
+        return state != null && state.playerSpawnSent;
+    }
+
     private void handleClientInitialized(
             NetherNetInboundPipeline.InboundMessage message,
             SessionState state,
@@ -6988,6 +7132,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         if (!state.gameStarted) {
             throw new SecurityException("SetLocalPlayerAsInitialized arrived before StartGame");
+        }
+        if (!state.playerSpawnSent) {
+            throw new SecurityException("SetLocalPlayerAsInitialized arrived before PLAYER_SPAWN");
         }
         if (state.clientInitialized) {
             throw new SecurityException("Duplicate SetLocalPlayerAsInitialized packet");
@@ -7018,8 +7165,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
         }
         state.clientInitialized = true;
+        System.out.printf("NEXORA: client initialization acknowledged for %s (entityId=%d chunksSent=%d chunkStreamPending=%s)%n",
+                message.networkId(), state.entityId, state.sentChunkKeys.size(), state.chunkStreamingQueue != null);
         advertisePlayerList(message.networkId(), state);
-        sendPacket(message.networkId(), BedrockBatchCodec.createPlayStatus(3), true);
         sendInitialPlayerInventory(message.networkId(), state);
         sendExistingLivingActors(message.networkId());
         if (state.dead) handleDeath(message.networkId(), state, "death.attack.generic");
@@ -7973,7 +8121,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private boolean resourcePackStackSent;
         private volatile boolean resourcePacksCompleted;
         private volatile boolean gameStarted;
+        private boolean playerSpawnSent;
         private volatile boolean clientInitialized;
+        private boolean preInitializationInputObserved;
         private boolean positionInitialized;
         private float positionX;
         private float positionY;
@@ -7992,6 +8142,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private int lastChunkZ = Integer.MIN_VALUE;
         private volatile int chunkViewRadius = BedrockChunkRadiusCodec.DEFAULT_RADIUS;
         private volatile ChunkStreamingQueue chunkStreamingQueue;
+        private long chunkStreamingStartedNanos = Long.MIN_VALUE;
+        private long lastChunkStreamingDiagnosticNanos = Long.MIN_VALUE;
         private final Map<Long, CompletableFuture<Optional<WorldChunk>>> pendingChunkLoads = new HashMap<>();
         private final Set<Long> sentChunkKeys = ConcurrentHashMap.newKeySet();
         private final Set<Long> visiblePlayerEntityIds = ConcurrentHashMap.newKeySet();

@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: nexora-core-${{ github.ref }}
+  group: nexora-core-validation-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

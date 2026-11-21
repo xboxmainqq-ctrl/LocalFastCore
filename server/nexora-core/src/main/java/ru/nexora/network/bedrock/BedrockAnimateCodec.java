@@ -23,7 +23,7 @@ public final class BedrockAnimateCodec {
         out.write(ACTION_SWING);
         writeVarUInt64(out, actorRuntimeId);
         writeFloat32(out, 0.0f);
-        writeString(out, "Attack");
+        writeString(out, "attack");
         out.write(hand);
         return new BedrockPacket(ANIMATE_PACKET_ID, 0, 0, out.toByteArray());
     }

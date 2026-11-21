@@ -2464,12 +2464,14 @@ class BedrockSessionManagerTest {
                 BedrockBatchCodec.encode(List.of(stackCompleted), true, 256));
         assertEquals(1, manager.resourcePackReadyCount());
         assertEquals(13, outboundFrames.size());
-        assertEquals(0x0b, decodeOutbound(outboundFrames.get(4), true).packetId());
         List<BedrockPacket> startGameBatch = BedrockBatchCodec.decode(
                 reassemble(List.of(outboundFrames.get(4))), true);
-        assertEquals(2, startGameBatch.size());
+        assertEquals(3, startGameBatch.size());
+        assertEquals(BedrockJigsawStructureDataCodec.JIGSAW_STRUCTURE_DATA_PACKET_ID,
+                startGameBatch.get(0).packetId());
+        assertEquals(0x0b, startGameBatch.get(1).packetId());
         assertEquals(BedrockItemRegistryPacketCodec.ITEM_REGISTRY_PACKET_ID,
-                startGameBatch.get(1).packetId());
+                startGameBatch.get(2).packetId());
         assertEquals(0x0a, decodeOutbound(outboundFrames.get(5), true).packetId());
         assertEquals(0x3c, decodeOutbound(outboundFrames.get(6), true).packetId());
         assertEquals(0x3b, decodeOutbound(outboundFrames.get(7), true).packetId());

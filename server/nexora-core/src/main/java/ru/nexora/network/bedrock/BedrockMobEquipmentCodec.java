@@ -61,9 +61,10 @@ public final class BedrockMobEquipmentCodec {
         int count = in.uint16();
         long auxValue = in.varUInt32();
         boolean hasStackNetId = in.bool();
+        // Modern Bedrock clients may include a StackNetId on equipment updates.
+        // Consume the signed VarInt even though NEXORA does not yet track stack IDs.
         if (hasStackNetId) {
             in.varInt32();
-            throw new UnsupportedOperationException("Stack NetIds are not supported");
         }
         long blockRuntimeId = in.varUInt32();
         byte[] userData = in.byteArray(MAX_USER_DATA_BYTES);

@@ -68,7 +68,8 @@ class BedrockStartGameCodecTest {
 
         assertEquals(List.of(0x0a, 0x139, 0x151, 0x0b, 0x2b, 0x3c, 0x3b, 0x3e, 0x79),
                 packets.stream().map(BedrockPacket::packetId).toList());
-        assertValidEmptyJigsawStructureNbt(packets.get(1).payload());
+        // The canonical GameData NBT registry must be sent, not a fabricated empty tag.
+        assertTrue(packets.get(1).payload().length > 1_000);
         assertArrayEquals(new byte[4], packets.get(2).payload());
         assertArrayEquals(new byte[] {0, (byte) 0x82, 1, 0, 0x30, 0, 0, 0, 0},
                 packets.get(8).payload());
@@ -90,23 +91,6 @@ class BedrockStartGameCodecTest {
                 () -> BedrockStartGameCodec.create(0, "NEXORA", "1.26.62", "1.26.62", 0, 65, 0));
         assertThrows(IllegalArgumentException.class,
                 () -> BedrockStartGameCodec.create(1, " ", "1.26.62", "1.26.62", 0, 65, 0));
-    }
-
-    private static void assertValidEmptyJigsawStructureNbt(byte[] payload) {
-        ByteBuffer nbt = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN);
-        assertEquals(10, Byte.toUnsignedInt(nbt.get())); // root TAG_Compound
-        assertEquals(0, Short.toUnsignedInt(nbt.getShort())); // unnamed root
-        for (String expectedName : List.of("processors", "template_pools", "jigsaws", "structure_sets")) {
-            assertEquals(9, Byte.toUnsignedInt(nbt.get())); // TAG_List
-            int nameLength = Short.toUnsignedInt(nbt.getShort());
-            byte[] name = new byte[nameLength];
-            nbt.get(name);
-            assertEquals(expectedName, new String(name, StandardCharsets.UTF_8));
-            assertEquals(10, Byte.toUnsignedInt(nbt.get())); // TAG_Compound list elements
-            assertEquals(0, nbt.getInt()); // empty list
-        }
-        assertEquals(0, Byte.toUnsignedInt(nbt.get())); // root TAG_End
-        assertFalse(nbt.hasRemaining());
     }
 
     private static int lastIndexOf(byte[] haystack, byte[] needle) {

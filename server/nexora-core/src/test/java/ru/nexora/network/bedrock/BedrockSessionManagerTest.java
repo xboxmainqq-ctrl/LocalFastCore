@@ -2463,7 +2463,7 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(stackCompleted), true, 256));
         assertEquals(1, manager.resourcePackReadyCount());
-        assertEquals(13, outboundFrames.size());
+        assertEquals(14, outboundFrames.size());
         List<BedrockPacket> startGameBatch = BedrockBatchCodec.decode(
                 reassemble(List.of(outboundFrames.get(4))), true);
         assertEquals(3, startGameBatch.size());

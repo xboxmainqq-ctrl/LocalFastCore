@@ -100,6 +100,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     public static final int DEFAULT_COMPRESSION_THRESHOLD = 256;
     public static final int SCTP_MAX_MESSAGE_BYTES = 262_144;
     private static final long TRANSFER_OWNERSHIP_RECHECK_NANOS = 5_000_000_000L;
+    private static final int INITIAL_SPAWN_CHUNK_THRESHOLD = 56;
     private static final int MAX_OUTBOUND_FRAMES_PER_DRAIN = 64;
     private static final long MAX_OUTBOUND_BYTES_PER_DRAIN = 1L * 1024L * 1024L;
     private static final long MAX_TOTAL_OUTBOUND_QUEUED_BYTES = 64L * 1024L * 1024L;
@@ -6821,16 +6822,21 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         System.out.printf("NEXORA: initial chunk stream completed for %s (sent=%d elapsedMs=%d)%n",
                 networkId, state.sentChunkKeys.size(), elapsedMillis);
         state.chunkStreamingStartedNanos = Long.MIN_VALUE;
-        // Bedrock clients send SetLocalPlayerAsInitialized only after receiving PLAYER_SPAWN.
-        // Publish it once the initial chunk view is fully available to break the login handshake cycle.
+        // Small view distances may never reach the normal 56-chunk threshold.
+        // In that case, the complete initial view is sufficient to release the client.
         if (!state.playerSpawnSent) {
-            sendPacket(networkId, BedrockBatchCodec.createPlayStatus(3), true);
-            state.playerSpawnSent = true;
-            System.out.printf("NEXORA: player spawn status sent for %s after initial chunks (chunks=%d)%n",
-                    networkId, state.sentChunkKeys.size());
+            sendPlayerSpawnStatus(networkId, state, "initial view complete");
         }
         syncVisiblePlayerActors(networkId, state);
         syncVisibleWorldActors(networkId, state);
+    }
+
+    private void sendPlayerSpawnStatus(String networkId, SessionState state, String reason) {
+        if (state.playerSpawnSent) return;
+        sendPacket(networkId, BedrockBatchCodec.createPlayStatus(3), true);
+        state.playerSpawnSent = true;
+        System.out.printf("NEXORA: player spawn status sent for %s (%s, chunks=%d)%n",
+                networkId, reason, state.sentChunkKeys.size());
     }
 
     private void flushChunkBatch(
@@ -6843,6 +6849,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.sentChunkKeys.addAll(pendingChunkKeys);
         pendingPackets.clear();
         pendingChunkKeys.clear();
+        // Match the established Nukkit/Cloudburst login policy: allow the client
+        // to leave the loading screen after a useful spawn area is available,
+        // without waiting for the entire view distance to finish streaming.
+        if (!state.playerSpawnSent
+                && state.sentChunkKeys.size() >= INITIAL_SPAWN_CHUNK_THRESHOLD) {
+            sendPlayerSpawnStatus(networkId, state, "spawn threshold");
+        }
     }
 
     /** Reconciles remote player actors whenever a client's published chunk view changes. */

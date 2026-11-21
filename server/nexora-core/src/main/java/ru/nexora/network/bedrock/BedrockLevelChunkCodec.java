@@ -94,7 +94,7 @@ public final class BedrockLevelChunkCodec {
         out.byteValue(sectionY);
         if (raw == null || isEmpty(raw)) {
             out.byteValue(1); // V0 singleton palette, runtime IDs
-            out.varInt32(BedrockBlockRuntimeIds.forBlock(BlockType.AIR));
+            out.varUInt32(Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(BlockType.AIR)));
             return;
         }
 
@@ -127,7 +127,7 @@ public final class BedrockLevelChunkCodec {
     private static void writePalette(Writer out, int[] indexes, int[] palette, int paletteSize) {
         if (paletteSize == 1) {
             out.byteValue(1); // V0, runtime palette
-            out.varInt32(palette[0]);
+            out.varUInt32(Integer.toUnsignedLong(palette[0]));
             return;
         }
 

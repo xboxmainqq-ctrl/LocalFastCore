@@ -13,7 +13,7 @@ class BedrockAnimateCodecTest {
         assertEquals(0x2c, packet.packetId());
         assertArrayEquals(new byte[] {
                 1, (byte) 0xac, 0x02, 0, 0, 0, 0, 6,
-                'A', 't', 't', 'a', 'c', 'k', 0
+                'a', 't', 't', 'a', 'c', 'k', 0
         }, packet.payload());
     }
 

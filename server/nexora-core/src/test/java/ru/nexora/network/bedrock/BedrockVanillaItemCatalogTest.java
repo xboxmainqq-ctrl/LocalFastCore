@@ -99,7 +99,7 @@ class BedrockVanillaItemCatalogTest {
             } else {
                 assertFalse(entry.componentBased());
             }
-            assertEquals(4, entry.componentData().length);
+            assertArrayEquals(new byte[] {10, 0, 0}, entry.componentData());
         }
     }
 

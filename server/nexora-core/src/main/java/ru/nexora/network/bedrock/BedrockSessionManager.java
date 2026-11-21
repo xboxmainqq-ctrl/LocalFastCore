@@ -7092,6 +7092,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return recipient.sentChunkKeys.contains(key);
     }
 
+    boolean playerSpawnStatusSent(String networkId) {
+        SessionState state = sessions.get(networkId);
+        return state != null && state.playerSpawnSent;
+    }
+
     private void handleClientInitialized(
             NetherNetInboundPipeline.InboundMessage message,
             SessionState state,

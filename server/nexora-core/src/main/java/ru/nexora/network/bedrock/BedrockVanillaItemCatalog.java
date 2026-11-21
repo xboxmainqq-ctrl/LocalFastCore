@@ -8,10 +8,11 @@ import java.util.List;
 /**
  * Curated protocol-2225 vanilla item subset with verified runtime IDs, including common stackable items, placeable blocks and armor.
  *
- * IDs and ItemVersion values are transcribed from the protocol-2225 item-state
- * palette (runtime_item_states_2225.json, Nukkit-MOT reference revision
- * 7323f582e864782934d4c405505551f79f4ed10e). Only non-component items with no block-state payload are included. Armor and shields
- * use a maximum stack size of one. This is intentionally not a complete vanilla catalog.
+ * IDs, ItemVersion values and component flags are checked against the
+ * PowerNukkitX/GameData r/26_u6 item_palette.json (protocol 2225). Component-based
+ * items are omitted until their complete client component NBT is registered.
+ * Armor and shields use a maximum stack size of one. This is intentionally not
+ * a complete vanilla catalog.
  */
 public final class BedrockVanillaItemCatalog {
     private static final byte[] EMPTY_NETWORK_NBT = {10, 0, 0};

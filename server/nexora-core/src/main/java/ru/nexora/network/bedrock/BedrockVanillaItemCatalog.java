@@ -1,241 +1,147 @@
 package ru.nexora.network.bedrock;
 
 import ru.nexora.world.BlockType;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.cloudburstmc.nbt.NBTInputStream;
 import org.cloudburstmc.nbt.NBTOutputStream;
 import org.cloudburstmc.nbt.NbtMap;
 import org.cloudburstmc.nbt.NbtUtils;
 
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.Base64;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Curated protocol-2225 vanilla item subset with verified runtime IDs, including common stackable items, placeable blocks and armor.
+ * Full vanilla item registry sourced from the same PowerNukkitX GameData
+ * release used by the 1.26.60 / protocol-2225 reference server.
  *
- * IDs, ItemVersion values and component flags are checked against the
- * PowerNukkitX/GameData r/26_u6 item_palette.json and item_components.nbt
- * (protocol 2225). Component definitions are converted with Cloudburst NBT.
- * Armor and shields use a maximum stack size of one. This is intentionally not
- * a complete vanilla catalog.
+ * Item runtime IDs, versions and component-based flags are never hand-copied:
+ * they are read from the official item_palette.json. Component NBT is wrapped
+ * and serialized with Cloudburst's network-NBT writer, matching PowerNukkitX.
  */
 public final class BedrockVanillaItemCatalog {
-    private static final byte[] EMPTY_NETWORK_NBT = {10, 0, 0};
-    private static final Map<String, byte[]> COMPONENT_NBT = loadComponentNbt();
+    private static final String GAME_DATA_ROOT = "gamedata/kaooot/";
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    private static final Map<String, BlockType> BLOCK_ITEMS = Map.ofEntries(
+            Map.entry("minecraft:stone", BlockType.STONE),
+            Map.entry("minecraft:grass_block", BlockType.GRASS_BLOCK),
+            Map.entry("minecraft:dirt", BlockType.DIRT),
+            Map.entry("minecraft:cobblestone", BlockType.COBBLESTONE),
+            Map.entry("minecraft:gravel", BlockType.GRAVEL),
+            Map.entry("minecraft:glass", BlockType.GLASS),
+            Map.entry("minecraft:obsidian", BlockType.OBSIDIAN),
+            Map.entry("minecraft:netherrack", BlockType.NETHERRACK),
+            Map.entry("minecraft:end_stone", BlockType.END_STONE),
+            Map.entry("minecraft:coal_block", BlockType.COAL_BLOCK),
+            Map.entry("minecraft:iron_block", BlockType.IRON_BLOCK),
+            Map.entry("minecraft:gold_block", BlockType.GOLD_BLOCK),
+            Map.entry("minecraft:diamond_block", BlockType.DIAMOND_BLOCK),
+            Map.entry("minecraft:emerald_block", BlockType.EMERALD_BLOCK),
+            Map.entry("minecraft:chest", BlockType.CHEST),
+            Map.entry("minecraft:oak_log", BlockType.OAK_LOG),
+            Map.entry("minecraft:oak_planks", BlockType.OAK_PLANKS),
+            Map.entry("minecraft:crafting_table", BlockType.CRAFTING_TABLE),
+            Map.entry("minecraft:furnace", BlockType.FURNACE),
+            Map.entry("minecraft:blast_furnace", BlockType.BLAST_FURNACE),
+            Map.entry("minecraft:smoker", BlockType.SMOKER)
+    );
 
     private BedrockVanillaItemCatalog() {
     }
 
     public static BedrockItemRegistry createRegistry() {
-        List<BedrockItemRegistry.Entry> entries = new ArrayList<>();
-        addBlock(entries, "stone", 1, BlockType.STONE);
-        addBlock(entries, "grass_block", 2, BlockType.GRASS_BLOCK);
-        addBlock(entries, "dirt", 3, BlockType.DIRT);
-        addBlock(entries, "cobblestone", 4, BlockType.COBBLESTONE);
-        addBlock(entries, "gravel", 13, BlockType.GRAVEL);
-        addBlock(entries, "glass", 20, BlockType.GLASS);
-        addBlock(entries, "obsidian", 49, BlockType.OBSIDIAN);
-        addBlock(entries, "netherrack", 87, BlockType.NETHERRACK);
-        addBlock(entries, "end_stone", 121, BlockType.END_STONE);
-        addBlock(entries, "coal_block", 173, BlockType.COAL_BLOCK);
-        addBlock(entries, "iron_block", 42, BlockType.IRON_BLOCK);
-        addBlock(entries, "gold_block", 41, BlockType.GOLD_BLOCK);
-        addBlock(entries, "diamond_block", 57, BlockType.DIAMOND_BLOCK);
-        addBlock(entries, "emerald_block", 133, BlockType.EMERALD_BLOCK);
-        addBlock(entries, "chest", 54, BlockType.CHEST);
-        addBlock(entries, "oak_log", 17, BlockType.OAK_LOG);
-        addBlock(entries, "oak_planks", 5, BlockType.OAK_PLANKS);
-        addBlock(entries, "crafting_table", 58, BlockType.CRAFTING_TABLE);
-        addBlock(entries, "furnace", 61, BlockType.FURNACE);
-        addBlock(entries, "blast_furnace", -196, BlockType.BLAST_FURNACE);
-        addBlock(entries, "smoker", -198, BlockType.SMOKER);
-
-        addComponent(entries, "coal", 304, 2, 64);
-        add(entries, "diamond", 306, 2, 64);
-        add(entries, "iron_ingot", 307, 2, 64);
-        add(entries, "gold_ingot", 308, 2, 64);
-        add(entries, "emerald", 523, 2, 64);
-        add(entries, "stick", 323, 2, 64);
-        add(entries, "lapis_lazuli", 417, 2, 64);
-        add(entries, "redstone", 376, 2, 64);
-        add(entries, "amethyst_shard", 639, 2, 64);
-        add(entries, "quartz", 534, 2, 64);
-        add(entries, "netherite_ingot", 624, 2, 64);
-        add(entries, "copper_ingot", 515, 2, 64);
-        add(entries, "wheat", 337, 2, 64);
-        add(entries, "bread", 261, 0, 64);
-        add(entries, "carrot", 279, 0, 64);
-        add(entries, "potato", 280, 0, 64);
-        add(entries, "baked_potato", 281, 0, 64);
-        add(entries, "bone", 418, 2, 64);
-        add(entries, "rotten_flesh", 277, 0, 64);
-        add(entries, "leather", 384, 2, 64);
-        add(entries, "paper", 389, 2, 64);
-        add(entries, "book", 390, 2, 64);
-        add(entries, "glass_bottle", 431, 2, 64);
-        add(entries, "ender_pearl", 425, 2, 16);
-        add(entries, "blaze_rod", 426, 2, 64);
-        add(entries, "ghast_tear", 428, 2, 64);
-        add(entries, "slime_ball", 391, 2, 64);
-        add(entries, "magma_cream", 434, 2, 64);
-        add(entries, "gunpowder", 331, 2, 64);
-        add(entries, "feather", 330, 2, 64);
-        add(entries, "flint", 359, 2, 64);
-        add(entries, "raw_iron", 516, 2, 64);
-        add(entries, "raw_gold", 517, 2, 64);
-        add(entries, "raw_copper", 518, 2, 64);
-        add(entries, "iron_nugget", 579, 2, 64);
-        add(entries, "gold_nugget", 429, 2, 64);
-        add(entries, "heart_of_the_sea", 581, 2, 64);
-        add(entries, "nautilus_shell", 580, 2, 64);
-        add(entries, "prismarine_shard", 575, 2, 64);
-        add(entries, "prismarine_crystals", 559, 2, 64);
-        add(entries, "phantom_membrane", 584, 2, 64);
-        add(entries, "shulker_shell", 576, 2, 64);
-        add(entries, "experience_bottle", 519, 2, 64);
-        add(entries, "fire_charge", 520, 2, 64);
-        add(entries, "firework_rocket", 529, 2, 64);
-        add(entries, "cookie", 271, 0, 64);
-        add(entries, "cooked_beef", 274, 0, 64);
-        add(entries, "beef", 273, 0, 64);
-        add(entries, "chicken", 275, 0, 64);
-        add(entries, "cooked_chicken", 276, 0, 64);
-        add(entries, "salmon", 265, 0, 64);
-        add(entries, "cooked_salmon", 269, 0, 64);
-        add(entries, "cod", 264, 0, 64);
-        add(entries, "cooked_cod", 268, 0, 64);
-        add(entries, "poisonous_potato", 282, 0, 64);
-        add(entries, "pumpkin_pie", 284, 0, 64);
-        add(entries, "melon_slice", 272, 0, 64);
-        add(entries, "sweet_berries", 287, 0, 64);
-        add(entries, "glow_berries", 887, 0, 64);
-        add(entries, "honey_bottle", 604, 0, 16);
-        add(entries, "honeycomb", 603, 0, 64);
-        add(entries, "nether_wart", 294, 0, 64);
-        add(entries, "rabbit_foot", 538, 2, 64);
-        add(entries, "rabbit_hide", 539, 2, 64);
-        add(entries, "rabbit", 288, 0, 64);
-        add(entries, "cooked_rabbit", 289, 0, 64);
-        add(entries, "mutton", 560, 0, 64);
-        add(entries, "cooked_mutton", 561, 0, 64);
-        add(entries, "ink_sac", 416, 2, 64);
-        add(entries, "glow_ink_sac", 514, 2, 64);
-        addComponent(entries, "copper_spear", 858, 1, 1);
-        addComponent(entries, "diamond_spear", 859, 1, 1);
-        addComponent(entries, "golden_spear", 860, 1, 1);
-        addComponent(entries, "iron_spear", 861, 1, 1);
-        addComponent(entries, "netherite_spear", 862, 1, 1);
-        addComponent(entries, "stone_spear", 863, 1, 1);
-        addComponent(entries, "wooden_spear", 864, 1, 1);
-        add(entries, "leather_helmet", 338, 2, 1);
-        add(entries, "leather_chestplate", 339, 2, 1);
-        add(entries, "leather_leggings", 340, 2, 1);
-        add(entries, "leather_boots", 341, 2, 1);
-        add(entries, "chainmail_helmet", 342, 2, 1);
-        add(entries, "chainmail_chestplate", 343, 2, 1);
-        add(entries, "chainmail_leggings", 344, 2, 1);
-        add(entries, "chainmail_boots", 345, 2, 1);
-        add(entries, "iron_helmet", 346, 2, 1);
-        add(entries, "iron_chestplate", 347, 2, 1);
-        add(entries, "iron_leggings", 348, 2, 1);
-        add(entries, "iron_boots", 349, 2, 1);
-        add(entries, "diamond_helmet", 350, 2, 1);
-        add(entries, "diamond_chestplate", 351, 2, 1);
-        add(entries, "diamond_leggings", 352, 2, 1);
-        add(entries, "diamond_boots", 353, 2, 1);
-        add(entries, "golden_helmet", 354, 2, 1);
-        add(entries, "golden_chestplate", 355, 2, 1);
-        add(entries, "golden_leggings", 356, 2, 1);
-        add(entries, "golden_boots", 357, 2, 1);
-        add(entries, "netherite_helmet", 625, 2, 1);
-        add(entries, "netherite_chestplate", 626, 2, 1);
-        add(entries, "netherite_leggings", 627, 2, 1);
-        add(entries, "netherite_boots", 628, 2, 1);
-        add(entries, "turtle_helmet", 583, 2, 1);
-        add(entries, "elytra", 574, 2, 1);
-        add(entries, "shield", 358, 2, 1);
-        return new BedrockItemRegistry(entries);
-    }
-
-    private static Map<String, byte[]> loadComponentNbt() {
-        String resource = "/bedrock/item_components_2225.nbt.gz.b64";
-        try (InputStream encoded = BedrockVanillaItemCatalog.class.getResourceAsStream(resource)) {
-            if (encoded == null) {
-                throw new IllegalStateException("Missing protocol-2225 item component data: " + resource);
+        ClassLoader loader = BedrockVanillaItemCatalog.class.getClassLoader();
+        try (InputStream paletteStream = loader.getResourceAsStream(GAME_DATA_ROOT + "item_palette.json");
+             InputStream componentStream = loader.getResourceAsStream(GAME_DATA_ROOT + "item_components.nbt")) {
+            if (paletteStream == null || componentStream == null) {
+                throw new IllegalStateException("Missing PowerNukkitX protocol-2225 GameData resources");
             }
-            byte[] compressed = Base64.getMimeDecoder().decode(encoded.readAllBytes());
-            try (NBTInputStream input = NbtUtils.createGZIPReader(new ByteArrayInputStream(compressed))) {
+
+            JsonNode palette = JSON.readTree(paletteStream);
+            JsonNode items = palette.path("items");
+            if (!items.isArray() || items.isEmpty()) {
+                throw new IllegalStateException("GameData item_palette.json contains no item entries");
+            }
+
+            NbtMap componentRoot;
+            try (NBTInputStream input = NbtUtils.createGZIPReader(componentStream)) {
                 Object root = input.readTag();
-                if (!(root instanceof NbtMap items)) {
-                    throw new IllegalStateException("Protocol-2225 item component resource root is not a compound");
+                if (!(root instanceof NbtMap map)) {
+                    throw new IllegalStateException("GameData item_components.nbt root is not a compound");
                 }
-                Map<String, byte[]> result = new HashMap<>();
-                for (Map.Entry<String, Object> item : items.entrySet()) {
-                    if (!(item.getValue() instanceof NbtMap itemTag)) {
-                        continue;
-                    }
-                    NbtMap wrapped = NbtMap.builder()
-                            .putCompound("components", itemTag.getCompound("components"))
-                            .build();
-                    ByteArrayOutputStream output = new ByteArrayOutputStream();
-                    try (NBTOutputStream writer = NbtUtils.createNetworkWriter(output)) {
-                        writer.writeTag(wrapped);
-                    }
-                    result.put(item.getKey(), output.toByteArray());
-                }
-                return Map.copyOf(result);
+                componentRoot = map;
             }
+
+            List<BedrockItemRegistry.Entry> entries = new ArrayList<>(items.size());
+            for (JsonNode item : items) {
+                String identifier = item.path("name").asText();
+                if (identifier.isBlank() || !item.path("id").canConvertToInt()
+                        || !item.path("version").canConvertToInt()
+                        || !item.path("component_based").isBoolean()) {
+                    throw new IllegalStateException("Invalid GameData item palette entry: " + item);
+                }
+
+                int runtimeId = item.path("id").intValue();
+                int itemVersion = item.path("version").intValue();
+                boolean componentBased = item.path("component_based").booleanValue();
+
+                NbtMap networkTag = NbtMap.EMPTY;
+                if (componentRoot.containsKey(identifier)) {
+                    NbtMap itemTag = componentRoot.getCompound(identifier);
+                    NbtMap components = itemTag.getCompound("components");
+                    networkTag = NbtMap.builder().putCompound("components", components).build();
+                }
+
+                long blockRuntimeId = 0L;
+                BlockType blockType = BLOCK_ITEMS.get(identifier);
+                if (blockType != null) {
+                    blockRuntimeId = Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(blockType));
+                }
+
+                entries.add(new BedrockItemRegistry.Entry(
+                        identifier,
+                        new BedrockInventoryContentCodec.ItemDefinition(
+                                runtimeId, 0, blockRuntimeId, new byte[0]),
+                        maxStackSize(identifier),
+                        componentBased,
+                        itemVersion,
+                        encodeNetworkNbt(networkTag)
+                ));
+            }
+            return new BedrockItemRegistry(entries);
         } catch (IOException exception) {
-            throw new ExceptionInInitializerError(exception);
+            throw new IllegalStateException("Could not load protocol-2225 GameData item registry", exception);
         }
     }
 
-    private static void addComponent(List<BedrockItemRegistry.Entry> entries,
-                                     String path, int runtimeId, int itemVersion, int maxStackSize) {
-        String identifier = "minecraft:" + path;
-        byte[] componentData = COMPONENT_NBT.get(identifier);
-        if (componentData == null) {
-            throw new IllegalStateException("Missing client component NBT for " + identifier);
+    private static byte[] encodeNetworkNbt(NbtMap tag) throws IOException {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        try (NBTOutputStream writer = NbtUtils.createNetworkWriter(output)) {
+            writer.writeTag(tag);
         }
-        entries.add(new BedrockItemRegistry.Entry(
-                identifier,
-                new BedrockInventoryContentCodec.ItemDefinition(runtimeId, 0, 0, new byte[0]),
-                maxStackSize,
-                true,
-                itemVersion,
-                componentData
-        ));
+        return output.toByteArray();
     }
 
-    private static void addBlock(List<BedrockItemRegistry.Entry> entries,
-                                 String path, int runtimeId, BlockType blockType) {
-        String identifier = "minecraft:" + path;
-        byte[] componentData = COMPONENT_NBT.getOrDefault(identifier, EMPTY_NETWORK_NBT);
-        entries.add(new BedrockItemRegistry.Entry(
-                identifier,
-                new BedrockInventoryContentCodec.ItemDefinition(
-                        runtimeId, 0, Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(blockType)), new byte[0]),
-                64, false, 2, componentData
-        ));
-    }
-
-    private static void add(List<BedrockItemRegistry.Entry> entries,
-                            String path, int runtimeId, int itemVersion, int maxStackSize) {
-        String identifier = "minecraft:" + path;
-        byte[] componentData = COMPONENT_NBT.getOrDefault(identifier, EMPTY_NETWORK_NBT);
-        entries.add(new BedrockItemRegistry.Entry(
-                identifier,
-                new BedrockInventoryContentCodec.ItemDefinition(runtimeId, 0, 0, new byte[0]),
-                maxStackSize,
-                false,
-                itemVersion,
-                componentData
-        ));
+    private static int maxStackSize(String identifier) {
+        String path = identifier.startsWith("minecraft:")
+                ? identifier.substring("minecraft:".length()) : identifier;
+        if (path.endsWith("_helmet") || path.endsWith("_chestplate")
+                || path.endsWith("_leggings") || path.endsWith("_boots")
+                || path.endsWith("_sword") || path.endsWith("_pickaxe")
+                || path.endsWith("_axe") || path.endsWith("_shovel")
+                || path.endsWith("_hoe") || path.endsWith("_spear")
+                || path.equals("shield") || path.equals("elytra")) {
+            return 1;
+        }
+        if (path.equals("ender_pearl") || path.equals("honey_bottle")
+                || path.equals("egg") || path.equals("snowball")) {
+            return 16;
+        }
+        return 64;
     }
 }

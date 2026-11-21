@@ -2804,7 +2804,10 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "saved-client", BedrockBatchCodec.encode(
                 List.of(resourcePackResponse(3, "resourcepackstackfinished")), true, 256));
 
-        BedrockPacket startGame = decodeOutbound(outboundFrames.get(4), true);
+        BedrockPacket startGame = decodeOutboundPackets(outboundFrames.get(4), true).stream()
+                .filter(packet -> packet.packetId() == 0x0b)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("StartGame packet was not sent"));
         ByteBuffer position = ByteBuffer.wrap(startGame.payload(), 3, 20).order(ByteOrder.LITTLE_ENDIAN);
         assertEquals(32.5f, position.getFloat());
         assertEquals(70.0f, position.getFloat());

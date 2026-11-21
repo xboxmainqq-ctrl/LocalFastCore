@@ -40,8 +40,7 @@ public final class BedrockLevelChunkCodec {
             writeSubChunk(chunkData, sectionY, section);
         }
 
-        // The Overworld's 3D biome palette spans all 24 vertical sections, even when
-        // only a small number of block sub-chunks are sent with this initial column.
+        // Overworld biome storage spans the complete 24-section column.
         for (int i = 0; i < WORLD_BIOME_SECTIONS; i++) {
             chunkData.byteValue(1); // singleton palette, runtime-ID flag
             chunkData.varInt32(PLAINS_BIOME_ID);
@@ -55,8 +54,11 @@ public final class BedrockLevelChunkCodec {
         packet.varInt32(chunk.chunkZ());
         packet.varInt32(0); // Overworld dimension
         packet.varUInt32(subChunkCount);
-        // Client Request SubChunk Limit is optional and is omitted outside request mode.
-        packet.bool(false); // client chunk cache disabled; cache metadata is then omitted too
+        // Request-mode limit is absent in ordinary full-column mode.
+        packet.bool(false); // client chunk cache disabled
+        // Cache metadata is an array field and MUST still be present when caching is disabled.
+        // Its empty array is encoded as a zero-length VarUInt32 before Serialized Chunk Data.
+        packet.varUInt32(0);
         packet.byteArray(data);
         packet.bool(false); // clientBiomeUpdate
 

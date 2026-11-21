@@ -69,6 +69,25 @@ class BedrockPlayerSkinCodecTest {
     }
 
     @Test
+    void acceptsPersonaPrefixedPieceTypesFromLoginClientData() throws Exception {
+        String skin = Base64.getEncoder().encodeToString(new byte[64 * 64 * 4]);
+        JsonNode clientData = MAPPER.readTree("""
+                {
+                  "SkinId":"persona-test",
+                  "SkinResourcePatch":"e30=",
+                  "SkinData":"%s",
+                  "SkinImageWidth":64,
+                  "SkinImageHeight":64,
+                  "PersonaPieces":[
+                    {"PieceId":"skeleton","PieceType":"persona_skeleton","PackId":"00000000-0000-0000-0000-000000000000"},
+                    {"PieceId":"hand","PieceType":"persona_hand","PackId":"00000000-0000-0000-0000-000000000000"}
+                  ]
+                }
+                """.formatted(skin));
+        assertDoesNotThrow(() -> BedrockPlayerSkinCodec.encode(clientData));
+    }
+
+    @Test
     void mapsClientDeviceOsToProtocolBuildPlatform() throws Exception {
         assertEquals(1, BedrockPlayerSkinCodec.buildPlatform(MAPPER.readTree("{\"DeviceOS\":1}")));
         assertEquals(8, BedrockPlayerSkinCodec.buildPlatform(MAPPER.readTree("{\"DeviceOS\":7}")));

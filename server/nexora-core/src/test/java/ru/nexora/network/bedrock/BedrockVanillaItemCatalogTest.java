@@ -15,7 +15,7 @@ class BedrockVanillaItemCatalogTest {
     @Test
     void registersOnlyItemsWithCompleteProtocol2225ClientDefinitions() throws IOException {
         BedrockItemRegistry registry = BedrockVanillaItemCatalog.createRegistry();
-        assertTrue(registry.size() > 1_000, "the full vanilla 1.26.60 palette must be registered");
+        assertEquals(2_078, registry.size(), "the complete protocol-2225 item palette must be registered");
 
         assertEquals(61, registry.findByIdentifier("minecraft:furnace").networkDefinition().runtimeItemId());
         assertEquals(-196, registry.findByIdentifier("minecraft:blast_furnace").networkDefinition().runtimeItemId());
@@ -89,7 +89,8 @@ class BedrockVanillaItemCatalogTest {
         assertEquals(Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.COBBLESTONE)),
                 registry.findByIdentifier("minecraft:cobblestone").networkDefinition().blockRuntimeId());
 
-        assertNull(registry.findByIdentifier("minecraft:air"));
+        assertNotNull(registry.findByIdentifier("minecraft:air"));
+        assertEquals(-158, registry.findByIdentifier("minecraft:air").networkDefinition().runtimeItemId());
         BedrockItemRegistry.Entry coal = registry.findByIdentifier("minecraft:coal");
         assertNotNull(coal);
         assertEquals(304, coal.networkDefinition().runtimeItemId());

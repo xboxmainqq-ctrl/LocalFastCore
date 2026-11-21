@@ -158,6 +158,26 @@ class BedrockPlayerAuthInputCodecTest {
     }
 
     @Test
+    void acceptsSmallTrailingRetailClientExtensionBytes() {
+        byte[] base = movementPayload(0.5f, 65.0f, 0.5f, 90.0f, 22L, false);
+        byte[] extended = java.util.Arrays.copyOf(base, base.length + 8);
+        extended[base.length] = 0x11;
+        extended[base.length + 1] = 0x22;
+        var input = BedrockPlayerAuthInputCodec.decode(new BedrockPacket(0x90, 0, 0, extended));
+        assertEquals(0.5f, input.x());
+        assertEquals(65.0f, input.y());
+        assertEquals(22L, input.tick());
+    }
+
+    @Test
+    void rejectsOversizedTrailingExtensionBytes() {
+        byte[] base = movementPayload(0, 65, 0, 0, 23L, false);
+        byte[] extended = java.util.Arrays.copyOf(base, base.length + 65);
+        assertThrows(IllegalArgumentException.class,
+                () -> BedrockPlayerAuthInputCodec.decode(new BedrockPacket(0x90, 0, 0, extended)));
+    }
+
+    @Test
     void rejectsWrongPacketIdTruncationAndNonFiniteCoordinates() {
         assertThrows(IllegalArgumentException.class,
                 () -> BedrockPlayerAuthInputCodec.decode(new BedrockPacket(1, 0, 0, new byte[0])));

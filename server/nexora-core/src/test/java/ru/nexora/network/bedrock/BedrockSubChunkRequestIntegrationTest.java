@@ -67,14 +67,27 @@ class BedrockSubChunkRequestIntegrationTest {
             int loadedResult = reader.byteValue();
             assertTrue(loadedResult == BedrockSubChunkCodec.RESULT_SUCCESS
                     || loadedResult == BedrockSubChunkCodec.RESULT_SUCCESS_ALL_AIR);
-            if (loadedResult == BedrockSubChunkCodec.RESULT_SUCCESS) reader.byteArray();
-            assertEquals(0, reader.byteValue()); // heightmap
-            assertEquals(0, reader.byteValue()); // render heightmap
+            boolean hasSubChunkData = reader.bool();
+            if (loadedResult == BedrockSubChunkCodec.RESULT_SUCCESS) {
+                assertTrue(hasSubChunkData);
+                reader.byteArray();
+            } else {
+                assertFalse(hasSubChunkData);
+            }
+            assertEquals(0, reader.byteValue()); // heightmap: NoData
+            assertFalse(reader.bool()); // no heightmap array
+            assertEquals(0, reader.byteValue()); // render heightmap: NoData
+            assertFalse(reader.bool()); // no render heightmap array
+            assertFalse(reader.bool()); // no blob ID
 
             assertEquals(new BedrockSubChunkCodec.Offset(2, 0, 0), reader.offset());
             assertEquals(BedrockSubChunkCodec.RESULT_LEVEL_CHUNK_DOES_NOT_EXIST, reader.byteValue());
+            assertFalse(reader.bool()); // no serialized subchunk
             assertEquals(0, reader.byteValue());
+            assertFalse(reader.bool());
             assertEquals(0, reader.byteValue());
+            assertFalse(reader.bool());
+            assertFalse(reader.bool()); // no blob ID
             assertTrue(reader.exhausted());
         } finally {
             manager.close();

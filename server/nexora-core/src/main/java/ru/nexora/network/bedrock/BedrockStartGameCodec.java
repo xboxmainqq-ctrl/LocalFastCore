@@ -207,18 +207,24 @@ public final class BedrockStartGameCodec {
     }
 
     private static byte[] emptyJigsawStructureNbt() {
-        // Use the pinned 1.26.60 GameData payload. A hand-built empty compound is
-        // not a substitute for the server's actual jigsaw rule registry.
-        try (var input = BedrockStartGameCodec.class.getResourceAsStream(
-                "/gamedata/kaooot/jigsaw_structure_data.nbt")) {
-            if (input == null) {
-                throw new IllegalStateException(
-                        "Missing protocol 2225 resource: gamedata/kaooot/jigsaw_structure_data.nbt");
-            }
-            return input.readAllBytes();
-        } catch (java.io.IOException exception) {
-            throw new IllegalStateException("Unable to load protocol 2225 jigsaw structure data", exception);
-        }
+        // Protocol 2225 reference servers send a network-little-endian NBT compound
+        // with four empty compound lists. This is the complete empty jigsaw registry.
+        Writer out = new Writer();
+        out.byteValue(10);                 // TAG_Compound
+        out.string("");                    // Root name
+        writeEmptyCompoundList(out, "processors");
+        writeEmptyCompoundList(out, "template_pools");
+        writeEmptyCompoundList(out, "jigsaws");
+        writeEmptyCompoundList(out, "structure_sets");
+        out.byteValue(0);                  // TAG_End
+        return out.toByteArray();
+    }
+
+    private static void writeEmptyCompoundList(Writer out, String name) {
+        out.byteValue(9);                  // TAG_List
+        out.string(name);
+        out.byteValue(10);                 // List element type: TAG_Compound
+        out.varUInt32(0);                  // Empty list
     }
 
     private static BedrockPacket packet(int id, byte[] payload) {

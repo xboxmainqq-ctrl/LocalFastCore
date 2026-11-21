@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockLevelChunkCodecTest {
     @Test
-    void encodesAProtocol2225ChunkWithNegativeSubChunksAndThreeDimensionalBiomes() {
+    void encodesAProtocol2225ChunkWithNegativeSubChunksAndMatchingBiomePalettes() {
         WorldChunk chunk = new WorldChunk(-2, 3);
         new FlatWorldGenerator().generate(chunk, 1L);
 
@@ -19,7 +19,8 @@ class BedrockLevelChunkCodecTest {
         assertEquals(-2, reader.varInt32());
         assertEquals(3, reader.varInt32());
         assertEquals(0, reader.varInt32()); // Overworld
-        assertEquals(9, reader.varUInt32()); // four negative plus five positive sub-chunks
+        int subChunkCount = reader.varUInt32();
+        assertEquals(9, subChunkCount); // four negative plus five positive sub-chunks
         assertFalse(reader.bool()); // cacheEnabled = false
         assertEquals(0, reader.varUInt32()); // empty blob hash array
 
@@ -63,7 +64,8 @@ class BedrockLevelChunkCodecTest {
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.GRASS_BLOCK), subChunks.varUInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varUInt32());
 
-        for (int section = 0; section < 24; section++) {
+        // Exactly one biome palette follows each serialized subchunk.
+        for (int section = 0; section < subChunkCount; section++) {
             assertEquals(1, subChunks.byteValue()); // singleton plains biome palette
             assertEquals(1, subChunks.varInt32());
         }
@@ -73,20 +75,35 @@ class BedrockLevelChunkCodecTest {
     }
 
     @Test
-    void emptyChunkStillAdvertisesFourNegativeSubChunksAndAllBiomeSections() {
+    void emptyChunkSendsOneBiomePaletteForEachOfItsFourNegativeSubChunks() {
         BedrockPacket packet = BedrockLevelChunkCodec.createPacket(new WorldChunk(0, 0));
         Reader reader = new Reader(packet.payload());
 
         reader.varInt32();
         reader.varInt32();
         reader.varInt32();
-        assertEquals(4, reader.varUInt32());
+        int subChunkCount = reader.varUInt32();
+        assertEquals(4, subChunkCount);
         assertFalse(reader.bool()); // cacheEnabled = false
         assertEquals(0, reader.varUInt32()); // empty blob hash array
         byte[] data = reader.byteArray();
         reader.bool();
         assertTrue(reader.exhausted());
-        assertEquals(12 + 24 * 2 + 2, data.length);
+
+        Reader chunkData = new Reader(data);
+        for (int sectionY = -4; sectionY < 0; sectionY++) {
+            assertEquals(9, chunkData.byteValue());
+            assertEquals(0, chunkData.byteValue());
+            assertEquals(sectionY & 0xff, chunkData.byteValue());
+        }
+        for (int section = 0; section < subChunkCount; section++) {
+            assertEquals(1, chunkData.byteValue());
+            assertEquals(1, chunkData.varInt32());
+        }
+        assertEquals(0, chunkData.byteValue()); // border blocks
+        assertEquals(0, chunkData.byteValue()); // block entities
+        assertTrue(chunkData.exhausted());
+        assertEquals(12 + 4 * 2 + 2, data.length);
     }
 
     private static final class Reader {

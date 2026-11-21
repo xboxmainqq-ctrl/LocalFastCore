@@ -46,7 +46,7 @@ class BedrockLevelChunkCodecTest {
         assertEquals(3, subChunks.byteValue());
         assertEquals(5, subChunks.byteValue()); // V2, runtime IDs
         subChunks.skip(256 * Integer.BYTES);
-        assertEquals(4, subChunks.varUInt32());
+        assertEquals(4, subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.BEDROCK), subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.STONE), subChunks.varInt32());
@@ -58,7 +58,7 @@ class BedrockLevelChunkCodecTest {
         assertEquals(4, subChunks.byteValue());
         assertEquals(3, subChunks.byteValue()); // V1, runtime IDs
         subChunks.skip(128 * Integer.BYTES);
-        assertEquals(2, subChunks.varUInt32());
+        assertEquals(2, subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.GRASS_BLOCK), subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
 

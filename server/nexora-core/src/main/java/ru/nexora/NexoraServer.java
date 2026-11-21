@@ -33,6 +33,7 @@ import ru.nexora.inventory.DurabilitySettings;
 import ru.nexora.ai.NexoraAiDiagnostics;
 import ru.nexora.ai.DiagnosticsRuntimeModule;
 import ru.nexora.lifecycle.ServerLifecycle;
+import ru.nexora.modules.ModuleRegistry;
 import ru.nexora.lifecycle.ServerReadiness;
 import ru.nexora.config.NexoraServerConfig;
 
@@ -80,6 +81,8 @@ public final class NexoraServer {
                 port
         );
         ServerLifecycle lifecycle = new ServerLifecycle();
+        ModuleRegistry moduleRegistry = new ModuleRegistry(java.util.Set.of(),
+                java.util.logging.Logger.getLogger("NEXORA-Modules"));
         ServerReadiness readiness = new ServerReadiness();
         RakNetDiscoveryServer discovery = new RakNetDiscoveryServer(
                 socketAddress,
@@ -278,10 +281,12 @@ public final class NexoraServer {
         lifecycle.register(worldRuntime);
         lifecycle.register(gameplayRuntime);
         lifecycle.register(networkRuntime);
+        lifecycle.register(moduleRegistry);
 
         try {
             networkRuntime.start();
             diagnosticsRuntime.start();
+            moduleRegistry.start();
         } catch (Exception exception) {
             readiness.beginShutdown();
             try {

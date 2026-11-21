@@ -37,10 +37,8 @@ class BedrockLevelChunkCodecTest {
         }
         for (int sectionY = 0; sectionY < 3; sectionY++) {
             assertEquals(9, subChunks.byteValue());
-            assertEquals(1, subChunks.byteValue());
+            assertEquals(0, subChunks.byteValue()); // empty section has no block layers
             assertEquals(sectionY, subChunks.byteValue());
-            assertEquals(1, subChunks.byteValue()); // singleton air palette
-            assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
         }
 
         // Section Y=3 contains air, bedrock, stone and dirt: a two-bit packed palette.
@@ -125,9 +123,11 @@ class BedrockLevelChunkCodecTest {
         assertEquals(9, chunkData.byteValue());
         assertEquals(1, chunkData.byteValue());
         assertEquals(0xfc, chunkData.byteValue()); // signed subchunk Y = -4
-        assertEquals(1, chunkData.byteValue()); // uniform storage header
-        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.STONE),
-                chunkData.varInt32());
+        assertEquals(3, chunkData.byteValue()); // one-bit palette: air and stone
+        chunkData.skip(128 * Integer.BYTES);
+        assertEquals(2, chunkData.varInt32());
+        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), chunkData.varInt32());
+        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.STONE), chunkData.varInt32());
         for (int section = 0; section < WorldChunk.SECTION_COUNT; section++) {
             assertEquals(1, chunkData.byteValue()); // singleton plains biome palette
             assertEquals(1, chunkData.varInt32()); // plains

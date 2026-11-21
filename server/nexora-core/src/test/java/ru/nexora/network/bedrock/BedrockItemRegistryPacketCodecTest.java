@@ -61,6 +61,14 @@ class BedrockItemRegistryPacketCodecTest {
     }
 
     @Test
+    void rejectsComponentBasedItemsWithoutTheirClientComponentData() {
+        assertThrows(IllegalArgumentException.class, () -> new BedrockItemRegistry.Entry(
+                "minecraft:diamond_spear",
+                new BedrockInventoryContentCodec.ItemDefinition(856, 0, 0, new byte[0]),
+                1, true, 1, new byte[] {10, 0, 0}));
+    }
+
+    @Test
     void rejectsDuplicateRuntimeIdsAndOversizedRegistries() {
         assertThrows(IllegalArgumentException.class, () -> new BedrockItemRegistry(List.of(
                 entry("nexora:first", 400),

@@ -45,19 +45,23 @@ public final class BedrockPlayerAuthInputCodec {
         float deltaY = in.float32();
         float deltaZ = in.float32();
 
-        boolean hasItemUse = inputActions.contains(InputAction.PERFORM_ITEM_INTERACTION);
-        boolean hasItemStackRequest = inputActions.contains(InputAction.PERFORM_ITEM_STACK_REQUEST);
-        boolean hasBlockActions = inputActions.contains(InputAction.PERFORM_BLOCK_ACTIONS);
-        boolean inPredictedVehicle = inputActions.contains(InputAction.IS_IN_CLIENT_PREDICTED_VEHICLE);
+        // Protocol 2225 writes five independent single optionals after Delta,
+        // regardless of which InputData flags are set. Do not infer their wire
+        // presence from the flags: doing so shifts every following field.
+        boolean hasItemUse = in.bool();
+        boolean hasItemStackRequest = in.bool();
+        boolean hasBlockActions = in.bool();
+        boolean hasVehicleRotation = in.bool();
+        boolean hasPredictedVehicle = in.bool();
         boolean optionalSectionsPresent = hasItemUse || hasItemStackRequest
-                || hasBlockActions || inPredictedVehicle;
+                || hasBlockActions || hasVehicleRotation || hasPredictedVehicle;
 
         ItemUseTransaction itemUseTransaction = hasItemUse ? readPackedItemUse(in) : null;
-        // ItemStackRequest remains opaque. The preceding packed item-use transaction
-        // is still decoded so ordinary block placement can be validated server-side.
+        // ItemStackRequest actions are not yet implemented. Preserve the movement
+        // sample and explicitly mark this packet's interaction tail as unparsed.
         if (hasItemStackRequest) {
             return new PlayerInput(pitch, yaw, x, y, z, motionX, motionZ, headYaw,
-                    tick, true, true, inputMode, playMode, interactionModel,
+                    tick, optionalSectionsPresent, true, inputMode, playMode, interactionModel,
                     interactYaw, interactPitch, deltaX, deltaY, deltaZ,
                     0, 0, 0, 0, 0, 0, 0,
                     java.util.List.copyOf(inputActions), java.util.List.of(), itemUseTransaction);
@@ -74,8 +78,10 @@ public final class BedrockPlayerAuthInputCodec {
                         in.varInt32(), in.varInt32(), in.varInt32()));
             }
         }
-        if (inPredictedVehicle) {
+        if (hasVehicleRotation) {
             in.float32(); in.float32(); // vehicle rotation
+        }
+        if (hasPredictedVehicle) {
             in.varInt64(); // client-predicted vehicle unique ID
         }
 

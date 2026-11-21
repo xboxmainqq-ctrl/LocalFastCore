@@ -232,6 +232,11 @@ class BedrockPlayerAuthInputCodecTest {
         writeFloat(output, 0); writeFloat(output, 0); // interact rotation
         writeVarULong(output, tick);
         writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0); // delta
+        output.write(optional ? 1 : 0); // ItemInteractionData optional
+        output.write(0); // ItemStackRequest optional
+        output.write(0); // BlockActions optional
+        output.write(0); // VehicleRotation optional
+        output.write(0); // ClientPredictedVehicle optional
         if (optional) {
             // PackedItemUseLegacyInventoryTransaction: request ID 0, no inventory actions.
             writeVarInt(output, 0);
@@ -265,6 +270,11 @@ class BedrockPlayerAuthInputCodecTest {
         writeFloat(output, 0); writeFloat(output, 0);
         writeVarULong(output, 1);
         writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0);
+        output.write(0); // ItemInteractionData optional
+        output.write(0); // ItemStackRequest optional
+        output.write(0); // BlockActions optional
+        output.write(1); // VehicleRotation optional
+        output.write(1); // ClientPredictedVehicle optional
         writeFloat(output, 0); writeFloat(output, 0); // vehicle rotation
         writeVarULong(output, 0); // predicted vehicle unique ID
         writeFloat(output, 0); writeFloat(output, 0); // analog move
@@ -287,6 +297,11 @@ class BedrockPlayerAuthInputCodecTest {
         writeFloat(output, 0); writeFloat(output, 0);
         writeVarULong(output, tick);
         writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0);
+        output.write(0); // ItemInteractionData optional
+        output.write(0); // ItemStackRequest optional
+        output.write(1); // BlockActions optional
+        output.write(0); // VehicleRotation optional
+        output.write(0); // ClientPredictedVehicle optional
         writeVarUInt(output, 1);
         writeVarInt(output, action);
         writeVarInt(output, x); writeVarInt(output, y); writeVarInt(output, z); writeVarInt(output, face);
@@ -311,6 +326,11 @@ class BedrockPlayerAuthInputCodecTest {
         writeFloat(output, 0); writeFloat(output, 0);
         writeVarULong(output, tick);
         writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0); // delta
+        output.write(1); // ItemInteractionData optional
+        output.write(0); // ItemStackRequest optional
+        output.write(0); // BlockActions optional
+        output.write(0); // VehicleRotation optional
+        output.write(0); // ClientPredictedVehicle optional
         writeVarInt(output, 0); // legacy request ID
         writeVarUInt(output, 0); // inventory actions
         writeVarInt(output, 1); // ItemUseActionType.ClickAir
@@ -352,6 +372,11 @@ class BedrockPlayerAuthInputCodecTest {
         writeFloat(output, 0); writeFloat(output, 0);
         writeVarULong(output, tick);
         writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0);
+        output.write(1); // ItemInteractionData optional
+        output.write(0); // ItemStackRequest optional
+        output.write(0); // BlockActions optional
+        output.write(0); // VehicleRotation optional
+        output.write(0); // ClientPredictedVehicle optional
         writeVarInt(output, 0); // legacy request ID
         writeVarUInt(output, 0); // inventory actions
         writeVarInt(output, 0); // ItemUseActionType.Place

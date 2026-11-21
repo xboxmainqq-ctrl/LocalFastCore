@@ -2044,7 +2044,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     case BedrockTakeItemActorCodec.TAKE_ITEM_ACTOR_PACKET_ID ->
                             handleTakeItemActor(message, state, packet);
                     case BedrockLoadingScreenCodec.PACKET_ID ->
-                            handleLoadingScreen(networkId, state, packet);
+                            handleLoadingScreen(message, state, packet);
                     default -> packetSink.accept(new PacketEvent(
                             message.networkId(), message.channelLabel(), packet));
                 }
@@ -7004,12 +7004,30 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
-    private void handleLoadingScreen(String networkId, SessionState state, BedrockPacket packet) {
+    private void handleLoadingScreen(
+            NetherNetInboundPipeline.InboundMessage message, SessionState state, BedrockPacket packet
+    ) {
+        String networkId = message.networkId();
+        byte[] payload = packet.payload();
+        String payloadHex = java.util.HexFormat.of().formatHex(payload);
+        if (!message.reliable()) {
+            throw new SecurityException("ServerboundLoadingScreen must arrive on ReliableDataChannel");
+        }
         if (!state.gameStarted) {
             throw new SecurityException("Loading screen state arrived before StartGame");
         }
-        BedrockLoadingScreenCodec.LoadingScreen loadingScreen =
-                BedrockLoadingScreenCodec.decode(packet);
+
+        final BedrockLoadingScreenCodec.LoadingScreen loadingScreen;
+        try {
+            loadingScreen = BedrockLoadingScreenCodec.decode(packet);
+        } catch (IllegalArgumentException malformed) {
+            System.err.printf("NEXORA: rejected ServerboundLoadingScreen from %s; payload=%s (%d bytes): %s%n",
+                    networkId, payloadHex, payload.length, malformed.getMessage());
+            throw new SecurityException("Malformed protocol-2225 ServerboundLoadingScreen", malformed);
+        }
+        System.out.printf("NEXORA: ServerboundLoadingScreen from %s; type=%s, screenId=%s, payload=%s%n",
+                networkId, loadingScreen.isStart() ? "START" : "END",
+                loadingScreen.screenId() == null ? "absent" : loadingScreen.screenId(), payloadHex);
         if (loadingScreen.screenId() != null) {
             // NEXORA currently has no server-initiated ChangeDimension flow. Initial world join
             // must therefore use the optional, absent loading-screen ID from protocol 2225.
@@ -7017,10 +7035,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         if (loadingScreen.isStart()) {
             state.initialLoadingScreenStarted = true;
-            System.out.printf("NEXORA: client %s opened the initial world loading screen%n", networkId);
         } else {
             state.initialLoadingScreenEnded = true;
-            System.out.printf("NEXORA: client %s closed the initial world loading screen%n", networkId);
         }
     }
 

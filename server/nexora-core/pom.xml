@@ -37,12 +37,6 @@
             <artifactId>nbt</artifactId>
             <version>3.1.0.Final</version>
         </dependency>
-        <!-- Official Bedrock 1.26.60 / protocol 2225 item palette and component NBT. -->
-        <dependency>
-            <groupId>org.powernukkitx</groupId>
-            <artifactId>gamedata</artifactId>
-            <version>r-26_u6-SNAPSHOT</version>
-        </dependency>
         <dependency>
             <groupId>org.cloudburstmc.netty</groupId>
             <artifactId>netty-transport-common</artifactId>

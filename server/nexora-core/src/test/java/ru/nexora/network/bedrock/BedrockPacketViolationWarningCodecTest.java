@@ -26,11 +26,24 @@ class BedrockPacketViolationWarningCodecTest {
     }
 
     @Test
-    void rejectsNegativeViolationEnumValues() {
-        byte[] payload = new byte[] {1, 0, 0, 0}; // zig-zag VarInt32(-1)
+    void acceptsUnknownEnumValuesAndRejectsValuesBelowUnknown() {
+        byte[] unknownValues = new byte[] {1, 1, 0, 0}; // type=-1, severity=-1
+        var violation = BedrockPacketViolationWarningCodec.decode(
+                new BedrockPacket(0x9C, 0, 0, unknownValues));
+        assertEquals(-1, violation.type());
+        assertEquals(-1, violation.severity());
+        assertEquals("Unknown", BedrockPacketViolationWarningCodec.typeName(violation.type()));
+        assertEquals("Unknown", BedrockPacketViolationWarningCodec.severityName(violation.severity()));
+
+        byte[] invalidType = new byte[] {3, 0, 0, 0}; // type=-2
         assertThrows(IllegalArgumentException.class, () ->
                 BedrockPacketViolationWarningCodec.decode(
-                        new BedrockPacket(0x9C, 0, 0, payload)));
+                        new BedrockPacket(0x9C, 0, 0, invalidType)));
+
+        byte[] invalidSeverity = new byte[] {0, 3, 0, 0}; // severity=-2
+        assertThrows(IllegalArgumentException.class, () ->
+                BedrockPacketViolationWarningCodec.decode(
+                        new BedrockPacket(0x9C, 0, 0, invalidSeverity)));
     }
 
     @Test

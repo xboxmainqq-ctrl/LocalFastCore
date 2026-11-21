@@ -47,12 +47,12 @@ class BedrockPlayerAuthInputCodecTest {
                         movementPayload(0, 65, 0, 0, 16L, false,
                                 BedrockPlayerAuthInputCodec.InputAction.START_SPIN_ATTACK)));
 
-        assertEquals(52, BedrockPlayerAuthInputCodec.InputAction.START_USING_ITEM);
-        assertEquals(53, BedrockPlayerAuthInputCodec.InputAction.START_SPIN_ATTACK);
-        assertTrue(usingItem.hasInputAction(52));
-        assertFalse(usingItem.hasInputAction(53));
-        assertTrue(spinAttack.hasInputAction(53));
-        assertFalse(spinAttack.hasInputAction(52));
+        assertEquals(53, BedrockPlayerAuthInputCodec.InputAction.START_USING_ITEM);
+        assertEquals(56, BedrockPlayerAuthInputCodec.InputAction.START_SPIN_ATTACK);
+        assertTrue(usingItem.hasInputAction(53));
+        assertFalse(usingItem.hasInputAction(56));
+        assertTrue(spinAttack.hasInputAction(56));
+        assertFalse(spinAttack.hasInputAction(53));
     }
 
     @Test

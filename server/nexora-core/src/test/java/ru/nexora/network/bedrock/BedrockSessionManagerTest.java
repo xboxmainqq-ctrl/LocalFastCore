@@ -2880,11 +2880,13 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(stackCompleted), true, 256));
         assertEquals(1, manager.resourcePackReadyCount());
-        assertEquals(13, outboundFrames.size());
-        assertEquals(0x0a, decodeOutbound(outboundFrames.get(4), true).packetId()); // SetTime precedes StartGame
-        assertEquals(0x0b, decodeOutbound(outboundFrames.get(5), true).packetId());
+        assertEquals(15, outboundFrames.size());
+        assertEquals(0x0a, decodeOutbound(outboundFrames.get(4), true).packetId()); // SetTime
+        assertEquals(0x139, decodeOutbound(outboundFrames.get(5), true).packetId()); // JigsawStructureData
+        assertEquals(0x151, decodeOutbound(outboundFrames.get(12), true).packetId()); // VoxelShapes
+        assertEquals(0x0b, decodeOutbound(outboundFrames.get(13), true).packetId()); // StartGame
         List<BedrockPacket> startGameBatch = BedrockBatchCodec.decode(
-                reassemble(List.of(outboundFrames.get(5))), true);
+                reassemble(List.of(outboundFrames.get(7))), true);
         assertEquals(2, startGameBatch.size());
         assertEquals(BedrockItemRegistryPacketCodec.ITEM_REGISTRY_PACKET_ID,
                 startGameBatch.get(1).packetId());
@@ -2895,10 +2897,10 @@ class BedrockSessionManagerTest {
         assertEquals(0x79, decodeOutbound(outboundFrames.get(10), true).packetId());
         assertEquals(0x7a, decodeOutbound(outboundFrames.get(11), true).packetId());
         List<BedrockPacket> biomeAndRadius = BedrockBatchCodec.decode(
-                reassemble(List.of(outboundFrames.get(11))), true);
+                reassemble(List.of(outboundFrames.get(13))), true);
         assertEquals(BedrockChunkRadiusCodec.UPDATED_PACKET_ID, biomeAndRadius.get(1).packetId());
         List<BedrockPacket> initialChunkPackets = new ArrayList<>();
-        for (int index = 12; index < 13; index++) {
+        for (int index = 14; index < 15; index++) {
             initialChunkPackets.addAll(decodeOutboundPackets(outboundFrames.get(index), true));
         }
         assertEquals(4, initialChunkPackets.stream()
@@ -3219,7 +3221,7 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "saved-client", BedrockBatchCodec.encode(
                 List.of(resourcePackResponse(3, "resourcepackstackfinished")), true, 256));
 
-        BedrockPacket startGame = decodeOutbound(outboundFrames.get(5), true);
+        BedrockPacket startGame = decodeOutbound(outboundFrames.get(7), true);
         ByteBuffer position = ByteBuffer.wrap(startGame.payload(), 3, 20).order(ByteOrder.LITTLE_ENDIAN);
         assertEquals(32.5f, position.getFloat());
         assertEquals(70.0f, position.getFloat());
@@ -3228,9 +3230,9 @@ class BedrockSessionManagerTest {
         assertEquals(90.0f, position.getFloat()); // yaw
 
         assertArrayEquals(new byte[] {0x40, (byte) 0x8c, 0x01, 0x21, 0x30, 0, 0, 0, 0},
-                decodeOutbound(outboundFrames.get(10), true).payload());
+                decodeOutbound(outboundFrames.get(12), true).payload());
         BedrockPacket spawnChunk = outboundFrames.stream()
-                .skip(12) // chunk streaming begins after the fixed login/start-game frames
+                .skip(14) // chunk streaming begins after the fixed login/start-game frames
                 .flatMap(frame -> decodeOutboundPackets(frame, true).stream())
                 .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
                 .findFirst()

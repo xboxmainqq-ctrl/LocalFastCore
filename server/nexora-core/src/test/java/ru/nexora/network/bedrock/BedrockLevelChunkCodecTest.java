@@ -69,6 +69,7 @@ class BedrockLevelChunkCodecTest {
             assertEquals(1, subChunks.varInt32());
         }
         assertEquals(0, subChunks.byteValue()); // no border blocks
+        assertEquals(0, subChunks.byteValue()); // empty block-entity NBT list (TAG_End)
         assertTrue(subChunks.exhausted());
     }
 
@@ -87,7 +88,7 @@ class BedrockLevelChunkCodecTest {
         byte[] data = reader.byteArray();
         reader.bool();
         assertTrue(reader.exhausted());
-        assertEquals(12 + 24 * 2 + 1, data.length);
+        assertEquals(12 + 24 * 2 + 2, data.length);
     }
 
     private static final class Reader {

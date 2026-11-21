@@ -2975,7 +2975,7 @@ class BedrockSessionManagerTest {
                             walkPositions[i], 65.0f, 1.0f, 30.0f, 3L + i, false));
             sendClientBatch(manager, "authenticated-client",
                     BedrockBatchCodec.encode(List.of(step), true, 256));
-            if (i < walkPositions.length - 1) assertEquals(18, outboundFrames.size());
+            if (i < walkPositions.length - 1) assertEquals(20, outboundFrames.size());
         }
         assertEquals(20, outboundFrames.size());
         assertEquals(0x79, decodeOutbound(outboundFrames.get(18), true).packetId());

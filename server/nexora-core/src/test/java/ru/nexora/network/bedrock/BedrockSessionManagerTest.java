@@ -2632,10 +2632,10 @@ class BedrockSessionManagerTest {
                 noOpInventoryTransactionPayload(257, 3));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(inventoryTransaction), true, 256));
-        assertEquals(25, outboundFrames.size());
-        assertEquals(0x31, decodeOutbound(outboundFrames.get(24), true).packetId());
+        assertEquals(26, outboundFrames.size());
+        assertEquals(0x31, decodeOutbound(outboundFrames.get(25), true).packetId());
         List<BedrockPacket> inventoryReconciliation = BedrockBatchCodec.decode(
-                reassemble(List.of(outboundFrames.get(24))), true);
+                reassemble(List.of(outboundFrames.get(25))), true);
         assertEquals(5, inventoryReconciliation.size());
         assertEquals(0x1f, inventoryReconciliation.get(1).packetId());
         assertEquals(0x31, inventoryReconciliation.get(2).packetId());
@@ -2651,7 +2651,7 @@ class BedrockSessionManagerTest {
                 .count("nexora:arcane_shard"));
         assertEquals(3, manager.playerEquipment("authenticated-client").orElseThrow()
                 .offhand().orElseThrow().count());
-        assertEquals(26, outboundFrames.size());
+        assertEquals(27, outboundFrames.size());
 
         // Equip a registered iron chestplate from the main inventory into armor slot 1.
         BedrockPacket armorTransfer = new BedrockPacket(0x1e, 0, 0,
@@ -2661,7 +2661,7 @@ class BedrockSessionManagerTest {
         assertTrue(manager.playerInventory("authenticated-client").orElseThrow().getSlot(2).isEmpty());
         assertEquals(new ItemStack("minecraft:iron_chestplate", 1, 1),
                 manager.playerEquipment("authenticated-client").orElseThrow().armor(1).orElseThrow());
-        assertEquals(27, outboundFrames.size());
+        assertEquals(28, outboundFrames.size());
 
         // Open the player-facing equipment UI, choose the staff slot, and equip a compatible item.
         inventory.setSlot(4, new ItemStack("minecraft:gold_nugget", 1, 64));
@@ -2669,17 +2669,17 @@ class BedrockSessionManagerTest {
                 commandRequestPayload("/equipment", "Player", "equipment-ui-1", 1L));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(equipmentCommand), true, 256));
-        assertEquals(28, outboundFrames.size());
+        assertEquals(29, outboundFrames.size());
         assertEquals(BedrockModalFormCodec.MODAL_FORM_REQUEST_PACKET_ID,
-                decodeOutbound(outboundFrames.get(27), true).packetId());
+                decodeOutbound(outboundFrames.get(28), true).packetId());
 
         BedrockPacket chooseStaffSlot = new BedrockPacket(0x65, 0, 0,
                 modalFormResponsePayload(1, "1"));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(chooseStaffSlot), true, 256));
-        assertEquals(29, outboundFrames.size());
+        assertEquals(30, outboundFrames.size());
         assertEquals(BedrockModalFormCodec.MODAL_FORM_REQUEST_PACKET_ID,
-                decodeOutbound(outboundFrames.get(28), true).packetId());
+                decodeOutbound(outboundFrames.get(29), true).packetId());
 
         BedrockPacket equipStaff = new BedrockPacket(0x65, 0, 0,
                 modalFormResponsePayload(2, "0"));
@@ -2817,7 +2817,7 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "saved-client", BedrockBatchCodec.encode(
                 List.of(resourcePackResponse(3, "resourcepackstackfinished")), true, 256));
 
-        BedrockPacket startGame = decodeOutboundPackets(outboundFrames.get(4), true).stream()
+        BedrockPacket startGame = decodeOutboundPackets(outboundFrames.get(5), true).stream()
                 .filter(packet -> packet.packetId() == 0x0b)
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("StartGame packet was not sent"));
@@ -2829,7 +2829,7 @@ class BedrockSessionManagerTest {
         assertEquals(90.0f, position.getFloat()); // yaw
 
         assertArrayEquals(new byte[] {0x40, (byte) 0x8c, 0x01, 0x21, 0x30, 0, 0, 0, 0},
-                decodeOutbound(outboundFrames.get(10), true).payload());
+                decodeOutbound(outboundFrames.get(11), true).payload());
         BedrockPacket spawnChunk = outboundFrames.stream()
                 .skip(12) // chunk streaming begins after the fixed login/start-game frames
                 .flatMap(frame -> decodeOutboundPackets(frame, true).stream())

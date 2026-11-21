@@ -46,6 +46,12 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockSessionManagerTest {
     @Test
+    void playerAuthInputIsNotProcessedBeforeClientInitialization() {
+        assertFalse(BedrockSessionManager.shouldProcessPlayerAuthInput(false));
+        assertTrue(BedrockSessionManager.shouldProcessPlayerAuthInput(true));
+    }
+
+    @Test
     void mobAttackDeadlineSaturatesInsteadOfOverflowing() {
         assertEquals(Long.MAX_VALUE - 500L,
                 BedrockSessionManager.mobAttackDeadline(Long.MAX_VALUE - 1_000L, 500L));

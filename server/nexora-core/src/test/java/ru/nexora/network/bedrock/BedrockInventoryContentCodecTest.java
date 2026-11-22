@@ -69,7 +69,6 @@ class BedrockInventoryContentCodecTest {
                         258, 2, 1234, userData));
 
         userData[0] = 99; // ItemDefinition must own a defensive copy.
-        assertEquals(2, Byte.toUnsignedInt(packet.payload()[2])); // zig-zag ItemStackNetId = 1
         assertArrayEquals(new byte[] {
                 2, 1,          // little-endian legacy item ID 258
                 2, 0,          // stack size

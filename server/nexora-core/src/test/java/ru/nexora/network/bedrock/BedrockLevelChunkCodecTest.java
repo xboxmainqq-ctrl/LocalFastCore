@@ -100,8 +100,7 @@ class BedrockLevelChunkCodecTest {
         reader.varInt32();
         reader.varInt32();
         assertEquals(24, reader.varUInt32()); // full Overworld column
-        reader.bool();
-        reader.varUInt32();
+        reader.bool(); // cache disabled: metadata is omitted
         byte[] data = reader.byteArray();
         Reader subChunks = new Reader(data);
         assertEquals(9, subChunks.byteValue());

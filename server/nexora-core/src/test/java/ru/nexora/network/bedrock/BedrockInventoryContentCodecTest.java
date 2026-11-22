@@ -45,6 +45,7 @@ class BedrockInventoryContentCodecTest {
                 });
 
         byte[] payload = packet.payload();
+        assertEquals(2, Byte.toUnsignedInt(payload[2])); // zig-zag ItemStackNetId = 1
         assertArrayEquals(new byte[] {
                 1, 1,    // legacy item ID 257
                 3, 0,    // stack size 3
@@ -52,8 +53,9 @@ class BedrockInventoryContentCodecTest {
                 0,       // has StackNetId = false
                 0,       // block runtime ID
                 0        // empty user data buffer
-        }, Arrays.copyOfRange(payload, 3, 12));
-        assertArrayEquals(new byte[9], Arrays.copyOfRange(payload, 12, 21));
+        }, Arrays.copyOfRange(payload, 3, 11));
+        assertEquals(0, Byte.toUnsignedInt(payload[11])); // empty slot ItemStackNetId
+        assertArrayEquals(new byte[8], Arrays.copyOfRange(payload, 12, 20));
     }
 
     @Test
@@ -67,8 +69,9 @@ class BedrockInventoryContentCodecTest {
                         258, 2, 1234, userData));
 
         userData[0] = 99; // ItemDefinition must own a defensive copy.
+        assertEquals(2, Byte.toUnsignedInt(packet.payload()[2])); // zig-zag ItemStackNetId = 1
         assertArrayEquals(new byte[] {
-                2, 2,          // runtime item ID 258
+                2, 1,          // little-endian legacy item ID 258
                 2, 0,          // stack size
                 2,             // aux value
                 0,             // has StackNetId = false

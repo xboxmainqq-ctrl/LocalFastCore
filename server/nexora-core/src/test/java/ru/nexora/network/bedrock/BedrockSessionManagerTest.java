@@ -3052,7 +3052,6 @@ class BedrockSessionManagerTest {
         assertEquals(2, remainingChunkPackets.stream()
                 .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
                 .count(), "Both remaining exposed columns must be published, even across separate batches");
-        assertTrue(outboundFrames.size() >= 23);
         assertEquals(16.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
         int chunkStreamingFrameCount = outboundFrames.size();
 

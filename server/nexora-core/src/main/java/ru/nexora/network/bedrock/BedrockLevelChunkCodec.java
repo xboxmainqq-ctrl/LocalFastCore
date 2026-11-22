@@ -10,8 +10,7 @@ import java.io.ByteArrayOutputStream;
 public final class BedrockLevelChunkCodec {
     public static final int LEVEL_CHUNK_PACKET_ID = 0x3a;
     private static final int NEGATIVE_SUB_CHUNKS = 4;
-    private static final int WORLD_BIOME_SECTIONS = 24;
-    private static final int PLAINS_BIOME_ID = 1;
+        private static final int PLAINS_BIOME_ID = 1;
     private static final int BLOCK_TYPE_COUNT = BlockType.values().length;
 
     private BedrockLevelChunkCodec() {
@@ -40,8 +39,8 @@ public final class BedrockLevelChunkCodec {
             writeSubChunk(chunkData, sectionY, section);
         }
 
-        // Overworld biome storage spans the complete 24-section column.
-        for (int i = 0; i < WORLD_BIOME_SECTIONS; i++) {
+        // LevelChunk carries one biome storage for each serialized subchunk.
+        for (int i = 0; i < subChunkCount; i++) {
             chunkData.byteValue(1); // singleton palette, runtime-ID flag
             chunkData.varInt32(PLAINS_BIOME_ID);
         }
@@ -146,7 +145,7 @@ public final class BedrockLevelChunkCodec {
             out.int32(word);
         }
 
-        out.varUInt32(paletteSize);
+        out.varInt32(paletteSize);
         for (int index = 0; index < paletteSize; index++) out.varInt32(palette[index]);
     }
 

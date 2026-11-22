@@ -1910,7 +1910,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         List<BedrockPacket> packets = new java.util.ArrayList<>();
         packets.add(BedrockInventoryContentCodec.createPlayerInventory(state.inventory, itemRegistry));
         packets.addAll(createEquipmentReconciliationPackets(state));
-        packets.add(BedrockInventoryContentCodec.createPlayerUiInventory(state.craftingUiInventory, itemRegistry));
         sendPackets(networkId, packets, true);
         broadcastPlayerEquipment(networkId, state);
     }
@@ -7133,8 +7132,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             initialPackets.addAll(BedrockPlayerEquipmentCodec.createInitialEquipment(state.equipment, itemRegistry));
             initialPackets.add(BedrockAvailableCommandsCodec.createEquipmentCommands());
             initialPackets.add(BedrockCraftingDataCodec.createPacket(craftingRecipes, itemRegistry));
-            initialPackets.add(BedrockInventoryContentCodec.createPlayerUiInventory(
-                    state.craftingUiInventory, itemRegistry));
             sendPackets(networkId, initialPackets, true);
         } catch (IllegalArgumentException exception) {
             System.err.println("NEXORA: initial inventory sync deferred because a stored item has no Bedrock definition: " + exception.getMessage());

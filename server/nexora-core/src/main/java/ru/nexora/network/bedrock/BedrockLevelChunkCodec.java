@@ -20,16 +20,9 @@ public final class BedrockLevelChunkCodec {
         if (chunk == null) throw new IllegalArgumentException("chunk must not be null");
 
         byte[][] sections = chunk.copySectionsRaw();
-        int highestSection = 0;
-        for (int index = sections.length - 1; index >= 0; index--) {
-            if (sections[index] != null) {
-                highestSection = index + 1;
-                break;
-            }
-        }
-        // Sections are stored bottom-up from world Y=-64 (subchunk Y=-4).
-        // Serialize every section through the highest non-empty one, including negative Y.
-        int subChunkCount = highestSection;
+        // Protocol 2225 clients expect the complete Overworld column: Y=-4 through Y=19.
+        // This is 24 subchunks even when most of them contain only air.
+        int subChunkCount = WorldChunk.SECTION_COUNT;
 
         Writer chunkData = new Writer();
         for (int sectionIndex = 0; sectionIndex < subChunkCount; sectionIndex++) {
@@ -37,8 +30,7 @@ public final class BedrockLevelChunkCodec {
             writeSubChunk(chunkData, sectionY, sections[sectionIndex]);
         }
 
-        // LevelChunk contains exactly one biome palette for each serialized subchunk.
-        // The count is SubChunksCount, not the world's maximum vertical section count.
+        // The Overworld biome payload covers the same full 24-section client column.
         for (int i = 0; i < subChunkCount; i++) {
             chunkData.byteValue(1); // singleton palette, runtime-ID flag
             chunkData.varInt32(PLAINS_BIOME_ID);
@@ -94,7 +86,7 @@ public final class BedrockLevelChunkCodec {
             return;
         }
         out.byteValue(9); // SubChunk version 9
-        out.byteValue(1); // One block-storage layer (no waterlogged blocks in this world model)
+        out.byteValue(2); // Vanilla Bedrock columns carry block and liquid storage layers
         out.byteValue(sectionY);
 
         int[] paletteIndexByBlockId = new int[BLOCK_TYPE_COUNT];
@@ -116,6 +108,9 @@ public final class BedrockLevelChunkCodec {
             indexes[i] = paletteIndex;
         }
         writePalette(out, indexes, palette, paletteSize);
+        // The second storage is the liquid/waterlogged layer. This world currently has no
+        // waterlogged blocks, so it is an all-air singleton palette, but the layer is required.
+        writeAirStorage(out);
     }
 
     private static void writeAirStorage(Writer out) {

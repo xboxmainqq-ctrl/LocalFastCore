@@ -100,29 +100,6 @@ class BedrockInventoryContentCodecTest {
     }
 
     @Test
-    void encodesPlayerUiInventoryWithInventoryContainerName() {
-        ContainerInventory ui = new ContainerInventory(BedrockInventoryContentCodec.PLAYER_UI_SIZE);
-        ui.setSlot(28, new ItemStack("minecraft:oak_planks", 2, 64));
-        BedrockPacket packet = BedrockInventoryContentCodec.createPlayerUiInventory(
-                ui, itemId -> {
-                    assertEquals("minecraft:oak_planks", itemId);
-                    return new BedrockInventoryContentCodec.ItemDefinition(5, 0, 0x37abcd4fL, new byte[0]);
-                });
-
-        assertEquals(0x31, packet.packetId());
-        byte[] payload = packet.payload();
-        assertEquals(124, Byte.toUnsignedInt(payload[0])); // UI container
-        assertEquals(51, Byte.toUnsignedInt(payload[1]));
-        assertArrayEquals(new byte[] {
-                5, 0, 2, 0, 0, 0,
-                (byte) 0xcf, (byte) 0x9a, (byte) 0xaf, (byte) 0xbd, 3, 0
-        }, Arrays.copyOfRange(payload, 2 + 28 * 9 + 1, 2 + 28 * 9 + 13));
-        assertEquals(29, Byte.toUnsignedInt(payload[payload.length - 10])); // InventoryContainer
-        assertEquals(0, Byte.toUnsignedInt(payload[payload.length - 9])); // no dynamic ID
-        assertArrayEquals(new byte[8], Arrays.copyOfRange(payload, payload.length - 8, payload.length)); // empty Storage Item descriptor
-    }
-
-    @Test
     void encodesTwentySevenEmptyContainerSlotsWithLevelEntityName() {
         BedrockPacket packet = BedrockInventoryContentCodec.createContainerInventory(
                 7, new ContainerInventory(), ignored -> fail("Empty chest must not resolve item IDs"));

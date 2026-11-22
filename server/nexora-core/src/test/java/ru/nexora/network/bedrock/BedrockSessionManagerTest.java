@@ -2978,7 +2978,7 @@ class BedrockSessionManagerTest {
         assertEquals(65.0f, manager.playerPosition("authenticated-client").orElseThrow().y());
 
         BedrockPacket selectSecondHotbarSlot = new BedrockPacket(0x1f, 0, 0,
-                mobEquipmentPayload(1, 257, 1, 1));
+                mobEquipmentPayload(1, 888, 1, 1));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(selectSecondHotbarSlot), true, 256));
         assertEquals(1, inventory.selectedHotbarSlot());

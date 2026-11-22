@@ -36,6 +36,20 @@ class BedrockSubChunkCodecTest {
                 () -> BedrockSubChunkCodec.decodeRequest(requestPacket(8193)));
     }
 
+    @Test
+    void rejectsUnsignedVarIntCountsThatOverflow32Bits() {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        writeVarUInt32(out, 0); // Overworld dimension
+        out.write(0xff);
+        out.write(0xff);
+        out.write(0xff);
+        out.write(0xff);
+        out.write(0x1f); // Invalid high bits in the fifth byte
+        BedrockPacket packet = new BedrockPacket(
+                BedrockSubChunkCodec.SUB_CHUNK_REQUEST_PACKET_ID, 0, 0, out.toByteArray());
+        assertThrows(IllegalArgumentException.class, () -> BedrockSubChunkCodec.decodeRequest(packet));
+    }
+
     private static BedrockPacket requestPacket(int count) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         writeVarUInt32(out, 0); // Overworld dimension

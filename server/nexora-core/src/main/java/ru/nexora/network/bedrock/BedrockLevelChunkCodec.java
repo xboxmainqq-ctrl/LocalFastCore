@@ -35,20 +35,22 @@ public final class BedrockLevelChunkCodec {
             chunkData.byteValue(1); // singleton palette, runtime-ID flag
             chunkData.varInt32(PLAINS_BIOME_ID);
         }
-        chunkData.byteValue(0); // Border blocks
-        chunkData.byteValue(0); // Empty network-NBT block-entity list (TAG_End)
+        chunkData.byteValue(0); // Border block count (empty)
+
+        // Block entities are a sequence of little-endian network NBT compounds.
+        // An empty sequence is encoded by a single TAG_End byte, not by EOF.
+        chunkData.byteValue(0); // TAG_End: no block entities
 
         byte[] data = chunkData.toByteArray();
         Writer packet = new Writer();
         packet.varInt32(chunk.chunkX());
         packet.varInt32(chunk.chunkZ());
-        packet.varInt32(0); // Overworld dimension
+        packet.varInt32(0); // Dimension ID: Overworld
         packet.varUInt32(subChunkCount);
-        // Request-mode limit is absent in ordinary full-column mode.
+        // A non-negative SubChunksCount is written directly. The request limit only
+        // exists for the -1/-2 request sentinels; it is not preceded by a presence boolean.
+        // Cache metadata is serialized only when cacheEnabled is true.
         packet.bool(false); // client chunk cache disabled
-        // Cache metadata is an array field and MUST still be present when caching is disabled.
-        // Its empty array is encoded as a zero-length VarUInt32 before Serialized Chunk Data.
-        packet.varUInt32(0);
         packet.byteArray(data);
         packet.bool(false); // clientBiomeUpdate
 

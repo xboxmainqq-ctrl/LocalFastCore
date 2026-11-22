@@ -17,7 +17,7 @@ public final class BedrockPlayerSkinCodec {
     private static final int MAX_SKIN_JSON_BYTES = 512 * 1024;
     private static final Set<Integer> PIECE_TYPES = Set.of(
             0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
-            15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28);
+            15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29);
 
     private BedrockPlayerSkinCodec() { }
 
@@ -187,7 +187,7 @@ public final class BedrockPlayerSkinCodec {
             case "leftleg", "left_leg" -> 20; case "rightleg", "right_leg" -> 21; case "arms" -> 22;
             case "leftarm", "left_arm" -> 23; case "rightarm", "right_arm" -> 24; case "capes" -> 25;
             case "classicskin", "classic_skin" -> 26; case "emote" -> 27;
-            case "unsupported" -> 28; default -> -1;
+            case "coco" -> 28; case "unsupported" -> 29; default -> -1;
         };
     }
     private static String pieceTintWireType(String value) {
@@ -197,7 +197,7 @@ public final class BedrockPlayerSkinCodec {
         return normalized;
     }
     private static int parseColor(String value) {
-        if (value == null || value.isBlank()) return 0;
+        if (value == null || value.isBlank() || value.equals("0") || value.equalsIgnoreCase("#0")) return 0;
         String hex = value.startsWith("#") ? value.substring(1) : value;
         if (hex.length() == 6) hex = "ff" + hex;
         if (hex.length() != 8) throw new IllegalArgumentException("Invalid skin color");

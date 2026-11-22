@@ -7,7 +7,6 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
-import io.netty.channel.ChannelOption;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.EventLoopGroup;
@@ -220,7 +219,6 @@ public final class CloudburstNetherNetTransport implements AutoCloseable {
         ServerBootstrap bootstrap = new ServerBootstrap()
                 .group(eventLoopGroup)
                 .channelFactory(NetherNetChannelFactory.server(signaling))
-                .option(ChannelOption.SO_BACKLOG, 128)
                 .option(NetherChannelOption.NETHER_PEER_CONNECTION_CONFIG, peerConfig)
                 .option(NetherChannelOption.NETHER_SERVER_RTC_HANDSHAKE_TIMEOUT_SECONDS, 30)
                 .childHandler(new ChannelInitializer<Channel>() {

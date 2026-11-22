@@ -88,6 +88,29 @@ class BedrockPlayerSkinCodecTest {
     }
 
     @Test
+    void acceptsZeroPersonaTintAndProtocol2225CocoAndUnsupportedTypes() throws Exception {
+        String skin = Base64.getEncoder().encodeToString(new byte[64 * 64 * 4]);
+        JsonNode clientData = MAPPER.readTree("""
+                {
+                  "SkinId":"persona-tint-test",
+                  "SkinResourcePatch":"e30=",
+                  "SkinData":"%s",
+                  "SkinImageWidth":64,
+                  "SkinImageHeight":64,
+                  "PersonaPieces":[
+                    {"PieceId":"coco","PieceType":"persona_coco"},
+                    {"PieceId":"unsupported","PieceType":"persona_unsupported"}
+                  ],
+                  "PieceTintColors":[
+                    {"PieceType":"persona_eyes","Colors":["#ffa12722","#ff2f1f0f","#ff3aafd9","#0"]}
+                  ]
+                }
+                """.formatted(skin));
+        byte[] encoded = BedrockPlayerSkinCodec.encode(clientData);
+        assertTrue(encoded.length > 64 * 64 * 4);
+    }
+
+    @Test
     void mapsClientDeviceOsToProtocolBuildPlatform() throws Exception {
         assertEquals(1, BedrockPlayerSkinCodec.buildPlatform(MAPPER.readTree("{\"DeviceOS\":1}")));
         assertEquals(8, BedrockPlayerSkinCodec.buildPlatform(MAPPER.readTree("{\"DeviceOS\":7}")));

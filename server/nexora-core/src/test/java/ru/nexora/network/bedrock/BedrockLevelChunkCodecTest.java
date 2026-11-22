@@ -106,7 +106,7 @@ class BedrockLevelChunkCodecTest {
         byte[] data = reader.byteArray();
         Reader subChunks = new Reader(data);
         assertEquals(9, subChunks.byteValue());
-        assertEquals(1, subChunks.byteValue());
+        assertEquals(2, subChunks.byteValue());
         assertEquals(0xfc, subChunks.byteValue()); // signed subchunk Y=-4
         assertEquals(3, subChunks.byteValue()); // V1 packed runtime palette
         subChunks.skip(128 * Integer.BYTES);

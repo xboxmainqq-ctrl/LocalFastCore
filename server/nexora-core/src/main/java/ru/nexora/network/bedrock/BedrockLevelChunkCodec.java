@@ -10,7 +10,6 @@ import java.io.ByteArrayOutputStream;
 public final class BedrockLevelChunkCodec {
     public static final int LEVEL_CHUNK_PACKET_ID = 0x3a;
     private static final int NEGATIVE_SUB_CHUNKS = 4;
-    private static final int WORLD_BIOME_SECTIONS = 24;
     private static final int PLAINS_BIOME_ID = 1;
     private static final int BLOCK_TYPE_COUNT = BlockType.values().length;
 
@@ -38,9 +37,9 @@ public final class BedrockLevelChunkCodec {
             writeSubChunk(chunkData, sectionY, sections[sectionIndex]);
         }
 
-        // Vanilla Bedrock reads biome storage for the full Overworld height (24 sections),
-        // independently of the number of block subchunks serialized above.
-        for (int i = 0; i < WORLD_BIOME_SECTIONS; i++) {
+        // LevelChunk contains exactly one biome palette for each serialized subchunk.
+        // The count is SubChunksCount, not the world's maximum vertical section count.
+        for (int i = 0; i < subChunkCount; i++) {
             chunkData.byteValue(1); // singleton palette, runtime-ID flag
             chunkData.varInt32(PLAINS_BIOME_ID);
         }

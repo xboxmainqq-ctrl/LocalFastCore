@@ -25,6 +25,9 @@ public final class BedrockPlayerListCodec {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         writeVarUInt32(out, entries.size());
         for (AddEntry entry : entries) {
+            // Nukkit-MOT/Lumi 1.26.40+ entry framing: action-count varuint,
+            // followed by the action discriminator byte.
+            writeVarUInt32(out, 1);
             out.write(ACTION_ADD);
             writeUuid(out, entry.uuid());
             writeVarInt64(out, entry.actorUniqueId());
@@ -47,6 +50,7 @@ public final class BedrockPlayerListCodec {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         writeVarUInt32(out, playerIds.size());
         for (UUID playerId : playerIds) {
+            writeVarUInt32(out, 0);
             out.write(ACTION_REMOVE);
             writeUuid(out, Objects.requireNonNull(playerId, "playerId"));
         }

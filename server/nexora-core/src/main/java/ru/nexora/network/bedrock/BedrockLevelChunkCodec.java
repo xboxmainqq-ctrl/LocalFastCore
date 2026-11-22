@@ -35,7 +35,11 @@ public final class BedrockLevelChunkCodec {
             chunkData.byteValue(1); // singleton palette, runtime-ID flag
             chunkData.varInt32(PLAINS_BIOME_ID);
         }
-        chunkData.byteValue(0); // Border blocks
+        chunkData.byteValue(0); // Border block count (empty)
+
+        // Block entities are a sequence of little-endian network NBT compounds.
+        // An empty sequence is encoded by a single TAG_End byte, not by EOF.
+        chunkData.byteValue(0); // TAG_End: no block entities
 
         byte[] data = chunkData.toByteArray();
         Writer packet = new Writer();

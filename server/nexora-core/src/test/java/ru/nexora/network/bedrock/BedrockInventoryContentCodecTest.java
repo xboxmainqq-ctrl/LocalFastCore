@@ -11,35 +11,33 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockInventoryContentCodecTest {
     @Test
-    void encodesThirtySixEmptyPlayerSlotsWithRequiredNetIdPrefix() {
+    void encodesThirtySixEmptyPlayerSlotsAsNetworkItemStackDescriptors() {
         BedrockPacket packet = BedrockInventoryContentCodec.createPlayerInventory(
                 new PlayerInventory(), ignored -> fail("Empty inventory must not resolve item IDs"));
         byte[] payload = packet.payload();
         assertEquals(0x31, packet.packetId());
-        assertEquals(329, payload.length); // header 2 + 36*(NetId 1 + descriptor 8) + FullContainerName 2 + absent StorageItem flag 1
+        assertEquals(300, payload.length); // header 2 + 36 descriptors * 8 + FullContainerName 2 + storageItem descriptor 8
         assertEquals(0, Byte.toUnsignedInt(payload[0]));
         assertEquals(36, Byte.toUnsignedInt(payload[1]));
         for (int slot = 0; slot < 36; slot++) {
-            int offset = 2 + slot * 9;
+            int offset = 2 + slot * 8;
             assertArrayEquals(new byte[8], Arrays.copyOfRange(payload, offset, offset + 8));
         }
-        assertEquals(12, Byte.toUnsignedInt(payload[326]));
-        assertEquals(0, Byte.toUnsignedInt(payload[327])); // dynamic ID absent
-        assertEquals(0, Byte.toUnsignedInt(payload[328])); // optional StorageItem absent
+        assertEquals(12, Byte.toUnsignedInt(payload[290]));
+        assertEquals(0, Byte.toUnsignedInt(payload[291])); // dynamic ID absent
+        assertArrayEquals(new byte[8], Arrays.copyOfRange(payload, 292, 300)); // empty storageItem descriptor
     }
 
     @Test
-    void encodesNonEmptyItemWithZigZagEncodedNetIdBeforeDescriptor() {
+    void encodesNonEmptyItemAsDescriptorWithoutNetItemPrefix() {
         PlayerInventory inventory = new PlayerInventory();
         inventory.setSlot(0, new ItemStack("nexora:arcane_shard", 3, 64));
         BedrockPacket packet = BedrockInventoryContentCodec.createPlayerInventory(
                 inventory, ignored -> new BedrockInventoryContentCodec.ItemDefinition(257, 0, 0, new byte[0]));
         byte[] payload = packet.payload();
-        assertEquals(2, Byte.toUnsignedInt(payload[2])); // ZigZag VarInt32 encoding of ItemStackNetId 1
         assertArrayEquals(new byte[] {1, 1, 3, 0, 0, 0, 0, 0},
-                Arrays.copyOfRange(payload, 3, 11));
-        assertEquals(0, Byte.toUnsignedInt(payload[11])); // ItemStackNetId for empty slot
-        assertArrayEquals(new byte[8], Arrays.copyOfRange(payload, 12, 20));
+                Arrays.copyOfRange(payload, 2, 10));
+        assertArrayEquals(new byte[8], Arrays.copyOfRange(payload, 10, 18));
     }
 
     @Test
@@ -64,16 +62,16 @@ class BedrockInventoryContentCodecTest {
         BedrockPacket packet = BedrockInventoryContentCodec.createContainerInventory(
                 7, new ContainerInventory(), ignored -> fail("Empty container must not resolve item IDs"));
         byte[] payload = packet.payload();
-        assertEquals(248, payload.length);
+        assertEquals(228, payload.length);
         assertEquals(7, Byte.toUnsignedInt(payload[0]));
         assertEquals(27, Byte.toUnsignedInt(payload[1]));
         for (int slot = 0; slot < 27; slot++) {
-            int offset = 2 + slot * 9;
+            int offset = 2 + slot * 8;
             assertArrayEquals(new byte[8], Arrays.copyOfRange(payload, offset, offset + 8));
         }
-        assertEquals(7, Byte.toUnsignedInt(payload[245]));
-        assertEquals(0, Byte.toUnsignedInt(payload[246]));
-        assertEquals(0, Byte.toUnsignedInt(payload[247])); // optional StorageItem absent
+        assertEquals(7, Byte.toUnsignedInt(payload[218]));
+        assertEquals(0, Byte.toUnsignedInt(payload[219]));
+        assertArrayEquals(new byte[8], Arrays.copyOfRange(payload, 220, 228)); // empty storageItem descriptor
     }
 
     @Test

@@ -95,8 +95,8 @@ class BedrockLevelChunkCodecTest {
         assertEquals(9, subChunks.byteValue());
         assertEquals(1, subChunks.byteValue());
         assertEquals(0xfc, subChunks.byteValue()); // signed subchunk Y=-4
-        assertEquals(5, subChunks.byteValue()); // V2 packed runtime palette
-        subChunks.skip(256 * Integer.BYTES);
+        assertEquals(3, subChunks.byteValue()); // V1 packed runtime palette
+        subChunks.skip(128 * Integer.BYTES);
         assertEquals(2, subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.BEDROCK), subChunks.varInt32());

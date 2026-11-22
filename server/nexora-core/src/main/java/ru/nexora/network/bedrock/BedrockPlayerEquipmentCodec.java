@@ -83,12 +83,7 @@ public final class BedrockPlayerEquipmentCodec {
                                         BedrockItemRegistry registry) {
         ItemStack stack = optional.orElse(null);
         if (stack == null) {
-            out.int16(0);
-            out.uint16(0);
-            out.varUInt32(0);
-            out.byteValue(0);
-            out.varUInt32(0);
-            out.byteArray(new byte[0]);
+            out.int16(0); // empty descriptor is only its zero item ID
             return;
         }
         BedrockItemRegistry.Entry entry = registry.findByIdentifier(stack.itemId());

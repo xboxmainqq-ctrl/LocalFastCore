@@ -136,6 +136,9 @@ public final class BedrockInventoryContentCodec {
             Writer out, int itemId, int count, long auxValue, long blockRuntimeId, byte[] userData
     ) {
         out.int16(itemId);
+        if (itemId == 0) {
+            return; // an empty NetworkItemStackDescriptor is only its zero item ID
+        }
         out.uint16(count);
         out.varUInt32(auxValue);
         // NetworkItemStackDescriptor always carries the hasNetId presence boolean.

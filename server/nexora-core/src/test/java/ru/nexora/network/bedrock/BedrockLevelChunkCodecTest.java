@@ -61,7 +61,7 @@ class BedrockLevelChunkCodecTest {
             assertEquals(1, subChunks.varInt32());
         }
         assertEquals(0, subChunks.byteValue()); // no border blocks
-        assertEquals(0, subChunks.byteValue()); // empty block-entity NBT list: TAG_End
+        // Nukkit-MOT's empty block-entity collection contributes no NBT bytes.
         assertTrue(subChunks.exhausted());
     }
 
@@ -97,8 +97,7 @@ class BedrockLevelChunkCodecTest {
             assertEquals(1, subChunks.byteValue());
             assertEquals(1, subChunks.varInt32());
         }
-        assertEquals(0, subChunks.byteValue());
-        assertEquals(0, subChunks.byteValue());
+        assertEquals(0, subChunks.byteValue()); // no border blocks
         assertTrue(subChunks.exhausted());
     }
 
@@ -128,10 +127,9 @@ class BedrockLevelChunkCodecTest {
             assertEquals(1, chunkData.byteValue());
             assertEquals(1, chunkData.varInt32());
         }
-        assertEquals(0, chunkData.byteValue());
-        assertEquals(0, chunkData.byteValue());
+        assertEquals(0, chunkData.byteValue()); // no border blocks; empty NBT collection is zero bytes
         assertTrue(chunkData.exhausted());
-        assertEquals(4 * 3 + WorldChunk.SECTION_COUNT * 2 + 2, data.length);
+        assertEquals(4 * 3 + WorldChunk.SECTION_COUNT * 2 + 1, data.length);
     }
 
     private static final class Reader {

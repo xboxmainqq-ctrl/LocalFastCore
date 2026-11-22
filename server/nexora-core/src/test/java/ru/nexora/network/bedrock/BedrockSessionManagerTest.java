@@ -2359,7 +2359,12 @@ class BedrockSessionManagerTest {
         assertTrue(initialPackets.stream().anyMatch(packet ->
                 packet.packetId() == BedrockInventoryContentCodec.INVENTORY_CONTENT_PACKET_ID
                         && Byte.toUnsignedInt(packet.payload()[0])
-                        == BedrockInventoryContentCodec.PLAYER_UI_CONTAINER_ID));
+                        == BedrockInventoryContentCodec.PLAYER_INVENTORY_CONTAINER_ID));
+        assertFalse(initialPackets.stream().anyMatch(packet ->
+                packet.packetId() == BedrockInventoryContentCodec.INVENTORY_CONTENT_PACKET_ID
+                        && Byte.toUnsignedInt(packet.payload()[0])
+                        == BedrockInventoryContentCodec.PLAYER_UI_CONTAINER_ID),
+                "Initial synchronization must not send the extra player UI inventory");
 
         var recipes = ru.nexora.inventory.CraftingRecipeRegistry.vanillaSubset();
         var ironRecipe = recipes.find("minecraft:iron_nuggets_from_iron_ingot");
@@ -2970,10 +2975,12 @@ class BedrockSessionManagerTest {
         assertTrue(packetCursor < postInitializationPackets.size(),
                 "Crafting recipes must follow available commands");
         packetCursor++;
-        assertTrue(packetCursor < postInitializationPackets.size()
-                        && postInitializationPackets.get(packetCursor).payload().length > 0
-                        && Byte.toUnsignedInt(postInitializationPackets.get(packetCursor).payload()[0]) == 124,
-                "Player UI grid must follow crafting recipes");
+        assertFalse(postInitializationPackets.stream().anyMatch(packet ->
+                packet.packetId() == BedrockInventoryContentCodec.INVENTORY_CONTENT_PACKET_ID
+                        && packet.payload().length > 0
+                        && Byte.toUnsignedInt(packet.payload()[0])
+                        == BedrockInventoryContentCodec.PLAYER_UI_CONTAINER_ID),
+                "Initial synchronization must not send the extra player UI inventory");
         assertEquals(0.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
         assertEquals(65.0f, manager.playerPosition("authenticated-client").orElseThrow().y());
 

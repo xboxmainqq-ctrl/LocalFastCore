@@ -20,11 +20,11 @@ public final class BedrockLevelChunkCodec {
         if (chunk == null) throw new IllegalArgumentException("chunk must not be null");
 
         byte[][] sections = chunk.copySectionsRaw();
-        // Nukkit-MOT's NetworkChunkSerializer sends the four negative Overworld
-        // sections followed only by positive sections through the highest non-empty one.
-        // The 3D biome payload is still a full 24-section column.
-        int positiveSubChunkCount = highestNonEmptyPositiveSectionCount(sections);
-        int subChunkCount = NEGATIVE_SUB_CHUNKS + positiveSubChunkCount;
+        // Nukkit-MOT LevelDB chunks use sectionOffset=4 for the Overworld.
+        // Their section array already starts at Y=-4, so there is no extra
+        // four-section prefix (that prefix is only for offset-zero Anvil chunks).
+        // The packet count is the highest non-empty section index plus one.
+        int subChunkCount = highestNonEmptySectionCount(sections);
 
         Writer chunkData = new Writer();
         for (int sectionIndex = 0; sectionIndex < subChunkCount; sectionIndex++) {
@@ -62,14 +62,11 @@ public final class BedrockLevelChunkCodec {
         return new BedrockPacket(LEVEL_CHUNK_PACKET_ID, 0, 0, packet.toByteArray());
     }
 
-    private static int highestNonEmptyPositiveSectionCount(byte[][] sections) {
-        // The four negative sections are always represented separately. The count
-        // field then covers positive sections Y=0..highest non-empty Y, matching
-        // Nukkit-MOT NetworkChunkSerializer's four-negative-plus-positive layout.
-        for (int i = sections.length - 1; i >= NEGATIVE_SUB_CHUNKS; i--) {
-            if (sections[i] != null && !isEmpty(sections[i])) {
-                return i - NEGATIVE_SUB_CHUNKS + 1;
-            }
+    private static int highestNonEmptySectionCount(byte[][] sections) {
+        // Match Nukkit-MOT NetworkChunkSerializer: sectionOffset=4 means the
+        // section array already covers world Y=-4..19 without a synthetic prefix.
+        for (int i = sections.length - 1; i >= 0; i--) {
+            if (sections[i] != null && !isEmpty(sections[i])) return i + 1;
         }
         return 0;
     }
@@ -104,10 +101,10 @@ public final class BedrockLevelChunkCodec {
             return;
         }
 
-        // Nukkit-MOT LevelDBChunkSection emits one storage layer unless a real
-        // second block layer exists. NEXORA currently stores only layer zero.
+        // Nukkit-MOT's fresh LevelDBChunkSection has two storages. NEXORA has
+        // no liquid/waterlogged layer yet, so the second storage is all-air.
         out.byteValue(9);
-        out.byteValue(1);
+        out.byteValue(2);
         out.byteValue(sectionY);
 
         int[] paletteIndexByBlockId = new int[BLOCK_TYPE_COUNT];
@@ -129,6 +126,12 @@ public final class BedrockLevelChunkCodec {
             indexes[i] = paletteIndex;
         }
         writePalette(out, indexes, palette, paletteSize);
+        writeAirStorage(out); // layer 1: no liquid/waterlogged blocks in the current world model
+    }
+
+    private static void writeAirStorage(Writer out) {
+        out.byteValue(1); // V0 singleton runtime palette
+        out.varInt32(BedrockBlockRuntimeIds.forBlock(BlockType.AIR));
     }
 
     private static boolean isEmpty(byte[] raw) {

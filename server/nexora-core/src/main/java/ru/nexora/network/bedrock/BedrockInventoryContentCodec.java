@@ -38,7 +38,6 @@ public final class BedrockInventoryContentCodec {
 
         for (var optionalStack : slots) {
             ItemStack stack = optionalStack.orElse(null);
-        out.varInt32(stack == null ? 0 : 1); // ItemStackNetId while disabled
             out.varInt32(stack == null ? 0 : 1); // ItemStackNetId: 0 empty, 1 non-empty while disabled
             if (stack == null) {
                 writeStack(out, 0, 0, 0, 0, new byte[0]);

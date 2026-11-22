@@ -49,7 +49,7 @@ class BedrockLevelChunkCodecTest {
 
         // Section Y=3 contains air, bedrock, stone and dirt: a two-bit packed palette.
         assertEquals(9, subChunks.byteValue());
-        assertEquals(1, subChunks.byteValue());
+        assertEquals(2, subChunks.byteValue());
         assertEquals(3, subChunks.byteValue());
         assertEquals(5, subChunks.byteValue()); // V2, runtime IDs
         subChunks.skip(256 * Integer.BYTES);
@@ -58,6 +58,8 @@ class BedrockLevelChunkCodecTest {
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.BEDROCK), subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.STONE), subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.DIRT), subChunks.varInt32());
+        assertEquals(1, subChunks.byteValue()); // second liquid storage layer
+        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
 
         // Section Y=4 contains grass and air: a one-bit packed palette.
         assertEquals(9, subChunks.byteValue());
@@ -116,7 +118,7 @@ class BedrockLevelChunkCodecTest {
     }
 
     @Test
-    void emptyChunkSendsNoBiomePalettesWhenNoSubchunksAreSent() {
+    void emptyChunkSendsFullOverworldColumnAndBiomePalettes() {
         BedrockPacket packet = BedrockLevelChunkCodec.createPacket(new WorldChunk(0, 0));
         Reader reader = new Reader(packet.payload());
 
@@ -129,7 +131,7 @@ class BedrockLevelChunkCodecTest {
         byte[] data = reader.byteArray();
         reader.bool();
         assertTrue(reader.exhausted());
-        assertEquals(24 * 5 + 2, data.length); // 24 two-layer empty subchunks, 24 biome palettes, border and NBT
+        assertEquals(24 * 7 + 24 * 2 + 2, data.length); // 24 two-layer empty subchunks, 24 biome palettes, border and NBT
     }
 
     private static final class Reader {

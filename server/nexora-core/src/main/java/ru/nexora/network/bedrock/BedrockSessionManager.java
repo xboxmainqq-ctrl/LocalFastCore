@@ -6621,13 +6621,20 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
      */
     public void tickInitialChunkStreams() {
         for (Map.Entry<String, SessionState> entry : sessions.entrySet()) {
+            String networkId = entry.getKey();
             SessionState state = entry.getValue();
+
+            // Like PocketMine/Nukkit's per-tick send queues, retry queued frames even
+            // when this peer has no new inbound packet. This is required when the
+            // global byte budget defers a large but valid frame until the next window.
+            drainOutboundForSession(networkId);
+
             if (!state.gameStarted || state.clientInitialized || state.rejected
                     || state.chunkStreamingQueue == null) continue;
             try {
-                processChunkStreaming(entry.getKey(), state);
+                processChunkStreaming(networkId, state);
             } catch (RuntimeException failure) {
-                System.err.println("NEXORA: initial chunk streaming failed for " + entry.getKey()
+                System.err.println("NEXORA: initial chunk streaming failed for " + networkId
                         + ": " + failure.getMessage());
             }
         }
@@ -7119,10 +7126,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             initialPackets.add(BedrockCraftingDataCodec.createPacket(craftingRecipes, itemRegistry));
             initialPackets.add(BedrockInventoryContentCodec.createPlayerUiInventory(
                     state.craftingUiInventory, itemRegistry));
-            System.out.printf("NEXORA: prepared %d initial inventory packets for %s%n",
-                    initialPackets.size(), networkId);
             sendPackets(networkId, initialPackets, true);
-            System.out.printf("NEXORA: queued initial inventory batch for %s%n", networkId);
         } catch (IllegalArgumentException exception) {
             System.err.println("NEXORA: initial inventory sync deferred because a stored item has no Bedrock definition: " + exception.getMessage());
         } catch (RuntimeException exception) {

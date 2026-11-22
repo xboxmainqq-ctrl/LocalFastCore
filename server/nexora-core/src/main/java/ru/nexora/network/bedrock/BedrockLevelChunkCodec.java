@@ -23,14 +23,16 @@ public final class BedrockLevelChunkCodec {
         // Nukkit-MOT's NetworkChunkSerializer sends the four negative Overworld
         // sections followed only by positive sections through the highest non-empty one.
         // The 3D biome payload is still a full 24-section column.
-        int highestNonEmptySectionCount = highestNonEmptySectionCount(sections);
-        int subChunkCount = NEGATIVE_SUB_CHUNKS + highestNonEmptySectionCount;
+        int positiveSubChunkCount = highestNonEmptyPositiveSectionCount(sections);
+        int subChunkCount = NEGATIVE_SUB_CHUNKS + positiveSubChunkCount;
 
         Writer chunkData = new Writer();
         for (int sectionIndex = 0; sectionIndex < subChunkCount; sectionIndex++) {
             int sectionY = sectionIndex - NEGATIVE_SUB_CHUNKS;
-            writeSubChunk(chunkData, sectionY, sectionIndex < NEGATIVE_SUB_CHUNKS
-                    ? null : sections[sectionIndex - NEGATIVE_SUB_CHUNKS]);
+            // NEXORA section index 0 maps to world section Y=-4. Unlike Nukkit's
+            // internal chunk array (which starts at Y=0), its first four entries
+            // therefore contain the actual negative-Y sections.
+            writeSubChunk(chunkData, sectionY, sections[sectionIndex]);
         }
 
         // Nukkit-MOT writes one 3D biome palette for every section in the dimension,
@@ -62,9 +64,14 @@ public final class BedrockLevelChunkCodec {
         return new BedrockPacket(LEVEL_CHUNK_PACKET_ID, 0, 0, packet.toByteArray());
     }
 
-    private static int highestNonEmptySectionCount(byte[][] sections) {
-        for (int i = sections.length - 1; i >= 0; i--) {
-            if (sections[i] != null && !isEmpty(sections[i])) return i + 1;
+    private static int highestNonEmptyPositiveSectionCount(byte[][] sections) {
+        // The four negative sections are always represented separately. The count
+        // field then covers positive sections Y=0..highest non-empty Y, matching
+        // Nukkit-MOT NetworkChunkSerializer's four-negative-plus-positive layout.
+        for (int i = sections.length - 1; i >= NEGATIVE_SUB_CHUNKS; i--) {
+            if (sections[i] != null && !isEmpty(sections[i])) {
+                return i - NEGATIVE_SUB_CHUNKS + 1;
+            }
         }
         return 0;
     }

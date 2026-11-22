@@ -76,11 +76,12 @@ public final class BedrockLevelChunkCodec {
     }
 
     private static void writeEmptySubChunk(Writer out, int sectionY) {
-        out.byteValue(9); // SubChunk version 9
-        out.byteValue(2); // Vanilla empty sections carry block and liquid storage layers
+        // Match Nukkit-MOT EmptyChunkSection: protocol 1.19.80+ uses a version-9
+        // empty subchunk with zero storage layers, followed by its signed section Y.
+        // Do not serialize two singleton air palettes here; the client expects no layers.
+        out.byteValue(9);
+        out.byteValue(0);
         out.byteValue(sectionY);
-        writeAirStorage(out);
-        writeAirStorage(out);
     }
 
     private static void writeSubChunk(Writer out, int sectionY, byte[] raw) {

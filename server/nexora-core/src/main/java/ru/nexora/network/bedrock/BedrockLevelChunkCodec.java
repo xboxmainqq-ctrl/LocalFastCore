@@ -28,16 +28,14 @@ public final class BedrockLevelChunkCodec {
                 break;
             }
         }
-        int positiveSectionCount = Math.max(0, highestSection - NEGATIVE_SUB_CHUNKS);
-        int subChunkCount = NEGATIVE_SUB_CHUNKS + positiveSectionCount;
+        // Sections are stored bottom-up from world Y=-64 (subchunk Y=-4).
+        // Serialize every section through the highest non-empty one, including negative Y.
+        int subChunkCount = highestSection;
 
         Writer chunkData = new Writer();
-        for (int sectionY = -NEGATIVE_SUB_CHUNKS; sectionY < 0; sectionY++) {
-            writeEmptySubChunk(chunkData, sectionY);
-        }
-        for (int sectionY = 0; sectionY < positiveSectionCount; sectionY++) {
-            byte[] section = sections[sectionY + NEGATIVE_SUB_CHUNKS];
-            writeSubChunk(chunkData, sectionY, section);
+        for (int sectionIndex = 0; sectionIndex < subChunkCount; sectionIndex++) {
+            int sectionY = sectionIndex - NEGATIVE_SUB_CHUNKS;
+            writeSubChunk(chunkData, sectionY, sections[sectionIndex]);
         }
 
         // Vanilla Bedrock reads biome storage for the full Overworld height (24 sections),

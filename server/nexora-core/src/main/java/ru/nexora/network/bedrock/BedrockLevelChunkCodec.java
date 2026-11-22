@@ -47,11 +47,10 @@ public final class BedrockLevelChunkCodec {
         packet.varInt32(chunk.chunkZ());
         packet.varInt32(0); // Dimension ID: Overworld
         packet.varUInt32(subChunkCount);
-        // Protocol 2225 writes the optional request-subchunk limit as an optional value:
-        // false means this is an ordinary full-column LevelChunk, not a request response.
-        packet.bool(false); // no request-subchunk limit
+        // A non-negative SubChunksCount is written directly. The request limit only
+        // exists for the -1/-2 request sentinels; it is not preceded by a presence boolean.
+        // Cache metadata is serialized only when cacheEnabled is true.
         packet.bool(false); // client chunk cache disabled
-        packet.varUInt32(0); // cache metadata array is present even when empty
         packet.byteArray(data);
         packet.bool(false); // clientBiomeUpdate
 

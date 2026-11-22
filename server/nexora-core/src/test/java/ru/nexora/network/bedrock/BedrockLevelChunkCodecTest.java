@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockLevelChunkCodecTest {
     @Test
-    void encodesAProtocol2225ChunkWithNegativeSubChunksAndThreeDimensionalBiomes() {
+    void encodesAProtocol2225ChunkWithNegativeSubChunksAndFullHeightBiomeData() {
         WorldChunk chunk = new WorldChunk(-2, 3);
         new FlatWorldGenerator().generate(chunk, 1L);
 
@@ -63,7 +63,7 @@ class BedrockLevelChunkCodecTest {
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.GRASS_BLOCK), subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
 
-        for (int section = 0; section < 9; section++) {
+        for (int section = 0; section < 24; section++) {
             assertEquals(1, subChunks.byteValue()); // singleton plains biome palette
             assertEquals(1, subChunks.varInt32());
         }
@@ -73,7 +73,7 @@ class BedrockLevelChunkCodecTest {
     }
 
     @Test
-    void emptyChunkSendsOneBiomePalettePerSerializedSubChunk() {
+    void emptyChunkSendsBiomePalettesForTheFullOverworldHeight() {
         BedrockPacket packet = BedrockLevelChunkCodec.createPacket(new WorldChunk(0, 0));
         Reader reader = new Reader(packet.payload());
 
@@ -86,7 +86,7 @@ class BedrockLevelChunkCodecTest {
         byte[] data = reader.byteArray();
         reader.bool();
         assertTrue(reader.exhausted());
-        assertEquals(12 + 4 * 2 + 2, data.length);
+        assertEquals(12 + 24 * 2 + 2, data.length);
     }
 
     private static final class Reader {

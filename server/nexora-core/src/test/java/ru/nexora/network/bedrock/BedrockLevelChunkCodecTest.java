@@ -69,7 +69,8 @@ class BedrockLevelChunkCodecTest {
         subChunks.skip(128 * Integer.BYTES);
         assertEquals(2, subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.GRASS_BLOCK), subChunks.varInt32());
-        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32()); // liquid layer
+        assertEquals(1, subChunks.byteValue()); // singleton liquid storage header
+        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
 
         // Remaining sections through Y=19 are explicit empty two-layer subchunks.
         for (int sectionY = 5; sectionY < 20; sectionY++) {
@@ -87,8 +88,7 @@ class BedrockLevelChunkCodecTest {
             assertEquals(1, subChunks.varInt32());
         }
         assertEquals(0, subChunks.byteValue()); // no border blocks
-        assertEquals(0, subChunks.byteValue()); // empty block-entity NBT list (TAG_End)
-        assertTrue(subChunks.exhausted());
+        assertTrue(subChunks.exhausted()); // no block entities means no trailing NBT bytes
     }
 
     @Test
@@ -131,7 +131,7 @@ class BedrockLevelChunkCodecTest {
         byte[] data = reader.byteArray();
         reader.bool();
         assertTrue(reader.exhausted());
-        assertEquals(24 * 7 + 24 * 2 + 2, data.length); // 24 two-layer empty subchunks, 24 biome palettes, border and NBT
+        assertEquals(24 * 15 + 24 * 2 + 1, data.length); // 24 two-layer empty subchunks, 24 biome palettes and border; no NBT when empty
     }
 
     private static final class Reader {

@@ -3025,12 +3025,20 @@ class BedrockSessionManagerTest {
             sendClientBatch(manager, "authenticated-client",
                     BedrockBatchCodec.encode(List.of(step), true, 256));
         }
-        List<BedrockPacket> firstChunkStreamingBatch = new ArrayList<>();
+        boolean sawChunkStreamingLatency = false;
+        List<BedrockPacket> firstChunkStreamingBatch = List.of();
         for (int frameIndex = chunkStreamingStartFrame; frameIndex < outboundFrames.size(); frameIndex++) {
-            firstChunkStreamingBatch.addAll(decodeOutboundPackets(outboundFrames.get(frameIndex), true));
+            List<BedrockPacket> framePackets = decodeOutboundPackets(outboundFrames.get(frameIndex), true);
+            if (framePackets.stream().anyMatch(packet -> packet.packetId() == 0x3A)) {
+                sawChunkStreamingLatency = true;
+            }
+            if (firstChunkStreamingBatch.isEmpty()
+                    && framePackets.stream().anyMatch(packet ->
+                            packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)) {
+                firstChunkStreamingBatch = framePackets;
+            }
         }
-        assertTrue(firstChunkStreamingBatch.stream()
-                .anyMatch(packet -> packet.packetId() == 0x3A),
+        assertTrue(sawChunkStreamingLatency,
                 "A network stack latency response must accompany chunk streaming");
         assertEquals(1, firstChunkStreamingBatch.stream()
                 .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)

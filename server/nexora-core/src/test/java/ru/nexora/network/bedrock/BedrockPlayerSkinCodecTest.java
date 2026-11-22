@@ -69,6 +69,22 @@ class BedrockPlayerSkinCodecTest {
     }
 
     @Test
+    void matchesNukkitMotShortAndInvalidSkinColorFallbacks() throws Exception {
+        String skin = Base64.getEncoder().encodeToString(new byte[64 * 64 * 4]);
+        JsonNode shortDecimal = MAPPER.readTree("""
+                {"SkinId":"short","SkinResourcePatch":"e30=","SkinData":"%s",
+                 "SkinImageWidth":64,"SkinImageHeight":64,"SkinColor":"123"}
+                """.formatted(skin));
+        JsonNode invalid = MAPPER.readTree("""
+                {"SkinId":"invalid","SkinResourcePatch":"e30=","SkinData":"%s",
+                 "SkinImageWidth":64,"SkinImageHeight":64,"SkinColor":"not-a-color"}
+                """.formatted(skin));
+
+        assertEquals(123, encodedSkinColor(shortDecimal));
+        assertEquals(0, encodedSkinColor(invalid));
+    }
+
+    @Test
     void acceptsPersonaPrefixedPieceTypesFromLoginClientData() throws Exception {
         String skin = Base64.getEncoder().encodeToString(new byte[64 * 64 * 4]);
         JsonNode clientData = MAPPER.readTree("""
@@ -125,6 +141,28 @@ class BedrockPlayerSkinCodecTest {
                  "SkinImageWidth":64,"SkinImageHeight":64}
                 """);
         assertThrows(IllegalArgumentException.class, () -> BedrockPlayerSkinCodec.encode(clientData));
+    }
+
+    private static int encodedSkinColor(JsonNode clientData) {
+        ByteBuffer in = ByteBuffer.wrap(BedrockPlayerSkinCodec.encode(clientData)).order(ByteOrder.LITTLE_ENDIAN);
+        readString(in); // SkinId
+        readString(in); // SkinResourcePatch
+        in.getInt(); // skin width
+        in.getInt(); // skin height
+        int skinBytes = readVarUInt32(in);
+        in.position(in.position() + skinBytes);
+        assertEquals(0, readVarUInt32(in)); // animations
+        in.getInt(); // cape width
+        in.getInt(); // cape height
+        int capeBytes = readVarUInt32(in);
+        in.position(in.position() + capeBytes);
+        readString(in); // geometry
+        readString(in); // geometry engine version
+        readString(in); // animation data
+        readString(in); // cape ID
+        readString(in); // full skin ID
+        in.get(); // arm size
+        return in.getInt();
     }
 
     private static String readString(ByteBuffer in) {

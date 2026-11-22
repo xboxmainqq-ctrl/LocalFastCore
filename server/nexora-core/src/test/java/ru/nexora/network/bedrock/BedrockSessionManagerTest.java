@@ -2911,10 +2911,11 @@ class BedrockSessionManagerTest {
         BedrockPacket initialized = new BedrockPacket(0x71, 0, 0, new byte[] {1});
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256));
-        assertEquals(17, outboundFrames.size());
-        assertEquals(0x31, decodeOutbound(outboundFrames.get(16), true).packetId());
+        assertEquals(18, outboundFrames.size());
+        assertEquals(0x2A, decodeOutbound(outboundFrames.get(16), true).packetId()); // PlayerList
+        assertEquals(0x31, decodeOutbound(outboundFrames.get(17), true).packetId());
         List<BedrockPacket> initialInventoryBatch = BedrockBatchCodec.decode(
-                reassemble(List.of(outboundFrames.get(16))), true);
+                reassemble(List.of(outboundFrames.get(17))), true);
         assertEquals(8, initialInventoryBatch.size());
         assertEquals(0x1f, initialInventoryBatch.get(1).packetId());
         assertEquals(0x31, initialInventoryBatch.get(2).packetId()); // armor container
@@ -2955,7 +2956,7 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(replayedMovement), true, 256));
         assertEquals(1.0f, manager.playerPosition("authenticated-client").orElseThrow().x());
-        assertEquals(19, outboundFrames.size());
+        assertEquals(20, outboundFrames.size());
 
         monotonicClock.set(200_000_000L);
         BedrockPacket implausibleTeleport = new BedrockPacket(0x90, 0, 0,
@@ -2975,23 +2976,23 @@ class BedrockSessionManagerTest {
                             walkPositions[i], 65.0f, 1.0f, 30.0f, 3L + i, false));
             sendClientBatch(manager, "authenticated-client",
                     BedrockBatchCodec.encode(List.of(step), true, 256));
-            if (i < walkPositions.length - 1) assertEquals(20, outboundFrames.size());
+            if (i < walkPositions.length - 1) assertEquals(21, outboundFrames.size());
         }
-        assertEquals(22, outboundFrames.size());
-        assertEquals(0x3A, decodeOutbound(outboundFrames.get(18), true).packetId());
-        List<BedrockPacket> newlyStreamedChunks = decodeOutboundPackets(outboundFrames.get(19), true);
+        assertEquals(23, outboundFrames.size());
+        assertEquals(0x3A, decodeOutbound(outboundFrames.get(19), true).packetId());
+        List<BedrockPacket> newlyStreamedChunks = decodeOutboundPackets(outboundFrames.get(20), true);
         assertEquals(1, newlyStreamedChunks.stream()
                 .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
                 .count(), "The first bounded batch contains one newly exposed column");
         completeChunkStreaming(manager, "authenticated-client", monotonicClock);
         List<BedrockPacket> remainingChunkPackets = new ArrayList<>();
-        for (int frameIndex = 20; frameIndex < outboundFrames.size(); frameIndex++) {
+        for (int frameIndex = 21; frameIndex < outboundFrames.size(); frameIndex++) {
             remainingChunkPackets.addAll(decodeOutboundPackets(outboundFrames.get(frameIndex), true));
         }
         assertEquals(3, remainingChunkPackets.stream()
                 .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
                 .count(), "All three remaining exposed columns must be published, even across separate batches");
-        assertTrue(outboundFrames.size() >= 22);
+        assertTrue(outboundFrames.size() >= 23);
         assertEquals(16.5f, manager.playerPosition("authenticated-client").orElseThrow().x());
         int chunkStreamingFrameCount = outboundFrames.size();
 

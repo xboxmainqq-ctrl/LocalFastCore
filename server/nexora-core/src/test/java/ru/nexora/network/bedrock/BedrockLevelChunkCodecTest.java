@@ -18,9 +18,11 @@ class BedrockLevelChunkCodecTest {
         Reader reader = new Reader(packet.payload());
         assertEquals(-2, reader.varInt32());
         assertEquals(3, reader.varInt32());
+        assertEquals(0, reader.varInt32()); // Overworld dimension
         assertEquals(24, reader.varUInt32()); // full Overworld column: Y=-4 through Y=19
         assertFalse(reader.bool()); // no request-subchunk limit
         assertFalse(reader.bool()); // cache disabled
+        assertEquals(0, reader.varUInt32()); // empty cache metadata array
         byte[] data = reader.byteArray();
         assertFalse(reader.bool()); // clientBiomeUpdate
         assertTrue(reader.exhausted());
@@ -101,7 +103,8 @@ class BedrockLevelChunkCodecTest {
         reader.varInt32();
         assertEquals(24, reader.varUInt32()); // full Overworld column
         assertFalse(reader.bool()); // no request-subchunk limit
-        assertFalse(reader.bool()); // cache disabled: metadata is omitted
+        assertFalse(reader.bool()); // cache disabled
+        assertEquals(0, reader.varUInt32()); // empty cache metadata array
         byte[] data = reader.byteArray();
         Reader subChunks = new Reader(data);
         assertEquals(9, subChunks.byteValue());
@@ -125,7 +128,8 @@ class BedrockLevelChunkCodecTest {
         reader.varInt32();
         assertEquals(24, reader.varUInt32());
         assertFalse(reader.bool()); // no request-subchunk limit
-        assertFalse(reader.bool()); // cache disabled: cache metadata is omitted
+        assertFalse(reader.bool()); // cache disabled
+        assertEquals(0, reader.varUInt32()); // empty cache metadata array
         byte[] data = reader.byteArray();
         reader.bool();
         assertTrue(reader.exhausted());

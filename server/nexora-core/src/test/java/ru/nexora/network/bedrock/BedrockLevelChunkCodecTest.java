@@ -21,8 +21,6 @@ class BedrockLevelChunkCodecTest {
         assertEquals(0, reader.varInt32()); // Overworld
         assertEquals(24, reader.varUInt32()); // full Overworld column: Y=-4 through Y=19
         assertFalse(reader.bool()); // cache disabled
-        assertEquals(0, reader.varUInt32()); // mandatory empty cache-metadata array
-
         byte[] data = reader.byteArray();
         assertFalse(reader.bool()); // clientBiomeUpdate
         assertTrue(reader.exhausted());

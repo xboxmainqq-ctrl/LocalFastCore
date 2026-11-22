@@ -16,6 +16,7 @@ import java.util.Objects;
 public final class BedrockInventoryContentCodec {
     public static final int INVENTORY_CONTENT_PACKET_ID = 0x31;
     public static final int PLAYER_INVENTORY_CONTAINER_ID = 0;
+    public static final int PLAYER_UI_SIZE = 51; // Internal crafting UI state; not sent as an extra inventory packet.
     public static final int PLAYER_UI_CONTAINER_ID = 124;
 
     private BedrockInventoryContentCodec() {

@@ -2927,6 +2927,11 @@ class BedrockSessionManagerTest {
         }
         assertTrue(postInitializationPackets.stream().anyMatch(packet -> packet.packetId() == 0x2A),
                 "PlayerList must be sent after the client confirms initialization");
+        BedrockPacket playStatus = postInitializationPackets.stream()
+                .filter(packet -> packet.packetId() == BedrockBatchCodec.PLAY_STATUS_PACKET_ID)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("PLAY_STATUS must be sent after initialization"));
+        assertEquals(3, ByteBuffer.wrap(playStatus.payload()).order(ByteOrder.BIG_ENDIAN).getInt());
         int inventoryStart = -1;
         for (int i = 0; i < postInitializationPackets.size(); i++) {
             if (postInitializationPackets.get(i).packetId()

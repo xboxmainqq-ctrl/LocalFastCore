@@ -29,9 +29,8 @@ public final class BedrockLevelChunkCodec {
         Writer chunkData = new Writer();
         for (int sectionIndex = 0; sectionIndex < subChunkCount; sectionIndex++) {
             int sectionY = sectionIndex - NEGATIVE_SUB_CHUNKS;
-            // NEXORA section index 0 maps to world section Y=-4. Unlike Nukkit's
-            // internal chunk array (which starts at Y=0), its first four entries
-            // therefore contain the actual negative-Y sections.
+            // Both NEXORA and Nukkit-MOT LevelDB map section index 0 to world
+            // section Y=-4; the first four entries are real negative-Y sections.
             writeSubChunk(chunkData, sectionY, sections[sectionIndex]);
         }
 

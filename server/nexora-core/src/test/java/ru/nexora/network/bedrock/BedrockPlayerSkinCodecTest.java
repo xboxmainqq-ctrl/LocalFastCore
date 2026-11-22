@@ -69,6 +69,22 @@ class BedrockPlayerSkinCodecTest {
     }
 
     @Test
+    void matchesNukkitMotShortAndInvalidSkinColorFallbacks() throws Exception {
+        String skin = Base64.getEncoder().encodeToString(new byte[64 * 64 * 4]);
+        JsonNode shortDecimal = MAPPER.readTree("""
+                {"SkinId":"short","SkinResourcePatch":"e30=","SkinData":"%s",
+                 "SkinImageWidth":64,"SkinImageHeight":64,"SkinColor":"123"}
+                """.formatted(skin));
+        JsonNode invalid = MAPPER.readTree("""
+                {"SkinId":"invalid","SkinResourcePatch":"e30=","SkinData":"%s",
+                 "SkinImageWidth":64,"SkinImageHeight":64,"SkinColor":"not-a-color"}
+                """.formatted(skin));
+
+        assertEquals(123, encodedSkinColor(shortDecimal));
+        assertEquals(0, encodedSkinColor(invalid));
+    }
+
+    @Test
     void acceptsPersonaPrefixedPieceTypesFromLoginClientData() throws Exception {
         String skin = Base64.getEncoder().encodeToString(new byte[64 * 64 * 4]);
         JsonNode clientData = MAPPER.readTree("""
@@ -111,6 +127,27 @@ class BedrockPlayerSkinCodecTest {
     }
 
     @Test
+    void writesPersonaTintNamesUsingNukkitMotSerializeNames() throws Exception {
+        String skin = Base64.getEncoder().encodeToString(new byte[64 * 64 * 4]);
+        JsonNode clientData = MAPPER.readTree("""
+                {
+                  "SkinId":"tint-name-test","SkinResourcePatch":"e30=","SkinData":"%s",
+                  "SkinImageWidth":64,"SkinImageHeight":64,
+                  "PieceTintColors":[
+                    {"PieceType":"persona_facial_hair","Colors":["#0","#0","#0","#0"]},
+                    {"PieceType":"persona_face_accessory","Colors":["#0","#0","#0","#0"]},
+                    {"PieceType":"persona_left_leg","Colors":["#0","#0","#0","#0"]},
+                    {"PieceType":"persona_right_arm","Colors":["#0","#0","#0","#0"]},
+                    {"PieceType":"persona_classic_skin","Colors":["#0","#0","#0","#0"]}
+                  ]
+                }
+                """.formatted(skin));
+
+        assertEquals(java.util.List.of("facialhair", "faceaccessory", "leftleg", "rightarm", "classicskin"),
+                encodedTintNames(clientData));
+    }
+
+    @Test
     void mapsClientDeviceOsToProtocolBuildPlatform() throws Exception {
         assertEquals(1, BedrockPlayerSkinCodec.buildPlatform(MAPPER.readTree("{\"DeviceOS\":1}")));
         assertEquals(8, BedrockPlayerSkinCodec.buildPlatform(MAPPER.readTree("{\"DeviceOS\":7}")));
@@ -125,6 +162,62 @@ class BedrockPlayerSkinCodecTest {
                  "SkinImageWidth":64,"SkinImageHeight":64}
                 """);
         assertThrows(IllegalArgumentException.class, () -> BedrockPlayerSkinCodec.encode(clientData));
+    }
+
+    private static java.util.List<String> encodedTintNames(JsonNode clientData) {
+        ByteBuffer in = ByteBuffer.wrap(BedrockPlayerSkinCodec.encode(clientData)).order(ByteOrder.LITTLE_ENDIAN);
+        readString(in); // SkinId
+        readString(in); // SkinResourcePatch
+        in.getInt(); in.getInt();
+        int skinBytes = readVarUInt32(in);
+        in.position(in.position() + skinBytes);
+        int animations = readVarUInt32(in);
+        for (int i = 0; i < animations; i++) {
+            in.getInt(); in.getInt();
+            int imageBytes = readVarUInt32(in);
+            in.position(in.position() + imageBytes);
+            readVarUInt32(in);
+            in.getFloat();
+            readVarUInt32(in);
+        }
+        in.getInt(); in.getInt();
+        int capeBytes = readVarUInt32(in);
+        in.position(in.position() + capeBytes);
+        readString(in); readString(in); readString(in); readString(in); readString(in);
+        in.get(); in.getInt();
+        int pieces = readVarUInt32(in);
+        for (int i = 0; i < pieces; i++) {
+            readString(in); in.getInt(); in.position(in.position() + 16); in.get(); readString(in);
+        }
+        int tintCount = readVarUInt32(in);
+        java.util.List<String> names = new java.util.ArrayList<>(tintCount);
+        for (int i = 0; i < tintCount; i++) {
+            names.add(readString(in));
+            in.position(in.position() + 4 * Integer.BYTES);
+        }
+        return java.util.List.copyOf(names);
+    }
+
+    private static int encodedSkinColor(JsonNode clientData) {
+        ByteBuffer in = ByteBuffer.wrap(BedrockPlayerSkinCodec.encode(clientData)).order(ByteOrder.LITTLE_ENDIAN);
+        readString(in); // SkinId
+        readString(in); // SkinResourcePatch
+        in.getInt(); // skin width
+        in.getInt(); // skin height
+        int skinBytes = readVarUInt32(in);
+        in.position(in.position() + skinBytes);
+        assertEquals(0, readVarUInt32(in)); // animations
+        in.getInt(); // cape width
+        in.getInt(); // cape height
+        int capeBytes = readVarUInt32(in);
+        in.position(in.position() + capeBytes);
+        readString(in); // geometry
+        readString(in); // geometry engine version
+        readString(in); // animation data
+        readString(in); // cape ID
+        readString(in); // full skin ID
+        in.get(); // arm size
+        return in.getInt();
     }
 
     private static String readString(ByteBuffer in) {

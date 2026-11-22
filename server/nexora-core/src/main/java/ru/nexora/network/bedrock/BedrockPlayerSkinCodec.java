@@ -187,22 +187,42 @@ public final class BedrockPlayerSkinCodec {
             case "leftleg", "left_leg" -> 20; case "rightleg", "right_leg" -> 21; case "arms" -> 22;
             case "leftarm", "left_arm" -> 23; case "rightarm", "right_arm" -> 24; case "capes" -> 25;
             case "classicskin", "classic_skin" -> 26; case "emote" -> 27;
-            case "coco" -> 28; case "unsupported" -> 29; default -> -1;
+            case "coco" -> 28; case "unsupported" -> 29; default -> 0;
         };
     }
     private static String pieceTintWireType(String value) {
-        String normalized = value.toLowerCase(java.util.Locale.ROOT);
-        if (normalized.equals("persona_hand")) return "hands";
-        if (normalized.startsWith("persona_")) return normalized.substring("persona_".length());
-        return normalized;
+        // Nukkit-MOT writes PersonaPieceType.getSerializeName(), not the raw
+        // PersonaPieceType/Persona-prefixed client-data spelling.
+        return switch (pieceType(value)) {
+            case 1 -> "skeleton"; case 2 -> "body"; case 3 -> "skin"; case 4 -> "bottom";
+            case 5 -> "feet"; case 6 -> "dress"; case 7 -> "top"; case 8 -> "high_pants";
+            case 9 -> "hands"; case 10 -> "outerwear"; case 11 -> "facialhair";
+            case 12 -> "mouth"; case 13 -> "eyes"; case 14 -> "hair"; case 15 -> "hood";
+            case 16 -> "back"; case 17 -> "faceaccessory"; case 18 -> "head"; case 19 -> "legs";
+            case 20 -> "leftleg"; case 21 -> "rightleg"; case 22 -> "arms"; case 23 -> "leftarm";
+            case 24 -> "rightarm"; case 25 -> "capes"; case 26 -> "classicskin";
+            case 27 -> "emote"; case 28 -> "coco"; case 29 -> "unsupported";
+            default -> "unknown";
+        };
     }
     private static int parseColor(String value) {
-        if (value == null || value.isBlank() || value.equals("0") || value.equalsIgnoreCase("#0")) return 0;
+        // Match Nukkit-MOT BinaryStream.skinColorToInt: short decimal values are
+        // accepted, six-digit RGB values gain opaque alpha, eight-digit values
+        // are already ARGB, and malformed optional cosmetic colors become zero.
+        if (value == null || value.isEmpty()) return 0;
         String hex = value.startsWith("#") ? value.substring(1) : value;
-        if (hex.length() == 6) hex = "ff" + hex;
-        if (hex.length() != 8) throw new IllegalArgumentException("Invalid skin color");
-        try { return (int) Long.parseLong(hex, 16); }
-        catch (NumberFormatException exception) { throw new IllegalArgumentException("Invalid skin color", exception); }
+        try {
+            if (hex.length() <= 4) {
+                return Integer.parseInt(value.startsWith("#") ? hex : value);
+            }
+            if (hex.length() == 6) {
+                return (int) (Long.parseLong(hex, 16) | 0xff000000L);
+            }
+            return (int) Long.parseLong(hex, 16);
+        } catch (NumberFormatException ignored) {
+            // Cosmetic skin/tint color is optional; Nukkit-MOT falls back to zero.
+        }
+        return 0;
     }
     private static int dimension(JsonNode node, String field) {
         int value = integer(node, field, 0);

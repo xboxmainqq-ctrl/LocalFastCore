@@ -15,7 +15,8 @@ public final class BedrockSubChunkCodec {
     public static final int RESULT_PLAYER_DOES_NOT_EXIST = 4;
     public static final int RESULT_INDEX_OUT_OF_BOUNDS = 5;
     public static final int RESULT_SUCCESS_ALL_AIR = 6;
-    public static final int MAX_REQUESTED_SUB_CHUNKS = 256;
+    // Match Nukkit-MOT SubChunkRequestPacket's protocol cap (8192 offsets).
+    public static final int MAX_REQUESTED_SUB_CHUNKS = 8192;
 
     private BedrockSubChunkCodec() {
     }
@@ -26,10 +27,11 @@ public final class BedrockSubChunkCodec {
         }
         Reader in = new Reader(packet.payload());
         int dimension = in.varInt32();
-        int count = in.varUInt32();
-        if (count > MAX_REQUESTED_SUB_CHUNKS) {
+        long countValue = in.varUInt32();
+        if (countValue > MAX_REQUESTED_SUB_CHUNKS) {
             throw new IllegalArgumentException("SubChunk request exceeds " + MAX_REQUESTED_SUB_CHUNKS + " entries");
         }
+        int count = (int) countValue;
         List<Offset> offsets = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             offsets.add(new Offset(in.signedByte(), in.signedByte(), in.signedByte()));
@@ -136,24 +138,22 @@ public final class BedrockSubChunkCodec {
         }
 
         int varInt32() {
-            int value = varUInt32();
+            int value = (int) varUInt32();
             return (value >>> 1) ^ -(value & 1);
         }
 
-        int varUInt32() {
-            int value = 0;
-            int shift = 0;
-            while (true) {
+        long varUInt32() {
+            long value = 0;
+            for (int index = 0; index < 5; index++) {
                 require(1);
                 int next = Byte.toUnsignedInt(data[offset++]);
-                if (shift == 28 && (next & 0xf0) != 0) {
-                    throw new IllegalArgumentException("SubChunk VarUInt32 is out of range");
+                if (index == 4 && (next & 0xf0) != 0) {
+                    throw new IllegalArgumentException("SubChunk VarUInt32 exceeds 32 bits");
                 }
-                value |= (next & 0x7f) << shift;
+                value |= (long) (next & 0x7f) << (index * 7);
                 if ((next & 0x80) == 0) return value;
-                shift += 7;
-                if (shift > 28) throw new IllegalArgumentException("SubChunk VarUInt32 is too long");
             }
+            throw new IllegalArgumentException("SubChunk VarUInt32 exceeds five bytes");
         }
 
         boolean exhausted() {

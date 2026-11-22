@@ -45,9 +45,10 @@ public final class BedrockLevelChunkCodec {
         Writer packet = new Writer();
         packet.varInt32(chunk.chunkX());
         packet.varInt32(chunk.chunkZ());
-        packet.varInt32(0); // Overworld dimension
         packet.varUInt32(subChunkCount);
-        // Request-mode limit is absent in ordinary full-column mode.
+        // Protocol 2225 writes the optional request-subchunk limit as an optional value:
+        // false means this is an ordinary full-column LevelChunk, not a request response.
+        packet.bool(false); // no request-subchunk limit
         packet.bool(false); // client chunk cache disabled
         packet.byteArray(data);
         packet.bool(false); // clientBiomeUpdate

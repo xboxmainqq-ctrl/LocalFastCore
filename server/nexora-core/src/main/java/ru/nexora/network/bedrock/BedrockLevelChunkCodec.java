@@ -20,19 +20,23 @@ public final class BedrockLevelChunkCodec {
         if (chunk == null) throw new IllegalArgumentException("chunk must not be null");
 
         byte[][] sections = chunk.copySectionsRaw();
-        // Protocol 2225 clients expect the complete Overworld column: Y=-4 through Y=19.
-        // This is 24 subchunks even when most of them contain only air.
-        int subChunkCount = WorldChunk.SECTION_COUNT;
+        // Nukkit-MOT's NetworkChunkSerializer sends the four negative Overworld
+        // sections followed only by positive sections through the highest non-empty one.
+        // The 3D biome payload is still a full 24-section column.
+        int highestNonEmptySectionCount = highestNonEmptySectionCount(sections);
+        int subChunkCount = NEGATIVE_SUB_CHUNKS + highestNonEmptySectionCount;
 
         Writer chunkData = new Writer();
         for (int sectionIndex = 0; sectionIndex < subChunkCount; sectionIndex++) {
             int sectionY = sectionIndex - NEGATIVE_SUB_CHUNKS;
-            writeSubChunk(chunkData, sectionY, sections[sectionIndex]);
+            writeSubChunk(chunkData, sectionY, sectionIndex < NEGATIVE_SUB_CHUNKS
+                    ? null : sections[sectionIndex - NEGATIVE_SUB_CHUNKS]);
         }
 
-        // The Overworld biome payload covers the same full 24-section client column.
-        for (int i = 0; i < subChunkCount; i++) {
-            chunkData.byteValue(1); // singleton palette, runtime-ID flag
+        // Nukkit-MOT writes one 3D biome palette for every section in the dimension,
+        // independently of the number of block subchunks sent above.
+        for (int i = 0; i < WorldChunk.SECTION_COUNT; i++) {
+            chunkData.byteValue(1); // V0 singleton palette, runtime IDs
             chunkData.varInt32(PLAINS_BIOME_ID);
         }
         chunkData.byteValue(0); // Border block count (empty)
@@ -47,15 +51,22 @@ public final class BedrockLevelChunkCodec {
         packet.varInt32(chunk.chunkZ());
         packet.varInt32(0); // Dimension ID: Overworld
         packet.varUInt32(subChunkCount);
-        // Nukkit's LevelChunkPacket encoder writes the request-mode presence flag
-        // after every non-negative subchunk count, even when no limit follows.
+        // Nukkit's 1.26.40+ LevelChunkPacket encoder writes the optional request
+        // presence flag and cache-metadata array even when both are empty.
         packet.bool(false); // requestSubChunks=false; no request limit follows
         packet.bool(false); // client chunk cache disabled
-        packet.varUInt32(0); // empty blobIds array (Nukkit writes the array length unconditionally)
+        packet.varUInt32(0); // empty blobIds array
         packet.byteArray(data);
         packet.bool(false); // clientBiomeUpdate
 
         return new BedrockPacket(LEVEL_CHUNK_PACKET_ID, 0, 0, packet.toByteArray());
+    }
+
+    private static int highestNonEmptySectionCount(byte[][] sections) {
+        for (int i = sections.length - 1; i >= 0; i--) {
+            if (sections[i] != null && !isEmpty(sections[i])) return i + 1;
+        }
+        return 0;
     }
 
     /**
@@ -76,9 +87,7 @@ public final class BedrockLevelChunkCodec {
     }
 
     private static void writeEmptySubChunk(Writer out, int sectionY) {
-        // Match Nukkit-MOT EmptyChunkSection: protocol 1.19.80+ uses a version-9
-        // empty subchunk with zero storage layers, followed by its signed section Y.
-        // Do not serialize two singleton air palettes here; the client expects no layers.
+        // Nukkit-MOT EmptyChunkSection.writeTo(): v9, zero storage layers, signed section Y.
         out.byteValue(9);
         out.byteValue(0);
         out.byteValue(sectionY);
@@ -89,8 +98,11 @@ public final class BedrockLevelChunkCodec {
             writeEmptySubChunk(out, sectionY);
             return;
         }
-        out.byteValue(9); // SubChunk version 9
-        out.byteValue(2); // Vanilla Bedrock columns carry block and liquid storage layers
+
+        // Nukkit-MOT LevelDBChunkSection emits one storage layer unless a real
+        // second block layer exists. NEXORA currently stores only layer zero.
+        out.byteValue(9);
+        out.byteValue(1);
         out.byteValue(sectionY);
 
         int[] paletteIndexByBlockId = new int[BLOCK_TYPE_COUNT];
@@ -112,14 +124,6 @@ public final class BedrockLevelChunkCodec {
             indexes[i] = paletteIndex;
         }
         writePalette(out, indexes, palette, paletteSize);
-        // The second storage is the liquid/waterlogged layer. This world currently has no
-        // waterlogged blocks, so it is an all-air singleton palette, but the layer is required.
-        writeAirStorage(out);
-    }
-
-    private static void writeAirStorage(Writer out) {
-        out.byteValue(1); // V0 singleton palette, runtime IDs
-        out.varInt32(BedrockBlockRuntimeIds.forBlock(BlockType.AIR));
     }
 
     private static boolean isEmpty(byte[] raw) {
@@ -136,13 +140,13 @@ public final class BedrockLevelChunkCodec {
 
         int bits = 1;
         while ((1 << bits) < paletteSize) bits++;
-        // Bedrock only accepts these packed-storage widths; skip 7 and 9..15.
-        if (bits > 6 && bits < 8) bits = 8;
+        // Match Nukkit-MOT BitArrayVersion: supported widths are 1,2,3,4,5,6,8,16.
+        if (bits == 7) bits = 8;
         if (bits > 8 && bits < 16) bits = 16;
         if (bits > 16) throw new IllegalArgumentException("Palette exceeds Bedrock's 16-bit storage limit");
         int entriesPerWord = 32 / bits;
         int wordCount = (indexes.length + entriesPerWord - 1) / entriesPerWord;
-        out.byteValue((bits << 1) | 1); // version bits plus runtime-ID flag
+        out.byteValue((bits << 1) | 1); // palette version bits plus runtime-ID flag
 
         for (int wordIndex = 0; wordIndex < wordCount; wordIndex++) {
             int word = 0;

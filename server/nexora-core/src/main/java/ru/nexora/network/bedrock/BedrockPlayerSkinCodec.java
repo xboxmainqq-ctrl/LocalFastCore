@@ -218,9 +218,7 @@ public final class BedrockPlayerSkinCodec {
             if (hex.length() == 6) {
                 return (int) (Long.parseLong(hex, 16) | 0xff000000L);
             }
-            if (hex.length() == 8) {
-                return (int) Long.parseLong(hex, 16);
-            }
+            return (int) Long.parseLong(hex, 16);
         } catch (NumberFormatException ignored) {
             // Cosmetic skin/tint color is optional; Nukkit-MOT falls back to zero.
         }

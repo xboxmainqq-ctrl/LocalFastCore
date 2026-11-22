@@ -3097,7 +3097,7 @@ class BedrockSessionManagerTest {
 
         // A decoded no-op player-slot transaction is accepted and reconciled with authoritative content.
         BedrockPacket inventoryTransaction = new BedrockPacket(0x1e, 0, 0,
-                noOpInventoryTransactionPayload(257, 3));
+                noOpInventoryTransactionPayload(888, 3));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(inventoryTransaction), true, 256));
         assertEquals(chunkStreamingFrameCount + 4, outboundFrames.size());

@@ -61,8 +61,8 @@ public final class BedrockInventoryContentCodec {
     }
 
     /**
-     * Encodes the 51-slot player UI inventory, including the 2x2 crafting grid at slots 28..31.
-     * The FullContainerName is CRAFTING_INPUT (13), matching Bedrock's player UI inventory.
+     * Encodes the 51-slot Player UI Container, including the 2x2 crafting grid at slots 28..31.
+     * Its FullContainerName identifies the overall InventoryContainer (29), not one sub-container.
      */
     public static BedrockPacket createPlayerUiInventory(
             ru.nexora.inventory.ContainerInventory inventory,
@@ -93,7 +93,7 @@ public final class BedrockInventoryContentCodec {
                         definition.auxValue(), definition.blockRuntimeId(), BedrockItemStackUserDataCodec.encode(stack, definition.userData()));
             }
         }
-        out.byteValue(CRAFTING_INPUT_SLOT_TYPE);
+        out.byteValue(PLAYER_INVENTORY_CONTAINER_NAME); // InventoryContainer for the entire 51-slot Player UI Container
         out.byteValue(0); // dynamic ID is absent
         writeStack(out, 0, 0, 0, 0, new byte[0]); // Empty NetworkItemStackDescriptor
         return new BedrockPacket(INVENTORY_CONTENT_PACKET_ID, 0, 0, out.toByteArray());

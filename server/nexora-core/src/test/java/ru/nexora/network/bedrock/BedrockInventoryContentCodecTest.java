@@ -52,7 +52,7 @@ class BedrockInventoryContentCodecTest {
                 0,       // has StackNetId = false
                 0,       // block runtime ID
                 0        // empty user data buffer
-        }, Arrays.copyOfRange(payload, 3, 11));
+        }, Arrays.copyOfRange(payload, 3, 12));
         assertArrayEquals(new byte[8], Arrays.copyOfRange(payload, 11, 20));
     }
 
@@ -74,7 +74,7 @@ class BedrockInventoryContentCodecTest {
                 0,             // has StackNetId = false
                 (byte) 0xd2, 9,// block runtime ID 1234
                 2, 1, 2        // user data string
-        }, Arrays.copyOfRange(packet.payload(), 2, 13));
+        }, Arrays.copyOfRange(packet.payload(), 3, 14));
     }
 
     @Test

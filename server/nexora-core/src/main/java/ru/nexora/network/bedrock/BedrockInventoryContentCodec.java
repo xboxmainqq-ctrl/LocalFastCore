@@ -54,11 +54,12 @@ public final class BedrockInventoryContentCodec {
             }
         }
 
-        // Protocol 2225 FullContainerName uses an optional little-endian dynamic ID.
-        out.byteValue(12); // HOTBAR_AND_INVENTORY
-        out.byteValue(1);  // dynamic ID is present, including the player container ID 0
-        out.int32(PLAYER_INVENTORY_CONTAINER_ID);
-        writeStack(out, 0, 0, 0, 0, new byte[0]); // Empty NetworkItemStackDescriptor
+        // Combined hotbar/inventory is not a dynamic container: omit its optional dynamic ID.
+        out.byteValue(12); // CombinedHotbarAndInventoryContainer
+        out.byteValue(0);  // FullContainerName.dynamicId is absent
+        // InventoryContent.storageItem is optional. A false presence flag is the complete field;
+        // writing an empty NetworkItemStackDescriptor here shifts the packet tail and disconnects clients.
+        out.byteValue(0);  // StorageItem absent
         return new BedrockPacket(INVENTORY_CONTENT_PACKET_ID, 0, 0, out.toByteArray());
     }
 
@@ -102,7 +103,7 @@ public final class BedrockInventoryContentCodec {
 
         out.byteValue(7); // LEVEL_ENTITY FullContainerName for ordinary block inventories
         out.byteValue(0); // dynamic ID is absent
-        writeStack(out, 0, 0, 0, 0, new byte[0]); // Empty NetworkItemStackDescriptor
+        out.byteValue(0); // optional StorageItem is absent
         return new BedrockPacket(INVENTORY_CONTENT_PACKET_ID, 0, 0, out.toByteArray());
     }
 

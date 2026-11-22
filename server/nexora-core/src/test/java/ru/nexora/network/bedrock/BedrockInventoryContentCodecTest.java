@@ -129,7 +129,7 @@ class BedrockInventoryContentCodecTest {
         assertEquals(7, Byte.toUnsignedInt(payload[0])); // window/container ID
         assertEquals(27, Byte.toUnsignedInt(payload[1]));
         for (int slot = 0; slot < 27; slot++) {
-            int offset = 2 + slot * 9;
+            int offset = 2 + slot * 8;
             assertArrayEquals(new byte[8], Arrays.copyOfRange(payload, offset, offset + 8),
                     "chest slot " + slot + " must be empty");
         }
@@ -151,7 +151,7 @@ class BedrockInventoryContentCodecTest {
 
         byte[] payload = packet.payload();
         assertEquals(11, Byte.toUnsignedInt(payload[0]));
-        int offset = 2 + 2 * 9;
+        int offset = 2 + 2 * 8;
         assertArrayEquals(new byte[] {9, 1, 4, 0, 0, 0, 0, 0},
                 Arrays.copyOfRange(payload, offset, offset + 8));
     }

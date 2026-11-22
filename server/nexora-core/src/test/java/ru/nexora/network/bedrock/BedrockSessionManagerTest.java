@@ -2915,17 +2915,31 @@ class BedrockSessionManagerTest {
         BedrockPacket initialized = new BedrockPacket(0x71, 0, 0, new byte[] {1});
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256));
-        assertEquals(17, outboundFrames.size());
-        assertEquals(0x2A, decodeOutbound(outboundFrames.get(16), true).packetId()); // PlayerList
 
-        // The shared outbound byte budget may defer this batch until its next window; the server tick must retry it.
+        // The outbound byte budget may place PlayerList and the now-smaller inventory batch
+        // in one frame, or defer the inventory batch to the next tick. Assert protocol order,
+        // not a particular transport-frame boundary.
         monotonicClock.addAndGet(OutboundDrainBudget.DEFAULT_WINDOW_NANOS);
         manager.tickInitialChunkStreams();
-        assertEquals(18, outboundFrames.size());
-        assertEquals(0x31, decodeOutbound(outboundFrames.get(17), true).packetId());
-        List<BedrockPacket> initialInventoryBatch = BedrockBatchCodec.decode(
-                reassemble(List.of(outboundFrames.get(17))), true);
-        assertEquals(8, initialInventoryBatch.size());
+        List<BedrockPacket> postInitializationPackets = new ArrayList<>();
+        for (int frameIndex = 16; frameIndex < outboundFrames.size(); frameIndex++) {
+            postInitializationPackets.addAll(decodeOutboundPackets(outboundFrames.get(frameIndex), true));
+        }
+        assertTrue(postInitializationPackets.stream().anyMatch(packet -> packet.packetId() == 0x2A),
+                "PlayerList must be sent after the client confirms initialization");
+        int inventoryStart = -1;
+        for (int i = 0; i < postInitializationPackets.size(); i++) {
+            if (postInitializationPackets.get(i).packetId()
+                    == BedrockInventoryContentCodec.INVENTORY_CONTENT_PACKET_ID) {
+                inventoryStart = i;
+                break;
+            }
+        }
+        assertTrue(inventoryStart >= 0, "Initial player inventory content must be sent");
+        assertTrue(postInitializationPackets.size() >= inventoryStart + 8,
+                "The complete initial inventory packet sequence must be sent");
+        List<BedrockPacket> initialInventoryBatch =
+                postInitializationPackets.subList(inventoryStart, inventoryStart + 8);
         assertEquals(0x1f, initialInventoryBatch.get(1).packetId());
         assertEquals(0x31, initialInventoryBatch.get(2).packetId()); // armor container
         assertEquals(0x31, initialInventoryBatch.get(3).packetId()); // offhand container

@@ -87,7 +87,8 @@ class BedrockLevelChunkCodecTest {
             assertEquals(1, subChunks.varInt32());
         }
         assertEquals(0, subChunks.byteValue()); // no border blocks
-        assertTrue(subChunks.exhausted()); // no block entities means no trailing NBT bytes
+        assertEquals(0, subChunks.byteValue()); // empty block-entity NBT list: TAG_End
+        assertTrue(subChunks.exhausted());
     }
 
     @Test
@@ -128,7 +129,7 @@ class BedrockLevelChunkCodecTest {
         byte[] data = reader.byteArray();
         reader.bool();
         assertTrue(reader.exhausted());
-        assertEquals(24 * 15 + 24 * 2 + 1, data.length); // 24 two-layer empty subchunks, 24 biome palettes and border; no NBT when empty
+        assertEquals(24 * 15 + 24 * 2 + 2, data.length); // subchunks, biome palettes, border count, empty NBT TAG_End
     }
 
     private static final class Reader {

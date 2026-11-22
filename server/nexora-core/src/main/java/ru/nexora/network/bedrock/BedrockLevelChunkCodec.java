@@ -10,7 +10,8 @@ import java.io.ByteArrayOutputStream;
 public final class BedrockLevelChunkCodec {
     public static final int LEVEL_CHUNK_PACKET_ID = 0x3a;
     private static final int NEGATIVE_SUB_CHUNKS = 4;
-        private static final int PLAINS_BIOME_ID = 1;
+    private static final int WORLD_BIOME_SECTIONS = 24;
+    private static final int PLAINS_BIOME_ID = 1;
     private static final int BLOCK_TYPE_COUNT = BlockType.values().length;
 
     private BedrockLevelChunkCodec() {
@@ -39,8 +40,9 @@ public final class BedrockLevelChunkCodec {
             writeSubChunk(chunkData, sectionY, section);
         }
 
-        // LevelChunk carries one biome storage for each serialized subchunk.
-        for (int i = 0; i < subChunkCount; i++) {
+        // Vanilla Bedrock reads biome storage for the full Overworld height (24 sections),
+        // independently of the number of block subchunks serialized above.
+        for (int i = 0; i < WORLD_BIOME_SECTIONS; i++) {
             chunkData.byteValue(1); // singleton palette, runtime-ID flag
             chunkData.varInt32(PLAINS_BIOME_ID);
         }
@@ -132,6 +134,10 @@ public final class BedrockLevelChunkCodec {
 
         int bits = 1;
         while ((1 << bits) < paletteSize) bits++;
+        // Bedrock only accepts these packed-storage widths; skip 7 and 9..15.
+        if (bits > 6 && bits < 8) bits = 8;
+        if (bits > 8 && bits < 16) bits = 16;
+        if (bits > 16) throw new IllegalArgumentException("Palette exceeds Bedrock's 16-bit storage limit");
         int entriesPerWord = 32 / bits;
         int wordCount = (indexes.length + entriesPerWord - 1) / entriesPerWord;
         out.byteValue((bits << 1) | 1); // version bits plus runtime-ID flag

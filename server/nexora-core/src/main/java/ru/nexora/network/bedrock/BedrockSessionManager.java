@@ -7119,9 +7119,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             initialPackets.add(BedrockCraftingDataCodec.createPacket(craftingRecipes, itemRegistry));
             initialPackets.add(BedrockInventoryContentCodec.createPlayerUiInventory(
                     state.craftingUiInventory, itemRegistry));
+            System.out.printf("NEXORA: prepared %d initial inventory packets for %s%n",
+                    initialPackets.size(), networkId);
             sendPackets(networkId, initialPackets, true);
+            System.out.printf("NEXORA: queued initial inventory batch for %s%n", networkId);
         } catch (IllegalArgumentException exception) {
             System.err.println("NEXORA: initial inventory sync deferred because a stored item has no Bedrock definition: " + exception.getMessage());
+        } catch (RuntimeException exception) {
+            System.err.println("NEXORA: initial inventory sync failed for " + networkId + ": "
+                    + exception.getClass().getSimpleName() + ": " + exception.getMessage());
+            exception.printStackTrace(System.err);
         }
         sendPackets(networkId, List.of(
                 BedrockVitalsCodec.createSetHealth(state.vitals),

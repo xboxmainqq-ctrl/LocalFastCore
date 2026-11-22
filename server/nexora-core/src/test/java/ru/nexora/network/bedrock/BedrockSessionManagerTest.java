@@ -2916,7 +2916,7 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256));
 
-        // The outbound byte budget may place PlayerList and the now-smaller inventory batch
+        // The outbound byte budget may place PlayerList and the inventory batch
         // in one frame, or defer the inventory batch to the next tick. Assert protocol order,
         // not a particular transport-frame boundary.
         monotonicClock.addAndGet(OutboundDrainBudget.DEFAULT_WINDOW_NANOS);

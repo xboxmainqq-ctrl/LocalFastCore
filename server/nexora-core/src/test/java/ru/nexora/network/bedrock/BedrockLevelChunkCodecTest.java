@@ -20,7 +20,9 @@ class BedrockLevelChunkCodecTest {
         assertEquals(3, reader.varInt32());
         assertEquals(0, reader.varInt32()); // Overworld dimension
         assertEquals(24, reader.varUInt32()); // full Overworld column: Y=-4 through Y=19
-        assertFalse(reader.bool()); // cache disabled; no cache metadata array follows
+        assertFalse(reader.bool()); // requestSubChunks=false; no request limit follows
+        assertFalse(reader.bool()); // cache disabled
+        assertEquals(0, reader.varUInt32()); // empty blobIds array, always length-prefixed
         byte[] data = reader.byteArray();
         assertFalse(reader.bool()); // clientBiomeUpdate
         assertTrue(reader.exhausted());
@@ -101,7 +103,9 @@ class BedrockLevelChunkCodecTest {
         reader.varInt32();
         assertEquals(0, reader.varInt32()); // Overworld dimension
         assertEquals(24, reader.varUInt32()); // full Overworld column
-        assertFalse(reader.bool()); // cache disabled; no cache metadata array follows
+        assertFalse(reader.bool()); // requestSubChunks=false; no request limit follows
+        assertFalse(reader.bool()); // cache disabled
+        assertEquals(0, reader.varUInt32()); // empty blobIds array, always length-prefixed
         byte[] data = reader.byteArray();
         Reader subChunks = new Reader(data);
         assertEquals(9, subChunks.byteValue());
@@ -125,7 +129,9 @@ class BedrockLevelChunkCodecTest {
         reader.varInt32();
         assertEquals(0, reader.varInt32()); // Overworld dimension
         assertEquals(24, reader.varUInt32());
-        assertFalse(reader.bool()); // cache disabled; no cache metadata array follows
+        assertFalse(reader.bool()); // requestSubChunks=false; no request limit follows
+        assertFalse(reader.bool()); // cache disabled
+        assertEquals(0, reader.varUInt32()); // empty blobIds array, always length-prefixed
         byte[] data = reader.byteArray();
         reader.bool();
         assertTrue(reader.exhausted());

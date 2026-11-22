@@ -19,7 +19,7 @@ class BedrockLevelChunkCodecTest {
         assertEquals(-2, reader.varInt32());
         assertEquals(3, reader.varInt32());
         assertEquals(0, reader.varInt32()); // Overworld dimension
-        assertEquals(13, reader.varUInt32()); // four negative sections + sections 0..8
+        assertEquals(9, reader.varUInt32()); // four negative sections + positive sections Y=0..4
         assertFalse(reader.bool()); // requestSubChunks=false; no request limit follows
         assertFalse(reader.bool()); // cache disabled
         assertEquals(0, reader.varUInt32()); // empty blobIds array
@@ -74,24 +74,32 @@ class BedrockLevelChunkCodecTest {
         reader.varInt32();
         reader.varInt32();
         assertEquals(0, reader.varInt32()); // Overworld dimension
-        assertEquals(5, reader.varUInt32()); // four negative sections + first positive section
+        assertEquals(4, reader.varUInt32()); // four negative sections; no positive section is populated
         assertFalse(reader.bool());
         assertFalse(reader.bool());
         assertEquals(0, reader.varUInt32());
         byte[] data = reader.byteArray();
         Reader subChunks = new Reader(data);
         assertEquals(9, subChunks.byteValue());
-        assertEquals(0, subChunks.byteValue());
-        assertEquals(0xfc, subChunks.byteValue()); // signed subchunk Y=-4
-        assertEquals(9, subChunks.byteValue());
         assertEquals(1, subChunks.byteValue());
-        assertEquals(0xfd, subChunks.byteValue()); // signed subchunk Y=-3
+        assertEquals(0xfc, subChunks.byteValue()); // signed subchunk Y=-4
         assertEquals(3, subChunks.byteValue()); // V1 packed runtime palette
         subChunks.skip(128 * Integer.BYTES);
         assertEquals(2, subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.BEDROCK), subChunks.varInt32());
-        assertTrue(subChunks.exhausted() == false || subChunks.remaining() > 0);
+        for (int sectionY = -3; sectionY < 0; sectionY++) {
+            assertEquals(9, subChunks.byteValue());
+            assertEquals(0, subChunks.byteValue());
+            assertEquals(sectionY & 0xff, subChunks.byteValue());
+        }
+        for (int section = 0; section < WorldChunk.SECTION_COUNT; section++) {
+            assertEquals(1, subChunks.byteValue());
+            assertEquals(1, subChunks.varInt32());
+        }
+        assertEquals(0, subChunks.byteValue());
+        assertEquals(0, subChunks.byteValue());
+        assertTrue(subChunks.exhausted());
     }
 
     @Test

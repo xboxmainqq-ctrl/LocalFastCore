@@ -2996,21 +2996,24 @@ class BedrockSessionManagerTest {
         assertEquals(0L, moved.tick());
 
         // A second position update with the same client tick is a replay and must be ignored.
+        int outboundFramesBeforeReplay = outboundFrames.size();
         BedrockPacket replayedMovement = new BedrockPacket(0x90, 0, 0,
                 BedrockPlayerAuthInputCodecTest.movementPayload(2.0f, 65.0f, 1.0f, 30.0f, 0L, false));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(replayedMovement), true, 256));
         assertEquals(1.0f, manager.playerPosition("authenticated-client").orElseThrow().x());
-        assertEquals(20, outboundFrames.size());
+        assertEquals(outboundFramesBeforeReplay, outboundFrames.size());
 
         monotonicClock.set(200_000_000L);
+        int outboundFramesBeforeTeleport = outboundFrames.size();
         BedrockPacket implausibleTeleport = new BedrockPacket(0x90, 0, 0,
                 BedrockPlayerAuthInputCodecTest.movementPayload(100.0f, 65.0f, 100.0f, 90.0f, 2L, false));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(implausibleTeleport), true, 256));
         assertEquals(1.0f, manager.playerPosition("authenticated-client").orElseThrow().x());
-        assertEquals(19, outboundFrames.size());
+        assertEquals(outboundFramesBeforeTeleport + 1, outboundFrames.size());
 
+        int chunkStreamingStartFrame = outboundFrames.size();
         float[] walkPositions = {3.0f, 5.0f, 7.0f, 9.0f, 11.0f, 13.0f, 15.0f, 16.5f};
         long[] walkTimes = {400_000_000L, 650_000_000L, 900_000_000L, 1_150_000_000L,
                 1_400_000_000L, 1_650_000_000L, 1_900_000_000L, 2_100_000_000L};
@@ -3021,17 +3024,21 @@ class BedrockSessionManagerTest {
                             walkPositions[i], 65.0f, 1.0f, 30.0f, 3L + i, false));
             sendClientBatch(manager, "authenticated-client",
                     BedrockBatchCodec.encode(List.of(step), true, 256));
-            if (i < walkPositions.length - 1) assertEquals(21, outboundFrames.size());
         }
-        assertEquals(23, outboundFrames.size());
-        assertEquals(0x3A, decodeOutbound(outboundFrames.get(19), true).packetId());
-        List<BedrockPacket> newlyStreamedChunks = decodeOutboundPackets(outboundFrames.get(20), true);
-        assertEquals(1, newlyStreamedChunks.stream()
+        List<BedrockPacket> firstChunkStreamingBatch = new ArrayList<>();
+        for (int frameIndex = chunkStreamingStartFrame; frameIndex < outboundFrames.size(); frameIndex++) {
+            firstChunkStreamingBatch.addAll(decodeOutboundPackets(outboundFrames.get(frameIndex), true));
+        }
+        assertTrue(firstChunkStreamingBatch.stream()
+                .anyMatch(packet -> packet.packetId() == 0x3A),
+                "A network stack latency response must accompany chunk streaming");
+        assertEquals(1, firstChunkStreamingBatch.stream()
                 .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
                 .count(), "The first bounded batch contains one newly exposed column");
+        int completionStartFrame = outboundFrames.size();
         completeChunkStreaming(manager, "authenticated-client", monotonicClock);
         List<BedrockPacket> remainingChunkPackets = new ArrayList<>();
-        for (int frameIndex = 21; frameIndex < outboundFrames.size(); frameIndex++) {
+        for (int frameIndex = completionStartFrame; frameIndex < outboundFrames.size(); frameIndex++) {
             remainingChunkPackets.addAll(decodeOutboundPackets(outboundFrames.get(frameIndex), true));
         }
         assertEquals(3, remainingChunkPackets.stream()

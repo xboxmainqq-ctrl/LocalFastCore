@@ -11,7 +11,7 @@ import java.util.Objects;
  *
  * The caller must supply a complete protocol definition for every non-empty NEXORA item.
  * This codec deliberately does not guess Bedrock runtime item IDs, block runtime IDs, metadata or user data.
- * Each slot is written directly as a NetworkItemStackDescriptor; the optional stack net ID is absent.
+ * Each slot is prefixed with the disabled ItemStackNetId (0 empty, 1 non-empty), then its NetworkItemStackDescriptor.
  */
 public final class BedrockInventoryContentCodec {
     public static final int INVENTORY_CONTENT_PACKET_ID = 0x31;
@@ -38,6 +38,7 @@ public final class BedrockInventoryContentCodec {
 
         for (var optionalStack : slots) {
             ItemStack stack = optionalStack.orElse(null);
+            out.varInt32(stack == null ? 0 : 1); // ItemStackNetId: 0 empty, 1 non-empty while disabled
             if (stack == null) {
                 writeStack(out, 0, 0, 0, 0, new byte[0]);
             } else {
@@ -79,6 +80,7 @@ public final class BedrockInventoryContentCodec {
         out.varUInt32(slots.size());
         for (var optionalStack : slots) {
             ItemStack stack = optionalStack.orElse(null);
+            out.varInt32(stack == null ? 0 : 1); // ItemStackNetId: 0 empty, 1 non-empty while disabled
             if (stack == null) {
                 writeStack(out, 0, 0, 0, 0, new byte[0]);
             } else {
@@ -119,6 +121,7 @@ public final class BedrockInventoryContentCodec {
         out.varUInt32(slots.size());
         for (var optionalStack : slots) {
             ItemStack stack = optionalStack.orElse(null);
+            out.varInt32(stack == null ? 0 : 1); // ItemStackNetId: 0 empty, 1 non-empty while disabled
             if (stack == null) {
                 writeStack(out, 0, 0, 0, 0, new byte[0]);
             } else {

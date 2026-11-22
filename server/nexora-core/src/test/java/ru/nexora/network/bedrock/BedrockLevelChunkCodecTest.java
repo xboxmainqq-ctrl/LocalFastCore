@@ -47,7 +47,7 @@ class BedrockLevelChunkCodecTest {
         assertEquals(3, subChunks.byteValue());
         assertEquals(5, subChunks.byteValue()); // V2, runtime IDs
         subChunks.skip(256 * Integer.BYTES);
-        assertEquals(4, subChunks.varUInt32());
+        assertEquals(4, subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.BEDROCK), subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.STONE), subChunks.varInt32());
@@ -59,11 +59,11 @@ class BedrockLevelChunkCodecTest {
         assertEquals(4, subChunks.byteValue());
         assertEquals(3, subChunks.byteValue()); // V1, runtime IDs
         subChunks.skip(128 * Integer.BYTES);
-        assertEquals(2, subChunks.varUInt32());
+        assertEquals(2, subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.GRASS_BLOCK), subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
 
-        for (int section = 0; section < 24; section++) {
+        for (int section = 0; section < 9; section++) {
             assertEquals(1, subChunks.byteValue()); // singleton plains biome palette
             assertEquals(1, subChunks.varInt32());
         }
@@ -73,7 +73,7 @@ class BedrockLevelChunkCodecTest {
     }
 
     @Test
-    void emptyChunkStillAdvertisesFourNegativeSubChunksAndAllBiomeSections() {
+    void emptyChunkSendsOneBiomePalettePerSerializedSubChunk() {
         BedrockPacket packet = BedrockLevelChunkCodec.createPacket(new WorldChunk(0, 0));
         Reader reader = new Reader(packet.payload());
 
@@ -86,7 +86,7 @@ class BedrockLevelChunkCodecTest {
         byte[] data = reader.byteArray();
         reader.bool();
         assertTrue(reader.exhausted());
-        assertEquals(12 + 24 * 2 + 2, data.length);
+        assertEquals(12 + 4 * 2 + 2, data.length);
     }
 
     private static final class Reader {

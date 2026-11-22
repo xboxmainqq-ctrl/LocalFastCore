@@ -30,14 +30,20 @@ class BedrockLevelChunkCodecTest {
         Reader subChunks = new Reader(data);
         for (int sectionY = -4; sectionY < 0; sectionY++) {
             assertEquals(9, subChunks.byteValue());
-            assertEquals(0, subChunks.byteValue());
+            assertEquals(2, subChunks.byteValue());
             assertEquals(sectionY & 0xff, subChunks.byteValue());
+            assertEquals(1, subChunks.byteValue());
+            assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
+            assertEquals(1, subChunks.byteValue());
+            assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
         }
         for (int sectionY = 0; sectionY < 3; sectionY++) {
             assertEquals(9, subChunks.byteValue());
-            assertEquals(1, subChunks.byteValue());
+            assertEquals(2, subChunks.byteValue()); // Empty intermediate section has both vanilla layers
             assertEquals(sectionY, subChunks.byteValue());
-            assertEquals(1, subChunks.byteValue()); // singleton air palette
+            assertEquals(1, subChunks.byteValue());
+            assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
+            assertEquals(1, subChunks.byteValue());
             assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
         }
 
@@ -86,7 +92,7 @@ class BedrockLevelChunkCodecTest {
         byte[] data = reader.byteArray();
         reader.bool();
         assertTrue(reader.exhausted());
-        assertEquals(12 + 24 * 2 + 2, data.length);
+        assertEquals(4 * (3 + 4) + 24 * 2 + 2, data.length);
     }
 
     private static final class Reader {

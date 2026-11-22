@@ -2918,7 +2918,7 @@ class BedrockSessionManagerTest {
         assertEquals(17, outboundFrames.size());
         assertEquals(0x2A, decodeOutbound(outboundFrames.get(16), true).packetId()); // PlayerList
 
-        // The outbound byte budget may defer the inventory batch to the next server tick.
+        // The shared outbound byte budget may defer this batch until its next window; the server tick must retry it.
         monotonicClock.addAndGet(OutboundDrainBudget.DEFAULT_WINDOW_NANOS);
         manager.tickInitialChunkStreams();
         assertEquals(18, outboundFrames.size());

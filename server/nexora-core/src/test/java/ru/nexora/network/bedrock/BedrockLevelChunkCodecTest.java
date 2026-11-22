@@ -101,6 +101,7 @@ class BedrockLevelChunkCodecTest {
         Reader reader = new Reader(packet.payload());
         reader.varInt32();
         reader.varInt32();
+        assertEquals(0, reader.varInt32()); // Overworld dimension
         assertEquals(24, reader.varUInt32()); // full Overworld column
         assertFalse(reader.bool()); // no request-subchunk limit
         assertFalse(reader.bool()); // cache disabled
@@ -126,6 +127,7 @@ class BedrockLevelChunkCodecTest {
 
         reader.varInt32();
         reader.varInt32();
+        assertEquals(0, reader.varInt32()); // Overworld dimension
         assertEquals(24, reader.varUInt32());
         assertFalse(reader.bool()); // no request-subchunk limit
         assertFalse(reader.bool()); // cache disabled

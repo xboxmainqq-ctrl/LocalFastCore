@@ -125,8 +125,7 @@ class BedrockLevelChunkCodecTest {
         reader.varInt32();
         reader.varInt32();
         assertEquals(24, reader.varUInt32());
-        assertFalse(reader.bool()); // cache disabled
-        assertEquals(0, reader.varUInt32()); // mandatory empty cache-metadata array
+        assertFalse(reader.bool()); // cache disabled: cache metadata is omitted
         byte[] data = reader.byteArray();
         reader.bool();
         assertTrue(reader.exhausted());

@@ -15,7 +15,8 @@ public final class BedrockSubChunkCodec {
     public static final int RESULT_PLAYER_DOES_NOT_EXIST = 4;
     public static final int RESULT_INDEX_OUT_OF_BOUNDS = 5;
     public static final int RESULT_SUCCESS_ALL_AIR = 6;
-    public static final int MAX_REQUESTED_SUB_CHUNKS = 256;
+    // Match Nukkit-MOT SubChunkRequestPacket's protocol cap (8192 offsets).
+    public static final int MAX_REQUESTED_SUB_CHUNKS = 8192;
 
     private BedrockSubChunkCodec() {
     }

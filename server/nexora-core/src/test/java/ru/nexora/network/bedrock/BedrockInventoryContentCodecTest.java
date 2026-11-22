@@ -27,9 +27,9 @@ class BedrockInventoryContentCodecTest {
             assertArrayEquals(new byte[8], Arrays.copyOfRange(payload, offset + 1, offset + 9),
                     "slot " + slot + " must be encoded as empty with net ID zero");
         }
-        assertEquals(12, Byte.toUnsignedInt(payload[payload.length - 15])); // HOTBAR_AND_INVENTORY
-        assertEquals(1, Byte.toUnsignedInt(payload[payload.length - 14])); // dynamic ID present
-        assertArrayEquals(new byte[4], Arrays.copyOfRange(payload, payload.length - 13, payload.length - 9)); // dynamic ID = 0
+        assertEquals(12, Byte.toUnsignedInt(payload[payload.length - 14])); // HOTBAR_AND_INVENTORY
+        assertEquals(1, Byte.toUnsignedInt(payload[payload.length - 13])); // dynamic ID present
+        assertArrayEquals(new byte[4], Arrays.copyOfRange(payload, payload.length - 12, payload.length - 8)); // dynamic ID = 0
         assertArrayEquals(new byte[8], Arrays.copyOfRange(payload, payload.length - 8, payload.length)); // empty Storage Item descriptor
     }
 

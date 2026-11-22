@@ -8118,7 +8118,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private int openContainerZ;
         private ContainerInventory openContainerInventory;
         private final ContainerInventory craftingUiInventory =
-                new ContainerInventory(51);
+                new ContainerInventory(BedrockInventoryContentCodec.PLAYER_UI_SIZE);
         private int clientProtocol;
         private volatile NetherNetClientIdentity identity;
         private BedrockPlayerListCodec.AddEntry playerListEntry;

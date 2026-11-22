@@ -2917,6 +2917,11 @@ class BedrockSessionManagerTest {
                 BedrockBatchCodec.encode(List.of(initialized), true, 256));
         assertEquals(17, outboundFrames.size());
         assertEquals(0x2A, decodeOutbound(outboundFrames.get(16), true).packetId()); // PlayerList
+
+        // The outbound byte budget may defer the inventory batch to the next server tick.
+        monotonicClock.addAndGet(OutboundDrainBudget.DEFAULT_WINDOW_NANOS);
+        manager.tickInitialChunkStreams();
+        assertEquals(18, outboundFrames.size());
         assertEquals(0x31, decodeOutbound(outboundFrames.get(17), true).packetId());
         List<BedrockPacket> initialInventoryBatch = BedrockBatchCodec.decode(
                 reassemble(List.of(outboundFrames.get(17))), true);

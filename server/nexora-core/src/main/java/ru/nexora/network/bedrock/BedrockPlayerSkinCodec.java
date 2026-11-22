@@ -197,12 +197,25 @@ public final class BedrockPlayerSkinCodec {
         return normalized;
     }
     private static int parseColor(String value) {
-        if (value == null || value.isBlank() || value.equals("0") || value.equalsIgnoreCase("#0")) return 0;
+        // Match Nukkit-MOT BinaryStream.skinColorToInt: short decimal values are
+        // accepted, six-digit RGB values gain opaque alpha, eight-digit values
+        // are already ARGB, and malformed optional cosmetic colors become zero.
+        if (value == null || value.isEmpty()) return 0;
         String hex = value.startsWith("#") ? value.substring(1) : value;
-        if (hex.length() == 6) hex = "ff" + hex;
-        if (hex.length() != 8) throw new IllegalArgumentException("Invalid skin color");
-        try { return (int) Long.parseLong(hex, 16); }
-        catch (NumberFormatException exception) { throw new IllegalArgumentException("Invalid skin color", exception); }
+        try {
+            if (hex.length() <= 4) {
+                return Integer.parseInt(value.startsWith("#") ? hex : value);
+            }
+            if (hex.length() == 6) {
+                return (int) (Long.parseLong(hex, 16) | 0xff000000L);
+            }
+            if (hex.length() == 8) {
+                return (int) Long.parseLong(hex, 16);
+            }
+        } catch (NumberFormatException ignored) {
+            // Cosmetic skin/tint color is optional; Nukkit-MOT falls back to zero.
+        }
+        return 0;
     }
     private static int dimension(JsonNode node, String field) {
         int value = integer(node, field, 0);

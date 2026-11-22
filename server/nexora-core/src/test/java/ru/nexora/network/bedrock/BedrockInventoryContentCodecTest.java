@@ -16,7 +16,7 @@ class BedrockInventoryContentCodecTest {
                 new PlayerInventory(), ignored -> fail("Empty inventory must not resolve item IDs"));
         byte[] payload = packet.payload();
         assertEquals(0x31, packet.packetId());
-        assertEquals(340, payload.length); // header 2 + 36*(NetId 1 + descriptor 8) + FullContainerName 6 + StorageItem 8
+        assertEquals(329, payload.length); // header 2 + 36*(NetId 1 + descriptor 8) + FullContainerName 2 + absent StorageItem flag 1
         assertEquals(0, Byte.toUnsignedInt(payload[0]));
         assertEquals(36, Byte.toUnsignedInt(payload[1]));
         for (int slot = 0; slot < 36; slot++) {
@@ -24,9 +24,8 @@ class BedrockInventoryContentCodecTest {
             assertArrayEquals(new byte[8], Arrays.copyOfRange(payload, offset, offset + 8));
         }
         assertEquals(12, Byte.toUnsignedInt(payload[326]));
-        assertEquals(1, Byte.toUnsignedInt(payload[327]));
-        assertArrayEquals(new byte[4], Arrays.copyOfRange(payload, 328, 332));
-        assertArrayEquals(new byte[8], Arrays.copyOfRange(payload, 332, 340));
+        assertEquals(0, Byte.toUnsignedInt(payload[327])); // dynamic ID absent
+        assertEquals(0, Byte.toUnsignedInt(payload[328])); // optional StorageItem absent
     }
 
     @Test
@@ -65,7 +64,7 @@ class BedrockInventoryContentCodecTest {
         BedrockPacket packet = BedrockInventoryContentCodec.createContainerInventory(
                 7, new ContainerInventory(), ignored -> fail("Empty container must not resolve item IDs"));
         byte[] payload = packet.payload();
-        assertEquals(255, payload.length);
+        assertEquals(248, payload.length);
         assertEquals(7, Byte.toUnsignedInt(payload[0]));
         assertEquals(27, Byte.toUnsignedInt(payload[1]));
         for (int slot = 0; slot < 27; slot++) {
@@ -74,7 +73,7 @@ class BedrockInventoryContentCodecTest {
         }
         assertEquals(7, Byte.toUnsignedInt(payload[245]));
         assertEquals(0, Byte.toUnsignedInt(payload[246]));
-        assertArrayEquals(new byte[8], Arrays.copyOfRange(payload, 247, 255));
+        assertEquals(0, Byte.toUnsignedInt(payload[247])); // optional StorageItem absent
     }
 
     @Test

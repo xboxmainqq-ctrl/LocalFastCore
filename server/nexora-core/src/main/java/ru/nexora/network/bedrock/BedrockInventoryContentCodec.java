@@ -11,7 +11,7 @@ import java.util.Objects;
  *
  * The caller must supply a complete protocol definition for every non-empty NEXORA item.
  * This codec deliberately does not guess Bedrock runtime item IDs, block runtime IDs, metadata or user data.
- * The disabled-manager ItemStackNetId is 0 for empty slots and 1 for non-empty slots.
+ * Each slot is written directly as a NetworkItemStackDescriptor; the optional stack net ID is absent.
  */
 public final class BedrockInventoryContentCodec {
     public static final int INVENTORY_CONTENT_PACKET_ID = 0x31;

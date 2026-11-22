@@ -100,7 +100,7 @@ class BedrockInventoryContentCodecTest {
     }
 
     @Test
-    void encodesPlayerUiCraftingGridWithCraftingInputContainerName() {
+    void encodesPlayerUiInventoryWithInventoryContainerName() {
         ContainerInventory ui = new ContainerInventory(BedrockInventoryContentCodec.PLAYER_UI_SIZE);
         ui.setSlot(28, new ItemStack("minecraft:oak_planks", 2, 64));
         BedrockPacket packet = BedrockInventoryContentCodec.createPlayerUiInventory(
@@ -117,7 +117,7 @@ class BedrockInventoryContentCodecTest {
                 5, 0, 2, 0, 0, 0,
                 (byte) 0xcf, (byte) 0x9a, (byte) 0xaf, (byte) 0xbd, 3, 0
         }, Arrays.copyOfRange(payload, 2 + 28 * 9 + 1, 2 + 28 * 9 + 13));
-        assertEquals(13, Byte.toUnsignedInt(payload[payload.length - 10])); // CRAFTING_INPUT
+        assertEquals(29, Byte.toUnsignedInt(payload[payload.length - 10])); // InventoryContainer
         assertEquals(0, Byte.toUnsignedInt(payload[payload.length - 9])); // no dynamic ID
         assertArrayEquals(new byte[8], Arrays.copyOfRange(payload, payload.length - 8, payload.length)); // empty Storage Item descriptor
     }

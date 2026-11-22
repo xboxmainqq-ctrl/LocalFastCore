@@ -79,6 +79,30 @@ class BedrockLevelChunkCodecTest {
     }
 
     @Test
+    void serializesBlocksInNegativeWorldSections() {
+        WorldChunk chunk = new WorldChunk(0, 0);
+        chunk.setBlock(1, -60, 2, ru.nexora.world.BlockType.BEDROCK);
+        BedrockPacket packet = BedrockLevelChunkCodec.createPacket(chunk);
+        Reader reader = new Reader(packet.payload());
+        reader.varInt32();
+        reader.varInt32();
+        reader.varInt32();
+        assertEquals(1, reader.varUInt32()); // only section Y=-4 is non-empty
+        reader.bool();
+        reader.varUInt32();
+        byte[] data = reader.byteArray();
+        Reader subChunks = new Reader(data);
+        assertEquals(9, subChunks.byteValue());
+        assertEquals(1, subChunks.byteValue());
+        assertEquals(0xfc, subChunks.byteValue()); // signed subchunk Y=-4
+        assertEquals(5, subChunks.byteValue()); // V2 packed runtime palette
+        subChunks.skip(256 * Integer.BYTES);
+        assertEquals(2, subChunks.varInt32());
+        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
+        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.BEDROCK), subChunks.varInt32());
+    }
+
+    @Test
     void emptyChunkSendsBiomePalettesForTheFullOverworldHeight() {
         BedrockPacket packet = BedrockLevelChunkCodec.createPacket(new WorldChunk(0, 0));
         Reader reader = new Reader(packet.payload());
@@ -86,13 +110,13 @@ class BedrockLevelChunkCodecTest {
         reader.varInt32();
         reader.varInt32();
         reader.varInt32();
-        assertEquals(4, reader.varUInt32());
+        assertEquals(0, reader.varUInt32());
         assertFalse(reader.bool()); // cache disabled
         assertEquals(0, reader.varUInt32()); // mandatory empty cache-metadata array
         byte[] data = reader.byteArray();
         reader.bool();
         assertTrue(reader.exhausted());
-        assertEquals(4 * (3 + 4) + 24 * 2 + 2, data.length);
+        assertEquals(24 * 2 + 2, data.length);
     }
 
     private static final class Reader {

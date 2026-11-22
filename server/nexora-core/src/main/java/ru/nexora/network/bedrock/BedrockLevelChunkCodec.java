@@ -43,10 +43,8 @@ public final class BedrockLevelChunkCodec {
         }
         chunkData.byteValue(0); // Border block count (empty)
 
-        // Block entities are a sequence of little-endian network NBT compounds.
-        // An empty sequence is encoded by a single TAG_End byte, not by EOF.
-        chunkData.byteValue(0); // TAG_End: no block entities
-
+        // Nukkit-MOT serializes block entities as concatenated little-endian
+        // network NBT roots; an empty collection contributes zero bytes.
         byte[] data = chunkData.toByteArray();
         Writer packet = new Writer();
         packet.varInt32(chunk.chunkX());

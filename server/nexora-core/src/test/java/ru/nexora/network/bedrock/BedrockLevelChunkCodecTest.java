@@ -19,7 +19,7 @@ class BedrockLevelChunkCodecTest {
         assertEquals(-2, reader.varInt32());
         assertEquals(3, reader.varInt32());
         assertEquals(0, reader.varInt32()); // Overworld
-        assertEquals(9, reader.varUInt32()); // four negative plus five positive sub-chunks
+        assertEquals(24, reader.varUInt32()); // full Overworld column: Y=-4 through Y=19
         assertFalse(reader.bool()); // cache disabled
         assertEquals(0, reader.varUInt32()); // mandatory empty cache-metadata array
 
@@ -61,15 +61,26 @@ class BedrockLevelChunkCodecTest {
 
         // Section Y=4 contains grass and air: a one-bit packed palette.
         assertEquals(9, subChunks.byteValue());
-        assertEquals(1, subChunks.byteValue());
+        assertEquals(2, subChunks.byteValue());
         assertEquals(4, subChunks.byteValue());
         assertEquals(3, subChunks.byteValue()); // V1, runtime IDs
         subChunks.skip(128 * Integer.BYTES);
         assertEquals(2, subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.GRASS_BLOCK), subChunks.varInt32());
-        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
+        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32()); // liquid layer
 
-        for (int section = 0; section < 9; section++) {
+        // Remaining sections through Y=19 are explicit empty two-layer subchunks.
+        for (int sectionY = 5; sectionY < 20; sectionY++) {
+            assertEquals(9, subChunks.byteValue());
+            assertEquals(2, subChunks.byteValue());
+            assertEquals(sectionY, subChunks.byteValue());
+            assertEquals(1, subChunks.byteValue());
+            assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
+            assertEquals(1, subChunks.byteValue());
+            assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
+        }
+
+        for (int section = 0; section < 24; section++) {
             assertEquals(1, subChunks.byteValue()); // singleton plains biome palette
             assertEquals(1, subChunks.varInt32());
         }
@@ -87,7 +98,7 @@ class BedrockLevelChunkCodecTest {
         reader.varInt32();
         reader.varInt32();
         reader.varInt32();
-        assertEquals(1, reader.varUInt32()); // only section Y=-4 is non-empty
+        assertEquals(24, reader.varUInt32()); // full Overworld column
         reader.bool();
         reader.varUInt32();
         byte[] data = reader.byteArray();
@@ -100,6 +111,8 @@ class BedrockLevelChunkCodecTest {
         assertEquals(2, subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.BEDROCK), subChunks.varInt32());
+        assertEquals(1, subChunks.byteValue()); // mandatory second liquid layer
+        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
     }
 
     @Test
@@ -110,13 +123,13 @@ class BedrockLevelChunkCodecTest {
         reader.varInt32();
         reader.varInt32();
         reader.varInt32();
-        assertEquals(0, reader.varUInt32());
+        assertEquals(24, reader.varUInt32());
         assertFalse(reader.bool()); // cache disabled
         assertEquals(0, reader.varUInt32()); // mandatory empty cache-metadata array
         byte[] data = reader.byteArray();
         reader.bool();
         assertTrue(reader.exhausted());
-        assertEquals(2, data.length);
+        assertEquals(24 * 5 + 2, data.length); // 24 two-layer empty subchunks, 24 biome palettes, border and NBT
     }
 
     private static final class Reader {

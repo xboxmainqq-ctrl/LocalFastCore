@@ -38,9 +38,8 @@ public final class BedrockInventoryContentCodec {
 
         for (var optionalStack : slots) {
             ItemStack stack = optionalStack.orElse(null);
-            // Protocol 2225 still requires the legacy ItemStackNetId varint when
-            // ItemStackNetManager is disabled: 0 for empty slots, 1 for non-empty.
-            out.varInt32(stack == null ? 0 : 1);
+            // InventoryContent uses NetworkItemStackDescriptor directly. Unlike NetItem
+            // packets, it has no separate ItemStackNetId prefix.
             if (stack == null) {
                 writeStack(out, 0, 0, 0, 0, new byte[0]);
             } else {
@@ -57,9 +56,9 @@ public final class BedrockInventoryContentCodec {
         // Combined hotbar/inventory is not a dynamic container: omit its optional dynamic ID.
         out.byteValue(12); // CombinedHotbarAndInventoryContainer
         out.byteValue(0);  // FullContainerName.dynamicId is absent
-        // InventoryContent.storageItem is optional. A false presence flag is the complete field;
-        // writing an empty NetworkItemStackDescriptor here shifts the packet tail and disconnects clients.
-        out.byteValue(0);  // StorageItem absent
+        // InventoryContent always ends with a NetworkItemStackDescriptor for storageItem.
+        // An empty item is encoded as the complete 8-byte air descriptor.
+        writeStack(out, 0, 0, 0, 0, new byte[0]);
         return new BedrockPacket(INVENTORY_CONTENT_PACKET_ID, 0, 0, out.toByteArray());
     }
 
@@ -85,9 +84,7 @@ public final class BedrockInventoryContentCodec {
         out.varUInt32(slots.size());
         for (var optionalStack : slots) {
             ItemStack stack = optionalStack.orElse(null);
-            // Protocol 2225 still requires the legacy ItemStackNetId varint when
-            // ItemStackNetManager is disabled: 0 for empty slots, 1 for non-empty.
-            out.varInt32(stack == null ? 0 : 1);
+            // InventoryContent uses NetworkItemStackDescriptor directly, without a NetItem prefix.
             if (stack == null) {
                 writeStack(out, 0, 0, 0, 0, new byte[0]);
             } else {
@@ -103,7 +100,7 @@ public final class BedrockInventoryContentCodec {
 
         out.byteValue(7); // LEVEL_ENTITY FullContainerName for ordinary block inventories
         out.byteValue(0); // dynamic ID is absent
-        out.byteValue(0); // optional StorageItem is absent
+        writeStack(out, 0, 0, 0, 0, new byte[0]); // required empty storageItem descriptor
         return new BedrockPacket(INVENTORY_CONTENT_PACKET_ID, 0, 0, out.toByteArray());
     }
 

@@ -2922,7 +2922,7 @@ class BedrockSessionManagerTest {
         monotonicClock.addAndGet(OutboundDrainBudget.DEFAULT_WINDOW_NANOS);
         manager.tickInitialChunkStreams();
         List<BedrockPacket> postInitializationPackets = new ArrayList<>();
-        for (int frameIndex = 16; frameIndex < outboundFrames.size(); frameIndex++) {
+        for (int frameIndex = 15; frameIndex < outboundFrames.size(); frameIndex++) {
             postInitializationPackets.addAll(decodeOutboundPackets(outboundFrames.get(frameIndex), true));
         }
         assertTrue(postInitializationPackets.stream().anyMatch(packet -> packet.packetId() == 0x2A),

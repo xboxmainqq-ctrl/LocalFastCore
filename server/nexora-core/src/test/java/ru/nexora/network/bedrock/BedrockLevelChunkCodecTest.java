@@ -36,7 +36,7 @@ class BedrockLevelChunkCodecTest {
 
         // Section Y=3 contains air, bedrock, stone and dirt: a two-bit packed palette.
         assertEquals(9, subChunks.byteValue());
-        assertEquals(1, subChunks.byteValue()); // Nukkit-MOT uses one storage layer here
+        assertEquals(2, subChunks.byteValue()); // Nukkit-MOT fresh LevelDB sections have two layers
         assertEquals(3, subChunks.byteValue());
         assertEquals(5, subChunks.byteValue()); // V2, runtime IDs
         subChunks.skip(256 * Integer.BYTES);
@@ -54,6 +54,8 @@ class BedrockLevelChunkCodecTest {
         subChunks.skip(128 * Integer.BYTES);
         assertEquals(2, subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.GRASS_BLOCK), subChunks.varInt32());
+        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
+        assertEquals(1, subChunks.byteValue()); // second layer: singleton air
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
 
         for (int section = 0; section < WorldChunk.SECTION_COUNT; section++) {
@@ -74,25 +76,22 @@ class BedrockLevelChunkCodecTest {
         reader.varInt32();
         reader.varInt32();
         assertEquals(0, reader.varInt32()); // Overworld dimension
-        assertEquals(4, reader.varUInt32()); // four negative sections; no positive section is populated
+        assertEquals(1, reader.varUInt32()); // only section Y=-4 is non-empty
         assertFalse(reader.bool());
         assertFalse(reader.bool());
         assertEquals(0, reader.varUInt32());
         byte[] data = reader.byteArray();
         Reader subChunks = new Reader(data);
         assertEquals(9, subChunks.byteValue());
-        assertEquals(1, subChunks.byteValue());
+        assertEquals(2, subChunks.byteValue());
         assertEquals(0xfc, subChunks.byteValue()); // signed subchunk Y=-4
         assertEquals(3, subChunks.byteValue()); // V1 packed runtime palette
         subChunks.skip(128 * Integer.BYTES);
         assertEquals(2, subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.BEDROCK), subChunks.varInt32());
-        for (int sectionY = -3; sectionY < 0; sectionY++) {
-            assertEquals(9, subChunks.byteValue());
-            assertEquals(0, subChunks.byteValue());
-            assertEquals(sectionY & 0xff, subChunks.byteValue());
-        }
+        assertEquals(1, subChunks.byteValue()); // second layer: singleton air
+        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
         for (int section = 0; section < WorldChunk.SECTION_COUNT; section++) {
             assertEquals(1, subChunks.byteValue());
             assertEquals(1, subChunks.varInt32());
@@ -109,7 +108,7 @@ class BedrockLevelChunkCodecTest {
         reader.varInt32();
         reader.varInt32();
         assertEquals(0, reader.varInt32()); // Overworld dimension
-        assertEquals(4, reader.varUInt32()); // Nukkit-MOT sends only the four negative empty sections
+        assertEquals(0, reader.varUInt32()); // empty LevelDB chunk has no block subchunks
         assertFalse(reader.bool());
         assertFalse(reader.bool());
         assertEquals(0, reader.varUInt32());
@@ -118,18 +117,13 @@ class BedrockLevelChunkCodecTest {
         assertTrue(reader.exhausted());
 
         Reader chunkData = new Reader(data);
-        for (int sectionY = -4; sectionY < 0; sectionY++) {
-            assertEquals(9, chunkData.byteValue());
-            assertEquals(0, chunkData.byteValue());
-            assertEquals(sectionY & 0xff, chunkData.byteValue());
-        }
         for (int section = 0; section < WorldChunk.SECTION_COUNT; section++) {
             assertEquals(1, chunkData.byteValue());
             assertEquals(1, chunkData.varInt32());
         }
         assertEquals(0, chunkData.byteValue()); // no border blocks; empty NBT collection is zero bytes
         assertTrue(chunkData.exhausted());
-        assertEquals(4 * 3 + WorldChunk.SECTION_COUNT * 2 + 1, data.length);
+        assertEquals(WorldChunk.SECTION_COUNT * 2 + 1, data.length);
     }
 
     private static final class Reader {

@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockLevelChunkCodecTest {
     @Test
-    void encodesNukkitMotProtocol2225ChunkWithOnlyRequiredBlockSubchunksAndFullBiomeColumn() {
+    void encodesNukkitMotLevelDbChunkWithSectionOffsetFourAndFullBiomeColumn() {
         WorldChunk chunk = new WorldChunk(-2, 3);
         new FlatWorldGenerator().generate(chunk, 1L);
 
@@ -45,10 +45,12 @@ class BedrockLevelChunkCodecTest {
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.BEDROCK), subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.STONE), subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.DIRT), subChunks.varInt32());
+        assertEquals(1, subChunks.byteValue()); // second layer: singleton air
+        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
 
         // Section Y=4 contains grass and air: a one-bit packed palette.
         assertEquals(9, subChunks.byteValue());
-        assertEquals(1, subChunks.byteValue());
+        assertEquals(2, subChunks.byteValue());
         assertEquals(4, subChunks.byteValue());
         assertEquals(3, subChunks.byteValue()); // V1, runtime IDs
         subChunks.skip(128 * Integer.BYTES);
@@ -68,7 +70,7 @@ class BedrockLevelChunkCodecTest {
     }
 
     @Test
-    void serializesBlocksInNegativeWorldSectionsWithOneStorageLayer() {
+    void serializesBlocksInNegativeWorldSectionsWithTwoStorageLayers() {
         WorldChunk chunk = new WorldChunk(0, 0);
         chunk.setBlock(1, -60, 2, ru.nexora.world.BlockType.BEDROCK);
         BedrockPacket packet = BedrockLevelChunkCodec.createPacket(chunk);
@@ -101,7 +103,7 @@ class BedrockLevelChunkCodecTest {
     }
 
     @Test
-    void emptyChunkMatchesNukkitMotFourEmptySubchunksAndFullBiomeColumn() {
+    void emptyChunkMatchesNukkitMotLevelDbEmptyChunkAndFullBiomeColumn() {
         BedrockPacket packet = BedrockLevelChunkCodec.createPacket(new WorldChunk(0, 0));
         Reader reader = new Reader(packet.payload());
 

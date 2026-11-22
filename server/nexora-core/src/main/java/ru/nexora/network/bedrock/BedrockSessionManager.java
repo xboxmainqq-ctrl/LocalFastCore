@@ -6718,6 +6718,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (!state.clientInitialized) {
             System.out.printf("NEXORA: initial chunk view published for %s: center=(%d,%d), chunks=%d%n",
                     networkId, queue.centerX(), queue.centerZ(), state.sentChunkKeys.size());
+            // Bedrock's spawn handshake is two-sided: after the complete initial chunk
+            // view is available, the server sends PlayStatus.PLAYER_SPAWN (3); only then
+            // does the client send SetLocalPlayerAsInitialized. Sending status 3 from
+            // handleClientInitialized deadlocks the first join because the client is
+            // waiting for this status before it can acknowledge initialization.
+            if (!state.playerSpawnStatusSent) {
+                sendPacket(networkId, BedrockBatchCodec.createPlayStatus(3), true);
+                state.playerSpawnStatusSent = true;
+                System.out.printf("NEXORA: sent PlayStatus PLAYER_SPAWN to %s after initial chunks%n", networkId);
+            }
         }
         state.chunkStreamingQueue = null;
         state.pendingChunkLoads.clear();
@@ -7087,7 +7097,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         System.out.printf("NEXORA: SetLocalPlayerAsInitialized accepted from %s (runtimeId=%d); admitting gameplay.%n",
                 message.networkId(), runtimeEntityId);
         advertisePlayerList(message.networkId(), state);
-        sendPacket(message.networkId(), BedrockBatchCodec.createPlayStatus(3), true);
         sendInitialPlayerInventory(message.networkId(), state);
         sendExistingLivingActors(message.networkId());
         if (state.dead) handleDeath(message.networkId(), state, "death.attack.generic");
@@ -8043,6 +8052,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private volatile boolean gameStarted;
         private boolean initialLoadingScreenStarted;
         private boolean initialLoadingScreenEnded;
+        private boolean playerSpawnStatusSent;
         private volatile boolean clientInitialized;
         private boolean positionInitialized;
         private float positionX;

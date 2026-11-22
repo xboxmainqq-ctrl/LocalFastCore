@@ -52,7 +52,7 @@ class BedrockInventoryContentCodecTest {
                 0,       // has StackNetId = false
                 0,       // block runtime ID
                 0        // empty user data buffer
-        }, Arrays.copyOfRange(payload, 2, 11));
+        }, Arrays.copyOfRange(payload, 3, 11));
         assertArrayEquals(new byte[3], Arrays.copyOfRange(payload, 11, 14));
     }
 
@@ -154,6 +154,7 @@ class BedrockInventoryContentCodecTest {
         assertEquals(0x32, packet.packetId());
         assertArrayEquals(new byte[] {
                 0, 0, 0, 0, // container, slot, no optional FullContainerName, no StorageItem
+                0, // ItemStackNetId absent
                 0, 0 // empty item descriptor: zero item ID only
         }, packet.payload());
     }

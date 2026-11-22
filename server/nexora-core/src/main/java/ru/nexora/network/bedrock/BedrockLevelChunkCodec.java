@@ -45,9 +45,6 @@ public final class BedrockLevelChunkCodec {
         packet.varUInt32(subChunkCount);
         // Request-mode limit is absent in ordinary full-column mode.
         packet.bool(false); // client chunk cache disabled
-        // Cache metadata is an array field and MUST still be present when caching is disabled.
-        // Its empty array is encoded as a zero-length VarUInt32 before Serialized Chunk Data.
-        packet.varUInt32(0);
         packet.byteArray(data);
         packet.bool(false); // clientBiomeUpdate
 

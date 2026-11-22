@@ -11,8 +11,9 @@ import java.util.Objects;
  *
  * The caller must supply a complete protocol definition for every non-empty NEXORA item.
  * This codec deliberately does not guess Bedrock runtime item IDs, block runtime IDs, metadata or user data.
- * Each slot is encoded as exactly one NetworkItemStackDescriptor. With ItemStackNetManager disabled,
- * the descriptor's hasNetId flag is false; there is no separate ItemStackNetId prefix.
+ * Each slot carries the required legacy ItemStackNetId varint (0 for empty, 1 for non-empty)
+ * followed by one NetworkItemStackDescriptor. With ItemStackNetManager disabled, the descriptor's
+ * own hasNetId flag is false.
  */
 public final class BedrockInventoryContentCodec {
     public static final int INVENTORY_CONTENT_PACKET_ID = 0x31;
@@ -37,6 +38,9 @@ public final class BedrockInventoryContentCodec {
 
         for (var optionalStack : slots) {
             ItemStack stack = optionalStack.orElse(null);
+            // Protocol 2225 still requires the legacy ItemStackNetId varint when
+            // ItemStackNetManager is disabled: 0 for empty slots, 1 for non-empty.
+            out.varInt32(stack == null ? 0 : 1);
             if (stack == null) {
                 writeStack(out, 0, 0, 0, 0, new byte[0]);
             } else {
@@ -80,6 +84,9 @@ public final class BedrockInventoryContentCodec {
         out.varUInt32(slots.size());
         for (var optionalStack : slots) {
             ItemStack stack = optionalStack.orElse(null);
+            // Protocol 2225 still requires the legacy ItemStackNetId varint when
+            // ItemStackNetManager is disabled: 0 for empty slots, 1 for non-empty.
+            out.varInt32(stack == null ? 0 : 1);
             if (stack == null) {
                 writeStack(out, 0, 0, 0, 0, new byte[0]);
             } else {
@@ -116,6 +123,8 @@ public final class BedrockInventoryContentCodec {
         out.byteValue(0);
         out.byteValue(0);
         ItemStack stack = optionalStack.orElse(null);
+        // InventorySlot has the same disabled-net-manager ItemStackNetId prefix.
+        out.varInt32(stack == null ? 0 : 1);
         if (stack == null) {
             writeStack(out, 0, 0, 0, 0, new byte[0]);
         } else {

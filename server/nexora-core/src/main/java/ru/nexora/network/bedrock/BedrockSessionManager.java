@@ -5511,7 +5511,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
     private void handlePlayerAuthInput(String networkId, SessionState state, BedrockPacket packet) {
         if (!state.clientInitialized) {
-            throw new SecurityException("PlayerAuthInput arrived before client initialization");
+            // Bedrock clients can emit their first movement input while the spawn
+            // acknowledgement is still in flight over the reliable channel. Do not
+            // treat this transient ordering as a protocol violation: discard input
+            // until SetLocalPlayerAsInitialized admits gameplay.
+            if (!state.preInitializationInputObserved) {
+                state.preInitializationInputObserved = true;
+                System.out.printf("NEXORA: ignored early PlayerAuthInput from %s while awaiting SetLocalPlayerAsInitialized%n",
+                        networkId);
+            }
+            return;
         }
         if (state.dead) return;
         BedrockPlayerAuthInputCodec.PlayerInput input = BedrockPlayerAuthInputCodec.decode(packet);
@@ -8065,6 +8074,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private boolean initialLoadingScreenEnded;
         private boolean playerSpawnStatusSent;
         private volatile boolean clientInitialized;
+        private boolean preInitializationInputObserved;
         private boolean positionInitialized;
         private float positionX;
         private float positionY;

@@ -30,21 +30,13 @@ class BedrockLevelChunkCodecTest {
         Reader subChunks = new Reader(data);
         for (int sectionY = -4; sectionY < 0; sectionY++) {
             assertEquals(9, subChunks.byteValue());
-            assertEquals(2, subChunks.byteValue());
+            assertEquals(0, subChunks.byteValue()); // Nukkit-MOT version-9 empty subchunk has zero layers
             assertEquals(sectionY & 0xff, subChunks.byteValue());
-            assertEquals(1, subChunks.byteValue());
-            assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
-            assertEquals(1, subChunks.byteValue());
-            assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
         }
         for (int sectionY = 0; sectionY < 3; sectionY++) {
             assertEquals(9, subChunks.byteValue());
-            assertEquals(2, subChunks.byteValue()); // Empty intermediate section has both vanilla layers
+            assertEquals(0, subChunks.byteValue()); // Nukkit-MOT empty section: zero storage layers
             assertEquals(sectionY, subChunks.byteValue());
-            assertEquals(1, subChunks.byteValue());
-            assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
-            assertEquals(1, subChunks.byteValue());
-            assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
         }
 
         // Section Y=3 contains air, bedrock, stone and dirt: a two-bit packed palette.
@@ -73,15 +65,11 @@ class BedrockLevelChunkCodecTest {
         assertEquals(1, subChunks.byteValue()); // singleton liquid storage header
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
 
-        // Remaining sections through Y=19 are explicit empty two-layer subchunks.
+        // Remaining sections through Y=19 use Nukkit-MOT's zero-layer empty encoding.
         for (int sectionY = 5; sectionY < 20; sectionY++) {
             assertEquals(9, subChunks.byteValue());
-            assertEquals(2, subChunks.byteValue());
+            assertEquals(0, subChunks.byteValue());
             assertEquals(sectionY, subChunks.byteValue());
-            assertEquals(1, subChunks.byteValue());
-            assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
-            assertEquals(1, subChunks.byteValue());
-            assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
         }
 
         for (int section = 0; section < 24; section++) {
@@ -135,7 +123,7 @@ class BedrockLevelChunkCodecTest {
         byte[] data = reader.byteArray();
         reader.bool();
         assertTrue(reader.exhausted());
-        assertEquals(24 * 15 + 24 * 2 + 2, data.length); // subchunks, biome palettes, border count, empty NBT TAG_End
+        assertEquals(24 * 3 + 24 * 2 + 2, data.length); // zero-layer subchunks, biome palettes, border count, empty NBT TAG_End
     }
 
     private static final class Reader {

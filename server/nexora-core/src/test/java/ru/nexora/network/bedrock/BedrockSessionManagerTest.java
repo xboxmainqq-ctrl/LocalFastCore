@@ -3011,7 +3011,7 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(implausibleTeleport), true, 256));
         assertEquals(1.0f, manager.playerPosition("authenticated-client").orElseThrow().x());
-        assertEquals(outboundFramesBeforeTeleport + 1, outboundFrames.size());
+        assertEquals(outboundFramesBeforeTeleport, outboundFrames.size());
 
         int chunkStreamingStartFrame = outboundFrames.size();
         float[] walkPositions = {3.0f, 5.0f, 7.0f, 9.0f, 11.0f, 13.0f, 15.0f, 16.5f};

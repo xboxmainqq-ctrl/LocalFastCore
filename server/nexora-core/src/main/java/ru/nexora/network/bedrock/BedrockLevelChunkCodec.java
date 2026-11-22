@@ -85,8 +85,10 @@ public final class BedrockLevelChunkCodec {
 
     private static void writeEmptySubChunk(Writer out, int sectionY) {
         out.byteValue(9); // SubChunk version 9
-        out.byteValue(0); // No block layers
+        out.byteValue(2); // Vanilla empty sections carry block and liquid storage layers
         out.byteValue(sectionY);
+        writeAirStorage(out);
+        writeAirStorage(out);
     }
 
     private static void writeSubChunk(Writer out, int sectionY, byte[] raw) {
@@ -94,8 +96,9 @@ public final class BedrockLevelChunkCodec {
         out.byteValue(1); // One block-storage layer
         out.byteValue(sectionY);
         if (raw == null || isEmpty(raw)) {
-            out.byteValue(1); // V0 singleton palette, runtime IDs
-            out.varInt32(BedrockBlockRuntimeIds.forBlock(BlockType.AIR));
+            out.byteValue(2); // Empty vanilla section: block and liquid layers
+            writeAirStorage(out);
+            writeAirStorage(out);
             return;
         }
 
@@ -118,6 +121,11 @@ public final class BedrockLevelChunkCodec {
             indexes[i] = paletteIndex;
         }
         writePalette(out, indexes, palette, paletteSize);
+    }
+
+    private static void writeAirStorage(Writer out) {
+        out.byteValue(1); // V0 singleton palette, runtime IDs
+        out.varInt32(BedrockBlockRuntimeIds.forBlock(BlockType.AIR));
     }
 
     private static boolean isEmpty(byte[] raw) {

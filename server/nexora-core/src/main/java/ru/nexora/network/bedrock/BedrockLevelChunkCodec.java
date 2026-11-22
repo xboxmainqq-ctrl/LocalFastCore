@@ -47,10 +47,11 @@ public final class BedrockLevelChunkCodec {
         packet.varInt32(chunk.chunkZ());
         packet.varInt32(0); // Dimension ID: Overworld
         packet.varUInt32(subChunkCount);
-        // A non-negative SubChunksCount is written directly. The request limit only
-        // exists for the -1/-2 request sentinels; it is not preceded by a presence boolean.
-        // Cache metadata is serialized only when cacheEnabled is true.
+        // Nukkit's LevelChunkPacket encoder writes the request-mode presence flag
+        // after every non-negative subchunk count, even when no limit follows.
+        packet.bool(false); // requestSubChunks=false; no request limit follows
         packet.bool(false); // client chunk cache disabled
+        packet.varUInt32(0); // empty blobIds array (Nukkit writes the array length unconditionally)
         packet.byteArray(data);
         packet.bool(false); // clientBiomeUpdate
 

@@ -24,6 +24,7 @@ class BedrockPlayerListCodecTest {
 
         ByteBuffer in = ByteBuffer.wrap(packet.payload()).order(ByteOrder.LITTLE_ENDIAN);
         assertEquals(1, readVarUInt32(in));
+        assertEquals(1, readVarUInt32(in)); // Nukkit-MOT entry action count
         assertEquals(BedrockPlayerListCodec.ACTION_ADD, Byte.toUnsignedInt(in.get()));
         assertEquals(uuid.getMostSignificantBits(), in.getLong());
         assertEquals(uuid.getLeastSignificantBits(), in.getLong());
@@ -49,6 +50,7 @@ class BedrockPlayerListCodecTest {
 
         ByteBuffer in = ByteBuffer.wrap(packet.payload()).order(ByteOrder.LITTLE_ENDIAN);
         assertEquals(1, readVarUInt32(in));
+        assertEquals(0, readVarUInt32(in)); // Nukkit-MOT remove entry action count
         assertEquals(BedrockPlayerListCodec.ACTION_REMOVE, Byte.toUnsignedInt(in.get()));
         assertEquals(uuid.getMostSignificantBits(), in.getLong());
         assertEquals(uuid.getLeastSignificantBits(), in.getLong());

@@ -3112,7 +3112,7 @@ class BedrockSessionManagerTest {
 
         // Transfer one item from the main inventory into the offhand container.
         BedrockPacket offhandTransfer = new BedrockPacket(0x1e, 0, 0,
-                transferToOffhandPayload(257, 1, 1));
+                transferToOffhandPayload(888, 1, 1));
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(offhandTransfer), true, 256));
         assertEquals(3, manager.playerInventory("authenticated-client").orElseThrow()

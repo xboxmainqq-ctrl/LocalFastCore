@@ -30,13 +30,13 @@ class BedrockInventoryContentCodecTest {
     }
 
     @Test
-    void encodesNonEmptyItemAsDescriptorImmediatelyAfterSlotCount() {
+    void encodesNonEmptyItemWithZigZagEncodedNetIdBeforeDescriptor() {
         PlayerInventory inventory = new PlayerInventory();
         inventory.setSlot(0, new ItemStack("nexora:arcane_shard", 3, 64));
         BedrockPacket packet = BedrockInventoryContentCodec.createPlayerInventory(
                 inventory, ignored -> new BedrockInventoryContentCodec.ItemDefinition(257, 0, 0, new byte[0]));
         byte[] payload = packet.payload();
-        assertEquals(1, Byte.toUnsignedInt(payload[2])); // ItemStackNetId for non-empty item
+        assertEquals(2, Byte.toUnsignedInt(payload[2])); // ZigZag VarInt32 encoding of ItemStackNetId 1
         assertArrayEquals(new byte[] {1, 1, 3, 0, 0, 0, 0, 0},
                 Arrays.copyOfRange(payload, 3, 11));
         assertEquals(0, Byte.toUnsignedInt(payload[11])); // ItemStackNetId for empty slot
@@ -84,7 +84,7 @@ class BedrockInventoryContentCodecTest {
         BedrockPacket packet = BedrockInventoryContentCodec.createPlayerInventorySlot(
                 inventory, 5, ignored -> new BedrockInventoryContentCodec.ItemDefinition(257, 0, 0, new byte[0]));
         assertEquals(0x32, packet.packetId());
-        assertArrayEquals(new byte[] {0, 5, 0, 0, 1, 1, 1, 3, 0, 0, 0, 0, 0}, packet.payload());
+        assertArrayEquals(new byte[] {0, 5, 0, 0, 2, 1, 1, 3, 0, 0, 0, 0, 0}, packet.payload());
     }
 
     @Test

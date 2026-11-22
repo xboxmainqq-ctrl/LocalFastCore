@@ -56,7 +56,7 @@ public final class BedrockInventoryContentCodec {
         out.byteValue(12); // HOTBAR_AND_INVENTORY
         out.byteValue(1);  // dynamic ID is present, including the player container ID 0
         out.int32(PLAYER_INVENTORY_CONTAINER_ID);
-        writeEmptyStorageItem(out);
+        out.byteValue(0); // Storage Item is absent (optional field)
         return new BedrockPacket(INVENTORY_CONTENT_PACKET_ID, 0, 0, out.toByteArray());
     }
 
@@ -95,7 +95,7 @@ public final class BedrockInventoryContentCodec {
         }
         out.byteValue(CRAFTING_INPUT_SLOT_TYPE);
         out.byteValue(0); // dynamic ID is absent
-        writeEmptyStorageItem(out);
+        out.byteValue(0); // Storage Item is absent (optional field)
         return new BedrockPacket(INVENTORY_CONTENT_PACKET_ID, 0, 0, out.toByteArray());
     }
 
@@ -137,7 +137,7 @@ public final class BedrockInventoryContentCodec {
 
         out.byteValue(7); // LEVEL_ENTITY FullContainerName for ordinary block inventories
         out.byteValue(0); // dynamic ID is absent
-        writeEmptyStorageItem(out);
+        out.byteValue(0); // Storage Item is absent (optional field)
         return new BedrockPacket(INVENTORY_CONTENT_PACKET_ID, 0, 0, out.toByteArray());
     }
 
@@ -171,10 +171,6 @@ public final class BedrockInventoryContentCodec {
                     definition.auxValue(), definition.blockRuntimeId(), BedrockItemStackUserDataCodec.encode(stack, definition.userData()));
         }
         return new BedrockPacket(0x32, 0, 0, out.toByteArray());
-    }
-
-    private static void writeEmptyStorageItem(Writer out) {
-        writeStack(out, 0, 0, 0, 0, new byte[0]);
     }
 
     private static void writeStack(

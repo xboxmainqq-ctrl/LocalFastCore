@@ -158,6 +158,7 @@ public final class BedrockInventoryContentCodec {
         out.byteValue(0);
         out.byteValue(0);
         ItemStack stack = optionalStack.orElse(null);
+        out.varInt32(stack == null ? 0 : 1); // ItemStackNetId while ItemStackNetManager is disabled
         if (stack == null) {
             writeStack(out, 0, 0, 0, 0, new byte[0]);
         } else {

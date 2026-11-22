@@ -90,15 +90,13 @@ public final class BedrockLevelChunkCodec {
     }
 
     private static void writeSubChunk(Writer out, int sectionY, byte[] raw) {
-        out.byteValue(9); // SubChunk version 9
-        out.byteValue(1); // One block-storage layer
-        out.byteValue(sectionY);
         if (raw == null || isEmpty(raw)) {
-            out.byteValue(2); // Empty vanilla section: block and liquid layers
-            writeAirStorage(out);
-            writeAirStorage(out);
+            writeEmptySubChunk(out, sectionY);
             return;
         }
+        out.byteValue(9); // SubChunk version 9
+        out.byteValue(1); // One block-storage layer (no waterlogged blocks in this world model)
+        out.byteValue(sectionY);
 
         int[] paletteIndexByBlockId = new int[BLOCK_TYPE_COUNT];
         int[] palette = new int[paletteIndexByBlockId.length];

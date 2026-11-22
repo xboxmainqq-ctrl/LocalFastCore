@@ -2907,11 +2907,11 @@ class BedrockSessionManagerTest {
                 .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
                 .count());
 
-        // The server must not announce the player as spawned until the client confirms StartGame.
+        // PLAYER_SPAWN is sent after the initial chunk batch, before the client confirms initialization.
         BedrockPacket initialized = new BedrockPacket(0x71, 0, 0, new byte[] {1});
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256));
-        assertEquals(18, outboundFrames.size());
+        assertEquals(17, outboundFrames.size());
         assertEquals(0x31, decodeOutbound(outboundFrames.get(16), true).packetId());
         List<BedrockPacket> initialInventoryBatch = BedrockBatchCodec.decode(
                 reassemble(List.of(outboundFrames.get(16))), true);

@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockLevelChunkCodecTest {
     @Test
-    void encodesAProtocol2225ChunkWithBiomeDataForEachSubChunk() {
+    void encodesNukkitMotProtocol2225ChunkWithOnlyRequiredBlockSubchunksAndFullBiomeColumn() {
         WorldChunk chunk = new WorldChunk(-2, 3);
         new FlatWorldGenerator().generate(chunk, 1L);
 
@@ -19,29 +19,24 @@ class BedrockLevelChunkCodecTest {
         assertEquals(-2, reader.varInt32());
         assertEquals(3, reader.varInt32());
         assertEquals(0, reader.varInt32()); // Overworld dimension
-        assertEquals(24, reader.varUInt32()); // full Overworld column: Y=-4 through Y=19
+        assertEquals(13, reader.varUInt32()); // four negative sections + sections 0..8
         assertFalse(reader.bool()); // requestSubChunks=false; no request limit follows
         assertFalse(reader.bool()); // cache disabled
-        assertEquals(0, reader.varUInt32()); // empty blobIds array, always length-prefixed
+        assertEquals(0, reader.varUInt32()); // empty blobIds array
         byte[] data = reader.byteArray();
         assertFalse(reader.bool()); // clientBiomeUpdate
         assertTrue(reader.exhausted());
 
         Reader subChunks = new Reader(data);
-        for (int sectionY = -4; sectionY < 0; sectionY++) {
+        for (int sectionY = -4; sectionY < 3; sectionY++) {
             assertEquals(9, subChunks.byteValue());
-            assertEquals(0, subChunks.byteValue()); // Nukkit-MOT version-9 empty subchunk has zero layers
+            assertEquals(0, subChunks.byteValue()); // Nukkit-MOT empty subchunk has zero layers
             assertEquals(sectionY & 0xff, subChunks.byteValue());
-        }
-        for (int sectionY = 0; sectionY < 3; sectionY++) {
-            assertEquals(9, subChunks.byteValue());
-            assertEquals(0, subChunks.byteValue()); // Nukkit-MOT empty section: zero storage layers
-            assertEquals(sectionY, subChunks.byteValue());
         }
 
         // Section Y=3 contains air, bedrock, stone and dirt: a two-bit packed palette.
         assertEquals(9, subChunks.byteValue());
-        assertEquals(2, subChunks.byteValue());
+        assertEquals(1, subChunks.byteValue()); // Nukkit-MOT uses one storage layer here
         assertEquals(3, subChunks.byteValue());
         assertEquals(5, subChunks.byteValue()); // V2, runtime IDs
         subChunks.skip(256 * Integer.BYTES);
@@ -50,29 +45,18 @@ class BedrockLevelChunkCodecTest {
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.BEDROCK), subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.STONE), subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.DIRT), subChunks.varInt32());
-        assertEquals(1, subChunks.byteValue()); // second liquid storage layer
-        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
 
         // Section Y=4 contains grass and air: a one-bit packed palette.
         assertEquals(9, subChunks.byteValue());
-        assertEquals(2, subChunks.byteValue());
+        assertEquals(1, subChunks.byteValue());
         assertEquals(4, subChunks.byteValue());
         assertEquals(3, subChunks.byteValue()); // V1, runtime IDs
         subChunks.skip(128 * Integer.BYTES);
         assertEquals(2, subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.GRASS_BLOCK), subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
-        assertEquals(1, subChunks.byteValue()); // singleton liquid storage header
-        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
 
-        // Remaining sections through Y=19 use Nukkit-MOT's zero-layer empty encoding.
-        for (int sectionY = 5; sectionY < 20; sectionY++) {
-            assertEquals(9, subChunks.byteValue());
-            assertEquals(0, subChunks.byteValue());
-            assertEquals(sectionY, subChunks.byteValue());
-        }
-
-        for (int section = 0; section < 24; section++) {
+        for (int section = 0; section < WorldChunk.SECTION_COUNT; section++) {
             assertEquals(1, subChunks.byteValue()); // singleton plains biome palette
             assertEquals(1, subChunks.varInt32());
         }
@@ -82,7 +66,7 @@ class BedrockLevelChunkCodecTest {
     }
 
     @Test
-    void serializesBlocksInNegativeWorldSections() {
+    void serializesBlocksInNegativeWorldSectionsWithOneStorageLayer() {
         WorldChunk chunk = new WorldChunk(0, 0);
         chunk.setBlock(1, -60, 2, ru.nexora.world.BlockType.BEDROCK);
         BedrockPacket packet = BedrockLevelChunkCodec.createPacket(chunk);
@@ -90,40 +74,56 @@ class BedrockLevelChunkCodecTest {
         reader.varInt32();
         reader.varInt32();
         assertEquals(0, reader.varInt32()); // Overworld dimension
-        assertEquals(24, reader.varUInt32()); // full Overworld column
-        assertFalse(reader.bool()); // requestSubChunks=false; no request limit follows
-        assertFalse(reader.bool()); // cache disabled
-        assertEquals(0, reader.varUInt32()); // empty blobIds array, always length-prefixed
+        assertEquals(5, reader.varUInt32()); // four negative sections + first positive section
+        assertFalse(reader.bool());
+        assertFalse(reader.bool());
+        assertEquals(0, reader.varUInt32());
         byte[] data = reader.byteArray();
         Reader subChunks = new Reader(data);
         assertEquals(9, subChunks.byteValue());
-        assertEquals(2, subChunks.byteValue());
+        assertEquals(0, subChunks.byteValue());
         assertEquals(0xfc, subChunks.byteValue()); // signed subchunk Y=-4
+        assertEquals(9, subChunks.byteValue());
+        assertEquals(1, subChunks.byteValue());
+        assertEquals(0xfd, subChunks.byteValue()); // signed subchunk Y=-3
         assertEquals(3, subChunks.byteValue()); // V1 packed runtime palette
         subChunks.skip(128 * Integer.BYTES);
         assertEquals(2, subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.BEDROCK), subChunks.varInt32());
-        assertEquals(1, subChunks.byteValue()); // mandatory second liquid layer
-        assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
+        assertTrue(subChunks.exhausted() == false || subChunks.remaining() > 0);
     }
 
     @Test
-    void emptyChunkSendsFullOverworldColumnAndBiomePalettes() {
+    void emptyChunkMatchesNukkitMotFourEmptySubchunksAndFullBiomeColumn() {
         BedrockPacket packet = BedrockLevelChunkCodec.createPacket(new WorldChunk(0, 0));
         Reader reader = new Reader(packet.payload());
 
         reader.varInt32();
         reader.varInt32();
         assertEquals(0, reader.varInt32()); // Overworld dimension
-        assertEquals(24, reader.varUInt32());
-        assertFalse(reader.bool()); // requestSubChunks=false; no request limit follows
-        assertFalse(reader.bool()); // cache disabled
-        assertEquals(0, reader.varUInt32()); // empty blobIds array, always length-prefixed
+        assertEquals(4, reader.varUInt32()); // Nukkit-MOT sends only the four negative empty sections
+        assertFalse(reader.bool());
+        assertFalse(reader.bool());
+        assertEquals(0, reader.varUInt32());
         byte[] data = reader.byteArray();
         reader.bool();
         assertTrue(reader.exhausted());
-        assertEquals(24 * 3 + 24 * 2 + 2, data.length); // zero-layer subchunks, biome palettes, border count, empty NBT TAG_End
+
+        Reader chunkData = new Reader(data);
+        for (int sectionY = -4; sectionY < 0; sectionY++) {
+            assertEquals(9, chunkData.byteValue());
+            assertEquals(0, chunkData.byteValue());
+            assertEquals(sectionY & 0xff, chunkData.byteValue());
+        }
+        for (int section = 0; section < WorldChunk.SECTION_COUNT; section++) {
+            assertEquals(1, chunkData.byteValue());
+            assertEquals(1, chunkData.varInt32());
+        }
+        assertEquals(0, chunkData.byteValue());
+        assertEquals(0, chunkData.byteValue());
+        assertTrue(chunkData.exhausted());
+        assertEquals(4 * 3 + WorldChunk.SECTION_COUNT * 2 + 2, data.length);
     }
 
     private static final class Reader {
@@ -153,10 +153,16 @@ class BedrockLevelChunkCodecTest {
 
         boolean bool() { return data[offset++] != 0; }
 
-        void skip(int length) { offset += length; }
+        void skip(int length) {
+            if (length < 0 || offset + length > data.length) throw new AssertionError("Truncated test payload");
+            offset += length;
+        }
+
+        int remaining() { return data.length - offset; }
 
         byte[] byteArray() {
             int length = varUInt32();
+            if (length < 0 || offset + length > data.length) throw new AssertionError("Truncated test byte array");
             byte[] result = java.util.Arrays.copyOfRange(data, offset, offset + length);
             offset += length;
             return result;

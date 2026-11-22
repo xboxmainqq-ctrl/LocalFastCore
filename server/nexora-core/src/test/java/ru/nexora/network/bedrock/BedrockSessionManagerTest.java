@@ -2803,11 +2803,11 @@ class BedrockSessionManagerTest {
         List<BedrockItemRegistry.Entry> itemEntries = new ArrayList<>(
                 BedrockVanillaItemCatalog.createRegistry().entries());
         itemEntries.add(new BedrockItemRegistry.Entry("nexora:arcane_shard",
-                new BedrockInventoryContentCodec.ItemDefinition(257, 0, 0, new byte[0])));
+                new BedrockInventoryContentCodec.ItemDefinition(888, 0, 0, new byte[0])));
         itemEntries.add(new BedrockItemRegistry.Entry("nexora:ember_staff",
-                new BedrockInventoryContentCodec.ItemDefinition(258, 0, 0, new byte[0])));
+                new BedrockInventoryContentCodec.ItemDefinition(889, 0, 0, new byte[0])));
         itemEntries.add(new BedrockItemRegistry.Entry("nexora:luck_talisman",
-                new BedrockInventoryContentCodec.ItemDefinition(259, 0, 0, new byte[0])));
+                new BedrockInventoryContentCodec.ItemDefinition(890, 0, 0, new byte[0])));
         manager.setItemRegistry(new BedrockItemRegistry(itemEntries));
         manager.setArmorSlotRegistry(ru.nexora.inventory.VanillaArmorSlotCatalog.createRegistry());
         manager.setEquipmentSlotRegistry(ru.nexora.inventory.NexoraMagicEquipmentCatalog.createRegistry());

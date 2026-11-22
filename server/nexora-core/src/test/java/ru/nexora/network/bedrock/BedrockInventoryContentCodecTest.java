@@ -53,7 +53,7 @@ class BedrockInventoryContentCodecTest {
                 0,       // block runtime ID
                 0        // empty user data buffer
         }, Arrays.copyOfRange(payload, 3, 12));
-        assertArrayEquals(new byte[8], Arrays.copyOfRange(payload, 11, 20));
+        assertArrayEquals(new byte[9], Arrays.copyOfRange(payload, 12, 21));
     }
 
     @Test
@@ -68,7 +68,7 @@ class BedrockInventoryContentCodecTest {
 
         userData[0] = 99; // ItemDefinition must own a defensive copy.
         assertArrayEquals(new byte[] {
-                2, 1,          // runtime item ID 258
+                2, 2,          // runtime item ID 258
                 2, 0,          // stack size
                 2,             // aux value
                 0,             // has StackNetId = false
@@ -194,7 +194,7 @@ class BedrockInventoryContentCodecTest {
         assertEquals(0x32, packet.packetId());
         assertArrayEquals(new byte[] {
                 0, 5, 0, 0, // container, slot, optional FullContainerName absent, StorageItem absent
-                1,          // ItemStackNetId = 1
+                2,          // zig-zag VarInt ItemStackNetId = 1
                 1, 1,       // runtime item ID 257
                 3, 0,       // stack size
                 0,          // aux

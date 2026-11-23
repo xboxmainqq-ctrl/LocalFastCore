@@ -25,7 +25,7 @@ public final class PlayerEquipmentStorage {
     private static final int VERSION = 3;
     private static final int ITEM_METADATA_VERSION = 3;
     private static final int LEGACY_VERSION = 1;
-    private static final int MAX_FILE_BYTES = 4096;
+    private static final int MAX_FILE_BYTES = 64 * 1024;
     private static final int MAX_ITEM_ID_BYTES = 128;
     private final Path directory;
 

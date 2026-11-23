@@ -54,6 +54,36 @@ class PlayerEquipmentStorageTest {
                 directory.resolve("equipment-player.nxe"))[4]));
     }
 
+
+    @Test
+    void persistsMaximumSupportedEnchantmentsAcrossAllEquipmentSlots() throws Exception {
+        PlayerEquipmentStorage storage = new PlayerEquipmentStorage(directory);
+        PlayerEquipment equipment = new PlayerEquipment();
+        java.util.Map<String, Integer> enchantments = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < 32; i++) {
+            enchantments.put("minecraft:" + "a".repeat(110) + i, 10);
+        }
+        ItemStack heavilyEnchanted = new ItemStack("nexora:enchanted_relic", 1, 1, enchantments, 31);
+        for (int slot = 0; slot < PlayerEquipment.ARMOR_SLOTS; slot++) {
+            equipment.setArmor(slot, heavilyEnchanted);
+        }
+        equipment.setOffhand(heavilyEnchanted);
+        equipment.setCursor(heavilyEnchanted);
+        equipment.setMagicSlot(EquipmentSlot.MAGIC_STAFF, heavilyEnchanted);
+        equipment.setMagicSlot(EquipmentSlot.RING_LEFT, heavilyEnchanted);
+        equipment.setMagicSlot(EquipmentSlot.RING_RIGHT, heavilyEnchanted);
+        equipment.setMagicSlot(EquipmentSlot.AMULET, heavilyEnchanted);
+        equipment.setMagicSlot(EquipmentSlot.TALISMAN, heavilyEnchanted);
+        equipment.setMagicSlot(EquipmentSlot.ARTIFACT_LEFT, heavilyEnchanted);
+        equipment.setMagicSlot(EquipmentSlot.ARTIFACT_RIGHT, heavilyEnchanted);
+
+        storage.save("max-enchantment-player", equipment);
+
+        assertTrue(Files.size(directory.resolve("max-enchantment-player.nxe")) > 4096);
+        assertEquals(equipment.snapshot(),
+                storage.load("max-enchantment-player").orElseThrow().snapshot());
+    }
+
     @Test
     void loadsLegacyVersionOneEquipmentFilesWithEmptyMagicalSlots() throws Exception {
         ByteArrayOutputStream body = new ByteArrayOutputStream();

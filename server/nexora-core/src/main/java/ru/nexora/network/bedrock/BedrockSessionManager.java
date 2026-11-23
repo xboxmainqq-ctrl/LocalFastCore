@@ -2564,12 +2564,53 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.dead = true;
         clearUsingItem(state);
         closeContainerWindow(networkId, state, true);
+        dropPlayerInventoryOnDeath(networkId, state);
         state.deathPacketsSent = true;
         sendPackets(networkId, List.of(
                 BedrockRespawnCodec.createDeathInfo(deathCause),
                 BedrockRespawnCodec.createSearchingForSpawn(
                         world.spawnX() + 0.5, world.spawnY(), world.spawnZ() + 0.5, state.entityId)
         ), true);
+    }
+
+    /** Durably spills registered inventory stacks on death; unknown items are retained. */
+    private void dropPlayerInventoryOnDeath(String networkId, SessionState state) {
+        if (!state.loginAuthenticated || state.identity == null) return;
+        List<Optional<ru.nexora.inventory.ItemStack>> previousInventory = state.inventory.snapshot();
+        int previousSelectedSlot = state.inventory.selectedHotbarSlot();
+        List<WorldItemEntity> spawned = new ArrayList<>();
+        try {
+            for (int slot = 0; slot < state.inventory.size(); slot++) {
+                ru.nexora.inventory.ItemStack stack = state.inventory.getSlot(slot).orElse(null);
+                if (stack == null || itemRegistry.findByIdentifier(stack.itemId()) == null) continue;
+                double angle = (slot * 2.399963229728653) % (Math.PI * 2.0);
+                WorldItemEntity entity = world.itemEntities().spawn(
+                        stack, state.positionX, state.positionY + 0.5, state.positionZ,
+                        Math.cos(angle) * 0.12, 0.18, Math.sin(angle) * 0.12,
+                        System.currentTimeMillis(), WorldItemEntityManager.DEFAULT_PICKUP_DELAY_MILLIS,
+                        state.identity.xuid());
+                spawned.add(entity);
+                state.inventory.setSlot(slot, null);
+            }
+            if (spawned.isEmpty()) return;
+            saveInventory(state);
+        } catch (IOException | RuntimeException exception) {
+            state.inventory.restore(previousInventory, previousSelectedSlot);
+            for (WorldItemEntity entity : spawned) {
+                try {
+                    world.itemEntities().remove(entity.runtimeId());
+                } catch (RuntimeException rollbackFailure) {
+                    exception.addSuppressed(rollbackFailure);
+                }
+            }
+            System.err.println("NEXORA: death inventory drop rolled back for " + networkId
+                    + ": " + exception.getMessage());
+            return;
+        }
+        sendInventoryAndEquipmentState(networkId, state);
+        for (WorldItemEntity entity : spawned) {
+            broadcastItemActor(entity, BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry));
+        }
     }
 
     private void respawnPlayer(String networkId, SessionState state) {

@@ -149,8 +149,8 @@ public final class NexoraServer {
                 "NEXORA_ONLINE_PLAYER_LEASE_MS", 15_000L, 3_000L, 120_000L);
         AtomicReference<CloudburstNetherNetTransport> transportReference = new AtomicReference<>();
         BedrockSessionManager bedrockSessions = new BedrockSessionManager(
-                2225,
-                "1.26.66",
+                BedrockProtocolVersion.PROTOCOL,
+                BedrockProtocolVersion.BASE_GAME_VERSION,
                 BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
                 world,
                 playerStorage,

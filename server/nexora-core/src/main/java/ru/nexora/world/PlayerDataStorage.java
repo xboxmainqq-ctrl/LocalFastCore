@@ -5,6 +5,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -171,7 +174,14 @@ public final class PlayerDataStorage {
         if (length > maxBytes) throw new IOException("Player profile string exceeds size limit");
         byte[] bytes = new byte[length];
         input.readFully(bytes);
-        return new String(bytes, StandardCharsets.UTF_8);
+        try {
+            return StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(bytes)).toString();
+        } catch (CharacterCodingException exception) {
+            throw new IOException("Invalid UTF-8 in NEXORA player profile", exception);
+        }
     }
 
     private static void rejectSymlink(Path path) throws IOException {

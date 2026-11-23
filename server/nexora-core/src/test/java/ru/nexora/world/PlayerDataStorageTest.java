@@ -144,6 +144,35 @@ class PlayerDataStorageTest {
         out.write(bytes);
     }
 
+
+    @Test
+    void rejectsMalformedUtf8EvenWhenProfileChecksumIsValid() throws Exception {
+        ByteArrayOutputStream bodyBytes = new ByteArrayOutputStream();
+        try (DataOutputStream out = new DataOutputStream(bodyBytes)) {
+            out.writeInt(0x4e58504c); // NXPL
+            out.writeByte(1);
+            writeString(out, "malformed-player");
+            out.writeShort(1);
+            out.writeByte(0xc3); // Incomplete two-byte UTF-8 sequence.
+            writeString(out, "NEXORA");
+            out.writeFloat(0); out.writeFloat(65); out.writeFloat(0);
+            out.writeFloat(0); out.writeFloat(0);
+            out.writeLong(1);
+        }
+        byte[] body = bodyBytes.toByteArray();
+        CRC32C crc = new CRC32C();
+        crc.update(body, 0, body.length);
+        ByteArrayOutputStream fileBytes = new ByteArrayOutputStream();
+        fileBytes.writeBytes(body);
+        try (DataOutputStream out = new DataOutputStream(fileBytes)) {
+            out.writeInt((int) crc.getValue());
+        }
+        Files.write(temporaryDirectory.resolve("malformed-player.nxp"), fileBytes.toByteArray());
+
+        PlayerDataStorage storage = new PlayerDataStorage(temporaryDirectory);
+        assertThrows(IOException.class, () -> storage.load("malformed-player"));
+    }
+
     @Test
     void returnsEmptyForPlayersWithoutSavedProfiles() throws Exception {
         PlayerDataStorage storage = new PlayerDataStorage(temporaryDirectory);

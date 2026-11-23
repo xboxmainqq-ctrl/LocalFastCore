@@ -479,24 +479,68 @@ public final class World {
     }
 
     public void saveAll() throws IOException {
+        IOException failure = null;
         if (storage != null) {
             java.util.ArrayList<java.util.concurrent.CompletableFuture<Void>> batch =
                     new java.util.ArrayList<>(128);
             for (WorldChunk chunk : chunks.values()) {
                 if (!chunk.isDirty()) continue;
-                batch.add(chunkSaveService.request(chunk));
+                try {
+                    batch.add(chunkSaveService.request(chunk));
+                } catch (RuntimeException exception) {
+                    failure = appendSaveFailure(failure,
+                            new IOException("Unable to schedule NEXORA chunk save", exception));
+                }
                 if (batch.size() == 128) {
-                    awaitChunkSaveBatch(batch);
+                    failure = captureSaveFailure(failure, "NEXORA chunk batch",
+                            () -> awaitChunkSaveBatch(batch));
                     batch.clear();
                 }
             }
-            if (!batch.isEmpty()) awaitChunkSaveBatch(batch);
+            if (!batch.isEmpty()) {
+                failure = captureSaveFailure(failure, "NEXORA chunk batch",
+                        () -> awaitChunkSaveBatch(batch));
+            }
         }
-        itemEntities.save();
-        livingEntities.save();
-        mobSpawners.save();
-        if (containers != null) containers.saveAll();
-        if (furnaces != null) furnaces.saveAll();
+
+        // Each persistence target is independent. A broken chunk or entity file must
+        // not prevent the remaining world state from reaching disk during autosave.
+        failure = captureSaveFailure(failure, "dropped world items", itemEntities::save);
+        failure = captureSaveFailure(failure, "living world entities", livingEntities::save);
+        failure = captureSaveFailure(failure, "mob spawners", mobSpawners::save);
+        if (containers != null) {
+            failure = captureSaveFailure(failure, "block containers", containers::saveAll);
+        }
+        if (furnaces != null) {
+            failure = captureSaveFailure(failure, "furnaces", furnaces::saveAll);
+        }
+        if (failure != null) throw failure;
+    }
+
+    private static IOException captureSaveFailure(
+            IOException previous, String target, WorldSaveOperation operation
+    ) {
+        try {
+            operation.save();
+            return previous;
+        } catch (IOException exception) {
+            IOException contextual = new IOException("Failed to save " + target, exception);
+            return appendSaveFailure(previous, contextual);
+        } catch (RuntimeException exception) {
+            IOException contextual = new IOException("Unexpected failure while saving " + target, exception);
+            return appendSaveFailure(previous, contextual);
+        }
+    }
+
+    private static IOException appendSaveFailure(IOException previous, IOException next) {
+        if (previous == null) return next;
+        previous.addSuppressed(next);
+        return previous;
+    }
+
+    @FunctionalInterface
+    private interface WorldSaveOperation {
+        void save() throws IOException;
     }
 
     private static void awaitChunkSaveBatch(java.util.List<java.util.concurrent.CompletableFuture<Void>> batch)

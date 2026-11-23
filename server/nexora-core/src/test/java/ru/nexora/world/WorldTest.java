@@ -13,6 +13,33 @@ class WorldTest {
     Path temporaryDirectory;
 
     @Test
+    void saveAllContinuesPersistingIndependentWorldStoresAfterChunkFailure() throws Exception {
+        WorldStorage storage = new WorldStorage(temporaryDirectory, "NEXORA");
+        WorldItemEntityStorage itemStorage = new WorldItemEntityStorage(temporaryDirectory, "NEXORA");
+        WorldLivingEntityStorage livingStorage = new WorldLivingEntityStorage(temporaryDirectory, "NEXORA");
+        World world = new World("NEXORA", 1L, (chunk, seed) -> { },
+                0, 65, 0, storage, itemStorage, null, null, livingStorage);
+        Path blockedChunk = storage.worldDirectory().resolve("chunks").resolve("0_0.nxc");
+        try {
+            world.setBlock(1, 70, 1, BlockType.STONE);
+            Files.createDirectory(blockedChunk);
+
+            java.io.IOException failure = assertThrows(java.io.IOException.class, world::saveAll);
+
+            assertTrue(failure.getMessage().contains("chunk"),
+                    "the original chunk persistence failure must remain visible");
+            assertTrue(Files.isRegularFile(temporaryDirectory.resolve("NEXORA/items/entities.nxe")),
+                    "dropped-item persistence must still run after a chunk write fails");
+            assertTrue(Files.isRegularFile(temporaryDirectory.resolve("NEXORA/entities/living.nxe")),
+                    "living-entity persistence must still run after a chunk write fails");
+            assertTrue(world.getChunk(0, 0).isDirty(),
+                    "a failed chunk write must remain dirty for a later retry");
+        } finally {
+            world.closeChunkLoadService();
+        }
+    }
+
+    @Test
     void loadedChunkCoordinateSnapshotIncludesDirectApiLoads() {
         World world = new World("NEXORA", 1L, (chunk, seed) -> { });
         world.getChunk(12, -9);

@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockCraftingDataCodecTest {
     @Test
-    void encodesProtocol2225ShapedAndShapelessRecipesAndRequiredSmithingTrimEntry() {
+    void encodesProtocol2225RecipesUsingLegacyDescriptorsAndDistinctRecipeTails() {
         var recipes = CraftingRecipeRegistry.vanillaSubset();
         var items = BedrockVanillaItemCatalog.createRegistry();
         BedrockPacket packet = BedrockCraftingDataCodec.createPacket(recipes, items);
@@ -20,63 +20,35 @@ class BedrockCraftingDataCodecTest {
 
         Reader in = new Reader(packet.payload());
         var shapedRecipes = recipes.recipes().stream().filter(CraftingRecipe::isShaped).toList();
-        assertEquals(shapedRecipes.size(), in.varUInt()); // shaped recipes
-        for (CraftingRecipe shaped : shapedRecipes) {
-            assertEquals(shaped.id(), in.string());
-            assertEquals(shaped.width(), in.varInt());
-            assertEquals(shaped.height(), in.varInt());
-            for (String row : shaped.pattern()) {
+        assertEquals(shapedRecipes.size(), in.varUInt());
+        for (CraftingRecipe recipe : shapedRecipes) {
+            assertEquals(recipe.id(), in.string());
+            assertEquals(recipe.width(), in.varInt());
+            assertEquals(recipe.height(), in.varInt());
+            assertEquals(recipe.width() * recipe.height(), in.varUInt());
+            for (String row : recipe.pattern()) {
                 for (int i = 0; i < row.length(); i++) {
                     char symbol = row.charAt(i);
                     if (symbol == ' ') {
-                        assertEquals(0, in.byteValue()); // EmptyItemDescriptor
-                        assertEquals(0, in.int16()); // StackSize
+                        assertEquals(0, in.varUInt()); // INVALID descriptor variant
+                        assertEquals(32_767, in.varInt()); // wildcard meta
+                        assertEquals(0, in.varInt()); // empty slot count
                     } else {
-                        assertEquals(1, in.byteValue()); // ItemDescriptorType.ITEM_NAME
-                        assertEquals(shaped.key().get(symbol), in.string());
-                        assertEquals(0, in.varInt());
-                        assertEquals(1, in.int16());
+                        assertNamedIngredient(in, recipe.key().get(symbol), 1);
                     }
                 }
             }
-            assertEquals(1, in.varUInt()); // shaped result count
-            var shapedOutput = items.findByIdentifier(shaped.result().itemId()).networkDefinition();
-            assertEquals(shapedOutput.runtimeItemId(), in.varInt());
-            assertEquals(shaped.result().count(), in.int16());
-            assertEquals(shapedOutput.auxValue(), in.varUIntLong());
-            assertEquals(shapedOutput.blockRuntimeId(), in.varInt());
-            assertEquals(0, in.byteArray().length);
-            assertEquals(shaped.uuid(), in.uuidLittleEndian());
-            assertEquals("crafting_table", in.string());
-            assertEquals(0, in.varInt());
-            assertEquals(0, in.byteValue()); // assume symmetry
-            assertEquals(1, in.varInt()); // ALWAYS_UNLOCKED unlocking context
-            assertEquals(recipes.networkId(shaped.id()), in.varUInt());
+            assertRecipeResultAndTail(in, recipe, items, recipes, true);
         }
 
-        assertEquals(recipes.recipes().size() - shapedRecipes.size(), in.varUInt()); // shapeless recipes
-        for (CraftingRecipe recipe : recipes.recipes().stream().filter(r -> !r.isShaped()).toList()) {
+        var shapelessRecipes = recipes.recipes().stream().filter(r -> !r.isShaped()).toList();
+        assertEquals(shapelessRecipes.size(), in.varUInt());
+        for (CraftingRecipe recipe : shapelessRecipes) {
             assertEquals(recipe.id(), in.string());
-            assertEquals(1, in.varUInt());
-            assertEquals(1, in.byteValue()); // ItemDescriptorType.ITEM_NAME
-            var ingredient = recipe.ingredients().keySet().iterator().next();
-            assertEquals(ingredient, in.string());
-            assertEquals(0, in.varInt());
-            assertEquals(1, in.int16());
-
-            assertEquals(1, in.varUInt());
-            var output = items.findByIdentifier(recipe.result().itemId()).networkDefinition();
-            assertEquals(output.runtimeItemId(), in.varInt());
-            assertEquals(recipe.result().count(), in.int16());
-            assertEquals(output.auxValue(), in.varUIntLong());
-            assertEquals(output.blockRuntimeId(), in.varInt());
-            assertEquals(0, in.byteArray().length);
-            assertEquals(recipe.uuid(), in.uuidLittleEndian());
-            assertEquals("crafting_table", in.string());
-            assertEquals(0, in.varInt());
-            assertEquals(0, in.byteValue()); // assume symmetry
-            assertEquals(1, in.varInt()); // ALWAYS_UNLOCKED unlocking context
-            assertEquals(recipes.networkId(recipe.id()), in.varUInt());
+            assertEquals(recipe.ingredients().values().stream().mapToInt(Integer::intValue).sum(), in.varUInt());
+            recipe.ingredients().entrySet().stream().sorted(java.util.Map.Entry.comparingByKey())
+                    .forEach(entry -> assertNamedIngredient(in, entry.getKey(), entry.getValue()));
+            assertRecipeResultAndTail(in, recipe, items, recipes, false);
         }
 
         assertEquals(0, in.varUInt()); // multi
@@ -89,17 +61,30 @@ class BedrockCraftingDataCodecTest {
         for (String tag : new String[] {
                 "minecraft:trim_templates", "minecraft:trimmable_armors", "minecraft:trim_materials"
         }) {
-            assertEquals(3, in.byteValue()); // ItemDescriptorType.ITEM_TAG
+            assertEquals(1, in.varUInt()); // DEFAULT descriptor variant
+            assertEquals("item_tag", in.string());
             assertEquals(tag, in.string());
-            assertEquals(1, in.int16());
+            assertEquals(32_767, in.varInt());
+            assertEquals(1, in.varInt());
         }
         assertEquals("smithing_table", in.string());
         assertEquals(1, in.varUInt());
         assertEquals(0, in.varUInt()); // potion
         assertEquals(0, in.varUInt()); // container
         assertEquals(0, in.varUInt()); // material reducers
-        assertEquals(0, in.byteValue()); // merge with client vanilla recipes
+        assertEquals(0, in.byteValue()); // preserve the rest of the client's vanilla recipes
         assertEquals(0, in.remaining());
+    }
+
+    @Test
+    void recipeUuidUsesRawMd5DigestWithoutUuidVersionBitMutation() throws Exception {
+        byte[] digest = java.security.MessageDigest.getInstance("MD5")
+                .digest("minecraft:sticks_from_oak_planks".getBytes(StandardCharsets.UTF_8));
+        Reader in = new Reader(new byte[0]);
+        assertEquals(new UUID(
+                java.nio.ByteBuffer.wrap(digest).getLong(),
+                java.nio.ByteBuffer.wrap(digest, 8, 8).getLong()
+        ), CraftingRecipeRegistry.vanillaSubset().find("minecraft:sticks_from_oak_planks").uuid());
     }
 
     @Test
@@ -110,6 +95,68 @@ class BedrockCraftingDataCodecTest {
                         new ru.nexora.inventory.ItemStack("minecraft:iron_nugget", 1, 64))));
         assertThrows(IllegalArgumentException.class, () ->
                 BedrockCraftingDataCodec.createPacket(recipes, BedrockVanillaItemCatalog.createRegistry()));
+    }
+
+    private static void assertNamedIngredient(Reader in, String itemId, int count) {
+        assertEquals(1, in.varUInt()); // DEFAULT descriptor variant
+        assertEquals("name", in.string());
+        assertEquals(itemId, in.string());
+        assertEquals(0, in.varInt()); // aux
+        assertEquals(count, in.varInt());
+    }
+
+    private static void assertRecipeResultAndTail(
+            Reader in, CraftingRecipe recipe, BedrockItemRegistry items,
+            CraftingRecipeRegistry recipes, boolean shaped
+    ) {
+        assertEquals(1, in.varUInt()); // output count
+        var output = items.findByIdentifier(recipe.result().itemId()).networkDefinition();
+        assertEquals(output.runtimeItemId(), in.varInt());
+        assertEquals(recipe.result().count(), in.int16());
+        assertEquals(output.auxValue(), in.varUIntLong());
+        assertEquals(output.blockRuntimeId(), in.varInt());
+        assertEquals(0, in.byteArray().length);
+        assertEquals(recipe.uuid(), in.uuidLittleEndian());
+        assertEquals("crafting_table", in.string());
+        assertEquals(0, in.varInt()); // priority
+        if (shaped) assertEquals(0, in.byteValue()); // symmetry
+        assertEquals(1, in.byteValue()); // unlocking optional present
+        assertEquals(1, in.varInt()); // ALWAYS_UNLOCKED
+        assertEquals(0, in.byteValue()); // unlocking ingredients optional absent
+        assertEquals(recipes.networkId(recipe.id()), in.varUInt());
+    }
+
+    private static final class Reader {
+        private final byte[] data;
+        private int offset;
+        Reader(byte[] data) { this.data = data; }
+        int byteValue() { return data[offset++] & 0xff; }
+        int int16() { int value = byteValue() | (byteValue() << 8); return (short) value; }
+        int varUInt() { return (int) varUIntLong(); }
+        long varUIntLong() {
+            long value = 0;
+            for (int shift = 0; shift < 35; shift += 7) {
+                int next = byteValue();
+                value |= (long) (next & 0x7f) << shift;
+                if ((next & 0x80) == 0) return value;
+            }
+            throw new AssertionError("invalid test varuint");
+        }
+        int varInt() { long value = varUIntLong(); return (int) ((value >>> 1) ^ -(value & 1)); }
+        String string() { return new String(byteArray(), StandardCharsets.UTF_8); }
+        byte[] byteArray() {
+            int length = varUInt();
+            byte[] result = java.util.Arrays.copyOfRange(data, offset, offset + length);
+            offset += length;
+            return result;
+        }
+        UUID uuidLittleEndian() { return new UUID(longLittleEndian(), longLittleEndian()); }
+        long longLittleEndian() {
+            long value = 0;
+            for (int i = 0; i < 8; i++) value |= (long) byteValue() << (i * 8);
+            return value;
+        }
+        int remaining() { return data.length - offset; }
     }
 
     static byte[] craftingEvent(UUID id, int inputRuntimeId, int inputCount,

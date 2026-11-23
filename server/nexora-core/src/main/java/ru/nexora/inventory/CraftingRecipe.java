@@ -1,6 +1,9 @@
 package ru.nexora.inventory;
 
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -106,6 +109,14 @@ public record CraftingRecipe(
     }
 
     public UUID uuid() {
-        return UUID.nameUUIDFromBytes(id.getBytes(StandardCharsets.UTF_8));
+        try {
+            // Bedrock derives recipe UUIDs from the raw MD5 digest. UUID.nameUUIDFromBytes()
+            // changes the version and variant bits, so it is not wire-compatible here.
+            byte[] digest = MessageDigest.getInstance("MD5").digest(id.getBytes(StandardCharsets.UTF_8));
+            ByteBuffer bytes = ByteBuffer.wrap(digest);
+            return new UUID(bytes.getLong(), bytes.getLong());
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new AssertionError("MD5 is required by the Java runtime", impossible);
+        }
     }
 }

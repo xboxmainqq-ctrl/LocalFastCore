@@ -40,8 +40,11 @@ public final class WorldContainerManager {
 
     /** Removes a container from memory and deletes its persisted contents. */
     public synchronized void remove(int x, int y, int z) throws IOException {
-        loaded.remove(new Position(x, y, z));
+        Position position = new Position(x, y, z);
+        // Keep the authoritative in-memory inventory until both primary and backup
+        // files have been deleted successfully. A storage error must not orphan it.
         storage.delete(x, y, z);
+        loaded.remove(position);
     }
 
     /** Saves every loaded container; all failures are reported without skipping later containers. */

@@ -238,7 +238,9 @@ public final class WorldItemEntityManager {
                 int supportY = floor(nextY - 0.125);
                 if (vy < 0 && solid(world, floor(nextX), supportY, floor(nextZ))) {
                     nextY = supportY + 1.125;
-                    vy = 0;
+                    // Dropped items rebound once with strong damping, then settle
+                    // instead of jittering forever on flat ground.
+                    vy = Math.abs(vy) < 0.08 ? 0 : -vy * 0.25;
                     vx *= 0.6;
                     vz *= 0.6;
                 } else if (solid(world, floor(nextX), floor(nextY), floor(nextZ))) {

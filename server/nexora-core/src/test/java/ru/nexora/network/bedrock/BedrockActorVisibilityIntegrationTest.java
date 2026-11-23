@@ -191,8 +191,6 @@ class BedrockActorVisibilityIntegrationTest {
             assertEquals(List.of(
                     BedrockAddActorCodec.ADD_ACTOR_PACKET_ID,
                     BedrockVitalsCodec.UPDATE_ATTRIBUTES_PACKET_ID,
-                    BedrockAddActorCodec.ADD_ACTOR_PACKET_ID,
-                    BedrockVitalsCodec.UPDATE_ATTRIBUTES_PACKET_ID,
                     BedrockAddItemActorCodec.REMOVE_ACTOR_PACKET_ID),
                     packetsFor(outbound, "west-viewer").stream().map(BedrockPacket::packetId).toList());
             assertEquals(List.of(

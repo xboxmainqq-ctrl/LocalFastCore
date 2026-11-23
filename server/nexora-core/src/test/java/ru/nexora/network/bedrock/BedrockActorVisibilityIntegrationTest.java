@@ -181,6 +181,23 @@ class BedrockActorVisibilityIntegrationTest {
             assertEquals(List.of(BedrockVitalsCodec.UPDATE_ATTRIBUTES_PACKET_ID),
                     packetsFor(outbound, "viewer").stream().map(BedrockPacket::packetId).toList());
             assertTrue(packetsFor(outbound, "outsider").isEmpty());
+
+            // Respawn sends the local snapshot separately; this observer-only path
+            // refreshes clients that continued tracking the same player entity.
+            outbound.clear();
+            Method viewersOnly = BedrockSessionManager.class.getDeclaredMethod(
+                    "broadcastPlayerVitalsToViewers", source.getClass(), List.class);
+            viewersOnly.setAccessible(true);
+            viewersOnly.invoke(manager, source, List.of(
+                    BedrockVitalsCodec.createSetHealth(ru.nexora.world.PlayerVitals.DEFAULT),
+                    BedrockVitalsCodec.createUpdateAttributes(700L,
+                            ru.nexora.world.PlayerVitals.DEFAULT, 0, 0.0f, 14L)));
+            assertTrue(packetsFor(outbound, "source").isEmpty());
+            assertEquals(List.of(
+                    BedrockVitalsCodec.SET_HEALTH_PACKET_ID,
+                    BedrockVitalsCodec.UPDATE_ATTRIBUTES_PACKET_ID),
+                    packetsFor(outbound, "viewer").stream().map(BedrockPacket::packetId).toList());
+            assertTrue(packetsFor(outbound, "outsider").isEmpty());
         } finally {
             manager.close();
         }

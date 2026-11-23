@@ -108,7 +108,7 @@ class BedrockLevelChunkCodecTest {
         assertEquals(0, reader.varInt32()); // Overworld dimension
         assertEquals(0, reader.varUInt32()); // empty LevelDB chunk has no block subchunks
         assertFalse(reader.bool());
-        assertEquals(0, reader.varUInt32());
+        // Cache disabled: LevelChunk has no blobIds field.
         byte[] data = reader.byteArray();
         reader.bool();
         assertTrue(reader.exhausted());

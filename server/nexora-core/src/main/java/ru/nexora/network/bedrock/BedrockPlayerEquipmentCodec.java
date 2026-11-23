@@ -74,8 +74,9 @@ public final class BedrockPlayerEquipmentCodec {
 
     private static void writeContainerStack(Writer out, Optional<ItemStack> optional,
                                             BedrockItemRegistry registry) {
-        ItemStack stack = optional.orElse(null);
-        out.varInt32(stack == null ? 0 : 1);
+        // InventoryContent (protocol 2225) serializes NetworkItemStackDescriptor
+        // values directly. ItemStackNetId belongs to InventorySlot/legacy NetItem
+        // formats and must not be prefixed to each InventoryContent slot.
         writeDescriptor(out, optional, registry);
     }
 

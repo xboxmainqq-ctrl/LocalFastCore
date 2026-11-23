@@ -2629,6 +2629,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         state.dead = false;
         state.deathPacketsSent = false;
         state.lastMovementNanos = nanoTime.getAsLong();
+        // Respawn is a server-side teleport: update the remote-player visibility
+        // index and spawn/despawn the player for clients around the destination.
+        broadcastPlayerMovement(networkId, state);
         sendPacket(networkId, BedrockRespawnCodec.createRespawnMove(
                 state.entityId, x, y, z, state.pitch, state.yaw,
                 physics.onGround(), Math.max(0, state.lastInputTick)), true);

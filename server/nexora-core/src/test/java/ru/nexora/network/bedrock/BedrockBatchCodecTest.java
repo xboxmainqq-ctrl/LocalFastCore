@@ -84,9 +84,9 @@ class BedrockBatchCodecTest {
     }
 
     @Test
-    void parsesResourcePackClientResponseEnumAndName() {
+    void parsesProtocolStringResourcePackResponse() {
         byte[] body = new byte[] {
-                2, 19,
+                19,
                 'D', 'o', 'w', 'n', 'l', 'o', 'a', 'd', 'i', 'n', 'g',
                 'F', 'i', 'n', 'i', 's', 'h', 'e', 'd'
         };
@@ -96,7 +96,7 @@ class BedrockBatchCodecTest {
         BedrockBatchCodec.ResourcePackClientResponseData response =
                 BedrockBatchCodec.parseResourcePackClientResponse(packet);
 
-        assertEquals(2, response.response());
+        assertEquals(3, response.response());
         assertEquals("DownloadingFinished", response.name());
     }
 

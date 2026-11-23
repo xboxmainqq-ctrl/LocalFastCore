@@ -5564,16 +5564,22 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         System.out.printf("NEXORA: resource-pack response from %s: %s (%d)%n",
                 networkId, response.name(), response.response());
         switch (response.response()) {
-            case 0 -> throw new SecurityException("Client refused resource-pack negotiation");
-            case 1 -> throw new SecurityException("Client requested packs from an empty server pack list");
+            case 1 -> throw new SecurityException("Client refused resource-pack negotiation");
             case 2 -> {
+                if (!response.downloadingPacks().isEmpty()) {
+                    throw new SecurityException("Client requested packs that are not advertised by this server");
+                }
+                // Empty resource-pack lists still use the Downloading status on
+                // some clients; it is a progress notification, not a rejection.
+            }
+            case 3 -> {
                 if (state.resourcePackStackSent) {
                     throw new SecurityException("Duplicate all-packs-downloaded response");
                 }
                 state.resourcePackStackSent = true;
                 sendPacket(networkId, BedrockBatchCodec.createResourcePackStack(serverVersion), true);
             }
-            case 3 -> {
+            case 4 -> {
                 if (!state.resourcePackStackSent) {
                     throw new SecurityException("Resource-pack stack completed before the server sent its stack");
                 }

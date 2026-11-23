@@ -210,28 +210,26 @@ public final class BedrockBatchCodec {
         }
         byte[] payload = packet.payload();
         int[] offset = {0};
-        long response = readUnsignedVarInt(payload, offset, payload.length);
-        if (response > 3) throw new IllegalArgumentException("Unknown resource-pack response enum");
+        // Protocol 2225 serializes ResourcePackResponse as a length-prefixed
+        // string, not as a numeric enum followed by a string.
         String name = readString(payload, offset);
-        String expectedName = switch ((int) response) {
-            case 0 -> "Cancel";
-            case 1 -> "Downloading";
-            case 2 -> "DownloadingFinished";
-            case 3 -> "ResourcePackStackFinished";
-            default -> throw new IllegalArgumentException("Unknown resource-pack response enum");
+        int response = switch (name) {
+            case "Cancel" -> 1;
+            case "Downloading" -> 2;
+            case "DownloadingFinished" -> 3;
+            case "ResourcePackStackFinished" -> 4;
+            default -> throw new IllegalArgumentException("Unknown resource-pack response: " + name);
         };
-        if (!expectedName.equals(name)) {
-            throw new IllegalArgumentException("Resource-pack response name does not match its enum");
-        }
-        if (response == 1) {
+        List<String> downloadingPacks = new ArrayList<>();
+        if (response == 2) {
             long count = readUnsignedVarInt(payload, offset, payload.length);
             if (count > 128) throw new IllegalArgumentException("Too many requested resource packs");
-            for (int i = 0; i < count; i++) readString(payload, offset);
+            for (int i = 0; i < count; i++) downloadingPacks.add(readString(payload, offset));
         }
         if (offset[0] != payload.length) {
             throw new IllegalArgumentException("Trailing bytes in ResourcePackClientResponse");
         }
-        return new ResourcePackClientResponseData((int) response, name);
+        return new ResourcePackClientResponseData(response, name, List.copyOf(downloadingPacks));
     }
 
     /**
@@ -266,7 +264,7 @@ public final class BedrockBatchCodec {
         return value;
     }
 
-    public record ResourcePackClientResponseData(int response, String name) {
+    public record ResourcePackClientResponseData(int response, String name, List<String> downloadingPacks) {
     }
 
     /** Builds NetworkSettings (packet 0x8F), to be sent before compression framing is enabled. */

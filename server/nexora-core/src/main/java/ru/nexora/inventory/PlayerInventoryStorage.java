@@ -28,7 +28,7 @@ public final class PlayerInventoryStorage {
     private static final int OPTIONAL_CRAFTING_UI_FORMAT_VERSION = 4;
     private static final int MAX_ENCHANTMENTS_PER_ITEM = 32;
     private static final int MAX_ENCHANTMENT_ID_BYTES = 128;
-    private static final int MAX_FILE_BYTES = 32_768;
+    private static final int MAX_FILE_BYTES = 2 * 1024 * 1024;
     private static final int MAX_ITEM_ID_BYTES = 128;
     private static final int CRAFTING_UI_SLOT_COUNT = 51;
 

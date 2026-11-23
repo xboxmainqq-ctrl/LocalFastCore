@@ -59,6 +59,32 @@ class PlayerInventoryStorageTest {
     }
 
     @Test
+    void roundTripsMaximumSupportedInventoryAndCraftingUiMetadata() throws Exception {
+        PlayerInventoryStorage storage = new PlayerInventoryStorage(temporaryDirectory);
+        PlayerInventory inventory = new PlayerInventory(256);
+        ContainerInventory ui = new ContainerInventory(51);
+        java.util.Map<String, Integer> enchantments = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < 32; i++) {
+            String suffix = Integer.toString(i, 36);
+            enchantments.put("nexora:" + "e".repeat(120) + suffix, 10);
+        }
+        ItemStack stack = new ItemStack("nexora:" + "i".repeat(121), 1, 1, enchantments, 31);
+        for (int slot = 0; slot < inventory.size(); slot++) inventory.setSlot(slot, stack);
+        for (int slot = 0; slot < ui.size(); slot++) ui.setSlot(slot, stack);
+        inventory.selectHotbarSlot(8);
+
+        storage.save("maximum-inventory", inventory, ui);
+
+        Path file = temporaryDirectory.resolve("maximum-inventory.nxi");
+        assertTrue(Files.size(file) > 32_768);
+        var restored = storage.loadState("maximum-inventory").orElseThrow();
+        assertEquals(256, restored.inventory().size());
+        assertEquals(8, restored.inventory().selectedHotbarSlot());
+        assertEquals(stack, restored.inventory().getSlot(255).orElseThrow());
+        assertEquals(stack, restored.craftingUiInventory().getSlot(50).orElseThrow());
+    }
+
+    @Test
     void returnsEmptyWhenInventoryDoesNotExist() throws Exception {
         PlayerInventoryStorage storage = new PlayerInventoryStorage(temporaryDirectory);
         assertTrue(storage.load("unknown-player").isEmpty());

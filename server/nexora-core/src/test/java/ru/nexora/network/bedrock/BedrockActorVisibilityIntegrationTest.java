@@ -265,6 +265,53 @@ class BedrockActorVisibilityIntegrationTest {
     }
 
     @Test
+    void disconnectCleansStalePlayerViewerIndexEvenWhenVisibilitySetMissesActor() throws Exception {
+        List<Outbound> outbound = new ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new World("player-disconnect-visibility-test", 0L, new FlatWorldGenerator()),
+                (networkId, label, frame) -> outbound.add(new Outbound(networkId, frame)),
+                event -> { });
+
+        try {
+            for (String id : List.of("leaving", "recipient")) {
+                manager.onIdentity(id, new NetherNetClientIdentity(
+                        id + "-token", new byte[] {1, 2, 3}, id + "-xuid",
+                        id, id + "-playfab", "20CA2", null));
+            }
+            Object leaving = session(manager, "leaving");
+            Object recipient = session(manager, "recipient");
+            set(leaving, "entityId", 702L);
+            set(leaving, "playerListAdvertised", true);
+            set(leaving, "playerListEntry", new BedrockPlayerListCodec.AddEntry(
+                    java.util.UUID.fromString("00000000-0000-0000-0000-000000000702"),
+                    702L, "Leaving", "leaving-xuid", "leaving-playfab", "",
+                    1, new byte[] {1}, false, false, false, 0));
+            set(recipient, "clientInitialized", true);
+            set(recipient, "playerListAdvertised", true);
+
+            Field indexField = BedrockSessionManager.class.getDeclaredField("playerActorReplicationIndex");
+            indexField.setAccessible(true);
+            ActorReplicationIndex index = (ActorReplicationIndex) indexField.get(manager);
+            index.addActorViewer(702L, "recipient");
+            assertEquals(1, index.actorViewerCount(702L));
+            assertFalse(visiblePlayers(recipient).contains(702L));
+
+            Method remove = BedrockSessionManager.class.getDeclaredMethod(
+                    "removePlayerListEntry", String.class, leaving.getClass());
+            remove.setAccessible(true);
+            remove.invoke(manager, "leaving", leaving);
+
+            assertEquals(0, index.actorViewerCount(702L));
+            assertFalse(visiblePlayers(recipient).contains(702L));
+            assertEquals(List.of(BedrockPlayerListCodec.PLAYER_LIST_PACKET_ID),
+                    packetsFor(outbound, "recipient").stream().map(BedrockPacket::packetId).toList());
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void mobMovementIsFannedOutOnlyToViewersOfItsCurrentChunk() throws Exception {
         List<Outbound> outbound = new ArrayList<>();
         World world = new World("actor-multi-viewer-test", 0L, new FlatWorldGenerator());

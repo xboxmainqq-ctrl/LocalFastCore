@@ -135,6 +135,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private final Consumer<PacketEvent> packetSink;
     private final LongSupplier nanoTime;
     private final AutoCloseable furnaceUpdateListener;
+    private final AutoCloseable blockChangeListener;
     private final Map<String, SessionState> sessions = new ConcurrentHashMap<>();
     private final ActorReplicationIndex actorReplicationIndex = new ActorReplicationIndex();
     private final ActorReplicationIndex itemActorReplicationIndex = new ActorReplicationIndex();
@@ -458,6 +459,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         this.furnaceUpdateListener = this.world.furnaces()
                 .map(manager -> manager.addUpdateListener(this::handleFurnaceUpdate))
                 .orElse(null);
+        this.blockChangeListener = this.world.addBlockChangeListener(change ->
+                broadcastBlockUpdate(change.x(), change.y(), change.z(), change.current()));
     }
 
     /**
@@ -1488,7 +1491,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     sendAiMessage(networkId, "§c[NEXORA SPAWNER] Не удалось настроить спавнер.");
                     return;
                 }
-                broadcastBlockUpdate(x, y, z, ru.nexora.world.BlockType.SPAWNER);
                 sendAiMessage(networkId, "§a[NEXORA SPAWNER] Спавнер установлен: " + identifier
                         + " (" + x + " " + y + " " + z + "), задержка " + delay + " тиков.");
                 return;
@@ -1516,7 +1518,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     return;
                 }
                 world.setBlock(x, y, z, ru.nexora.world.BlockType.AIR);
-                broadcastBlockUpdate(x, y, z, ru.nexora.world.BlockType.AIR);
                 sendAiMessage(networkId, "§a[NEXORA SPAWNER] Спавнер удалён.");
                 return;
             }
@@ -4271,7 +4272,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     }
                     try {
                         world.setBlock(x, y, z, BlockType.AIR);
-                        broadcastBlockUpdate(x, y, z, BlockType.AIR);
                         if (droppedEntity != null) {
                             broadcastItemActor(droppedEntity,
                                     BedrockAddItemActorCodec.createAddItemActor(droppedEntity, itemRegistry));
@@ -6144,7 +6144,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             return;
         }
 
-        broadcastBlockUpdate(placeX, placeY, placeZ, placedType);
         sendInventoryAndEquipmentState(networkId, state);
     }
 
@@ -6647,20 +6646,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         world.setBlock(target.x(), target.y(), target.z(), BlockType.AIR);
         state.breakTarget = null;
-        BedrockPacket update = BedrockBlockUpdateCodec.createPacket(
-                target.x(), target.y(), target.z(), BlockType.AIR);
-        int changedChunkX = Math.floorDiv(target.x(), 16);
-        int changedChunkZ = Math.floorDiv(target.z(), 16);
-        long changedChunkKey = ((long) changedChunkX << 32) | (changedChunkZ & 0xffff_ffffL);
-        for (var entry : sessions.entrySet()) {
-            SessionState recipient = entry.getValue();
-            // Only update clients that currently have this chunk in their sent view.
-            // The set is concurrent because different session event loops can publish chunks
-            // while another player breaks a block.
-            if (recipient.clientInitialized && recipient.sentChunkKeys.contains(changedChunkKey)) {
-                sendPacket(entry.getKey(), update, true);
-            }
-        }
         for (WorldItemEntity containerDrop : containerDrops) {
             broadcastItemActor(containerDrop, BedrockAddItemActorCodec.createAddItemActor(containerDrop, itemRegistry));
         }
@@ -8202,6 +8187,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             catch (Exception exception) {
                 System.err.println("NEXORA: unable to unregister furnace updates: " + exception.getMessage());
             }
+        }
+        try {
+            blockChangeListener.close();
+        } catch (Exception exception) {
+            System.err.println("NEXORA: unable to unregister block updates: " + exception.getMessage());
         }
         for (SessionState state : sessions.values()) {
             synchronized (state) {

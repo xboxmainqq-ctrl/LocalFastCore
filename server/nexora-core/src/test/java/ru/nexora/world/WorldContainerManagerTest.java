@@ -30,6 +30,26 @@ class WorldContainerManagerTest {
     }
 
     @Test
+    void failedPersistentDeleteKeepsLoadedInventoryAvailable() throws Exception {
+        ContainerInventoryStorage storage = new ContainerInventoryStorage(temporaryDirectory, "NEXORA");
+        WorldContainerManager manager = new WorldContainerManager(storage);
+        ContainerInventory inventory = manager.getOrCreate(8, 64, 9);
+        inventory.setSlot(0, new ItemStack("minecraft:diamond", 5, 64));
+        manager.save(8, 64, 9);
+
+        Path primary = temporaryDirectory.resolve("NEXORA/containers/8_64_9.nxc");
+        Path target = temporaryDirectory.resolve("protected-container-target");
+        java.nio.file.Files.writeString(target, "keep");
+        java.nio.file.Files.delete(primary);
+        java.nio.file.Files.createSymbolicLink(primary, target);
+
+        assertThrows(java.io.IOException.class, () -> manager.remove(8, 64, 9));
+        assertSame(inventory, manager.loaded(8, 64, 9).orElseThrow());
+        assertEquals(new ItemStack("minecraft:diamond", 5, 64),
+                manager.getOrCreate(8, 64, 9).getSlot(0).orElseThrow());
+    }
+
+    @Test
     void removingContainerClearsMemoryAndPersistentContents() throws Exception {
         ContainerInventoryStorage storage = new ContainerInventoryStorage(temporaryDirectory, "NEXORA");
         WorldContainerManager manager = new WorldContainerManager(storage);

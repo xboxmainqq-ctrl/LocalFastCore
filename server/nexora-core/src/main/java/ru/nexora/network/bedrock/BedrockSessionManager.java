@@ -6241,8 +6241,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         long changedChunkKey = ((long) changedChunkX << 32) | (changedChunkZ & 0xffff_ffffL);
         for (var entry : sessions.entrySet()) {
             SessionState recipient = entry.getValue();
-            if (recipient.clientInitialized && recipient.sentChunkKeys.contains(changedChunkKey)) {
+            if (!recipient.clientInitialized || !recipient.sentChunkKeys.contains(changedChunkKey)) continue;
+            try {
                 sendPacket(entry.getKey(), update, true);
+            } catch (RuntimeException exception) {
+                // A saturated/disconnected recipient must not make World.setBlock fail
+                // after the authoritative mutation has already committed.
+                System.err.println("NEXORA: unable to publish block update to "
+                        + entry.getKey() + " at " + x + " " + y + " " + z + ": "
+                        + exception.getMessage());
             }
         }
     }

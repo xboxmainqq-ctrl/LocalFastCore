@@ -7524,8 +7524,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private void broadcastPlayerEquipment(String sourceNetworkId, SessionState player) {
         BedrockItemRegistry registry = itemRegistry;
         if (registry == null || player == null || player.entityId <= 0) return;
-        BedrockPacket equipment = BedrockMobEquipmentCodec.createPlayerEquipment(
-                player.entityId, player.inventory, registry);
+        List<BedrockPacket> equipmentPackets = List.of(
+                BedrockMobEquipmentCodec.createPlayerEquipment(player.entityId, player.inventory, registry),
+                BedrockMobEquipmentCodec.createPlayerOffhandEquipment(
+                        player.entityId, player.equipment.offhand(), registry),
+                BedrockPlayerEquipmentCodec.createMobArmorEquipment(player.entityId, player.equipment, registry));
         List<byte[]> frames = null;
         for (String networkId : playerActorReplicationIndex.actorViewers(player.entityId)) {
             if (networkId.equals(sourceNetworkId)) continue;
@@ -7533,10 +7536,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             if (recipient == null || !recipient.clientInitialized || !recipient.playerListAdvertised
                     || !recipient.visiblePlayerEntityIds.contains(player.entityId)) continue;
             try {
-                if (frames == null) frames = encodeFrames(List.of(equipment), true);
+                if (frames == null) frames = encodeFrames(equipmentPackets, true);
                 sendEncodedFrames(networkId, frames);
             } catch (RuntimeException exception) {
-                System.err.println("NEXORA: unable to broadcast held item to " + networkId
+                System.err.println("NEXORA: unable to broadcast player equipment to " + networkId
                         + ": " + exception.getMessage());
             }
         }
@@ -7688,6 +7691,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (registry != null) {
             packets.add(BedrockMobEquipmentCodec.createPlayerEquipment(
                     player.entityId, player.inventory, registry));
+            packets.add(BedrockMobEquipmentCodec.createPlayerOffhandEquipment(
+                    player.entityId, player.equipment.offhand(), registry));
+            packets.add(BedrockPlayerEquipmentCodec.createMobArmorEquipment(
+                    player.entityId, player.equipment, registry));
         }
         // A remote player needs the same authoritative health, hunger and experience
         // snapshot as the local player; AddPlayer alone does not carry these values.

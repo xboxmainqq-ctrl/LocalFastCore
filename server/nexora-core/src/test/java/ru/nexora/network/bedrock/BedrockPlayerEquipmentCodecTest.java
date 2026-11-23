@@ -58,6 +58,20 @@ class BedrockPlayerEquipmentCodecTest {
     }
 
     @Test
+    void createsRemoteArmorPacketWithAllFourArmorSlotsAndEmptyBodySlot() {
+        PlayerEquipment equipment = new PlayerEquipment();
+        equipment.setArmor(0, new ItemStack("minecraft:diamond", 1, 64));
+
+        BedrockPacket packet = BedrockPlayerEquipmentCodec.createMobArmorEquipment(300L, equipment, REGISTRY);
+
+        assertEquals(0x20, packet.packetId());
+        byte[] payload = packet.payload();
+        assertEquals(0xac, payload[0] & 0xff);
+        assertEquals(0x02, payload[1] & 0xff);
+        assertTrue(payload.length > 2 + 5 * 8);
+    }
+
+    @Test
     void rejectsUnknownEquipmentItemInsteadOfGuessingRuntimeId() {
         PlayerEquipment equipment = new PlayerEquipment();
         equipment.setArmor(1, new ItemStack("nexora:unregistered_helmet", 1, 1));

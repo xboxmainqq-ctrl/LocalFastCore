@@ -89,6 +89,23 @@ public final class BedrockMobEquipmentCodec {
                 metadata.enchantments(), metadata.repairCost()));
     }
 
+
+    /** Creates the MobEquipment update for a player's offhand container. */
+    public static BedrockPacket createPlayerOffhandEquipment(
+            long runtimeEntityId, Optional<ItemStack> offhand, BedrockItemRegistry registry
+    ) {
+        if (runtimeEntityId < 0) throw new IllegalArgumentException("runtimeEntityId must be non-negative");
+        Objects.requireNonNull(offhand, "offhand");
+        Objects.requireNonNull(registry, "registry");
+        Writer out = new Writer();
+        out.varUInt64(runtimeEntityId);
+        writeItem(out, offhand, registry);
+        out.byteValue(0);
+        out.byteValue(0);
+        out.byteValue(BedrockPlayerEquipmentCodec.OFFHAND_CONTAINER_ID);
+        return new BedrockPacket(MOB_EQUIPMENT_PACKET_ID, 0, 0, out.toByteArray());
+    }
+
     private static void writeItem(Writer out, Optional<ItemStack> optional, BedrockItemRegistry registry) {
         ItemStack stack = optional.orElse(null);
         if (stack == null) {

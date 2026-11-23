@@ -33,6 +33,23 @@ public final class BedrockPlayerEquipmentCodec {
         return List.copyOf(packets);
     }
 
+
+    /** Sends the complete visible armor appearance for a remote player (protocol packet 0x20). */
+    public static BedrockPacket createMobArmorEquipment(long runtimeEntityId, PlayerEquipment equipment,
+                                                          BedrockItemRegistry registry) {
+        if (runtimeEntityId < 0) throw new IllegalArgumentException("runtimeEntityId must be non-negative");
+        Objects.requireNonNull(equipment, "equipment");
+        Objects.requireNonNull(registry, "registry");
+        Writer out = new Writer();
+        out.varUInt64(runtimeEntityId);
+        for (Optional<ItemStack> stack : equipment.snapshot().armor()) {
+            writeDescriptor(out, stack, registry);
+        }
+        // Body is reserved for entity body armor; players have no body slot in this model.
+        writeDescriptor(out, Optional.empty(), registry);
+        return new BedrockPacket(0x20, 0, 0, out.bytes());
+    }
+
     public static BedrockPacket createArmorContent(List<Optional<ItemStack>> armor,
                                                     BedrockItemRegistry registry) {
         if (armor == null || armor.size() != PlayerEquipment.ARMOR_SLOTS) {
@@ -132,6 +149,15 @@ public final class BedrockPlayerEquipmentCodec {
             byteValue(value); byteValue(value >>> 8); byteValue(value >>> 16); byteValue(value >>> 24);
         }
         void varInt32(int value) { varUInt32(Integer.toUnsignedLong((value << 1) ^ (value >> 31))); }
+        void varUInt64(long value) {
+            if (value < 0) throw new IllegalArgumentException("varuint64 out of supported range");
+            do {
+                int next = (int) (value & 0x7f);
+                value >>>= 7;
+                if (value != 0) next |= 0x80;
+                byteValue(next);
+            } while (value != 0);
+        }
         void varUInt32(long value) {
             if (value < 0 || value > 0xffff_ffffL) throw new IllegalArgumentException("varuint32 out of range");
             do {

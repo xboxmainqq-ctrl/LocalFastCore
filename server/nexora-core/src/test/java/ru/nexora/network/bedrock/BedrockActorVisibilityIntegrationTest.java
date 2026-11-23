@@ -172,6 +172,60 @@ class BedrockActorVisibilityIntegrationTest {
     }
 
     @Test
+    void playerEquipmentUpdatesAreFannedOutOnlyToClientsTrackingThatPlayer() throws Exception {
+        List<Outbound> outbound = new ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new World("player-equipment-visibility-test", 0L, new FlatWorldGenerator()),
+                (networkId, label, frame) -> outbound.add(new Outbound(networkId, frame)),
+                event -> { });
+        manager.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
+
+        try {
+            for (String id : List.of("source", "viewer", "outsider")) {
+                manager.onIdentity(id, new NetherNetClientIdentity(
+                        id + "-token", new byte[] {1, 2, 3}, id + "-xuid",
+                        id, id + "-playfab", "20CA2", null));
+                Object state = session(manager, id);
+                set(state, "clientInitialized", true);
+                set(state, "playerListAdvertised", true);
+            }
+
+            Object source = session(manager, "source");
+            set(source, "entityId", 703L);
+            ru.nexora.inventory.PlayerEquipment equipment = new ru.nexora.inventory.PlayerEquipment();
+            equipment.setArmor(0, new ru.nexora.inventory.ItemStack("minecraft:diamond", 1, 64));
+            equipment.setOffhand(new ru.nexora.inventory.ItemStack("minecraft:ender_pearl", 1, 16));
+            set(source, "equipment", equipment);
+
+            Object viewer = session(manager, "viewer");
+            visiblePlayers(viewer).add(703L);
+            Field indexField = BedrockSessionManager.class.getDeclaredField("playerActorReplicationIndex");
+            indexField.setAccessible(true);
+            ((ActorReplicationIndex) indexField.get(manager)).addActorViewer(703L, "viewer");
+
+            Method broadcast = BedrockSessionManager.class.getDeclaredMethod(
+                    "broadcastPlayerEquipment", String.class, source.getClass());
+            broadcast.setAccessible(true);
+            broadcast.invoke(manager, "source", source);
+
+            assertTrue(packetsFor(outbound, "source").isEmpty());
+            List<BedrockPacket> viewerPackets = packetsFor(outbound, "viewer");
+            assertEquals(List.of(0x1f, 0x1f, 0x20),
+                    viewerPackets.stream().map(BedrockPacket::packetId).toList());
+            BedrockMobEquipmentCodec.DecodedEquipment offhand =
+                    BedrockMobEquipmentCodec.decode(viewerPackets.get(1), BedrockVanillaItemCatalog.createRegistry());
+            assertEquals(703L, offhand.runtimeEntityId());
+            assertEquals(BedrockPlayerEquipmentCodec.OFFHAND_CONTAINER_ID, offhand.containerId());
+            assertEquals("minecraft:ender_pearl", offhand.item().orElseThrow().itemId());
+            assertTrue(viewerPackets.get(2).payload().length > 0);
+            assertTrue(packetsFor(outbound, "outsider").isEmpty());
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void playerVitalsUpdatesAreFannedOutOnlyToClientsTrackingThatPlayer() throws Exception {
         List<Outbound> outbound = new ArrayList<>();
         BedrockSessionManager manager = new BedrockSessionManager(

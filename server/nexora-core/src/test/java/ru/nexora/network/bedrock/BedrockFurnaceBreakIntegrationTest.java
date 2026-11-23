@@ -56,7 +56,8 @@ class BedrockFurnaceBreakIntegrationTest {
 
             assertEquals(BlockType.AIR, world.getBlock(x, y, z));
             List<WorldItemEntity> drops = world.itemEntities().snapshot();
-            assertEquals(3, drops.size());
+            // Three furnace slots plus the furnace block itself are dropped.
+            assertEquals(4, drops.size());
             assertTrue(drops.stream().anyMatch(item -> item.stack().equals(input)));
             assertTrue(drops.stream().anyMatch(item -> item.stack().equals(fuel)));
             assertTrue(drops.stream().anyMatch(item -> item.stack().equals(output)));

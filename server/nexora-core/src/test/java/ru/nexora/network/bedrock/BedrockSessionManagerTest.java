@@ -3622,12 +3622,12 @@ class BedrockSessionManagerTest {
         return BedrockBatchCodec.decode(payload, compressed).getFirst();
     }
 
-    private static BedrockPacket resourcePackResponse(int response, String name) {
-        if (response < 1 || response > 4) {
-            throw new IllegalArgumentException("Resource-pack response must be 1..4");
+    private static BedrockPacket resourcePackResponse(int variant, String name) {
+        if (variant < 0 || variant > 3) {
+            throw new IllegalArgumentException("Resource-pack response variant must be 0..3");
         }
         ByteArrayOutputStream body = new ByteArrayOutputStream();
-        body.write(response - 1); // protocol 2225 oneOf variant tag
+        body.write(variant); // protocol 2225 oneOf alternatives are tagged 0..3
         writeString(body, name);
         return new BedrockPacket(
                 BedrockBatchCodec.RESOURCE_PACK_CLIENT_RESPONSE_PACKET_ID, 0, 0, body.toByteArray());

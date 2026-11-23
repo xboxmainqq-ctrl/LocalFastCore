@@ -45,7 +45,7 @@ class BedrockCraftingDataCodecTest {
         assertEquals(shapelessRecipes.size(), in.varUInt());
         for (CraftingRecipe recipe : shapelessRecipes) {
             assertEquals(recipe.id(), in.string());
-            assertEquals(recipe.ingredients().values().stream().mapToInt(Integer::intValue).sum(), in.varUInt());
+            assertEquals(recipe.ingredients().size(), in.varUInt());
             recipe.ingredients().entrySet().stream().sorted(java.util.Map.Entry.comparingByKey())
                     .forEach(entry -> assertNamedIngredient(in, entry.getKey(), entry.getValue()));
             assertRecipeResultAndTail(in, recipe, items, recipes, false);
@@ -80,7 +80,6 @@ class BedrockCraftingDataCodecTest {
     void recipeUuidUsesRawMd5DigestWithoutUuidVersionBitMutation() throws Exception {
         byte[] digest = java.security.MessageDigest.getInstance("MD5")
                 .digest("minecraft:sticks_from_oak_planks".getBytes(StandardCharsets.UTF_8));
-        Reader in = new Reader(new byte[0]);
         assertEquals(new UUID(
                 java.nio.ByteBuffer.wrap(digest).getLong(),
                 java.nio.ByteBuffer.wrap(digest, 8, 8).getLong()
@@ -228,38 +227,4 @@ class BedrockCraftingDataCodecTest {
         } while (value != 0);
     }
 
-    private static final class Reader {
-        private final byte[] data;
-        private int offset;
-        Reader(byte[] data) { this.data = data; }
-        int byteValue() { return data[offset++] & 0xff; }
-        int int16() { int value = byteValue() | (byteValue() << 8); return (short) value; }
-        int varUInt() { return (int) varUIntLong(); }
-        long varUIntLong() {
-            long value = 0;
-            for (int shift = 0; shift < 35; shift += 7) {
-                int next = byteValue();
-                value |= (long) (next & 0x7f) << shift;
-                if ((next & 0x80) == 0) return value;
-            }
-            throw new AssertionError("invalid test varuint");
-        }
-        int varInt() { long value = varUIntLong(); return (int) ((value >>> 1) ^ -(value & 1)); }
-        String string() { return new String(byteArray(), StandardCharsets.UTF_8); }
-        byte[] byteArray() {
-            int length = varUInt();
-            byte[] result = java.util.Arrays.copyOfRange(data, offset, offset + length);
-            offset += length;
-            return result;
-        }
-        UUID uuidLittleEndian() {
-            return new UUID(longLittleEndian(), longLittleEndian());
-        }
-        long longLittleEndian() {
-            long value = 0;
-            for (int i = 0; i < 8; i++) value |= (long) byteValue() << (i * 8);
-            return value;
-        }
-        int remaining() { return data.length - offset; }
-    }
 }

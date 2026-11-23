@@ -83,7 +83,7 @@ public final class BedrockCraftingDataCodec {
             Writer out, CraftingRecipeRegistry registry, BedrockItemRegistry itemRegistry, CraftingRecipe recipe
     ) {
         out.string(recipe.id());
-        out.varUInt32(recipe.ingredients().values().stream().mapToLong(Integer::longValue).sum());
+        out.varUInt32(recipe.ingredients().size());
         recipe.ingredients().entrySet().stream().sorted(java.util.Map.Entry.comparingByKey())
                 .forEach(entry -> writeIngredient(out, itemRegistry, entry.getKey(), entry.getValue()));
         writeRecipeResultAndTail(out, registry, itemRegistry, recipe, false);

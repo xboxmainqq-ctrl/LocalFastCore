@@ -6558,7 +6558,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             try {
                 ContainerInventory furnace = manager.getOrCreate(
                         target.x(), target.y(), target.z(), furnaceKind(current));
-                if (furnace.snapshot().stream().anyMatch(Optional::isPresent)) {
+                if (furnace.snapshot().stream().anyMatch(Optional::isPresent)
+                        || manager.hasPendingExperience(target.x(), target.y(), target.z())) {
+                    // Do not destroy a furnace while it still owns items or unclaimed
+                    // smelting XP. Both are player value and must remain recoverable.
                     state.breakTarget = null;
                     sendPacket(networkId, BedrockBlockUpdateCodec.createPacket(
                             target.x(), target.y(), target.z(), current), true);

@@ -121,6 +121,11 @@ public final class WorldFurnaceManager {
                 batches == 0 ? 0.0 : total / (double) batches / 1_000_000.0);
     }
 
+    /** Whether a furnace still owns unclaimed smelting experience that must not be discarded. */
+    public synchronized boolean hasPendingExperience(int x, int y, int z) {
+        return service.snapshotState(x, y, z).pendingExperienceMilli() > 0;
+    }
+
     /** Claims the pending smelting experience for items removed from the output slot. */
     public synchronized int collectExperience(int x, int y, int z, int removedItems, int previousOutputCount) {
         return service.collectExperience(x, y, z, removedItems, previousOutputCount);

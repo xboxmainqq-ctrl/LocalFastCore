@@ -135,6 +135,23 @@ class WorldFurnaceManagerTest {
     }
 
     @Test
+    void pendingExperiencePreventsFurnaceValueFromBeingSilentlyDiscarded() throws Exception {
+        ContainerInventoryStorage inventoryStorage =
+                new ContainerInventoryStorage(temporaryDirectory, "NEXORA");
+        FurnaceStateStorage stateStorage = new FurnaceStateStorage(temporaryDirectory, "NEXORA");
+        WorldFurnaceManager manager = new WorldFurnaceManager(inventoryStorage, stateStorage);
+        var furnace = manager.getOrCreate(9, 64, 1);
+        furnace.setSlot(0, new ItemStack("minecraft:raw_iron", 1, 64));
+        furnace.setSlot(1, new ItemStack("minecraft:coal", 1, 64));
+        manager.tick(9, 64, 1, 200);
+        assertEquals(new ItemStack("minecraft:iron_ingot", 1, 64), furnace.getSlot(2).orElseThrow());
+        furnace.setSlot(2, null);
+        assertTrue(manager.hasPendingExperience(9, 64, 1));
+        assertEquals(700, manager.collectExperience(9, 64, 1, 1, 1));
+        assertFalse(manager.hasPendingExperience(9, 64, 1));
+    }
+
+    @Test
     void removeDeletesBothInventoryAndProgress() throws Exception {
         ContainerInventoryStorage inventoryStorage =
                 new ContainerInventoryStorage(temporaryDirectory, "NEXORA");

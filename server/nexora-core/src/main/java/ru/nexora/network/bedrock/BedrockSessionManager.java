@@ -4916,7 +4916,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 current.onGround(), current.fallDistance(), current.landedDistance());
         attacker.vitals = attacker.vitals.addExhaustion(4.0f * level);
         sendMovementCorrection(networkId, attacker, attacker.lastInputTick);
-        sendPacket(networkId, createPlayerAttributes(attacker, Math.max(0, attacker.lastInputTick)), true);
+        broadcastPlayerVitals(networkId, attacker, false, attacker.lastInputTick);
     }
 
     private void applyKnockback(
@@ -6255,7 +6255,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         List<BedrockPacket> packets = new java.util.ArrayList<>();
         if (healthChanged) packets.add(BedrockVitalsCodec.createSetHealth(updated));
         packets.add(createPlayerAttributes(state, Math.max(0, tick)));
-        sendPackets(networkId, packets, true);
+        broadcastPlayerVitals(networkId, state, healthChanged, tick, packets);
         if (state.vitals.dead()) handleDeath(networkId, state, "death.attack.onFire");
     }
 
@@ -6285,7 +6285,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             packets.add(BedrockVitalsCodec.createSetHealth(state.vitals));
         }
         packets.add(createPlayerAttributes(state, Math.max(0, tick)));
-        sendPackets(networkId, packets, true);
+        broadcastPlayerVitals(networkId, state, state.vitals.health() != before.health(), tick, packets);
         if (state.vitals.dead()) handleDeath(networkId, state, deathCause);
     }
 
@@ -6294,6 +6294,40 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 (long) state.experiencePoints * 1000L + state.experienceRemainderMilli);
         return BedrockVitalsCodec.createUpdateAttributes(state.entityId, state.vitals,
                 experience.level(), experience.progress(), tick);
+    }
+
+    /**
+     * Keeps every client tracking this player in sync with authoritative health, hunger,
+     * saturation and experience changes. The local player receives the same packet batch.
+     */
+    private void broadcastPlayerVitals(
+            String sourceNetworkId, SessionState player, boolean healthChanged, long tick
+    ) {
+        List<BedrockPacket> packets = new ArrayList<>();
+        if (healthChanged) packets.add(BedrockVitalsCodec.createSetHealth(player.vitals));
+        packets.add(createPlayerAttributes(player, Math.max(0, tick)));
+        broadcastPlayerVitals(sourceNetworkId, player, healthChanged, tick, packets);
+    }
+
+    private void broadcastPlayerVitals(
+            String sourceNetworkId, SessionState player, boolean healthChanged, long tick,
+            List<BedrockPacket> packets
+    ) {
+        sendPackets(sourceNetworkId, packets, true);
+        List<byte[]> frames = null;
+        for (String viewerId : playerActorReplicationIndex.actorViewers(player.entityId)) {
+            if (viewerId.equals(sourceNetworkId)) continue;
+            SessionState viewer = sessions.get(viewerId);
+            if (viewer == null || !viewer.clientInitialized
+                    || !viewer.visiblePlayerEntityIds.contains(player.entityId)) continue;
+            try {
+                if (frames == null) frames = encodeFrames(packets, true);
+                sendEncodedFrames(viewerId, frames);
+            } catch (RuntimeException exception) {
+                System.err.println("NEXORA: unable to sync player vitals to " + viewerId
+                        + ": " + exception.getMessage());
+            }
+        }
     }
 
     private void sendMovementCorrection(String networkId, SessionState state, long tick) {

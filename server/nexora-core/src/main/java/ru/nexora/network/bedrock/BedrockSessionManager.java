@@ -1777,7 +1777,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
 
             sendInventoryAndEquipmentState(networkId, state);
-            sendPacket(networkId, createPlayerAttributes(state, Math.max(0, state.lastInputTick)), true);
+            broadcastPlayerVitals(networkId, state, false, state.lastInputTick);
             return Optional.of(result);
         }
     }
@@ -5817,10 +5817,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         int runtimeItemId = state.usingItemRuntimeId;
         clearUsingItem(state);
         state.vitals = state.vitals.feed(food.foodPoints(), food.saturationModifier());
-        sendPackets(networkId, List.of(
-                BedrockItemUseCompletionCodec.create(runtimeItemId),
-                createPlayerAttributes(state, Math.max(0, state.lastInputTick))
-        ), true);
+        sendPacket(networkId, BedrockItemUseCompletionCodec.create(runtimeItemId), true);
+        broadcastPlayerVitals(networkId, state, false, state.lastInputTick);
         sendInventoryAndEquipmentState(networkId, state);
     }
 

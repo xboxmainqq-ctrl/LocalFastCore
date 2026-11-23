@@ -111,7 +111,6 @@ public final class BedrockCraftingDataCodec {
     }
 
     private static void writeRecipeIngredient(Writer out, String itemId, long auxValue, int count) {
-        out.varUInt32(1); // ItemDescriptorType.DEFAULT
         out.byteValue(1); // ItemDescriptorType.ITEM_NAME
         out.string(itemId);
         out.varInt32((int) auxValue);
@@ -119,7 +118,6 @@ public final class BedrockCraftingDataCodec {
     }
 
     private static void writeItemTagIngredient(Writer out, String tag, int count) {
-        out.varUInt32(1); // ItemDescriptorType.ITEM_TAG
         out.byteValue(3); // ItemDescriptorType.ITEM_TAG
         out.string(tag);
         out.varInt32(0);

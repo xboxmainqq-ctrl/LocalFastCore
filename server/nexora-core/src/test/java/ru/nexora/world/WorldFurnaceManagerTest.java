@@ -218,15 +218,15 @@ class WorldFurnaceManagerTest {
         // the durable state if deleting its inventory fails after the state file.
         WorldFurnaceManager remover = new WorldFurnaceManager(inventoryStorage, stateStorage);
         Path primary = temporaryDirectory.resolve("NEXORA/containers/12_64_3.nxc");
+        Path backup = temporaryDirectory.resolve("NEXORA/containers/12_64_3.nxc.bak");
         Path target = temporaryDirectory.resolve("protected-unloaded-furnace-inventory");
+        byte[] inventoryBeforeRemoval = java.nio.file.Files.readAllBytes(primary);
         java.nio.file.Files.writeString(target, "keep");
-        java.nio.file.Files.delete(primary);
-        java.nio.file.Files.createSymbolicLink(primary, target);
+        java.nio.file.Files.createSymbolicLink(backup, target);
 
         assertThrows(java.io.IOException.class, () -> remover.remove(12, 64, 3));
         assertEquals(60, stateStorage.load(12, 64, 3).orElseThrow().cookProgress());
-        assertEquals(new ItemStack("minecraft:raw_iron", 1, 64),
-                inventoryStorage.load(12, 64, 3).orElseThrow().getSlot(0).orElseThrow());
+        assertArrayEquals(inventoryBeforeRemoval, java.nio.file.Files.readAllBytes(primary));
     }
 
     @Test

@@ -128,6 +128,66 @@ class BedrockActorVisibilityIntegrationTest {
         }
     }
 
+    @Test
+    void mobMovementIsFannedOutOnlyToViewersOfItsCurrentChunk() throws Exception {
+        List<Outbound> outbound = new ArrayList<>();
+        World world = new World("actor-multi-viewer-test", 0L, new FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                world, (networkId, label, frame) -> outbound.add(new Outbound(networkId, frame)),
+                event -> { });
+
+        try {
+            manager.onIdentity("west-viewer", new NetherNetClientIdentity(
+                    "west-token", new byte[] {1, 2, 3}, "west-xuid",
+                    "WestViewer", "west-playfab", "20CA2", null));
+            manager.onIdentity("east-viewer", new NetherNetClientIdentity(
+                    "east-token", new byte[] {1, 2, 3}, "east-xuid",
+                    "EastViewer", "east-playfab", "20CA2", null));
+
+            Object west = session(manager, "west-viewer");
+            Object east = session(manager, "east-viewer");
+            for (Object viewer : List.of(west, east)) {
+                set(viewer, "clientInitialized", true);
+                set(viewer, "compressionNegotiated", true);
+            }
+            sentChunks(west).add(chunkKey(0, 0));
+            sentChunks(east).add(chunkKey(2, 0));
+
+            WorldLivingEntity mob = world.livingEntities().spawn(
+                    "minecraft:zombie", 1.0f, 65.0, 1.0, 1.0);
+            Method sync = BedrockSessionManager.class.getDeclaredMethod(
+                    "syncVisibleWorldActors", String.class, west.getClass());
+            sync.setAccessible(true);
+            sync.invoke(manager, "west-viewer", west);
+            sync.invoke(manager, "east-viewer", east);
+
+            assertTrue(visibleMobs(west).contains(mob.runtimeId()));
+            assertFalse(visibleMobs(east).contains(mob.runtimeId()));
+            assertEquals(List.of(BedrockAddActorCodec.ADD_ACTOR_PACKET_ID),
+                    packetsFor(outbound, "west-viewer").stream().map(BedrockPacket::packetId).toList());
+            assertTrue(packetsFor(outbound, "east-viewer").isEmpty());
+
+            world.livingEntities().move(mob.runtimeId(), 33.0, 65.0, 1.0);
+            Method broadcast = BedrockSessionManager.class.getDeclaredMethod(
+                    "broadcastLivingActorPacket", BedrockPacket.class);
+            broadcast.setAccessible(true);
+            broadcast.invoke(manager, BedrockMoveActorAbsoluteCodec.create(
+                    mob.runtimeId(), 33.0, 65.0, 1.0, 0, 0, 0, true));
+
+            assertFalse(visibleMobs(west).contains(mob.runtimeId()));
+            assertTrue(visibleMobs(east).contains(mob.runtimeId()));
+            assertEquals(List.of(
+                    BedrockAddActorCodec.ADD_ACTOR_PACKET_ID,
+                    BedrockAddItemActorCodec.REMOVE_ACTOR_PACKET_ID),
+                    packetsFor(outbound, "west-viewer").stream().map(BedrockPacket::packetId).toList());
+            assertEquals(List.of(BedrockAddActorCodec.ADD_ACTOR_PACKET_ID),
+                    packetsFor(outbound, "east-viewer").stream().map(BedrockPacket::packetId).toList());
+        } finally {
+            manager.close();
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private static Object session(BedrockSessionManager manager, String id) throws Exception {
         Field field = BedrockSessionManager.class.getDeclaredField("sessions");

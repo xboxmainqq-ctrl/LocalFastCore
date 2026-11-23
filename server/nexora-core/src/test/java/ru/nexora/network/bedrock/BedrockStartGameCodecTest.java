@@ -62,6 +62,22 @@ class BedrockStartGameCodecTest {
     }
 
     @Test
+    void encodesProtocol2225NetworkPermissionsAndOptionalServerConfigTail() {
+        byte[] payload = BedrockStartGameCodec.create(
+                7, "NEXORA World", "1.26.60", "1.26.60", 0.5f, 65.0f, 0.5f).payload();
+
+        // checksum (8), template UUID (16), client generation, block hash flag,
+        // NetworkPermissions, absent optional server_config, and four empty telemetry strings.
+        assertTrue(payload.length >= 32);
+        int tail = payload.length - 32;
+        for (int i = 0; i < 32; i++) {
+            int expected = i == 25 ? 1 : 0; // BlockNetworkIdsAreHashes is enabled.
+            assertEquals(expected, Byte.toUnsignedInt(payload[tail + i]),
+                    "Unexpected StartGame tail byte at offset " + i);
+        }
+    }
+
+    @Test
     void buildsInitialWorldMetadataInProtocolOrder() {
         List<BedrockPacket> packets = BedrockStartGameCodec.createInitialWorldPackets(
                 9, "NEXORA World", "1.26.62", "1.26.62", 0.5f, 65.0f, 0.5f);

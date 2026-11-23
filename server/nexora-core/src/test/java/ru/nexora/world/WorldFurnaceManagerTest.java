@@ -230,6 +230,33 @@ class WorldFurnaceManagerTest {
     }
 
     @Test
+    void failedInventorySaveRestoresPreviouslyPersistedFurnaceTimers() throws Exception {
+        ContainerInventoryStorage inventoryStorage =
+                new ContainerInventoryStorage(temporaryDirectory, "NEXORA");
+        FurnaceStateStorage stateStorage = new FurnaceStateStorage(temporaryDirectory, "NEXORA");
+        WorldFurnaceManager manager = new WorldFurnaceManager(inventoryStorage, stateStorage);
+        var furnace = manager.getOrCreate(13, 64, 3);
+        furnace.setSlot(0, new ItemStack("minecraft:raw_iron", 1, 64));
+        furnace.setSlot(1, new ItemStack("minecraft:blaze_rod", 1, 64));
+        manager.tick(13, 64, 3, 60);
+        manager.save(13, 64, 3);
+        assertEquals(60, stateStorage.load(13, 64, 3).orElseThrow().cookProgress());
+
+        manager.tick(13, 64, 3, 20);
+        assertEquals(80, manager.snapshotState(13, 64, 3).cookProgress());
+        Path backup = temporaryDirectory.resolve("NEXORA/containers/13_64_3.nxc.bak");
+        Path target = temporaryDirectory.resolve("protected-furnace-save-backup");
+        java.nio.file.Files.writeString(target, "keep");
+        java.nio.file.Files.createSymbolicLink(backup, target);
+
+        assertThrows(java.io.IOException.class, () -> manager.save(13, 64, 3));
+        assertEquals(60, stateStorage.load(13, 64, 3).orElseThrow().cookProgress(),
+                "failed inventory write must roll furnace timers back to the last durable snapshot");
+        assertEquals(80, manager.snapshotState(13, 64, 3).cookProgress(),
+                "live processing continues; a later successful save can persist the newer snapshot");
+    }
+
+    @Test
     void removeDeletesBothInventoryAndProgress() throws Exception {
         ContainerInventoryStorage inventoryStorage =
                 new ContainerInventoryStorage(temporaryDirectory, "NEXORA");

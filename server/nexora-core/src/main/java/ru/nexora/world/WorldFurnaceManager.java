@@ -177,9 +177,7 @@ public final class WorldFurnaceManager {
     public synchronized void save(int x, int y, int z) throws IOException {
         ContainerInventory inventory = loaded.get(new Position(x, y, z));
         if (inventory == null) return;
-        inventoryStorage.save(x, y, z, inventory);
-        FurnaceService.FurnaceStateSnapshot state = service.snapshotState(x, y, z);
-        stateStorage.save(x, y, z, state);
+        saveSnapshot(x, y, z, inventory);
     }
 
     public synchronized void saveAll() throws IOException {
@@ -187,16 +185,36 @@ public final class WorldFurnaceManager {
         for (var entry : loaded.entrySet()) {
             Position p = entry.getKey();
             try {
-                inventoryStorage.save(p.x(), p.y(), p.z(), entry.getValue());
-                FurnaceService.FurnaceStateSnapshot state =
-                        service.snapshotState(p.x(), p.y(), p.z());
-                stateStorage.save(p.x(), p.y(), p.z(), state);
+                saveSnapshot(p.x(), p.y(), p.z(), entry.getValue());
             } catch (IOException exception) {
                 if (failure == null) failure = exception;
                 else failure.addSuppressed(exception);
             }
         }
         if (failure != null) throw failure;
+    }
+
+    /**
+     * Persists furnace processing state before its inventory. If inventory persistence
+     * fails, restore the last durable state so a retry/restart cannot pair newly advanced
+     * timers with an older inventory snapshot (or vice versa after an ordinary I/O error).
+     */
+    private void saveSnapshot(int x, int y, int z, ContainerInventory inventory) throws IOException {
+        java.util.Optional<FurnaceService.FurnaceStateSnapshot> previous = stateStorage.load(x, y, z);
+        FurnaceService.FurnaceStateSnapshot current = service.snapshotState(x, y, z);
+        stateStorage.save(x, y, z, current);
+        try {
+            inventoryStorage.save(x, y, z, inventory);
+        } catch (IOException | RuntimeException failure) {
+            try {
+                if (previous.isPresent()) stateStorage.save(x, y, z, previous.orElseThrow());
+                else stateStorage.delete(x, y, z);
+            } catch (IOException rollbackFailure) {
+                failure.addSuppressed(rollbackFailure);
+            }
+            if (failure instanceof IOException ioFailure) throw ioFailure;
+            throw failure;
+        }
     }
 
     public synchronized void remove(int x, int y, int z) throws IOException {

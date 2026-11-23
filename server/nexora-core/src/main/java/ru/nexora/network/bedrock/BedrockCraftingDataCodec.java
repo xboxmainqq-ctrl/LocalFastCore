@@ -104,15 +104,15 @@ public final class BedrockCraftingDataCodec {
         out.uuidLittleEndian(recipe.uuid());
         out.string("crafting_table");
         out.varInt32(0); // priority
-        out.byteValue(1); // requirement present
-        out.varInt32(1); // ALWAYS_UNLOCKED
-        out.byteValue(0); // no ingredient unlock requirement list
+        out.byteValue(0); // assume symmetry
+        out.byteValue(1); // unlocking requirement present
+        out.varInt32(1); // ALWAYS_UNLOCKED; no ingredient list follows this context
         out.varUInt32(registry.networkId(recipe.id()));
     }
 
     private static void writeRecipeIngredient(Writer out, String itemId, long auxValue, int count) {
         out.varUInt32(1); // ItemDescriptorType.DEFAULT
-        out.string("name");
+        out.byteValue(1); // ItemDescriptorType.ITEM_NAME
         out.string(itemId);
         out.varInt32((int) auxValue);
         out.varInt32(count);
@@ -120,7 +120,7 @@ public final class BedrockCraftingDataCodec {
 
     private static void writeItemTagIngredient(Writer out, String tag, int count) {
         out.varUInt32(1); // ItemDescriptorType.ITEM_TAG
-        out.string("item_tag");
+        out.byteValue(3); // ItemDescriptorType.ITEM_TAG
         out.string(tag);
         out.varInt32(0);
         out.varInt32(count);

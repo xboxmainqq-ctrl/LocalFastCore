@@ -55,7 +55,7 @@ public final class BedrockLevelChunkCodec {
         // Client Request SubChunk Limit is optional and is omitted entirely
         // for ordinary full-chunk delivery (it is present only in request mode).
         packet.bool(false); // client chunk cache disabled
-        // Blob ID count is serialized only when client chunk cache is enabled.
+        packet.varUInt32(0); // Cache Metadata is always present; zero entries when cache is disabled.
         packet.byteArray(data);
         packet.bool(false); // clientBiomeUpdate
 

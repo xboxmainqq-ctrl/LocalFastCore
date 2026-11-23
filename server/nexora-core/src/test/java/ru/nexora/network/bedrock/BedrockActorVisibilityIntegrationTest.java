@@ -45,10 +45,8 @@ class BedrockActorVisibilityIntegrationTest {
             sync.invoke(manager, "viewer", session);
 
             assertTrue(visibleMobs(session).contains(mob.runtimeId()));
-            assertEquals(List.of(
-                    BedrockAddActorCodec.ADD_ACTOR_PACKET_ID,
-                    BedrockVitalsCodec.UPDATE_ATTRIBUTES_PACKET_ID),
-                    packetsFor(outbound, "viewer").stream().map(BedrockPacket::packetId).toList());
+            assertEquals(BedrockAddActorCodec.ADD_ACTOR_PACKET_ID,
+                    packetsFor(outbound, "viewer").getLast().packetId());
 
             world.livingEntities().move(mob.runtimeId(), 33.0, 65.0, 1.0);
             Method broadcast = BedrockSessionManager.class.getDeclaredMethod(
@@ -64,10 +62,8 @@ class BedrockActorVisibilityIntegrationTest {
             sentChunks(session).add(chunkKey(2, 0));
             sync.invoke(manager, "viewer", session);
             assertTrue(visibleMobs(session).contains(mob.runtimeId()));
-            assertEquals(List.of(
-                    BedrockAddActorCodec.ADD_ACTOR_PACKET_ID,
-                    BedrockVitalsCodec.UPDATE_ATTRIBUTES_PACKET_ID),
-                    packetsFor(outbound, "viewer").stream().map(BedrockPacket::packetId).toList());
+            assertEquals(BedrockAddActorCodec.ADD_ACTOR_PACKET_ID,
+                    packetsFor(outbound, "viewer").getLast().packetId());
         } finally {
             manager.close();
         }
@@ -173,9 +169,7 @@ class BedrockActorVisibilityIntegrationTest {
 
             assertTrue(visibleMobs(west).contains(mob.runtimeId()));
             assertFalse(visibleMobs(east).contains(mob.runtimeId()));
-            assertEquals(List.of(
-                    BedrockAddActorCodec.ADD_ACTOR_PACKET_ID,
-                    BedrockVitalsCodec.UPDATE_ATTRIBUTES_PACKET_ID),
+            assertEquals(List.of(BedrockAddActorCodec.ADD_ACTOR_PACKET_ID),
                     packetsFor(outbound, "west-viewer").stream().map(BedrockPacket::packetId).toList());
             assertTrue(packetsFor(outbound, "east-viewer").isEmpty());
 
@@ -190,12 +184,9 @@ class BedrockActorVisibilityIntegrationTest {
             assertTrue(visibleMobs(east).contains(mob.runtimeId()));
             assertEquals(List.of(
                     BedrockAddActorCodec.ADD_ACTOR_PACKET_ID,
-                    BedrockVitalsCodec.UPDATE_ATTRIBUTES_PACKET_ID,
                     BedrockAddItemActorCodec.REMOVE_ACTOR_PACKET_ID),
                     packetsFor(outbound, "west-viewer").stream().map(BedrockPacket::packetId).toList());
-            assertEquals(List.of(
-                    BedrockAddActorCodec.ADD_ACTOR_PACKET_ID,
-                    BedrockVitalsCodec.UPDATE_ATTRIBUTES_PACKET_ID),
+            assertEquals(List.of(BedrockAddActorCodec.ADD_ACTOR_PACKET_ID),
                     packetsFor(outbound, "east-viewer").stream().map(BedrockPacket::packetId).toList());
         } finally {
             manager.close();

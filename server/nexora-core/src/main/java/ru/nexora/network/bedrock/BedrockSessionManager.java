@@ -2633,6 +2633,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 state.entityId, x, y, z, state.pitch, state.yaw,
                 physics.onGround(), Math.max(0, state.lastInputTick)), true);
         sendInitialPlayerInventory(networkId, state);
+        // The respawning player received its own reset above. Existing observers
+        // keep tracking the same runtime entity, so explicitly refresh their vitals.
+        broadcastPlayerVitalsToViewers(state, List.of(
+                BedrockVitalsCodec.createSetHealth(state.vitals),
+                createPlayerAttributes(state, Math.max(0, state.lastInputTick))));
         int chunkX = Math.floorDiv((int) Math.floor(x), 16);
         int chunkZ = Math.floorDiv((int) Math.floor(z), 16);
         sendPacket(networkId, BedrockStartGameCodec.createChunkPublisherUpdate(
@@ -6312,9 +6317,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             List<BedrockPacket> packets
     ) {
         sendPackets(sourceNetworkId, packets, true);
+        broadcastPlayerVitalsToViewers(player, packets);
+    }
+
+    /** Sends a vitals snapshot to initialized clients that currently track this player. */
+    private void broadcastPlayerVitalsToViewers(SessionState player, List<BedrockPacket> packets) {
         List<byte[]> frames = null;
         for (String viewerId : playerActorReplicationIndex.actorViewers(player.entityId)) {
-            if (viewerId.equals(sourceNetworkId)) continue;
             SessionState viewer = sessions.get(viewerId);
             if (viewer == null || !viewer.clientInitialized
                     || !viewer.visiblePlayerEntityIds.contains(player.entityId)) continue;

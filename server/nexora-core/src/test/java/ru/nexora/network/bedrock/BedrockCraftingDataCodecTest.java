@@ -29,12 +29,13 @@ class BedrockCraftingDataCodecTest {
                 for (int i = 0; i < row.length(); i++) {
                     char symbol = row.charAt(i);
                     if (symbol == ' ') {
-                        assertEquals(0, in.varUInt()); // EMPTY ingredient descriptor
+                        assertEquals(0, in.byteValue()); // EmptyItemDescriptor
+                        assertEquals(0, in.int16()); // StackSize
                     } else {
                         assertEquals(1, in.byteValue()); // ItemDescriptorType.ITEM_NAME
                         assertEquals(shaped.key().get(symbol), in.string());
                         assertEquals(0, in.varInt());
-                        assertEquals(1, in.varInt());
+                        assertEquals(1, in.int16());
                     }
                 }
             }
@@ -49,8 +50,7 @@ class BedrockCraftingDataCodecTest {
             assertEquals("crafting_table", in.string());
             assertEquals(0, in.varInt());
             assertEquals(0, in.byteValue()); // assume symmetry
-            assertEquals(1, in.byteValue()); // requirement present
-            assertEquals(1, in.varInt()); // ALWAYS_UNLOCKED
+            assertEquals(1, in.varInt()); // ALWAYS_UNLOCKED unlocking context
             assertEquals(recipes.networkId(shaped.id()), in.varUInt());
         }
 
@@ -62,7 +62,7 @@ class BedrockCraftingDataCodecTest {
             var ingredient = recipe.ingredients().keySet().iterator().next();
             assertEquals(ingredient, in.string());
             assertEquals(0, in.varInt());
-            assertEquals(1, in.varInt());
+            assertEquals(1, in.int16());
 
             assertEquals(1, in.varUInt());
             var output = items.findByIdentifier(recipe.result().itemId()).networkDefinition();
@@ -75,8 +75,7 @@ class BedrockCraftingDataCodecTest {
             assertEquals("crafting_table", in.string());
             assertEquals(0, in.varInt());
             assertEquals(0, in.byteValue()); // assume symmetry
-            assertEquals(1, in.byteValue()); // requirement present
-            assertEquals(1, in.varInt()); // ALWAYS_UNLOCKED
+            assertEquals(1, in.varInt()); // ALWAYS_UNLOCKED unlocking context
             assertEquals(recipes.networkId(recipe.id()), in.varUInt());
         }
 
@@ -92,8 +91,7 @@ class BedrockCraftingDataCodecTest {
         }) {
             assertEquals(3, in.byteValue()); // ItemDescriptorType.ITEM_TAG
             assertEquals(tag, in.string());
-            assertEquals(0, in.varInt());
-            assertEquals(1, in.varInt());
+            assertEquals(1, in.int16());
         }
         assertEquals("smithing_table", in.string());
         assertEquals(1, in.varUInt());

@@ -86,7 +86,7 @@ class BedrockBatchCodecTest {
     @Test
     void parsesProtocolStringResourcePackResponse() {
         byte[] body = new byte[] {
-                19,
+                3, 19,
                 'D', 'o', 'w', 'n', 'l', 'o', 'a', 'd', 'i', 'n', 'g',
                 'F', 'i', 'n', 'i', 's', 'h', 'e', 'd'
         };
@@ -104,7 +104,7 @@ class BedrockBatchCodecTest {
     @Test
     void parsesLowerCamelCaseResourcePackResponseFromBedrockClient() {
         byte[] body = new byte[] {
-                19,
+                2, 19,
                 'd', 'o', 'w', 'n', 'l', 'o', 'a', 'd', 'i', 'n', 'g',
                 'F', 'i', 'n', 'i', 's', 'h', 'e', 'd'
         };

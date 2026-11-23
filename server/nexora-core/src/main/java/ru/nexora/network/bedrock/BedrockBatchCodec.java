@@ -211,12 +211,14 @@ public final class BedrockBatchCodec {
         }
         byte[] payload = packet.payload();
         int[] offset = {0};
-        // Protocol 2225 serializes ResourcePackResponse as a length-prefixed
-        // string, not as a numeric enum followed by a string.
+        // ResourcePackClientResponse is a tagged oneOf in protocol 2225:
+        // the variant discriminator precedes the length-prefixed response string.
+        if (payload.length == 0) {
+            throw new IllegalArgumentException("Missing resource-pack response variant");
+        }
+        int variant = Byte.toUnsignedInt(payload[offset[0]++]);
         String name = readString(payload, offset);
-        // Bedrock clients have emitted the same enum strings with a lowercase
-        // initial character. The wire field is a string in protocol 2225, so
-        // normalize only for matching and retain the original value for logs.
+        // Match enum strings case-insensitively: clients may use lower camel case.
         int response = switch (name.toLowerCase(Locale.ROOT)) {
             case "cancel" -> 1;
             case "downloading" -> 2;
@@ -224,6 +226,12 @@ public final class BedrockBatchCodec {
             case "resourcepackstackfinished" -> 4;
             default -> throw new IllegalArgumentException("Unknown resource-pack response: " + name);
         };
+        // Protocol schema revisions have represented the oneOf tag as either
+        // zero-based variant indexes or the corresponding one-based enum value.
+        if (variant != response && variant != response - 1) {
+            throw new IllegalArgumentException("Resource-pack response variant " + variant
+                    + " does not match " + name);
+        }
         List<String> downloadingPacks = new ArrayList<>();
         if (response == 2) {
             long count = readUnsignedVarInt(payload, offset, payload.length);

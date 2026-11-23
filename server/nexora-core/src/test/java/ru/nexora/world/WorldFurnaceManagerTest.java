@@ -159,6 +159,7 @@ class WorldFurnaceManagerTest {
         WorldFurnaceManager manager = new WorldFurnaceManager(inventoryStorage, stateStorage);
         var furnace = manager.getOrCreate(10, 64, 2);
         furnace.setSlot(0, new ItemStack("minecraft:raw_iron", 1, 64));
+        furnace.setSlot(1, new ItemStack("minecraft:stick", 1, 64));
         manager.tick(10, 64, 2, 40);
         manager.save(10, 64, 2);
 
@@ -183,6 +184,7 @@ class WorldFurnaceManagerTest {
         WorldFurnaceManager manager = new WorldFurnaceManager(inventoryStorage, stateStorage);
         var furnace = manager.getOrCreate(11, 64, 2);
         furnace.setSlot(0, new ItemStack("minecraft:raw_iron", 1, 64));
+        furnace.setSlot(1, new ItemStack("minecraft:stick", 1, 64));
         manager.tick(11, 64, 2, 60);
         manager.save(11, 64, 2);
 

@@ -46,6 +46,48 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockSessionManagerTest {
     @Test
+    void blockBroadcastFailureCannotRollBackCommittedWorldMutation() throws Exception {
+        java.util.concurrent.atomic.AtomicInteger attempts = new java.util.concurrent.atomic.AtomicInteger();
+        ru.nexora.world.World world = new ru.nexora.world.World(
+                "block-broadcast-failure", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.60", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                world,
+                (networkId, label, frame) -> {
+                    attempts.incrementAndGet();
+                    throw new java.io.IOException("temporary transport failure");
+                }, event -> { });
+        try {
+            manager.onIdentity("block-viewer", new NetherNetClientIdentity(
+                    "block-token", new byte[] {1}, "block-xuid",
+                    "BlockViewer", "block-playfab", "20CA2", null));
+            java.lang.reflect.Field sessionsField = BedrockSessionManager.class.getDeclaredField("sessions");
+            sessionsField.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, Object> sessions =
+                    (java.util.Map<String, Object>) sessionsField.get(manager);
+            Object state = sessions.get("block-viewer");
+            java.lang.reflect.Field initializedField = state.getClass().getDeclaredField("clientInitialized");
+            initializedField.setAccessible(true);
+            initializedField.setBoolean(state, true);
+            java.lang.reflect.Field sentChunksField = state.getClass().getDeclaredField("sentChunkKeys");
+            sentChunksField.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            java.util.Set<Long> sentChunks = (java.util.Set<Long>) sentChunksField.get(state);
+            long chunkKey = ((long) Math.floorDiv(-1, 16) << 32)
+                    | (Math.floorDiv(-17, 16) & 0xffff_ffffL);
+            sentChunks.add(chunkKey);
+
+            assertDoesNotThrow(() -> world.setBlock(-1, 70, -17, ru.nexora.world.BlockType.STONE));
+
+            assertEquals(ru.nexora.world.BlockType.STONE, world.getBlock(-1, 70, -17));
+            assertEquals(1, attempts.get());
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void mobAttackDeadlineSaturatesInsteadOfOverflowing() {
         assertEquals(Long.MAX_VALUE - 500L,
                 BedrockSessionManager.mobAttackDeadline(Long.MAX_VALUE - 1_000L, 500L));

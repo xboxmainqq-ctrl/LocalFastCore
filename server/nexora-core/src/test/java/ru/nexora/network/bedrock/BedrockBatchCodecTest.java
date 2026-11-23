@@ -97,7 +97,7 @@ class BedrockBatchCodecTest {
                 BedrockBatchCodec.parseResourcePackClientResponse(packet);
 
         assertEquals(2, response.response());
-        assertEquals("downloadingfinished", response.name());
+        assertEquals("DownloadingFinished", response.name());
     }
 
     @Test

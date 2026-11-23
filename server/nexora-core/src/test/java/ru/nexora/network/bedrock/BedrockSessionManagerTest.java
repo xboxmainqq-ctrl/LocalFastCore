@@ -2348,8 +2348,8 @@ class BedrockSessionManagerTest {
         // Both final responses may be coalesced into one reliable Bedrock batch.
         // The server must apply response 2 before validating response 3.
         sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(
-                resourcePackResponse(2, "downloadingfinished"),
-                resourcePackResponse(3, "resourcepackstackfinished")
+                resourcePackResponse(2, "DownloadingFinished"),
+                resourcePackResponse(3, "ResourcePackStackFinished")
         ), true, 256));
         int beforeInit = outboundFrames.size();
         sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(
@@ -2482,9 +2482,9 @@ class BedrockSessionManagerTest {
                 new BedrockPacket(BedrockBatchCodec.CLIENT_TO_SERVER_HANDSHAKE_PACKET_ID, 0, 0, new byte[0])
         ), true, 256));
         sendClientBatch(manager, "chest-client", BedrockBatchCodec.encode(
-                List.of(resourcePackResponse(2, "downloadingfinished")), true, 256));
+                List.of(resourcePackResponse(2, "DownloadingFinished")), true, 256));
         sendClientBatch(manager, "chest-client", BedrockBatchCodec.encode(
-                List.of(resourcePackResponse(3, "resourcepackstackfinished")), true, 256));
+                List.of(resourcePackResponse(3, "ResourcePackStackFinished")), true, 256));
         sendClientBatch(manager, "chest-client", BedrockBatchCodec.encode(
                 List.of(new BedrockPacket(0x71, 0, 0, new byte[] {1})), true, 256));
 
@@ -2569,10 +2569,10 @@ class BedrockSessionManagerTest {
                 new BedrockPacket(BedrockBatchCodec.CLIENT_TO_SERVER_HANDSHAKE_PACKET_ID, 0, 0, new byte[0])
         ), true, 256));
         sendClientBatch(manager, "food-client", BedrockBatchCodec.encode(
-                List.of(resourcePackResponse(2, "downloadingfinished")), true, 256));
+                List.of(resourcePackResponse(2, "DownloadingFinished")), true, 256));
         int beforeWorldStart = outboundFrames.size();
         sendClientBatch(manager, "food-client", BedrockBatchCodec.encode(
-                List.of(resourcePackResponse(3, "resourcepackstackfinished")), true, 256));
+                List.of(resourcePackResponse(3, "ResourcePackStackFinished")), true, 256));
         sendClientBatch(manager, "food-client", BedrockBatchCodec.encode(
                 List.of(new BedrockPacket(0x71, 0, 0, new byte[] {1})), true, 256));
 
@@ -2665,9 +2665,9 @@ class BedrockSessionManagerTest {
                 new BedrockPacket(BedrockBatchCodec.CLIENT_TO_SERVER_HANDSHAKE_PACKET_ID, 0, 0, new byte[0])
         ), true, 256));
         sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(
-                List.of(resourcePackResponse(2, "downloadingfinished")), true, 256));
+                List.of(resourcePackResponse(2, "DownloadingFinished")), true, 256));
         sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(
-                List.of(resourcePackResponse(3, "resourcepackstackfinished")), true, 256));
+                List.of(resourcePackResponse(3, "ResourcePackStackFinished")), true, 256));
         sendClientBatch(manager, "physics-client", BedrockBatchCodec.encode(
                 List.of(new BedrockPacket(0x71, 0, 0, new byte[] {1})), true, 256));
 
@@ -2900,13 +2900,13 @@ class BedrockSessionManagerTest {
         assertEquals(BedrockBatchCodec.RESOURCE_PACKS_INFO_PACKET_ID,
                 decodeOutbound(outboundFrames.get(2), true).packetId());
 
-        BedrockPacket allPacksDownloaded = resourcePackResponse(2, "downloadingfinished");
+        BedrockPacket allPacksDownloaded = resourcePackResponse(2, "DownloadingFinished");
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(allPacksDownloaded), true, 256));
         assertEquals(BedrockBatchCodec.RESOURCE_PACK_STACK_PACKET_ID,
                 decodeOutbound(outboundFrames.get(3), true).packetId());
 
-        BedrockPacket stackCompleted = resourcePackResponse(3, "resourcepackstackfinished");
+        BedrockPacket stackCompleted = resourcePackResponse(3, "ResourcePackStackFinished");
         sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(stackCompleted), true, 256));
         assertEquals(1, manager.resourcePackReadyCount());
@@ -3312,9 +3312,9 @@ class BedrockSessionManagerTest {
                 BedrockBatchCodec.CLIENT_TO_SERVER_HANDSHAKE_PACKET_ID, 0, 0, new byte[0]);
         sendClientBatch(manager, "saved-client", BedrockBatchCodec.encode(List.of(clientHandshake), true, 256));
         sendClientBatch(manager, "saved-client", BedrockBatchCodec.encode(
-                List.of(resourcePackResponse(2, "downloadingfinished")), true, 256));
+                List.of(resourcePackResponse(2, "DownloadingFinished")), true, 256));
         sendClientBatch(manager, "saved-client", BedrockBatchCodec.encode(
-                List.of(resourcePackResponse(3, "resourcepackstackfinished")), true, 256));
+                List.of(resourcePackResponse(3, "ResourcePackStackFinished")), true, 256));
 
         BedrockPacket startGame = decodeOutbound(outboundFrames.get(7), true);
         ByteBuffer position = ByteBuffer.wrap(startGame.payload(), 3, 20).order(ByteOrder.LITTLE_ENDIAN);

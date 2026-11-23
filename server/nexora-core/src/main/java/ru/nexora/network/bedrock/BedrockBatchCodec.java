@@ -214,10 +214,10 @@ public final class BedrockBatchCodec {
         if (response > 3) throw new IllegalArgumentException("Unknown resource-pack response enum");
         String name = readString(payload, offset);
         String expectedName = switch ((int) response) {
-            case 0 -> "cancel";
-            case 1 -> "downloading";
-            case 2 -> "downloadingfinished";
-            case 3 -> "resourcepackstackfinished";
+            case 0 -> "Cancel";
+            case 1 -> "Downloading";
+            case 2 -> "DownloadingFinished";
+            case 3 -> "ResourcePackStackFinished";
             default -> throw new IllegalArgumentException("Unknown resource-pack response enum");
         };
         if (!expectedName.equals(name)) {

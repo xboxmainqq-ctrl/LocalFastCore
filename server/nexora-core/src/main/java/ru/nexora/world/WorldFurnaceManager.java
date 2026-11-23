@@ -121,6 +121,20 @@ public final class WorldFurnaceManager {
                 batches == 0 ? 0.0 : total / (double) batches / 1_000_000.0);
     }
 
+    /** Captures burn, cook, and pending-experience state for an atomic block-break rollback. */
+    public synchronized FurnaceService.FurnaceStateSnapshot snapshotState(int x, int y, int z) {
+        return service.snapshotState(x, y, z);
+    }
+
+    /** Restores a previously captured furnace state after a failed inventory/drop transaction. */
+    public synchronized void restoreState(
+            int x, int y, int z, FurnaceService.FurnaceStateSnapshot snapshot
+    ) {
+        Objects.requireNonNull(snapshot, "snapshot");
+        service.restoreState(x, y, z, snapshot.burnTicksRemaining(), snapshot.cookProgress(),
+                snapshot.burnTicksTotal(), snapshot.pendingExperienceMilli());
+    }
+
     /** Whether a furnace still owns unclaimed smelting experience that must not be discarded. */
     public synchronized boolean hasPendingExperience(int x, int y, int z) {
         return service.snapshotState(x, y, z).pendingExperienceMilli() > 0;

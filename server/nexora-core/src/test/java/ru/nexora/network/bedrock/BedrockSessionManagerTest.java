@@ -2679,9 +2679,10 @@ class BedrockSessionManagerTest {
         AtomicLong clock = new AtomicLong();
         ru.nexora.world.World world = new ru.nexora.world.World(
                 "NEXORA World", 0L, new ru.nexora.world.FlatWorldGenerator());
+        PlayerDataStorage playerStorage = new PlayerDataStorage(temporaryDirectory.resolve("physics-player-profiles"));
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
-                world, (networkId, label, frame) -> outboundFrames.add(frame), event -> {}, clock::get);
+                world, playerStorage, (networkId, label, frame) -> outboundFrames.add(frame), event -> {}, clock::get);
         manager.enableServerAuthoritativeMovement();
         manager.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
         manager.onIdentity("physics-client", new NetherNetClientIdentity(
@@ -2749,6 +2750,8 @@ class BedrockSessionManagerTest {
         assertEquals(20, manager.playerVitals("physics-client").orElseThrow().hunger());
         assertTrue(manager.damagePlayer("physics-client", 3.0f));
         assertEquals(17.0f, manager.playerVitals("physics-client").orElseThrow().health());
+        assertEquals(17.0f, playerStorage.load("physics-xuid").orElseThrow().vitals().health(),
+                "Damage must be durable before the server sends the updated health to the client");
         clock.set(4_000_000_000L);
         BedrockPacket naturalRegeneration = new BedrockPacket(0x90, 0, 0,
                 movementInputPayload(0.5f, 65.0f, 0.715f, 0.0f, 4L, 0.0f, 0.0f));

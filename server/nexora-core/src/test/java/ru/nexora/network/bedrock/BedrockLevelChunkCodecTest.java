@@ -20,8 +20,7 @@ class BedrockLevelChunkCodecTest {
         assertEquals(3, reader.varInt32());
         assertEquals(0, reader.varInt32()); // Overworld dimension
         assertEquals(9, reader.varUInt32()); // four negative sections + positive sections Y=0..4
-        assertFalse(reader.bool()); // cache disabled
-        assertEquals(0, reader.varUInt32()); // empty blobIds array
+        assertFalse(reader.bool()); // cache disabled; no blobIds array follows
         byte[] data = reader.byteArray();
         assertFalse(reader.bool()); // clientBiomeUpdate
         assertTrue(reader.exhausted());
@@ -78,8 +77,7 @@ class BedrockLevelChunkCodecTest {
         reader.varInt32();
         assertEquals(0, reader.varInt32()); // Overworld dimension
         assertEquals(1, reader.varUInt32()); // only section Y=-4 is non-empty
-        assertFalse(reader.bool());
-        assertEquals(0, reader.varUInt32());
+        assertFalse(reader.bool()); // cache disabled; no blobIds array follows
         byte[] data = reader.byteArray();
         Reader subChunks = new Reader(data);
         assertEquals(9, subChunks.byteValue());

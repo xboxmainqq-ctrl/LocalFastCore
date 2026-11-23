@@ -7649,10 +7649,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             SessionState recipient = entry.getValue();
             if (!recipient.clientInitialized || !recipient.playerListAdvertised) continue;
             try {
-                if (recipient.visiblePlayerEntityIds.remove(leaving.entityId)) {
-                    playerActorReplicationIndex.removeActorViewer(leaving.entityId, entry.getKey());
-                    sendPacket(entry.getKey(), removeActor, true);
-                }
+                boolean wasVisible = recipient.visiblePlayerEntityIds.remove(leaving.entityId);
+                // Heal the reverse index even if a previous partial visibility update
+                // left it out of sync with the recipient's session-owned visibility set.
+                playerActorReplicationIndex.removeActorViewer(leaving.entityId, entry.getKey());
+                if (wasVisible) sendPacket(entry.getKey(), removeActor, true);
                 sendPacket(entry.getKey(), remove, true);
             } catch (RuntimeException exception) {
                 System.err.println("NEXORA: unable to remove disconnected player from " + entry.getKey()

@@ -50,9 +50,8 @@ public final class BedrockLevelChunkCodec {
         packet.varInt32(chunk.chunkZ());
         packet.varInt32(0); // Dimension ID: Overworld
         packet.varUInt32(subChunkCount);
-        // Nukkit's 1.26.40+ LevelChunkPacket encoder writes the optional request
-        // presence flag and cache-metadata array even when both are empty.
-        packet.bool(false); // requestSubChunks=false; no request limit follows
+        // Client Request SubChunk Limit is optional and is omitted entirely
+        // for ordinary full-chunk delivery (it is present only in request mode).
         packet.bool(false); // client chunk cache disabled
         packet.varUInt32(0); // empty blobIds array
         packet.byteArray(data);

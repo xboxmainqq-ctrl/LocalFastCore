@@ -204,6 +204,67 @@ class BedrockActorVisibilityIntegrationTest {
     }
 
     @Test
+    void playerTeleportUpdatesRemoteVisibilityAcrossChunks() throws Exception {
+        List<Outbound> outbound = new ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new World("player-teleport-visibility-test", 0L, new FlatWorldGenerator()),
+                (networkId, label, frame) -> outbound.add(new Outbound(networkId, frame)),
+                event -> { });
+
+        try {
+            for (String id : List.of("source", "old-viewer", "new-viewer")) {
+                manager.onIdentity(id, new NetherNetClientIdentity(
+                        id + "-token", new byte[] {1, 2, 3}, id + "-xuid",
+                        id, id + "-playfab", "20CA2", null));
+                Object state = session(manager, id);
+                set(state, "clientInitialized", true);
+                set(state, "compressionNegotiated", true);
+                set(state, "playerListAdvertised", true);
+            }
+
+            Object source = session(manager, "source");
+            Object oldViewer = session(manager, "old-viewer");
+            Object newViewer = session(manager, "new-viewer");
+            set(source, "entityId", 701L);
+            set(source, "positionX", 33.0f);
+            set(source, "positionY", 64.0f);
+            set(source, "positionZ", 1.0f);
+            set(source, "playerListEntry", new BedrockPlayerListCodec.AddEntry(
+                    java.util.UUID.fromString("00000000-0000-0000-0000-000000000701"),
+                    701L, "Source", "source-xuid", "source-playfab", "",
+                    1, new byte[0], false, false, false, 0));
+
+            sentChunks(oldViewer).add(chunkKey(0, 0));
+            sentChunks(newViewer).add(chunkKey(2, 0));
+            Field indexField = BedrockSessionManager.class.getDeclaredField("playerActorReplicationIndex");
+            indexField.setAccessible(true);
+            ActorReplicationIndex index = (ActorReplicationIndex) indexField.get(manager);
+            index.replaceChunkView("old-viewer", sentChunks(oldViewer));
+            index.replaceChunkView("new-viewer", sentChunks(newViewer));
+            visiblePlayers(oldViewer).add(701L);
+            index.addActorViewer(701L, "old-viewer");
+
+            Method broadcast = BedrockSessionManager.class.getDeclaredMethod(
+                    "broadcastPlayerMovement", String.class, source.getClass());
+            broadcast.setAccessible(true);
+            broadcast.invoke(manager, "source", source);
+
+            assertFalse(visiblePlayers(oldViewer).contains(701L));
+            assertTrue(visiblePlayers(newViewer).contains(701L));
+            assertEquals(List.of(BedrockAddItemActorCodec.REMOVE_ACTOR_PACKET_ID),
+                    packetsFor(outbound, "old-viewer").stream().map(BedrockPacket::packetId).toList());
+            List<Integer> newViewerPackets = packetsFor(outbound, "new-viewer").stream()
+                    .map(BedrockPacket::packetId).toList();
+            assertEquals(BedrockAddPlayerCodec.ADD_PLAYER_PACKET_ID, newViewerPackets.getFirst());
+            assertEquals(BedrockMoveActorAbsoluteCodec.MOVE_ACTOR_ABSOLUTE_PACKET_ID,
+                    newViewerPackets.getLast());
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void mobMovementIsFannedOutOnlyToViewersOfItsCurrentChunk() throws Exception {
         List<Outbound> outbound = new ArrayList<>();
         World world = new World("actor-multi-viewer-test", 0L, new FlatWorldGenerator());

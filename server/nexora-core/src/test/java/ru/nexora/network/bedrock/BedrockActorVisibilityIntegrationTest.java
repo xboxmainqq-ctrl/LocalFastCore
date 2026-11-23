@@ -20,6 +20,38 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockActorVisibilityIntegrationTest {
     @Test
+    void itemPickupAcknowledgementIsSentOnlyToThePickingPlayer() throws Exception {
+        List<Outbound> outbound = new ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new World("item-pickup-ack-test", 0L, new FlatWorldGenerator()),
+                (networkId, label, frame) -> outbound.add(new Outbound(networkId, frame)),
+                event -> { });
+
+        try {
+            for (String id : List.of("picker", "nearby-viewer")) {
+                manager.onIdentity(id, new NetherNetClientIdentity(
+                        id + "-token", new byte[] {1, 2, 3}, id + "-xuid",
+                        id, id + "-playfab", "20CA2", null));
+                Object state = session(manager, id);
+                set(state, "clientInitialized", true);
+                set(state, "compressionNegotiated", true);
+            }
+
+            Method acknowledge = BedrockSessionManager.class.getDeclaredMethod(
+                    "sendItemPickupAcknowledgement", String.class, long.class, long.class);
+            acknowledge.setAccessible(true);
+            acknowledge.invoke(manager, "picker", 9001L, 7001L);
+
+            assertEquals(List.of(BedrockTakeItemActorCodec.TAKE_ITEM_ACTOR_PACKET_ID),
+                    packetsFor(outbound, "picker").stream().map(BedrockPacket::packetId).toList());
+            assertTrue(packetsFor(outbound, "nearby-viewer").isEmpty());
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void mobsAreSpawnedRemovedAndRespawnedAsTheyCrossChunkInterestBoundaries() throws Exception {
         List<Outbound> outbound = new ArrayList<>();
         World world = new World("actor-visibility-test", 0L, new FlatWorldGenerator());

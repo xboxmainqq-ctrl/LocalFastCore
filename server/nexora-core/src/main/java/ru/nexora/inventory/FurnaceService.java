@@ -112,9 +112,10 @@ public final class FurnaceService {
             }
             return result(state, changed, kind);
 
-        }    }
+        }
+    }
 
-        public synchronized void restoreState(int x, int y, int z, int burnTicksRemaining, int cookProgress) {
+    public synchronized void restoreState(int x, int y, int z, int burnTicksRemaining, int cookProgress) {
         restoreState(x, y, z, burnTicksRemaining, cookProgress, burnTicksRemaining, 0);
     }
 

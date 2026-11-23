@@ -2755,8 +2755,13 @@ class BedrockSessionManagerTest {
         world.setBlock(0, 63, 1, ru.nexora.world.BlockType.DIRT);
         world.setBlock(0, 64, 1, ru.nexora.world.BlockType.GRASS_BLOCK);
 
+        manager.playerInventory("physics-client").orElseThrow()
+                .setSlot(5, new ItemStack("minecraft:diamond", 3, 64));
         int beforeDeath = outboundFrames.size();
         assertTrue(manager.damagePlayer("physics-client", 100.0f));
+        assertEquals(0, manager.playerInventory("physics-client").orElseThrow().count("minecraft:diamond"));
+        assertTrue(world.itemEntities().snapshot().stream().anyMatch(entity ->
+                entity.stack().itemId().equals("minecraft:diamond") && entity.stack().count() == 3));
         assertEquals(0.0f, manager.playerVitals("physics-client").orElseThrow().health());
         List<BedrockPacket> deathPackets = outboundFrames.subList(beforeDeath, outboundFrames.size()).stream()
                 .flatMap(frame -> decodeOutboundAll(frame, true).stream()).toList();

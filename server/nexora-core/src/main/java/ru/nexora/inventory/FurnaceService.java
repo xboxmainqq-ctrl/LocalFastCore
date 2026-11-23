@@ -63,6 +63,9 @@ public final class FurnaceService {
         if (elapsedTicks < 0 || elapsedTicks > 20_000) {
             throw new IllegalArgumentException("Elapsed furnace ticks must be 0..20000");
         }
+        // A furnace tick is one inventory transaction. Bedrock container transactions
+        // synchronize on this same monitor, so they cannot observe or modify a half-tick.
+        synchronized (inventory) {
         Position position = new Position(x, y, z);
         FurnaceState state = states.computeIfAbsent(position, ignored -> new FurnaceState());
         if (state.cookProgress >= kind.cookTimeTicks) state.cookProgress = 0;
@@ -108,6 +111,7 @@ public final class FurnaceService {
             }
         }
         return result(state, changed, kind);
+        }
     }
 
         public synchronized void restoreState(int x, int y, int z, int burnTicksRemaining, int cookProgress) {

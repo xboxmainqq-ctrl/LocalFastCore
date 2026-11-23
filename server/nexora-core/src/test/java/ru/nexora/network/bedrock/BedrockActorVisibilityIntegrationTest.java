@@ -62,8 +62,12 @@ class BedrockActorVisibilityIntegrationTest {
             sentChunks(session).add(chunkKey(2, 0));
             sync.invoke(manager, "viewer", session);
             assertTrue(visibleMobs(session).contains(mob.runtimeId()));
-            assertEquals(BedrockAddActorCodec.ADD_ACTOR_PACKET_ID,
-                    packetsFor(outbound, "viewer").getLast().packetId());
+            assertEquals(List.of(
+                    BedrockAddActorCodec.ADD_ACTOR_PACKET_ID,
+                    BedrockVitalsCodec.UPDATE_ATTRIBUTES_PACKET_ID,
+                    BedrockAddItemActorCodec.REMOVE_ACTOR_PACKET_ID,
+                    BedrockAddActorCodec.ADD_ACTOR_PACKET_ID),
+                    packetsFor(outbound, "viewer").stream().map(BedrockPacket::packetId).toList());
         } finally {
             manager.close();
         }

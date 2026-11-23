@@ -3337,11 +3337,29 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             return;
         }
 
+        List<Optional<ItemStack>> previousInventory = state.inventory.snapshot();
+        int previousSelectedSlot = state.inventory.selectedHotbarSlot();
+        PlayerEquipment.Snapshot previousEquipment = state.equipment.snapshot();
         InventoryTransactionService.Result result =
                 inventoryTransactionService.applyPlayerInventoryAndUiTransaction(
                         state.inventory, state.equipment, decoded.actions(), armorSlotRegistry);
         if (result == InventoryTransactionService.Result.APPLIED) {
-            authoritativeContent = BedrockInventoryContentCodec.createPlayerInventory(state.inventory, registry);
+            try {
+                saveInventory(state);
+                saveEquipment(state);
+                authoritativeContent = BedrockInventoryContentCodec.createPlayerInventory(state.inventory, registry);
+            } catch (IOException | RuntimeException persistenceFailure) {
+                state.inventory.restore(previousInventory, previousSelectedSlot);
+                state.equipment.restore(previousEquipment);
+                try {
+                    saveInventory(state);
+                    saveEquipment(state);
+                } catch (IOException | RuntimeException rollbackFailure) {
+                    persistenceFailure.addSuppressed(rollbackFailure);
+                }
+                System.err.println("NEXORA: inventory transaction rolled back because persistence failed: "
+                        + persistenceFailure.getMessage());
+            }
         }
         // Always reconcile client prediction, including stale, unsupported, and rejected actions.
         List<BedrockPacket> reconciliation = new java.util.ArrayList<>();

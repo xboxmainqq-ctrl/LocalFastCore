@@ -3189,6 +3189,11 @@ class BedrockSessionManagerTest {
                 .count("nexora:arcane_shard"));
         assertEquals(3, manager.playerEquipment("authenticated-client").orElseThrow()
                 .offhand().orElseThrow().count());
+        assertEquals(3, inventoryStorage.load("123456789").orElseThrow().count("nexora:arcane_shard"),
+                "The inventory side of an offhand transaction must be durable immediately");
+        assertEquals(3, equipmentStorage.load("123456789").orElseThrow()
+                .offhand().orElseThrow().count(),
+                "The offhand side of a transaction must be durable immediately");
         assertEquals(chunkStreamingFrameCount + 5, outboundFrames.size());
 
         // Equip a registered iron chestplate from the main inventory into armor slot 1.
@@ -3199,6 +3204,10 @@ class BedrockSessionManagerTest {
         assertTrue(manager.playerInventory("authenticated-client").orElseThrow().getSlot(2).isEmpty());
         assertEquals(new ItemStack("minecraft:iron_chestplate", 1, 1),
                 manager.playerEquipment("authenticated-client").orElseThrow().armor(1).orElseThrow());
+        assertTrue(equipmentStorage.load("123456789").orElseThrow().armor(1).isPresent(),
+                "Armor changes from inventory transactions must be durable immediately");
+        assertTrue(inventoryStorage.load("123456789").orElseThrow().getSlot(2).isEmpty(),
+                "The source inventory slot must be durable immediately");
         assertEquals(chunkStreamingFrameCount + 6, outboundFrames.size());
 
         // Open the player-facing equipment UI, choose the staff slot, and equip a compatible item.

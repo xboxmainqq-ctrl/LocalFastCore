@@ -12,6 +12,7 @@ import ru.nexora.network.DurableHandoffCoordinator;
 import ru.nexora.gameplay.GameplayRuntimeModule;
 import ru.nexora.network.nethernet.CloudburstNetherNetTransport;
 import ru.nexora.network.bedrock.BedrockSessionManager;
+import ru.nexora.network.bedrock.BedrockProtocolVersion;
 import ru.nexora.network.bedrock.BedrockPendingTransferActivator;
 import ru.nexora.network.raknet.BedrockServerStatus;
 import ru.nexora.network.raknet.RakNetDiscoveryServer;
@@ -70,8 +71,8 @@ public final class NexoraServer {
 
         BedrockServerStatus legacyStatus = new BedrockServerStatus(
                 motd,
-                2225,
-                "1.26.66",
+                BedrockProtocolVersion.PROTOCOL,
+                BedrockProtocolVersion.BASE_GAME_VERSION,
                 0,
                 maxPlayers,
                 "Legacy RakNet discovery only",

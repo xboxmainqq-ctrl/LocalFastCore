@@ -230,7 +230,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             OutboundFrameSender outbound,
             Consumer<PacketEvent> packetSink
     ) {
-        this(serverProtocol, "1.26.62", DEFAULT_COMPRESSION_THRESHOLD, outbound, packetSink);
+        this(serverProtocol, BedrockProtocolVersion.BASE_GAME_VERSION, DEFAULT_COMPRESSION_THRESHOLD, outbound, packetSink);
     }
 
     public BedrockSessionManager(

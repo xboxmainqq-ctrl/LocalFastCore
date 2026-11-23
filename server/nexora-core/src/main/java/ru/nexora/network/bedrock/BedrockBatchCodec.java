@@ -5,6 +5,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.zip.DataFormatException;
 import java.util.zip.Deflater;
@@ -213,11 +214,14 @@ public final class BedrockBatchCodec {
         // Protocol 2225 serializes ResourcePackResponse as a length-prefixed
         // string, not as a numeric enum followed by a string.
         String name = readString(payload, offset);
-        int response = switch (name) {
-            case "Cancel" -> 1;
-            case "Downloading" -> 2;
-            case "DownloadingFinished" -> 3;
-            case "ResourcePackStackFinished" -> 4;
+        // Bedrock clients have emitted the same enum strings with a lowercase
+        // initial character. The wire field is a string in protocol 2225, so
+        // normalize only for matching and retain the original value for logs.
+        int response = switch (name.toLowerCase(Locale.ROOT)) {
+            case "cancel" -> 1;
+            case "downloading" -> 2;
+            case "downloadingfinished" -> 3;
+            case "resourcepackstackfinished" -> 4;
             default -> throw new IllegalArgumentException("Unknown resource-pack response: " + name);
         };
         List<String> downloadingPacks = new ArrayList<>();

@@ -100,6 +100,24 @@ class BedrockBatchCodecTest {
         assertEquals("DownloadingFinished", response.name());
     }
 
+
+    @Test
+    void parsesLowerCamelCaseResourcePackResponseFromBedrockClient() {
+        byte[] body = new byte[] {
+                19,
+                'd', 'o', 'w', 'n', 'l', 'o', 'a', 'd', 'i', 'n', 'g',
+                'F', 'i', 'n', 'i', 's', 'h', 'e', 'd'
+        };
+        BedrockPacket packet = new BedrockPacket(
+                BedrockBatchCodec.RESOURCE_PACK_CLIENT_RESPONSE_PACKET_ID, 0, 0, body);
+
+        BedrockBatchCodec.ResourcePackClientResponseData response =
+                BedrockBatchCodec.parseResourcePackClientResponse(packet);
+
+        assertEquals(3, response.response());
+        assertEquals("downloadingFinished", response.name());
+    }
+
     @Test
     void rejectsRakNetBatchMarkerOnNetherNet() {
         assertThrows(IllegalArgumentException.class,

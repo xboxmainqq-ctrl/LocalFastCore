@@ -17,6 +17,7 @@ public final class BedrockPlayerEquipmentCodec {
     public static final int ARMOR_CONTAINER_TYPE = 6;
     public static final int OFFHAND_CONTAINER_TYPE = 34;
     public static final int CURSOR_CONTAINER_TYPE = 59;
+    public static final int MOB_ARMOR_EQUIPMENT_PACKET_ID = 0x20;
 
     private BedrockPlayerEquipmentCodec() {
     }
@@ -47,7 +48,7 @@ public final class BedrockPlayerEquipmentCodec {
         }
         // Body is reserved for entity body armor; players have no body slot in this model.
         writeDescriptor(out, Optional.empty(), registry);
-        return new BedrockPacket(0x20, 0, 0, out.bytes());
+        return new BedrockPacket(MOB_ARMOR_EQUIPMENT_PACKET_ID, 0, 0, out.bytes());
     }
 
     public static BedrockPacket createArmorContent(List<Optional<ItemStack>> armor,

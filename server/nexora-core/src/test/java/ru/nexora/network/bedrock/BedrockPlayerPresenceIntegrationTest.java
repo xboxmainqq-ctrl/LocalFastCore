@@ -49,8 +49,6 @@ class BedrockPlayerPresenceIntegrationTest {
                     BedrockPlayerListCodec.PLAYER_LIST_PACKET_ID,
                     BedrockAddPlayerCodec.ADD_PLAYER_PACKET_ID,
                     BedrockMobEquipmentCodec.MOB_EQUIPMENT_PACKET_ID,
-                    BedrockMobEquipmentCodec.MOB_EQUIPMENT_PACKET_ID,
-                    BedrockPlayerEquipmentCodec.MOB_ARMOR_EQUIPMENT_PACKET_ID,
                     BedrockVitalsCodec.SET_HEALTH_PACKET_ID,
                     BedrockVitalsCodec.UPDATE_ATTRIBUTES_PACKET_ID),
                     packetIds(forJoining));
@@ -58,8 +56,6 @@ class BedrockPlayerPresenceIntegrationTest {
                     BedrockPlayerListCodec.PLAYER_LIST_PACKET_ID,
                     BedrockAddPlayerCodec.ADD_PLAYER_PACKET_ID,
                     BedrockMobEquipmentCodec.MOB_EQUIPMENT_PACKET_ID,
-                    BedrockMobEquipmentCodec.MOB_EQUIPMENT_PACKET_ID,
-                    BedrockPlayerEquipmentCodec.MOB_ARMOR_EQUIPMENT_PACKET_ID,
                     BedrockVitalsCodec.SET_HEALTH_PACKET_ID,
                     BedrockVitalsCodec.UPDATE_ATTRIBUTES_PACKET_ID),
                     packetIds(forExisting));
@@ -152,8 +148,6 @@ class BedrockPlayerPresenceIntegrationTest {
             assertEquals(List.of(
                     BedrockAddPlayerCodec.ADD_PLAYER_PACKET_ID,
                     BedrockMobEquipmentCodec.MOB_EQUIPMENT_PACKET_ID,
-                    BedrockMobEquipmentCodec.MOB_EQUIPMENT_PACKET_ID,
-                    BedrockPlayerEquipmentCodec.MOB_ARMOR_EQUIPMENT_PACKET_ID,
                     BedrockVitalsCodec.SET_HEALTH_PACKET_ID,
                     BedrockVitalsCodec.UPDATE_ATTRIBUTES_PACKET_ID,
                     BedrockMoveActorAbsoluteCodec.MOVE_ACTOR_ABSOLUTE_PACKET_ID),
@@ -212,10 +206,7 @@ class BedrockPlayerPresenceIntegrationTest {
             sync.invoke(manager, "moving", moving);
 
             List<BedrockPacket> packets = packetsFor(outbound, "viewer");
-            assertEquals(List.of(
-                    BedrockMobEquipmentCodec.MOB_EQUIPMENT_PACKET_ID,
-                    BedrockMobEquipmentCodec.MOB_EQUIPMENT_PACKET_ID,
-                    BedrockPlayerEquipmentCodec.MOB_ARMOR_EQUIPMENT_PACKET_ID), packetIds(packets));
+            assertEquals(List.of(BedrockMobEquipmentCodec.MOB_EQUIPMENT_PACKET_ID), packetIds(packets));
             BedrockMobEquipmentCodec.DecodedEquipment decoded =
                     BedrockMobEquipmentCodec.decode(packets.get(0), BedrockVanillaItemCatalog.createRegistry());
             assertEquals(502L, decoded.runtimeEntityId());

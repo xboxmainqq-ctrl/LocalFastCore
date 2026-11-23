@@ -153,6 +153,11 @@ class BedrockActorVisibilityIntegrationTest {
             }
             sentChunks(west).add(chunkKey(0, 0));
             sentChunks(east).add(chunkKey(2, 0));
+            Field actorIndexField = BedrockSessionManager.class.getDeclaredField("actorReplicationIndex");
+            actorIndexField.setAccessible(true);
+            ActorReplicationIndex actorIndex = (ActorReplicationIndex) actorIndexField.get(manager);
+            actorIndex.replaceChunkView("west-viewer", sentChunks(west));
+            actorIndex.replaceChunkView("east-viewer", sentChunks(east));
 
             WorldLivingEntity mob = world.livingEntities().spawn(
                     "minecraft:zombie", 1.0f, 65.0, 1.0, 1.0);

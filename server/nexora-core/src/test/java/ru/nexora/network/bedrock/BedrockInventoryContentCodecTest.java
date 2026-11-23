@@ -48,7 +48,7 @@ class BedrockInventoryContentCodecTest {
         BedrockPacket packet = BedrockInventoryContentCodec.createPlayerInventory(
                 inventory, ignored -> new BedrockInventoryContentCodec.ItemDefinition(276, 0, 0, new byte[0]));
         byte[] payload = packet.payload();
-        int userDataLengthOffset = 2 + 1 + 2 + 2 + 1 + 1 + 1;
+        int userDataLengthOffset = 2 + 2 + 2 + 1 + 1 + 1;
         int userDataLength = Byte.toUnsignedInt(payload[userDataLengthOffset]);
         byte[] userData = Arrays.copyOfRange(payload, userDataLengthOffset + 1,
                 userDataLengthOffset + 1 + userDataLength);

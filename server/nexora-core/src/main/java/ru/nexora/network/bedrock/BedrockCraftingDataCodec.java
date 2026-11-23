@@ -64,7 +64,8 @@ public final class BedrockCraftingDataCodec {
             for (int i = 0; i < row.length(); i++) {
                 char symbol = row.charAt(i);
                 if (symbol == ' ') {
-                    out.varUInt32(0); // EMPTY recipe ingredient descriptor
+                    out.byteValue(0); // EmptyItemDescriptor
+                    out.int16(0); // StackSize
                 } else {
                     writeIngredient(out, itemRegistry, recipe.key().get(symbol), 1);
                 }
@@ -105,8 +106,7 @@ public final class BedrockCraftingDataCodec {
         out.string("crafting_table");
         out.varInt32(0); // priority
         out.byteValue(0); // assume symmetry
-        out.byteValue(1); // unlocking requirement present
-        out.varInt32(1); // ALWAYS_UNLOCKED; no ingredient list follows this context
+        out.varInt32(1); // ALWAYS_UNLOCKED unlocking context; no ingredients follow
         out.varUInt32(registry.networkId(recipe.id()));
     }
 
@@ -114,14 +114,13 @@ public final class BedrockCraftingDataCodec {
         out.byteValue(1); // ItemDescriptorType.ITEM_NAME
         out.string(itemId);
         out.varInt32((int) auxValue);
-        out.varInt32(count);
+        out.int16(count);
     }
 
     private static void writeItemTagIngredient(Writer out, String tag, int count) {
         out.byteValue(3); // ItemDescriptorType.ITEM_TAG
         out.string(tag);
-        out.varInt32(0);
-        out.varInt32(count);
+        out.int16(count);
     }
 
     private static void writeInstanceItem(Writer out,

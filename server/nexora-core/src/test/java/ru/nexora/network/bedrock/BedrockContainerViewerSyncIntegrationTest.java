@@ -145,6 +145,66 @@ class BedrockContainerViewerSyncIntegrationTest {
         }
     }
 
+    @Test
+    void furnaceTickUpdatesEveryViewerAndUsesEachWindowId() throws Exception {
+        List<Outbound> outbound = new ArrayList<>();
+        World world = new World("furnace-tick-viewers-test", 0L, new FlatWorldGenerator(),
+                0, 65, 0, null, null,
+                new ContainerInventoryStorage(temporaryDirectory, "furnace-tick-viewers-test"));
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                world, (networkId, label, frame) -> outbound.add(new Outbound(networkId, frame)),
+                event -> { });
+        manager.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
+
+        try {
+            manager.onIdentity("tick-source", identity("tick-source"));
+            manager.onIdentity("tick-viewer-a", identity("tick-viewer-a"));
+            manager.onIdentity("tick-viewer-b", identity("tick-viewer-b"));
+            manager.onIdentity("tick-outsider", identity("tick-outsider"));
+            Object source = session(manager, "tick-source");
+            Object viewerA = session(manager, "tick-viewer-a");
+            Object viewerB = session(manager, "tick-viewer-b");
+            Object outsider = session(manager, "tick-outsider");
+            for (Object state : List.of(source, viewerA, viewerB, outsider)) {
+                set(state, "clientInitialized", true);
+                set(state, "compressionNegotiated", true);
+            }
+
+            int x = -7, y = 65, z = 13;
+            ContainerInventory furnace = new ContainerInventory(3);
+            furnace.setSlot(2, new ItemStack("minecraft:iron_ingot", 1, 64));
+            openFurnace(source, 3, x, y, z, furnace);
+            openFurnace(viewerA, 7, x, y, z, furnace);
+            openFurnace(viewerB, 14, x, y, z, furnace);
+            openFurnace(outsider, 15, x, y, z + 1, new ContainerInventory(3));
+
+            Method update = BedrockSessionManager.class.getDeclaredMethod(
+                    "handleFurnaceUpdate", ru.nexora.world.WorldFurnaceManager.FurnaceUpdate.class);
+            update.setAccessible(true);
+            update.invoke(manager, new ru.nexora.world.WorldFurnaceManager.FurnaceUpdate(
+                    x, y, z, furnace,
+                    new ru.nexora.inventory.FurnaceService.TickResult(120, 40, 20, true, 1600)));
+
+            for (var expected : List.of(
+                    new java.util.AbstractMap.SimpleEntry<>("tick-viewer-a", 7),
+                    new java.util.AbstractMap.SimpleEntry<>("tick-viewer-b", 14))) {
+                List<BedrockPacket> packets = packetsFor(outbound, expected.getKey());
+                assertEquals(4, packets.size(),
+                        "each viewer receives inventory plus burn/cook progress updates");
+                assertEquals(BedrockInventoryContentCodec.INVENTORY_CONTENT_PACKET_ID,
+                        packets.getFirst().packetId());
+                assertEquals(expected.getValue(), Byte.toUnsignedInt(packets.getFirst().payload()[0]));
+                assertTrue(packets.subList(1, 4).stream()
+                        .allMatch(packet -> packet.packetId() == BedrockContainerSetDataCodec.PACKET_ID));
+            }
+            assertTrue(packetsFor(outbound, "tick-outsider").isEmpty(),
+                    "a player with a different furnace open must not receive this update");
+        } finally {
+            manager.close();
+        }
+    }
+
     private static void openFurnace(
             Object state, int windowId, int x, int y, int z, ContainerInventory inventory
     ) throws Exception {

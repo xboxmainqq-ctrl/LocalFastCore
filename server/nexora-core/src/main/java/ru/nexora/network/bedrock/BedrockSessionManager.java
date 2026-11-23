@@ -7323,9 +7323,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             throw new IllegalStateException("Unable to persist picked-up item inventory", exception);
         }
         sendInventoryAndEquipmentState(networkId, state);
-        broadcastItemActor(entity,
-                BedrockTakeItemActorCodec.createAcknowledgement(entity.runtimeId(), state.entityId));
+        sendItemPickupAcknowledgement(networkId, entity.runtimeId(), state.entityId);
         broadcastItemActor(entity, BedrockAddItemActorCodec.createRemoveActor(entity.uniqueId()));
+    }
+
+    /** The TakeItemActor acknowledgement belongs only to the player that picked up the item. */
+    private void sendItemPickupAcknowledgement(String networkId, long itemRuntimeId, long playerRuntimeId) {
+        sendPacket(networkId, BedrockTakeItemActorCodec.createAcknowledgement(itemRuntimeId, playerRuntimeId), true);
     }
 
     private void tickWorldItemActors(long tick) {

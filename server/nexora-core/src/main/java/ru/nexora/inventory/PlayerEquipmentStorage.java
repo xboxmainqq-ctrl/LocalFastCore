@@ -83,7 +83,7 @@ public final class PlayerEquipmentStorage {
         try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(bytes, 0, bodyLength))) {
             if (in.readInt() != MAGIC) throw new IOException("Invalid player equipment magic");
             int version = in.readUnsignedByte();
-            if (version != VERSION && version != LEGACY_VERSION) {
+            if (version < LEGACY_VERSION || version > VERSION) {
                 throw new IOException("Unsupported player equipment version: " + version);
             }
             List<Optional<ItemStack>> armor = new ArrayList<>(PlayerEquipment.ARMOR_SLOTS);
@@ -91,7 +91,7 @@ public final class PlayerEquipmentStorage {
             Optional<ItemStack> offhand = readStack(in, version);
             Optional<ItemStack> cursor = readStack(in, version);
             List<Optional<ItemStack>> magic = new ArrayList<>(PlayerEquipment.MAGIC_SLOTS);
-            if (version == VERSION) {
+            if (version >= 2) {
                 for (int i = 0; i < PlayerEquipment.MAGIC_SLOTS; i++) magic.add(readStack(in, version));
             } else {
                 for (int i = 0; i < PlayerEquipment.MAGIC_SLOTS; i++) magic.add(Optional.empty());

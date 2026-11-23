@@ -2,6 +2,10 @@ package ru.nexora.inventory;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class FurnaceServiceTest {
@@ -187,6 +191,47 @@ class FurnaceServiceTest {
             assertEquals(new ItemStack(outputs[i], 1, 64),
                     smoker.getSlot(FurnaceService.OUTPUT_SLOT).orElseThrow());
         }
+    }
+
+    @Test
+    void furnaceTickWaitsForContainerTransactionMonitorAndRunsAsOneInventoryOperation() throws Exception {
+        FurnaceService service = new FurnaceService();
+        ContainerInventory furnace = new ContainerInventory(3);
+        furnace.setSlot(FurnaceService.INPUT_SLOT, new ItemStack("minecraft:raw_iron", 1, 64));
+        furnace.setSlot(FurnaceService.FUEL_SLOT, new ItemStack("minecraft:coal", 1, 64));
+        CountDownLatch started = new CountDownLatch(1);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Thread ticker = new Thread(() -> {
+            started.countDown();
+            try {
+                service.tick(40, 64, 40, furnace, 200);
+            } catch (Throwable throwable) {
+                failure.set(throwable);
+            }
+        }, "furnace-atomic-tick-test");
+
+        synchronized (furnace) {
+            ticker.start();
+            assertTrue(started.await(2, TimeUnit.SECONDS));
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while (ticker.getState() != Thread.State.BLOCKED && System.nanoTime() < deadline) {
+                Thread.onSpinWait();
+            }
+            assertEquals(Thread.State.BLOCKED, ticker.getState(),
+                    "tick must wait for the same inventory monitor used by container transactions");
+            assertEquals(new ItemStack("minecraft:raw_iron", 1, 64),
+                    furnace.getSlot(FurnaceService.INPUT_SLOT).orElseThrow());
+            assertEquals(new ItemStack("minecraft:coal", 1, 64),
+                    furnace.getSlot(FurnaceService.FUEL_SLOT).orElseThrow());
+            assertTrue(furnace.getSlot(FurnaceService.OUTPUT_SLOT).isEmpty());
+        }
+
+        ticker.join(TimeUnit.SECONDS.toMillis(2));
+        assertFalse(ticker.isAlive(), "furnace tick did not finish");
+        assertNull(failure.get());
+        assertEquals(new ItemStack("minecraft:iron_ingot", 1, 64),
+                furnace.getSlot(FurnaceService.OUTPUT_SLOT).orElseThrow());
+        assertTrue(furnace.getSlot(FurnaceService.INPUT_SLOT).isEmpty());
     }
 
     @Test

@@ -6428,28 +6428,41 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (requiredNanos == Long.MAX_VALUE
                 || nanoTime.getAsLong() - target.startedAtNanos() < requiredNanos) return;
 
+        List<WorldItemEntity> chestDrops = new ArrayList<>();
         if (current == BlockType.CHEST) {
-            ru.nexora.world.WorldContainerManager manager = world.containers().orElse(null);
+            WorldContainerManager manager = world.containers().orElse(null);
             if (manager == null) {
                 state.breakTarget = null;
                 sendPacket(networkId, BedrockBlockUpdateCodec.createPacket(
                         target.x(), target.y(), target.z(), current), true);
                 return;
             }
+            ContainerInventory chest = null;
+            List<Optional<ItemStack>> chestSnapshot = null;
             try {
-                ContainerInventory chest = manager.getOrCreate(target.x(), target.y(), target.z());
-                if (chest.snapshot().stream().anyMatch(Optional::isPresent)) {
-                    // Until atomic multi-stack spill is implemented, never destroy a
-                    // non-empty chest or its persistent contents.
-                    state.breakTarget = null;
-                    sendPacket(networkId, BedrockBlockUpdateCodec.createPacket(
-                            target.x(), target.y(), target.z(), current), true);
-                    return;
+                chest = manager.getOrCreate(target.x(), target.y(), target.z());
+                chestSnapshot = chest.snapshot();
+                long nowMillis = System.currentTimeMillis();
+                String ownerXuid = state.identity == null ? null : state.identity.xuid();
+                for (int slot = 0; slot < chestSnapshot.size(); slot++) {
+                    ItemStack stack = chestSnapshot.get(slot).orElse(null);
+                    if (stack == null) continue;
+                    if (itemRegistry == null || itemRegistry.findByIdentifier(stack.itemId()) == null) {
+                        throw new IllegalStateException(
+                                "No Bedrock item definition is registered for chest item " + stack.itemId());
+                    }
+                    double spreadX = ((slot % 3) - 1) * 0.06;
+                    double spreadZ = (((slot / 3) % 3) - 1) * 0.06;
+                    chestDrops.add(world.itemEntities().spawn(
+                            stack, target.x() + 0.5 + spreadX, target.y() + 0.65, target.z() + 0.5 + spreadZ,
+                            spreadX, 0.18, spreadZ, nowMillis,
+                            WorldItemEntityManager.DEFAULT_PICKUP_DELAY_MILLIS, ownerXuid));
                 }
                 for (var entry : sessions.entrySet()) {
                     SessionState viewer = entry.getValue();
                     synchronized (viewer) {
                         if (viewer.openContainerWindowId != 0
+                                && !viewer.openContainerIsFurnace
                                 && viewer.openContainerX == target.x()
                                 && viewer.openContainerY == target.y()
                                 && viewer.openContainerZ == target.z()) {
@@ -6457,10 +6470,30 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         }
                     }
                 }
+                // The item actors are durable before the persistent chest record is deleted.
                 manager.remove(target.x(), target.y(), target.z());
-            } catch (IOException exception) {
+            } catch (IOException | RuntimeException exception) {
+                for (WorldItemEntity item : chestDrops) {
+                    try {
+                        world.itemEntities().remove(item.runtimeId());
+                    } catch (RuntimeException rollbackFailure) {
+                        exception.addSuppressed(rollbackFailure);
+                    }
+                }
+                if (chestSnapshot != null) {
+                    try {
+                        ContainerInventory restored = manager.getOrCreate(
+                                target.x(), target.y(), target.z());
+                        restored.restore(chestSnapshot);
+                        manager.save(target.x(), target.y(), target.z());
+                    } catch (IOException | RuntimeException rollbackFailure) {
+                        exception.addSuppressed(rollbackFailure);
+                    }
+                }
                 state.breakTarget = null;
-                System.err.println("NEXORA: chest break cancelled because its contents could not be checked: "
+                sendPacket(networkId, BedrockBlockUpdateCodec.createPacket(
+                        target.x(), target.y(), target.z(), current), true);
+                System.err.println("NEXORA: chest break cancelled because its contents could not be spilled safely: "
                         + exception.getMessage());
                 return;
             }
@@ -6535,6 +6568,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             if (recipient.clientInitialized && recipient.sentChunkKeys.contains(changedChunkKey)) {
                 sendPacket(entry.getKey(), update, true);
             }
+        }
+        for (WorldItemEntity chestDrop : chestDrops) {
+            broadcastItemActor(chestDrop, BedrockAddItemActorCodec.createAddItemActor(chestDrop, itemRegistry));
         }
         if (dropped != null) {
             broadcastItemActor(dropped, BedrockAddItemActorCodec.createAddItemActor(dropped, itemRegistry));

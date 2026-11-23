@@ -97,6 +97,67 @@ class BedrockContainerViewerSyncIntegrationTest {
         set(state, "openContainerInventory", inventory);
     }
 
+    @Test
+    void furnaceTransactionsSynchronizeOtherViewersUsingTheirOwnWindowIds() throws Exception {
+        List<Outbound> outbound = new ArrayList<>();
+        World world = new World("shared-furnace-test", 0L, new FlatWorldGenerator(),
+                0, 65, 0, null, null,
+                new ContainerInventoryStorage(temporaryDirectory, "shared-furnace-test"));
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                world, (networkId, label, frame) -> outbound.add(new Outbound(networkId, frame)),
+                event -> { });
+        manager.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
+
+        try {
+            manager.onIdentity("source-furnace", identity("source-furnace"));
+            manager.onIdentity("viewer-furnace", identity("viewer-furnace"));
+            manager.onIdentity("outsider-furnace", identity("outsider-furnace"));
+            Object source = session(manager, "source-furnace");
+            Object viewer = session(manager, "viewer-furnace");
+            Object outsider = session(manager, "outsider-furnace");
+            for (Object state : List.of(source, viewer, outsider)) {
+                set(state, "clientInitialized", true);
+                set(state, "compressionNegotiated", true);
+            }
+
+            int x = 8, y = 65, z = 2;
+            ContainerInventory furnace = new ContainerInventory(3);
+            furnace.setSlot(0, new ItemStack("minecraft:raw_iron", 3, 64));
+            openFurnace(source, 2, x, y, z, furnace);
+            openFurnace(viewer, 11, x, y, z, furnace);
+            openFurnace(outsider, 12, x + 16, y, z, new ContainerInventory(3));
+
+            Method broadcast = BedrockSessionManager.class.getDeclaredMethod(
+                    "broadcastContainerInventoryToViewers", String.class,
+                    source.getClass(), ContainerInventory.class);
+            broadcast.setAccessible(true);
+            broadcast.invoke(manager, "source-furnace", source, furnace);
+
+            List<BedrockPacket> viewerPackets = packetsFor(outbound, "viewer-furnace");
+            assertEquals(List.of(BedrockInventoryContentCodec.INVENTORY_CONTENT_PACKET_ID),
+                    viewerPackets.stream().map(BedrockPacket::packetId).toList());
+            assertEquals(11, Byte.toUnsignedInt(viewerPackets.getFirst().payload()[0]),
+                    "furnace updates must use the receiving player's own window ID");
+            assertTrue(packetsFor(outbound, "outsider-furnace").isEmpty());
+        } finally {
+            manager.close();
+        }
+    }
+
+    private static void openFurnace(
+            Object state, int windowId, int x, int y, int z, ContainerInventory inventory
+    ) throws Exception {
+        set(state, "openContainerWindowId", windowId);
+        set(state, "openContainerType", BedrockContainerPacketCodec.CONTAINER_TYPE);
+        set(state, "openContainerIsCraftingTable", false);
+        set(state, "openContainerIsFurnace", true);
+        set(state, "openContainerX", x);
+        set(state, "openContainerY", y);
+        set(state, "openContainerZ", z);
+        set(state, "openContainerInventory", inventory);
+    }
+
     private static NetherNetClientIdentity identity(String id) {
         return new NetherNetClientIdentity(
                 id + "-token", new byte[] {1, 2, 3}, id + "-xuid",

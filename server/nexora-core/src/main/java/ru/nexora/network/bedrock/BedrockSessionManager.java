@@ -5167,7 +5167,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
         }
 
-        if (committed && !furnaceWindow && !state.openContainerIsCraftingTable) {
+        if (committed && !state.openContainerIsCraftingTable) {
             broadcastContainerInventoryToViewers(networkId, state, container);
         }
         clearSpearChargeIfItemChanged(state);
@@ -5176,8 +5176,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     }
 
     /**
-     * Keeps every client with the same persistent chest open on the same authoritative contents.
-     * Furnace viewers are updated by the furnace tick listener, and crafting grids are player-local.
+     * Keeps every client with the same persistent block container open on the same authoritative contents.
+     * Furnace tick progress is sent separately; crafting grids are player-local.
      */
     private void broadcastContainerInventoryToViewers(
             String sourceNetworkId, SessionState source, ContainerInventory container
@@ -5187,7 +5187,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             SessionState viewer = entry.getValue();
             synchronized (viewer) {
                 if (!viewer.clientInitialized || viewer.openContainerWindowId == 0
-                        || viewer.openContainerIsFurnace || viewer.openContainerIsCraftingTable
+                        || viewer.openContainerIsCraftingTable
+                        || viewer.openContainerIsFurnace != source.openContainerIsFurnace
                         || viewer.openContainerX != source.openContainerX
                         || viewer.openContainerY != source.openContainerY
                         || viewer.openContainerZ != source.openContainerZ
@@ -5198,7 +5199,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     sendPacket(entry.getKey(), BedrockInventoryContentCodec.createContainerInventory(
                             viewer.openContainerWindowId, container, itemRegistry), true);
                 } catch (RuntimeException exception) {
-                    System.err.println("NEXORA: unable to synchronize shared chest with "
+                    System.err.println("NEXORA: unable to synchronize shared container with "
                             + entry.getKey() + ": " + exception.getMessage());
                 }
             }

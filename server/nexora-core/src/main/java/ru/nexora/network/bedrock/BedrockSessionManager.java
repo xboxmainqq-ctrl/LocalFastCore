@@ -7636,7 +7636,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     player.entityId, player.inventory, registry));
         }
         // A remote player needs the same authoritative health, hunger and experience
-        // snapshot as the local player; AddPlayer alone does not carry these attributes.
+        // snapshot as the local player; AddPlayer alone does not carry these values.
+        packets.add(BedrockVitalsCodec.createSetHealth(player.vitals));
         packets.add(createPlayerAttributes(player, Math.max(0, player.lastInputTick)));
         return List.copyOf(packets);
     }

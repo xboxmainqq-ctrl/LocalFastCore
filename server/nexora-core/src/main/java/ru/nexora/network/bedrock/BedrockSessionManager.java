@@ -6477,7 +6477,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (requiredNanos == Long.MAX_VALUE
                 || nanoTime.getAsLong() - target.startedAtNanos() < requiredNanos) return;
 
-        List<WorldItemEntity> chestDrops = new ArrayList<>();
+        List<WorldItemEntity> containerDrops = new ArrayList<>();
         if (current == BlockType.CHEST) {
             WorldContainerManager manager = world.containers().orElse(null);
             if (manager == null) {
@@ -6502,7 +6502,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     }
                     double spreadX = ((slot % 3) - 1) * 0.06;
                     double spreadZ = (((slot / 3) % 3) - 1) * 0.06;
-                    chestDrops.add(world.itemEntities().spawn(
+                    containerDrops.add(world.itemEntities().spawn(
                             stack, target.x() + 0.5 + spreadX, target.y() + 0.65, target.z() + 0.5 + spreadZ,
                             spreadX, 0.18, spreadZ, nowMillis,
                             WorldItemEntityManager.DEFAULT_PICKUP_DELAY_MILLIS, ownerXuid));
@@ -6522,7 +6522,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 // The item actors are durable before the persistent chest record is deleted.
                 manager.remove(target.x(), target.y(), target.z());
             } catch (IOException | RuntimeException exception) {
-                for (WorldItemEntity item : chestDrops) {
+                for (WorldItemEntity item : containerDrops) {
                     try {
                         world.itemEntities().remove(item.runtimeId());
                     } catch (RuntimeException rollbackFailure) {
@@ -6556,17 +6556,35 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         target.x(), target.y(), target.z(), current), true);
                 return;
             }
+            List<Optional<ItemStack>> furnaceSnapshot = null;
+            FurnaceService.FurnaceStateSnapshot furnaceStateSnapshot = null;
             try {
                 ContainerInventory furnace = manager.getOrCreate(
                         target.x(), target.y(), target.z(), furnaceKind(current));
-                if (furnace.snapshot().stream().anyMatch(Optional::isPresent)
-                        || manager.hasPendingExperience(target.x(), target.y(), target.z())) {
-                    // Do not destroy a furnace while it still owns items or unclaimed
-                    // smelting XP. Both are player value and must remain recoverable.
+                furnaceSnapshot = furnace.snapshot();
+                furnaceStateSnapshot = manager.snapshotState(target.x(), target.y(), target.z());
+                if (manager.hasPendingExperience(target.x(), target.y(), target.z())) {
+                    // Pending smelting XP has no world-orb representation yet. Keep the
+                    // furnace intact until that value has been claimed through its output.
                     state.breakTarget = null;
                     sendPacket(networkId, BedrockBlockUpdateCodec.createPacket(
                             target.x(), target.y(), target.z(), current), true);
                     return;
+                }
+                long nowMillis = System.currentTimeMillis();
+                String ownerXuid = state.identity == null ? null : state.identity.xuid();
+                for (int slot = 0; slot < furnaceSnapshot.size(); slot++) {
+                    ItemStack stack = furnaceSnapshot.get(slot).orElse(null);
+                    if (stack == null) continue;
+                    if (itemRegistry == null || itemRegistry.findByIdentifier(stack.itemId()) == null) {
+                        throw new IllegalStateException(
+                                "No Bedrock item definition is registered for furnace item " + stack.itemId());
+                    }
+                    double spreadX = (slot - 1) * 0.08;
+                    containerDrops.add(world.itemEntities().spawn(
+                            stack, target.x() + 0.5 + spreadX, target.y() + 0.65, target.z() + 0.5,
+                            spreadX, 0.18, 0, nowMillis,
+                            WorldItemEntityManager.DEFAULT_PICKUP_DELAY_MILLIS, ownerXuid));
                 }
                 for (var entry : sessions.entrySet()) {
                     SessionState viewer = entry.getValue();
@@ -6579,10 +6597,31 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         }
                     }
                 }
+                // Persist all item actors before deleting the furnace's inventory and timers.
                 manager.remove(target.x(), target.y(), target.z());
-            } catch (IOException exception) {
+            } catch (IOException | RuntimeException exception) {
+                for (WorldItemEntity item : containerDrops) {
+                    try {
+                        world.itemEntities().remove(item.runtimeId());
+                    } catch (RuntimeException rollbackFailure) {
+                        exception.addSuppressed(rollbackFailure);
+                    }
+                }
+                if (furnaceSnapshot != null && furnaceStateSnapshot != null) {
+                    try {
+                        ContainerInventory restored = manager.getOrCreate(
+                                target.x(), target.y(), target.z(), furnaceKind(current));
+                        restored.restore(furnaceSnapshot);
+                        manager.restoreState(target.x(), target.y(), target.z(), furnaceStateSnapshot);
+                        manager.save(target.x(), target.y(), target.z());
+                    } catch (IOException | RuntimeException rollbackFailure) {
+                        exception.addSuppressed(rollbackFailure);
+                    }
+                }
                 state.breakTarget = null;
-                System.err.println("NEXORA: furnace break cancelled because its contents could not be checked: "
+                sendPacket(networkId, BedrockBlockUpdateCodec.createPacket(
+                        target.x(), target.y(), target.z(), current), true);
+                System.err.println("NEXORA: furnace break cancelled because its contents could not be spilled safely: "
                         + exception.getMessage());
                 return;
             }

@@ -233,7 +233,7 @@ class BedrockActorVisibilityIntegrationTest {
             set(source, "playerListEntry", new BedrockPlayerListCodec.AddEntry(
                     java.util.UUID.fromString("00000000-0000-0000-0000-000000000701"),
                     701L, "Source", "source-xuid", "source-playfab", "",
-                    1, new byte[0], false, false, false, 0));
+                    1, new byte[] {1}, false, false, false, 0));
 
             sentChunks(oldViewer).add(chunkKey(0, 0));
             sentChunks(newViewer).add(chunkKey(2, 0));

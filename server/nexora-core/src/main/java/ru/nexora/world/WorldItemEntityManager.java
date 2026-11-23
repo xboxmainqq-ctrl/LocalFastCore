@@ -242,7 +242,7 @@ public final class WorldItemEntityManager {
                     // rest; higher impacts get one damped rebound. This avoids a
                     // low-amplitude gravity/collision loop at the 20 TPS step size.
                     double gapToSupport = current.y() - (supportY + 1.125);
-                    vy = gapToSupport <= 0.125 ? 0 : -vy * 0.25;
+                    vy = gapToSupport <= 0.125 ? 0 : -vy * 0.20;
                     vx *= 0.6;
                     vz *= 0.6;
                 } else if (solid(world, floor(nextX), floor(nextY), floor(nextZ))) {

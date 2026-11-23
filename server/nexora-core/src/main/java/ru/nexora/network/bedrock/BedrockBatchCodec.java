@@ -226,9 +226,9 @@ public final class BedrockBatchCodec {
             case "resourcepackstackfinished" -> 4;
             default -> throw new IllegalArgumentException("Unknown resource-pack response: " + name);
         };
-        // Protocol schema revisions have represented the oneOf tag as either
-        // zero-based variant indexes or the corresponding one-based enum value.
-        if (variant != response && variant != response - 1) {
+        // Protocol 2225 encodes oneOf alternatives with zero-based tags:
+        // Cancel=0, Downloading=1, DownloadingFinished=2, StackFinished=3.
+        if (variant != response - 1) {
             throw new IllegalArgumentException("Resource-pack response variant " + variant
                     + " does not match " + name);
         }

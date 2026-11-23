@@ -3623,7 +3623,11 @@ class BedrockSessionManagerTest {
     }
 
     private static BedrockPacket resourcePackResponse(int response, String name) {
+        if (response < 1 || response > 4) {
+            throw new IllegalArgumentException("Resource-pack response must be 1..4");
+        }
         ByteArrayOutputStream body = new ByteArrayOutputStream();
+        body.write(response - 1); // protocol 2225 oneOf variant tag
         writeString(body, name);
         return new BedrockPacket(
                 BedrockBatchCodec.RESOURCE_PACK_CLIENT_RESPONSE_PACKET_ID, 0, 0, body.toByteArray());

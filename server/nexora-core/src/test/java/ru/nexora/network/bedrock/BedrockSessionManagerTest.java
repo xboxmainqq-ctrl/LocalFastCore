@@ -3230,7 +3230,10 @@ class BedrockSessionManagerTest {
                 BedrockBatchCodec.encode(List.of(takeItem), true, 256));
         assertEquals(2, inventory.count("minecraft:diamond"));
         assertTrue(testWorld.itemEntities().find(pickup.runtimeId()).isEmpty());
-        assertEquals(framesBeforePickup + 3, outboundFrames.size()); // inventory, TakeItemActor, RemoveActor
+        assertEquals(framesBeforePickup + 2, outboundFrames.size()); // inventory/equipment state + picker acknowledgement
+        assertTrue(outboundFrames.subList(framesBeforePickup, outboundFrames.size()).stream()
+                .flatMap(frame -> decodeOutboundAll(frame, true).stream())
+                .anyMatch(outbound -> outbound.packetId() == BedrockTakeItemActorCodec.TAKE_ITEM_ACTOR_PACKET_ID));
 
         assertThrows(SecurityException.class, () -> sendClientBatch(manager, "authenticated-client",
                 BedrockBatchCodec.encode(List.of(initialized), true, 256)));

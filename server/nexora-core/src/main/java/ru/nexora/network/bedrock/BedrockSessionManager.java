@@ -6924,18 +6924,23 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             for (WorldItemEntity entity : world.itemEntities().snapshotInChunkKeys(recipient.sentChunkKeys)) {
                 if (itemRegistry.findByIdentifier(entity.stack().itemId()) == null) continue;
                 boolean visible = isWorldPositionVisible(recipient, entity.x(), entity.z());
-                if (visible && recipient.visibleItemEntityIds.add(entity.runtimeId())) {
+                if (visible) {
+                    boolean newlyVisible = recipient.visibleItemEntityIds.add(entity.runtimeId());
+                    // Repair the reverse index even when the session-owned visibility set
+                    // already contains this item but a previous partial update lost the index.
                     itemActorReplicationIndex.addActorViewer(entity.runtimeId(), recipientNetworkId);
-                    try {
-                        sendPacket(recipientNetworkId,
-                                BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry), true);
-                    } catch (RuntimeException exception) {
-                        recipient.visibleItemEntityIds.remove(entity.runtimeId());
-                        itemActorReplicationIndex.removeActorViewer(entity.runtimeId(), recipientNetworkId);
-                        System.err.println("NEXORA: unable to add dropped item entering chunk view: "
-                                + exception.getMessage());
+                    if (newlyVisible) {
+                        try {
+                            sendPacket(recipientNetworkId,
+                                    BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry), true);
+                        } catch (RuntimeException exception) {
+                            recipient.visibleItemEntityIds.remove(entity.runtimeId());
+                            itemActorReplicationIndex.removeActorViewer(entity.runtimeId(), recipientNetworkId);
+                            System.err.println("NEXORA: unable to add dropped item entering chunk view: "
+                                    + exception.getMessage());
+                        }
                     }
-                } else if (!visible && recipient.visibleItemEntityIds.remove(entity.runtimeId())) {
+                } else if (recipient.visibleItemEntityIds.remove(entity.runtimeId())) {
                     itemActorReplicationIndex.removeActorViewer(entity.runtimeId(), recipientNetworkId);
                     try {
                         sendPacket(recipientNetworkId,

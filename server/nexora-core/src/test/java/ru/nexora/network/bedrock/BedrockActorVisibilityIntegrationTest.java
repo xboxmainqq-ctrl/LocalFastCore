@@ -173,6 +173,14 @@ class BedrockActorVisibilityIntegrationTest {
                     BedrockVitalsCodec.UPDATE_ATTRIBUTES_PACKET_ID),
                     packetsFor(outbound, "viewer").stream().map(BedrockPacket::packetId).toList());
             assertTrue(packetsFor(outbound, "outsider").isEmpty());
+
+            outbound.clear();
+            broadcast.invoke(manager, "source", source, false, 13L);
+            assertEquals(List.of(BedrockVitalsCodec.UPDATE_ATTRIBUTES_PACKET_ID),
+                    packetsFor(outbound, "source").stream().map(BedrockPacket::packetId).toList());
+            assertEquals(List.of(BedrockVitalsCodec.UPDATE_ATTRIBUTES_PACKET_ID),
+                    packetsFor(outbound, "viewer").stream().map(BedrockPacket::packetId).toList());
+            assertTrue(packetsFor(outbound, "outsider").isEmpty());
         } finally {
             manager.close();
         }

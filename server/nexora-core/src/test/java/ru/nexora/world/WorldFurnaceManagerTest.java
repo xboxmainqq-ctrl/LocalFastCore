@@ -203,6 +203,33 @@ class WorldFurnaceManagerTest {
     }
 
     @Test
+    void failedRemovalOfUnloadedFurnaceRestoresPersistedProcessingState() throws Exception {
+        ContainerInventoryStorage inventoryStorage =
+                new ContainerInventoryStorage(temporaryDirectory, "NEXORA");
+        FurnaceStateStorage stateStorage = new FurnaceStateStorage(temporaryDirectory, "NEXORA");
+        WorldFurnaceManager writer = new WorldFurnaceManager(inventoryStorage, stateStorage);
+        var furnace = writer.getOrCreate(12, 64, 3);
+        furnace.setSlot(0, new ItemStack("minecraft:raw_iron", 1, 64));
+        furnace.setSlot(1, new ItemStack("minecraft:stick", 1, 64));
+        writer.tick(12, 64, 3, 60);
+        writer.saveAll();
+
+        // A fresh manager has not loaded this furnace; removal must still preserve
+        // the durable state if deleting its inventory fails after the state file.
+        WorldFurnaceManager remover = new WorldFurnaceManager(inventoryStorage, stateStorage);
+        Path primary = temporaryDirectory.resolve("NEXORA/containers/12_64_3.nxc");
+        Path target = temporaryDirectory.resolve("protected-unloaded-furnace-inventory");
+        java.nio.file.Files.writeString(target, "keep");
+        java.nio.file.Files.delete(primary);
+        java.nio.file.Files.createSymbolicLink(primary, target);
+
+        assertThrows(java.io.IOException.class, () -> remover.remove(12, 64, 3));
+        assertEquals(60, stateStorage.load(12, 64, 3).orElseThrow().cookProgress());
+        assertEquals(new ItemStack("minecraft:raw_iron", 1, 64),
+                inventoryStorage.load(12, 64, 3).orElseThrow().getSlot(0).orElseThrow());
+    }
+
+    @Test
     void removeDeletesBothInventoryAndProgress() throws Exception {
         ContainerInventoryStorage inventoryStorage =
                 new ContainerInventoryStorage(temporaryDirectory, "NEXORA");

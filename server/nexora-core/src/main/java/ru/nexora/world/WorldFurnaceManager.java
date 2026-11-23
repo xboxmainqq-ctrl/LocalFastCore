@@ -202,7 +202,12 @@ public final class WorldFurnaceManager {
     public synchronized void remove(int x, int y, int z) throws IOException {
         Position position = new Position(x, y, z);
         ContainerInventory inventory = loaded.get(position);
+        ContainerInventory inventoryForRollback = inventory != null
+                ? inventory : inventoryStorage.load(x, y, z).orElse(null);
         FurnaceService.FurnaceStateSnapshot state = service.snapshotState(x, y, z);
+        if (inventory == null) {
+            state = stateStorage.load(x, y, z).orElse(state);
+        }
         boolean stateDeleteStarted = false;
         boolean inventoryDeleteStarted = false;
         try {
@@ -213,9 +218,9 @@ public final class WorldFurnaceManager {
             inventoryDeleteStarted = true;
             inventoryStorage.delete(x, y, z);
         } catch (IOException failure) {
-            if (inventoryDeleteStarted && inventory != null) {
+            if (inventoryDeleteStarted && inventoryForRollback != null) {
                 try {
-                    inventoryStorage.save(x, y, z, inventory);
+                    inventoryStorage.save(x, y, z, inventoryForRollback);
                 } catch (IOException rollbackFailure) {
                     failure.addSuppressed(rollbackFailure);
                 }

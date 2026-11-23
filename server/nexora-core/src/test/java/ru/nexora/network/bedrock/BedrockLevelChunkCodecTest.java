@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockLevelChunkCodecTest {
     @Test
-    void encodesNukkitMotLevelDbChunkWithSectionOffsetFourAndFullBiomeColumn() {
+    void encodesNukkitMotLevelDbChunkWithOneBiomePalettePerTransmittedSubchunk() {
         WorldChunk chunk = new WorldChunk(-2, 3);
         new FlatWorldGenerator().generate(chunk, 1L);
 
@@ -69,7 +69,7 @@ class BedrockLevelChunkCodecTest {
     }
 
     @Test
-    void serializesBlocksInNegativeWorldSectionsWithTwoStorageLayers() {
+    void serializesNegativeSectionsAndMatchingBiomePalette() {
         WorldChunk chunk = new WorldChunk(0, 0);
         chunk.setBlock(1, -60, 2, ru.nexora.world.BlockType.BEDROCK);
         BedrockPacket packet = BedrockLevelChunkCodec.createPacket(chunk);
@@ -101,7 +101,7 @@ class BedrockLevelChunkCodecTest {
     }
 
     @Test
-    void emptyChunkMatchesNukkitMotLevelDbEmptyChunkAndFullBiomeColumn() {
+    void emptyChunkContainsNoSubchunkBiomePalettes() {
         BedrockPacket packet = BedrockLevelChunkCodec.createPacket(new WorldChunk(0, 0));
         Reader reader = new Reader(packet.payload());
 
@@ -116,10 +116,6 @@ class BedrockLevelChunkCodecTest {
         assertTrue(reader.exhausted());
 
         Reader chunkData = new Reader(data);
-        for (int section = 0; section < 0; section++) {
-            assertEquals(1, chunkData.byteValue());
-            assertEquals(1, chunkData.varInt32());
-        }
         assertEquals(0, chunkData.byteValue()); // no border blocks; empty NBT collection is zero bytes
         assertTrue(chunkData.exhausted());
         assertEquals(1, data.length); // empty chunk has no subchunks, biome palettes, or block entities

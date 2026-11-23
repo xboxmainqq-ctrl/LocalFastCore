@@ -19,11 +19,12 @@ class BedrockPlayerEquipmentCodecTest {
         BedrockPacket armor = packets.get(0);
         assertEquals(0x31, armor.packetId());
         byte[] payload = armor.payload();
+        assertEquals(48, payload.length); // 2-byte header + four 8-byte descriptors + name + storage descriptor
         assertEquals(120, payload[0] & 0xff);
         assertEquals(4, payload[1] & 0xff);
-        assertEquals(2, payload[2] & 0xff); // non-empty item stack net ID
-        assertEquals(50, payload[3] & 0xff);
-        assertEquals(1, payload[4] & 0xff); // runtime ID 306
+        assertEquals(50, payload[2] & 0xff); // runtime ID 306, little-endian
+        assertEquals(1, payload[3] & 0xff);
+        assertEquals(1, payload[4] & 0xff); // count; no ItemStackNetId prefix in InventoryContent
         assertEquals(6, payload[payload.length - 14] & 0xff); // ARMOR full container name
         assertEquals(1, payload[payload.length - 13] & 0xff); // dynamic ID present
         assertEquals(120, payload[payload.length - 12] & 0xff);
@@ -37,8 +38,11 @@ class BedrockPlayerEquipmentCodecTest {
         List<BedrockPacket> packets = BedrockPlayerEquipmentCodec.createInitialEquipment(equipment, REGISTRY);
 
         byte[] offhand = packets.get(1).payload();
+        assertEquals(24, offhand.length); // header + one descriptor + full name + storage descriptor
         assertEquals(119, offhand[0] & 0xff);
         assertEquals(1, offhand[1] & 0xff);
+        assertEquals(2, offhand[4] & 0xff); // count follows runtime ID directly; no NetId prefix
+        assertEquals(0, offhand[5] & 0xff);
         assertEquals(34, offhand[offhand.length - 14] & 0xff); // OFFHAND
         assertEquals(1, offhand[offhand.length - 13] & 0xff); // dynamic ID optional is present
         assertEquals(0, offhand[offhand.length - 12] & 0xff); // dynamic ID = 0

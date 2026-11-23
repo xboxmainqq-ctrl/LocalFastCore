@@ -153,7 +153,7 @@ class BedrockActorVisibilityIntegrationTest {
             Object viewer = session(manager, "viewer");
             set(source, "entityId", 700L);
             set(source, "vitals", ru.nexora.world.PlayerVitals.DEFAULT.damage(5.0f));
-            set(viewer, "visiblePlayerEntityIds", new java.util.HashSet<>(Set.of(700L)));
+            visiblePlayers(viewer).add(700L);
 
             Field indexField = BedrockSessionManager.class.getDeclaredField("playerActorReplicationIndex");
             indexField.setAccessible(true);
@@ -253,6 +253,13 @@ class BedrockActorVisibilityIntegrationTest {
     @SuppressWarnings("unchecked")
     private static Set<Long> sentChunks(Object session) throws Exception {
         Field field = session.getClass().getDeclaredField("sentChunkKeys");
+        field.setAccessible(true);
+        return (Set<Long>) field.get(session);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Set<Long> visiblePlayers(Object session) throws Exception {
+        Field field = session.getClass().getDeclaredField("visiblePlayerEntityIds");
         field.setAccessible(true);
         return (Set<Long>) field.get(session);
     }

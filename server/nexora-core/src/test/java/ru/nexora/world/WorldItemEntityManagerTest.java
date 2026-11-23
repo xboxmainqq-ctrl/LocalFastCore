@@ -96,6 +96,23 @@ class WorldItemEntityManagerTest {
     }
 
     @Test
+    void droppedItemReboundsFromGroundWithDamping() {
+        World world = new World("item-bounce", 0L, new FlatWorldGenerator());
+        WorldItemEntityManager manager = new WorldItemEntityManager();
+        WorldItemEntity spawned = manager.spawn(new ItemStack("minecraft:stone", 1, 64),
+                0.5, 65.2, 0.5, 0, -2.0, 0, 0, 0, null);
+
+        manager.tick(world, 0.05, 100);
+
+        WorldItemEntity bounced = manager.find(spawned.runtimeId()).orElseThrow();
+        assertEquals(65.125, bounced.y(), 0.001);
+        assertTrue(bounced.velocityY() > 0.0,
+                "ground collision should produce a damped upward rebound");
+        assertTrue(bounced.velocityY() < 1.0,
+                "rebound should be strongly damped");
+    }
+
+    @Test
     void persistsDroppedItemsAcrossRestartAndPersistsPickup() throws IOException {
         WorldItemEntityStorage storage = new WorldItemEntityStorage(temporaryDirectory, "test-world");
         WorldItemEntityManager first = new WorldItemEntityManager(storage);

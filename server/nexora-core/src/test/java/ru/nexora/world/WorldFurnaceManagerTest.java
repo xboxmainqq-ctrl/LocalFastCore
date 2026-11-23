@@ -152,6 +152,55 @@ class WorldFurnaceManagerTest {
     }
 
     @Test
+    void failedFurnaceStateDeleteKeepsInventoryAndLoadedStateAvailable() throws Exception {
+        ContainerInventoryStorage inventoryStorage =
+                new ContainerInventoryStorage(temporaryDirectory, "NEXORA");
+        FurnaceStateStorage stateStorage = new FurnaceStateStorage(temporaryDirectory, "NEXORA");
+        WorldFurnaceManager manager = new WorldFurnaceManager(inventoryStorage, stateStorage);
+        var furnace = manager.getOrCreate(10, 64, 2);
+        furnace.setSlot(0, new ItemStack("minecraft:raw_iron", 1, 64));
+        manager.tick(10, 64, 2, 40);
+        manager.save(10, 64, 2);
+
+        Path primary = temporaryDirectory.resolve("NEXORA/furnaces/10_64_2.nxf");
+        Path target = temporaryDirectory.resolve("protected-furnace-state-target");
+        java.nio.file.Files.writeString(target, "keep");
+        java.nio.file.Files.delete(primary);
+        java.nio.file.Files.createSymbolicLink(primary, target);
+
+        assertThrows(java.io.IOException.class, () -> manager.remove(10, 64, 2));
+        assertSame(furnace, manager.getOrCreate(10, 64, 2));
+        assertEquals(new ItemStack("minecraft:raw_iron", 1, 64),
+                inventoryStorage.load(10, 64, 2).orElseThrow().getSlot(0).orElseThrow());
+        assertEquals(40, manager.snapshotState(10, 64, 2).cookProgress());
+    }
+
+    @Test
+    void failedInventoryDeleteRestoresFurnaceStateAndKeepsLoadedFurnace() throws Exception {
+        ContainerInventoryStorage inventoryStorage =
+                new ContainerInventoryStorage(temporaryDirectory, "NEXORA");
+        FurnaceStateStorage stateStorage = new FurnaceStateStorage(temporaryDirectory, "NEXORA");
+        WorldFurnaceManager manager = new WorldFurnaceManager(inventoryStorage, stateStorage);
+        var furnace = manager.getOrCreate(11, 64, 2);
+        furnace.setSlot(0, new ItemStack("minecraft:raw_iron", 1, 64));
+        manager.tick(11, 64, 2, 60);
+        manager.save(11, 64, 2);
+
+        Path primary = temporaryDirectory.resolve("NEXORA/containers/11_64_2.nxc");
+        Path target = temporaryDirectory.resolve("protected-furnace-inventory-target");
+        java.nio.file.Files.writeString(target, "keep");
+        java.nio.file.Files.delete(primary);
+        java.nio.file.Files.createSymbolicLink(primary, target);
+
+        assertThrows(java.io.IOException.class, () -> manager.remove(11, 64, 2));
+        assertSame(furnace, manager.getOrCreate(11, 64, 2));
+        assertEquals(60, manager.snapshotState(11, 64, 2).cookProgress());
+        assertEquals(60, stateStorage.load(11, 64, 2).orElseThrow().cookProgress());
+        assertEquals(new ItemStack("minecraft:raw_iron", 1, 64),
+                furnace.getSlot(0).orElseThrow());
+    }
+
+    @Test
     void removeDeletesBothInventoryAndProgress() throws Exception {
         ContainerInventoryStorage inventoryStorage =
                 new ContainerInventoryStorage(temporaryDirectory, "NEXORA");

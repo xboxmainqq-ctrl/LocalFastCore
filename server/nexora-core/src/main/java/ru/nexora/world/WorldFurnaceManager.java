@@ -200,12 +200,38 @@ public final class WorldFurnaceManager {
     }
 
     public synchronized void remove(int x, int y, int z) throws IOException {
-        Position p = new Position(x, y, z);
-        loaded.remove(p);
-        kinds.remove(p);
+        Position position = new Position(x, y, z);
+        ContainerInventory inventory = loaded.get(position);
+        FurnaceService.FurnaceStateSnapshot state = service.snapshotState(x, y, z);
+        boolean stateDeleteCompleted = false;
+        boolean inventoryDeleteStarted = false;
+        try {
+            // Persisted files are removed before the live cache. If the second
+            // delete fails, restore the first file and keep the authoritative state.
+            stateStorage.delete(x, y, z);
+            stateDeleteCompleted = true;
+            inventoryDeleteStarted = true;
+            inventoryStorage.delete(x, y, z);
+        } catch (IOException failure) {
+            if (inventoryDeleteStarted && inventory != null) {
+                try {
+                    inventoryStorage.save(x, y, z, inventory);
+                } catch (IOException rollbackFailure) {
+                    failure.addSuppressed(rollbackFailure);
+                }
+            }
+            if (stateDeleteCompleted) {
+                try {
+                    stateStorage.save(x, y, z, state);
+                } catch (IOException rollbackFailure) {
+                    failure.addSuppressed(rollbackFailure);
+                }
+            }
+            throw failure;
+        }
+        loaded.remove(position);
+        kinds.remove(position);
         service.remove(x, y, z);
-        inventoryStorage.delete(x, y, z);
-        stateStorage.delete(x, y, z);
     }
 
     public synchronized int loadedCount() { return loaded.size(); }

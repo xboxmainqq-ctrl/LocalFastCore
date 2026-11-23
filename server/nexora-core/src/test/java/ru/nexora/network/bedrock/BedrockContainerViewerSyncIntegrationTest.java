@@ -1,0 +1,138 @@
+package ru.nexora.network.bedrock;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import ru.nexora.inventory.ContainerInventory;
+import ru.nexora.inventory.ContainerInventoryStorage;
+import ru.nexora.inventory.InventoryTransactionService;
+import ru.nexora.inventory.ItemStack;
+import ru.nexora.network.nethernet.NetherNetClientIdentity;
+import ru.nexora.network.nethernet.NetherNetMessageFramer;
+import ru.nexora.world.FlatWorldGenerator;
+import ru.nexora.world.World;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class BedrockContainerViewerSyncIntegrationTest {
+    @TempDir
+    Path temporaryDirectory;
+
+    @Test
+    void chestTransactionsSynchronizeOtherViewersButNotUnrelatedWindows() throws Exception {
+        List<Outbound> outbound = new ArrayList<>();
+        World world = new World("shared-chest-test", 0L, new FlatWorldGenerator(),
+                0, 65, 0, null, null,
+                new ContainerInventoryStorage(temporaryDirectory, "shared-chest-test"));
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                world, (networkId, label, frame) -> outbound.add(new Outbound(networkId, frame)),
+                event -> { });
+        manager.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
+
+        try {
+            manager.onIdentity("source", identity("source"));
+            manager.onIdentity("viewer", identity("viewer"));
+            manager.onIdentity("outsider", identity("outsider"));
+            Object source = session(manager, "source");
+            Object viewer = session(manager, "viewer");
+            Object outsider = session(manager, "outsider");
+            for (Object state : List.of(source, viewer, outsider)) {
+                set(state, "clientInitialized", true);
+                set(state, "compressionNegotiated", true);
+            }
+
+            int x = 4, y = 65, z = -3;
+            ContainerInventory chest = world.containers().orElseThrow().getOrCreate(x, y, z);
+            ItemStack diamonds = new ItemStack("minecraft:diamond", 5, 64);
+            chest.setSlot(0, diamonds);
+            openChest(source, 1, x, y, z, chest);
+            openChest(viewer, 8, x, y, z, chest);
+            // This player has a different chest open and must not receive this update.
+            openChest(outsider, 9, x + 16, y, z, new ContainerInventory());
+
+            List<InventoryTransactionService.Action> actions = List.of(
+                    new InventoryTransactionService.Action(
+                            0, 0, 0, Optional.empty(), Optional.of(diamonds)),
+                    new InventoryTransactionService.Action(
+                            0, 1, 0, Optional.of(diamonds), Optional.empty()));
+            Method transaction = BedrockSessionManager.class.getDeclaredMethod(
+                    "handleOpenContainerTransaction", String.class, source.getClass(), List.class);
+            transaction.setAccessible(true);
+            transaction.invoke(manager, "source", source, actions);
+
+            assertEquals(diamonds, ((ru.nexora.inventory.PlayerInventory) field(source, "inventory"))
+                    .getSlot(0).orElseThrow());
+            assertTrue(chest.getSlot(0).isEmpty());
+
+            List<BedrockPacket> viewerPackets = packetsFor(outbound, "viewer");
+            assertEquals(List.of(BedrockInventoryContentCodec.INVENTORY_CONTENT_PACKET_ID),
+                    viewerPackets.stream().map(BedrockPacket::packetId).toList());
+            assertEquals(8, Byte.toUnsignedInt(viewerPackets.getFirst().payload()[0]),
+                    "the update must use the receiving player's own window ID");
+            assertTrue(packetsFor(outbound, "outsider").isEmpty(),
+                    "players with another chest open must not receive this inventory");
+        } finally {
+            manager.close();
+        }
+    }
+
+    private static void openChest(
+            Object state, int windowId, int x, int y, int z, ContainerInventory inventory
+    ) throws Exception {
+        set(state, "openContainerWindowId", windowId);
+        set(state, "openContainerType", BedrockContainerPacketCodec.CONTAINER_TYPE);
+        set(state, "openContainerIsCraftingTable", false);
+        set(state, "openContainerIsFurnace", false);
+        set(state, "openContainerX", x);
+        set(state, "openContainerY", y);
+        set(state, "openContainerZ", z);
+        set(state, "openContainerInventory", inventory);
+    }
+
+    private static NetherNetClientIdentity identity(String id) {
+        return new NetherNetClientIdentity(
+                id + "-token", new byte[] {1, 2, 3}, id + "-xuid",
+                id, id + "-playfab", "20CA2", null);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Object session(BedrockSessionManager manager, String id) throws Exception {
+        Field field = BedrockSessionManager.class.getDeclaredField("sessions");
+        field.setAccessible(true);
+        return ((Map<String, Object>) field.get(manager)).get(id);
+    }
+
+    private static void set(Object target, String name, Object value) throws Exception {
+        Field field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(target, value);
+    }
+
+    private static Object field(Object target, String name) throws Exception {
+        Field field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        return field.get(target);
+    }
+
+    private static List<BedrockPacket> packetsFor(List<Outbound> frames, String recipient) {
+        List<BedrockPacket> packets = new ArrayList<>();
+        NetherNetMessageFramer.Reassembler reassembler = new NetherNetMessageFramer.Reassembler();
+        for (Outbound outbound : frames) {
+            if (!recipient.equals(outbound.recipient())) continue;
+            reassembler.accept(outbound.frame(), true).ifPresent(
+                    message -> packets.addAll(BedrockBatchCodec.decode(message, true)));
+        }
+        return packets;
+    }
+
+    private record Outbound(String recipient, byte[] frame) {
+    }
+}

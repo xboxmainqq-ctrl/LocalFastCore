@@ -5050,6 +5050,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
         ContainerInventoryTransactionService.Result result = containerTransactionService.apply(
                 state.inventory, container, windowId, actions);
+        boolean committed = false;
 
         if (result == ContainerInventoryTransactionService.Result.APPLIED) {
             try {
@@ -5077,6 +5078,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             () -> new IllegalStateException("World container storage is not configured"));
                     manager.save(state.openContainerX, state.openContainerY, state.openContainerZ);
                 }
+                committed = true;
             } catch (IOException | RuntimeException exception) {
                 if (claimedExperienceMilli > 0 && furnaceManager != null) {
                     furnaceManager.restorePendingExperience(
@@ -5117,9 +5119,42 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
         }
 
+        if (committed && !furnaceWindow && !state.openContainerIsCraftingTable) {
+            broadcastContainerInventoryToViewers(networkId, state, container);
+        }
         clearSpearChargeIfItemChanged(state);
         // Always reconcile both inventories so a rejected or stale client prediction cannot linger.
         sendContainerReconciliation(networkId, state);
+    }
+
+    /**
+     * Keeps every client with the same persistent chest open on the same authoritative contents.
+     * Furnace viewers are updated by the furnace tick listener, and crafting grids are player-local.
+     */
+    private void broadcastContainerInventoryToViewers(
+            String sourceNetworkId, SessionState source, ContainerInventory container
+    ) {
+        for (var entry : sessions.entrySet()) {
+            if (sourceNetworkId.equals(entry.getKey())) continue;
+            SessionState viewer = entry.getValue();
+            synchronized (viewer) {
+                if (!viewer.clientInitialized || viewer.openContainerWindowId == 0
+                        || viewer.openContainerIsFurnace || viewer.openContainerIsCraftingTable
+                        || viewer.openContainerX != source.openContainerX
+                        || viewer.openContainerY != source.openContainerY
+                        || viewer.openContainerZ != source.openContainerZ
+                        || viewer.openContainerInventory != container) {
+                    continue;
+                }
+                try {
+                    sendPacket(entry.getKey(), BedrockInventoryContentCodec.createContainerInventory(
+                            viewer.openContainerWindowId, container, itemRegistry), true);
+                } catch (RuntimeException exception) {
+                    System.err.println("NEXORA: unable to synchronize shared chest with "
+                            + entry.getKey() + ": " + exception.getMessage());
+                }
+            }
+        }
     }
 
     private void handleNetworkSettingsRequest(

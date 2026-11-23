@@ -160,7 +160,7 @@ class BedrockActorVisibilityIntegrationTest {
             actorIndex.replaceChunkView("east-viewer", sentChunks(east));
 
             WorldLivingEntity mob = world.livingEntities().spawn(
-                    "minecraft:zombie", 1.0f, 65.0, 1.0, 1.0);
+                    "minecraft:zombie", 20.0f, 1.0, 65.0, 1.0);
             Method sync = BedrockSessionManager.class.getDeclaredMethod(
                     "syncVisibleWorldActors", String.class, west.getClass());
             sync.setAccessible(true);

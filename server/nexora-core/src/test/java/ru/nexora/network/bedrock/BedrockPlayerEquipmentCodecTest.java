@@ -68,7 +68,7 @@ class BedrockPlayerEquipmentCodecTest {
         byte[] payload = packet.payload();
         assertEquals(0xac, payload[0] & 0xff);
         assertEquals(0x02, payload[1] & 0xff);
-        assertTrue(payload.length > 2 + 5 * 8);
+        assertEquals(42, payload.length); // runtime ID plus five complete network item descriptors
     }
 
     @Test

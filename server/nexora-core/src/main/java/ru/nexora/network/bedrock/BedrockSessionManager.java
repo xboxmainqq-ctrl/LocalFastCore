@@ -6660,8 +6660,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 sendPacket(entry.getKey(), update, true);
             }
         }
-        for (WorldItemEntity chestDrop : chestDrops) {
-            broadcastItemActor(chestDrop, BedrockAddItemActorCodec.createAddItemActor(chestDrop, itemRegistry));
+        for (WorldItemEntity containerDrop : containerDrops) {
+            broadcastItemActor(containerDrop, BedrockAddItemActorCodec.createAddItemActor(containerDrop, itemRegistry));
         }
         if (dropped != null) {
             broadcastItemActor(dropped, BedrockAddItemActorCodec.createAddItemActor(dropped, itemRegistry));

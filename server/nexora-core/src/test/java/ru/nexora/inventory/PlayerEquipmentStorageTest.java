@@ -22,11 +22,13 @@ class PlayerEquipmentStorageTest {
     void roundTripsArmorOffhandCursorAndAllMagicalSlots() throws Exception {
         PlayerEquipmentStorage storage = new PlayerEquipmentStorage(directory);
         PlayerEquipment equipment = new PlayerEquipment();
-        equipment.setArmor(0, new ItemStack("minecraft:diamond", 1, 64));
+        equipment.setArmor(0, new ItemStack("minecraft:diamond", 1, 64,
+                java.util.Map.of("minecraft:protection", 4), 5));
         equipment.setArmor(3, new ItemStack("minecraft:iron_ingot", 2, 64));
         equipment.setOffhand(new ItemStack("minecraft:ender_pearl", 4, 16));
         equipment.setCursor(new ItemStack("minecraft:bread", 1, 64));
-        equipment.setMagicSlot(EquipmentSlot.MAGIC_STAFF, new ItemStack("nexora:ember_staff", 1, 1));
+        equipment.setMagicSlot(EquipmentSlot.MAGIC_STAFF, new ItemStack("nexora:ember_staff", 1, 1,
+                java.util.Map.of("nexora:arcane_power", 3), 2));
         equipment.setMagicSlot(EquipmentSlot.RING_LEFT, new ItemStack("nexora:power_ring", 1, 1));
         equipment.setMagicSlot(EquipmentSlot.RING_RIGHT, new ItemStack("nexora:ward_ring", 1, 1));
         equipment.setMagicSlot(EquipmentSlot.AMULET, new ItemStack("nexora:moon_amulet", 1, 1));
@@ -42,6 +44,14 @@ class PlayerEquipmentStorageTest {
                 loaded.magicSlot(EquipmentSlot.MAGIC_STAFF).orElseThrow().itemId());
         assertEquals("nexora:phoenix_core",
                 loaded.magicSlot(EquipmentSlot.ARTIFACT_RIGHT).orElseThrow().itemId());
+        assertEquals(java.util.Map.of("minecraft:protection", 4),
+                loaded.armor(0).orElseThrow().enchantments());
+        assertEquals(5, loaded.armor(0).orElseThrow().repairCost());
+        assertEquals(java.util.Map.of("nexora:arcane_power", 3),
+                loaded.magicSlot(EquipmentSlot.MAGIC_STAFF).orElseThrow().enchantments());
+        assertEquals(2, loaded.magicSlot(EquipmentSlot.MAGIC_STAFF).orElseThrow().repairCost());
+        assertEquals(3, Byte.toUnsignedInt(Files.readAllBytes(
+                directory.resolve("equipment-player.nxe"))[4]));
     }
 
     @Test
@@ -63,6 +73,35 @@ class PlayerEquipmentStorageTest {
         Files.write(directory.resolve("legacy-player.nxe"), complete.toByteArray());
 
         PlayerEquipment loaded = new PlayerEquipmentStorage(directory).load("legacy-player").orElseThrow();
+        assertTrue(loaded.armorSnapshot().stream().allMatch(Optional::isEmpty));
+        assertTrue(loaded.magicSnapshot().stream().allMatch(Optional::isEmpty));
+        assertTrue(loaded.offhand().isEmpty());
+        assertTrue(loaded.cursor().isEmpty());
+    }
+
+
+    @Test
+    void loadsLegacyVersionTwoEquipmentFilesWithoutItemMetadata() throws Exception {
+        ByteArrayOutputStream body = new ByteArrayOutputStream();
+        try (DataOutputStream out = new DataOutputStream(body)) {
+            out.writeInt(0x4e584551); // NXEQ
+            out.writeByte(2);
+            for (int i = 0; i < PlayerEquipment.ARMOR_SLOTS + 2 + PlayerEquipment.MAGIC_SLOTS; i++) {
+                out.writeBoolean(false);
+            }
+        }
+        byte[] payload = body.toByteArray();
+        CRC32C crc = new CRC32C();
+        crc.update(payload, 0, payload.length);
+        ByteArrayOutputStream complete = new ByteArrayOutputStream();
+        complete.writeBytes(payload);
+        try (DataOutputStream out = new DataOutputStream(complete)) {
+            out.writeInt((int) crc.getValue());
+        }
+        Files.write(directory.resolve("legacy-v2-player.nxe"), complete.toByteArray());
+
+        PlayerEquipment loaded = new PlayerEquipmentStorage(directory)
+                .load("legacy-v2-player").orElseThrow();
         assertTrue(loaded.armorSnapshot().stream().allMatch(Optional::isEmpty));
         assertTrue(loaded.magicSnapshot().stream().allMatch(Optional::isEmpty));
         assertTrue(loaded.offhand().isEmpty());

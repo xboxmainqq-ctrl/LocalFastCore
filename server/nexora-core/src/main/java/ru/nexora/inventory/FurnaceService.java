@@ -66,53 +66,53 @@ public final class FurnaceService {
         // A furnace tick is one inventory transaction. Bedrock container transactions
         // synchronize on this same monitor, so they cannot observe or modify a half-tick.
         synchronized (inventory) {
-        Position position = new Position(x, y, z);
-        FurnaceState state = states.computeIfAbsent(position, ignored -> new FurnaceState());
-        if (state.cookProgress >= kind.cookTimeTicks) state.cookProgress = 0;
-        if (elapsedTicks == 0) return result(state, false, kind);
+            Position position = new Position(x, y, z);
+            FurnaceState state = states.computeIfAbsent(position, ignored -> new FurnaceState());
+            if (state.cookProgress >= kind.cookTimeTicks) state.cookProgress = 0;
+            if (elapsedTicks == 0) return result(state, false, kind);
 
-        boolean changed = false;
-        long remainingTicks = elapsedTicks;
-        while (remainingTicks > 0) {
-            ItemStack input = inventory.getSlot(INPUT_SLOT).orElse(null);
-            SmeltingRecipe recipe = input == null ? null : RECIPES.get(input.itemId());
-            if (recipe != null && !kind.accepts(recipe.group())) recipe = null;
-            boolean canSmelt = recipe != null && canAcceptOutput(inventory, recipe.result());
+            boolean changed = false;
+            long remainingTicks = elapsedTicks;
+            while (remainingTicks > 0) {
+                ItemStack input = inventory.getSlot(INPUT_SLOT).orElse(null);
+                SmeltingRecipe recipe = input == null ? null : RECIPES.get(input.itemId());
+                if (recipe != null && !kind.accepts(recipe.group())) recipe = null;
+                boolean canSmelt = recipe != null && canAcceptOutput(inventory, recipe.result());
 
-            if (state.burnTicksRemaining == 0 && canSmelt) {
-                ItemStack fuel = inventory.getSlot(FUEL_SLOT).orElse(null);
-                if (fuel == null) break;
-                Integer burnTime = FUELS.get(fuel.itemId());
-                if (burnTime == null) break;
-                inventory.setSlot(FUEL_SLOT, fuel.count() == 1 ? null : fuel.withCount(fuel.count() - 1));
-                state.burnTicksRemaining = burnTime;
-                state.burnTicksTotal = burnTime;
-                changed = true;
-            }
-            if (state.burnTicksRemaining == 0) break;
-
-            int untilCooked = canSmelt ? kind.cookTimeTicks - state.cookProgress : state.burnTicksRemaining;
-            long step = Math.min(remainingTicks, Math.min(state.burnTicksRemaining, untilCooked));
-            state.burnTicksRemaining -= (int) step;
-            remainingTicks -= step;
-
-            if (canSmelt) {
-                state.cookProgress += (int) step;
-                if (state.cookProgress >= kind.cookTimeTicks) {
-                    consumeOneInput(inventory);
-                    addOutput(inventory, recipe.result());
-                    state.cookProgress = 0;
-                    state.pendingExperienceMilli = Math.min(MAX_PENDING_EXPERIENCE_MILLI,
-                            state.pendingExperienceMilli + recipe.experienceMilli());
+                if (state.burnTicksRemaining == 0 && canSmelt) {
+                    ItemStack fuel = inventory.getSlot(FUEL_SLOT).orElse(null);
+                    if (fuel == null) break;
+                    Integer burnTime = FUELS.get(fuel.itemId());
+                    if (burnTime == null) break;
+                    inventory.setSlot(FUEL_SLOT, fuel.count() == 1 ? null : fuel.withCount(fuel.count() - 1));
+                    state.burnTicksRemaining = burnTime;
+                    state.burnTicksTotal = burnTime;
                     changed = true;
                 }
-            } else {
-                state.cookProgress = 0;
+                if (state.burnTicksRemaining == 0) break;
+
+                int untilCooked = canSmelt ? kind.cookTimeTicks - state.cookProgress : state.burnTicksRemaining;
+                long step = Math.min(remainingTicks, Math.min(state.burnTicksRemaining, untilCooked));
+                state.burnTicksRemaining -= (int) step;
+                remainingTicks -= step;
+
+                if (canSmelt) {
+                    state.cookProgress += (int) step;
+                    if (state.cookProgress >= kind.cookTimeTicks) {
+                        consumeOneInput(inventory);
+                        addOutput(inventory, recipe.result());
+                        state.cookProgress = 0;
+                        state.pendingExperienceMilli = Math.min(MAX_PENDING_EXPERIENCE_MILLI,
+                                state.pendingExperienceMilli + recipe.experienceMilli());
+                        changed = true;
+                    }
+                } else {
+                    state.cookProgress = 0;
+                }
             }
-        }
-        return result(state, changed, kind);
-        }
-    }
+            return result(state, changed, kind);
+
+        }    }
 
         public synchronized void restoreState(int x, int y, int z, int burnTicksRemaining, int cookProgress) {
         restoreState(x, y, z, burnTicksRemaining, cookProgress, burnTicksRemaining, 0);

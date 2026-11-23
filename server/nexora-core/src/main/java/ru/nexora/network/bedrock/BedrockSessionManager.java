@@ -7635,6 +7635,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             packets.add(BedrockMobEquipmentCodec.createPlayerEquipment(
                     player.entityId, player.inventory, registry));
         }
+        // A remote player needs the same authoritative health, hunger and experience
+        // snapshot as the local player; AddPlayer alone does not carry these attributes.
+        packets.add(createPlayerAttributes(player, Math.max(0, player.lastInputTick)));
         return List.copyOf(packets);
     }
 

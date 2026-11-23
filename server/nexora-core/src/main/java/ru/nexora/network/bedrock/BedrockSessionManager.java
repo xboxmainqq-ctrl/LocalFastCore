@@ -3564,7 +3564,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     + ": " + exception.getMessage());
             return;
         }
-        sendPacket(networkId, createPlayerAttributes(state, Math.max(0, state.lastInputTick)), true);
+        broadcastPlayerVitals(networkId, state, false, state.lastInputTick);
     }
 
     private void tickWorldLivingActors(long tick) {
@@ -5105,7 +5105,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 long updatedMilli = Math.min(2_000_000_000_000L, currentMilli + claimedExperienceMilli);
                 state.experiencePoints = (int) (updatedMilli / 1000L);
                 state.experienceRemainderMilli = (int) (updatedMilli % 1000L);
-                sendPacket(networkId, createPlayerAttributes(state, Math.max(0, state.lastInputTick)), true);
+                broadcastPlayerVitals(networkId, state, false, state.lastInputTick);
             }
         }
 

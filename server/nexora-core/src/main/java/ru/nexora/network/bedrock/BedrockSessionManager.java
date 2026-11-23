@@ -1992,8 +1992,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             }
 
             List<BedrockPacket> packets = BedrockBatchCodec.decode(message.payload(), true);
-            boolean resourcePacksInfoWasSent = state.resourcePacksInfoSent;
-            boolean resourcePackStackWasSent = state.resourcePackStackSent;
             for (BedrockPacket packet : packets) {
                 if (state.transferFence != null) {
                     try {
@@ -2014,8 +2012,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     case BedrockBatchCodec.CLIENT_TO_SERVER_HANDSHAKE_PACKET_ID ->
                             handleClientHandshake(message.networkId(), state, packet);
                     case BedrockBatchCodec.RESOURCE_PACK_CLIENT_RESPONSE_PACKET_ID ->
-                            handleResourcePackResponse(message.networkId(), state, packet,
-                                    resourcePacksInfoWasSent, resourcePackStackWasSent);
+                            handleResourcePackResponse(message.networkId(), state, packet);
                     case BedrockSubChunkCodec.SUB_CHUNK_REQUEST_PACKET_ID ->
                             handleSubChunkRequest(message, state, packet);
                     case 0x71 -> handleClientInitialized(message, state, packet);
@@ -5557,11 +5554,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private void handleResourcePackResponse(
             String networkId,
             SessionState state,
-            BedrockPacket packet,
-            boolean resourcePacksInfoWasSent,
-            boolean resourcePackStackWasSent
+            BedrockPacket packet
     ) {
-        if (!state.clientHandshakeReceived || !resourcePacksInfoWasSent) {
+        if (!state.clientHandshakeReceived || !state.resourcePacksInfoSent) {
             throw new SecurityException("ResourcePackClientResponse arrived before ResourcePacksInfo");
         }
         BedrockBatchCodec.ResourcePackClientResponseData response =
@@ -5579,7 +5574,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 sendPacket(networkId, BedrockBatchCodec.createResourcePackStack(serverVersion), true);
             }
             case 3 -> {
-                if (!resourcePackStackWasSent) {
+                if (!state.resourcePackStackSent) {
                     throw new SecurityException("Resource-pack stack completed before the server sent its stack");
                 }
                 state.resourcePacksCompleted = true;

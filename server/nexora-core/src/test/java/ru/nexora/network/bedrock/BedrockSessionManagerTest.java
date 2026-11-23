@@ -2345,10 +2345,12 @@ class BedrockSessionManagerTest {
         sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(
                 new BedrockPacket(BedrockBatchCodec.CLIENT_TO_SERVER_HANDSHAKE_PACKET_ID, 0, 0, new byte[0])
         ), true, 256));
-        sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(
-                List.of(resourcePackResponse(2, "downloadingfinished")), true, 256));
-        sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(
-                List.of(resourcePackResponse(3, "resourcepackstackfinished")), true, 256));
+        // Both final responses may be coalesced into one reliable Bedrock batch.
+        // The server must apply response 2 before validating response 3.
+        sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(List.of(
+                resourcePackResponse(2, "downloadingfinished"),
+                resourcePackResponse(3, "resourcepackstackfinished")
+        ), true, 256));
         int beforeInit = outboundFrames.size();
         sendClientBatch(manager, "craft-client", BedrockBatchCodec.encode(
                 List.of(new BedrockPacket(0x71, 0, 0, new byte[] {1})), true, 256));

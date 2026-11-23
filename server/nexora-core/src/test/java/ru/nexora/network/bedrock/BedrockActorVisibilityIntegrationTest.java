@@ -132,6 +132,53 @@ class BedrockActorVisibilityIntegrationTest {
     }
 
     @Test
+    void playerVitalsUpdatesAreFannedOutOnlyToClientsTrackingThatPlayer() throws Exception {
+        List<Outbound> outbound = new ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new World("player-vitals-visibility-test", 0L, new FlatWorldGenerator()),
+                (networkId, label, frame) -> outbound.add(new Outbound(networkId, frame)),
+                event -> { });
+
+        try {
+            for (String id : List.of("source", "viewer", "outsider")) {
+                manager.onIdentity(id, new NetherNetClientIdentity(
+                        id + "-token", new byte[] {1, 2, 3}, id + "-xuid",
+                        id, id + "-playfab", "20CA2", null));
+                Object state = session(manager, id);
+                set(state, "clientInitialized", true);
+            }
+
+            Object source = session(manager, "source");
+            Object viewer = session(manager, "viewer");
+            set(source, "entityId", 700L);
+            set(source, "vitals", ru.nexora.world.PlayerVitals.DEFAULT.damage(5.0f));
+            set(viewer, "visiblePlayerEntityIds", new java.util.HashSet<>(Set.of(700L)));
+
+            Field indexField = BedrockSessionManager.class.getDeclaredField("playerActorReplicationIndex");
+            indexField.setAccessible(true);
+            ((ActorReplicationIndex) indexField.get(manager)).addActorViewer(700L, "viewer");
+
+            Method broadcast = BedrockSessionManager.class.getDeclaredMethod(
+                    "broadcastPlayerVitals", String.class, source.getClass(), boolean.class, long.class);
+            broadcast.setAccessible(true);
+            broadcast.invoke(manager, "source", source, true, 12L);
+
+            assertEquals(List.of(
+                    BedrockVitalsCodec.SET_HEALTH_PACKET_ID,
+                    BedrockVitalsCodec.UPDATE_ATTRIBUTES_PACKET_ID),
+                    packetsFor(outbound, "source").stream().map(BedrockPacket::packetId).toList());
+            assertEquals(List.of(
+                    BedrockVitalsCodec.SET_HEALTH_PACKET_ID,
+                    BedrockVitalsCodec.UPDATE_ATTRIBUTES_PACKET_ID),
+                    packetsFor(outbound, "viewer").stream().map(BedrockPacket::packetId).toList());
+            assertTrue(packetsFor(outbound, "outsider").isEmpty());
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void mobMovementIsFannedOutOnlyToViewersOfItsCurrentChunk() throws Exception {
         List<Outbound> outbound = new ArrayList<>();
         World world = new World("actor-multi-viewer-test", 0L, new FlatWorldGenerator());

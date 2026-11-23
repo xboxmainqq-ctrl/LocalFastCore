@@ -6395,6 +6395,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     ) {
         PlayerVitals before = state.vitals;
         state.vitals = before.damage(amount);
+        try {
+            // Health changes must survive an abrupt server stop; otherwise a player
+            // can reconnect with the previous profile health after taking damage.
+            savePlayer(state);
+        } catch (IOException | RuntimeException persistenceFailure) {
+            state.vitals = before;
+            System.err.println("NEXORA: player damage rolled back because health could not be saved: "
+                    + persistenceFailure.getMessage());
+            return;
+        }
         List<BedrockPacket> packets = new java.util.ArrayList<>();
         if (state.vitals.health() != before.health()) {
             packets.add(BedrockVitalsCodec.createSetHealth(state.vitals));

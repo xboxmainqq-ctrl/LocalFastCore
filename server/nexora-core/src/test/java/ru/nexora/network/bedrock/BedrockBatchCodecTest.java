@@ -87,8 +87,8 @@ class BedrockBatchCodecTest {
     void parsesResourcePackClientResponseEnumAndName() {
         byte[] body = new byte[] {
                 2, 19,
-                'd', 'o', 'w', 'n', 'l', 'o', 'a', 'd', 'i', 'n', 'g',
-                'f', 'i', 'n', 'i', 's', 'h', 'e', 'd'
+                'D', 'o', 'w', 'n', 'l', 'o', 'a', 'd', 'i', 'n', 'g',
+                'F', 'i', 'n', 'i', 's', 'h', 'e', 'd'
         };
         BedrockPacket packet = new BedrockPacket(
                 BedrockBatchCodec.RESOURCE_PACK_CLIENT_RESPONSE_PACKET_ID, 0, 0, body);

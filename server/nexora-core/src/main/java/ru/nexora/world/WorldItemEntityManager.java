@@ -238,9 +238,11 @@ public final class WorldItemEntityManager {
                 int supportY = floor(nextY - 0.125);
                 if (vy < 0 && solid(world, floor(nextX), supportY, floor(nextZ))) {
                     nextY = supportY + 1.125;
-                    // Dropped items rebound once with strong damping, then settle
-                    // instead of jittering forever on flat ground.
-                    vy = Math.abs(vy) < 0.08 ? 0 : -vy * 0.25;
+                    // A tiny residual fall near the support surface is treated as
+                    // rest; higher impacts get one damped rebound. This avoids a
+                    // low-amplitude gravity/collision loop at the 20 TPS step size.
+                    double gapToSupport = current.y() - (supportY + 1.125);
+                    vy = gapToSupport <= 0.125 ? 0 : -vy * 0.25;
                     vx *= 0.6;
                     vz *= 0.6;
                 } else if (solid(world, floor(nextX), floor(nextY), floor(nextZ))) {

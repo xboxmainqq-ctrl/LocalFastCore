@@ -53,9 +53,9 @@ class BedrockChestBreakIntegrationTest {
             Object state = session(manager, "breaker");
             set(state, "clientInitialized", true);
             set(state, "compressionNegotiated", true);
-            set(state, "positionX", 0.5);
-            set(state, "positionY", 65.0);
-            set(state, "positionZ", 0.5);
+            set(state, "positionX", 0.5f);
+            set(state, "positionY", 65.0f);
+            set(state, "positionZ", 0.5f);
 
             BedrockPlayerAuthInputCodec.BlockAction start =
                     new BedrockPlayerAuthInputCodec.BlockAction(0, x, y, z, 1);

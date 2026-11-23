@@ -59,8 +59,8 @@ class BedrockLevelChunkCodecTest {
         assertEquals(1, subChunks.byteValue()); // second layer: singleton air
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
 
-        for (int section = 0; section < WorldChunk.SECTION_COUNT; section++) {
-            assertEquals(1, subChunks.byteValue()); // singleton plains biome palette
+        for (int section = 0; section < 9; section++) {
+            assertEquals(1, subChunks.byteValue()); // one biome palette per transmitted subchunk
             assertEquals(1, subChunks.varInt32());
         }
         assertEquals(0, subChunks.byteValue()); // no border blocks
@@ -92,7 +92,7 @@ class BedrockLevelChunkCodecTest {
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.BEDROCK), subChunks.varInt32());
         assertEquals(1, subChunks.byteValue()); // second layer: singleton air
         assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
-        for (int section = 0; section < WorldChunk.SECTION_COUNT; section++) {
+        for (int section = 0; section < 1; section++) {
             assertEquals(1, subChunks.byteValue());
             assertEquals(1, subChunks.varInt32());
         }
@@ -116,13 +116,13 @@ class BedrockLevelChunkCodecTest {
         assertTrue(reader.exhausted());
 
         Reader chunkData = new Reader(data);
-        for (int section = 0; section < WorldChunk.SECTION_COUNT; section++) {
+        for (int section = 0; section < 0; section++) {
             assertEquals(1, chunkData.byteValue());
             assertEquals(1, chunkData.varInt32());
         }
         assertEquals(0, chunkData.byteValue()); // no border blocks; empty NBT collection is zero bytes
         assertTrue(chunkData.exhausted());
-        assertEquals(WorldChunk.SECTION_COUNT * 2 + 1, data.length);
+        assertEquals(1, data.length); // empty chunk has no subchunks, biome palettes, or block entities
     }
 
     private static final class Reader {

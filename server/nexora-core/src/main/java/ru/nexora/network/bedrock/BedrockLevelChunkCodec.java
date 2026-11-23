@@ -34,9 +34,11 @@ public final class BedrockLevelChunkCodec {
             writeSubChunk(chunkData, sectionY, sections[sectionIndex]);
         }
 
-        // Nukkit-MOT writes one 3D biome palette for every section in the dimension,
-        // independently of the number of block subchunks sent above.
-        for (int i = 0; i < WorldChunk.SECTION_COUNT; i++) {
+        // LevelChunk's serialized column contains one biome storage for each
+        // transmitted block subchunk, in the same bottom-to-top order. Sending
+        // all dimension sections here (even when only a few block sections exist)
+        // shifts the border-block/NBT tail and makes Bedrock reject packet 0x3A.
+        for (int i = 0; i < subChunkCount; i++) {
             chunkData.byteValue(1); // V0 singleton palette, runtime IDs
             chunkData.varInt32(PLAINS_BIOME_ID);
         }

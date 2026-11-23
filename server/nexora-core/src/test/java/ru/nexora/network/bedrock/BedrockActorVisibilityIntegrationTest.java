@@ -137,6 +137,17 @@ class BedrockActorVisibilityIntegrationTest {
             assertEquals(BedrockAddItemActorCodec.ADD_ITEM_ACTOR_PACKET_ID,
                     packetsFor(outbound, "viewer").getLast().packetId());
 
+            Field itemIndexField = BedrockSessionManager.class.getDeclaredField("itemActorReplicationIndex");
+            itemIndexField.setAccessible(true);
+            ActorReplicationIndex itemIndex = (ActorReplicationIndex) itemIndexField.get(manager);
+            int framesAfterSpawn = outbound.size();
+            // Simulate a partial update that retained session visibility but lost its reverse-index entry.
+            itemIndex.removeActorViewer(item.runtimeId(), "viewer");
+            assertEquals(0, itemIndex.actorViewerCount(item.runtimeId()));
+            sync.invoke(manager, "viewer", session);
+            assertEquals(1, itemIndex.actorViewerCount(item.runtimeId()));
+            assertEquals(framesAfterSpawn, outbound.size()); // Repair must not send a duplicate spawn.
+
             WorldItemEntity moved = new WorldItemEntity(item.uniqueId(), item.runtimeId(), item.stack(),
                     33.0, item.y(), item.z(), 0.0, 0.0, 0.0,
                     item.pickupAvailableAtMillis(), item.ownerXuid());
@@ -150,10 +161,7 @@ class BedrockActorVisibilityIntegrationTest {
                     packetsFor(outbound, "viewer").getLast().packetId());
 
             sentChunks(session).add(chunkKey(2, 0));
-            Field itemIndexField = BedrockSessionManager.class.getDeclaredField("itemActorReplicationIndex");
-            itemIndexField.setAccessible(true);
-            ((ActorReplicationIndex) itemIndexField.get(manager))
-                    .replaceChunkView("viewer", sentChunks(session));
+            itemIndex.replaceChunkView("viewer", sentChunks(session));
             broadcast.invoke(manager, moved, BedrockItemActorCodec.createMove(moved, true, 2L));
             assertTrue(visibleItems(session).contains(item.runtimeId()));
             assertEquals(BedrockAddItemActorCodec.ADD_ITEM_ACTOR_PACKET_ID,

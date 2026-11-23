@@ -2757,11 +2757,25 @@ class BedrockSessionManagerTest {
 
         manager.playerInventory("physics-client").orElseThrow()
                 .setSlot(5, new ItemStack("minecraft:diamond", 3, 64));
+        var deathEquipment = manager.playerEquipment("physics-client").orElseThrow();
+        deathEquipment.setArmor(0, new ItemStack("minecraft:iron_helmet", 1, 1));
+        deathEquipment.setOffhand(new ItemStack("minecraft:iron_ingot", 2, 64));
+        deathEquipment.setMagicSlot(ru.nexora.inventory.EquipmentSlot.MAGIC_STAFF,
+                new ItemStack("minecraft:stick", 1, 64));
         int beforeDeath = outboundFrames.size();
         assertTrue(manager.damagePlayer("physics-client", 100.0f));
         assertEquals(0, manager.playerInventory("physics-client").orElseThrow().count("minecraft:diamond"));
         assertTrue(world.itemEntities().snapshot().stream().anyMatch(entity ->
                 entity.stack().itemId().equals("minecraft:diamond") && entity.stack().count() == 3));
+        assertTrue(world.itemEntities().snapshot().stream().anyMatch(entity ->
+                entity.stack().equals(new ItemStack("minecraft:iron_helmet", 1, 1))));
+        assertTrue(world.itemEntities().snapshot().stream().anyMatch(entity ->
+                entity.stack().equals(new ItemStack("minecraft:iron_ingot", 2, 64))));
+        assertTrue(world.itemEntities().snapshot().stream().anyMatch(entity ->
+                entity.stack().equals(new ItemStack("minecraft:stick", 1, 64))));
+        assertTrue(deathEquipment.armor(0).isEmpty());
+        assertTrue(deathEquipment.offhand().isEmpty());
+        assertTrue(deathEquipment.magicSlot(ru.nexora.inventory.EquipmentSlot.MAGIC_STAFF).isEmpty());
         assertEquals(0.0f, manager.playerVitals("physics-client").orElseThrow().health());
         List<BedrockPacket> deathPackets = outboundFrames.subList(beforeDeath, outboundFrames.size()).stream()
                 .flatMap(frame -> decodeOutboundAll(frame, true).stream()).toList();

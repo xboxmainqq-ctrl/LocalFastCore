@@ -2578,24 +2578,48 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (!state.loginAuthenticated || state.identity == null) return;
         List<Optional<ru.nexora.inventory.ItemStack>> previousInventory = state.inventory.snapshot();
         int previousSelectedSlot = state.inventory.selectedHotbarSlot();
+        ru.nexora.inventory.PlayerEquipment.Snapshot previousEquipment = state.equipment.snapshot();
         List<WorldItemEntity> spawned = new ArrayList<>();
         try {
+            int dropIndex = 0;
             for (int slot = 0; slot < state.inventory.size(); slot++) {
                 ru.nexora.inventory.ItemStack stack = state.inventory.getSlot(slot).orElse(null);
-                if (stack == null || itemRegistry.findByIdentifier(stack.itemId()) == null) continue;
-                double angle = (slot * 2.399963229728653) % (Math.PI * 2.0);
-                WorldItemEntity entity = world.itemEntities().spawn(
-                        stack, state.positionX, state.positionY + 0.5, state.positionZ,
-                        Math.cos(angle) * 0.12, 0.18, Math.sin(angle) * 0.12,
-                        System.currentTimeMillis(), WorldItemEntityManager.DEFAULT_PICKUP_DELAY_MILLIS,
-                        state.identity.xuid());
-                spawned.add(entity);
+                if (!canDropDeathItem(stack)) continue;
+                dropIndex = spawnDeathDrop(state, stack, dropIndex, spawned);
                 state.inventory.setSlot(slot, null);
             }
+
+            // Armor, offhand, cursor and RPG equipment are separate from the 36-slot
+            // inventory. They must be spilled too, or death would silently delete them.
+            for (int slot = 0; slot < ru.nexora.inventory.PlayerEquipment.ARMOR_SLOTS; slot++) {
+                ru.nexora.inventory.ItemStack stack = state.equipment.armor(slot).orElse(null);
+                if (!canDropDeathItem(stack)) continue;
+                dropIndex = spawnDeathDrop(state, stack, dropIndex, spawned);
+                state.equipment.setArmor(slot, null);
+            }
+            ru.nexora.inventory.ItemStack offhand = state.equipment.offhand().orElse(null);
+            if (canDropDeathItem(offhand)) {
+                dropIndex = spawnDeathDrop(state, offhand, dropIndex, spawned);
+                state.equipment.setOffhand(null);
+            }
+            ru.nexora.inventory.ItemStack cursor = state.equipment.cursor().orElse(null);
+            if (canDropDeathItem(cursor)) {
+                dropIndex = spawnDeathDrop(state, cursor, dropIndex, spawned);
+                state.equipment.setCursor(null);
+            }
+            for (ru.nexora.inventory.EquipmentSlot slot : ru.nexora.inventory.EquipmentSlot.values()) {
+                ru.nexora.inventory.ItemStack stack = state.equipment.magicSlot(slot).orElse(null);
+                if (!canDropDeathItem(stack)) continue;
+                dropIndex = spawnDeathDrop(state, stack, dropIndex, spawned);
+                state.equipment.setMagicSlot(slot, null);
+            }
+
             if (spawned.isEmpty()) return;
             saveInventory(state);
+            saveEquipment(state);
         } catch (IOException | RuntimeException exception) {
             state.inventory.restore(previousInventory, previousSelectedSlot);
+            state.equipment.restore(previousEquipment);
             for (WorldItemEntity entity : spawned) {
                 try {
                     world.itemEntities().remove(entity.runtimeId());
@@ -2603,7 +2627,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     exception.addSuppressed(rollbackFailure);
                 }
             }
-            System.err.println("NEXORA: death inventory drop rolled back for " + networkId
+            // If inventory persistence succeeded but equipment persistence failed,
+            // write the restored snapshots back so a restart cannot lose either side.
+            try {
+                saveInventory(state);
+                saveEquipment(state);
+            } catch (IOException | RuntimeException rollbackFailure) {
+                exception.addSuppressed(rollbackFailure);
+            }
+            System.err.println("NEXORA: death inventory/equipment drop rolled back for " + networkId
                     + ": " + exception.getMessage());
             return;
         }
@@ -2611,6 +2643,22 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         for (WorldItemEntity entity : spawned) {
             broadcastItemActor(entity, BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry));
         }
+    }
+
+    private boolean canDropDeathItem(ru.nexora.inventory.ItemStack stack) {
+        return stack != null && itemRegistry != null
+                && itemRegistry.findByIdentifier(stack.itemId()) != null;
+    }
+
+    private int spawnDeathDrop(SessionState state, ru.nexora.inventory.ItemStack stack,
+                               int dropIndex, List<WorldItemEntity> spawned) {
+        double angle = (dropIndex * 2.399963229728653) % (Math.PI * 2.0);
+        spawned.add(world.itemEntities().spawn(
+                stack, state.positionX, state.positionY + 0.5, state.positionZ,
+                Math.cos(angle) * 0.12, 0.18, Math.sin(angle) * 0.12,
+                System.currentTimeMillis(), WorldItemEntityManager.DEFAULT_PICKUP_DELAY_MILLIS,
+                state.identity.xuid()));
+        return dropIndex + 1;
     }
 
     private void respawnPlayer(String networkId, SessionState state) {

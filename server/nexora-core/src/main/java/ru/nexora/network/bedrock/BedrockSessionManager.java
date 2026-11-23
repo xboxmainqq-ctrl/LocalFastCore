@@ -4727,11 +4727,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                                 ? BedrockAddActorCodec.createAddActor(entity)
                                 : arrow != null ? BedrockArrowActorCodec.createSpawn(arrow)
                                 : BedrockFireballActorCodec.createSpawn(fireball);
-                        List<BedrockPacket> initialActorPackets = entity != null
-                                ? List.of(spawn, BedrockVitalsCodec.createActorHealthUpdate(
-                                        entity.runtimeId(), entity.health(), entity.maxHealth(), 0))
-                                : List.of(spawn);
-                        spawnFrames = encodeFrames(initialActorPackets, true);
+                        spawnFrames = encodeFrames(List.of(spawn), true);
                     }
                     sendEncodedFrames(networkId, spawnFrames);
                 } else {
@@ -6856,10 +6852,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                     || !recipient.visibleLivingEntityIds.add(entity.runtimeId())) continue;
             actorReplicationIndex.addActorViewer(entity.runtimeId(), recipientNetworkId);
             try {
-                sendPackets(recipientNetworkId, List.of(
-                        BedrockAddActorCodec.createAddActor(entity),
-                        BedrockVitalsCodec.createActorHealthUpdate(
-                                entity.runtimeId(), entity.health(), entity.maxHealth(), 0)), true);
+                sendPacket(recipientNetworkId, BedrockAddActorCodec.createAddActor(entity), true);
             } catch (RuntimeException exception) {
                 recipient.visibleLivingEntityIds.remove(entity.runtimeId());
                 actorReplicationIndex.removeActorViewer(entity.runtimeId(), recipientNetworkId);

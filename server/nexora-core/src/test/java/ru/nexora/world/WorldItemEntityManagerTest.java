@@ -100,7 +100,7 @@ class WorldItemEntityManagerTest {
         World world = new World("item-bounce", 0L, new FlatWorldGenerator());
         WorldItemEntityManager manager = new WorldItemEntityManager();
         WorldItemEntity spawned = manager.spawn(new ItemStack("minecraft:stone", 1, 64),
-                0.5, 65.2, 0.5, 0, -2.0, 0, 0, 0, null);
+                0.5, 65.35, 0.5, 0, -2.0, 0, 0, 0, null);
 
         manager.tick(world, 0.05, 100);
 

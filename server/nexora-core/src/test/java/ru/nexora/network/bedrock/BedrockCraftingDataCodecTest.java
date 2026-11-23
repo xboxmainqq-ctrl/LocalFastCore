@@ -31,8 +31,7 @@ class BedrockCraftingDataCodecTest {
                     if (symbol == ' ') {
                         assertEquals(0, in.varUInt()); // EMPTY ingredient descriptor
                     } else {
-                        assertEquals(1, in.varUInt()); // DEFAULT ingredient descriptor
-                        assertEquals("name", in.string());
+                        assertEquals(1, in.byteValue()); // ItemDescriptorType.ITEM_NAME
                         assertEquals(shaped.key().get(symbol), in.string());
                         assertEquals(0, in.varInt());
                         assertEquals(1, in.varInt());
@@ -49,9 +48,9 @@ class BedrockCraftingDataCodecTest {
             assertEquals(shaped.uuid(), in.uuidLittleEndian());
             assertEquals("crafting_table", in.string());
             assertEquals(0, in.varInt());
-            assertEquals(1, in.byteValue());
-            assertEquals(1, in.varInt());
-            assertEquals(0, in.byteValue());
+            assertEquals(0, in.byteValue()); // assume symmetry
+            assertEquals(1, in.byteValue()); // requirement present
+            assertEquals(1, in.varInt()); // ALWAYS_UNLOCKED
             assertEquals(recipes.networkId(shaped.id()), in.varUInt());
         }
 
@@ -59,8 +58,7 @@ class BedrockCraftingDataCodecTest {
         for (CraftingRecipe recipe : recipes.recipes().stream().filter(r -> !r.isShaped()).toList()) {
             assertEquals(recipe.id(), in.string());
             assertEquals(1, in.varUInt());
-            assertEquals(1, in.varUInt()); // DEFAULT item descriptor
-            assertEquals("name", in.string());
+            assertEquals(1, in.byteValue()); // ItemDescriptorType.ITEM_NAME
             var ingredient = recipe.ingredients().keySet().iterator().next();
             assertEquals(ingredient, in.string());
             assertEquals(0, in.varInt());
@@ -76,9 +74,9 @@ class BedrockCraftingDataCodecTest {
             assertEquals(recipe.uuid(), in.uuidLittleEndian());
             assertEquals("crafting_table", in.string());
             assertEquals(0, in.varInt());
-            assertEquals(1, in.byteValue()); // requirementPresent
+            assertEquals(0, in.byteValue()); // assume symmetry
+            assertEquals(1, in.byteValue()); // requirement present
             assertEquals(1, in.varInt()); // ALWAYS_UNLOCKED
-            assertEquals(0, in.byteValue()); // no ingredient list
             assertEquals(recipes.networkId(recipe.id()), in.varUInt());
         }
 
@@ -92,8 +90,7 @@ class BedrockCraftingDataCodecTest {
         for (String tag : new String[] {
                 "minecraft:trim_templates", "minecraft:trimmable_armors", "minecraft:trim_materials"
         }) {
-            assertEquals(1, in.varUInt());
-            assertEquals("item_tag", in.string());
+            assertEquals(3, in.byteValue()); // ItemDescriptorType.ITEM_TAG
             assertEquals(tag, in.string());
             assertEquals(0, in.varInt());
             assertEquals(1, in.varInt());

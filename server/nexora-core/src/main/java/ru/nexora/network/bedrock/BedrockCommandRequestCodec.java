@@ -29,11 +29,17 @@ public final class BedrockCommandRequestCodec {
         in.requireExhausted();
 
         if (command.isBlank()) throw new IllegalArgumentException("Command cannot be blank");
-        if (!originType.equals("Player") && !originType.equals("DevConsole")
-                && !originType.equals("Test") && !originType.equals("AutomationPlayer")) {
-            throw new IllegalArgumentException("Unknown command origin type");
-        }
-        return new DecodedCommand(command, originType, requestId, playerId, internal, version);
+        // Bedrock-compatible clients may serialize the known origin names in lower
+        // camel case (for example, "player"). Normalize before the authenticated
+        // player-origin check in BedrockSessionManager.
+        String normalizedOrigin = switch (originType.toLowerCase(java.util.Locale.ROOT)) {
+            case "player" -> "Player";
+            case "devconsole" -> "DevConsole";
+            case "test" -> "Test";
+            case "automationplayer" -> "AutomationPlayer";
+            default -> throw new IllegalArgumentException("Unknown command origin type");
+        };
+        return new DecodedCommand(command, normalizedOrigin, requestId, playerId, internal, version);
     }
 
     public record DecodedCommand(String command, String originType, String requestId,

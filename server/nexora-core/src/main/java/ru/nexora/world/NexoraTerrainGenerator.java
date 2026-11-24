@@ -1,16 +1,16 @@
 package ru.nexora.world;
 
 /**
- * NEXORA's custom deterministic terrain: broad continental forms, warped mountain
- * chains, rolling foothills, eroded valleys and material changes driven by slope.
- * It is deliberately independent of chunk generation order and external libraries.
+ * NEXORA's custom deterministic terrain: giant mountain chains, high plateaus,
+ * deep eroded valleys and large impact/volcanic craters.
  */
 public final class NexoraTerrainGenerator implements WorldGenerator {
     public static final int SPAWN_SURFACE_Y = 64;
     private static final int SPAWN_RADIUS = 9;
     private static final int SPAWN_BLEND_RADIUS = 58;
-    private static final int MIN_SURFACE = 48;
-    private static final int MAX_SURFACE = 150;
+    private static final int MIN_SURFACE = -30;
+    private static final int MAX_SURFACE = 200;
+    private static final int CRATER_GRID = 620;
 
     @Override
     public void generate(WorldChunk chunk, long seed) {
@@ -38,16 +38,19 @@ public final class NexoraTerrainGenerator implements WorldGenerator {
                 double river = riverStrength(worldX, worldZ, seed);
 
                 chunk.setBlock(x, WorldChunk.MIN_Y, z, BlockType.BEDROCK);
-                int soilDepth = surface > 112 ? 1 : surface > 88 ? 2 : 3 + (int) (moisture(worldX, worldZ, seed) * 2.0);
-                boolean rocky = surface > 112 || slope >= 5;
+                int soilDepth = surface > 145 ? 1 : surface > 95 ? 2
+                        : 3 + (int) (moisture(worldX, worldZ, seed) * 2.0);
+                boolean rocky = surface > 125 || slope >= 5;
                 boolean gravelBank = river > 0.62 && surface < 76;
+                boolean volcanicFloor = surface <= -18
+                        && fractal(worldX, worldZ, seed ^ 0x6a09e667f3bcc909L, 21) > 0.05;
 
                 for (int y = WorldChunk.MIN_Y + 1; y < surface; y++) {
                     int depth = surface - y;
                     BlockType material;
                     if (depth <= soilDepth) {
                         material = gravelBank ? BlockType.GRAVEL
-                                : rocky ? BlockType.STONE : BlockType.DIRT;
+                                : rocky || volcanicFloor ? BlockType.STONE : BlockType.DIRT;
                     } else if (depth <= soilDepth + 3 && gravelBank) {
                         material = BlockType.GRAVEL;
                     } else {
@@ -55,9 +58,11 @@ public final class NexoraTerrainGenerator implements WorldGenerator {
                     }
                     chunk.setBlock(x, y, z, material);
                 }
-                // Surface is written separately so every column has one clear top block.
-                chunk.setBlock(x, surface, z,
-                        gravelBank ? BlockType.GRAVEL : rocky ? BlockType.STONE : BlockType.GRASS_BLOCK);
+
+                BlockType top = volcanicFloor ? BlockType.OBSIDIAN
+                        : gravelBank ? BlockType.GRAVEL
+                        : rocky ? BlockType.STONE : BlockType.GRASS_BLOCK;
+                chunk.setBlock(x, surface, z, top);
             }
         }
     }
@@ -76,17 +81,60 @@ public final class NexoraTerrainGenerator implements WorldGenerator {
         double foothills = fractal(wx, wz, seed ^ 0x082efa98ec4e6c89L, 112);
         double detail = fractal(wx, wz, seed ^ 0x452821e638d01377L, 38);
         double ridges = 1.0 - Math.abs(fractal(wx, wz, seed ^ 0xbe5466cf34e90c6cL, 145));
-        double mountainRegion = clamp((fractal(wx, wz, seed ^ 0xc0ac29b7c97c50ddL, 430) + 0.18) * 1.15, 0.0, 1.0);
-        double mountainPeaks = Math.pow(Math.max(0.0, ridges), 2.2) * mountainRegion;
+        double mountainRegion = clamp((fractal(wx, wz, seed ^ 0xc0ac29b7c97c50ddL, 430) + 0.08) * 1.35, 0.0, 1.0);
+        double mountainPeaks = Math.pow(Math.max(0.0, ridges), 1.65) * mountainRegion;
 
         double river = riverStrength(x, z, seed);
-        double raw = 68.0 + continents * 13.0 + foothills * 11.0
-                + detail * 2.8 + mountainPeaks * 57.0 - river * 9.0;
+        double raw = 72.0 + continents * 17.0 + foothills * 14.0
+                + detail * 3.5 + mountainPeaks * 112.0 - river * 15.0;
+
+        // Carve deterministic giant basins, with irregular walls and raised crater rims.
+        double cratered = applyCraterBasins(x, z, seed, raw);
 
         // Blend the natural terrain into the protected spawn plateau; no abrupt cliff.
         double blend = smoothstep(SPAWN_RADIUS, SPAWN_BLEND_RADIUS, distance);
-        double height = SPAWN_SURFACE_Y + (raw - SPAWN_SURFACE_Y) * blend;
+        double height = SPAWN_SURFACE_Y + (cratered - SPAWN_SURFACE_Y) * blend;
         return (int) Math.round(clamp(height, MIN_SURFACE, MAX_SURFACE));
+    }
+
+    private static double applyCraterBasins(int x, int z, long seed, double naturalHeight) {
+        int cellX = floorDiv(x, CRATER_GRID);
+        int cellZ = floorDiv(z, CRATER_GRID);
+        double result = naturalHeight;
+
+        // Check neighboring cells so craters remain continuous across chunk borders.
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                int cx = cellX + dx;
+                int cz = cellZ + dz;
+                long craterSeed = seed ^ ((long) cx * 0x9e3779b97f4a7c15L)
+                        ^ ((long) cz * 0xc2b2ae3d27d4eb4fL) ^ 0xbb67ae8584caa73bL;
+                if (unitHash(craterSeed) > 0.72) continue;
+
+                double centerX = cx * (double) CRATER_GRID + CRATER_GRID * 0.5
+                        + (unitHash(craterSeed ^ 0x3c6ef372fe94f82bL) - 0.5) * 250.0;
+                double centerZ = cz * (double) CRATER_GRID + CRATER_GRID * 0.5
+                        + (unitHash(craterSeed ^ 0xa54ff53a5f1d36f1L) - 0.5) * 250.0;
+                // Keep the starter area free of giant holes.
+                if (Math.max(Math.abs(centerX), Math.abs(centerZ)) < 430.0) continue;
+
+                double radius = 112.0 + unitHash(craterSeed ^ 0x510e527fade682d1L) * 72.0;
+                double ox = x - centerX;
+                double oz = z - centerZ;
+                double radialNoise = fractal(x, z, craterSeed ^ 0x1f83d9abfb41bd6bL, 31) * 0.055;
+                double radial = Math.sqrt(ox * ox + oz * oz) / radius + radialNoise;
+                if (radial >= 1.20) continue;
+
+                double bowl = -30.0 + (naturalHeight + 30.0) * smoothstep(0.0, 0.91, radial);
+                double rimDistance = (radial - 0.94) / 0.105;
+                double rim = 27.0 * Math.exp(-rimDistance * rimDistance);
+                double craterShape = bowl + rim;
+                double influence = 1.0 - smoothstep(0.91, 1.20, radial);
+                double carved = lerp(naturalHeight, craterShape, influence);
+                result = Math.min(result, carved);
+            }
+        }
+        return result;
     }
 
     private static double riverStrength(double x, double z, long seed) {
@@ -134,6 +182,19 @@ public final class NexoraTerrainGenerator implements WorldGenerator {
         value = (value ^ (value >>> 27)) * 0x94d049bb133111ebL;
         value ^= value >>> 31;
         return ((value >>> 11) * 0x1.0p-52) * 2.0 - 1.0;
+    }
+
+    private static double unitHash(long value) {
+        value ^= value >>> 30;
+        value *= 0xbf58476d1ce4e5b9L;
+        value ^= value >>> 27;
+        value *= 0x94d049bb133111ebL;
+        value ^= value >>> 31;
+        return (value >>> 11) * 0x1.0p-53;
+    }
+
+    private static int floorDiv(int value, int divisor) {
+        return Math.floorDiv(value, divisor);
     }
 
     private static double fade(double value) {

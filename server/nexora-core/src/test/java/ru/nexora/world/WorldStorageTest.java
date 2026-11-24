@@ -26,8 +26,9 @@ class WorldStorageTest {
         WorldChunk restored = storage.loadChunk(-2, 3).orElseThrow();
         assertFalse(restored.isDirty(), "chunks restored from disk start clean");
 
-        assertEquals(BlockType.BEDROCK, restored.getBlock(0, 60, 0));
-        assertEquals(BlockType.GRASS_BLOCK, restored.getBlock(15, 64, 15));
+        assertEquals(BlockType.BEDROCK, restored.getBlock(0, WorldChunk.MIN_Y, 0));
+        int surface = FlatWorldGenerator.surfaceHeight(-32, 48, 99L);
+        assertEquals(BlockType.GRASS_BLOCK, restored.getBlock(15, surface, 15));
         assertEquals(BlockType.STONE, restored.getBlock(4, 70, 5));
         assertEquals(BlockType.AIR, restored.getBlock(4, 71, 5));
     }

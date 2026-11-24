@@ -45,28 +45,28 @@ public final class BedrockPlayerAuthInputCodec {
         float deltaY = in.float32();
         float deltaZ = in.float32();
 
-        // Protocol 2225 writes five independent single optionals after Delta,
-        // regardless of which InputData flags are set. Do not infer their wire
-        // presence from the flags: doing so shifts every following field.
+        // Protocol 2225 encodes each Optional inline: presence byte followed
+        // immediately by that section's payload, then the next presence byte.
+        // Reading all five presence bytes up front misaligns the cursor whenever
+        // ItemUseTransaction or PlayerBlockActions is present.
         boolean hasItemUse = in.bool();
-        boolean hasItemStackRequest = in.bool();
-        boolean hasBlockActions = in.bool();
-        boolean hasVehicleRotation = in.bool();
-        boolean hasPredictedVehicle = in.bool();
-        boolean optionalSectionsPresent = hasItemUse || hasItemStackRequest
-                || hasBlockActions || hasVehicleRotation || hasPredictedVehicle;
-
+        boolean optionalSectionsPresent = hasItemUse;
         ItemUseTransaction itemUseTransaction = hasItemUse ? readPackedItemUse(in) : null;
+
+        boolean hasItemStackRequest = in.bool();
+        optionalSectionsPresent |= hasItemStackRequest;
         // ItemStackRequest actions are not yet implemented. Preserve the movement
         // sample and explicitly mark this packet's interaction tail as unparsed.
         if (hasItemStackRequest) {
             return new PlayerInput(pitch, yaw, x, y, z, motionX, motionZ, headYaw,
-                    tick, optionalSectionsPresent, true, inputMode, playMode, interactionModel,
+                    tick, true, true, inputMode, playMode, interactionModel,
                     interactYaw, interactPitch, deltaX, deltaY, deltaZ,
                     0, 0, 0, 0, 0, 0, 0,
                     java.util.List.copyOf(inputActions), java.util.List.of(), itemUseTransaction);
         }
 
+        boolean hasBlockActions = in.bool();
+        optionalSectionsPresent |= hasBlockActions;
         java.util.List<BlockAction> blockActions = new java.util.ArrayList<>();
         if (hasBlockActions) {
             int blockActionCount = in.varUInt32();
@@ -78,9 +78,15 @@ public final class BedrockPlayerAuthInputCodec {
                         in.varInt32(), in.varInt32(), in.varInt32()));
             }
         }
+
+        boolean hasVehicleRotation = in.bool();
+        optionalSectionsPresent |= hasVehicleRotation;
         if (hasVehicleRotation) {
             in.float32(); in.float32(); // vehicle rotation
         }
+
+        boolean hasPredictedVehicle = in.bool();
+        optionalSectionsPresent |= hasPredictedVehicle;
         if (hasPredictedVehicle) {
             in.varInt64(); // client-predicted vehicle unique ID
         }

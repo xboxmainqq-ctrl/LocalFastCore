@@ -3405,10 +3405,8 @@ class BedrockSessionManagerTest {
         writeVarULong(out, tick);
         writeFloat32(out, 0); writeFloat32(out, 0); writeFloat32(out, 0);
         out.write(1); // HasItemInteraction
-        out.write(0); // HasItemStackRequest
-        out.write(0); // HasBlockActions
-        out.write(0); // HasVehicleRotation
-        out.write(0); // HasPredictedVehicle
+        // Optional sections are encoded inline: the item-use payload comes
+        // immediately after its presence byte, before the next optional flag.
         writeVarInt(out, 0); // legacy request ID
         writeVarUInt(out, 0); // no inventory mutation
         writeVarInt(out, 0); // block interaction
@@ -3429,6 +3427,10 @@ class BedrockSessionManagerTest {
         writeVarInt(out, BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.CHEST));
         out.write(1); // prediction success
         out.write(0); // cooldown off
+        out.write(0); // HasItemStackRequest
+        out.write(0); // HasBlockActions
+        out.write(0); // HasVehicleRotation
+        out.write(0); // HasPredictedVehicle
         for (int i = 0; i < 7; i++) writeFloat32(out, 0);
         return out.toByteArray();
     }

@@ -22,6 +22,31 @@ public final class WorldChunk {
     public int chunkX() { return chunkX; }
     public int chunkZ() { return chunkZ; }
 
+    /**
+     * Detects only the exact temporary starter platform shipped by early NEXORA
+     * builds. Any player edit makes this return false, protecting player-built chunks.
+     */
+    public synchronized boolean isLegacyStarterPlatform() {
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                for (int y = MIN_Y; y <= MAX_Y; y++) {
+                    BlockType expected = switch (y) {
+                        case 60 -> BlockType.BEDROCK;
+                        case 61 -> BlockType.STONE;
+                        case 62, 63 -> BlockType.DIRT;
+                        case 64 -> BlockType.GRASS_BLOCK;
+                        default -> BlockType.AIR;
+                    };
+                    BlockType actual = sections[sectionIndex(y)] == null
+                            ? BlockType.AIR
+                            : sections[sectionIndex(y)].get(x, y & 15, z);
+                    if (actual != expected) return false;
+                }
+            }
+        }
+        return true;
+    }
+
     public synchronized BlockType getBlock(int localX, int worldY, int localZ) {
         validateLocal(localX, localZ);
         int sectionIndex = sectionIndex(worldY);

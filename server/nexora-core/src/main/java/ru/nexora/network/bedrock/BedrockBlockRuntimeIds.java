@@ -45,6 +45,8 @@ public final class BedrockBlockRuntimeIds {
             case BLAST_FURNACE -> hashState("minecraft:blast_furnace", "minecraft:cardinal_direction", "south");
             case SMOKER -> hashState("minecraft:smoker", "minecraft:cardinal_direction", "south");
             case SPAWNER -> hashState("minecraft:mob_spawner");
+            case OAK_LEAVES -> hashState("minecraft:leaves", Map.of(
+                    "old_leaf_type", "oak", "persistent_bit", "true", "update_bit", "false"));
         };
     }
 

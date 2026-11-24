@@ -65,6 +65,148 @@ public final class NexoraTerrainGenerator implements WorldGenerator {
                 chunk.setBlock(x, surface, z, top);
             }
         }
+        generateAncientRuins(chunk, seed);
+    }
+
+    /**
+     * Places deterministic, partially collapsed stone watchtowers and perimeter walls.
+     * Candidate coordinates are world-based, so a ruin crossing a chunk edge is
+     * assembled identically regardless of chunk generation order.
+     */
+    private static void generateAncientRuins(WorldChunk chunk, long seed) {
+        final int grid = 512;
+        int minX = chunk.chunkX() * 16;
+        int minZ = chunk.chunkZ() * 16;
+        int cellMinX = Math.floorDiv(minX - 24, grid);
+        int cellMaxX = Math.floorDiv(minX + 15 + 24, grid);
+        int cellMinZ = Math.floorDiv(minZ - 24, grid);
+        int cellMaxZ = Math.floorDiv(minZ + 15 + 24, grid);
+
+        for (int cellX = cellMinX; cellX <= cellMaxX; cellX++) {
+            for (int cellZ = cellMinZ; cellZ <= cellMaxZ; cellZ++) {
+                long key = seed ^ ((long) cellX * 0x9e3779b97f4a7c15L)
+                        ^ ((long) cellZ * 0xc2b2ae3d27d4eb4fL) ^ 0x3f84d5b5b5470917L;
+                if (unitHash(key) > 0.38) continue;
+                int centerX = cellX * grid + grid / 2
+                        + (int) ((unitHash(key ^ 0x9216d5d98979fb1bL) - 0.5) * 150.0);
+                int centerZ = cellZ * grid + grid / 2
+                        + (int) ((unitHash(key ^ 0xd1310ba698dfb5acL) - 0.5) * 150.0);
+                if (Math.max(Math.abs(centerX), Math.abs(centerZ)) < 520) continue;
+
+                int baseY = surfaceHeight(centerX, centerZ, seed);
+                if (baseY < 48 || baseY > 132) continue;
+                int minHeight = baseY;
+                int maxHeight = baseY;
+                for (int sx : new int[]{-10, 10}) {
+                    for (int sz : new int[]{-10, 10}) {
+                        int h = surfaceHeight(centerX + sx, centerZ + sz, seed);
+                        minHeight = Math.min(minHeight, h);
+                        maxHeight = Math.max(maxHeight, h);
+                    }
+                }
+                if (maxHeight - minHeight > 7) continue;
+
+                int towerHeight = 13 + (int) (unitHash(key ^ 0x2ffd72dbd01adfb7L) * 11.0);
+                buildRuinTower(chunk, centerX, centerZ, baseY, towerHeight, key, seed);
+                buildRuinPerimeter(chunk, centerX, centerZ, key, seed);
+            }
+        }
+    }
+
+    private static void buildRuinTower(WorldChunk chunk, int cx, int cz, int baseY,
+                                       int height, long key, long seed) {
+        for (int dx = -4; dx <= 4; dx++) {
+            for (int dz = -4; dz <= 4; dz++) {
+                int distance = Math.max(Math.abs(dx), Math.abs(dz));
+                if (distance != 4) continue;
+                int wx = cx + dx;
+                int wz = cz + dz;
+                int ground = surfaceHeight(wx, wz, seed);
+                for (int y = ground + 1; y <= baseY + height; y++) {
+                    int level = y - baseY;
+                    boolean corner = Math.abs(dx) == 4 && Math.abs(dz) == 4;
+                    boolean window = !corner && (level == 5 || level == 9)
+                            && ((dx + dz) & 1) == 0;
+                    if (window) {
+                        placeRuinBlock(chunk, wx, y, wz, BlockType.GLASS, seed);
+                    } else if (level == height && ((dx * 3 + dz * 5) & 3) == 0) {
+                        // Missing roof blocks make the tower look weathered rather than pristine.
+                        continue;
+                    } else {
+                        placeRuinBlock(chunk, wx, y, wz,
+                                corner ? BlockType.COBBLESTONE : BlockType.STONE, seed);
+                    }
+                }
+            }
+        }
+
+        for (int dx : new int[]{-4, 4}) {
+            for (int dz : new int[]{-4, 4}) {
+                int wx = cx + dx;
+                int wz = cz + dz;
+                int ground = surfaceHeight(wx, wz, seed);
+                for (int y = ground + 1; y <= baseY + height + 2; y++) {
+                    placeRuinBlock(chunk, wx, y, wz, BlockType.COBBLESTONE, seed);
+                }
+                placeRuinBlock(chunk, wx, baseY + height + 3, wz, BlockType.OBSIDIAN, seed);
+            }
+        }
+
+        // Broken interior floors and a surviving central support beam.
+        for (int level : new int[]{5, 10}) {
+            for (int dx = -3; dx <= 3; dx++) {
+                for (int dz = -3; dz <= 3; dz++) {
+                    if (((dx * 7 + dz * 11 + level) & 3) == 0) continue;
+                    placeRuinBlock(chunk, cx + dx, baseY + level, cz + dz,
+                            ((dx + dz) & 3) == 0 ? BlockType.OAK_PLANKS : BlockType.COBBLESTONE, seed);
+                }
+            }
+        }
+        for (int y = baseY + 1; y <= baseY + height - 2; y++) {
+            placeRuinBlock(chunk, cx, y, cz, BlockType.OAK_LOG, seed);
+        }
+    }
+
+    private static void buildRuinPerimeter(WorldChunk chunk, int cx, int cz,
+                                           long key, long seed) {
+        for (int side = 0; side < 4; side++) {
+            for (int offset = -10; offset <= 10; offset++) {
+                int wx = side < 2 ? cx + offset : cx + (side == 2 ? -10 : 10);
+                int wz = side < 2 ? cz + (side == 0 ? -10 : 10) : cz + offset;
+                long segment = key ^ ((long) side << 32) ^ offset * 0x9e3779b9L;
+                if (unitHash(segment) < 0.22) continue;
+                int ground = surfaceHeight(wx, wz, seed);
+                int wallHeight = 2 + (int) (unitHash(segment ^ 0x5be0cd19137e2179L) * 3.0);
+                for (int y = ground + 1; y <= ground + wallHeight; y++) {
+                    placeRuinBlock(chunk, wx, y, wz,
+                            y == ground + wallHeight && (offset & 1) == 0
+                                    ? BlockType.COBBLESTONE : BlockType.STONE, seed);
+                }
+            }
+        }
+
+        // Fallen masonry and old road stones around the entrance.
+        for (int i = 0; i < 13; i++) {
+            long rubble = key ^ (i * 0x94d049bb133111ebL);
+            int dx = (int) ((unitHash(rubble) - 0.5) * 27.0);
+            int dz = (int) ((unitHash(rubble ^ 0x428a2f98d728ae22L) - 0.5) * 27.0);
+            if (Math.max(Math.abs(dx), Math.abs(dz)) < 6) continue;
+            int wx = cx + dx;
+            int wz = cz + dz;
+            int ground = surfaceHeight(wx, wz, seed);
+            placeRuinBlock(chunk, wx, ground + 1, wz,
+                    unitHash(rubble ^ 0x7137449123ef65cdL) > 0.5
+                            ? BlockType.COBBLESTONE : BlockType.STONE, seed);
+        }
+    }
+
+    private static void placeRuinBlock(WorldChunk chunk, int worldX, int y, int worldZ,
+                                        BlockType type, long seed) {
+        if (chunk.chunkX() != Math.floorDiv(worldX, 16)
+                || chunk.chunkZ() != Math.floorDiv(worldZ, 16)
+                || y < WorldChunk.MIN_Y + 1 || y > WorldChunk.MAX_Y
+                || y <= surfaceHeight(worldX, worldZ, seed)) return;
+        chunk.setBlock(Math.floorMod(worldX, 16), y, Math.floorMod(worldZ, 16), type);
     }
 
     /** Stable world-space height query, shared by neighboring chunks. */

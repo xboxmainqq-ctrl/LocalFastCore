@@ -25,7 +25,8 @@ public enum BlockType {
     FURNACE(20),
     BLAST_FURNACE(21),
     SMOKER(22),
-    SPAWNER(23);
+    SPAWNER(23),
+    OAK_LEAVES(24);
 
     private static final BlockType[] BY_INTERNAL_ID = createLookup();
 

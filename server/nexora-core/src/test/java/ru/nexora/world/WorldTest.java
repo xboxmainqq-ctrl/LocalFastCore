@@ -248,8 +248,9 @@ class WorldTest {
     void flatGeneratorCreatesAStableSpawnPlatform() {
         World world = new World("NEXORA World", 12345L, new FlatWorldGenerator());
 
-        assertEquals(BlockType.BEDROCK, world.getBlock(0, 60, 0));
-        assertEquals(BlockType.STONE, world.getBlock(0, 61, 0));
+        assertEquals(BlockType.BEDROCK, world.getBlock(0, WorldChunk.MIN_Y, 0));
+        assertEquals(BlockType.STONE, world.getBlock(0, WorldChunk.MIN_Y + 1, 0));
+        assertEquals(BlockType.DIRT, world.getBlock(0, 61, 0));
         assertEquals(BlockType.DIRT, world.getBlock(0, 62, 0));
         assertEquals(BlockType.DIRT, world.getBlock(0, 63, 0));
         assertEquals(BlockType.GRASS_BLOCK, world.getBlock(0, 64, 0));
@@ -261,10 +262,12 @@ class WorldTest {
     void resolvesNegativeBlockCoordinatesUsingFloorDivision() {
         World world = new World("NEXORA", 1L, new FlatWorldGenerator());
 
-        assertEquals(BlockType.GRASS_BLOCK, world.getBlock(-1, 64, -17));
+        int negativeSurface = FlatWorldGenerator.surfaceHeight(-1, -17, 1L);
+        assertEquals(BlockType.GRASS_BLOCK, world.getBlock(-1, negativeSurface, -17));
         assertEquals(-1, world.getChunk(-1, -2).chunkX());
         assertEquals(-2, world.getChunk(-1, -2).chunkZ());
-        assertEquals(BlockType.GRASS_BLOCK, world.getBlock(16, 64, 16));
+        int positiveSurface = FlatWorldGenerator.surfaceHeight(16, 16, 1L);
+        assertEquals(BlockType.GRASS_BLOCK, world.getBlock(16, positiveSurface, 16));
         assertEquals(2, world.loadedChunkCount());
     }
 

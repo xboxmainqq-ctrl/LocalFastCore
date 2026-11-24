@@ -389,7 +389,8 @@ class BedrockPlayerAuthInputCodecTest {
         writeVarUInt(output, 0); // user data
         writeFloat(output, fromX); writeFloat(output, fromY); writeFloat(output, fromZ);
         writeFloat(output, 0.5f); writeFloat(output, 0.5f); writeFloat(output, 0.5f);
-        writeVarInt(output, BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.GRASS_BLOCK));
+        writeVarUInt(output, Integer.toUnsignedLong(
+                BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.GRASS_BLOCK)));
         output.write(1); // ClientInteractPrediction.Success
         output.write(0); // ClientCooldownState.Off
         output.write(0); // ItemStackRequest optional

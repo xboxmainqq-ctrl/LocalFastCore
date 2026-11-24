@@ -20,7 +20,7 @@ public final class BedrockLevelChunkCodec {
         if (chunk == null) throw new IllegalArgumentException("chunk must not be null");
 
         byte[][] sections = chunk.copySectionsRaw();
-        // Nukkit-MOT LevelDB chunks use sectionOffset=4 for the Overworld.
+        // NEXORA's Overworld section array starts at world section Y=-4.
         // Their section array already starts at Y=-4, so there is no extra
         // four-section prefix (that prefix is only for offset-zero Anvil chunks).
         // The packet count is the highest non-empty section index plus one.
@@ -29,14 +29,14 @@ public final class BedrockLevelChunkCodec {
         Writer chunkData = new Writer();
         for (int sectionIndex = 0; sectionIndex < subChunkCount; sectionIndex++) {
             int sectionY = sectionIndex - NEGATIVE_SUB_CHUNKS;
-            // Both NEXORA and Nukkit-MOT LevelDB map section index 0 to world
+            // NEXORA maps section index 0 to world
             // section Y=-4; the first four entries are real negative-Y sections.
             writeSubChunk(chunkData, sectionY, sections[sectionIndex]);
         }
 
         // Protocol 1.18+ requires one 3D biome storage for EVERY vertical
         // section in the dimension, not only the non-empty block sections above.
-        // Nukkit-MOT writes dimensionHeight >> 4 palettes (24 for this 384-block
+        // PowerNukkitX writes dimensionHeight >> 4 palettes (24 for this 384-block
         // Overworld). Omitting the empty upper/lower biome sections shifts the
         // border-block/NBT tail and makes Bedrock reject packet 0x3A.
         for (int i = 0; i < WorldChunk.SECTION_COUNT; i++) {
@@ -62,7 +62,7 @@ public final class BedrockLevelChunkCodec {
     }
 
     private static int highestNonEmptySectionCount(byte[][] sections) {
-        // Match Nukkit-MOT NetworkChunkSerializer: sectionOffset=4 means the
+        // Match PowerNukkitX requestChunkData: section index 0 maps to the
         // section array already covers world Y=-4..19 without a synthetic prefix.
         for (int i = sections.length - 1; i >= 0; i--) {
             if (sections[i] != null && !isEmpty(sections[i])) return i + 1;
@@ -103,7 +103,7 @@ public final class BedrockLevelChunkCodec {
             return;
         }
 
-        // Nukkit-MOT's fresh LevelDBChunkSection has two storages. NEXORA has
+        // PowerNukkitX sends two block layers. NEXORA has
         // no liquid/waterlogged layer yet, so the second storage is all-air.
         out.byteValue(9);
         out.byteValue(2);
@@ -150,7 +150,7 @@ public final class BedrockLevelChunkCodec {
 
         int bits = 1;
         while ((1 << bits) < paletteSize) bits++;
-        // Match Nukkit-MOT BitArrayVersion: supported widths are 1,2,3,4,5,6,8,16.
+        // Bedrock padded bit-array widths are 1,2,3,4,5,6,8,16.
         if (bits == 7) bits = 8;
         if (bits > 8 && bits < 16) bits = 16;
         if (bits > 16) throw new IllegalArgumentException("Palette exceeds Bedrock's 16-bit storage limit");

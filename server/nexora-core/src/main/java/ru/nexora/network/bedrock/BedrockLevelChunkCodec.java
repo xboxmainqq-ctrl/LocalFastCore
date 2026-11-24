@@ -44,9 +44,8 @@ public final class BedrockLevelChunkCodec {
             chunkData.varInt32(PLAINS_BIOME_ID);
         }
         chunkData.byteValue(0); // Border block count (empty)
+        chunkData.byteValue(0); // Network NBT TAG_End terminates an empty block-entity list.
 
-        // Nukkit-MOT serializes block entities as concatenated little-endian
-        // network NBT roots; an empty collection contributes zero bytes.
         byte[] data = chunkData.toByteArray();
         Writer packet = new Writer();
         packet.varInt32(chunk.chunkX());
@@ -90,10 +89,13 @@ public final class BedrockLevelChunkCodec {
     }
 
     private static void writeEmptySubChunk(Writer out, int sectionY) {
-        // Nukkit-MOT EmptyChunkSection.writeTo(): v9, zero storage layers, signed section Y.
+        // Match PowerNukkitX ChunkSection.writeToBuf(): v9, two block layers, signed section Y.
+        // Even an all-air section carries both singleton runtime palettes on the wire.
         out.byteValue(9);
-        out.byteValue(0);
+        out.byteValue(2);
         out.byteValue(sectionY);
+        writeAirStorage(out); // layer 0: singleton air
+        writeAirStorage(out); // layer 1: singleton air
     }
 
     private static void writeSubChunk(Writer out, int sectionY, byte[] raw) {

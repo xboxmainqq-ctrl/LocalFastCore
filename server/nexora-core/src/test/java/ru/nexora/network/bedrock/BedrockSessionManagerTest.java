@@ -3424,7 +3424,8 @@ class BedrockSessionManagerTest {
         writeVarUInt(out, 0); // user data
         writeFloat32(out, x); writeFloat32(out, y); writeFloat32(out, z);
         writeFloat32(out, 0.5f); writeFloat32(out, 0.5f); writeFloat32(out, 0.5f);
-        writeVarInt(out, BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.CHEST));
+        writeVarUInt(out, Integer.toUnsignedLong(BedrockBlockRuntimeIds.forBlock(
+                ru.nexora.world.BlockType.CHEST)));
         out.write(1); // prediction success
         out.write(0); // cooldown off
         out.write(0); // HasItemStackRequest

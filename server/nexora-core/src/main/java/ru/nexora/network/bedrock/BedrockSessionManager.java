@@ -2789,6 +2789,16 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
 
         String normalized = command.command().trim().toLowerCase(Locale.ROOT);
+        if (normalized.equals("/gamemode creative") || normalized.equals("/gamemode 1")
+                || normalized.equals("/gmc")) {
+            setCreativeMode(message.networkId(), state, true);
+            return;
+        }
+        if (normalized.equals("/gamemode survival") || normalized.equals("/gamemode 0")
+                || normalized.equals("/gms")) {
+            setCreativeMode(message.networkId(), state, false);
+            return;
+        }
         if (normalized.equals("/equipment") || normalized.equals("/equip")) {
             openEquipmentMenu(message.networkId(), state, "");
             return;
@@ -2813,6 +2823,23 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             return;
         }
         packetSink.accept(new PacketEvent(message.networkId(), message.channelLabel(), packet));
+    }
+
+    private void setCreativeMode(String networkId, SessionState state, boolean creative) {
+        if (state.creativeMode == creative) {
+            sendAiMessage(networkId, creative
+                    ? "§aТворческий режим уже включён."
+                    : "§eРежим выживания уже включён.");
+            return;
+        }
+        state.creativeMode = creative;
+        state.physicsState = null;
+        // SetPlayerGameType (0x3E): game mode is a zig-zag encoded VarInt32.
+        sendPacket(networkId, new BedrockPacket(0x3e, 0, 0,
+                new byte[] {(byte) (creative ? 0x02 : 0x00)}), true);
+        sendAiMessage(networkId, creative
+                ? "§aТворческий режим включён. Полёт и мгновенная добыча блоков доступны."
+                : "§eРежим выживания включён.");
     }
 
     /** Installs the optional runtime diagnostics observer. */
@@ -5745,9 +5772,59 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
     }
 
+    private void handleCreativeMovement(
+            String networkId, SessionState state, BedrockPlayerAuthInputCodec.PlayerInput input
+    ) {
+        if (Math.abs(input.x()) > 30_000_000 || Math.abs(input.z()) > 30_000_000
+                || input.y() < WorldChunk.MIN_Y || input.y() > WorldChunk.MAX_Y
+                || !Float.isFinite(input.x()) || !Float.isFinite(input.y())
+                || !Float.isFinite(input.z())) return;
+        long tickDelta = state.hasReceivedInput ? input.tick() - state.lastInputTick : 1L;
+        if (tickDelta < 1) return;
+        double dx = input.x() - state.positionX;
+        double dy = input.y() - state.positionY;
+        double dz = input.z() - state.positionZ;
+        double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        // Creative flight is faster than walking but still bounded against teleport-sized packets.
+        double movementLimit = Math.min(4.0, Math.max(0.9, tickDelta * 0.8));
+        if (!Double.isFinite(distance) || distance > movementLimit) return;
+
+        state.positionX = input.x();
+        state.positionY = input.y();
+        state.positionZ = input.z();
+        state.yaw = input.yaw();
+        state.pitch = input.pitch();
+        state.lastInputTick = input.tick();
+        state.lastMovementNanos = nanoTime.getAsLong();
+        state.hasReceivedInput = true;
+        state.physicsState = null;
+        broadcastPlayerMovement(networkId, state);
+
+        for (BedrockPlayerAuthInputCodec.BlockAction action : input.blockActions()) {
+            handleBlockAction(networkId, state, action);
+        }
+        handleItemUseTransaction(networkId, state, input.itemUseTransaction());
+        tickWorldItemActors(input.tick());
+
+        int chunkX = Math.floorDiv((int) Math.floor(state.positionX), 16);
+        int chunkZ = Math.floorDiv((int) Math.floor(state.positionZ), 16);
+        if (isChunkViewCenterDifferent(state, chunkX, chunkZ)) {
+            sendPacket(networkId, BedrockStartGameCodec.createChunkPublisherUpdate(
+                    (int) Math.floor(state.positionX), (int) Math.floor(state.positionY),
+                    (int) Math.floor(state.positionZ), state.chunkViewRadius), true);
+            sendChunkArea(networkId, state, chunkX, chunkZ);
+        } else {
+            processChunkStreaming(networkId, state);
+        }
+    }
+
     private void handleServerAuthoritativeMovement(
             String networkId, SessionState state, BedrockPlayerAuthInputCodec.PlayerInput input
     ) {
+        if (state.creativeMode) {
+            handleCreativeMovement(networkId, state, input);
+            return;
+        }
         if (Math.abs(input.x()) > 30_000_000 || Math.abs(input.z()) > 30_000_000
                 || input.y() < WorldChunk.MIN_Y - 16 || input.y() > WorldChunk.MAX_Y + 16
                 || Math.abs(input.motionX()) > 1.05f || Math.abs(input.motionZ()) > 1.05f) {
@@ -6508,7 +6585,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             state.breakTarget = null;
             return;
         }
-        long requiredNanos = requiredBreakNanos(current);
+        long requiredNanos = state.creativeMode ? 0L : requiredBreakNanos(current);
         if (requiredNanos == Long.MAX_VALUE
                 || nanoTime.getAsLong() - target.startedAtNanos() < requiredNanos) return;
 
@@ -6663,7 +6740,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
 
         WorldItemEntity dropped = null;
-        String dropItemId = blockDropItemId(current);
+        String dropItemId = state.creativeMode ? null : blockDropItemId(current);
         if (dropItemId != null && itemRegistry != null
                 && itemRegistry.findByIdentifier(dropItemId) != null) {
             try {
@@ -8347,6 +8424,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private int experiencePoints;
         private int experienceRemainderMilli;
         private boolean dead;
+        private boolean creativeMode;
         private boolean deathPacketsSent;
         private boolean usingItem;
         private int usingItemSlot = -1;

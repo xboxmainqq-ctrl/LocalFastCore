@@ -16,7 +16,7 @@ import ru.nexora.network.bedrock.BedrockProtocolVersion;
 import ru.nexora.network.bedrock.BedrockPendingTransferActivator;
 import ru.nexora.network.raknet.BedrockServerStatus;
 import ru.nexora.network.raknet.RakNetDiscoveryServer;
-import ru.nexora.world.FlatWorldGenerator;
+import ru.nexora.world.NexoraTerrainGenerator;
 import ru.nexora.world.World;
 import ru.nexora.world.WorldStorage;
 import ru.nexora.world.WorldItemEntityStorage;
@@ -113,7 +113,7 @@ public final class NexoraServer {
         FurnaceStateStorage furnaceStateStorage = new FurnaceStateStorage(
                 Path.of(dataDirectory, "worlds"), "NEXORA World");
         World world = new World(
-                "NEXORA World", 0L, new FlatWorldGenerator(), 0, 65, 0,
+                "NEXORA World", 0L, new NexoraTerrainGenerator(), 0, 65, 0,
                 worldStorage, itemStorage, containerStorage, furnaceStateStorage, livingEntityStorage);
         PlayerDataStorage playerStorage = new PlayerDataStorage(Path.of(dataDirectory, "players"));
         PlayerInventoryStorage inventoryStorage = new PlayerInventoryStorage(Path.of(dataDirectory, "inventories"));

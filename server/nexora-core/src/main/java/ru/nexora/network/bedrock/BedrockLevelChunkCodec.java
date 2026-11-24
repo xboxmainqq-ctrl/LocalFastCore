@@ -34,11 +34,12 @@ public final class BedrockLevelChunkCodec {
             writeSubChunk(chunkData, sectionY, sections[sectionIndex]);
         }
 
-        // LevelChunk's serialized column contains one biome storage for each
-        // transmitted block subchunk, in the same bottom-to-top order. Sending
-        // all dimension sections here (even when only a few block sections exist)
-        // shifts the border-block/NBT tail and makes Bedrock reject packet 0x3A.
-        for (int i = 0; i < subChunkCount; i++) {
+        // Protocol 1.18+ requires one 3D biome storage for EVERY vertical
+        // section in the dimension, not only the non-empty block sections above.
+        // Nukkit-MOT writes dimensionHeight >> 4 palettes (24 for this 384-block
+        // Overworld). Omitting the empty upper/lower biome sections shifts the
+        // border-block/NBT tail and makes Bedrock reject packet 0x3A.
+        for (int i = 0; i < WorldChunk.SECTION_COUNT; i++) {
             chunkData.byteValue(1); // V0 singleton palette, runtime IDs
             chunkData.varInt32(PLAINS_BIOME_ID);
         }

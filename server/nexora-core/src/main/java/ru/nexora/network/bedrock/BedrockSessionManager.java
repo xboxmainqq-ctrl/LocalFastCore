@@ -56,6 +56,7 @@ import java.security.PublicKey;
 import java.security.Signature;
 import java.security.spec.X509EncodedKeySpec;
 import java.io.IOException;
+import java.io.ByteArrayOutputStream;
 import java.time.Instant;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -2825,6 +2826,36 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         packetSink.accept(new PacketEvent(message.networkId(), message.channelLabel(), packet));
     }
 
+    private static BedrockPacket createAdventureSettings(long entityId, boolean creative) {
+        ByteArrayOutputStream payload = new ByteArrayOutputStream(16);
+        int flags = creative ? 0x40 | 0x200 : 0; // ALLOW_FLIGHT | FLYING
+        writeUnsignedVarInt(payload, flags);
+        writeUnsignedVarInt(payload, 0);        // CommandPermissionLevel.Any
+        writeUnsignedVarInt(payload, 0x10200);  // Default action permissions
+        writeUnsignedVarInt(payload, 1);        // PlayerPermissionLevel.Member
+        writeUnsignedVarInt(payload, 0);        // Custom stored permissions
+        writeSignedVarLong(payload, entityId); // Target player unique ID
+        return new BedrockPacket(0x37, 0, 0, payload.toByteArray());
+    }
+
+    private static void writeUnsignedVarInt(ByteArrayOutputStream output, int value) {
+        long remaining = Integer.toUnsignedLong(value);
+        while ((remaining & ~0x7fL) != 0) {
+            output.write((int) (remaining & 0x7fL) | 0x80);
+            remaining >>>= 7;
+        }
+        output.write((int) remaining);
+    }
+
+    private static void writeSignedVarLong(ByteArrayOutputStream output, long value) {
+        long encoded = (value << 1) ^ (value >> 63);
+        while ((encoded & ~0x7fL) != 0) {
+            output.write((int) (encoded & 0x7fL) | 0x80);
+            encoded >>>= 7;
+        }
+        output.write((int) encoded);
+    }
+
     private void setCreativeMode(String networkId, SessionState state, boolean creative) {
         if (state.creativeMode == creative) {
             sendAiMessage(networkId, creative
@@ -2837,6 +2868,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         // SetPlayerGameType (0x3E): game mode is a zig-zag encoded VarInt32.
         sendPacket(networkId, new BedrockPacket(0x3e, 0, 0,
                 new byte[] {(byte) (creative ? 0x02 : 0x00)}), true);
+        sendPacket(networkId, createAdventureSettings(state.entityId, creative), true);
         sendAiMessage(networkId, creative
                 ? "§aТворческий режим включён. Полёт и мгновенная добыча блоков доступны."
                 : "§eРежим выживания включён.");

@@ -1,7 +1,7 @@
 package ru.nexora.network.bedrock;
 
 import org.junit.jupiter.api.Test;
-import ru.nexora.world.FlatWorldGenerator;
+import ru.nexora.world.BlockType;
 import ru.nexora.world.WorldChunk;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -10,7 +10,13 @@ class BedrockLevelChunkCodecTest {
     @Test
     void encodesProtocol2225RequestAndCacheFlagsBeforeChunkData() {
         WorldChunk chunk = new WorldChunk(-2, 3);
-        new FlatWorldGenerator().generate(chunk, 1L);
+        // Sparse protocol fixture: keep lower subchunks empty and exercise
+        // the legacy starter-height block palette in sections Y=3 and Y=4.
+        chunk.setBlock(0, 60, 0, BlockType.BEDROCK);
+        chunk.setBlock(0, 61, 0, BlockType.STONE);
+        chunk.setBlock(0, 62, 0, BlockType.DIRT);
+        chunk.setBlock(0, 63, 0, BlockType.DIRT);
+        chunk.setBlock(0, 64, 0, BlockType.GRASS_BLOCK);
 
         BedrockPacket packet = BedrockLevelChunkCodec.createPacket(chunk);
         assertEquals(0x3a, packet.packetId());

@@ -236,6 +236,7 @@ class BedrockPlayerAuthInputCodecTest {
         if (optional) {
             // PackedItemUseLegacyInventoryTransaction: request ID 0, no inventory actions.
             writeVarInt(output, 0);
+            output.write(0); // no legacy slot list
             writeVarUInt(output, 0); // inventory actions
             writeVarInt(output, 0); // Place
             output.write(1); // Player Input trigger
@@ -328,6 +329,7 @@ class BedrockPlayerAuthInputCodecTest {
         writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0); // delta
         output.write(1); // ItemInteractionData optional
         writeVarInt(output, 0); // legacy request ID
+        output.write(0); // no legacy slot list
         writeVarUInt(output, 0); // inventory actions
         writeVarInt(output, 1); // ItemUseActionType.ClickAir
         output.write(1); // Player Input trigger

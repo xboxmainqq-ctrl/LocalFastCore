@@ -15,19 +15,22 @@ class BedrockMovementCorrectionCodecTest {
 
         assertEquals(0xA1, packet.packetId());
         byte[] payload = packet.payload();
-        assertEquals(28, payload.length);
+        assertEquals(37, payload.length);
         assertEquals(0, payload[0]); // Player prediction, not vehicle
 
-        ByteBuffer values = ByteBuffer.wrap(payload, 1, 24).order(ByteOrder.LITTLE_ENDIAN);
+        ByteBuffer values = ByteBuffer.wrap(payload, 1, 32).order(ByteOrder.LITTLE_ENDIAN);
         assertEquals(1.25f, values.getFloat());
         assertEquals(65.0f, values.getFloat());
         assertEquals(-2.5f, values.getFloat());
         assertEquals(0.5f, values.getFloat());
         assertEquals(-1.0f, values.getFloat());
         assertEquals(0.25f, values.getFloat());
-        assertEquals(1, Byte.toUnsignedInt(payload[25]));
-        assertEquals(0xac, Byte.toUnsignedInt(payload[26])); // first byte of VarUInt64(300)
-        assertEquals(0x02, Byte.toUnsignedInt(payload[27])); // second byte of VarUInt64(300) 
+        assertEquals(0.0f, values.getFloat()); // vehicle rotation X placeholder
+        assertEquals(0.0f, values.getFloat()); // vehicle rotation Y placeholder
+        assertEquals(0, Byte.toUnsignedInt(payload[33])); // no vehicle angular velocity
+        assertEquals(1, Byte.toUnsignedInt(payload[34])); // on ground
+        assertEquals(0xac, Byte.toUnsignedInt(payload[35])); // first byte of VarUInt64(300)
+        assertEquals(0x02, Byte.toUnsignedInt(payload[36])); // second byte of VarUInt64(300)
     }
 
     @Test

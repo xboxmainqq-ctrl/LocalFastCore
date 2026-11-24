@@ -3559,9 +3559,7 @@ class BedrockSessionManagerTest {
         writeVarUInt(out, actions.length);
         for (SlotAction action : actions) {
             writeVarInt(out, 0); // container source
-            out.write(1); // container ID present
-            out.write(action.containerId());
-            out.write(0); // no world-interaction flags
+            out.write(action.containerId()); // ContainerInventory container ID
             writeVarUInt(out, action.slot());
             writeItemDescriptor(out, action.from());
             writeItemDescriptor(out, action.to());
@@ -3944,17 +3942,13 @@ class BedrockSessionManagerTest {
         out.write(2); // two actions
 
         out.write(0); // ContainerInventory source
-        out.write(1); // container ID present
-        out.write(0); // main player inventory
-        out.write(0); // no flags
+        out.write(0); // main player inventory container ID
         out.write(sourceSlot); // slot VarUInt32
         writeDescriptor(out, runtimeItemId, count);
         writeDescriptor(out, 0, 0);
 
         out.write(0); // ContainerInventory source
-        out.write(1); // container ID present
-        out.write(120); // armor container
-        out.write(0); // no flags
+        out.write(120); // armor container ID
         out.write(armorSlot); // armor slot
         writeDescriptor(out, 0, 0);
         writeDescriptor(out, runtimeItemId, count);
@@ -3968,17 +3962,13 @@ class BedrockSessionManagerTest {
         out.write(2); // two actions
 
         out.write(0); // ContainerInventory source
-        out.write(1); // container ID present
-        out.write(0); // main player inventory
-        out.write(0); // no flags
+        out.write(0); // main player inventory container ID
         out.write(sourceSlot); // slot is VarUInt32, not ZigZag VarInt32
         writeDescriptor(out, runtimeItemId, count);
         writeDescriptor(out, 0, 0);
 
         out.write(0); // ContainerInventory source
-        out.write(1); // container ID present
-        out.write(119); // offhand
-        out.write(0); // no flags
+        out.write(119); // offhand container ID
         out.write(0); // offhand slot
         // The test player already has two items in the offhand stack.
         writeDescriptor(out, runtimeItemId, 2);
@@ -3992,9 +3982,7 @@ class BedrockSessionManagerTest {
         out.write(0); // Normal transaction
         out.write(1); // one action
         out.write(0); // ContainerInventory source
-        out.write(1); // container ID present
-        out.write(0); // player inventory container
-        out.write(0); // no world flags
+        out.write(0); // player inventory container ID
         out.write(0); // slot zero
         writeDescriptor(out, runtimeItemId, count);
         writeDescriptor(out, runtimeItemId, count);

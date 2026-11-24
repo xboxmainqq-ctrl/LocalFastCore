@@ -149,7 +149,7 @@ public final class World {
             if (storage != null) {
                 try {
                     Optional<WorldChunk> stored = storage.loadChunk(chunkX, chunkZ);
-                    if (stored.isPresent()) return stored.get();
+                    if (stored.isPresent() && !stored.get().isLegacyStarterPlatform()) return stored.get();
                 } catch (IOException exception) {
                     throw new UncheckedIOException("Unable to load NEXORA chunk " + chunkX + "," + chunkZ, exception);
                 }
@@ -194,8 +194,12 @@ public final class World {
             if (candidate.chunkX() != chunkX || candidate.chunkZ() != chunkZ) {
                 throw new IllegalArgumentException("Prepared chunk coordinates do not match request");
             }
-            WorldChunk raced = chunks.putIfAbsent(key, candidate);
-            return raced == null ? candidate : raced;
+            if (!candidate.isLegacyStarterPlatform()) {
+                WorldChunk raced = chunks.putIfAbsent(key, candidate);
+                return raced == null ? candidate : raced;
+            }
+            // Safely replace only the exact untouched temporary platform; edited chunks
+            // are never migrated or overwritten.
         }
         return chunks.computeIfAbsent(key, ignored -> {
             WorldChunk generated = new WorldChunk(chunkX, chunkZ);

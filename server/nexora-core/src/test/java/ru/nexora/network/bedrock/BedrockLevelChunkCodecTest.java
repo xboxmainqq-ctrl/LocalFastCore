@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockLevelChunkCodecTest {
     @Test
-    void encodesNukkitMotLevelDbChunkWithOneBiomePalettePerTransmittedSubchunk() {
+    void encodesProtocol2225RequestAndCacheFlagsBeforeChunkData() {
         WorldChunk chunk = new WorldChunk(-2, 3);
         new FlatWorldGenerator().generate(chunk, 1L);
 

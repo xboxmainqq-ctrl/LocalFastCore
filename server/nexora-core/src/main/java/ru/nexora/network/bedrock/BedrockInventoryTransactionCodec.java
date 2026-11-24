@@ -57,21 +57,26 @@ public final class BedrockInventoryTransactionCodec {
         List<InventoryTransactionService.Action> actions = new ArrayList<>(actionCount);
         for (int i = 0; i < actionCount; i++) {
             int sourceType = in.varUInt32Int();
+            int containerId = -1;
 
-            boolean hasContainerId = in.bool();
-            int containerId = hasContainerId ? in.int8() : -1;
-
-            boolean hasFlags = in.bool();
-            if (hasFlags) in.varUInt32(); // World-interaction flags are not supported by this service.
+            // Protocol 2225 InventorySource has no presence booleans:
+            // Container ID exists only for ContainerInventory (0) and
+            // NonImplementedFeatureTODO (99999); flags exist only for
+            // WorldInteraction (2).
+            if (sourceType == SOURCE_CONTAINER || sourceType == 99999) {
+                containerId = in.int8();
+            } else if (sourceType == 2) {
+                in.varUInt32(); // World-interaction flags; not applied by this service.
+            } else if (sourceType != 1 && sourceType != 3) {
+                throw new UnsupportedOperationException("Unsupported inventory source type: " + sourceType);
+            }
 
             if (sourceType == SOURCE_CONTAINER) {
-                // Parse known player containers structurally. The authoritative transaction
-                // service validates main inventory, armor, offhand and cursor changes separately.
+                // Validate supported player and currently open block-container windows.
                 boolean playerUiContainer = containerId == 0 || containerId == 119
                         || containerId == 120 || containerId == 124;
-                boolean blockContainerWindow = containerId >= 1
-                        && containerId <= 100;
-                if (!hasContainerId || (!playerUiContainer && !blockContainerWindow) || hasFlags) {
+                boolean blockContainerWindow = containerId >= 1 && containerId <= 100;
+                if (!playerUiContainer && !blockContainerWindow) {
                     throw new IllegalArgumentException("Malformed inventory container source");
                 }
             }

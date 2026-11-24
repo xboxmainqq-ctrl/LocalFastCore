@@ -28,8 +28,12 @@ class BedrockLevelChunkCodecTest {
         Reader subChunks = new Reader(data);
         for (int sectionY = -4; sectionY < 3; sectionY++) {
             assertEquals(9, subChunks.byteValue());
-            assertEquals(0, subChunks.byteValue()); // Nukkit-MOT empty subchunk has zero layers
+            assertEquals(2, subChunks.byteValue()); // two network block layers, including empty sections
             assertEquals(sectionY & 0xff, subChunks.byteValue());
+            assertEquals(1, subChunks.byteValue()); // layer 0: singleton air
+            assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
+            assertEquals(1, subChunks.byteValue()); // layer 1: singleton air
+            assertEquals(BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.AIR), subChunks.varInt32());
         }
 
         // Section Y=3 contains air, bedrock, stone and dirt: a two-bit packed palette.
@@ -63,7 +67,7 @@ class BedrockLevelChunkCodecTest {
             assertEquals(1, subChunks.varInt32());
         }
         assertEquals(0, subChunks.byteValue()); // no border blocks
-        // Nukkit-MOT's empty block-entity collection contributes no NBT bytes.
+        assertEquals(0, subChunks.byteValue()); // empty network NBT list: TAG_End
         assertTrue(subChunks.exhausted());
     }
 
@@ -95,6 +99,7 @@ class BedrockLevelChunkCodecTest {
             assertEquals(1, subChunks.varInt32());
         }
         assertEquals(0, subChunks.byteValue()); // no border blocks
+        assertEquals(0, subChunks.byteValue()); // empty network NBT list: TAG_End
         assertTrue(subChunks.exhausted());
     }
 
@@ -117,7 +122,8 @@ class BedrockLevelChunkCodecTest {
             assertEquals(1, chunkData.byteValue()); // one biome palette for every dimension section
             assertEquals(1, chunkData.varInt32()); // plains runtime biome ID
         }
-        assertEquals(0, chunkData.byteValue()); // no border blocks; empty NBT collection is zero bytes
+        assertEquals(0, chunkData.byteValue()); // no border blocks
+        assertEquals(0, chunkData.byteValue()); // empty network NBT list: TAG_End
         assertTrue(chunkData.exhausted());
     }
 

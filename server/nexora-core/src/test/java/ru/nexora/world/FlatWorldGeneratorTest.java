@@ -15,21 +15,19 @@ class FlatWorldGeneratorTest {
     }
 
     @Test
-    void createsDeterministicRollingTerrainOutsideSpawnArea() {
+    void remainsFlatAndDeterministicOutsideSpawnArea() {
         int min = Integer.MAX_VALUE;
         int max = Integer.MIN_VALUE;
         for (int x = -160; x <= 160; x += 4) {
             for (int z = -160; z <= 160; z += 4) {
                 int height = FlatWorldGenerator.surfaceHeight(x, z, 0L);
                 assertEquals(height, FlatWorldGenerator.surfaceHeight(x, z, 0L));
-                assertTrue(height >= 52 && height <= 78);
-                if (Math.abs(x) > 8 || Math.abs(z) > 8) {
-                    min = Math.min(min, height);
-                    max = Math.max(max, height);
-                }
+                assertEquals(64, height);
+                min = Math.min(min, height);
+                max = Math.max(max, height);
             }
         }
-        assertTrue(max - min >= 5, "terrain should not be a single flat plane");
+        assertEquals(0, max - min, "the explicit flat-world generator must stay flat");
     }
 
     @Test

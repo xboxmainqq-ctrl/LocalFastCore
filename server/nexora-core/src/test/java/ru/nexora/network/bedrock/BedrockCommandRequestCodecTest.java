@@ -24,6 +24,14 @@ class BedrockCommandRequestCodecTest {
     }
 
     @Test
+    void acceptsLowercasePlayerOriginUsedByBedrockCompatibleClients() {
+        BedrockPacket packet = new BedrockPacket(0x4d, 0, 0,
+                command("/equipment", "player", "request-lower", 42L, false, "Latest"));
+        var decoded = BedrockCommandRequestCodec.decode(packet);
+        assertEquals("Player", decoded.originType());
+    }
+
+    @Test
     void rejectsWrongPacketOriginMalformedBooleanAndTrailingData() {
         assertThrows(IllegalArgumentException.class, () ->
                 BedrockCommandRequestCodec.decode(new BedrockPacket(0x09, 0, 0, new byte[0])));

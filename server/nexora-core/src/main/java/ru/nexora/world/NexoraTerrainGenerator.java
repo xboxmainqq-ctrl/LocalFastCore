@@ -92,6 +92,11 @@ public final class NexoraTerrainGenerator implements WorldGenerator {
                 int centerZ = cellZ * grid + grid / 2
                         + (int) ((unitHash(key ^ 0xd1310ba698dfb5acL) - 0.5) * 150.0);
                 if (Math.max(Math.abs(centerX), Math.abs(centerZ)) < 520) continue;
+                // Only build candidates whose footprint can touch this chunk. Without
+                // this cheap world-space rejection every chunk in a 512-block cell
+                // would repeatedly evaluate the same remote structure.
+                if (centerX + 24 < minX || centerX - 24 > minX + 15
+                        || centerZ + 24 < minZ || centerZ - 24 > minZ + 15) continue;
 
                 int baseY = surfaceHeight(centerX, centerZ, seed);
                 if (baseY < 48 || baseY > 132) continue;

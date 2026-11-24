@@ -16,20 +16,22 @@ class NexoraTerrainGeneratorTest {
     }
 
     @Test
-    void createsDeterministicVariedLandforms() {
+    void createsDeterministicMountainsAndDeepCraterBasins() {
         int minimum = Integer.MAX_VALUE;
         int maximum = Integer.MIN_VALUE;
-        for (int x = -1024; x <= 1024; x += 16) {
-            for (int z = -1024; z <= 1024; z += 16) {
+        for (int x = -2048; x <= 2048; x += 16) {
+            for (int z = -2048; z <= 2048; z += 16) {
                 int height = NexoraTerrainGenerator.surfaceHeight(x, z, 0L);
                 assertEquals(height, NexoraTerrainGenerator.surfaceHeight(x, z, 0L));
-                assertTrue(height >= 48 && height <= 150);
+                assertTrue(height >= -30 && height <= 200);
                 minimum = Math.min(minimum, height);
                 maximum = Math.max(maximum, height);
             }
         }
-        assertTrue(maximum - minimum >= 18,
-                "custom terrain should contain clear valleys, hills and elevated regions");
+        assertTrue(minimum <= -20,
+                "custom terrain should generate deep crater floors");
+        assertTrue(maximum >= 190,
+                "custom terrain should generate mountain peaks close to Y=200");
     }
 
     @Test
@@ -46,6 +48,7 @@ class NexoraTerrainGeneratorTest {
             assertEquals(leftHeight, left.getBlock(15, leftHeight, z) == BlockType.GRASS_BLOCK
                     || left.getBlock(15, leftHeight, z) == BlockType.STONE
                     || left.getBlock(15, leftHeight, z) == BlockType.GRAVEL
+                    || left.getBlock(15, leftHeight, z) == BlockType.OBSIDIAN
                     ? leftHeight : -1);
             assertEquals(rightHeight, NexoraTerrainGenerator.surfaceHeight(16, z, 0L));
         }

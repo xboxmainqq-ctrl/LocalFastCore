@@ -52,10 +52,9 @@ public final class BedrockLevelChunkCodec {
         packet.varInt32(chunk.chunkZ());
         packet.varInt32(0); // Dimension ID: Overworld
         packet.varUInt32(subChunkCount);
-        // The optional client-request subchunk limit is omitted for ordinary
-        // full-chunk delivery. It is a varint field, not a presence boolean.
+        packet.bool(false); // optional client-request subchunk limit is absent
         packet.bool(false); // cacheEnabled: client chunk cache disabled
-        // Cache Metadata is omitted when cacheEnabled is false.
+        packet.varUInt32(0); // Cloudburst v2168/v2225 writes the empty blob-ID array too.
         packet.byteArray(data);
         packet.bool(false); // clientBiomeUpdate
 

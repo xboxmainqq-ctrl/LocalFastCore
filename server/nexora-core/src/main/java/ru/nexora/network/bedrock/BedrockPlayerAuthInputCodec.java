@@ -181,18 +181,17 @@ public final class BedrockPlayerAuthInputCodec {
 
     private static ItemUseTransaction readPackedItemUse(Reader in) {
         int legacyRequestId = in.varInt32();
-        boolean hasLegacySlots = in.bool();
-        if (hasLegacySlots) {
-            if (legacyRequestId >= -1 || (legacyRequestId & 1) != 0) {
-                throw new IllegalArgumentException("Legacy item slots flag is invalid for request ID");
-            }
+        // Protocol 2225 uses an implicit optional: LegacySetItemSlots is present
+        // exactly when LegacyRequestId is non-zero. There is NO presence boolean
+        // on the wire. Each entry is uint8 container enum + array<uint8> slots.
+        if (legacyRequestId != 0) {
             int legacySlotCount = in.varUInt32();
             if (legacySlotCount > 64) {
                 throw new IllegalArgumentException("Item-use transaction has too many legacy slot entries");
             }
             for (int i = 0; i < legacySlotCount; i++) {
-                in.int8(); // container ID
-                in.byteArray(89); // legacy slot indices
+                in.uint8(); // container enum
+                in.byteArray(89); // array<uint8> legacy slot indices
             }
         }
         int actionCount = in.varUInt32();

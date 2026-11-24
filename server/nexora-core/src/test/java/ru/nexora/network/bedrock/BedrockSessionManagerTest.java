@@ -3467,13 +3467,13 @@ class BedrockSessionManagerTest {
         writeVarUInt(out, 2); // source and destination slot actions
 
         writeVarInt(out, 0); // container inventory source
-        out.write(1); out.write(0); out.write(0); // player inventory container, no flags
+        out.write(0); // player inventory container ID
         writeVarUInt(out, sourceSlot);
         writeDescriptor(out, runtimeItemId, count);
         writeDescriptor(out, 0, 0);
 
         writeVarInt(out, 0); // container inventory source
-        out.write(1); out.write(0); out.write(0); // player inventory container, no flags
+        out.write(0); // player inventory container ID
         writeVarUInt(out, destinationSlot);
         writeDescriptor(out, 0, 0);
         writeDescriptor(out, runtimeItemId, count);

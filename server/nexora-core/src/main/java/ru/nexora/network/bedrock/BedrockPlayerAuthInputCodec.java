@@ -219,9 +219,13 @@ public final class BedrockPlayerAuthInputCodec {
         long targetBlockId = in.varUInt32Long();
         int clientPrediction = in.uint8();
         int cooldownState = in.uint8();
-        if (triggerType > 2 || (actionType != 1 && face > 5) || hand > 1
+        if (actionType < 0 || actionType > 3 || triggerType > 2
+                || (actionType != 1 && face > 5) || hand > 1
                 || clientPrediction > 1 || cooldownState > 1) {
-            throw new IllegalArgumentException("Invalid item-use transaction enum value");
+            throw new IllegalArgumentException("Invalid protocol-2225 item-use transaction fields"
+                    + " (action=" + actionType + ", trigger=" + triggerType
+                    + ", face=" + face + ", hand=" + hand
+                    + ", prediction=" + clientPrediction + ", cooldown=" + cooldownState + ")");
         }
         if (slot < 0 || slot >= 36 || y < WorldChunk.MIN_Y || y > WorldChunk.MAX_Y) {
             throw new IllegalArgumentException("Item-use target or slot is outside supported bounds");

@@ -21,7 +21,7 @@ public final class BedrockMovementCorrectionCodec {
                 || Math.abs(x) > 30_000_000 || Math.abs(z) > 30_000_000) {
             throw new IllegalArgumentException("Invalid movement correction state");
         }
-        ByteArrayOutputStream out = new ByteArrayOutputStream(27);
+        ByteArrayOutputStream out = new ByteArrayOutputStream(37);
         out.write(0); // RewindType.Player
         writeFloat(out, x);
         writeFloat(out, y);
@@ -29,6 +29,16 @@ public final class BedrockMovementCorrectionCodec {
         writeFloat(out, velocityX);
         writeFloat(out, velocityY);
         writeFloat(out, velocityZ);
+
+        // The protocol-2225 Cloudburst serializer inherited from v827 writes
+        // the vehicle-prediction extension block unconditionally, even for
+        // RewindType.Player: two rotation floats followed by an optional
+        // angular-velocity presence flag. Omitting these bytes makes the
+        // Bedrock client read past the end of packet 0xA1.
+        writeFloat(out, 0.0); // unused vehicle rotation X for a player
+        writeFloat(out, 0.0); // unused vehicle rotation Y for a player
+        out.write(0);         // vehicle angular velocity is absent
+
         out.write(onGround ? 1 : 0);
         writeVarUInt64(out, inputTick);
         return new BedrockPacket(PACKET_ID, 0, 0, out.toByteArray());

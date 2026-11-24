@@ -46,13 +46,8 @@ public final class NexoraTerrainGenerator implements WorldGenerator {
                     int depth = surface - y;
                     BlockType material;
                     if (depth <= soilDepth) {
-                        if (depth == 1) {
-                            material = gravelBank ? BlockType.GRAVEL
-                                    : rocky ? BlockType.STONE : BlockType.GRASS_BLOCK;
-                        } else {
-                            material = gravelBank ? BlockType.GRAVEL
-                                    : rocky ? BlockType.STONE : BlockType.DIRT;
-                        }
+                        material = gravelBank ? BlockType.GRAVEL
+                                : rocky ? BlockType.STONE : BlockType.DIRT;
                     } else if (depth <= soilDepth + 3 && gravelBank) {
                         material = BlockType.GRAVEL;
                     } else {

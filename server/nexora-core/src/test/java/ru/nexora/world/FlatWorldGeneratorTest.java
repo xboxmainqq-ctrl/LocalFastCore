@@ -50,4 +50,23 @@ class FlatWorldGeneratorTest {
         assertEquals(BlockType.STONE, chunk.getBlock(x, surface - 4, z));
         assertEquals(BlockType.BEDROCK, chunk.getBlock(x, WorldChunk.MIN_Y, z));
     }
+
+    @Test
+    void recognizesOnlyUntouchedLegacyStarterPlatformsForSafeMigration() {
+        WorldChunk legacy = new WorldChunk(0, 0);
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                legacy.setBlock(x, 60, z, BlockType.BEDROCK);
+                legacy.setBlock(x, 61, z, BlockType.STONE);
+                legacy.setBlock(x, 62, z, BlockType.DIRT);
+                legacy.setBlock(x, 63, z, BlockType.DIRT);
+                legacy.setBlock(x, 64, z, BlockType.GRASS_BLOCK);
+            }
+        }
+        assertTrue(legacy.isLegacyStarterPlatform());
+
+        legacy.setBlock(1, 65, 1, BlockType.COBBLESTONE);
+        assertFalse(legacy.isLegacyStarterPlatform(),
+                "player-modified chunks must never be automatically regenerated");
+    }
 }

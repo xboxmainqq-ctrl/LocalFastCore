@@ -20,7 +20,9 @@ class BedrockLevelChunkCodecTest {
         assertEquals(3, reader.varInt32());
         assertEquals(0, reader.varInt32()); // Overworld dimension
         assertEquals(9, reader.varUInt32()); // four negative sections + positive sections Y=0..4
-        assertFalse(reader.bool()); // cache disabled; request limit and metadata are omitted
+        assertFalse(reader.bool()); // request subchunk limit absent
+        assertFalse(reader.bool()); // cache disabled
+        assertEquals(0, reader.varUInt32()); // empty blob-ID array is still serialized
         byte[] data = reader.byteArray();
         assertFalse(reader.bool()); // clientBiomeUpdate
         assertTrue(reader.exhausted());
@@ -81,7 +83,9 @@ class BedrockLevelChunkCodecTest {
         reader.varInt32();
         assertEquals(0, reader.varInt32()); // Overworld dimension
         assertEquals(1, reader.varUInt32()); // only section Y=-4 is non-empty
-        assertFalse(reader.bool()); // cache disabled; request limit and metadata are omitted
+        assertFalse(reader.bool()); // request subchunk limit absent
+        assertFalse(reader.bool()); // cache disabled
+        assertEquals(0, reader.varUInt32()); // empty blob-ID array is still serialized
         byte[] data = reader.byteArray();
         Reader subChunks = new Reader(data);
         assertEquals(9, subChunks.byteValue());
@@ -111,8 +115,10 @@ class BedrockLevelChunkCodecTest {
         reader.varInt32();
         reader.varInt32();
         assertEquals(0, reader.varInt32()); // Overworld dimension
-        assertEquals(0, reader.varUInt32()); // empty LevelDB chunk has no block subchunks
-        assertFalse(reader.bool()); // cache disabled; request limit and metadata are omitted
+        assertEquals(0, reader.varUInt32()); // empty chunk has no block subchunks
+        assertFalse(reader.bool()); // request subchunk limit absent
+        assertFalse(reader.bool()); // cache disabled
+        assertEquals(0, reader.varUInt32()); // empty blob-ID array is still serialized
         byte[] data = reader.byteArray();
         reader.bool();
         assertTrue(reader.exhausted());

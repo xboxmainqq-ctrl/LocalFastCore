@@ -65,7 +65,70 @@ public final class NexoraTerrainGenerator implements WorldGenerator {
                 chunk.setBlock(x, surface, z, top);
             }
         }
+        generateForestTrees(chunk, seed);
         generateAncientRuins(chunk, seed);
+    }
+
+
+    private static void generateForestTrees(WorldChunk chunk, long seed) {
+        final int spacing = 11;
+        int minX = chunk.chunkX() * 16;
+        int minZ = chunk.chunkZ() * 16;
+        int minCellX = Math.floorDiv(minX - 5, spacing);
+        int maxCellX = Math.floorDiv(minX + 20, spacing);
+        int minCellZ = Math.floorDiv(minZ - 5, spacing);
+        int maxCellZ = Math.floorDiv(minZ + 20, spacing);
+        for (int cellX = minCellX; cellX <= maxCellX; cellX++) {
+            for (int cellZ = minCellZ; cellZ <= maxCellZ; cellZ++) {
+                long key = seed ^ ((long) cellX * 0x9e3779b97f4a7c15L)
+                        ^ ((long) cellZ * 0xc2b2ae3d27d4eb4fL) ^ 0x6a09e667f3bcc909L;
+                int x = cellX * spacing + 2
+                        + (int) (unitHash(key ^ 0xbb67ae8584caa73bL) * 7.0);
+                int z = cellZ * spacing + 2
+                        + (int) (unitHash(key ^ 0x3c6ef372fe94f82bL) * 7.0);
+                if (Math.max(Math.abs(x), Math.abs(z)) < 78 || unitHash(key) > 0.76) continue;
+                int ground = surfaceHeight(x, z, seed);
+                if (ground < 60 || ground > 118 || riverStrength(x, z, seed) > 0.72) continue;
+                if (fractal(x, z, seed ^ 0xa54ff53a5f1d36f1L, 260) < -0.08
+                        || moisture(x, z, seed) < -0.25) continue;
+                int slope = Math.max(
+                        Math.max(Math.abs(ground - surfaceHeight(x + 3, z, seed)),
+                                Math.abs(ground - surfaceHeight(x - 3, z, seed))),
+                        Math.max(Math.abs(ground - surfaceHeight(x, z + 3, seed)),
+                                Math.abs(ground - surfaceHeight(x, z - 3, seed))));
+                if (slope > 3) continue;
+                int trunkHeight = 4 + (int) (unitHash(key ^ 0x510e527fade682d1L) * 4.0);
+                for (int y = ground + 1; y <= ground + trunkHeight; y++) {
+                    placeNaturalBlock(chunk, x, y, z, BlockType.OAK_LOG, seed, false);
+                }
+                int crownY = ground + trunkHeight;
+                for (int dy = -2; dy <= 1; dy++) {
+                    int radius = dy == 1 ? 1 : 2;
+                    for (int dx = -radius; dx <= radius; dx++) {
+                        for (int dz = -radius; dz <= radius; dz++) {
+                            long leafKey = key ^ ((long) (dx + 5) * 31L)
+                                    ^ ((long) (dz + 5) * 131L) ^ dy;
+                            if (Math.abs(dx) == radius && Math.abs(dz) == radius
+                                    && unitHash(leafKey) < 0.28) continue;
+                            placeNaturalBlock(chunk, x + dx, crownY + dy, z + dz,
+                                    BlockType.OAK_LEAVES, seed, true);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static void placeNaturalBlock(WorldChunk chunk, int worldX, int y, int worldZ,
+                                          BlockType type, long seed, boolean onlyAir) {
+        if (chunk.chunkX() != Math.floorDiv(worldX, 16)
+                || chunk.chunkZ() != Math.floorDiv(worldZ, 16)
+                || y < WorldChunk.MIN_Y + 1 || y > WorldChunk.MAX_Y
+                || y <= surfaceHeight(worldX, worldZ, seed)) return;
+        int localX = Math.floorMod(worldX, 16);
+        int localZ = Math.floorMod(worldZ, 16);
+        if (onlyAir && chunk.getBlock(localX, y, localZ) != BlockType.AIR) return;
+        chunk.setBlock(localX, y, localZ, type);
     }
 
     /**

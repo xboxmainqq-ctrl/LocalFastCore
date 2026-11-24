@@ -3442,14 +3442,14 @@ class BedrockSessionManagerTest {
         writeVarInt(out, 0); // normal transaction
         writeVarUInt(out, 2);
 
-        writeVarInt(out, 0); out.write(1); out.write(1); out.write(0);
+        writeVarInt(out, 0); out.write(1); // chest container ID
         writeVarUInt(out, 0);
         writeLittleEndianShort(out, 306); writeLittleEndianShort(out, 2);
         writeVarUInt(out, 0); out.write(0); writeVarUInt(out, 0); writeVarUInt(out, 0);
         writeLittleEndianShort(out, 0); writeLittleEndianShort(out, 0);
         out.write(0); out.write(0); out.write(0); out.write(0);
 
-        writeVarInt(out, 0); out.write(1); out.write(0); out.write(0);
+        writeVarInt(out, 0); out.write(0); // player inventory container ID
         writeVarUInt(out, 1);
         writeLittleEndianShort(out, 0); writeLittleEndianShort(out, 0);
         out.write(0); out.write(0); out.write(0); out.write(0);

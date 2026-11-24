@@ -139,7 +139,7 @@ class BedrockInventoryTransactionCodecTest {
                         new BedrockPacket(0x1e, 0, 0, withNetId), REGISTRY));
 
         byte[] malformedBoolean = transaction(action(0, 0, 0, empty(), stack(257, 1)));
-        malformedBoolean[6] = 2; // first descriptor's hasNetId flag
+        malformedBoolean[10] = 2; // first descriptor's hasNetId flag
         assertThrows(IllegalArgumentException.class,
                 () -> BedrockInventoryTransactionCodec.decode(
                         new BedrockPacket(0x1e, 0, 0, malformedBoolean), REGISTRY));
@@ -165,6 +165,25 @@ class BedrockInventoryTransactionCodecTest {
         assertThrows(IllegalArgumentException.class,
                 () -> BedrockInventoryTransactionCodec.decode(
                         new BedrockPacket(0x1e, 0, 0, new byte[] {0, 0, 65}), REGISTRY));
+    }
+
+    @Test
+    void decodesProtocol2225InventorySourcesWithoutPresenceBooleans() {
+        byte[] global = transaction(action(1, -1, 3, empty(), stack(257, 1)));
+        var globalDecoded = BedrockInventoryTransactionCodec.decode(
+                new BedrockPacket(0x1e, 0, 0, global), REGISTRY);
+        assertEquals(1, globalDecoded.actions().getFirst().sourceType());
+        assertEquals(-1, globalDecoded.actions().getFirst().containerId());
+
+        byte[] world = transaction(action(2, -1, 0, empty(), empty()));
+        var worldDecoded = BedrockInventoryTransactionCodec.decode(
+                new BedrockPacket(0x1e, 0, 0, world), REGISTRY);
+        assertEquals(2, worldDecoded.actions().getFirst().sourceType());
+
+        byte[] creative = transaction(action(3, -1, 0, empty(), empty()));
+        var creativeDecoded = BedrockInventoryTransactionCodec.decode(
+                new BedrockPacket(0x1e, 0, 0, creative), REGISTRY);
+        assertEquals(3, creativeDecoded.actions().getFirst().sourceType());
     }
 
     @Test
@@ -233,9 +252,8 @@ class BedrockInventoryTransactionCodecTest {
     private static byte[] action(int sourceType, int containerId, int slot, byte[] from, byte[] to) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         writeVarUInt(out, sourceType);
-        out.write(1); // Container ID is present
-        out.write(containerId);
-        out.write(0); // Source flags are absent
+        if (sourceType == 0 || sourceType == 99999) out.write(containerId);
+        else if (sourceType == 2) writeVarUInt(out, 0); // World-interaction flags
         writeVarUInt(out, slot);
         out.writeBytes(from);
         out.writeBytes(to);

@@ -2784,8 +2784,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         } catch (IllegalArgumentException exception) {
             throw new SecurityException("Malformed Bedrock CommandRequest", exception);
         }
-        if (!"Player".equals(command.originType()) || command.internal()
-                || command.playerId() != state.entityId) {
+        if (!"Player".equals(command.originType()) || command.internal()) {
             throw new SecurityException("CommandRequest origin does not match the authenticated player");
         }
 

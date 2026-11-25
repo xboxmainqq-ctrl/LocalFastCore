@@ -80,32 +80,40 @@ class LicenseManagerTest {
     }
 
     @Test
-    void promptsAndPersistsValidLicense() throws Exception {
+    void loadsAndReusesValidOwnerLicenseFromSeparateFile() throws Exception {
         KeyPair pair = keyPair();
         UUID instance = UUID.randomUUID();
         Files.writeString(temporaryDirectory.resolve("instance.id"), instance.toString());
-        String token = token(pair, "LIC-005", instance, Instant.now().plusSeconds(3600).getEpochSecond());
-        var input = new BufferedReader(new InputStreamReader(
-                new ByteArrayInputStream((token + "\n").getBytes(StandardCharsets.US_ASCII))));
-        var output = new PrintStream(new ByteArrayOutputStream());
+        String token = token(pair, "NEXORA-OWNER", instance, Long.MAX_VALUE);
+        Files.writeString(temporaryDirectory.resolve("license.key"), token, StandardCharsets.US_ASCII);
+        var outputBytes = new ByteArrayOutputStream();
+        var output = new PrintStream(outputBytes);
 
-        var license = LicenseManager.activateOrValidate(temporaryDirectory, input, output, pair.getPublic());
+        var license = LicenseManager.activateOrValidate(temporaryDirectory,
+                new BufferedReader(new InputStreamReader(new ByteArrayInputStream(new byte[0]))),
+                output, pair.getPublic());
 
-        assertEquals("LIC-005", license.licenseId());
-        assertEquals(token, Files.readString(temporaryDirectory.resolve("license.key")).trim());
+        assertEquals("NEXORA-OWNER", license.licenseId());
+        assertEquals(Long.MAX_VALUE, license.expiresAtEpochSeconds());
+        assertTrue(outputBytes.toString(StandardCharsets.UTF_8).contains("бессрочно"));
         var secondStart = LicenseManager.activateOrValidate(temporaryDirectory,
                 new BufferedReader(new InputStreamReader(new ByteArrayInputStream(new byte[0]))),
                 output, pair.getPublic());
-        assertEquals("LIC-005", secondStart.licenseId());
+        assertEquals("NEXORA-OWNER", secondStart.licenseId());
     }
 
     @Test
-    void refusesEmptyConsoleInput() throws Exception {
+    void startsUnofficialWhenOwnerLicenseIsInvalid() throws Exception {
         KeyPair pair = keyPair();
-        var input = new BufferedReader(new InputStreamReader(new ByteArrayInputStream(new byte[0])));
-        var output = new PrintStream(new ByteArrayOutputStream());
-        assertThrows(IllegalStateException.class, () ->
-                LicenseManager.activateOrValidate(temporaryDirectory, input, output, pair.getPublic()));
+        UUID instance = UUID.randomUUID();
+        Files.writeString(temporaryDirectory.resolve("instance.id"), instance.toString());
+        Files.writeString(temporaryDirectory.resolve("license.key"), "not-a-valid-token", StandardCharsets.US_ASCII);
+        var outputBytes = new ByteArrayOutputStream();
+        var license = LicenseManager.activateOrValidate(temporaryDirectory,
+                new BufferedReader(new InputStreamReader(new ByteArrayInputStream(new byte[0]))),
+                new PrintStream(outputBytes), pair.getPublic());
+        assertEquals("DEV-UNOFFICIAL", license.licenseId());
+        assertTrue(outputBytes.toString(StandardCharsets.UTF_8).contains("Startup is allowed"));
     }
 
     private KeyPair keyPair() throws Exception {

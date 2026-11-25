@@ -6255,33 +6255,40 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 || world.getBlock(placeX, placeY, placeZ) != BlockType.AIR
                 || intersectsPlayer(state, placeX, placeY, placeZ)) return;
 
-        List<Optional<ItemStack>> before = state.inventory.snapshot();
+        // Survival consumes one placed block; creative placement must leave the
+        // selected stack untouched. Persist inventory before mutating the world so
+        // a failed save can never create a free survival block.
+        List<Optional<ItemStack>> before = state.creativeMode ? null : state.inventory.snapshot();
         int selectedSlot = state.inventory.selectedHotbarSlot();
-        state.inventory.setSlot(transaction.slot(),
-                held.count() == 1 ? null : held.withCount(held.count() - 1));
-        try {
-            saveInventory(state);
-        } catch (IOException | RuntimeException exception) {
-            state.inventory.restore(before, selectedSlot);
-            sendInventoryAndEquipmentState(networkId, state);
-            System.err.println("NEXORA: unable to persist block placement inventory: " + exception.getMessage());
-            return;
+        if (!state.creativeMode) {
+            state.inventory.setSlot(transaction.slot(),
+                    held.count() == 1 ? null : held.withCount(held.count() - 1));
+            try {
+                saveInventory(state);
+            } catch (IOException | RuntimeException exception) {
+                state.inventory.restore(before, selectedSlot);
+                sendInventoryAndEquipmentState(networkId, state);
+                System.err.println("NEXORA: unable to persist block placement inventory: " + exception.getMessage());
+                return;
+            }
         }
 
         try {
             world.setBlock(placeX, placeY, placeZ, placedType);
         } catch (RuntimeException exception) {
-            state.inventory.restore(before, selectedSlot);
-            try {
-                saveInventory(state);
-            } catch (IOException rollbackFailure) {
-                exception.addSuppressed(rollbackFailure);
+            if (!state.creativeMode) {
+                state.inventory.restore(before, selectedSlot);
+                try {
+                    saveInventory(state);
+                } catch (IOException rollbackFailure) {
+                    exception.addSuppressed(rollbackFailure);
+                }
+                sendInventoryAndEquipmentState(networkId, state);
             }
-            sendInventoryAndEquipmentState(networkId, state);
             return;
         }
 
-        sendInventoryAndEquipmentState(networkId, state);
+        if (!state.creativeMode) sendInventoryAndEquipmentState(networkId, state);
     }
 
     private static FoodStats foodStats(String itemId) {

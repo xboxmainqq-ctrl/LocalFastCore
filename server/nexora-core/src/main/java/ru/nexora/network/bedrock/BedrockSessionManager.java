@@ -6747,8 +6747,15 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             return;
         }
 
-        if (action.action() != 2 && action.action() != 26 && action.action() != 27) return;
-        // STOP / PREDICT / CONTINUE_DESTROY_BLOCK
+        if (action.action() == 13) { // CREATIVE_DESTROY_BLOCK is an immediate client-authoritative action.
+            if (!state.creativeMode || !isWithinBlockReach(state, action.x(), action.y(), action.z())) return;
+            BlockType type = world.getBlock(action.x(), action.y(), action.z());
+            if (type == BlockType.AIR || type == BlockType.BEDROCK) return;
+            state.breakTarget = new BreakTarget(action.x(), action.y(), action.z(), nanoTime.getAsLong());
+        }
+        if (action.action() != 2 && action.action() != 13
+                && action.action() != 26 && action.action() != 27) return;
+        // STOP / PREDICT / CONTINUE_DESTROY_BLOCK / CREATIVE_DESTROY_BLOCK
         BreakTarget target = state.breakTarget;
         if (target == null || !matchesBreakTarget(target, action)) return;
 

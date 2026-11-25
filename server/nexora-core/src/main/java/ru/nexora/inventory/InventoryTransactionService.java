@@ -65,7 +65,7 @@ public final class InventoryTransactionService {
         synchronized (inventory) {
             synchronized (equipment) {
                 java.util.Set<String> touched = new java.util.HashSet<>();
-                java.util.Map<String, Integer> itemDeltas = new java.util.HashMap<>();
+                java.util.Map<ItemStack, Integer> itemDeltas = new java.util.HashMap<>();
                 List<PendingChange> pending = new ArrayList<>(actions.size());
 
                 for (Action action : actions) {
@@ -102,8 +102,8 @@ public final class InventoryTransactionService {
                             return Result.INCOMPATIBLE_EQUIPMENT_ITEM;
                         }
                     }
-                    current.ifPresent(stack -> itemDeltas.merge(stack.itemId(), -stack.count(), Integer::sum));
-                    replacement.ifPresent(stack -> itemDeltas.merge(stack.itemId(), stack.count(), Integer::sum));
+                    current.ifPresent(stack -> itemDeltas.merge(stack.withCount(1), -stack.count(), Integer::sum));
+                    replacement.ifPresent(stack -> itemDeltas.merge(stack.withCount(1), stack.count(), Integer::sum));
                     pending.add(new PendingChange(container, slot, replacement));
                 }
 

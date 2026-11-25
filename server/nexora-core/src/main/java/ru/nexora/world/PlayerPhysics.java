@@ -169,7 +169,14 @@ public final class PlayerPhysics {
 
         double landingY = raisedY;
         boolean foundGround = false;
-        for (int i = 1; i <= 24; i++) {
+        // Check the fully raised position first. Starting one sample lower can
+        // already intersect the side of the step, causing a valid landing to be
+        // rejected before its support surface is examined.
+        if (WorldCollision.canOccupy(world, targetX, landingY, targetZ)
+                && WorldCollision.isOnGround(world, targetX, landingY, targetZ, 0.12)) {
+            foundGround = true;
+        }
+        for (int i = 1; !foundGround && i <= 24; i++) {
             double candidateY = raisedY - i * 0.05;
             if (!WorldCollision.canOccupy(world, targetX, candidateY, targetZ)) break;
             landingY = candidateY;

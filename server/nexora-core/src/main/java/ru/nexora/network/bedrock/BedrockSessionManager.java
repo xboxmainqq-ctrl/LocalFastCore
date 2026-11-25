@@ -6322,15 +6322,27 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         try {
             world.setBlock(placeX, placeY, placeZ, placedType);
         } catch (RuntimeException exception) {
-            if (!state.creativeMode) {
+            boolean blockWasCommitted;
+            try {
+                // World listeners may fail after the chunk has already been mutated.
+                // Inspect the authoritative block before deciding whether to refund
+                // the item; refunding after a committed placement creates free blocks.
+                blockWasCommitted = world.getBlock(placeX, placeY, placeZ) == placedType;
+            } catch (RuntimeException reconciliationFailure) {
+                exception.addSuppressed(reconciliationFailure);
+                blockWasCommitted = true; // Unknown outcome: prefer no item duplication.
+            }
+            if (!state.creativeMode && !blockWasCommitted) {
                 state.inventory.restore(before, selectedSlot);
                 try {
                     saveInventory(state);
-                } catch (IOException rollbackFailure) {
+                } catch (IOException | RuntimeException rollbackFailure) {
                     exception.addSuppressed(rollbackFailure);
                 }
-                sendInventoryAndEquipmentState(networkId, state);
             }
+            if (!state.creativeMode) sendInventoryAndEquipmentState(networkId, state);
+            System.err.println("NEXORA: block placement " + (blockWasCommitted ? "committed with listener error" : "rolled back")
+                    + " for " + networkId + ": " + exception.getMessage());
             return;
         }
 
@@ -7695,9 +7707,28 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         List<Optional<ru.nexora.inventory.ItemStack>> previousInventory = state.inventory.snapshot();
         int previousSelectedSlot = state.inventory.selectedHotbarSlot();
-        boolean pickedUp = world.itemEntities().pickup(
-                entity.runtimeId(), state.inventory, state.identity.xuid(),
-                state.positionX, state.positionY, state.positionZ, System.currentTimeMillis());
+        boolean pickedUp;
+        try {
+            pickedUp = world.itemEntities().pickup(
+                    entity.runtimeId(), state.inventory, state.identity.xuid(),
+                    state.positionX, state.positionY, state.positionZ, System.currentTimeMillis());
+        } catch (RuntimeException exception) {
+            // The item manager rolls back both inventory and actor state when its
+            // durable snapshot cannot be written. Reconcile the client instead of
+            // allowing a storage hiccup to tear down the Bedrock session.
+            sendInventoryAndEquipmentState(networkId, state);
+            world.itemEntities().find(entity.runtimeId()).ifPresent(current -> {
+                try {
+                    sendPacket(networkId,
+                            BedrockAddItemActorCodec.createAddItemActor(current, itemRegistry), true);
+                } catch (RuntimeException syncFailure) {
+                    exception.addSuppressed(syncFailure);
+                }
+            });
+            System.err.println("NEXORA: item pickup was rolled back for " + networkId
+                    + ": " + exception.getMessage());
+            return;
+        }
         if (!pickedUp) {
             sendPacket(networkId, BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry), true);
             return;

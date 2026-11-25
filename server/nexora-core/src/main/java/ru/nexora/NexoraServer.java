@@ -38,6 +38,7 @@ import ru.nexora.modules.ModuleRegistry;
 import ru.nexora.lifecycle.ServerReadiness;
 import ru.nexora.config.NexoraServerConfig;
 import ru.nexora.security.BuildSignatureVerifier;
+import ru.nexora.security.LicenseManager;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -58,6 +59,10 @@ public final class NexoraServer {
     }
 
     public static void main(String[] args) throws Exception {
+        BufferedReader consoleInput = new BufferedReader(new InputStreamReader(System.in));
+        String licenseDataDirectory = System.getenv().getOrDefault("NEXORA_DATA_DIR", "data");
+        LicenseManager.activateOrValidate(Path.of(licenseDataDirectory), consoleInput, System.out);
+
         BuildSignatureVerifier.Result buildSignature = BuildSignatureVerifier.verifyCurrentBuild();
         System.out.printf("[NEXORA] Signature: %s (%s)%n", buildSignature.status(), buildSignature.detail());
         if (buildSignature.valid()) {
@@ -317,7 +322,7 @@ public final class NexoraServer {
         }
         readiness.markReady();
         startAiConsole(gameplayRuntime.assistant(), diagnosticsRuntime.safeRepairs(),
-                bedrockSessions, transport, transferNodeId, transferLedger, configuredClusterTransport);
+                bedrockSessions, transport, transferNodeId, transferLedger, configuredClusterTransport, consoleInput);
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             readiness.beginShutdown();
@@ -388,10 +393,11 @@ public final class NexoraServer {
             CloudburstNetherNetTransport transport,
             String localNodeId,
             DurableHandoffCoordinator transferLedger,
-            java.util.Optional<ClusterTransportFactory.ConfiguredTransport> clusterTransport
+            java.util.Optional<ClusterTransportFactory.ConfiguredTransport> clusterTransport,
+            BufferedReader input
     ) {
         Thread console = new Thread(() -> {
-            try (BufferedReader input = new BufferedReader(new InputStreamReader(System.in))) {
+            try {
                 String line;
                 while ((line = input.readLine()) != null) {
                     String command = line.trim();

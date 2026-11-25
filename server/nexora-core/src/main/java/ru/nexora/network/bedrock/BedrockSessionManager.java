@@ -7738,10 +7738,38 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             saveInventory(state);
         } catch (IOException exception) {
             state.inventory.restore(previousInventory, previousSelectedSlot);
-            world.itemEntities().restore(entity);
-            sendInventoryAndEquipmentState(networkId, state);
-            sendPacket(networkId, BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry), true);
-            throw new IllegalStateException("Unable to persist picked-up item inventory", exception);
+            try {
+                world.itemEntities().restore(entity);
+            } catch (RuntimeException restoreFailure) {
+                exception.addSuppressed(restoreFailure);
+                System.err.println("NEXORA: unable to restore picked-up world item " + entity.runtimeId()
+                        + " after inventory save failure: " + restoreFailure.getMessage());
+            }
+
+            // A stale transfer fence is an ownership/security failure and must still
+            // stop this session. Ordinary storage I/O failures, however, are rolled
+            // back and should not disconnect an otherwise valid player.
+            try {
+                assertTransferFence(state);
+            } catch (IOException ownershipFailure) {
+                ownershipFailure.addSuppressed(exception);
+                throw new IllegalStateException("Player transfer ownership changed during item pickup",
+                        ownershipFailure);
+            }
+
+            try {
+                sendInventoryAndEquipmentState(networkId, state);
+                world.itemEntities().find(entity.runtimeId()).ifPresent(current ->
+                        sendPacket(networkId,
+                                BedrockAddItemActorCodec.createAddItemActor(current, itemRegistry), true));
+            } catch (RuntimeException syncFailure) {
+                exception.addSuppressed(syncFailure);
+                System.err.println("NEXORA: unable to reconcile client after item pickup rollback for "
+                        + networkId + ": " + syncFailure.getMessage());
+            }
+            System.err.println("NEXORA: item pickup rolled back because inventory could not be saved for "
+                    + networkId + ": " + exception.getMessage());
+            return;
         }
         sendInventoryAndEquipmentState(networkId, state);
         sendItemPickupAcknowledgement(networkId, entity.runtimeId(), state.entityId);

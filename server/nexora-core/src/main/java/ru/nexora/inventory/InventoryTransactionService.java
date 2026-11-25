@@ -37,7 +37,7 @@ public final class InventoryTransactionService {
             if (action.slot() < 0 || action.slot() >= inventory.size()) {
                 return Result.INVALID_SLOT;
             }
-            if (!touchedSlots.add(action.slot())) return Result.INVALID_ACTION;
+            if (!touchedSlots.add(action.slot())) return Result.REJECTED_STALE_OR_UNSAFE;
             Optional<ItemStack> current = inventory.getSlot(action.slot());
             if (!current.equals(action.from())) return Result.REJECTED_STALE_OR_UNSAFE;
             current.ifPresent(stack -> itemDeltas.merge(stack.withCount(1), -stack.count(), Integer::sum));

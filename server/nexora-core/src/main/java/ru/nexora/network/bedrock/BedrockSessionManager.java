@@ -7164,7 +7164,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             // global byte budget defers a large but valid frame until the next window.
             drainOutboundForSession(networkId);
 
-            if (!state.gameStarted || state.clientInitialized || state.rejected
+            if (!state.gameStarted || state.rejected
                     || state.chunkStreamingQueue == null) continue;
             try {
                 processChunkStreaming(networkId, state);

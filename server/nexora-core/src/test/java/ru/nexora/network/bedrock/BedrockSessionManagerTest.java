@@ -57,6 +57,8 @@ class BedrockSessionManagerTest {
             manager.onIdentity("pickup-guard-player", new NetherNetClientIdentity(
                     "pickup-guard-token", new byte[] {1}, "pickup-guard-xuid",
                     "PickupGuardPlayer", "pickup-guard-playfab", "20CA2", null));
+            manager.setItemRegistry(BedrockVanillaItemCatalog.createRegistry());
+            setSessionField(manager, "pickup-guard-player", "entityId", 777L);
             setSessionField(manager, "pickup-guard-player", "loginAuthenticated", true);
             setSessionField(manager, "pickup-guard-player", "clientInitialized", true);
             setSessionField(manager, "pickup-guard-player", "positionInitialized", true);

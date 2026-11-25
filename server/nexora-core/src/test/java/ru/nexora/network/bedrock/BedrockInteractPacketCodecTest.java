@@ -16,7 +16,7 @@ class BedrockInteractPacketCodecTest {
 
     @Test
     void decodesInteractUpdatePositionOnlyForItsAction() {
-        byte[] payload = new byte[] {4, 1, 0, 0, 0, 0, 0, (byte) 0x80, 0x3f,
+        byte[] payload = new byte[] {4, 1, 0, 0, 0, 0, 0, 0, (byte) 0x80, 0x3f,
                 0, 0, 0, 0x40};
         var decoded = BedrockInteractPacketCodec.decode(new BedrockPacket(0x21, 0, 0, payload));
 

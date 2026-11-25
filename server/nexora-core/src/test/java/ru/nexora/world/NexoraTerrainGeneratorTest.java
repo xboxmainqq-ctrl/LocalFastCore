@@ -45,6 +45,29 @@ class NexoraTerrainGeneratorTest {
     }
 
     @Test
+    void carvesLargeUndergroundCavesWithoutBreakingSurfaceOrBedrock() {
+        NexoraTerrainGenerator generator = new NexoraTerrainGenerator();
+        WorldChunk chunk = new WorldChunk(8, 8);
+        generator.generate(chunk, 0x4e45584f5241L);
+
+        int carved = 0;
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                int worldX = chunk.chunkX() * 16 + x;
+                int worldZ = chunk.chunkZ() * 16 + z;
+                int surface = NexoraTerrainGenerator.surfaceHeight(worldX, worldZ, 0x4e45584f5241L);
+                assertNotEquals(BlockType.AIR, chunk.getBlock(x, surface, z),
+                        "terrain surface must remain intact");
+                assertEquals(BlockType.BEDROCK, chunk.getBlock(x, WorldChunk.MIN_Y, z));
+                for (int y = WorldChunk.MIN_Y + 5; y <= surface - 5; y++) {
+                    if (chunk.getBlock(x, y, z) == BlockType.AIR) carved++;
+                }
+            }
+        }
+        assertTrue(carved > 100, "the generated chunk should contain substantial underground cave space");
+    }
+
+    @Test
     void neighboringChunksUseIdenticalBorderHeightsAndNaturalLayers() {
         NexoraTerrainGenerator generator = new NexoraTerrainGenerator();
         WorldChunk left = new WorldChunk(0, 0);

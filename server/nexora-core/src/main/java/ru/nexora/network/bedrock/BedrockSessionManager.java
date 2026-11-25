@@ -2839,7 +2839,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
     private void sendNexoraBuildStatus(String networkId) {
         ru.nexora.security.BuildSignatureVerifier.Result result =
                 ru.nexora.security.BuildSignatureVerifier.verifyCurrentBuild();
-        String version = getClass().getPackage().getImplementationVersion();
+        String version = ru.nexora.NexoraServer.class.getPackage().getImplementationVersion();
         if (version == null || version.isBlank()) version = "не указана";
         String status = switch (result.status()) {
             case VALID -> "§aОФИЦИАЛЬНОЕ ЯДРО — ПОДПИСЬ ПОДТВЕРЖДЕНА";

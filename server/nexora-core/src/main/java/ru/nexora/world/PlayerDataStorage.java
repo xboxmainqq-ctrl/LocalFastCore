@@ -69,40 +69,13 @@ public final class PlayerDataStorage {
         }
 
         if (fileBytes.size() > MAX_FILE_BYTES) throw new IOException("NEXORA player profile exceeds size limit");
-        Path backup = backupPath(target);
-        rejectSymlink(backup);
-        if (Files.exists(target)) {
-            // Never rotate an unverified profile into the recovery slot.
-            load(player.xuid());
-            ru.nexora.persistence.AtomicFileWriter.writeAtomically(backup, Files.readAllBytes(target));
-        }
-        ru.nexora.persistence.AtomicFileWriter.writeAtomically(target, fileBytes.toByteArray());
+        ru.nexora.persistence.BackupFile.write(
+                target, fileBytes.toByteArray(), file -> readProfile(file, player.xuid()));
     }
 
     public Optional<PlayerData> load(String xuid) throws IOException {
         Path file = playerPath(xuid);
-        Path backup = backupPath(file);
-        rejectSymlink(file);
-        rejectSymlink(backup);
-        if (!Files.exists(file)) {
-            if (!Files.exists(backup)) return Optional.empty();
-            PlayerData recovered = readProfile(backup, xuid);
-            ru.nexora.persistence.AtomicFileWriter.writeAtomically(file, Files.readAllBytes(backup));
-            return Optional.of(recovered);
-        }
-        try {
-            return Optional.of(readProfile(file, xuid));
-        } catch (IOException primaryFailure) {
-            if (!Files.exists(backup)) throw primaryFailure;
-            try {
-                PlayerData recovered = readProfile(backup, xuid);
-                ru.nexora.persistence.AtomicFileWriter.writeAtomically(file, Files.readAllBytes(backup));
-                return Optional.of(recovered);
-            } catch (IOException backupFailure) {
-                primaryFailure.addSuppressed(backupFailure);
-                throw primaryFailure;
-            }
-        }
+        return ru.nexora.persistence.BackupFile.load(file, candidate -> readProfile(candidate, xuid));
     }
 
     private PlayerData readProfile(Path file, String xuid) throws IOException {
@@ -149,10 +122,6 @@ public final class PlayerDataStorage {
                 throw new IOException("Invalid NEXORA player profile values", exception);
             }
         }
-    }
-
-    private static Path backupPath(Path file) {
-        return file.resolveSibling(file.getFileName() + ".bak");
     }
 
     private Path playerPath(String xuid) {

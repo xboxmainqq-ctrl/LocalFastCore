@@ -170,7 +170,7 @@ public final class LicenseManager {
         try (var input = LicenseManager.class.getResourceAsStream(PUBLIC_KEY_RESOURCE)) {
             if (input == null) return null;
             String encoded = new String(input.readAllBytes(), StandardCharsets.US_ASCII).trim();
-            if (encoded.isEmpty() || encoded.equals("UNCONFIGURED")) return null;
+            if (encoded.isEmpty() || encoded.equals("UNCONFIGURED") || encoded.equals("DEV-UNOFFICIAL")) return null;
             byte[] der = Base64.getMimeDecoder().decode(encoded);
             return KeyFactory.getInstance("Ed25519").generatePublic(new X509EncodedKeySpec(der));
         }

@@ -123,7 +123,10 @@ class BedrockChunkRadiusIntegrationTest {
             assertEquals(4, sentChunks(session).size());
             assertNotNull(field(session, "chunkStreamingQueue"));
 
+            // Each tick gets a fresh streaming-budget window in production.
+            clock.addAndGet(ChunkStreamingBudget.DEFAULT_WINDOW_NANOS);
             manager.tickInitialChunkStreams();
+            clock.addAndGet(ChunkStreamingBudget.DEFAULT_WINDOW_NANOS);
             manager.tickInitialChunkStreams();
 
             assertEquals(9, sentChunks(session).size());

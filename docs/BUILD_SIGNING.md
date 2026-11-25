@@ -48,27 +48,30 @@ private key. It does not stop someone from redistributing an unchanged official
 JAR, and it cannot prevent a modified fork from removing its own verifier.
 
 
-## Mandatory license activation
+## License activation: unofficial default and official owner key
 
-NEXORA requires a separate Ed25519-signed license before starting network or
-gameplay services. This is independent from the build signature above.
+NEXORA has two license states:
 
-- On first launch, the console displays a stable **Server ID** and asks for a
-  license key. Empty input, a malformed key, an invalid signature, an expired
-  license, or a key issued for another Server ID stops startup.
-- A successful key is saved in `NEXORA_DATA_DIR/license.key`; the generated
-  `instance.id` is stored beside it. Keep both files together when moving the
-  same licensed server installation.
-- The license public key is pinned in
-  `src/main/resources/META-INF/nexora-license-public-key.b64`. Replace
-  `UNCONFIGURED` with the Base64 DER Ed25519 public key before building.
-- Keep the matching private key offline. It is the only authority that can
-  issue license tokens. Never put it in this repository, the server JAR, or chat.
-- The signed token contains the format version, license ID, Server ID, and
-  expiration time. VK bot issuance/management will use this exact token format;
-  the bot must never receive or store the private signing key in public code.
+- **Development / unofficial** is the built-in default. If no official license
+  public key is pinned in the JAR, the server creates or reuses `data/instance.id`
+  and starts without asking for a key. This is deliberately marked
+  `DEV-UNOFFICIAL`; it is not an official license and must not be presented as
+  one.
+- **Official license** is a separate Ed25519-signed token issued for the exact
+  Server ID. When the official public key is configured in
+  `src/main/resources/META-INF/nexora-license-public-key.b64`, the console
+  requires a valid token on first launch. Invalid, expired, or mismatched keys
+  stop startup. A valid token is saved as `data/license.key`.
 
-Generate a dedicated license key pair (do not reuse the build-signing key):
+The Server ID is generated on the first launch and printed in the console. Run
+`/nexora` in-game to view whether the current server is using the unofficial
+development mode or an active official license. The command also reports the
+build-signature status separately.
+
+### Owner key setup
+
+The owner’s official license is not embedded in the public repository. Generate
+a dedicated Ed25519 key pair on a trusted computer:
 
 ```sh
 openssl genpkey -algorithm ED25519 -out nexora-license-private.pem
@@ -76,7 +79,20 @@ openssl pkey -in nexora-license-private.pem -pubout -outform DER \
   | base64 -w0 > nexora-license-public-key.b64
 ```
 
-The console activation path is fail-closed. Until the license public key is
-pinned and a trusted issuer (the planned VK bot/license service) has issued a
-matching token, startup is intentionally blocked. Do not distribute this
-intermediate build as a ready-to-run server.
+1. Keep `nexora-license-private.pem` offline and backed up securely. Never
+   commit it, put it in the JAR, or send it in chat.
+2. Pin only the Base64 public key in the resource file and rebuild the core.
+3. After the server prints its Server ID, issue one signed license token for
+   that ID. The token can then be kept separately and entered in the server
+   console on the first official launch.
+
+The license token format remains
+`base64url(payload).base64url(ed25519-signature)`, with the signed payload
+`NEXORA-LICENSE|1|<licenseId>|<serverId>|<expiresAtEpochSeconds>`.
+The private signing key is the issuer authority; the token is the actual
+server license. Do not confuse the two.
+
+The current Server ID is a generated UUID stored in `data/instance.id`, not a
+hardware fingerprint. Copying both `instance.id` and `license.key` can copy
+the identity to another installation. Offline expiry also depends on the
+server's system clock; online revocation and VK issuance are future work.

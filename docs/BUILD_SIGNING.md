@@ -81,10 +81,23 @@ openssl pkey -in nexora-license-private.pem -pubout -outform DER \
 
 1. Keep `nexora-license-private.pem` offline and backed up securely. Never
    commit it, put it in the JAR, or send it in chat.
-2. Pin only the Base64 public key in the resource file and rebuild the core.
-3. After the server prints its Server ID, issue one signed license token for
-   that ID. The token can then be kept separately and entered in the server
-   console on the first official launch.
+2. Pin only the Base64 public key in
+   `server/nexora-core/src/main/resources/META-INF/nexora-license-public-key.b64`
+   and rebuild the core. The public key is safe to publish; the private key is not.
+3. Issue the perpetual owner token on the trusted computer (requires OpenSSL):
+
+   ```sh
+   tools/issue-nexora-license.sh nexora-license-private.pem <SERVER-ID> NEXORA-OWNER
+   ```
+
+   The script prints one token. Save it privately as your separate owner key;
+   do not commit it or post it publicly. It is bound to the exact Server ID.
+4. Enter that token in the server console on the first official launch. NEXORA
+   saves it as `data/license.key` and reports the expiry as **бессрочно**.
+
+The issuer uses the signed expiry value `9223372036854775807` (Java
+`Long.MAX_VALUE`) for a perpetual license. The core validates it like any
+other signed token; no date conversion overflow occurs when displaying it.
 
 The license token format remains
 `base64url(payload).base64url(ed25519-signature)`, with the signed payload

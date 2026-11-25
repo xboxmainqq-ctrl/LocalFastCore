@@ -50,6 +50,17 @@ class LicenseManagerTest {
     }
 
     @Test
+    void acceptsPerpetualLicense() throws Exception {
+        KeyPair pair = keyPair();
+        UUID instance = UUID.randomUUID();
+        String token = token(pair, "NEXORA-OWNER", instance, Long.MAX_VALUE);
+        var license = LicenseManager.verifyToken(token, pair.getPublic(), instance);
+        assertEquals("NEXORA-OWNER", license.licenseId());
+        assertEquals(Long.MAX_VALUE, license.expiresAtEpochSeconds());
+        assertFalse(license.expired());
+    }
+
+    @Test
     void rejectsExpiredLicense() throws Exception {
         KeyPair pair = keyPair();
         UUID instance = UUID.randomUUID();

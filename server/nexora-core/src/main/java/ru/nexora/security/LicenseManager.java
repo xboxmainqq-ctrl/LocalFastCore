@@ -45,7 +45,14 @@ public final class LicenseManager {
         if (publicKey == null) {
             throw new IllegalStateException("NEXORA license public key is not configured. Startup is blocked.");
         }
+        return activateOrValidate(dataDirectory, console, output, publicKey);
+    }
 
+    static License activateOrValidate(Path dataDirectory, BufferedReader console, PrintStream output,
+            PublicKey publicKey) throws IOException, GeneralSecurityException {
+        if (publicKey == null) {
+            throw new IllegalStateException("NEXORA license public key is not configured. Startup is blocked.");
+        }
         Files.createDirectories(dataDirectory);
         UUID instanceId = loadOrCreateInstanceId(dataDirectory);
         Path licensePath = dataDirectory.resolve(LICENSE_FILE);

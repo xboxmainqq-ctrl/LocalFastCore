@@ -5820,6 +5820,17 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         double movementLimit = Math.min(4.0, Math.max(0.9, tickDelta * 0.8));
         if (!Double.isFinite(distance) || distance > movementLimit) return;
 
+        // Creative flight removes gravity, not the player's collision box. Load the
+        // destination footprint before the read-only swept collision check so a
+        // legitimate flight across a chunk boundary is not mistaken for a solid wall.
+        ensureActorFootprintChunksLoaded(input.x(), input.z());
+        if (!WorldCollision.canMove(world,
+                state.positionX, state.positionY, state.positionZ,
+                input.x(), input.y(), input.z())) {
+            sendMovementCorrection(networkId, state, input.tick());
+            return;
+        }
+
         state.positionX = input.x();
         state.positionY = input.y();
         state.positionZ = input.z();

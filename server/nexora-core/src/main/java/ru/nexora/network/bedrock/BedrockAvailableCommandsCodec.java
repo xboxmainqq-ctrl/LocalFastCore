@@ -20,9 +20,10 @@ public final class BedrockAvailableCommandsCodec {
         writeArrayCount(out, 0); // Enum Data
         writeArrayCount(out, 0); // Chained Subcommand Data
 
-        writeArrayCount(out, 2); // Commands
+        writeArrayCount(out, 3); // Commands
         writeCommand(out, "equipment", "Open the NEXORA magical equipment menu");
         writeCommand(out, "ai", "Open the NEXORA AI assistant");
+        writeCommand(out, "nexora", "Verify NEXORA core authenticity and integrity");
 
         writeArrayCount(out, 0); // Soft Enums
         writeArrayCount(out, 0); // Constraints

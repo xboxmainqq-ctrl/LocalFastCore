@@ -95,7 +95,9 @@ class PlayerPhysicsTest {
         PlayerPhysics.State state = PlayerPhysics.spawn(world, 0.5, 65.0, 0.5);
         PlayerPhysics.Input forward = new PlayerPhysics.Input(0, 1, -90, false, false);
 
-        for (int i = 0; i < 24; i++) {
+        // Stop shortly after climbing; walking for 24 ticks would carry the
+        // player off the far edge of this isolated one-block platform.
+        for (int i = 0; i < 4; i++) {
             state = PlayerPhysics.tick(world, state, forward, 0.05);
         }
 

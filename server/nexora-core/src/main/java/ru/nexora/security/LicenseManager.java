@@ -24,7 +24,6 @@ public final class LicenseManager {
     private static final String PUBLIC_KEY_RESOURCE = "/META-INF/nexora-license-public-key.b64";
     private static final String LICENSE_FILE = "license.key";
     private static final String INSTANCE_FILE = "instance.id";
-    private static final String PAYLOAD_PREFIX = "NEXORA-LICENSE|1|";
 
     public record License(String licenseId, UUID instanceId, long expiresAtEpochSeconds) {
         public boolean expired() {

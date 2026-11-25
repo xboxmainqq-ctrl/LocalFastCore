@@ -82,17 +82,29 @@ public final class PlayerPhysics {
         double nextY = current.y() + vy * deltaSeconds;
 
         // Resolve horizontal axes separately so a player can slide along walls.
-        if (WorldCollision.canMove(world, current.x(), current.y(), current.z(),
-                nextX, current.y(), current.z())) {
-            // X is clear.
-        } else {
+        boolean blockedX = !WorldCollision.canMove(world, current.x(), current.y(), current.z(),
+                nextX, current.y(), current.z());
+        boolean blockedZ = !WorldCollision.canMove(world, nextX, current.y(), current.z(),
+                nextX, current.y(), nextZ);
+        if ((blockedX || blockedZ) && wasGrounded && inputLength > 0) {
+            State stepped = tryStepUp(world, current, nextX, nextZ);
+            if (stepped != null) {
+                nextX = stepped.x();
+                nextY = stepped.y();
+                nextZ = stepped.z();
+                vx = stepped.velocityX();
+                vz = stepped.velocityZ();
+                vy = 0;
+                grounded = true;
+                blockedX = false;
+                blockedZ = false;
+            }
+        }
+        if (blockedX) {
             nextX = current.x();
             vx = 0;
         }
-        if (WorldCollision.canMove(world, nextX, current.y(), current.z(),
-                nextX, current.y(), nextZ)) {
-            // Z is clear.
-        } else {
+        if (blockedZ) {
             nextZ = current.z();
             vz = 0;
         }
@@ -140,6 +152,36 @@ public final class PlayerPhysics {
         double landedDistance = !wasGrounded && grounded && descending ? fallDistance : 0;
         if (grounded) fallDistance = 0;
         return new State(nextX, nextY, nextZ, vx, vy, vz, grounded, fallDistance, landedDistance);
+    }
+
+    /**
+     * Attempts the Bedrock-style one-block step assist. The raised player box
+     * must clear the obstacle and the destination must have real ground support;
+     * taller walls and unsupported ledges remain blocking.
+     */
+    private static State tryStepUp(World world, State current, double targetX, double targetZ) {
+        final double stepHeight = 1.001;
+        double raisedY = current.y() + stepHeight;
+        if (!WorldCollision.canMove(world, current.x(), current.y(), current.z(),
+                current.x(), raisedY, current.z())) return null;
+        if (!WorldCollision.canMove(world, current.x(), raisedY, current.z(),
+                targetX, raisedY, targetZ)) return null;
+
+        double landingY = raisedY;
+        boolean foundGround = false;
+        for (int i = 1; i <= 24; i++) {
+            double candidateY = raisedY - i * 0.05;
+            if (!WorldCollision.canOccupy(world, targetX, candidateY, targetZ)) break;
+            landingY = candidateY;
+            if (WorldCollision.isOnGround(world, targetX, candidateY, targetZ, 0.12)) {
+                foundGround = true;
+                break;
+            }
+        }
+        if (!foundGround || landingY - current.y() < 0.05
+                || landingY - current.y() > 1.01) return null;
+        return new State(targetX, landingY, targetZ, 0, 0, 0,
+                true, current.fallDistance(), 0);
     }
 
     private static boolean finite(double... values) {

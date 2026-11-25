@@ -10,24 +10,38 @@ from pathlib import Path
 
 args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 preview_dir = Path(args[0] if args else "server/nexora-core/target/blender-preview").resolve()
-obj_path = preview_dir / "nexora-world.obj"
+spawn_obj_path = preview_dir / "nexora-spawn-region.obj"
+mountain_obj_path = preview_dir / "nexora-mountain-region.obj"
+mountain_center_path = preview_dir / "mountain-center.txt"
 trace_path = preview_dir / "player-physics.csv"
 
-if not obj_path.is_file():
-    raise FileNotFoundError(f"Generated NEXORA OBJ not found: {obj_path}")
+if not spawn_obj_path.is_file() or not mountain_obj_path.is_file():
+    raise FileNotFoundError("Generated NEXORA spawn or mountain OBJ is missing")
 
 # Keep the current scene intact except for objects from an earlier preview run.
 for obj in list(bpy.data.objects):
     if obj.name.startswith(("NEXORA_", "PlayerPhysics_")):
         bpy.data.objects.remove(obj, do_unlink=True)
 
-if hasattr(bpy.ops.wm, "obj_import"):
-    bpy.ops.wm.obj_import(filepath=str(obj_path))
-else:
-    bpy.ops.import_scene.obj(filepath=str(obj_path))
+def import_obj(path, prefix):
+    if hasattr(bpy.ops.wm, "obj_import"):
+        bpy.ops.wm.obj_import(filepath=str(path))
+    else:
+        bpy.ops.import_scene.obj(filepath=str(path))
+    imported = list(bpy.context.selected_objects)
+    for obj in imported:
+        obj.name = prefix + obj.name
+    return imported
 
-for obj in bpy.context.selected_objects:
-    obj.name = "NEXORA_" + obj.name
+spawn_objects = import_obj(spawn_obj_path, "NEXORA_Spawn_")
+mountain_objects = import_obj(mountain_obj_path, "NEXORA_Mountain_")
+if mountain_center_path.is_file():
+    center_x, center_z = map(int, mountain_center_path.read_text(encoding="utf-8").split(","))
+    # Stage the distant mountain sample beside spawn so both regions are inspectable
+    # in one viewport; source OBJ files retain their original world coordinates.
+    for obj in mountain_objects:
+        obj.location.x += 160.0 - center_x
+        obj.location.y += 64.0 - center_z
 
 if trace_path.is_file():
     with trace_path.open(newline="", encoding="utf-8") as handle:

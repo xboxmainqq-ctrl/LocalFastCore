@@ -8,9 +8,9 @@ public final class NexoraTerrainGenerator implements WorldGenerator {
     public static final int SPAWN_SURFACE_Y = 64;
     private static final int SPAWN_RADIUS = 9;
     private static final int SPAWN_BLEND_RADIUS = 58;
-    private static final int MIN_SURFACE = -30;
+    private static final int MIN_SURFACE = 12;
     private static final int MAX_SURFACE = 200;
-    private static final int CRATER_GRID = 620;
+    private static final int CRATER_GRID = 1_500;
 
     @Override
     public void generate(WorldChunk chunk, long seed) {
@@ -287,18 +287,23 @@ public final class NexoraTerrainGenerator implements WorldGenerator {
         double wx = x + warpX;
         double wz = z + warpZ;
 
-        double continents = fractal(wx, wz, seed ^ 0xa4093822299f31d0L, 310);
-        double foothills = fractal(wx, wz, seed ^ 0x082efa98ec4e6c89L, 112);
-        double detail = fractal(wx, wz, seed ^ 0x452821e638d01377L, 38);
-        double ridges = 1.0 - Math.abs(fractal(wx, wz, seed ^ 0xbe5466cf34e90c6cL, 145));
-        double mountainRegion = clamp((fractal(wx, wz, seed ^ 0xc0ac29b7c97c50ddL, 430) + 0.08) * 1.35, 0.0, 1.0);
-        double mountainPeaks = Math.pow(Math.max(0.0, ridges), 1.65) * mountainRegion;
+        // Most of the world stays in broad, walkable plains with gentle hills.
+        // Mountain massifs are selected by very-low-frequency noise, so a large
+        // mountain appears occasionally instead of sharp peaks covering every region.
+        double continents = fractal(wx, wz, seed ^ 0xa4093822299f31d0L, 620);
+        double foothills = fractal(wx, wz, seed ^ 0x082efa98ec4e6c89L, 190);
+        double detail = fractal(wx, wz, seed ^ 0x452821e638d01377L, 64);
+        double mountainRegion = smoothstep(0.54, 0.78,
+                fractal(wx, wz, seed ^ 0xc0ac29b7c97c50ddL, 1_900));
+        double mountainRidge = 1.0 - Math.abs(
+                fractal(wx, wz, seed ^ 0xbe5466cf34e90c6cL, 430));
 
         double river = riverStrength(x, z, seed);
-        double raw = 72.0 + continents * 17.0 + foothills * 14.0
-                + detail * 3.5 + mountainPeaks * 112.0 - river * 15.0;
+        double raw = 69.0 + continents * 9.0 + foothills * 7.0
+                + detail * 1.8 - river * 6.0
+                + mountainRegion * (72.0 + Math.pow(Math.max(0.0, mountainRidge), 1.25) * 48.0);
 
-        // Carve deterministic giant basins, with irregular walls and raised crater rims.
+        // Rare, broad basins are distant landmarks, not a crater on every horizon.
         double cratered = applyCraterBasins(x, z, seed, raw);
 
         // Blend the natural terrain into the protected spawn plateau; no abrupt cliff.
@@ -319,7 +324,7 @@ public final class NexoraTerrainGenerator implements WorldGenerator {
                 int cz = cellZ + dz;
                 long craterSeed = seed ^ ((long) cx * 0x9e3779b97f4a7c15L)
                         ^ ((long) cz * 0xc2b2ae3d27d4eb4fL) ^ 0xbb67ae8584caa73bL;
-                if (unitHash(craterSeed) > 0.72) continue;
+                if (unitHash(craterSeed) > 0.10) continue;
 
                 double centerX = cx * (double) CRATER_GRID + CRATER_GRID * 0.5
                         + (unitHash(craterSeed ^ 0x3c6ef372fe94f82bL) - 0.5) * 250.0;
@@ -328,16 +333,16 @@ public final class NexoraTerrainGenerator implements WorldGenerator {
                 // Keep the starter area free of giant holes.
                 if (Math.max(Math.abs(centerX), Math.abs(centerZ)) < 430.0) continue;
 
-                double radius = 112.0 + unitHash(craterSeed ^ 0x510e527fade682d1L) * 72.0;
+                double radius = 105.0 + unitHash(craterSeed ^ 0x510e527fade682d1L) * 55.0;
                 double ox = x - centerX;
                 double oz = z - centerZ;
                 double radialNoise = fractal(x, z, craterSeed ^ 0x1f83d9abfb41bd6bL, 31) * 0.055;
                 double radial = Math.sqrt(ox * ox + oz * oz) / radius + radialNoise;
                 if (radial >= 1.20) continue;
 
-                double bowl = -30.0 + (naturalHeight + 30.0) * smoothstep(0.0, 0.91, radial);
+                double bowl = 22.0 + (naturalHeight - 22.0) * smoothstep(0.0, 0.91, radial);
                 double rimDistance = (radial - 0.94) / 0.105;
-                double rim = 27.0 * Math.exp(-rimDistance * rimDistance);
+                double rim = 12.0 * Math.exp(-rimDistance * rimDistance);
                 double craterShape = bowl + rim;
                 double influence = 1.0 - smoothstep(0.91, 1.20, radial);
                 double carved = lerp(naturalHeight, craterShape, influence);

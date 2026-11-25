@@ -26,6 +26,8 @@ public final class InventoryTransactionService {
         if (actions.isEmpty() || actions.size() > MAX_ACTIONS) return Result.INVALID_ACTION_COUNT;
 
         List<PlayerInventory.SlotChange> changes = new ArrayList<>(actions.size());
+        java.util.Map<ItemStack, Integer> itemDeltas = new java.util.HashMap<>();
+        java.util.Set<Integer> touchedSlots = new java.util.HashSet<>();
         for (Action action : actions) {
             if (action == null) return Result.INVALID_ACTION;
             if (action.sourceType() != CONTAINER_INVENTORY_SOURCE
@@ -35,9 +37,16 @@ public final class InventoryTransactionService {
             if (action.slot() < 0 || action.slot() >= inventory.size()) {
                 return Result.INVALID_SLOT;
             }
+            if (!touchedSlots.add(action.slot())) return Result.INVALID_ACTION;
+            Optional<ItemStack> current = inventory.getSlot(action.slot());
+            if (!current.equals(action.from())) return Result.REJECTED_STALE_OR_UNSAFE;
+            current.ifPresent(stack -> itemDeltas.merge(stack.withCount(1), -stack.count(), Integer::sum));
+            action.to().ifPresent(stack -> itemDeltas.merge(stack.withCount(1), stack.count(), Integer::sum));
             changes.add(new PlayerInventory.SlotChange(action.slot(), action.from(), action.to()));
         }
-
+        if (itemDeltas.values().stream().anyMatch(delta -> delta != 0)) {
+            return Result.REJECTED_STALE_OR_UNSAFE;
+        }
         return inventory.applySlotChanges(changes) ? Result.APPLIED : Result.REJECTED_STALE_OR_UNSAFE;
     }
 

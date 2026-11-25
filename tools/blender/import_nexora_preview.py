@@ -110,7 +110,7 @@ report = {
     "physics_path_object": path_obj.name,
 }
 (preview_dir / "blender-validation.json").write_text(
-    json.dumps(report, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
+    json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 # Frame imported geometry in an interactive viewport when one is available.
 bpy.ops.object.select_all(action="DESELECT")

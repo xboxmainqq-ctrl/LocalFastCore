@@ -37,6 +37,7 @@ import ru.nexora.lifecycle.ServerLifecycle;
 import ru.nexora.modules.ModuleRegistry;
 import ru.nexora.lifecycle.ServerReadiness;
 import ru.nexora.config.NexoraServerConfig;
+import ru.nexora.security.BuildSignatureVerifier;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -57,6 +58,19 @@ public final class NexoraServer {
     }
 
     public static void main(String[] args) throws Exception {
+        BuildSignatureVerifier.Result buildSignature = BuildSignatureVerifier.verifyCurrentBuild();
+        System.out.printf("[NEXORA] Signature: %s (%s)%n", buildSignature.status(), buildSignature.detail());
+        if (buildSignature.valid()) {
+            System.out.println("[NEXORA] Integrity: VERIFIED");
+            System.out.println("[NEXORA] Build: OFFICIAL");
+        } else {
+            System.out.println("[NEXORA] Integrity: NOT VERIFIED");
+            System.out.println("[NEXORA] Build: UNCONFIRMED");
+        }
+        if (Boolean.parseBoolean(System.getenv().getOrDefault("NEXORA_REQUIRE_OFFICIAL_SIGNATURE", "false")) && !buildSignature.valid()) {
+            throw new IllegalStateException("NEXORA official signature is required but verification failed: " + buildSignature.status() + " (" + buildSignature.detail() + ")");
+        }
+
         NexoraServerConfig config = NexoraServerConfig.from(args, System.getenv());
         String bindHost = config.bindHost();
         int port = config.port();

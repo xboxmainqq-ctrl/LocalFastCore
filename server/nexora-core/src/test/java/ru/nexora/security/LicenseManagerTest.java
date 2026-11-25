@@ -59,6 +59,16 @@ class LicenseManagerTest {
     }
 
     @Test
+    void startsWithEmbeddedUnofficialModeWhenNoOfficialPublicKeyIsPinned() throws Exception {
+        var input = new BufferedReader(new InputStreamReader(new ByteArrayInputStream(new byte[0])));
+        var outputBytes = new ByteArrayOutputStream();
+        var license = LicenseManager.activateOrValidate(temporaryDirectory, input, new PrintStream(outputBytes));
+        assertEquals("DEV-UNOFFICIAL", license.licenseId());
+        assertTrue(Files.isRegularFile(temporaryDirectory.resolve("instance.id")));
+        assertTrue(outputBytes.toString(StandardCharsets.UTF_8).contains("DEVELOPMENT / UNOFFICIAL"));
+    }
+
+    @Test
     void promptsAndPersistsValidLicense() throws Exception {
         KeyPair pair = keyPair();
         UUID instance = UUID.randomUUID();

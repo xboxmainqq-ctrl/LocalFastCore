@@ -92,8 +92,9 @@ openssl pkey -in nexora-license-private.pem -pubout -outform DER \
 
    The script prints one token. Save it privately as your separate owner key;
    do not commit it or post it publicly. It is bound to the exact Server ID.
-4. Enter that token in the server console on the first official launch. NEXORA
-   saves it as `data/license.key` and reports the expiry as **бессрочно**.
+4. Put the token on one line in `data/license.key` beside `instance.id`.
+   NEXORA validates it at startup and reports the expiry as **бессрочно**.
+   Without a valid token, the core continues to start in unofficial mode.
 
 The issuer uses the signed expiry value `9223372036854775807` (Java
 `Long.MAX_VALUE`) for a perpetual license. The core validates it like any

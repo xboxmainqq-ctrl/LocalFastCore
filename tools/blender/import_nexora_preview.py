@@ -5,10 +5,8 @@ Run from Blender's Scripting workspace:
 """
 import bpy
 import csv
-import math
 import sys
 from pathlib import Path
-from mathutils import Vector
 
 args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 preview_dir = Path(args[0] if args else "server/nexora-core/target/blender-preview").resolve()
@@ -24,7 +22,7 @@ for obj in list(bpy.data.objects):
         bpy.data.objects.remove(obj, do_unlink=True)
 
 if hasattr(bpy.ops.wm, "obj_import"):
-    bpy.ops.wm.obj_import(filepath=str(obj_path), forward_axis="Y", up_axis="Z")
+    bpy.ops.wm.obj_import(filepath=str(obj_path))
 else:
     bpy.ops.import_scene.obj(filepath=str(obj_path))
 
@@ -48,16 +46,9 @@ if trace_path.is_file():
         bpy.context.collection.objects.link(path_obj)
 
         first = samples[0]
-        marker_mesh = bpy.data.meshes.new("PlayerPhysics_StartMesh")
-        marker = bpy.data.objects.new("PlayerPhysics_Start", marker_mesh)
-        bpy.context.collection.objects.link(marker)
-        marker.location = (float(first["x"]), float(first["z"]), float(first["y"]))
-        bpy.ops.object.select_all(action="DESELECT")
-        marker.select_set(True)
-        bpy.context.view_layer.objects.active = marker
-        bpy.ops.object.mode_set(mode="OBJECT")
-        bpy.ops.mesh.primitive_uv_sphere_add(segments=16, ring_count=8, radius=0.28,
-                                             location=marker.location)
+        bpy.ops.mesh.primitive_uv_sphere_add(
+            segments=16, ring_count=8, radius=0.28,
+            location=(float(first["x"]), float(first["z"]), float(first["y"])))
         bpy.context.object.name = "PlayerPhysics_Start"
 
 # Frame the imported geometry in the viewport for immediate inspection.
@@ -69,5 +60,7 @@ if terrain:
     bpy.context.view_layer.objects.active = terrain[0]
     bpy.ops.view3d.camera_to_view_selected() if bpy.context.area and bpy.context.area.type == "VIEW_3D" else None
 
-print(f"NEXORA Blender preview imported from {preview_dir}")
+blend_path = preview_dir / "nexora-preview.blend"
+bpy.ops.wm.save_as_mainfile(filepath=str(blend_path))
+print("NEXORA Blender preview saved to " + str(blend_path))
 print("Terrain comes from generated WorldChunk data; player path comes from Java PlayerPhysics.")

@@ -3814,6 +3814,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         WorldChunkResidencyManager.ResidencyPlan residencyPlan =
                 chunkResidency.update(playerChunks, entityChunks, Math.max(0L, nowMillis / 50L));
         world.applyChunkResidencyPlan(residencyPlan, MAX_WORLD_CHUNK_LOADS_PER_TICK);
+        // A chunk whose save failed remains in the world cache. Reconcile it back
+        // into the planner so later ticks retry eviction instead of losing track.
+        chunkResidency.retainResidentChunks(world.loadedChunkCoordinates());
         hotPathProfiler.record(ru.nexora.ai.HotPathProfiler.Path.CHUNK_RESIDENCY,
                 Math.max(0L, nanoTime.getAsLong() - residencyStartedNanos));
         ru.nexora.ai.NexoraAiDiagnostics worldDiagnostics = aiDiagnostics;

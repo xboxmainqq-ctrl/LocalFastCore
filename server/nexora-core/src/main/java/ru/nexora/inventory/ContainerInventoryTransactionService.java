@@ -56,7 +56,7 @@ public final class ContainerInventoryTransactionService {
         synchronized (player) {
             synchronized (container) {
                 Set<String> touched = new HashSet<>();
-                Map<String, Integer> itemDeltas = new HashMap<>();
+                Map<ItemStack, Integer> itemDeltas = new HashMap<>();
                 List<PendingChange> pending = new ArrayList<>(actions.size());
 
                 for (InventoryTransactionService.Action action : actions) {
@@ -86,8 +86,8 @@ public final class ContainerInventoryTransactionService {
                     if (!current.equals(action.from())) return Result.REJECTED_STALE_OR_UNSAFE;
 
                     Optional<ItemStack> replacement = action.to();
-                    current.ifPresent(stack -> itemDeltas.merge(stack.itemId(), -stack.count(), Integer::sum));
-                    replacement.ifPresent(stack -> itemDeltas.merge(stack.itemId(), stack.count(), Integer::sum));
+                    current.ifPresent(stack -> itemDeltas.merge(stack.withCount(1), -stack.count(), Integer::sum));
+                    replacement.ifPresent(stack -> itemDeltas.merge(stack.withCount(1), stack.count(), Integer::sum));
                     pending.add(new PendingChange(containerId, slot, replacement));
                 }
 

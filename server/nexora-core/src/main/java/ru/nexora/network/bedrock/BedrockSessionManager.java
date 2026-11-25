@@ -6338,7 +6338,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         if (placeY < WorldChunk.MIN_Y || placeY > WorldChunk.MAX_Y
                 || world.getBlock(placeX, placeY, placeZ) != BlockType.AIR
-                || intersectsPlayer(state, placeX, placeY, placeZ)) return;
+                || intersectsPlayer(state, placeX, placeY, placeZ)
+                || intersectsOtherPlayer(state, placeX, placeY, placeZ)) return;
 
         // Survival consumes one placed block; creative placement must leave the
         // selected stack untouched. Persist inventory before mutating the world so
@@ -6473,6 +6474,27 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return playerMaxX > blockX && playerMinX < blockX + 1
                 && playerMaxY > blockY && playerMinY < blockY + 1
                 && playerMaxZ > blockZ && playerMinZ < blockZ + 1;
+    }
+
+    /** Prevents placing a solid block inside another connected player's hitbox. */
+    private boolean intersectsOtherPlayer(SessionState placingPlayer, int blockX, int blockY, int blockZ) {
+        for (SessionState other : sessions.values()) {
+            if (other == placingPlayer || !other.loginAuthenticated || other.dead || other.vitals.dead()) {
+                continue;
+            }
+            double playerMinX = other.positionX - 0.3;
+            double playerMaxX = other.positionX + 0.3;
+            double playerMinY = other.positionY;
+            double playerMaxY = other.positionY + 1.8;
+            double playerMinZ = other.positionZ - 0.3;
+            double playerMaxZ = other.positionZ + 0.3;
+            if (playerMaxX > blockX && playerMinX < blockX + 1
+                    && playerMaxY > blockY && playerMinY < blockY + 1
+                    && playerMaxZ > blockZ && playerMinZ < blockZ + 1) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void broadcastBlockUpdate(int x, int y, int z, BlockType type) {

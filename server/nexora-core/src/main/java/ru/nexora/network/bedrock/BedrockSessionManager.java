@@ -6939,7 +6939,44 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 return;
             }
         }
-        world.setBlock(target.x(), target.y(), target.z(), BlockType.AIR);
+        try {
+            world.setBlock(target.x(), target.y(), target.z(), BlockType.AIR);
+        } catch (RuntimeException mutationFailure) {
+            // World listeners run after the chunk mutation. Inspect authoritative state
+            // before deciding whether the durable drops must be rolled back: a listener
+            // may fail even though the block is already gone.
+            boolean blockWasRemoved;
+            try {
+                blockWasRemoved = world.getBlock(target.x(), target.y(), target.z()) == BlockType.AIR;
+            } catch (RuntimeException inspectionFailure) {
+                mutationFailure.addSuppressed(inspectionFailure);
+                blockWasRemoved = false;
+            }
+            if (!blockWasRemoved) {
+                for (WorldItemEntity item : containerDrops) {
+                    try {
+                        world.itemEntities().remove(item.runtimeId());
+                    } catch (RuntimeException rollbackFailure) {
+                        mutationFailure.addSuppressed(rollbackFailure);
+                    }
+                }
+                if (dropped != null) {
+                    try {
+                        world.itemEntities().remove(dropped.runtimeId());
+                    } catch (RuntimeException rollbackFailure) {
+                        mutationFailure.addSuppressed(rollbackFailure);
+                    }
+                }
+                state.breakTarget = null;
+                sendPacket(networkId, BedrockBlockUpdateCodec.createPacket(
+                        target.x(), target.y(), target.z(), current), true);
+                System.err.println("NEXORA: block break cancelled because the world mutation failed: "
+                        + mutationFailure.getMessage());
+                return;
+            }
+            System.err.println("NEXORA: block was removed but a post-mutation listener failed: "
+                    + mutationFailure.getMessage());
+        }
         state.breakTarget = null;
         for (WorldItemEntity containerDrop : containerDrops) {
             broadcastItemActor(containerDrop, BedrockAddItemActorCodec.createAddItemActor(containerDrop, itemRegistry));

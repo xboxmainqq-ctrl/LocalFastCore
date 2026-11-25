@@ -5820,7 +5820,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         broadcastPlayerMovement(networkId, state);
 
         for (BedrockPlayerAuthInputCodec.BlockAction action : input.blockActions()) {
-            handleBlockAction(networkId, state, action);
+            handleBlockActionSafely(networkId, state, action);
         }
         handleItemUseTransaction(networkId, state, input.itemUseTransaction());
         tickWorldItemActors(input.tick());
@@ -5877,7 +5877,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         broadcastPlayerMovement(networkId, state);
 
         for (BedrockPlayerAuthInputCodec.BlockAction action : input.blockActions()) {
-            handleBlockAction(networkId, state, action);
+            handleBlockActionSafely(networkId, state, action);
         }
         handleItemUseTransaction(networkId, state, input.itemUseTransaction());
         tickWorldItemActors(input.tick());
@@ -5995,7 +5995,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (correctionNeeded) sendMovementCorrection(networkId, state, input.tick());
 
         for (BedrockPlayerAuthInputCodec.BlockAction action : input.blockActions()) {
-            handleBlockAction(networkId, state, action);
+            handleBlockActionSafely(networkId, state, action);
         }
         handleItemUseTransaction(networkId, state, input.itemUseTransaction());
         tickWorldItemActors(input.tick());
@@ -6638,6 +6638,36 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 physics.x(), physics.y(), physics.z(),
                 physics.velocityX(), physics.velocityY(), physics.velocityZ(),
                 physics.onGround(), Math.max(0, tick)), true);
+    }
+
+    /**
+     * A malformed world-side block mutation must not tear down the player's Bedrock
+     * session. Keep block actions isolated from the enclosing PlayerAuthInput batch.
+     */
+    private void handleBlockActionSafely(
+            String networkId,
+            SessionState state,
+            BedrockPlayerAuthInputCodec.BlockAction action
+    ) {
+        try {
+            handleBlockAction(networkId, state, action);
+        } catch (RuntimeException exception) {
+            state.breakTarget = null;
+            System.err.println("NEXORA: block action failed for " + networkId
+                    + " at " + action.x() + " " + action.y() + " " + action.z()
+                    + " (action=" + action.action() + "): " + exception.getMessage());
+            // Reconcile the client with the authoritative world, whether the
+            // mutation committed before a listener/persistence error or not.
+            try {
+                BlockType actual = world.getBlock(action.x(), action.y(), action.z());
+                sendPacket(networkId, BedrockBlockUpdateCodec.createPacket(
+                        action.x(), action.y(), action.z(), actual), true);
+            } catch (RuntimeException syncFailure) {
+                exception.addSuppressed(syncFailure);
+                System.err.println("NEXORA: unable to reconcile block state for " + networkId
+                        + ": " + syncFailure.getMessage());
+            }
+        }
     }
 
     private void handleBlockAction(

@@ -290,4 +290,20 @@ class WorldChunkResidencyManagerTest {
         assertEquals(0, expired.residentCount());
     }
 
+    @Test
+    void reconcilesChunksThatRemainInTheWorldCacheAfterAnUnloadFailure() {
+        WorldChunkResidencyManager manager = new WorldChunkResidencyManager(1, 0);
+        manager.update(List.of(new WorldChunkResidencyManager.PlayerChunk(0, 0)), 0);
+        var expired = manager.update(List.of(), 1);
+        assertEquals(0, manager.residentChunkCount());
+
+        manager.retainResidentChunks(java.util.Set.of(
+                new WorldChunkResidencyManager.ChunkCoordinate(0, 0)));
+
+        assertTrue(manager.isResident(0, 0));
+        assertEquals(1, manager.residentChunkCount());
+        assertEquals(java.util.Set.of(new WorldChunkResidencyManager.ChunkCoordinate(0, 0)),
+                manager.residentChunkCoordinates());
+    }
+
 }

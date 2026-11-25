@@ -152,8 +152,8 @@ public final class PlayerInventory {
      * Applies a set of client-proposed slot changes atomically.
      *
      * Every source value must exactly match the current server slot. Item counts
-     * are conserved per namespaced item ID across the changed slots, so a normal
-     * inventory transaction cannot create or destroy items. Duplicate slot
+     * are conserved per complete stack identity (item ID, stack limit, enchantments,
+     * and repair metadata), so a transaction cannot replace item metadata. Duplicate slot
      * references and stale client snapshots are rejected without mutation.
      */
     public synchronized boolean applySlotChanges(List<SlotChange> changes) {
@@ -161,7 +161,7 @@ public final class PlayerInventory {
         if (changes.isEmpty() || changes.size() > 64) return false;
 
         boolean[] touched = new boolean[slots.length];
-        java.util.Map<String, Integer> itemDeltas = new java.util.HashMap<>();
+        java.util.Map<ItemStack, Integer> itemDeltas = new java.util.HashMap<>();
         for (SlotChange change : changes) {
             if (change == null) return false;
             int slot = change.slot();
@@ -173,8 +173,8 @@ public final class PlayerInventory {
             if (!Objects.equals(current, expected)) return false;
 
             ItemStack replacement = change.to().orElse(null);
-            if (current != null) itemDeltas.merge(current.itemId(), -current.count(), Integer::sum);
-            if (replacement != null) itemDeltas.merge(replacement.itemId(), replacement.count(), Integer::sum);
+            if (current != null) itemDeltas.merge(current.withCount(1), -current.count(), Integer::sum);
+            if (replacement != null) itemDeltas.merge(replacement.withCount(1), replacement.count(), Integer::sum);
         }
 
         // The supported player-inventory transaction subset is transfer-only:

@@ -5922,11 +5922,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         // The client position is only a prediction, so bound it before using it
         // to request chunks. The physics simulation below remains authoritative.
         double requestedDx = input.x() - state.positionX;
-        double requestedDy = input.y() - state.positionY;
         double requestedDz = input.z() - state.positionZ;
-        double requestedDistance = Math.sqrt(requestedDx * requestedDx
-                + requestedDy * requestedDy + requestedDz * requestedDz);
-        if (!Double.isFinite(requestedDistance) || requestedDistance > 2.0) {
+        double requestedHorizontalDistance = Math.hypot(requestedDx, requestedDz);
+        if (!Double.isFinite(requestedHorizontalDistance) || requestedHorizontalDistance > 2.0) {
             sendMovementCorrection(networkId, state, input.tick());
             return;
         }

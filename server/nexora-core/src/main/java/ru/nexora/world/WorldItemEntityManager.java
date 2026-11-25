@@ -32,6 +32,8 @@ public final class WorldItemEntityManager {
     private final Map<Long, java.util.Set<Long>> entitiesByChunk = new HashMap<>();
     private final Map<Long, Long> entityChunkKeys = new HashMap<>();
     private final WorldItemEntityStorage storage;
+    // Persist actor movement at a bounded cadence instead of writing the full item snapshot every tick.
+    private long lastMovementPersistMillis = Long.MIN_VALUE;
 
     public WorldItemEntityManager() {
         this.storage = null;
@@ -315,7 +317,14 @@ public final class WorldItemEntityManager {
                     changed = true;
                 }
             }
-            if (durableChanged) persist();
+            boolean movementNeedsPersistence = !moved.isEmpty() && nowMillis >= 0
+                    && (lastMovementPersistMillis == Long.MIN_VALUE
+                    || (nowMillis >= lastMovementPersistMillis
+                    && nowMillis - lastMovementPersistMillis >= 1_000L));
+            if (durableChanged || movementNeedsPersistence) {
+                persist();
+                if (nowMillis >= 0) lastMovementPersistMillis = nowMillis;
+            }
             removedByTick.addAll(removed);
             return List.copyOf(moved);
         } catch (RuntimeException exception) {

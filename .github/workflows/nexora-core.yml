@@ -54,6 +54,23 @@ jobs:
             exit 1
           fi
           unzip -p server/nexora-core/target/server.jar META-INF/MANIFEST.MF | grep -q "Main-Class: ru.nexora.NexoraServer"
+      - name: Install Blender for generated-world inspection
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y blender
+      - name: Import generated NEXORA world and physics trace in Blender
+        run: |
+          blender --background --python tools/blender/import_nexora_preview.py -- server/nexora-core/target/blender-preview
+          test -s server/nexora-core/target/blender-preview/nexora-preview.blend
+      - name: Upload Blender world and physics preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexora-blender-preview-${{ github.sha }}
+          path: |
+            server/nexora-core/target/blender-preview/
+            tools/blender/import_nexora_preview.py
+          if-no-files-found: error
+          retention-days: 7
       - name: Create checksum and optional official Ed25519 signature
         if: success()
         env:

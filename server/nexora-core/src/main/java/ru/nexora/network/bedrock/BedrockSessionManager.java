@@ -6609,14 +6609,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 || updated.hunger() != before.hunger()
                 || updated.saturation() != before.saturation();
         if (!clientVisibleChanged) {
-            if (state.vitals.dead()) handleDeath(networkId, state, "death.attack.onFire");
+            if (state.vitals.dead()) handleDeath(networkId, state, "death.attack.starve");
             return;
         }
         List<BedrockPacket> packets = new java.util.ArrayList<>();
         if (healthChanged) packets.add(BedrockVitalsCodec.createSetHealth(updated));
         packets.add(createPlayerAttributes(state, Math.max(0, tick)));
         broadcastPlayerVitals(networkId, state, healthChanged, tick, packets);
-        if (state.vitals.dead()) handleDeath(networkId, state, "death.attack.onFire");
+        if (state.vitals.dead()) handleDeath(networkId, state, "death.attack.starve");
     }
 
     /** Applies a server-originated damage event, for later fall, combat and hazard systems. */

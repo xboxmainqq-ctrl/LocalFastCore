@@ -2851,23 +2851,12 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         };
         String detail = result.detail();
         if (detail == null || detail.isBlank()) detail = "нет дополнительных сведений";
-        ru.nexora.security.LicenseManager.License license =
-                ru.nexora.security.LicenseManager.currentLicense();
-        boolean officialLicense = license != null && !"DEV-UNOFFICIAL".equals(license.licenseId());
-        String licenseStatus = officialLicense
-                ? "§aОФИЦИАЛЬНАЯ ЛИЦЕНЗИЯ АКТИВНА"
-                : "§eТЕСТОВЫЙ РЕЖИМ — НЕОФИЦИАЛЬНО";
-        String licenseId = license == null ? "не определена" : license.licenseId();
         sendAiMessage(networkId,
-                "§l§b[NEXORA SECURITY]§r\n"
+                "§l§b[NEXORA STATUS]§r\n"
                         + "§fВерсия: §b" + version + "\n"
-                        + "§fЛицензия: " + licenseStatus + "\n"
-                        + "§fID лицензии: §7" + licenseId + "\n"
-                        + "§fServer ID: §7" + (license == null ? "не определён" : license.instanceId()) + "\n"
                         + "§fСтатус сборки: " + status + "\n"
                         + "§fЦелостность сборки: " + (result.valid() ? "§aПОДТВЕРЖДЕНА" : "§cНЕ ПОДТВЕРЖДЕНА") + "\n"
-                        + "§fПроверка подписи: §7" + detail + "\n"
-                        + "§8Тестовый режим разрешает запуск, но не делает сборку официальной.");
+                        + "§fПроверка подписи: §7" + detail);
     }
 
     private static BedrockPacket createAdventureSettings(long entityId, boolean creative) {

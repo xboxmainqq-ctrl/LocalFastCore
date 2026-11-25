@@ -42,26 +42,26 @@ public final class LicenseManager {
     public static License activateOrValidate(Path dataDirectory, BufferedReader console, PrintStream output)
             throws IOException, GeneralSecurityException {
         PublicKey publicKey = loadPinnedPublicKey();
+        Files.createDirectories(dataDirectory);
+        UUID instanceId = loadOrCreateInstanceId(dataDirectory);
         if (publicKey == null) {
-            Files.createDirectories(dataDirectory);
-            UUID instanceId = loadOrCreateInstanceId(dataDirectory);
-            License development = new License("DEV-UNOFFICIAL", instanceId, Long.MAX_VALUE);
-            currentLicense = development;
-            output.println("[NEXORA] License mode: DEVELOPMENT / UNOFFICIAL");
-            output.println("[NEXORA] Server ID: " + instanceId);
-            output.println("[NEXORA] No official license key is configured; startup is allowed in unofficial mode.");
-            return development;
+            return activateUnofficial(instanceId, output,
+                    "No official license public key is configured in this build.");
         }
         return activateOrValidate(dataDirectory, console, output, publicKey);
     }
 
+    /**
+     * Loads an owner token if present. A missing or invalid token never prevents
+     * an unofficial/test server from starting; only a valid signed token is official.
+     */
     static License activateOrValidate(Path dataDirectory, BufferedReader console, PrintStream output,
             PublicKey publicKey) throws IOException, GeneralSecurityException {
-        if (publicKey == null) {
-            throw new IllegalStateException("NEXORA license public key is not configured. Startup is blocked.");
-        }
         Files.createDirectories(dataDirectory);
         UUID instanceId = loadOrCreateInstanceId(dataDirectory);
+        if (publicKey == null) {
+            return activateUnofficial(instanceId, output, "Official license verification is not configured.");
+        }
         Path licensePath = dataDirectory.resolve(LICENSE_FILE);
         if (Files.isRegularFile(licensePath)) {
             String stored = Files.readString(licensePath, StandardCharsets.US_ASCII).trim();
@@ -70,44 +70,24 @@ public final class LicenseManager {
                 currentLicense = license;
                 output.printf("[NEXORA] License: ACTIVE (%s), expires %s%n",
                         license.licenseId(), formatExpiry(license.expiresAtEpochSeconds()));
+                output.println("[NEXORA] STATUS: OFFICIAL LICENSE ACTIVE.");
                 return license;
             } catch (IllegalArgumentException invalid) {
-                output.println("[NEXORA] Saved license is invalid or expired: " + invalid.getMessage());
+                output.println("[NEXORA] Saved official license is invalid: " + invalid.getMessage());
             }
         }
+        return activateUnofficial(instanceId, output,
+                "No valid official owner license was found. Place the signed token in data/license.key to activate it.");
+    }
 
-        output.println();
-        output.println("==============================================");
-        output.println("             NEXORA LICENSE");
-        output.println("==============================================");
-        output.println("Server ID: " + instanceId);
-        output.println("Enter your NEXORA license key.");
-        output.println("No valid key = server startup is blocked.");
-        output.print("License key: ");
-        output.flush();
-        String token = console.readLine();
-        if (token == null || token.isBlank()) {
-            throw new IllegalStateException("No NEXORA license key was entered. Startup is blocked.");
-        }
-
-        License license = verifyToken(token.trim(), publicKey, instanceId);
-        Path temporary = Files.createTempFile(dataDirectory, "license-", ".tmp");
-        try {
-            Files.writeString(temporary, token.trim() + System.lineSeparator(), StandardCharsets.US_ASCII);
-            try {
-                Files.move(temporary, licensePath, StandardCopyOption.ATOMIC_MOVE,
-                        StandardCopyOption.REPLACE_EXISTING);
-            } catch (java.nio.file.AtomicMoveNotSupportedException unsupported) {
-                Files.move(temporary, licensePath, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } finally {
-            Files.deleteIfExists(temporary);
-        }
-        output.println("[NEXORA] License activated successfully.");
-        currentLicense = license;
-        output.printf("[NEXORA] License: ACTIVE (%s), expires %s%n",
-                license.licenseId(), formatExpiry(license.expiresAtEpochSeconds()));
-        return license;
+    private static License activateUnofficial(UUID instanceId, PrintStream output, String reason) {
+        License development = new License("DEV-UNOFFICIAL", instanceId, Long.MAX_VALUE);
+        currentLicense = development;
+        output.println("[NEXORA] License mode: DEVELOPMENT / UNOFFICIAL");
+        output.println("[NEXORA] Server ID: " + instanceId);
+        output.println("[NEXORA] " + reason);
+        output.println("[NEXORA] Startup is allowed in unofficial mode.");
+        return development;
     }
 
     public static License currentLicense() {

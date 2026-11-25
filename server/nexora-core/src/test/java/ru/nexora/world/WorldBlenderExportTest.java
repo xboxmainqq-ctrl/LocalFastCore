@@ -36,19 +36,63 @@ class WorldBlenderExportTest {
         }
 
         Path materialFile = output.resolve("nexora-world.mtl");
-        Path objectFile = output.resolve("nexora-world.obj");
+        Path spawnObjectFile = output.resolve("nexora-spawn-region.obj");
+        Path mountainObjectFile = output.resolve("nexora-mountain-region.obj");
         writeMaterials(materialFile);
-        long faces = writeWorldObject(world, objectFile, materialFile.getFileName().toString());
+        long spawnFaces = writeWorldObject(world, spawnObjectFile,
+                materialFile.getFileName().toString(),
+                REGION_MIN_CHUNK, REGION_MAX_CHUNK, REGION_MIN_CHUNK, REGION_MAX_CHUNK);
+
+        int[] mountainCenter = highestTerrainSample();
+        int centerChunkX = Math.floorDiv(mountainCenter[0], 16);
+        int centerChunkZ = Math.floorDiv(mountainCenter[1], 16);
+        int mountainMinX = centerChunkX - 4;
+        int mountainMaxX = centerChunkX + 3;
+        int mountainMinZ = centerChunkZ - 4;
+        int mountainMaxZ = centerChunkZ + 3;
+        for (int chunkX = mountainMinX - 1; chunkX <= mountainMaxX + 1; chunkX++) {
+            for (int chunkZ = mountainMinZ - 1; chunkZ <= mountainMaxZ + 1; chunkZ++) {
+                world.getChunk(chunkX, chunkZ);
+            }
+        }
+        long mountainFaces = writeWorldObject(world, mountainObjectFile,
+                materialFile.getFileName().toString(),
+                mountainMinX, mountainMaxX, mountainMinZ, mountainMaxZ);
+        Files.writeString(output.resolve("mountain-center.txt"),
+                mountainCenter[0] + "," + mountainCenter[1], StandardCharsets.UTF_8);
+
         Path traceFile = output.resolve("player-physics.csv");
         int tracePoints = writePhysicsTrace(world, traceFile);
 
-        assertTrue(faces > 10_000, "generated terrain export should contain substantial block geometry");
+        assertTrue(spawnFaces > 10_000, "spawn region should contain substantial generated block geometry");
+        assertTrue(mountainFaces > 10_000, "mountain region should contain substantial generated block geometry");
         assertTrue(tracePoints > 20, "physics trace should contain a useful movement path");
-        assertTrue(Files.size(objectFile) > 100_000, "OBJ should contain real generated terrain");
+        assertTrue(Files.size(spawnObjectFile) > 100_000, "spawn OBJ should contain real generated terrain");
+        assertTrue(Files.size(mountainObjectFile) > 100_000, "mountain OBJ should contain real generated terrain");
         assertTrue(Files.size(traceFile) > 500, "physics CSV should contain player coordinates");
     }
 
-    private static long writeWorldObject(World world, Path file, String materialName) throws IOException {
+    private static int[] highestTerrainSample() {
+        int bestX = 0;
+        int bestZ = 0;
+        int maximum = Integer.MIN_VALUE;
+        for (int x = -2048; x <= 2048; x += 16) {
+            for (int z = -2048; z <= 2048; z += 16) {
+                int height = NexoraTerrainGenerator.surfaceHeight(x, z, SEED);
+                if (height > maximum) {
+                    maximum = height;
+                    bestX = x;
+                    bestZ = z;
+                }
+            }
+        }
+        return new int[]{bestX, bestZ};
+    }
+
+    private static long writeWorldObject(
+            World world, Path file, String materialName,
+            int minChunkX, int maxChunkX, int minChunkZ, int maxChunkZ
+    ) throws IOException {
         long vertex = 1;
         long faceCount = 0;
         try (BufferedWriter out = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
@@ -56,8 +100,8 @@ class WorldBlenderExportTest {
             out.write("mtllib " + materialName + "\n");
             out.write("o NEXORA_Generated_World\n");
             String activeMaterial = "";
-            for (int chunkX = REGION_MIN_CHUNK; chunkX <= REGION_MAX_CHUNK; chunkX++) {
-                for (int chunkZ = REGION_MIN_CHUNK; chunkZ <= REGION_MAX_CHUNK; chunkZ++) {
+            for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+                for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
                     int originX = chunkX * 16;
                     int originZ = chunkZ * 16;
                     for (int localX = 0; localX < 16; localX++) {

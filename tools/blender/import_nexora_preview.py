@@ -132,13 +132,26 @@ scene.render.resolution_percentage = 100
 scene.render.image_settings.file_format = "PNG"
 scene.render.film_transparent = False
 scene.view_settings.view_transform = "AgX"
-scene.world.color = (0.16, 0.19, 0.24)
+scene.world.use_nodes = True
+background = scene.world.node_tree.nodes.get("Background")
+background.inputs["Color"].default_value = (0.42, 0.55, 0.72, 1.0)
+background.inputs["Strength"].default_value = 0.8
 
 sun_data = bpy.data.lights.new("NEXORA_Daylight", type="SUN")
-sun_data.energy = 2.0
+sun_data.energy = 3.0
 sun = bpy.data.objects.new("NEXORA_Daylight", sun_data)
 bpy.context.collection.objects.link(sun)
 sun.rotation_euler = (0.45, -0.35, -0.4)
+
+# Broad fill light keeps block faces readable in headless EEVEE renders.
+fill_data = bpy.data.lights.new("NEXORA_Sky_Fill", type="AREA")
+fill_data.energy = 14000
+fill_data.shape = "DISK"
+fill_data.size = 100
+fill = bpy.data.objects.new("NEXORA_Sky_Fill", fill_data)
+bpy.context.collection.objects.link(fill)
+fill.location = (80.0, -60.0, 180.0)
+fill.rotation_euler = (Vector((64.0, 64.0, 65.0)) - fill.location).to_track_quat("-Z", "Y").to_euler()
 
 def render_first_person(name, location, target):
     camera_data = bpy.data.cameras.new("NEXORA_" + name + "_Camera")
@@ -156,7 +169,7 @@ def render_first_person(name, location, target):
     bpy.data.cameras.remove(camera_data)
 
 # Eye-level view from the same spawn point used by the Java physics trace.
-render_first_person("spawn", (8.5, 8.5, 66.62), (8.5, 42.0, 65.8))
+render_first_person("spawn", (8.5, 8.5, 66.62), (42.0, 8.5, 65.8))
 
 # Frame the mountain sample from a nearby player-height viewpoint.
 mountain_bounds = [
@@ -166,8 +179,9 @@ mountain_bounds = [
 ]
 if mountain_bounds:
     highest = max(point.z for point in mountain_bounds)
-    render_first_person("mountains", (160.0, 42.0, highest - 5.0),
-                        (160.0, 92.0, highest - 13.0))
+    # Start outside the mountain mesh at its lower edge and look toward the summit.
+    render_first_person("mountains", (160.0, -24.0, 80.0),
+                        (160.0, 64.0, max(100.0, highest - 35.0)))
 
 blend_path = preview_dir / "nexora-preview.blend"
 bpy.ops.wm.save_as_mainfile(filepath=str(blend_path))

@@ -129,6 +129,47 @@ class PlayerDataStorageTest {
     }
 
     @Test
+    void concurrentProfileSavesKeepPrimaryAndBackupRecoverable() throws Exception {
+        PlayerDataStorage storage = new PlayerDataStorage(temporaryDirectory);
+        String xuid = "concurrent-profile";
+        storage.save(new PlayerData(xuid, "Initial", "NEXORA", 0, 65, 0, 0, 0, 1));
+
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(6);
+        try {
+            java.util.List<java.util.concurrent.Future<?>> saves = new java.util.ArrayList<>();
+            for (int worker = 0; worker < 6; worker++) {
+                final int workerId = worker;
+                saves.add(executor.submit(() -> {
+                    for (int generation = 1; generation <= 25; generation++) {
+                        PlayerData profile = new PlayerData(xuid, "Worker" + workerId, "NEXORA",
+                                workerId + generation, 65, generation, 0, 0,
+                                workerId * 100L + generation);
+                        try {
+                            storage.save(profile);
+                        } catch (IOException exception) {
+                            throw new java.io.UncheckedIOException(exception);
+                        }
+                    }
+                }));
+            }
+            for (java.util.concurrent.Future<?> save : saves) save.get();
+        } finally {
+            executor.shutdownNow();
+        }
+
+        Path primary = temporaryDirectory.resolve(xuid + ".nxp");
+        Path backup = temporaryDirectory.resolve(xuid + ".nxp.bak");
+        assertTrue(storage.load(xuid).isPresent());
+        assertTrue(Files.size(backup) > 0);
+
+        byte[] damaged = Files.readAllBytes(primary);
+        damaged[damaged.length - 1] ^= 1;
+        Files.write(primary, damaged);
+        assertTrue(storage.load(xuid).isPresent());
+        assertArrayEquals(Files.readAllBytes(backup), Files.readAllBytes(primary));
+    }
+
+    @Test
     void rejectsUnsafeXuidAndOutOfWorldCoordinates() {
         assertThrows(IllegalArgumentException.class, () -> new PlayerData(
                 "../outside", "Player", "NEXORA", 0, 65, 0, 0, 0, 1));

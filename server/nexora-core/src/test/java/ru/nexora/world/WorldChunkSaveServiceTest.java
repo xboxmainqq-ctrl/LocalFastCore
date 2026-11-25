@@ -61,6 +61,37 @@ class WorldChunkSaveServiceTest {
     }
 
     @Test
+    void savesLatestRevisionWhenChunkChangesDuringAnAcceptedWrite() throws Exception {
+        WorldStorage storage = new WorldStorage(temporaryDirectory, "NEXORA");
+        WorldChunkSaveService service = new WorldChunkSaveService(storage, 1, 8);
+        WorldChunk chunk = new WorldChunk(11, -6);
+        chunk.setBlock(4, 70, 4, BlockType.STONE);
+        try {
+            CompletableFuture<Void> first = service.request(chunk);
+            Thread editor = new Thread(() -> {
+                for (int index = 0; index < 2_000; index++) {
+                    chunk.setBlock(4, 70, 4,
+                            (index & 1) == 0 ? BlockType.DIRT : BlockType.COBBLESTONE);
+                }
+                chunk.setBlock(4, 70, 4, BlockType.EMERALD_BLOCK);
+            }, "nexora-test-chunk-editor");
+            editor.start();
+            editor.join();
+
+            // If the first write is still running this coalesces with it; otherwise
+            // it schedules a fresh write for the newer revision.
+            service.request(chunk).join();
+            first.join();
+
+            WorldChunk restored = storage.loadChunk(11, -6).orElseThrow();
+            assertEquals(BlockType.EMERALD_BLOCK, restored.getBlock(4, 70, 4));
+            assertFalse(chunk.isDirty(), "The newest revision must be marked persisted");
+        } finally {
+            service.close();
+        }
+    }
+
+    @Test
     void rejectsNewDirtySaveRequestsAfterShutdownWithoutMarkingThemPersisted() throws Exception {
         WorldStorage storage = new WorldStorage(temporaryDirectory, "NEXORA");
         WorldChunkSaveService service = new WorldChunkSaveService(storage, 1, 4);

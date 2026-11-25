@@ -34,6 +34,45 @@ class WorldItemEntityManagerTest {
     }
 
     @Test
+    void concurrentPlayersCannotDuplicatePickupOfTheSameWorldItem() throws Exception {
+        WorldItemEntityManager manager = new WorldItemEntityManager();
+        WorldItemEntity entity = manager.spawn(new ItemStack("minecraft:diamond", 7, 64),
+                0.5, 65.125, 0.5, 0, 0, 0, 1_000, 0, null);
+        PlayerInventory firstInventory = new PlayerInventory();
+        PlayerInventory secondInventory = new PlayerInventory();
+        java.util.concurrent.CountDownLatch ready = new java.util.concurrent.CountDownLatch(2);
+        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var first = executor.submit(() -> {
+                ready.countDown();
+                start.await();
+                return manager.pickup(entity.runtimeId(), firstInventory, "first-player",
+                        0.5, 65.125, 0.5, 1_001);
+            });
+            var second = executor.submit(() -> {
+                ready.countDown();
+                start.await();
+                return manager.pickup(entity.runtimeId(), secondInventory, "second-player",
+                        0.5, 65.125, 0.5, 1_001);
+            });
+            assertTrue(ready.await(2, java.util.concurrent.TimeUnit.SECONDS));
+            start.countDown();
+
+            boolean firstPickedUp = first.get(2, java.util.concurrent.TimeUnit.SECONDS);
+            boolean secondPickedUp = second.get(2, java.util.concurrent.TimeUnit.SECONDS);
+            assertNotEquals(firstPickedUp, secondPickedUp,
+                    "exactly one concurrent player may claim a dropped stack");
+            assertEquals(7, firstInventory.count("minecraft:diamond")
+                    + secondInventory.count("minecraft:diamond"));
+            assertTrue(manager.find(entity.runtimeId()).isEmpty());
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
     void enforcesPickupDelayOwnerLockAndDistance() {
         WorldItemEntityManager manager = new WorldItemEntityManager();
         WorldItemEntity entity = manager.spawn(new ItemStack("minecraft:iron_ingot", 2, 64),

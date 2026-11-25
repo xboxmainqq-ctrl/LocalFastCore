@@ -8,6 +8,7 @@ on:
       - "v*"
     paths:
       - "server/nexora-core/**"
+      - "tools/blender/**"
       - ".github/workflows/nexora-core.yml"
   pull_request:
     paths:

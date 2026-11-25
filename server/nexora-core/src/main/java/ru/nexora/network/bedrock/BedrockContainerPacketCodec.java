@@ -26,7 +26,7 @@ public final class BedrockContainerPacketCodec {
 
     public static BedrockPacket createOpen(int windowId, int type, int x, int y, int z, long entityUniqueId) {
         validateWindowId(windowId);
-        if (type < 0 || type > 255) throw new IllegalArgumentException("Container type must be 0..255");
+        if (type < -128 || type > 255) throw new IllegalArgumentException("Container type must fit one wire byte");
         if (entityUniqueId < -1L) throw new IllegalArgumentException("Invalid container entity unique ID");
 
         Writer out = new Writer();
@@ -37,6 +37,11 @@ public final class BedrockContainerPacketCodec {
         out.varInt32(z);
         out.varInt64(entityUniqueId);
         return new BedrockPacket(CONTAINER_OPEN_PACKET_ID, 0, 0, out.toByteArray());
+    }
+
+    /** Opens the player inventory UI. Window type -1 and an entity target are required by Bedrock. */
+    public static BedrockPacket createPlayerInventoryOpen(int windowId, long playerUniqueId) {
+        return createOpen(windowId, -1, 0, 0, 0, playerUniqueId);
     }
 
     public static BedrockPacket createChestOpen(int windowId, int x, int y, int z) {

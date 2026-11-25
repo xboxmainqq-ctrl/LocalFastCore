@@ -7843,6 +7843,13 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
 
         WorldItemEntity entity = world.itemEntities().find(request.itemRuntimeId()).orElse(null);
         if (entity == null) return;
+        // A client can optimistically hide an item after sending TakeItemActor.
+        // Dead or not-yet-positioned sessions must not collect it; re-send the
+        // authoritative actor so the client cannot make it disappear locally.
+        if (state.dead || state.vitals.dead() || !state.positionInitialized) {
+            sendPacket(networkId, BedrockAddItemActorCodec.createAddItemActor(entity, itemRegistry), true);
+            return;
+        }
         if (itemRegistry.findByIdentifier(entity.stack().itemId()) == null) {
             throw new SecurityException("Dropped item has no registered Bedrock definition");
         }

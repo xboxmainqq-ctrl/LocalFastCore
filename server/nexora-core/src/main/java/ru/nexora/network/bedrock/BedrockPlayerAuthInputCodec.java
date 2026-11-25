@@ -45,10 +45,9 @@ public final class BedrockPlayerAuthInputCodec {
         float deltaY = in.float32();
         float deltaZ = in.float32();
 
-        // Protocol 2225 encodes each Optional inline: presence byte followed
-        // immediately by that section's payload, then the next presence byte.
-        // Reading all five presence bytes up front misaligns the cursor whenever
-        // ItemUseTransaction or PlayerBlockActions is present.
+        // Protocol 2225 optional sections are selected by PlayerAuthInputData flags.
+        // They do not have independent presence bytes on the wire; consuming one
+        // would shift every field and corrupt item-use/block-action decoding.
         boolean hasItemUse = inputActions.contains(InputAction.PERFORM_ITEM_INTERACTION);
         boolean optionalSectionsPresent = hasItemUse;
         ItemUseTransaction itemUseTransaction = hasItemUse ? readPackedItemUse(in) : null;

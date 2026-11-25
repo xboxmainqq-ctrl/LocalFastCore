@@ -352,7 +352,6 @@ class BedrockPlayerAuthInputCodecTest {
         writeFloat(output, 0); writeFloat(output, 0);
         writeVarULong(output, tick);
         writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0);
-        output.write(1); // ItemInteractionData optional
         writeVarInt(output, 0); // legacy request ID
         writeVarUInt(output, 0); // inventory actions
         writeVarInt(output, 0); // ItemUseActionType.Place
@@ -373,10 +372,6 @@ class BedrockPlayerAuthInputCodecTest {
                 BedrockBlockRuntimeIds.forBlock(ru.nexora.world.BlockType.GRASS_BLOCK)));
         output.write(1); // ClientInteractPrediction.Success
         output.write(0); // ClientCooldownState.Off
-        output.write(0); // ItemStackRequest optional
-        output.write(0); // BlockActions optional
-        output.write(0); // VehicleRotation optional
-        output.write(0); // ClientPredictedVehicle optional
         writeFloat(output, 0); writeFloat(output, 0); // analog move
         writeFloat(output, 0); writeFloat(output, 0); writeFloat(output, 0); // camera
         writeFloat(output, 0); writeFloat(output, 0); // raw move

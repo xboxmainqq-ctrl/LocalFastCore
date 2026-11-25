@@ -49,11 +49,11 @@ public final class BedrockPlayerAuthInputCodec {
         // immediately by that section's payload, then the next presence byte.
         // Reading all five presence bytes up front misaligns the cursor whenever
         // ItemUseTransaction or PlayerBlockActions is present.
-        boolean hasItemUse = in.bool();
+        boolean hasItemUse = inputActions.contains(InputAction.PERFORM_ITEM_INTERACTION);
         boolean optionalSectionsPresent = hasItemUse;
         ItemUseTransaction itemUseTransaction = hasItemUse ? readPackedItemUse(in) : null;
 
-        boolean hasItemStackRequest = in.bool();
+        boolean hasItemStackRequest = inputActions.contains(InputAction.PERFORM_ITEM_STACK_REQUEST);
         optionalSectionsPresent |= hasItemStackRequest;
         // ItemStackRequest actions are not yet implemented. Preserve the movement
         // sample and explicitly mark this packet's interaction tail as unparsed.
@@ -65,7 +65,7 @@ public final class BedrockPlayerAuthInputCodec {
                     java.util.List.copyOf(inputActions), java.util.List.of(), itemUseTransaction);
         }
 
-        boolean hasBlockActions = in.bool();
+        boolean hasBlockActions = inputActions.contains(InputAction.PERFORM_BLOCK_ACTIONS);
         optionalSectionsPresent |= hasBlockActions;
         java.util.List<BlockAction> blockActions = new java.util.ArrayList<>();
         if (hasBlockActions) {
@@ -79,13 +79,13 @@ public final class BedrockPlayerAuthInputCodec {
             }
         }
 
-        boolean hasVehicleRotation = in.bool();
+        boolean hasVehicleRotation = inputActions.contains(InputAction.IS_IN_CLIENT_PREDICTED_VEHICLE);
         optionalSectionsPresent |= hasVehicleRotation;
         if (hasVehicleRotation) {
             in.float32(); in.float32(); // vehicle rotation
         }
 
-        boolean hasPredictedVehicle = in.bool();
+        boolean hasPredictedVehicle = inputActions.contains(InputAction.IS_IN_CLIENT_PREDICTED_VEHICLE);
         optionalSectionsPresent |= hasPredictedVehicle;
         if (hasPredictedVehicle) {
             in.varInt64(); // client-predicted vehicle unique ID

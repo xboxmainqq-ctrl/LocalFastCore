@@ -88,6 +88,42 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void creativeDestroyBlockActionBreaksBlockWithoutPriorStartAction() throws Exception {
+        ru.nexora.world.World world = new ru.nexora.world.World(
+                "creative-destroy-action", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                world, (networkId, label, frame) -> { }, event -> { });
+        try {
+            manager.onIdentity("creative-destroy-player", new NetherNetClientIdentity(
+                    "creative-destroy-token", new byte[] {1}, "creative-destroy-xuid",
+                    "CreativeDestroyPlayer", "creative-destroy-playfab", "20CA2", null));
+            world.setBlock(1, 65, 0, ru.nexora.world.BlockType.STONE);
+            setSessionField(manager, "creative-destroy-player", "creativeMode", true);
+            setSessionField(manager, "creative-destroy-player", "positionX", 0.5f);
+            setSessionField(manager, "creative-destroy-player", "positionY", 65.0f);
+            setSessionField(manager, "creative-destroy-player", "positionZ", 0.5f);
+
+            java.lang.reflect.Field sessionsField = BedrockSessionManager.class.getDeclaredField("sessions");
+            sessionsField.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, Object> sessions =
+                    (java.util.Map<String, Object>) sessionsField.get(manager);
+            Object state = sessions.get("creative-destroy-player");
+            java.lang.reflect.Method actionHandler = BedrockSessionManager.class.getDeclaredMethod(
+                    "handleBlockActionSafely", String.class, state.getClass(),
+                    BedrockPlayerAuthInputCodec.BlockAction.class);
+            actionHandler.setAccessible(true);
+
+            assertDoesNotThrow(() -> actionHandler.invoke(manager, "creative-destroy-player", state,
+                    new BedrockPlayerAuthInputCodec.BlockAction(13, 1, 65, 0, 1)));
+            assertEquals(ru.nexora.world.BlockType.AIR, world.getBlock(1, 65, 0));
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void blockActionWorldListenerFailureDoesNotRejectPlayerSession() throws Exception {
         ru.nexora.world.World world = new ru.nexora.world.World(
                 "block-action-isolation", 0L, new ru.nexora.world.FlatWorldGenerator());

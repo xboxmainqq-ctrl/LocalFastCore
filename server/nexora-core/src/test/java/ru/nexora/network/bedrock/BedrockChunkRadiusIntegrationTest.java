@@ -100,11 +100,12 @@ class BedrockChunkRadiusIntegrationTest {
     @Test
     void continuesStreamingNewChunksAfterClientInitialization() throws Exception {
         List<Outbound> outbound = new ArrayList<>();
+        AtomicLong clock = new AtomicLong();
         BedrockSessionManager manager = new BedrockSessionManager(
                 2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
                 new World("post-init-chunk-stream-test", 0L, new FlatWorldGenerator()),
                 (networkId, label, frame) -> outbound.add(new Outbound(networkId, frame)),
-                event -> { });
+                event -> { }, clock::get);
         try {
             manager.onIdentity("viewer", new NetherNetClientIdentity(
                     "viewer-token", new byte[] {1, 2, 3}, "viewer-xuid",

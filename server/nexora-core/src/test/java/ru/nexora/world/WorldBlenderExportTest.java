@@ -120,7 +120,10 @@ class WorldBlenderExportTest {
             case 5 -> new double[][]{{x,y,z+1},{x,y+1,z+1},{x+1,y+1,z+1},{x+1,y,z+1}};
             default -> throw new IllegalArgumentException("Unknown cube face");
         };
-        for (double[] point : p) {
+        // Swapping Y/Z to Blender's Z-up coordinates reverses handedness,
+        // so reverse the quad order to keep its normal pointing outwards.
+        for (int i = 0; i < 4; i++) {
+            double[] point = p[3 - i];
             out.write(String.format(Locale.ROOT, "v %.3f %.3f %.3f%n", point[0], point[2], point[1]));
         }
         out.write("f " + first + " " + (first + 1) + " " + (first + 2) + " " + (first + 3) + "\n");

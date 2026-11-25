@@ -214,6 +214,32 @@ class WorldItemEntityManagerTest {
         assertTrue(restored.snapshotInChunkKeys(java.util.Set.of(east)).isEmpty());
     }
 
+    @Test
+    void failedPickupPersistenceRestoresInventoryAndActorAndCanRetry() throws Exception {
+        WorldItemEntityStorage storage = new WorldItemEntityStorage(temporaryDirectory, "pickup-retry");
+        WorldItemEntityManager manager = new WorldItemEntityManager(storage);
+        WorldItemEntity entity = manager.spawn(new ItemStack("minecraft:diamond", 3, 64),
+                0.5, 65.125, 0.5, 0, 0, 0, 1_000, 0, null);
+        PlayerInventory inventory = new PlayerInventory();
+        Path primary = temporaryDirectory.resolve("pickup-retry/items/entities.nxe");
+
+        Files.delete(primary);
+        Files.createDirectory(primary);
+        assertThrows(java.io.UncheckedIOException.class, () -> manager.pickup(
+                entity.runtimeId(), inventory, "player-xuid", 0.5, 65.125, 0.5, 1_001));
+
+        assertEquals(0, inventory.count("minecraft:diamond"));
+        assertEquals(entity, manager.find(entity.runtimeId()).orElseThrow());
+        assertEquals(List.of(entity), manager.snapshot());
+
+        Files.delete(primary);
+        assertTrue(manager.pickup(entity.runtimeId(), inventory, "player-xuid",
+                0.5, 65.125, 0.5, 1_002));
+        assertEquals(3, inventory.count("minecraft:diamond"));
+        assertTrue(manager.find(entity.runtimeId()).isEmpty());
+        assertTrue(new WorldItemEntityManager(storage).find(entity.runtimeId()).isEmpty());
+    }
+
     private static long chunkKey(int chunkX, int chunkZ) {
         return ((long) chunkX << 32) | (chunkZ & 0xffff_ffffL);
     }

@@ -190,4 +190,42 @@ class InventoryTransactionServiceTest {
                                 InventoryTransactionService.Action.playerSlot(
                                         0, Optional.empty(), Optional.empty()))));
     }
+
+    @Test
+    void rejectsChangingEnchantmentMetadataDuringAPlayerInventoryMove() {
+        PlayerInventory inventory = new PlayerInventory();
+        ItemStack enchanted = new ItemStack("minecraft:diamond_sword", 1, 1,
+                java.util.Map.of("minecraft:sharpness", 5), 0);
+        ItemStack forged = new ItemStack("minecraft:diamond_sword", 1, 1);
+        inventory.setSlot(0, enchanted);
+
+        var result = service.applyPlayerInventoryTransaction(inventory, List.of(
+                InventoryTransactionService.Action.playerSlot(
+                        0, Optional.of(enchanted), Optional.of(forged))));
+
+        assertEquals(InventoryTransactionService.Result.REJECTED_STALE_OR_UNSAFE, result);
+        assertEquals(enchanted, inventory.getSlot(0).orElseThrow());
+    }
+
+    @Test
+    void rejectsChangingRepairMetadataWhenMovingAnItemToCursor() {
+        PlayerInventory inventory = new PlayerInventory();
+        PlayerEquipment equipment = new PlayerEquipment();
+        ItemStack repaired = new ItemStack("minecraft:diamond_pickaxe", 1, 1,
+                java.util.Map.of("minecraft:efficiency", 4), 7);
+        ItemStack forged = new ItemStack("minecraft:diamond_pickaxe", 1, 1,
+                java.util.Map.of("minecraft:efficiency", 4), 0);
+        inventory.setSlot(0, repaired);
+
+        var result = service.applyPlayerInventoryAndUiTransaction(inventory, equipment, List.of(
+                new InventoryTransactionService.Action(0, 0, 0,
+                        Optional.of(repaired), Optional.empty()),
+                new InventoryTransactionService.Action(0, 124, 0,
+                        Optional.empty(), Optional.of(forged))));
+
+        assertEquals(InventoryTransactionService.Result.REJECTED_STALE_OR_UNSAFE, result);
+        assertEquals(repaired, inventory.getSlot(0).orElseThrow());
+        assertTrue(equipment.cursor().isEmpty());
+    }
+
 }

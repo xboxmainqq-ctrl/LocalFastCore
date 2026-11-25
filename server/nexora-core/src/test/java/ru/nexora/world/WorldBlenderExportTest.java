@@ -70,11 +70,11 @@ class WorldBlenderExportTest {
                                 BlockType block = world.getChunk(chunkX, chunkZ)
                                         .getBlock(localX, y, localZ);
                                 if (block == BlockType.AIR) continue;
-                                if (activeMaterial != block.name()) {
+                                if (!activeMaterial.equals(block.name())) {
                                     activeMaterial = block.name();
                                     out.write("usemtl " + activeMaterial + "\n");
                                 }
-                                if (world.getBlock(worldX, y - 1, worldZ) == BlockType.AIR) {
+                                if (y > WorldChunk.MIN_Y && world.getBlock(worldX, y - 1, worldZ) == BlockType.AIR) {
                                     vertex = writeFace(out, vertex, worldX, y, worldZ, 0);
                                     faceCount++;
                                 }
@@ -121,7 +121,7 @@ class WorldBlenderExportTest {
             default -> throw new IllegalArgumentException("Unknown cube face");
         };
         for (double[] point : p) {
-            out.write(String.format(Locale.ROOT, "v %.3f %.3f %.3f%n", point[0], point[1], point[2]));
+            out.write(String.format(Locale.ROOT, "v %.3f %.3f %.3f%n", point[0], point[2], point[1]));
         }
         out.write("f " + first + " " + (first + 1) + " " + (first + 2) + " " + (first + 3) + "\n");
         return first + 4;

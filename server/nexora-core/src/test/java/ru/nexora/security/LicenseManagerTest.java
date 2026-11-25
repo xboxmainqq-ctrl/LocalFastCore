@@ -65,7 +65,7 @@ class LicenseManagerTest {
         Files.writeString(temporaryDirectory.resolve("instance.id"), instance.toString());
         String token = token(pair, "LIC-005", instance, Instant.now().plusSeconds(3600).getEpochSecond());
         var input = new BufferedReader(new InputStreamReader(
-                new ByteArrayInputStream((token + "\\n").getBytes(StandardCharsets.US_ASCII))));
+                new ByteArrayInputStream((token + "\n").getBytes(StandardCharsets.US_ASCII))));
         var output = new PrintStream(new ByteArrayOutputStream());
 
         var license = LicenseManager.activateOrValidate(temporaryDirectory, input, output, pair.getPublic());

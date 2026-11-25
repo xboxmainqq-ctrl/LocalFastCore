@@ -20,9 +20,10 @@ class BedrockAvailableCommandsCodecTest {
         assertEquals(0, in.varUInt32()); // enum data
         assertEquals(0, in.varUInt32()); // chained subcommand data
 
-        assertEquals(2, in.varUInt32()); // commands
+        assertEquals(3, in.varUInt32()); // commands
         assertCommand(in, "equipment", "Open the NEXORA magical equipment menu");
         assertCommand(in, "ai", "Open the NEXORA AI assistant");
+        assertCommand(in, "nexora", "Verify NEXORA core authenticity and integrity");
         assertEquals(0, in.varUInt32()); // soft enums
         assertEquals(0, in.varUInt32()); // constraints
         in.requireExhausted();

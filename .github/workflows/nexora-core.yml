@@ -63,6 +63,8 @@ jobs:
         run: |
           blender --background --python tools/blender/import_nexora_preview.py -- server/nexora-core/target/blender-preview
           test -s server/nexora-core/target/blender-preview/nexora-preview.blend
+          test -s server/nexora-core/target/blender-preview/blender-validation.json
+          python3 -m json.tool server/nexora-core/target/blender-preview/blender-validation.json > /dev/null
       - name: Upload Blender world and physics preview
         uses: actions/upload-artifact@v4
         with:

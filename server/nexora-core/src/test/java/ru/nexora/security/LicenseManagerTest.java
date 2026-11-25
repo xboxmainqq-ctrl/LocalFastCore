@@ -65,12 +65,17 @@ class LicenseManagerTest {
         Files.writeString(temporaryDirectory.resolve("instance.id"), instance.toString());
         String token = token(pair, "LIC-005", instance, Instant.now().plusSeconds(3600).getEpochSecond());
         var input = new BufferedReader(new InputStreamReader(
-                new ByteArrayInputStream((token + "\n").getBytes(StandardCharsets.US_ASCII))));
+                new ByteArrayInputStream((token + "\\n").getBytes(StandardCharsets.US_ASCII))));
         var output = new PrintStream(new ByteArrayOutputStream());
-        var license = LicenseManager.verifyToken(token, pair.getPublic(), instance);
+
+        var license = LicenseManager.activateOrValidate(temporaryDirectory, input, output, pair.getPublic());
+
         assertEquals("LIC-005", license.licenseId());
-        // Activation persistence is exercised through the same atomic file format in production.
-        assertFalse(Files.exists(temporaryDirectory.resolve("license.key")));
+        assertEquals(token, Files.readString(temporaryDirectory.resolve("license.key")).trim());
+        var secondStart = LicenseManager.activateOrValidate(temporaryDirectory,
+                new BufferedReader(new InputStreamReader(new ByteArrayInputStream(new byte[0]))),
+                output, pair.getPublic());
+        assertEquals("LIC-005", secondStart.licenseId());
     }
 
     private KeyPair keyPair() throws Exception {

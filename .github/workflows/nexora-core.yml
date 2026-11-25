@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v*"
     paths:
       - "server/nexora-core/**"
       - ".github/workflows/nexora-core.yml"
@@ -52,11 +54,44 @@ jobs:
             exit 1
           fi
           unzip -p server/nexora-core/target/server.jar META-INF/MANIFEST.MF | grep -q "Main-Class: ru.nexora.NexoraServer"
-      - name: Upload runnable server package
+      - name: Create checksum and optional official Ed25519 signature
+        if: success()
+        env:
+          NEXORA_SIGNING_PRIVATE_KEY: ${{ secrets.NEXORA_SIGNING_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          jar="server/nexora-core/target/server.jar"
+          sha256sum "$jar" > "$jar.sha256"
+          if [[ -n "$NEXORA_SIGNING_PRIVATE_KEY" ]]; then
+            public_key="server/nexora-core/src/main/resources/META-INF/nexora-signing-public-key.b64"
+            if grep -qx "UNCONFIGURED" "$public_key"; then
+              echo "::error::Pin the Ed25519 public key before signing releases."
+              exit 1
+            fi
+            private_key="$RUNNER_TEMP/nexora-ed25519-private.pem"
+            signature="$RUNNER_TEMP/nexora-server.jar.sig.bin"
+            umask 077
+            printf '%s\n' "$NEXORA_SIGNING_PRIVATE_KEY" > "$private_key"
+            openssl pkeyutl -sign -rawin -inkey "$private_key" -in "$jar" -out "$signature"
+            base64 -w0 "$signature" > "$jar.sig"
+            printf '\n' >> "$jar.sig"
+            rm -f "$private_key" "$signature"
+            echo "NEXORA official build signature created."
+          elif [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            echo "::error::A release tag requires the NEXORA_SIGNING_PRIVATE_KEY Actions secret."
+            exit 1
+          else
+            echo "::warning::Build is unsigned until signing key and pinned public key are configured."
+          fi
+      - name: Upload runnable server package and integrity files
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: nexora-core-${{ github.sha }}
-          path: server/nexora-core/target/server.jar
+          path: |
+            server/nexora-core/target/server.jar
+            server/nexora-core/target/server.jar.sha256
+            server/nexora-core/target/server.jar.sig
           if-no-files-found: error
           retention-days: 7

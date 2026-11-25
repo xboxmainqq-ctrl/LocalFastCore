@@ -97,6 +97,44 @@ class BedrockChunkRadiusIntegrationTest {
         }
     }
 
+    @Test
+    void continuesStreamingNewChunksAfterClientInitialization() throws Exception {
+        List<Outbound> outbound = new ArrayList<>();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                new World("post-init-chunk-stream-test", 0L, new FlatWorldGenerator()),
+                (networkId, label, frame) -> outbound.add(new Outbound(networkId, frame)),
+                event -> { });
+        try {
+            manager.onIdentity("viewer", new NetherNetClientIdentity(
+                    "viewer-token", new byte[] {1, 2, 3}, "viewer-xuid",
+                    "Viewer", "viewer-playfab", "20CA2", null));
+            Object session = session(manager, "viewer");
+            set(session, "gameStarted", true);
+            set(session, "clientInitialized", true);
+            set(session, "compressionNegotiated", true);
+            set(session, "chunkViewRadius", 1);
+            set(session, "chunkStreamingQueue", new ChunkStreamingQueue(4, -3, 1));
+
+            // The first tick can publish only four columns; subsequent ticks must
+            // continue even though the player has already completed the spawn handshake.
+            manager.tickInitialChunkStreams();
+            assertEquals(4, sentChunks(session).size());
+            assertNotNull(field(session, "chunkStreamingQueue"));
+
+            manager.tickInitialChunkStreams();
+            manager.tickInitialChunkStreams();
+
+            assertEquals(9, sentChunks(session).size());
+            assertNull(field(session, "chunkStreamingQueue"));
+            assertEquals(9, packetsFor(outbound, "viewer").stream()
+                    .filter(packet -> packet.packetId() == BedrockLevelChunkCodec.LEVEL_CHUNK_PACKET_ID)
+                    .count());
+        } finally {
+            manager.close();
+        }
+    }
+
     private static void completeStreaming(
             BedrockSessionManager manager, Object session, AtomicLong clock
     ) throws Exception {

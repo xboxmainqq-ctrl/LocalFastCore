@@ -95,6 +95,43 @@ class ContainerInventoryTransactionServiceTest {
                 service.apply(player, ui, 124, invalidSlot, java.util.Set.of(28, 29, 30, 31)));
     }
 
+    @Test
+    void rejectsMetadataForgeryWhenMovingItemsBetweenPlayerAndContainer() {
+        PlayerInventory player = new PlayerInventory();
+        ContainerInventory chest = new ContainerInventory();
+        ItemStack enchanted = new ItemStack("minecraft:diamond_sword", 1, 1,
+                java.util.Map.of("minecraft:sharpness", 5), 0);
+        ItemStack forged = new ItemStack("minecraft:diamond_sword", 1, 1);
+        player.setSlot(0, enchanted);
+
+        var result = service.apply(player, chest, 7, List.of(
+                action(0, 0, enchanted, null),
+                action(7, 0, null, forged)));
+
+        assertEquals(ContainerInventoryTransactionService.Result.REJECTED_STALE_OR_UNSAFE, result);
+        assertEquals(enchanted, player.getSlot(0).orElseThrow());
+        assertTrue(chest.getSlot(0).isEmpty());
+    }
+
+    @Test
+    void preservesRepairMetadataWhenMovingFromContainerToPlayer() {
+        PlayerInventory player = new PlayerInventory();
+        ContainerInventory chest = new ContainerInventory();
+        ItemStack repaired = new ItemStack("minecraft:diamond_pickaxe", 1, 1,
+                java.util.Map.of("minecraft:efficiency", 4), 7);
+        ItemStack forged = new ItemStack("minecraft:diamond_pickaxe", 1, 1,
+                java.util.Map.of("minecraft:efficiency", 4), 0);
+        chest.setSlot(0, repaired);
+
+        var result = service.apply(player, chest, 7, List.of(
+                action(7, 0, repaired, null),
+                action(0, 0, null, forged)));
+
+        assertEquals(ContainerInventoryTransactionService.Result.REJECTED_STALE_OR_UNSAFE, result);
+        assertEquals(repaired, chest.getSlot(0).orElseThrow());
+        assertTrue(player.getSlot(0).isEmpty());
+    }
+
     private static InventoryTransactionService.Action action(
             int containerId, int slot, ItemStack from, ItemStack to
     ) {

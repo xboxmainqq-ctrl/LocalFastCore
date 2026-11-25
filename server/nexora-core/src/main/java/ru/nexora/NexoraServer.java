@@ -38,7 +38,6 @@ import ru.nexora.modules.ModuleRegistry;
 import ru.nexora.lifecycle.ServerReadiness;
 import ru.nexora.config.NexoraServerConfig;
 import ru.nexora.security.BuildSignatureVerifier;
-import ru.nexora.security.LicenseManager;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -60,14 +59,6 @@ public final class NexoraServer {
 
     public static void main(String[] args) throws Exception {
         BufferedReader consoleInput = new BufferedReader(new InputStreamReader(System.in));
-        String licenseDataDirectory = System.getenv().getOrDefault("NEXORA_DATA_DIR", "data");
-        LicenseManager.License license = LicenseManager.activateOrValidate(
-                Path.of(licenseDataDirectory), consoleInput, System.out);
-        if ("DEV-UNOFFICIAL".equals(license.licenseId())) {
-            System.out.println("[NEXORA] STATUS: UNOFFICIAL DEVELOPMENT MODE — server startup permitted.");
-        } else {
-            System.out.println("[NEXORA] STATUS: OFFICIAL LICENSE ACTIVE — " + license.licenseId());
-        }
 
         BuildSignatureVerifier.Result buildSignature = BuildSignatureVerifier.verifyCurrentBuild();
         System.out.printf("[NEXORA] Signature: %s (%s)%n", buildSignature.status(), buildSignature.detail());

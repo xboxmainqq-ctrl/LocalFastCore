@@ -380,7 +380,15 @@ public final class World {
         synchronized (pendingChunkLoadLock) {
             for (WorldChunkResidencyManager.ChunkCoordinate coordinate : plan.unload()) {
                 pendingChunkLoads.remove(chunkKey(coordinate.chunkX(), coordinate.chunkZ()));
-                if (unloadChunk(coordinate.chunkX(), coordinate.chunkZ())) unloaded++;
+                try {
+                    if (unloadChunk(coordinate.chunkX(), coordinate.chunkZ())) unloaded++;
+                } catch (RuntimeException failure) {
+                    // A failed disk flush must not abort the whole residency tick.
+                    // Keep this chunk cached and continue loading the player's new view.
+                    System.err.println("NEXORA: retaining chunk after unload failure "
+                            + coordinate.chunkX() + "," + coordinate.chunkZ()
+                            + ": " + failure.getMessage());
+                }
             }
             for (WorldChunkResidencyManager.ChunkCoordinate coordinate : plan.load()) {
                 long key = chunkKey(coordinate.chunkX(), coordinate.chunkZ());

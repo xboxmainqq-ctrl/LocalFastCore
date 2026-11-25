@@ -6,6 +6,14 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockContainerPacketCodecTest {
     @Test
+    void opensPlayerInventoryWithInventoryWindowTypeAndEntityTarget() {
+        BedrockPacket packet = BedrockContainerPacketCodec.createPlayerInventoryOpen(7, 300L);
+
+        assertEquals(0x2e, packet.packetId());
+        assertArrayEquals(new byte[] {7, (byte) 0xff, 0, 0, 0, (byte) 0xd8, 4}, packet.payload());
+    }
+
+    @Test
     void encodesChestOpenWithSignedBlockCoordinatesAndBlockEntitySentinel() {
         BedrockPacket packet = BedrockContainerPacketCodec.createChestOpen(7, -1, 64, -17);
 

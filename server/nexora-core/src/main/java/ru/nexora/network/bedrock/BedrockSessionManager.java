@@ -2024,6 +2024,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                             handleChunkRadiusRequest(message, state, packet);
                     case BedrockPlayerAuthInputCodec.PLAYER_AUTH_INPUT_PACKET_ID ->
                             handlePlayerAuthInput(message.networkId(), state, packet);
+                    case BedrockInteractPacketCodec.PACKET_ID -> handleInteract(message, state, packet);
                     case BedrockPlayerActionCodec.PLAYER_ACTION_PACKET_ID ->
                             handlePlayerAction(message, state, packet);
                     case BedrockInventoryTransactionCodec.INVENTORY_TRANSACTION_PACKET_ID ->
@@ -2220,6 +2221,33 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         return false;
     }
 
+    private void handleInteract(
+            NetherNetInboundPipeline.InboundMessage message, SessionState state, BedrockPacket packet
+    ) {
+        if (!message.reliable()) {
+            throw new SecurityException("Interact must arrive on ReliableDataChannel");
+        }
+        if (!state.loginAuthenticated || !state.clientInitialized || state.dead) {
+            throw new SecurityException("Interact arrived before the player was ready");
+        }
+        BedrockInteractPacketCodec.Decoded interact;
+        try {
+            interact = BedrockInteractPacketCodec.decode(packet);
+        } catch (IllegalArgumentException exception) {
+            state.rejected = true;
+            throw new SecurityException("Malformed Bedrock Interact packet", exception);
+        }
+        if (interact.action() != BedrockInteractPacketCodec.ACTION_OPEN_INVENTORY) return;
+
+        // The client-supplied target runtime ID is deliberately ignored. Mojang's
+        // protocol guide requires the server to infer the player from this session.
+        if (state.openPlayerInventoryWindowId != 0 || state.openContainerWindowId != 0) return;
+        int windowId = nextContainerWindowId(state);
+        sendPacket(message.networkId(), BedrockContainerPacketCodec.createPlayerInventoryOpen(
+                windowId, state.entityId), true);
+        state.openPlayerInventoryWindowId = windowId;
+    }
+
     private void handleContainerClose(
             NetherNetInboundPipeline.InboundMessage message, SessionState state, BedrockPacket packet
     ) {
@@ -2239,6 +2267,14 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
         if (close.serverInitiated()) {
             throw new SecurityException("Client cannot mark ContainerClose as server initiated");
+        }
+        if (state.openPlayerInventoryWindowId != 0
+                && close.windowId() == state.openPlayerInventoryWindowId
+                && close.type() == -1) {
+            int windowId = state.openPlayerInventoryWindowId;
+            state.openPlayerInventoryWindowId = 0;
+            sendPacket(message.networkId(), BedrockContainerPacketCodec.createClose(windowId, -1, false), true);
+            return;
         }
         if (state.openContainerWindowId == 0
                 || close.windowId() != state.openContainerWindowId
@@ -8668,6 +8704,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         private PendingEquipmentForm pendingEquipmentForm;
         private int pendingAiFormId;
         private int nextContainerWindowId = 1;
+        private int openPlayerInventoryWindowId;
         private int openContainerWindowId;
         private int openContainerType = BedrockContainerPacketCodec.CONTAINER_TYPE;
         private boolean openContainerIsCraftingTable;

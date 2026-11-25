@@ -5919,6 +5919,20 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         long tickDelta = state.hasReceivedInput ? input.tick() - state.lastInputTick : 1L;
         if (tickDelta < 1) return;
         double deltaSeconds = Math.min(PlayerPhysics.MAX_TICK_SECONDS, tickDelta / 20.0);
+        // The client position is only a prediction, so bound it before using it
+        // to request chunks. The physics simulation below remains authoritative.
+        double requestedDx = input.x() - state.positionX;
+        double requestedDy = input.y() - state.positionY;
+        double requestedDz = input.z() - state.positionZ;
+        double requestedDistance = Math.sqrt(requestedDx * requestedDx
+                + requestedDy * requestedDy + requestedDz * requestedDz);
+        if (!Double.isFinite(requestedDistance) || requestedDistance > 2.0) {
+            sendMovementCorrection(networkId, state, input.tick());
+            return;
+        }
+        // Load the predicted destination footprint before PlayerPhysics performs
+        // swept collision checks. Otherwise unloaded chunks look like solid walls.
+        ensureActorFootprintChunksLoaded(input.x(), input.z());
         boolean jumping = input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.START_JUMPING)
                 || input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.JUMP_PRESSED_RAW)
                 || input.hasInputAction(BedrockPlayerAuthInputCodec.InputAction.JUMPING);

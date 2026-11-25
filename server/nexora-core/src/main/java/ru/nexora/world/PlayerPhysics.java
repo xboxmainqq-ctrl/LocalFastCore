@@ -86,6 +86,7 @@ public final class PlayerPhysics {
                 nextX, current.y(), current.z());
         boolean blockedZ = !WorldCollision.canMove(world, nextX, current.y(), current.z(),
                 nextX, current.y(), nextZ);
+        boolean steppedUp = false;
         if ((blockedX || blockedZ) && wasGrounded && inputLength > 0) {
             State stepped = tryStepUp(world, current, nextX, nextZ);
             if (stepped != null) {
@@ -96,6 +97,7 @@ public final class PlayerPhysics {
                 vz = stepped.velocityZ();
                 vy = 0;
                 grounded = true;
+                steppedUp = true;
                 blockedX = false;
                 blockedZ = false;
             }
@@ -109,7 +111,7 @@ public final class PlayerPhysics {
             vz = 0;
         }
 
-        if (!WorldCollision.canMove(world, nextX, current.y(), nextZ, nextX, nextY, nextZ)) {
+        if (!steppedUp && !WorldCollision.canMove(world, nextX, current.y(), nextZ, nextX, nextY, nextZ)) {
             // Resolve the vertical contact to the block boundary instead of
             // stopping at the last coarse sweep sample (which causes hovering).
             double validY = current.y();
@@ -132,7 +134,7 @@ public final class PlayerPhysics {
                 }
             }
             vy = 0;
-        } else {
+        } else if (!steppedUp) {
             grounded = false;
         }
 

@@ -2863,6 +2863,7 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         + "§fВерсия: §b" + version + "\n"
                         + "§fЛицензия: " + licenseStatus + "\n"
                         + "§fID лицензии: §7" + licenseId + "\n"
+                        + "§fServer ID: §7" + (license == null ? "не определён" : license.instanceId()) + "\n"
                         + "§fСтатус сборки: " + status + "\n"
                         + "§fЦелостность сборки: " + (result.valid() ? "§aПОДТВЕРЖДЕНА" : "§cНЕ ПОДТВЕРЖДЕНА") + "\n"
                         + "§fПроверка подписи: §7" + detail + "\n"

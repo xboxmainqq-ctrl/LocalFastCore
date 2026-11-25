@@ -2227,9 +2227,6 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         if (!message.reliable()) {
             throw new SecurityException("Interact must arrive on ReliableDataChannel");
         }
-        if (!state.loginAuthenticated || !state.clientInitialized || state.dead) {
-            throw new SecurityException("Interact arrived before the player was ready");
-        }
         BedrockInteractPacketCodec.Decoded interact;
         try {
             interact = BedrockInteractPacketCodec.decode(packet);
@@ -2237,6 +2234,10 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             state.rejected = true;
             throw new SecurityException("Malformed Bedrock Interact packet", exception);
         }
+        // Bedrock may send an initial Interact while the loading screen is still closing.
+        // It has no gameplay effect before initialization, so ignore it instead of
+        // treating a valid timing race as a hostile packet and disconnecting the peer.
+        if (!state.loginAuthenticated || !state.clientInitialized || state.dead) return;
         if (interact.action() != BedrockInteractPacketCodec.ACTION_OPEN_INVENTORY) return;
 
         // The client-supplied target runtime ID is deliberately ignored. Mojang's

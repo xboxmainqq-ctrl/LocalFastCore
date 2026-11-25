@@ -46,3 +46,37 @@ warning instead of being mistaken for an official build.
 A signature proves that a JAR is an unchanged build signed by the holder of the
 private key. It does not stop someone from redistributing an unchanged official
 JAR, and it cannot prevent a modified fork from removing its own verifier.
+
+
+## Mandatory license activation
+
+NEXORA requires a separate Ed25519-signed license before starting network or
+gameplay services. This is independent from the build signature above.
+
+- On first launch, the console displays a stable **Server ID** and asks for a
+  license key. Empty input, a malformed key, an invalid signature, an expired
+  license, or a key issued for another Server ID stops startup.
+- A successful key is saved in `NEXORA_DATA_DIR/license.key`; the generated
+  `instance.id` is stored beside it. Keep both files together when moving the
+  same licensed server installation.
+- The license public key is pinned in
+  `src/main/resources/META-INF/nexora-license-public-key.b64`. Replace
+  `UNCONFIGURED` with the Base64 DER Ed25519 public key before building.
+- Keep the matching private key offline. It is the only authority that can
+  issue license tokens. Never put it in this repository, the server JAR, or chat.
+- The signed token contains the format version, license ID, Server ID, and
+  expiration time. VK bot issuance/management will use this exact token format;
+  the bot must never receive or store the private signing key in public code.
+
+Generate a dedicated license key pair (do not reuse the build-signing key):
+
+```sh
+openssl genpkey -algorithm ED25519 -out nexora-license-private.pem
+openssl pkey -in nexora-license-private.pem -pubout -outform DER \
+  | base64 -w0 > nexora-license-public-key.b64
+```
+
+The console activation path is fail-closed. Until the license public key is
+pinned and a trusted issuer (the planned VK bot/license service) has issued a
+matching token, startup is intentionally blocked. Do not distribute this
+intermediate build as a ready-to-run server.

@@ -135,4 +135,41 @@ class PlayerInventoryTest {
 
         assertEquals(before, inventory.snapshot());
     }
+    @Test
+    void rejectsMetadataForgeryInsideAtomicSlotChanges() {
+        PlayerInventory inventory = new PlayerInventory(9);
+        ItemStack enchanted = new ItemStack("minecraft:diamond_sword", 1, 1,
+                java.util.Map.of("minecraft:sharpness", 5), 0);
+        ItemStack plain = new ItemStack("minecraft:diamond_sword", 1, 1);
+        inventory.setSlot(0, enchanted);
+        var before = inventory.snapshot();
+
+        assertFalse(inventory.applySlotChanges(java.util.List.of(
+                new PlayerInventory.SlotChange(0, java.util.Optional.of(enchanted),
+                        java.util.Optional.empty()),
+                new PlayerInventory.SlotChange(1, java.util.Optional.empty(),
+                        java.util.Optional.of(plain))
+        )));
+        assertEquals(before, inventory.snapshot());
+    }
+
+    @Test
+    void rejectsRepairCostForgeryInsideAtomicSlotChanges() {
+        PlayerInventory inventory = new PlayerInventory(9);
+        ItemStack repaired = new ItemStack("minecraft:diamond_pickaxe", 1, 1,
+                java.util.Map.of(), 7);
+        ItemStack unrepaired = new ItemStack("minecraft:diamond_pickaxe", 1, 1,
+                java.util.Map.of(), 0);
+        inventory.setSlot(0, repaired);
+        var before = inventory.snapshot();
+
+        assertFalse(inventory.applySlotChanges(java.util.List.of(
+                new PlayerInventory.SlotChange(0, java.util.Optional.of(repaired),
+                        java.util.Optional.empty()),
+                new PlayerInventory.SlotChange(1, java.util.Optional.empty(),
+                        java.util.Optional.of(unrepaired))
+        )));
+        assertEquals(before, inventory.snapshot());
+    }
+
 }

@@ -2789,6 +2789,17 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
         }
 
         String normalized = command.command().trim().toLowerCase(Locale.ROOT);
+        // Core-owned integrity command: handled before ordinary command routing,
+        // with no player permission node or configurable command registration.
+        if (normalized.equals("/nexora") || normalized.equals("/nexora status")
+                || normalized.equals("/nexora verify")) {
+            sendNexoraBuildStatus(message.networkId());
+            return;
+        }
+        if (normalized.startsWith("/nexora ")) {
+            sendAiMessage(message.networkId(), "§b[NEXORA] §fИспользование: /nexora или /nexora status");
+            return;
+        }
         if (normalized.equals("/gamemode creative") || normalized.equals("/gamemode 1")
                 || normalized.equals("/gmc")) {
             setCreativeMode(message.networkId(), state, true);
@@ -2823,6 +2834,30 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             return;
         }
         packetSink.accept(new PacketEvent(message.networkId(), message.channelLabel(), packet));
+    }
+
+    private void sendNexoraBuildStatus(String networkId) {
+        ru.nexora.security.BuildSignatureVerifier.Result result =
+                ru.nexora.security.BuildSignatureVerifier.verifyCurrentBuild();
+        String version = getClass().getPackage().getImplementationVersion();
+        if (version == null || version.isBlank()) version = "не указана";
+        String status = switch (result.status()) {
+            case VALID -> "§aОФИЦИАЛЬНОЕ ЯДРО — ПОДПИСЬ ПОДТВЕРЖДЕНА";
+            case INVALID -> "§cПОДПИСЬ НЕДЕЙСТВИТЕЛЬНА — ФАЙЛ ЯДРА ИЗМЕНЁН ИЛИ ПОВРЕЖДЁН";
+            case UNSIGNED -> "§eПОДЛИННОСТЬ НЕ ПОДТВЕРЖДЕНА — НЕТ ФАЙЛОВ ПОДПИСИ";
+            case KEY_NOT_CONFIGURED -> "§eПУБЛИЧНЫЙ КЛЮЧ НЕ НАСТРОЕН — СБОРКА НЕ ПРОВЕРЕНА";
+            case DEVELOPMENT -> "§bDEV-СБОРКА — ЗАПУЩЕНЫ КЛАССЫ ИЗ ПАПКИ РАЗРАБОТКИ";
+            case UNAVAILABLE -> "§cПРОВЕРКА НЕДОСТУПНА";
+        };
+        String detail = result.detail();
+        if (detail == null || detail.isBlank()) detail = "нет дополнительных сведений";
+        sendAiMessage(networkId,
+                "§l§b[NEXORA SECURITY]§r\n"
+                        + "§fВерсия: §b" + version + "\n"
+                        + "§fСтатус: " + status + "\n"
+                        + "§fЦелостность: " + (result.valid() ? "§aПОДТВЕРЖДЕНА" : "§cНЕ ПОДТВЕРЖДЕНА") + "\n"
+                        + "§fПроверка: §7" + detail + "\n"
+                        + "§8Неподтверждённая подпись сама по себе не доказывает кражу.");
     }
 
     private static BedrockPacket createAdventureSettings(long entityId, boolean creative) {

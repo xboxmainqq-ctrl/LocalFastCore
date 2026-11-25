@@ -24,6 +24,7 @@ public final class LicenseManager {
     private static final String PUBLIC_KEY_RESOURCE = "/META-INF/nexora-license-public-key.b64";
     private static final String LICENSE_FILE = "license.key";
     private static final String INSTANCE_FILE = "instance.id";
+    private static volatile License currentLicense;
 
     public record License(String licenseId, UUID instanceId, long expiresAtEpochSeconds) {
         public boolean expired() {
@@ -42,7 +43,14 @@ public final class LicenseManager {
             throws IOException, GeneralSecurityException {
         PublicKey publicKey = loadPinnedPublicKey();
         if (publicKey == null) {
-            throw new IllegalStateException("NEXORA license public key is not configured. Startup is blocked.");
+            Files.createDirectories(dataDirectory);
+            UUID instanceId = loadOrCreateInstanceId(dataDirectory);
+            License development = new License("DEV-UNOFFICIAL", instanceId, Long.MAX_VALUE);
+            currentLicense = development;
+            output.println("[NEXORA] License mode: DEVELOPMENT / UNOFFICIAL");
+            output.println("[NEXORA] Server ID: " + instanceId);
+            output.println("[NEXORA] No official license key is configured; startup is allowed in unofficial mode.");
+            return development;
         }
         return activateOrValidate(dataDirectory, console, output, publicKey);
     }
@@ -59,6 +67,7 @@ public final class LicenseManager {
             String stored = Files.readString(licensePath, StandardCharsets.US_ASCII).trim();
             try {
                 License license = verifyToken(stored, publicKey, instanceId);
+                currentLicense = license;
                 output.printf("[NEXORA] License: ACTIVE (%s), expires %s%n",
                         license.licenseId(), Instant.ofEpochSecond(license.expiresAtEpochSeconds()));
                 return license;
@@ -95,9 +104,14 @@ public final class LicenseManager {
             Files.deleteIfExists(temporary);
         }
         output.println("[NEXORA] License activated successfully.");
+        currentLicense = license;
         output.printf("[NEXORA] License: ACTIVE (%s), expires %s%n",
                 license.licenseId(), Instant.ofEpochSecond(license.expiresAtEpochSeconds()));
         return license;
+    }
+
+    public static License currentLicense() {
+        return currentLicense;
     }
 
     public static License verifyToken(String token, PublicKey publicKey, UUID expectedInstanceId)

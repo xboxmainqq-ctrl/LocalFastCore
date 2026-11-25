@@ -89,6 +89,31 @@ class PlayerPhysicsTest {
     }
 
     @Test
+    void stepsOntoSingleBlockButDoesNotClimbTwoBlockWall() {
+        World world = world();
+        world.setBlock(1, 65, 0, BlockType.STONE);
+        PlayerPhysics.State state = PlayerPhysics.spawn(world, 0.5, 65.0, 0.5);
+        PlayerPhysics.Input forward = new PlayerPhysics.Input(0, 1, -90, false, false);
+
+        for (int i = 0; i < 24; i++) {
+            state = PlayerPhysics.tick(world, state, forward, 0.05);
+        }
+
+        assertTrue(state.x() > 1.2, "player should walk up a one-block step");
+        assertEquals(66.0, state.y(), 0.02);
+        assertTrue(state.onGround());
+        assertTrue(WorldCollision.canOccupy(world, state.x(), state.y(), state.z()));
+
+        world.setBlock(2, 66, 0, BlockType.STONE);
+        world.setBlock(2, 67, 0, BlockType.STONE);
+        for (int i = 0; i < 24; i++) {
+            state = PlayerPhysics.tick(world, state, forward, 0.05);
+        }
+        assertTrue(state.x() < 1.71, "player must not climb a two-block wall");
+        assertTrue(WorldCollision.canOccupy(world, state.x(), state.y(), state.z()));
+    }
+
+    @Test
     void rejectsInvalidDeltaAndSpawnInsideBlock() {
         World world = world();
         assertThrows(IllegalArgumentException.class,

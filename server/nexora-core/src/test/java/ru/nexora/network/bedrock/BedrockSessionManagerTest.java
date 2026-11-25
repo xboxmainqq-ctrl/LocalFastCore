@@ -88,6 +88,60 @@ class BedrockSessionManagerTest {
     }
 
     @Test
+    void blockActionWorldListenerFailureDoesNotRejectPlayerSession() throws Exception {
+        ru.nexora.world.World world = new ru.nexora.world.World(
+                "block-action-isolation", 0L, new ru.nexora.world.FlatWorldGenerator());
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                world, (networkId, label, frame) -> { }, event -> { });
+        try {
+            manager.onIdentity("block-action-player", new NetherNetClientIdentity(
+                    "block-action-token", new byte[] {1}, "block-action-xuid",
+                    "BlockActionPlayer", "block-action-playfab", "20CA2", null));
+            java.lang.reflect.Field sessionsField = BedrockSessionManager.class.getDeclaredField("sessions");
+            sessionsField.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, Object> sessions =
+                    (java.util.Map<String, Object>) sessionsField.get(manager);
+            Object state = sessions.get("block-action-player");
+
+            world.setBlock(1, 65, 0, ru.nexora.world.BlockType.STONE);
+            world.addBlockChangeListener(change -> {
+                if (change.current() == ru.nexora.world.BlockType.AIR) {
+                    throw new IllegalStateException("simulated block listener failure");
+                }
+            });
+
+            setSessionField(manager, "block-action-player", "creativeMode", true);
+            setSessionField(manager, "block-action-player", "positionX", 0.5f);
+            setSessionField(manager, "block-action-player", "positionY", 65.0f);
+            setSessionField(manager, "block-action-player", "positionZ", 0.5f);
+            Class<?> targetType = Class.forName(
+                    "ru.nexora.network.bedrock.BedrockSessionManager$BreakTarget");
+            var targetConstructor = targetType.getDeclaredConstructors()[0];
+            targetConstructor.setAccessible(true);
+            Object target = targetConstructor.newInstance(1, 65, 0, System.nanoTime());
+            java.lang.reflect.Field targetField = state.getClass().getDeclaredField("breakTarget");
+            targetField.setAccessible(true);
+            targetField.set(state, target);
+
+            java.lang.reflect.Method actionHandler = BedrockSessionManager.class.getDeclaredMethod(
+                    "handleBlockActionSafely", String.class, state.getClass(),
+                    BedrockPlayerAuthInputCodec.BlockAction.class);
+            actionHandler.setAccessible(true);
+            assertDoesNotThrow(() -> actionHandler.invoke(manager, "block-action-player", state,
+                    new BedrockPlayerAuthInputCodec.BlockAction(2, 1, 65, 0, 1)));
+
+            assertEquals(ru.nexora.world.BlockType.AIR, world.getBlock(1, 65, 0));
+            java.lang.reflect.Field rejectedField = state.getClass().getDeclaredField("rejected");
+            rejectedField.setAccessible(true);
+            assertFalse(rejectedField.getBoolean(state));
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void mobAttackDeadlineSaturatesInsteadOfOverflowing() {
         assertEquals(Long.MAX_VALUE - 500L,
                 BedrockSessionManager.mobAttackDeadline(Long.MAX_VALUE - 1_000L, 500L));

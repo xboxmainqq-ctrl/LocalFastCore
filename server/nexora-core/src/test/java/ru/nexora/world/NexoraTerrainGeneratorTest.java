@@ -19,19 +19,29 @@ class NexoraTerrainGeneratorTest {
     void createsDeterministicMountainsAndDeepCraterBasins() {
         int minimum = Integer.MAX_VALUE;
         int maximum = Integer.MIN_VALUE;
+        int plains = 0;
+        int mountainColumns = 0;
+        int samples = 0;
         for (int x = -2048; x <= 2048; x += 16) {
             for (int z = -2048; z <= 2048; z += 16) {
                 int height = NexoraTerrainGenerator.surfaceHeight(x, z, 0L);
                 assertEquals(height, NexoraTerrainGenerator.surfaceHeight(x, z, 0L));
-                assertTrue(height >= -30 && height <= 200);
+                assertTrue(height >= 12 && height <= 200);
+                if (height <= 100) plains++;
+                if (height >= 135) mountainColumns++;
+                samples++;
                 minimum = Math.min(minimum, height);
                 maximum = Math.max(maximum, height);
             }
         }
-        assertTrue(minimum <= -20,
-                "custom terrain should generate deep crater floors");
+        assertTrue(minimum >= 12,
+                "ordinary terrain and rare basins must remain above the deep underground");
         assertTrue(maximum >= 190,
-                "custom terrain should generate mountain peaks close to Y=200");
+                "rare large mountain regions should reach close to Y=200");
+        assertTrue(plains > samples / 2,
+                "most of the sampled world should be plains and gentle hills");
+        assertTrue(mountainColumns < samples / 4,
+                "high mountain terrain must be uncommon rather than everywhere");
     }
 
     @Test

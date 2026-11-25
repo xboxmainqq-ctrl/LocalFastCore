@@ -65,10 +65,69 @@ public final class NexoraTerrainGenerator implements WorldGenerator {
                 chunk.setBlock(x, surface, z, top);
             }
         }
+        carveCaves(chunk, seed);
         generateForestTrees(chunk, seed);
         generateAncientRuins(chunk, seed);
     }
 
+
+    /**
+     * Carves deterministic, connected underground cave systems. The two noise
+     * scales form broad chambers joined by narrower tunnels; the surface and
+     * the bedrock floor are deliberately left intact.
+     */
+    private static void carveCaves(WorldChunk chunk, long seed) {
+        int originX = chunk.chunkX() * 16;
+        int originZ = chunk.chunkZ() * 16;
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                int worldX = originX + x;
+                int worldZ = originZ + z;
+                int surface = surfaceHeight(worldX, worldZ, seed);
+                int ceiling = surface - 5;
+                for (int y = WorldChunk.MIN_Y + 5; y <= ceiling; y++) {
+                    long caveSeed = seed ^ 0x3c6ef372fe94f82bL;
+                    double chamber = Math.abs(valueNoise3D(worldX, y, worldZ, caveSeed, 48.0));
+                    double tunnel = Math.abs(valueNoise3D(worldX, y, worldZ,
+                            caveSeed ^ 0xa54ff53a5f1d36f1L, 21.0));
+                    if (chamber < 0.19 && tunnel < 0.42) {
+                        chunk.setBlock(x, y, z, BlockType.AIR);
+                    }
+                }
+            }
+        }
+    }
+
+    private static double valueNoise3D(double x, double y, double z, long seed, double scale) {
+        double gx = x / scale;
+        double gy = y / scale;
+        double gz = z / scale;
+        int ix = (int) Math.floor(gx);
+        int iy = (int) Math.floor(gy);
+        int iz = (int) Math.floor(gz);
+        double fx = fade(gx - ix);
+        double fy = fade(gy - iy);
+        double fz = fade(gz - iz);
+        double z0y0 = lerp(lattice3D(ix, iy, iz, seed),
+                lattice3D(ix + 1, iy, iz, seed), fx);
+        double z0y1 = lerp(lattice3D(ix, iy + 1, iz, seed),
+                lattice3D(ix + 1, iy + 1, iz, seed), fx);
+        double z1y0 = lerp(lattice3D(ix, iy, iz + 1, seed),
+                lattice3D(ix + 1, iy, iz + 1, seed), fx);
+        double z1y1 = lerp(lattice3D(ix, iy + 1, iz + 1, seed),
+                lattice3D(ix + 1, iy + 1, iz + 1, seed), fx);
+        return lerp(lerp(z0y0, z0y1, fy), lerp(z1y0, z1y1, fy), fz);
+    }
+
+    private static double lattice3D(int x, int y, int z, long seed) {
+        long value = seed ^ (long) x * 0x9e3779b97f4a7c15L
+                ^ (long) y * 0xc2b2ae3d27d4eb4fL
+                ^ (long) z * 0x165667b19e3779f9L;
+        value = (value ^ (value >>> 30)) * 0xbf58476d1ce4e5b9L;
+        value = (value ^ (value >>> 27)) * 0x94d049bb133111ebL;
+        value ^= value >>> 31;
+        return ((value >>> 11) * 0x1.0p-53) * 2.0 - 1.0;
+    }
 
     private static void generateForestTrees(WorldChunk chunk, long seed) {
         final int spacing = 11;

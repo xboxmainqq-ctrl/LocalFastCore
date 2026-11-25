@@ -78,6 +78,15 @@ class LicenseManagerTest {
         assertEquals("LIC-005", secondStart.licenseId());
     }
 
+    @Test
+    void refusesEmptyConsoleInput() throws Exception {
+        KeyPair pair = keyPair();
+        var input = new BufferedReader(new InputStreamReader(new ByteArrayInputStream(new byte[0])));
+        var output = new PrintStream(new ByteArrayOutputStream());
+        assertThrows(IllegalStateException.class, () ->
+                LicenseManager.activateOrValidate(temporaryDirectory, input, output, pair.getPublic()));
+    }
+
     private KeyPair keyPair() throws Exception {
         return KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
     }

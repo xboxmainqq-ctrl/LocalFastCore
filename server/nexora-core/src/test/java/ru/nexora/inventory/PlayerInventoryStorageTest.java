@@ -85,6 +85,52 @@ class PlayerInventoryStorageTest {
     }
 
     @Test
+    void concurrentInventorySavesKeepPrimaryAndBackupRecoverable() throws Exception {
+        PlayerInventoryStorage storage = new PlayerInventoryStorage(temporaryDirectory);
+        String xuid = "concurrent-inventory";
+        PlayerInventory initial = new PlayerInventory();
+        initial.setSlot(0, new ItemStack("minecraft:stone", 1, 64));
+        storage.save(xuid, initial);
+
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(6);
+        try {
+            java.util.List<java.util.concurrent.Future<?>> saves = new java.util.ArrayList<>();
+            for (int worker = 0; worker < 6; worker++) {
+                final int workerId = worker;
+                saves.add(executor.submit(() -> {
+                    for (int generation = 1; generation <= 20; generation++) {
+                        PlayerInventory inventory = new PlayerInventory();
+                        inventory.setSlot(0, new ItemStack(
+                                "minecraft:diamond", 1 + (generation % 64), 64));
+                        inventory.setSlot(1, new ItemStack(
+                                "nexora:worker_" + workerId, 1, 64));
+                        inventory.selectHotbarSlot(workerId);
+                        try {
+                            storage.save(xuid, inventory);
+                        } catch (IOException exception) {
+                            throw new java.io.UncheckedIOException(exception);
+                        }
+                    }
+                }));
+            }
+            for (java.util.concurrent.Future<?> save : saves) save.get();
+        } finally {
+            executor.shutdownNow();
+        }
+
+        Path primary = temporaryDirectory.resolve(xuid + ".nxi");
+        Path backup = temporaryDirectory.resolve(xuid + ".nxi.bak");
+        assertTrue(storage.load(xuid).isPresent());
+        assertTrue(Files.size(backup) > 0);
+
+        byte[] damaged = Files.readAllBytes(primary);
+        damaged[damaged.length - 1] ^= 1;
+        Files.write(primary, damaged);
+        assertTrue(storage.load(xuid).isPresent());
+        assertArrayEquals(Files.readAllBytes(backup), Files.readAllBytes(primary));
+    }
+
+    @Test
     void returnsEmptyWhenInventoryDoesNotExist() throws Exception {
         PlayerInventoryStorage storage = new PlayerInventoryStorage(temporaryDirectory);
         assertTrue(storage.load("unknown-player").isEmpty());

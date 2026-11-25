@@ -46,6 +46,70 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BedrockSessionManagerTest {
     @Test
+    void deadOrUnpositionedPlayerCannotPickUpDroppedItems() throws Exception {
+        ru.nexora.world.World world = new ru.nexora.world.World(
+                "pickup-player-state-guard", 0L, new ru.nexora.world.FlatWorldGenerator());
+        java.util.concurrent.atomic.AtomicInteger outboundFrames = new java.util.concurrent.atomic.AtomicInteger();
+        BedrockSessionManager manager = new BedrockSessionManager(
+                2225, "1.26.62", BedrockSessionManager.DEFAULT_COMPRESSION_THRESHOLD,
+                world, (networkId, label, frame) -> outboundFrames.incrementAndGet(), event -> { });
+        try {
+            manager.onIdentity("pickup-guard-player", new NetherNetClientIdentity(
+                    "pickup-guard-token", new byte[] {1}, "pickup-guard-xuid",
+                    "PickupGuardPlayer", "pickup-guard-playfab", "20CA2", null));
+            setSessionField(manager, "pickup-guard-player", "loginAuthenticated", true);
+            setSessionField(manager, "pickup-guard-player", "clientInitialized", true);
+            setSessionField(manager, "pickup-guard-player", "positionInitialized", true);
+            setSessionField(manager, "pickup-guard-player", "positionX", 0.5f);
+            setSessionField(manager, "pickup-guard-player", "positionY", 65.0f);
+            setSessionField(manager, "pickup-guard-player", "positionZ", 0.5f);
+            Object state = sessionState(manager, "pickup-guard-player");
+            long playerRuntimeId = (long) readSessionField(state, "entityId");
+            WorldItemEntity dropped = world.itemEntities().spawn(
+                    new ItemStack("minecraft:diamond", 2, 64),
+                    0.5, 65.0, 0.5, 0, 0, 0,
+                    1_000, 0, null);
+            BedrockPacket request = BedrockTakeItemActorCodec.createAcknowledgement(
+                    dropped.runtimeId(), playerRuntimeId);
+            var message = new ru.nexora.network.nethernet.NetherNetInboundPipeline.InboundMessage(
+                    "pickup-guard-player", "ReliableDataChannel", true, new byte[0]);
+            var handler = BedrockSessionManager.class.getDeclaredMethod(
+                    "handleTakeItemActor", ru.nexora.network.nethernet.NetherNetInboundPipeline.InboundMessage.class,
+                    state.getClass(), BedrockPacket.class);
+            handler.setAccessible(true);
+
+            setSessionField(manager, "pickup-guard-player", "dead", true);
+            handler.invoke(manager, message, state, request);
+            assertEquals(0, ((PlayerInventory) readSessionField(state, "inventory"))
+                    .count("minecraft:diamond"));
+            assertEquals(dropped, world.itemEntities().find(dropped.runtimeId()).orElseThrow());
+
+            setSessionField(manager, "pickup-guard-player", "dead", false);
+            setSessionField(manager, "pickup-guard-player", "positionInitialized", false);
+            handler.invoke(manager, message, state, request);
+            assertEquals(0, ((PlayerInventory) readSessionField(state, "inventory"))
+                    .count("minecraft:diamond"));
+            assertEquals(dropped, world.itemEntities().find(dropped.runtimeId()).orElseThrow());
+            assertTrue(outboundFrames.get() >= 2,
+                    "the authoritative item actor must be resent after rejected pickup requests");
+        } finally {
+            manager.close();
+        }
+    }
+
+    private static Object sessionState(BedrockSessionManager manager, String networkId) throws Exception {
+        java.lang.reflect.Field sessions = BedrockSessionManager.class.getDeclaredField("sessions");
+        sessions.setAccessible(true);
+        return ((java.util.Map<?, ?>) sessions.get(manager)).get(networkId);
+    }
+
+    private static Object readSessionField(Object state, String name) throws Exception {
+        java.lang.reflect.Field field = state.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        return field.get(state);
+    }
+
+    @Test
     void blockBroadcastFailureCannotRollBackCommittedWorldMutation() throws Exception {
         java.util.concurrent.atomic.AtomicInteger attempts = new java.util.concurrent.atomic.AtomicInteger();
         ru.nexora.world.World world = new ru.nexora.world.World(

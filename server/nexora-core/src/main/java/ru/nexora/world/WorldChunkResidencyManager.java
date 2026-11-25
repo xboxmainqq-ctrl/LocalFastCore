@@ -209,6 +209,22 @@ public final class WorldChunkResidencyManager {
         return residentSnapshot.size();
     }
 
+    /** Reconciles planner state with chunks that the world cache could not evict. */
+    public synchronized void retainResidentChunks(
+            java.util.Collection<ChunkCoordinate> actualResidents
+    ) {
+        java.util.Objects.requireNonNull(actualResidents, "actualResidents");
+        boolean changed = false;
+        for (ChunkCoordinate coordinate : actualResidents) {
+            if (coordinate == null) continue;
+            changed |= resident.add(chunkKey(coordinate.chunkX(), coordinate.chunkZ()));
+        }
+        if (changed) {
+            residentSnapshot = Set.copyOf(resident);
+            residentCoordinateSnapshot = Set.copyOf(decode(resident));
+        }
+    }
+
     public int viewDistance() {
         return viewDistance;
     }

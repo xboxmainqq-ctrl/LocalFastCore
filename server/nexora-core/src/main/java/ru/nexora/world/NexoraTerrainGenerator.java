@@ -396,7 +396,7 @@ public final class NexoraTerrainGenerator implements WorldGenerator {
         value = (value ^ (value >>> 30)) * 0xbf58476d1ce4e5b9L;
         value = (value ^ (value >>> 27)) * 0x94d049bb133111ebL;
         value ^= value >>> 31;
-        return ((value >>> 11) * 0x1.0p-52) * 2.0 - 1.0;
+        return ((value >>> 11) * 0x1.0p-53) * 2.0 - 1.0;
     }
 
     private static double unitHash(long value) {

@@ -87,7 +87,7 @@ openssl pkey -in nexora-license-private.pem -pubout -outform DER \
 3. Issue the perpetual owner token on the trusted computer (requires OpenSSL):
 
    ```sh
-   tools/issue-nexora-license.sh nexora-license-private.pem <SERVER-ID> NEXORA-OWNER
+   bash tools/issue-nexora-license.sh nexora-license-private.pem <SERVER-ID> NEXORA-OWNER
    ```
 
    The script prints one token. Save it privately as your separate owner key;

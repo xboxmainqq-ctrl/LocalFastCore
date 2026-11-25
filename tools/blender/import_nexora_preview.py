@@ -121,6 +121,54 @@ if terrain_objects:
     if bpy.context.area and bpy.context.area.type == "VIEW_3D":
         bpy.ops.view3d.camera_to_view_selected()
 
+# Render eye-level camera views of the real imported chunk geometry for mobile viewing.
+from mathutils import Vector
+
+scene = bpy.context.scene
+scene.render.engine = "BLENDER_EEVEE_NEXT"
+scene.render.resolution_x = 1280
+scene.render.resolution_y = 720
+scene.render.resolution_percentage = 100
+scene.render.image_settings.file_format = "PNG"
+scene.render.film_transparent = False
+scene.view_settings.view_transform = "AgX"
+scene.world.color = (0.16, 0.19, 0.24)
+
+sun_data = bpy.data.lights.new("NEXORA_Daylight", type="SUN")
+sun_data.energy = 2.0
+sun = bpy.data.objects.new("NEXORA_Daylight", sun_data)
+bpy.context.collection.objects.link(sun)
+sun.rotation_euler = (0.45, -0.35, -0.4)
+
+def render_first_person(name, location, target):
+    camera_data = bpy.data.cameras.new("NEXORA_" + name + "_Camera")
+    camera = bpy.data.objects.new("NEXORA_" + name + "_Camera", camera_data)
+    bpy.context.collection.objects.link(camera)
+    camera.location = Vector(location)
+    camera.rotation_euler = (Vector(target) - camera.location).to_track_quat("-Z", "Y").to_euler()
+    camera_data.lens = 52
+    camera_data.clip_start = 0.05
+    camera_data.clip_end = 1200
+    scene.camera = camera
+    scene.render.filepath = str(preview_dir / ("nexora-view-" + name + ".png"))
+    bpy.ops.render.render(write_still=True)
+    bpy.data.objects.remove(camera, do_unlink=True)
+    bpy.data.cameras.remove(camera_data)
+
+# Eye-level view from the same spawn point used by the Java physics trace.
+render_first_person("spawn", (8.5, 8.5, 66.62), (8.5, 42.0, 65.8))
+
+# Frame the mountain sample from a nearby player-height viewpoint.
+mountain_bounds = [
+    obj.matrix_world @ Vector(corner)
+    for obj in mountain_objects if obj.type == "MESH"
+    for corner in obj.bound_box
+]
+if mountain_bounds:
+    highest = max(point.z for point in mountain_bounds)
+    render_first_person("mountains", (160.0, 42.0, highest - 5.0),
+                        (160.0, 92.0, highest - 13.0))
+
 blend_path = preview_dir / "nexora-preview.blend"
 bpy.ops.wm.save_as_mainfile(filepath=str(blend_path))
 print("NEXORA Blender preview saved to " + str(blend_path))

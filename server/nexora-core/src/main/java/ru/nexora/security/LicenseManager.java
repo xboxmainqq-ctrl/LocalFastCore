@@ -69,7 +69,7 @@ public final class LicenseManager {
                 License license = verifyToken(stored, publicKey, instanceId);
                 currentLicense = license;
                 output.printf("[NEXORA] License: ACTIVE (%s), expires %s%n",
-                        license.licenseId(), Instant.ofEpochSecond(license.expiresAtEpochSeconds()));
+                        license.licenseId(), formatExpiry(license.expiresAtEpochSeconds()));
                 return license;
             } catch (IllegalArgumentException invalid) {
                 output.println("[NEXORA] Saved license is invalid or expired: " + invalid.getMessage());
@@ -106,12 +106,18 @@ public final class LicenseManager {
         output.println("[NEXORA] License activated successfully.");
         currentLicense = license;
         output.printf("[NEXORA] License: ACTIVE (%s), expires %s%n",
-                license.licenseId(), Instant.ofEpochSecond(license.expiresAtEpochSeconds()));
+                license.licenseId(), formatExpiry(license.expiresAtEpochSeconds()));
         return license;
     }
 
     public static License currentLicense() {
         return currentLicense;
+    }
+
+    private static String formatExpiry(long expiresAtEpochSeconds) {
+        return expiresAtEpochSeconds == Long.MAX_VALUE
+                ? "бессрочно"
+                : Instant.ofEpochSecond(expiresAtEpochSeconds).toString();
     }
 
     public static License verifyToken(String token, PublicKey publicKey, UUID expectedInstanceId)

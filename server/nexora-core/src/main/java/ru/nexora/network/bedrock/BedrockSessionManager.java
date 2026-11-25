@@ -6773,6 +6773,11 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 || nanoTime.getAsLong() - target.startedAtNanos() < requiredNanos) return;
 
         List<WorldItemEntity> containerDrops = new ArrayList<>();
+        WorldContainerManager brokenChestManager = null;
+        List<Optional<ItemStack>> brokenChestSnapshot = null;
+        WorldFurnaceManager brokenFurnaceManager = null;
+        List<Optional<ItemStack>> brokenFurnaceSnapshot = null;
+        FurnaceService.FurnaceStateSnapshot brokenFurnaceStateSnapshot = null;
         if (current == BlockType.CHEST) {
             WorldContainerManager manager = world.containers().orElse(null);
             if (manager == null) {
@@ -6786,6 +6791,8 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
             try {
                 chest = manager.getOrCreate(target.x(), target.y(), target.z());
                 chestSnapshot = chest.snapshot();
+                brokenChestManager = manager;
+                brokenChestSnapshot = chestSnapshot;
                 long nowMillis = System.currentTimeMillis();
                 String ownerXuid = state.identity == null ? null : state.identity.xuid();
                 for (int slot = 0; slot < chestSnapshot.size(); slot++) {
@@ -6858,6 +6865,9 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                         target.x(), target.y(), target.z(), furnaceKind(current));
                 furnaceSnapshot = furnace.snapshot();
                 furnaceStateSnapshot = manager.snapshotState(target.x(), target.y(), target.z());
+                brokenFurnaceManager = manager;
+                brokenFurnaceSnapshot = furnaceSnapshot;
+                brokenFurnaceStateSnapshot = furnaceStateSnapshot;
                 if (manager.hasPendingExperience(target.x(), target.y(), target.z())) {
                     // Pending smelting XP has no world-orb representation yet. Keep the
                     // furnace intact until that value has been claimed through its output.
@@ -6953,6 +6963,32 @@ public final class BedrockSessionManager implements NetherNetDataChannelListener
                 blockWasRemoved = false;
             }
             if (!blockWasRemoved) {
+                // The container record may already have been deleted after its item
+                // actors were persisted. If the block mutation did not commit, restore
+                // the original inventory and furnace timers before returning control.
+                if (brokenChestManager != null && brokenChestSnapshot != null) {
+                    try {
+                        ContainerInventory restored = brokenChestManager.getOrCreate(
+                                target.x(), target.y(), target.z());
+                        restored.restore(brokenChestSnapshot);
+                        brokenChestManager.save(target.x(), target.y(), target.z());
+                    } catch (IOException | RuntimeException rollbackFailure) {
+                        mutationFailure.addSuppressed(rollbackFailure);
+                    }
+                }
+                if (brokenFurnaceManager != null && brokenFurnaceSnapshot != null
+                        && brokenFurnaceStateSnapshot != null) {
+                    try {
+                        ContainerInventory restored = brokenFurnaceManager.getOrCreate(
+                                target.x(), target.y(), target.z(), furnaceKind(current));
+                        restored.restore(brokenFurnaceSnapshot);
+                        brokenFurnaceManager.restoreState(
+                                target.x(), target.y(), target.z(), brokenFurnaceStateSnapshot);
+                        brokenFurnaceManager.save(target.x(), target.y(), target.z());
+                    } catch (IOException | RuntimeException rollbackFailure) {
+                        mutationFailure.addSuppressed(rollbackFailure);
+                    }
+                }
                 for (WorldItemEntity item : containerDrops) {
                     try {
                         world.itemEntities().remove(item.runtimeId());

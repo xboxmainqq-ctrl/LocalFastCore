@@ -36,7 +36,7 @@ class BedrockInventoryContentCodecTest {
         BedrockPacket packet = BedrockInventoryContentCodec.createPlayerInventory(
                 inventory, ignored -> new BedrockInventoryContentCodec.ItemDefinition(257, 0, 0, new byte[0]));
         byte[] payload = packet.payload();
-        assertArrayEquals(new byte[] {1, 1, 1, 3, 0, 0, 0, 0, 0},
+        assertArrayEquals(new byte[] {2, 1, 1, 3, 0, 0, 0, 0, 0},
                 Arrays.copyOfRange(payload, 2, 11));
         assertEquals(0, Byte.toUnsignedInt(payload[11]));
         assertArrayEquals(new byte[8], Arrays.copyOfRange(payload, 12, 20));

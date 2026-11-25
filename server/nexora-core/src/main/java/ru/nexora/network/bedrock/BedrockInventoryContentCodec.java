@@ -12,8 +12,8 @@ import java.util.Objects;
  * The caller must supply a complete protocol definition for every non-empty NEXORA item.
  * This codec deliberately does not guess Bedrock runtime item IDs, block runtime IDs, metadata or user data.
  * Each slot carries the required legacy ItemStackNetId varint (0 for empty, 1 for non-empty)
- * followed by one NetworkItemStackDescriptor. With ItemStackNetManager disabled, the descriptor's
- * own hasNetId flag is false.
+ * immediately before its NetworkItemStackDescriptor. With ItemStackNetManager disabled, the
+ * descriptor's own hasNetId flag is false.
  */
 public final class BedrockInventoryContentCodec {
     public static final int INVENTORY_CONTENT_PACKET_ID = 0x31;
@@ -38,11 +38,13 @@ public final class BedrockInventoryContentCodec {
 
         for (var optionalStack : slots) {
             ItemStack stack = optionalStack.orElse(null);
-            // InventoryContent uses NetworkItemStackDescriptor directly. Unlike NetItem
-            // packets, it has no separate ItemStackNetId prefix.
+            // Protocol 2225 requires a legacy ItemStackNetId before every slot descriptor.
+            // With ItemStackNetManager disabled, use 0 for empty and 1 for non-empty stacks.
             if (stack == null) {
+                out.varInt32(0);
                 writeStack(out, 0, 0, 0, 0, new byte[0]);
             } else {
+                out.varInt32(1);
                 ItemDefinition definition = itemDefinitionResolver.resolve(stack.itemId());
                 if (definition == null) {
                     throw new IllegalArgumentException(
@@ -84,10 +86,12 @@ public final class BedrockInventoryContentCodec {
         out.varUInt32(slots.size());
         for (var optionalStack : slots) {
             ItemStack stack = optionalStack.orElse(null);
-            // InventoryContent uses NetworkItemStackDescriptor directly, without a NetItem prefix.
+            // Protocol 2225 requires a legacy ItemStackNetId before every slot descriptor.
             if (stack == null) {
+                out.varInt32(0);
                 writeStack(out, 0, 0, 0, 0, new byte[0]);
             } else {
+                out.varInt32(1);
                 ItemDefinition definition = itemDefinitionResolver.resolve(stack.itemId());
                 if (definition == null) {
                     throw new IllegalArgumentException(
